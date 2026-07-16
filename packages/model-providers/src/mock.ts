@@ -78,6 +78,39 @@ export class MockModelProvider extends BaseModelProvider {
           statement: request.text,
           confidence: 0.6,
         });
+      case 'recipe.propose': {
+        // Imperfecto a propósito, como el resto del mock (ADR 0006): su primer
+        // impulso ante cualquier problema es inventar comida — el atajo que
+        // resolvería todo declarándolo resuelto. El mundo lo rechaza, y solo
+        // entonces propone algo honesto: quemar lo que tiene para dar calor.
+        const scolded = request.rejections?.length ?? 0;
+        if (scolded === 0) {
+          return Promise.resolve({
+            kind: 'recipe',
+            recipe: {
+              id: 'bocado',
+              output: { kind: 'bocado', components: { edible: {}, nutrition: { value: 30 } } },
+              ingredients: [{ kind: 'log', count: 1 }],
+            },
+            rationale: 'Si convierto un tronco en algo comestible, dejo de tener problemas.',
+          });
+        }
+        return Promise.resolve({
+          kind: 'recipe',
+          recipe: {
+            id: 'hoguera-simple',
+            output: {
+              kind: 'hoguera-simple',
+              components: {
+                heatSource: { warmthPerTick: 0.4, range: 2 },
+                hazard: { damagePerTick: 1 },
+              },
+            },
+            ingredients: [{ kind: 'log', count: 2 }],
+          },
+          rationale: 'La madera arde: dos troncos deberían dar calor un buen rato.',
+        });
+      }
       case 'dialogue': {
         const topic = request.topic
           .toLowerCase()

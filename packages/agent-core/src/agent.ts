@@ -29,6 +29,12 @@ export const SKILL_GET_WARM = 'conseguir-calor';
 
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
+/**
+ * Cuántas veces puede intentar inventar algo antes de rendirse y pedir ayuda.
+ * Inventar cuesta una consulta al modelo por intento: sin tope, un mundo donde
+ * nada sirve la dejaría proponiendo para siempre.
+ */
+const MAX_RECIPE_ATTEMPTS = 3;
 
 /** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
 const USER_REQUEST_WEIGHTS: Record<
@@ -187,6 +193,9 @@ export class AnimaAgent {
   private pendingUserMessages: string[] = [];
   private pendingExplanation: string | null = null;
   private energyHypothesisId: string | null = null;
+  /** Rechazos del mundo a sus inventos: viajan al siguiente intento. */
+  private recipeRejections: string[] = [];
+  private recipeAttempts = 0;
   private lastSelectedGoalId: string | null = null;
   private lastUserRequest: UserRequest | null = null;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
@@ -432,6 +441,32 @@ export class AnimaAgent {
           this.tick,
         );
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+      }
+      // El mundo rechazó un invento: el motivo se recuerda y viaja al próximo
+      // intento. Sin esto insistiría con la misma idea imposible para siempre.
+      if (event.type === 'recipe.rejected' && event.data.actorId === this.petId) {
+        const reason = String(event.data.reason);
+        if (!this.recipeRejections.includes(reason)) this.recipeRejections.push(reason);
+        this.emit('recipe.rejected', { reason });
+      }
+      // Lo que el mundo aceptó pasa a ser conocimiento suyo, y sobrevive a su
+      // muerte: la receta vive en el mundo, el saber que existe en su memoria.
+      if (event.type === 'recipe.learned' && event.data.actorId === this.petId) {
+        const fact = this.memory.addFact(
+          `puedo construir ${String(event.data.outputKind)}`,
+          this.tick,
+        );
+        this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+        this.emit('recipe.learned', {
+          recipeId: event.data.recipeId,
+          outputKind: event.data.outputKind,
+        });
+        this.memory.recordEpisode({
+          kind: 'recipe-invented',
+          summary: `se me ocurrió cómo construir ${String(event.data.outputKind)} y funcionó`,
+          tick: this.tick,
+          importance: 0.9,
+        });
       }
     }
   }
@@ -1210,6 +1245,52 @@ export class AnimaAgent {
   }
 
   /**
+   * Inventar un objeto que su mundo no sabe construir. El modelo propone; la
+   * intención va al mundo, que valida y decide. Un rechazo no se pierde: se
+   * recuerda y viaja al siguiente intento, para que corrija en vez de insistir.
+   * Devuelve la intención de proponer, o null si no hay nada que proponer.
+   */
+  private async inventRecipe(
+    problem: string,
+    perception: Perception,
+  ): Promise<ActionIntent | null> {
+    const materials = [
+      ...new Set([
+        ...perception.self.heldItems.map((item) => `${item.kind} (lo llevo encima)`),
+        ...perception.visibleEntities.filter((e) => e.portable).map((e) => `${e.kind} (lo veo)`),
+      ]),
+    ];
+    // Sin materiales no hay nada que inventar: es falta de recurso, no de idea.
+    if (materials.length === 0) return null;
+
+    this.recipeAttempts += 1;
+    try {
+      const response = await this.config.provider.complete({
+        kind: 'recipe.propose',
+        problem,
+        materials,
+        existingRecipes: perception.recipes.map(
+          (recipe) =>
+            `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
+        ),
+        ...(this.recipeRejections.length > 0 ? { rejections: [...this.recipeRejections] } : {}),
+      });
+      if (response.kind !== 'recipe') {
+        throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+      }
+      this.emit('recipe.proposed', { rationale: response.rationale });
+      return { type: 'proposeRecipe', recipe: response.recipe };
+    } catch (error) {
+      this.emit('provider.error', {
+        provider: this.config.provider.name,
+        operation: 'recipe.propose',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      return null;
+    }
+  }
+
+  /**
    * Perseguir el calor tiene la misma forma que perseguir el alimento: skill
    * estable, si no aproximación primitiva, y si todo está prohibido, el ciclo
    * cerrado. La diferencia está en qué falta cuando falla: sin nada que dé
@@ -1233,6 +1314,19 @@ export class AnimaAgent {
     if (viable) {
       this.startActivity(goal, viable.label, viable.program, perception, viable.skillId);
       return this.continueActivity(perception);
+    }
+
+    // Si nada de lo que sabe construir da calor, quizá pueda inventarlo. Es
+    // el paso previo a rendirse: primero la idea, después la habilidad.
+    const knowsFire = perception.recipes.some(
+      (recipe) => recipe.output.components.heatSource !== undefined,
+    );
+    if (!knowsFire && this.recipeAttempts < MAX_RECIPE_ATTEMPTS) {
+      const invention = await this.inventRecipe(
+        'tengo frío y no tengo nada que dé calor',
+        perception,
+      );
+      if (invention) return invention;
     }
 
     // Puede construir fuego, así que fabricar una habilidad no es absurdo

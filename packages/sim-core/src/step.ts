@@ -4,6 +4,7 @@ import { DIRECTION_DELTAS } from './actions.js';
 import type { Entity, EntityId } from './components.js';
 import type { SimEvent } from './events.js';
 import { simEvent } from './events.js';
+import { validateRecipe } from './recipe-validation.js';
 import { findRecipe, missingIngredients } from './recipes.js';
 import type { WorldState } from './world.js';
 import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, removeEntity, spawn } from './world.js';
@@ -235,7 +236,45 @@ function resolveAction(
     case 'craft':
       resolveCraft(world, actor, intent, events);
       return;
+    case 'proposeRecipe':
+      resolveProposeRecipe(world, actor, intent, events);
+      return;
   }
+}
+
+/**
+ * La mascota propone una receta; el mundo la valida y decide. Que se le ocurra
+ * no la vuelve posible: la física es del mundo, y aquí es donde se comprueba
+ * que la idea no invente materia, comida ni poderes que no existen. Un rechazo
+ * lleva el motivo, para que la mascota pueda corregir en vez de adivinar.
+ */
+function resolveProposeRecipe(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'proposeRecipe' }>,
+  events: SimEvent[],
+): void {
+  const validated = validateRecipe(intent.recipe, world.recipes);
+  if (!validated.ok) {
+    events.push(
+      simEvent('recipe.rejected', world.tick, {
+        actorId: actor.id,
+        reason: validated.error,
+      }),
+    );
+    resolved(world, events, actor.id, intent, false, { reason: validated.error });
+    return;
+  }
+  world.recipes.push(validated.value);
+  events.push(
+    simEvent('recipe.learned', world.tick, {
+      actorId: actor.id,
+      recipeId: validated.value.id,
+      outputKind: validated.value.output.kind,
+      ingredients: validated.value.ingredients,
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, { recipeId: validated.value.id });
 }
 
 /**

@@ -19,6 +19,12 @@ export type AgentEventType =
   | 'skill.promoted'
   | 'skill.rejected'
   | 'skill.used'
+  /** Se le ocurrió un objeto que su mundo no sabía construir. */
+  | 'recipe.proposed'
+  /** El mundo aceptó su invento: la física ahora lo admite. */
+  | 'recipe.learned'
+  /** El mundo lo rechazó, con el motivo. Imaginarlo no lo vuelve posible. */
+  | 'recipe.rejected'
   | 'memory.created'
   | 'memory.consolidated'
   | 'hypothesis.updated'

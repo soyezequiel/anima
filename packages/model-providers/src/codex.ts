@@ -82,6 +82,47 @@ const PROGRAM_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
+/**
+ * La receta viaja serializada como string, igual que el programa: los
+ * validadores de esquemas de salida exigen tipar cada objeto anidado, y
+ * `components` es un mapa abierto. El mundo la valida al recibirla.
+ */
+const RECIPE_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    recipeJson: { type: 'string' },
+    rationale: { type: 'string' },
+  },
+  required: ['recipeJson', 'rationale'],
+  additionalProperties: false,
+};
+
+/**
+ * Lo que el mundo admite en un objeto inventado. Decirlo en el prompt no
+ * reemplaza a la validación —el mundo vuelve a comprobarlo todo— pero evita
+ * que gaste intentos proponiendo imposibles.
+ */
+const RECIPE_REFERENCE = `Una receta es JSON:
+{"id":"nombre-en-minusculas","output":{"kind":"nombre-en-minusculas","components":{...}},
+ "ingredients":[{"kind":"tipo","count":1..8}]}
+Componentes permitidos en lo construido (ninguno más existe):
+- "collider":{"solid":boolean} — ocupa lugar, bloquea el paso
+- "portable":{} — se puede recoger y llevar
+- "hardness":{"value":0..10} — cuánto resiste a ser dañado
+- "durability":{"current":1..30,"max":1..30} — se puede romper
+- "tool":{"power":0..8} — sirve como herramienta
+- "hazard":{"damagePerTick":0..3} — daña a quien esté al lado
+- "heatSource":{"warmthPerTick":0..1,"range":1..3} — da calor a distancia
+- "drops":[{"kind":...,"components":{...}}] — qué deja al romperse
+Reglas que el mundo NO perdona:
+- No puedes inventar comida ni nada que la produzca ("edible", "nutrition",
+  "foodSource" no existen aquí), ni criaturas, ni fabricar food/tree/pet.
+  Inventar da capacidades, no recursos.
+- Un objeto no puede ser ingrediente de sí mismo, y no puede dejar al romperse
+  más objetos de los que costó: eso sería crear materia.
+- Sin ingredientes no hay receta, y lo construido debe tener al menos un
+  componente: algo sin componentes no hace nada.`;
+
 const INTERPRET_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -245,6 +286,30 @@ borde falla.`
 Diseña UN programa de la DSL que resuelva el problema de forma general (debe
 funcionar también cuando no hay obstáculo). Responde únicamente con JSON:
 {"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "explicación breve en español"}`,
+      };
+    case 'recipe.propose':
+      return {
+        schema: RECIPE_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual que necesita algo que su mundo todavía
+no sabe construir. Invéntalo con lo que tiene a mano.
+${RECIPE_REFERENCE}
+
+Lo que necesitas resolver: ${request.problem}
+Materiales a tu alcance:
+${request.materials.map((m) => `- ${m}`).join('\n') || '- (ninguno)'}
+Recetas que ya existen (no las repitas):
+${request.existingRecipes.map((r) => `- ${r}`).join('\n') || '- (ninguna)'}
+${
+  request.rejections && request.rejections.length > 0
+    ? `\nEl mundo ya rechazó estas ideas tuyas. No insistas: corrige.
+${request.rejections.map((r) => `- ${r}`).join('\n')}`
+    : ''
+}
+
+Inventa UN objeto que ayude con el problema y se pueda construir con esos
+materiales. El mundo validará tu idea y puede rechazarla: proponerla no la
+vuelve posible. Responde únicamente con JSON:
+{"recipeJson": "<la receta serializada como JSON>", "rationale": "por qué esto ayuda, en español"}`,
       };
     case 'skill.revise':
       return {
@@ -493,6 +558,25 @@ export class CodexModelProvider extends BaseModelProvider {
           return {
             kind: 'skill.program',
             program,
+            rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+          };
+        }
+        case 'recipe.propose': {
+          let recipe: unknown = parsed.recipe;
+          if (typeof parsed.recipeJson === 'string') {
+            try {
+              recipe = JSON.parse(parsed.recipeJson);
+            } catch {
+              throw new Error('recipeJson no es JSON válido');
+            }
+          }
+          if (recipe === null || typeof recipe !== 'object' || Array.isArray(recipe)) {
+            throw new Error('la respuesta no contiene una receta');
+          }
+          // No se valida aquí: la receta va cruda al mundo, que es quien decide.
+          return {
+            kind: 'recipe',
+            recipe,
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
           };
         }

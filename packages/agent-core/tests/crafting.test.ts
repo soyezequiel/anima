@@ -126,7 +126,7 @@ describe('«construí una fogata con esos troncos»', () => {
     const { agent, perception } = makeAgent(world, petId, provider);
 
     const reply = await say(agent, perception(), 'construí una fogata');
-    expect(reply).toBe('Voy a construir fogata.');
+    expect(reply).toBe('Voy a construir una fogata.');
 
     // El agente pide la intención y el mundo la resuelve.
     for (let i = 0; i < 6 && !allEntities(world).some((e) => e.kind === 'campfire'); i++) {

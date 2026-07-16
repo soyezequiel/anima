@@ -16,9 +16,11 @@ pre-codeados. En cuatro pasos, cada uno mostrable por sí solo:
    su negativa por ingrediente faltante, el frío como motivo interno, y
    `temperatureIncreased`/`craftedKind` en el evaluador. Pendiente: que junte
    los ingredientes sola, y encender el frío en el mundo jugable.
-3. **Arquetipos propuestos por el modelo** — Ánima compone objetos nuevos con
-   componentes existentes, validados y evaluados como las skills; placeholder
-   gráfico: cuadrado con el nombre (ya implementado).
+3. **Arquetipos propuestos por el modelo** — hecho (ADR 0018): Ánima inventa
+   recetas, el mundo las valida (`validateRecipe`) y decide; un rechazo enseña.
+   No puede inventar comida: inventar da capacidades, no recursos. Placeholder
+   gráfico: cuadrado con el nombre. Abierto: los troncos son inconseguibles en
+   el mundo jugable porque se niega a talar el árbol (ver el ADR).
 4. **Comportamientos nuevos** — DSL de reglas o JS enjaulado (ADR 0014),
    solo si los componentes existentes no alcanzan.
 

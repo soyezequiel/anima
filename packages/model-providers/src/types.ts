@@ -59,6 +59,22 @@ export type ModelRequest =
       conversation: { from: 'user' | 'pet'; text: string }[];
     }
   | {
+      /**
+       * Inventar un objeto que su mundo todavía no sabe construir. El modelo
+       * propone el arquetipo; el mundo lo valida y decide. Proponer no es
+       * poder: la física no la escribe quien la imagina.
+       */
+      kind: 'recipe.propose';
+      /** Para qué lo necesita: el problema, no la solución. */
+      problem: string;
+      /** Materiales que existen a su alcance. */
+      materials: string[];
+      /** Recetas que ya existen: no tiene sentido reinventarlas. */
+      existingRecipes: string[];
+      /** Rechazos previos del mundo: por qué su idea anterior no era posible. */
+      rejections?: string[];
+    }
+  | {
       kind: 'dialogue';
       topic: string;
       facts: string[];
@@ -86,6 +102,8 @@ export type ModelResponse =
   | { kind: 'command.interpretation'; command: CommandInterpretation }
   | { kind: 'skill.contract'; contract: ProposedSkillContract }
   | { kind: 'knowledge'; statement: string; confidence: number }
+  /** La receta viaja sin tipar: el mundo es quien la valida (validateRecipe). */
+  | { kind: 'recipe'; recipe: unknown; rationale: string }
   | { kind: 'dialogue'; text: string };
 
 export type CommandDirection = 'up' | 'down' | 'left' | 'right';

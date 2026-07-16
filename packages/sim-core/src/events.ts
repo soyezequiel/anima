@@ -10,6 +10,8 @@ export type SimEventType =
   | 'item.dropped'
   | 'item.consumed'
   | 'item.crafted'
+  | 'recipe.learned'
+  | 'recipe.rejected'
   | 'tool.broke'
   | 'agent.spoke'
   | 'entity.spawned'

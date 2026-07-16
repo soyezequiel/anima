@@ -42,8 +42,22 @@ function displayKind(kind: string): string {
       log: 'tronco',
       flint: 'pedernal',
       campfire: 'fogata',
+      chair: 'silla',
     }[kind] ?? kind
   );
+}
+
+/** Plural en español: "2 troncos", "2 pedernales". */
+function pluralKind(kind: string, amount: number): string {
+  const name = displayKind(kind);
+  if (amount === 1) return name;
+  return /[aeiou]$/.test(name) ? `${name}s` : `${name}es`;
+}
+
+/** "una silla", "un tronco": el género se adivina por la terminación. */
+function withArticle(kind: string): string {
+  const name = displayKind(kind);
+  return /a$/.test(name) ? `una ${name}` : `un ${name}`;
 }
 
 /** "2 troncos y 1 pedernal" — para decir qué falta en voz humana. */
@@ -51,8 +65,7 @@ function displayMissing(missing: { kind: string; need: number; have: number }[])
   return missing
     .map((m) => {
       const amount = m.need - m.have;
-      const name = displayKind(m.kind);
-      return amount === 1 ? `1 ${name}` : `${amount} ${name}s`;
+      return `${amount} ${pluralKind(m.kind, amount)}`;
     })
     .join(' y ');
 }
@@ -128,6 +141,8 @@ export function evaluateUserRequest(
       }
       const missing = missingIngredients(recipe, held);
       if (missing.length > 0) {
+        const totalMissing = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
+        const falta = totalMissing === 1 ? 'me falta' : 'me faltan';
         // Falta un recurso, no una capacidad (ADR 0008): sabe hacerlo, no
         // tiene con qué. Si lo ve cerca lo dice, en vez de prometer traerlo:
         // ir a buscarlo es otra petición, y el cuidador puede pedírsela.
@@ -136,7 +151,7 @@ export function evaluateUserRequest(
         );
         return {
           classification: 'cannot',
-          reason: `Entiendo, quiero construir ${displayKind(recipe.output.kind)}, pero me falta ${displayMissing(missing)}.`,
+          reason: `Entiendo, quiero construir ${withArticle(recipe.output.kind)}, pero ${falta} ${displayMissing(missing)}.`,
           alternative:
             visible.length > 0
               ? `Veo ${displayMissing(visible)} cerca: pídeme que lo traiga y voy.`
@@ -145,7 +160,7 @@ export function evaluateUserRequest(
       }
       return {
         classification: 'accepted',
-        reason: `Voy a construir ${displayKind(recipe.output.kind)}.`,
+        reason: `Voy a construir ${withArticle(recipe.output.kind)}.`,
       };
     }
 
@@ -312,13 +327,19 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     return { kind: 'destroy-entity', targetKind: kindWord('destroy'), raw: text };
   }
   // Antes que "buscar"/"traer": "construí una fogata" no es traer una fogata.
+  // El parser conoce las recetas del MVP a mano; con un modelo real, las
+  // recetas viajan en el prompt y esta tabla no hace falta.
   if (
-    /\b(construye|construi|construir|construyas|arma|armar|haz|hacer|prepara|preparar|enciende|encender)\b/.test(
+    /\b(construye|construi|construir|construyas|arma|armar|haz|hacer|fabrica|fabricar|prepara|preparar|enciende|encender)\b/.test(
       lower,
-    ) &&
-    /\b(fogata|hoguera|fuego|campfire)\b/.test(lower)
+    )
   ) {
-    return { kind: 'craft-item', recipeId: 'campfire', raw: text };
+    const recipeWords: [pattern: RegExp, recipeId: string][] = [
+      [/\b(fogata|hoguera|fuego|campfire)\b/, 'campfire'],
+      [/\b(silla|asiento|chair)\b/, 'chair'],
+    ];
+    const match = recipeWords.find(([pattern]) => pattern.test(lower));
+    if (match) return { kind: 'craft-item', recipeId: match[1], raw: text };
   }
   if (/\b(trae|traer|busca|buscar|recoge|recoger|agarra|agarrar|toma|tomar)\b/.test(lower)) {
     return { kind: 'fetch-item', targetKind: kindWord('other'), raw: text };

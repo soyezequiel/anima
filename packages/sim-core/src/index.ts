@@ -1,5 +1,6 @@
 export * from './components.js';
 export * from './recipes.js';
+export * from './recipe-validation.js';
 export * from './world.js';
 export * from './actions.js';
 export * from './events.js';

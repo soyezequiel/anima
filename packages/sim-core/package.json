@@ -11,7 +11,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@anima/shared": "workspace:*"
+    "@anima/shared": "workspace:*",
+    "zod": "^3.24.0"
   },
   "devDependencies": {
     "fast-check": "^3.0.0",

@@ -23,6 +23,31 @@ export const CAMPFIRE_RECIPE: Recipe = {
   ],
 };
 
+/**
+ * La silla: el objeto más simple que igual hace algo. No hay acción "sentarse"
+ * ni componente de descanso, así que una silla "para sentarse" sería
+ * decoración inerte. Esta, en cambio, usa lo que el motor ya entiende: ocupa
+ * lugar (se puede construir un obstáculo), se rompe fácil y al romperse
+ * devuelve un tronco. Lo que hace real a un objeto no es su nombre: son sus
+ * componentes.
+ */
+export const CHAIR_RECIPE: Recipe = {
+  id: 'chair',
+  output: {
+    kind: 'chair',
+    components: {
+      collider: { solid: true },
+      hardness: { value: 2 },
+      durability: { current: 6, max: 6 },
+      drops: [{ kind: 'log', components: { portable: {} } }],
+    },
+  },
+  ingredients: [{ kind: 'log', count: 2 }],
+};
+
+/** Lo que el mundo del MVP admite construir. */
+export const MVP_RECIPES: Recipe[] = [CAMPFIRE_RECIPE, CHAIR_RECIPE];
+
 export interface ScenarioBundle {
   world: WorldState;
   petId: EntityId;
@@ -106,7 +131,7 @@ function spawnTree(world: WorldState, pos: Vec2): void {
 export const foodBehindWall: ScenarioSpec = {
   name: 'food-behind-wall',
   build(seed) {
-    const world = createWorld({ width: 9, height: 5, seed });
+    const world = createWorld({ width: 9, height: 5, seed }, { recipes: MVP_RECIPES });
     const rng = createRng(seed * 7919 + 17);
     const petId = spawnPet(world, { x: 1, y: 2 }, 15);
 

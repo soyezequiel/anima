@@ -21,6 +21,11 @@ export type ActionIntent =
   | { type: 'consume'; targetId: EntityId }
   | { type: 'useItem'; itemId: EntityId; targetId: EntityId }
   | { type: 'craft'; recipeId: string }
+  /**
+   * Proponerle al mundo una receta nueva. El agente no la añade: la propone, y
+   * el mundo la valida y decide. La física sigue siendo del mundo.
+   */
+  | { type: 'proposeRecipe'; recipe: unknown }
   | { type: 'speak'; text: string };
 
 export interface ActorIntent {
