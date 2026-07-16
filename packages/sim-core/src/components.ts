@@ -29,6 +29,8 @@ export interface Components {
   dead?: { atTick: number; cause: string };
   /** Produce alimento periódicamente en una celda libre adyacente. */
   foodSource?: { intervalTicks: number; nutrition: number; nextSpawnAtTick: number };
+  /** Daña a los agentes adyacentes cada tick (espinas, fuego, etc.). */
+  hazard?: { damagePerTick: number };
 }
 
 export interface Entity {

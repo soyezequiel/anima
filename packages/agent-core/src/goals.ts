@@ -1,11 +1,14 @@
+import type { Direction } from '@anima/sim-core';
+
 export type GoalSource =
   'internal-signal' | 'curiosity' | 'danger' | 'user-request' | 'promise' | 'contradiction';
 
 export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
 
 export interface GoalUserRequest {
-  kind: 'destroy-entity' | 'fetch-item' | 'consume-item' | 'wait-here';
+  kind: 'destroy-entity' | 'fetch-item' | 'consume-item' | 'wait-here' | 'move-direction';
   targetKind?: string;
+  directions?: Direction[];
   raw: string;
 }
 

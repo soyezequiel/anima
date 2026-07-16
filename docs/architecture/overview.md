@@ -25,9 +25,9 @@
    │                agent-core                 │
    └──────▲────────────────────────────────────┘
           │
-   ┌──────┴──────┐
-   │  apps/demo  │  (apps/web y apps/api llegarán en fases 6-8)
-   └─────────────┘
+   ┌─────────────────────────────────┐
+   │ apps/demo · apps/web · apps/api │
+   └─────────────────────────────────┘
 ```
 
 Regla de oro: las dependencias apuntan siempre "hacia abajo". Nada en
@@ -81,13 +81,19 @@ modelo solo en momentos cognitivos.
 Interfaz neutral `ModelProvider.complete(ModelRequest): ModelResponse` con
 peticiones tipadas (`skill.propose`, `skill.revise`, `interpret.signal`,
 `dialogue`). Implementaciones: `MockModelProvider` (determinista, imperfecto
-por diseño), `ScriptedModelProvider` (replay), `UnconfiguredModelProvider`
-(punto de extensión para un modelo real; sin claves en el repo).
+por diseño), `ScriptedModelProvider` (replay), `CodexModelProvider` (adaptador
+web hacia el puente local de `apps/api`) y `UnconfiguredModelProvider`
+(fallback explícito). El proveedor Codex usa la sesión del CLI del usuario;
+el backend ejecuta `codex exec` de forma efímera, en sandbox de solo lectura,
+y nunca lee ni persiste las credenciales. Cada identidad Nostr autenticada
+tiene su propio `CODEX_HOME` (`data/codex/<pubkey>`), así que cada usuario
+conecta su propia cuenta de Codex; el invitado usa el `~/.codex` de la
+máquina. Ver [ADR 0011](../decisions/0011-proveedor-codex.md).
 
 ## Observabilidad
 
 Todo es evento estructurado (`{type, tick, data}`): eventos del mundo
 (`action.resolved`, `entity.destroyed`, `pet.died`...) y del agente
 (`goal.created`, `skill.test.failed`, `skill.promoted`,
-`user.request.refused`...). La demo y las pruebas consumen los mismos eventos
-que consumirá la UI.
+`user.request.refused`...). La UI, la demo y las pruebas consumen los mismos
+eventos.

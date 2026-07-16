@@ -37,7 +37,7 @@ export function PhaserStage({ view }: { view: GameView }) {
     sceneRef.current?.applyView(view);
   }, [view]);
 
-  const bubble = view.speech && view.pet && (
+  const bubble = !view.aiBusy && view.speech && view.pet && (
     <div
       className="speech-bubble"
       data-testid="speech-bubble"
@@ -50,10 +50,31 @@ export function PhaserStage({ view }: { view: GameView }) {
     </div>
   );
 
+  const thinkingBubble = view.aiBusy && view.pet && (
+    <div
+      className="thinking-bubble"
+      data-testid="stage-thinking"
+      role="status"
+      aria-live="polite"
+      style={{
+        left: view.pet.x * CELL + CELL / 2,
+        top: view.pet.y * CELL - 6,
+      }}
+    >
+      <span>pensando</span>
+      <span className="thinking-dots" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </span>
+    </div>
+  );
+
   return (
     <div className="stage-wrap" style={{ width: view.worldSize.width * CELL }}>
       <div ref={hostRef} />
       {bubble}
+      {thinkingBubble}
     </div>
   );
 }

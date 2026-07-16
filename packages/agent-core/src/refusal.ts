@@ -1,4 +1,4 @@
-import type { Perception } from '@anima/sim-core';
+import type { Direction, Perception } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { Goal } from './goals.js';
 
@@ -12,6 +12,7 @@ export type UserRequest =
   | { kind: 'fetch-item'; targetKind: string; raw: string }
   | { kind: 'consume-item'; targetKind: string; raw: string }
   | { kind: 'wait-here'; raw: string }
+  | { kind: 'move-direction'; directions: Direction[]; raw: string }
   | { kind: 'unknown'; raw: string };
 
 export type RequestClassification =
@@ -35,6 +36,16 @@ function displayKind(kind: string): string {
       tree: 'árbol',
     }[kind] ?? kind
   );
+}
+
+function displayDirections(directions: Direction[]): string {
+  const labels: Record<Direction, string> = {
+    up: 'hacia arriba',
+    down: 'hacia abajo',
+    left: 'a la izquierda',
+    right: 'a la derecha',
+  };
+  return directions.map((direction) => labels[direction]).join(' y ');
 }
 
 /**
@@ -74,6 +85,12 @@ export function evaluateUserRequest(
   switch (request.kind) {
     case 'wait-here':
       return { classification: 'accepted', reason: 'Puedo esperar aquí un momento.' };
+
+    case 'move-direction':
+      return {
+        classification: 'accepted',
+        reason: `Voy ${displayDirections(request.directions)}.`,
+      };
 
     case 'destroy-entity': {
       const targetName = displayKind(request.targetKind);
@@ -191,6 +208,24 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     }
     return mentions[0]?.kind ?? 'unknown';
   };
+  const asksToMove =
+    /\b(anda|andate|ve|vete|mueve|muevete|movete|moverte|camina|camine|corre|dirigete|desplazate|sube|baja|move)\b/.test(
+      lower,
+    );
+  if (asksToMove) {
+    const directionAliases: [pattern: RegExp, direction: Direction][] = [
+      [/\b(arriba|norte|sube|up)\b/, 'up'],
+      [/\b(abajo|sur|baja|down)\b/, 'down'],
+      [/\b(izquierda|oeste|left)\b/, 'left'],
+      [/\b(derecha|este|right)\b/, 'right'],
+    ];
+    const directions = directionAliases
+      .map(([pattern, direction]) => ({ direction, index: lower.search(pattern) }))
+      .filter((match) => match.index >= 0)
+      .sort((a, b) => a.index - b.index)
+      .map((match) => match.direction);
+    if (directions.length > 0) return { kind: 'move-direction', directions, raw: text };
+  }
   if (
     /\b(destruye|destruir|rompe|romper|rompas|derriba|derribar|tala|talar|tales|tale|talen|corta|cortar|cortes|golpea|golpear)\b/.test(
       lower,

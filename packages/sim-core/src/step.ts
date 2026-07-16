@@ -28,8 +28,51 @@ export function stepWorld(world: WorldState, intents: ActorIntent[]): SimEvent[]
   }
 
   runEnergySystem(world, events);
+  runHazardSystem(world, events);
   runFoodSourceSystem(world, events);
   return events;
+}
+
+/**
+ * Los peligros del mundo (espinas, fuego) dañan a los agentes adyacentes.
+ * La salud puede agotarse sin pasar por el hambre: la causa de muerte es
+ * distinta y el informe de legado la refleja.
+ */
+function runHazardSystem(world: WorldState, events: SimEvent[]): void {
+  const hazards = allEntities(world).filter(
+    (e) => e.components.hazard && e.components.position,
+  );
+  if (hazards.length === 0) return;
+  for (const entity of allEntities(world)) {
+    const health = entity.components.health;
+    const pos = entity.components.position;
+    if (!health || !pos || !entity.components.agent || entity.components.dead) continue;
+    for (const hazard of hazards) {
+      const hazardPos = hazard.components.position!;
+      if (
+        Math.max(Math.abs(hazardPos.x - pos.x), Math.abs(hazardPos.y - pos.y)) > 1 ||
+        health.current <= 0
+      ) {
+        continue;
+      }
+      const damage = hazard.components.hazard!.damagePerTick;
+      health.current = Math.max(0, health.current - damage);
+      events.push(
+        simEvent('entity.damaged', world.tick, {
+          id: entity.id,
+          targetKind: entity.kind,
+          byId: hazard.id,
+          itemKind: hazard.kind,
+          damage,
+          remainingHealth: health.current,
+        }),
+      );
+      if (health.current === 0 && !entity.components.dead) {
+        entity.components.dead = { atTick: world.tick, cause: 'injuries' };
+        events.push(simEvent('pet.died', world.tick, { id: entity.id, cause: 'injuries' }));
+      }
+    }
+  }
 }
 
 /** Orden determinista de celdas adyacentes candidatas para brotar alimento. */

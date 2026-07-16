@@ -58,6 +58,10 @@ const CAUSE_RECOMMENDATIONS: Record<string, string[]> = {
     'no dejes que la energía llegue a cero: consumir alimento la recupera',
     'localiza pronto una fuente estable de alimento (un árbol la produce cada tanto)',
   ],
+  injuries: [
+    'algo del entorno me hirió hasta matarme: mantente lejos de lo que daña al tocarlo',
+    'si la salud empieza a bajar sin hambre, aléjate primero y entiende después',
+  ],
 };
 
 export function buildLegacyReport(input: BuildLegacyInput): LegacyReport {

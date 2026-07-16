@@ -8,11 +8,11 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
 
   useEffect(() => {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
-  }, [view.chat.length]);
+  }, [view.chat.length, view.aiBusy]);
 
   return (
     <div className="chat-panel">
-      <div className="chat-log" ref={logRef} data-testid="chat-log">
+      <div className="chat-log" ref={logRef} data-testid="chat-log" aria-busy={view.aiBusy}>
         {view.chat.map((entry, i) => (
           <div key={i} className={`chat-entry from-${entry.from}`}>
             <span className="chat-who">
@@ -22,6 +22,24 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
             <span className="chat-tick muted">t{entry.tick}</span>
           </div>
         ))}
+        {view.aiBusy && (
+          <div
+            className="chat-entry from-pet thinking-entry"
+            data-testid="chat-thinking"
+            role="status"
+            aria-live="polite"
+          >
+            <span className="chat-who">Ánima</span>
+            <span className="chat-text thinking-text">
+              pensando
+              <span className="thinking-dots" aria-hidden="true">
+                <i />
+                <i />
+                <i />
+              </span>
+            </span>
+          </div>
+        )}
       </div>
       <form
         className="chat-form"
@@ -37,8 +55,8 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
           onChange={(e) => setText(e.target.value)}
           placeholder="Háblale a tu mascota… (ej.: «comer alimento da energía»)"
         />
-        <button type="submit" data-testid="chat-send">
-          Enviar
+        <button type="submit" data-testid="chat-send" disabled={view.aiBusy}>
+          {view.aiBusy ? 'Pensando…' : 'Enviar'}
         </button>
       </form>
     </div>

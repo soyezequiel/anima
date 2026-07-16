@@ -29,6 +29,13 @@ export type ModelRequest =
       userMessage?: string;
     }
   | {
+      kind: 'interpret.command';
+      text: string;
+      facts: string[];
+      /** Turnos anteriores para resolver referencias como "eso" o "allá". */
+      history?: { from: 'user' | 'pet'; text: string }[];
+    }
+  | {
       kind: 'dialogue';
       topic: string;
       facts: string[];
@@ -39,7 +46,23 @@ export type ModelRequest =
 export type ModelResponse =
   | { kind: 'skill.program'; program: unknown; rationale: string }
   | { kind: 'interpretation'; hypothesis: string; confidence: number }
+  | { kind: 'command.interpretation'; command: CommandInterpretation }
   | { kind: 'dialogue'; text: string };
+
+export type CommandDirection = 'up' | 'down' | 'left' | 'right';
+
+/**
+ * El modelo interpreta lenguaje, pero solo puede elegir este catálogo. El
+ * agente vuelve a validar y decide de forma independiente si ejecuta.
+ */
+export type CommandInterpretation =
+  | { action: 'destroy-entity'; targetKind: string }
+  | { action: 'fetch-item'; targetKind: string }
+  | { action: 'consume-item'; targetKind: string }
+  | { action: 'wait-here' }
+  | { action: 'move-direction'; directions: CommandDirection[] }
+  | { action: 'unsupported'; summary: string }
+  | { action: 'not-command' };
 
 export interface ModelProvider {
   readonly name: string;

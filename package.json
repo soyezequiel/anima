@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @anima/web dev",
+    "dev:full": "pnpm --parallel --filter @anima/web --filter @anima/api run dev",
     "demo": "pnpm --filter @anima/demo start",
     "build": "pnpm -r run typecheck && pnpm --filter @anima/web build",
     "test": "pnpm -r run test",

@@ -23,6 +23,7 @@ export type AgentEventType =
   | 'guidance.shown'
   | 'legacy.read'
   | 'help.requested'
+  | 'provider.error'
   | 'user.message.received'
   | 'user.request.accepted'
   | 'user.request.refused';

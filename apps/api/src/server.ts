@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
-import type { AiBridge } from './ai.js';
-import { createCodexBridge } from './ai.js';
+import type { AiBridge, AiBridgeFactory } from './ai.js';
+import { createCodexBridgeFactory, isCodexModel, isCodexReasoningEffort } from './ai.js';
 import { createDb } from './db.js';
 import {
   createChallenge,
@@ -17,8 +17,10 @@ const MAX_VALUE_BYTES = 1_000_000;
 export interface ServerOptions {
   dbPath: string;
   now?: () => number;
-  /** Puente hacia el CLI de Codex (inyectable en pruebas). */
-  ai?: AiBridge;
+  /** Fábrica de puentes de Codex por identidad (inyectable en pruebas). */
+  ai?: AiBridgeFactory;
+  /** Raíz donde viven los CODEX_HOME por usuario (default: data/codex). */
+  codexDir?: string;
 }
 
 /**
@@ -55,24 +57,70 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   // ---- puente de IA (Codex) -------------------------------------------------
   // Las credenciales de Codex las gestiona el CLI en la máquina del usuario;
   // aquí solo viajan estado, la URL de autorización y texto de prompts.
-  const ai = options.ai ?? createCodexBridge();
+  // Cada identidad autenticada usa su propio puente (su propia cuenta de
+  // Codex); sin token se usa el puente invitado de la máquina. Un token
+  // presente pero inválido es 401: jamás degrada en silencio a invitado.
+  const aiForUser =
+    options.ai ?? createCodexBridgeFactory({ root: options.codexDir ?? 'data/codex' });
 
-  app.get('/ai/status', () => ai.status());
+  const aiBridge = (request: FastifyRequest, reply: FastifyReply): AiBridge | null => {
+    const header = request.headers.authorization;
+    if (!header) return aiForUser(null);
+    const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
+    const pubkey = token ? pubkeyForToken(deps, token) : null;
+    if (!pubkey) {
+      void reply.code(401).send({ error: 'token inválido o expirado' });
+      return null;
+    }
+    return aiForUser(pubkey);
+  };
 
-  app.post('/ai/login', async (_request, reply) => {
+  app.get('/ai/status', (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    return ai.status();
+  });
+
+  app.post('/ai/login', async (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
     const result = await ai.startLogin();
     if ('error' in result) return reply.code(502).send(result);
     return result;
   });
 
+  app.post('/ai/logout', async (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    await ai.logout();
+    return reply.code(204).send();
+  });
+
   app.post('/ai/complete', async (request, reply) => {
-    const body = request.body as { prompt?: unknown; schema?: unknown } | null;
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    const body = request.body as {
+      prompt?: unknown;
+      schema?: unknown;
+      model?: unknown;
+      reasoningEffort?: unknown;
+    } | null;
     if (typeof body?.prompt !== 'string' || body.prompt.length === 0) {
       return reply.code(400).send({ error: 'se espera { prompt: string }' });
+    }
+    if (body.model !== undefined && !isCodexModel(body.model)) {
+      return reply.code(400).send({ error: 'modelo Codex inválido' });
+    }
+    if (body.reasoningEffort !== undefined && !isCodexReasoningEffort(body.reasoningEffort)) {
+      return reply.code(400).send({ error: 'nivel de razonamiento Codex inválido' });
     }
     try {
       const completeInput: Parameters<AiBridge['complete']>[0] = { prompt: body.prompt };
       if (body.schema !== undefined) completeInput.schema = body.schema;
+      if (body.model !== undefined) completeInput.model = body.model;
+      if (body.reasoningEffort !== undefined) {
+        completeInput.reasoningEffort = body.reasoningEffort;
+      }
       const text = await ai.complete(completeInput);
       return { text };
     } catch (error) {

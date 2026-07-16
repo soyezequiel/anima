@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryKeyValueStore } from '@anima/persistence';
+import type { ModelProvider } from '@anima/model-providers';
+import { MockModelProvider } from '@anima/model-providers';
+import type { WorldState } from '@anima/sim-core';
+import { entitiesAt, getEntity, removeEntity, spawn } from '@anima/sim-core';
+import type { RegressionStore } from '@anima/skill-evaluator';
+import { evaluateSkill } from '@anima/skill-evaluator';
+import type { SkillLibrary } from '@anima/skill-runtime';
 import { GameSession } from '../src/session/GameSession.js';
 
 async function makeSession(seed: number, store = new MemoryKeyValueStore()) {
@@ -66,6 +73,82 @@ describe('GameSession (capa de sesión de la UI)', () => {
     expect(fresh.seed).toBe(9);
     expect(fresh.skills).toHaveLength(0);
     expect(fresh.chat.filter((c) => c.from === 'user')).toHaveLength(0);
+    session.dispose();
+  });
+
+  it('convierte una orden direccional en movimiento real antes de confirmar', async () => {
+    const { session } = await makeSession(5);
+    const start = { x: session.getView().pet!.x, y: session.getView().pet!.y };
+
+    session.sendUserMessage('movete arriba a la izquierda');
+    await runUntil(
+      session,
+      () => session.getView().chat.some((entry) => entry.text.includes('Listo, me moví')),
+      20,
+    );
+
+    const view = session.getView();
+    expect({ x: view.pet!.x, y: view.pet!.y }).toEqual({ x: start.x - 1, y: start.y - 1 });
+    expect(view.chat.some((entry) => entry.text === 'Voy hacia arriba y a la izquierda.')).toBe(
+      true,
+    );
+    expect(
+      view.chat.some((entry) => entry.text === 'Listo, me moví hacia arriba y a la izquierda.'),
+    ).toBe(true);
+
+    // Ya quedó sobre el borde izquierdo: otro paso no debe producir una
+    // confirmación falsa, sino explicar que el camino está bloqueado.
+    session.sendUserMessage('andate a la izquierda');
+    await runUntil(
+      session,
+      () => session.getView().chat.some((entry) => entry.text.includes('camino está bloqueado')),
+      20,
+    );
+    expect(session.getView().pet!.x).toBe(0);
+    expect(
+      session.getView().chat.filter((entry) => entry.text === 'Listo, me moví a la izquierda.'),
+    ).toHaveLength(0);
+    session.dispose();
+  });
+
+  it('muestra en chat y Dev el error concreto del proveedor', async () => {
+    const fallback = new MockModelProvider();
+    const provider: ModelProvider = {
+      name: 'codex',
+      complete(request) {
+        return request.kind === 'dialogue'
+          ? Promise.reject(new Error('cuota de Codex agotada (prueba)'))
+          : fallback.complete(request);
+      },
+      callCount(kind) {
+        return fallback.callCount(kind);
+      },
+    };
+    const session = await GameSession.create({
+      seed: 5,
+      autostart: false,
+      fresh: true,
+      store: new MemoryKeyValueStore(),
+      provider,
+    });
+    session.sendUserMessage('hola');
+    await runUntil(
+      session,
+      () => session.getView().chat.some((entry) => entry.text.includes('cuota de Codex agotada')),
+      20,
+    );
+
+    expect(
+      session.getView().chat.some((entry) => entry.text.includes('cuota de Codex agotada')),
+    ).toBe(true);
+    expect(
+      session
+        .getView()
+        .devEvents.some(
+          (event) =>
+            event.type === 'provider.error' && event.json.includes('cuota de Codex agotada'),
+        ),
+    ).toBe(true);
     session.dispose();
   });
 
@@ -140,6 +223,75 @@ describe('persistencia de la sesión', () => {
       restored.getView().chat.filter((entry) => entry.text.includes('No quiero destruir')),
     ).toHaveLength(2);
     restored.dispose();
+  });
+});
+
+describe('vigilancia en uso real', () => {
+  it('un fallo de la skill estable queda como regresión reproducible con snapshot', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    await runUntil(session, () => session.getView().storyCompleted);
+
+    // El mundo se vuelve hostil: el muro se reconstruye, el martillo
+    // desaparece y solo queda una rama; la comida vuelve a quedar del otro
+    // lado. La skill estable ya no alcanza — un fallo de comportamiento.
+    const world = (session as unknown as { world: WorldState }).world;
+    const pet = getEntity(world, 'e1')!;
+    for (const entity of Object.values(world.entities)) {
+      if (entity.kind === 'hammer' || entity.kind === 'food' || entity.kind === 'tree') {
+        removeEntity(world, entity.id);
+      }
+    }
+    for (let y = 0; y < world.config.height; y++) {
+      if (entitiesAt(world, { x: 4, y }).length === 0) {
+        spawn(world, 'wall', {
+          position: { x: 4, y },
+          collider: { solid: true },
+          hardness: { value: 5 },
+          durability: { current: 10, max: 10 },
+        });
+      }
+    }
+    spawn(world, 'food', {
+      position: { x: 1, y: 2 },
+      portable: {},
+      edible: {},
+      nutrition: { value: 30 },
+    });
+    spawn(world, 'branch', {
+      position: { ...pet.components.position! },
+      portable: {},
+      tool: { power: 1 },
+      durability: { current: 8, max: 8 },
+    });
+    pet.components.energy!.current = 12;
+
+    await runUntil(
+      session,
+      () => session.getView().regressions.some((r) => r.scenarioName === 'mundo-real'),
+      250,
+    );
+
+    const view = session.getView();
+    const realCases = view.regressions.filter((r) => r.scenarioName === 'mundo-real');
+    expect(realCases.length).toBeGreaterThan(0);
+    expect(view.chat.some((c) => c.text.includes('caso de regresión'))).toBe(true);
+    expect(view.devEvents.some((e) => e.type === 'regression.recorded')).toBe(true);
+
+    // Reproducible: evaluar la skill estable contra el caso capturado falla.
+    const regressions = (session as unknown as { regressions: RegressionStore }).regressions;
+    const library = (session as unknown as { library: SkillLibrary }).library;
+    const stable = library
+      .all()
+      .find((s) => s.status === 'stable' && s.name === 'alcanzar-alimento-bloqueado')!;
+    const report = evaluateSkill(stable, {
+      scenarios: [],
+      seeds: [],
+      regressions: regressions.realWorldCasesFor(stable.name),
+      maxTicks: 200,
+    });
+    expect(report.successRate).toBe(0);
+    session.dispose();
   });
 });
 

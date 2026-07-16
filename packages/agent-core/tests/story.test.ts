@@ -3,7 +3,11 @@ import { getEntity, spawn } from '@anima/sim-core';
 import type { WorldState } from '@anima/sim-core';
 import { SkillLibrary } from '@anima/skill-runtime';
 import { RegressionStore } from '@anima/skill-evaluator';
-import { MockModelProvider } from '@anima/model-providers';
+import {
+  MockModelProvider,
+  ScriptedModelProvider,
+  UnconfiguredModelProvider,
+} from '@anima/model-providers';
 import { foodBehindWall, MVP_SCENARIOS, openField } from '@anima/test-scenarios';
 import {
   AnimaAgent,
@@ -156,6 +160,84 @@ describe('diálogo y órdenes del usuario', () => {
         (event) => event.type === 'agent.spoke' && String(event.data.text).includes('¡Hola!'),
       ),
     ).toBe(true);
+  });
+
+  it('expone el error real cuando falla el proveedor de diálogo', async () => {
+    const provider = new UnconfiguredModelProvider();
+    const { agent } = makeAgent({ provider });
+    const bundle = openField.build(91);
+    getEntity(bundle.world, agent.petId)!.components.energy!.current = 40;
+    const result = await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 2,
+      userMessagesAt: { 0: 'hola' },
+    });
+
+    expect(
+      result.worldEvents.some(
+        (event) =>
+          event.type === 'agent.spoke' &&
+          String(event.data.text).includes('No hay un modelo real configurado'),
+      ),
+    ).toBe(true);
+    expect(agent.events.ofType('provider.error')[0]?.data).toMatchObject({
+      provider: 'unconfigured',
+      operation: 'interpret.command',
+      message: expect.stringContaining('No hay un modelo real configurado'),
+    });
+  });
+
+  it('ejecuta una orden con redacción libre interpretada por el modelo', async () => {
+    const provider = new ScriptedModelProvider([
+      {
+        kind: 'command.interpretation',
+        command: { action: 'consume-item', targetKind: 'food' },
+      },
+    ]);
+    const { agent } = makeAgent({ provider });
+    const bundle = openField.build(92);
+    getEntity(bundle.world, agent.petId)!.components.energy!.current = 40;
+
+    const result = await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 100,
+      userMessagesAt: { 0: '¿serías tan amable de ingerir la fruta que ves?' },
+      stopWhen: (_world, currentAgent) =>
+        currentAgent.goals
+          .all()
+          .some((goal) => goal.source === 'user-request' && goal.status === 'completed'),
+    });
+
+    expect(provider.callCount('interpret.command')).toBe(1);
+    expect(provider.callCount('dialogue')).toBe(0);
+    expect(result.worldEvents.some((event) => event.type === 'item.consumed')).toBe(true);
+  });
+
+  it('explica el límite si el modelo interpreta una acción aún no ejecutable', async () => {
+    const provider = new ScriptedModelProvider([
+      {
+        kind: 'command.interpretation',
+        command: { action: 'unsupported', summary: 'construir una casa con la rama' },
+      },
+    ]);
+    const { agent } = makeAgent({ provider });
+    const bundle = openField.build(93);
+    getEntity(bundle.world, agent.petId)!.components.energy!.current = 40;
+
+    const result = await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 3,
+      userMessagesAt: { 0: 'armate un refugio usando ese palo' },
+    });
+
+    expect(
+      result.worldEvents.some(
+        (event) =>
+          event.type === 'agent.spoke' &&
+          String(event.data.text).includes('construir una casa con la rama'),
+      ),
+    ).toBe(true);
+    expect(agent.goals.all().some((goal) => goal.source === 'user-request')).toBe(false);
+    expect(agent.events.ofType('user.request.refused')[0]?.data).toMatchObject({
+      classification: 'cannot',
+    });
   });
 
   it('ejecuta una orden natural de comer en el mundo', async () => {

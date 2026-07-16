@@ -9,7 +9,7 @@ las incorpora a su biblioteca si superan las pruebas.
 
 ## Estado actual
 
-**Fases 0–8 completadas**: la historia completa de aprendizaje funciona
+**Fases 0–9 completadas**: la historia completa de aprendizaje funciona
 headless (hito 1) y en el navegador (React + Phaser, chat, panel de
 habilidades, experimentos, modo desarrollador, E2E con Playwright). La sesión
 se autoguarda y sobrevive recargas; al morir, la mascota deja un informe de
@@ -40,6 +40,7 @@ energía recuperada -> conocimiento consolidado y explicable
 
 - Node.js >= 22
 - pnpm >= 10
+- CLI de Codex reciente en el `PATH` (solo para usar la cuenta de Codex)
 
 ## Inicio rápido
 
@@ -48,7 +49,7 @@ pnpm install
 pnpm dev           # interfaz web en http://localhost:5173
 pnpm demo          # el hito 1 en la terminal (semilla 5 por defecto)
 pnpm demo 42       # otra semilla (cambia posiciones de herramientas)
-pnpm test          # suite completa (87 pruebas)
+pnpm test          # suite unitaria y de integración (125 pruebas actualmente)
 pnpm test:e2e      # historia completa vía UI con Playwright (requiere
                    #   `pnpm exec playwright install chromium` una vez)
 pnpm typecheck
@@ -63,8 +64,87 @@ Para sincronizar con el backend: `pnpm --filter @anima/api start` (puerto
 el botón «⚡ Conectar Nostr» (extensión NIP-07) o abriendo el juego desde el
 launcher (BAL). Sin backend ni identidad, todo funciona en modo invitado.
 
-No se necesita ninguna clave de API: todo corre con `MockModelProvider`,
-un proveedor determinista que simula un generador imperfecto.
+No se necesita ninguna clave de API. Por defecto todo corre con
+`MockModelProvider`, un proveedor determinista que simula un generador
+imperfecto. La cuenta de Codex es opcional y el proyecto continúa funcionando
+si el CLI no está instalado o la sesión deja de estar disponible.
+
+## Probar la aplicación
+
+### Modo local
+
+```bash
+pnpm install
+pnpm dev
+```
+
+Abre <http://localhost:5173>. Este modo no necesita backend, cuenta ni clave:
+el progreso se guarda en `localStorage` y la mascota usa el proveedor simulado.
+
+### Backend, Nostr y sincronización
+
+Con un solo comando (web + API en paralelo):
+
+```bash
+pnpm dev:full
+```
+
+O en dos terminales:
+
+```bash
+pnpm --filter @anima/api start
+pnpm dev
+```
+
+Abre la web y pulsa «⚡ Conectar Nostr». La extensión NIP-07 firma un desafío
+de un solo uso y el progreso pasa a sincronizarse con el backend. También se
+admite BAL cuando la aplicación se abre desde un launcher compatible.
+
+### Cuenta de Codex como proveedor de IA
+
+1. Instala una versión reciente del CLI con
+   `npm install --global @openai/codex` y comprueba que `codex --version`
+   funciona desde la terminal.
+2. Inicia la API y la web con los dos comandos anteriores.
+3. Pulsa «🧠 Conectar Codex» en la interfaz.
+4. Completa la autorización de ChatGPT en la pestaña que se abre.
+5. Comprueba que el indicador cambia de «🤖 simulado» a «🧠 codex».
+
+También puedes comprobar la sesión activa con `codex login status`. El botón
+de la interfaz inicia el mismo flujo web de `codex login`.
+
+La API solo orquesta `codex login` y ejecuciones efímeras de `codex exec` en
+un directorio temporal con sandbox de solo lectura. Las credenciales siguen
+gestionadas por el CLI en el equipo del usuario y no se guardan en Ánima. Para
+volver al proveedor determinista, pulsa «usar simulado»; «Desconectar Codex»
+(en ⚙ ajustes) cierra además la sesión de Codex en el servidor.
+
+La cuenta de Codex es **por identidad**: si iniciaste sesión con tu identidad
+Nostr, tu autorización de Codex queda en un `CODEX_HOME` propio
+(`data/codex/<pubkey>`), de modo que cada usuario conecta su propia cuenta.
+Sin identidad (modo invitado) se usa la sesión clásica de `~/.codex` de la
+máquina. Solo puede haber una autorización de Codex en curso a la vez (el
+callback local usa un puerto fijo); si otra cuenta está autorizando, vuelve a
+intentarlo en unos segundos.
+
+Variables opcionales del backend: `ANIMA_CODEX_MODEL` fija el modelo,
+`ANIMA_CODEX_EFFORT` cambia el esfuerzo de razonamiento (por defecto, `low`)
+y `ANIMA_CODEX_DIR` mueve la raíz de los `CODEX_HOME` por usuario (por
+defecto, `data/codex`).
+
+### Verificación automatizada
+
+```bash
+pnpm test
+pnpm typecheck
+pnpm lint
+pnpm exec playwright install chromium  # solo la primera vez
+pnpm test:e2e
+```
+
+Playwright levanta automáticamente la web y una API con base de datos en
+memoria. Los E2E del proveedor Codex prueban el contrato usando un puente
+controlado; no consumen la cuenta real del usuario.
 
 ## Estructura
 
@@ -80,7 +160,7 @@ packages/
   skill-runtime/      DSL declarativa de habilidades + intérprete con límites
   skill-evaluator/    evaluación aislada, métricas, regresiones, promoción
   memory/             memoria de trabajo/episódica/semántica/hipótesis
-  model-providers/    interfaz neutral de modelos (Mock, Scripted, adaptador vacío)
+  model-providers/    interfaz neutral (Mock, Scripted, Codex y fallback vacío)
   agent-core/         percepción, objetivos, progreso, ciclo de creación de skills
   test-scenarios/     mundos reproducibles para pruebas y evaluación
 docs/

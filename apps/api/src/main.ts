@@ -9,6 +9,8 @@ if (dbPath !== ':memory:') {
   mkdirSync(dirname(dbPath), { recursive: true });
 }
 
-const app = buildServer({ dbPath });
+const codexDir = process.env.ANIMA_CODEX_DIR ?? 'data/codex';
+
+const app = buildServer({ dbPath, codexDir });
 await app.listen({ port, host: '127.0.0.1' });
 console.log(`Ánima API escuchando en http://127.0.0.1:${port} (db: ${dbPath})`);

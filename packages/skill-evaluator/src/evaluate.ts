@@ -1,6 +1,6 @@
 import { isAdjacent } from '@anima/shared';
 import type { EntityId, WorldState } from '@anima/sim-core';
-import { findByKind, getEntity } from '@anima/sim-core';
+import { findByKind, getEntity, restoreSnapshot } from '@anima/sim-core';
 import type {
   EvaluationCriterion,
   SkillDefinition,
@@ -167,8 +167,22 @@ export function evaluateSkill(skill: SkillDefinition, options: EvaluateOptions):
   }
   for (const regression of options.regressions ?? []) {
     const key = `${regression.scenarioName}:${regression.seed}`;
+    if (seen.has(key)) continue;
+    // Caso de mundo real: el mundo viene embebido como snapshot, tal cual
+    // estaba cuando la skill falló en uso real.
+    if (regression.snapshot && regression.petId) {
+      const snapshot = regression.snapshot;
+      const petId = regression.petId;
+      const scenario: NamedScenario = {
+        name: regression.scenarioName,
+        build: () => ({ world: restoreSnapshot(snapshot), petId }),
+      };
+      seen.add(key);
+      cases.push(runCase(skill, scenario, regression.seed, true, options));
+      continue;
+    }
     const scenario = scenarioByName.get(regression.scenarioName);
-    if (!scenario || seen.has(key)) continue;
+    if (!scenario) continue;
     seen.add(key);
     cases.push(runCase(skill, scenario, regression.seed, true, options));
   }

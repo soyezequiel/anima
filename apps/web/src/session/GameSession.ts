@@ -3,7 +3,8 @@ import type { AgentEvent } from '@anima/agent-core';
 import type { ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import type { SimEvent, WorldState } from '@anima/sim-core';
-import { buildPerception, getEntity, stepWorld } from '@anima/sim-core';
+import { buildPerception, getEntity, stepWorld, takeSnapshot } from '@anima/sim-core';
+import type { WorldSnapshot } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
 import { SkillLibrary } from '@anima/skill-runtime';
@@ -100,6 +101,9 @@ export class GameSession {
   private storyWasCompleted = false;
 
   private consecutiveThinkErrors = 0;
+  /** Mundo previo al último think: origen de las regresiones de uso real. */
+  private preThinkSnapshot: WorldSnapshot | null = null;
+  private activeSkillRun: { skillName: string; snapshot: WorldSnapshot | null } | null = null;
   private running = false;
   private speed = 1;
   private seed = 5;
@@ -307,6 +311,7 @@ export class GameSession {
         return;
       }
       const perception = buildPerception(this.world, this.agent.petId);
+      this.preThinkSnapshot = takeSnapshot(this.world);
       const agentEventStart = this.agent.events.events.length;
       let intent = null;
       try {
@@ -512,6 +517,57 @@ export class GameSession {
     for (; this.agentEventCursor < events.length; this.agentEventCursor++) {
       const event = events[this.agentEventCursor]!;
       this.pushDev('agent', event);
+      this.trackRealWorldSkillRun(event);
+    }
+  }
+
+  /**
+   * Vigilancia en uso real: cuando una skill estable empieza a ejecutarse se
+   * conserva el snapshot del mundo previo al primer paso; si la corrida
+   * falla por comportamiento (no por falta de recursos), ese mundo exacto se
+   * convierte en un caso de regresión que toda versión futura deberá superar.
+   */
+  private trackRealWorldSkillRun(event: AgentEvent): void {
+    if (event.type === 'strategy.selected') {
+      const strategy = String(event.data.strategy ?? '');
+      if (strategy.startsWith('stable-skill:')) {
+        const skillName = strategy.slice('stable-skill:'.length).split('@')[0] ?? strategy;
+        this.activeSkillRun = { skillName, snapshot: this.preThinkSnapshot };
+      } else {
+        this.activeSkillRun = null;
+      }
+      return;
+    }
+    if (event.type === 'strategy.failed') {
+      const run = this.activeSkillRun;
+      this.activeSkillRun = null;
+      const reason = event.data.reason === null ? '' : String(event.data.reason ?? '');
+      // Falta de recurso (no-candidates) no es un defecto de la skill.
+      if (!run?.snapshot || reason.includes('no-candidates')) return;
+      const regression = this.regressions.addRealWorldCase({
+        skillName: run.skillName,
+        snapshot: run.snapshot,
+        petId: this.agent.petId,
+        tick: event.tick,
+        description: `falló en el mundo real (${reason || String(event.data.outcome ?? 'sin éxito')})`,
+        createdAt: new Date().toISOString(),
+      });
+      this.pushDev('agent', {
+        type: 'regression.recorded',
+        tick: event.tick,
+        data: { regressionId: regression.id, skillName: run.skillName, reason },
+      });
+      this.chat.push({
+        from: 'system',
+        text: `El fallo de "${run.skillName}" quedó registrado como caso de regresión: sus próximas versiones deberán superarlo.`,
+        tick: event.tick,
+      });
+      void this.save();
+      return;
+    }
+    if (event.type === 'strategy.forbidden' || event.type === 'goal.completed') {
+      // Cierre de corrida sin fallo relevante.
+      if (event.type === 'goal.completed') this.activeSkillRun = null;
     }
   }
 

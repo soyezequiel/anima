@@ -8,6 +8,7 @@ const KIND_EMOJI: Record<string, string> = {
   branch: '🪵',
   hammer: '🔨',
   tree: '🌳',
+  cactus: '🌵',
 };
 
 /**

@@ -1,15 +1,78 @@
 import type { CodexTransport } from '@anima/model-providers';
-import { API_BASE } from './cloud.js';
+import { API_BASE, readStoredAccount } from './cloud.js';
 
 /**
  * Elección de proveedor de IA del usuario. `mock` (determinista, sin costos)
  * es siempre la base; `codex` usa la cuenta de Codex (ChatGPT) del usuario a
  * través del puente local de la API. Las credenciales las gestiona el CLI de
  * Codex en su máquina: aquí solo se guarda la preferencia.
+ *
+ * Las llamadas al puente viajan con el token de sesión cuando hay identidad:
+ * así cada usuario conecta y usa su propia cuenta de Codex. Sin identidad,
+ * el puente responde con la sesión invitada de la máquina.
  */
+
+function aiHeaders(extra: Record<string, string> = {}): Record<string, string> {
+  const account = readStoredAccount();
+  return account ? { ...extra, authorization: `Bearer ${account.token}` } : extra;
+}
 export type AiChoice = 'mock' | 'codex';
 
 const AI_CHOICE_KEY = 'anima:ai:choice';
+const CODEX_SETTINGS_KEY = 'anima:ai:codex-settings';
+
+export const CODEX_MODEL_SUGGESTIONS = [
+  'gpt-5.6',
+  'gpt-5.6-terra',
+  'gpt-5.4',
+  'gpt-5.3-codex-spark',
+] as const;
+
+export const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
+
+export type CodexReasoningEffort = (typeof CODEX_REASONING_EFFORTS)[number];
+
+export interface CodexSettings {
+  /** Vacío deja que Codex elija el modelo configurado por defecto. */
+  model: string;
+  /** Vacío deja que el puente use su nivel predeterminado. */
+  reasoningEffort: CodexReasoningEffort | '';
+}
+
+const DEFAULT_CODEX_SETTINGS: CodexSettings = { model: '', reasoningEffort: '' };
+
+export function readCodexSettings(): CodexSettings {
+  try {
+    const raw = localStorage.getItem(CODEX_SETTINGS_KEY);
+    if (!raw) return DEFAULT_CODEX_SETTINGS;
+    const parsed = JSON.parse(raw) as { model?: unknown; reasoningEffort?: unknown };
+    const model = typeof parsed.model === 'string' ? parsed.model : '';
+    const reasoningEffort = CODEX_REASONING_EFFORTS.includes(
+      parsed.reasoningEffort as CodexReasoningEffort,
+    )
+      ? (parsed.reasoningEffort as CodexReasoningEffort)
+      : '';
+    return { model, reasoningEffort };
+  } catch {
+    return DEFAULT_CODEX_SETTINGS;
+  }
+}
+
+export function storeCodexSettings(settings: CodexSettings): void {
+  const normalized: CodexSettings = {
+    model: settings.model.trim(),
+    reasoningEffort: CODEX_REASONING_EFFORTS.includes(
+      settings.reasoningEffort as CodexReasoningEffort,
+    )
+      ? settings.reasoningEffort
+      : '',
+  };
+  if (!normalized.model && !normalized.reasoningEffort) {
+    localStorage.removeItem(CODEX_SETTINGS_KEY);
+    return;
+  }
+  localStorage.setItem(CODEX_SETTINGS_KEY, JSON.stringify(normalized));
+}
 
 export function readAiChoice(): AiChoice {
   return localStorage.getItem(AI_CHOICE_KEY) === 'codex' ? 'codex' : 'mock';
@@ -28,7 +91,7 @@ export interface AiStatus {
 
 export async function fetchAiStatus(): Promise<AiStatus | null> {
   try {
-    const res = await fetch(`${API_BASE}/ai/status`);
+    const res = await fetch(`${API_BASE}/ai/status`, { headers: aiHeaders() });
     if (!res.ok) return null;
     return (await res.json()) as AiStatus;
   } catch {
@@ -39,11 +102,21 @@ export async function fetchAiStatus(): Promise<AiStatus | null> {
 /** Inicia el login de Codex y devuelve la URL de autorización para abrirla. */
 export async function startCodexLogin(): Promise<string | null> {
   try {
-    const res = await fetch(`${API_BASE}/ai/login`, { method: 'POST' });
+    const res = await fetch(`${API_BASE}/ai/login`, { method: 'POST', headers: aiHeaders() });
     if (!res.ok) return null;
     return ((await res.json()) as { authUrl: string }).authUrl;
   } catch {
     return null;
+  }
+}
+
+/** Cierra la sesión de Codex de la identidad actual (o del invitado). */
+export async function codexLogout(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/ai/logout`, { method: 'POST', headers: aiHeaders() });
+    return res.ok;
+  } catch {
+    return false;
   }
 }
 
@@ -60,10 +133,18 @@ export async function waitForCodexLogin(timeoutMs = 180_000): Promise<boolean> {
 /** Transporte HTTP hacia el puente /ai/complete de la API local. */
 export function codexHttpTransport(): CodexTransport {
   return async (input) => {
+    // Se lee en cada consulta para aplicar cambios sin reconstruir la sesión.
+    const settings = readCodexSettings();
     const res = await fetch(`${API_BASE}/ai/complete`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ kind: input.kind, prompt: input.prompt, schema: input.schema }),
+      headers: aiHeaders({ 'content-type': 'application/json' }),
+      body: JSON.stringify({
+        kind: input.kind,
+        prompt: input.prompt,
+        schema: input.schema,
+        ...(settings.model ? { model: settings.model } : {}),
+        ...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
+      }),
     });
     if (!res.ok) {
       const body = (await res.json().catch(() => null)) as { error?: string } | null;

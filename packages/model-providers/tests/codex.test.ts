@@ -76,6 +76,38 @@ describe('CodexModelProvider', () => {
     expect(seen[0]?.prompt).toContain('Mensaje de tu cuidador: hacelo igual');
   });
 
+  it('interpreta una orden libre como una intención estructurada', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'move-direction',
+          targetKind: '',
+          directions: ['up', 'left'],
+          summary: '',
+        }),
+        seen,
+      ),
+    );
+
+    const response = await provider.complete({
+      kind: 'interpret.command',
+      text: 'pegá un pasito rumbo al rincón noroeste',
+      facts: ['ahora veo: food, tree'],
+      history: [{ from: 'pet', text: 'Estoy junto al árbol.' }],
+    });
+
+    expect(response).toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'move-direction', directions: ['up', 'left'] },
+    });
+    expect(seen[0]?.schema).toMatchObject({
+      required: ['action', 'targetKind', 'directions', 'summary'],
+    });
+    expect(seen[0]?.prompt).toContain('pegá un pasito rumbo al rincón noroeste');
+    expect(seen[0]?.prompt).toContain('Mascota: Estoy junto al árbol.');
+  });
+
   it('rechaza JSON inválido o formas incorrectas con errores claros', async () => {
     const badJson = new CodexModelProvider(transportReturning('esto no es json'));
     await expect(badJson.complete({ kind: 'dialogue', topic: 't', facts: [] })).rejects.toThrow(
@@ -89,6 +121,15 @@ describe('CodexModelProvider', () => {
         signal: 'energy-low',
       }),
     ).rejects.toThrow('hypothesis/confidence');
+
+    const badCommand = new CodexModelProvider(
+      transportReturning(
+        '{"action":"move-direction","targetKind":"","directions":[],"summary":""}',
+      ),
+    );
+    await expect(
+      badCommand.complete({ kind: 'interpret.command', text: 'andá por ahí', facts: [] }),
+    ).rejects.toThrow('direcciones válidas');
   });
 
   it('la confianza queda acotada a [0,1] y emite señales de ocupado', async () => {

@@ -3,7 +3,7 @@ import { createEventLog } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, SimEvent } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
-import type { ModelProvider } from '@anima/model-providers';
+import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
 import type { SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
 import { SkillExecution } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
@@ -177,7 +177,9 @@ export class AnimaAgent {
         if (
           parsed.kind !== 'unknown' &&
           parsed.kind !== 'explanation' &&
-          (parsed.kind === 'wait-here' || parsed.targetKind !== 'unknown')
+          (parsed.kind === 'wait-here' ||
+            parsed.kind === 'move-direction' ||
+            ('targetKind' in parsed && parsed.targetKind !== 'unknown'))
         ) {
           this.lastUserRequest = structuredClone(parsed);
           break;
@@ -297,20 +299,50 @@ export class AnimaAgent {
     return this.pursueGoal(goal, perception);
   }
 
+  /**
+   * Acredita evidencia de "comer recupera energía" a una hipótesis cuyo
+   * enunciado realmente hable de eso. Si la interpretación de turno fue otra
+   * (p. ej. "dormir recupera energía"), esa NO recibe el crédito: la mascota
+   * crea su propia hipótesis por observación directa y la interpretada queda
+   * pendiente hasta tener evidencia propia. (Limitación cerrada del ADR 0011.)
+   */
+  private creditEatingEvidence(source: string): void {
+    const aboutEating = (statement: string): boolean =>
+      /consum|comer|comida|aliment/i.test(statement) && /energ/i.test(statement);
+
+    let hypothesis = this.memory
+      .hypothesisList()
+      .find((h) => h.resolved !== 'discarded' && aboutEating(h.statement));
+    if (!hypothesis) {
+      hypothesis = this.memory.addHypothesis('consumir alimento recupera energía', this.tick, 0.5);
+      this.emit('hypothesis.updated', {
+        hypothesisId: hypothesis.id,
+        statement: hypothesis.statement,
+        confidence: hypothesis.confidence,
+        source: 'observación directa',
+      });
+    }
+    this.memory.addEvidence(hypothesis.id, true, this.tick);
+    this.emit('hypothesis.updated', {
+      hypothesisId: hypothesis.id,
+      evidence: 'positive',
+      source,
+    });
+  }
+
   /** Retroalimentación del mundo tras aplicar la intención. */
   observe(events: SimEvent[]): void {
     this.activity?.exec.observe(events);
     for (const event of events) {
       if (event.type === 'item.consumed' && event.data.actorId === this.petId) {
         if (this.activity) this.activity.consumedFood = true;
-        if (this.energyHypothesisId) {
-          this.memory.addEvidence(this.energyHypothesisId, true, this.tick);
-          this.emit('hypothesis.updated', {
-            hypothesisId: this.energyHypothesisId,
-            evidence: 'positive',
-            source: 'item.consumed',
-          });
-        }
+        // La evidencia se atribuye por afinidad semántica: comer solo puede
+        // respaldar una hipótesis que hable de comer, no la que esté de turno.
+        const energyRose =
+          typeof event.data.energyAfter === 'number' &&
+          typeof event.data.energyBefore === 'number' &&
+          event.data.energyAfter > event.data.energyBefore;
+        if (energyRose) this.creditEatingEvidence('item.consumed');
       }
       if (
         event.type === 'entity.damaged' &&
@@ -438,24 +470,56 @@ export class AnimaAgent {
     this.emit('user.message.received', { text });
     this.memory.noteConversation('user', text, this.tick);
 
-    const parsed = this.contextualizeUserMessage(parseUserMessage(text), text, perception);
+    let parsed = this.contextualizeUserMessage(parseUserMessage(text), text, perception);
     if (parsed.kind === 'unknown') {
+      let command: CommandInterpretation;
       try {
-        const response = await this.config.provider.complete({
-          kind: 'dialogue',
-          topic: text,
+        const interpretation = await this.config.provider.complete({
+          kind: 'interpret.command',
+          text,
           facts: this.dialogueFacts(perception),
           history: this.dialogueHistory(),
         });
-        this.reply(
-          response.kind === 'dialogue'
-            ? response.text
-            : 'Te escucho, aunque todavía estoy aprendiendo a conversar.',
-        );
-      } catch {
-        this.reply('Te escucho. Mi mente está un poco ocupada, pero puedes seguir hablándome.');
+        if (interpretation.kind !== 'command.interpretation') {
+          throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
+        }
+        command = interpretation.command;
+      } catch (error) {
+        this.replyProviderError('interpret.command', error);
+        return;
       }
-      return;
+
+      if (command.action === 'unsupported') {
+        const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 160);
+        const reason = `Entiendo que me pides ${summary || 'esa acción'}, pero todavía no sé ejecutar ese tipo de acción.`;
+        this.emit('user.request.refused', {
+          request: { kind: 'unknown', raw: text, interpretedAs: summary },
+          classification: 'cannot',
+          reason,
+        });
+        this.reply(reason);
+        return;
+      }
+
+      if (command.action !== 'not-command') {
+        parsed = this.userRequestFromInterpretation(command, text);
+      } else {
+        try {
+          const response = await this.config.provider.complete({
+            kind: 'dialogue',
+            topic: text,
+            facts: this.dialogueFacts(perception),
+            history: this.dialogueHistory(),
+          });
+          if (response.kind !== 'dialogue') {
+            throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+          }
+          this.reply(response.text);
+        } catch (error) {
+          this.replyProviderError('dialogue', error);
+        }
+        return;
+      }
     }
 
     if (parsed.kind === 'explanation') {
@@ -479,6 +543,7 @@ export class AnimaAgent {
 
     if (
       parsed.kind === 'wait-here' ||
+      parsed.kind === 'move-direction' ||
       ('targetKind' in parsed && parsed.targetKind !== 'unknown')
     ) {
       this.lastUserRequest = structuredClone(parsed);
@@ -518,6 +583,36 @@ export class AnimaAgent {
     const energy = perception.self.energy;
     if (energy) facts.push(`mi energía actual es ${Math.round(energy.current)} de ${energy.max}`);
     return facts;
+  }
+
+  private userRequestFromInterpretation(
+    command: Exclude<CommandInterpretation, { action: 'unsupported' | 'not-command' }>,
+    raw: string,
+  ): UserRequest {
+    switch (command.action) {
+      case 'destroy-entity':
+      case 'fetch-item':
+      case 'consume-item':
+        return { kind: command.action, targetKind: command.targetKind, raw };
+      case 'wait-here':
+        return { kind: 'wait-here', raw };
+      case 'move-direction':
+        return { kind: 'move-direction', directions: [...command.directions], raw };
+    }
+  }
+
+  private replyProviderError(operation: ModelRequest['kind'], error: unknown): void {
+    const message = error instanceof Error ? error.message : String(error);
+    this.emit('provider.error', {
+      provider: this.config.provider.name,
+      operation,
+      message,
+    });
+    const compact = message.replace(/\s+/g, ' ').trim();
+    const visibleError = compact.length > 280 ? `${compact.slice(0, 277)}...` : compact;
+    const providerName =
+      this.config.provider.name === 'codex' ? 'Codex' : this.config.provider.name;
+    this.reply(`No pude consultar a ${providerName}: ${visibleError || 'error desconocido'}`);
   }
 
   private dialogueHistory(): { from: 'user' | 'pet'; text: string }[] {
@@ -573,8 +668,10 @@ export class AnimaAgent {
       this.goals.selectActive(),
     );
     if (decision.classification === 'accepted' && request.kind !== 'unknown') {
-      const priority = request.kind === 'consume-item' ? 1 : 0.6;
-      const urgency = request.kind === 'consume-item' ? 0.8 : 0.35;
+      const priority =
+        request.kind === 'consume-item' || request.kind === 'move-direction' ? 1 : 0.6;
+      const urgency =
+        request.kind === 'consume-item' ? 0.8 : request.kind === 'move-direction' ? 0.75 : 0.35;
       const goal = this.goals.create(
         {
           description: `petición del usuario: ${request.raw}`,
@@ -588,6 +685,7 @@ export class AnimaAgent {
           userRequest: {
             kind: request.kind,
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+            ...('directions' in request ? { directions: request.directions } : {}),
             raw: request.raw,
           },
         },
@@ -766,6 +864,23 @@ export class AnimaAgent {
       case 'wait-here':
         return [{ op: 'wait', ticks: 6 }];
 
+      case 'move-direction': {
+        const program: SkillProgram = [];
+        for (const direction of request.directions ?? []) {
+          program.push(
+            { op: 'moveStep', dir: direction },
+            {
+              op: 'branch',
+              if: { type: 'lastActionFailed' },
+              then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+            },
+          );
+        }
+        return program.length > 0
+          ? program
+          : [{ op: 'abort', reason: 'dirección-no-especificada' }];
+      }
+
       case 'fetch-item':
         return [
           { op: 'findEntities', query: { kind: targetKind }, store: 'requestedItems' },
@@ -892,6 +1007,18 @@ export class AnimaAgent {
     switch (request.kind) {
       case 'wait-here':
         return 'Listo, esperé aquí un momento.';
+      case 'move-direction': {
+        const labels = {
+          up: 'hacia arriba',
+          down: 'hacia abajo',
+          left: 'a la izquierda',
+          right: 'a la derecha',
+        } as const;
+        const destination = (request.directions ?? [])
+          .map((direction) => labels[direction])
+          .join(' y ');
+        return `Listo, me moví ${destination}.`;
+      }
       case 'fetch-item':
         return `Listo, recogí ${target}.`;
       case 'consume-item':
@@ -1002,12 +1129,10 @@ export class AnimaAgent {
       const firstDiscovery = !this.memory
         .episodeList()
         .some((episode) => episode.kind === 'discovery');
-      if (this.energyHypothesisId) {
-        this.memory.addEvidence(this.energyHypothesisId, true, this.tick);
-        const consolidation = this.memory.consolidate(this.tick);
-        if (consolidation.hypothesesConfirmed.length > 0) {
-          this.emit('memory.consolidated', { confirmed: consolidation.hypothesesConfirmed });
-        }
+      this.creditEatingEvidence('goal-completed');
+      const consolidation = this.memory.consolidate(this.tick);
+      if (consolidation.hypothesesConfirmed.length > 0) {
+        this.emit('memory.consolidated', { confirmed: consolidation.hypothesesConfirmed });
       }
       this.memory.recordEpisode({
         kind: 'discovery',

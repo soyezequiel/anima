@@ -53,5 +53,10 @@ determinista.
 ## Telemetría en uso real
 
 Cada uso real actualiza `metrics.totalRuns/successfulRuns` y emite
-`skill.used`. Pendiente (Fase 7+): convertir automáticamente fallos en uso
-real en nuevos casos de regresión con snapshot del mundo real.
+`skill.used`. Además, la sesión conserva el snapshot del mundo previo a cada
+ejecución de una skill estable: si la corrida falla por comportamiento (no
+por falta de recursos, `no-candidates`), ese mundo exacto se registra como
+caso de regresión de "mundo-real" (tope de 3 por habilidad, se descartan los
+más antiguos). El evaluador reproduce esos snapshots junto a los escenarios de
+laboratorio, así que ninguna versión futura puede promoverse sin superar
+también los fallos que la realidad ya demostró. Ver ADR 0012.

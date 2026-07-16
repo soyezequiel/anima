@@ -14,13 +14,7 @@ import { StatusPanel } from './components/StatusPanel.js';
 
 type Tab = 'estado' | 'chat' | 'skills' | 'experimentos' | 'dev';
 
-export function App({
-  session,
-  account,
-}: {
-  session: GameSession;
-  account: CloudAccount | null;
-}) {
+export function App({ session, account }: { session: GameSession; account: CloudAccount | null }) {
   const view = useSyncExternalStore(
     (listener) => session.subscribe(listener),
     () => session.getView(),
@@ -43,7 +37,9 @@ export function App({
           <span className="gen-badge" data-testid="generation">
             gen {view.identity.generation}
           </span>{' '}
-          <span className="subtitle">mundo {view.seed} · tick {view.tick}</span>
+          <span className="subtitle">
+            mundo {view.seed} · tick {view.tick}
+          </span>
         </h1>
         <span
           className={`story-badge ${view.storyCompleted ? 'done' : ''}`}
@@ -52,7 +48,7 @@ export function App({
           {view.storyCompleted ? 'historia completada' : 'aprendiendo…'}
         </span>
         <Controls session={session} view={view} />
-        <AiBar view={view} />
+        <AiBar view={view} account={account} />
         <AccountBar account={account} />
       </header>
       <main className="layout">

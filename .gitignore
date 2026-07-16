@@ -7,5 +7,7 @@ coverage/
 .env.*
 !.env.example
 data/*.sqlite
+# CODEX_HOME por usuario: contiene credenciales gestionadas por el CLI de Codex
+data/codex/
 playwright-report/
 test-results/

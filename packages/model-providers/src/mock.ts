@@ -57,6 +57,13 @@ export class MockModelProvider extends BaseModelProvider {
           hypothesis: `la señal ${request.signal} indica algo que aún no comprendo`,
           confidence: 0.3,
         });
+      case 'interpret.command':
+        // Las órdenes frecuentes ya pasan por el parser determinista local.
+        // El mock no simula comprensión abierta: conserva el modo sin IA.
+        return Promise.resolve({
+          kind: 'command.interpretation',
+          command: { action: 'not-command' },
+        });
       case 'dialogue': {
         const topic = request.topic
           .toLowerCase()

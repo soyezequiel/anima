@@ -126,6 +126,18 @@ describe('parser mínimo de mensajes', () => {
       targetKind: 'unknown',
     });
     expect(parseUserMessage('espera aquí').kind).toBe('wait-here');
+    expect(parseUserMessage('andate arriba a la izquierda')).toMatchObject({
+      kind: 'move-direction',
+      directions: ['up', 'left'],
+    });
+    expect(parseUserMessage('movete arriba a la izquierda')).toMatchObject({
+      kind: 'move-direction',
+      directions: ['up', 'left'],
+    });
+    expect(parseUserMessage('caminá para la derecha')).toMatchObject({
+      kind: 'move-direction',
+      directions: ['right'],
+    });
     expect(parseUserMessage('comer alimento da energía').kind).toBe('explanation');
     expect(parseUserMessage('cuando comes alimento recuperas energía').kind).toBe('explanation');
     expect(parseUserMessage('hola').kind).toBe('unknown');

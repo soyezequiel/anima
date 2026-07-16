@@ -25,7 +25,7 @@ export interface CloudAccount {
   method: SignerMethod;
 }
 
-function readStoredAccount(): CloudAccount | null {
+export function readStoredAccount(): CloudAccount | null {
   try {
     const raw = localStorage.getItem(ACCOUNT_KEY);
     return raw ? (JSON.parse(raw) as CloudAccount) : null;
