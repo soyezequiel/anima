@@ -8,11 +8,11 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "pnpm --filter @anima/demo start",
+    "dev": "pnpm --filter @anima/web dev",
     "demo": "pnpm --filter @anima/demo start",
-    "build": "pnpm -r run typecheck",
+    "build": "pnpm -r run typecheck && pnpm --filter @anima/web build",
     "test": "pnpm -r run test",
-    "test:e2e": "echo \"E2E (Playwright) se activa en Fase 6 cuando exista apps/web. Ver docs/decisions/0004-e2e-diferido.md\"",
+    "test:e2e": "pnpm --filter @anima/web test:e2e",
     "lint": "eslint .",
     "format": "prettier --write .",
     "typecheck": "pnpm -r run typecheck"

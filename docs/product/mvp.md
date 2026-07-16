@@ -5,7 +5,8 @@ plataforma universal.
 
 ## Escenario
 
-Mapa 2D de 9×5 con: una mascota, una fuente de alimento, un muro que corta el
+Mapa 2D de 9×5 con: una mascota, alimento, un árbol que produce alimento
+nuevo periódicamente (regla determinista del motor), un muro que corta el
 mapa, una rama (herramienta débil), un martillo (herramienta fuerte),
 inventario, energía, salud, posiciones y colisiones.
 
@@ -47,9 +48,13 @@ recoger, soltar, consumir, usar un objeto sobre otro.
 - [x] Puede aceptar, posponer o rechazar peticiones (5 clasificaciones).
 - [x] Funciona sin claves de IA.
 - [x] La demo completa tiene prueba automatizada (headless).
-- [ ] UI sin reglas del mundo (Fase 6 — pendiente).
-- [ ] Prueba E2E con Playwright sobre la UI (Fase 6 — pendiente; hoy la
-      historia E2E corre en Vitest, ver ADR 0004).
+- [x] UI sin reglas del mundo: React + Phaser consumen solo el view model de
+      la sesión (`pnpm dev`).
+- [x] Prueba E2E con Playwright sobre la UI (`pnpm test:e2e`): historia
+      completa, chat intercalado, pausa/velocidad/dev-mode.
+- [x] La mascota distingue falta de recurso de falta de capacidad: sin comida
+      en el mundo pide ayuda y suspende en vez de fabricar skills inútiles;
+      reactiva el objetivo cuando el entorno cambia.
 
 ## Fuera del MVP
 

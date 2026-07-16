@@ -9,9 +9,11 @@ las incorpora a su biblioteca si superan las pruebas.
 
 ## Estado actual
 
-**Hito 1 completado**: la historia completa de aprendizaje funciona headless,
-sin navegador, sin claves de IA y con una prueba automatizada de extremo a
-extremo. La interfaz web (Fase 6) es el siguiente paso.
+**Fases 0–6 completadas**: la historia completa de aprendizaje funciona
+headless (hito 1) y también en el navegador, con interfaz React + Phaser,
+chat, panel de habilidades con versiones, historial de experimentos, modo
+desarrollador y pruebas E2E con Playwright. Todo sin claves de IA.
+El siguiente paso es la Fase 7 (persistencia local, muerte y sucesión).
 
 ```
 energía baja -> hipótesis -> objetivo -> intento directo -> fallo ->
@@ -30,12 +32,18 @@ energía recuperada -> conocimiento consolidado y explicable
 
 ```bash
 pnpm install
-pnpm demo          # ejecuta el hito 1 en la terminal (semilla 5 por defecto)
+pnpm dev           # interfaz web en http://localhost:5173
+pnpm demo          # el hito 1 en la terminal (semilla 5 por defecto)
 pnpm demo 42       # otra semilla (cambia posiciones de herramientas)
-pnpm test          # suite completa (80 pruebas)
+pnpm test          # suite completa (87 pruebas)
+pnpm test:e2e      # historia completa vía UI con Playwright (requiere
+                   #   `pnpm exec playwright install chromium` una vez)
 pnpm typecheck
 pnpm lint
 ```
+
+Parámetros útiles de la web: `?seed=42&speed=8` (semilla y velocidad),
+`&autostart=0` (arranca en pausa).
 
 No se necesita ninguna clave de API: todo corre con `MockModelProvider`,
 un proveedor determinista que simula un generador imperfecto.
@@ -44,7 +52,8 @@ un proveedor determinista que simula un generador imperfecto.
 
 ```
 apps/
-  demo/               CLI del hito 1 (la app web llega en Fase 6)
+  web/                interfaz (Vite + React + Phaser + Playwright E2E)
+  demo/               CLI del hito 1 y herramienta de diagnóstico
 packages/
   shared/             utilidades: RNG con semilla, hashing estable, eventos
   sim-core/           motor headless determinista (entidades, sistemas, snapshots)
