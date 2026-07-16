@@ -195,6 +195,12 @@ export const foodBehindWall: ScenarioSpec = {
     const world = createWorld({ width: 13, height: 7, seed }, { recipes: MVP_RECIPES });
     const rng = createRng(seed * 7919 + 17);
     const petId = spawnPet(world, { x: 1, y: 3 }, 15);
+    // El frío como segundo acto: empieza cómoda (calor al máximo) y pierde
+    // despacio, así el hambre —que arranca urgente (energía 15/50)— se
+    // resuelve primero y el frío aprieta recién después. Es lo bastante lento
+    // para no matar en los 200 ticks de una evaluación de skill (llega a ~42),
+    // pero en una partida larga la empuja a hacer fuego con lo que junte.
+    world.entities[petId]!.components.temperature = { current: 50, max: 50, lossPerTick: 0.04 };
 
     for (let y = 0; y < 7; y++) {
       spawn(world, 'wall', {

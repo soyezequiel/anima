@@ -16,7 +16,8 @@ pre-codeados. En cuatro pasos, cada uno mostrable por sí solo:
    su negativa por ingrediente faltante, el frío como motivo interno, y
    `temperatureIncreased`/`craftedKind` en el evaluador. Junta los
    ingredientes sola (`build-fire`, aproximación primitiva generada desde la
-   receta). Pendiente: encender el frío en el mundo jugable.
+   receta). El frío está activo en el mundo jugable como segundo acto:
+   empieza cómoda y aprieta tras resolver el hambre.
 3. **Arquetipos propuestos por el modelo** — hecho (ADR 0018): Ánima inventa
    recetas, el mundo las valida (`validateRecipe`) y decide; un rechazo enseña.
    No puede inventar comida: inventar da capacidades, no recursos. Placeholder

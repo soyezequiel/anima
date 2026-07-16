@@ -376,6 +376,23 @@ describe('reglas del mundo al restaurar', () => {
     ]);
     session.dispose();
   });
+
+  it('una mascota guardada sin frío lo adopta al restaurar, cómoda al máximo', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session: first } = await makeSession(5, store);
+    const world = (first as unknown as { world: WorldState }).world;
+    const petId = (first as unknown as { agent: { petId: string } }).agent.petId;
+    // Un guardado anterior al frío: le quitamos la temperatura antes de guardar.
+    delete world.entities[petId]!.components.temperature;
+    await first.save();
+    first.dispose();
+
+    const session = await GameSession.create({ autostart: false, store });
+
+    const view = session.getView();
+    expect(view.pet?.temperature).toEqual({ current: 50, max: 50 });
+    session.dispose();
+  });
 });
 
 describe('muerte y sucesión en la sesión', () => {

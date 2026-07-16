@@ -210,6 +210,13 @@ export class GameSession {
     for (const recipe of MVP_RECIPES) {
       if (!known.has(recipe.id)) this.world.recipes.push(structuredClone(recipe));
     }
+    // El frío también es física nueva: una mascota guardada antes de que
+    // existiera nace sin sentirlo. Se lo damos cómodo (al máximo), así el frío
+    // llega como segundo acto y no la castiga por haberse guardado temprano.
+    const pet = getEntity(this.world, this.agent.petId);
+    if (pet && !pet.components.dead && !pet.components.temperature) {
+      pet.components.temperature = { current: 50, max: 50, lossPerTick: 0.04 };
+    }
   }
 
   reset(seed: number): void {
