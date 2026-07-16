@@ -77,6 +77,14 @@ export const foodBehindWall: ScenarioSpec = {
       });
     }
     spawnFood(world, { x: 7, y: 2 });
+    // El árbol produce alimento nuevo cada tanto: el mundo es habitable a
+    // largo plazo. El primer brote (tick 400) es posterior al maxTicks de
+    // cualquier evaluación (200), así que no altera las pruebas de skills.
+    spawn(world, 'tree', {
+      position: { x: 7, y: 4 },
+      collider: { solid: true },
+      foodSource: { intervalTicks: 400, nutrition: 30, nextSpawnAtTick: 400 },
+    });
 
     // La rama siempre queda más cerca de la mascota que el martillo.
     const branchSpots: Vec2[] = [

@@ -92,8 +92,10 @@ describe('historia completa del MVP (headless, sin IA externa)', () => {
   it('reutiliza la skill estable sin volver a consultar al modelo', async () => {
     const proposeCalls = provider.callCount('skill.propose');
     const reviseCalls = provider.callCount('skill.revise');
+    const interpretCalls = provider.callCount('interpret.signal');
     expect(proposeCalls).toBe(1);
     expect(reviseCalls).toBe(1);
+    expect(interpretCalls).toBe(1);
 
     // Vuelve a tener hambre: aparece comida nueva, la energía cae.
     const pet = getEntity(world, 'e1')!;
@@ -115,6 +117,11 @@ describe('historia completa del MVP (headless, sin IA externa)', () => {
     // Cero consultas cognitivas nuevas: el conocimiento quedó incorporado.
     expect(provider.callCount('skill.propose')).toBe(proposeCalls);
     expect(provider.callCount('skill.revise')).toBe(reviseCalls);
+    expect(provider.callCount('interpret.signal')).toBe(interpretCalls);
+    // Y no duplica la hipótesis ya confirmada.
+    expect(
+      agent.memory.hypothesisList().filter((h) => h.statement.includes('energía')),
+    ).toHaveLength(1);
     const stable = library.findStable(SKILL_REACH_BLOCKED_FOOD)!;
     expect(stable.metrics.totalRuns).toBeGreaterThan(0);
   });

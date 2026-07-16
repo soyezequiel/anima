@@ -5,6 +5,7 @@ export type AgentEventType =
   | 'goal.selected'
   | 'goal.completed'
   | 'goal.suspended'
+  | 'goal.reactivated'
   | 'strategy.selected'
   | 'strategy.failed'
   | 'strategy.forbidden'

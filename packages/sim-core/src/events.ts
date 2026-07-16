@@ -11,6 +11,7 @@ export type SimEventType =
   | 'item.consumed'
   | 'tool.broke'
   | 'agent.spoke'
+  | 'entity.spawned'
   | 'energy.low'
   | 'energy.depleted'
   | 'pet.died';

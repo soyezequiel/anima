@@ -5,7 +5,7 @@ import type { Entity, EntityId } from './components.js';
 import type { SimEvent } from './events.js';
 import { simEvent } from './events.js';
 import type { WorldState } from './world.js';
-import { getEntity, isBlocked, isInInventory, removeEntity } from './world.js';
+import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, removeEntity, spawn } from './world.js';
 
 /** Umbral (fracción del máximo) bajo el cual se emite `energy.low` al cruzarlo. */
 export const LOW_ENERGY_FRACTION = 0.35;
@@ -28,7 +28,60 @@ export function stepWorld(world: WorldState, intents: ActorIntent[]): SimEvent[]
   }
 
   runEnergySystem(world, events);
+  runFoodSourceSystem(world, events);
   return events;
+}
+
+/** Orden determinista de celdas adyacentes candidatas para brotar alimento. */
+const SPAWN_OFFSETS = [
+  { x: 0, y: -1 },
+  { x: -1, y: 0 },
+  { x: 1, y: 0 },
+  { x: 0, y: 1 },
+  { x: -1, y: -1 },
+  { x: 1, y: -1 },
+  { x: -1, y: 1 },
+  { x: 1, y: 1 },
+];
+
+function runFoodSourceSystem(world: WorldState, events: SimEvent[]): void {
+  for (const entity of allEntities(world)) {
+    const source = entity.components.foodSource;
+    const pos = entity.components.position;
+    if (!source || !pos || world.tick < source.nextSpawnAtTick) continue;
+
+    // No acumula: si ya hay alimento cerca de la fuente, espera.
+    const nearbyFood = allEntities(world).some(
+      (e) =>
+        e.components.edible &&
+        e.components.position &&
+        Math.max(
+          Math.abs(e.components.position.x - pos.x),
+          Math.abs(e.components.position.y - pos.y),
+        ) <= 2,
+    );
+    source.nextSpawnAtTick = world.tick + source.intervalTicks;
+    if (nearbyFood) continue;
+
+    const cell = SPAWN_OFFSETS.map((o) => ({ x: pos.x + o.x, y: pos.y + o.y })).find(
+      (c) => inBounds(world, c) && entitiesAt(world, c).length === 0,
+    );
+    if (!cell) continue;
+    const food = spawn(world, 'food', {
+      position: cell,
+      portable: {},
+      edible: {},
+      nutrition: { value: source.nutrition },
+    });
+    events.push(
+      simEvent('entity.spawned', world.tick, {
+        id: food.id,
+        kind: 'food',
+        sourceId: entity.id,
+        at: cell,
+      }),
+    );
+  }
 }
 
 function resolved(

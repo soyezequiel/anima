@@ -27,6 +27,8 @@ export interface Components {
   edible?: Record<string, never>;
   agent?: { name: string; perceptionRange: number };
   dead?: { atTick: number; cause: string };
+  /** Produce alimento periódicamente en una celda libre adyacente. */
+  foodSource?: { intervalTicks: number; nutrition: number; nextSpawnAtTick: number };
 }
 
 export interface Entity {

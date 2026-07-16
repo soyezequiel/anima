@@ -33,6 +33,12 @@ percibe, pregunta, aplica al mundo y devuelve los eventos.
 5. Después: suspender el objetivo, con condición de reactivación registrada
    (nueva información del usuario o cambio del entorno).
 
+Excepción registrada (ADR 0008): si todos los fallos fueron por
+`no-candidates` —falta el **recurso**, no la **capacidad**— el agente salta
+el paso 3 y va directo a pedir ayuda: fabricar una skill no crea comida.
+Un objetivo suspendido se reactiva (con estrategias re-habilitadas) cuando el
+recurso vuelve a estar visible o el usuario aporta información.
+
 ## Controlador externo de progreso
 
 No depende de que el modelo "se dé cuenta". Por objetivo y estrategia registra

@@ -9,6 +9,8 @@ export interface StrategyRecord {
   attempts: number;
   failures: number;
   lastOutcome: 'success' | 'failure';
+  /** Razón del último fallo (p. ej. "no-candidates:foods"). */
+  lastReason?: string;
   forbidden: boolean;
 }
 
@@ -30,7 +32,7 @@ export class ProgressController {
     return map;
   }
 
-  record(goalId: string, strategy: string, success: boolean): StrategyRecord {
+  record(goalId: string, strategy: string, success: boolean, reason?: string): StrategyRecord {
     const map = this.forGoal(goalId);
     const record = map.get(strategy) ?? {
       strategy,
@@ -42,14 +44,29 @@ export class ProgressController {
     record.attempts += 1;
     if (success) {
       record.lastOutcome = 'success';
+      record.forbidden = false;
+      record.failures = 0;
+      delete record.lastReason;
     } else {
       record.failures += 1;
       record.lastOutcome = 'failure';
+      if (reason !== undefined) record.lastReason = reason;
       // Prohibido repetir la misma estrategia sin modificaciones.
       if (record.failures >= FORBID_AFTER_FAILURES) record.forbidden = true;
     }
     map.set(strategy, record);
     return record;
+  }
+
+  /**
+   * true si todas las estrategias fallidas lo hicieron por falta del recurso
+   * (no por falta de capacidad): crear una habilidad nueva no ayudaría.
+   */
+  blockedByMissingResource(goalId: string): boolean {
+    const tried = this.strategiesTried(goalId).filter((s) => s.forbidden);
+    return (
+      tried.length > 0 && tried.every((s) => s.lastReason?.includes('no-candidates') ?? false)
+    );
   }
 
   isForbidden(goalId: string, strategy: string): boolean {
@@ -68,6 +85,20 @@ export class ProgressController {
 
   markHelpRequested(goalId: string): void {
     this.helpRequested.add(goalId);
+  }
+
+  helpRequestedFor(goalId: string): boolean {
+    return this.helpRequested.has(goalId);
+  }
+
+  /**
+   * Al reactivar un objetivo (nueva información o cambio del entorno), las
+   * estrategias vuelven a estar disponibles: las condiciones cambiaron.
+   * Los intentos de desarrollo de skills se conservan.
+   */
+  resetGoal(goalId: string): void {
+    this.records.delete(goalId);
+    this.helpRequested.delete(goalId);
   }
 
   /**

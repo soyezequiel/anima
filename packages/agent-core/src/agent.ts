@@ -163,10 +163,30 @@ export class AnimaAgent {
     if (!energy) return;
     const fraction = energy.current / energy.max;
     if (fraction >= LOW_ENERGY_FRACTION) return;
-    if (this.goals.findOpen(GOAL_RESTORE_ENERGY)) return;
+    const open = this.goals.findOpen(GOAL_RESTORE_ENERGY);
+    if (open) {
+      // Cambio relevante del entorno: si el objetivo se suspendió y ahora
+      // vuelve a haber alimento a la vista, se reactiva con estrategias limpias.
+      if (open.status === 'suspended' && perception.visibleEntities.some((e) => e.edible)) {
+        this.goals.reactivate(open.id);
+        this.progress.resetGoal(open.id);
+        this.emit('goal.reactivated', { goalId: open.id, reason: 'alimento visible de nuevo' });
+      }
+      return;
+    }
 
     // La mascota no nace sabiendo qué significa la señal: la interpreta con
-    // ayuda del usuario o de la experiencia guiada.
+    // ayuda del usuario o de la experiencia guiada. Pero solo la primera vez:
+    // si ya tiene una hipótesis o un hecho sobre cómo recuperar energía, no
+    // vuelve a consultar nada — el conocimiento quedó incorporado.
+    const alreadyUnderstands =
+      this.memory.factList().some((f) => f.statement.includes('recupera energía')) ||
+      this.memory.hypothesisList().some((h) => h.statement.includes('energía'));
+    if (alreadyUnderstands) {
+      this.createEnergyGoal(fraction);
+      return;
+    }
+
     const explanation = this.pendingExplanation;
     this.pendingExplanation = null;
     if (explanation === null && !this.config.guidanceEnabled) return;
@@ -201,6 +221,16 @@ export class AnimaAgent {
       });
     }
 
+    this.createEnergyGoal(fraction);
+    this.memory.recordEpisode({
+      kind: 'signal',
+      summary: 'mi energía está bajando y creo que debo investigar cómo recuperarla',
+      tick: this.tick,
+      importance: 0.8,
+    });
+  }
+
+  private createEnergyGoal(fraction: number): void {
     const goal = this.goals.create(
       {
         description: GOAL_RESTORE_ENERGY,
@@ -219,12 +249,6 @@ export class AnimaAgent {
       description: goal.description,
       source: goal.source,
     });
-    this.memory.recordEpisode({
-      kind: 'signal',
-      summary: 'mi energía está bajando y creo que debo investigar cómo recuperarla',
-      tick: this.tick,
-      importance: 0.8,
-    });
   }
 
   // ---- mensajes del usuario -----------------------------------------------
@@ -240,7 +264,11 @@ export class AnimaAgent {
         // Si el objetivo se suspendió por falta de ideas, la nueva
         // información del usuario es motivo para reintentar.
         for (const goal of this.goals.all()) {
-          if (goal.status === 'suspended') this.goals.reactivate(goal.id);
+          if (goal.status === 'suspended') {
+            this.goals.reactivate(goal.id);
+            this.progress.resetGoal(goal.id);
+            this.emit('goal.reactivated', { goalId: goal.id, reason: 'nueva información del usuario' });
+          }
         }
         this.reply('Gracias, eso me ayuda a entender qué me pasa.');
         continue;
@@ -319,9 +347,15 @@ export class AnimaAgent {
       return this.continueActivity(perception);
     }
 
-    const step = this.progress.escalate(goal.id, {
-      maxSkillDevAttempts: this.config.maxSkillDevAttempts,
-    });
+    // Si todo falló por falta del recurso (no de capacidad), fabricar otra
+    // habilidad no ayudaría: se pide ayuda y luego se suspende.
+    const step = this.progress.blockedByMissingResource(goal.id)
+      ? this.progress.helpRequestedFor(goal.id)
+        ? 'suspend'
+        : 'ask-help'
+      : this.progress.escalate(goal.id, {
+          maxSkillDevAttempts: this.config.maxSkillDevAttempts,
+        });
     if (step === 'create-skill') {
       return this.attemptSkillCreation(goal, perception);
     }
@@ -460,7 +494,12 @@ export class AnimaAgent {
       activity.consumedFood &&
       energyNow > activity.energyAtStart;
 
-    const record = this.progress.record(activity.goalId, activity.strategy, success);
+    const record = this.progress.record(
+      activity.goalId,
+      activity.strategy,
+      success,
+      out.result.reason,
+    );
     if (activity.skillId) {
       this.config.library.recordUse(activity.skillId, success, this.now());
       this.emit('skill.used', { skillId: activity.skillId, success });
