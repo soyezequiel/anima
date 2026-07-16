@@ -68,13 +68,13 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
       <h3>Memoria</h3>
       <ul className="list" data-testid="memory-list">
         {view.hypotheses.map((h) => (
-          <li key={h.statement}>
+          <li key={`hyp-${h.statement}`}>
             <span className={`pill pill-${h.resolved}`}>hipótesis {h.resolved}</span> {h.statement}{' '}
             <span className="muted">({h.confidence})</span>
           </li>
         ))}
         {view.facts.map((f) => (
-          <li key={f}>
+          <li key={`fact-${f}`}>
             <span className="pill pill-fact">sabe</span> {f}
           </li>
         ))}

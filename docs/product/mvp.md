@@ -59,6 +59,9 @@ recoger, soltar, consumir, usar un objeto sobre otro.
       (reiniciar y continuar sin cuenta).
 - [x] Muerte con informe de legado y sucesión: la generación siguiente hereda
       testimonio (hipótesis, no hechos) y re-evalúa las skills heredadas.
+- [x] Identidad Nostr opcional (BAL/NIP-07) con backend propio: desafío
+      firmado de un solo uso, clave privada jamás en el servidor,
+      sincronización del progreso y modo invitado intacto.
 
 ## Fuera del MVP
 

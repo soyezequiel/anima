@@ -20,24 +20,20 @@
   hipótesis "según X, ..." que puede confirmar o descartar, y cada skill
   heredada se re-evalúa en mundos aislados antes de promoverse.
 
-## Fase 8 — backend + Nostr
+## Fase 8 — backend + Nostr (implementada)
 
-Principios ya fijados (verificar prácticas actuales del ecosistema antes de
-implementar):
+`apps/api` (Fastify + `node:sqlite`) identifica usuarios por su clave pública
+Nostr. Ver ADR 0010.
 
-- La clave privada **nunca** llega al backend; firma con extensión del
-  navegador (NIP-07) o firmante remoto equivalente.
-- El backend identifica por clave pública; solicitudes sensibles autenticadas
-  por desafío firmado verificable.
-- Las credenciales de proveedores de IA no se almacenan sin consentimiento
-  explícito.
-- Las skills se guardan en el backend pero **jamás se ejecutan allí**.
-- SQLite en desarrollo, esquema pensado para migrar a PostgreSQL.
-
-Entidades a almacenar: usuario (pubkey), mascotas, generaciones, apariencia,
-estado de mundo, snapshots, memorias consolidadas, hipótesis, objetivos,
-skills y versiones, resultados de pruebas, regresiones, informes de muerte,
-relación con el usuario.
-
-Nostr no debe bloquear el núcleo: el modo invitado local es suficiente para
-demostrar todo el aprendizaje.
+- Firmantes: **BAL** (`nostr-bal-browser-sdk`, NIP-46 vía launcher) cuando hay
+  contexto `lnOrigin`; **NIP-07** (`window.nostr`) como login normal; modo
+  invitado local como base — la app completa funciona sin identidad.
+- Autenticación por prueba de control de clave: desafío aleatorio de un solo
+  uso firmado como evento `kind 22242`, verificado con `nostr-tools`
+  (kind, desafío, frescura, firma); la pubkey se deriva del evento
+  verificado. La clave privada nunca llega al backend.
+- Datos: KV por usuario (`/data/:key`) que espeja `KeyValueStore`, de modo
+  que `RemoteKeyValueStore` reutiliza intactos el guardado, los legados y la
+  sucesión de la Fase 7. Migración invitado→nube en el primer login.
+- Las skills guardadas son datos: el servidor no las interpreta ni ejecuta.
+- El esquema SQLite está pensado para migrar a PostgreSQL sin cambiar la API.

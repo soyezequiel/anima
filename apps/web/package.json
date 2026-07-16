@@ -21,6 +21,9 @@
     "@anima/skill-evaluator": "workspace:*",
     "@anima/skill-runtime": "workspace:*",
     "@anima/test-scenarios": "workspace:*",
+    "nostr-bal-browser-sdk": "github:soyezequiel/herramientas-nostr",
+    "nostr-game-protocol": "github:soyezequiel/Nostr-Game-Protocol",
+    "nostr-tools": "^2.23.12",
     "phaser": "^3.90.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"

@@ -221,7 +221,17 @@ export class GameSession {
       ui: { chat: this.chat, petColor: this.petColor } satisfies SessionUiState,
       now: () => new Date().toISOString(),
     });
-    await saveSession(this.store, data);
+    try {
+      await saveSession(this.store, data);
+    } catch (error) {
+      // Con almacenamiento remoto, un corte de red no debe romper el loop:
+      // el siguiente autoguardado reintenta.
+      this.pushDev('agent', {
+        type: 'save.failed',
+        tick: this.world.tick,
+        data: { message: error instanceof Error ? error.message : String(error) },
+      });
+    }
   }
 
   start(): void {

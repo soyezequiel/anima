@@ -9,13 +9,16 @@ las incorpora a su biblioteca si superan las pruebas.
 
 ## Estado actual
 
-**Fases 0–7 completadas**: la historia completa de aprendizaje funciona
+**Fases 0–8 completadas**: la historia completa de aprendizaje funciona
 headless (hito 1) y en el navegador (React + Phaser, chat, panel de
 habilidades, experimentos, modo desarrollador, E2E con Playwright). La sesión
 se autoguarda y sobrevive recargas; al morir, la mascota deja un informe de
-legado y su sucesora (generación+1) hereda el conocimiento como testimonio
-verificable y re-prueba las habilidades antes de confiar en ellas. Todo sin
-claves de IA. El siguiente paso es la Fase 8 (backend + identidad Nostr).
+legado y su sucesora hereda el conocimiento como testimonio verificable.
+Con identidad Nostr (BAL desde el launcher o extensión NIP-07) el progreso se
+sincroniza con el backend (`apps/api`, Fastify + SQLite): la clave privada
+nunca sale del firmante y el servidor solo acepta desafíos firmados. El modo
+invitado local sigue completo y sin cuentas. Todo sin claves de IA.
+El siguiente paso es la Fase 9 (proveedor real de IA, opcional y reemplazable).
 
 ```
 energía baja -> hipótesis -> objetivo -> intento directo -> fallo ->
@@ -45,7 +48,12 @@ pnpm lint
 ```
 
 Parámetros útiles de la web: `?seed=42&speed=8` (semilla y velocidad),
-`&autostart=0` (arranca en pausa).
+`&autostart=0` (arranca en pausa), `&fresh=1` (ignora el guardado).
+
+Para sincronizar con el backend: `pnpm --filter @anima/api start` (puerto
+8787; el dev server de Vite proxya `/api`) y conecta tu identidad Nostr con
+el botón «⚡ Conectar Nostr» (extensión NIP-07) o abriendo el juego desde el
+launcher (BAL). Sin backend ni identidad, todo funciona en modo invitado.
 
 No se necesita ninguna clave de API: todo corre con `MockModelProvider`,
 un proveedor determinista que simula un generador imperfecto.
@@ -55,6 +63,7 @@ un proveedor determinista que simula un generador imperfecto.
 ```
 apps/
   web/                interfaz (Vite + React + Phaser + Playwright E2E)
+  api/                backend (Fastify + SQLite, identidad Nostr por desafío firmado)
   demo/               CLI del hito 1 y herramienta de diagnóstico
 packages/
   persistence/        guardado local, informes de legado, sucesión y linaje

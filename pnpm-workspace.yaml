@@ -1,3 +1,8 @@
 packages:
   - "apps/*"
   - "packages/*"
+
+# Dependencias git que necesitan ejecutar su script "prepare" (build) al instalar.
+onlyBuiltDependencies:
+  - nostr-bal-browser-sdk
+  - nostr-game-protocol

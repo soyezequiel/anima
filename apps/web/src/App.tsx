@@ -1,6 +1,8 @@
 import { useState, useSyncExternalStore } from 'react';
 import { PhaserStage } from './phaser/PhaserStage.js';
 import type { GameSession } from './session/GameSession.js';
+import type { CloudAccount } from './auth/cloud.js';
+import { AccountBar } from './components/AccountBar.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
@@ -11,7 +13,13 @@ import { StatusPanel } from './components/StatusPanel.js';
 
 type Tab = 'estado' | 'chat' | 'skills' | 'experimentos' | 'dev';
 
-export function App({ session }: { session: GameSession }) {
+export function App({
+  session,
+  account,
+}: {
+  session: GameSession;
+  account: CloudAccount | null;
+}) {
   const view = useSyncExternalStore(
     (listener) => session.subscribe(listener),
     () => session.getView(),
@@ -43,6 +51,7 @@ export function App({ session }: { session: GameSession }) {
           {view.storyCompleted ? 'historia completada' : 'aprendiendo…'}
         </span>
         <Controls session={session} view={view} />
+        <AccountBar account={account} />
       </header>
       <main className="layout">
         <section className="stage">
