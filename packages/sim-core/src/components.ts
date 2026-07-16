@@ -31,6 +31,19 @@ export interface Components {
   foodSource?: { intervalTicks: number; nutrition: number; nextSpawnAtTick: number };
   /** Daña a los agentes adyacentes cada tick (espinas, fuego, etc.). */
   hazard?: { damagePerTick: number };
+  /**
+   * Calor corporal de un agente. Baja cada tick (el mundo es frío) salvo que
+   * haya una fuente de calor en rango; en cero, la salud decae como con el
+   * hambre pero con causa de muerte propia.
+   */
+  temperature?: { current: number; max: number; lossPerTick: number };
+  /** Irradia calor a los agentes dentro del rango (distancia Chebyshev). */
+  heatSource?: { warmthPerTick: number; range: number };
+  /**
+   * Qué deja la entidad al ser destruida (talar un árbol => troncos).
+   * Declarativo: cada entrada es un arquetipo completo, listo para spawn.
+   */
+  drops?: Array<{ kind: EntityKind; components: Components }>;
 }
 
 export interface Entity {

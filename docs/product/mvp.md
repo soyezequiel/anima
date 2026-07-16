@@ -72,3 +72,5 @@ recoger, soltar, consumir, usar un objeto sobre otro.
 Multijugador real, mercado de skills, economía, clima, ecosistemas, editor
 visual, generación arbitraria de objetos, JS libre generado por IA, múltiples
 proveedores, móvil, gráficos elaborados, mundo infinito.
+
+Lo que viene después está en `roadmap.md`.

@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import type { GameView } from '../session/view.js';
 
-export const CELL = 64;
+/** Celda de referencia: toda la geometría se define a esta escala y se reescala desde aquí. */
+export const BASE_CELL = 64;
 
 const KIND_EMOJI: Record<string, string> = {
   food: '🍎',
@@ -20,8 +21,9 @@ export class WorldScene extends Phaser.Scene {
   private sprites = new Map<string, Phaser.GameObjects.Container>();
   private pet: Phaser.GameObjects.Container | null = null;
   private petBody: Phaser.GameObjects.Arc | null = null;
-  private gridDrawn = false;
-  private pendingView: GameView | null = null;
+  private grid: Phaser.GameObjects.Graphics | null = null;
+  private cell = BASE_CELL;
+  private lastView: GameView | null = null;
   private ready = false;
 
   constructor() {
@@ -30,53 +32,79 @@ export class WorldScene extends Phaser.Scene {
 
   create(): void {
     this.ready = true;
-    if (this.pendingView) {
-      this.applyView(this.pendingView);
-      this.pendingView = null;
-    }
+    if (this.lastView) this.applyView(this.lastView);
   }
 
   /** Punto de entrada desde React: aplica el último view model. */
   applyView(view: GameView): void {
-    if (!this.ready) {
-      this.pendingView = view;
-      return;
-    }
+    this.lastView = view;
+    if (!this.ready) return;
     this.drawGrid(view);
     this.syncEntities(view);
     this.syncPet(view);
   }
 
+  /**
+   * Reescala el tablero a un nuevo tamaño de celda. La escena se reconstruye a
+   * la resolución nueva en vez de estirar el canvas, para que los trazos y los
+   * emoji sigan nítidos por grande que sea la pantalla.
+   */
+  setCell(cell: number): void {
+    if (cell === this.cell) return;
+    this.cell = cell;
+    this.discard(this.grid);
+    this.grid = null;
+    for (const sprite of this.sprites.values()) this.discard(sprite);
+    this.sprites.clear();
+    this.discard(this.pet);
+    this.pet = null;
+    this.petBody = null;
+    if (this.lastView) this.applyView(this.lastView);
+  }
+
+  /** Un tween sobre un objeto ya destruido revienta al siguiente frame. */
+  private discard(object: Phaser.GameObjects.GameObject | null): void {
+    if (!object) return;
+    this.tweens.killTweensOf(object);
+    object.destroy();
+  }
+
+  /** Factor respecto a la geometría de referencia. */
+  private get cellScale(): number {
+    return this.cell / BASE_CELL;
+  }
+
   private toPixel(cellX: number, cellY: number): { x: number; y: number } {
-    return { x: cellX * CELL + CELL / 2, y: cellY * CELL + CELL / 2 };
+    return { x: cellX * this.cell + this.cell / 2, y: cellY * this.cell + this.cell / 2 };
   }
 
   private drawGrid(view: GameView): void {
-    if (this.gridDrawn) return;
-    this.gridDrawn = true;
+    if (this.grid) return;
     const { width, height } = view.worldSize;
     const graphics = this.add.graphics();
+    this.grid = graphics;
     graphics.fillStyle(0x14532d, 1);
-    graphics.fillRect(0, 0, width * CELL, height * CELL);
+    graphics.fillRect(0, 0, width * this.cell, height * this.cell);
     graphics.lineStyle(1, 0x166534, 1);
     for (let x = 0; x <= width; x++) {
-      graphics.lineBetween(x * CELL, 0, x * CELL, height * CELL);
+      graphics.lineBetween(x * this.cell, 0, x * this.cell, height * this.cell);
     }
     for (let y = 0; y <= height; y++) {
-      graphics.lineBetween(0, y * CELL, width * CELL, y * CELL);
+      graphics.lineBetween(0, y * this.cell, width * this.cell, y * this.cell);
     }
     graphics.setDepth(0);
   }
 
   private makeEntitySprite(kind: string): Phaser.GameObjects.Container {
+    const k = this.cellScale;
     const container = this.add.container(0, 0);
     if (kind === 'wall') {
-      const rect = this.add.rectangle(0, 0, CELL - 6, CELL - 6, 0x64748b);
-      rect.setStrokeStyle(2, 0x334155);
+      const rect = this.add.rectangle(0, 0, this.cell - 6 * k, this.cell - 6 * k, 0x64748b);
+      rect.setStrokeStyle(2 * k, 0x334155);
       container.add(rect);
     } else {
       const emoji = KIND_EMOJI[kind] ?? '❓';
-      const text = this.add.text(0, 0, emoji, { fontSize: '34px' });
+      const text = this.add.text(0, 0, emoji, { fontSize: `${Math.round(34 * k)}px` });
       text.setOrigin(0.5);
       container.add(text);
     }
@@ -120,10 +148,11 @@ export class WorldScene extends Phaser.Scene {
     }
     const pixel = this.toPixel(view.pet.x, view.pet.y);
     if (!this.pet) {
-      const body = this.add.circle(0, 0, CELL / 2 - 10, 0xf59e0b);
-      body.setStrokeStyle(3, 0x78350f);
-      const eyeL = this.add.circle(-9, -6, 4, 0x1c1917);
-      const eyeR = this.add.circle(9, -6, 4, 0x1c1917);
+      const k = this.cellScale;
+      const body = this.add.circle(0, 0, this.cell / 2 - 10 * k, 0xf59e0b);
+      body.setStrokeStyle(3 * k, 0x78350f);
+      const eyeL = this.add.circle(-9 * k, -6 * k, 4 * k, 0x1c1917);
+      const eyeR = this.add.circle(9 * k, -6 * k, 4 * k, 0x1c1917);
       this.pet = this.add.container(pixel.x, pixel.y, [body, eyeL, eyeR]);
       this.pet.setDepth(2);
       this.petBody = body;

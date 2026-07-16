@@ -75,12 +75,17 @@ const LOGIN_URL_TIMEOUT_MS = 20_000;
 const COMPLETE_TIMEOUT_MS = 240_000;
 const LIMITS_TIMEOUT_MS = 20_000;
 
-interface RunResult {
+export interface RunResult {
   code: number | null;
   stdout: string;
   stderr: string;
   failedToStart: boolean;
 }
+
+export type CodexExec = (
+  args: string[],
+  options: { stdin?: string; timeoutMs: number; env?: NodeJS.ProcessEnv },
+) => Promise<RunResult>;
 
 function runCodex(
   args: string[],
@@ -147,6 +152,8 @@ export interface CodexBridgeOptions {
   /** Identifica al dueño en la ranura de login compartida. */
   owner?: string;
   loginSlot?: CodexLoginSlot;
+  /** Solo para pruebas: sustituye la ejecución real de `codex exec`. */
+  exec?: CodexExec;
 }
 
 function parseLimitWindow(raw: unknown): AiLimitWindow | null {
@@ -176,6 +183,34 @@ export function parseRateLimitsResponse(result: unknown): AiLimits {
     primary: parseLimitWindow(raw.primary),
     secondary: parseLimitWindow(raw.secondary),
   };
+}
+
+/**
+ * Detecta el 400 `unsupported_value` que devuelve el backend cuando el
+ * modelo activo no acepta el nivel de razonamiento pedido (p. ej. `minimal`
+ * con los modelos premium). Ese caso se resuelve reintentando sin forzar el
+ * nivel, en lugar de dejar el error crudo al usuario.
+ */
+export function isUnsupportedEffortError(stderr: string): boolean {
+  return (
+    /unsupported_value/i.test(stderr) &&
+    /reasoning\.effort|model_reasoning_effort|reasoning effort/i.test(stderr)
+  );
+}
+
+/** Extrae el mensaje humano del JSON de error que emite `codex exec`. */
+export function codexErrorDetail(stderr: string): string {
+  // El último "message" es el del bloque ERROR final, el definitivo.
+  const matches = [...stderr.matchAll(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/g)];
+  const raw = matches.at(-1)?.[1];
+  if (raw) {
+    try {
+      return JSON.parse(`"${raw}"`) as string;
+    } catch {
+      return raw;
+    }
+  }
+  return stderr.slice(-400);
 }
 
 /**
@@ -258,6 +293,10 @@ function readRateLimits(env?: NodeJS.ProcessEnv): Promise<AiLimits> {
 
 export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
   let cachedStatus: { at: number; value: AiStatus } | null = null;
+  // Combinaciones modelo|nivel ya rechazadas por el backend: se omite el
+  // nivel en vez de pagar un intento fallido en cada consulta.
+  const unsupportedEfforts = new Set<string>();
+  const execCodex = options.exec ?? runCodex;
   const owner = options.owner ?? 'guest';
   const loginSlot = options.loginSlot ?? createCodexLoginSlot();
   // Las credenciales de cada identidad viven en su propio CODEX_HOME; el CLI
@@ -367,50 +406,68 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
 
     async complete(input) {
       const model = input.model ?? defaultModel;
-      const effort = input.reasoningEffort ?? defaultEffort;
+      const requestedEffort = input.reasoningEffort ?? defaultEffort;
       if (model !== undefined && !isCodexModel(model)) {
         throw new Error('modelo Codex inválido');
       }
-      if (!isCodexReasoningEffort(effort)) {
+      if (!isCodexReasoningEffort(requestedEffort)) {
         throw new Error('nivel de razonamiento Codex inválido');
       }
+      // Si ya sabemos que este modelo rechaza el nivel pedido, ni lo forzamos.
+      const comboKey = `${model ?? ''}|${requestedEffort}`;
+      const effort = unsupportedEfforts.has(comboKey) ? undefined : requestedEffort;
       const workdir = await mkdtemp(join(tmpdir(), 'anima-codex-'));
       const outFile = join(workdir, 'last-message.txt');
       const schemaFile = join(workdir, 'schema.json');
       try {
-        const args = [
-          'exec',
-          '--skip-git-repo-check',
-          '--ephemeral',
-          '--sandbox',
-          'read-only',
-          '--color',
-          'never',
-          '--cd',
-          workdir,
-          '--output-last-message',
-          outFile,
-        ];
-        if (model) args.push('--model', model);
-        // Prompts cortos y respuestas JSON: el esfuerzo de razonamiento bajo
-        // alcanza y cuida la cuota del usuario (ANIMA_CODEX_EFFORT lo cambia).
-        args.push('-c', `model_reasoning_effort=${effort}`);
         if (input.schema !== undefined) {
           await writeFile(schemaFile, JSON.stringify(input.schema), 'utf8');
-          args.push('--output-schema', schemaFile);
         }
-        args.push('-'); // el prompt entra por stdin
-        const result = await runCodex(args, {
-          stdin: input.prompt,
-          timeoutMs: COMPLETE_TIMEOUT_MS,
-          ...(env ? { env } : {}),
-        });
+        const run = (withEffort: CodexReasoningEffort | undefined): Promise<RunResult> => {
+          const args = [
+            'exec',
+            '--skip-git-repo-check',
+            '--ephemeral',
+            '--sandbox',
+            'read-only',
+            '--color',
+            'never',
+            '--cd',
+            workdir,
+            '--output-last-message',
+            outFile,
+          ];
+          if (model) args.push('--model', model);
+          // Prompts cortos y respuestas JSON: el esfuerzo de razonamiento bajo
+          // alcanza y cuida la cuota del usuario (ANIMA_CODEX_EFFORT lo cambia).
+          // Sin nivel explícito, decide el predeterminado del modelo.
+          if (withEffort !== undefined) args.push('-c', `model_reasoning_effort=${withEffort}`);
+          if (input.schema !== undefined) args.push('--output-schema', schemaFile);
+          args.push('-'); // el prompt entra por stdin
+          return execCodex(args, {
+            stdin: input.prompt,
+            timeoutMs: COMPLETE_TIMEOUT_MS,
+            ...(env ? { env } : {}),
+          });
+        };
+        let result = await run(effort);
+        if (
+          result.code !== 0 &&
+          !result.failedToStart &&
+          effort !== undefined &&
+          isUnsupportedEffortError(result.stderr)
+        ) {
+          // El modelo de la cuenta no acepta ese nivel: se recuerda la
+          // combinación y se reintenta con el nivel propio del modelo.
+          unsupportedEfforts.add(comboKey);
+          result = await run(undefined);
+        }
         if (result.failedToStart) {
           throw new Error('codex CLI no encontrado');
         }
         if (result.code !== 0) {
           throw new Error(
-            `codex exec terminó con código ${String(result.code)}: ${result.stderr.slice(-400)}`,
+            `codex exec terminó con código ${String(result.code)}: ${codexErrorDetail(result.stderr)}`,
           );
         }
         const text = await readFile(outFile, 'utf8').catch(() => '');

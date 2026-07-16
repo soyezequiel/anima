@@ -10,6 +10,9 @@ import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory,
 /** Umbral (fracción del máximo) bajo el cual se emite `energy.low` al cruzarlo. */
 export const LOW_ENERGY_FRACTION = 0.35;
 
+/** Umbral (fracción del máximo) bajo el cual se emite `temperature.low` al cruzarlo. */
+export const LOW_TEMPERATURE_FRACTION = 0.35;
+
 /**
  * Avanza el mundo exactamente un paso fijo de simulación.
  * Determinista: mismo estado + mismas intenciones => mismos eventos y estado.
@@ -28,9 +31,62 @@ export function stepWorld(world: WorldState, intents: ActorIntent[]): SimEvent[]
   }
 
   runEnergySystem(world, events);
+  runTemperatureSystem(world, events);
   runHazardSystem(world, events);
   runFoodSourceSystem(world, events);
   return events;
+}
+
+/**
+ * El mundo es frío: el calor corporal decae cada tick salvo cerca de una
+ * fuente de calor. Solo afecta a los agentes que tienen el componente
+ * `temperature`; los escenarios sin frío quedan intactos.
+ */
+function runTemperatureSystem(world: WorldState, events: SimEvent[]): void {
+  const heatSources = allEntities(world).filter(
+    (e) => e.components.heatSource && e.components.position,
+  );
+  for (const entity of allEntities(world)) {
+    const temperature = entity.components.temperature;
+    const pos = entity.components.position;
+    if (!temperature || !pos || !entity.components.agent || entity.components.dead) continue;
+
+    const warmth = heatSources.reduce((total, source) => {
+      const sourcePos = source.components.position!;
+      const heat = source.components.heatSource!;
+      const distance = Math.max(Math.abs(sourcePos.x - pos.x), Math.abs(sourcePos.y - pos.y));
+      return distance <= heat.range ? total + heat.warmthPerTick : total;
+    }, 0);
+
+    const before = temperature.current;
+    temperature.current = Math.min(
+      temperature.max,
+      Math.max(0, temperature.current - temperature.lossPerTick + warmth),
+    );
+
+    const lowThreshold = temperature.max * LOW_TEMPERATURE_FRACTION;
+    if (before > lowThreshold && temperature.current <= lowThreshold) {
+      events.push(
+        simEvent('temperature.low', world.tick, {
+          id: entity.id,
+          current: temperature.current,
+          max: temperature.max,
+        }),
+      );
+    }
+    if (before > 0 && temperature.current === 0) {
+      events.push(simEvent('temperature.depleted', world.tick, { id: entity.id }));
+    }
+
+    if (temperature.current === 0 && entity.components.health) {
+      const health = entity.components.health;
+      health.current = Math.max(0, health.current - 1);
+      if (health.current === 0 && !entity.components.dead) {
+        entity.components.dead = { atTick: world.tick, cause: 'hypothermia' };
+        events.push(simEvent('pet.died', world.tick, { id: entity.id, cause: 'hypothermia' }));
+      }
+    }
+  }
 }
 
 /**
@@ -358,10 +414,35 @@ function resolveUseItem(
     }),
   );
   if (targetDurability.current <= 0) {
+    const dropOrigin = target.components.position ? { ...target.components.position } : null;
+    const drops = target.components.drops ?? [];
     removeEntity(world, target.id);
     events.push(
       simEvent('entity.destroyed', world.tick, { id: target.id, kind: target.kind, byId: actor.id }),
     );
+    // Lo que la entidad deja al ser destruida aparece donde estaba (ya libre)
+    // y en las celdas libres adyacentes, en orden determinista.
+    if (dropOrigin) {
+      const cells = [dropOrigin, ...SPAWN_OFFSETS.map((o) => addVec2(dropOrigin, o))].filter(
+        (c) => inBounds(world, c) && entitiesAt(world, c).length === 0,
+      );
+      for (const [i, drop] of drops.entries()) {
+        const cell = cells[i];
+        if (!cell) break;
+        const spawned = spawn(world, drop.kind, {
+          ...structuredClone(drop.components),
+          position: cell,
+        });
+        events.push(
+          simEvent('entity.spawned', world.tick, {
+            id: spawned.id,
+            kind: spawned.kind,
+            sourceId: target.id,
+            at: cell,
+          }),
+        );
+      }
+    }
   }
 
   // La herramienta se desgasta con cada uso, aunque no cause daño.

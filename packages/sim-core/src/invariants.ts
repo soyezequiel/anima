@@ -62,6 +62,14 @@ export function checkInvariants(world: WorldState): InvariantViolation[] {
         detail: `${entity.id} tiene energía ${energy.current} fuera de [0, ${energy.max}]`,
       });
     }
+
+    const temperature = entity.components.temperature;
+    if (temperature && (temperature.current < 0 || temperature.current > temperature.max)) {
+      violations.push({
+        invariant: 'temperature-in-range',
+        detail: `${entity.id} tiene temperatura ${temperature.current} fuera de [0, ${temperature.max}]`,
+      });
+    }
   }
   return violations;
 }

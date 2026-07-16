@@ -133,6 +133,11 @@ máquina. Solo puede haber una autorización de Codex en curso a la vez (el
 callback local usa un puerto fijo); si otra cuenta está autorizando, vuelve a
 intentarlo en unos segundos.
 
+No todos los modelos aceptan todos los niveles de razonamiento (p. ej. los
+premium rechazan `minimal`): si el backend rechaza el nivel elegido, Ánima
+reintenta automáticamente con el nivel propio del modelo y recuerda la
+combinación para no repetir el intento fallido.
+
 Variables opcionales del backend: `ANIMA_CODEX_MODEL` fija el modelo,
 `ANIMA_CODEX_EFFORT` cambia el esfuerzo de razonamiento (por defecto, `low`)
 y `ANIMA_CODEX_DIR` mueve la raíz de los `CODEX_HOME` por usuario (por

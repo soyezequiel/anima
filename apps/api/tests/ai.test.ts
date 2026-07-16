@@ -4,8 +4,16 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
+import { writeFile } from 'node:fs/promises';
 import type { AiBridge, AiBridgeFactory, AiLimits } from '../src/ai.js';
-import { codexHomeFor, createCodexBridgeFactory, parseRateLimitsResponse } from '../src/ai.js';
+import {
+  codexErrorDetail,
+  codexHomeFor,
+  createCodexBridge,
+  createCodexBridgeFactory,
+  isUnsupportedEffortError,
+  parseRateLimitsResponse,
+} from '../src/ai.js';
 import { buildServer } from '../src/server.js';
 
 let app: FastifyInstance;
@@ -247,6 +255,69 @@ describe('parseRateLimitsResponse', () => {
     });
     expect(() => parseRateLimitsResponse({})).toThrow(/límites/);
     expect(() => parseRateLimitsResponse(null)).toThrow(/límites/);
+  });
+});
+
+// Forma observada en vivo: el backend rechaza `minimal` con el modelo
+// premium de la cuenta y codex exec vuelca dos bloques JSON en stderr.
+const unsupportedEffortStderr = `stream error: { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 } ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 }`;
+
+describe('errores de codex exec', () => {
+  it('reconoce el rechazo del nivel de razonamiento', () => {
+    expect(isUnsupportedEffortError(unsupportedEffortStderr)).toBe(true);
+    expect(isUnsupportedEffortError('ERROR: stream disconnected before completion')).toBe(false);
+    expect(
+      isUnsupportedEffortError(
+        '{"code":"unsupported_value","message":"bad country","param":"region"}',
+      ),
+    ).toBe(false);
+  });
+
+  it('extrae el mensaje humano del volcado JSON', () => {
+    expect(codexErrorDetail(unsupportedEffortStderr)).toBe(
+      "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.",
+    );
+    expect(codexErrorDetail('sin json reconocible')).toBe('sin json reconocible');
+  });
+
+  it('reintenta sin nivel cuando el modelo lo rechaza y recuerda la combinación', async () => {
+    const execArgs: string[][] = [];
+    const bridge = createCodexBridge({
+      exec: async (args) => {
+        execArgs.push(args);
+        if (args.some((arg) => arg.includes('model_reasoning_effort=minimal'))) {
+          return { code: 1, stdout: '', stderr: unsupportedEffortStderr, failedToStart: false };
+        }
+        const outFile = args[args.indexOf('--output-last-message') + 1]!;
+        await writeFile(outFile, '{"text":"ok"}', 'utf8');
+        return { code: 0, stdout: '', stderr: '', failedToStart: false };
+      },
+    });
+    const input = { prompt: 'hola', model: 'gpt-5.6-terra', reasoningEffort: 'minimal' } as const;
+    await expect(bridge.complete(input)).resolves.toBe('{"text":"ok"}');
+    expect(execArgs).toHaveLength(2);
+    expect(execArgs[1]!.join(' ')).not.toContain('model_reasoning_effort');
+
+    // La combinación queda recordada: la siguiente consulta no paga el
+    // intento fallido y sale directamente sin forzar el nivel.
+    await expect(bridge.complete(input)).resolves.toBe('{"text":"ok"}');
+    expect(execArgs).toHaveLength(3);
+    expect(execArgs[2]!.join(' ')).not.toContain('model_reasoning_effort');
+  });
+
+  it('un fallo definitivo llega con el mensaje limpio, no el JSON crudo', async () => {
+    const bridge = createCodexBridge({
+      exec: () =>
+        Promise.resolve({
+          code: 1,
+          stdout: '',
+          stderr: unsupportedEffortStderr,
+          failedToStart: false,
+        }),
+    });
+    await expect(bridge.complete({ prompt: 'hola' })).rejects.toThrow(
+      /código 1: Unsupported value: 'minimal'/,
+    );
   });
 });
 

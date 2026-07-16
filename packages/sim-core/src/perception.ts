@@ -19,6 +19,8 @@ export interface PerceivedEntity {
   solid?: boolean;
   toolPower?: number;
   hardness?: number;
+  /** Calor que irradia por tick (si es una fuente de calor). */
+  warmth?: number;
   /** true si el observador la lleva en su inventario. */
   held?: boolean;
 }
@@ -30,6 +32,7 @@ export interface Perception {
     position: Vec2;
     energy?: { current: number; max: number };
     health?: { current: number; max: number };
+    temperature?: { current: number; max: number };
     heldItems: PerceivedEntity[];
   };
   visibleEntities: PerceivedEntity[];
@@ -47,6 +50,7 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   if (entity.components.collider?.solid) perceived.solid = true;
   if (entity.components.tool) perceived.toolPower = entity.components.tool.power;
   if (entity.components.hardness) perceived.hardness = entity.components.hardness.value;
+  if (entity.components.heatSource) perceived.warmth = entity.components.heatSource.warmthPerTick;
   if (held) perceived.held = true;
   return perceived;
 }
@@ -84,6 +88,12 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
   }
   if (agent.components.health) {
     self.health = { current: agent.components.health.current, max: agent.components.health.max };
+  }
+  if (agent.components.temperature) {
+    self.temperature = {
+      current: agent.components.temperature.current,
+      max: agent.components.temperature.max,
+    };
   }
   return { tick: world.tick, self, visibleEntities };
 }

@@ -314,14 +314,24 @@ select {
 }
 
 .stage {
+  flex: 1;
+  min-width: 0;
   padding: 16px;
   display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  overflow: auto;
+  overflow: hidden;
 }
 
+/* Caja que mide el hueco libre; de su tamaño sale la celda del tablero. */
 .stage-wrap {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stage-board {
   position: relative;
 }
 
@@ -404,8 +414,10 @@ select {
 }
 
 .panel {
-  width: 480px;
-  min-width: 360px;
+  /* Proporcional: en un portátil no puede comerse el ancho que el mundo necesita.
+     El suelo es el ancho que necesita la fila de pestañas. */
+  flex: none;
+  width: clamp(360px, 30vw, 520px);
   border-left: 1px solid var(--border);
   background: var(--panel);
   display: flex;
@@ -416,6 +428,13 @@ select {
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
+  /* Con contadores largos la fila crece: que se desplace antes que desbordar. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .tab {
@@ -424,6 +443,7 @@ select {
   background: transparent;
   padding: 8px 12px;
   color: var(--muted);
+  white-space: nowrap;
 }
 
 .tab.active {

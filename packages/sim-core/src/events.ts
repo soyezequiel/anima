@@ -14,6 +14,8 @@ export type SimEventType =
   | 'entity.spawned'
   | 'energy.low'
   | 'energy.depleted'
+  | 'temperature.low'
+  | 'temperature.depleted'
   | 'pet.died';
 
 export type SimEvent = StructuredEvent<SimEventType>;
