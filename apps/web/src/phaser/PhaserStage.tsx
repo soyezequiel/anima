@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { useEffect, useRef, useState } from 'react';
 import type { GameView } from '../session/view.js';
-import { BASE_CELL, WorldScene } from './WorldScene.js';
+import { BASE_CELL, KIND_EMOJI, WorldScene } from './WorldScene.js';
 
 /** Por debajo de esto el mundo deja de leerse: preferimos recortar antes que encoger más. */
 const MIN_CELL = 24;
@@ -101,12 +101,33 @@ export function PhaserStage({ view }: { view: GameView }) {
     </div>
   );
 
+  // Nombra lo recogido mientras el objeto aún viaja por el tablero. La `key`
+  // ata el elemento a esa recogida concreta: dos seguidas reinician la animación
+  // en vez de reutilizar un cartel a medio camino.
+  const pickupFlash = view.pickup && view.pet && (
+    <div
+      key={`${view.pickup.itemId}:${view.pickup.tick}`}
+      className="pickup-flash"
+      data-testid="pickup-flash"
+      role="status"
+      aria-live="polite"
+      style={{
+        left: view.pet.x * cell + cell / 2,
+        top: view.pet.y * cell - 4,
+      }}
+    >
+      <span aria-hidden="true">+{KIND_EMOJI[view.pickup.kind] ?? '📦'}</span>
+      <span className="pickup-flash-kind">{view.pickup.kind}</span>
+    </div>
+  );
+
   return (
     <div className="stage-wrap" ref={boxRef}>
       <div className="stage-board" style={{ width: cols * cell, height: rows * cell }}>
         <div ref={hostRef} />
         {bubble}
         {thinkingBubble}
+        {pickupFlash}
       </div>
     </div>
   );

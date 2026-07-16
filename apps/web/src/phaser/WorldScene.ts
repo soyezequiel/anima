@@ -4,7 +4,7 @@ import type { GameView } from '../session/view.js';
 /** Celda de referencia: toda la geometría se define a esta escala y se reescala desde aquí. */
 export const BASE_CELL = 64;
 
-const KIND_EMOJI: Record<string, string> = {
+export const KIND_EMOJI: Record<string, string> = {
   food: '🍎',
   branch: '🪵',
   hammer: '🔨',
@@ -141,10 +141,15 @@ export class WorldScene extends Phaser.Scene {
         this.tweens.add({ targets: sprite, x: pixel.x, y: pixel.y, duration: 140 });
       }
     }
-    // Lo que ya no está en el mundo (roto, consumido o recogido) se desvanece.
+    // Lo que ya no está en el mundo se va. Recogerlo no es lo mismo que
+    // romperse o consumirse: si el motor dijo que fue a parar al inventario,
+    // el objeto viaja hasta la mascota en vez de desvanecerse donde estaba.
     for (const [id, sprite] of this.sprites) {
-      if (!seen.has(id)) {
-        this.sprites.delete(id);
+      if (seen.has(id)) continue;
+      this.sprites.delete(id);
+      if (view.pickup?.itemId === id && view.pet) {
+        this.flyToPet(sprite, this.toPixel(view.pet.x, view.pet.y));
+      } else {
         this.tweens.add({
           targets: sprite,
           alpha: 0,
@@ -154,6 +159,55 @@ export class WorldScene extends Phaser.Scene {
         });
       }
     }
+  }
+
+  /**
+   * El objeto describe un arco hasta la mascota y se encoge al entrar: la
+   * curva hace legible de dónde salió y adónde fue, cosa que un corte no dice.
+   */
+  private flyToPet(sprite: Phaser.GameObjects.Container, target: { x: number; y: number }): void {
+    const from = { x: sprite.x, y: sprite.y };
+    // Vértice del arco por encima de los dos extremos, proporcional al salto.
+    const peak = {
+      x: (from.x + target.x) / 2,
+      y: Math.min(from.y, target.y) - (this.cell * 0.55 + Math.abs(from.x - target.x) * 0.12),
+    };
+    const progress = { t: 0 };
+    sprite.setDepth(3);
+    this.tweens.add({
+      targets: progress,
+      t: 1,
+      duration: 340,
+      ease: 'Sine.easeInOut',
+      onUpdate: () => {
+        const t = progress.t;
+        const inv = 1 - t;
+        sprite.setPosition(
+          inv * inv * from.x + 2 * inv * t * peak.x + t * t * target.x,
+          inv * inv * from.y + 2 * inv * t * peak.y + t * t * target.y,
+        );
+        sprite.setScale(1 - 0.75 * t);
+        sprite.setAlpha(t > 0.8 ? (1 - t) / 0.2 : 1);
+      },
+      onComplete: () => {
+        sprite.destroy();
+        this.bumpPet();
+      },
+    });
+  }
+
+  /** Acuse de recibo: la mascota se aplasta un instante cuando el objeto llega. */
+  private bumpPet(): void {
+    if (!this.pet) return;
+    this.tweens.add({
+      targets: this.pet,
+      scaleX: 1.18,
+      scaleY: 0.82,
+      duration: 90,
+      yoyo: true,
+      ease: 'Quad.easeOut',
+      onComplete: () => this.pet?.setScale(1),
+    });
   }
 
   private syncPet(view: GameView): void {
