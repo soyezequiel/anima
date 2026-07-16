@@ -8,6 +8,7 @@ import type { RegressionStore } from '@anima/skill-evaluator';
 import { evaluateSkill } from '@anima/skill-evaluator';
 import type { SkillLibrary } from '@anima/skill-runtime';
 import { GameSession } from '../src/session/GameSession.js';
+import type { PickupView } from '../src/session/view.js';
 
 async function makeSession(seed: number, store = new MemoryKeyValueStore()) {
   const session = await GameSession.create({ seed, autostart: false, store });
@@ -108,6 +109,32 @@ describe('GameSession (capa de sesión de la UI)', () => {
     expect(
       session.getView().chat.filter((entry) => entry.text === 'Listo, me moví a la izquierda.'),
     ).toHaveLength(0);
+    session.dispose();
+  });
+
+  it('expone cada recogida como un hecho efímero del view model', async () => {
+    const { session } = await makeSession(5);
+    const seen: PickupView[] = [];
+    await runUntil(session, () => {
+      const pickup = session.getView().pickup;
+      if (pickup && !seen.some((p) => p.itemId === pickup.itemId && p.tick === pickup.tick)) {
+        seen.push(pickup);
+      }
+      return session.getView().storyCompleted;
+    });
+
+    expect(seen.length).toBeGreaterThan(0);
+    // El tipo se resuelve aunque el motor ya le haya quitado la posición al
+    // objeto: sin esto la UI no sabría qué dibujar y caería en el genérico.
+    expect(seen.every((p) => p.kind !== '?')).toBe(true);
+    expect(seen.some((p) => p.kind === 'hammer')).toBe(true);
+
+    // Es un acento, no un estado: caduca sola sin que nadie la limpie.
+    const last = session.getView().pickup;
+    if (last) {
+      await runUntil(session, () => session.getView().pickup === null, 12);
+      expect(session.getView().pickup).toBeNull();
+    }
     session.dispose();
   });
 
@@ -292,6 +319,54 @@ describe('vigilancia en uso real', () => {
       maxTicks: 200,
     });
     expect(report.successRate).toBe(0);
+    session.dispose();
+  });
+});
+
+describe('reglas del mundo al restaurar', () => {
+  /** Un guardado escrito antes de que existieran las recetas. */
+  async function saveWithoutRecipes(): Promise<MemoryKeyValueStore> {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    await session.save();
+    session.dispose();
+    const raw = await store.get('save');
+    const data = JSON.parse(raw!) as { world: { state: { recipes?: unknown } } };
+    delete data.world.state.recipes;
+    await store.set('save', JSON.stringify(data));
+    return store;
+  }
+
+  it('una partida vieja adopta las recetas nuevas en vez de quedarse sin ninguna', async () => {
+    const store = await saveWithoutRecipes();
+
+    const session = await GameSession.create({ autostart: false, store });
+
+    const world = (session as unknown as { world: WorldState }).world;
+    expect(world.recipes.map((r) => r.id).sort()).toEqual(['campfire', 'chair']);
+    session.dispose();
+  });
+
+  it('lo que la mascota inventó sobrevive: el merge es por id, no reemplaza', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session: first } = await makeSession(5, store);
+    const world = (first as unknown as { world: WorldState }).world;
+    world.recipes.push({
+      id: 'hoguera-simple',
+      output: { kind: 'hoguera-simple', components: { heatSource: { warmthPerTick: 0.4, range: 2 } } },
+      ingredients: [{ kind: 'log', count: 2 }],
+    });
+    await first.save();
+    first.dispose();
+
+    const session = await GameSession.create({ autostart: false, store });
+
+    const restored = (session as unknown as { world: WorldState }).world;
+    expect(restored.recipes.map((r) => r.id).sort()).toEqual([
+      'campfire',
+      'chair',
+      'hoguera-simple',
+    ]);
     session.dispose();
   });
 });

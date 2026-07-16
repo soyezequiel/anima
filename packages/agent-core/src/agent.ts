@@ -951,7 +951,15 @@ export class AnimaAgent {
 
     if (command.action === 'unsupported') {
       const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 160);
-      const reason = `Entiendo que me pides ${summary || 'esa acción'}, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.`;
+      // El modelo debe nombrar lo pedido con una frase nominal, pero a veces
+      // devuelve la explicación entera ("Crear X no es posible: el mundo..."):
+      // incrustada en la plantilla sale una frase ilegible. Ante la duda, una
+      // negativa honesta y genérica antes que una mal pegada.
+      const isPhrase =
+        summary.length > 0 && summary.length <= 60 && !/[.:;]/.test(summary);
+      const reason = isPhrase
+        ? `Entiendo que me pides ${summary}, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.`
+        : 'Entiendo lo que me pides, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.';
       this.emit('user.request.refused', {
         request: { kind: 'unknown', raw: text, interpretedAs: summary },
         classification: 'cannot',

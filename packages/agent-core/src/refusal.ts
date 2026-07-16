@@ -330,7 +330,7 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
   // El parser conoce las recetas del MVP a mano; con un modelo real, las
   // recetas viajan en el prompt y esta tabla no hace falta.
   if (
-    /\b(construye|construi|construir|construyas|arma|armar|haz|hacer|fabrica|fabricar|prepara|preparar|enciende|encender)\b/.test(
+    /\b(construye|construi|construir|construyas|crea|crear|cree|crees|arma|armar|haz|hace|hacer|fabrica|fabricar|prepara|preparar|prende|prender|enciende|encender)\b/.test(
       lower,
     )
   ) {

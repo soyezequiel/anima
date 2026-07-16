@@ -392,7 +392,10 @@ no afirmes haber actuado. Acciones ejecutables:
   dar una vuelta). summary describe qué le pide, incorporando lo que el
   cuidador haya explicado en la conversación.
 - unsupported: orden física que ninguna combinación de sus primitivas logra
-  (saltar, volar, construir algo que no tiene receta); summary la resume.
+  (saltar, volar, construir algo que no tiene receta). summary es una frase
+  NOMINAL breve de lo que te pidió, en infinitivo y sin explicar ni negar:
+  "saltar el muro", "volar hasta el árbol". Nunca "X no es posible porque...":
+  el agente arma la negativa con sus palabras, tú solo nombras lo pedido.
 
 Además, dos clasificaciones que no son órdenes:
 - explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho

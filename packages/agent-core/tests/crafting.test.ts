@@ -168,6 +168,45 @@ describe('«construí una fogata con esos troncos»', () => {
   });
 });
 
+describe('la negativa por acción imposible se lee bien', () => {
+  const refuse = (summary: string): ModelResponse => ({
+    kind: 'command.interpretation',
+    command: { action: 'unsupported', summary },
+  });
+
+  it('con una frase nominal, nombra lo que le pidieron', async () => {
+    const { world, petId } = coldWorld();
+    const { agent, perception } = makeAgent(world, petId, new FakeLanguageModel({
+      'interpret.command': refuse('saltar el muro'),
+    }));
+
+    const reply = await say(agent, perception(), 'saltá el muro');
+
+    expect(reply).toBe(
+      'Entiendo que me pides saltar el muro, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.',
+    );
+  });
+
+  it('si el modelo devuelve una explicación entera, no la pega mal', async () => {
+    const { world, petId } = coldWorld();
+    // Caso real: el modelo respondió con la explicación completa en summary y
+    // la plantilla producía "Entiendo que me pides Crear una fogata no es
+    // posible: el mundo no admite construir ni fabricar objetos., pero...".
+    const { agent, perception } = makeAgent(world, petId, new FakeLanguageModel({
+      'interpret.command': refuse(
+        'Crear una fogata no es posible: el mundo no admite construir ni fabricar objetos.',
+      ),
+    }));
+
+    const reply = await say(agent, perception(), 'crea una fogata');
+
+    expect(reply).toBe(
+      'Entiendo lo que me pides, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.',
+    );
+    expect(reply).not.toContain('no es posible:');
+  });
+});
+
 describe('el parser determinista también entiende construir', () => {
   it('el mock reconoce la orden sin consultar al modelo', async () => {
     const { world, petId } = coldWorld();
@@ -180,6 +219,24 @@ describe('el parser determinista también entiende construir', () => {
     expect(reply).toContain('me falta');
     expect(reply).toContain('pedernal');
     expect(provider.callCount('interpret.command')).toBe(0);
+  });
+
+  it('entiende las formas de pedirlo que un hispanohablante usa de verdad', async () => {
+    // "crea una fogata" caía en charla: el parser conocía "construir" y
+    // "armar" pero no "crear" — el verbo que usó el dueño la primera vez.
+    for (const order of [
+      'crea una fogata',
+      'creá una fogata',
+      'hacé una fogata',
+      'armá una hoguera',
+      'prendé un fuego',
+      'fabricá una silla',
+    ]) {
+      const { world, petId } = coldWorld();
+      const { agent, perception } = makeAgent(world, petId, new MockModelProvider());
+      const reply = await say(agent, perception(), order);
+      expect(reply, `«${order}» no se entendió`).toContain('construir');
+    }
   });
 
   it('«traé un tronco» sigue siendo buscar, no construir', async () => {

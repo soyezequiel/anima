@@ -8,7 +8,13 @@ import type { WorldSnapshot } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
-import { COLD_SCENARIOS, foodBehindWall, MVP_SCENARIOS, PRACTICE_SCENARIOS } from '@anima/test-scenarios';
+import {
+  COLD_SCENARIOS,
+  foodBehindWall,
+  MVP_RECIPES,
+  MVP_SCENARIOS,
+  PRACTICE_SCENARIOS,
+} from '@anima/test-scenarios';
 import type { KeyValueStore, LegacyReport, PetIdentity, SessionSaveData } from '@anima/persistence';
 import {
   appendLegacy,
@@ -189,6 +195,23 @@ export class GameSession {
     this.notify();
   }
 
+  /**
+   * Las recetas son reglas del mundo, no progreso de la mascota: cuando el
+   * juego aprende física nueva, una partida vieja también la recibe. Sin esto,
+   * un guardado anterior a las recetas quedaba congelado sin ninguna —el mundo
+   * se creaba de nuevo con ellas, pero el snapshot restaurado las pisaba— y la
+   * mascota respondía, con razón, que su mundo no admite construir nada.
+   *
+   * Lo que NO se toca es lo que ella inventó (ADR 0018): eso sí es suyo, y por
+   * eso el merge es por id y nunca reemplaza la lista.
+   */
+  private adoptNewWorldRules(): void {
+    const known = new Set(this.world.recipes.map((recipe) => recipe.id));
+    for (const recipe of MVP_RECIPES) {
+      if (!known.has(recipe.id)) this.world.recipes.push(structuredClone(recipe));
+    }
+  }
+
   reset(seed: number): void {
     this.resetToNewPet(seed);
     void this.save();
@@ -209,6 +232,7 @@ export class GameSession {
       library: this.library,
       regressions: this.regressions,
     });
+    this.adoptNewWorldRules();
     const ui = data.ui as Partial<SessionUiState> | undefined;
     this.chat = ui?.chat ?? [];
     if (ui?.petColor !== undefined) this.petColor = ui.petColor;
