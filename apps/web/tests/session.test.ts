@@ -343,7 +343,12 @@ describe('reglas del mundo al restaurar', () => {
     const session = await GameSession.create({ autostart: false, store });
 
     const world = (session as unknown as { world: WorldState }).world;
-    expect(world.recipes.map((r) => r.id).sort()).toEqual(['campfire', 'chair']);
+    expect(world.recipes.map((r) => r.id).sort()).toEqual([
+      'barricade',
+      'campfire',
+      'chair',
+      'torch',
+    ]);
     session.dispose();
   });
 
@@ -363,9 +368,11 @@ describe('reglas del mundo al restaurar', () => {
 
     const restored = (session as unknown as { world: WorldState }).world;
     expect(restored.recipes.map((r) => r.id).sort()).toEqual([
+      'barricade',
       'campfire',
       'chair',
       'hoguera-simple',
+      'torch',
     ]);
     session.dispose();
   });

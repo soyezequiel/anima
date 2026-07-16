@@ -168,6 +168,32 @@ describe('«construí una fogata con esos troncos»', () => {
   });
 });
 
+describe('juntar ingredientes pidiendo de a uno', () => {
+  it('«traé un tronco» dos veces junta DOS troncos, no el mismo', async () => {
+    const { world, petId } = coldWorld();
+    spawn(world, 'log', { position: { x: 3, y: 2 }, portable: {} });
+    spawn(world, 'log', { position: { x: 1, y: 4 }, portable: {} });
+    const provider = new MockModelProvider();
+    const { agent } = makeAgent(world, petId, provider);
+
+    const heldLogs = () =>
+      world.entities[petId]!.components.inventory!.items.filter(
+        (id) => world.entities[id]!.kind === 'log',
+      ).length;
+
+    for (const expected of [1, 2]) {
+      agent.receiveUserMessage('trae un tronco');
+      for (let i = 0; i < 30 && heldLogs() < expected; i++) {
+        const intent = await agent.think(buildPerception(world, petId));
+        if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+      }
+      // Sin held:false, la segunda búsqueda devolvía el tronco que ya llevaba
+      // (nearest lo ordena a distancia 0) y "cumplía" sin traer nada.
+      expect(heldLogs()).toBe(expected);
+    }
+  });
+});
+
 describe('la negativa por acción imposible se lee bien', () => {
   const refuse = (summary: string): ModelResponse => ({
     kind: 'command.interpretation',

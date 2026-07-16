@@ -332,6 +332,8 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     const recipeWords: [pattern: RegExp, recipeId: string][] = [
       [/\b(fogata|hoguera|fuego|campfire)\b/, 'campfire'],
       [/\b(silla|asiento|chair)\b/, 'chair'],
+      [/\b(antorcha|torch)\b/, 'torch'],
+      [/\b(empalizada|barricada|barrera|valla)\b/, 'barricade'],
     ];
     const match = recipeWords.find(([pattern]) => pattern.test(lower));
     if (match) return { kind: 'craft-item', recipeId: match[1], raw: text };

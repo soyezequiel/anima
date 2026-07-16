@@ -45,8 +45,56 @@ export const CHAIR_RECIPE: Recipe = {
   ingredients: [{ kind: 'log', count: 2 }],
 };
 
-/** Lo que el mundo del MVP admite construir. */
-export const MVP_RECIPES: Recipe[] = [CAMPFIRE_RECIPE, CHAIR_RECIPE];
+/**
+ * La antorcha: calor chico y portátil. Es el eslabón intermedio de la cadena
+ * de combinaciones — con lo mismo que enciende una fogata se puede hacer algo
+ * más barato y más débil, y elegir entre las dos es una decisión real.
+ */
+export const TORCH_RECIPE: Recipe = {
+  id: 'torch',
+  output: {
+    kind: 'torch',
+    components: {
+      portable: {},
+      heatSource: { warmthPerTick: 0.15, range: 1 },
+    },
+  },
+  ingredients: [
+    { kind: 'log', count: 1 },
+    { kind: 'flint', count: 1 },
+  ],
+};
+
+/**
+ * La empalizada: un muro que se fabrica. Devuelve un tronco al romperse
+ * (menos de lo que costó: la materia no crece) y es más blanda que el muro
+ * de piedra — la rama no la daña, el martillo sí.
+ */
+export const BARRICADE_RECIPE: Recipe = {
+  id: 'barricade',
+  output: {
+    kind: 'barricade',
+    components: {
+      collider: { solid: true },
+      hardness: { value: 3 },
+      durability: { current: 8, max: 8 },
+      drops: [{ kind: 'log', components: { portable: {} } }],
+    },
+  },
+  ingredients: [{ kind: 'log', count: 2 }],
+};
+
+/**
+ * Lo que el mundo del MVP admite construir. Estilo Doodle God: los mismos
+ * materiales base (troncos, pedernal) combinan en cosas distintas, y gastarlos
+ * en una es no tenerlos para otra.
+ */
+export const MVP_RECIPES: Recipe[] = [
+  CAMPFIRE_RECIPE,
+  CHAIR_RECIPE,
+  TORCH_RECIPE,
+  BARRICADE_RECIPE,
+];
 
 export interface ScenarioBundle {
   world: WorldState;
@@ -68,7 +116,9 @@ function spawnPet(world: WorldState, pos: Vec2, energy: number): EntityId {
     energy: { current: energy, max: 50, decayPerTick: 0.05 },
     health: { current: 10, max: 10 },
     strength: { value: 2 },
-    inventory: { items: [], capacity: 4 },
+    // 6: craftear una fogata son 3 objetos en mano, más la herramienta que ya
+    // lleva y algo de margen. Con 4, juntar ingredientes era soltar cosas.
+    inventory: { items: [], capacity: 6 },
     agent: { name: 'Anima', perceptionRange: 12 },
   }).id;
 }
@@ -80,6 +130,14 @@ function spawnFood(world: WorldState, pos: Vec2): void {
     edible: {},
     nutrition: { value: 30 },
   });
+}
+
+function spawnLog(world: WorldState, pos: Vec2): void {
+  spawn(world, 'log', { position: pos, portable: {} });
+}
+
+function spawnFlint(world: WorldState, pos: Vec2): void {
+  spawn(world, 'flint', { position: pos, portable: {} });
 }
 
 function spawnBranch(world: WorldState, pos: Vec2): void {
@@ -131,19 +189,22 @@ function spawnTree(world: WorldState, pos: Vec2): void {
 export const foodBehindWall: ScenarioSpec = {
   name: 'food-behind-wall',
   build(seed) {
-    const world = createWorld({ width: 9, height: 5, seed }, { recipes: MVP_RECIPES });
+    // 13×7: espacio para que existan materiales sueltos sin pisarse con la
+    // historia. El lado de la mascota (x<5) es el taller; el muro y la comida
+    // conservan la misma estructura de siempre, solo que con más aire.
+    const world = createWorld({ width: 13, height: 7, seed }, { recipes: MVP_RECIPES });
     const rng = createRng(seed * 7919 + 17);
-    const petId = spawnPet(world, { x: 1, y: 2 }, 15);
+    const petId = spawnPet(world, { x: 1, y: 3 }, 15);
 
-    for (let y = 0; y < 5; y++) {
+    for (let y = 0; y < 7; y++) {
       spawn(world, 'wall', {
-        position: { x: 4, y },
+        position: { x: 5, y },
         collider: { solid: true },
         hardness: { value: 5 },
         durability: { current: 10, max: 10 },
       });
     }
-    spawnFood(world, { x: 7, y: 2 });
+    spawnFood(world, { x: 9, y: 3 });
     // Un bosque, no un árbol único. Producen alimento cada tanto (el mundo es
     // habitable a largo plazo) y su primer brote (tick 400) es posterior al
     // maxTicks de cualquier evaluación (200), así que no alteran las pruebas.
@@ -152,20 +213,37 @@ export const foodBehindWall: ScenarioSpec = {
     // suicidio: con un solo árbol la respuesta era obvia y no había nada que
     // juzgar (ADR 0019). Van en las esquinas, lejos de los caminos entre la
     // mascota, sus herramientas y el muro.
-    spawnTree(world, { x: 7, y: 4 });
-    spawnTree(world, { x: 8, y: 0 });
+    spawnTree(world, { x: 11, y: 6 });
+    spawnTree(world, { x: 12, y: 0 });
     spawnTree(world, { x: 0, y: 0 });
+
+    // Materiales sueltos por TODO el mapa, no solo en el rincón inicial
+    // (estilo Doodle God: los mismos ingredientes combinan en cosas distintas,
+    // y gastarlos en una es no tenerlos para otra). Repartidos a ambos lados
+    // del muro porque la mascota vive en ambos: tras la historia queda del
+    // lado de la comida, y su movimiento es voraz, no un pathfinding — un
+    // material inalcanzable detrás del muro sería un pedido que acepta y
+    // nunca cumple.
+    spawnLog(world, { x: 1, y: 6 });
+    spawnLog(world, { x: 3, y: 6 });
+    spawnLog(world, { x: 0, y: 4 });
+    spawnFlint(world, { x: 3, y: 0 });
+    spawnFlint(world, { x: 1, y: 0 });
+    spawnLog(world, { x: 11, y: 2 });
+    spawnLog(world, { x: 8, y: 5 });
+    spawnLog(world, { x: 10, y: 0 });
+    spawnFlint(world, { x: 12, y: 4 });
 
     // La rama siempre queda más cerca de la mascota que el martillo.
     const branchSpots: Vec2[] = [
-      { x: 1, y: 1 },
-      { x: 2, y: 2 },
-      { x: 1, y: 3 },
+      { x: 1, y: 2 },
+      { x: 2, y: 3 },
+      { x: 1, y: 4 },
     ];
     const hammerSpots: Vec2[] = [
-      { x: 3, y: 0 },
-      { x: 3, y: 4 },
-      { x: 2, y: 4 },
+      { x: 4, y: 1 },
+      { x: 4, y: 5 },
+      { x: 3, y: 5 },
     ];
     const branchIndex = nextInt(rng, 0, branchSpots.length - 1);
     const hammerIndex = nextInt(rng, 0, hammerSpots.length - 1);

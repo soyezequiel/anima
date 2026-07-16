@@ -1,5 +1,5 @@
 import type { EventLog } from '@anima/shared';
-import { createEventLog } from '@anima/shared';
+import { createEventLog, kindLabel } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, SimEvent } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
@@ -1761,7 +1761,11 @@ export class AnimaAgent {
 
       case 'fetch-item':
         return [
-          { op: 'findEntities', query: { kind: targetKind }, store: 'requestedItems' },
+          // held:false: "traé un tronco" pide OTRO tronco. Sin el filtro, la
+          // búsqueda devolvía el que ya llevaba (nearest lo ordena a distancia
+          // 0) y el programa terminaba "cumplido" sin traer nada — pedir dos
+          // ingredientes iguales era imposible.
+          { op: 'findEntities', query: { kind: targetKind, held: false }, store: 'requestedItems' },
           {
             op: 'selectTarget',
             from: 'requestedItems',
@@ -1874,14 +1878,12 @@ export class AnimaAgent {
   }
 
   private completionReply(request: GoalUserRequest): string {
-    const target =
-      {
-        food: 'el alimento',
-        wall: 'el muro',
-        branch: 'la rama',
-        hammer: 'el martillo',
-        tree: 'el árbol',
-      }[request.targetKind ?? ''] ?? 'eso';
+    // El nombre sale del vocabulario compartido: "recogí el tronco", nunca
+    // "recogí eso" para un objeto con nombre conocido.
+    const name = request.targetKind ? kindLabel(request.targetKind) : 'eso';
+    const target = request.targetKind
+      ? `${/a$/.test(name) ? 'la' : 'el'} ${name}`
+      : 'eso';
     switch (request.kind) {
       case 'wait-here':
         return 'Listo, esperé aquí un momento.';

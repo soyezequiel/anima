@@ -18,6 +18,8 @@ const KIND_LABELS: Record<string, string> = {
   flint: 'pedernal',
   campfire: 'fogata',
   chair: 'silla',
+  torch: 'antorcha',
+  barricade: 'empalizada',
   cactus: 'cactus',
 };
 

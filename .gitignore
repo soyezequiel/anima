@@ -10,7 +10,9 @@ coverage/
 # no cubría apps/api/data/, ni los ficheros -wal/-shm de SQLite).
 **/data/*.sqlite
 **/data/*.sqlite-*
-# CODEX_HOME por usuario: contiene credenciales gestionadas por el CLI de Codex
-data/codex/
+# CODEX_HOME por usuario: contiene credenciales gestionadas por el CLI de
+# Codex. Anclado con **/ igual que las bases: el patrón a secas no cubría
+# apps/api/data/codex/, y un `git add -A` habría commiteado tokens.
+**/data/codex/
 playwright-report/
 test-results/

@@ -18,6 +18,8 @@ export const KIND_EMOJI: Record<string, string> = {
   cactus: '🌵',
   campfire: '🔥',
   chair: '🪑',
+  torch: '🕯️',
+  barricade: '🚧',
 };
 
 /**
