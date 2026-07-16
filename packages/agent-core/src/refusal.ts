@@ -13,6 +13,8 @@ export type UserRequest =
   | { kind: 'consume-item'; targetKind: string; raw: string }
   | { kind: 'wait-here'; raw: string }
   | { kind: 'move-direction'; directions: Direction[]; raw: string }
+  /** Ejecutar una habilidad que ya aprendió y demostró en evaluación. */
+  | { kind: 'run-skill'; skillName: string; raw: string }
   | { kind: 'unknown'; raw: string };
 
 export type RequestClassification =
@@ -58,6 +60,8 @@ export function evaluateUserRequest(
   perception: Perception,
   memory: MemoryStore,
   currentGoal: Goal | undefined,
+  /** Habilidades estables disponibles: define qué puede aceptar de `run-skill`. */
+  knownSkills: string[] = [],
 ): RequestDecision {
   if (request.kind === 'unknown') {
     return {
@@ -91,6 +95,20 @@ export function evaluateUserRequest(
         classification: 'accepted',
         reason: `Voy ${displayDirections(request.directions)}.`,
       };
+
+    case 'run-skill': {
+      if (!knownSkills.includes(request.skillName)) {
+        return {
+          classification: 'cannot',
+          reason: `Todavía no tengo aprendida la habilidad "${request.skillName}".`,
+          alternative: 'Si me explicas en qué consiste, puedo intentar aprenderla.',
+        };
+      }
+      return {
+        classification: 'accepted',
+        reason: `Voy a hacer "${request.skillName}".`,
+      };
+    }
 
     case 'destroy-entity': {
       const targetName = displayKind(request.targetKind);

@@ -27,9 +27,40 @@ que el mundo puede rechazar.
 
 `SkillDefinition`: id, nombre, versión, estado (`experimental | stable |
 deprecated | archived`), descripción, **motivación** (por qué se creó),
-programa, resultado esperado, criterios de éxito evaluables
-(`consumedKind`, `energyIncreased`, ...), invariantes, dependencias, versión
-padre, métricas, fallos conocidos, historial.
+programa, resultado esperado, criterios de éxito evaluables, invariantes,
+dependencias, versión padre, métricas, fallos conocidos, historial.
+
+### Criterios de éxito
+
+Sobre recursos: `energyIncreased`, `consumedKind`, `reachedAdjacentKind`,
+`holdingKind`. Sobre conducta: `minMoves` (movimientos que el mundo aceptó; los
+bloqueados no cuentan), `returnedToStart`, `netDisplacementAtLeast`,
+`visitedDistinctCells`, `noDamageTaken`. Cotas de costo: `maxTicks`,
+`maxIntents`. Los de conducta permiten juzgar habilidades que no consisten en
+obtener nada —un baile, una ronda, una retirada—, que es lo que el cuidador
+suele querer enseñar; para medirlos, `SkillRunReport` registra el recorrido del
+actor muestreado por tick.
+
+`validateSuccessCriteria` es al contrato lo que `validateSkillProgram` es al
+programa: la única puerta para criterios de fuentes no confiables. Esquema
+estricto por tipo, sin repetidos, y rechazo de contratos que solo acotan el
+costo — un programa que no hace nada los cumpliría. Ver ADR 0016.
+
+## Dos orígenes, un solo ciclo
+
+- **Necesidad interna**: la mascota detecta que le falta una capacidad
+  (todas sus estrategias conocidas quedaron prohibidas) y usa un contrato fijo
+  en el código, porque nace de su cuerpo. Se evalúa en `MVP_SCENARIOS`.
+- **Enseñanza del cuidador**: pide una conducta que ella no tiene
+  (`learn-skill`). El modelo traduce la conversación a un contrato
+  (`skill.contract`), el agente valida los criterios, y nace un objetivo de
+  origen `learning`. Se evalúa en `PRACTICE_SCENARIOS` (sala de práctica +
+  mundos reales): la sala existe porque sus mundos son estrechos, pero no la
+  exime de funcionar donde vive.
+
+Lo aprendido queda con nombre y se puede pedir después (`run-skill`): el
+repertorio estable viaja en el prompt de interpretación, así que el catálogo
+ejecutable no es fijo. Aprender puede fallar, y falla en voz alta.
 
 ## Ciclo cerrado (implementado en `agent-core/skill-dev.ts`)
 

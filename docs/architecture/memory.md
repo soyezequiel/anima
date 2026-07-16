@@ -18,6 +18,15 @@ Creencias no confirmadas con confianza, evidencia positiva/negativa y estado
 `(pos+1)/(pos+neg+2)` — ni la primera evidencia da certeza, ni un fallo la
 destruye.
 
+Aquí entra **lo que enseña el cuidador**: una lección se destila a un enunciado
+autónomo (`distill.knowledge`) y se guarda como hipótesis, nunca como hecho —
+el cuidador puede equivocarse, y la mascota la confirma o la descarta con su
+propia experiencia. Si la enseñanza contradice lo observado, se anota igual pero
+sin sumarle evidencia a favor. Las hipótesis vigentes viajan a los prompts de
+diálogo y al contexto de diseño de habilidades: si no pudiera nombrar lo que le
+enseñaron, para el cuidador sería indistinguible de no haberlo aprendido. Ver
+ADR 0016.
+
 ## Semántica
 Conocimiento consolidado ("consumir alimento recupera energía", "la rama no
 puede dañar el muro"). Los hechos contradichos repetidamente quedan

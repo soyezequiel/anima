@@ -1,7 +1,7 @@
 import type { EventLog } from '@anima/shared';
 import type { ModelProvider } from '@anima/model-providers';
 import type { EvaluationCriterion, SkillDefinition, SkillLibrary } from '@anima/skill-runtime';
-import { validateSkillProgram } from '@anima/skill-runtime';
+import { describeCriterion, validateSkillProgram } from '@anima/skill-runtime';
 import type { EvaluationReport, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import { applyEvaluation, evaluateSkill } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
@@ -131,6 +131,9 @@ export async function developSkill(
           skillName: contract.name,
           problem: contract.purpose,
           context,
+          // El diseñador tiene que conocer la vara con la que lo van a medir;
+          // que la conozca no lo hace juez: el evaluador la aplica aparte.
+          successCriteria: contract.successCriteria.map(describeCriterion),
         })
       : await config.provider.complete({
           kind: 'skill.revise',

@@ -1,15 +1,47 @@
 import type { Direction } from '@anima/sim-core';
+import type { EvaluationCriterion } from '@anima/skill-runtime';
 
 export type GoalSource =
-  'internal-signal' | 'curiosity' | 'danger' | 'user-request' | 'promise' | 'contradiction';
+  | 'internal-signal'
+  | 'curiosity'
+  | 'danger'
+  | 'user-request'
+  | 'promise'
+  | 'contradiction'
+  /** Aprender una conducta que el cuidador pidió y todavía no sabe hacer. */
+  | 'learning';
 
 export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
 
 export interface GoalUserRequest {
-  kind: 'destroy-entity' | 'fetch-item' | 'consume-item' | 'wait-here' | 'move-direction';
+  kind:
+    | 'destroy-entity'
+    | 'fetch-item'
+    | 'consume-item'
+    | 'wait-here'
+    | 'move-direction'
+    | 'run-skill';
   targetKind?: string;
   directions?: Direction[];
+  skillName?: string;
   raw: string;
+}
+
+/**
+ * Lo que hay que aprender y cuándo contará como aprendido. Vive en el objetivo
+ * (no en una variable suelta) para que sobreviva a un guardado, se vea en la
+ * UI y pueda reintentarse: aprender es una empresa de la mascota, no un efecto
+ * secundario de un mensaje de chat.
+ */
+export interface LearningContract {
+  name: string;
+  purpose: string;
+  expectedOutcome: string;
+  successCriteria: EvaluationCriterion[];
+  /** Lo que el cuidador pidió, tal cual lo dijo. */
+  raw: string;
+  /** Lo que la mascota sabía y veía al empezar: insumo para el diseño. */
+  context: string[];
 }
 
 /** Los objetivos son estructuras, nunca texto libre suelto. */
@@ -31,6 +63,8 @@ export interface Goal {
   reactivateWhen?: string;
   /** Petición estructurada que permite ejecutar y restaurar objetivos del usuario. */
   userRequest?: GoalUserRequest;
+  /** Contrato a satisfacer cuando el objetivo es aprender una habilidad nueva. */
+  learning?: LearningContract;
 }
 
 export type NewGoal = Omit<Goal, 'id' | 'status' | 'createdAtTick'>;

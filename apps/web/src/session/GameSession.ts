@@ -7,8 +7,8 @@ import { buildPerception, getEntity, stepWorld, takeSnapshot } from '@anima/sim-
 import type { WorldSnapshot } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
-import { SkillLibrary } from '@anima/skill-runtime';
-import { foodBehindWall, MVP_SCENARIOS } from '@anima/test-scenarios';
+import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
+import { foodBehindWall, MVP_SCENARIOS, PRACTICE_SCENARIOS } from '@anima/test-scenarios';
 import type { KeyValueStore, LegacyReport, PetIdentity, SessionSaveData } from '@anima/persistence';
 import {
   appendLegacy,
@@ -156,6 +156,7 @@ export class GameSession {
       library: this.library,
       regressions: this.regressions,
       evaluationScenarios: MVP_SCENARIOS,
+      practiceScenarios: PRACTICE_SCENARIOS,
       evaluationSeeds: [11, 22, 33],
       guidanceEnabled: true,
     });
@@ -590,6 +591,15 @@ export class GameSession {
         case 'skill.requested':
           push(event, 'requested', `Necesita una habilidad: ${String(d.purpose)}`);
           break;
+        case 'skill.contract.agreed':
+          push(
+            event,
+            'contract-agreed',
+            `El cuidador le pidió aprender "${String(d.name)}". Lo dará por logrado si: ${(
+              d.criteria as string[]
+            ).join('; ')}`,
+          );
+          break;
         case 'skill.created':
           push(event, 'created', String(d.rationale));
           break;
@@ -671,7 +681,7 @@ export class GameSession {
       description: skill.description,
       motivation: skill.motivation,
       expectedOutcome: skill.expectedOutcome,
-      successCriteria: skill.successCriteria.map((c) => (c.kind ? `${c.type}:${c.kind}` : c.type)),
+      successCriteria: skill.successCriteria.map(describeCriterion),
       lastEvaluationSuccessRate: skill.metrics.lastEvaluationSuccessRate ?? null,
       totalRuns: skill.metrics.totalRuns,
       successfulRuns: skill.metrics.successfulRuns,

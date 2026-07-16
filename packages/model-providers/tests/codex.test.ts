@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { validateSkillProgram } from '@anima/skill-runtime';
+import { validateSkillProgram, validateSuccessCriteria } from '@anima/skill-runtime';
 import type { CodexTransportInput } from '../src/index.js';
 import { CodexModelProvider, reachBlockedResourceProgram } from '../src/index.js';
 
@@ -102,10 +102,115 @@ describe('CodexModelProvider', () => {
       command: { action: 'move-direction', directions: ['up', 'left'] },
     });
     expect(seen[0]?.schema).toMatchObject({
-      required: ['action', 'targetKind', 'directions', 'summary'],
+      required: ['action', 'targetKind', 'directions', 'skillName', 'summary'],
     });
     expect(seen[0]?.prompt).toContain('pegá un pasito rumbo al rincón noroeste');
     expect(seen[0]?.prompt).toContain('Mascota: Estoy junto al árbol.');
+  });
+
+  it('ofrece aprender lo que no sabe y ejecutar lo que ya aprendió', async () => {
+    const seen: CodexTransportInput[] = [];
+    const learn = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'learn-skill',
+          targetKind: '',
+          directions: [],
+          skillName: '',
+          summary: 'bailar moviéndose de lado a lado',
+        }),
+        seen,
+      ),
+    );
+    await expect(
+      learn.complete({
+        kind: 'interpret.command',
+        text: 'baila',
+        facts: [],
+        skills: [{ name: 'ronda', description: 'dar una vuelta' }],
+      }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'learn-skill', summary: 'bailar moviéndose de lado a lado' },
+    });
+    // El repertorio ya aprendido y el límite del cuerpo viajan en el prompt:
+    // sin ellos el modelo no puede distinguir run-skill de learn-skill ni de
+    // unsupported.
+    expect(seen[0]?.prompt).toContain('ronda: dar una vuelta');
+    expect(seen[0]?.prompt).toContain('NO puede: saltar');
+
+    const run = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'run-skill',
+          targetKind: '',
+          directions: [],
+          skillName: 'baile-basico',
+          summary: '',
+        }),
+      ),
+    );
+    await expect(
+      run.complete({ kind: 'interpret.command', text: 'baila', facts: [] }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'run-skill', skillName: 'baile-basico' },
+    });
+  });
+
+  it('el contrato llega sin el relleno del esquema y valida como criterios', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          name: 'baile-basico',
+          purpose: 'bailar de lado a lado',
+          expectedOutcome: 'termina donde empezó',
+          // El esquema obliga a mandar kind y value siempre: aquí van vacíos.
+          successCriteria: [
+            { type: 'minMoves', kind: '', value: 4 },
+            { type: 'returnedToStart', kind: '', value: 0 },
+          ],
+        }),
+        seen,
+      ),
+    );
+
+    const response = await provider.complete({
+      kind: 'skill.contract',
+      request: 'bailar',
+      conversation: [{ from: 'user', text: 'movete de un lado a otro' }],
+      facts: ['ahora veo: food'],
+    });
+
+    expect(response.kind).toBe('skill.contract');
+    const criteria =
+      response.kind === 'skill.contract' ? response.contract.successCriteria : undefined;
+    // El relleno se fue: lo que queda pasa la puerta estricta del agente.
+    expect(criteria).toEqual([{ type: 'minMoves', value: 4 }, { type: 'returnedToStart' }]);
+    const validated = validateSuccessCriteria(criteria);
+    expect(validated.ok).toBe(true);
+    expect(seen[0]?.prompt).toContain('Cuidador: movete de un lado a otro');
+  });
+
+  it('destila una enseñanza a un enunciado guardable', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({ statement: 'los troncos sirven para construir', confidence: 1.4 }),
+      ),
+    );
+
+    await expect(
+      provider.complete({
+        kind: 'distill.knowledge',
+        text: 'mirá, con eso se construye',
+        conversation: [{ from: 'user', text: 'agarrá el tronco' }],
+      }),
+    ).resolves.toEqual({
+      kind: 'knowledge',
+      statement: 'los troncos sirven para construir',
+      confidence: 1,
+    });
   });
 
   it('rechaza JSON inválido o formas incorrectas con errores claros', async () => {

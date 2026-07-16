@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import type { Result } from '@anima/shared';
+import { err, ok } from '@anima/shared';
 import type { SkillProgram } from './dsl.js';
 
 export type SkillStatus = 'experimental' | 'stable' | 'deprecated' | 'archived';
@@ -6,11 +9,110 @@ export interface SkillPrecondition {
   description: string;
 }
 
+/**
+ * Criterios que el evaluador sabe medir por sí mismo, sin preguntarle a nadie.
+ * Definen qué significa "logrado" para una habilidad. Los primeros son sobre
+ * recursos (la necesidad original de la mascota); los de conducta permiten
+ * juzgar habilidades que no consisten en obtener nada — un baile, una ronda,
+ * una retirada — que es lo que el cuidador suele querer enseñar.
+ */
+export type EvaluationCriterionType =
+  | 'energyIncreased'
+  | 'consumedKind'
+  | 'reachedAdjacentKind'
+  | 'holdingKind'
+  | 'minMoves'
+  | 'returnedToStart'
+  | 'netDisplacementAtLeast'
+  | 'visitedDistinctCells'
+  | 'noDamageTaken'
+  | 'maxTicks'
+  | 'maxIntents';
+
 export interface EvaluationCriterion {
   /** Criterios entendidos por el evaluador (ver skill-evaluator). */
-  type: 'energyIncreased' | 'consumedKind' | 'reachedAdjacentKind' | 'maxTicks' | 'maxIntents';
+  type: EvaluationCriterionType;
   kind?: string;
   value?: number;
+}
+
+/**
+ * Un criterio propuesto por un modelo es tan poco confiable como un programa:
+ * sin esta puerta, una habilidad podría "aprobarse" contra un contrato vacío
+ * o incoherente. Cada forma exige exactamente los campos que el evaluador
+ * necesita para medirla.
+ */
+const criterionSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('energyIncreased') }).strict(),
+  z.object({ type: z.literal('consumedKind'), kind: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('reachedAdjacentKind'), kind: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('holdingKind'), kind: z.string().min(1) }).strict(),
+  z.object({ type: z.literal('minMoves'), value: z.number().int().min(1).max(200) }).strict(),
+  z.object({ type: z.literal('returnedToStart') }).strict(),
+  z
+    .object({ type: z.literal('netDisplacementAtLeast'), value: z.number().int().min(1).max(50) })
+    .strict(),
+  z
+    .object({ type: z.literal('visitedDistinctCells'), value: z.number().int().min(2).max(100) })
+    .strict(),
+  z.object({ type: z.literal('noDamageTaken') }).strict(),
+  z.object({ type: z.literal('maxTicks'), value: z.number().int().min(1).max(1000) }).strict(),
+  z.object({ type: z.literal('maxIntents'), value: z.number().int().min(1).max(1000) }).strict(),
+]);
+
+const successCriteriaSchema = z.array(criterionSchema).min(1).max(4);
+
+/**
+ * Valida los criterios de éxito de un contrato de fuente no confiable. Es la
+ * puerta equivalente a `validateSkillProgram`, pero del lado del contrato: el
+ * programa dice qué hace la mascota, el contrato dice cuándo cuenta como
+ * logrado, y ninguno de los dos puede venir crudo de un modelo.
+ */
+export function validateSuccessCriteria(raw: unknown): Result<EvaluationCriterion[]> {
+  const parsed = successCriteriaSchema.safeParse(raw);
+  if (!parsed.success) {
+    return err(
+      `Criterios inválidos: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`,
+    );
+  }
+  const types = parsed.data.map((c) => c.type);
+  if (new Set(types).size !== types.length) {
+    return err('Criterios inválidos: hay criterios repetidos');
+  }
+  // Un contrato que solo acota el costo no define ningún logro: cualquier
+  // programa que no haga nada lo cumpliría.
+  if (types.every((type) => type === 'maxTicks' || type === 'maxIntents')) {
+    return err('Criterios inválidos: ninguno describe un logro observable');
+  }
+  return ok(parsed.data);
+}
+
+/** El contrato en palabras: para el diseñador, para la UI y para el cuidador. */
+export function describeCriterion(criterion: EvaluationCriterion): string {
+  switch (criterion.type) {
+    case 'energyIncreased':
+      return 'su energía termina más alta';
+    case 'consumedKind':
+      return `consume un objeto de tipo ${criterion.kind}`;
+    case 'reachedAdjacentKind':
+      return `termina junto a un objeto de tipo ${criterion.kind}`;
+    case 'holdingKind':
+      return `termina llevando un objeto de tipo ${criterion.kind}`;
+    case 'minMoves':
+      return `hace al menos ${criterion.value} movimientos efectivos`;
+    case 'returnedToStart':
+      return 'termina en la misma casilla donde empezó';
+    case 'netDisplacementAtLeast':
+      return `termina a ${criterion.value} casillas o más de donde empezó`;
+    case 'visitedDistinctCells':
+      return `pisa al menos ${criterion.value} casillas distintas`;
+    case 'noDamageTaken':
+      return 'no recibe daño';
+    case 'maxTicks':
+      return `no tarda más de ${criterion.value} ticks`;
+    case 'maxIntents':
+      return `no usa más de ${criterion.value} acciones`;
+  }
 }
 
 export interface SafetyInvariant {

@@ -5,22 +5,56 @@ import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
 import type { SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
-import { SkillExecution } from '@anima/skill-runtime';
+import { describeCriterion, SkillExecution, validateSuccessCriteria } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
-import type { Goal, GoalManagerData, GoalUserRequest } from './goals.js';
+import type { Goal, GoalManagerData, GoalUserRequest, LearningContract } from './goals.js';
 import { GoalManager } from './goals.js';
 import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
 import { evaluateUserRequest, parseUserMessage } from './refusal.js';
-import type { SkillContract } from './skill-dev.js';
+import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
 import { developSkill, evaluateAndApply } from './skill-dev.js';
 
 export const GOAL_RESTORE_ENERGY = 'recuperar energía';
 export const SKILL_REACH_BLOCKED_FOOD = 'alcanzar-alimento-bloqueado';
 
 const LOW_ENERGY_FRACTION = 0.35;
+
+/** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
+const USER_REQUEST_WEIGHTS: Record<
+  GoalUserRequest['kind'],
+  { priority: number; urgency: number }
+> = {
+  'consume-item': { priority: 1, urgency: 0.8 },
+  'move-direction': { priority: 1, urgency: 0.75 },
+  'run-skill': { priority: 1, urgency: 0.7 },
+  'fetch-item': { priority: 0.6, urgency: 0.35 },
+  'destroy-entity': { priority: 0.6, urgency: 0.35 },
+  'wait-here': { priority: 0.6, urgency: 0.35 },
+};
+
+/**
+ * Mensaje del usuario ya clasificado. Además de una orden ejecutable o una
+ * enseñanza, puede ser el pedido de una conducta que la mascota todavía no
+ * tiene: eso no es un callejón sin salida, es el disparador del aprendizaje.
+ */
+type InterpretedMessage =
+  | UserRequest
+  | { kind: 'explanation'; raw: string }
+  | { kind: 'learn-skill'; summary: string; raw: string };
+
+/** Nombre de habilidad utilizable: kebab-case sin acentos, corto y estable. */
+function normalizeSkillName(raw: string): string {
+  return raw
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+}
 
 /** Estrategia primitiva: ir directo al alimento y comerlo. Sin herramientas. */
 const DIRECT_APPROACH_PROGRAM: SkillProgram = [
@@ -43,6 +77,13 @@ export interface AgentConfig {
   regressions: RegressionStore;
   /** Escenarios que el evaluador usa como mundos de prueba aislados. */
   evaluationScenarios: NamedScenario[];
+  /**
+   * Mundos donde practica lo que el cuidador le enseña. Por defecto, los
+   * mismos de evaluación: una conducta que no funciona en su propio mundo no
+   * le sirve. Conviene incluir alguno espacioso, para que una habilidad de
+   * movimiento tenga dónde demostrarse.
+   */
+  practiceScenarios?: NamedScenario[];
   evaluationSeeds: number[];
   /** Experiencia guiada: si el usuario no explica, el sistema muestra pistas. */
   guidanceEnabled: boolean;
@@ -479,34 +520,26 @@ export class AnimaAgent {
       ? null
       : this.contextualizeUserMessage(parseUserMessage(text), text, perception);
 
-    const parsed =
+    const parsed: InterpretedMessage | null =
       fromParser && fromParser.kind !== 'unknown'
         ? fromParser
         : await this.interpretWithModel(text, perception);
     if (parsed === null) return; // El modelo ya respondió (charla, negativa o fallo).
 
     if (parsed.kind === 'explanation') {
-      this.pendingExplanation = text;
-      // Si el objetivo se suspendió por falta de ideas, la nueva
-      // información del usuario es motivo para reintentar.
-      for (const goal of this.goals.all()) {
-        if (goal.status === 'suspended') {
-          this.goals.reactivate(goal.id);
-          this.progress.resetGoal(goal.id);
-          this.suspensionEdibles.delete(goal.id);
-          this.emit('goal.reactivated', {
-            goalId: goal.id,
-            reason: 'nueva información del usuario',
-          });
-        }
-      }
-      this.reply('Gracias, eso me ayuda a entender qué me pasa.');
+      await this.learnFromExplanation(text);
+      return;
+    }
+
+    if (parsed.kind === 'learn-skill') {
+      await this.startLearning(parsed.summary, text, perception);
       return;
     }
 
     if (
       parsed.kind === 'wait-here' ||
       parsed.kind === 'move-direction' ||
+      parsed.kind === 'run-skill' ||
       ('targetKind' in parsed && parsed.targetKind !== 'unknown')
     ) {
       this.lastUserRequest = structuredClone(parsed);
@@ -526,6 +559,189 @@ export class AnimaAgent {
   }
 
   /**
+   * Lo que el cuidador enseña tiene que sobrevivir al turno en que lo dijo, o
+   * no es aprendizaje: es cortesía. Entra como hipótesis y no como hecho
+   * porque el cuidador puede equivocarse — la mascota la confirmará o la
+   * descartará con su propia experiencia. Desde ahí queda disponible para el
+   * diálogo, para decidir y para diseñar habilidades.
+   */
+  private async learnFromExplanation(text: string): Promise<void> {
+    // Sigue sirviendo para interpretar la señal de energía si aún no la entiende.
+    this.pendingExplanation = text;
+    // Si un objetivo se suspendió por falta de ideas, la nueva información
+    // del usuario es motivo para reintentar.
+    for (const goal of this.goals.all()) {
+      if (goal.status === 'suspended') {
+        this.goals.reactivate(goal.id);
+        this.progress.resetGoal(goal.id);
+        this.suspensionEdibles.delete(goal.id);
+        this.emit('goal.reactivated', {
+          goalId: goal.id,
+          reason: 'nueva información del usuario',
+        });
+      }
+    }
+
+    // Un proveedor que no entiende lenguaje no puede destilar nada: guarda la
+    // enseñanza literal, que es honesto y no inventa comprensión.
+    let statement = text;
+    let confidence = 0.6;
+    if (this.config.provider.interpretsLanguage) {
+      try {
+        const response = await this.config.provider.complete({
+          kind: 'distill.knowledge',
+          text,
+          conversation: this.dialogueHistory(),
+        });
+        if (response.kind !== 'knowledge') {
+          throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+        }
+        statement = response.statement;
+        confidence = response.confidence;
+      } catch (error) {
+        this.emit('provider.error', {
+          provider: this.config.provider.name,
+          operation: 'distill.knowledge',
+          message: error instanceof Error ? error.message : String(error),
+          recoveredWith: 'enseñanza literal',
+        });
+      }
+    }
+
+    const hypothesis = this.memory.addHypothesis(statement, this.tick, confidence);
+    // Que el cuidador lo afirme es evidencia, pero solo si no contradice lo
+    // que la mascota ya observó: en ese caso queda anotada y pendiente.
+    if (confidence >= 0.5) this.memory.addEvidence(hypothesis.id, true, this.tick);
+    this.emit('hypothesis.updated', {
+      hypothesisId: hypothesis.id,
+      statement: hypothesis.statement,
+      confidence: hypothesis.confidence,
+      source: 'user-teaching',
+    });
+    this.memory.recordEpisode({
+      kind: 'teaching',
+      summary: `mi cuidador me enseñó: ${hypothesis.statement}`,
+      tick: this.tick,
+      importance: 0.7,
+    });
+    this.reply(`Anoté esto: ${hypothesis.statement}. Voy a ver si me pasa lo mismo.`);
+  }
+
+  /**
+   * El cuidador pidió una conducta que la mascota no tiene. Antes de intentar
+   * nada hay que acordar qué significaría lograrlo: sin contrato, "aprender"
+   * sería decir que sí y no cambiar en nada. El contrato se le muestra.
+   */
+  private async startLearning(
+    summary: string,
+    raw: string,
+    perception: Perception,
+  ): Promise<void> {
+    let contract: LearningContract;
+    try {
+      contract = await this.deriveLearningContract(summary, raw, perception);
+    } catch (error) {
+      this.emit('provider.error', {
+        provider: this.config.provider.name,
+        operation: 'skill.contract',
+        message: error instanceof Error ? error.message : String(error),
+      });
+      this.reply(
+        `Quiero aprender eso, pero no consigo imaginar en qué se notaría que lo logré. ¿Me lo explicas con lo que tendría que hacer paso a paso?`,
+      );
+      return;
+    }
+
+    const existing = this.goals
+      .all()
+      .find(
+        (goal) =>
+          goal.source === 'learning' &&
+          goal.learning?.name === contract.name &&
+          goal.status === 'active',
+      );
+    if (existing) return; // Ya está en ello: no abrir el ciclo dos veces.
+
+    const goal = this.goals.create(
+      {
+        description: `aprender: ${contract.name}`,
+        source: 'learning',
+        priority: 0.7,
+        urgency: 0.5,
+        expectedValue: 0.8,
+        preconditions: [],
+        successCriteria: [contract.expectedOutcome],
+        failureCriteria: [],
+        learning: contract,
+      },
+      this.tick,
+    );
+    this.emit('goal.created', {
+      goalId: goal.id,
+      description: goal.description,
+      source: goal.source,
+    });
+    this.emit('skill.contract.agreed', {
+      goalId: goal.id,
+      name: contract.name,
+      purpose: contract.purpose,
+      criteria: contract.successCriteria.map(describeCriterion),
+    });
+    this.reply(
+      `Todavía no sé hacerlo, pero quiero aprenderlo. Para mí "${contract.name}" va a estar ` +
+        `logrado cuando ${contract.successCriteria.map(describeCriterion).join(', y cuando ')}. ` +
+        `Déjame probarlo en mundos imaginados.`,
+    );
+  }
+
+  /** Traduce lo que el cuidador pidió a un contrato que el evaluador sepa medir. */
+  private async deriveLearningContract(
+    summary: string,
+    raw: string,
+    perception: Perception,
+  ): Promise<LearningContract> {
+    const response = await this.config.provider.complete({
+      kind: 'skill.contract',
+      request: summary || raw,
+      conversation: this.dialogueHistory(),
+      facts: this.dialogueFacts(perception),
+    });
+    if (response.kind !== 'skill.contract') {
+      throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+    }
+
+    const name = normalizeSkillName(response.contract.name);
+    if (!name) throw new Error('el contrato no propone un nombre usable');
+    if (name === SKILL_REACH_BLOCKED_FOOD) {
+      // Reusar ese nombre mezclaría versiones de dos habilidades distintas y
+      // dejaría la de sobrevivir sujeta a un contrato ajeno.
+      throw new Error(`el contrato reutiliza el nombre reservado ${SKILL_REACH_BLOCKED_FOOD}`);
+    }
+    // Los criterios vienen de un modelo: pasan por la misma puerta que los
+    // programas, o el contrato podría ser inmedible o trivial de aprobar.
+    const criteria = validateSuccessCriteria(response.contract.successCriteria);
+    if (!criteria.ok) throw new Error(criteria.error);
+
+    const purpose = response.contract.purpose.trim() || summary || raw;
+    return {
+      name,
+      purpose,
+      expectedOutcome: response.contract.expectedOutcome.trim() || purpose,
+      successCriteria: criteria.value,
+      raw,
+      context: [
+        `mi cuidador me pidió: "${raw}"`,
+        ...this.dialogueFacts(perception),
+        ...this.memory
+          .hypothesisList()
+          .filter((h) => h.resolved !== 'discarded')
+          .slice(-4)
+          .map((h) => `creo que ${h.statement}`),
+      ],
+    };
+  }
+
+  /**
    * Pide al modelo que clasifique el mensaje. Devuelve la petición
    * estructurada, o null cuando ya se respondió al usuario (charla, acción
    * fuera del catálogo, o fallo del proveedor sin red de seguridad).
@@ -533,7 +749,7 @@ export class AnimaAgent {
   private async interpretWithModel(
     text: string,
     perception: Perception,
-  ): Promise<ReturnType<typeof parseUserMessage> | null> {
+  ): Promise<InterpretedMessage | null> {
     let command: CommandInterpretation;
     try {
       const interpretation = await this.config.provider.complete({
@@ -541,6 +757,8 @@ export class AnimaAgent {
         text,
         facts: this.dialogueFacts(perception),
         history: this.dialogueHistory(),
+        // Su repertorio no es fijo: lo que aprendió también se puede pedir.
+        skills: this.learnedSkills(),
       });
       if (interpretation.kind !== 'command.interpretation') {
         throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
@@ -564,13 +782,28 @@ export class AnimaAgent {
       return null;
     }
 
+    if (command.action === 'learn-skill') {
+      return {
+        kind: 'learn-skill',
+        summary: command.summary.replace(/\s+/g, ' ').trim().slice(0, 300),
+        raw: text,
+      };
+    }
+
     if (command.action === 'unsupported') {
       const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 160);
-      const reason = `Entiendo que me pides ${summary || 'esa acción'}, pero todavía no sé ejecutar ese tipo de acción.`;
+      const reason = `Entiendo que me pides ${summary || 'esa acción'}, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.`;
       this.emit('user.request.refused', {
         request: { kind: 'unknown', raw: text, interpretedAs: summary },
         classification: 'cannot',
         reason,
+      });
+      // Que no pueda no la exime de recordarlo: es algo que su cuidador quiso.
+      this.memory.recordEpisode({
+        kind: 'unmet-request',
+        summary: `mi cuidador me pidió ${summary || text} y mi cuerpo no da para eso`,
+        tick: this.tick,
+        importance: 0.5,
       });
       this.reply(reason);
       return null;
@@ -610,6 +843,19 @@ export class AnimaAgent {
       .factList()
       .slice(-6)
       .map((fact) => fact.statement);
+    // Lo que le enseñaron y aún no verificó también es suyo: si no puede
+    // nombrarlo, para el cuidador es indistinguible de no haberlo aprendido.
+    facts.push(
+      ...this.memory
+        .hypothesisList()
+        .filter((h) => h.resolved !== 'discarded')
+        .slice(-4)
+        .map((h) => `creo (sin confirmar) que ${h.statement}`),
+    );
+    const learned = this.learnedSkills();
+    if (learned.length > 0) {
+      facts.push(`sé hacer estas habilidades: ${learned.map((s) => s.name).join(', ')}`);
+    }
     const visibleKinds = [...new Set(perception.visibleEntities.map((entity) => entity.kind))];
     if (visibleKinds.length > 0) facts.push(`ahora veo: ${visibleKinds.join(', ')}`);
     if (perception.self.heldItems.length > 0) {
@@ -631,7 +877,7 @@ export class AnimaAgent {
   private userRequestFromInterpretation(
     command: Exclude<
       CommandInterpretation,
-      { action: 'unsupported' | 'not-command' | 'explanation' }
+      { action: 'unsupported' | 'not-command' | 'explanation' | 'learn-skill' }
     >,
     raw: string,
   ): UserRequest {
@@ -644,7 +890,21 @@ export class AnimaAgent {
         return { kind: 'wait-here', raw };
       case 'move-direction':
         return { kind: 'move-direction', directions: [...command.directions], raw };
+      case 'run-skill':
+        return { kind: 'run-skill', skillName: normalizeSkillName(command.skillName), raw };
     }
+  }
+
+  /** Habilidades estables: lo que de verdad sabe hacer, una entrada por nombre. */
+  private learnedSkills(): { name: string; description: string }[] {
+    const seen = new Set<string>();
+    const skills: { name: string; description: string }[] = [];
+    for (const skill of this.config.library.all()) {
+      if (skill.status !== 'stable' || seen.has(skill.name)) continue;
+      seen.add(skill.name);
+      skills.push({ name: skill.name, description: skill.description });
+    }
+    return skills;
   }
 
   private replyProviderError(operation: ModelRequest['kind'], error: unknown): void {
@@ -712,18 +972,16 @@ export class AnimaAgent {
       perception,
       this.memory,
       this.goals.selectActive(),
+      this.learnedSkills().map((skill) => skill.name),
     );
     if (decision.classification === 'accepted' && request.kind !== 'unknown') {
-      const priority =
-        request.kind === 'consume-item' || request.kind === 'move-direction' ? 1 : 0.6;
-      const urgency =
-        request.kind === 'consume-item' ? 0.8 : request.kind === 'move-direction' ? 0.75 : 0.35;
+      const weights = USER_REQUEST_WEIGHTS[request.kind];
       const goal = this.goals.create(
         {
           description: `petición del usuario: ${request.raw}`,
           source: 'user-request',
-          priority,
-          urgency,
+          priority: weights.priority,
+          urgency: weights.urgency,
           expectedValue: 0.6,
           preconditions: [],
           successCriteria: ['la petición queda satisfecha'],
@@ -732,6 +990,7 @@ export class AnimaAgent {
             kind: request.kind,
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
             ...('directions' in request ? { directions: request.directions } : {}),
+            ...('skillName' in request ? { skillName: request.skillName } : {}),
             raw: request.raw,
           },
         },
@@ -754,6 +1013,9 @@ export class AnimaAgent {
   // ---- persecución de objetivos --------------------------------------------
 
   private async pursueGoal(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
+    if (goal.source === 'learning' && goal.learning) {
+      return this.pursueLearning(goal, goal.learning);
+    }
     if (goal.source === 'user-request' && goal.userRequest) {
       const program = this.programForUserRequest(goal.userRequest);
       this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
@@ -817,6 +1079,160 @@ export class AnimaAgent {
     return null;
   }
 
+  /**
+   * Corre el ciclo cerrado para un contrato cualquiera. Es el mismo mecanismo
+   * para la necesidad que nace de su cuerpo (recuperar energía) y para la que
+   * nace de su cuidador (una conducta enseñada): lo único que cambia es quién
+   * escribió el contrato y en qué mundos se practica.
+   */
+  private async runSkillDevelopment(
+    contract: SkillContract,
+    context: string[],
+    scenarios: NamedScenario[],
+  ): Promise<SkillDevOutcome> {
+    const outcome = await developSkill(
+      contract,
+      context,
+      {
+        provider: this.config.provider,
+        library: this.config.library,
+        regressions: this.config.regressions,
+        scenarios,
+        seeds: this.config.evaluationSeeds,
+        maxTicksPerCase: 200,
+        maxVersions: this.config.maxVersionsPerDev,
+        now: () => this.now(),
+      },
+      this.events,
+      this.tick,
+    );
+    this.harvestSkillDevFacts(outcome);
+    return outcome;
+  }
+
+  /** Lo aprendido en los experimentos queda en memoria aunque la skill falle. */
+  private harvestSkillDevFacts(outcome: SkillDevOutcome): void {
+    for (const report of outcome.reports) {
+      for (const observation of report.failureObservations) {
+        if (observation.startsWith('no-damage-dealt:')) {
+          const pairs = observation.slice('no-damage-dealt:'.length).split(',');
+          for (const pair of pairs) {
+            const [item, target] = pair.split('->');
+            if (item && target) {
+              const fact = this.memory.addFact(
+                `la herramienta ${item} no puede dañar un ${target}`,
+                this.tick,
+              );
+              this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  private practiceScenarios(): NamedScenario[] {
+    return this.config.practiceScenarios ?? this.config.evaluationScenarios;
+  }
+
+  /**
+   * Aprender lo que el cuidador pidió: diseñar, probar en mundos imaginados y
+   * aceptar el veredicto. Si sale bien, la conducta queda en la biblioteca con
+   * su nombre y se puede pedir para siempre; si sale mal, se dice con qué se
+   * chocó, y los fallos quedan como regresiones que un intento futuro deberá
+   * superar. Lo que no puede pasar es que "aprender" sea decir que sí.
+   */
+  private async pursueLearning(
+    goal: Goal,
+    contract: LearningContract,
+  ): Promise<ActionIntent | null> {
+    this.lastSelectedGoalId = null;
+
+    const already = this.config.library.findStable(contract.name);
+    if (already) {
+      // Ya la sabe (la aprendió antes o la heredó): no hay nada que desarrollar.
+      this.goals.complete(goal.id);
+      this.emit('goal.completed', { goalId: goal.id, strategy: `ya-sabía:${contract.name}` });
+      this.queueSkillRun(contract.name, contract.raw);
+      return null;
+    }
+
+    const outcome = await this.runSkillDevelopment(
+      {
+        name: contract.name,
+        purpose: contract.purpose,
+        motivation: `mi cuidador me pidió: "${contract.raw}"`,
+        expectedOutcome: contract.expectedOutcome,
+        successCriteria: contract.successCriteria,
+      },
+      contract.context,
+      this.practiceScenarios(),
+    );
+
+    if (outcome.stableSkill) {
+      this.memory.recordEpisode({
+        kind: 'skill-learned',
+        summary: `mi cuidador me enseñó "${contract.name}" y lo aprendí tras ${outcome.versionsTried} intento(s)`,
+        tick: this.tick,
+        importance: 0.9,
+      });
+      this.goals.complete(goal.id);
+      this.emit('goal.completed', { goalId: goal.id, strategy: `aprendizaje:${contract.name}` });
+      this.reply(
+        `¡Lo aprendí! "${contract.name}" (v${outcome.stableSkill.version}): ${contract.expectedOutcome}. ` +
+          `Lo probé en mundos imaginados y pasó todas las pruebas. Ya puedo repetirlo cuando me lo pidas.`,
+      );
+      this.queueSkillRun(contract.name, contract.raw);
+      return null;
+    }
+
+    this.memory.recordEpisode({
+      kind: 'skill-failed',
+      summary: `no logré aprender "${contract.name}", que mi cuidador me pidió con: "${contract.raw}"`,
+      tick: this.tick,
+      importance: 0.7,
+    });
+    this.goals.fail(goal.id);
+    this.reply(
+      `Intenté aprender "${contract.name}" y no me salió: ${this.describeLearningFailure(outcome)}. ` +
+        `¿Me lo explicas de otra manera, o con pasos más concretos?`,
+    );
+    return null;
+  }
+
+  /** Por qué no lo logró, con lo que midió el evaluador y no con excusas. */
+  private describeLearningFailure(outcome: SkillDevOutcome): string {
+    const last = outcome.reports[outcome.reports.length - 1];
+    if (!last) return 'no se me ocurrió ningún plan que fuera siquiera válido';
+    const observations = last.failureObservations.slice(0, 4);
+    if (observations.length === 0) return 'ninguno de mis planes pasó las pruebas';
+    return `probé ${outcome.versionsTried} plan(es) y en las pruebas fallaba (${observations.join(', ')})`;
+  }
+
+  /** Deja pedido hacer la habilidad: el cuidador la pidió, no solo enseñarla. */
+  private queueSkillRun(skillName: string, raw: string): void {
+    const weights = USER_REQUEST_WEIGHTS['run-skill'];
+    const goal = this.goals.create(
+      {
+        description: `petición del usuario: ${raw}`,
+        source: 'user-request',
+        priority: weights.priority,
+        urgency: weights.urgency,
+        expectedValue: 0.6,
+        preconditions: [],
+        successCriteria: ['la petición queda satisfecha'],
+        failureCriteria: [],
+        userRequest: { kind: 'run-skill', skillName, raw },
+      },
+      this.tick,
+    );
+    this.emit('goal.created', {
+      goalId: goal.id,
+      description: goal.description,
+      source: goal.source,
+    });
+  }
+
   private async attemptSkillCreation(
     goal: Goal,
     perception: Perception,
@@ -839,45 +1255,15 @@ export class AnimaAgent {
       ),
     ];
 
-    const outcome = await developSkill(
+    const outcome = await this.runSkillDevelopment(
       contract,
       context,
-      {
-        provider: this.config.provider,
-        library: this.config.library,
-        regressions: this.config.regressions,
-        scenarios: this.config.evaluationScenarios,
-        seeds: this.config.evaluationSeeds,
-        maxTicksPerCase: 200,
-        maxVersions: this.config.maxVersionsPerDev,
-        now: () => this.now(),
-      },
-      this.events,
-      this.tick,
+      this.config.evaluationScenarios,
     );
     // El intento se consume solo si el ciclo corrió: una excepción del
     // proveedor (red, timeout) habría abortado antes de llegar aquí y debe
     // poder reintentarse.
     this.progress.recordSkillDevAttempt(goal.id);
-
-    // Lo aprendido en los experimentos queda en memoria aunque falle.
-    for (const report of outcome.reports) {
-      for (const observation of report.failureObservations) {
-        if (observation.startsWith('no-damage-dealt:')) {
-          const pairs = observation.slice('no-damage-dealt:'.length).split(',');
-          for (const pair of pairs) {
-            const [item, target] = pair.split('->');
-            if (item && target) {
-              const fact = this.memory.addFact(
-                `la herramienta ${item} no puede dañar un ${target}`,
-                this.tick,
-              );
-              this.emit('memory.created', { kind: 'fact', statement: fact.statement });
-            }
-          }
-        }
-      }
-    }
 
     if (outcome.stableSkill) {
       this.memory.recordEpisode({
@@ -909,6 +1295,18 @@ export class AnimaAgent {
     switch (request.kind) {
       case 'wait-here':
         return [{ op: 'wait', ticks: 6 }];
+
+      case 'run-skill': {
+        const stable = request.skillName
+          ? this.config.library.findStable(request.skillName)
+          : undefined;
+        // Solo se ejecuta lo que pasó por el evaluador: una habilidad que ya
+        // no está estable (deprecada por una versión peor, archivada) no se
+        // corre por inercia.
+        return stable
+          ? [{ op: 'runSkill', skillId: stable.id }]
+          : [{ op: 'abort', reason: 'no-conozco-esa-habilidad' }];
+      }
 
       case 'move-direction': {
         const program: SkillProgram = [];
@@ -1053,6 +1451,8 @@ export class AnimaAgent {
     switch (request.kind) {
       case 'wait-here':
         return 'Listo, esperé aquí un momento.';
+      case 'run-skill':
+        return `Listo, hice "${request.skillName ?? 'eso'}".`;
       case 'move-direction': {
         const labels = {
           up: 'hacia arriba',
@@ -1214,6 +1614,7 @@ export class AnimaAgent {
   private describeActivityFailure(reason: string): string {
     if (reason.startsWith('no-candidates:')) return 'no encuentro el objeto';
     const descriptions: Record<string, string> = {
+      'no-conozco-esa-habilidad': 'ya no tengo esa habilidad disponible',
       'camino-bloqueado': 'el camino está bloqueado',
       'no-pude-recogerlo': 'no pude recoger el objeto',
       'no-pude-comerlo': 'no pude comer el alimento',

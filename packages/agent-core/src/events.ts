@@ -10,6 +10,8 @@ export type AgentEventType =
   | 'strategy.failed'
   | 'strategy.forbidden'
   | 'skill.requested'
+  /** Contrato acordado con el cuidador antes de intentar aprender algo. */
+  | 'skill.contract.agreed'
   | 'skill.created'
   | 'skill.test.started'
   | 'skill.test.failed'

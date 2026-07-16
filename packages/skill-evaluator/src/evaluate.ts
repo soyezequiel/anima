@@ -1,4 +1,4 @@
-import { isAdjacent } from '@anima/shared';
+import { equalsVec2, isAdjacent, manhattan } from '@anima/shared';
 import type { EntityId, WorldState } from '@anima/sim-core';
 import { findByKind, getEntity, restoreSnapshot } from '@anima/sim-core';
 import type {
@@ -60,12 +60,25 @@ export interface EvaluateOptions {
   library?: SkillLibrary;
 }
 
+/** Movimientos que el mundo aceptó de verdad: los bloqueados no cuentan. */
+function successfulMoves(report: SkillRunReport): number {
+  return report.events.filter(
+    (e) => e.type === 'action.resolved' && e.data.action === 'move' && e.data.success === true,
+  ).length;
+}
+
+function distinctCells(report: SkillRunReport): number {
+  return new Set(report.path.map((p) => `${p.x},${p.y}`)).size;
+}
+
 function checkCriterion(
   criterion: EvaluationCriterion,
   report: SkillRunReport,
   world: WorldState,
   petId: EntityId,
 ): boolean {
+  const first = report.path[0];
+  const last = report.path[report.path.length - 1];
   switch (criterion.type) {
     case 'energyIncreased':
       return report.energyDelta > 0;
@@ -85,6 +98,22 @@ function checkCriterion(
         (e) => e.components.position && isAdjacent(petPos, e.components.position),
       );
     }
+    case 'holdingKind': {
+      const carried = getEntity(world, petId)?.components.inventory?.items ?? [];
+      return carried.some((id) => getEntity(world, id)?.kind === criterion.kind);
+    }
+    case 'minMoves':
+      return successfulMoves(report) >= (criterion.value ?? 1);
+    case 'returnedToStart':
+      return first !== undefined && last !== undefined && equalsVec2(first, last);
+    case 'netDisplacementAtLeast':
+      return (
+        first !== undefined && last !== undefined && manhattan(first, last) >= (criterion.value ?? 1)
+      );
+    case 'visitedDistinctCells':
+      return distinctCells(report) >= (criterion.value ?? 2);
+    case 'noDamageTaken':
+      return report.damageTaken <= 0;
     case 'maxTicks':
       return report.ticks <= (criterion.value ?? Infinity);
     case 'maxIntents':
@@ -109,6 +138,20 @@ function deriveObservations(report: SkillRunReport, criteriaFailed: string[]): s
   if (report.outcome === 'limit-exceeded') observations.push(`limit-exceeded:${report.reason ?? ''}`);
   if (report.outcome === 'aborted') observations.push(`aborted:${report.reason ?? ''}`);
   for (const criterion of criteriaFailed) observations.push(`criteria-failed:${criterion}`);
+
+  // Un criterio de conducta incumplido no le dice al modelo cuánto le faltó:
+  // sin la medición, la revisión sería a ciegas.
+  const behavioral = ['minMoves', 'returnedToStart', 'netDisplacementAtLeast', 'visitedDistinctCells'];
+  if (criteriaFailed.some((c) => behavioral.includes(c))) {
+    const first = report.path[0];
+    const last = report.path[report.path.length - 1];
+    observations.push(`moves-made:${successfulMoves(report)}`);
+    observations.push(`distinct-cells:${distinctCells(report)}`);
+    if (first && last) {
+      observations.push(`net-displacement:${manhattan(first, last)}`);
+      observations.push(`start:${first.x},${first.y} end:${last.x},${last.y}`);
+    }
+  }
   return observations;
 }
 

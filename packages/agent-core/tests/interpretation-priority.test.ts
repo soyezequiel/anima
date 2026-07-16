@@ -89,6 +89,11 @@ describe('prioridad de interpretación con modelo real', () => {
   it('el modelo puede marcar una lección y esta reactiva objetivos suspendidos', async () => {
     const provider = new FakeLanguageModel({
       'interpret.command': { kind: 'command.interpretation', command: { action: 'explanation' } },
+      'distill.knowledge': {
+        kind: 'knowledge',
+        statement: 'consumir alimento recupera energía',
+        confidence: 0.65,
+      },
     });
     const { agent, perception } = makeAgent(provider);
     // Un objetivo suspendido esperando nueva información del usuario.
@@ -109,7 +114,11 @@ describe('prioridad de interpretación con modelo real', () => {
 
     const reply = await say(agent, perception(), 'comer alimento te devuelve la energía');
 
-    expect(reply).toBe('Gracias, eso me ayuda a entender qué me pasa.');
+    // La lección no se agradece y se olvida: se guarda y se dice qué se guardó.
+    expect(reply).toContain('consumir alimento recupera energía');
+    expect(
+      agent.memory.hypothesisList().map((hypothesis) => hypothesis.statement),
+    ).toContain('consumir alimento recupera energía');
     expect(agent.goals.get(goal.id)?.status).toBe('active');
     expect(agent.events.ofType('goal.reactivated')).toHaveLength(1);
   });

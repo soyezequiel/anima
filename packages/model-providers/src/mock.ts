@@ -64,6 +64,20 @@ export class MockModelProvider extends BaseModelProvider {
           kind: 'command.interpretation',
           command: { action: 'not-command' },
         });
+      case 'skill.contract':
+        // Derivar un contrato exige entender lenguaje abierto. Fingirlo con
+        // reglas daría contratos falsos y habilidades "aprendidas" que no son
+        // lo que el cuidador pidió: es más honesto no saber.
+        return Promise.reject(
+          new Error('el proveedor simulado no deriva contratos de habilidades'),
+        );
+      case 'distill.knowledge':
+        // Sin comprensión abierta, guarda la enseñanza tal cual la recibió.
+        return Promise.resolve({
+          kind: 'knowledge',
+          statement: request.text,
+          confidence: 0.6,
+        });
       case 'dialogue': {
         const topic = request.topic
           .toLowerCase()

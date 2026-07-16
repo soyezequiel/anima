@@ -1,3 +1,4 @@
+import type { Vec2 } from '@anima/shared';
 import type { EntityId, InvariantViolation, SimEvent, WorldState } from '@anima/sim-core';
 import { buildPerception, checkInvariants, getEntity, stepWorld } from '@anima/sim-core';
 import type { SkillProgram } from './dsl.js';
@@ -24,6 +25,12 @@ export interface SkillRunReport {
   invariantViolations: InvariantViolation[];
   energyDelta: number;
   damageTaken: number;
+  /**
+   * Posiciones del actor muestreadas por tick, empezando por la inicial. Es lo
+   * que permite juzgar habilidades de conducta (volver al punto de partida,
+   * recorrer, alejarse) sin mirar el resultado sobre los recursos.
+   */
+  path: Vec2[];
 }
 
 /**
@@ -49,6 +56,8 @@ export function runSkillProgram(
 
   const events: SimEvent[] = [];
   const invariantViolations: InvariantViolation[] = [];
+  const startPosition = actor?.components.position;
+  const path: Vec2[] = startPosition ? [{ ...startPosition }] : [];
   let ticks = 0;
   let outcome: SkillRunReport['outcome'] = 'timeout';
   let reason: string | undefined;
@@ -69,6 +78,8 @@ export function runSkillProgram(
     events.push(...tickEvents);
     exec.observe(tickEvents);
     ticks += 1;
+    const position = getEntity(world, actorId)?.components.position;
+    if (position) path.push({ ...position });
     if (options.checkInvariantsEachTick) {
       invariantViolations.push(...checkInvariants(world));
     }
@@ -93,5 +104,6 @@ export function runSkillProgram(
     invariantViolations,
     energyDelta: (after?.components.energy?.current ?? 0) - energyBefore,
     damageTaken: healthBefore - (after?.components.health?.current ?? 0),
+    path,
   };
 }

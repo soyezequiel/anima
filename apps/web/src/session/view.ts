@@ -50,7 +50,15 @@ export interface ExperimentView {
   tick: number;
   skillName: string;
   version: number | null;
-  kind: 'requested' | 'created' | 'test-started' | 'test-failed' | 'test-passed' | 'promoted' | 'rejected';
+  kind:
+    | 'requested'
+    | 'contract-agreed'
+    | 'created'
+    | 'test-started'
+    | 'test-failed'
+    | 'test-passed'
+    | 'promoted'
+    | 'rejected';
   detail: string;
 }
 

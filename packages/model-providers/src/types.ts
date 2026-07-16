@@ -15,6 +15,8 @@ export type ModelRequest =
       problem: string;
       /** Observaciones del agente: entidades relevantes, fallos previos. */
       context: string[];
+      /** Criterios que el evaluador medirá: el programa debe satisfacerlos. */
+      successCriteria?: string[];
     }
   | {
       kind: 'skill.revise';
@@ -34,6 +36,25 @@ export type ModelRequest =
       facts: string[];
       /** Turnos anteriores para resolver referencias como "eso" o "allá". */
       history?: { from: 'user' | 'pet'; text: string }[];
+      /** Habilidades ya aprendidas: el catálogo ejecutable no es fijo. */
+      skills?: { name: string; description: string }[];
+    }
+  | {
+      /**
+       * Traduce lo que el cuidador quiere enseñar a un contrato evaluable.
+       * Es un momento cognitivo aparte del que propone el programa: primero
+       * hay que acordar qué significaría lograrlo, y recién después intentarlo.
+       */
+      kind: 'skill.contract';
+      request: string;
+      conversation: { from: 'user' | 'pet'; text: string }[];
+      facts: string[];
+    }
+  | {
+      /** Destila una afirmación didáctica del cuidador a un enunciado guardable. */
+      kind: 'distill.knowledge';
+      text: string;
+      conversation: { from: 'user' | 'pet'; text: string }[];
     }
   | {
       kind: 'dialogue';
@@ -43,10 +64,26 @@ export type ModelRequest =
       history?: { from: 'user' | 'pet'; text: string }[];
     };
 
+/**
+ * Contrato propuesto para una habilidad que el cuidador pidió enseñar. El
+ * modelo traduce la conversación; el agente valida los criterios y el
+ * evaluador determinista sigue siendo el único que juzga si el programa los
+ * cumple. Proponer el contrato no es aprobarse a sí mismo: fija de antemano
+ * la vara con la que otro lo va a medir, y esa vara queda a la vista.
+ */
+export interface ProposedSkillContract {
+  name: string;
+  purpose: string;
+  expectedOutcome: string;
+  successCriteria: unknown;
+}
+
 export type ModelResponse =
   | { kind: 'skill.program'; program: unknown; rationale: string }
   | { kind: 'interpretation'; hypothesis: string; confidence: number }
   | { kind: 'command.interpretation'; command: CommandInterpretation }
+  | { kind: 'skill.contract'; contract: ProposedSkillContract }
+  | { kind: 'knowledge'; statement: string; confidence: number }
   | { kind: 'dialogue'; text: string };
 
 export type CommandDirection = 'up' | 'down' | 'left' | 'right';
@@ -54,6 +91,11 @@ export type CommandDirection = 'up' | 'down' | 'left' | 'right';
 /**
  * El modelo interpreta lenguaje, pero solo puede elegir este catálogo. El
  * agente vuelve a validar y decide de forma independiente si ejecuta.
+ *
+ * El catálogo tiene una parte fija (las acciones primitivas) y una abierta:
+ * `run-skill` invoca lo que la mascota haya aprendido, y `learn-skill` abre el
+ * ciclo para lo que todavía no sabe. Sin esas dos, todo lo que el cuidador
+ * enseñe muere en el momento en que lo dice.
  */
 export type CommandInterpretation =
   | { action: 'destroy-entity'; targetKind: string }
@@ -61,8 +103,13 @@ export type CommandInterpretation =
   | { action: 'consume-item'; targetKind: string }
   | { action: 'wait-here' }
   | { action: 'move-direction'; directions: CommandDirection[] }
+  /** Ejecutar una habilidad ya aprendida, por su nombre. */
+  | { action: 'run-skill'; skillName: string }
+  /** Conducta que no tiene pero que sus primitivas podrían componer. */
+  | { action: 'learn-skill'; summary: string }
   /** El cuidador enseña un hecho del mundo (afirmación, no orden ni pregunta). */
   | { action: 'explanation' }
+  /** Orden física fuera del alcance de sus primitivas. */
   | { action: 'unsupported'; summary: string }
   | { action: 'not-command' };
 

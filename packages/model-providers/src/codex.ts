@@ -93,6 +93,8 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
         'consume-item',
         'wait-here',
         'move-direction',
+        'run-skill',
+        'learn-skill',
         'explanation',
         'unsupported',
         'not-command',
@@ -104,11 +106,67 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
       items: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
       maxItems: 4,
     },
+    skillName: { type: 'string' },
     summary: { type: 'string' },
   },
   // Los esquemas estructurados son más estables si todas las propiedades
   // existen; las no aplicables viajan como string/arreglo vacío.
-  required: ['action', 'targetKind', 'directions', 'summary'],
+  required: ['action', 'targetKind', 'directions', 'skillName', 'summary'],
+  additionalProperties: false,
+};
+
+/**
+ * Los criterios viajan tipados (no serializados como el programa) porque la
+ * lista es plana: tres campos y sin recursión.
+ */
+const CONTRACT_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    name: { type: 'string' },
+    purpose: { type: 'string' },
+    expectedOutcome: { type: 'string' },
+    successCriteria: {
+      type: 'array',
+      minItems: 1,
+      maxItems: 4,
+      items: {
+        type: 'object',
+        properties: {
+          type: {
+            type: 'string',
+            enum: [
+              'energyIncreased',
+              'consumedKind',
+              'reachedAdjacentKind',
+              'holdingKind',
+              'minMoves',
+              'returnedToStart',
+              'netDisplacementAtLeast',
+              'visitedDistinctCells',
+              'noDamageTaken',
+              'maxTicks',
+              'maxIntents',
+            ],
+          },
+          kind: { type: 'string' },
+          value: { type: 'number' },
+        },
+        required: ['type', 'kind', 'value'],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ['name', 'purpose', 'expectedOutcome', 'successCriteria'],
+  additionalProperties: false,
+};
+
+const KNOWLEDGE_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    statement: { type: 'string' },
+    confidence: { type: 'number' },
+  },
+  required: ['statement', 'confidence'],
   additionalProperties: false,
 };
 
@@ -118,6 +176,33 @@ const DIALOGUE_SCHEMA: Record<string, unknown> = {
   required: ['text'],
   additionalProperties: false,
 };
+
+/**
+ * Lo que la mascota puede hacer físicamente. Es el límite real entre "no lo sé
+ * hacer todavía" (componible con estas primitivas: se puede aprender) y "eso
+ * no existe en mi mundo" (ninguna combinación lo logra).
+ */
+const PRIMITIVES_REFERENCE = `Primitivas físicas de la mascota (no hay ninguna otra):
+moverse un paso arriba/abajo/izquierda/derecha, ir hacia un objeto, recoger un
+objeto portable, soltarlo, consumir un objeto comestible, usar una herramienta
+que lleva sobre un objeto para dañarlo, esperar y hablar. Puede repetir y
+encadenar todo eso, y decidir según lo que ve.
+NO puede: saltar, volar, construir, fabricar, excavar, trepar, empujar,
+lanzar, ni crear objetos que no existan en el mundo.`;
+
+const CRITERIA_REFERENCE = `Criterios que el evaluador sabe medir (elige 1 a 3, sin repetir tipo):
+- energyIncreased: su energía terminó más alta. (kind:"", value:0)
+- consumedKind: consumió un objeto de ese tipo. (kind:"food", value:0)
+- reachedAdjacentKind: terminó al lado de un objeto de ese tipo. (kind:"tree", value:0)
+- holdingKind: terminó llevando un objeto de ese tipo. (kind:"hammer", value:0)
+- minMoves: hizo al menos N movimientos efectivos. (kind:"", value:N)
+- returnedToStart: terminó en la misma casilla donde empezó. (kind:"", value:0)
+- netDisplacementAtLeast: terminó a N casillas o más del inicio. (kind:"", value:N)
+- visitedDistinctCells: pisó al menos N casillas distintas. (kind:"", value:N)
+- noDamageTaken: no recibió daño. (kind:"", value:0)
+- maxTicks / maxIntents: cota de costo. (kind:"", value:N)
+Los tipos con kind usan el nombre interno del objeto. Rellena con "" y 0 lo
+que no aplique. maxTicks/maxIntents solos no valen: no describen ningún logro.`;
 
 export function buildCodexPrompt(request: ModelRequest): {
   prompt: string;
@@ -134,6 +219,16 @@ Problema a resolver: ${request.problem}
 Nombre de la habilidad: ${request.skillName}
 Contexto observado:
 ${request.context.map((c) => `- ${c}`).join('\n') || '- (sin contexto adicional)'}
+${
+  request.successCriteria && request.successCriteria.length > 0
+    ? `\nUn evaluador independiente medirá el programa en varios mundos aislados.
+Solo lo aprueba si TODOS estos criterios se cumplen en TODOS los mundos:
+${request.successCriteria.map((c) => `- ${c}`).join('\n')}
+El programa debe terminar por su cuenta (sin abort) y ser prudente con el
+espacio: un mundo puede ser estrecho y un movimiento contra un muro o contra el
+borde falla.`
+    : ''
+}
 
 Diseña UN programa de la DSL que resuelva el problema de forma general (debe
 funcionar también cuando no hay obstáculo). Responde únicamente con JSON:
@@ -186,6 +281,15 @@ Mensaje actual: ${JSON.stringify(request.text)}
 Hechos observables y nombres internos disponibles:
 ${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin hechos)'}
 
+Habilidades que la mascota YA aprendió y puede ejecutar por nombre:
+${
+  request.skills && request.skills.length > 0
+    ? request.skills.map((skill) => `- ${skill.name}: ${skill.description}`).join('\n')
+    : '- (todavía ninguna)'
+}
+
+${PRIMITIVES_REFERENCE}
+
 Tu única tarea es clasificar la intención; no decidas si conviene obedecer y
 no afirmes haber actuado. Acciones ejecutables:
 - destroy-entity: destruir/talar/romper un objeto; targetKind usa el nombre interno.
@@ -193,7 +297,14 @@ no afirmes haber actuado. Acciones ejecutables:
 - consume-item: comer un objeto; targetKind usa el nombre interno.
 - wait-here: esperar o quedarse quieta.
 - move-direction: moverse; directions usa up/down/left/right en el orden pedido.
-- unsupported: sí es una orden física, pero no pertenece al catálogo; summary la resume.
+- run-skill: pide una conducta que YA figura en la lista de aprendidas;
+  skillName es el nombre exacto de esa habilidad.
+- learn-skill: pide una conducta física que NO sabe todavía, pero que sus
+  primitivas podrían componer (bailar, patrullar, rondar, alejarse, esconderse,
+  dar una vuelta). summary describe qué le pide, incorporando lo que el
+  cuidador haya explicado en la conversación.
+- unsupported: orden física que ninguna combinación de sus primitivas logra
+  (saltar, construir una casa, volar); summary la resume.
 
 Además, dos clasificaciones que no son órdenes:
 - explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho
@@ -202,11 +313,78 @@ Además, dos clasificaciones que no son órdenes:
 - not-command: cualquier otra cosa — conversación, saludo, elogio, comentario
   y, muy importante, toda PREGUNTA (aunque hable de comida o energía).
 
+Ante la duda entre learn-skill y unsupported, mira las primitivas: si la
+conducta se puede aproximar moviéndose, recogiendo, usando o esperando, es
+learn-skill. Si el cuidador insiste en enseñar algo que ya pidió antes, sigue
+siendo learn-skill (con lo que explicó incorporado al summary), no not-command.
 Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
-Responde solo con JSON. Siempre incluye action, targetKind, directions y summary;
-usa "" o [] cuando no correspondan.`,
+Responde solo con JSON. Siempre incluye action, targetKind, directions,
+skillName y summary; usa "" o [] cuando no correspondan.`,
+      };
+    case 'skill.contract':
+      return {
+        schema: CONTRACT_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual que va a intentar aprender algo que su
+cuidador le pidió. Todavía no diseñas cómo hacerlo: primero tienes que decidir
+qué significaría haberlo logrado, porque un evaluador independiente te va a
+medir contra eso y no acepta opiniones.
+
+Lo que te pidió: ${JSON.stringify(request.request)}
+
+Conversación reciente (puede contener la explicación de cómo hacerlo):
+${
+  request.conversation
+    .map((turn) => `${turn.from === 'user' ? 'Cuidador' : 'Mascota'}: ${turn.text}`)
+    .join('\n') || '- (sin turnos anteriores)'
+}
+
+Hechos que conoces:
+${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin hechos)'}
+
+${PRIMITIVES_REFERENCE}
+
+${CRITERIA_REFERENCE}
+
+Reglas del contrato:
+- name: identificador corto en kebab-case, en español, que nombre la conducta
+  ("baile-basico", "ronda-vigilancia"). Sin espacios ni mayúsculas.
+- purpose: qué debe lograr, en una frase.
+- expectedOutcome: qué se vería si sale bien, en una frase.
+- successCriteria: los criterios MÍNIMOS y honestos que capturan la conducta
+  pedida. Elige los que un observador usaría para decir "sí, lo hizo". No
+  agregues criterios que el cuidador no pidió: cada criterio de más es una
+  forma extra de fracasar. Si el cuidador explicó los pasos, tradúcelos al
+  criterio que revela esos pasos (p. ej. ir y volver = returnedToStart más
+  minMoves), no a uno sobre recursos.
+- Sé conservador con los números: los mundos de práctica pueden ser estrechos.
+
+Responde únicamente con JSON con name, purpose, expectedOutcome y successCriteria.`,
+      };
+    case 'distill.knowledge':
+      return {
+        schema: KNOWLEDGE_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual. Tu cuidador acaba de enseñarte algo y
+tienes que guardarlo con tus propias palabras para poder usarlo después.
+
+Lo que te dijo: ${JSON.stringify(request.text)}
+
+Conversación reciente:
+${
+  request.conversation
+    .map((turn) => `${turn.from === 'user' ? 'Cuidador' : 'Mascota'}: ${turn.text}`)
+    .join('\n') || '- (sin turnos anteriores)'
+}
+
+Convierte la enseñanza en UN enunciado breve, general y verificable en español,
+en presente y sin pronombres sueltos: debe entenderse solo, meses después, sin
+esta conversación ("consumir alimento recupera energía", "las ramas no dañan
+los muros"). Resuelve las referencias usando la conversación.
+La confianza refleja cuánto la respalda tu experiencia, no cuán amable fue el
+cuidador: 0.6 si solo lo afirmó él, 0.75 si además concuerda con algo que ya
+viste, 0.4 si contradice lo que observaste. El cuidador puede equivocarse.
+Responde únicamente con JSON: {"statement": "...", "confidence": 0.0-1.0}`,
       };
     case 'dialogue':
       return {
@@ -341,13 +519,71 @@ export class CodexModelProvider extends BaseModelProvider {
           if (action === 'wait-here' || action === 'not-command' || action === 'explanation') {
             return { kind: 'command.interpretation', command: { action } };
           }
-          if (action === 'unsupported' && typeof parsed.summary === 'string') {
+          if (action === 'run-skill') {
+            if (typeof parsed.skillName !== 'string' || !parsed.skillName.trim()) {
+              throw new Error('la orden interpretada no contiene skillName');
+            }
+            return {
+              kind: 'command.interpretation',
+              command: { action, skillName: parsed.skillName.trim() },
+            };
+          }
+          if (action === 'unsupported' || action === 'learn-skill') {
+            if (typeof parsed.summary !== 'string') {
+              throw new Error(`la acción ${action} no contiene summary`);
+            }
             return {
               kind: 'command.interpretation',
               command: { action, summary: parsed.summary.trim() || 'esa acción' },
             };
           }
           throw new Error(`acción interpretada desconocida: ${action}`);
+        }
+        case 'skill.contract': {
+          const { name, purpose, expectedOutcome } = parsed;
+          if (
+            typeof name !== 'string' ||
+            typeof purpose !== 'string' ||
+            typeof expectedOutcome !== 'string' ||
+            !Array.isArray(parsed.successCriteria)
+          ) {
+            throw new Error('la respuesta no contiene un contrato completo');
+          }
+          return {
+            kind: 'skill.contract',
+            contract: {
+              name: name.trim(),
+              purpose: purpose.trim(),
+              expectedOutcome: expectedOutcome.trim(),
+              // El esquema obliga a que kind y value viajen siempre; aquí se
+              // quita el relleno para que el validador estricto del agente vea
+              // exactamente los campos que cada criterio admite.
+              successCriteria: parsed.successCriteria.map((raw) => {
+                if (typeof raw !== 'object' || raw === null) return raw;
+                const entry = raw as { type?: unknown; kind?: unknown; value?: unknown };
+                return {
+                  type: entry.type,
+                  ...(typeof entry.kind === 'string' && entry.kind.trim()
+                    ? { kind: entry.kind.trim().toLowerCase() }
+                    : {}),
+                  ...(typeof entry.value === 'number' && entry.value !== 0
+                    ? { value: entry.value }
+                    : {}),
+                };
+              }),
+            },
+          };
+        }
+        case 'distill.knowledge': {
+          if (typeof parsed.statement !== 'string' || typeof parsed.confidence !== 'number') {
+            throw new Error('la respuesta no contiene statement/confidence');
+          }
+          if (!parsed.statement.trim()) throw new Error('el enunciado destilado está vacío');
+          return {
+            kind: 'knowledge',
+            statement: parsed.statement.trim(),
+            confidence: Math.max(0, Math.min(1, parsed.confidence)),
+          };
         }
         case 'dialogue': {
           if (typeof parsed.text !== 'string') {
