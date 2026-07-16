@@ -1,6 +1,7 @@
 import type { RngState, Vec2 } from '@anima/shared';
 import { createRng } from '@anima/shared';
 import type { Components, Entity, EntityId, EntityKind } from './components.js';
+import type { Recipe } from './recipes.js';
 
 export interface WorldConfig {
   width: number;
@@ -19,15 +20,21 @@ export interface WorldState {
   rng: RngState;
   nextId: number;
   entities: Record<EntityId, Entity>;
+  /**
+   * Las recetas que este mundo admite. Son estado, no constantes del código:
+   * así viajan en los snapshots y un mundo restaurado craftea igual.
+   */
+  recipes: Recipe[];
 }
 
-export function createWorld(config: WorldConfig): WorldState {
+export function createWorld(config: WorldConfig, options: { recipes?: Recipe[] } = {}): WorldState {
   return {
     tick: 0,
     config,
     rng: createRng(config.seed),
     nextId: 1,
     entities: {},
+    recipes: options.recipes ? structuredClone(options.recipes) : [],
   };
 }
 

@@ -1,6 +1,7 @@
 import type { Vec2 } from '@anima/shared';
 import { chebyshev, manhattan } from '@anima/shared';
 import type { Entity, EntityId } from './components.js';
+import type { Recipe } from './recipes.js';
 import type { WorldState } from './world.js';
 import { allEntities, getEntity } from './world.js';
 
@@ -36,6 +37,12 @@ export interface Perception {
     heldItems: PerceivedEntity[];
   };
   visibleEntities: PerceivedEntity[];
+  /**
+   * Las recetas del mundo. La mascota sabe cómo se combinan las cosas, igual
+   * que sabe que puede moverse: es la física de su mundo, no un secreto. Lo
+   * que no le regala nadie es tener los ingredientes ni querer construirlo.
+   */
+  recipes: Recipe[];
 }
 
 function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean): PerceivedEntity {
@@ -95,5 +102,5 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
       max: agent.components.temperature.max,
     };
   }
-  return { tick: world.tick, self, visibleEntities };
+  return { tick: world.tick, self, visibleEntities, recipes: structuredClone(world.recipes) };
 }

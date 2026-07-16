@@ -11,8 +11,15 @@ export function takeSnapshot(world: WorldState): WorldSnapshot {
   return { version: 1, state: structuredClone(world) };
 }
 
+/**
+ * Restaura un mundo desde un snapshot. Es la frontera por donde entran datos
+ * viejos (guardados de sesión, regresiones archivadas), así que normaliza los
+ * campos que no existían cuando se escribieron: un mundo anterior a las
+ * recetas simplemente no admite ninguna.
+ */
 export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
-  return structuredClone(snapshot.state);
+  const state = structuredClone(snapshot.state) as WorldState & { recipes?: WorldState['recipes'] };
+  return { ...state, recipes: state.recipes ?? [] };
 }
 
 export function serializeSnapshot(snapshot: WorldSnapshot): string {

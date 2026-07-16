@@ -1,7 +1,27 @@
 import type { Vec2 } from '@anima/shared';
 import { createRng, nextInt } from '@anima/shared';
-import type { EntityId, WorldState } from '@anima/sim-core';
+import type { EntityId, Recipe, WorldState } from '@anima/sim-core';
 import { createWorld, spawn } from '@anima/sim-core';
+
+/**
+ * La fogata: calienta a distancia 2 y quema al que se pega. Se construye con
+ * troncos (del árbol talado) y un pedernal que la encienda — el ingrediente
+ * que la mascota no siempre tiene, y por el que tiene que pedir ayuda.
+ */
+export const CAMPFIRE_RECIPE: Recipe = {
+  id: 'campfire',
+  output: {
+    kind: 'campfire',
+    components: {
+      heatSource: { warmthPerTick: 0.3, range: 2 },
+      hazard: { damagePerTick: 1 },
+    },
+  },
+  ingredients: [
+    { kind: 'log', count: 2 },
+    { kind: 'flint', count: 1 },
+  ],
+};
 
 export interface ScenarioBundle {
   world: WorldState;
@@ -159,7 +179,7 @@ export const openField: ScenarioSpec = {
 export const coldNight: ScenarioSpec = {
   name: 'cold-night',
   build(seed) {
-    const world = createWorld({ width: 9, height: 5, seed });
+    const world = createWorld({ width: 9, height: 5, seed }, { recipes: [CAMPFIRE_RECIPE] });
     const rng = createRng(seed * 31337 + 7);
     const petId = spawnPet(world, { x: 1, y: 2 }, 30);
     const pet = world.entities[petId]!;
@@ -181,4 +201,72 @@ export const coldNight: ScenarioSpec = {
   },
 };
 
+/**
+ * Noche fría sin fuego: el mundo no regala la fogata, hay que construirla.
+ * Todo lo necesario existe —árbol (troncos), martillo (para talar), pedernal
+ * (para encender)— pero disperso: la mascota tiene que talar, juntar y
+ * craftear antes de congelarse. Es el escenario donde la historia del crafteo
+ * se cuenta entera.
+ */
+export const coldNightUnlit: ScenarioSpec = {
+  name: 'cold-night-unlit',
+  build(seed) {
+    const world = createWorld({ width: 9, height: 5, seed }, { recipes: [CAMPFIRE_RECIPE] });
+    const rng = createRng(seed * 15486071 + 13);
+    const petId = spawnPet(world, { x: 1, y: 2 }, 30);
+    const pet = world.entities[petId]!;
+    pet.components.temperature = { current: 25, max: 50, lossPerTick: 0.1 };
+
+    spawnTree(world, { x: 7, y: 2 });
+    spawnHammer(world, { x: 2, y: 3 });
+    // El pedernal varía de sitio con la semilla: la habilidad no puede
+    // memorizar una coordenada, tiene que buscarlo de verdad.
+    const flintSpots: Vec2[] = [
+      { x: 4, y: 0 },
+      { x: 5, y: 4 },
+      { x: 3, y: 4 },
+    ];
+    spawn(world, 'flint', {
+      position: flintSpots[nextInt(rng, 0, flintSpots.length - 1)] ?? flintSpots[0]!,
+      portable: {},
+    });
+    spawnFood(world, { x: 2, y: 1 });
+    return { world, petId, meta: { name: 'cold-night-unlit', seed } };
+  },
+};
+
+/**
+ * Sala de práctica: espacio despejado y la mascota en el centro, con margen en
+ * las cuatro direcciones. Es donde ensaya lo que el cuidador le enseña. Existe
+ * porque sus mundos reales son estrechos: sin un lugar con lugar para moverse,
+ * una conducta perfectamente aprendible fracasaría por falta de sitio y no por
+ * estar mal diseñada. No la exime de funcionar también en su mundo real: es un
+ * escenario más de la tanda, no un reemplazo.
+ */
+export const practiceRoom: ScenarioSpec = {
+  name: 'practice-room',
+  build(seed) {
+    const world = createWorld({ width: 11, height: 9, seed });
+    const rng = createRng(seed * 2654435761 + 11);
+    const petId = spawnPet(world, { x: 5, y: 4 }, 40);
+    // Un par de objetos para que las habilidades que manipulan cosas tengan
+    // con qué; ninguno bloquea el paso.
+    const propSpots: Vec2[] = [
+      { x: 2, y: 1 },
+      { x: 8, y: 7 },
+      { x: 1, y: 7 },
+    ];
+    spawnFood(world, propSpots[nextInt(rng, 0, propSpots.length - 1)] ?? propSpots[0]!);
+    spawnBranch(world, { x: 9, y: 1 });
+    spawnHammer(world, { x: 2, y: 6 });
+    return { world, petId, meta: { name: 'practice-room', seed } };
+  },
+};
+
 export const MVP_SCENARIOS: ScenarioSpec[] = [openField, foodBehindWall];
+
+/**
+ * Mundos donde se prueba una habilidad enseñada por el cuidador: la sala de
+ * práctica más los mundos reales de la mascota.
+ */
+export const PRACTICE_SCENARIOS: ScenarioSpec[] = [practiceRoom, openField, foodBehindWall];

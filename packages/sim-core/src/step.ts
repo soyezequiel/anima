@@ -4,6 +4,7 @@ import { DIRECTION_DELTAS } from './actions.js';
 import type { Entity, EntityId } from './components.js';
 import type { SimEvent } from './events.js';
 import { simEvent } from './events.js';
+import { findRecipe, missingIngredients } from './recipes.js';
 import type { WorldState } from './world.js';
 import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, removeEntity, spawn } from './world.js';
 
@@ -231,7 +232,88 @@ function resolveAction(
     case 'useItem':
       resolveUseItem(world, actor, intent, events);
       return;
+    case 'craft':
+      resolveCraft(world, actor, intent, events);
+      return;
   }
+}
+
+/**
+ * Craftear: el mundo comprueba los ingredientes, los consume y coloca lo
+ * producido. Nadie fabrica nada por creer que puede — si falta algo, el
+ * fallo dice exactamente qué falta y en qué cantidad.
+ */
+function resolveCraft(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'craft' }>,
+  events: SimEvent[],
+): void {
+  const recipe = findRecipe(world.recipes, intent.recipeId);
+  if (!recipe) {
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'unknown-recipe',
+      recipeId: intent.recipeId,
+    });
+    return;
+  }
+  const inventory = actor.components.inventory;
+  const actorPos = actor.components.position;
+  if (!inventory || !actorPos) {
+    resolved(world, events, actor.id, intent, false, { reason: 'no-inventory' });
+    return;
+  }
+
+  // Qué tiene a mano, por tipo, en orden determinista.
+  const heldByKind = new Map<string, EntityId[]>();
+  for (const itemId of inventory.items) {
+    const item = getEntity(world, itemId);
+    if (!item) continue;
+    const list = heldByKind.get(item.kind) ?? [];
+    list.push(itemId);
+    heldByKind.set(item.kind, list);
+  }
+  const counts = new Map([...heldByKind].map(([kind, ids]) => [kind, ids.length]));
+  const missing = missingIngredients(recipe, counts);
+  if (missing.length > 0) {
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'missing-ingredients',
+      recipeId: recipe.id,
+      missing,
+    });
+    return;
+  }
+
+  const cell = [actorPos, ...SPAWN_OFFSETS.map((o) => addVec2(actorPos, o))].find(
+    (c) => inBounds(world, c) && entitiesAt(world, c).length === 0,
+  );
+  if (!cell) {
+    resolved(world, events, actor.id, intent, false, { reason: 'no-space', recipeId: recipe.id });
+    return;
+  }
+
+  const consumed: EntityId[] = [];
+  for (const ingredient of recipe.ingredients) {
+    for (const itemId of (heldByKind.get(ingredient.kind) ?? []).slice(0, ingredient.count)) {
+      consumed.push(itemId);
+      removeEntity(world, itemId);
+    }
+  }
+  const product = spawn(world, recipe.output.kind, {
+    ...structuredClone(recipe.output.components),
+    position: cell,
+  });
+  events.push(
+    simEvent('item.crafted', world.tick, {
+      actorId: actor.id,
+      recipeId: recipe.id,
+      itemId: product.id,
+      itemKind: product.kind,
+      consumed,
+      at: cell,
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, { recipeId: recipe.id, itemId: product.id });
 }
 
 function resolveMove(

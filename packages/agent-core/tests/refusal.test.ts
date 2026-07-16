@@ -18,6 +18,7 @@ function perceptionWith(
       ...overrides,
     },
     visibleEntities: visible,
+    recipes: [],
   };
 }
 

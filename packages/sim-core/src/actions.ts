@@ -20,6 +20,7 @@ export type ActionIntent =
   | { type: 'drop'; itemId: EntityId }
   | { type: 'consume'; targetId: EntityId }
   | { type: 'useItem'; itemId: EntityId; targetId: EntityId }
+  | { type: 'craft'; recipeId: string }
   | { type: 'speak'; text: string };
 
 export interface ActorIntent {
