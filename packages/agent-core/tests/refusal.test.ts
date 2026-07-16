@@ -112,7 +112,19 @@ describe('parser mínimo de mensajes', () => {
     expect(parseUserMessage('destruye el muro').kind).toBe('destroy-entity');
     expect(parseUserMessage('trae comida').kind).toBe('fetch-item');
     expect(parseUserMessage('tala el árbol').kind).toBe('destroy-entity');
+    expect(parseUserMessage('quiero que tales el árbol')).toMatchObject({
+      kind: 'destroy-entity',
+      targetKind: 'tree',
+    });
+    expect(parseUserMessage('intenta talar el árbol con el hammer')).toMatchObject({
+      kind: 'destroy-entity',
+      targetKind: 'tree',
+    });
     expect(parseUserMessage('come esa manzana').kind).toBe('consume-item');
+    expect(parseUserMessage('come')).toMatchObject({
+      kind: 'consume-item',
+      targetKind: 'unknown',
+    });
     expect(parseUserMessage('espera aquí').kind).toBe('wait-here');
     expect(parseUserMessage('comer alimento da energía').kind).toBe('explanation');
     expect(parseUserMessage('cuando comes alimento recuperas energía').kind).toBe('explanation');

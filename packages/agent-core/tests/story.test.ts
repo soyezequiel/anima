@@ -177,6 +177,30 @@ describe('diálogo y órdenes del usuario', () => {
         .some((goal) => goal.source === 'user-request' && goal.status === 'completed'),
     ).toBe(true);
   });
+
+  it('mantiene la última orden tras restaurar y resuelve "hacelo igual"', async () => {
+    const { agent, provider } = makeAgent();
+    const bundle = foodBehindWall.build(12);
+    getEntity(bundle.world, agent.petId)!.components.energy!.current = 40;
+
+    await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 2,
+      userMessagesAt: { 0: 'intenta talar el árbol con el hammer' },
+    });
+    const legacySave = agent.exportState();
+    delete legacySave.lastUserRequest;
+    agent.importState(legacySave);
+    agent.receiveUserMessage('hacelo igual');
+    await runAgentInWorld(bundle.world, agent, { maxTicks: 2 });
+
+    const refusals = agent.events.ofType('user.request.refused');
+    expect(refusals).toHaveLength(2);
+    expect(refusals.map((event) => event.data.request)).toEqual([
+      expect.objectContaining({ kind: 'destroy-entity', targetKind: 'tree' }),
+      expect.objectContaining({ kind: 'destroy-entity', targetKind: 'tree', raw: 'hacelo igual' }),
+    ]);
+    expect(provider.callCount('dialogue')).toBe(0);
+  });
 });
 
 describe('conversación intercalada con acción', () => {

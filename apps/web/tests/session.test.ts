@@ -114,6 +114,33 @@ describe('persistencia de la sesión', () => {
     expect(fresh.getView().skills).toHaveLength(0);
     fresh.dispose();
   });
+
+  it('conserva el referente de la última orden después de recargar', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    session.sendUserMessage('tala el árbol');
+    await runUntil(
+      session,
+      () => session.getView().chat.some((entry) => entry.text.includes('No quiero destruir')),
+      20,
+    );
+    session.dispose();
+
+    const restored = await GameSession.create({ autostart: false, store });
+    restored.sendUserMessage('hacelo igual');
+    await runUntil(
+      restored,
+      () =>
+        restored.getView().chat.filter((entry) => entry.text.includes('No quiero destruir'))
+          .length >= 2,
+      20,
+    );
+
+    expect(
+      restored.getView().chat.filter((entry) => entry.text.includes('No quiero destruir')),
+    ).toHaveLength(2);
+    restored.dispose();
+  });
 });
 
 describe('muerte y sucesión en la sesión', () => {
@@ -137,9 +164,9 @@ describe('muerte y sucesión en la sesión', () => {
     expect(view.identity.generation).toBe(2);
     expect(view.pet?.alive).toBe(true);
     // La skill heredada fue re-evaluada y promovida en el mundo nuevo.
-    expect(view.skills.some((s) => s.status === 'stable' && s.motivation.includes('heredada'))).toBe(
-      true,
-    );
+    expect(
+      view.skills.some((s) => s.status === 'stable' && s.motivation.includes('heredada')),
+    ).toBe(true);
     // El conocimiento llega como hipótesis "según...", no como hechos.
     expect(view.facts).toHaveLength(0);
     expect(view.hypotheses.some((h) => h.statement.startsWith('según'))).toBe(true);

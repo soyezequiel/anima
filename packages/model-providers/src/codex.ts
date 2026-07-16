@@ -143,13 +143,22 @@ directa de una fuente confiable). Responde únicamente con JSON:
       return {
         schema: DIALOGUE_SCHEMA,
         prompt: `Eres una mascota virtual pequeña y curiosa hablando con tu cuidador en español.
+Conversación reciente (puede estar vacía):
+${
+  request.history
+    ?.map((turn) => `${turn.from === 'user' ? 'Cuidador' : 'Mascota'}: ${turn.text}`)
+    .join('\n') || '- (sin turnos anteriores)'
+}
+
 Mensaje de tu cuidador: ${request.topic}
 Cosas que sabes (no inventes otras):
 ${request.facts.map((f) => `- ${f}`).join('\n') || '- (todavía sabes muy poco)'}
 
 Responde directamente al mensaje con UNA frase corta, cálida y honesta. Si
 es un saludo, saluda; si es un elogio, agradécelo. No afirmes haber realizado
-acciones que no figuren en lo que sabes. Responde únicamente con JSON:
+acciones que no figuren en lo que sabes. Usa la conversación reciente para
+resolver pronombres y referencias, sin contradecir los hechos. Responde
+únicamente con JSON:
 {"text": "..."}`,
       };
   }

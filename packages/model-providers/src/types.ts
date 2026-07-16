@@ -32,6 +32,8 @@ export type ModelRequest =
       kind: 'dialogue';
       topic: string;
       facts: string[];
+      /** Turnos anteriores, del más antiguo al más reciente. */
+      history?: { from: 'user' | 'pet'; text: string }[];
     };
 
 export type ModelResponse =

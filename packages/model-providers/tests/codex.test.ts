@@ -58,11 +58,29 @@ describe('CodexModelProvider', () => {
     expect(response).toEqual({ kind: 'dialogue', text: 'hola cuidador' });
   });
 
+  it('incluye el historial reciente en el prompt de diálogo', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(transportReturning('{"text":"lo intento"}', seen));
+    await provider.complete({
+      kind: 'dialogue',
+      topic: 'hacelo igual',
+      facts: ['llevo conmigo: hammer'],
+      history: [
+        { from: 'user', text: 'talá el árbol' },
+        { from: 'pet', text: 'No quiero destruirlo.' },
+      ],
+    });
+
+    expect(seen[0]?.prompt).toContain('Cuidador: talá el árbol');
+    expect(seen[0]?.prompt).toContain('Mascota: No quiero destruirlo.');
+    expect(seen[0]?.prompt).toContain('Mensaje de tu cuidador: hacelo igual');
+  });
+
   it('rechaza JSON inválido o formas incorrectas con errores claros', async () => {
     const badJson = new CodexModelProvider(transportReturning('esto no es json'));
-    await expect(
-      badJson.complete({ kind: 'dialogue', topic: 't', facts: [] }),
-    ).rejects.toThrow('no es JSON válido');
+    await expect(badJson.complete({ kind: 'dialogue', topic: 't', facts: [] })).rejects.toThrow(
+      'no es JSON válido',
+    );
 
     const badShape = new CodexModelProvider(transportReturning('{"otra": "cosa"}'));
     await expect(

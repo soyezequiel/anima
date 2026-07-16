@@ -162,60 +162,50 @@ function normalizeMessage(text: string): string {
 /** Parser local de peticiones frecuentes. El resto se deriva al proveedor de diálogo. */
 export function parseUserMessage(text: string): UserRequest | { kind: 'explanation'; raw: string } {
   const lower = normalizeMessage(text);
-  const kindWord = (): string => {
-    for (const kind of [
-      'comida',
-      'alimento',
-      'manzana',
-      'fruta',
-      'food',
-      'muro',
-      'pared',
-      'wall',
-      'rama',
-      'branch',
-      'martillo',
-      'hammer',
-      'arbol',
-      'tree',
-    ]) {
-      if (lower.includes(kind)) {
-        const map: Record<string, string> = {
-          comida: 'food',
-          alimento: 'food',
-          manzana: 'food',
-          fruta: 'food',
-          food: 'food',
-          muro: 'wall',
-          pared: 'wall',
-          wall: 'wall',
-          rama: 'branch',
-          branch: 'branch',
-          martillo: 'hammer',
-          hammer: 'hammer',
-          arbol: 'tree',
-          tree: 'tree',
-        };
-        return map[kind] ?? kind;
-      }
+  const aliases: [word: string, kind: string][] = [
+    ['comida', 'food'],
+    ['alimento', 'food'],
+    ['manzana', 'food'],
+    ['fruta', 'food'],
+    ['food', 'food'],
+    ['muro', 'wall'],
+    ['pared', 'wall'],
+    ['wall', 'wall'],
+    ['rama', 'branch'],
+    ['branch', 'branch'],
+    ['martillo', 'hammer'],
+    ['hammer', 'hammer'],
+    ['arbol', 'tree'],
+    ['tree', 'tree'],
+  ];
+  const mentions = aliases
+    .map(([word, kind]) => ({ kind, index: lower.indexOf(word) }))
+    .filter((mention) => mention.index >= 0)
+    .sort((a, b) => a.index - b.index);
+  const kindWord = (action: 'destroy' | 'consume' | 'other'): string => {
+    if (action === 'consume' && mentions.some((mention) => mention.kind === 'food')) return 'food';
+    if (action === 'destroy') {
+      // En "tala el árbol con el hammer", el martillo es instrumento, no objetivo.
+      const nonToolTarget = mentions.find((mention) => mention.kind !== 'hammer');
+      if (nonToolTarget) return nonToolTarget.kind;
     }
-    return 'unknown';
+    return mentions[0]?.kind ?? 'unknown';
   };
   if (
-    /\b(destruye|destruir|rompe|romper|derriba|derribar|tala|talar|corta|cortar|golpea|golpear)\b/.test(
+    /\b(destruye|destruir|rompe|romper|rompas|derriba|derribar|tala|talar|tales|tale|talen|corta|cortar|cortes|golpea|golpear)\b/.test(
       lower,
     )
   ) {
-    return { kind: 'destroy-entity', targetKind: kindWord(), raw: text };
+    return { kind: 'destroy-entity', targetKind: kindWord('destroy'), raw: text };
   }
   if (/\b(trae|traer|busca|buscar|recoge|recoger|agarra|agarrar|toma|tomar)\b/.test(lower)) {
-    return { kind: 'fetch-item', targetKind: kindWord(), raw: text };
+    return { kind: 'fetch-item', targetKind: kindWord('other'), raw: text };
   }
   if (/energ/.test(lower) && /(com|aliment|fruta|manzana)/.test(lower)) {
     return { kind: 'explanation', raw: text };
   }
-  if (/\b(come|comer|comete|consume|consumir)\b/.test(lower) && kindWord() !== 'unknown') {
-    return { kind: 'consume-item', targetKind: kindWord(), raw: text };
+  if (/\b(come|comer|comete|consume|consumir)\b/.test(lower)) {
+    return { kind: 'consume-item', targetKind: kindWord('consume'), raw: text };
   }
   if (/\b(espera|esperar|quedate|para)\b/.test(lower)) {
     return { kind: 'wait-here', raw: text };

@@ -60,6 +60,8 @@ export interface AgentPersistentState {
   events: AgentEvent[];
   energyHypothesisId: string | null;
   lastSelectedGoalId: string | null;
+  /** Última orden explícita, para resolver referencias como "hacelo igual". */
+  lastUserRequest?: UserRequest | null;
 }
 
 /**
@@ -109,6 +111,7 @@ export class AnimaAgent {
   private pendingExplanation: string | null = null;
   private energyHypothesisId: string | null = null;
   private lastSelectedGoalId: string | null = null;
+  private lastUserRequest: UserRequest | null = null;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
   private suspensionEdibles = new Map<string, Set<string>>();
   private tick = 0;
@@ -149,6 +152,7 @@ export class AnimaAgent {
       events: this.events.events,
       energyHypothesisId: this.energyHypothesisId,
       lastSelectedGoalId: this.lastSelectedGoalId,
+      lastUserRequest: this.lastUserRequest,
     });
   }
 
@@ -161,6 +165,31 @@ export class AnimaAgent {
     this.events.events.push(...clone.events);
     this.energyHypothesisId = clone.energyHypothesisId;
     this.lastSelectedGoalId = clone.lastSelectedGoalId;
+    if (clone.lastUserRequest !== undefined) {
+      this.lastUserRequest = clone.lastUserRequest;
+    } else {
+      // Compatibilidad con guardados anteriores: reconstruir la última orden
+      // explícita del historial, incluso si el agente la había rechazado.
+      this.lastUserRequest = null;
+      for (const turn of [...this.memory.working.conversation].reverse()) {
+        if (turn.from !== 'user') continue;
+        const parsed = parseUserMessage(turn.text);
+        if (
+          parsed.kind !== 'unknown' &&
+          parsed.kind !== 'explanation' &&
+          (parsed.kind === 'wait-here' || parsed.targetKind !== 'unknown')
+        ) {
+          this.lastUserRequest = structuredClone(parsed);
+          break;
+        }
+      }
+      if (!this.lastUserRequest) {
+        const recentGoal = [...this.goals.all()].reverse().find((goal) => goal.userRequest);
+        this.lastUserRequest = recentGoal?.userRequest
+          ? (structuredClone(recentGoal.userRequest) as UserRequest)
+          : null;
+      }
+    }
     // La actividad en curso y las colas efímeras no se persisten.
     this.activity = null;
     this.pendingSpeech = [];
@@ -409,13 +438,14 @@ export class AnimaAgent {
     this.emit('user.message.received', { text });
     this.memory.noteConversation('user', text, this.tick);
 
-    const parsed = parseUserMessage(text);
+    const parsed = this.contextualizeUserMessage(parseUserMessage(text), text, perception);
     if (parsed.kind === 'unknown') {
       try {
         const response = await this.config.provider.complete({
           kind: 'dialogue',
           topic: text,
           facts: this.dialogueFacts(perception),
+          history: this.dialogueHistory(),
         });
         this.reply(
           response.kind === 'dialogue'
@@ -447,6 +477,13 @@ export class AnimaAgent {
       return;
     }
 
+    if (
+      parsed.kind === 'wait-here' ||
+      ('targetKind' in parsed && parsed.targetKind !== 'unknown')
+    ) {
+      this.lastUserRequest = structuredClone(parsed);
+    }
+
     const decision = this.decideOnRequest(parsed, perception);
     const eventType =
       decision.classification === 'accepted' ? 'user.request.accepted' : 'user.request.refused';
@@ -467,9 +504,65 @@ export class AnimaAgent {
       .map((fact) => fact.statement);
     const visibleKinds = [...new Set(perception.visibleEntities.map((entity) => entity.kind))];
     if (visibleKinds.length > 0) facts.push(`ahora veo: ${visibleKinds.join(', ')}`);
+    if (perception.self.heldItems.length > 0) {
+      facts.push(
+        `llevo conmigo: ${perception.self.heldItems
+          .map((item) =>
+            item.toolPower === undefined
+              ? item.kind
+              : `${item.kind} (herramienta, poder ${item.toolPower})`,
+          )
+          .join(', ')}`,
+      );
+    }
     const energy = perception.self.energy;
     if (energy) facts.push(`mi energía actual es ${Math.round(energy.current)} de ${energy.max}`);
     return facts;
+  }
+
+  private dialogueHistory(): { from: 'user' | 'pet'; text: string }[] {
+    // El turno actual ya se envió como `topic`; no lo duplicamos en el historial.
+    return this.memory.working.conversation
+      .slice(0, -1)
+      .slice(-8)
+      .map(({ from, text }) => ({ from, text }));
+  }
+
+  private contextualizeUserMessage(
+    parsed: ReturnType<typeof parseUserMessage>,
+    text: string,
+    perception: Perception,
+  ): ReturnType<typeof parseUserMessage> {
+    if (parsed.kind === 'explanation') return parsed;
+
+    const normalized = text
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '');
+    const repeatsLastRequest =
+      /\b(hacelo|hazlo|hace eso|intentalo|intenta de nuevo|probalo|proba de nuevo)\b/.test(
+        normalized,
+      );
+    if (parsed.kind === 'unknown' && repeatsLastRequest && this.lastUserRequest) {
+      return { ...structuredClone(this.lastUserRequest), raw: text };
+    }
+
+    if ('targetKind' in parsed && parsed.targetKind === 'unknown') {
+      const previous = this.lastUserRequest;
+      if (
+        previous &&
+        previous.kind === parsed.kind &&
+        'targetKind' in previous &&
+        previous.targetKind !== 'unknown'
+      ) {
+        return { ...parsed, targetKind: previous.targetKind };
+      }
+      if (parsed.kind === 'consume-item') {
+        const visibleFood = perception.visibleEntities.find((entity) => entity.edible);
+        if (visibleFood) return { ...parsed, targetKind: visibleFood.kind };
+      }
+    }
+    return parsed;
   }
 
   decideOnRequest(request: UserRequest, perception: Perception): RequestDecision {

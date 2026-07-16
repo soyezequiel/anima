@@ -307,6 +307,7 @@ export class GameSession {
         return;
       }
       const perception = buildPerception(this.world, this.agent.petId);
+      const agentEventStart = this.agent.events.events.length;
       let intent = null;
       try {
         intent = await this.agent.think(perception);
@@ -341,9 +342,13 @@ export class GameSession {
       if (events.some((e) => e.type === 'pet.died')) {
         await this.handleDeath();
       } else {
+        const userTurnProcessed = this.agent.events.events
+          .slice(agentEventStart)
+          .some((event) => event.type === 'user.message.received');
         const completed =
           this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed';
         if (
+          userTurnProcessed ||
           (completed && !this.storyWasCompleted) ||
           this.world.tick % AUTOSAVE_EVERY_TICKS === 0
         ) {
