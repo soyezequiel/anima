@@ -57,14 +57,39 @@ export class MockModelProvider extends BaseModelProvider {
           hypothesis: `la señal ${request.signal} indica algo que aún no comprendo`,
           confidence: 0.3,
         });
-      case 'dialogue':
+      case 'dialogue': {
+        const topic = request.topic
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/\p{Diacritic}/gu, '');
+        if (/\b(hola|buenas|hey)\b/.test(topic)) {
+          return Promise.resolve({
+            kind: 'dialogue',
+            text: '¡Hola! Me alegra que estés aquí. Estoy explorando y aprendiendo este mundo.',
+          });
+        }
+        if (/\b(bien|genial|buenisimo|excelente|bravo)\b/.test(topic)) {
+          return Promise.resolve({
+            kind: 'dialogue',
+            text: '¡Gracias! Voy a seguir aprendiendo.',
+          });
+        }
+        if (/\b(como estas|como te sentis|como te sientes)\b/.test(topic)) {
+          return Promise.resolve({
+            kind: 'dialogue',
+            text:
+              request.facts.find((fact) => fact.includes('energía actual')) ??
+              'Estoy bien y con curiosidad.',
+          });
+        }
         return Promise.resolve({
           kind: 'dialogue',
           text:
             request.facts.length > 0
-              ? `Sobre ${request.topic}: ${request.facts[0]}`
-              : `Estoy pensando en ${request.topic}.`,
+              ? `Te escucho. ${request.facts[0]}.`
+              : 'Te escucho. Todavía sé poco, pero me gusta que me hables.',
         });
+      }
     }
   }
 }

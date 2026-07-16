@@ -4,8 +4,13 @@ import type { WorldState } from '@anima/sim-core';
 import { SkillLibrary } from '@anima/skill-runtime';
 import { RegressionStore } from '@anima/skill-evaluator';
 import { MockModelProvider } from '@anima/model-providers';
-import { foodBehindWall, MVP_SCENARIOS } from '@anima/test-scenarios';
-import { AnimaAgent, GOAL_RESTORE_ENERGY, runAgentInWorld, SKILL_REACH_BLOCKED_FOOD } from '../src/index.js';
+import { foodBehindWall, MVP_SCENARIOS, openField } from '@anima/test-scenarios';
+import {
+  AnimaAgent,
+  GOAL_RESTORE_ENERGY,
+  runAgentInWorld,
+  SKILL_REACH_BLOCKED_FOOD,
+} from '../src/index.js';
 
 function makeAgent(overrides: Partial<ConstructorParameters<typeof AnimaAgent>[0]> = {}) {
   const provider = new MockModelProvider();
@@ -110,7 +115,9 @@ describe('historia completa del MVP (headless, sin IA externa)', () => {
     const second = await runAgentInWorld(world, agent, {
       maxTicks: 120,
       stopWhen: (_w, a) =>
-        a.goals.all().filter((g) => g.description === GOAL_RESTORE_ENERGY && g.status === 'completed')
+        a.goals
+          .all()
+          .filter((g) => g.description === GOAL_RESTORE_ENERGY && g.status === 'completed')
           .length >= 2,
     });
     expect(second.worldEvents.some((e) => e.type === 'item.consumed')).toBe(true);
@@ -124,6 +131,51 @@ describe('historia completa del MVP (headless, sin IA externa)', () => {
     ).toHaveLength(1);
     const stable = library.findStable(SKILL_REACH_BLOCKED_FOOD)!;
     expect(stable.metrics.totalRuns).toBeGreaterThan(0);
+
+    // El resumen de aprendizaje se anuncia una sola vez, aunque vuelva a comer.
+    const afterSecondMeal = await runAgentInWorld(world, agent, { maxTicks: 2 });
+    const spoken = [...result.worldEvents, ...second.worldEvents, ...afterSecondMeal.worldEvents]
+      .filter((event) => event.type === 'agent.spoke')
+      .map((event) => String(event.data.text));
+    expect(spoken.filter((text) => text.startsWith('Aprendí que'))).toHaveLength(1);
+  });
+});
+
+describe('diálogo y órdenes del usuario', () => {
+  it('responde saludos mediante el proveedor de diálogo', async () => {
+    const { agent, provider } = makeAgent();
+    const bundle = openField.build(9);
+    const result = await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 3,
+      userMessagesAt: { 0: 'hola' },
+    });
+
+    expect(provider.callCount('dialogue')).toBe(1);
+    expect(
+      result.worldEvents.some(
+        (event) => event.type === 'agent.spoke' && String(event.data.text).includes('¡Hola!'),
+      ),
+    ).toBe(true);
+  });
+
+  it('ejecuta una orden natural de comer en el mundo', async () => {
+    const { agent } = makeAgent();
+    const bundle = openField.build(10);
+    const result = await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 100,
+      userMessagesAt: { 0: 'come esa manzana' },
+      stopWhen: (_world, currentAgent) =>
+        currentAgent.goals
+          .all()
+          .some((goal) => goal.source === 'user-request' && goal.status === 'completed'),
+    });
+
+    expect(result.worldEvents.some((event) => event.type === 'item.consumed')).toBe(true);
+    expect(
+      agent.goals
+        .all()
+        .some((goal) => goal.source === 'user-request' && goal.status === 'completed'),
+    ).toBe(true);
   });
 });
 

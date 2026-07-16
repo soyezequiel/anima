@@ -4,7 +4,10 @@ import { MemoryStore } from '@anima/memory';
 import type { Goal } from '../src/index.js';
 import { evaluateUserRequest, parseUserMessage } from '../src/index.js';
 
-function perceptionWith(overrides: Partial<Perception['self']> = {}, visible: Perception['visibleEntities'] = []): Perception {
+function perceptionWith(
+  overrides: Partial<Perception['self']> = {},
+  visible: Perception['visibleEntities'] = [],
+): Perception {
   return {
     tick: 10,
     self: {
@@ -60,7 +63,9 @@ describe('negativas y autonomía', () => {
   it('cannot: sin herramientas no puede destruir un muro', () => {
     const decision = evaluateUserRequest(
       { kind: 'destroy-entity', targetKind: 'wall', raw: 'rompe el muro' },
-      perceptionWith({}, [{ id: 'e5', kind: 'wall', position: { x: 3, y: 1 }, solid: true, hardness: 5 }]),
+      perceptionWith({}, [
+        { id: 'e5', kind: 'wall', position: { x: 3, y: 1 }, solid: true, hardness: 5 },
+      ]),
       new MemoryStore(),
       undefined,
     );
@@ -106,8 +111,12 @@ describe('parser mínimo de mensajes', () => {
   it('clasifica peticiones y explicaciones', () => {
     expect(parseUserMessage('destruye el muro').kind).toBe('destroy-entity');
     expect(parseUserMessage('trae comida').kind).toBe('fetch-item');
+    expect(parseUserMessage('tala el árbol').kind).toBe('destroy-entity');
+    expect(parseUserMessage('come esa manzana').kind).toBe('consume-item');
     expect(parseUserMessage('espera aquí').kind).toBe('wait-here');
+    expect(parseUserMessage('comer alimento da energía').kind).toBe('explanation');
     expect(parseUserMessage('cuando comes alimento recuperas energía').kind).toBe('explanation');
+    expect(parseUserMessage('hola').kind).toBe('unknown');
     expect(parseUserMessage('xyzzy').kind).toBe('unknown');
   });
 });

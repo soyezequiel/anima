@@ -8,7 +8,7 @@ import type { SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-r
 import { SkillExecution } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
-import type { Goal, GoalManagerData } from './goals.js';
+import type { Goal, GoalManagerData, GoalUserRequest } from './goals.js';
 import { GoalManager } from './goals.js';
 import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
@@ -79,6 +79,9 @@ interface Activity {
   goalId: string;
   strategy: string;
   exec: SkillExecution;
+  purpose: 'restore-energy' | 'user-request';
+  completionReply?: string;
+  requestRaw?: string;
   skillId?: string;
   consumedFood: boolean;
   energyAtStart: number;
@@ -96,7 +99,9 @@ export class AnimaAgent {
   readonly progress = new ProgressController();
   readonly events: EventLog<AgentEvent> = createEventLog<AgentEvent>();
 
-  private readonly config: Required<Pick<AgentConfig, 'maxSkillDevAttempts' | 'maxVersionsPerDev'>> &
+  private readonly config: Required<
+    Pick<AgentConfig, 'maxSkillDevAttempts' | 'maxVersionsPerDev'>
+  > &
     AgentConfig;
   private activity: Activity | null = null;
   private pendingSpeech: string[] = [];
@@ -246,7 +251,7 @@ export class AnimaAgent {
   async think(perception: Perception): Promise<ActionIntent | null> {
     this.tick = perception.tick;
 
-    this.processUserMessages(perception);
+    await this.processUserMessages(perception);
     await this.processSignals(perception);
 
     const speech = this.pendingSpeech.shift();
@@ -397,39 +402,74 @@ export class AnimaAgent {
 
   // ---- mensajes del usuario -----------------------------------------------
 
-  private processUserMessages(perception: Perception): void {
-    for (const text of this.pendingUserMessages.splice(0)) {
-      this.emit('user.message.received', { text });
-      this.memory.noteConversation('user', text, this.tick);
+  private async processUserMessages(perception: Perception): Promise<void> {
+    const text = this.pendingUserMessages.shift();
+    if (text === undefined) return;
 
-      const parsed = parseUserMessage(text);
-      if (parsed.kind === 'explanation') {
-        this.pendingExplanation = text;
-        // Si el objetivo se suspendió por falta de ideas, la nueva
-        // información del usuario es motivo para reintentar.
-        for (const goal of this.goals.all()) {
-          if (goal.status === 'suspended') {
-            this.goals.reactivate(goal.id);
-            this.progress.resetGoal(goal.id);
-            this.suspensionEdibles.delete(goal.id);
-            this.emit('goal.reactivated', { goalId: goal.id, reason: 'nueva información del usuario' });
-          }
-        }
-        this.reply('Gracias, eso me ayuda a entender qué me pasa.');
-        continue;
+    this.emit('user.message.received', { text });
+    this.memory.noteConversation('user', text, this.tick);
+
+    const parsed = parseUserMessage(text);
+    if (parsed.kind === 'unknown') {
+      try {
+        const response = await this.config.provider.complete({
+          kind: 'dialogue',
+          topic: text,
+          facts: this.dialogueFacts(perception),
+        });
+        this.reply(
+          response.kind === 'dialogue'
+            ? response.text
+            : 'Te escucho, aunque todavía estoy aprendiendo a conversar.',
+        );
+      } catch {
+        this.reply('Te escucho. Mi mente está un poco ocupada, pero puedes seguir hablándome.');
       }
-      const decision = this.decideOnRequest(parsed, perception);
-      const eventType =
-        decision.classification === 'accepted' ? 'user.request.accepted' : 'user.request.refused';
-      this.emit(eventType, {
-        request: parsed,
-        classification: decision.classification,
-        reason: decision.reason,
-      });
-      this.reply(
-        decision.alternative ? `${decision.reason} ${decision.alternative}` : decision.reason,
-      );
+      return;
     }
+
+    if (parsed.kind === 'explanation') {
+      this.pendingExplanation = text;
+      // Si el objetivo se suspendió por falta de ideas, la nueva
+      // información del usuario es motivo para reintentar.
+      for (const goal of this.goals.all()) {
+        if (goal.status === 'suspended') {
+          this.goals.reactivate(goal.id);
+          this.progress.resetGoal(goal.id);
+          this.suspensionEdibles.delete(goal.id);
+          this.emit('goal.reactivated', {
+            goalId: goal.id,
+            reason: 'nueva información del usuario',
+          });
+        }
+      }
+      this.reply('Gracias, eso me ayuda a entender qué me pasa.');
+      return;
+    }
+
+    const decision = this.decideOnRequest(parsed, perception);
+    const eventType =
+      decision.classification === 'accepted' ? 'user.request.accepted' : 'user.request.refused';
+    this.emit(eventType, {
+      request: parsed,
+      classification: decision.classification,
+      reason: decision.reason,
+    });
+    this.reply(
+      decision.alternative ? `${decision.reason} ${decision.alternative}` : decision.reason,
+    );
+  }
+
+  private dialogueFacts(perception: Perception): string[] {
+    const facts = this.memory
+      .factList()
+      .slice(-6)
+      .map((fact) => fact.statement);
+    const visibleKinds = [...new Set(perception.visibleEntities.map((entity) => entity.kind))];
+    if (visibleKinds.length > 0) facts.push(`ahora veo: ${visibleKinds.join(', ')}`);
+    const energy = perception.self.energy;
+    if (energy) facts.push(`mi energía actual es ${Math.round(energy.current)} de ${energy.max}`);
+    return facts;
   }
 
   decideOnRequest(request: UserRequest, perception: Perception): RequestDecision {
@@ -439,21 +479,32 @@ export class AnimaAgent {
       this.memory,
       this.goals.selectActive(),
     );
-    if (decision.classification === 'accepted' && request.kind !== 'wait-here') {
+    if (decision.classification === 'accepted' && request.kind !== 'unknown') {
+      const priority = request.kind === 'consume-item' ? 1 : 0.6;
+      const urgency = request.kind === 'consume-item' ? 0.8 : 0.35;
       const goal = this.goals.create(
         {
           description: `petición del usuario: ${request.raw}`,
           source: 'user-request',
-          priority: 0.5,
-          urgency: 0.3,
+          priority,
+          urgency,
           expectedValue: 0.6,
           preconditions: [],
           successCriteria: ['la petición queda satisfecha'],
           failureCriteria: [],
+          userRequest: {
+            kind: request.kind,
+            ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+            raw: request.raw,
+          },
         },
         this.tick,
       );
-      this.emit('goal.created', { goalId: goal.id, description: goal.description, source: goal.source });
+      this.emit('goal.created', {
+        goalId: goal.id,
+        description: goal.description,
+        source: goal.source,
+      });
     }
     return decision;
   }
@@ -466,9 +517,12 @@ export class AnimaAgent {
   // ---- persecución de objetivos --------------------------------------------
 
   private async pursueGoal(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
+    if (goal.source === 'user-request' && goal.userRequest) {
+      const program = this.programForUserRequest(goal.userRequest);
+      this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
+      return this.continueActivity(perception);
+    }
     if (goal.description !== GOAL_RESTORE_ENERGY) {
-      // El MVP solo persigue activamente el objetivo de energía; otros
-      // objetivos quedan registrados y visibles pero sin plan propio aún.
       return null;
     }
 
@@ -539,14 +593,13 @@ export class AnimaAgent {
       purpose: 'llegar hasta el alimento aunque el camino directo esté bloqueado, y consumirlo',
       motivation: failures.join('; ') || 'el camino directo al alimento falló repetidamente',
       expectedOutcome: 'la mascota consume el alimento y su energía aumenta',
-      successCriteria: [
-        { type: 'consumedKind', kind: 'food' },
-        { type: 'energyIncreased' },
-      ],
+      successCriteria: [{ type: 'consumedKind', kind: 'food' }, { type: 'energyIncreased' }],
     };
     const context = [
       ...failures,
-      ...perception.visibleEntities.map((e) => `veo: ${e.kind}${e.toolPower ? ` (herramienta, poder ${e.toolPower})` : ''}`),
+      ...perception.visibleEntities.map(
+        (e) => `veo: ${e.kind}${e.toolPower ? ` (herramienta, poder ${e.toolPower})` : ''}`,
+      ),
     ];
 
     const outcome = await developSkill(
@@ -614,6 +667,166 @@ export class AnimaAgent {
     return null;
   }
 
+  private programForUserRequest(request: GoalUserRequest): SkillProgram {
+    const targetKind = request.targetKind ?? 'unknown';
+    switch (request.kind) {
+      case 'wait-here':
+        return [{ op: 'wait', ticks: 6 }];
+
+      case 'fetch-item':
+        return [
+          { op: 'findEntities', query: { kind: targetKind }, store: 'requestedItems' },
+          {
+            op: 'selectTarget',
+            from: 'requestedItems',
+            strategy: 'nearest',
+            store: 'requestedItem',
+          },
+          {
+            op: 'branch',
+            if: { type: 'not', cond: { type: 'holding', target: 'requestedItem' } },
+            then: [
+              { op: 'moveToward', target: 'requestedItem', maxSteps: 40 },
+              {
+                op: 'branch',
+                if: { type: 'lastMoveBlocked' },
+                then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+              },
+              { op: 'pickup', target: 'requestedItem' },
+              {
+                op: 'branch',
+                if: { type: 'lastActionFailed' },
+                then: [{ op: 'abort', reason: 'no-pude-recogerlo' }],
+              },
+            ],
+          },
+        ];
+
+      case 'consume-item': {
+        const stable =
+          targetKind === 'food'
+            ? this.config.library.findStable(SKILL_REACH_BLOCKED_FOOD)
+            : undefined;
+        if (stable) return [{ op: 'runSkill', skillId: stable.id }];
+        return [
+          { op: 'findEntities', query: { kind: targetKind }, store: 'requestedFoods' },
+          {
+            op: 'selectTarget',
+            from: 'requestedFoods',
+            strategy: 'nearest',
+            store: 'requestedFood',
+          },
+          {
+            op: 'branch',
+            if: { type: 'not', cond: { type: 'holding', target: 'requestedFood' } },
+            then: [
+              { op: 'moveToward', target: 'requestedFood', maxSteps: 40 },
+              {
+                op: 'branch',
+                if: { type: 'lastMoveBlocked' },
+                then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+              },
+            ],
+          },
+          { op: 'consume', target: 'requestedFood' },
+          {
+            op: 'branch',
+            if: { type: 'lastActionFailed' },
+            then: [{ op: 'abort', reason: 'no-pude-comerlo' }],
+          },
+        ];
+      }
+
+      case 'destroy-entity':
+        return [
+          { op: 'findEntities', query: { kind: targetKind }, store: 'requestedTargets' },
+          {
+            op: 'selectTarget',
+            from: 'requestedTargets',
+            strategy: 'nearest',
+            store: 'requestedTarget',
+          },
+          { op: 'findEntities', query: { tool: true }, store: 'availableTools' },
+          {
+            op: 'selectTarget',
+            from: 'availableTools',
+            strategy: 'strongestTool',
+            store: 'bestTool',
+          },
+          {
+            op: 'branch',
+            if: { type: 'not', cond: { type: 'holding', target: 'bestTool' } },
+            then: [
+              { op: 'moveToward', target: 'bestTool', maxSteps: 40 },
+              { op: 'pickup', target: 'bestTool' },
+              {
+                op: 'branch',
+                if: { type: 'lastActionFailed' },
+                then: [{ op: 'abort', reason: 'no-pude-recoger-la-herramienta' }],
+              },
+            ],
+          },
+          { op: 'moveToward', target: 'requestedTarget', maxSteps: 40 },
+          {
+            op: 'branch',
+            if: { type: 'lastMoveBlocked' },
+            then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+          },
+          {
+            op: 'repeatWithLimit',
+            max: 20,
+            until: { type: 'entityGone', ref: 'requestedTarget' },
+            body: [{ op: 'useItem', item: 'bestTool', target: 'requestedTarget' }],
+          },
+          {
+            op: 'branch',
+            if: { type: 'not', cond: { type: 'entityGone', ref: 'requestedTarget' } },
+            then: [{ op: 'abort', reason: 'objetivo-resistió' }],
+          },
+        ];
+    }
+  }
+
+  private completionReply(request: GoalUserRequest): string {
+    const target =
+      {
+        food: 'el alimento',
+        wall: 'el muro',
+        branch: 'la rama',
+        hammer: 'el martillo',
+        tree: 'el árbol',
+      }[request.targetKind ?? ''] ?? 'eso';
+    switch (request.kind) {
+      case 'wait-here':
+        return 'Listo, esperé aquí un momento.';
+      case 'fetch-item':
+        return `Listo, recogí ${target}.`;
+      case 'consume-item':
+        return `Listo, comí ${target}.`;
+      case 'destroy-entity':
+        return `Listo, destruí ${target}.`;
+    }
+  }
+
+  private startUserActivity(
+    goal: Goal,
+    program: SkillProgram,
+    completionReply: string,
+    perception: Perception,
+  ): void {
+    this.emit('strategy.selected', { goalId: goal.id, strategy: 'petición-del-usuario' });
+    this.activity = {
+      goalId: goal.id,
+      strategy: 'petición-del-usuario',
+      exec: new SkillExecution(program, this.petId, { library: this.config.library }),
+      purpose: 'user-request',
+      completionReply,
+      requestRaw: goal.userRequest?.raw ?? goal.description,
+      consumedFood: false,
+      energyAtStart: perception.self.energy?.current ?? 0,
+    };
+  }
+
   private startActivity(
     goal: Goal,
     strategy: string,
@@ -626,6 +839,7 @@ export class AnimaAgent {
       goalId: goal.id,
       strategy,
       exec: new SkillExecution(program, this.petId, { library: this.config.library }),
+      purpose: 'restore-energy',
       ...(skillId !== undefined ? { skillId } : {}),
       consumedFood: false,
       energyAtStart: perception.self.energy?.current ?? 0,
@@ -639,6 +853,41 @@ export class AnimaAgent {
 
     // La actividad terminó: comparar expectativa y realidad.
     this.activity = null;
+
+    if (activity.purpose === 'user-request') {
+      const success = out.result.outcome === 'completed';
+      if (success) {
+        this.goals.complete(activity.goalId);
+        this.emit('goal.completed', { goalId: activity.goalId, strategy: activity.strategy });
+        this.memory.recordEpisode({
+          kind: 'promise-kept',
+          summary: `cumplí la petición: ${activity.requestRaw ?? activity.strategy}`,
+          tick: this.tick,
+          importance: 0.7,
+        });
+        this.reply(activity.completionReply ?? 'Listo.');
+      } else {
+        this.goals.fail(activity.goalId);
+        this.emit('strategy.failed', {
+          goalId: activity.goalId,
+          strategy: activity.strategy,
+          outcome: out.result.outcome,
+          reason: out.result.reason ?? null,
+        });
+        this.memory.recordEpisode({
+          kind: 'failure',
+          summary: `no pude cumplir la petición ${activity.requestRaw ?? ''}: ${out.result.reason ?? out.result.outcome}`,
+          tick: this.tick,
+          importance: 0.6,
+        });
+        this.reply(
+          `No pude completar eso: ${this.describeActivityFailure(out.result.reason ?? out.result.outcome)}.`,
+        );
+      }
+      this.lastSelectedGoalId = null;
+      return null;
+    }
+
     const energyNow = perception.self.energy?.current ?? 0;
     const success =
       out.result.outcome === 'completed' &&
@@ -657,6 +906,9 @@ export class AnimaAgent {
     }
 
     if (success) {
+      const firstDiscovery = !this.memory
+        .episodeList()
+        .some((episode) => episode.kind === 'discovery');
       if (this.energyHypothesisId) {
         this.memory.addEvidence(this.energyHypothesisId, true, this.tick);
         const consolidation = this.memory.consolidate(this.tick);
@@ -673,7 +925,7 @@ export class AnimaAgent {
       this.goals.complete(activity.goalId);
       this.emit('goal.completed', { goalId: activity.goalId, strategy: activity.strategy });
       this.lastSelectedGoalId = null;
-      this.reply(this.explainLearning());
+      if (firstDiscovery) this.reply(this.explainLearning());
       return null;
     }
 
@@ -693,6 +945,20 @@ export class AnimaAgent {
       this.emit('strategy.forbidden', { goalId: activity.goalId, strategy: activity.strategy });
     }
     return null;
+  }
+
+  private describeActivityFailure(reason: string): string {
+    if (reason.startsWith('no-candidates:')) return 'no encuentro el objeto';
+    const descriptions: Record<string, string> = {
+      'camino-bloqueado': 'el camino está bloqueado',
+      'no-pude-recogerlo': 'no pude recoger el objeto',
+      'no-pude-comerlo': 'no pude comer el alimento',
+      'no-pude-recoger-la-herramienta': 'no pude recoger la herramienta',
+      'objetivo-resistió': 'el objeto resistió mis intentos',
+      completed: 'la acción no produjo el resultado esperado',
+      aborted: 'tuve que detenerme',
+    };
+    return descriptions[reason] ?? reason.replaceAll('-', ' ');
   }
 
   /** Explicación breve generada desde datos estructurados, no razonamiento crudo. */

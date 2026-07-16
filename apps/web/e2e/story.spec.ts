@@ -45,21 +45,21 @@ test('la historia completa de aprendizaje se ve en la UI', async ({ page }) => {
 
   // Historial de experimentos: rechazo y promoción visibles.
   await page.getByTestId('tab-experimentos').click();
-  await expect(
-    page.getByTestId('experiment-item').filter({ hasText: 'RECHAZADA' }),
-  ).toHaveCount(1);
-  await expect(
-    page.getByTestId('experiment-item').filter({ hasText: 'PROMOVIDA' }),
-  ).toHaveCount(1);
+  await expect(page.getByTestId('experiment-item').filter({ hasText: 'RECHAZADA' })).toHaveCount(1);
+  await expect(page.getByTestId('experiment-item').filter({ hasText: 'PROMOVIDA' })).toHaveCount(1);
 
   // La mascota habló por el chat (su explicación de lo aprendido).
   await page.getByTestId('tab-chat').click();
   await expect(page.getByTestId('chat-log')).toContainText('Aprendí');
 });
 
-test('el chat intercala conversación: responde una petición', async ({ page }) => {
+test('el chat conversa y responde una petición', async ({ page }) => {
   await page.goto('/?seed=5&speed=8');
   await page.getByTestId('tab-chat').click();
+  await page.getByTestId('chat-input').fill('hola');
+  await page.getByTestId('chat-send').click();
+  await expect(page.getByTestId('chat-log')).toContainText('¡Hola!', { timeout: 15_000 });
+
   await page.getByTestId('chat-input').fill('espera un momento');
   await page.getByTestId('chat-send').click();
   await expect(page.getByTestId('chat-log')).toContainText('Puedo esperar aquí un momento', {

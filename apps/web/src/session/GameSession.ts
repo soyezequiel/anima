@@ -288,9 +288,12 @@ export class GameSession {
 
   private scheduleNext(): void {
     if (!this.running || this.disposed) return;
-    this.timer = setTimeout(() => {
-      void this.stepOnce().then(() => this.scheduleNext());
-    }, 1000 / (BASE_TICKS_PER_SECOND * this.speed));
+    this.timer = setTimeout(
+      () => {
+        void this.stepOnce().then(() => this.scheduleNext());
+      },
+      1000 / (BASE_TICKS_PER_SECOND * this.speed),
+    );
   }
 
   /** Avanza exactamente un tick de simulación (usable también en pausa). */
@@ -330,10 +333,7 @@ export class GameSession {
           return;
         }
       }
-      const events = stepWorld(
-        this.world,
-        intent ? [{ actorId: this.agent.petId, intent }] : [],
-      );
+      const events = stepWorld(this.world, intent ? [{ actorId: this.agent.petId, intent }] : []);
       this.agent.observe(events);
       this.ingestWorldEvents(events);
       this.ingestAgentEvents();
@@ -396,7 +396,9 @@ export class GameSession {
     this.ingestAgentEvents();
 
     const adopted = result.adoptedSkills
-      .map((s) => `${s.name} (${s.promoted ? 'verificada y promovida' : 'rechazada en sus pruebas'})`)
+      .map(
+        (s) => `${s.name} (${s.promoted ? 'verificada y promovida' : 'rechazada en sus pruebas'})`,
+      )
       .join('; ');
     this.chat = [
       {
@@ -428,7 +430,7 @@ export class GameSession {
       tick: this.world.tick,
       data: { note: 'muerte forzada desde el modo desarrollador' },
     });
-    if (!this.running) void this.stepOnce();
+    if (!this.running) setTimeout(() => void this.stepOnce(), 0);
   }
 
   // ---- entrada del usuario --------------------------------------------------
@@ -440,6 +442,7 @@ export class GameSession {
     this.agent.receiveUserMessage(trimmed);
     this.rebuildView();
     this.notify();
+    if (!this.running) void this.stepOnce();
   }
 
   // ---- suscripción ------------------------------------------------------------
@@ -710,8 +713,7 @@ export class GameSession {
         confidence: Math.round(h.confidence * 100) / 100,
         resolved: h.resolved,
       })),
-      storyCompleted:
-        this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed',
+      storyCompleted: this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed',
     };
   }
 }

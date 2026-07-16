@@ -89,7 +89,10 @@ const DIALOGUE_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
-export function buildCodexPrompt(request: ModelRequest): { prompt: string; schema: Record<string, unknown> } {
+export function buildCodexPrompt(request: ModelRequest): {
+  prompt: string;
+  schema: Record<string, unknown>;
+} {
   switch (request.kind) {
     case 'skill.propose':
       return {
@@ -140,11 +143,13 @@ directa de una fuente confiable). Responde únicamente con JSON:
       return {
         schema: DIALOGUE_SCHEMA,
         prompt: `Eres una mascota virtual pequeña y curiosa hablando con tu cuidador en español.
-Tema: ${request.topic}
+Mensaje de tu cuidador: ${request.topic}
 Cosas que sabes (no inventes otras):
 ${request.facts.map((f) => `- ${f}`).join('\n') || '- (todavía sabes muy poco)'}
 
-Responde con UNA frase corta, cálida y honesta. Responde únicamente con JSON:
+Responde directamente al mensaje con UNA frase corta, cálida y honesta. Si
+es un saludo, saluda; si es un elogio, agradécelo. No afirmes haber realizado
+acciones que no figuren en lo que sabes. Responde únicamente con JSON:
 {"text": "..."}`,
       };
   }

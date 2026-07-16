@@ -1,12 +1,13 @@
 export type GoalSource =
-  | 'internal-signal'
-  | 'curiosity'
-  | 'danger'
-  | 'user-request'
-  | 'promise'
-  | 'contradiction';
+  'internal-signal' | 'curiosity' | 'danger' | 'user-request' | 'promise' | 'contradiction';
 
 export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
+
+export interface GoalUserRequest {
+  kind: 'destroy-entity' | 'fetch-item' | 'consume-item' | 'wait-here';
+  targetKind?: string;
+  raw: string;
+}
 
 /** Los objetivos son estructuras, nunca texto libre suelto. */
 export interface Goal {
@@ -25,6 +26,8 @@ export interface Goal {
   suspendedReason?: string;
   /** Condición (texto estructurado breve) que permitiría reactivarlo. */
   reactivateWhen?: string;
+  /** Petición estructurada que permite ejecutar y restaurar objetivos del usuario. */
+  userRequest?: GoalUserRequest;
 }
 
 export type NewGoal = Omit<Goal, 'id' | 'status' | 'createdAtTick'>;
@@ -50,7 +53,12 @@ export class GoalManager {
 
   create(input: NewGoal, tick: number): Goal {
     this.counter += 1;
-    const goal: Goal = { ...input, id: `goal-${this.counter}`, status: 'active', createdAtTick: tick };
+    const goal: Goal = {
+      ...input,
+      id: `goal-${this.counter}`,
+      status: 'active',
+      createdAtTick: tick,
+    };
     this.goals.push(goal);
     return goal;
   }
@@ -84,6 +92,11 @@ export class GoalManager {
   complete(id: string): void {
     const goal = this.get(id);
     if (goal) goal.status = 'completed';
+  }
+
+  fail(id: string): void {
+    const goal = this.get(id);
+    if (goal) goal.status = 'failed';
   }
 
   suspend(id: string, reason: string, reactivateWhen: string): void {

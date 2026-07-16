@@ -57,6 +57,19 @@ describe('MockModelProvider', () => {
     expect(provider.callCount('skill.propose')).toBe(0);
     expect(provider.callCount()).toBe(2);
   });
+
+  it('contesta saludos y elogios sin repetir una respuesta genérica', async () => {
+    const provider = new MockModelProvider();
+    const greeting = await provider.complete({ kind: 'dialogue', topic: 'hola', facts: [] });
+    const praise = await provider.complete({ kind: 'dialogue', topic: 'buenísimo', facts: [] });
+    expect(greeting).toEqual(
+      expect.objectContaining({ kind: 'dialogue', text: expect.stringContaining('Hola') }),
+    );
+    expect(praise).toEqual(
+      expect.objectContaining({ kind: 'dialogue', text: expect.stringContaining('Gracias') }),
+    );
+    expect(greeting).not.toEqual(praise);
+  });
 });
 
 describe('ScriptedModelProvider', () => {
@@ -75,8 +88,8 @@ describe('ScriptedModelProvider', () => {
 describe('UnconfiguredModelProvider', () => {
   it('rechaza con un mensaje claro', async () => {
     const provider = new UnconfiguredModelProvider();
-    await expect(
-      provider.complete({ kind: 'dialogue', topic: 't', facts: [] }),
-    ).rejects.toThrow('No hay un modelo real configurado');
+    await expect(provider.complete({ kind: 'dialogue', topic: 't', facts: [] })).rejects.toThrow(
+      'No hay un modelo real configurado',
+    );
   });
 });
