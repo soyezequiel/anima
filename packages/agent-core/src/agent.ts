@@ -196,6 +196,8 @@ export class AnimaAgent {
   /** Rechazos del mundo a sus inventos: viajan al siguiente intento. */
   private recipeRejections: string[] = [];
   private recipeAttempts = 0;
+  /** Qué la dañó en el último tick: dispara el reflejo de apartarse. */
+  private lastPain: { sourceId: string; sourceKind: string; tick: number } | null = null;
   private lastSelectedGoalId: string | null = null;
   private lastUserRequest: UserRequest | null = null;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
@@ -368,6 +370,12 @@ export class AnimaAgent {
   async think(perception: Perception): Promise<ActionIntent | null> {
     this.tick = perception.tick;
 
+    // El dolor manda: antes de conversar, planificar o continuar nada, el
+    // cuerpo se aparta de lo que lo está dañando. Es un reflejo, no una
+    // decisión — como detenerse a distancia del fuego, viene de fábrica.
+    const reflex = this.painReflex(perception);
+    if (reflex) return reflex;
+
     await this.processUserMessages(perception);
     await this.processSignals(perception);
 
@@ -383,6 +391,53 @@ export class AnimaAgent {
       this.emit('goal.selected', { goalId: goal.id, description: goal.description });
     }
     return this.pursueGoal(goal, perception);
+  }
+
+  /**
+   * Apartarse de lo que la está dañando. Un paso, en la dirección que más la
+   * aleje de la fuente, evitando sólidos visibles. Si está acorralada no hay
+   * paso que dar y el reflejo cede el turno al resto de la mente.
+   *
+   * Sin esto, la mascota se quedaba pegada a un fuego perdiendo 1 de salud
+   * por tick hasta morir — incluida la fogata que ella misma acababa de
+   * construir, porque craftear la deja adyacente a lo construido.
+   */
+  private painReflex(perception: Perception): ActionIntent | null {
+    const pain = this.lastPain;
+    if (!pain || this.tick - pain.tick > 1) return null;
+    this.lastPain = null;
+
+    const source = perception.visibleEntities.find((e) => e.id === pain.sourceId);
+    const selfPos = perception.self.position;
+    if (!source?.position) return null;
+    const sourcePos = source.position;
+    if (Math.max(Math.abs(sourcePos.x - selfPos.x), Math.abs(sourcePos.y - selfPos.y)) > 1) {
+      return null; // Ya está fuera de alcance: no hay de qué huir.
+    }
+
+    const candidates = [
+      { dir: 'up', delta: { x: 0, y: -1 } },
+      { dir: 'down', delta: { x: 0, y: 1 } },
+      { dir: 'left', delta: { x: -1, y: 0 } },
+      { dir: 'right', delta: { x: 1, y: 0 } },
+    ] as const;
+    const escape = candidates
+      .map(({ dir, delta }) => {
+        const dest = { x: selfPos.x + delta.x, y: selfPos.y + delta.y };
+        return {
+          dir,
+          gain: Math.max(Math.abs(sourcePos.x - dest.x), Math.abs(sourcePos.y - dest.y)),
+          blocked: perception.visibleEntities.some(
+            (e) => e.solid && e.position && e.position.x === dest.x && e.position.y === dest.y,
+          ),
+        };
+      })
+      .filter((option) => !option.blocked && option.gain > 1)
+      .sort((a, b) => b.gain - a.gain)[0];
+    if (!escape) return null;
+
+    this.emit('pain.reflex', { sourceId: pain.sourceId, sourceKind: pain.sourceKind });
+    return { type: 'move', dir: escape.dir };
   }
 
   /**
@@ -441,6 +496,29 @@ export class AnimaAgent {
           this.tick,
         );
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+      }
+      // Dolor recibido: dispara el reflejo de apartarse en el próximo think()
+      // y deja conocimiento — el reflejo pasa, lo aprendido queda.
+      if (
+        event.type === 'entity.damaged' &&
+        event.data.id === this.petId &&
+        typeof event.data.byId === 'string' &&
+        typeof event.data.damage === 'number' &&
+        event.data.damage > 0
+      ) {
+        const sourceKind = String(event.data.itemKind);
+        this.lastPain = { sourceId: event.data.byId, sourceKind, tick: this.tick };
+        const statement = `estar pegado a un ${kindLabel(sourceKind)} hace daño`;
+        if (!this.memory.factList().some((f) => f.statement === statement)) {
+          const fact = this.memory.addFact(statement, this.tick);
+          this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+          this.memory.recordEpisode({
+            kind: 'pain',
+            summary: `me lastimé con ${kindLabel(sourceKind)} y me aparté`,
+            tick: this.tick,
+            importance: 0.8,
+          });
+        }
       }
       // El mundo rechazó un invento: el motivo se recuerda y viaja al próximo
       // intento. Sin esto insistiría con la misma idea imposible para siempre.
@@ -1890,7 +1968,9 @@ export class AnimaAgent {
       case 'run-skill':
         return `Listo, hice "${request.skillName ?? 'eso'}".`;
       case 'craft-item':
-        return 'Listo, ya está construida.';
+        // Sin género: lo construido puede ser "la silla" o "el brasero" que
+        // Ánima inventó, y acá solo hay un recipeId para adivinar.
+        return 'Listo, ya está en su lugar.';
       case 'move-direction': {
         const labels = {
           up: 'hacia arriba',

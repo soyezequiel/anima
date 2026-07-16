@@ -43,7 +43,7 @@ test('craftear desde el chat: negativa honesta, juntar materiales y construir', 
   // 3. Con los ingredientes en mano: acepta, y el mundo construye.
   await send('hacé una silla');
   await expect(chatLog).toContainText('Voy a construir una silla.', { timeout: 15_000 });
-  await expect(chatLog).toContainText('Listo, ya está construida.', { timeout: 20_000 });
+  await expect(chatLog).toContainText('Listo, ya está en su lugar.', { timeout: 20_000 });
 
   // 4. El evento del mundo quedó registrado: no es un "sí" de cortesía.
   await page.getByTestId('tab-dev').click();

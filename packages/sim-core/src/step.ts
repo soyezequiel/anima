@@ -45,19 +45,37 @@ export function stepWorld(world: WorldState, intents: ActorIntent[]): SimEvent[]
  * `temperature`; los escenarios sin frío quedan intactos.
  */
 function runTemperatureSystem(world: WorldState, events: SimEvent[]): void {
-  const heatSources = allEntities(world).filter(
-    (e) => e.components.heatSource && e.components.position,
-  );
+  // Lo que va en un inventario no tiene posición propia: irradia desde quien
+  // lo lleva. Sin esto, una antorcha —cuyo único sentido es llevarla— dejaba
+  // de calentar justo al recogerla.
+  const heldPositions = new Map<string, { x: number; y: number }>();
+  for (const carrier of allEntities(world)) {
+    const carrierPos = carrier.components.position;
+    if (!carrierPos || !carrier.components.inventory) continue;
+    for (const itemId of carrier.components.inventory.items) {
+      heldPositions.set(itemId, carrierPos);
+    }
+  }
+  const heatSources = allEntities(world)
+    .filter((e) => e.components.heatSource)
+    .map((e) => ({
+      heat: e.components.heatSource!,
+      position: e.components.position ?? heldPositions.get(e.id) ?? null,
+    }))
+    .filter((source): source is { heat: { warmthPerTick: number; range: number }; position: { x: number; y: number } } =>
+      source.position !== null,
+    );
   for (const entity of allEntities(world)) {
     const temperature = entity.components.temperature;
     const pos = entity.components.position;
     if (!temperature || !pos || !entity.components.agent || entity.components.dead) continue;
 
     const warmth = heatSources.reduce((total, source) => {
-      const sourcePos = source.components.position!;
-      const heat = source.components.heatSource!;
-      const distance = Math.max(Math.abs(sourcePos.x - pos.x), Math.abs(sourcePos.y - pos.y));
-      return distance <= heat.range ? total + heat.warmthPerTick : total;
+      const distance = Math.max(
+        Math.abs(source.position.x - pos.x),
+        Math.abs(source.position.y - pos.y),
+      );
+      return distance <= source.heat.range ? total + source.heat.warmthPerTick : total;
     }, 0);
 
     const before = temperature.current;

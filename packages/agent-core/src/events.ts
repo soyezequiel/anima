@@ -36,6 +36,8 @@ export type AgentEventType =
   | 'user.request.accepted'
   | 'user.request.refused'
   /** Repensó una negativa de valores con su situación concreta (ADR 0019). */
-  | 'judgement.made';
+  | 'judgement.made'
+  /** Se apartó de algo que la estaba dañando. Reflejo del cuerpo, no decisión. */
+  | 'pain.reflex';
 
 export type AgentEvent = StructuredEvent<AgentEventType>;

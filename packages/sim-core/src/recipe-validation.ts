@@ -16,7 +16,10 @@ import type { Recipe } from './recipes.js';
  * aprobarse su propio examen.
  */
 
-/** Cuántas recetas inventadas admite un mundo: inventar no puede ser spam. */
+/**
+ * Cuántas recetas admite un mundo EN TOTAL (las de fábrica cuentan: con 4 del
+ * MVP quedan 8 inventables). Inventar no puede ser spam.
+ */
 export const MAX_INVENTED_RECIPES = 12;
 
 /**

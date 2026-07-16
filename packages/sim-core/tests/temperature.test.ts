@@ -42,6 +42,37 @@ describe('temperatura', () => {
     expect(pet.components.temperature?.current).toBe(19);
   });
 
+  it('una fuente de calor en el inventario calienta a quien la lleva', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    // Una antorcha sostenida: sin posición propia, irradia desde la mascota.
+    const torch = spawn(world, 'torch', {
+      portable: {},
+      heatSource: { warmthPerTick: 3, range: 1 },
+    });
+    pet.components.inventory!.items.push(torch.id);
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    // -1 de pérdida +3 de antorcha: llevarla es la manera de usarla.
+    expect(pet.components.temperature?.current).toBe(22);
+  });
+
+  it('la antorcha de otro también calienta si está al lado', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    const carrier = spawn(world, 'pet', {
+      position: { x: 2, y: 2 }, // adyacente a la mascota (1,2)
+      inventory: { items: [], capacity: 2 },
+      agent: { name: 'Otra', perceptionRange: 5 },
+    });
+    const torch = spawn(world, 'torch', {
+      portable: {},
+      heatSource: { warmthPerTick: 3, range: 1 },
+    });
+    carrier.components.inventory!.items.push(torch.id);
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature?.current).toBe(22);
+  });
+
   it('emite temperature.low al cruzar el umbral, una sola vez', () => {
     const { world, pet } = buildTestWorld();
     addTemperature(pet, 18); // umbral: 50 * 0.35 = 17.5
