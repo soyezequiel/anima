@@ -62,6 +62,10 @@ recoger, soltar, consumir, usar un objeto sobre otro.
 - [x] Identidad Nostr opcional (BAL/NIP-07) con backend propio: desafío
       firmado de un solo uso, clave privada jamás en el servidor,
       sincronización del progreso y modo invitado intacto.
+- [x] Proveedor real de IA opcional y reemplazable: cuenta de Codex (ChatGPT)
+      conectada desde el frontend, credenciales gestionadas por el CLI del
+      usuario, mismo contrato de validación/evaluación que el mock, y
+      degradación automática al simulado.
 
 ## Fuera del MVP
 

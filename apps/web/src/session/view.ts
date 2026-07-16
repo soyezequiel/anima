@@ -75,6 +75,10 @@ export interface GameView {
   running: boolean;
   speed: number;
   petColor: string;
+  /** Nombre del proveedor de modelo activo ("mock", "codex", ...). */
+  aiProvider: string;
+  /** true mientras una consulta al modelo real está en vuelo. */
+  aiBusy: boolean;
   identity: { name: string; generation: number; ancestorId: string | null };
   /** Informe de legado cuando la mascota está muerta; null en vida. */
   death: LegacyReport | null;

@@ -1,5 +1,6 @@
 import { AnimaAgent, GOAL_RESTORE_ENERGY } from '@anima/agent-core';
 import type { AgentEvent } from '@anima/agent-core';
+import type { ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import type { SimEvent, WorldState } from '@anima/sim-core';
 import { buildPerception, getEntity, stepWorld } from '@anima/sim-core';
@@ -45,6 +46,8 @@ export interface SessionOptions {
   store?: KeyValueStore;
   /** true: ignora cualquier guardado previo y empieza de cero. */
   fresh?: boolean;
+  /** Proveedor de modelo (por defecto, MockModelProvider determinista). */
+  provider?: ModelProvider;
 }
 
 interface SessionUiState {
@@ -75,7 +78,9 @@ function newIdentity(name: string): PetIdentity {
 export class GameSession {
   private world!: WorldState;
   private agent!: AnimaAgent;
-  private provider!: MockModelProvider;
+  private provider!: ModelProvider;
+  private externalProvider: ModelProvider | null = null;
+  private aiBusy = false;
   private library!: SkillLibrary;
   private regressions!: RegressionStore;
   private identity: PetIdentity = newIdentity('Ánima');
@@ -94,6 +99,7 @@ export class GameSession {
   private legacyCount = 0;
   private storyWasCompleted = false;
 
+  private consecutiveThinkErrors = 0;
   private running = false;
   private speed = 1;
   private seed = 5;
@@ -106,6 +112,7 @@ export class GameSession {
     this.store = options.store ?? defaultStore();
     if (options.speed !== undefined) this.speed = options.speed;
     if (options.petColor !== undefined) this.petColor = options.petColor;
+    if (options.provider !== undefined) this.externalProvider = options.provider;
     this.seed = options.seed ?? 5;
   }
 
@@ -135,7 +142,7 @@ export class GameSession {
     this.seed = seed;
     const bundle = foodBehindWall.build(seed);
     this.world = bundle.world;
-    this.provider = new MockModelProvider();
+    this.provider = this.externalProvider ?? new MockModelProvider();
     this.library = new SkillLibrary();
     this.regressions = new RegressionStore();
     this.agent = new AnimaAgent({
@@ -263,6 +270,14 @@ export class GameSession {
     this.notify();
   }
 
+  /** Señal externa de "el modelo está pensando" (proveedores lentos). */
+  setAiBusy(busy: boolean): void {
+    if (this.aiBusy === busy) return;
+    this.aiBusy = busy;
+    this.rebuildView();
+    this.notify();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.running = false;
@@ -289,7 +304,32 @@ export class GameSession {
         return;
       }
       const perception = buildPerception(this.world, this.agent.petId);
-      const intent = await this.agent.think(perception);
+      let intent = null;
+      try {
+        intent = await this.agent.think(perception);
+        this.consecutiveThinkErrors = 0;
+      } catch (error) {
+        // Un proveedor real puede fallar (red, timeout, JSON inválido). Se
+        // registra y se reintenta; tras varios fallos seguidos, pausa
+        // automática para no lanzar consultas en bucle.
+        const message = error instanceof Error ? error.message : String(error);
+        this.consecutiveThinkErrors += 1;
+        this.pushDev('agent', {
+          type: 'agent.error',
+          tick: this.world.tick,
+          data: { message, consecutive: this.consecutiveThinkErrors },
+        });
+        if (this.consecutiveThinkErrors >= 3) {
+          this.consecutiveThinkErrors = 0;
+          this.chat.push({
+            from: 'system',
+            text: `El proveedor de IA está fallando (${message.slice(0, 160)}). Pausa automática: revisa la conexión o vuelve al modo simulado.`,
+            tick: this.world.tick,
+          });
+          this.pause();
+          return;
+        }
+      }
       const events = stepWorld(
         this.world,
         intent ? [{ actorId: this.agent.petId, intent }] : [],
@@ -611,6 +651,8 @@ export class GameSession {
       running: this.running,
       speed: this.speed,
       petColor: this.petColor,
+      aiProvider: this.provider.name,
+      aiBusy: this.aiBusy,
       identity: {
         name: this.identity.name,
         generation: this.identity.generation,

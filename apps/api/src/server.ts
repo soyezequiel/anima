@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { AiBridge } from './ai.js';
+import { createCodexBridge } from './ai.js';
 import { createDb } from './db.js';
 import {
   createChallenge,
@@ -15,6 +17,8 @@ const MAX_VALUE_BYTES = 1_000_000;
 export interface ServerOptions {
   dbPath: string;
   now?: () => number;
+  /** Puente hacia el CLI de Codex (inyectable en pruebas). */
+  ai?: AiBridge;
 }
 
 /**
@@ -47,6 +51,36 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   };
 
   app.get('/health', () => ({ ok: true }));
+
+  // ---- puente de IA (Codex) -------------------------------------------------
+  // Las credenciales de Codex las gestiona el CLI en la máquina del usuario;
+  // aquí solo viajan estado, la URL de autorización y texto de prompts.
+  const ai = options.ai ?? createCodexBridge();
+
+  app.get('/ai/status', () => ai.status());
+
+  app.post('/ai/login', async (_request, reply) => {
+    const result = await ai.startLogin();
+    if ('error' in result) return reply.code(502).send(result);
+    return result;
+  });
+
+  app.post('/ai/complete', async (request, reply) => {
+    const body = request.body as { prompt?: unknown; schema?: unknown } | null;
+    if (typeof body?.prompt !== 'string' || body.prompt.length === 0) {
+      return reply.code(400).send({ error: 'se espera { prompt: string }' });
+    }
+    try {
+      const completeInput: Parameters<AiBridge['complete']>[0] = { prompt: body.prompt };
+      if (body.schema !== undefined) completeInput.schema = body.schema;
+      const text = await ai.complete(completeInput);
+      return { text };
+    } catch (error) {
+      return reply
+        .code(502)
+        .send({ error: error instanceof Error ? error.message : 'fallo del puente de IA' });
+    }
+  });
 
   app.post('/auth/challenge', () => {
     pruneExpired(deps);

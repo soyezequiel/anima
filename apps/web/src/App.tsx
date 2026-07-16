@@ -3,6 +3,7 @@ import { PhaserStage } from './phaser/PhaserStage.js';
 import type { GameSession } from './session/GameSession.js';
 import type { CloudAccount } from './auth/cloud.js';
 import { AccountBar } from './components/AccountBar.js';
+import { AiBar } from './components/AiBar.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
@@ -51,6 +52,7 @@ export function App({
           {view.storyCompleted ? 'historia completada' : 'aprendiendo…'}
         </span>
         <Controls session={session} view={view} />
+        <AiBar view={view} />
         <AccountBar account={account} />
       </header>
       <main className="layout">

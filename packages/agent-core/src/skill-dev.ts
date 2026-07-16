@@ -1,11 +1,6 @@
 import type { EventLog } from '@anima/shared';
 import type { ModelProvider } from '@anima/model-providers';
-import type {
-  EvaluationCriterion,
-  SkillDefinition,
-  SkillLibrary,
-  SkillProgram,
-} from '@anima/skill-runtime';
+import type { EvaluationCriterion, SkillDefinition, SkillLibrary } from '@anima/skill-runtime';
 import { validateSkillProgram } from '@anima/skill-runtime';
 import type { EvaluationReport, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import { applyEvaluation, evaluateSkill } from '@anima/skill-evaluator';
@@ -123,25 +118,28 @@ export async function developSkill(
 
   const reports: EvaluationReport[] = [];
   let parentId: string | undefined;
-  let previousProgram: SkillProgram | null = null;
+  let previousProgram: unknown = null;
   let lastReport: EvaluationReport | null = null;
+  let validationFeedback: string[] | null = null;
+  let invalidRetries = 0;
+  let firstCall = true;
 
-  for (let attempt = 1; attempt <= config.maxVersions; attempt++) {
-    const response =
-      attempt === 1
-        ? await config.provider.complete({
-            kind: 'skill.propose',
-            skillName: contract.name,
-            problem: contract.purpose,
-            context,
-          })
-        : await config.provider.complete({
-            kind: 'skill.revise',
-            skillName: contract.name,
-            previousProgram,
-            failureObservations: lastReport?.failureObservations ?? [],
-            attempt,
-          });
+  for (let attempt = 1; attempt <= config.maxVersions; ) {
+    const response = firstCall
+      ? await config.provider.complete({
+          kind: 'skill.propose',
+          skillName: contract.name,
+          problem: contract.purpose,
+          context,
+        })
+      : await config.provider.complete({
+          kind: 'skill.revise',
+          skillName: contract.name,
+          previousProgram,
+          failureObservations: validationFeedback ?? lastReport?.failureObservations ?? [],
+          attempt,
+        });
+    firstCall = false;
     if (response.kind !== 'skill.program') break;
 
     // Nada de lo que proponga el modelo se ejecuta sin validación.
@@ -152,8 +150,15 @@ export async function developSkill(
         tick,
         data: { name: contract.name, attempt, reason: `programa inválido: ${validated.error}` },
       });
+      // Un programa inválido no costó simulación: no consume el intento.
+      // El error de validación vuelve al modelo como retroalimentación.
+      invalidRetries += 1;
+      if (invalidRetries > 2) break;
+      previousProgram = response.program;
+      validationFeedback = [`programa-invalido: ${validated.error}`];
       continue;
     }
+    validationFeedback = null;
 
     // Si la "nueva" versión es idéntica a la anterior, no aporta nada.
     if (previousProgram && JSON.stringify(previousProgram) === JSON.stringify(validated.value)) {
@@ -197,6 +202,7 @@ export async function developSkill(
     parentId = skill.id;
     previousProgram = validated.value;
     lastReport = report;
+    attempt += 1;
   }
 
   return { stableSkill: null, versionsTried: reports.length, reports };

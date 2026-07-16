@@ -104,12 +104,16 @@ export class AnimaAgent {
   private pendingExplanation: string | null = null;
   private energyHypothesisId: string | null = null;
   private lastSelectedGoalId: string | null = null;
+  /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
+  private suspensionEdibles = new Map<string, Set<string>>();
   private tick = 0;
 
   constructor(config: AgentConfig) {
     this.config = {
       maxSkillDevAttempts: 1,
-      maxVersionsPerDev: 3,
+      // Un modelo real suele necesitar más iteraciones que el mock: las
+      // versiones inválidas no consumen intento, pero las rechazadas sí.
+      maxVersionsPerDev: 4,
       ...config,
     };
   }
@@ -298,12 +302,19 @@ export class AnimaAgent {
     if (fraction >= LOW_ENERGY_FRACTION) return;
     const open = this.goals.findOpen(GOAL_RESTORE_ENERGY);
     if (open) {
-      // Cambio relevante del entorno: si el objetivo se suspendió y ahora
-      // vuelve a haber alimento a la vista, se reactiva con estrategias limpias.
-      if (open.status === 'suspended' && perception.visibleEntities.some((e) => e.edible)) {
-        this.goals.reactivate(open.id);
-        this.progress.resetGoal(open.id);
-        this.emit('goal.reactivated', { goalId: open.id, reason: 'alimento visible de nuevo' });
+      // Cambio relevante del entorno: solo reactiva si hay alimento NUEVO,
+      // distinto del que ya veía (y no alcanzaba) cuando se suspendió.
+      if (open.status === 'suspended') {
+        const seenAtSuspension = this.suspensionEdibles.get(open.id) ?? new Set<string>();
+        const freshFood = perception.visibleEntities.some(
+          (e) => e.edible && !seenAtSuspension.has(e.id),
+        );
+        if (freshFood) {
+          this.goals.reactivate(open.id);
+          this.progress.resetGoal(open.id);
+          this.suspensionEdibles.delete(open.id);
+          this.emit('goal.reactivated', { goalId: open.id, reason: 'alimento nuevo visible' });
+        }
       }
       return;
     }
@@ -400,6 +411,7 @@ export class AnimaAgent {
           if (goal.status === 'suspended') {
             this.goals.reactivate(goal.id);
             this.progress.resetGoal(goal.id);
+            this.suspensionEdibles.delete(goal.id);
             this.emit('goal.reactivated', { goalId: goal.id, reason: 'nueva información del usuario' });
           }
         }
@@ -505,6 +517,10 @@ export class AnimaAgent {
       'sin estrategias viables tras pedir ayuda',
       'nueva información del usuario o cambio en el entorno',
     );
+    this.suspensionEdibles.set(
+      goal.id,
+      new Set(perception.visibleEntities.filter((e) => e.edible).map((e) => e.id)),
+    );
     this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
     this.lastSelectedGoalId = null;
     return null;
@@ -514,8 +530,6 @@ export class AnimaAgent {
     goal: Goal,
     perception: Perception,
   ): Promise<ActionIntent | null> {
-    this.progress.recordSkillDevAttempt(goal.id);
-
     const failures = this.progress
       .strategiesTried(goal.id)
       .filter((s) => s.forbidden)
@@ -551,6 +565,10 @@ export class AnimaAgent {
       this.events,
       this.tick,
     );
+    // El intento se consume solo si el ciclo corrió: una excepción del
+    // proveedor (red, timeout) habría abortado antes de llegar aquí y debe
+    // poder reintentarse.
+    this.progress.recordSkillDevAttempt(goal.id);
 
     // Lo aprendido en los experimentos queda en memoria aunque falle.
     for (const report of outcome.reports) {

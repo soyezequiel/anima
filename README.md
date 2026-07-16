@@ -17,8 +17,16 @@ legado y su sucesora hereda el conocimiento como testimonio verificable.
 Con identidad Nostr (BAL desde el launcher o extensión NIP-07) el progreso se
 sincroniza con el backend (`apps/api`, Fastify + SQLite): la clave privada
 nunca sale del firmante y el servidor solo acepta desafíos firmados. El modo
-invitado local sigue completo y sin cuentas. Todo sin claves de IA.
-El siguiente paso es la Fase 9 (proveedor real de IA, opcional y reemplazable).
+invitado local sigue completo y sin cuentas.
+
+Como mente real (opcional), el usuario puede conectar su **cuenta de Codex
+(ChatGPT)** desde la propia interfaz («🧠 Conectar Codex»): la API local
+orquesta el CLI de Codex (`codex login` / `codex exec` en sandbox de solo
+lectura) y las credenciales nunca tocan Ánima. Verificado de punta a punta
+con una cuenta real: el modelo propuso una habilidad, el evaluador rechazó
+sus versiones débiles con regresiones, y su versión corregida fue promovida
+y reutilizada sin nuevas consultas. Sin Codex, el mock determinista sigue
+siendo la base: cero claves, cero costos.
 
 ```
 energía baja -> hipótesis -> objetivo -> intento directo -> fallo ->
