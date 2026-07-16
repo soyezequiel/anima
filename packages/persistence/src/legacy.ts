@@ -62,6 +62,10 @@ const CAUSE_RECOMMENDATIONS: Record<string, string[]> = {
     'algo del entorno me hirió hasta matarme: mantente lejos de lo que daña al tocarlo',
     'si la salud empieza a bajar sin hambre, aléjate primero y entiende después',
   ],
+  hypothermia: [
+    'morí de frío: busca una fuente de calor antes de que el cuerpo se enfríe del todo',
+    'el fuego calienta a distancia pero quema de cerca: acércate, no te pegues',
+  ],
 };
 
 export function buildLegacyReport(input: BuildLegacyInput): LegacyReport {

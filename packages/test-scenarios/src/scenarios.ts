@@ -56,6 +56,28 @@ function spawnHammer(world: WorldState, pos: Vec2): void {
 }
 
 /**
+ * El árbol es fuente de alimento Y talable: derribarlo con una herramienta
+ * fuerte deja troncos, pero destruye la fuente de comida — una consecuencia
+ * real que la mascota puede descubrir y lamentar. La rama no lo daña
+ * (dureza como la del muro).
+ */
+function spawnTree(world: WorldState, pos: Vec2): void {
+  const log = { portable: {} };
+  spawn(world, 'tree', {
+    position: pos,
+    collider: { solid: true },
+    hardness: { value: 5 },
+    durability: { current: 15, max: 15 },
+    foodSource: { intervalTicks: 400, nutrition: 30, nextSpawnAtTick: 400 },
+    drops: [
+      { kind: 'log', components: log },
+      { kind: 'log', components: log },
+      { kind: 'log', components: log },
+    ],
+  });
+}
+
+/**
  * Escenario principal del MVP: el alimento está detrás de un muro completo.
  * No hay ruta libre: la única salida es romper el muro con una herramienta
  * suficientemente fuerte. La rama (cercana, débil) es una trampa plausible.
@@ -80,11 +102,7 @@ export const foodBehindWall: ScenarioSpec = {
     // El árbol produce alimento nuevo cada tanto: el mundo es habitable a
     // largo plazo. El primer brote (tick 400) es posterior al maxTicks de
     // cualquier evaluación (200), así que no altera las pruebas de skills.
-    spawn(world, 'tree', {
-      position: { x: 7, y: 4 },
-      collider: { solid: true },
-      foodSource: { intervalTicks: 400, nutrition: 30, nextSpawnAtTick: 400 },
-    });
+    spawnTree(world, { x: 7, y: 4 });
 
     // La rama siempre queda más cerca de la mascota que el martillo.
     const branchSpots: Vec2[] = [
@@ -128,6 +146,38 @@ export const openField: ScenarioSpec = {
     spawnBranch(world, { x: 2, y: 1 });
     spawnHammer(world, { x: 3, y: 3 });
     return { world, petId, meta: { name: 'open-field', seed } };
+  },
+};
+
+/**
+ * Noche fría: la mascota pierde calor corporal y la única fuente de calor es
+ * una fogata encendida. El fuego calienta a distancia 2 pero quema al que se
+ * pega (hazard a distancia 1): la distancia correcta se aprende, no se regala.
+ * Aún fuera de MVP_SCENARIOS: entra a las evaluaciones cuando el agente sepa
+ * reaccionar al frío (paso «fogata»).
+ */
+export const coldNight: ScenarioSpec = {
+  name: 'cold-night',
+  build(seed) {
+    const world = createWorld({ width: 9, height: 5, seed });
+    const rng = createRng(seed * 31337 + 7);
+    const petId = spawnPet(world, { x: 1, y: 2 }, 30);
+    const pet = world.entities[petId]!;
+    pet.components.temperature = { current: 20, max: 50, lossPerTick: 0.1 };
+
+    spawn(world, 'campfire', {
+      position: { x: 6, y: 2 },
+      heatSource: { warmthPerTick: 0.3, range: 2 },
+      hazard: { damagePerTick: 1 },
+    });
+    spawnTree(world, { x: 8, y: 4 });
+    const foodSpots: Vec2[] = [
+      { x: 3, y: 1 },
+      { x: 4, y: 3 },
+    ];
+    spawnFood(world, foodSpots[nextInt(rng, 0, foodSpots.length - 1)] ?? foodSpots[0]!);
+    spawnHammer(world, { x: 2, y: 4 });
+    return { world, petId, meta: { name: 'cold-night', seed } };
   },
 };
 

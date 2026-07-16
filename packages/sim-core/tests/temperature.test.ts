@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+import { spawn, stepWorld } from '../src/index.js';
+import { buildTestWorld } from './helpers.js';
+
+function addTemperature(
+  pet: ReturnType<typeof buildTestWorld>['pet'],
+  current = 20,
+  lossPerTick = 1,
+) {
+  pet.components.temperature = { current, max: 50, lossPerTick };
+}
+
+function addCampfire(world: ReturnType<typeof buildTestWorld>['world'], x: number, y: number) {
+  return spawn(world, 'campfire', {
+    position: { x, y },
+    heatSource: { warmthPerTick: 3, range: 2 },
+  });
+}
+
+describe('temperatura', () => {
+  it('el calor corporal decae cada tick lejos de toda fuente', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature?.current).toBe(19);
+  });
+
+  it('una fuente de calor en rango revierte la pérdida, sin superar el máximo', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 49); // mascota en (1,2)
+    addCampfire(world, 3, 2); // distancia Chebyshev 2: dentro del rango
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    // -1 de pérdida +3 de fogata = +2, pero el máximo es 50.
+    expect(pet.components.temperature?.current).toBe(50);
+  });
+
+  it('fuera del rango de la fuente no hay calor', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    addCampfire(world, 5, 2); // distancia 4 > rango 2
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature?.current).toBe(19);
+  });
+
+  it('emite temperature.low al cruzar el umbral, una sola vez', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 18); // umbral: 50 * 0.35 = 17.5
+    const first = stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(first.some((e) => e.type === 'temperature.low')).toBe(true);
+    const second = stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(second.some((e) => e.type === 'temperature.low')).toBe(false);
+  });
+
+  it('con el calor en cero, la salud decae y la muerte es por "hypothermia"', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 1);
+    pet.components.health = { current: 2, max: 10 };
+    const all = [];
+    for (let i = 0; i < 3; i++) {
+      all.push(...stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]));
+    }
+    expect(all.some((e) => e.type === 'temperature.depleted')).toBe(true);
+    expect(pet.components.dead?.cause).toBe('hypothermia');
+    const died = all.find((e) => e.type === 'pet.died');
+    expect(died?.data.cause).toBe('hypothermia');
+    // No fue hambre: la energía sigue por encima de cero.
+    expect(pet.components.energy!.current).toBeGreaterThan(0);
+  });
+
+  it('sin componente de temperatura, nada cambia (los mundos sin frío quedan intactos)', () => {
+    const { world, pet } = buildTestWorld();
+    addCampfire(world, 2, 2);
+    const events = stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature).toBeUndefined();
+    expect(events.some((e) => e.type === 'temperature.low')).toBe(false);
+  });
+});

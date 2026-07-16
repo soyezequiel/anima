@@ -10,6 +10,7 @@ const KIND_EMOJI: Record<string, string> = {
   hammer: '🔨',
   tree: '🌳',
   cactus: '🌵',
+  campfire: '🔥',
 };
 
 /**
@@ -102,11 +103,25 @@ export class WorldScene extends Phaser.Scene {
       const rect = this.add.rectangle(0, 0, this.cell - 6 * k, this.cell - 6 * k, 0x64748b);
       rect.setStrokeStyle(2 * k, 0x334155);
       container.add(rect);
-    } else {
-      const emoji = KIND_EMOJI[kind] ?? '❓';
-      const text = this.add.text(0, 0, emoji, { fontSize: `${Math.round(34 * k)}px` });
+    } else if (KIND_EMOJI[kind]) {
+      const text = this.add.text(0, 0, KIND_EMOJI[kind], {
+        fontSize: `${Math.round(34 * k)}px`,
+      });
       text.setOrigin(0.5);
       container.add(text);
+    } else {
+      // Placeholder para tipos sin arte propio (objetos nuevos o crafteados):
+      // un cuadrado con el nombre de lo que es. El arte de verdad llega después.
+      const rect = this.add.rectangle(0, 0, this.cell - 14 * k, this.cell - 14 * k, 0x92400e, 0.9);
+      rect.setStrokeStyle(2 * k, 0xfbbf24);
+      const label = this.add.text(0, 0, kind, {
+        fontSize: `${Math.round(11 * k)}px`,
+        color: '#fef3c7',
+        align: 'center',
+        wordWrap: { width: this.cell - 18 * k },
+      });
+      label.setOrigin(0.5);
+      container.add([rect, label]);
     }
     container.setDepth(1);
     return container;

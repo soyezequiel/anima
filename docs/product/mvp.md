@@ -70,7 +70,11 @@ recoger, soltar, consumir, usar un objeto sobre otro.
 ## Fuera del MVP
 
 Multijugador real, mercado de skills, economía, clima, ecosistemas, editor
-visual, generación arbitraria de objetos, JS libre generado por IA, múltiples
-proveedores, móvil, gráficos elaborados, mundo infinito.
+visual, generación arbitraria de objetos, múltiples proveedores, móvil,
+gráficos elaborados, mundo infinito.
+
+El JS generado por IA estaba excluido en la spec original; desde el
+ADR 0014 está permitido como capacidad futura, con jaula (determinismo,
+sandbox, contrato estrecho y evaluación previa).
 
 Lo que viene después está en `roadmap.md`.
