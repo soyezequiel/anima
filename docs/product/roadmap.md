@@ -14,8 +14,9 @@ pre-codeados. En cuatro pasos, cada uno mostrable por sí solo:
 2. **Recetas + primitiva `craft`** — hecho (ADR 0017): recetas como dato del
    mundo, `craft` y `canCraft` en la DSL, la orden «construí una fogata» con
    su negativa por ingrediente faltante, el frío como motivo interno, y
-   `temperatureIncreased`/`craftedKind` en el evaluador. Pendiente: que junte
-   los ingredientes sola, y encender el frío en el mundo jugable.
+   `temperatureIncreased`/`craftedKind` en el evaluador. Junta los
+   ingredientes sola (`build-fire`, aproximación primitiva generada desde la
+   receta). Pendiente: encender el frío en el mundo jugable.
 3. **Arquetipos propuestos por el modelo** — hecho (ADR 0018): Ánima inventa
    recetas, el mundo las valida (`validateRecipe`) y decide; un rechazo enseña.
    No puede inventar comida: inventar da capacidades, no recursos. Placeholder

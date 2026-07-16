@@ -99,23 +99,25 @@ describe('Ánima inventa recetas', () => {
     expect(world.recipes.map((r) => r.id)).toEqual(['hoguera-simple']);
   });
 
-  it('lo inventado es real: se puede construir y de verdad da calor', async () => {
+  it('lo inventado lo construye ella: inventa, craftea, se aparta y se calienta', async () => {
     const { world, petId } = coldWorldWithLogs();
     const { agent } = makeAgent(petId);
     const pet = world.entities[petId]!;
 
-    await run(world, petId, agent, 8);
-    expect(world.recipes).toHaveLength(1);
+    // Nadie craftea a mano: el ciclo entero es suyo. Inventa la receta (tras
+    // el rechazo del atajo), la construye con los troncos que lleva, el
+    // reflejo la aparta del fuego y la espera la calienta.
+    await run(world, petId, agent, 30);
 
-    // Construye con su propia receta y se acerca.
-    stepWorld(world, [{ actorId: petId, intent: { type: 'craft', recipeId: 'hoguera-simple' } }]);
     const fire = Object.values(world.entities).find((e) => e.kind === 'hoguera-simple');
     expect(fire).toBeDefined();
-
-    const before = pet.components.temperature!.current;
-    pet.components.position = { x: fire!.components.position!.x - 2, y: fire!.components.position!.y };
-    stepWorld(world, [{ actorId: petId, intent: { type: 'wait' } }]);
-    expect(pet.components.temperature!.current).toBeGreaterThan(before);
+    expect(pet.components.dead).toBeUndefined();
+    const distance = Math.max(
+      Math.abs(pet.components.position!.x - fire!.components.position!.x),
+      Math.abs(pet.components.position!.y - fire!.components.position!.y),
+    );
+    expect(distance).toBeGreaterThan(1);
+    expect(pet.components.temperature!.current).toBeGreaterThan(10);
   });
 
   it('lo aceptado pasa a ser conocimiento suyo', async () => {

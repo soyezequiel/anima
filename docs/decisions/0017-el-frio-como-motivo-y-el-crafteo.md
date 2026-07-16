@@ -83,7 +83,10 @@ prometer ir a buscarlo: eso es otra petición, y el cuidador puede pedirla.
   hizo ahora porque el mock no sabe proponer abrigo (ADR 0006: es
   deliberadamente imperfecto y solo sabe de comida), y sin eso la historia solo
   existiría con una cuenta de IA real.
-- **Que la mascota junte los ingredientes sola** para construir la fogata: hoy
-  `craft-item` construye con lo que ya lleva. Talar, juntar y construir en una
-  sola habilidad es exactamente lo que el ciclo debería aprender, y el escenario
-  `cold-night-unlit` ya está listo para juzgarlo.
+- ~~**Que la mascota junte los ingredientes sola**~~ Hecho después: `build-fire`
+  es una aproximación primitiva más, generada determinísticamente desde la
+  receta (junta lo que ve con `held:false`, craftea, y el reflejo de dolor la
+  aparta). Sus fallos hablan el idioma del controlador: sin materiales a la
+  vista es `no-candidates` (recurso → ayuda, ADR 0008); camino bloqueado es
+  capacidad → ciclo de skills. Talar para conseguir troncos sigue siendo del
+  ciclo de skills: la aproximación primitiva no derriba árboles.

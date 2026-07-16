@@ -1,10 +1,10 @@
 import type { EventLog } from '@anima/shared';
 import { createEventLog, kindLabel } from '@anima/shared';
-import type { ActionIntent, EntityId, Perception, SimEvent } from '@anima/sim-core';
+import type { ActionIntent, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
-import type { SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
+import type { SkillCondition, SkillDefinition, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
 import { describeCriterion, SkillExecution, validateSuccessCriteria } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
@@ -102,6 +102,47 @@ const WARMTH_APPROACH_PROGRAM: SkillProgram = [
   // Quedarse el tiempo suficiente para que el calor haga efecto.
   { op: 'wait', ticks: 20 },
 ];
+
+/**
+ * Aproximación primitiva a "no hay fuego: hacelo". Se genera desde la receta
+ * —dato del mundo—, igual que los programas de las peticiones del usuario:
+ * composición determinista de primitivas, no una skill que haya que aprender.
+ *
+ * Sus fallos dicen la verdad al controlador de progreso: sin materiales a la
+ * vista aborta con `no-candidates` (falta el RECURSO → pedir ayuda, ADR
+ * 0008); con el camino bloqueado aborta con `camino-bloqueado` (falta la
+ * CAPACIDAD → el ciclo de skills tiene algo que aportar).
+ */
+function buildFireProgram(recipe: Recipe): SkillProgram {
+  const done: SkillCondition = { type: 'canCraft', recipeId: recipe.id };
+  const gather: SkillOp[] = recipe.ingredients.map((ingredient) => ({
+    op: 'repeatWithLimit',
+    max: ingredient.count,
+    // Si ya puede construir (traía cosas encima), no junta de más.
+    until: done,
+    body: [
+      {
+        op: 'findEntities',
+        query: { kind: ingredient.kind, held: false },
+        store: `mat-${ingredient.kind}`,
+      },
+      { op: 'selectTarget', from: `mat-${ingredient.kind}`, strategy: 'nearest', store: `next-${ingredient.kind}` },
+      { op: 'moveToward', target: `next-${ingredient.kind}`, maxSteps: 40 },
+      { op: 'pickup', target: `next-${ingredient.kind}` },
+    ],
+  }));
+  return [
+    ...gather,
+    {
+      op: 'branch',
+      if: done,
+      // El reflejo de dolor la aparta del fuego recién hecho; la espera
+      // posterior transcurre a distancia segura, dentro del rango de calor.
+      then: [{ op: 'craft', recipeId: recipe.id }, { op: 'wait', ticks: 20 }],
+      else: [{ op: 'abort', reason: `no-candidates:ingredientes-${recipe.id}` }],
+    },
+  ];
+}
 
 export interface AgentConfig {
   petId: EntityId;
@@ -1493,6 +1534,12 @@ export class AnimaAgent {
       });
     }
     strategies.push({ label: 'warmth-approach', program: WARMTH_APPROACH_PROGRAM });
+    // Si su mundo sabe hacer fuego (de fábrica o porque ella lo inventó),
+    // construirlo es una aproximación primitiva más: juntar y craftear.
+    for (const recipe of perception.recipes) {
+      if (recipe.output.components.heatSource === undefined) continue;
+      strategies.push({ label: `build-fire:${recipe.id}`, program: buildFireProgram(recipe) });
+    }
 
     const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
     if (viable) {
@@ -1513,15 +1560,14 @@ export class AnimaAgent {
       if (invention) return invention;
     }
 
-    // Puede construir fuego, así que fabricar una habilidad no es absurdo
-    // aunque no vea ninguno: lo que hace falta es tener con qué. Pero sin
-    // mundos fríos donde probarla, la vara sería imposible: mejor pedir ayuda.
+    // Construir el fuego ya se intentó como estrategia (build-fire): si eso
+    // también falló por no-candidates, lo que falta es el RECURSO y ninguna
+    // habilidad lo conjura (ADR 0008) — se pide ayuda. Solo los fallos de
+    // capacidad (camino bloqueado, etc.) abren el ciclo de skills, y solo si
+    // hay mundos fríos donde juzgarlas: sin ellos la vara sería imposible.
     const scenarios = this.config.warmthScenarios ?? [];
-    const canBuildFire =
-      scenarios.length > 0 &&
-      perception.recipes.some((recipe) => recipe.output.components.heatSource !== undefined);
     const step =
-      (this.progress.blockedByMissingResource(goal.id) && !canBuildFire) || scenarios.length === 0
+      this.progress.blockedByMissingResource(goal.id) || scenarios.length === 0
         ? this.progress.helpRequestedFor(goal.id)
           ? 'suspend'
           : 'ask-help'

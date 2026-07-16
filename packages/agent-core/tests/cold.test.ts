@@ -173,11 +173,48 @@ describe('el frío como motivo', () => {
     expect(agent.events.ofType('skill.requested')).toHaveLength(0);
   });
 
-  it('con mundos fríos y receta, sí abre el ciclo de aprendizaje', async () => {
+  it('con materiales a la vista, junta, construye y se calienta sola', async () => {
     const { world, petId } = coldWorld({ fire: false });
+    spawn(world, 'log', { position: { x: 2, y: 3 }, portable: {} });
+    spawn(world, 'log', { position: { x: 3, y: 1 }, portable: {} });
+    spawn(world, 'flint', { position: { x: 2, y: 1 }, portable: {} });
+    const { agent } = makeAgent(world, petId, new RecordingModel(), COLD_SCENARIOS);
+    const pet = world.entities[petId]!;
+
+    for (let i = 0; i < 40 && !pet.components.dead; i++) {
+      const intent = await agent.think(buildPerception(world, petId));
+      agent.observe(stepWorld(world, [{ actorId: petId, intent: intent ?? { type: 'wait' } }]));
+    }
+
+    // Construyó el fuego con sus propias manos: sin modelo, sin usuario.
+    const fire = Object.values(world.entities).find((e) => e.kind === 'campfire');
+    expect(fire).toBeDefined();
+    // El reflejo la apartó: viva, a distancia segura, y calentándose.
+    expect(pet.components.dead).toBeUndefined();
+    expect(pet.components.health!.current).toBeGreaterThanOrEqual(9);
+    const distance = Math.max(
+      Math.abs(pet.components.position!.x - fire!.components.position!.x),
+      Math.abs(pet.components.position!.y - fire!.components.position!.y),
+    );
+    expect(distance).toBeGreaterThan(1);
+    expect(pet.components.temperature!.current).toBeGreaterThan(10);
+  });
+
+  it('el ciclo de aprendizaje se abre cuando falta CAPACIDAD, no recurso', async () => {
+    // Fuego visible pero amurallado: acercarse falla por camino-bloqueado
+    // (capacidad — una skill podría romper el muro), no por no-candidates.
+    const { world, petId } = coldWorld({ fire: true });
+    for (let y = 0; y < 5; y++) {
+      spawn(world, 'wall', {
+        position: { x: 4, y },
+        collider: { solid: true },
+        hardness: { value: 5 },
+        durability: { current: 10, max: 10 },
+      });
+    }
     const { agent } = makeAgent(world, petId, new RecordingModel(), COLD_SCENARIOS);
 
-    for (let i = 0; i < 12; i++) {
+    for (let i = 0; i < 24; i++) {
       const intent = await agent.think(buildPerception(world, petId));
       if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
     }
