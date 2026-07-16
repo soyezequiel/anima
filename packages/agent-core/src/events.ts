@@ -21,6 +21,7 @@ export type AgentEventType =
   | 'memory.consolidated'
   | 'hypothesis.updated'
   | 'guidance.shown'
+  | 'legacy.read'
   | 'help.requested'
   | 'user.message.received'
   | 'user.request.accepted'

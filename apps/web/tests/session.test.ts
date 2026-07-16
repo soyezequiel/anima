@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { MemoryKeyValueStore } from '@anima/persistence';
 import { GameSession } from '../src/session/GameSession.js';
+
+async function makeSession(seed: number, store = new MemoryKeyValueStore()) {
+  const session = await GameSession.create({ seed, autostart: false, store });
+  return { session, store };
+}
 
 async function runUntil(
   session: GameSession,
@@ -13,7 +19,7 @@ async function runUntil(
 
 describe('GameSession (capa de sesión de la UI)', () => {
   it('recorre la historia completa y expone todo al view model', async () => {
-    const session = new GameSession({ seed: 5, autostart: false });
+    const { session } = await makeSession(5);
     await runUntil(session, () => session.getView().storyCompleted);
     // Un par de ticks extra para que diga su explicación final.
     await session.stepOnce();
@@ -46,7 +52,7 @@ describe('GameSession (capa de sesión de la UI)', () => {
   });
 
   it('responde mensajes del usuario y permite reiniciar por semilla', async () => {
-    const session = new GameSession({ seed: 7, autostart: false });
+    const { session } = await makeSession(7);
     session.sendUserMessage('espera un momento');
     await runUntil(session, () => session.getView().chat.some((c) => c.from === 'pet'), 30);
 
@@ -63,13 +69,84 @@ describe('GameSession (capa de sesión de la UI)', () => {
     session.dispose();
   });
 
-  it('pausa y velocidad quedan reflejadas en el view', () => {
-    const session = new GameSession({ seed: 5, autostart: false });
+  it('pausa y velocidad quedan reflejadas en el view', async () => {
+    const { session } = await makeSession(5);
     expect(session.getView().running).toBe(false);
     session.setSpeed(4);
     expect(session.getView().speed).toBe(4);
     session.setPetColor('#ef4444');
     expect(session.getView().petColor).toBe('#ef4444');
+    session.dispose();
+  });
+});
+
+describe('persistencia de la sesión', () => {
+  it('guarda al completar la historia y otra sesión continúa desde ahí', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    await runUntil(session, () => session.getView().storyCompleted);
+    const tickAtSave = session.getView().tick;
+    session.dispose();
+
+    // Una "recarga de página": misma tienda, sin fresh.
+    const restored = await GameSession.create({ autostart: false, store });
+    const view = restored.getView();
+    expect(view.tick).toBeGreaterThanOrEqual(tickAtSave - 40);
+    expect(view.storyCompleted).toBe(true);
+    expect(view.skills).toHaveLength(2);
+    expect(view.facts.length).toBeGreaterThan(0);
+    expect(view.chat.some((c) => c.text.includes('Sesión restaurada'))).toBe(true);
+
+    // Y puede seguir simulando sin errores.
+    await restored.stepOnce();
+    expect(restored.getView().tick).toBeGreaterThan(view.tick - 1);
+    restored.dispose();
+  });
+
+  it('fresh ignora el guardado previo', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    await runUntil(session, () => session.getView().storyCompleted);
+    session.dispose();
+
+    const fresh = await GameSession.create({ seed: 5, autostart: false, store, fresh: true });
+    expect(fresh.getView().tick).toBe(0);
+    expect(fresh.getView().skills).toHaveLength(0);
+    fresh.dispose();
+  });
+});
+
+describe('muerte y sucesión en la sesión', () => {
+  it('devKill produce el informe de legado y la sucesora hereda y re-verifica', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    await runUntil(session, () => session.getView().storyCompleted);
+
+    session.devKill();
+    await runUntil(session, () => session.getView().death !== null, 20);
+
+    const death = session.getView().death!;
+    expect(death.cause.cause).toBe('starvation');
+    expect(death.skillArtifacts.length).toBeGreaterThan(0);
+    expect(session.getView().running).toBe(false);
+    expect(session.getView().legacyCount).toBe(1);
+
+    await session.createSuccessor();
+    const view = session.getView();
+    expect(view.death).toBeNull();
+    expect(view.identity.generation).toBe(2);
+    expect(view.pet?.alive).toBe(true);
+    // La skill heredada fue re-evaluada y promovida en el mundo nuevo.
+    expect(view.skills.some((s) => s.status === 'stable' && s.motivation.includes('heredada'))).toBe(
+      true,
+    );
+    // El conocimiento llega como hipótesis "según...", no como hechos.
+    expect(view.facts).toHaveLength(0);
+    expect(view.hypotheses.some((h) => h.statement.startsWith('según'))).toBe(true);
+
+    // La sucesora sobrevive su primer ciclo de hambre sin crear nada nuevo.
+    await runUntil(session, () => session.getView().storyCompleted);
+    expect(session.getView().storyCompleted).toBe(true);
     session.dispose();
   });
 });

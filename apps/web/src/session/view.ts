@@ -1,3 +1,5 @@
+import type { LegacyReport } from '@anima/persistence';
+
 /**
  * View model inmutable que la sesión entrega a la UI en cada tick.
  * Es la única fuente de datos de React y Phaser: la UI nunca consulta el
@@ -73,6 +75,10 @@ export interface GameView {
   running: boolean;
   speed: number;
   petColor: string;
+  identity: { name: string; generation: number; ancestorId: string | null };
+  /** Informe de legado cuando la mascota está muerta; null en vida. */
+  death: LegacyReport | null;
+  legacyCount: number;
   worldSize: { width: number; height: number };
   entities: EntityView[];
   pet: PetView | null;

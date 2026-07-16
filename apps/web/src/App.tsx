@@ -1,8 +1,9 @@
 import { useState, useSyncExternalStore } from 'react';
 import { PhaserStage } from './phaser/PhaserStage.js';
-import { GameSession } from './session/GameSession.js';
+import type { GameSession } from './session/GameSession.js';
 import { ChatPanel } from './components/ChatPanel.js';
 import { Controls } from './components/Controls.js';
+import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
 import { ExperimentsPanel } from './components/ExperimentsPanel.js';
 import { SkillsPanel } from './components/SkillsPanel.js';
@@ -10,22 +11,7 @@ import { StatusPanel } from './components/StatusPanel.js';
 
 type Tab = 'estado' | 'chat' | 'skills' | 'experimentos' | 'dev';
 
-function sessionFromUrl(): GameSession {
-  const params = new URLSearchParams(window.location.search);
-  const seed = Number(params.get('seed') ?? 5);
-  const speed = Number(params.get('speed') ?? 1);
-  const autostart = params.get('autostart') !== '0';
-  return new GameSession({
-    seed: Number.isFinite(seed) ? seed : 5,
-    speed: Number.isFinite(speed) && speed > 0 ? speed : 1,
-    autostart,
-  });
-}
-
-// Una sesión por carga de página (sobrevive al doble montaje de StrictMode).
-const session = sessionFromUrl();
-
-export function App() {
+export function App({ session }: { session: GameSession }) {
   const view = useSyncExternalStore(
     (listener) => session.subscribe(listener),
     () => session.getView(),
@@ -44,7 +30,11 @@ export function App() {
     <div className="app">
       <header className="topbar">
         <h1>
-          Ánima <span className="subtitle">mundo {view.seed} · tick {view.tick}</span>
+          {view.identity.name}{' '}
+          <span className="gen-badge" data-testid="generation">
+            gen {view.identity.generation}
+          </span>{' '}
+          <span className="subtitle">mundo {view.seed} · tick {view.tick}</span>
         </h1>
         <span
           className={`story-badge ${view.storyCompleted ? 'done' : ''}`}
@@ -57,6 +47,7 @@ export function App() {
       <main className="layout">
         <section className="stage">
           <PhaserStage view={view} />
+          {view.death && <DeathOverlay report={view.death} session={session} />}
         </section>
         <aside className="panel">
           <nav className="tabs">
@@ -77,7 +68,7 @@ export function App() {
             {tab === 'chat' && <ChatPanel view={view} session={session} />}
             {tab === 'skills' && <SkillsPanel view={view} />}
             {tab === 'experimentos' && <ExperimentsPanel view={view} />}
-            {tab === 'dev' && <DevPanel view={view} />}
+            {tab === 'dev' && <DevPanel view={view} session={session} />}
           </div>
         </aside>
       </main>

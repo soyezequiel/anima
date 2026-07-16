@@ -9,11 +9,13 @@ las incorpora a su biblioteca si superan las pruebas.
 
 ## Estado actual
 
-**Fases 0–6 completadas**: la historia completa de aprendizaje funciona
-headless (hito 1) y también en el navegador, con interfaz React + Phaser,
-chat, panel de habilidades con versiones, historial de experimentos, modo
-desarrollador y pruebas E2E con Playwright. Todo sin claves de IA.
-El siguiente paso es la Fase 7 (persistencia local, muerte y sucesión).
+**Fases 0–7 completadas**: la historia completa de aprendizaje funciona
+headless (hito 1) y en el navegador (React + Phaser, chat, panel de
+habilidades, experimentos, modo desarrollador, E2E con Playwright). La sesión
+se autoguarda y sobrevive recargas; al morir, la mascota deja un informe de
+legado y su sucesora (generación+1) hereda el conocimiento como testimonio
+verificable y re-prueba las habilidades antes de confiar en ellas. Todo sin
+claves de IA. El siguiente paso es la Fase 8 (backend + identidad Nostr).
 
 ```
 energía baja -> hipótesis -> objetivo -> intento directo -> fallo ->
@@ -55,6 +57,7 @@ apps/
   web/                interfaz (Vite + React + Phaser + Playwright E2E)
   demo/               CLI del hito 1 y herramienta de diagnóstico
 packages/
+  persistence/        guardado local, informes de legado, sucesión y linaje
   shared/             utilidades: RNG con semilla, hashing estable, eventos
   sim-core/           motor headless determinista (entidades, sistemas, snapshots)
   skill-runtime/      DSL declarativa de habilidades + intérprete con límites

@@ -7,6 +7,21 @@ import { RegressionStore } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
 import { SkillLibrary } from '@anima/skill-runtime';
 import { foodBehindWall, MVP_SCENARIOS } from '@anima/test-scenarios';
+import type { KeyValueStore, LegacyReport, PetIdentity, SessionSaveData } from '@anima/persistence';
+import {
+  appendLegacy,
+  applySessionSave,
+  buildLegacyReport,
+  captureSession,
+  clearSession,
+  loadLegacies,
+  loadSession,
+  MemoryKeyValueStore,
+  saveSession,
+  successorIdentity,
+  testimonyFromLegacy,
+  WebStorageKeyValueStore,
+} from '@anima/persistence';
 import type {
   ChatEntry,
   DevEventView,
@@ -19,17 +34,42 @@ import type {
 const BASE_TICKS_PER_SECOND = 4;
 const SPEECH_VISIBLE_TICKS = 14;
 const DEV_EVENT_LIMIT = 400;
+const AUTOSAVE_EVERY_TICKS = 40;
+const RECENT_ACTIONS_LIMIT = 12;
 
 export interface SessionOptions {
   seed?: number;
   speed?: number;
   autostart?: boolean;
   petColor?: string;
+  store?: KeyValueStore;
+  /** true: ignora cualquier guardado previo y empieza de cero. */
+  fresh?: boolean;
+}
+
+interface SessionUiState {
+  chat: ChatEntry[];
+  petColor: string;
+}
+
+function defaultStore(): KeyValueStore {
+  const storage = (globalThis as { localStorage?: Storage }).localStorage;
+  return storage ? new WebStorageKeyValueStore(storage) : new MemoryKeyValueStore();
+}
+
+function newIdentity(name: string): PetIdentity {
+  return {
+    id: `pet-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+    name,
+    generation: 1,
+    bornAt: new Date().toISOString(),
+  };
 }
 
 /**
  * Sesión de juego que corre la simulación en el navegador: mundo + agente +
- * loop con pausa y velocidad. Es UI-agnóstica (también corre en Vitest).
+ * loop con pausa y velocidad, autoguardado, informe de legado al morir y
+ * creación de sucesoras. Es UI-agnóstica (también corre en Vitest).
  * React y Phaser solo consumen el GameView inmutable que produce.
  */
 export class GameSession {
@@ -38,7 +78,9 @@ export class GameSession {
   private provider!: MockModelProvider;
   private library!: SkillLibrary;
   private regressions!: RegressionStore;
+  private identity: PetIdentity = newIdentity('Ánima');
 
+  private readonly store: KeyValueStore;
   private listeners = new Set<() => void>();
   private view!: GameView;
   private chat: ChatEntry[] = [];
@@ -47,6 +89,10 @@ export class GameSession {
   private agentEventCursor = 0;
   private lastSpeech: { text: string; tick: number } | null = null;
   private lastAction: string | null = null;
+  private recentActions: string[] = [];
+  private deathReport: LegacyReport | null = null;
+  private legacyCount = 0;
+  private storyWasCompleted = false;
 
   private running = false;
   private speed = 1;
@@ -56,16 +102,36 @@ export class GameSession {
   private stepping = false;
   private disposed = false;
 
-  constructor(options: SessionOptions = {}) {
+  private constructor(options: SessionOptions) {
+    this.store = options.store ?? defaultStore();
     if (options.speed !== undefined) this.speed = options.speed;
     if (options.petColor !== undefined) this.petColor = options.petColor;
-    this.reset(options.seed ?? 5);
-    if (options.autostart !== false) this.start();
+    this.seed = options.seed ?? 5;
+  }
+
+  /** Crea la sesión: restaura el guardado si existe (salvo `fresh`). */
+  static async create(options: SessionOptions = {}): Promise<GameSession> {
+    const session = new GameSession(options);
+    if (options.fresh) {
+      await clearSession(session.store);
+    }
+    const saved = options.fresh ? null : await loadSession(session.store);
+    if (saved) {
+      session.buildFreshRuntime(saved.seed);
+      session.applySave(saved);
+    } else {
+      session.resetToNewPet(session.seed);
+    }
+    session.legacyCount = (await loadLegacies(session.store)).length;
+    session.rebuildView();
+    if (options.autostart !== false && !session.deathReport) session.start();
+    return session;
   }
 
   // ---- ciclo de vida --------------------------------------------------------
 
-  reset(seed: number): void {
+  /** Mundo, agente y biblioteca nuevos. No toca identidad ni chat. */
+  private buildFreshRuntime(seed: number): void {
     this.seed = seed;
     const bundle = foodBehindWall.build(seed);
     this.world = bundle.world;
@@ -74,7 +140,7 @@ export class GameSession {
     this.regressions = new RegressionStore();
     this.agent = new AnimaAgent({
       petId: bundle.petId,
-      petName: 'Ánima',
+      petName: this.identity.name,
       provider: this.provider,
       library: this.library,
       regressions: this.regressions,
@@ -82,16 +148,80 @@ export class GameSession {
       evaluationSeeds: [11, 22, 33],
       guidanceEnabled: true,
     });
-    this.chat = [
-      { from: 'system', text: `Mundo creado (semilla ${seed}). La energía irá bajando…`, tick: 0 },
-    ];
     this.devEvents = [];
     this.devSeq = 0;
     this.agentEventCursor = 0;
     this.lastSpeech = null;
     this.lastAction = null;
+    this.recentActions = [];
+    this.deathReport = null;
+    this.storyWasCompleted = false;
+  }
+
+  private resetToNewPet(seed: number): void {
+    this.identity = newIdentity('Ánima');
+    this.buildFreshRuntime(seed);
+    this.chat = [
+      { from: 'system', text: `Mundo creado (semilla ${seed}). La energía irá bajando…`, tick: 0 },
+    ];
     this.rebuildView();
     this.notify();
+  }
+
+  reset(seed: number): void {
+    this.resetToNewPet(seed);
+    void this.save();
+  }
+
+  /** Borra el guardado y arranca una mascota nueva de generación 1. */
+  async restartFresh(): Promise<void> {
+    await clearSession(this.store);
+    this.resetToNewPet(this.seed);
+    this.start();
+    await this.save();
+  }
+
+  private applySave(data: SessionSaveData): void {
+    this.identity = structuredClone(data.identity);
+    this.world = applySessionSave(data, {
+      agent: this.agent,
+      library: this.library,
+      regressions: this.regressions,
+    });
+    const ui = data.ui as Partial<SessionUiState> | undefined;
+    this.chat = ui?.chat ?? [];
+    if (ui?.petColor !== undefined) this.petColor = ui.petColor;
+    this.agentEventCursor = this.agent.events.events.length;
+    this.storyWasCompleted =
+      this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed';
+    const pet = getEntity(this.world, this.agent.petId);
+    if (pet?.components.dead) {
+      // Restaurar una sesión con mascota muerta: recuperar su informe.
+      void loadLegacies(this.store).then((legacies) => {
+        this.deathReport = legacies.find((l) => l.identity.id === this.identity.id) ?? null;
+        this.rebuildView();
+        this.notify();
+      });
+    }
+    this.chat.push({
+      from: 'system',
+      text: `Sesión restaurada (tick ${this.world.tick}).`,
+      tick: this.world.tick,
+    });
+  }
+
+  async save(): Promise<void> {
+    const data = captureSession({
+      seed: this.seed,
+      identity: this.identity,
+      world: this.world,
+      agent: this.agent,
+      library: this.library,
+      regressions: this.regressions,
+      ui: { chat: this.chat, petColor: this.petColor } satisfies SessionUiState,
+      now: () => new Date().toISOString(),
+    });
+    await saveSession(this.store, data);
   }
 
   start(): void {
@@ -108,6 +238,7 @@ export class GameSession {
     this.timer = null;
     this.rebuildView();
     this.notify();
+    void this.save();
   }
 
   setSpeed(speed: number): void {
@@ -124,7 +255,9 @@ export class GameSession {
 
   dispose(): void {
     this.disposed = true;
-    this.pause();
+    this.running = false;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
     this.listeners.clear();
   }
 
@@ -142,7 +275,7 @@ export class GameSession {
     try {
       const pet = getEntity(this.world, this.agent.petId);
       if (!pet || pet.components.dead) {
-        this.pause();
+        if (this.running) this.pause();
         return;
       }
       const perception = buildPerception(this.world, this.agent.petId);
@@ -154,11 +287,98 @@ export class GameSession {
       this.agent.observe(events);
       this.ingestWorldEvents(events);
       this.ingestAgentEvents();
+
+      if (events.some((e) => e.type === 'pet.died')) {
+        await this.handleDeath();
+      } else {
+        const completed =
+          this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed';
+        if (
+          (completed && !this.storyWasCompleted) ||
+          this.world.tick % AUTOSAVE_EVERY_TICKS === 0
+        ) {
+          await this.save();
+        }
+        this.storyWasCompleted = completed;
+      }
+
       this.rebuildView();
       this.notify();
     } finally {
       this.stepping = false;
     }
+  }
+
+  // ---- muerte y sucesión -----------------------------------------------------
+
+  private async handleDeath(): Promise<void> {
+    const report = buildLegacyReport({
+      identity: this.identity,
+      world: this.world,
+      petId: this.agent.petId,
+      agent: this.agent,
+      library: this.library,
+      recentActions: this.recentActions,
+      now: () => new Date().toISOString(),
+    });
+    this.deathReport = report;
+    this.legacyCount += 1;
+    await appendLegacy(this.store, report);
+    this.pushDev('agent', {
+      type: 'legacy.created',
+      tick: this.world.tick,
+      data: { legacyId: report.id, cause: report.cause },
+    });
+    await this.save();
+    this.running = false;
+    if (this.timer !== null) clearTimeout(this.timer);
+    this.timer = null;
+  }
+
+  /** Nace la siguiente generación: mundo nuevo y testimonio del legado. */
+  async createSuccessor(): Promise<void> {
+    const legacy = this.deathReport;
+    if (!legacy) return;
+    const testimony = testimonyFromLegacy(legacy);
+    this.identity = successorIdentity(legacy, { now: () => new Date().toISOString() });
+    this.buildFreshRuntime(this.seed);
+    const result = this.agent.adoptLegacy(testimony);
+    this.ingestAgentEvents();
+
+    const adopted = result.adoptedSkills
+      .map((s) => `${s.name} (${s.promoted ? 'verificada y promovida' : 'rechazada en sus pruebas'})`)
+      .join('; ');
+    this.chat = [
+      {
+        from: 'system',
+        text:
+          `Nace ${this.identity.name}, generación ${this.identity.generation}. ` +
+          `Ha leído el informe de su antecesora.` +
+          (adopted ? ` Habilidades heredadas: ${adopted}.` : ''),
+        tick: 0,
+      },
+    ];
+    await this.save();
+    this.rebuildView();
+    this.notify();
+    this.start();
+  }
+
+  /**
+   * Herramienta de modo desarrollador: colapsa energía y salud para poder
+   * observar el flujo de muerte y sucesión sin esperar la inanición real.
+   */
+  devKill(): void {
+    const pet = getEntity(this.world, this.agent.petId);
+    if (!pet || pet.components.dead) return;
+    if (pet.components.energy) pet.components.energy.current = 0;
+    if (pet.components.health) pet.components.health.current = 1;
+    this.pushDev('agent', {
+      type: 'dev.kill',
+      tick: this.world.tick,
+      data: { note: 'muerte forzada desde el modo desarrollador' },
+    });
+    if (!this.running) void this.stepOnce();
   }
 
   // ---- entrada del usuario --------------------------------------------------
@@ -189,7 +409,10 @@ export class GameSession {
 
   // ---- ingestión de eventos ---------------------------------------------------
 
-  private pushDev(source: 'world' | 'agent', event: { type: string; tick: number; data: unknown }): void {
+  private pushDev(
+    source: 'world' | 'agent',
+    event: { type: string; tick: number; data: unknown },
+  ): void {
     this.devEvents.push({
       seq: this.devSeq++,
       tick: event.tick,
@@ -213,9 +436,15 @@ export class GameSession {
       if (event.type === 'action.requested') {
         const intent = event.data.intent as { type: string };
         this.lastAction = intent.type;
+        this.recentActions.push(intent.type);
+        if (this.recentActions.length > RECENT_ACTIONS_LIMIT) this.recentActions.shift();
       }
       if (event.type === 'pet.died') {
-        this.chat.push({ from: 'system', text: 'La mascota ha muerto.', tick: event.tick });
+        this.chat.push({
+          from: 'system',
+          text: `${this.identity.name} ha muerto. Su informe de legado está disponible.`,
+          tick: event.tick,
+        });
       }
     }
   }
@@ -232,11 +461,7 @@ export class GameSession {
 
   private experimentsFromEvents(): ExperimentView[] {
     const experiments: ExperimentView[] = [];
-    const push = (
-      event: AgentEvent,
-      kind: ExperimentView['kind'],
-      detail: string,
-    ): void => {
+    const push = (event: AgentEvent, kind: ExperimentView['kind'], detail: string): void => {
       experiments.push({
         tick: event.tick,
         skillName: String(event.data.name ?? event.data.skillId ?? ''),
@@ -298,7 +523,9 @@ export class GameSession {
           }
           break;
         case 'repeatWithLimit':
-          lines.push(`${pad}repetir hasta ${op.max}×${op.until ? ` (hasta ${op.until.type})` : ''}:`);
+          lines.push(
+            `${pad}repetir hasta ${op.max}×${op.until ? ` (hasta ${op.until.type})` : ''}:`,
+          );
           lines.push(...this.summarizeOps(op.body, depth + 1));
           break;
         case 'findEntities':
@@ -374,6 +601,13 @@ export class GameSession {
       running: this.running,
       speed: this.speed,
       petColor: this.petColor,
+      identity: {
+        name: this.identity.name,
+        generation: this.identity.generation,
+        ancestorId: this.identity.ancestorId ?? null,
+      },
+      death: this.deathReport,
+      legacyCount: this.legacyCount,
       worldSize: { width: this.world.config.width, height: this.world.config.height },
       entities,
       pet:

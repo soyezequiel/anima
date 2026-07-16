@@ -75,6 +75,9 @@ importers:
       '@anima/model-providers':
         specifier: workspace:*
         version: link:../../packages/model-providers
+      '@anima/persistence':
+        specifier: workspace:*
+        version: link:../../packages/persistence
       '@anima/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -175,6 +178,40 @@ importers:
         specifier: workspace:*
         version: link:../skill-runtime
     devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
+  packages/persistence:
+    dependencies:
+      '@anima/agent-core':
+        specifier: workspace:*
+        version: link:../agent-core
+      '@anima/memory':
+        specifier: workspace:*
+        version: link:../memory
+      '@anima/shared':
+        specifier: workspace:*
+        version: link:../shared
+      '@anima/sim-core':
+        specifier: workspace:*
+        version: link:../sim-core
+      '@anima/skill-evaluator':
+        specifier: workspace:*
+        version: link:../skill-evaluator
+      '@anima/skill-runtime':
+        specifier: workspace:*
+        version: link:../skill-runtime
+    devDependencies:
+      '@anima/model-providers':
+        specifier: workspace:*
+        version: link:../model-providers
+      '@anima/test-scenarios':
+        specifier: workspace:*
+        version: link:../test-scenarios
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

@@ -29,9 +29,24 @@ export interface Goal {
 
 export type NewGoal = Omit<Goal, 'id' | 'status' | 'createdAtTick'>;
 
+export interface GoalManagerData {
+  goals: Goal[];
+  counter: number;
+}
+
 export class GoalManager {
   private goals: Goal[] = [];
   private counter = 0;
+
+  serialize(): GoalManagerData {
+    return structuredClone({ goals: this.goals, counter: this.counter });
+  }
+
+  loadFrom(data: GoalManagerData): void {
+    const clone = structuredClone(data);
+    this.goals = clone.goals;
+    this.counter = clone.counter;
+  }
 
   create(input: NewGoal, tick: number): Goal {
     this.counter += 1;

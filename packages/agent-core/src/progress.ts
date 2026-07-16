@@ -18,10 +18,39 @@ export type EscalationStep = 'try-strategy' | 'create-skill' | 'ask-help' | 'sus
 
 const FORBID_AFTER_FAILURES = 2;
 
+export interface ProgressData {
+  records: { goalId: string; strategies: StrategyRecord[] }[];
+  skillDevAttempts: { goalId: string; attempts: number }[];
+  helpRequested: string[];
+}
+
 export class ProgressController {
   private records = new Map<string, Map<string, StrategyRecord>>();
   private skillDevAttempts = new Map<string, number>();
   private helpRequested = new Set<string>();
+
+  serialize(): ProgressData {
+    return structuredClone({
+      records: [...this.records.entries()].map(([goalId, strategies]) => ({
+        goalId,
+        strategies: [...strategies.values()],
+      })),
+      skillDevAttempts: [...this.skillDevAttempts.entries()].map(([goalId, attempts]) => ({
+        goalId,
+        attempts,
+      })),
+      helpRequested: [...this.helpRequested],
+    });
+  }
+
+  loadFrom(data: ProgressData): void {
+    const clone = structuredClone(data);
+    this.records = new Map(
+      clone.records.map((r) => [r.goalId, new Map(r.strategies.map((s) => [s.strategy, s]))]),
+    );
+    this.skillDevAttempts = new Map(clone.skillDevAttempts.map((a) => [a.goalId, a.attempts]));
+    this.helpRequested = new Set(clone.helpRequested);
+  }
 
   private forGoal(goalId: string): Map<string, StrategyRecord> {
     let map = this.records.get(goalId);

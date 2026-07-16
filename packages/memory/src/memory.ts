@@ -64,12 +64,46 @@ function evidenceConfidence(positive: number, negative: number): number {
   return (positive + 1) / (positive + negative + 2);
 }
 
+/** Estado serializable completo de la memoria (para persistencia). */
+export interface MemoryData {
+  episodes: EpisodicMemory[];
+  facts: SemanticFact[];
+  hypotheses: Hypothesis[];
+  counter: number;
+  working: WorkingMemoryState;
+}
+
 export class MemoryStore {
   readonly working: WorkingMemoryState = { recentResults: [], conversation: [] };
   private episodes: EpisodicMemory[] = [];
   private facts: SemanticFact[] = [];
   private hypotheses: Hypothesis[] = [];
   private counter = 0;
+
+  serialize(): MemoryData {
+    return structuredClone({
+      episodes: this.episodes,
+      facts: this.facts,
+      hypotheses: this.hypotheses,
+      counter: this.counter,
+      working: this.working,
+    });
+  }
+
+  loadFrom(data: MemoryData): void {
+    const clone = structuredClone(data);
+    this.episodes = clone.episodes;
+    this.facts = clone.facts;
+    this.hypotheses = clone.hypotheses;
+    this.counter = clone.counter;
+    this.working.recentResults = clone.working.recentResults;
+    this.working.conversation = clone.working.conversation;
+    if (clone.working.currentGoalId !== undefined) {
+      this.working.currentGoalId = clone.working.currentGoalId;
+    } else {
+      delete this.working.currentGoalId;
+    }
+  }
 
   private nextId(prefix: string): string {
     this.counter += 1;

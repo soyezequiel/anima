@@ -1,19 +1,24 @@
-# Persistencia (diseño; implementación en Fases 7-8)
+# Persistencia
 
-## Fase 7 — local primero
+## Fase 7 — local (implementada)
 
-Modo invitado sin backend: snapshots del mundo (`takeSnapshot` /
-`serializeSnapshot`, ya implementados y probados), biblioteca de skills,
-memorias consolidadas y regresiones serializados a almacenamiento local
-(IndexedDB en la web; JSON en disco para la CLI). Reiniciar y continuar debe
-funcionar sin cuenta.
+`@anima/persistence` provee:
 
-Aquí también: informes de muerte (identidad, causa probable con certeza,
-estado previo, objetivo activo, últimas acciones, skills usadas, conocimientos,
-recomendaciones, mensaje a la sucesora) y modelo de generaciones/linaje. Una
-sucesora lee el informe como **testimonio, no como memoria propia**: puede
-confiar, dudar, probar afirmaciones y adoptar o rechazar skills (que se
-re-evalúan en su propio mundo antes de promoverse).
+- `KeyValueStore` asíncrono con `WebStorageKeyValueStore` (localStorage) y
+  `MemoryKeyValueStore` (pruebas). Ver ADR 0009.
+- `SessionSaveData` versionado: snapshot del mundo, skills, regresiones,
+  estado del agente (memoria, objetivos, progreso, eventos), identidad y UI.
+  `captureSession` / `applySessionSave` hacen el round-trip; la sesión web
+  autoguarda cada 40 ticks, al pausar, al completar la historia y al morir.
+- `LegacyReport` (informe de muerte): identidad, causa con certeza, estado
+  previo, objetivo activo, últimas acciones, skills usadas, conocimientos,
+  hipótesis abiertas, recomendaciones, advertencias, proyectos inconclusos,
+  mensajes y artefactos de skills estables.
+- Sucesión: `successorIdentity` (generación+1, `ancestorId`) y
+  `testimonyFromLegacy` → `agent.adoptLegacy`. La sucesora lee el informe
+  como **testimonio, no memoria propia**: el conocimiento entra como
+  hipótesis "según X, ..." que puede confirmar o descartar, y cada skill
+  heredada se re-evalúa en mundos aislados antes de promoverse.
 
 ## Fase 8 — backend + Nostr
 

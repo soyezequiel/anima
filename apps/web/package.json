@@ -15,6 +15,7 @@
     "@anima/agent-core": "workspace:*",
     "@anima/memory": "workspace:*",
     "@anima/model-providers": "workspace:*",
+    "@anima/persistence": "workspace:*",
     "@anima/shared": "workspace:*",
     "@anima/sim-core": "workspace:*",
     "@anima/skill-evaluator": "workspace:*",

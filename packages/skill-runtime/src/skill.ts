@@ -83,9 +83,25 @@ export interface NewSkillInput {
  * Biblioteca versionada de habilidades. Guarda cada versión como una entrada
  * inmutable; la promoción y el archivado solo cambian el estado.
  */
+/** Estado serializable de la biblioteca (para persistencia y artefactos). */
+export interface SkillLibraryData {
+  skills: SkillDefinition[];
+  counter: number;
+}
+
 export class SkillLibrary {
   private skills = new Map<string, SkillDefinition>();
   private counter = 0;
+
+  serialize(): SkillLibraryData {
+    return structuredClone({ skills: [...this.skills.values()], counter: this.counter });
+  }
+
+  loadFrom(data: SkillLibraryData): void {
+    const clone = structuredClone(data);
+    this.skills = new Map(clone.skills.map((s) => [s.id, s]));
+    this.counter = clone.counter;
+  }
 
   addExperimental(input: NewSkillInput, parentVersionId?: string): SkillDefinition {
     const parent = parentVersionId ? this.skills.get(parentVersionId) : undefined;

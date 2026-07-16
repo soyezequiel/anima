@@ -44,6 +44,70 @@ export interface SkillDevOutcome {
   reports: EvaluationReport[];
 }
 
+/**
+ * Evalúa una candidata en mundos aislados y aplica el veredicto sobre la
+ * biblioteca, emitiendo los eventos de prueba. Lo usan tanto el ciclo de
+ * desarrollo como la adopción de habilidades heredadas de un legado.
+ */
+export function evaluateAndApply(
+  skill: SkillDefinition,
+  config: Pick<
+    SkillDevConfig,
+    'library' | 'regressions' | 'scenarios' | 'seeds' | 'maxTicksPerCase' | 'now'
+  >,
+  events: EventLog<AgentEvent>,
+  tick: number,
+  baseline?: EvaluationReport,
+): { report: EvaluationReport; promoted: boolean } {
+  events.emit({
+    type: 'skill.test.started',
+    tick,
+    data: {
+      skillId: skill.id,
+      version: skill.version,
+      scenarios: config.scenarios.map((s) => s.name),
+      seeds: config.seeds,
+      regressions: config.regressions.forSkill(skill.name).length,
+    },
+  });
+  const report = evaluateSkill(skill, {
+    scenarios: config.scenarios,
+    seeds: config.seeds,
+    regressions: config.regressions.forSkill(skill.name),
+    maxTicks: config.maxTicksPerCase,
+    library: config.library,
+  });
+  const decisionOptions: Parameters<typeof applyEvaluation>[4] = { now: config.now };
+  if (baseline) decisionOptions.baseline = baseline;
+  const decision = applyEvaluation(skill, report, config.library, config.regressions, decisionOptions);
+
+  if (decision.verdict === 'promoted') {
+    events.emit({
+      type: 'skill.test.passed',
+      tick,
+      data: { skillId: skill.id, version: skill.version, successRate: report.successRate },
+    });
+    events.emit({
+      type: 'skill.promoted',
+      tick,
+      data: { skillId: skill.id, name: skill.name, version: skill.version, reasons: decision.reasons },
+    });
+    return { report, promoted: true };
+  }
+  events.emit({
+    type: 'skill.test.failed',
+    tick,
+    data: {
+      skillId: skill.id,
+      version: skill.version,
+      successRate: report.successRate,
+      observations: report.failureObservations,
+      regressionsAdded: decision.regressionsAdded,
+    },
+  });
+  return { report, promoted: false };
+}
+
 export async function developSkill(
   contract: SkillContract,
   context: string[],
@@ -119,55 +183,17 @@ export async function developSkill(
       data: { skillId: skill.id, name: skill.name, version: skill.version, rationale: response.rationale },
     });
 
-    events.emit({
-      type: 'skill.test.started',
+    const { report, promoted } = evaluateAndApply(
+      skill,
+      config,
+      events,
       tick,
-      data: {
-        skillId: skill.id,
-        version: skill.version,
-        scenarios: config.scenarios.map((s) => s.name),
-        seeds: config.seeds,
-        regressions: config.regressions.forSkill(skill.name).length,
-      },
-    });
-    const report = evaluateSkill(skill, {
-      scenarios: config.scenarios,
-      seeds: config.seeds,
-      regressions: config.regressions.forSkill(skill.name),
-      maxTicks: config.maxTicksPerCase,
-      library: config.library,
-    });
+      lastReport ?? undefined,
+    );
     reports.push(report);
-
-    const decisionOptions: Parameters<typeof applyEvaluation>[4] = { now: config.now };
-    if (lastReport) decisionOptions.baseline = lastReport;
-    const decision = applyEvaluation(skill, report, config.library, config.regressions, decisionOptions);
-
-    if (decision.verdict === 'promoted') {
-      events.emit({
-        type: 'skill.test.passed',
-        tick,
-        data: { skillId: skill.id, version: skill.version, successRate: report.successRate },
-      });
-      events.emit({
-        type: 'skill.promoted',
-        tick,
-        data: { skillId: skill.id, name: skill.name, version: skill.version, reasons: decision.reasons },
-      });
+    if (promoted) {
       return { stableSkill: skill, versionsTried: attempt, reports };
     }
-
-    events.emit({
-      type: 'skill.test.failed',
-      tick,
-      data: {
-        skillId: skill.id,
-        version: skill.version,
-        successRate: report.successRate,
-        observations: report.failureObservations,
-        regressionsAdded: decision.regressionsAdded,
-      },
-    });
     parentId = skill.id;
     previousProgram = validated.value;
     lastReport = report;

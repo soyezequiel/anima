@@ -1,20 +1,21 @@
 import type { EventLog } from '@anima/shared';
 import { createEventLog } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, SimEvent } from '@anima/sim-core';
-import type { MemoryStore } from '@anima/memory';
+import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { ModelProvider } from '@anima/model-providers';
-import type { SkillLibrary, SkillProgram } from '@anima/skill-runtime';
+import type { SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
 import { SkillExecution } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
-import type { Goal } from './goals.js';
+import type { Goal, GoalManagerData } from './goals.js';
 import { GoalManager } from './goals.js';
+import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
 import { evaluateUserRequest, parseUserMessage } from './refusal.js';
 import type { SkillContract } from './skill-dev.js';
-import { developSkill } from './skill-dev.js';
+import { developSkill, evaluateAndApply } from './skill-dev.js';
 
 export const GOAL_RESTORE_ENERGY = 'recuperar energía';
 export const SKILL_REACH_BLOCKED_FOOD = 'alcanzar-alimento-bloqueado';
@@ -48,6 +49,30 @@ export interface AgentConfig {
   maxSkillDevAttempts?: number;
   maxVersionsPerDev?: number;
   now?: () => string;
+}
+
+/** Estado persistible del agente. La actividad en curso no se guarda: al
+ * restaurar, el agente replanifica desde su memoria y objetivos. */
+export interface AgentPersistentState {
+  goals: GoalManagerData;
+  progress: ProgressData;
+  memory: MemoryData;
+  events: AgentEvent[];
+  energyHypothesisId: string | null;
+  lastSelectedGoalId: string | null;
+}
+
+/**
+ * Testimonio que una sucesora recibe de un legado. No son recuerdos propios:
+ * el conocimiento entra como hipótesis (puede confiar, dudar o verificar) y
+ * las habilidades se re-evalúan en su propio mundo antes de promoverse.
+ */
+export interface LegacyTestimony {
+  fromName: string;
+  generation: number;
+  knowledge: { statement: string; confidence: number }[];
+  skills: SkillDefinition[];
+  message?: string;
 }
 
 interface Activity {
@@ -103,6 +128,114 @@ export class AnimaAgent {
 
   receiveUserMessage(text: string): void {
     this.pendingUserMessages.push(text);
+  }
+
+  // ---- persistencia ---------------------------------------------------------
+
+  exportState(): AgentPersistentState {
+    return structuredClone({
+      goals: this.goals.serialize(),
+      progress: this.progress.serialize(),
+      memory: this.memory.serialize(),
+      events: this.events.events,
+      energyHypothesisId: this.energyHypothesisId,
+      lastSelectedGoalId: this.lastSelectedGoalId,
+    });
+  }
+
+  importState(state: AgentPersistentState): void {
+    const clone = structuredClone(state);
+    this.goals.loadFrom(clone.goals);
+    this.progress.loadFrom(clone.progress);
+    this.memory.loadFrom(clone.memory);
+    this.events.events.length = 0;
+    this.events.events.push(...clone.events);
+    this.energyHypothesisId = clone.energyHypothesisId;
+    this.lastSelectedGoalId = clone.lastSelectedGoalId;
+    // La actividad en curso y las colas efímeras no se persisten.
+    this.activity = null;
+    this.pendingSpeech = [];
+    this.pendingUserMessages = [];
+    this.pendingExplanation = null;
+  }
+
+  // ---- legado ---------------------------------------------------------------
+
+  /**
+   * Recibe el testimonio de una antecesora. El conocimiento entra como
+   * hipótesis "según X, ..." (no como hechos propios) y cada habilidad
+   * heredada se re-evalúa en mundos aislados antes de poder promoverse.
+   */
+  adoptLegacy(testimony: LegacyTestimony): {
+    adoptedSkills: { name: string; version: number; promoted: boolean }[];
+  } {
+    this.emit('legacy.read', {
+      fromName: testimony.fromName,
+      generation: testimony.generation,
+      knowledgeEntries: testimony.knowledge.length,
+      skillArtifacts: testimony.skills.length,
+    });
+    this.memory.recordEpisode({
+      kind: 'legacy',
+      summary: `leí el informe de ${testimony.fromName} (generación ${testimony.generation})`,
+      tick: this.tick,
+      importance: 0.9,
+    });
+
+    for (const entry of testimony.knowledge) {
+      const hypothesis = this.memory.addHypothesis(
+        `según ${testimony.fromName}, ${entry.statement}`,
+        this.tick,
+        Math.min(0.65, entry.confidence),
+      );
+      if (entry.statement.includes('recupera energía')) {
+        this.energyHypothesisId = hypothesis.id;
+      }
+      this.emit('hypothesis.updated', {
+        hypothesisId: hypothesis.id,
+        statement: hypothesis.statement,
+        confidence: hypothesis.confidence,
+        source: 'legacy-testimony',
+      });
+    }
+
+    const adoptedSkills: { name: string; version: number; promoted: boolean }[] = [];
+    for (const artifact of testimony.skills) {
+      const candidate = this.config.library.addExperimental({
+        name: artifact.name,
+        description: artifact.description,
+        motivation: `heredada de ${testimony.fromName} (generación ${testimony.generation}); debe demostrar que funciona en mi propio mundo`,
+        program: structuredClone(artifact.program),
+        expectedOutcome: artifact.expectedOutcome,
+        successCriteria: structuredClone(artifact.successCriteria),
+        createdAt: this.now(),
+      });
+      this.emit('skill.created', {
+        skillId: candidate.id,
+        name: candidate.name,
+        version: candidate.version,
+        rationale: `artefacto heredado de ${testimony.fromName}`,
+      });
+      const { promoted } = evaluateAndApply(
+        candidate,
+        {
+          library: this.config.library,
+          regressions: this.config.regressions,
+          scenarios: this.config.evaluationScenarios,
+          seeds: this.config.evaluationSeeds,
+          maxTicksPerCase: 200,
+          now: () => this.now(),
+        },
+        this.events,
+        this.tick,
+      );
+      adoptedSkills.push({ name: candidate.name, version: candidate.version, promoted });
+    }
+
+    if (testimony.message !== undefined && testimony.message.length > 0) {
+      this.reply(`Mi antecesora me dejó un mensaje: "${testimony.message}"`);
+    }
+    return { adoptedSkills };
   }
 
   /** Un paso de decisión. Devuelve la intención para este tick (o ninguna). */

@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import type { GameSession } from '../session/GameSession.js';
 import type { GameView } from '../session/view.js';
 
-export function DevPanel({ view }: { view: GameView }) {
+export function DevPanel({ view, session }: { view: GameView; session: GameSession }) {
   const [filter, setFilter] = useState('');
   const [source, setSource] = useState<'all' | 'world' | 'agent'>('all');
 
@@ -26,6 +27,13 @@ export function DevPanel({ view }: { view: GameView }) {
           <option value="agent">agente</option>
         </select>
         <span className="muted">{events.length} eventos</span>
+        <button
+          data-testid="dev-kill"
+          title="Colapsa energía y salud para observar el flujo de muerte y legado"
+          onClick={() => session.devKill()}
+        >
+          💀
+        </button>
       </div>
       <div className="dev-log" data-testid="dev-log">
         {events

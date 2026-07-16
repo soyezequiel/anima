@@ -12,9 +12,24 @@ export interface RegressionCase {
   createdAt: string;
 }
 
+export interface RegressionData {
+  cases: RegressionCase[];
+  counter: number;
+}
+
 export class RegressionStore {
   private cases: RegressionCase[] = [];
   private counter = 0;
+
+  serialize(): RegressionData {
+    return structuredClone({ cases: this.cases, counter: this.counter });
+  }
+
+  loadFrom(data: RegressionData): void {
+    const clone = structuredClone(data);
+    this.cases = clone.cases;
+    this.counter = clone.counter;
+  }
 
   add(input: Omit<RegressionCase, 'id'>): RegressionCase {
     const existing = this.cases.find(

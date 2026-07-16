@@ -55,6 +55,10 @@ recoger, soltar, consumir, usar un objeto sobre otro.
 - [x] La mascota distingue falta de recurso de falta de capacidad: sin comida
       en el mundo pide ayuda y suspende en vez de fabricar skills inútiles;
       reactiva el objetivo cuando el entorno cambia.
+- [x] Persistencia local: la sesión se autoguarda y sobrevive recargas
+      (reiniciar y continuar sin cuenta).
+- [x] Muerte con informe de legado y sucesión: la generación siguiente hereda
+      testimonio (hipótesis, no hechos) y re-evalúa las skills heredadas.
 
 ## Fuera del MVP
 
