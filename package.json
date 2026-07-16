@@ -1,0 +1,28 @@
+{
+  "name": "anima-monorepo",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@10.32.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "pnpm --filter @anima/demo start",
+    "demo": "pnpm --filter @anima/demo start",
+    "build": "pnpm -r run typecheck",
+    "test": "pnpm -r run test",
+    "test:e2e": "echo \"E2E (Playwright) se activa en Fase 6 cuando exista apps/web. Ver docs/decisions/0004-e2e-diferido.md\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "typecheck": "pnpm -r run typecheck"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "eslint": "^9.0.0",
+    "prettier": "^3.0.0",
+    "typescript": "^5.6.0",
+    "typescript-eslint": "^8.0.0",
+    "vitest": "^3.0.0"
+  }
+}
