@@ -18,9 +18,17 @@ import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
 import { developSkill, evaluateAndApply } from './skill-dev.js';
 
 export const GOAL_RESTORE_ENERGY = 'recuperar energía';
+export const GOAL_RESTORE_WARMTH = 'recuperar calor';
 export const SKILL_REACH_BLOCKED_FOOD = 'alcanzar-alimento-bloqueado';
+/**
+ * Como SKILL_REACH_BLOCKED_FOOD: nombre reservado para la necesidad del
+ * cuerpo, para que un contrato enseñado no pueda secuestrar la habilidad de
+ * no morirse de frío (ADR 0016).
+ */
+export const SKILL_GET_WARM = 'conseguir-calor';
 
 const LOW_ENERGY_FRACTION = 0.35;
+const LOW_TEMPERATURE_FRACTION = 0.35;
 
 /** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
 const USER_REQUEST_WEIGHTS: Record<
@@ -30,6 +38,7 @@ const USER_REQUEST_WEIGHTS: Record<
   'consume-item': { priority: 1, urgency: 0.8 },
   'move-direction': { priority: 1, urgency: 0.75 },
   'run-skill': { priority: 1, urgency: 0.7 },
+  'craft-item': { priority: 1, urgency: 0.7 },
   'fetch-item': { priority: 0.6, urgency: 0.35 },
   'destroy-entity': { priority: 0.6, urgency: 0.35 },
   'wait-here': { priority: 0.6, urgency: 0.35 },
@@ -69,6 +78,25 @@ const DIRECT_APPROACH_PROGRAM: SkillProgram = [
   { op: 'consume', target: 'food' },
 ];
 
+/**
+ * Aproximación primitiva al calor: acercarse a lo que irradia sin pegarse.
+ * Busca por `warm` y no por tipo: la mascota percibe qué da calor, no sabe
+ * que eso se llama fogata. El `stopAtDistance: 2` es un reflejo prudente
+ * incorporado, no conocimiento adquirido (ver ADR 0017).
+ */
+const WARMTH_APPROACH_PROGRAM: SkillProgram = [
+  { op: 'findEntities', query: { warm: true }, store: 'heatSources' },
+  { op: 'selectTarget', from: 'heatSources', strategy: 'nearest', store: 'heat' },
+  { op: 'moveToward', target: 'heat', maxSteps: 30, stopAtDistance: 2 },
+  {
+    op: 'branch',
+    if: { type: 'lastMoveBlocked' },
+    then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+  },
+  // Quedarse el tiempo suficiente para que el calor haga efecto.
+  { op: 'wait', ticks: 20 },
+];
+
 export interface AgentConfig {
   petId: EntityId;
   petName: string;
@@ -84,6 +112,14 @@ export interface AgentConfig {
    * movimiento tenga dónde demostrarse.
    */
   practiceScenarios?: NamedScenario[];
+  /**
+   * Mundos donde se juzga una habilidad de abrigo. Tienen que tener frío: sin
+   * el componente `temperature` el criterio `temperatureIncreased` no se puede
+   * cumplir y la habilidad se rechazaría siempre, por buena que fuera. Si no
+   * se inyectan, la mascota no intenta fabricar abrigo (pide ayuda en su
+   * lugar): mejor no aprender que aprender contra una vara imposible.
+   */
+  warmthScenarios?: NamedScenario[];
   evaluationSeeds: number[];
   /** Experiencia guiada: si el usuario no explica, el sistema muestra pistas. */
   guidanceEnabled: boolean;
@@ -403,6 +439,89 @@ export class AnimaAgent {
   // ---- señales internas ---------------------------------------------------
 
   private async processSignals(perception: Perception): Promise<void> {
+    await this.processEnergySignal(perception);
+    await this.processColdSignal(perception);
+  }
+
+  /**
+   * El frío es una necesidad del cuerpo, como el hambre: su contrato es fijo y
+   * nace de ella, no de una conversación (ver ADR 0016). Tampoco nace sabiendo
+   * qué significa tener frío: interpreta la señal igual que la del hambre.
+   */
+  private async processColdSignal(perception: Perception): Promise<void> {
+    const temperature = perception.self.temperature;
+    // Quien no siente frío no tiene señal que interpretar.
+    if (!temperature) return;
+    const fraction = temperature.current / temperature.max;
+    if (fraction >= LOW_TEMPERATURE_FRACTION) return;
+    if (this.goals.findOpen(GOAL_RESTORE_WARMTH)) return;
+
+    const alreadyUnderstands =
+      this.memory.factList().some((f) => f.statement.includes('calor')) ||
+      this.memory.hypothesisList().some((h) => h.statement.includes('calor'));
+    if (!alreadyUnderstands) {
+      if (this.config.guidanceEnabled) {
+        this.emit('guidance.shown', {
+          signal: 'temperature-low',
+          hint: 'evidencia histórica: criaturas que pierden todo su calor dejan de moverse',
+        });
+      }
+      try {
+        const interpretation = await this.config.provider.complete({
+          kind: 'interpret.signal',
+          signal: 'temperature-low',
+        });
+        if (interpretation.kind === 'interpretation') {
+          const hypothesis = this.memory.addHypothesis(
+            interpretation.hypothesis,
+            this.tick,
+            interpretation.confidence,
+          );
+          this.emit('hypothesis.updated', {
+            hypothesisId: hypothesis.id,
+            statement: hypothesis.statement,
+            confidence: hypothesis.confidence,
+            source: 'internal-signal',
+          });
+        }
+      } catch (error) {
+        // Sin interpretación igual tiene frío: el objetivo nace lo mismo, y el
+        // cuerpo no espera a que el modelo conteste.
+        this.emit('provider.error', {
+          provider: this.config.provider.name,
+          operation: 'interpret.signal',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      this.memory.recordEpisode({
+        kind: 'signal',
+        summary: 'estoy perdiendo calor y necesito entender cómo recuperarlo',
+        tick: this.tick,
+        importance: 0.8,
+      });
+    }
+
+    const goal = this.goals.create(
+      {
+        description: GOAL_RESTORE_WARMTH,
+        source: 'internal-signal',
+        priority: 0.95,
+        urgency: Math.min(1, 1 - fraction),
+        expectedValue: 1,
+        preconditions: [],
+        successCriteria: ['el calor corporal sube por encima del nivel de alerta'],
+        failureCriteria: ['el calor corporal llega a cero'],
+      },
+      this.tick,
+    );
+    this.emit('goal.created', {
+      goalId: goal.id,
+      description: goal.description,
+      source: goal.source,
+    });
+  }
+
+  private async processEnergySignal(perception: Perception): Promise<void> {
     const energy = perception.self.energy;
     if (!energy) return;
     const fraction = energy.current / energy.max;
@@ -759,6 +878,11 @@ export class AnimaAgent {
         history: this.dialogueHistory(),
         // Su repertorio no es fijo: lo que aprendió también se puede pedir.
         skills: this.learnedSkills(),
+        // Ni su mundo: lo que se puede construir sale de las recetas que rigen.
+        recipes: perception.recipes.map((recipe) => ({
+          id: recipe.id,
+          ingredients: recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + '),
+        })),
       });
       if (interpretation.kind !== 'command.interpretation') {
         throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
@@ -892,6 +1016,8 @@ export class AnimaAgent {
         return { kind: 'move-direction', directions: [...command.directions], raw };
       case 'run-skill':
         return { kind: 'run-skill', skillName: normalizeSkillName(command.skillName), raw };
+      case 'craft-item':
+        return { kind: 'craft-item', recipeId: command.recipeId, raw };
     }
   }
 
@@ -991,6 +1117,7 @@ export class AnimaAgent {
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
             ...('directions' in request ? { directions: request.directions } : {}),
             ...('skillName' in request ? { skillName: request.skillName } : {}),
+            ...('recipeId' in request ? { recipeId: request.recipeId } : {}),
             raw: request.raw,
           },
         },
@@ -1020,6 +1147,9 @@ export class AnimaAgent {
       const program = this.programForUserRequest(goal.userRequest);
       this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
+    }
+    if (goal.description === GOAL_RESTORE_WARMTH) {
+      return this.pursueWarmth(goal, perception);
     }
     if (goal.description !== GOAL_RESTORE_ENERGY) {
       return null;
@@ -1073,6 +1203,102 @@ export class AnimaAgent {
     this.suspensionEdibles.set(
       goal.id,
       new Set(perception.visibleEntities.filter((e) => e.edible).map((e) => e.id)),
+    );
+    this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
+    this.lastSelectedGoalId = null;
+    return null;
+  }
+
+  /**
+   * Perseguir el calor tiene la misma forma que perseguir el alimento: skill
+   * estable, si no aproximación primitiva, y si todo está prohibido, el ciclo
+   * cerrado. La diferencia está en qué falta cuando falla: sin nada que dé
+   * calor no hay skill que valga (ADR 0008), pero SÍ puede construirlo si
+   * tiene los ingredientes — por eso fabricar una habilidad es una salida
+   * legítima aquí y no lo era para el alimento.
+   */
+  private async pursueWarmth(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
+    const stable = this.config.library.findStable(SKILL_GET_WARM);
+    const strategies: { label: string; program: SkillProgram; skillId?: string }[] = [];
+    if (stable) {
+      strategies.push({
+        label: `stable-skill:${stable.name}@v${stable.version}`,
+        program: stable.program,
+        skillId: stable.id,
+      });
+    }
+    strategies.push({ label: 'warmth-approach', program: WARMTH_APPROACH_PROGRAM });
+
+    const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
+    if (viable) {
+      this.startActivity(goal, viable.label, viable.program, perception, viable.skillId);
+      return this.continueActivity(perception);
+    }
+
+    // Puede construir fuego, así que fabricar una habilidad no es absurdo
+    // aunque no vea ninguno: lo que hace falta es tener con qué. Pero sin
+    // mundos fríos donde probarla, la vara sería imposible: mejor pedir ayuda.
+    const scenarios = this.config.warmthScenarios ?? [];
+    const canBuildFire =
+      scenarios.length > 0 &&
+      perception.recipes.some((recipe) => recipe.output.components.heatSource !== undefined);
+    const step =
+      (this.progress.blockedByMissingResource(goal.id) && !canBuildFire) || scenarios.length === 0
+        ? this.progress.helpRequestedFor(goal.id)
+          ? 'suspend'
+          : 'ask-help'
+        : this.progress.escalate(goal.id, {
+            maxSkillDevAttempts: this.config.maxSkillDevAttempts,
+          });
+
+    if (step === 'create-skill') {
+      const contract: SkillContract = {
+        name: SKILL_GET_WARM,
+        purpose: 'dejar de perder calor: acercarse a una fuente de calor o construir una',
+        motivation: 'tengo frío y lo que sé hacer no alcanza',
+        expectedOutcome: 'su calor corporal sube y no se quema en el intento',
+        successCriteria: [{ type: 'temperatureIncreased' }, { type: 'noDamageTaken' }],
+      };
+      const context = [
+        ...perception.recipes.map(
+          (recipe) =>
+            `puedo construir "${recipe.id}" con ${recipe.ingredients
+              .map((i) => `${i.count}x ${i.kind}`)
+              .join(' + ')}`,
+        ),
+        ...perception.visibleEntities.map(
+          (e) => `veo: ${e.kind}${e.warmth !== undefined ? ' (da calor)' : ''}`,
+        ),
+        'el fuego calienta a distancia pero quema al que se le pega',
+      ];
+      const outcome = await this.runSkillDevelopment(contract, context, scenarios);
+      this.progress.recordSkillDevAttempt(goal.id);
+      if (outcome.stableSkill) {
+        this.startActivity(
+          goal,
+          `stable-skill:${outcome.stableSkill.name}@v${outcome.stableSkill.version}`,
+          outcome.stableSkill.program,
+          perception,
+          outcome.stableSkill.id,
+        );
+        return this.continueActivity(perception);
+      }
+      return null;
+    }
+
+    if (step === 'ask-help') {
+      this.progress.markHelpRequested(goal.id);
+      this.emit('help.requested', { goalId: goal.id });
+      return {
+        type: 'speak',
+        text: 'Tengo frío y no veo nada que dé calor. ¿Puedes ayudarme?',
+      };
+    }
+
+    this.goals.suspend(
+      goal.id,
+      'sin estrategias viables tras pedir ayuda',
+      'nueva información del usuario o algo que dé calor',
     );
     this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
     this.lastSelectedGoalId = null;
@@ -1296,6 +1522,14 @@ export class AnimaAgent {
       case 'wait-here':
         return [{ op: 'wait', ticks: 6 }];
 
+      case 'craft-item':
+        // La decisión de si puede ya la tomó evaluateUserRequest con los
+        // ingredientes a la vista; aquí solo se expresa la intención y el
+        // mundo vuelve a comprobarlo por su cuenta.
+        return request.recipeId
+          ? [{ op: 'craft', recipeId: request.recipeId }]
+          : [{ op: 'abort', reason: 'no-sé-qué-construir' }];
+
       case 'run-skill': {
         const stable = request.skillName
           ? this.config.library.findStable(request.skillName)
@@ -1453,6 +1687,8 @@ export class AnimaAgent {
         return 'Listo, esperé aquí un momento.';
       case 'run-skill':
         return `Listo, hice "${request.skillName ?? 'eso'}".`;
+      case 'craft-item':
+        return 'Listo, ya está construida.';
       case 'move-direction': {
         const labels = {
           up: 'hacia arriba',

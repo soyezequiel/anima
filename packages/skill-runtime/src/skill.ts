@@ -18,6 +18,8 @@ export interface SkillPrecondition {
  */
 export type EvaluationCriterionType =
   | 'energyIncreased'
+  | 'temperatureIncreased'
+  | 'craftedKind'
   | 'consumedKind'
   | 'reachedAdjacentKind'
   | 'holdingKind'
@@ -44,6 +46,8 @@ export interface EvaluationCriterion {
  */
 const criterionSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('energyIncreased') }).strict(),
+  z.object({ type: z.literal('temperatureIncreased') }).strict(),
+  z.object({ type: z.literal('craftedKind'), kind: z.string().min(1) }).strict(),
   z.object({ type: z.literal('consumedKind'), kind: z.string().min(1) }).strict(),
   z.object({ type: z.literal('reachedAdjacentKind'), kind: z.string().min(1) }).strict(),
   z.object({ type: z.literal('holdingKind'), kind: z.string().min(1) }).strict(),
@@ -92,6 +96,10 @@ export function describeCriterion(criterion: EvaluationCriterion): string {
   switch (criterion.type) {
     case 'energyIncreased':
       return 'su energía termina más alta';
+    case 'temperatureIncreased':
+      return 'su calor corporal termina más alto';
+    case 'craftedKind':
+      return `construye un objeto de tipo ${criterion.kind}`;
     case 'consumedKind':
       return `consume un objeto de tipo ${criterion.kind}`;
     case 'reachedAdjacentKind':

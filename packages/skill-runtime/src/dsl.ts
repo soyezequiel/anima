@@ -21,6 +21,8 @@ const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
     z.object({ type: z.literal('isAdjacent'), target: z.string().min(1) }).strict(),
     z.object({ type: z.literal('holding'), target: z.string().min(1) }).strict(),
     z.object({ type: z.literal('energyBelow'), value: z.number() }).strict(),
+    z.object({ type: z.literal('temperatureBelow'), value: z.number() }).strict(),
+    z.object({ type: z.literal('canCraft'), recipeId: z.string().min(1) }).strict(),
     z.object({ type: z.literal('not'), cond: conditionSchema }).strict(),
   ]),
 ) as z.ZodType<SkillCondition>;
@@ -33,6 +35,9 @@ export type SkillCondition =
   | { type: 'isAdjacent'; target: string }
   | { type: 'holding'; target: string }
   | { type: 'energyBelow'; value: number }
+  | { type: 'temperatureBelow'; value: number }
+  /** Tiene en mano todo lo que la receta pide (y el mundo la admite). */
+  | { type: 'canCraft'; recipeId: string }
   | { type: 'not'; cond: SkillCondition };
 
 const entityQuerySchema = z
@@ -41,6 +46,14 @@ const entityQuerySchema = z
     tool: z.boolean().optional(),
     edible: z.boolean().optional(),
     portable: z.boolean().optional(),
+    /** Fuentes de calor. La mascota percibe qué irradia calor, no de qué tipo es. */
+    warm: z.boolean().optional(),
+    /**
+     * Filtra por si ya lo lleva encima. Sin esto no se puede juntar dos cosas
+     * del mismo tipo: `nearest` ordena lo sostenido a distancia 0, así que la
+     * búsqueda del segundo tronco devolvía siempre el que ya tenía en la mano.
+     */
+    held: z.boolean().optional(),
   })
   .strict()
   .refine((q) => Object.keys(q).length > 0, { message: 'query vacía' });
@@ -68,6 +81,12 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
         op: z.literal('moveToward'),
         target: z.string().min(1),
         maxSteps: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
+        /**
+         * A qué distancia (Chebyshev) detenerse. Por defecto 1: pegado, que es
+         * lo que hace falta para recoger o usar. Hay cosas a las que conviene
+         * acercarse SIN tocarlas: el fuego calienta a 2 y quema a 1.
+         */
+        stopAtDistance: z.number().int().min(1).max(10).optional(),
       })
       .strict(),
     z.object({ op: z.literal('moveStep'), dir: directionSchema }).strict(),
@@ -75,6 +94,7 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
     z.object({ op: z.literal('drop'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('consume'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('useItem'), item: z.string().min(1), target: z.string().min(1) }).strict(),
+    z.object({ op: z.literal('craft'), recipeId: z.string().min(1) }).strict(),
     z.object({ op: z.literal('wait'), ticks: z.number().int().min(1).max(MAX_REPEAT_LIMIT).optional() }).strict(),
     z.object({ op: z.literal('speak'), text: z.string().max(300) }).strict(),
     z
@@ -101,12 +121,14 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
 export type SkillOp =
   | { op: 'findEntities'; query: EntityQuery; store: string }
   | { op: 'selectTarget'; from: string; strategy: SelectStrategy; store: string }
-  | { op: 'moveToward'; target: string; maxSteps: number }
+  | { op: 'moveToward'; target: string; maxSteps: number; stopAtDistance?: number }
   | { op: 'moveStep'; dir: 'up' | 'down' | 'left' | 'right' }
   | { op: 'pickup'; target: string }
   | { op: 'drop'; target: string }
   | { op: 'consume'; target: string }
   | { op: 'useItem'; item: string; target: string }
+  /** Construir según una receta del mundo, con lo que lleva en el inventario. */
+  | { op: 'craft'; recipeId: string }
   | { op: 'wait'; ticks?: number }
   | { op: 'speak'; text: string }
   | { op: 'branch'; if: SkillCondition; then: SkillOp[]; else?: SkillOp[] }

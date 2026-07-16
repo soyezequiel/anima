@@ -38,6 +38,16 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
         <>
           <Bar label="Energía" value={pet.energy.current} max={pet.energy.max} color="#f59e0b" testId="energy-value" />
           <Bar label="Salud" value={pet.health.current} max={pet.health.max} color="#ef4444" testId="health-value" />
+          {/* Solo donde hace frío: en los mundos templados no existe la señal. */}
+          {pet.temperature && (
+            <Bar
+              label="Calor"
+              value={pet.temperature.current}
+              max={pet.temperature.max}
+              color="#38bdf8"
+              testId="temperature-value"
+            />
+          )}
         </>
       )}
 

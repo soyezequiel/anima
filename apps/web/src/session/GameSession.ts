@@ -8,7 +8,7 @@ import type { WorldSnapshot } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
-import { foodBehindWall, MVP_SCENARIOS, PRACTICE_SCENARIOS } from '@anima/test-scenarios';
+import { COLD_SCENARIOS, foodBehindWall, MVP_SCENARIOS, PRACTICE_SCENARIOS } from '@anima/test-scenarios';
 import type { KeyValueStore, LegacyReport, PetIdentity, SessionSaveData } from '@anima/persistence';
 import {
   appendLegacy,
@@ -30,11 +30,17 @@ import type {
   ExperimentView,
   GameView,
   GoalView,
+  PickupView,
   SkillView,
 } from './view.js';
 
 const BASE_TICKS_PER_SECOND = 4;
 const SPEECH_VISIBLE_TICKS = 14;
+/**
+ * Ventana corta: la recogida es un acento, no un cartel que se queda. A
+ * velocidad normal da para el vuelo del objeto y el rótulo que lo sigue.
+ */
+const PICKUP_VISIBLE_TICKS = 4;
 const DEV_EVENT_LIMIT = 400;
 const AUTOSAVE_EVERY_TICKS = 40;
 const RECENT_ACTIONS_LIMIT = 12;
@@ -94,6 +100,7 @@ export class GameSession {
   private devSeq = 0;
   private agentEventCursor = 0;
   private lastSpeech: { text: string; tick: number } | null = null;
+  private lastPickup: PickupView | null = null;
   private lastAction: string | null = null;
   private recentActions: string[] = [];
   private deathReport: LegacyReport | null = null;
@@ -157,6 +164,7 @@ export class GameSession {
       regressions: this.regressions,
       evaluationScenarios: MVP_SCENARIOS,
       practiceScenarios: PRACTICE_SCENARIOS,
+      warmthScenarios: COLD_SCENARIOS,
       evaluationSeeds: [11, 22, 33],
       guidanceEnabled: true,
     });
@@ -164,6 +172,7 @@ export class GameSession {
     this.devSeq = 0;
     this.agentEventCursor = 0;
     this.lastSpeech = null;
+    this.lastPickup = null;
     this.lastAction = null;
     this.recentActions = [];
     this.deathReport = null;
@@ -503,6 +512,16 @@ export class GameSession {
         this.recentActions.push(intent.type);
         if (this.recentActions.length > RECENT_ACTIONS_LIMIT) this.recentActions.shift();
       }
+      if (event.type === 'item.pickedUp') {
+        // El motor ya le quitó la posición al objeto, pero la entidad sigue
+        // existiendo: de ahí sale el tipo con el que la UI lo representa.
+        const itemId = String(event.data.itemId);
+        this.lastPickup = {
+          itemId,
+          kind: getEntity(this.world, itemId)?.kind ?? '?',
+          tick: event.tick,
+        };
+      }
       if (event.type === 'pet.died') {
         this.chat.push({
           from: 'system',
@@ -719,6 +738,11 @@ export class GameSession {
         ? this.lastSpeech
         : null;
 
+    const pickupFresh =
+      this.lastPickup && this.world.tick - this.lastPickup.tick <= PICKUP_VISIBLE_TICKS
+        ? this.lastPickup
+        : null;
+
     this.view = {
       seed: this.seed,
       tick: this.world.tick,
@@ -751,6 +775,12 @@ export class GameSession {
                 current: pet.components.health?.current ?? 0,
                 max: pet.components.health?.max ?? 1,
               },
+              temperature: pet.components.temperature
+                ? {
+                    current: pet.components.temperature.current,
+                    max: pet.components.temperature.max,
+                  }
+                : null,
               inventory: (pet.components.inventory?.items ?? []).map((id) => ({
                 id,
                 kind: getEntity(this.world, id)?.kind ?? '?',
@@ -769,6 +799,7 @@ export class GameSession {
       currentStrategy: lastStrategy ? String(lastStrategy.data.strategy) : null,
       lastAction: this.lastAction,
       speech: speechFresh,
+      pickup: pickupFresh,
       chat: [...this.chat],
       skills: this.skillViews(),
       experiments: this.experimentsFromEvents(),

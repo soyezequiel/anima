@@ -38,6 +38,8 @@ export type ModelRequest =
       history?: { from: 'user' | 'pet'; text: string }[];
       /** Habilidades ya aprendidas: el catálogo ejecutable no es fijo. */
       skills?: { name: string; description: string }[];
+      /** Lo que este mundo admite construir: sin esto, "craft-item" no existe. */
+      recipes?: { id: string; ingredients: string }[];
     }
   | {
       /**
@@ -105,6 +107,8 @@ export type CommandInterpretation =
   | { action: 'move-direction'; directions: CommandDirection[] }
   /** Ejecutar una habilidad ya aprendida, por su nombre. */
   | { action: 'run-skill'; skillName: string }
+  /** Construir algo que su mundo admite, por el id de la receta. */
+  | { action: 'craft-item'; recipeId: string }
   /** Conducta que no tiene pero que sus primitivas podrían componer. */
   | { action: 'learn-skill'; summary: string }
   /** El cuidador enseña un hecho del mundo (afirmación, no orden ni pregunta). */

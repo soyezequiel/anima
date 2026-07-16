@@ -11,9 +11,11 @@ pre-codeados. En cuatro pasos, cada uno mostrable por sí solo:
 
 1. **Frío + árbol talable → troncos** — hecho (ADR 0015): temperatura,
    fuentes de calor, drops declarativos, causa de muerte `hypothermia`.
-2. **Recetas + primitiva `craft`** — la fogata como receta (troncos + algo
-   que encienda); el agente aprende a reaccionar al frío; `cold-night` entra
-   a las evaluaciones.
+2. **Recetas + primitiva `craft`** — hecho (ADR 0017): recetas como dato del
+   mundo, `craft` y `canCraft` en la DSL, la orden «construí una fogata» con
+   su negativa por ingrediente faltante, el frío como motivo interno, y
+   `temperatureIncreased`/`craftedKind` en el evaluador. Pendiente: que junte
+   los ingredientes sola, y encender el frío en el mundo jugable.
 3. **Arquetipos propuestos por el modelo** — Ánima compone objetos nuevos con
    componentes existentes, validados y evaluados como las skills; placeholder
    gráfico: cuadrado con el nombre (ya implementado).

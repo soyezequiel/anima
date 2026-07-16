@@ -1,5 +1,6 @@
-import { isAdjacent } from '@anima/shared';
+import { chebyshev, isAdjacent } from '@anima/shared';
 import type { ActionIntent, Direction, Perception, PerceivedEntity, SimEvent } from '@anima/sim-core';
+import { missingIngredients } from '@anima/sim-core';
 import type { SkillCondition, SkillOp, SkillProgram } from './dsl.js';
 import type { SkillLibrary } from './skill.js';
 
@@ -47,6 +48,8 @@ interface MoveState {
   targetVar: string;
   maxSteps: number;
   stepsTaken: number;
+  /** Distancia Chebyshev a la que darse por llegada. */
+  stopAtDistance: number;
   /** Direcciones que fallaron desde la celda actual (se limpia al avanzar). */
   triedDirs: Set<Direction>;
   pendingDir?: Direction;
@@ -186,6 +189,8 @@ export class SkillExecution {
           if (op.query.edible !== undefined && (e.edible ?? false) !== op.query.edible) return false;
           if (op.query.portable !== undefined && (e.portable ?? false) !== op.query.portable)
             return false;
+          if (op.query.held !== undefined && (e.held ?? false) !== op.query.held) return false;
+          if (op.query.warm !== undefined && (e.warmth !== undefined) !== op.query.warm) return false;
           return true;
         });
         this.vars.set(op.store, matches);
@@ -255,6 +260,7 @@ export class SkillExecution {
           targetVar: op.target,
           maxSteps: op.maxSteps,
           stepsTaken: 0,
+          stopAtDistance: op.stopAtDistance ?? 1,
           triedDirs: new Set(),
         };
         const output = this.stepMove(perception);
@@ -271,6 +277,11 @@ export class SkillExecution {
       case 'speak':
         frame.index += 1;
         return this.emit({ type: 'speak', text: op.text });
+      case 'craft':
+        frame.index += 1;
+        this.pendingSingle = true;
+        // El mundo decide si se puede: aquí solo se expresa la intención.
+        return this.emit({ type: 'craft', recipeId: op.recipeId });
       case 'pickup':
       case 'drop':
       case 'consume':
@@ -312,7 +323,7 @@ export class SkillExecution {
       return null;
     }
     const selfPos = perception.self.position;
-    if (isAdjacent(selfPos, current.position)) {
+    if (chebyshev(selfPos, current.position) <= move.stopAtDistance) {
       this.endMove('reached');
       return null;
     }
@@ -407,6 +418,19 @@ export class SkillExecution {
       }
       case 'energyBelow':
         return (perception.self.energy?.current ?? 0) < cond.value;
+      case 'temperatureBelow':
+        // Sin sentido del frío, nunca tiene frío (no es lo mismo que tener 0).
+        return perception.self.temperature !== undefined &&
+          perception.self.temperature.current < cond.value;
+      case 'canCraft': {
+        const recipe = perception.recipes.find((r) => r.id === cond.recipeId);
+        if (!recipe) return false;
+        const counts = new Map<string, number>();
+        for (const item of perception.self.heldItems) {
+          counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+        }
+        return missingIngredients(recipe, counts).length === 0;
+      }
     }
   }
 

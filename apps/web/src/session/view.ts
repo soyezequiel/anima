@@ -20,12 +20,24 @@ export interface PetView {
   alive: boolean;
   energy: { current: number; max: number };
   health: { current: number; max: number };
+  /** Solo en mundos con frío: null donde la mascota no siente temperatura. */
+  temperature: { current: number; max: number } | null;
   inventory: { id: string; kind: string }[];
 }
 
 export interface ChatEntry {
   from: 'user' | 'pet' | 'system';
   text: string;
+  tick: number;
+}
+
+/**
+ * Un objeto que acaba de pasar del suelo al inventario. Describe el hecho, no
+ * la animación: la UI decide cómo representarlo, igual que con `speech`.
+ */
+export interface PickupView {
+  itemId: string;
+  kind: string;
   tick: number;
 }
 
@@ -99,6 +111,8 @@ export interface GameView {
   currentStrategy: string | null;
   lastAction: string | null;
   speech: { text: string; tick: number } | null;
+  /** Recogida reciente, mientras dura su ventana de visibilidad; null si no hay. */
+  pickup: PickupView | null;
   chat: ChatEntry[];
   skills: SkillView[];
   experiments: ExperimentView[];

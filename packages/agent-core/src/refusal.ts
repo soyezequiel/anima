@@ -1,4 +1,5 @@
 import type { Direction, Perception } from '@anima/sim-core';
+import { missingIngredients } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { Goal } from './goals.js';
 
@@ -15,6 +16,8 @@ export type UserRequest =
   | { kind: 'move-direction'; directions: Direction[]; raw: string }
   /** Ejecutar una habilidad que ya aprendió y demostró en evaluación. */
   | { kind: 'run-skill'; skillName: string; raw: string }
+  /** Construir algo según una receta que su mundo admite. */
+  | { kind: 'craft-item'; recipeId: string; raw: string }
   | { kind: 'unknown'; raw: string };
 
 export type RequestClassification =
@@ -36,8 +39,22 @@ function displayKind(kind: string): string {
       branch: 'rama',
       hammer: 'martillo',
       tree: 'árbol',
+      log: 'tronco',
+      flint: 'pedernal',
+      campfire: 'fogata',
     }[kind] ?? kind
   );
+}
+
+/** "2 troncos y 1 pedernal" — para decir qué falta en voz humana. */
+function displayMissing(missing: { kind: string; need: number; have: number }[]): string {
+  return missing
+    .map((m) => {
+      const amount = m.need - m.have;
+      const name = displayKind(m.kind);
+      return amount === 1 ? `1 ${name}` : `${amount} ${name}s`;
+    })
+    .join(' y ');
 }
 
 function displayDirections(directions: Direction[]): string {
@@ -95,6 +112,42 @@ export function evaluateUserRequest(
         classification: 'accepted',
         reason: `Voy ${displayDirections(request.directions)}.`,
       };
+
+    case 'craft-item': {
+      const recipe = perception.recipes.find((r) => r.id === request.recipeId);
+      if (!recipe) {
+        return {
+          classification: 'cannot',
+          reason: `No sé cómo construir "${displayKind(request.recipeId)}".`,
+          alternative: 'Solo puedo construir lo que mi mundo permite.',
+        };
+      }
+      const held = new Map<string, number>();
+      for (const item of perception.self.heldItems) {
+        held.set(item.kind, (held.get(item.kind) ?? 0) + 1);
+      }
+      const missing = missingIngredients(recipe, held);
+      if (missing.length > 0) {
+        // Falta un recurso, no una capacidad (ADR 0008): sabe hacerlo, no
+        // tiene con qué. Si lo ve cerca lo dice, en vez de prometer traerlo:
+        // ir a buscarlo es otra petición, y el cuidador puede pedírsela.
+        const visible = missing.filter((m) =>
+          perception.visibleEntities.some((e) => e.kind === m.kind),
+        );
+        return {
+          classification: 'cannot',
+          reason: `Entiendo, quiero construir ${displayKind(recipe.output.kind)}, pero me falta ${displayMissing(missing)}.`,
+          alternative:
+            visible.length > 0
+              ? `Veo ${displayMissing(visible)} cerca: pídeme que lo traiga y voy.`
+              : `Si me consigues ${displayMissing(missing)}, la construyo.`,
+        };
+      }
+      return {
+        classification: 'accepted',
+        reason: `Voy a construir ${displayKind(recipe.output.kind)}.`,
+      };
+    }
 
     case 'run-skill': {
       if (!knownSkills.includes(request.skillName)) {
@@ -212,6 +265,13 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     ['hammer', 'hammer'],
     ['arbol', 'tree'],
     ['tree', 'tree'],
+    ['tronco', 'log'],
+    ['log', 'log'],
+    ['pedernal', 'flint'],
+    ['piedra', 'flint'],
+    ['flint', 'flint'],
+    ['fogata', 'campfire'],
+    ['hoguera', 'campfire'],
   ];
   const mentions = aliases
     .map(([word, kind]) => ({ kind, index: lower.indexOf(word) }))
@@ -250,6 +310,15 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     )
   ) {
     return { kind: 'destroy-entity', targetKind: kindWord('destroy'), raw: text };
+  }
+  // Antes que "buscar"/"traer": "construí una fogata" no es traer una fogata.
+  if (
+    /\b(construye|construi|construir|construyas|arma|armar|haz|hacer|prepara|preparar|enciende|encender)\b/.test(
+      lower,
+    ) &&
+    /\b(fogata|hoguera|fuego|campfire)\b/.test(lower)
+  ) {
+    return { kind: 'craft-item', recipeId: 'campfire', raw: text };
   }
   if (/\b(trae|traer|busca|buscar|recoge|recoger|agarra|agarrar|toma|tomar)\b/.test(lower)) {
     return { kind: 'fetch-item', targetKind: kindWord('other'), raw: text };

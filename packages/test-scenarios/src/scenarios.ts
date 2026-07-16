@@ -270,3 +270,12 @@ export const MVP_SCENARIOS: ScenarioSpec[] = [openField, foodBehindWall];
  * práctica más los mundos reales de la mascota.
  */
 export const PRACTICE_SCENARIOS: ScenarioSpec[] = [practiceRoom, openField, foodBehindWall];
+
+/**
+ * Mundos donde una habilidad de abrigo se puede juzgar. Ningún otro escenario
+ * sirve: sin el componente `temperature` el criterio `temperatureIncreased`
+ * nunca puede cumplirse y la habilidad se rechazaría siempre, por buena que
+ * fuera. Los dos casos importan: con fuego hecho (acercarse sin quemarse) y
+ * sin fuego (construirlo).
+ */
+export const COLD_SCENARIOS: ScenarioSpec[] = [coldNight, coldNightUnlit];

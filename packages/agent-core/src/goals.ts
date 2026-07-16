@@ -20,10 +20,12 @@ export interface GoalUserRequest {
     | 'consume-item'
     | 'wait-here'
     | 'move-direction'
-    | 'run-skill';
+    | 'run-skill'
+    | 'craft-item';
   targetKind?: string;
   directions?: Direction[];
   skillName?: string;
+  recipeId?: string;
   raw: string;
 }
 

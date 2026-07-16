@@ -33,14 +33,15 @@ export interface CodexProviderHooks {
 
 const DSL_REFERENCE = `Las habilidades de la mascota son programas JSON en una DSL cerrada.
 Operaciones permitidas (ninguna otra existe):
-- {"op":"findEntities","query":{"kind"?:string,"tool"?:boolean,"edible"?:boolean,"portable"?:boolean},"store":string}
+- {"op":"findEntities","query":{"kind"?:string,"tool"?:boolean,"edible"?:boolean,"portable"?:boolean,"held"?:boolean,"warm"?:boolean},"store":string}
 - {"op":"selectTarget","from":string,"strategy":"nearest"|"strongestTool","store":string}
-- {"op":"moveToward","target":string,"maxSteps":number(1..50)}
+- {"op":"moveToward","target":string,"maxSteps":number(1..50),"stopAtDistance"?:number(1..10)}
 - {"op":"moveStep","dir":"up"|"down"|"left"|"right"}
 - {"op":"pickup","target":string}
 - {"op":"drop","target":string}
 - {"op":"consume","target":string}
 - {"op":"useItem","item":string,"target":string}
+- {"op":"craft","recipeId":string}
 - {"op":"wait","ticks"?:number(1..50)}
 - {"op":"speak","text":string}
 - {"op":"branch","if":COND,"then":[OPS],"else"?:[OPS]}
@@ -50,11 +51,20 @@ Condiciones (COND):
 {"type":"always"} | {"type":"lastMoveBlocked"} | {"type":"lastActionFailed"} |
 {"type":"entityGone","ref":string} | {"type":"isAdjacent","target":string} |
 {"type":"holding","target":string} | {"type":"energyBelow","value":number} |
+{"type":"temperatureBelow","value":number} | {"type":"canCraft","recipeId":string} |
 {"type":"not","cond":COND}
 Reglas del mundo: mapa 2D en grilla; los muros son sólidos; una herramienta
 solo daña si (fuerza 2 + poder de herramienta) supera la dureza del objetivo;
 recoger/consumir/usar requieren adyacencia; "store" guarda referencias en
 variables que las demás operaciones consumen por nombre.
+"moveToward" se detiene pegado al objetivo (distancia 1) salvo que fijes
+"stopAtDistance": hay cosas a las que conviene acercarse SIN tocarlas.
+Construir: "craft" gasta los ingredientes que la receta pide y que la mascota
+debe llevar encima; el mundo coloca lo construido en una celda libre contigua.
+Destruir algo puede dejar objetos caídos (talar un árbol deja troncos).
+"findEntities" incluye lo que la mascota ya lleva encima: para juntar VARIOS
+objetos del mismo tipo hay que filtrar con "held":false, o se elegirá siempre
+el que ya tiene en la mano.
 Límites duros: máximo 200 operaciones, profundidad 6, repeticiones siempre
 con "max". Propiedades extra o operaciones desconocidas invalidan el programa.`;
 
@@ -94,6 +104,7 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
         'wait-here',
         'move-direction',
         'run-skill',
+        'craft-item',
         'learn-skill',
         'explanation',
         'unsupported',
@@ -107,11 +118,12 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
       maxItems: 4,
     },
     skillName: { type: 'string' },
+    recipeId: { type: 'string' },
     summary: { type: 'string' },
   },
   // Los esquemas estructurados son más estables si todas las propiedades
   // existen; las no aplicables viajan como string/arreglo vacío.
-  required: ['action', 'targetKind', 'directions', 'skillName', 'summary'],
+  required: ['action', 'targetKind', 'directions', 'skillName', 'recipeId', 'summary'],
   additionalProperties: false,
 };
 
@@ -288,6 +300,13 @@ ${
     : '- (todavía ninguna)'
 }
 
+Lo que su mundo permite construir (recipeId: ingredientes):
+${
+  request.recipes && request.recipes.length > 0
+    ? request.recipes.map((recipe) => `- ${recipe.id}: ${recipe.ingredients}`).join('\n')
+    : '- (nada: este mundo no admite construir)'
+}
+
 ${PRIMITIVES_REFERENCE}
 
 Tu única tarea es clasificar la intención; no decidas si conviene obedecer y
@@ -299,12 +318,16 @@ no afirmes haber actuado. Acciones ejecutables:
 - move-direction: moverse; directions usa up/down/left/right en el orden pedido.
 - run-skill: pide una conducta que YA figura en la lista de aprendidas;
   skillName es el nombre exacto de esa habilidad.
+- craft-item: pide CONSTRUIR algo que figura en la lista de recetas; recipeId
+  es el id exacto de la receta. No te importa si tiene los ingredientes: eso
+  lo decide el agente después. Solo si lo pedido NO está en las recetas es
+  unsupported.
 - learn-skill: pide una conducta física que NO sabe todavía, pero que sus
   primitivas podrían componer (bailar, patrullar, rondar, alejarse, esconderse,
   dar una vuelta). summary describe qué le pide, incorporando lo que el
   cuidador haya explicado en la conversación.
 - unsupported: orden física que ninguna combinación de sus primitivas logra
-  (saltar, construir una casa, volar); summary la resume.
+  (saltar, volar, construir algo que no tiene receta); summary la resume.
 
 Además, dos clasificaciones que no son órdenes:
 - explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho
@@ -321,7 +344,7 @@ Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
 Responde solo con JSON. Siempre incluye action, targetKind, directions,
-skillName y summary; usa "" o [] cuando no correspondan.`,
+skillName, recipeId y summary; usa "" o [] cuando no correspondan.`,
       };
     case 'skill.contract':
       return {
@@ -526,6 +549,15 @@ export class CodexModelProvider extends BaseModelProvider {
             return {
               kind: 'command.interpretation',
               command: { action, skillName: parsed.skillName.trim() },
+            };
+          }
+          if (action === 'craft-item') {
+            if (typeof parsed.recipeId !== 'string' || !parsed.recipeId.trim()) {
+              throw new Error('la orden interpretada no contiene recipeId');
+            }
+            return {
+              kind: 'command.interpretation',
+              command: { action, recipeId: parsed.recipeId.trim().toLowerCase() },
             };
           }
           if (action === 'unsupported' || action === 'learn-skill') {

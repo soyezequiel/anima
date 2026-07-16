@@ -24,6 +24,8 @@ export interface SkillRunReport {
   events: SimEvent[];
   invariantViolations: InvariantViolation[];
   energyDelta: number;
+  /** Cambio del calor corporal. 0 en mundos sin frío (nadie tiene el componente). */
+  temperatureDelta: number;
   damageTaken: number;
   /**
    * Posiciones del actor muestreadas por tick, empezando por la inicial. Es lo
@@ -53,6 +55,7 @@ export function runSkillProgram(
   const actor = getEntity(world, actorId);
   const energyBefore = actor?.components.energy?.current ?? 0;
   const healthBefore = actor?.components.health?.current ?? 0;
+  const temperatureBefore = actor?.components.temperature?.current ?? 0;
 
   const events: SimEvent[] = [];
   const invariantViolations: InvariantViolation[] = [];
@@ -103,6 +106,7 @@ export function runSkillProgram(
     events,
     invariantViolations,
     energyDelta: (after?.components.energy?.current ?? 0) - energyBefore,
+    temperatureDelta: (after?.components.temperature?.current ?? 0) - temperatureBefore,
     damageTaken: healthBefore - (after?.components.health?.current ?? 0),
     path,
   };

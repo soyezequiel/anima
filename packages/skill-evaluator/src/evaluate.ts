@@ -82,6 +82,12 @@ function checkCriterion(
   switch (criterion.type) {
     case 'energyIncreased':
       return report.energyDelta > 0;
+    case 'temperatureIncreased':
+      return report.temperatureDelta > 0;
+    case 'craftedKind':
+      return report.events.some(
+        (e) => e.type === 'item.crafted' && e.data.itemKind === criterion.kind,
+      );
     case 'consumedKind':
       return report.events.some(
         (e) => e.type === 'item.consumed' && e.data.itemKind === criterion.kind,
@@ -134,6 +140,22 @@ function deriveObservations(report: SkillRunReport, criteriaFailed: string[]): s
     (e) => e.type === 'action.resolved' && e.data.success === false && e.data.reason === 'blocked',
   );
   if (blockedMoves.length > 0) observations.push(`path-blocked:${blockedMoves.length}`);
+  // Construir falla por falta de ingredientes mucho más que por otra cosa:
+  // decir cuáles convierte el fallo en una instrucción para la revisión.
+  const failedCrafts = report.events.filter(
+    (e) => e.type === 'action.resolved' && e.data.action === 'craft' && e.data.success === false,
+  );
+  for (const craft of failedCrafts) {
+    const missing = craft.data.missing;
+    if (Array.isArray(missing)) {
+      const detail = missing
+        .map((m) => `${String((m as { kind: string }).kind)}x${String((m as { need: number }).need)}`)
+        .join(',');
+      observations.push(`craft-missing:${detail}`);
+    } else {
+      observations.push(`craft-failed:${String(craft.data.reason ?? '')}`);
+    }
+  }
   if (report.outcome === 'timeout') observations.push('timeout');
   if (report.outcome === 'limit-exceeded') observations.push(`limit-exceeded:${report.reason ?? ''}`);
   if (report.outcome === 'aborted') observations.push(`aborted:${report.reason ?? ''}`);
@@ -141,6 +163,10 @@ function deriveObservations(report: SkillRunReport, criteriaFailed: string[]): s
 
   // Un criterio de conducta incumplido no le dice al modelo cuánto le faltó:
   // sin la medición, la revisión sería a ciegas.
+  if (criteriaFailed.includes('temperatureIncreased')) {
+    observations.push(`temperature-delta:${report.temperatureDelta.toFixed(2)}`);
+    if (report.damageTaken > 0) observations.push(`damage-taken:${report.damageTaken}`);
+  }
   const behavioral = ['minMoves', 'returnedToStart', 'netDisplacementAtLeast', 'visitedDistinctCells'];
   if (criteriaFailed.some((c) => behavioral.includes(c))) {
     const first = report.path[0];
