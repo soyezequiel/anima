@@ -1,5 +1,5 @@
 import type { Vec2 } from '@anima/shared';
-import { chebyshev } from '@anima/shared';
+import { chebyshev, manhattan } from '@anima/shared';
 import type { Entity, EntityId } from './components.js';
 import type { WorldState } from './world.js';
 import { allEntities, getEntity } from './world.js';
@@ -12,7 +12,7 @@ export interface PerceivedEntity {
   id: EntityId;
   kind: string;
   position?: Vec2;
-  /** Distancia Chebyshev desde el observador (si ambos tienen posición). */
+  /** Distancia Manhattan desde el observador (pasos en grilla de 4 direcciones). */
   distance?: number;
   edible?: boolean;
   portable?: boolean;
@@ -40,7 +40,7 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   const pos = entity.components.position;
   if (pos) {
     perceived.position = { ...pos };
-    if (observerPos) perceived.distance = chebyshev(observerPos, pos);
+    if (observerPos) perceived.distance = manhattan(observerPos, pos);
   }
   if (entity.components.edible) perceived.edible = true;
   if (entity.components.portable) perceived.portable = true;
