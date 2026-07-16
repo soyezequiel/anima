@@ -4,14 +4,20 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
-import type { AiBridge, AiBridgeFactory } from '../src/ai.js';
-import { codexHomeFor, createCodexBridgeFactory } from '../src/ai.js';
+import type { AiBridge, AiBridgeFactory, AiLimits } from '../src/ai.js';
+import { codexHomeFor, createCodexBridgeFactory, parseRateLimitsResponse } from '../src/ai.js';
 import { buildServer } from '../src/server.js';
 
 let app: FastifyInstance;
 const calls: Parameters<AiBridge['complete']>[0][] = [];
 const bridgeUsers: (string | null)[] = [];
 const logouts: (string | null)[] = [];
+
+const fakeLimits: AiLimits = {
+  planType: 'plus',
+  primary: { usedPercent: 48, windowDurationMins: 10_080, resetsAt: 1_784_822_466 },
+  secondary: null,
+};
 
 function fakeBridge(pubkey: string | null): AiBridge {
   return {
@@ -22,6 +28,10 @@ function fakeBridge(pubkey: string | null): AiBridge {
       logouts.push(pubkey);
       return Promise.resolve();
     },
+    limits: () =>
+      pubkey === null
+        ? Promise.resolve(fakeLimits)
+        : Promise.reject(new Error('codex app-server: sin sesión')),
     complete: (input) => {
       calls.push(input);
       if (input.prompt.includes('explota')) return Promise.reject(new Error('codex exec falló'));
@@ -91,9 +101,28 @@ describe('puente de IA', () => {
     expect(bridgeUsers.at(-1)).toBe(pubkey);
   });
 
+  it('informa los límites de uso de la cuenta y traduce fallos a 502', async () => {
+    const guest = await app.inject({ method: 'GET', url: '/ai/limits' });
+    expect(guest.statusCode).toBe(200);
+    expect(guest.json()).toEqual(fakeLimits);
+    expect(bridgeUsers.at(-1)).toBeNull();
+
+    // El puente de esta identidad no tiene sesión: el fallo viaja como 502.
+    const token = await loginToken();
+    const authed = await app.inject({
+      method: 'GET',
+      url: '/ai/limits',
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(authed.statusCode).toBe(502);
+    expect((authed.json() as { error: string }).error).toContain('sin sesión');
+    expect(bridgeUsers.at(-1)).toBe(pubkey);
+  });
+
   it('un token inválido es 401, no degrada a invitado', async () => {
     for (const [method, url] of [
       ['GET', '/ai/status'],
+      ['GET', '/ai/limits'],
       ['POST', '/ai/login'],
       ['POST', '/ai/logout'],
       ['POST', '/ai/complete'],
@@ -183,6 +212,41 @@ describe('puente de IA', () => {
     });
     expect(boom.statusCode).toBe(502);
     expect((boom.json() as { error: string }).error).toContain('codex exec falló');
+  });
+});
+
+describe('parseRateLimitsResponse', () => {
+  it('normaliza la respuesta real del app-server de Codex', () => {
+    // Forma observada en codex-cli 0.144.5 (account/rateLimits/read).
+    const result = {
+      rateLimits: {
+        limitId: 'codex',
+        limitName: null,
+        primary: { usedPercent: 48, windowDurationMins: 10080, resetsAt: 1784822466 },
+        secondary: null,
+        credits: { hasCredits: false, unlimited: false, balance: '0' },
+        individualLimit: null,
+        planType: 'plus',
+        rateLimitReachedType: null,
+      },
+      rateLimitsByLimitId: {},
+      rateLimitResetCredits: { availableCount: 0, credits: [] },
+    };
+    expect(parseRateLimitsResponse(result)).toEqual({
+      planType: 'plus',
+      primary: { usedPercent: 48, windowDurationMins: 10080, resetsAt: 1784822466 },
+      secondary: null,
+    });
+  });
+
+  it('tolera ventanas parciales y rechaza respuestas sin límites', () => {
+    expect(parseRateLimitsResponse({ rateLimits: { primary: { usedPercent: 3 } } })).toEqual({
+      planType: null,
+      primary: { usedPercent: 3, windowDurationMins: null, resetsAt: null },
+      secondary: null,
+    });
+    expect(() => parseRateLimitsResponse({})).toThrow(/límites/);
+    expect(() => parseRateLimitsResponse(null)).toThrow(/límites/);
   });
 });
 

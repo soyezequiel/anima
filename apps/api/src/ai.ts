@@ -38,10 +38,27 @@ export function isCodexModel(value: unknown): value is string {
   return typeof value === 'string' && /^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$/.test(value);
 }
 
+/** Una ventana de límite de uso de la cuenta (p. ej. 5 horas o semanal). */
+export interface AiLimitWindow {
+  /** Porcentaje ya consumido de la ventana (0-100). */
+  usedPercent: number;
+  /** Duración de la ventana en minutos (10080 = semanal), si se conoce. */
+  windowDurationMins: number | null;
+  /** Momento del reinicio como timestamp Unix en segundos, si se conoce. */
+  resetsAt: number | null;
+}
+
+export interface AiLimits {
+  planType: string | null;
+  primary: AiLimitWindow | null;
+  secondary: AiLimitWindow | null;
+}
+
 export interface AiBridge {
   status(): Promise<AiStatus>;
   startLogin(): Promise<{ authUrl: string } | { error: string }>;
   logout(): Promise<void>;
+  limits(): Promise<AiLimits>;
   complete(input: {
     prompt: string;
     schema?: unknown;
@@ -56,6 +73,7 @@ export type AiBridgeFactory = (pubkey: string | null) => AiBridge;
 const STATUS_CACHE_MS = 15_000;
 const LOGIN_URL_TIMEOUT_MS = 20_000;
 const COMPLETE_TIMEOUT_MS = 240_000;
+const LIMITS_TIMEOUT_MS = 20_000;
 
 interface RunResult {
   code: number | null;
@@ -129,6 +147,113 @@ export interface CodexBridgeOptions {
   /** Identifica al dueño en la ranura de login compartida. */
   owner?: string;
   loginSlot?: CodexLoginSlot;
+}
+
+function parseLimitWindow(raw: unknown): AiLimitWindow | null {
+  if (typeof raw !== 'object' || raw === null) return null;
+  const window = raw as { usedPercent?: unknown; windowDurationMins?: unknown; resetsAt?: unknown };
+  if (typeof window.usedPercent !== 'number') return null;
+  return {
+    usedPercent: window.usedPercent,
+    windowDurationMins:
+      typeof window.windowDurationMins === 'number' ? window.windowDurationMins : null,
+    resetsAt: typeof window.resetsAt === 'number' ? window.resetsAt : null,
+  };
+}
+
+/** Normaliza la respuesta `account/rateLimits/read` del app-server de Codex. */
+export function parseRateLimitsResponse(result: unknown): AiLimits {
+  const snapshot =
+    typeof result === 'object' && result !== null
+      ? ((result as { rateLimits?: unknown }).rateLimits ?? null)
+      : null;
+  if (typeof snapshot !== 'object' || snapshot === null) {
+    throw new Error('codex app-server no informó límites');
+  }
+  const raw = snapshot as { planType?: unknown; primary?: unknown; secondary?: unknown };
+  return {
+    planType: typeof raw.planType === 'string' ? raw.planType : null,
+    primary: parseLimitWindow(raw.primary),
+    secondary: parseLimitWindow(raw.secondary),
+  };
+}
+
+/**
+ * Consulta los límites de uso de la cuenta por el protocolo JSON-RPC (por
+ * stdio) de `codex app-server`, el mismo que usa la extensión oficial:
+ * initialize → initialized → account/rateLimits/read. No consume cuota.
+ */
+function readRateLimits(env?: NodeJS.ProcessEnv): Promise<AiLimits> {
+  return new Promise((resolve, reject) => {
+    const child = spawn('codex app-server', {
+      shell: true,
+      windowsHide: true,
+      ...(env ? { env } : {}),
+    });
+    let buffer = '';
+    let stderr = '';
+    let settled = false;
+    const finish = (outcome: () => void): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      child.kill();
+      outcome();
+    };
+    const timer = setTimeout(() => {
+      finish(() => reject(new Error('codex app-server no respondió a tiempo')));
+    }, LIMITS_TIMEOUT_MS);
+
+    child.on('error', () => finish(() => reject(new Error('codex CLI no encontrado'))));
+    child.on('close', () =>
+      finish(() =>
+        reject(new Error(`codex app-server terminó sin responder: ${stderr.slice(-200)}`)),
+      ),
+    );
+    child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+    child.stdout?.on('data', (chunk: Buffer) => {
+      buffer += chunk.toString();
+      let newline = buffer.indexOf('\n');
+      while (newline >= 0 && !settled) {
+        const line = buffer.slice(0, newline).trim();
+        buffer = buffer.slice(newline + 1);
+        newline = buffer.indexOf('\n');
+        if (!line) continue;
+        let message: { id?: unknown; result?: unknown; error?: { message?: unknown } };
+        try {
+          message = JSON.parse(line) as typeof message;
+        } catch {
+          continue; // líneas de log u otras notificaciones
+        }
+        if (message.id === 1) {
+          // Handshake completado: ya se pueden pedir los límites.
+          child.stdin?.write(
+            '{"method":"initialized"}\n{"id":2,"method":"account/rateLimits/read"}\n',
+          );
+        } else if (message.id === 2) {
+          if (message.error) {
+            const detail =
+              typeof message.error.message === 'string' ? message.error.message : 'error';
+            finish(() => reject(new Error(`codex app-server: ${detail}`)));
+          } else {
+            try {
+              const limits = parseRateLimitsResponse(message.result);
+              finish(() => resolve(limits));
+            } catch (error) {
+              finish(() => reject(error instanceof Error ? error : new Error('límites ilegibles')));
+            }
+          }
+        }
+      }
+    });
+    child.stdin?.write(
+      `${JSON.stringify({
+        id: 1,
+        method: 'initialize',
+        params: { clientInfo: { name: 'anima', title: 'Ánima', version: '0.1.0' } },
+      })}\n`,
+    );
+  });
 }
 
 export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
@@ -224,6 +349,10 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
           }
         });
       });
+    },
+
+    limits() {
+      return readRateLimits(env);
     },
 
     async logout() {

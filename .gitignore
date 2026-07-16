@@ -6,7 +6,10 @@ coverage/
 .env
 .env.*
 !.env.example
-data/*.sqlite
+# Bases de datos locales, en cualquier paquete (el patrón anclado a la raíz
+# no cubría apps/api/data/, ni los ficheros -wal/-shm de SQLite).
+**/data/*.sqlite
+**/data/*.sqlite-*
 # CODEX_HOME por usuario: contiene credenciales gestionadas por el CLI de Codex
 data/codex/
 playwright-report/

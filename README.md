@@ -117,7 +117,13 @@ La API solo orquesta `codex login` y ejecuciones efímeras de `codex exec` en
 un directorio temporal con sandbox de solo lectura. Las credenciales siguen
 gestionadas por el CLI en el equipo del usuario y no se guardan en Ánima. Para
 volver al proveedor determinista, pulsa «usar simulado»; «Desconectar Codex»
-(en ⚙ ajustes) cierra además la sesión de Codex en el servidor.
+(en ⚙ ajustes, o «cerrar sesión de Codex» junto al chip en modo simulado)
+cierra además la sesión de Codex en el servidor.
+
+El panel ⚙ ajustes muestra los **límites de uso** de la cuenta conectada
+(plan, porcentaje consumido de cada ventana y hora de reinicio). Se consultan
+al abrir el panel mediante el protocolo del `codex app-server` (el mismo que
+usa la extensión oficial) y no consumen cuota del modelo.
 
 La cuenta de Codex es **por identidad**: si iniciaste sesión con tu identidad
 Nostr, tu autorización de Codex queda en un `CODEX_HOME` propio

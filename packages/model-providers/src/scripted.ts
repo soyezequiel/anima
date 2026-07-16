@@ -7,11 +7,17 @@ import { BaseModelProvider } from './types.js';
  */
 export class ScriptedModelProvider extends BaseModelProvider {
   readonly name = 'scripted';
+  override readonly interpretsLanguage: boolean;
   private queue: ModelResponse[];
 
-  constructor(responses: ModelResponse[]) {
+  /**
+   * `interpretsLanguage` permite guionar también el camino de un modelo que
+   * interpreta el chat completo (por defecto se comporta como determinista).
+   */
+  constructor(responses: ModelResponse[], options: { interpretsLanguage?: boolean } = {}) {
     super();
     this.queue = [...responses];
+    this.interpretsLanguage = options.interpretsLanguage ?? false;
   }
 
   complete(request: ModelRequest): Promise<ModelResponse> {

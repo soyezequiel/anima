@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiStatus, CodexSettings } from '../auth/ai.js';
+import type { AiLimits, AiLimitWindow, AiStatus, CodexSettings } from '../auth/ai.js';
 import {
   CODEX_MODEL_SUGGESTIONS,
   codexLogout,
+  fetchAiLimits,
   fetchAiStatus,
   readCodexSettings,
   startCodexLogin,
@@ -12,6 +13,35 @@ import {
 } from '../auth/ai.js';
 import type { CloudAccount } from '../auth/cloud.js';
 import type { GameView } from '../session/view.js';
+
+function windowLabel(window: AiLimitWindow): string {
+  const mins = window.windowDurationMins;
+  if (mins === null) return 'Ventana de uso';
+  if (mins >= 10_000) return 'Límite semanal';
+  if (mins >= 1440) return `Límite de ${Math.round(mins / 1440)} días`;
+  if (mins >= 60) return `Límite de ${Math.round(mins / 60)} h`;
+  return `Límite de ${mins} min`;
+}
+
+function resetLabel(window: AiLimitWindow): string {
+  if (window.resetsAt === null) return '';
+  const date = new Date(window.resetsAt * 1000);
+  return ` · se reinicia ${date.toLocaleString(undefined, {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })}`;
+}
+
+function LimitRow({ window }: { window: AiLimitWindow }) {
+  return (
+    <small className="ai-limit-row">
+      {windowLabel(window)}: {window.usedPercent}% usado{resetLabel(window)}
+      <progress value={window.usedPercent} max={100} />
+    </small>
+  );
+}
 
 /**
  * Selector de proveedor de IA. El mock determinista es la base; con la
@@ -24,7 +54,15 @@ export function AiBar({ view, account }: { view: GameView; account: CloudAccount
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'waiting' | 'error'>('idle');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [settings, setSettings] = useState<CodexSettings>(() => readCodexSettings());
+  const [limits, setLimits] = useState<AiLimits | 'loading' | 'error' | null>(null);
   const settingsRef = useRef<HTMLDetailsElement>(null);
+
+  // Los límites se consultan al abrir el panel: son datos frescos de la
+  // cuenta y consultarlos no consume cuota del modelo.
+  const loadLimits = (): void => {
+    setLimits('loading');
+    void fetchAiLimits().then((value) => setLimits(value ?? 'error'));
+  };
 
   useEffect(() => {
     void fetchAiStatus().then(setStatus);
@@ -70,7 +108,9 @@ export function AiBar({ view, account }: { view: GameView; account: CloudAccount
     // Distinguir el porqué evita el diagnóstico a ciegas: la causa más
     // común es que la API local no esté levantada.
     if (current === null) {
-      fail('la API local no responde: inicia el backend con «pnpm dev:full» (o «pnpm --filter @anima/api dev»)');
+      fail(
+        'la API local no responde: inicia el backend con «pnpm dev:full» (o «pnpm --filter @anima/api dev»)',
+      );
       return;
     }
     if (!current.installed) {
@@ -107,7 +147,13 @@ export function AiBar({ view, account }: { view: GameView; account: CloudAccount
           <span className="ai-pulse" aria-hidden="true" />
           🧠 codex{view.aiBusy ? ' · pensando…' : ''}
         </span>
-        <details className="ai-settings" ref={settingsRef}>
+        <details
+          className="ai-settings"
+          ref={settingsRef}
+          onToggle={(event) => {
+            if (event.currentTarget.open) loadLimits();
+          }}
+        >
           <summary data-testid="ai-settings-toggle" aria-label="Configurar Codex">
             ⚙ ajustes
           </summary>
@@ -157,6 +203,21 @@ export function AiBar({ view, account }: { view: GameView; account: CloudAccount
                 ? 'Ánima ya está pensando; el cambio se habilita al terminar.'
                 : 'Se aplica a la próxima consulta y queda guardado en este navegador.'}
             </small>
+            <div className="ai-limits" data-testid="ai-limits">
+              <span>Límites de la cuenta</span>
+              {limits === 'loading' && <small>consultando…</small>}
+              {limits === 'error' && <small>no se pudieron consultar los límites</small>}
+              {limits !== null && limits !== 'loading' && limits !== 'error' && (
+                <>
+                  {limits.planType && <small>Plan: {limits.planType}</small>}
+                  {limits.primary && <LimitRow window={limits.primary} />}
+                  {limits.secondary && <LimitRow window={limits.secondary} />}
+                  {!limits.primary && !limits.secondary && (
+                    <small>la cuenta no informa ventanas de uso</small>
+                  )}
+                </>
+              )}
+            </div>
             <small>
               {account
                 ? 'Cuenta de Codex ligada a tu identidad.'
@@ -210,6 +271,17 @@ export function AiBar({ view, account }: { view: GameView; account: CloudAccount
           onClick={() => void connect()}
         >
           🧠 Conectar Codex
+        </button>
+      )}
+      {status?.loggedIn && phase !== 'waiting' && (
+        <button
+          data-testid="ai-logout-codex"
+          title="Cierra la sesión de Codex sin activarla como proveedor"
+          onClick={() => {
+            void codexLogout().then(() => fetchAiStatus().then(setStatus));
+          }}
+        >
+          cerrar sesión de Codex
         </button>
       )}
       {phase === 'error' && (

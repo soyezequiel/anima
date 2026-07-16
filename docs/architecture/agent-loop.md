@@ -60,6 +60,24 @@ La física, el movimiento, las colisiones y las habilidades conocidas corren
 localmente. En la demo completa el "modelo" se consulta 3 veces en total; la
 segunda vez que tiene hambre, **cero**.
 
+## Quién interpreta el chat
+
+Depende de si el proveedor entiende lenguaje (`ModelProvider.interpretsLanguage`):
+
+- **Modelo real** (Codex): interpreta **todos** los mensajes con
+  `interpret.command`, que los clasifica en el catálogo cerrado
+  (órdenes ejecutables, `explanation`, `unsupported`, `not-command` → charla).
+  El parser determinista queda como red de seguridad: si el modelo falla y el
+  parser reconoce una orden clara, la mascota igual obedece y el evento
+  `provider.error` lleva `recoveredWith: 'parser'`.
+- **Proveedor determinista** (mock): manda el parser de regex; lo que no
+  reconoce pasa igual por `interpret.command`/`dialogue` (el mock responde
+  `not-command` y charla con reglas fijas). Sin claves, sin costos.
+
+El modelo solo **traduce** texto a una intención estructurada: nunca decide si
+obedecer. La clasificación y la respuesta siguen saliendo de
+`evaluateUserRequest` (ver ADR 0013).
+
 ## Negativas
 
 `evaluateUserRequest` clasifica cada petición en `accepted / cannot / will_not

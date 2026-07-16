@@ -89,6 +89,18 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return result;
   });
 
+  app.get('/ai/limits', async (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    try {
+      return await ai.limits();
+    } catch (error) {
+      return reply
+        .code(502)
+        .send({ error: error instanceof Error ? error.message : 'fallo consultando límites' });
+    }
+  });
+
   app.post('/ai/logout', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;

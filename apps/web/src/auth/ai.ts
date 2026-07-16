@@ -110,6 +110,31 @@ export async function startCodexLogin(): Promise<string | null> {
   }
 }
 
+/** Una ventana de límite de uso de la cuenta (p. ej. 5 horas o semanal). */
+export interface AiLimitWindow {
+  usedPercent: number;
+  windowDurationMins: number | null;
+  /** Timestamp Unix en segundos. */
+  resetsAt: number | null;
+}
+
+export interface AiLimits {
+  planType: string | null;
+  primary: AiLimitWindow | null;
+  secondary: AiLimitWindow | null;
+}
+
+/** Límites de uso de la cuenta de Codex conectada (no consume cuota). */
+export async function fetchAiLimits(): Promise<AiLimits | null> {
+  try {
+    const res = await fetch(`${API_BASE}/ai/limits`, { headers: aiHeaders() });
+    if (!res.ok) return null;
+    return (await res.json()) as AiLimits;
+  } catch {
+    return null;
+  }
+}
+
 /** Cierra la sesión de Codex de la identidad actual (o del invitado). */
 export async function codexLogout(): Promise<boolean> {
   try {

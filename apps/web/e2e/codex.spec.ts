@@ -10,6 +10,7 @@ import { reachBlockedResourceProgram } from '@anima/model-providers';
 
 test('la mascota aprende usando el proveedor codex (puente interceptado)', async ({ page }) => {
   let completeCalls = 0;
+  let logoutCalls = 0;
   let dialogueRequest: {
     kind: string;
     prompt: string;
@@ -19,9 +20,26 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
 
   await page.route('**/api/ai/status', (route) =>
     route.fulfill({
-      json: { installed: true, loggedIn: true, detail: 'Logged in using ChatGPT' },
+      json: {
+        installed: true,
+        loggedIn: logoutCalls === 0,
+        detail: logoutCalls === 0 ? 'Logged in using ChatGPT' : null,
+      },
     }),
   );
+  await page.route('**/api/ai/limits', (route) =>
+    route.fulfill({
+      json: {
+        planType: 'plus',
+        primary: { usedPercent: 48, windowDurationMins: 10080, resetsAt: 1784822466 },
+        secondary: null,
+      },
+    }),
+  );
+  await page.route('**/api/ai/logout', (route) => {
+    logoutCalls += 1;
+    return route.fulfill({ status: 204 });
+  });
   await page.route('**/api/ai/complete', async (route) => {
     completeCalls += 1;
     const body = route.request().postDataJSON() as {
@@ -102,6 +120,9 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   // Mientras Codex responde, el estado se ve en el mundo, el chat y el chip.
   // Los ajustes elegidos se aplican en vivo y persisten en el navegador.
   await page.getByTestId('ai-settings-toggle').click();
+  // Al abrir el panel se consultan los límites de la cuenta.
+  await expect(page.getByTestId('ai-limits')).toContainText('Plan: plus');
+  await expect(page.getByTestId('ai-limits')).toContainText('Límite semanal: 48% usado');
   await page.getByTestId('ai-model').fill('gpt-5.6-terra');
   await page.getByTestId('ai-reasoning-effort').selectOption('high');
   await page.getByTestId('ai-settings-toggle').click();
@@ -119,9 +140,14 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   const storedSettings = await page.evaluate(() => localStorage.getItem('anima:ai:codex-settings'));
   expect(storedSettings).toContain('gpt-5.6-terra');
 
-  // Volver al simulado funciona.
+  // Volver al simulado funciona; con la sesión de Codex aún viva, el botón
+  // de cerrar sesión sigue disponible y la termina en el servidor.
   await page.getByTestId('ai-use-mock').click();
   await expect(page.getByTestId('ai-chip')).toContainText('simulado', { timeout: 15_000 });
+  await expect(page.getByTestId('ai-logout-codex')).toBeVisible();
+  await page.getByTestId('ai-logout-codex').click();
+  await expect(page.getByTestId('ai-logout-codex')).toBeHidden();
+  expect(logoutCalls).toBe(1);
 });
 
 test('con identidad iniciada, el puente de IA viaja con el token de sesión', async ({ page }) => {

@@ -470,57 +470,20 @@ export class AnimaAgent {
     this.emit('user.message.received', { text });
     this.memory.noteConversation('user', text, this.tick);
 
-    let parsed = this.contextualizeUserMessage(parseUserMessage(text), text, perception);
-    if (parsed.kind === 'unknown') {
-      let command: CommandInterpretation;
-      try {
-        const interpretation = await this.config.provider.complete({
-          kind: 'interpret.command',
-          text,
-          facts: this.dialogueFacts(perception),
-          history: this.dialogueHistory(),
-        });
-        if (interpretation.kind !== 'command.interpretation') {
-          throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
-        }
-        command = interpretation.command;
-      } catch (error) {
-        this.replyProviderError('interpret.command', error);
-        return;
-      }
+    // Quién interpreta el chat depende del proveedor. Un modelo que entiende
+    // lenguaje interpreta TODO (distingue "¿para qué sirve?" de "para" como
+    // orden, y una pregunta sobre comida de una lección sobre comida). El
+    // parser determinista manda solo con proveedores que no interpretan
+    // (el mock), y queda de red de seguridad si el modelo falla.
+    const fromParser = this.config.provider.interpretsLanguage
+      ? null
+      : this.contextualizeUserMessage(parseUserMessage(text), text, perception);
 
-      if (command.action === 'unsupported') {
-        const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 160);
-        const reason = `Entiendo que me pides ${summary || 'esa acción'}, pero todavía no sé ejecutar ese tipo de acción.`;
-        this.emit('user.request.refused', {
-          request: { kind: 'unknown', raw: text, interpretedAs: summary },
-          classification: 'cannot',
-          reason,
-        });
-        this.reply(reason);
-        return;
-      }
-
-      if (command.action !== 'not-command') {
-        parsed = this.userRequestFromInterpretation(command, text);
-      } else {
-        try {
-          const response = await this.config.provider.complete({
-            kind: 'dialogue',
-            topic: text,
-            facts: this.dialogueFacts(perception),
-            history: this.dialogueHistory(),
-          });
-          if (response.kind !== 'dialogue') {
-            throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
-          }
-          this.reply(response.text);
-        } catch (error) {
-          this.replyProviderError('dialogue', error);
-        }
-        return;
-      }
-    }
+    const parsed =
+      fromParser && fromParser.kind !== 'unknown'
+        ? fromParser
+        : await this.interpretWithModel(text, perception);
+    if (parsed === null) return; // El modelo ya respondió (charla, negativa o fallo).
 
     if (parsed.kind === 'explanation') {
       this.pendingExplanation = text;
@@ -562,6 +525,86 @@ export class AnimaAgent {
     );
   }
 
+  /**
+   * Pide al modelo que clasifique el mensaje. Devuelve la petición
+   * estructurada, o null cuando ya se respondió al usuario (charla, acción
+   * fuera del catálogo, o fallo del proveedor sin red de seguridad).
+   */
+  private async interpretWithModel(
+    text: string,
+    perception: Perception,
+  ): Promise<ReturnType<typeof parseUserMessage> | null> {
+    let command: CommandInterpretation;
+    try {
+      const interpretation = await this.config.provider.complete({
+        kind: 'interpret.command',
+        text,
+        facts: this.dialogueFacts(perception),
+        history: this.dialogueHistory(),
+      });
+      if (interpretation.kind !== 'command.interpretation') {
+        throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
+      }
+      command = interpretation.command;
+    } catch (error) {
+      // Red de seguridad: si el modelo no responde, el parser determinista
+      // todavía reconoce una orden clara. Solo si él tampoco entiende, el
+      // fallo llega al usuario.
+      const fallback = this.contextualizeUserMessage(parseUserMessage(text), text, perception);
+      if (fallback.kind !== 'unknown') {
+        this.emit('provider.error', {
+          provider: this.config.provider.name,
+          operation: 'interpret.command',
+          message: error instanceof Error ? error.message : String(error),
+          recoveredWith: 'parser',
+        });
+        return fallback;
+      }
+      this.replyProviderError('interpret.command', error);
+      return null;
+    }
+
+    if (command.action === 'unsupported') {
+      const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 160);
+      const reason = `Entiendo que me pides ${summary || 'esa acción'}, pero todavía no sé ejecutar ese tipo de acción.`;
+      this.emit('user.request.refused', {
+        request: { kind: 'unknown', raw: text, interpretedAs: summary },
+        classification: 'cannot',
+        reason,
+      });
+      this.reply(reason);
+      return null;
+    }
+
+    if (command.action === 'explanation') return { kind: 'explanation', raw: text };
+
+    if (command.action === 'not-command') {
+      try {
+        const response = await this.config.provider.complete({
+          kind: 'dialogue',
+          topic: text,
+          facts: this.dialogueFacts(perception),
+          history: this.dialogueHistory(),
+        });
+        if (response.kind !== 'dialogue') {
+          throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+        }
+        this.reply(response.text);
+      } catch (error) {
+        this.replyProviderError('dialogue', error);
+      }
+      return null;
+    }
+
+    // El modelo ya resolvió referencias con el historial, pero si dejó el
+    // objetivo sin identificar, el contexto local todavía puede completarlo.
+    return this.contextualizeUserMessage(
+      this.userRequestFromInterpretation(command, text),
+      text,
+      perception,
+    );
+  }
+
   private dialogueFacts(perception: Perception): string[] {
     const facts = this.memory
       .factList()
@@ -586,7 +629,10 @@ export class AnimaAgent {
   }
 
   private userRequestFromInterpretation(
-    command: Exclude<CommandInterpretation, { action: 'unsupported' | 'not-command' }>,
+    command: Exclude<
+      CommandInterpretation,
+      { action: 'unsupported' | 'not-command' | 'explanation' }
+    >,
     raw: string,
   ): UserRequest {
     switch (command.action) {

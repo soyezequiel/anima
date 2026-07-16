@@ -61,11 +61,21 @@ export type CommandInterpretation =
   | { action: 'consume-item'; targetKind: string }
   | { action: 'wait-here' }
   | { action: 'move-direction'; directions: CommandDirection[] }
+  /** El cuidador enseña un hecho del mundo (afirmación, no orden ni pregunta). */
+  | { action: 'explanation' }
   | { action: 'unsupported'; summary: string }
   | { action: 'not-command' };
 
 export interface ModelProvider {
   readonly name: string;
+  /**
+   * true si el proveedor entiende lenguaje natural y puede clasificar
+   * cualquier mensaje con `interpret.command`. Cuando lo es, el agente le
+   * cede la interpretación completa del chat y el parser determinista queda
+   * solo como red de seguridad ante fallos. Los proveedores deterministas
+   * (mock, scripted) devuelven false: para ellos manda el parser.
+   */
+  readonly interpretsLanguage: boolean;
   complete(request: ModelRequest): Promise<ModelResponse>;
   /** Cantidad de consultas realizadas, total o por tipo (para pruebas y telemetría). */
   callCount(kind?: ModelRequest['kind']): number;
@@ -73,6 +83,7 @@ export interface ModelProvider {
 
 export abstract class BaseModelProvider implements ModelProvider {
   abstract readonly name: string;
+  readonly interpretsLanguage: boolean = false;
   private calls: ModelRequest['kind'][] = [];
 
   protected recordCall(kind: ModelRequest['kind']): void {

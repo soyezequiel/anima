@@ -88,7 +88,9 @@ el backend ejecuta `codex exec` de forma efímera, en sandbox de solo lectura,
 y nunca lee ni persiste las credenciales. Cada identidad Nostr autenticada
 tiene su propio `CODEX_HOME` (`data/codex/<pubkey>`), así que cada usuario
 conecta su propia cuenta de Codex; el invitado usa el `~/.codex` de la
-máquina. Ver [ADR 0011](../decisions/0011-proveedor-codex.md).
+máquina. Los límites de uso de la cuenta (`GET /ai/limits`) se leen con el
+protocolo JSON-RPC de `codex app-server` (`account/rateLimits/read`), sin
+consumir cuota. Ver [ADR 0011](../decisions/0011-proveedor-codex.md).
 
 ## Observabilidad
 

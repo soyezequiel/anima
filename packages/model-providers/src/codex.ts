@@ -93,6 +93,7 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
         'consume-item',
         'wait-here',
         'move-direction',
+        'explanation',
         'unsupported',
         'not-command',
       ],
@@ -193,7 +194,13 @@ no afirmes haber actuado. Acciones ejecutables:
 - wait-here: esperar o quedarse quieta.
 - move-direction: moverse; directions usa up/down/left/right en el orden pedido.
 - unsupported: sí es una orden física, pero no pertenece al catálogo; summary la resume.
-- not-command: conversación, pregunta, saludo o comentario sin una orden física.
+
+Además, dos clasificaciones que no son órdenes:
+- explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho
+  ("comer alimento te da energía", "las ramas no rompen muros"). Solo
+  afirmaciones didácticas: una pregunta NUNCA es explanation.
+- not-command: cualquier otra cosa — conversación, saludo, elogio, comentario
+  y, muy importante, toda PREGUNTA (aunque hable de comida o energía).
 
 Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
@@ -251,6 +258,8 @@ function parseJson(raw: string): Record<string, unknown> {
 
 export class CodexModelProvider extends BaseModelProvider {
   readonly name = 'codex';
+  /** Entiende lenguaje natural: el agente le cede la interpretación del chat. */
+  override readonly interpretsLanguage = true;
 
   constructor(
     private transport: CodexTransport,
@@ -329,7 +338,7 @@ export class CodexModelProvider extends BaseModelProvider {
               },
             };
           }
-          if (action === 'wait-here' || action === 'not-command') {
+          if (action === 'wait-here' || action === 'not-command' || action === 'explanation') {
             return { kind: 'command.interpretation', command: { action } };
           }
           if (action === 'unsupported' && typeof parsed.summary === 'string') {

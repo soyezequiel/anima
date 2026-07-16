@@ -115,6 +115,7 @@ describe('GameSession (capa de sesión de la UI)', () => {
     const fallback = new MockModelProvider();
     const provider: ModelProvider = {
       name: 'codex',
+      interpretsLanguage: true,
       complete(request) {
         return request.kind === 'dialogue'
           ? Promise.reject(new Error('cuota de Codex agotada (prueba)'))
