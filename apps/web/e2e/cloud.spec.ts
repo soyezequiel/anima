@@ -13,6 +13,11 @@ import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 const secretKey = generateSecretKey();
 const pubkey = getPublicKey(secretKey);
 
+// La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
+});
+
 async function installFakeNip07(page: Page): Promise<void> {
   await page.exposeFunction('__nostrSign', (templateJson: string) => {
     const template = JSON.parse(templateJson) as Parameters<typeof finalizeEvent>[0];

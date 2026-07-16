@@ -11,8 +11,19 @@ import { DevPanel } from './components/DevPanel.js';
 import { ExperimentsPanel } from './components/ExperimentsPanel.js';
 import { SkillsPanel } from './components/SkillsPanel.js';
 import { StatusPanel } from './components/StatusPanel.js';
+import { WelcomeOverlay } from './components/WelcomeOverlay.js';
 
 type Tab = 'estado' | 'chat' | 'skills' | 'experimentos' | 'dev';
+
+const WELCOME_SEEN_KEY = 'anima.welcomeSeen';
+
+function welcomeAlreadySeen(): boolean {
+  try {
+    return localStorage.getItem(WELCOME_SEEN_KEY) === '1';
+  } catch {
+    return true;
+  }
+}
 
 export function App({ session, account }: { session: GameSession; account: CloudAccount | null }) {
   const view = useSyncExternalStore(
@@ -20,6 +31,19 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     () => session.getView(),
   );
   const [tab, setTab] = useState<Tab>('estado');
+  const [showWelcome, setShowWelcome] = useState(() => !welcomeAlreadySeen());
+
+  const startPlaying = () => {
+    try {
+      localStorage.setItem(WELCOME_SEEN_KEY, '1');
+    } catch {
+      // Sin storage (modo incógnito estricto): la bienvenida vuelve la próxima
+      // vez, que es mejor que romperse.
+    }
+    setShowWelcome(false);
+    // La acción está en el chat: que el primer paso caiga donde se juega.
+    setTab('chat');
+  };
 
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'estado', label: 'Estado' },
@@ -50,6 +74,15 @@ export function App({ session, account }: { session: GameSession; account: Cloud
         <Controls session={session} view={view} />
         <AiBar view={view} account={account} />
         <AccountBar account={account} />
+        <button
+          className="help-button"
+          data-testid="help-button"
+          title="¿Cómo se juega?"
+          aria-label="Cómo se juega"
+          onClick={() => setShowWelcome(true)}
+        >
+          ?
+        </button>
       </header>
       <main className="layout">
         <section className="stage">
@@ -79,6 +112,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           </div>
         </aside>
       </main>
+      {showWelcome && <WelcomeOverlay onStart={startPlaying} />}
     </div>
   );
 }

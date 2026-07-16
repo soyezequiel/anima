@@ -5,6 +5,11 @@ import { expect, test } from '@playwright/test';
  * muerte -> informe de legado -> sucesora, todo a través de la interfaz.
  */
 
+// La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
+});
+
 test('la sesión sobrevive a una recarga de página', async ({ page }) => {
   await page.goto('/?seed=5&speed=8&fresh=1');
   await expect(page.getByTestId('story-status')).toHaveText('historia completada', {

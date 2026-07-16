@@ -190,6 +190,11 @@ export class GameSession {
     this.buildFreshRuntime(seed);
     this.chat = [
       { from: 'system', text: `Mundo creado (semilla ${seed}). La energía irá bajando…`, tick: 0 },
+      {
+        from: 'system',
+        text: 'Hablá con ella cuando quieras: pedile cosas, enseñale hechos del mundo o preguntale qué hace.',
+        tick: 0,
+      },
     ];
     this.rebuildView();
     this.notify();

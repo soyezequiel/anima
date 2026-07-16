@@ -6,6 +6,11 @@ import { expect, test } from '@playwright/test';
  * (sin claves) y velocidad 8x para que la historia tarde segundos.
  */
 
+// La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
+});
+
 test('la historia completa de aprendizaje se ve en la UI', async ({ page }) => {
   await page.goto('/?seed=5&speed=8');
 

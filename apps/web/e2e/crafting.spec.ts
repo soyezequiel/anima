@@ -7,6 +7,11 @@ import { expect, test } from '@playwright/test';
  * el evento queda registrado.
  */
 
+// La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
+});
+
 test('craftear desde el chat: negativa honesta, juntar materiales y construir', async ({
   page,
 }) => {

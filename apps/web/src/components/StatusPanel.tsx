@@ -1,7 +1,33 @@
+import { kindLabel } from '@anima/shared';
 import type { GameSession } from '../session/GameSession.js';
-import type { GameView } from '../session/view.js';
+import type { GameView, PetView } from '../session/view.js';
 
 const COLORS = ['#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#ec4899'];
+
+/**
+ * La estrategia en voz humana. El identificador interno
+ * («stable-skill:alcanzar-alimento-bloqueado@v2») queda en el title para
+ * quien depure; a quien juega se le habla en su idioma.
+ */
+function humanStrategy(raw: string): string {
+  if (raw === 'direct-approach') return 'ir directo al alimento';
+  if (raw === 'warmth-approach') return 'acercarse a algo que dé calor';
+  if (raw.startsWith('build-fire:')) {
+    return `construir ${kindLabel(raw.slice('build-fire:'.length))}`;
+  }
+  const stable = /^stable-skill:(.+)@v(\d+)$/.exec(raw);
+  if (stable) return `usar su habilidad «${stable[1]}» (v${stable[2]})`;
+  return raw;
+}
+
+/** «2× tronco, martillo»: agrupado y con nombres, no una lista de ids. */
+function humanInventory(inventory: PetView['inventory']): string {
+  const counts = new Map<string, number>();
+  for (const item of inventory) counts.set(item.kind, (counts.get(item.kind) ?? 0) + 1);
+  return [...counts]
+    .map(([kind, n]) => (n > 1 ? `${n}× ${kindLabel(kind)}` : kindLabel(kind)))
+    .join(', ');
+}
 
 function Bar({
   label,
@@ -55,12 +81,14 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
         <dt>Objetivo</dt>
         <dd data-testid="current-goal">{view.currentGoal?.description ?? '(observando)'}</dd>
         <dt>Estrategia</dt>
-        <dd data-testid="current-strategy">{view.currentStrategy ?? '—'}</dd>
+        <dd data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
+          {view.currentStrategy ? humanStrategy(view.currentStrategy) : '—'}
+        </dd>
         <dt>Acción</dt>
         <dd data-testid="current-action">{view.lastAction ?? '—'}</dd>
         <dt>Inventario</dt>
         <dd data-testid="inventory">
-          {pet && pet.inventory.length > 0 ? pet.inventory.map((i) => i.kind).join(', ') : '(vacío)'}
+          {pet && pet.inventory.length > 0 ? humanInventory(pet.inventory) : '(vacío)'}
         </dd>
       </dl>
 

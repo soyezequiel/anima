@@ -244,6 +244,84 @@ body {
   margin-top: 16px;
 }
 
+/* La bienvenida cubre toda la app (no solo el tablero, como la de muerte). */
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 20;
+  padding: 24px;
+}
+
+.welcome-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  max-width: 560px;
+  max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.welcome-card h2 {
+  margin-top: 0;
+  font-size: 20px;
+}
+
+.welcome-list {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0;
+  display: grid;
+  gap: 8px;
+}
+
+.help-button {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.help-button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.chat-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 0;
+}
+
+.chip {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.chip:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .story-badge {
   font-size: 12px;
   padding: 2px 10px;

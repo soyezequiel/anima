@@ -8,6 +8,11 @@ import { reachBlockedResourceProgram } from '@anima/model-providers';
  * La verificación contra el Codex real se hace manualmente (consume cuota).
  */
 
+// La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
+test.beforeEach(async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
+});
+
 test('la mascota aprende usando el proveedor codex (puente interceptado)', async ({ page }) => {
   let completeCalls = 0;
   let logoutCalls = 0;

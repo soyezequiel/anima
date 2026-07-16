@@ -3,6 +3,8 @@ import type { GameSession } from '../session/GameSession.js';
 
 const CAUSE_LABEL: Record<string, string> = {
   starvation: 'inanición',
+  hypothermia: 'hipotermia',
+  injuries: 'heridas',
 };
 
 export function DeathOverlay({ report, session }: { report: LegacyReport; session: GameSession }) {
