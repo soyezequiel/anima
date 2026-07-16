@@ -755,6 +755,18 @@ export class GameSession {
         kind: e.kind,
         x: e.components.position!.x,
         y: e.components.position!.y,
+        // Traducción de componentes a rasgos: la UI sabe QUÉ hace cada cosa
+        // sin conocer el motor. Es lo que permite dibujar lo que Ánima
+        // inventa, cuyo nombre no está en ninguna tabla nuestra.
+        traits: {
+          ...(e.components.heatSource ? { warm: true } : {}),
+          ...(e.components.edible ? { edible: true } : {}),
+          ...(e.components.tool ? { tool: true } : {}),
+          ...(e.components.foodSource ? { growsFood: true } : {}),
+          ...(e.components.hazard ? { dangerous: true } : {}),
+          ...(e.components.portable ? { portable: true } : {}),
+          ...(e.components.collider?.solid ? { solid: true } : {}),
+        },
       }));
 
     const speechFresh =

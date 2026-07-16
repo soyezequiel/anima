@@ -1,17 +1,10 @@
 import Phaser from 'phaser';
-import type { GameView } from '../session/view.js';
+import { kindLabel } from '@anima/shared';
+import type { EntityTraits, GameView } from '../session/view.js';
+import { emojiFor } from './appearance.js';
 
 /** Celda de referencia: toda la geometría se define a esta escala y se reescala desde aquí. */
 export const BASE_CELL = 64;
-
-export const KIND_EMOJI: Record<string, string> = {
-  food: '🍎',
-  branch: '🪵',
-  hammer: '🔨',
-  tree: '🌳',
-  cactus: '🌵',
-  campfire: '🔥',
-};
 
 /**
  * Escena de renderizado puro: dibuja el view model y anima diferencias.
@@ -96,25 +89,25 @@ export class WorldScene extends Phaser.Scene {
     graphics.setDepth(0);
   }
 
-  private makeEntitySprite(kind: string): Phaser.GameObjects.Container {
+  private makeEntitySprite(kind: string, traits: EntityTraits): Phaser.GameObjects.Container {
     const k = this.cellScale;
     const container = this.add.container(0, 0);
+    const emoji = emojiFor(kind, traits);
     if (kind === 'wall') {
       const rect = this.add.rectangle(0, 0, this.cell - 6 * k, this.cell - 6 * k, 0x64748b);
       rect.setStrokeStyle(2 * k, 0x334155);
       container.add(rect);
-    } else if (KIND_EMOJI[kind]) {
-      const text = this.add.text(0, 0, KIND_EMOJI[kind], {
-        fontSize: `${Math.round(34 * k)}px`,
-      });
+    } else if (emoji) {
+      const text = this.add.text(0, 0, emoji, { fontSize: `${Math.round(34 * k)}px` });
       text.setOrigin(0.5);
       container.add(text);
     } else {
-      // Placeholder para tipos sin arte propio (objetos nuevos o crafteados):
-      // un cuadrado con el nombre de lo que es. El arte de verdad llega después.
+      // Último recurso: nada en el mundo se parece a esto. Un cuadrado con su
+      // nombre en voz humana ("tronco", no "log"), porque el tipo interno es
+      // un identificador y no significa nada para quien juega.
       const rect = this.add.rectangle(0, 0, this.cell - 14 * k, this.cell - 14 * k, 0x92400e, 0.9);
       rect.setStrokeStyle(2 * k, 0xfbbf24);
-      const label = this.add.text(0, 0, kind, {
+      const label = this.add.text(0, 0, kindLabel(kind), {
         fontSize: `${Math.round(11 * k)}px`,
         color: '#fef3c7',
         align: 'center',
@@ -134,7 +127,7 @@ export class WorldScene extends Phaser.Scene {
       const pixel = this.toPixel(entity.x, entity.y);
       let sprite = this.sprites.get(entity.id);
       if (!sprite) {
-        sprite = this.makeEntitySprite(entity.kind);
+        sprite = this.makeEntitySprite(entity.kind, entity.traits);
         sprite.setPosition(pixel.x, pixel.y);
         this.sprites.set(entity.id, sprite);
       } else if (sprite.x !== pixel.x || sprite.y !== pixel.y) {

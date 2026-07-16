@@ -1,3 +1,4 @@
+import { kindLabel } from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
 import { missingIngredients } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
@@ -31,21 +32,9 @@ export interface RequestDecision {
 
 const CRITICAL_ENERGY_FRACTION = 0.2;
 
-function displayKind(kind: string): string {
-  return (
-    {
-      food: 'alimento',
-      wall: 'muro',
-      branch: 'rama',
-      hammer: 'martillo',
-      tree: 'árbol',
-      log: 'tronco',
-      flint: 'pedernal',
-      campfire: 'fogata',
-      chair: 'silla',
-    }[kind] ?? kind
-  );
-}
+/** El nombre humano de un tipo. La tabla vive en @anima/shared: la mascota y
+ * el dibujo del mundo tienen que llamar a las cosas igual. */
+const displayKind = kindLabel;
 
 /** Plural en español: "2 troncos", "2 pedernales". */
 function pluralKind(kind: string, amount: number): string {

@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
 import { useEffect, useRef, useState } from 'react';
 import type { GameView } from '../session/view.js';
-import { BASE_CELL, KIND_EMOJI, WorldScene } from './WorldScene.js';
+import { KIND_EMOJI } from './appearance.js';
+import { BASE_CELL, WorldScene } from './WorldScene.js';
 
 /** Por debajo de esto el mundo deja de leerse: preferimos recortar antes que encoger más. */
 const MIN_CELL = 24;

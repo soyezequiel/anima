@@ -6,11 +6,29 @@ import type { LegacyReport } from '@anima/persistence';
  * motor ni el agente directamente, así no puede duplicar reglas del mundo.
  */
 
+/**
+ * Qué hace una cosa, no cómo se llama. Un objeto que Ánima inventó lleva el
+ * nombre que eligió el modelo ("hoguera-simple"), pero si irradia calor es un
+ * fuego: con esto la UI puede dibujarlo como lo que es, sin conocer su nombre
+ * ni duplicar reglas del mundo. Es la misma idea que rige las recetas — un
+ * objeto es lo que sus componentes le permiten hacer.
+ */
+export interface EntityTraits {
+  warm?: boolean;
+  edible?: boolean;
+  tool?: boolean;
+  growsFood?: boolean;
+  dangerous?: boolean;
+  portable?: boolean;
+  solid?: boolean;
+}
+
 export interface EntityView {
   id: string;
   kind: string;
   x: number;
   y: number;
+  traits: EntityTraits;
 }
 
 export interface PetView {
