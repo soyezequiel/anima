@@ -78,6 +78,15 @@ export class MockModelProvider extends BaseModelProvider {
           statement: request.text,
           confidence: 0.6,
         });
+      case 'judge.destruction':
+        // Sin comprensión abierta no hay juicio: se niega, como siempre. Es la
+        // conducta anterior a este cambio, y es la honesta — pesar "¿me quedo
+        // sin comida?" con reglas fijas es justo lo que no alcanzaba.
+        return Promise.resolve({
+          kind: 'judgement',
+          willing: false,
+          reason: `No quiero destruir ${request.targetKind}: creo que lo necesito.`,
+        });
       case 'recipe.propose': {
         // Imperfecto a propósito, como el resto del mock (ADR 0006): su primer
         // impulso ante cualquier problema es inventar comida — el atajo que

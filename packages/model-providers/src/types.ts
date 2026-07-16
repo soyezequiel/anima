@@ -60,6 +60,22 @@ export type ModelRequest =
     }
   | {
       /**
+       * "¿Quiero hacer esto?" — NO "¿puedo?". Solo se pregunta cuando el mundo
+       * ya dijo que se puede y la única duda que queda es de valores: destruir
+       * algo que quizá necesite. El modelo pesa el contexto real (cuántos
+       * quedan, su energía, lo que cree saber), que es justo lo que una tabla
+       * no puede: talar el único árbol es suicidio; con otros dos, no.
+       */
+      kind: 'judge.destruction';
+      /** Lo que el cuidador pidió, con sus palabras. */
+      request: string;
+      targetKind: string;
+      /** Estado real y verificable: la base de la decisión, no una opinión. */
+      facts: string[];
+      conversation: { from: 'user' | 'pet'; text: string }[];
+    }
+  | {
+      /**
        * Inventar un objeto que su mundo todavía no sabe construir. El modelo
        * propone el arquetipo; el mundo lo valida y decide. Proponer no es
        * poder: la física no la escribe quien la imagina.
@@ -104,6 +120,12 @@ export type ModelResponse =
   | { kind: 'knowledge'; statement: string; confidence: number }
   /** La receta viaja sin tipar: el mundo es quien la valida (validateRecipe). */
   | { kind: 'recipe'; recipe: unknown; rationale: string }
+  /**
+   * Un juicio de valores, no de física. `willing: false` mantiene la negativa;
+   * `true` la levanta. El agente solo lo consulta cuando ya comprobó que la
+   * acción es posible, así que esto nunca puede autorizar un imposible.
+   */
+  | { kind: 'judgement'; willing: boolean; reason: string }
   | { kind: 'dialogue'; text: string };
 
 export type CommandDirection = 'up' | 'down' | 'left' | 'right';

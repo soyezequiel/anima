@@ -699,7 +699,7 @@ export class AnimaAgent {
       this.lastUserRequest = structuredClone(parsed);
     }
 
-    const decision = this.decideOnRequest(parsed, perception);
+    const decision = await this.decideOnRequest(parsed, perception);
     const eventType =
       decision.classification === 'accepted' ? 'user.request.accepted' : 'user.request.refused';
     this.emit(eventType, {
@@ -1135,14 +1135,112 @@ export class AnimaAgent {
     return parsed;
   }
 
-  decideOnRequest(request: UserRequest, perception: Perception): RequestDecision {
-    const decision = evaluateUserRequest(
+  /**
+   * "¿Quiero?" es lo único que el modelo puede repensar. Nunca "¿puedo?".
+   *
+   * `evaluateUserRequest` corre PRIMERO y entero: la física, los recursos y las
+   * prioridades del cuerpo se deciden con código determinista. Solo un
+   * `will_not` —el único juicio de VALORES del catálogo— llega hasta aquí, y
+   * solo para destruir. Un `cannot` (no tengo herramienta), un `not_now`
+   * (me estoy muriendo de hambre) o un `needs_information` (no sé dónde está)
+   * jamás se consultan: no hay nada que opinar sobre un hecho.
+   *
+   * Por eso este camino no puede autorizar un imposible aunque el modelo
+   * quiera: para cuando se le pregunta, el mundo ya dijo que se puede, y la
+   * única duda que queda es si vale la pena. Ver ADR 0019.
+   */
+  private async reconsiderRefusal(
+    request: UserRequest,
+    perception: Perception,
+    decision: RequestDecision,
+  ): Promise<RequestDecision> {
+    if (decision.classification !== 'will_not') return decision;
+    if (request.kind !== 'destroy-entity') return decision;
+    if (!this.config.provider.interpretsLanguage) return decision;
+
+    try {
+      const response = await this.config.provider.complete({
+        kind: 'judge.destruction',
+        request: request.raw,
+        targetKind: request.targetKind,
+        facts: this.destructionFacts(request.targetKind, perception),
+        conversation: this.dialogueHistory(),
+      });
+      if (response.kind !== 'judgement') {
+        throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+      }
+      this.emit('judgement.made', {
+        targetKind: request.targetKind,
+        willing: response.willing,
+        reason: response.reason,
+      });
+      return response.willing
+        ? { classification: 'accepted', reason: response.reason }
+        : { classification: 'will_not', reason: response.reason };
+    } catch (error) {
+      // Sin juicio, la negativa determinista se mantiene: ante la duda, no
+      // destruye. Es el lado seguro del error.
+      this.emit('provider.error', {
+        provider: this.config.provider.name,
+        operation: 'judge.destruction',
+        message: error instanceof Error ? error.message : String(error),
+        recoveredWith: 'refusal',
+      });
+      return decision;
+    }
+  }
+
+  /**
+   * Los hechos con los que se juzga si vale la pena destruir algo. Todos
+   * verificables en la percepción o en su memoria: el modelo pesa, no inventa.
+   */
+  private destructionFacts(targetKind: string, perception: Perception): string[] {
+    const sameKind = perception.visibleEntities.filter((e) => e.kind === targetKind);
+    const facts = [
+      sameKind.length === 1
+        ? `solo veo 1 ${targetKind}: es el único que tengo a la vista`
+        : `veo ${sameKind.length} ${targetKind} distintos`,
+    ];
+    const energy = perception.self.energy;
+    if (energy) {
+      facts.push(
+        `mi energía es ${Math.round(energy.current)} de ${energy.max}` +
+          (energy.current / energy.max < LOW_ENERGY_FRACTION ? ' (tengo hambre)' : ' (estoy bien)'),
+      );
+    }
+    const edibles = perception.visibleEntities.filter((e) => e.edible);
+    facts.push(
+      edibles.length > 0
+        ? `veo ${edibles.length} cosa(s) comestible(s) ahora mismo`
+        : 'no veo nada comestible ahora mismo',
+    );
+    facts.push(
+      ...this.memory
+        .factList()
+        .filter((f) => f.statement.includes(targetKind))
+        .slice(-3)
+        .map((f) => `sé que ${f.statement}`),
+      ...this.memory
+        .hypothesisList()
+        .filter((h) => h.resolved !== 'discarded' && h.statement.includes(targetKind))
+        .slice(-2)
+        .map((h) => `creo (sin confirmar) que ${h.statement}`),
+    );
+    return facts;
+  }
+
+  async decideOnRequest(
+    request: UserRequest,
+    perception: Perception,
+  ): Promise<RequestDecision> {
+    let decision = evaluateUserRequest(
       request,
       perception,
       this.memory,
       this.goals.selectActive(),
       this.learnedSkills().map((skill) => skill.name),
     );
+    decision = await this.reconsiderRefusal(request, perception, decision);
     if (decision.classification === 'accepted' && request.kind !== 'unknown') {
       const weights = USER_REQUEST_WEIGHTS[request.kind];
       const goal = this.goals.create(

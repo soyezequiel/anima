@@ -34,6 +34,8 @@ export type AgentEventType =
   | 'provider.error'
   | 'user.message.received'
   | 'user.request.accepted'
-  | 'user.request.refused';
+  | 'user.request.refused'
+  /** Repensó una negativa de valores con su situación concreta (ADR 0019). */
+  | 'judgement.made';
 
 export type AgentEvent = StructuredEvent<AgentEventType>;

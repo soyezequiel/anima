@@ -82,4 +82,14 @@ obedecer. La clasificación y la respuesta siguen saliendo de
 
 `evaluateUserRequest` clasifica cada petición en `accepted / cannot / will_not
 / not_now / needs_information`, con razón comprensible, coherencia con hechos
-aprendidos (no destruye lo que cree necesitar) y alternativa cuando existe.
+aprendidos y alternativa cuando existe.
+
+Cuatro de las cinco son **hechos** y se deciden con código determinista. La
+quinta, `will_not`, es un **juicio de valores** —"puedo, pero no quiero"— y con
+un modelo real la repiensa ella con su situación concreta: cuántos árboles ve,
+su energía, si hay comida a la vista. Con un solo árbol, talarlo es suicidio;
+con tres, negarse es un capricho, y ninguna tabla distingue los dos casos.
+
+El orden es **hechos → valores**: para cuando se consulta al modelo, el mundo
+ya dijo que se puede, así que este camino no puede autorizar un imposible. Si
+el juicio falla, la negativa determinista se mantiene. Ver ADR 0019.

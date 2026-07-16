@@ -37,10 +37,18 @@ const idleGoal: Goal = {
 };
 
 describe('negativas y autonomía', () => {
+  /** Una herramienta a la vista: sin ella la negativa sería "no puedo". */
+  const hammer = { id: 'e8', kind: 'hammer', position: { x: 1, y: 2 }, toolPower: 8 };
+
   it('will_not: se niega a destruir lo que cree necesitar, con alternativa', () => {
     const decision = evaluateUserRequest(
       { kind: 'destroy-entity', targetKind: 'food', raw: 'destruye la comida' },
-      perceptionWith(),
+      // Ve la comida y tiene con qué: puede. La negativa es de valores, que es
+      // lo único que un will_not debe significar (ADR 0019).
+      perceptionWith({}, [
+        { id: 'e9', kind: 'food', position: { x: 2, y: 2 }, edible: true },
+        hammer,
+      ]),
       new MemoryStore(),
       undefined,
     );
@@ -54,11 +62,37 @@ describe('negativas y autonomía', () => {
     memory.addFact('el tree produce alimento que recupera energía', 5);
     const decision = evaluateUserRequest(
       { kind: 'destroy-entity', targetKind: 'tree', raw: 'destruye el árbol' },
-      perceptionWith({}, [{ id: 'e9', kind: 'tree', position: { x: 2, y: 2 }, solid: true }]),
+      perceptionWith({}, [
+        { id: 'e9', kind: 'tree', position: { x: 2, y: 2 }, solid: true },
+        hammer,
+      ]),
       memory,
       undefined,
     );
     expect(decision.classification).toBe('will_not');
+  });
+
+  it('los hechos van antes que los valores: sin ver el árbol, no hay nada que querer', () => {
+    // Antes devolvía "no quiero" sin haber mirado si lo veía: un will_not que
+    // no significaba "puedo pero no quiero" dejaba entrar al juicio de valores
+    // a autorizar imposibles.
+    const decision = evaluateUserRequest(
+      { kind: 'destroy-entity', targetKind: 'tree', raw: 'tala el árbol' },
+      perceptionWith({}, [hammer]),
+      new MemoryStore(),
+      undefined,
+    );
+    expect(decision.classification).toBe('needs_information');
+  });
+
+  it('sin herramienta la negativa es "no puedo", no "no quiero"', () => {
+    const decision = evaluateUserRequest(
+      { kind: 'destroy-entity', targetKind: 'tree', raw: 'tala el árbol' },
+      perceptionWith({}, [{ id: 'e9', kind: 'tree', position: { x: 2, y: 2 }, solid: true }]),
+      new MemoryStore(),
+      undefined,
+    );
+    expect(decision.classification).toBe('cannot');
   });
 
   it('cannot: sin herramientas no puede destruir un muro', () => {

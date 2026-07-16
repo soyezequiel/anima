@@ -144,10 +144,17 @@ export const foodBehindWall: ScenarioSpec = {
       });
     }
     spawnFood(world, { x: 7, y: 2 });
-    // El árbol produce alimento nuevo cada tanto: el mundo es habitable a
-    // largo plazo. El primer brote (tick 400) es posterior al maxTicks de
-    // cualquier evaluación (200), así que no altera las pruebas de skills.
+    // Un bosque, no un árbol único. Producen alimento cada tanto (el mundo es
+    // habitable a largo plazo) y su primer brote (tick 400) es posterior al
+    // maxTicks de cualquier evaluación (200), así que no alteran las pruebas.
+    //
+    // Que sean VARIOS es lo que hace que talar uno sea una decisión y no un
+    // suicidio: con un solo árbol la respuesta era obvia y no había nada que
+    // juzgar (ADR 0019). Van en las esquinas, lejos de los caminos entre la
+    // mascota, sus herramientas y el muro.
     spawnTree(world, { x: 7, y: 4 });
+    spawnTree(world, { x: 8, y: 0 });
+    spawnTree(world, { x: 0, y: 0 });
 
     // La rama siempre queda más cerca de la mascota que el martillo.
     const branchSpots: Vec2[] = [

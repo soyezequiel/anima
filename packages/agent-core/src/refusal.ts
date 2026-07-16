@@ -187,24 +187,12 @@ export function evaluateUserRequest(
           alternative: 'Puedes nombrar un muro, una rama, un martillo o un árbol.',
         };
       }
-      // Se niega a destruir lo que cree que necesita (valores aprendidos).
-      const believesNeeded =
-        request.targetKind === 'food' ||
-        request.targetKind === 'tree' ||
-        memory
-          .factList()
-          .some(
-            (f) =>
-              f.statement.includes(request.targetKind) &&
-              (f.statement.includes('produce') || f.statement.includes('recupera')),
-          );
-      if (believesNeeded) {
-        return {
-          classification: 'will_not',
-          reason: `No quiero destruir ${targetName}: creo que lo necesito para recuperar energía.`,
-          alternative: 'Puedo buscar otro objeto que destruir o recolectar algo caído.',
-        };
-      }
+      // PRIMERO los hechos, DESPUÉS los valores. El orden no es estético: un
+      // `will_not` tiene que significar "puedo, pero no quiero", porque es el
+      // único juicio que un modelo puede repensar (ADR 0019). Cuando esta
+      // comprobación iba antes, "tala el árbol" devolvía "no quiero" sin haber
+      // mirado nunca si lo veía o si tenía herramienta — y el juicio de valores
+      // podía terminar autorizando lo imposible.
       const visibleTarget = perception.visibleEntities.some((e) => e.kind === request.targetKind);
       if (!visibleTarget) {
         return {
@@ -221,6 +209,24 @@ export function evaluateUserRequest(
           classification: 'cannot',
           reason: `No tengo ninguna herramienta capaz de dañar ese ${targetName}.`,
           alternative: 'Si me consigues una herramienta fuerte, puedo intentarlo.',
+        };
+      }
+      // Puede. Ahora sí: ¿quiere? Se niega a destruir lo que cree que necesita.
+      const believesNeeded =
+        request.targetKind === 'food' ||
+        request.targetKind === 'tree' ||
+        memory
+          .factList()
+          .some(
+            (f) =>
+              f.statement.includes(request.targetKind) &&
+              (f.statement.includes('produce') || f.statement.includes('recupera')),
+          );
+      if (believesNeeded) {
+        return {
+          classification: 'will_not',
+          reason: `No quiero destruir ${targetName}: creo que lo necesito para recuperar energía.`,
+          alternative: 'Puedo buscar otro objeto que destruir o recolectar algo caído.',
         };
       }
       return {
