@@ -459,6 +459,21 @@ describe('reglas del mundo al restaurar', () => {
     expect(campfire).toMatchObject({ origin: 'builtin', craftable: true, inWorld: 0 });
     expect(campfire?.does).toContain('da calor');
 
+    // Sus números, y lo que cuesta: la fogata todavía no existe, así que sale
+    // del arquetipo de la receta.
+    expect(campfire?.ingredients).toEqual(['2 troncos', '1 pedernal']);
+    expect(campfire?.stats).toContainEqual({ label: 'Calor', value: '0.3 por tick · alcance 2' });
+    expect(campfire?.stats).toContainEqual({ label: 'Daño al tocarlo', value: '1 por tick' });
+
+    // El árbol existe: sus números salen de los ejemplares, no de receta alguna.
+    const tree = view.items.find((i) => i.kind === 'tree');
+    expect(tree?.craftable).toBe(false);
+    expect(tree?.stats).toContainEqual({ label: 'Deja al romperse', value: '3 troncos' });
+    expect(tree?.stats.find((s) => s.label === 'Produce')?.value).toContain('rama cada');
+
+    // Lo que no tiene nada medible no inventa filas.
+    expect(view.items.find((i) => i.kind === 'flint')?.stats).toEqual([]);
+
     // Entra una receta que no es del MVP: la construyó un modelo en runtime.
     const world = (session as unknown as { world: WorldState }).world;
     world.recipes.push({
@@ -488,6 +503,34 @@ describe('reglas del mundo al restaurar', () => {
     expect(items[0]?.kind).toBe('hoguera-simple');
     // Y lo de fábrica no cambia de origen por convivir con un invento.
     expect(items.find((i) => i.kind === 'campfire')?.origin).toBe('builtin');
+    session.dispose();
+  });
+
+  it('dos ejemplares que no son iguales se cuentan como el rango que son', async () => {
+    const { session } = await makeSession(5);
+    const world = (session as unknown as { world: WorldState }).world;
+    // La tirada del mundo hace que construir dos veces lo mismo dé dos cosas
+    // distintas: el catálogo no puede elegir una y callar la otra.
+    spawn(world, 'campfire', {
+      position: { x: 7, y: 2 },
+      heatSource: { warmthPerTick: 0.3, range: 2 },
+      hazard: { damagePerTick: 1 },
+    });
+    spawn(world, 'campfire', {
+      position: { x: 8, y: 2 },
+      heatSource: { warmthPerTick: 0.17, range: 2 },
+      hazard: { damagePerTick: 1 },
+    });
+    await session.stepOnce();
+
+    const campfire = session.getView().items.find((i) => i.kind === 'campfire')!;
+    expect(campfire.inWorld).toBe(2);
+    expect(campfire.stats).toContainEqual({
+      label: 'Calor',
+      value: '0.17–0.3 por tick · alcance 2',
+    });
+    // El alcance no se gradúa: un fuego tibio alcanza igual de lejos.
+    expect(campfire.stats).toContainEqual({ label: 'Daño al tocarlo', value: '1 por tick' });
     session.dispose();
   });
 

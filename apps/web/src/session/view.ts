@@ -43,6 +43,12 @@ export interface PetView {
   inventory: { id: string; kind: string }[];
 }
 
+/** Una característica medible de un tipo: "Calor" → "0.3 por tick · alcance 2". */
+export interface ItemStat {
+  label: string;
+  value: string;
+}
+
 /**
  * Un tipo de objeto del mundo, para el catálogo de la UI. Reúne en una sola
  * fila lo que existe en el mapa, lo que va en la mochila y lo que las recetas
@@ -62,9 +68,17 @@ export interface ItemView {
   inInventory: number;
   /** true si alguna receta viva del mundo lo produce. */
   craftable: boolean;
+  /** Lo que cuesta construirlo ("2 troncos"); vacío si no hay receta. */
+  ingredients: string[];
   traits: EntityTraits;
   /** Qué HACE ("da calor", "bloquea el paso"), en voz humana. */
   does: string[];
+  /**
+   * Sus números, cuando los tiene: calor, dureza, resistencia. Sale de los
+   * ejemplares que existen; si solo se puede construir, del arquetipo de la
+   * receta — que es su mejor desenlace, una intención y no una promesa.
+   */
+  stats: ItemStat[];
 }
 
 /**

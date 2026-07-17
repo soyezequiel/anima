@@ -144,4 +144,20 @@ test('describe un glorb, lo confirma en el chat y la mascota lo construye', asyn
   await page.getByTestId('tab-dev').click();
   await page.getByTestId('dev-filter').fill('item.crafted');
   await expect(page.getByTestId('dev-log')).toContainText('glorb', { timeout: 45_000 });
+
+  // Y el catálogo lo muestra por lo que es: un objeto que no está en ninguna
+  // tabla nuestra, dibujado como el fuego que es (nadie escribió su emoji),
+  // marcado como obra del modelo y con sus números a la vista.
+  await page.getByTestId('tab-items').click();
+  const glorb = page.locator('.item-card[data-kind="glorb"]');
+  await expect(glorb).toContainText('inventado (IA)');
+  await expect(glorb).toContainText('🔥');
+  await expect(glorb).toContainText('da calor');
+  await glorb.getByRole('button').click();
+  await expect(glorb.getByTestId('item-stats')).toContainText('1 pedernal');
+  // El alcance no lo gradúa la calidad: sale 2 salga como salga.
+  await expect(glorb.getByTestId('item-stats')).toContainText('alcance 2');
+
+  // Lo del código sigue siendo del código, aunque conviva con un invento.
+  await expect(page.locator('.item-card[data-kind="campfire"]')).toContainText('de fábrica');
 });

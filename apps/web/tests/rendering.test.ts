@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { kindLabel } from '@anima/shared';
-import { emojiFor } from '../src/phaser/appearance.js';
+import { appearanceFor, emojiFor, hexColor } from '../src/phaser/appearance.js';
 
 /**
  * Cómo se ve y cómo se llama una cosa. Dos reglas: el nombre interno nunca se
@@ -59,5 +59,34 @@ describe('los gráficos se reutilizan por lo que la cosa es', () => {
   it('lo que no se parece a nada no tiene gráfico: va al placeholder', () => {
     expect(emojiFor('cosa-rara', {})).toBeUndefined();
     expect(emojiFor('cosa-rara', { solid: true, portable: true })).toBeUndefined();
+  });
+});
+
+/**
+ * El aspecto completo lo deciden el tablero y el catálogo con la MISMA regla:
+ * una cosa no puede verse de dos maneras según dónde la mires.
+ */
+describe('el aspecto de una cosa es uno solo', () => {
+  it('lo que tiene emoji se dibuja con su emoji', () => {
+    expect(appearanceFor('log', {})).toEqual({ as: 'emoji', emoji: '🪵' });
+    expect(appearanceFor('hoguera-simple', { warm: true })).toEqual({ as: 'emoji', emoji: '🔥' });
+  });
+
+  it('el muro es un bloque gris sin rótulo: se reconoce solo', () => {
+    const look = appearanceFor('wall', { solid: true });
+    expect(look).toMatchObject({ as: 'block', labelled: false });
+  });
+
+  it('lo que no se parece a nada es un bloque que dice su nombre', () => {
+    const look = appearanceFor('cosa-rara', { solid: true });
+    expect(look).toMatchObject({ as: 'block', labelled: true });
+    // Distinto del muro: un invento sin forma no puede confundirse con piedra.
+    expect(look).not.toEqual(appearanceFor('wall', { solid: true }));
+  });
+
+  it('el color del bloque se lee igual en Phaser y en CSS', () => {
+    expect(hexColor(0x64748b)).toBe('#64748b');
+    // Sin ceros a la izquierda el color sería otro (#4f46e5 vs #4f46e).
+    expect(hexColor(0x04f46e)).toBe('#04f46e');
   });
 });

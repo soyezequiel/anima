@@ -45,6 +45,7 @@ import type {
   ExperimentView,
   GameView,
   GoalView,
+  ItemStat,
   ItemView,
   PickupView,
   SkillView,
@@ -102,17 +103,100 @@ function traitsFromComponents(components: Components): EntityTraits {
   };
 }
 
-/** Qué HACE lo descrito, en frases que el cuidador pueda juzgar antes del sí. */
+/**
+ * Qué HACE lo descrito, en frases que el cuidador pueda juzgar antes del sí.
+ *
+ * Comer y el agua no estaban: la vista previa de una receta nunca los nombra
+ * porque ninguna de las dos cosas se puede inventar (la puerta del mundo
+ * prohíbe `edible`, y el agua es terreno, no un producto). El catálogo, en
+ * cambio, muestra lo que el mundo ya tiene, y ahí callarlos era mentir por
+ * omisión: el alimento decía solo «se puede llevar».
+ */
 function describeComponents(components: Components): string[] {
   const does: string[] = [];
   if (components.heatSource) does.push('da calor');
   if (components.shelter) does.push('detiene la pérdida de calor');
   if (components.hazard) does.push('daña a quien se le pegue');
+  if (components.edible) does.push('se puede comer');
   if (components.tool) does.push('sirve de herramienta');
+  if (components.water) does.push('no se puede atravesar');
   if (components.collider?.solid) does.push('bloquea el paso');
   if (components.portable) does.push('se puede llevar');
   if (components.durability) does.push('se puede romper');
   return does;
+}
+
+/** Dos decimales como mucho: el mundo no distingue más y el número se lee. */
+function round2(value: number): string {
+  return String(Math.round(value * 100) / 100);
+}
+
+/**
+ * El número que caracteriza a un tipo, mirando TODOS sus ejemplares. La
+ * calidad hace que dos fogatas no sean la misma fogata, así que cuando
+ * difieren el catálogo muestra el rango: elegir una y callar la otra sería
+ * describir un mundo que no es el que está en pantalla.
+ */
+function statRange(
+  instances: Components[],
+  pick: (components: Components) => number | undefined,
+): string | null {
+  const values = instances.map(pick).filter((value): value is number => value !== undefined);
+  if (values.length === 0) return null;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return min === max ? round2(min) : `${round2(min)}–${round2(max)}`;
+}
+
+/** Los números de un tipo. Lo que no tiene el componente no da fila. */
+function itemStats(instances: Components[]): ItemStat[] {
+  const stats: ItemStat[] = [];
+
+  const warmth = statRange(instances, (c) => c.heatSource?.warmthPerTick);
+  if (warmth !== null) {
+    const reach = statRange(instances, (c) => c.heatSource?.range) ?? '?';
+    stats.push({ label: 'Calor', value: `${warmth} por tick · alcance ${reach}` });
+  }
+  const shelterReach = statRange(instances, (c) => c.shelter?.range);
+  if (shelterReach !== null) stats.push({ label: 'Refugio', value: `alcance ${shelterReach}` });
+
+  const damage = statRange(instances, (c) => c.hazard?.damagePerTick);
+  if (damage !== null) stats.push({ label: 'Daño al tocarlo', value: `${damage} por tick` });
+
+  const nutrition = statRange(instances, (c) => c.nutrition?.value);
+  if (nutrition !== null) stats.push({ label: 'Alimenta', value: `${nutrition} de energía` });
+
+  const power = statRange(instances, (c) => c.tool?.power);
+  if (power !== null) stats.push({ label: 'Herramienta', value: `poder ${power}` });
+
+  const hardness = statRange(instances, (c) => c.hardness?.value);
+  if (hardness !== null) stats.push({ label: 'Dureza', value: hardness });
+
+  const durability = statRange(instances, (c) => c.durability?.current);
+  if (durability !== null) {
+    const max = statRange(instances, (c) => c.durability?.max) ?? '?';
+    stats.push({ label: 'Resistencia', value: `${durability} de ${max}` });
+  }
+
+  const produces = new Set<string>();
+  for (const components of instances) {
+    const food = components.foodSource;
+    if (food) produces.add(`alimento cada ${food.intervalTicks} ticks`);
+    const item = components.itemSource;
+    if (item) produces.add(`${kindLabel(item.output.kind)} cada ${item.intervalTicks} ticks`);
+  }
+  if (produces.size > 0) stats.push({ label: 'Produce', value: [...produces].join(' · ') });
+
+  const drops = instances.find((c) => c.drops?.length)?.drops ?? [];
+  if (drops.length > 0) {
+    const byKind = new Map<string, number>();
+    for (const drop of drops) byKind.set(drop.kind, (byKind.get(drop.kind) ?? 0) + 1);
+    stats.push({
+      label: 'Deja al romperse',
+      value: [...byKind].map(([kind, count]) => countedKindLabel(kind, count)).join(' + '),
+    });
+  }
+  return stats;
 }
 
 function newIdentity(name: string): PetIdentity {
@@ -884,10 +968,15 @@ export class GameSession {
     const baseIds = new Set(MVP_RECIPES.map((recipe) => recipe.id));
     const inventedKinds = new Set<string>();
     const builtinProductKinds = new Set<string>();
-    const craftable = new Map<string, Components>();
+    const craftable = new Map<string, { components: Components; ingredients: string[] }>();
     for (const recipe of this.world.recipes) {
       const product = recipeProduct(recipe);
-      if (product && !craftable.has(product.kind)) craftable.set(product.kind, product.components);
+      if (product && !craftable.has(product.kind)) {
+        craftable.set(product.kind, {
+          components: product.components,
+          ingredients: recipe.ingredients.map((i) => countedKindLabel(i.kind, i.count)),
+        });
+      }
       const kinds = recipeProductKinds(recipe);
       if (baseIds.has(recipe.id)) {
         for (const kind of kinds) builtinProductKinds.add(kind);
@@ -904,13 +993,16 @@ export class GameSession {
 
     const pet = getEntity(this.world, this.agent.petId);
     const inventoryIds = new Set(pet?.components.inventory?.items ?? []);
-    const counts = new Map<string, { components: Components; inWorld: number; inInventory: number }>();
+    const counts = new Map<
+      string,
+      { instances: Components[]; inWorld: number; inInventory: number }
+    >();
     for (const entity of Object.values(this.world.entities)) {
       if (entity.id === this.agent.petId) continue;
       const carried = inventoryIds.has(entity.id);
       if (!entity.components.position && !carried) continue;
-      const entry =
-        counts.get(entity.kind) ?? { components: entity.components, inWorld: 0, inInventory: 0 };
+      const entry = counts.get(entity.kind) ?? { instances: [], inWorld: 0, inInventory: 0 };
+      entry.instances.push(entity.components);
       if (carried) entry.inInventory += 1;
       else entry.inWorld += 1;
       counts.set(entity.kind, entry);
@@ -920,16 +1012,22 @@ export class GameSession {
     return kinds
       .map((kind) => {
         const counted = counts.get(kind);
-        const components = counted?.components ?? craftable.get(kind) ?? {};
+        const recipe = craftable.get(kind);
+        // Lo que existe manda sobre lo que la receta promete: si hay una
+        // fogata floja en el mundo, el catálogo cuenta esa y no el arquetipo.
+        const instances = counted?.instances ?? (recipe ? [recipe.components] : []);
+        const shape = instances[0] ?? {};
         return {
           kind,
           name: kindLabel(kind),
           origin: (inventedKinds.has(kind) ? 'invented' : 'builtin') as ItemView['origin'],
           inWorld: counted?.inWorld ?? 0,
           inInventory: counted?.inInventory ?? 0,
-          craftable: craftable.has(kind),
-          traits: traitsFromComponents(components),
-          does: describeComponents(components),
+          craftable: recipe !== undefined,
+          ingredients: recipe?.ingredients ?? [],
+          traits: traitsFromComponents(shape),
+          does: describeComponents(shape),
+          stats: itemStats(instances),
         };
       })
       // Lo inventado primero (es la novedad), después alfabético.

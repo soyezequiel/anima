@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { kindLabel } from '@anima/shared';
 import type { EntityTraits, GameView } from '../session/view.js';
-import { emojiFor } from './appearance.js';
+import { appearanceFor } from './appearance.js';
 
 /** Celda de referencia: toda la geometría se define a esta escala y se reescala desde aquí. */
 export const BASE_CELL = 64;
@@ -92,21 +92,21 @@ export class WorldScene extends Phaser.Scene {
   private makeEntitySprite(kind: string, traits: EntityTraits): Phaser.GameObjects.Container {
     const k = this.cellScale;
     const container = this.add.container(0, 0);
-    const emoji = emojiFor(kind, traits);
-    if (kind === 'wall') {
-      const rect = this.add.rectangle(0, 0, this.cell - 6 * k, this.cell - 6 * k, 0x64748b);
-      rect.setStrokeStyle(2 * k, 0x334155);
-      container.add(rect);
-    } else if (emoji) {
-      const text = this.add.text(0, 0, emoji, { fontSize: `${Math.round(34 * k)}px` });
+    const look = appearanceFor(kind, traits);
+    if (look.as === 'emoji') {
+      const text = this.add.text(0, 0, look.emoji, { fontSize: `${Math.round(34 * k)}px` });
       text.setOrigin(0.5);
       container.add(text);
+    } else if (!look.labelled) {
+      const rect = this.add.rectangle(0, 0, this.cell - 6 * k, this.cell - 6 * k, look.fill);
+      rect.setStrokeStyle(2 * k, look.stroke);
+      container.add(rect);
     } else {
       // Último recurso: nada en el mundo se parece a esto. Un cuadrado con su
       // nombre en voz humana ("tronco", no "log"), porque el tipo interno es
       // un identificador y no significa nada para quien juega.
-      const rect = this.add.rectangle(0, 0, this.cell - 14 * k, this.cell - 14 * k, 0x92400e, 0.9);
-      rect.setStrokeStyle(2 * k, 0xfbbf24);
+      const rect = this.add.rectangle(0, 0, this.cell - 14 * k, this.cell - 14 * k, look.fill, 0.9);
+      rect.setStrokeStyle(2 * k, look.stroke);
       const label = this.add.text(0, 0, kindLabel(kind), {
         fontSize: `${Math.round(11 * k)}px`,
         color: '#fef3c7',

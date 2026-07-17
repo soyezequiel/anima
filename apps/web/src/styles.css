@@ -1090,16 +1090,54 @@ button:disabled {
 .item-card {
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 8px 10px;
-  display: grid;
-  gap: 4px;
+  overflow: hidden;
 }
 
 .item-head {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  padding: 8px 10px;
+  font-size: 14px;
+}
+
+/* Sin detalle no hay nada que abrir: que no se comporte como un botón. */
+.item-head-plain {
+  cursor: default;
+}
+
+.item-head-plain:hover {
+  border-color: transparent;
+}
+
+.item-head-row {
   display: flex;
   gap: 8px;
-  align-items: baseline;
+  align-items: center;
   flex-wrap: wrap;
+}
+
+/* Tamaño de la celda del tablero en chico: el emoji y el bloque ocupan igual. */
+.item-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.item-icon-block {
+  width: 16px;
+  height: 16px;
+  border: 1px solid;
+  border-radius: 3px;
 }
 
 .item-where {
@@ -1109,6 +1147,26 @@ button:disabled {
 
 .item-does {
   font-size: 12px;
+}
+
+.item-stats {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 3px 10px;
+  margin: 0;
+  padding: 8px 10px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.item-stats dt {
+  color: var(--muted);
+}
+
+.item-stats dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Violeta como todo lo que sale del modelo (pensamiento, rasgos): IA. */

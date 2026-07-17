@@ -53,3 +53,38 @@ export function emojiFor(kind: string, traits: EntityTraits): string | undefined
   if (byKind) return byKind;
   return TRAIT_EMOJI.find(([trait]) => traits[trait])?.[1];
 }
+
+/**
+ * Cómo se ve algo cuando no hay emoji que lo explique: un bloque de color.
+ * `labelled` distingue los dos casos, que no son el mismo — el muro es gris y
+ * se reconoce solo; lo que no se parece a nada es ámbar y necesita decir su
+ * nombre, porque el dibujo no lo dice.
+ */
+export interface BlockLook {
+  as: 'block';
+  fill: number;
+  stroke: number;
+  labelled: boolean;
+}
+
+export type Appearance = { as: 'emoji'; emoji: string } | BlockLook;
+
+const WALL_LOOK: BlockLook = { as: 'block', fill: 0x64748b, stroke: 0x334155, labelled: false };
+const UNKNOWN_LOOK: BlockLook = { as: 'block', fill: 0x92400e, stroke: 0xfbbf24, labelled: true };
+
+/**
+ * El aspecto completo de una cosa. Vive acá y no en la escena porque el
+ * tablero no es el único que dibuja: el catálogo de items muestra lo mismo, y
+ * dos reglas separadas se irían despegando hasta que una cosa se viera de dos
+ * maneras según dónde la mires.
+ */
+export function appearanceFor(kind: string, traits: EntityTraits): Appearance {
+  if (kind === 'wall') return WALL_LOOK;
+  const emoji = emojiFor(kind, traits);
+  return emoji ? { as: 'emoji', emoji } : UNKNOWN_LOOK;
+}
+
+/** El color de un bloque como lo escribe CSS (Phaser lo quiere en número). */
+export function hexColor(value: number): string {
+  return `#${value.toString(16).padStart(6, '0')}`;
+}
