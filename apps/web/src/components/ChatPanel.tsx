@@ -29,7 +29,7 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
         {view.chat.map((entry, i) => (
           <div key={i} className={`chat-entry from-${entry.from}`}>
             <span className="chat-who">
-              {entry.from === 'user' ? 'Tú' : entry.from === 'pet' ? 'Ánima' : '·'}
+              {entry.from === 'user' ? 'Tú' : entry.from === 'pet' ? view.identity.name : '·'}
             </span>
             <span className="chat-text">{entry.text}</span>
             <span className="chat-tick muted">t{entry.tick}</span>
@@ -42,7 +42,7 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
             role="status"
             aria-live="polite"
           >
-            <span className="chat-who">Ánima</span>
+            <span className="chat-who">{view.identity.name}</span>
             <span className="chat-text thinking-text">
               pensando
               <span className="thinking-dots" aria-hidden="true">

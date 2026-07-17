@@ -100,6 +100,17 @@ export interface DevEventView {
   json: string;
 }
 
+/**
+ * Un rasgo de personalidad derivado (nunca sorteado ni opinado por el modelo):
+ * viene con la evidencia que lo justifica, para que el panel pueda mostrar de
+ * dónde sale. Ver ADR 0021.
+ */
+export interface PersonalityTraitView {
+  id: string;
+  label: string;
+  evidence: string;
+}
+
 export interface GoalView {
   id: string;
   description: string;
@@ -136,6 +147,8 @@ export interface GameView {
   experiments: ExperimentView[];
   devEvents: DevEventView[];
   regressions: { scenarioName: string; seed: number; description: string }[];
+  /** Rasgos emergentes derivados de su historia (0–4, deterministas). */
+  personality: PersonalityTraitView[];
   facts: string[];
   hypotheses: { statement: string; confidence: number; resolved: string }[];
   storyCompleted: boolean;

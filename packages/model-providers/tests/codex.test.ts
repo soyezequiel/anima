@@ -102,10 +102,45 @@ describe('CodexModelProvider', () => {
       command: { action: 'move-direction', directions: ['up', 'left'] },
     });
     expect(seen[0]?.schema).toMatchObject({
-      required: ['action', 'targetKind', 'amount', 'directions', 'skillName', 'recipeId', 'summary'],
+      required: [
+        'action',
+        'targetKind',
+        'amount',
+        'directions',
+        'skillName',
+        'recipeId',
+        'summary',
+        'name',
+      ],
     });
     expect(seen[0]?.prompt).toContain('pegá un pasito rumbo al rincón noroeste');
     expect(seen[0]?.prompt).toContain('Mascota: Estoy junto al árbol.');
+  });
+
+  it('interpreta un bautismo como rename-pet con el nombre elegido', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'rename-pet',
+          name: ' Luna ',
+          targetKind: '',
+          amount: 0,
+          directions: [],
+          skillName: '',
+          recipeId: '',
+          summary: '',
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'interpret.command',
+      text: 'desde hoy te voy a llamar Luna, ¿te gusta?',
+      facts: [],
+    });
+    expect(response).toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'rename-pet', name: 'Luna' },
+    });
   });
 
   it('ofrece aprender lo que no sabe y ejecutar lo que ya aprendió', async () => {

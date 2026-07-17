@@ -21,6 +21,12 @@ export function DeathOverlay({ report, session }: { report: LegacyReport; sessio
           {Math.round(report.cause.certainty * 100)}%).
         </p>
 
+        {(report.traits ?? []).length > 0 && (
+          <p data-testid="legacy-traits">
+            <strong>Cómo era:</strong> {(report.traits ?? []).join(', ')}.
+          </p>
+        )}
+
         {report.knowledge.length > 0 && (
           <>
             <h3>Lo que sabía</h3>

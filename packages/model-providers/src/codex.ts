@@ -157,6 +157,7 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
         'run-skill',
         'craft-item',
         'learn-skill',
+        'rename-pet',
         'explanation',
         'unsupported',
         'not-command',
@@ -172,10 +173,11 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
     skillName: { type: 'string' },
     recipeId: { type: 'string' },
     summary: { type: 'string' },
+    name: { type: 'string' },
   },
   // Los esquemas estructurados son más estables si todas las propiedades
   // existen; las no aplicables viajan como string/arreglo vacío o 0.
-  required: ['action', 'targetKind', 'amount', 'directions', 'skillName', 'recipeId', 'summary'],
+  required: ['action', 'targetKind', 'amount', 'directions', 'skillName', 'recipeId', 'summary', 'name'],
   additionalProperties: false,
 };
 
@@ -432,6 +434,9 @@ no afirmes haber actuado. Acciones ejecutables:
   es el id exacto de la receta. No te importa si tiene los ingredientes: eso
   lo decide el agente después. Solo si lo pedido NO está en las recetas es
   unsupported.
+- rename-pet: le pone un nombre nuevo a la mascota ("te voy a llamar Luna",
+  "tu nombre es Sol", "desde hoy te llamás Nube"); name es el nombre elegido,
+  tal como lo escribió el cuidador. Preguntar por el nombre NO es rename-pet.
 - learn-skill: pide una conducta física que NO sabe todavía, pero que sus
   primitivas podrían componer (bailar, patrullar, rondar, alejarse, esconderse,
   dar una vuelta). Una aproximación honesta cuenta: "sentate en la silla" es
@@ -459,7 +464,7 @@ Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
 Responde solo con JSON. Siempre incluye action, targetKind, amount,
-directions, skillName, recipeId y summary; usa "", [] o 0 cuando no
+directions, skillName, recipeId, summary y name; usa "", [] o 0 cuando no
 correspondan.`,
       };
     case 'skill.contract':
@@ -712,6 +717,15 @@ export class CodexModelProvider extends BaseModelProvider {
             return {
               kind: 'command.interpretation',
               command: { action, recipeId: parsed.recipeId.trim().toLowerCase() },
+            };
+          }
+          if (action === 'rename-pet') {
+            if (typeof parsed.name !== 'string' || parsed.name.trim().length === 0) {
+              throw new Error('rename-pet no contiene un nombre');
+            }
+            return {
+              kind: 'command.interpretation',
+              command: { action, name: parsed.name.trim() },
             };
           }
           if (action === 'unsupported' || action === 'learn-skill') {

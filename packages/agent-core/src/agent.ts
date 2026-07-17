@@ -11,6 +11,8 @@ import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
 import type { Goal, GoalManagerData, GoalUserRequest, LearningContract } from './goals.js';
 import { GoalManager } from './goals.js';
+import type { PersonalityTrait } from './personality.js';
+import { derivePersonality } from './personality.js';
 import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
@@ -59,7 +61,8 @@ const USER_REQUEST_WEIGHTS: Record<
 type InterpretedMessage =
   | UserRequest
   | { kind: 'explanation'; raw: string }
-  | { kind: 'learn-skill'; summary: string; raw: string };
+  | { kind: 'learn-skill'; summary: string; raw: string }
+  | { kind: 'rename-pet'; name: string; raw: string };
 
 /** Nombre de habilidad utilizable: kebab-case sin acentos, corto y estable. */
 function normalizeSkillName(raw: string): string {
@@ -233,6 +236,8 @@ export interface LegacyTestimony {
   knowledge: { statement: string; confidence: number }[];
   skills: SkillDefinition[];
   message?: string;
+  /** Rasgos derivados de la historia de la antecesora ("curiosa", ...). */
+  traits?: string[];
 }
 
 interface Activity {
@@ -275,6 +280,8 @@ export class AnimaAgent {
   private lastPain: { sourceId: string; sourceKind: string; tick: number } | null = null;
   private lastSelectedGoalId: string | null = null;
   private lastUserRequest: UserRequest | null = null;
+  /** Su nombre actual. La identidad persiste fuera; esto alimenta su habla. */
+  private petName: string;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
   private suspensionEdibles = new Map<string, Set<string>>();
   private tick = 0;
@@ -287,6 +294,53 @@ export class AnimaAgent {
       maxVersionsPerDev: 4,
       ...config,
     };
+    this.petName = config.petName;
+  }
+
+  /**
+   * Sus rasgos, derivados en el momento de su historia real (eventos y
+   * episodios, que ya persisten): no hay nada extra que guardar y ningún
+   * modelo que consultar. Misma vida, misma personalidad. Ver ADR 0021.
+   */
+  personality(): PersonalityTrait[] {
+    return derivePersonality({
+      events: this.events.events,
+      episodes: this.memory.episodeList({ includeArchived: true }),
+      hypotheses: this.memory.hypothesisList(),
+    });
+  }
+
+  /** Sincroniza el nombre al restaurar una sesión. No es un bautismo: ni
+   * episodio ni evento — la mascota ya vivió ese momento. */
+  setName(name: string): void {
+    if (name.trim()) this.petName = name.trim();
+  }
+
+  /**
+   * El cuidador le pone nombre (por chat o desde la interfaz). Es un momento
+   * significativo: queda como episodio, se anuncia con un evento para que la
+   * capa de identidad lo persista, y ella lo estrena en voz alta.
+   */
+  receiveNameFromCaretaker(rawName: string): void {
+    const name = rawName.replace(/\s+/g, ' ').trim().slice(0, 24).trim();
+    if (!name) {
+      this.reply('¿Y cómo querés llamarme? No escuché ningún nombre.');
+      return;
+    }
+    const previousName = this.petName;
+    this.petName = name;
+    this.emit('pet.renamed', { name, previousName });
+    this.memory.recordEpisode({
+      kind: 'caretaker',
+      summary: `mi cuidador me puso el nombre ${name}`,
+      tick: this.tick,
+      importance: 0.85,
+    });
+    this.reply(
+      previousName === name
+        ? `Ya me llamo ${name}, ¡y me gusta!`
+        : `¡${name}! Me gusta ese nombre. Desde ahora soy ${name}.`,
+    );
   }
 
   get petId(): EntityId {
@@ -385,6 +439,16 @@ export class AnimaAgent {
       tick: this.tick,
       importance: 0.9,
     });
+    // La personalidad no se hereda — se gana viviendo —, pero saber cómo era
+    // la antecesora sí es parte del testimonio: "mi antecesora era curiosa".
+    if (testimony.traits && testimony.traits.length > 0) {
+      this.memory.recordEpisode({
+        kind: 'legacy-traits',
+        summary: `mi antecesora ${testimony.fromName} era ${testimony.traits.join(', ')}`,
+        tick: this.tick,
+        importance: 0.7,
+      });
+    }
 
     for (const entry of testimony.knowledge) {
       const hypothesis = this.memory.addHypothesis(
@@ -866,6 +930,11 @@ export class AnimaAgent {
     }
     if (parsed === null) return; // El modelo ya respondió (charla, negativa o fallo).
 
+    if (parsed.kind === 'rename-pet') {
+      this.receiveNameFromCaretaker(parsed.name);
+      return;
+    }
+
     if (parsed.kind === 'explanation') {
       await this.learnFromExplanation(text);
       return;
@@ -920,6 +989,16 @@ export class AnimaAgent {
           goalId: goal.id,
           reason: 'nueva información del usuario',
         });
+        // Si había pedido ayuda y esta explicación llegó, el cuidador vino a
+        // ayudarla: eso es un recuerdo del vínculo, no solo un dato.
+        if (this.progress.helpRequestedFor(goal.id)) {
+          this.memory.recordEpisode({
+            kind: 'caretaker-help',
+            summary: 'pedí ayuda y mi cuidador vino a explicarme cómo seguir',
+            tick: this.tick,
+            importance: 0.8,
+          });
+        }
       }
     }
 
@@ -1146,6 +1225,10 @@ export class AnimaAgent {
       return null;
     }
 
+    if (command.action === 'rename-pet') {
+      return { kind: 'rename-pet', name: command.name, raw: text };
+    }
+
     if (command.action === 'learn-skill') {
       return {
         kind: 'learn-skill',
@@ -1194,10 +1277,23 @@ export class AnimaAgent {
   }
 
   private dialogueFacts(perception: Perception): string[] {
-    const facts = this.memory
-      .factList()
-      .slice(-6)
-      .map((fact) => fact.statement);
+    const facts = [`me llamo ${this.petName}`];
+    // Sus rasgos viajan como hechos derivados: el modelo puede ponerles voz
+    // ("soy curiosa, ya me conocés"), pero nunca decidirlos (ADR 0021).
+    const traits = this.personality();
+    if (traits.length > 0) {
+      facts.push(`mi historia dice que soy ${traits.map((t) => t.label).join(', ')}`);
+    }
+    // Los recuerdos con su cuidador también son suyos: sin esto no podría
+    // decir "vos me enseñaste que..." y el vínculo sería indistinguible de
+    // no existir. Presupuesto corto: los 3 más recientes.
+    facts.push(...this.caretakerMemories().map((memory) => `recuerdo que ${memory}`));
+    facts.push(
+      ...this.memory
+        .factList()
+        .slice(-6)
+        .map((fact) => fact.statement),
+    );
     // Lo que le enseñaron y aún no verificó también es suyo: si no puede
     // nombrarlo, para el cuidador es indistinguible de no haberlo aprendido.
     facts.push(
@@ -1246,10 +1342,34 @@ export class AnimaAgent {
     return facts;
   }
 
+  /**
+   * Episodios significativos con el cuidador (enseñanzas, pedidos cumplidos,
+   * ayudas, el bautismo, lo que dejó su antecesora), los más recientes
+   * primero. Es la memoria del vínculo, no telemetría.
+   */
+  private caretakerMemories(limit = 3): string[] {
+    const kinds = new Set([
+      'teaching',
+      'promise-kept',
+      'caretaker',
+      'caretaker-help',
+      'skill-learned',
+      'legacy-traits',
+    ]);
+    return this.memory
+      .episodeList()
+      .filter((episode) => kinds.has(episode.kind))
+      .sort((a, b) => b.lastTick - a.lastTick)
+      .slice(0, limit)
+      .map((episode) =>
+        episode.occurrences > 1 ? `${episode.summary} (×${episode.occurrences})` : episode.summary,
+      );
+  }
+
   private userRequestFromInterpretation(
     command: Exclude<
       CommandInterpretation,
-      { action: 'unsupported' | 'not-command' | 'explanation' | 'learn-skill' }
+      { action: 'unsupported' | 'not-command' | 'explanation' | 'learn-skill' | 'rename-pet' }
     >,
     raw: string,
   ): UserRequest {
@@ -1319,7 +1439,7 @@ export class AnimaAgent {
     text: string,
     perception: Perception,
   ): ReturnType<typeof parseUserMessage> {
-    if (parsed.kind === 'explanation') return parsed;
+    if (parsed.kind === 'explanation' || parsed.kind === 'rename-pet') return parsed;
 
     const normalized = text
       .toLowerCase()

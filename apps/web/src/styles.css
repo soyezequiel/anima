@@ -280,6 +280,46 @@ body {
   gap: 8px;
 }
 
+/* Renombrar desde el encabezado: un lápiz discreto junto al nombre. */
+.rename-button {
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.rename-button:hover {
+  color: var(--accent);
+}
+
+.rename-form {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.rename-form input {
+  font-size: 16px;
+  font-weight: 700;
+  width: 10ch;
+  background: var(--panel-2);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 2px 6px;
+}
+
+.rename-form button {
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: 6px;
+  cursor: pointer;
+  padding: 2px 8px;
+}
+
 .help-button {
   width: 28px;
   height: 28px;
@@ -646,6 +686,13 @@ h3 {
   background: #1e1b4b;
   color: #a5b4fc;
   border-color: #312e81;
+}
+
+/* Rasgos de personalidad: violeta propio, ni éxito ni fallo — carácter. */
+.pill-trait {
+  background: #3b0764;
+  color: #d8b4fe;
+  border-color: #6b21a8;
 }
 
 /* Estado */

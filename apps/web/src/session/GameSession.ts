@@ -241,6 +241,10 @@ export class GameSession {
 
   private applySave(data: SessionSaveData): void {
     this.identity = structuredClone(data.identity);
+    // El agente se construyó antes de conocer el guardado: su nombre es el de
+    // fábrica. Sin esto, tras recargar hablaría como "Ánima" aunque el
+    // cuidador la haya bautizado (el bautismo ya vive en su memoria).
+    this.agent.setName(this.identity.name);
     this.world = applySessionSave(data, {
       agent: this.agent,
       library: this.library,
@@ -536,6 +540,23 @@ export class GameSession {
     if (!this.running) void this.stepOnce();
   }
 
+  /**
+   * Renombrar desde la interfaz. Pasa por el agente (episodio + respuesta en
+   * su voz) y la identidad se actualiza al instante para que el encabezado no
+   * espere al próximo tick; el evento `pet.renamed` que emite el agente deja
+   * el mismo camino que el bautismo por chat.
+   */
+  renamePet(name: string): void {
+    const trimmed = name.replace(/\s+/g, ' ').trim().slice(0, 24).trim();
+    if (!trimmed || this.getView().death) return;
+    this.agent.receiveNameFromCaretaker(trimmed);
+    this.identity.name = trimmed;
+    void this.save();
+    this.rebuildView();
+    this.notify();
+    if (!this.running) void this.stepOnce();
+  }
+
   // ---- suscripción ------------------------------------------------------------
 
   subscribe(listener: () => void): () => void {
@@ -608,6 +629,15 @@ export class GameSession {
     for (; this.agentEventCursor < events.length; this.agentEventCursor++) {
       const event = events[this.agentEventCursor]!;
       this.pushDev('agent', event);
+      // Bautismo por chat: el nombre vive en la identidad (capa de sesión),
+      // así que el evento del agente es quien la actualiza y persiste.
+      if (event.type === 'pet.renamed') {
+        const name = String(event.data.name ?? '').trim();
+        if (name && name !== this.identity.name) {
+          this.identity.name = name;
+          void this.save();
+        }
+      }
       this.trackRealWorldSkillRun(event);
     }
   }
@@ -891,6 +921,11 @@ export class GameSession {
         scenarioName: r.scenarioName,
         seed: r.seed,
         description: r.description,
+      })),
+      personality: this.agent.personality().map(({ id, label, evidence }) => ({
+        id,
+        label,
+        evidence,
       })),
       facts: this.agent.memory.factList().map((f) => f.statement),
       hypotheses: this.agent.memory.hypothesisList().map((h) => ({

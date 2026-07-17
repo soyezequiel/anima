@@ -92,6 +92,20 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
         </dd>
       </dl>
 
+      <h3>Personalidad</h3>
+      {/* Rasgos DERIVADOS de su historia real: nada de azar ni de modelo. */}
+      <ul className="list" data-testid="personality-list">
+        {view.personality.map((trait) => (
+          <li key={trait.id}>
+            <span className="pill pill-trait">{trait.label}</span>{' '}
+            <span className="muted">{trait.evidence}</span>
+          </li>
+        ))}
+        {view.personality.length === 0 && (
+          <li className="muted">todavía se está formando: su historia dirá quién es</li>
+        )}
+      </ul>
+
       <h3>Objetivos</h3>
       <ul className="list" data-testid="goal-list">
         {view.goals.map((g) => (

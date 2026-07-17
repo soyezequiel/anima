@@ -34,6 +34,12 @@ export interface LegacyReport {
   }[];
   knowledge: { statement: string; confidence: number }[];
   openHypotheses: { statement: string; confidence: number }[];
+  /**
+   * Rasgos derivados de su historia real ("curiosa", "perseverante").
+   * Opcional: los legados guardados antes de la personalidad no lo traen,
+   * y se leen igual — misma regla que adoptar reglas nuevas del mundo.
+   */
+  traits?: string[];
   recommendations: string[];
   warnings: string[];
   unfinishedGoals: string[];
@@ -120,6 +126,7 @@ export function buildLegacyReport(input: BuildLegacyInput): LegacyReport {
       statement: h.statement,
       confidence: h.confidence,
     })),
+    traits: input.agent.personality().map((trait) => trait.label),
     recommendations: CAUSE_RECOMMENDATIONS[cause] ?? [
       'observa el mundo antes de actuar: mi final fue inesperado',
     ],
@@ -139,6 +146,8 @@ export function testimonyFromLegacy(legacy: LegacyReport): LegacyTestimony {
     knowledge: structuredClone(legacy.knowledge),
     skills: structuredClone(legacy.skillArtifacts),
     message: legacy.messageToSuccessor,
+    // Legados anteriores a la personalidad no traen rasgos: viajan sin ellos.
+    ...(legacy.traits && legacy.traits.length > 0 ? { traits: [...legacy.traits] } : {}),
   };
 }
 

@@ -32,6 +32,12 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   );
   const [tab, setTab] = useState<Tab>('estado');
   const [showWelcome, setShowWelcome] = useState(() => !welcomeAlreadySeen());
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+
+  const confirmRename = () => {
+    if (nameDraft !== null && nameDraft.trim()) session.renamePet(nameDraft);
+    setNameDraft(null);
+  };
 
   const startPlaying = () => {
     try {
@@ -57,7 +63,45 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     <div className="app">
       <header className="topbar">
         <h1>
-          {view.identity.name}{' '}
+          {nameDraft === null ? (
+            <>
+              <span data-testid="pet-name">{view.identity.name}</span>
+              {!view.death && (
+                <button
+                  className="rename-button"
+                  data-testid="rename-button"
+                  title="Cambiar nombre"
+                  aria-label="Cambiar nombre"
+                  onClick={() => setNameDraft(view.identity.name)}
+                >
+                  ✎
+                </button>
+              )}
+            </>
+          ) : (
+            <form
+              className="rename-form"
+              onSubmit={(e) => {
+                e.preventDefault();
+                confirmRename();
+              }}
+            >
+              <input
+                data-testid="rename-input"
+                value={nameDraft}
+                onChange={(e) => setNameDraft(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setNameDraft(null);
+                }}
+                maxLength={24}
+                autoFocus
+                aria-label="nuevo nombre"
+              />
+              <button type="submit" data-testid="rename-confirm" aria-label="confirmar nombre">
+                ✓
+              </button>
+            </form>
+          )}{' '}
           <span className="gen-badge" data-testid="generation">
             gen {view.identity.generation}
           </span>{' '}

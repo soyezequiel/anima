@@ -137,6 +137,26 @@ export class MockModelProvider extends BaseModelProvider {
             text: '¡Gracias! Voy a seguir aprendiendo.',
           });
         }
+        if (/\b(como te llamas|como te llamo|cual es tu nombre|tu nombre)\b/.test(topic)) {
+          const nameFact = request.facts.find((fact) => fact.startsWith('me llamo'));
+          return Promise.resolve({
+            kind: 'dialogue',
+            text: nameFact
+              ? `${nameFact.charAt(0).toUpperCase()}${nameFact.slice(1)}.`
+              : 'Todavía no tengo un nombre claro. ¡Ponéme uno!',
+          });
+        }
+        if (/\b(te acordas|te acuerdas|recordas|recuerdas|que recordas|que recuerdas)\b/.test(topic)) {
+          // Referencia determinista a un recuerdo real: el mock no inventa
+          // memoria, repite la que viaja en los hechos del prompt.
+          const memoryFact = request.facts.find((fact) => fact.startsWith('recuerdo que'));
+          return Promise.resolve({
+            kind: 'dialogue',
+            text: memoryFact
+              ? `Sí: ${memoryFact}.`
+              : 'Todavía no tenemos muchos recuerdos juntos, pero los vamos a ir haciendo.',
+          });
+        }
         if (/\b(como estas|como te sentis|como te sientes)\b/.test(topic)) {
           return Promise.resolve({
             kind: 'dialogue',

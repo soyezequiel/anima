@@ -309,8 +309,49 @@ export function isContinuationMessage(text: string): boolean {
   );
 }
 
+/**
+ * Bautismos: "te voy a llamar Luna", "tu nombre es Sol". Se buscan sobre el
+ * texto original (no el normalizado) para conservar mayúsculas y acentos del
+ * nombre elegido. Una pregunta ("¿cómo te llamas?") no captura nada después
+ * del verbo, así que no es un bautismo.
+ */
+const RENAME_PATTERNS: RegExp[] = [
+  /\bte\s+(?:voy\s+a\s+llamar|llamar[eé]|bautizo(?:\s+como)?|nombro|pongo(?:\s+de\s+nombre)?)\s+(.+)$/iu,
+  /\b(?:ahora\s+)?te\s+llam[aá]s\s+(.+)$/iu,
+  /\btu\s+nombre\s+(?:es|ser[aá])\s+(.+)$/iu,
+];
+
+/** Limpia lo capturado: sin comillas ni puntuación final, corto y con inicial mayúscula. */
+function cleanPetName(raw: string): string {
+  const name = raw
+    .replace(/["'«»“”]/g, '')
+    .split(/[.,;:!?¡¿\n]/)[0]!
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, 24)
+    .trim();
+  if (!name) return '';
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}
+
+/** "te voy a llamar Luna" → "Luna"; null si el mensaje no es un bautismo. */
+export function parseRename(text: string): string | null {
+  for (const pattern of RENAME_PATTERNS) {
+    const match = pattern.exec(text);
+    if (match?.[1] !== undefined) {
+      const name = cleanPetName(match[1]);
+      if (name) return name;
+    }
+  }
+  return null;
+}
+
 /** Parser local de peticiones frecuentes. El resto se deriva al proveedor de diálogo. */
-export function parseUserMessage(text: string): UserRequest | { kind: 'explanation'; raw: string } {
+export function parseUserMessage(
+  text: string,
+): UserRequest | { kind: 'explanation'; raw: string } | { kind: 'rename-pet'; name: string; raw: string } {
+  const renameTo = parseRename(text);
+  if (renameTo !== null) return { kind: 'rename-pet', name: renameTo, raw: text };
   const lower = normalizeMessage(text);
   const aliases: [word: string, kind: string][] = [
     ['comida', 'food'],

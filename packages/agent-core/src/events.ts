@@ -37,6 +37,8 @@ export type AgentEventType =
   | 'user.request.refused'
   /** Repensó una negativa de valores con su situación concreta (ADR 0019). */
   | 'judgement.made'
+  /** El cuidador le puso un nombre nuevo; la capa de identidad lo persiste. */
+  | 'pet.renamed'
   /** Se apartó de algo que la estaba dañando. Reflejo del cuerpo, no decisión. */
   | 'pain.reflex';
 

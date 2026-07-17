@@ -152,6 +152,8 @@ export type CommandInterpretation =
   | { action: 'craft-item'; recipeId: string }
   /** Conducta que no tiene pero que sus primitivas podrían componer. */
   | { action: 'learn-skill'; summary: string }
+  /** El cuidador le pone un nombre nuevo ("te voy a llamar Luna"). */
+  | { action: 'rename-pet'; name: string }
   /** El cuidador enseña un hecho del mundo (afirmación, no orden ni pregunta). */
   | { action: 'explanation' }
   /** Orden física fuera del alcance de sus primitivas. */
