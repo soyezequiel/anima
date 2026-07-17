@@ -228,10 +228,19 @@ export class InventionEngine {
     if (materials.length === 0) return null;
     if (!this.spendAttempt(options.goalId)) return null;
 
+    // La experiencia pasada viaja con la propuesta (ADR 0033): lo que ya hizo
+    // o ya le falló, relacionado con el problema, para que la idea nueva no
+    // ignore la historia. Recuperación acotada: nunca "toda la memoria".
+    const past = this.deps.memory.retrieve(problem, 3);
+    const priorExperience = past.episodes
+      .filter((e) => e.kind === 'deed' || e.kind === 'failure')
+      .map((e) => (e.occurrences > 1 ? `antes: ${e.summary} (×${e.occurrences})` : `antes: ${e.summary}`));
+
     const response = await this.consult({
       kind: 'recipe.propose',
       problem,
       materials,
+      ...(priorExperience.length > 0 ? { priorExperience } : {}),
       ...(options.wantedId !== undefined ? { wantedId: options.wantedId } : {}),
       existingRecipes: perception.recipes.map(
         (recipe) =>

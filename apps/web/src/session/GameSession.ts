@@ -1317,6 +1317,12 @@ export class GameSession {
         confidence: Math.round(h.confidence * 100) / 100,
         resolved: h.resolved,
       })),
+      episodes: this.agent.memory.episodeList().map((e) => ({
+        kind: e.kind,
+        summary: e.summary,
+        occurrences: e.occurrences,
+        lastTick: e.lastTick,
+      })),
       storyCompleted: this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed',
     };
   }

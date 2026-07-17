@@ -33,6 +33,10 @@ describe('reporte para Claude Code', () => {
     expect(markdown).toContain('`campfire`');
     expect(markdown).toContain('`chair`');
 
+    // La memoria episódica viaja al reporte (ADR 0033): lo que hizo y le
+    // pasó, con conteo — no solo reglas e hipótesis.
+    expect(markdown).toContain('Episodios (lo que hizo y le pasó):');
+
     // Los datos crudos son JSON válido y traen el estado esencial.
     const rawBlock = /```json\n([\s\S]+)\n```/.exec(markdown);
     expect(rawBlock).not.toBeNull();

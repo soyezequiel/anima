@@ -3,7 +3,13 @@ import { createRoot } from 'react-dom/client';
 import type { CodexThought } from '@anima/model-providers';
 import { CodexModelProvider } from '@anima/model-providers';
 import { App } from './App.js';
-import { codexHttpTransport, fetchAiStatus, readAiChoice, storeAiChoice } from './auth/ai.js';
+import {
+  claudeHttpTransport,
+  codexHttpTransport,
+  fetchAiStatus,
+  readAiChoice,
+  storeAiChoice,
+} from './auth/ai.js';
 import { forgetAccount, initCloud } from './auth/cloud.js';
 import { GameSession } from './session/GameSession.js';
 import './styles.css';
@@ -22,18 +28,24 @@ const cloud = await initCloud(() => {
   window.location.reload();
 });
 
-// Proveedor de IA: mock determinista por defecto; Codex si el usuario lo
-// eligió y su sesión sigue viva (si no, se degrada a mock sin romper nada).
+// Proveedor de IA: mock determinista por defecto; Codex o Claude si el
+// usuario lo eligió y su sesión sigue viva (si no, se degrada a mock sin
+// romper nada).
 const busyRef: { notify: (busy: boolean) => void } = { notify: () => undefined };
 const thoughtRef: { notify: (thought: CodexThought) => void } = { notify: () => undefined };
 let provider: CodexModelProvider | undefined;
-if (readAiChoice() === 'codex') {
-  const aiStatus = await fetchAiStatus();
+const aiChoice = readAiChoice();
+if (aiChoice === 'codex' || aiChoice === 'claude') {
+  const aiStatus = await fetchAiStatus(aiChoice);
   if (aiStatus?.loggedIn) {
-    provider = new CodexModelProvider(codexHttpTransport(), {
-      onBusy: (busy) => busyRef.notify(busy),
-      onThought: (thought) => thoughtRef.notify(thought),
-    });
+    provider = new CodexModelProvider(
+      aiChoice === 'claude' ? claudeHttpTransport() : codexHttpTransport(),
+      {
+        onBusy: (busy) => busyRef.notify(busy),
+        onThought: (thought) => thoughtRef.notify(thought),
+      },
+      aiChoice,
+    );
   } else {
     storeAiChoice('mock');
   }

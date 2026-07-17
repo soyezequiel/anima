@@ -139,6 +139,12 @@ export type ModelRequest =
       blockBudget?: number;
       /** Rechazos previos del mundo: por qué su idea anterior no era posible. */
       rejections?: string[];
+      /**
+       * Experiencia previa relacionada (ADR 0033): lo que ya hizo o ya le
+       * falló, recuperado de su memoria episódica. Contexto, no instrucción:
+       * la idea nueva no debería ignorar la historia.
+       */
+      priorExperience?: string[];
     }
   | {
       /**

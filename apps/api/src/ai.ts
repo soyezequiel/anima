@@ -64,6 +64,12 @@ export type AiThoughtEvent = { type: 'reasoning'; text: string } | { type: 'answ
 export interface AiBridge {
   status(): Promise<AiStatus>;
   startLogin(): Promise<{ authUrl: string } | { error: string }>;
+  /**
+   * Completa un login cuyo flujo pide pegar un código de autorización (el
+   * `claude auth login` sin TTY no tiene callback local). Los puentes cuyo
+   * flujo termina solo (Codex, con su callback en localhost) no lo definen.
+   */
+  submitLoginCode?(code: string): Promise<{ ok: true } | { error: string }>;
   logout(): Promise<void>;
   limits(): Promise<AiLimits>;
   /**
@@ -76,7 +82,8 @@ export interface AiBridge {
       prompt: string;
       schema?: unknown;
       model?: string;
-      reasoningEffort?: CodexReasoningEffort;
+      /** Cada puente valida contra su propia lista de niveles. */
+      reasoningEffort?: string;
     },
     onEvent?: (event: AiThoughtEvent) => void,
   ): Promise<string>;

@@ -767,13 +767,9 @@ select {
 .tabs {
   display: flex;
   border-bottom: 1px solid var(--border);
-  /* Con contadores largos la fila crece: que se desplace antes que desbordar. */
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.tabs::-webkit-scrollbar {
-  display: none;
+  /* Con contadores largos la fila no entra en el ancho del panel: que envuelva
+     a una segunda línea antes que esconder pestañas fuera de la vista. */
+  flex-wrap: wrap;
 }
 
 .tab {
@@ -1099,6 +1095,7 @@ h3 {
 .chat-row .chat-tick {
   font-size: 10px;
   padding: 0 4px;
+  margin-left: 0;
   opacity: 0.6;
 }
 
@@ -1664,10 +1661,15 @@ button:disabled {
   display: flex;
   gap: 8px;
   align-items: center;
+  /* Con el botón de reporte, la fila no entra en el ancho del panel: que envuelva
+     antes que empujar el 📥 fuera de la vista. */
+  flex-wrap: wrap;
 }
 
 .dev-controls input {
   flex: 1;
+  /* Sin esto el input no baja de su ancho intrínseco y desborda a los botones. */
+  min-width: 0;
 }
 
 .dev-log {

@@ -212,13 +212,13 @@ export function MindPanel({ view }: { view: GameView }) {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [growth]);
 
-  if (view.aiProvider !== 'codex') {
+  if (view.aiProvider !== 'codex' && view.aiProvider !== 'claude') {
     return (
       <div className="mind-panel" data-testid="mind-panel">
         <p className="mind-empty muted" data-testid="mind-empty">
           La mente en vivo se ve cuando Ánima piensa con un modelo real. El proveedor de pruebas
-          responde al instante: no hay pensamiento que mostrar. Podés conectar Codex desde el menú
-          de ajustes.
+          responde al instante: no hay pensamiento que mostrar. Podés conectar Codex o Claude desde
+          el menú de ajustes.
         </p>
       </div>
     );

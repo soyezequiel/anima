@@ -273,5 +273,7 @@ export interface GameView {
   personality: PersonalityTraitView[];
   facts: string[];
   hypotheses: { statement: string; confidence: number; resolved: string }[];
+  /** Memoria episódica activa: lo que hizo y le pasó, con conteo (ADR 0033). */
+  episodes: { kind: string; summary: string; occurrences: number; lastTick: number }[];
   storyCompleted: boolean;
 }

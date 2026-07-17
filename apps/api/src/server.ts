@@ -2,6 +2,7 @@ import Fastify from 'fastify';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AiBridge, AiBridgeFactory } from './ai.js';
 import { createCodexBridgeFactory, isCodexModel, isCodexReasoningEffort } from './ai.js';
+import { createClaudeBridge, isClaudeReasoningEffort } from './claude.js';
 import { createDb } from './db.js';
 import {
   createChallenge,
@@ -21,6 +22,8 @@ export interface ServerOptions {
   ai?: AiBridgeFactory;
   /** Raíz donde viven los CODEX_HOME por usuario (default: data/codex). */
   codexDir?: string;
+  /** Puente de Claude de la máquina (inyectable en pruebas). */
+  claudeAi?: AiBridge;
 }
 
 /**
@@ -54,25 +57,42 @@ export function buildServer(options: ServerOptions): FastifyInstance {
 
   app.get('/health', () => ({ ok: true }));
 
-  // ---- puente de IA (Codex) -------------------------------------------------
-  // Las credenciales de Codex las gestiona el CLI en la máquina del usuario;
-  // aquí solo viajan estado, la URL de autorización y texto de prompts.
-  // Cada identidad autenticada usa su propio puente (su propia cuenta de
-  // Codex); sin token se usa el puente invitado de la máquina. Un token
-  // presente pero inválido es 401: jamás degrada en silencio a invitado.
+  // ---- puente de IA (Codex / Claude) ---------------------------------------
+  // Las credenciales las gestiona cada CLI en la máquina del usuario; aquí
+  // solo viajan estado, la URL de autorización y texto de prompts.
+  // Con Codex cada identidad autenticada usa su propio puente (su propia
+  // cuenta); sin token se usa el puente invitado de la máquina. El puente de
+  // Claude es único: es la suscripción personal del dueño de la máquina.
+  // Un token presente pero inválido es 401: jamás degrada en silencio.
   const aiForUser =
     options.ai ?? createCodexBridgeFactory({ root: options.codexDir ?? 'data/codex' });
+  const claudeAi = options.claudeAi ?? createClaudeBridge();
+
+  // El proveedor viaja en la query (?provider=claude) en todas las rutas /ai;
+  // ausente significa Codex, que fue el primero y sigue siendo el default.
+  const aiProviderOf = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): 'codex' | 'claude' | null => {
+    const raw = (request.query as { provider?: unknown } | null)?.provider;
+    if (raw === undefined || raw === 'codex') return 'codex';
+    if (raw === 'claude') return 'claude';
+    void reply.code(400).send({ error: 'proveedor de IA desconocido' });
+    return null;
+  };
 
   const aiBridge = (request: FastifyRequest, reply: FastifyReply): AiBridge | null => {
+    const provider = aiProviderOf(request, reply);
+    if (!provider) return null;
     const header = request.headers.authorization;
-    if (!header) return aiForUser(null);
+    if (!header) return provider === 'claude' ? claudeAi : aiForUser(null);
     const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
     const pubkey = token ? pubkeyForToken(deps, token) : null;
     if (!pubkey) {
       void reply.code(401).send({ error: 'token inválido o expirado' });
       return null;
     }
-    return aiForUser(pubkey);
+    return provider === 'claude' ? claudeAi : aiForUser(pubkey);
   };
 
   app.get('/ai/status', (request, reply) => {
@@ -85,6 +105,23 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
     const result = await ai.startLogin();
+    if ('error' in result) return reply.code(502).send(result);
+    return result;
+  });
+
+  // Completa un login que pide pegar el código de autorización (Claude).
+  app.post('/ai/login/code', async (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    if (!ai.submitLoginCode) {
+      return reply.code(400).send({ error: 'este proveedor completa el login solo' });
+    }
+    const body = request.body as { code?: unknown } | null;
+    const code = typeof body?.code === 'string' ? body.code.trim() : '';
+    if (!code || code.length > 4096) {
+      return reply.code(400).send({ error: 'se espera { code: string }' });
+    }
+    const result = await ai.submitLoginCode(code);
     if ('error' in result) return reply.code(502).send(result);
     return result;
   });
@@ -114,6 +151,8 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     request: FastifyRequest,
     reply: FastifyReply,
   ): Parameters<AiBridge['complete']>[0] | null => {
+    const provider = aiProviderOf(request, reply);
+    if (!provider) return null;
     const body = request.body as {
       prompt?: unknown;
       schema?: unknown;
@@ -124,12 +163,16 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       void reply.code(400).send({ error: 'se espera { prompt: string }' });
       return null;
     }
+    // El whitelist de nombres de modelo es el mismo; los niveles de
+    // razonamiento son distintos por proveedor (Codex: minimal..xhigh;
+    // Claude: low..max) y se validan con la lista del proveedor pedido.
     if (body.model !== undefined && !isCodexModel(body.model)) {
-      void reply.code(400).send({ error: 'modelo Codex inválido' });
+      void reply.code(400).send({ error: 'modelo de IA inválido' });
       return null;
     }
-    if (body.reasoningEffort !== undefined && !isCodexReasoningEffort(body.reasoningEffort)) {
-      void reply.code(400).send({ error: 'nivel de razonamiento Codex inválido' });
+    const validEffort = provider === 'claude' ? isClaudeReasoningEffort : isCodexReasoningEffort;
+    if (body.reasoningEffort !== undefined && !validEffort(body.reasoningEffort)) {
+      void reply.code(400).send({ error: 'nivel de razonamiento inválido' });
       return null;
     }
     const completeInput: Parameters<AiBridge['complete']>[0] = { prompt: body.prompt };

@@ -1,5 +1,5 @@
 import { countedKindLabel, kindLabel, kindWithArticle } from '@anima/shared';
-import type { Interaction, Perception } from '@anima/sim-core';
+import type { Direction, Interaction, Perception } from '@anima/sim-core';
 import type { EntityQuery, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
 import type { GoalUserRequest } from './goals.js';
 import { SKILL_REACH_BLOCKED_FOOD } from './names.js';
@@ -21,6 +21,13 @@ export interface UserRequestProgramDeps {
     targetKind: string,
     perception: Perception,
   ): Interaction | undefined;
+  /**
+   * Pasos hacia donde recuerda un material que ahora no ve (memoria de
+   * lugares, ADR 0025), o undefined si no recuerda nada de ese tipo. Al juntar
+   * para construir, un tronco tras un muro es invisible (la vista exige línea
+   * despejada) pero recordado: ir a donde lo vio evita el vagar a ciegas.
+   */
+  rememberedWalk(kind: string): Direction[] | undefined;
 }
 
 /**
@@ -57,6 +64,7 @@ export function programForUserRequest(
         return buildStructureProgram(blueprint, {
           held: heldCounts(perception),
           recipes: perception.recipes,
+          rememberedWalk: deps.rememberedWalk,
         });
       }
       // Juntar lo que falte es parte de construir: el mismo programa que la
@@ -74,6 +82,7 @@ export function programForUserRequest(
             // son un paso más de la obra y no un "no hay": pedirle una casa
             // es pedirle también las paredes.
             recipes: perception.recipes,
+            rememberedWalk: deps.rememberedWalk,
           })
         : [{ op: 'abort', reason: 'no-sé-qué-construir' }];
     }

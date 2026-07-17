@@ -24,6 +24,101 @@ describe('memoria episódica', () => {
   });
 });
 
+describe('compactación (ADR 0033)', () => {
+  it('bajo el umbral no toca nada', () => {
+    const memory = new MemoryStore();
+    for (let i = 0; i < 10; i++) {
+      memory.recordEpisode({ kind: 'deed', summary: `hice la cosa ${i}`, tick: i, importance: 0.5 });
+    }
+    const report = memory.compact(5000);
+    expect(report.episodesCompacted).toBe(0);
+    expect(memory.episodeList()).toHaveLength(10);
+  });
+
+  it('sobre el umbral fusiona los viejos en un resumen que conserva el conteo', () => {
+    const memory = new MemoryStore();
+    // 70 episodios viejos de baja importancia, algunos repetidos (occurrences).
+    for (let i = 0; i < 70; i++) {
+      memory.recordEpisode({ kind: 'deed', summary: `hice la cosa ${i}`, tick: i, importance: 0.5 });
+    }
+    memory.recordEpisode({ kind: 'deed', summary: 'hice la cosa 0', tick: 100, importance: 0.5 });
+    const totalBefore = memory
+      .episodeList()
+      .reduce((sum, e) => sum + e.occurrences, 0);
+
+    const report = memory.compact(10_000);
+    expect(report.episodesCompacted).toBeGreaterThan(0);
+    expect(report.summariesCreated).toBe(1);
+
+    const active = memory.episodeList();
+    expect(active.length).toBeLessThanOrEqual(61); // vuelve bajo el umbral (+resumen)
+    const summary = active.find((e) => e.data.compacted === true);
+    expect(summary).toBeDefined();
+    // El conteo agregado no se pierde: activos = resumen + los no fusionados.
+    const totalAfter = active.reduce((sum, e) => sum + e.occurrences, 0);
+    expect(totalAfter).toBe(totalBefore);
+    expect(Array.isArray(summary?.data.samples)).toBe(true);
+    // Los originales quedan archivados, no borrados.
+    expect(memory.episodeList({ includeArchived: true }).length).toBeGreaterThan(active.length);
+  });
+
+  it('no fusiona el vínculo, lo importante ni lo reciente', () => {
+    const memory = new MemoryStore();
+    for (let i = 0; i < 70; i++) {
+      memory.recordEpisode({ kind: 'deed', summary: `hice la cosa ${i}`, tick: i, importance: 0.5 });
+    }
+    memory.recordEpisode({ kind: 'teaching', summary: 'me enseñó a pescar', tick: 1, importance: 0.5 });
+    memory.recordEpisode({ kind: 'teaching', summary: 'me enseñó a nadar', tick: 2, importance: 0.5 });
+    memory.recordEpisode({ kind: 'deed', summary: 'gran hazaña', tick: 3, importance: 0.9 });
+    memory.recordEpisode({ kind: 'deed', summary: 'recién hecho', tick: 9900, importance: 0.5 });
+
+    memory.compact(10_000);
+    const summaries = memory.episodeList().map((e) => e.summary);
+    expect(summaries).toContain('me enseñó a pescar');
+    expect(summaries).toContain('me enseñó a nadar');
+    expect(summaries).toContain('gran hazaña');
+    expect(summaries).toContain('recién hecho');
+  });
+
+  it('es determinista: la misma historia produce la misma memoria compactada', () => {
+    const build = (): MemoryStore => {
+      const memory = new MemoryStore();
+      for (let i = 0; i < 70; i++) {
+        memory.recordEpisode({
+          kind: i % 2 === 0 ? 'deed' : 'failure',
+          summary: `episodio ${i}`,
+          tick: i,
+          importance: 0.4,
+        });
+      }
+      memory.compact(10_000);
+      return memory;
+    };
+    expect(build().serialize()).toEqual(build().serialize());
+  });
+
+  it('sobrevive al viaje serialize/loadFrom', () => {
+    const memory = new MemoryStore();
+    for (let i = 0; i < 70; i++) {
+      memory.recordEpisode({ kind: 'deed', summary: `hice la cosa ${i}`, tick: i, importance: 0.5 });
+    }
+    memory.compact(10_000);
+    const restored = new MemoryStore();
+    restored.loadFrom(memory.serialize());
+    expect(restored.serialize()).toEqual(memory.serialize());
+    expect(restored.episodeList().some((e) => e.data.compacted === true)).toBe(true);
+  });
+
+  it('consolidate también compacta cuando desborda', () => {
+    const memory = new MemoryStore();
+    for (let i = 0; i < 70; i++) {
+      memory.recordEpisode({ kind: 'deed', summary: `hice la cosa ${i}`, tick: i, importance: 0.5 });
+    }
+    const report = memory.consolidate(10_000);
+    expect(report.episodesCompacted).toBeGreaterThan(0);
+  });
+});
+
 describe('hipótesis y conocimiento', () => {
   it('actualiza la confianza con evidencia y confirma al consolidar', () => {
     const memory = new MemoryStore();

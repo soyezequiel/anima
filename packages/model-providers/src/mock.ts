@@ -313,6 +313,27 @@ export class MockModelProvider extends BaseModelProvider {
               : 'Todavía no tenemos muchos recuerdos juntos, pero los vamos a ir haciendo.',
           });
         }
+        if (/\b(que hiciste|hiciste|rompiste|construiste|comiste|talaste)\b/.test(topic)) {
+          // Referencia determinista a una acción real (ADR 0033): el mock no
+          // inventa memoria, repite el recuerdo que viaja en los hechos. Si la
+          // pregunta trae el verbo ("¿rompiste...?"), busca ese gesto; si no,
+          // el recuerdo de acción más reciente.
+          const verb = [
+            ['rompiste', 'hice: rompí'],
+            ['construiste', 'hice: construí'],
+            ['comiste', 'hice: comí'],
+            ['talaste', 'hice: talé'],
+          ].find(([asked]) => topic.includes(asked!));
+          const deedFact =
+            (verb ? request.facts.find((fact) => fact.startsWith(verb[1]!)) : undefined) ??
+            request.facts.find((fact) => fact.startsWith('hice:'));
+          return Promise.resolve({
+            kind: 'dialogue',
+            text: deedFact
+              ? `Sí, me acuerdo: ${deedFact.slice('hice: '.length)}.`
+              : 'No me acuerdo de haber hecho eso.',
+          });
+        }
         if (/\b(como estas|como te sentis|como te sientes)\b/.test(topic)) {
           return Promise.resolve({
             kind: 'dialogue',

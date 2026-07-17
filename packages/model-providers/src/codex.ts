@@ -450,6 +450,12 @@ ${request.materials.map((m) => `- ${m}`).join('\n') || '- (ninguno)'}
 Recetas que ya existen (no las repitas):
 ${request.existingRecipes.map((r) => `- ${r}`).join('\n') || '- (ninguna)'}
 ${
+  request.priorExperience && request.priorExperience.length > 0
+    ? `\nExperiencia previa relacionada (tu propia memoria, tenla en cuenta):
+${request.priorExperience.map((p) => `- ${p}`).join('\n')}`
+    : ''
+}
+${
   request.rejections && request.rejections.length > 0
     ? `\nEl mundo ya rechazó estas ideas tuyas. No insistas: corrige.
 ${request.rejections.map((r) => `- ${r}`).join('\n')}`
@@ -853,15 +859,22 @@ function parseJson(raw: string): Record<string, unknown> {
 }
 
 export class CodexModelProvider extends BaseModelProvider {
-  readonly name = 'codex';
+  /**
+   * El proveedor es agnóstico del modelo que hay del otro lado del
+   * transporte: la misma clase sirve a Codex y a Claude. El nombre dice cuál
+   * es, y es lo que la UI muestra como proveedor activo.
+   */
+  readonly name: string;
   /** Entiende lenguaje natural: el agente le cede la interpretación del chat. */
   override readonly interpretsLanguage = true;
 
   constructor(
     private transport: CodexTransport,
     private hooks: CodexProviderHooks = {},
+    name: 'codex' | 'claude' = 'codex',
   ) {
     super();
+    this.name = name;
   }
 
   /** Distingue cada consulta en el hook onThought, incluso del mismo kind. */

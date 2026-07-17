@@ -82,28 +82,46 @@ export const SHELTER_APPROACH_PROGRAM: SkillProgram = [
  * 0008); con el camino bloqueado aborta con `camino-bloqueado` (falta la
  * CAPACIDAD → el ciclo de skills tiene algo que aportar).
  */
+/**
+ * Cómo llegar a donde recordaba un material que ahora no ve. La percepción
+ * exige línea de visión (ADR 0025): un tronco tras un muro es invisible aunque
+ * esté en el mapa, y `explore` a ciegas no siempre da con el hueco por donde
+ * cruzar. Si la memoria de lugares tiene ese material, esto devuelve los pasos
+ * hacia allá; volver a verlo es lo que hace `explore` de abajo (0 pasos) y
+ * `moveToward` después. Devuelve undefined si no recuerda nada de ese tipo.
+ */
+export type RememberedWalk = (kind: string) => Direction[] | undefined;
+
+interface GatherOptions {
+  held?: Map<string, number>;
+  waitAfterTicks?: number;
+  /**
+   * Recorrer el mapa hasta VER cada ingrediente que falte antes de dar el
+   * "no hay" por cierto. Lo activan los pedidos del cuidador («construí una
+   * cama»): ahí buscar es lo que se espera. Las necesidades del cuerpo (el
+   * frío) NO lo usan: su fallo rápido por `no-candidates` es la señal de
+   * falta de RECURSO que dispara pedir ayuda (ADR 0008), y vagar 50 ticks
+   * congelándose sería peor que preguntar.
+   */
+  searchFirst?: boolean;
+  /**
+   * Las recetas que el mundo admite. Con ellas, un ingrediente que la
+   * mascota SABE hacer deja de ser un "no hay" y pasa a ser un paso más
+   * (ADR 0031). Sin ellas el programa es el de antes: juntar del suelo y
+   * construir.
+   */
+  recipes?: readonly Recipe[];
+  /**
+   * Dónde recuerda cada material (memoria de lugares, ADR 0025). Cuando junta
+   * para un pedido, un material que no ve pero recuerda deja de ser un vagar a
+   * ciegas: va a donde lo vio. Sin esto el programa es el de antes.
+   */
+  rememberedWalk?: RememberedWalk;
+}
+
 export function gatherAndCraftProgram(
   recipe: Recipe,
-  options: {
-    held?: Map<string, number>;
-    waitAfterTicks?: number;
-    /**
-     * Recorrer el mapa hasta VER cada ingrediente que falte antes de dar el
-     * "no hay" por cierto. Lo activan los pedidos del cuidador («construí una
-     * cama»): ahí buscar es lo que se espera. Las necesidades del cuerpo (el
-     * frío) NO lo usan: su fallo rápido por `no-candidates` es la señal de
-     * falta de RECURSO que dispara pedir ayuda (ADR 0008), y vagar 50 ticks
-     * congelándose sería peor que preguntar.
-     */
-    searchFirst?: boolean;
-    /**
-     * Las recetas que el mundo admite. Con ellas, un ingrediente que la
-     * mascota SABE hacer deja de ser un "no hay" y pasa a ser un paso más
-     * (ADR 0031). Sin ellas el programa es el de antes: juntar del suelo y
-     * construir.
-     */
-    recipes?: readonly Recipe[];
-  } = {},
+  options: GatherOptions = {},
   depth = 0,
 ): SkillProgram {
   const done: SkillCondition = { type: 'canCraft', recipeId: recipe.id };
@@ -154,30 +172,48 @@ export function gatherAndCraftProgram(
 }
 
 /** Ir a buscar un objeto que está a la vista y traerlo. */
-function fetchOps(kind: string, searchFirst: boolean): SkillOp[] {
+function fetchOps(
+  kind: string,
+  options: { searchFirst?: boolean; rememberedWalk?: RememberedWalk } = {},
+): SkillOp[] {
+  const searchFirst = options.searchFirst ?? false;
+  const seek: SkillOp[] = [];
+  // Si no lo ve pero recuerda dónde estaba, ir hacia allá antes de vagar. La
+  // vista exige línea despejada (ADR 0025): un material tras un muro no se
+  // percibe aunque esté en el mapa, y `explore` a ciegas puede no dar nunca
+  // con el hueco para cruzar. Best-effort y sin abortar: si el camino se
+  // corta, el `explore` de abajo toma la posta en vez de matar la obra. En la
+  // segunda vuelta ya lo ve, así que el `not sees` se salta el rodeo solo.
+  const dirs = searchFirst ? options.rememberedWalk?.(kind) : undefined;
+  if (dirs && dirs.length > 0) {
+    seek.push({
+      op: 'branch',
+      if: { type: 'not', cond: { type: 'sees', query: { kind, held: false } } },
+      then: dirs.map((dir) => ({ op: 'moveStep', dir })),
+    });
+  }
+  // Con searchFirst, si el ingrediente sigue sin estar a la vista sale a
+  // recorrer hasta verlo: sin esto, un tronco fuera de la vista era "no hay
+  // troncos" y el pedido moría sin haber buscado. Si ya lo ve, la exploración
+  // no cuesta ni un tick.
+  if (searchFirst) {
+    seek.push({
+      op: 'explore',
+      maxSteps: 50,
+      until: { type: 'sees', query: { kind, held: false } },
+    });
+  }
   return [
-    // Con searchFirst, si el ingrediente no está a la vista sale a recorrer
-    // hasta verlo: sin esto, un tronco fuera del rango de percepción era "no
-    // hay troncos" y el pedido moría sin haber buscado. Si ya lo ve, la
-    // exploración no cuesta ni un tick.
-    ...(searchFirst
-      ? [
-          {
-            op: 'explore' as const,
-            maxSteps: 50,
-            until: { type: 'sees' as const, query: { kind, held: false } },
-          },
-        ]
-      : []),
-    { op: 'findEntities' as const, query: { kind, held: false }, store: `mat-${kind}` },
+    ...seek,
+    { op: 'findEntities', query: { kind, held: false }, store: `mat-${kind}` },
     {
-      op: 'selectTarget' as const,
+      op: 'selectTarget',
       from: `mat-${kind}`,
-      strategy: 'nearest' as const,
+      strategy: 'nearest',
       store: `next-${kind}`,
     },
-    { op: 'moveToward' as const, target: `next-${kind}`, maxSteps: 40 },
-    { op: 'pickup' as const, target: `next-${kind}` },
+    { op: 'moveToward', target: `next-${kind}`, maxSteps: 40 },
+    { op: 'pickup', target: `next-${kind}` },
   ];
 }
 
@@ -197,10 +233,13 @@ function fetchOps(kind: string, searchFirst: boolean): SkillOp[] {
  */
 function fetchOrMakeOps(
   kind: string,
-  options: { searchFirst?: boolean; recipes?: readonly Recipe[] },
+  options: { searchFirst?: boolean; recipes?: readonly Recipe[]; rememberedWalk?: RememberedWalk },
   depth: number,
 ): SkillOp[] {
-  const fetch = fetchOps(kind, options.searchFirst ?? false);
+  const fetch = fetchOps(kind, {
+    searchFirst: options.searchFirst ?? false,
+    ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
+  });
   const recipes = options.recipes;
   if (!recipes || depth >= MAX_RECIPE_DEPTH) return fetch;
   const sub = recipeProducing(recipes, kind);
@@ -213,7 +252,7 @@ function fetchOrMakeOps(
       // Sin `searchFirst` en la rama de buscar: ya sabe que lo ve, y explorar
       // 50 pasos para llegar a lo que tiene delante sería absurdo.
       if: { type: 'sees', query: { kind, held: false } },
-      then: fetchOps(kind, false),
+      then: fetchOps(kind),
       else: [
         // Lo que lleva encima NO viaja a la sub-receta: `held` cuenta lo que
         // tenía al planificar y adentro de un bucle eso ya es mentira. El
@@ -221,7 +260,15 @@ function fetchOrMakeOps(
         // adivinarlo — si ya tiene las tablas, no junta ninguna. Y la espera
         // de después de construir es del fuego que se acaba de encender, no
         // de cada tabla que se parte por el camino.
-        ...gatherAndCraftProgram(sub, { searchFirst: options.searchFirst ?? false, recipes }, depth + 1),
+        ...gatherAndCraftProgram(
+          sub,
+          {
+            searchFirst: options.searchFirst ?? false,
+            recipes,
+            ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
+          },
+          depth + 1,
+        ),
         // Solo si salió. El intento pudo fallar (ADR 0020) y entonces no hay
         // nada en el suelo que levantar: ir a buscarlo abortaría la obra
         // entera por "no lo encuentro", cuando lo que pasó es que esta vez no
@@ -284,7 +331,7 @@ export function buildFireProgram(
  */
 export function buildStructureProgram(
   blueprint: Blueprint,
-  options: { held?: Map<string, number>; recipes?: readonly Recipe[] } = {},
+  options: { held?: Map<string, number>; recipes?: readonly Recipe[]; rememberedWalk?: RememberedWalk } = {},
 ): SkillProgram {
   const gather: SkillOp[] = [...blueprintCounts(blueprint)].map(([kind, count]) => {
     const held = options.held?.get(kind) ?? 0;
@@ -298,7 +345,11 @@ export function buildStructureProgram(
       until: { type: 'holdingCount' as const, kind, count },
       body: fetchOrMakeOps(
         kind,
-        { ...(options.recipes ? { recipes: options.recipes } : {}), searchFirst: true },
+        {
+          ...(options.recipes ? { recipes: options.recipes } : {}),
+          ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
+          searchFirst: true,
+        },
         0,
       ),
     };

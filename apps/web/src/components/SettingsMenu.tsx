@@ -1,15 +1,26 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AiLimits, AiLimitWindow, AiStatus, CodexSettings } from '../auth/ai.js';
+import type {
+  AiLimits,
+  AiLimitWindow,
+  AiStatus,
+  ClaudeSettings,
+  CodexSettings,
+  RemoteAiProvider,
+} from '../auth/ai.js';
 import {
+  aiLogout,
+  CLAUDE_MODEL_SUGGESTIONS,
   CODEX_MODEL_SUGGESTIONS,
-  codexLogout,
   fetchAiLimits,
   fetchAiStatus,
+  readClaudeSettings,
   readCodexSettings,
-  startCodexLogin,
+  startAiLogin,
   storeAiChoice,
+  storeClaudeSettings,
   storeCodexSettings,
-  waitForCodexLogin,
+  submitAiLoginCode,
+  waitForAiLogin,
 } from '../auth/ai.js';
 import type { CloudAccount } from '../auth/cloud.js';
 import type { GameSession } from '../session/GameSession.js';
@@ -64,18 +75,26 @@ export function SettingsMenu({
   account: CloudAccount | null;
 }) {
   const [status, setStatus] = useState<AiStatus | null>(null);
+  const [claudeStatus, setClaudeStatus] = useState<AiStatus | null>(null);
   const [phase, setPhase] = useState<'idle' | 'connecting' | 'waiting' | 'error'>('idle');
+  // Qué proveedor está a mitad de conexión: decide qué ayudas mostrar
+  // mientras se espera (el flujo de Claude pide pegar un código).
+  const [connecting, setConnecting] = useState<RemoteAiProvider | null>(null);
+  const [loginCode, setLoginCode] = useState('');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
   const [settings, setSettings] = useState<CodexSettings>(() => readCodexSettings());
+  const [claudeSettings, setClaudeSettings] = useState<ClaudeSettings>(() => readClaudeSettings());
   const [limits, setLimits] = useState<AiLimits | 'loading' | 'error' | null>(null);
   const [seedInput, setSeedInput] = useState(String(view.seed));
   const menuRef = useRef<HTMLDetailsElement>(null);
   useDismissablePanel(menuRef);
 
   const usingCodex = view.aiProvider === 'codex';
+  const usingClaude = view.aiProvider === 'claude';
 
   // Los límites se consultan al abrir el panel: son datos frescos de la
-  // cuenta y consultarlos no consume cuota del modelo.
+  // cuenta y consultarlos no consume cuota del modelo. Solo Codex los
+  // informa; el CLI de Claude no los expone.
   const loadLimits = (): void => {
     setLimits('loading');
     void fetchAiLimits().then((value) => setLimits(value ?? 'error'));
@@ -83,6 +102,7 @@ export function SettingsMenu({
 
   useEffect(() => {
     void fetchAiStatus().then(setStatus);
+    void fetchAiStatus('claude').then(setClaudeStatus);
   }, []);
 
   const updateSettings = (next: CodexSettings): void => {
@@ -90,15 +110,28 @@ export function SettingsMenu({
     storeCodexSettings(next);
   };
 
+  const updateClaudeSettings = (next: ClaudeSettings): void => {
+    setClaudeSettings(next);
+    storeClaudeSettings(next);
+  };
+
   const fail = (detail: string): void => {
     setErrorDetail(detail);
     setPhase('error');
   };
 
-  const connect = async (): Promise<void> => {
+  const cliHint: Record<RemoteAiProvider, string> = {
+    codex: 'no se encontró el CLI de Codex en esta máquina (npm i -g @openai/codex)',
+    claude:
+      'no se encontró el CLI de Claude en esta máquina (npm i -g @anthropic-ai/claude-code)',
+  };
+
+  const connect = async (provider: RemoteAiProvider): Promise<void> => {
     setPhase('connecting');
+    setConnecting(provider);
+    setLoginCode('');
     setErrorDetail(null);
-    const current = await fetchAiStatus();
+    const current = await fetchAiStatus(provider);
     // Distinguir el porqué evita el diagnóstico a ciegas: la causa más
     // común es que la API local no esté levantada.
     if (current === null) {
@@ -108,54 +141,61 @@ export function SettingsMenu({
       return;
     }
     if (!current.installed) {
-      fail('no se encontró el CLI de Codex en esta máquina (npm i -g @openai/codex)');
+      fail(cliHint[provider]);
       return;
     }
     if (!current.loggedIn) {
-      const authUrl = await startCodexLogin();
+      const authUrl = await startAiLogin(provider);
       if (!authUrl) {
-        fail('codex login no entregó la URL de autorización; revisa la consola de la API');
+        fail(
+          provider === 'claude'
+            ? 'claude auth login no entregó la URL de autorización; podés iniciar sesión con «claude /login» en una terminal y volver a intentar'
+            : 'codex login no entregó la URL de autorización; revisa la consola de la API',
+        );
         return;
       }
       window.open(authUrl, '_blank', 'noopener');
       setPhase('waiting');
-      const ok = await waitForCodexLogin();
+      const ok = await waitForAiLogin(provider);
       if (!ok) {
         fail('la autorización no se completó a tiempo; vuelve a intentarlo');
         return;
       }
     }
-    storeAiChoice('codex');
+    storeAiChoice(provider);
     window.location.reload();
   };
 
   /** Apagarlo es inmediato; encenderlo puede pasar por autorizar la cuenta. */
-  const toggleProvider = async (enableCodex: boolean): Promise<void> => {
-    if (!enableCodex) {
+  const toggleProvider = async (provider: RemoteAiProvider, enable: boolean): Promise<void> => {
+    if (!enable) {
       storeAiChoice('mock');
       window.location.reload();
       return;
     }
-    await connect();
+    // Encender uno apaga al otro: hay una sola mente pensando a la vez.
+    await connect(provider);
   };
 
   /**
-   * Cerrar la sesión de Codex deja la cuenta fuera: si era el motor activo,
-   * la mascota vuelve al simulado en vez de quedarse sin con qué pensar.
+   * Cerrar la sesión del proveedor deja la cuenta fuera: si era el motor
+   * activo, la mascota vuelve al simulado en vez de quedarse sin con qué
+   * pensar.
    */
-  const logoutCodex = (): void => {
-    void codexLogout().then(() => {
-      if (usingCodex) {
+  const logoutProvider = (provider: RemoteAiProvider): void => {
+    void aiLogout(provider).then(() => {
+      if ((provider === 'codex' && usingCodex) || (provider === 'claude' && usingClaude)) {
         storeAiChoice('mock');
         window.location.reload();
         return;
       }
-      void fetchAiStatus().then(setStatus);
+      void fetchAiStatus(provider).then(provider === 'claude' ? setClaudeStatus : setStatus);
     });
   };
 
   const switching = phase === 'connecting' || phase === 'waiting';
   const codexMissing = status?.installed === false;
+  const claudeMissing = claudeStatus?.installed === false;
 
   return (
     <details
@@ -192,12 +232,43 @@ export function SettingsMenu({
                   ? 'Usa tu propia cuenta de Codex (ChatGPT); queda ligada a tu identidad'
                   : 'Usa la cuenta de Codex (ChatGPT) de esta máquina; inicia sesión para conectar la tuya'
             }
-            onChange={(event) => void toggleProvider(event.currentTarget.checked)}
+            onChange={(event) => void toggleProvider('codex', event.currentTarget.checked)}
           />
         </div>
         {/* El interruptor queda deshabilitado: sin decir por qué es un callejón sin salida. */}
         {codexMissing && !usingCodex && (
           <small>No se encontró el CLI de Codex en esta máquina (npm i -g @openai/codex).</small>
+        )}
+        {/* Claude es otra opción del mismo rango que Codex: encender una
+            apaga la otra, porque hay una sola mente pensando a la vez. */}
+        <div className="ai-toggle">
+          <label htmlFor="ai-claude-toggle">
+            <span>Pensar con Claude</span>
+            <small>
+              {usingClaude
+                ? 'La mascota piensa con la suscripción de Claude de esta máquina.'
+                : 'Apagado. Usa la suscripción de Claude (Anthropic) de esta máquina, sin API key.'}
+            </small>
+          </label>
+          <input
+            id="ai-claude-toggle"
+            type="checkbox"
+            role="switch"
+            data-testid="ai-claude-toggle"
+            checked={usingClaude}
+            disabled={switching || (!usingClaude && claudeMissing)}
+            title={
+              claudeMissing
+                ? 'No se encontró el CLI de Claude en esta máquina'
+                : 'Usa la sesión de Claude Code de esta máquina (tu suscripción personal)'
+            }
+            onChange={(event) => void toggleProvider('claude', event.currentTarget.checked)}
+          />
+        </div>
+        {claudeMissing && !usingClaude && (
+          <small>
+            No se encontró el CLI de Claude en esta máquina (npm i -g @anthropic-ai/claude-code).
+          </small>
         )}
         {/* Las respuestas tontas son del simulado (ADR 0006), pero el
             interruptor se queda a la vista igual con Codex encendido: una
@@ -207,8 +278,8 @@ export function SettingsMenu({
           <label htmlFor="mock-imperfect-toggle">
             <span>Respuestas tontas</span>
             <small>
-              {usingCodex
-                ? 'Solo aplican al modelo simulado; ahora la mascota piensa con Codex.'
+              {usingCodex || usingClaude
+                ? `Solo aplican al modelo simulado; ahora la mascota piensa con ${usingClaude ? 'Claude' : 'Codex'}.`
                 : view.mockImperfect
                   ? 'El simulado propone primero un atajo imposible y aprende del rechazo del mundo: el ciclo completo, a la vista.'
                   : 'Apagadas: el simulado propone directo la idea corregida, sin el desvío del error.'}
@@ -220,19 +291,45 @@ export function SettingsMenu({
             role="switch"
             data-testid="mock-imperfect-toggle"
             checked={view.mockImperfect}
-            disabled={usingCodex}
+            disabled={usingCodex || usingClaude}
             title={
-              usingCodex
-                ? 'Solo aplica al modelo simulado: apaga «Pensar con Codex» para usarlo'
+              usingCodex || usingClaude
+                ? 'Solo aplica al modelo simulado: apaga el modelo real para usarlo'
                 : 'Primeras ideas equivocadas a propósito: así se ve cómo el mundo la corrige'
             }
             onChange={(event) => session.setMockImperfect(event.currentTarget.checked)}
           />
         </div>
         {phase === 'waiting' && <small className="muted">esperando autorización…</small>}
+        {/* El login de Claude termina con un código que la página muestra y
+            el CLI espera: sin este campo, el flujo queda a mitad de camino. */}
+        {phase === 'waiting' && connecting === 'claude' && (
+          <form
+            className="seed-row"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const code = loginCode.trim();
+              if (!code) return;
+              void submitAiLoginCode('claude', code).then((result) => {
+                if (!result.ok) fail(result.error ?? 'el código no completó la autorización');
+              });
+            }}
+          >
+            <input
+              data-testid="ai-claude-login-code"
+              value={loginCode}
+              onChange={(event) => setLoginCode(event.target.value)}
+              placeholder="pegá aquí el código de la página"
+              aria-label="código de autorización de Claude"
+            />
+            <button type="submit" data-testid="ai-claude-login-code-send">
+              Enviar
+            </button>
+          </form>
+        )}
         {phase === 'error' && (
           <span className="account-error" data-testid="ai-error">
-            {errorDetail ?? 'no se pudo conectar Codex'}
+            {errorDetail ?? 'no se pudo conectar la IA'}
           </span>
         )}
         {usingCodex && (
@@ -305,6 +402,61 @@ export function SettingsMenu({
             </div>
           </>
         )}
+        {usingClaude && (
+          <>
+            <label>
+              <span>Modelo</span>
+              {/* Mismo criterio que el select de Codex: la opción vacía es
+                  «Automático» (decide la cuenta) y un modelo guardado que ya
+                  no esté en las sugerencias se muestra igual para no perderlo
+                  en silencio. El default de fábrica es Sonnet. */}
+              <select
+                data-testid="ai-claude-model"
+                value={claudeSettings.model}
+                onChange={(event) =>
+                  updateClaudeSettings({ ...claudeSettings, model: event.currentTarget.value })
+                }
+              >
+                <option value="">Automático</option>
+                {claudeSettings.model &&
+                  !CLAUDE_MODEL_SUGGESTIONS.includes(
+                    claudeSettings.model as (typeof CLAUDE_MODEL_SUGGESTIONS)[number],
+                  ) && <option value={claudeSettings.model}>{claudeSettings.model}</option>}
+                {CLAUDE_MODEL_SUGGESTIONS.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Nivel de razonamiento</span>
+              <select
+                data-testid="ai-claude-reasoning-effort"
+                value={claudeSettings.reasoningEffort}
+                onChange={(event) =>
+                  updateClaudeSettings({
+                    ...claudeSettings,
+                    reasoningEffort: event.currentTarget
+                      .value as ClaudeSettings['reasoningEffort'],
+                  })
+                }
+              >
+                <option value="">Automático</option>
+                <option value="low">Bajo</option>
+                <option value="medium">Medio</option>
+                <option value="high">Alto</option>
+                <option value="xhigh">Muy alto</option>
+                <option value="max">Máximo</option>
+              </select>
+            </label>
+            <small>
+              {view.aiBusy
+                ? 'Ánima sigue pensando con el ajuste anterior; el cambio se aplica la próxima vez que piense.'
+                : 'Se aplica a la próxima consulta y queda guardado en este navegador.'}
+            </small>
+          </>
+        )}
         {status?.loggedIn && (
           <div className="settings-section">
             <small>
@@ -316,9 +468,26 @@ export function SettingsMenu({
               data-testid="ai-logout-codex"
               disabled={view.aiBusy || switching}
               title="Cierra la sesión de Codex en esta máquina"
-              onClick={logoutCodex}
+              onClick={() => logoutProvider('codex')}
             >
               Cerrar sesión de Codex
+            </button>
+          </div>
+        )}
+        {claudeStatus?.loggedIn && (
+          <div className="settings-section">
+            <small>
+              {claudeStatus.detail
+                ? `Sesión de Claude de esta máquina: ${claudeStatus.detail}.`
+                : 'Sesión de Claude de esta máquina.'}
+            </small>
+            <button
+              data-testid="ai-logout-claude"
+              disabled={view.aiBusy || switching}
+              title="Cierra la sesión de Claude en esta máquina"
+              onClick={() => logoutProvider('claude')}
+            >
+              Cerrar sesión de Claude
             </button>
           </div>
         )}

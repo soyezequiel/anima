@@ -80,6 +80,14 @@ const LOW_HEALTH_FRACTION = 0.5;
  */
 const SAFE_DISTANCE = 2;
 
+/**
+ * Verbo del recuerdo de acción según lo destruido (ADR 0033): romper una
+ * pared y talar un árbol son gestos distintos aunque el evento sea el mismo.
+ */
+const DEED_VERBS: Record<string, string> = {
+  tree: 'talé',
+};
+
 /** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
 const USER_REQUEST_WEIGHTS: Record<
   GoalUserRequest['kind'],
@@ -266,11 +274,21 @@ export class AnimaAgent {
   }
 
   /** Lo que los programas de peticiones necesitan saber del agente. */
-  private userProgramDeps(): UserRequestProgramDeps {
+  private userProgramDeps(perception: Perception): UserRequestProgramDeps {
     return {
       library: this.config.library,
-      findInteraction: (verb, targetKind, perception) =>
-        this.invention.findInteractionFor(verb, targetKind, perception),
+      findInteraction: (verb, targetKind, p) =>
+        this.invention.findInteractionFor(verb, targetKind, p),
+      // La memoria de lugares aporta el destino cuando el material no se ve
+      // pero se recuerda (ADR 0025): mismo puente que ya usan la comida y el
+      // calor recordados, ahora para juntar y construir. Solo el destino —
+      // recoger sigue exigiendo percibirlo al llegar.
+      rememberedWalk: (kind) => {
+        const remembered = this.places.recall({ kind }, perception)[0];
+        return remembered
+          ? this.walkStepsAvoidingHazards(perception, remembered.position, 1)
+          : undefined;
+      },
     };
   }
 
@@ -499,6 +517,16 @@ export class AnimaAgent {
     // vez lo que le importa. Es lo único que puede apuntar fuera de su vista.
     this.places.update(perception);
 
+    // Mantenimiento periódico de la memoria (ADR 0033): consolidar solo en
+    // los éxitos de meta dejaba que una vida sin éxitos acumulara episodios
+    // sin techo. Cada tanto, la memoria se ordena sola.
+    if (this.tick > 0 && this.tick % 100 === 0) {
+      const consolidation = this.memory.consolidate(this.tick);
+      if (consolidation.hypothesesConfirmed.length > 0) {
+        this.emit('memory.consolidated', { confirmed: consolidation.hypothesesConfirmed });
+      }
+    }
+
     // El dolor manda: antes de conversar, planificar o continuar nada, el
     // cuerpo se aparta de lo que lo está dañando. Es un reflejo, no una
     // decisión — como detenerse a distancia del fuego, viene de fábrica.
@@ -616,6 +644,20 @@ export class AnimaAgent {
   /** Retroalimentación del mundo tras aplicar la intención. */
   observe(events: SimEvent[]): void {
     this.activity?.exec.observe(events);
+    // `entity.destroyed` no dice con qué se rompió, pero el `entity.damaged`
+    // del mismo lote sí: el golpe fatal siempre viaja justo antes de la
+    // destrucción. El mapa reconstruye la herramienta del recuerdo.
+    const damagedWith = new Map<string, string>();
+    for (const event of events) {
+      if (
+        event.type === 'entity.damaged' &&
+        event.data.byId === this.petId &&
+        typeof event.data.id === 'string' &&
+        typeof event.data.itemKind === 'string'
+      ) {
+        damagedWith.set(event.data.id, event.data.itemKind);
+      }
+    }
     for (const event of events) {
       // Lo que ella misma consumió, recogió o destruyó ya no está donde lo
       // recordaba: la memoria de lugares se corrige con lo que hizo su propio
@@ -633,8 +675,35 @@ export class AnimaAgent {
         typeof event.data.id === 'string'
       ) {
         this.places.forget(event.data.id);
+        // Recuerdo de acción propia (ADR 0033): "rompí un wall con hammer".
+        // El summary es estable a propósito: repetir la acción no crea otro
+        // recuerdo, incrementa el conteo del mismo.
+        const targetKind = String(event.data.kind);
+        const verb = DEED_VERBS[targetKind] ?? 'rompí';
+        const itemKind = damagedWith.get(event.data.id);
+        this.recordDeed(
+          itemKind !== undefined
+            ? `${verb} un ${targetKind} con ${itemKind}`
+            : `${verb} un ${targetKind}`,
+          0.6,
+          { targetKind, ...(itemKind !== undefined ? { itemKind } : {}) },
+        );
+      }
+      if (event.type === 'item.crafted' && event.data.actorId === this.petId) {
+        const itemKind = String(event.data.itemKind);
+        this.recordDeed(`construí un ${itemKind}`, 0.6, {
+          itemKind,
+          recipeId: event.data.recipeId,
+        });
+      }
+      if (event.type === 'item.placed' && event.data.actorId === this.petId) {
+        const itemKind = String(event.data.itemKind);
+        this.recordDeed(`coloqué un ${itemKind}`, 0.5, { itemKind });
       }
       if (event.type === 'item.consumed' && event.data.actorId === this.petId) {
+        this.recordDeed(`comí un ${String(event.data.itemKind)}`, 0.35, {
+          itemKind: event.data.itemKind,
+        });
         if (this.activity) this.activity.consumedFood = true;
         // La evidencia se atribuye por afinidad semántica: comer solo puede
         // respaldar una hipótesis que hable de comer, no la que esté de turno.
@@ -1523,6 +1592,9 @@ export class AnimaAgent {
     // decir "vos me enseñaste que..." y el vínculo sería indistinguible de
     // no existir. Presupuesto corto: los 3 más recientes.
     facts.push(...this.caretakerMemories().map((memory) => `recuerdo que ${memory}`));
+    // Lo que hizo también es suyo: sin esto, "¿por qué rompiste la pared?"
+    // solo podía responderse con reglas genéricas, nunca con memoria propia.
+    facts.push(...this.deedMemories());
     facts.push(
       ...this.memory
         .factList()
@@ -1575,6 +1647,50 @@ export class AnimaAgent {
       );
     }
     return facts;
+  }
+
+  /**
+   * Recuerdo de acción propia (ADR 0033): nace de un SimEvent observado,
+   * nunca de lo que el modelo diga. El summary estable hace que repetir la
+   * acción incremente el conteo del mismo recuerdo en vez de crear otro.
+   */
+  private recordDeed(summary: string, importance: number, data: Record<string, unknown>): void {
+    this.memory.recordEpisode({ kind: 'deed', summary, tick: this.tick, importance, data });
+    this.emit('memory.created', { kind: 'episode', statement: summary });
+  }
+
+  /**
+   * Lo que hizo con sus manos, contado: "rompí un wall con hammer (×3)".
+   * Presupuesto propio para el diálogo — no compite con el vínculo
+   * (caretakerMemories) ni con los hechos del mundo.
+   */
+  private deedMemories(limit = 4): string[] {
+    return this.memory
+      .episodeList()
+      .filter((episode) => episode.kind === 'deed')
+      .sort((a, b) => b.lastTick - a.lastTick)
+      .slice(0, limit)
+      .map((episode) =>
+        episode.occurrences > 1
+          ? `hice: ${episode.summary} (×${episode.occurrences})`
+          : `hice: ${episode.summary}`,
+      );
+  }
+
+  /**
+   * Experiencia pasada relevante a un propósito (ADR 0033): lo que hizo y lo
+   * que le falló, recuperado por afinidad de términos. Alimenta las propuestas
+   * de habilidades para que la idea nueva no ignore la historia.
+   */
+  private experienceContext(query: string): string[] {
+    return this.memory
+      .retrieve(query, 3)
+      .episodes.filter((e) => e.kind === 'deed' || e.kind === 'failure')
+      .map((e) =>
+        e.occurrences > 1
+          ? `experiencia previa: ${e.summary} (×${e.occurrences})`
+          : `experiencia previa: ${e.summary}`,
+      );
   }
 
   /**
@@ -1833,6 +1949,15 @@ export class AnimaAgent {
         .slice(-2)
         .map((h) => `creo (sin confirmar) que ${h.statement}`),
     );
+    // Lo que ya rompió pesa en el juicio (ADR 0033): destruir "otro más" no
+    // es lo mismo que destruir el primero.
+    const priorDeeds = this.memory
+      .episodeList()
+      .filter((e) => e.kind === 'deed' && e.data.targetKind === targetKind);
+    if (priorDeeds.length > 0) {
+      const total = priorDeeds.reduce((sum, e) => sum + e.occurrences, 0);
+      facts.push(`ya rompí ${total} ${targetKind} antes`);
+    }
     return facts;
   }
 
@@ -1915,7 +2040,7 @@ export class AnimaAgent {
           return null;
         }
       }
-      const program = programForUserRequest(goal.userRequest, perception, this.userProgramDeps());
+      const program = programForUserRequest(goal.userRequest, perception, this.userProgramDeps(perception));
       this.startUserActivity(goal, program, completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
@@ -2349,6 +2474,7 @@ export class AnimaAgent {
         successCriteria: [{ type: 'temperatureIncreased' }, { type: 'noDamageTaken' }],
       };
       const context = [
+        ...this.experienceContext(contract.purpose),
         ...perception.recipes.map(
           (recipe) =>
             `puedo construir "${recipe.id}" con ${recipe.ingredients
@@ -2590,6 +2716,7 @@ export class AnimaAgent {
     };
     const context = [
       ...failures,
+      ...this.experienceContext(contract.purpose),
       ...perception.visibleEntities.map(
         (e) => `veo: ${e.kind}${e.toolPower ? ` (herramienta, poder ${e.toolPower})` : ''}`,
       ),

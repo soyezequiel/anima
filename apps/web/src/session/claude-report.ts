@@ -82,6 +82,16 @@ export function buildClaudeReport(input: ClaudeReportInput): string {
     (h) => `- ${h.statement} (confianza ${h.confidence}, ${h.resolved})`,
   );
 
+  // Memoria episódica (ADR 0033): lo que hizo y le pasó, con conteo. Los más
+  // recientes primero, acotado — el detalle completo va en el JSON crudo.
+  const episodeLines = [...view.episodes]
+    .sort((a, b) => b.lastTick - a.lastTick)
+    .slice(0, 15)
+    .map((e) => {
+      const count = e.occurrences > 1 ? `×${e.occurrences}, ` : '';
+      return `- [${e.kind}] ${e.summary} (${count}tick ${e.lastTick})`;
+    });
+
   const raw = {
     generatedAt,
     seed: view.seed,
@@ -101,6 +111,7 @@ export function buildClaudeReport(input: ClaudeReportInput): string {
     experiments: view.experiments.slice(-60),
     facts: view.facts,
     hypotheses: view.hypotheses,
+    episodes: view.episodes,
     devEvents: view.devEvents.slice(-80),
   };
 
@@ -174,6 +185,9 @@ Regresiones registradas: ${view.regressions.length}${view.regressions.length ? `
 ## Memoria
 
 Hechos: ${view.facts.length ? view.facts.join(' · ') : '(ninguno)'}
+
+Episodios (lo que hizo y le pasó):
+${episodeLines.join('\n') || '- (ninguno todavía)'}
 
 Hipótesis:
 ${hypothesisLines.join('\n') || '- (ninguna)'}

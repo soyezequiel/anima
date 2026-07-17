@@ -49,6 +49,14 @@ export interface ConsolidationReport {
   episodesArchived: number;
   hypothesesConfirmed: string[];
   factsInvalidated: string[];
+  /** Episodios fusionados en resúmenes por la compactación (ADR 0033). */
+  episodesCompacted: number;
+}
+
+/** Resultado de una pasada de compactación (ADR 0033). */
+export interface CompactionReport {
+  episodesCompacted: number;
+  summariesCreated: number;
 }
 
 const CONFIRM_CONFIDENCE = 0.8;
@@ -58,6 +66,24 @@ const ARCHIVE_IMPORTANCE = 0.3;
 const ARCHIVE_AGE_TICKS = 2000;
 const WORKING_RESULTS_LIMIT = 8;
 const WORKING_CONVERSATION_LIMIT = 12;
+// Compactación (ADR 0033): la memoria episódica no puede crecer sin techo en
+// una vida larga. Cuando los episodios activos superan el umbral, los viejos y
+// poco importantes se fusionan en un resumen por kind que conserva el conteo
+// agregado. Determinista a propósito: el modelo nunca escribe memoria.
+const COMPACT_MAX_ACTIVE = 60;
+const COMPACT_MIN_AGE_TICKS = 500; // lo reciente no se fusiona: todavía es conversable
+const COMPACT_MAX_IMPORTANCE = 0.7; // lo importante no se fusiona
+const COMPACT_SAMPLE_LIMIT = 3;
+// Los recuerdos del vínculo con el cuidador no se resumen jamás: son pocos,
+// valiosos, y la voz de la mascota los cita textuales ("vos me enseñaste...").
+const PRESERVE_KINDS = new Set([
+  'caretaker',
+  'teaching',
+  'promise-kept',
+  'caretaker-help',
+  'legacy-traits',
+  'skill-learned',
+]);
 
 function evidenceConfidence(positive: number, negative: number): number {
   // Estimación suavizada tipo Laplace: evita saltar a 0 o 1 con poca evidencia.
@@ -244,6 +270,7 @@ export class MemoryStore {
       episodesArchived: 0,
       hypothesesConfirmed: [],
       factsInvalidated: [],
+      episodesCompacted: 0,
     };
 
     // Hipótesis con suficiente evidencia se convierten en conocimiento.
@@ -278,6 +305,87 @@ export class MemoryStore {
 
     // Los episodios repetidos ya se fusionan al registrarse; aquí se informa.
     report.episodesMerged = this.episodes.filter((e) => e.occurrences > 1).length;
+
+    // Y si aun así la memoria activa desborda, se compacta (ADR 0033).
+    report.episodesCompacted = this.compact(tick).episodesCompacted;
+    return report;
+  }
+
+  /**
+   * Compactación determinista (ADR 0033): fusiona episodios viejos y poco
+   * importantes en un resumen por kind que conserva el conteo agregado. Nada
+   * se borra — los originales quedan archivados y auditables en el save. Los
+   * recuerdos del vínculo (PRESERVE_KINDS) no se tocan nunca.
+   */
+  compact(tick: number): CompactionReport {
+    const report: CompactionReport = { episodesCompacted: 0, summariesCreated: 0 };
+    const active = (): EpisodicMemory[] => this.episodes.filter((e) => !e.archived);
+    if (active().length <= COMPACT_MAX_ACTIVE) return report;
+
+    // Candidatos: fuera del vínculo, de baja importancia y con edad suficiente.
+    // Orden estable (lastTick asc, luego id) para que la misma historia
+    // produzca siempre la misma memoria compactada.
+    const candidates = active()
+      .filter(
+        (e) =>
+          !PRESERVE_KINDS.has(e.kind) &&
+          e.importance < COMPACT_MAX_IMPORTANCE &&
+          tick - e.lastTick > COMPACT_MIN_AGE_TICKS &&
+          e.data.compacted !== true,
+      )
+      .sort((a, b) => a.lastTick - b.lastTick || a.id.localeCompare(b.id));
+
+    const byKind = new Map<string, EpisodicMemory[]>();
+    for (const episode of candidates) {
+      const group = byKind.get(episode.kind) ?? [];
+      group.push(episode);
+      byKind.set(episode.kind, group);
+    }
+
+    // Kinds en orden alfabético: el orden de fusión también es parte del
+    // determinismo. Se detiene apenas la memoria vuelve bajo el umbral.
+    for (const kind of [...byKind.keys()].sort()) {
+      if (active().length <= COMPACT_MAX_ACTIVE) break;
+      const group = byKind.get(kind)!;
+      if (group.length < 2) continue;
+
+      const totalOccurrences = group.reduce((sum, e) => sum + e.occurrences, 0);
+      const samples = [...group]
+        .sort((a, b) => b.occurrences - a.occurrences || a.id.localeCompare(b.id))
+        .slice(0, COMPACT_SAMPLE_LIMIT)
+        .map((e) => (e.occurrences > 1 ? `${e.summary} (×${e.occurrences})` : e.summary));
+      for (const episode of group) episode.archived = true;
+      report.episodesCompacted += group.length;
+
+      // El resumen es un episodio más del mismo kind: quien lea la memoria lo
+      // encuentra donde esperaría los originales, con el conteo agregado.
+      const existing = this.episodes.find(
+        (e) => !e.archived && e.kind === kind && e.data.compacted === true,
+      );
+      if (existing) {
+        const distinct = (typeof existing.data.distinct === 'number' ? existing.data.distinct : 0) + group.length;
+        existing.occurrences += totalOccurrences;
+        existing.summary = `resumen de ${kind}: ${distinct} recuerdos distintos`;
+        existing.lastTick = Math.max(existing.lastTick, ...group.map((e) => e.lastTick));
+        existing.tick = Math.min(existing.tick, ...group.map((e) => e.tick));
+        existing.data.distinct = distinct;
+        existing.data.samples = samples;
+      } else {
+        const summary: EpisodicMemory = {
+          id: this.nextId('ep'),
+          kind,
+          summary: `resumen de ${kind}: ${group.length} recuerdos distintos`,
+          tick: Math.min(...group.map((e) => e.tick)),
+          lastTick: Math.max(...group.map((e) => e.lastTick)),
+          occurrences: totalOccurrences,
+          importance: 0.4,
+          data: { compacted: true, distinct: group.length, samples },
+          archived: false,
+        };
+        this.episodes.push(summary);
+        report.summariesCreated += 1;
+      }
+    }
     return report;
   }
 
