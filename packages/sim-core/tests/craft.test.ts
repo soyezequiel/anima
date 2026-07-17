@@ -14,7 +14,7 @@ import {
 /**
  * Una receta de un solo desenlace: determinista a propósito, para que estas
  * pruebas midan la mecánica (qué se gasta, qué falta, dónde cae) sin que la
- * tirada les meta ruido. Lo no determinista se prueba aparte, abajo.
+ * tirada les meta ruido. La tirada se prueba aparte, abajo.
  */
 const CAMPFIRE: Recipe = {
   id: 'campfire',

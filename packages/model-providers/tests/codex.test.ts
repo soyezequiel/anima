@@ -294,11 +294,65 @@ describe('CodexModelProvider', () => {
     await provider.complete({
       kind: 'skill.revise',
       skillName: 'x',
+      problem: 'llegar hasta el alimento y consumirlo',
+      successCriteria: ['consume un objeto de tipo food'],
+      context: ['veo: hammer (herramienta, poder 3)'],
       previousProgram: [{ op: 'consume', target: 'food' }],
       failureObservations: ['no-damage-dealt:branch->wall'],
       attempt: 2,
     });
     expect(seen[0]?.prompt).toContain('no-damage-dealt:branch->wall');
     expect(seen[0]?.prompt).toContain('"consume"');
+    expect(seen[0]?.prompt).toContain('llegar hasta el alimento y consumirlo');
+    expect(seen[0]?.prompt).toContain('consume un objeto de tipo food');
+  });
+
+  it('la revisión lleva la historia de versiones y el resultado mundo por mundo', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ program: [{ op: 'wait' }], rationale: '' }), seen),
+    );
+    await provider.complete({
+      kind: 'skill.revise',
+      skillName: 'x',
+      problem: 'llegar hasta el alimento',
+      successCriteria: ['su energía termina más alta'],
+      context: [],
+      previousProgram: [{ op: 'wait' }],
+      failureObservations: ['criteria-failed:energyIncreased'],
+      baseVersion: 2,
+      caseResults: [
+        { scenario: 'open-field', seed: 11, passed: true, observations: [] },
+        {
+          scenario: 'food-behind-wall',
+          seed: 11,
+          passed: false,
+          observations: ['path-blocked:4'],
+        },
+      ],
+      history: [
+        {
+          version: 1,
+          rationale: 'ir directo',
+          successRate: 0,
+          failureObservations: ['aborted:no-candidates:muros'],
+        },
+        {
+          version: 2,
+          rationale: 'sin buscar muros',
+          successRate: 0.5,
+          failureObservations: ['criteria-failed:energyIncreased'],
+        },
+      ],
+      attempt: 3,
+      maxAttempts: 8,
+    });
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain('v1 (éxito 0%)');
+    expect(prompt).toContain('v2 (éxito 50%)');
+    expect(prompt).toContain('open-field (semilla 11): PASÓ');
+    expect(prompt).toContain('food-behind-wall (semilla 11): FALLÓ — path-blocked:4');
+    expect(prompt).toContain('(v2, la mejor hasta ahora)');
+    expect(prompt).toContain('Intento 3 de 8');
   });
 });

@@ -23,7 +23,8 @@ describe('reporte para Claude Code', () => {
     expect(markdown).toContain('# Reporte de Ánima para Claude Code');
     expect(markdown).toContain('## Visión objetivo');
     expect(markdown).toContain('## Brechas contra la visión');
-    expect(markdown).toContain('no determinista');
+    expect(markdown).toContain('generativo validado');
+    expect(markdown).toContain('packages/sim-core/src/recipe-validation.ts');
     expect(markdown).toContain('packages/sim-core/src/step.ts');
     expect(markdown).toContain('packages/shared/src/rng.ts');
 

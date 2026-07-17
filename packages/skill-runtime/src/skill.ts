@@ -215,7 +215,13 @@ export class SkillLibrary {
 
   addExperimental(input: NewSkillInput, parentVersionId?: string): SkillDefinition {
     const parent = parentVersionId ? this.skills.get(parentVersionId) : undefined;
-    const version = parent ? parent.version + 1 : 1;
+    // La versión es única y monótona por nombre, no `padre + 1`: el ciclo de
+    // revisión puede ramificar desde la mejor versión (no la última), y dos
+    // hijas de la misma base no pueden llamarse igual.
+    const priorVersions = [...this.skills.values()]
+      .filter((s) => s.name === input.name)
+      .map((s) => s.version);
+    const version = priorVersions.length === 0 ? 1 : Math.max(...priorVersions) + 1;
     this.counter += 1;
     const skill: SkillDefinition = {
       id: `skill-${this.counter}`,

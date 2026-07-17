@@ -1,5 +1,5 @@
 import type { EventLog } from '@anima/shared';
-import { countedKindLabel, createEventLog, kindLabel } from '@anima/shared';
+import { countedKindLabel, createEventLog, kindLabel, kindWithArticle } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
 import { missingIngredients, recipeProduces } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
@@ -16,7 +16,12 @@ import { derivePersonality } from './personality.js';
 import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
-import { evaluateUserRequest, isContinuationMessage, parseUserMessage } from './refusal.js';
+import {
+  displayMissing,
+  evaluateUserRequest,
+  isContinuationMessage,
+  parseUserMessage,
+} from './refusal.js';
 import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
 import { developSkill, evaluateAndApply } from './skill-dev.js';
 
@@ -290,8 +295,10 @@ export class AnimaAgent {
     this.config = {
       maxSkillDevAttempts: 1,
       // Un modelo real suele necesitar más iteraciones que el mock: las
-      // versiones inválidas no consumen intento, pero las rechazadas sí.
-      maxVersionsPerDev: 4,
+      // versiones inválidas no consumen intento, pero las rechazadas sí. Con
+      // la revisión informada (historia + resultados por mundo) cada intento
+      // extra tiene con qué corregir, así que el crédito es más alto.
+      maxVersionsPerDev: 8,
       ...config,
     };
     this.petName = config.petName;
@@ -1645,6 +1652,12 @@ export class AnimaAgent {
       return this.pursueLearning(goal, goal.learning);
     }
     if (goal.source === 'user-request' && goal.userRequest) {
+      // Le pidieron construir algo que su mundo todavía no sabe hacer. Eso no
+      // es un imposible: es una idea que no tuvo. Primero la propone y deja
+      // que el mundo la juzgue; si entra, el próximo tick ya hay receta y
+      // construir vuelve a ser el programa de siempre.
+      const invention = await this.inventForRequest(goal, perception);
+      if (invention) return invention;
       const program = this.programForUserRequest(goal.userRequest, perception);
       this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
@@ -1711,6 +1724,38 @@ export class AnimaAgent {
   }
 
   /**
+   * El cuidador pidió construir algo para lo que no hay receta. Antes esto
+   * moría en dos lugares a la vez: la interpretación lo declaraba `unsupported`
+   * («construir algo que no tiene receta») y terminaba aprendiendo una CONDUCTA
+   * para un pedido que era de FÍSICA — así fue como «crea una casa» derivó en
+   * una habilidad que recogía un martillo.
+   *
+   * Pedir algo que su mundo no sabe hacer es exactamente el momento de tener
+   * una idea, y es el disparador más natural que existe: no hace falta que
+   * tenga frío para que se le ocurra algo, alcanza con que alguien le pida
+   * algo que todavía no sabe.
+   *
+   * La idea lleva el nombre que usó el cuidador (`wantedId`): si la bautizara
+   * distinto, la petición seguiría sin encontrar su receta y volvería a
+   * inventar hasta quedarse sin crédito, sin entender por qué.
+   */
+  private async inventForRequest(
+    goal: Goal,
+    perception: Perception,
+  ): Promise<ActionIntent | null> {
+    const request = goal.userRequest;
+    if (request?.kind !== 'craft-item' || !request.recipeId) return null;
+    // Ya sabe hacerlo: no hay nada que inventar, hay que ponerse a construir.
+    if (perception.recipes.some((r) => r.id === request.recipeId)) return null;
+    if (this.progress.recipeAttemptsFor(goal.id) >= MAX_RECIPE_ATTEMPTS) return null;
+    return this.inventRecipe(
+      `mi cuidador me pidió construir ${kindWithArticle(request.recipeId)}`,
+      perception,
+      { goalId: goal.id, wantedId: request.recipeId },
+    );
+  }
+
+  /**
    * Inventar un objeto que su mundo no sabe construir. El modelo propone; la
    * intención va al mundo, que valida y decide. Un rechazo no se pierde: se
    * recuerda y viaja al siguiente intento, para que corrija en vez de insistir.
@@ -1719,6 +1764,7 @@ export class AnimaAgent {
   private async inventRecipe(
     problem: string,
     perception: Perception,
+    options: { goalId: string; wantedId?: string },
   ): Promise<ActionIntent | null> {
     const materials = [
       ...new Set([
@@ -1729,12 +1775,13 @@ export class AnimaAgent {
     // Sin materiales no hay nada que inventar: es falta de recurso, no de idea.
     if (materials.length === 0) return null;
 
-    this.recipeAttempts += 1;
+    this.progress.recordRecipeAttempt(options.goalId);
     try {
       const response = await this.config.provider.complete({
         kind: 'recipe.propose',
         problem,
         materials,
+        ...(options.wantedId !== undefined ? { wantedId: options.wantedId } : {}),
         existingRecipes: perception.recipes.map(
           (recipe) =>
             `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
@@ -1794,10 +1841,11 @@ export class AnimaAgent {
     // Si nada de lo que sabe construir da calor, quizá pueda inventarlo. Es
     // el paso previo a rendirse: primero la idea, después la habilidad.
     const knowsFire = perception.recipes.some((recipe) => recipeProduces(recipe, 'heatSource'));
-    if (!knowsFire && this.recipeAttempts < MAX_RECIPE_ATTEMPTS) {
+    if (!knowsFire && this.progress.recipeAttemptsFor(goal.id) < MAX_RECIPE_ATTEMPTS) {
       const invention = await this.inventRecipe(
         'tengo frío y no tengo nada que dé calor',
         perception,
+        { goalId: goal.id },
       );
       if (invention) return invention;
     }
@@ -2392,7 +2440,11 @@ export class AnimaAgent {
           importance: 0.6,
         });
         this.reply(
-          `No pude completar eso: ${this.describeActivityFailure(out.result.reason ?? out.result.outcome)}.`,
+          `No pude completar eso: ${this.describeActivityFailure(
+            out.result.reason ?? out.result.outcome,
+            activity,
+            perception,
+          )}.`,
         );
       }
       this.lastSelectedGoalId = null;
@@ -2456,8 +2508,36 @@ export class AnimaAgent {
     return null;
   }
 
-  private describeActivityFailure(reason: string): string {
-    if (reason.startsWith('no-candidates:')) return 'no encuentro el objeto';
+  /**
+   * Quedarse sin material a mitad de construir tiene una respuesta muchísimo
+   * mejor que «no encuentro el objeto»: ella SABE qué le falta y cuánto,
+   * porque se lo dice el mundo (`missingIngredients`, la misma fuente con la
+   * que acepta o se niega). Sin esto, el cuidador escucha un fracaso opaco y
+   * no tiene forma de ayudarla — y era peor todavía con las recetas que ella
+   * inventa, donde nadie más que ella sabe qué lleva.
+   */
+  private missingForCraft(activity: Activity, perception: Perception): string | null {
+    const request = this.goals.get(activity.goalId)?.userRequest;
+    if (request?.kind !== 'craft-item' || !request.recipeId) return null;
+    const recipe = perception.recipes.find((r) => r.id === request.recipeId);
+    if (!recipe) return null;
+    const missing = missingIngredients(recipe, heldCounts(perception));
+    if (missing.length === 0) return null;
+    const total = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
+    const falta = total === 1 ? 'me falta' : 'me faltan';
+    // Abortó por `no-candidates`: buscó y no había más. Decirlo evita que el
+    // cuidador salga a buscar lo que no existe.
+    return `${falta} ${displayMissing(missing)} y no veo más por acá`;
+  }
+
+  private describeActivityFailure(
+    reason: string,
+    activity: Activity,
+    perception: Perception,
+  ): string {
+    if (reason.startsWith('no-candidates:')) {
+      return this.missingForCraft(activity, perception) ?? 'no encuentro el objeto';
+    }
     const descriptions: Record<string, string> = {
       'no-conozco-esa-habilidad': 'ya no tengo esa habilidad disponible',
       'camino-bloqueado': 'el camino está bloqueado',

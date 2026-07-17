@@ -1,5 +1,5 @@
 import type { EventLog } from '@anima/shared';
-import type { ModelProvider } from '@anima/model-providers';
+import type { ModelProvider, ModelResponse } from '@anima/model-providers';
 import type { EvaluationCriterion, SkillDefinition, SkillLibrary } from '@anima/skill-runtime';
 import { describeCriterion, validateSkillProgram } from '@anima/skill-runtime';
 import type { EvaluationReport, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
@@ -103,6 +103,15 @@ export function evaluateAndApply(
   return { report, promoted: false };
 }
 
+/** Una versión ya evaluada, con su programa y su informe: la memoria del ciclo. */
+interface EvaluatedVersion {
+  skillId: string;
+  version: number;
+  program: unknown;
+  rationale: string;
+  report: EvaluationReport;
+}
+
 export async function developSkill(
   contract: SkillContract,
   context: string[],
@@ -117,32 +126,66 @@ export async function developSkill(
   });
 
   const reports: EvaluationReport[] = [];
-  let parentId: string | undefined;
-  let previousProgram: unknown = null;
-  let lastReport: EvaluationReport | null = null;
-  let validationFeedback: string[] | null = null;
+  // El diseñador tiene que conocer la vara con la que lo van a medir;
+  // que la conozca no lo hace juez: el evaluador la aplica aparte.
+  const criteria = contract.successCriteria.map(describeCriterion);
+  const attemptHistory: EvaluatedVersion[] = [];
+  /** Programa canónico -> versión que lo probó: repetir no es corregir. */
+  const triedPrograms = new Map<string, number>();
+  /** La mejor versión hasta ahora: la base sobre la que se corrige. */
+  let best: EvaluatedVersion | null = null;
+  /** Propuesta inválida o repetida: vuelve al modelo sin gastar el intento. */
+  let retryFeedback: { program: unknown; observations: string[] } | null = null;
   let invalidRetries = 0;
-  let firstCall = true;
+  let repeatedRetries = 0;
 
   for (let attempt = 1; attempt <= config.maxVersions; ) {
-    const response = firstCall
-      ? await config.provider.complete({
-          kind: 'skill.propose',
-          skillName: contract.name,
-          problem: contract.purpose,
-          context,
-          // El diseñador tiene que conocer la vara con la que lo van a medir;
-          // que la conozca no lo hace juez: el evaluador la aplica aparte.
-          successCriteria: contract.successCriteria.map(describeCriterion),
-        })
-      : await config.provider.complete({
-          kind: 'skill.revise',
-          skillName: contract.name,
-          previousProgram,
-          failureObservations: validationFeedback ?? lastReport?.failureObservations ?? [],
-          attempt,
-        });
-    firstCall = false;
+    const response: ModelResponse =
+      best === null && retryFeedback === null
+        ? await config.provider.complete({
+            kind: 'skill.propose',
+            skillName: contract.name,
+            problem: contract.purpose,
+            context,
+            successCriteria: criteria,
+          })
+        : await config.provider.complete({
+            kind: 'skill.revise',
+            skillName: contract.name,
+            problem: contract.purpose,
+            successCriteria: criteria,
+            context,
+            // Con feedback pendiente se corrige ESA propuesta (su error de forma
+            // o su repetición); si no, se parte de la mejor versión medida, no
+            // de la última: una revisión que empeoró no se vuelve la base.
+            previousProgram: retryFeedback ? retryFeedback.program : best?.program,
+            failureObservations: retryFeedback
+              ? retryFeedback.observations
+              : (best?.report.failureObservations ?? []),
+            ...(best && !retryFeedback
+              ? {
+                  baseVersion: best.version,
+                  caseResults: best.report.cases.map((c) => ({
+                    scenario: c.scenario,
+                    seed: c.seed,
+                    passed: c.passed,
+                    observations: c.observations,
+                  })),
+                }
+              : {}),
+            ...(attemptHistory.length > 0
+              ? {
+                  history: attemptHistory.map((v) => ({
+                    version: v.version,
+                    rationale: v.rationale,
+                    successRate: v.report.successRate,
+                    failureObservations: v.report.failureObservations,
+                  })),
+                }
+              : {}),
+            attempt,
+            maxAttempts: config.maxVersions,
+          });
     if (response.kind !== 'skill.program') break;
 
     // Nada de lo que proponga el modelo se ejecuta sin validación.
@@ -157,21 +200,39 @@ export async function developSkill(
       // El error de validación vuelve al modelo como retroalimentación.
       invalidRetries += 1;
       if (invalidRetries > 2) break;
-      previousProgram = response.program;
-      validationFeedback = [`programa-invalido: ${validated.error}`];
+      retryFeedback = {
+        program: response.program,
+        observations: [`programa-invalido: ${validated.error}`],
+      };
       continue;
     }
-    validationFeedback = null;
 
-    // Si la "nueva" versión es idéntica a la anterior, no aporta nada.
-    if (previousProgram && JSON.stringify(previousProgram) === JSON.stringify(validated.value)) {
+    // Una propuesta idéntica a CUALQUIER versión ya probada no aporta nada,
+    // pero tampoco costó simulación: vuelve como retroalimentación en lugar
+    // de matar el ciclo, hasta que insistir demuestre que no va a corregir.
+    const canonical = JSON.stringify(validated.value);
+    const repeatedVersion = triedPrograms.get(canonical);
+    if (repeatedVersion !== undefined) {
       events.emit({
         type: 'skill.rejected',
         tick,
-        data: { name: contract.name, attempt, reason: 'propuesta idéntica a la versión fallida' },
+        data: {
+          name: contract.name,
+          attempt,
+          reason: `propuesta idéntica a la v${repeatedVersion} ya probada`,
+        },
       });
-      break;
+      repeatedRetries += 1;
+      if (repeatedRetries > 2) break;
+      retryFeedback = {
+        program: validated.value,
+        observations: [
+          `propuesta-repetida: es idéntica a la v${repeatedVersion}, que ya falló. Cambia de enfoque: no repitas ninguna versión de la historia.`,
+        ],
+      };
+      continue;
     }
+    retryFeedback = null;
 
     const skill = config.library.addExperimental(
       {
@@ -183,8 +244,9 @@ export async function developSkill(
         successCriteria: contract.successCriteria,
         createdAt: config.now(),
       },
-      parentId,
+      best?.skillId,
     );
+    triedPrograms.set(canonical, skill.version);
     events.emit({
       type: 'skill.created',
       tick,
@@ -196,15 +258,24 @@ export async function developSkill(
       config,
       events,
       tick,
-      lastReport ?? undefined,
+      // La vara de promoción es la mejor versión: superar solo a la última
+      // permitiría promover una v3 peor que la v2.
+      best?.report,
     );
     reports.push(report);
     if (promoted) {
       return { stableSkill: skill, versionsTried: attempt, reports };
     }
-    parentId = skill.id;
-    previousProgram = validated.value;
-    lastReport = report;
+    const evaluated: EvaluatedVersion = {
+      skillId: skill.id,
+      version: skill.version,
+      program: validated.value,
+      rationale: response.rationale,
+      report,
+    };
+    attemptHistory.push(evaluated);
+    // Empate incluido: la versión más reciente incorporó más retroalimentación.
+    if (!best || report.successRate >= best.report.successRate) best = evaluated;
     attempt += 1;
   }
 

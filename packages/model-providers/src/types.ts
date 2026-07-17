@@ -21,9 +21,29 @@ export type ModelRequest =
   | {
       kind: 'skill.revise';
       skillName: string;
+      /** El problema original: la revisión no puede perder de vista el objetivo. */
+      problem: string;
+      /** Criterios que el evaluador medirá: la vara no cambia entre versiones. */
+      successCriteria: string[];
+      /** Observaciones del agente al abrir el ciclo (entidades, fallos previos). */
+      context: string[];
+      /** El mejor programa hasta ahora: la base de la corrección. */
       previousProgram: unknown;
       failureObservations: string[];
+      /** Qué versión es la base y cómo le fue, para razonar sobre la trayectoria. */
+      baseVersion?: number;
+      /** Cómo le fue a la base, mundo por mundo: dónde pasa y dónde falla. */
+      caseResults?: { scenario: string; seed: number; passed: boolean; observations: string[] }[];
+      /** Versiones ya intentadas: enfoques que no hay que repetir. */
+      history?: {
+        version: number;
+        rationale: string;
+        successRate: number;
+        failureObservations: string[];
+      }[];
       attempt: number;
+      /** Cuántos intentos hay en total: administrar el crédito también es razonar. */
+      maxAttempts?: number;
     }
   | {
       kind: 'interpret.signal';
@@ -83,6 +103,16 @@ export type ModelRequest =
       kind: 'recipe.propose';
       /** Para qué lo necesita: el problema, no la solución. */
       problem: string;
+      /**
+       * El id (y tipo) que la receta DEBE tener, cuando el problema es una
+       * petición del cuidador. Pidió "una casa" y la idea tiene que llamarse
+       * así: si la bautizara distinto, la petición seguiría sin encontrar su
+       * receta y ella inventaría en círculos hasta quedarse sin crédito.
+       *
+       * Ausente cuando la idea nace de un problema suyo (tengo frío): ahí el
+       * nombre es cosa de ella.
+       */
+      wantedId?: string;
       /** Materiales que existen a su alcance. */
       materials: string[];
       /** Recetas que ya existen: no tiene sentido reinventarlas. */

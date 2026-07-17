@@ -1,4 +1,4 @@
-import { countedKindLabel, isFeminineKind, kindLabel } from '@anima/shared';
+import { countedKindLabel, isFeminineKind, kindLabel, kindWithArticle } from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
 import { missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
@@ -38,13 +38,14 @@ const CRITICAL_ENERGY_FRACTION = 0.2;
 const displayKind = kindLabel;
 
 /** "una silla", "un tronco": el género se adivina por la terminación. */
-function withArticle(kind: string): string {
-  const name = displayKind(kind);
-  return `${isFeminineKind(kind) ? 'una' : 'un'} ${name}`;
-}
+const withArticle = kindWithArticle;
 
-/** "2 troncos y 1 pedernal" — para decir qué falta en voz humana. */
-function displayMissing(missing: { kind: string; need: number; have: number }[]): string {
+/**
+ * "2 troncos y 1 pedernal" — para decir qué falta en voz humana. Se exporta
+ * porque decir qué falta no es solo cosa de aceptar o negarse: cuando se queda
+ * sin material a mitad de construir, la respuesta honesta es la misma frase.
+ */
+export function displayMissing(missing: { kind: string; need: number; have: number }[]): string {
   return missing.map((m) => countedKindLabel(m.kind, m.need - m.have)).join(' y ');
 }
 
@@ -125,10 +126,15 @@ export function evaluateUserRequest(
     case 'craft-item': {
       const recipe = perception.recipes.find((r) => r.id === request.recipeId);
       if (!recipe) {
+        // No saber la receta no es no poder: puede tener una idea y dejar que
+        // el mundo la juzgue (ADR 0018). Negarse acá sería decidir en nombre
+        // del mundo sobre algo que el mundo todavía no dijo — y la negativa
+        // vieja («solo puedo construir lo que mi mundo permite») era falsa
+        // desde que puede proponer recetas.
         return {
-          classification: 'cannot',
-          reason: `No sé cómo construir "${displayKind(request.recipeId)}".`,
-          alternative: 'Solo puedo construir lo que mi mundo permite.',
+          classification: 'accepted',
+          reason: `Todavía no sé construir ${withArticle(request.recipeId)}.`,
+          alternative: 'Déjame pensar si se me ocurre algo con lo que tengo cerca.',
         };
       }
       const held = new Map<string, number>();

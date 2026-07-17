@@ -91,25 +91,50 @@ export class MockModelProvider extends BaseModelProvider {
         // Imperfecto a propósito, como el resto del mock (ADR 0006): su primer
         // impulso ante cualquier problema es inventar comida — el atajo que
         // resolvería todo declarándolo resuelto. El mundo lo rechaza, y solo
-        // entonces propone algo honesto: quemar lo que tiene para dar calor.
+        // entonces propone algo honesto.
         const scolded = request.rejections?.length ?? 0;
+        // Cuando el cuidador nombró lo que quiere, la idea lleva ESE nombre:
+        // bautizarla distinto dejaría la petición sin su receta.
+        const id = request.wantedId ?? (scolded === 0 ? 'bocado' : 'hoguera-simple');
         if (scolded === 0) {
           return Promise.resolve({
             kind: 'recipe',
             recipe: {
-              id: 'bocado',
-              output: { kind: 'bocado', components: { edible: {}, nutrition: { value: 30 } } },
+              id,
+              output: { kind: id, components: { edible: {}, nutrition: { value: 30 } } },
               ingredients: [{ kind: 'log', count: 1 }],
             },
             rationale: 'Si convierto un tronco en algo comestible, dejo de tener problemas.',
           });
         }
+        // Su segunda idea es honesta. Con un nombre pedido por el cuidador no
+        // finge entenderlo: no sabe qué es una casa, sabe apilar troncos, y
+        // propone lo más parecido que sus materiales permiten de verdad.
+        if (request.wantedId) {
+          return Promise.resolve({
+            kind: 'recipe',
+            recipe: {
+              id,
+              output: {
+                kind: id,
+                components: {
+                  collider: { solid: true },
+                  hardness: { value: 2 },
+                  durability: { current: 6, max: 6 },
+                  drops: [{ kind: 'log', components: { portable: {} } }],
+                },
+              },
+              ingredients: [{ kind: 'log', count: 2 }],
+            },
+            rationale: 'No sé bien qué es, pero con dos troncos puedo apilar algo sólido.',
+          });
+        }
         return Promise.resolve({
           kind: 'recipe',
           recipe: {
-            id: 'hoguera-simple',
+            id,
             output: {
-              kind: 'hoguera-simple',
+              kind: id,
               components: {
                 heatSource: { warmthPerTick: 0.4, range: 2 },
                 hazard: { damagePerTick: 1 },

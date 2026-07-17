@@ -21,12 +21,15 @@ const FORBID_AFTER_FAILURES = 2;
 export interface ProgressData {
   records: { goalId: string; strategies: StrategyRecord[] }[];
   skillDevAttempts: { goalId: string; attempts: number }[];
+  /** Intentos de inventar una receta, por objetivo. Puede faltar: es posterior. */
+  recipeAttempts?: { goalId: string; attempts: number }[];
   helpRequested: string[];
 }
 
 export class ProgressController {
   private records = new Map<string, Map<string, StrategyRecord>>();
   private skillDevAttempts = new Map<string, number>();
+  private recipeAttempts = new Map<string, number>();
   private helpRequested = new Set<string>();
 
   serialize(): ProgressData {
@@ -36,6 +39,10 @@ export class ProgressController {
         strategies: [...strategies.values()],
       })),
       skillDevAttempts: [...this.skillDevAttempts.entries()].map(([goalId, attempts]) => ({
+        goalId,
+        attempts,
+      })),
+      recipeAttempts: [...this.recipeAttempts.entries()].map(([goalId, attempts]) => ({
         goalId,
         attempts,
       })),
@@ -49,6 +56,11 @@ export class ProgressController {
       clone.records.map((r) => [r.goalId, new Map(r.strategies.map((s) => [s.strategy, s]))]),
     );
     this.skillDevAttempts = new Map(clone.skillDevAttempts.map((a) => [a.goalId, a.attempts]));
+    // Un guardado anterior al crédito por objetivo no trae el campo: se lee
+    // como lo que era, cero intentos gastados.
+    this.recipeAttempts = new Map(
+      (clone.recipeAttempts ?? []).map((a) => [a.goalId, a.attempts]),
+    );
     this.helpRequested = new Set(clone.helpRequested);
   }
 
@@ -110,6 +122,22 @@ export class ProgressController {
     const next = (this.skillDevAttempts.get(goalId) ?? 0) + 1;
     this.skillDevAttempts.set(goalId, next);
     return next;
+  }
+
+  /**
+   * Tener ideas se paga por PROBLEMA, no por vida. Un tope global convertía el
+   * tercer invento fallido en una condena: quedaba muda para siempre, aunque
+   * lo que le pasara después fuera otra cosa completamente distinta. Que este
+   * problema la haya derrotado no dice nada sobre el próximo.
+   */
+  recordRecipeAttempt(goalId: string): number {
+    const next = (this.recipeAttempts.get(goalId) ?? 0) + 1;
+    this.recipeAttempts.set(goalId, next);
+    return next;
+  }
+
+  recipeAttemptsFor(goalId: string): number {
+    return this.recipeAttempts.get(goalId) ?? 0;
   }
 
   markHelpRequested(goalId: string): void {

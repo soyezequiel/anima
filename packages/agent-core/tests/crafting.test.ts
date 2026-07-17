@@ -154,7 +154,7 @@ describe('«construí una fogata con esos troncos»', () => {
     expect(allEntities(world).some((e) => e.kind === 'campfire')).toBe(true);
   });
 
-  it('lo que el mundo no sabe construir no se acepta', async () => {
+  it('lo que todavía no sabe construir no se rechaza: se le ocurre algo', async () => {
     const { world, petId } = coldWorld();
     const provider = new FakeLanguageModel({
       'interpret.command': {
@@ -166,7 +166,111 @@ describe('«construí una fogata con esos troncos»', () => {
 
     const reply = await say(agent, perception(), 'construí un castillo');
 
-    expect(reply).toContain('No sé cómo construir');
+    // No saber la receta no es no poder: puede proponerla y dejar que el mundo
+    // la juzgue. La negativa vieja ("solo puedo construir lo que mi mundo
+    // permite") era mentira desde que existe `proposeRecipe` (ADR 0018).
+    expect(reply).toContain('Todavía no sé construir un castillo');
+    expect(reply).toContain('se me ocurre algo');
+  });
+
+  it('pedirle lo que no sabe le pide una idea, con el nombre que usó el cuidador', async () => {
+    const { world, petId } = coldWorld();
+    give(world, petId, 'log', 2);
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'castillo' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    await say(agent, perception(), 'construí un castillo');
+
+    for (let i = 0; i < 3; i++) {
+      const intent = await agent.think(perception());
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    // No hace falta que tenga frío para tener una idea: alcanza con que le
+    // pidan algo que no sabe. Ese disparador no existía.
+    const proposal = provider.seen.find((r) => r.kind === 'recipe.propose');
+    expect(proposal).toBeDefined();
+    // Y la idea lleva el nombre que le pidieron: si la bautizara distinto, la
+    // petición nunca encontraría su receta.
+    expect(proposal).toMatchObject({ wantedId: 'castillo' });
+    expect(String((proposal as { problem: string }).problem)).toContain('castillo');
+  });
+
+  it('si se queda sin material construyendo lo que inventó, dice qué le falta', async () => {
+    const { world, petId } = coldWorld();
+    give(world, petId, 'log', 2);
+    give(world, petId, 'branch', 1);
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'casa' },
+      },
+      // La casa que inventó en una corrida real: 2 troncos y 4 ramas. En el
+      // mundo hay una sola rama, así que junta lo que puede y se queda a mitad.
+      'recipe.propose': {
+        kind: 'recipe',
+        recipe: {
+          id: 'casa',
+          output: {
+            kind: 'casa',
+            components: { collider: { solid: true }, durability: { current: 20, max: 20 } },
+          },
+          ingredients: [
+            { kind: 'log', count: 2 },
+            { kind: 'branch', count: 4 },
+          ],
+        },
+        rationale: 'Troncos y ramas: lo más parecido a una casa que permiten estos materiales.',
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    await say(agent, perception(), 'construí una casa');
+
+    const said: string[] = [];
+    for (let i = 0; i < 30; i++) {
+      const intent = await agent.think(perception());
+      if (!intent) continue;
+      if (intent.type === 'speak') said.push(intent.text);
+      agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    // Sabe qué le falta y cuánto: el mundo se lo dice. Decir «no encuentro el
+    // objeto» sería tirar a la basura lo único que el cuidador puede usar para
+    // ayudarla — y con una receta que ella inventó, nadie más sabe qué lleva.
+    const failure = said.find((text) => text.startsWith('No pude completar eso'));
+    expect(failure).toBeDefined();
+    expect(failure).toContain('me faltan');
+    expect(failure).toContain('ramas');
+    expect(failure).not.toContain('no encuentro el objeto');
+  });
+
+  it('de la idea a la cosa: propone, el mundo la valida y termina construyéndola', async () => {
+    const { world, petId } = coldWorld();
+    give(world, petId, 'log', 2);
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'castillo' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    await say(agent, perception(), 'construí un castillo');
+
+    for (let i = 0; i < 25 && !allEntities(world).some((e) => e.kind === 'castillo'); i++) {
+      const intent = await agent.think(perception());
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    // El mock propone primero el atajo (un castillo comestible) y el mundo lo
+    // rechaza; corrige, el mundo acepta, y entonces sí lo construye. El arco
+    // entero del eje 3 movido por una frase del cuidador.
+    expect(agent.events.ofType('recipe.rejected').length).toBeGreaterThan(0);
+    expect(world.recipes.some((r) => r.id === 'castillo')).toBe(true);
+    expect(allEntities(world).some((e) => e.kind === 'castillo')).toBe(true);
   });
 
   it('las recetas del mundo viajan al modelo: sin eso no podría elegir craft-item', async () => {

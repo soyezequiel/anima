@@ -39,6 +39,9 @@ describe('MockModelProvider', () => {
     const revised = await provider.complete({
       kind: 'skill.revise',
       skillName: 'x',
+      problem: 'alimento bloqueado',
+      successCriteria: [],
+      context: [],
       previousProgram: [],
       failureObservations: ['no-damage-dealt:branch->wall'],
       attempt: 1,

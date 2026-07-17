@@ -4,8 +4,8 @@ import type { GameView } from './view.js';
 /**
  * Reporte descargable pensado para pegarle a Claude Code: describe el estado
  * real de una corrida y las brechas entre el código actual y la visión del
- * producto (simulación de mundo con crafteo no determinista de habilidades y
- * de objetos). Es texto plano deliberadamente: la evidencia viva (skills,
+ * producto (simulación de mundo con crafteo generativo validado de habilidades
+ * y de objetos). Es texto plano deliberadamente: la evidencia viva (skills,
  * recetas, memoria) va arriba en prosa y abajo cruda en JSON, así el agente
  * que lo lee puede citar datos exactos sin correr el juego.
  */
@@ -122,18 +122,36 @@ repositorio de Ánima.
 1. **Simulación de mundo**: un mundo con profundidad — más escenarios,
    materiales, clima, consecuencias — donde las cosas pasan por física propia
    y no por guion.
-2. **Crafteo de habilidades no determinista**: crear una habilidad debe poder
-   salir distinto cada vez — resultados graduales, variación entre intentos —
-   no un pipeline cuyo desenlace está fijado por la semilla.
-3. **Crafteo de objetos no determinista**: craftear debe admitir variación —
-   calidad del producto, fallos parciales, resultados alternativos — no un
-   único arquetipo fijo por receta.
+2. **Crafteo de habilidades generativo validado**: el modelo propone la
+   habilidad y una puerta independiente decide si entra —
+   \`validateSkillProgram\` (\`packages/skill-runtime/src/dsl.ts\`) comprueba la
+   forma contra una DSL cerrada, y el evaluador la mide en mundos aislados.
+3. **Crafteo de objetos generativo validado**: el modelo propone la receta y
+   \`validateRecipe\` (\`packages/sim-core/src/recipe-validation.ts\`) comprueba
+   que la idea sea coherente con la física — que no invente materia, comida ni
+   poderes que el mundo no tiene. La mascota propone QUÉ construir; el mundo
+   decide si es posible y con qué fidelidad le sale.
+
+**El nombre importa**: esto se llamó «crafteo no determinista» y era el nombre
+equivocado — nombraba el dado cuando lo que se quería era la propuesta. Son dos
+ejes distintos y no conviene confundirlos:
+
+- **Generativo validado** (lo que pide la visión): un generador no confiable
+  propone, una puerta determinista del mundo decide. Es el principio 6 del
+  README — «el generador propone, el evaluador independiente decide» —
+  extendido de las habilidades a la física.
+- **Estocástico reproducible** (mecánica de apoyo, ADR 0020): \`resolveCraft\`
+  tira \`world.rng\` entre desenlaces ponderados. No genera nada: elige entre
+  opciones que el mundo ya derivó. Dejó de ser predecible sin dejar de ser
+  reproducible, que no es lo mismo que ser no determinista.
 
 **Tensión a respetar**: el principio 1 del README («el mundo decide qué es
-posible», motor determinista y snapshots reproducibles) no se rompe. El no
-determinismo pedido debe salir del **RNG seedeado del mundo**
-(\`packages/shared/src/rng.ts\`): variable entre eventos y corridas, pero
-reproducible con la misma semilla. Nunca \`Math.random()\` en el motor.
+posible», motor determinista y snapshots reproducibles) no se rompe por ninguno
+de los dos ejes. Lo que propone un modelo entra siempre por una puerta de
+validación del mundo, nunca directo al estado. Y toda variación sale del **RNG
+seedeado del mundo** (\`packages/shared/src/rng.ts\`): variable entre eventos y
+corridas, pero reproducible con la misma semilla. Nunca \`Math.random()\` en el
+motor.
 
 ## Estado de la corrida
 
@@ -162,15 +180,53 @@ ${hypothesisLines.join('\n') || '- (ninguna)'}
 
 ## Brechas contra la visión
 
-### 1. Lo que el mundo suelta sigue siendo fijo
+### 1. Objetos: el eje funciona; inventa por encargo más que por necesidad
 
-El crafteo ya no es determinista: \`Recipe\` declara \`outcomes\` ponderados y
-\`resolveCraft\` (\`packages/sim-core/src/step.ts\`) los resuelve tirando
-\`world.rng\` — mismo dado seedeado, así que varía entre intentos y se reproduce
-con la misma semilla. La calidad escala los componentes graduables del producto.
-Lo de arriba, en «Recetas del mundo», lo muestra receta por receta.
+El eje 3 existe de punta a punta y funciona. \`inventRecipe\`
+(\`packages/agent-core/src/agent.ts\`) le pide al proveedor un \`RecipeProposal\`
+—un arquetipo, su idea de QUÉ construir—, la intención \`proposeRecipe\` viaja al
+mundo, y \`resolveProposeRecipe\` (\`packages/sim-core/src/step.ts\`) la pasa por
+\`validateRecipe\` antes de tocar \`world.recipes\`. El rechazo vuelve con motivo
+y viaja al siguiente intento, así que corrige en vez de insistir. Los pesos los
+deriva el mundo del otro lado de la puerta, nunca ella: un peso es
+infalsificable (ADR 0020).
 
-Lo que quedó determinista de este eje:
+Tiene dos disparadores (ADR 0022): el frío sin fuego, y —el que más rinde— que
+el cuidador le pida construir algo que su mundo no sabe hacer. Pedirle lo que no
+sabe es pedirle una idea: la propuesta lleva el nombre que él usó, así que si el
+mundo la acepta, lo que sigue es construirla. El crédito de
+\`MAX_RECIPE_ATTEMPTS\` se cuenta por objetivo, no por vida.
+
+Lo que falta es alcance, no puerta:
+
+- **Sus propios problemas casi no le dan permiso de tener una idea.** El único
+  disparador interno sigue siendo el frío. Un muro que no puede romper no le
+  sugiere una herramienta mejor; un camino bloqueado no le sugiere nada. Hoy
+  inventa por pedido ajeno mucho más que por necesidad propia.
+- **Qué construir**: disparadores desde sus propios fracasos — cuando una
+  estrategia queda prohibida por falta de CAPACIDAD (no de recurso), lo que
+  falta puede ser un objeto que todavía no existe.
+
+### 2. Habilidades: la puerta existe, el generador es un guion y la vara mide suerte
+
+- \`validateSkillProgram\` + el evaluador aislado son la mitad validadora, y es
+  buena: es el principio 6 del README y funciona.
+- La mitad generativa casi no existe por defecto: \`MockModelProvider\` es
+  determinista a propósito (ADR 0006), así que sin Codex la «propuesta» es un
+  guion. El eje está validado pero apenas generado.
+- Y la vara mide lo que no quiere medir: las skills se evalúan con semillas
+  fijas \`[${evaluationSeeds.join(', ')}]\`
+  (\`apps/web/src/session/GameSession.ts\` → \`packages/skill-evaluator/src/evaluate.ts\`)
+  y el veredicto es binario. Con el crafteo variable (ADR 0020) una skill que
+  construye puede pasar o fallar por la tirada, y un booleano lee eso como
+  capacidad cuando es suerte.
+- **Qué construir**: medir el éxito como distribución y no como booleano;
+  muestrear semillas desde el RNG del mundo manteniendo las regresiones como
+  casos fijos; variación real entre candidatas del mismo contrato.
+
+### 3. La variación del mundo llegó al crafteo y ahí paró
+
+Eje de apoyo, no el de la visión — pero la asimetría se nota:
 
 - Los \`drops\` (talar el árbol, romper objetos) son listas fijas: el mundo
   nunca sorprende con lo que suelta. La calidad no los toca a propósito — la
@@ -183,22 +239,7 @@ Lo que quedó determinista de este eje:
 - **Qué construir**: drops probabilísticos con el mismo dado, y materiales con
   propiedades variables de origen (un tronco que ya viene mejor o peor).
 
-### 2. El crafteo de habilidades es determinista de punta a punta
-
-- Las skills se evalúan con semillas fijas \`[${evaluationSeeds.join(', ')}]\`
-  (\`apps/web/src/session/GameSession.ts\` → \`packages/skill-evaluator/src/evaluate.ts\`):
-  el mismo programa da siempre el mismo veredicto.
-- \`MockModelProvider\` es determinista a propósito (ADR 0006): sin Codex, la
-  «creación» de una skill es un guion.
-- La promoción es binaria (pasa/no pasa): no hay habilidades que salgan
-  mejores o peores, ni variación entre intentos de creación.
-- **Qué construir**: muestrear semillas de evaluación desde el RNG del mundo
-  (manteniendo las regresiones como casos fijos), medir éxito como
-  distribución y no como booleano, atributos emergentes por skill (potencia,
-  costo) que dependan de cómo salió la evaluación, y variación real entre
-  candidatas del mismo contrato.
-
-### 3. El mundo es chico para llamarse simulación
+### 4. El mundo es chico para llamarse simulación
 
 - Todo ocurre en \`food-behind-wall\` (9×5) con ~4 tipos de entidad; el
   roadmap (\`docs/product/roadmap.md\`, sección 1) ya lista las carencias:
@@ -211,14 +252,20 @@ Lo que quedó determinista de este eje:
 ## Prioridades sugeridas
 
 1. Evaluación de skills con semillas muestreadas + métrica de éxito como
-   distribución (sin perder las regresiones fijas). Ahora aprieta más que
-   antes: con el crafteo variable, una skill que construye puede pasar o fallar
-   por la tirada, y un veredicto booleano sobre 3 semillas lo lee como
-   capacidad cuando es suerte.
-2. Drops probabilísticos y ramas caídas del árbol (desbloquea troncos: es el
+   distribución (sin perder las regresiones fijas). Con el crafteo variable, un
+   veredicto booleano sobre 3 semillas lee la suerte como capacidad. Es ahora
+   la brecha más urgente, y esta corrida trae la prueba de que la vara está
+   rota más allá del azar: \`crear-casa\` v2 se promovió al 100% con el criterio
+   «termina llevando un martillo», que no tiene nada que ver con una casa. Una
+   skill que mide cualquier cosa siempre pasa.
+2. Disparadores de invención desde sus propios fracasos: que una estrategia
+   prohibida por falta de CAPACIDAD le sugiera que lo que falta es un objeto
+   que todavía no existe. Hoy inventa por pedido del cuidador (ADR 0022) mucho
+   más que por necesidad propia.
+3. Drops probabilísticos y ramas caídas del árbol (desbloquea troncos: es el
    hallazgo abierto del ADR 0018 y lo que hace fracasar a \`conseguir-calor\`
    una versión tras otra).
-3. Un segundo escenario jugable más grande que ejercite todo lo anterior.
+4. Un segundo escenario jugable más grande que ejercite todo lo anterior.
 
 ## Datos crudos (JSON)
 

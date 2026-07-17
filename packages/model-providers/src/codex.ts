@@ -62,9 +62,15 @@ variables que las demás operaciones consumen por nombre.
 Construir: "craft" gasta los ingredientes que la receta pide y que la mascota
 debe llevar encima; el mundo coloca lo construido en una celda libre contigua.
 Destruir algo puede dejar objetos caídos (talar un árbol deja troncos).
-"findEntities" incluye lo que la mascota ya lleva encima: para juntar VARIOS
-objetos del mismo tipo hay que filtrar con "held":false, o se elegirá siempre
-el que ya tiene en la mano.
+"findEntities" incluye lo que la mascota ya lleva encima, y eso corta para los
+dos lados:
+- Para JUNTAR VARIOS objetos del mismo tipo, filtra con "held":false, o
+  elegirá siempre el que ya tiene en la mano.
+- Para USAR algo que le sirve (una herramienta), NO filtres por "held": si ya
+  lo lleva, "held":false no encuentra nada, "selectTarget" se queda sin
+  candidatos y el programa aborta reclamando algo que tiene en la mano. Busca
+  sin "held" y guarda el "pickup" detrás de
+  {"op":"branch","if":{"type":"not","cond":{"type":"holding","target":"<var>"}},"then":[...]}.
 Límites duros: máximo 200 operaciones, profundidad 6, repeticiones siempre
 con "max". Propiedades extra o operaciones desconocidas invalidan el programa.`;
 
@@ -340,6 +346,15 @@ no sabe construir. Invéntalo con lo que tiene a mano.
 ${RECIPE_REFERENCE}
 
 Lo que necesitas resolver: ${request.problem}
+${
+  request.wantedId
+    ? `\nLa receta DEBE llevar id "${request.wantedId}" y producir un objeto de
+tipo "${request.wantedId}": es el nombre con el que te lo pidieron, y si la
+bautizas distinto nadie va a encontrar lo que pediste. Traduce ese nombre a lo
+que tus materiales y tus componentes permitan de verdad: no tienes que lograr
+la idea completa que evoca la palabra, sino lo más honesto que se le parezca.\n`
+    : ''
+}
 Materiales a tu alcance:
 ${request.materials.map((m) => `- ${m}`).join('\n') || '- (ninguno)'}
 Recetas que ya existen (no las repitas):
@@ -362,15 +377,47 @@ vuelve posible. Responde únicamente con JSON:
         prompt: `Eres la mente de una mascota virtual corrigiendo una habilidad que falló sus pruebas.
 ${DSL_REFERENCE}
 
-Programa anterior (v fallida):
+Problema a resolver: ${request.problem}
+Un evaluador independiente solo aprueba si TODOS estos criterios se cumplen en
+TODOS los mundos de prueba:
+${request.successCriteria.map((c) => `- ${c}`).join('\n') || '- (sin criterios declarados)'}
+
+Contexto observado al abrir el ciclo:
+${request.context.map((c) => `- ${c}`).join('\n') || '- (sin contexto adicional)'}
+${
+  request.history && request.history.length > 0
+    ? `\nVersiones ya intentadas (NO repitas un enfoque que ya falló):
+${request.history
+  .map(
+    (h) =>
+      `- v${h.version} (éxito ${(h.successRate * 100).toFixed(0)}%): ${h.rationale || 'sin justificación'} — fallos: ${h.failureObservations.join('; ') || 'ninguno registrado'}`,
+  )
+  .join('\n')}\n`
+    : ''
+}
+Programa base a corregir${request.baseVersion !== undefined ? ` (v${request.baseVersion}, la mejor hasta ahora)` : ''}:
 ${JSON.stringify(request.previousProgram)}
 
-Observaciones del evaluador (fallos medidos en simulación):
-${request.failureObservations.map((o) => `- ${o}`).join('\n')}
-
-Intento número: ${request.attempt}
-Analiza la causa raíz según las observaciones y produce una versión corregida
-(no idéntica). Responde únicamente con JSON:
+Observaciones del evaluador sobre esa base (fallos medidos en simulación):
+${request.failureObservations.map((o) => `- ${o}`).join('\n') || '- (sin observaciones)'}
+${
+  request.caseResults && request.caseResults.length > 0
+    ? `\nResultado mundo por mundo:
+${request.caseResults
+  .map(
+    (c) =>
+      `- ${c.scenario} (semilla ${c.seed}): ${c.passed ? 'PASÓ' : `FALLÓ — ${c.observations.join('; ') || 'sin detalle'}`}`,
+  )
+  .join('\n')}
+Compara los mundos donde pasa con los mundos donde falla: la diferencia entre
+ellos suele ser la causa raíz. El programa debe funcionar en TODOS a la vez.\n`
+    : ''
+}
+Intento ${request.attempt}${request.maxAttempts !== undefined ? ` de ${request.maxAttempts}` : ''}.
+Analiza la causa raíz según la evidencia y produce una versión corregida,
+distinta de todas las ya intentadas. Si la trayectoria muestra que un enfoque
+se estancó, cambia de estrategia en lugar de ajustar números. Responde
+únicamente con JSON:
 {"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "qué cambiaste y por qué, breve, en español"}`,
       };
     case 'interpret.signal':
@@ -430,10 +477,11 @@ no afirmes haber actuado. Acciones ejecutables:
 - move-direction: moverse; directions usa up/down/left/right en el orden pedido.
 - run-skill: pide una conducta que YA figura en la lista de aprendidas;
   skillName es el nombre exacto de esa habilidad.
-- craft-item: pide CONSTRUIR algo que figura en la lista de recetas; recipeId
-  es el id exacto de la receta. No te importa si tiene los ingredientes: eso
-  lo decide el agente después. Solo si lo pedido NO está en las recetas es
-  unsupported.
+- craft-item: pide CONSTRUIR o FABRICAR un objeto. Si figura en la lista de
+  recetas, recipeId es su id exacto. Si NO figura, sigue siendo craft-item:
+  recipeId es un id nuevo en minúsculas-con-guiones que nombre lo pedido
+  ("casa", "puente"). Que sepa hacerlo o tenga los ingredientes no es asunto
+  tuyo: la mascota puede inventar la receta y el mundo decidirá si es posible.
 - rename-pet: le pone un nombre nuevo a la mascota ("te voy a llamar Luna",
   "tu nombre es Sol", "desde hoy te llamás Nube"); name es el nombre elegido,
   tal como lo escribió el cuidador. Preguntar por el nombre NO es rename-pet.
@@ -444,7 +492,8 @@ no afirmes haber actuado. Acciones ejecutables:
   summary describe qué le pide, incorporando lo que el cuidador haya explicado
   en la conversación.
 - unsupported: orden física que ninguna combinación de sus primitivas logra
-  (saltar, volar, construir algo que no tiene receta). summary es una frase
+  (saltar, volar). Construir algo sin receta NO va acá: va a craft-item, porque
+  puede inventarla. summary es una frase
   NOMINAL breve de lo que te pidió, en infinitivo y sin explicar ni negar:
   "saltar el muro", "volar hasta el árbol". Nunca "X no es posible porque...":
   el agente arma la negativa con sus palabras, tú solo nombras lo pedido.
