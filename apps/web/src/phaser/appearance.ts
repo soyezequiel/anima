@@ -22,6 +22,8 @@ export const KIND_EMOJI: Record<string, string> = {
   chair: '🪑',
   torch: '🕯️',
   barricade: '🚧',
+  water: '🌊',
+  shelter: '🛖',
 };
 
 /**

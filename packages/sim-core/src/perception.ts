@@ -22,6 +22,10 @@ export interface PerceivedEntity {
   hardness?: number;
   /** Calor que irradia por tick (si es una fuente de calor). */
   warmth?: number;
+  /** Agua: se ve (no es sólida) pero no se puede pisar. */
+  wet?: boolean;
+  /** Refugio: al lado de esto no se pierde calor corporal. */
+  shelter?: boolean;
   /** true si el observador la lleva en su inventario. */
   held?: boolean;
 }
@@ -87,6 +91,8 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   if (entity.components.tool) perceived.toolPower = entity.components.tool.power;
   if (entity.components.hardness) perceived.hardness = entity.components.hardness.value;
   if (entity.components.heatSource) perceived.warmth = entity.components.heatSource.warmthPerTick;
+  if (entity.components.water) perceived.wet = true;
+  if (entity.components.shelter) perceived.shelter = true;
   if (held) perceived.held = true;
   return perceived;
 }

@@ -149,6 +149,35 @@ export const BARRICADE_RECIPE: Recipe = {
 };
 
 /**
+ * El refugio: la contraparte serena de la fogata. No calienta ni quema —
+ * adentro (o al lado) el calor corporal deja de perderse, y nada más. Es
+ * carpintería: siempre sale algo, sin pedernal y sin chispa, porque no hay
+ * nada que encender. Más caro en madera que la fogata (3 troncos contra 2):
+ * elegir entre parar la sangría para siempre o recuperar calor ya —
+ * arriesgando la chispa y el pedernal— es una decisión real.
+ *
+ * No es sólido: se entra, no se choca. Por eso no puede volverse un muro que
+ * atrape al movimiento voraz de la mascota.
+ */
+export const SHELTER_RECIPE: Recipe = {
+  id: 'shelter',
+  outcomes: carpentryOutcomes({
+    kind: 'shelter',
+    components: {
+      shelter: { range: 1 },
+      hardness: { value: 3 },
+      durability: { current: 12, max: 12 },
+      // Dos de los tres troncos que costó: la materia no crece (ADR 0008).
+      drops: [
+        { kind: 'log', components: { portable: {} } },
+        { kind: 'log', components: { portable: {} } },
+      ],
+    },
+  }),
+  ingredients: [{ kind: 'log', count: 3 }],
+};
+
+/**
  * Lo que el mundo del MVP admite construir. Estilo Doodle God: los mismos
  * materiales base (troncos, pedernal) combinan en cosas distintas, y gastarlos
  * en una es no tenerlos para otra.
@@ -158,6 +187,7 @@ export const MVP_RECIPES: Recipe[] = [
   CHAIR_RECIPE,
   TORCH_RECIPE,
   BARRICADE_RECIPE,
+  SHELTER_RECIPE,
 ];
 
 /**
@@ -240,11 +270,23 @@ function spawnHammer(world: WorldState, pos: Vec2): void {
   });
 }
 
+/** Agua: una celda que se ve y no se pisa. Terreno, no recurso. */
+function spawnWater(world: WorldState, pos: Vec2): void {
+  spawn(world, 'water', { position: pos, water: {} });
+}
+
 /**
  * El árbol es fuente de alimento Y talable: derribarlo con una herramienta
  * fuerte deja troncos, pero destruye la fuente de comida — una consecuencia
  * real que la mascota puede descubrir y lamentar. La rama no lo daña
  * (dureza como la del muro).
+ *
+ * Además suelta ramas cada tanto: madera renovable SIN talar. La mascota se
+ * niega a derribar árboles que cree necesitar (will_not, ADR 0019), y sin
+ * esto los troncos eran finitos — negarse tenía razón y no tenía salida. La
+ * rama que cae es la salida: herramienta débil, pero cae sola. El primer
+ * brote (tick 350) es posterior al maxTicks de cualquier evaluación (200) y
+ * distinto del de la comida (400), para que no compitan por las celdas.
  */
 function spawnTree(world: WorldState, pos: Vec2): void {
   const log = { portable: {} };
@@ -254,6 +296,14 @@ function spawnTree(world: WorldState, pos: Vec2): void {
     hardness: { value: 5 },
     durability: { current: 15, max: 15 },
     foodSource: { intervalTicks: 400, nutrition: 30, nextSpawnAtTick: 400 },
+    itemSource: {
+      intervalTicks: 350,
+      nextSpawnAtTick: 350,
+      output: {
+        kind: 'branch',
+        components: { portable: {}, tool: { power: 1 }, durability: { current: 8, max: 8 } },
+      },
+    },
     drops: [
       { kind: 'log', components: log },
       { kind: 'log', components: log },
@@ -304,6 +354,22 @@ export const foodBehindWall: ScenarioSpec = {
     spawnTree(world, { x: 11, y: 6 });
     spawnTree(world, { x: 12, y: 0 });
     spawnTree(world, { x: 0, y: 0 });
+
+    // Un estanque en el borde norte del lado de la comida: agua que da forma
+    // a los caminos sin cerrar ninguno (la fila y=1 queda libre) y lejos del
+    // corredor de la historia del hambre (y=3). Terreno, no obstáculo hostil:
+    // no encierra nada, solo obliga a rodear.
+    spawnWater(world, { x: 7, y: 0 });
+    spawnWater(world, { x: 8, y: 0 });
+
+    // Un refugio ya construido en el rincón del taller, a calidad de catálogo.
+    // No compite con la historia del fuego: la mascota prefiere el fuego
+    // (recupera calor; el refugio solo deja de perderlo) y recién cae acá si
+    // no queda nada que arda. Es la red, no el segundo acto.
+    spawn(world, 'shelter', {
+      position: { x: 0, y: 6 },
+      ...structuredClone(recipeProduct(SHELTER_RECIPE)!.components),
+    });
 
     // Materiales sueltos por TODO el mapa, no solo en el rincón inicial
     // (estilo Doodle God: los mismos ingredientes combinan en cosas distintas,
@@ -388,6 +454,15 @@ export const coldNight: ScenarioSpec = {
       heatSource: { warmthPerTick: 0.3, range: 2 },
       hazard: { damagePerTick: 1 },
     });
+    // Un refugio en el rincón opuesto al fuego: para el frío hay dos
+    // respuestas de naturaleza distinta —recuperar calor o dejar de perderlo—
+    // y este escenario ahora contiene ambas. Fuera del alcance de la mascota
+    // inicial (a distancia >1), así que las reglas del motor que este archivo
+    // prueba no cambian.
+    spawn(world, 'shelter', {
+      position: { x: 0, y: 4 },
+      ...structuredClone(recipeProduct(SHELTER_RECIPE)!.components),
+    });
     spawnTree(world, { x: 8, y: 4 });
     const foodSpots: Vec2[] = [
       { x: 3, y: 1 },
@@ -471,6 +546,10 @@ export const practiceRoom: ScenarioSpec = {
     spawn(world, 'torch', {
       position: { x: 0, y: 8 },
       ...structuredClone(recipeProduct(TORCH_RECIPE)!.components),
+    });
+    spawn(world, 'shelter', {
+      position: { x: 0, y: 0 },
+      ...structuredClone(recipeProduct(SHELTER_RECIPE)!.components),
     });
     return { world, petId, meta: { name: 'practice-room', seed } };
   },

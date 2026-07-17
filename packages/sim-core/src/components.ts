@@ -29,6 +29,30 @@ export interface Components {
   dead?: { atTick: number; cause: string };
   /** Produce alimento periódicamente en una celda libre adyacente. */
   foodSource?: { intervalTicks: number; nutrition: number; nextSpawnAtTick: number };
+  /**
+   * Produce periódicamente el objeto declarado (arquetipo completo, como los
+   * `drops`) en una celda libre adyacente: las ramas que un árbol suelta sin
+   * que nadie lo tale. Es la forma genérica de `foodSource`, que se conserva
+   * aparte porque vive en los guardados y porque el alimento satura distinto
+   * (por ser comestible, no por ser del mismo tipo).
+   */
+  itemSource?: {
+    intervalTicks: number;
+    nextSpawnAtTick: number;
+    output: { kind: EntityKind; components: Components };
+  };
+  /**
+   * Agua: no es sólida (no tapa la vista ni la línea de visión) pero caminar
+   * adentro falla con motivo propio. No hay nado ni sed: es terreno que da
+   * forma a los caminos, no un recurso.
+   */
+  water?: Record<string, never>;
+  /**
+   * Refugio: anula la pérdida de calor corporal de los agentes a distancia
+   * Chebyshev ≤ range. No calienta ni quema — es la contraparte serena de la
+   * fogata: adentro no se pierde nada, pero tampoco se recupera.
+   */
+  shelter?: { range: number };
   /** Daña a los agentes adyacentes cada tick (espinas, fuego, etc.). */
   hazard?: { damagePerTick: number };
   /**

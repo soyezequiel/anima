@@ -21,6 +21,8 @@ const KIND_LABELS: Record<string, string> = {
   torch: 'antorcha',
   barricade: 'empalizada',
   cactus: 'cactus',
+  water: 'agua',
+  shelter: 'refugio',
 };
 
 /**

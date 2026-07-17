@@ -48,6 +48,8 @@ const entityQuerySchema = z
     portable: z.boolean().optional(),
     /** Fuentes de calor. La mascota percibe qué irradia calor, no de qué tipo es. */
     warm: z.boolean().optional(),
+    /** Refugios: donde el calor corporal deja de perderse. Igual que `warm`, se percibe por lo que hace. */
+    shelter: z.boolean().optional(),
     /**
      * Filtra por si ya lo lleva encima. Sin esto no se puede juntar dos cosas
      * del mismo tipo: `nearest` ordena lo sostenido a distancia 0, así que la

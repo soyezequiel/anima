@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getEntity } from '@anima/sim-core';
+import { getEntity, spawn } from '@anima/sim-core';
 import type { SkillProgram } from '../src/index.js';
 import { runSkillProgram, SkillLibrary } from '../src/index.js';
 import { addFood, addHammer, addWallColumn, smallWorld } from './helpers.js';
@@ -119,6 +119,36 @@ describe('intérprete de skills', () => {
     const report = runSkillProgram(world, petId, program, { maxTicks: 10 });
     expect(report.outcome).toBe('timeout');
     expect(report.ticks).toBe(10);
+  });
+
+  it('rodea el agua visible sin siquiera intentar pisarla', () => {
+    const { world, petId } = smallWorld(); // mascota en (1,2)
+    // Un estanque de 2×2 en el camino diagonal hacia el alimento: el lookahead
+    // trata las celdas mojadas que ve como sólidos, así que esquiva por arriba
+    // sin gastar ni un intento fallido contra la orilla.
+    const wetCells = ['3,1', '4,1', '3,2', '4,2'];
+    for (const cell of wetCells) {
+      const [x, y] = cell.split(',').map(Number);
+      spawn(world, 'water', { position: { x: x!, y: y! }, water: {} });
+    }
+    addFood(world, 7, 0);
+    const report = runSkillProgram(world, petId, reachAndEat, { maxTicks: 60 });
+    expect(report.outcome).toBe('completed');
+    expect(report.events.some((e) => e.type === 'item.consumed')).toBe(true);
+    // Ningún movimiento terminó en el agua…
+    const wet = new Set(wetCells);
+    const steps = report.events.filter((e) => e.type === 'entity.moved');
+    expect(
+      steps.every((e) => {
+        const to = e.data.to as { x: number; y: number };
+        return !wet.has(`${to.x},${to.y}`);
+      }),
+    ).toBe(true);
+    // …y ninguno lo intentó: el agua se esquiva por percepción, no a golpes.
+    expect(
+      report.events.filter((e) => e.type === 'action.resolved' && e.data.reason === 'water'),
+    ).toHaveLength(0);
+    expect(report.invariantViolations).toEqual([]);
   });
 
   it('aborta si una variable no existe', () => {

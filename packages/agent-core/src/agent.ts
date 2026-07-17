@@ -145,6 +145,23 @@ const WARMTH_APPROACH_PROGRAM: SkillProgram = [
 ];
 
 /**
+ * El plan B sereno: sin fuego a la vista ni forma de hacerlo, un refugio no
+ * devuelve el calor perdido pero para la sangría. Se pega (el refugio no
+ * quema, la distancia prudente del fuego aquí no hace falta) y se queda.
+ */
+const SHELTER_APPROACH_PROGRAM: SkillProgram = [
+  { op: 'findEntities', query: { shelter: true }, store: 'shelters' },
+  { op: 'selectTarget', from: 'shelters', strategy: 'nearest', store: 'shelter' },
+  { op: 'moveToward', target: 'shelter', maxSteps: 30 },
+  {
+    op: 'branch',
+    if: { type: 'lastMoveBlocked' },
+    then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+  },
+  { op: 'wait', ticks: 20 },
+];
+
+/**
  * Juntar los ingredientes que falten y construir. Se genera desde la receta
  * —dato del mundo—, igual que los programas de las peticiones del usuario:
  * composición determinista de primitivas, no una skill que haya que aprender.
@@ -2416,6 +2433,13 @@ export class AnimaAgent {
         label: `build-fire:${recipe.id}`,
         program: buildFireProgram(recipe, heldCounts(perception)),
       });
+    }
+    // Después del fuego, no antes: el fuego recupera calor y el refugio solo
+    // deja de perderlo. Y solo si VE alguno — un refugio hipotético no es una
+    // estrategia, y ofrecerla en mundos sin refugio retrasaría lo que sigue
+    // (inventar, pedir ayuda) un ciclo entero para nada.
+    if (perception.visibleEntities.some((e) => e.shelter)) {
+      strategies.push({ label: 'shelter-approach', program: SHELTER_APPROACH_PROGRAM });
     }
     // Sin nada cálido al alcance de los sentidos, ir a donde RECUERDA que
     // había calor va primero: caminar hasta un fuego que ya existe es más

@@ -164,6 +164,41 @@ describe('el frío como motivo', () => {
     expect(agent.events.ofType('help.requested').length).toBeGreaterThan(0);
   });
 
+  it('sin fuego ni forma de hacerlo, con un refugio a la vista se refugia y la sangría para', async () => {
+    const { world, petId } = coldWorld({ fire: false, recipes: false });
+    spawn(world, 'shelter', {
+      position: { x: 6, y: 2 },
+      shelter: { range: 1 },
+      hardness: { value: 3 },
+      durability: { current: 12, max: 12 },
+    });
+    const { agent } = makeAgent(world, petId);
+    const pet = world.entities[petId]!;
+
+    for (let i = 0; i < 40; i++) {
+      const intent = await agent.think(buildPerception(world, petId));
+      agent.observe(stepWorld(world, [{ actorId: petId, intent: intent ?? { type: 'wait' } }]));
+    }
+
+    // Llegó y se quedó: pegada al refugio (no quema; no hay distancia prudente).
+    const distance = Math.max(
+      Math.abs(pet.components.position!.x - 6),
+      Math.abs(pet.components.position!.y - 2),
+    );
+    expect(distance).toBeLessThanOrEqual(1);
+    // El refugio no calienta, pero al alcance de él no se pierde ni una décima.
+    const settled = pet.components.temperature!.current;
+    expect(settled).toBeGreaterThan(0);
+    for (let i = 0; i < 10; i++) {
+      const intent = await agent.think(buildPerception(world, petId));
+      agent.observe(stepWorld(world, [{ actorId: petId, intent: intent ?? { type: 'wait' } }]));
+    }
+    expect(pet.components.temperature!.current).toBe(settled);
+    // Pedir ayuda después sigue siendo legítimo: el refugio paró la sangría
+    // pero no devuelve el calor perdido, y "recuperar calor" sigue pendiente.
+    // Lo que importa es que pidió ayuda A SALVO, no congelándose a la deriva.
+  });
+
   it('sin mundos fríos donde probar, pide ayuda en vez de aprender contra una vara imposible', async () => {
     // Puede construir fuego (tiene la receta), pero nadie le dio dónde
     // practicarlo: `temperatureIncreased` sería inalcanzable en un mundo

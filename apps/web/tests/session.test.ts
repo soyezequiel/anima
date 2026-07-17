@@ -406,6 +406,7 @@ describe('reglas del mundo al restaurar', () => {
       'barricade',
       'campfire',
       'chair',
+      'shelter',
       'torch',
     ]);
     session.dispose();
@@ -439,6 +440,7 @@ describe('reglas del mundo al restaurar', () => {
       'campfire',
       'chair',
       'hoguera-simple',
+      'shelter',
       'torch',
     ]);
     session.dispose();

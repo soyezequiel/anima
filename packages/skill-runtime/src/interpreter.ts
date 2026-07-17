@@ -191,6 +191,7 @@ export class SkillExecution {
             return false;
           if (op.query.held !== undefined && (e.held ?? false) !== op.query.held) return false;
           if (op.query.warm !== undefined && (e.warmth !== undefined) !== op.query.warm) return false;
+          if (op.query.shelter !== undefined && (e.shelter ?? false) !== op.query.shelter) return false;
           return true;
         });
         this.vars.set(op.store, matches);
@@ -354,9 +355,15 @@ export class SkillExecution {
     const viable = candidates.filter((dir) => {
       if (move.triedDirs.has(dir)) return false;
       const dest = { x: selfPos.x + deltas[dir].x, y: selfPos.y + deltas[dir].y };
-      // Lookahead barato: evita chocar contra sólidos que ya percibe.
+      // Lookahead barato: evita chocar contra sólidos que ya percibe. El agua
+      // cuenta como sólido aquí —pisar adentro falla igual—, así el programa
+      // rodea la orilla en vez de abortar contra ella.
       const solidThere = perception.visibleEntities.some(
-        (e) => e.solid && e.position && e.position.x === dest.x && e.position.y === dest.y,
+        (e) =>
+          (e.solid || e.wet) &&
+          e.position &&
+          e.position.x === dest.x &&
+          e.position.y === dest.y,
       );
       return !solidThere;
     });

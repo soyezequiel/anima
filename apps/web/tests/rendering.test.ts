@@ -15,6 +15,8 @@ describe('los nombres se dicen en voz humana', () => {
     expect(kindLabel('flint')).toBe('pedernal');
     expect(kindLabel('campfire')).toBe('fogata');
     expect(kindLabel('tree')).toBe('árbol');
+    expect(kindLabel('water')).toBe('agua');
+    expect(kindLabel('shelter')).toBe('refugio');
   });
 
   it('lo que Ánima inventó ya viene con nombre: solo se limpian los guiones', () => {
@@ -31,6 +33,8 @@ describe('los gráficos se reutilizan por lo que la cosa es', () => {
     // La rama no es un tronco: es una vara fina y ramificada, madera seca en
     // vez de leño grueso. Antes era 🌿 y parecía una planta, no madera.
     expect(emojiFor('branch', {})).toBe('🪾');
+    expect(emojiFor('water', {})).toBe('🌊');
+    expect(emojiFor('shelter', {})).toBe('🛖');
   });
 
   it('lo que Ánima inventa se dibuja como lo que es, sin estar en ninguna tabla', () => {

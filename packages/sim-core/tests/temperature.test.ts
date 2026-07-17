@@ -106,3 +106,48 @@ describe('temperatura', () => {
     expect(events.some((e) => e.type === 'temperature.low')).toBe(false);
   });
 });
+
+function addShelter(world: ReturnType<typeof buildTestWorld>['world'], x: number, y: number) {
+  return spawn(world, 'shelter', { position: { x, y }, shelter: { range: 1 } });
+}
+
+/**
+ * El refugio es la contraparte serena de la fogata: adentro no se pierde
+ * calor, pero tampoco se recupera. No calienta, no quema, no hay distancia
+ * prudente que aprender.
+ */
+describe('refugio', () => {
+  it('al alcance del refugio, el calor corporal deja de perderse', () => {
+    const { world, pet } = buildTestWorld(); // mascota en (1,2)
+    addTemperature(pet, 20);
+    addShelter(world, 2, 2); // distancia 1: dentro del rango
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature?.current).toBe(20);
+  });
+
+  it('no calienta: parado el sangrado, el calor no sube', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    addShelter(world, 2, 2);
+    for (let i = 0; i < 10; i++) stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature?.current).toBe(20);
+  });
+
+  it('fuera del rango, la pérdida sigue como siempre', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    addShelter(world, 4, 2); // distancia 3 > rango 1
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    expect(pet.components.temperature?.current).toBe(19);
+  });
+
+  it('una fogata en rango sí calienta a quien está refugiado', () => {
+    const { world, pet } = buildTestWorld();
+    addTemperature(pet, 20);
+    addShelter(world, 2, 2);
+    addCampfire(world, 3, 2); // distancia 2: dentro del rango del fuego
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'wait' } }]);
+    // Sin pérdida (refugio) y +3 de fogata: las dos reglas conviven.
+    expect(pet.components.temperature?.current).toBe(23);
+  });
+});

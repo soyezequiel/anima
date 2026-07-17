@@ -98,6 +98,7 @@ function traitsFromComponents(components: Components): EntityTraits {
 function describeComponents(components: Components): string[] {
   const does: string[] = [];
   if (components.heatSource) does.push('da calor');
+  if (components.shelter) does.push('detiene la pérdida de calor');
   if (components.hazard) does.push('daña a quien se le pegue');
   if (components.tool) does.push('sirve de herramienta');
   if (components.collider?.solid) does.push('bloquea el paso');

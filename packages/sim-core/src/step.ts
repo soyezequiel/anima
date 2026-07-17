@@ -43,6 +43,7 @@ export function stepWorld(world: WorldState, intents: ActorIntent[]): SimEvent[]
   runTemperatureSystem(world, events);
   runHazardSystem(world, events);
   runFoodSourceSystem(world, events);
+  runItemSourceSystem(world, events);
   return events;
 }
 
@@ -72,6 +73,11 @@ function runTemperatureSystem(world: WorldState, events: SimEvent[]): void {
     .filter((source): source is { heat: { warmthPerTick: number; range: number }; position: { x: number; y: number } } =>
       source.position !== null,
     );
+  // Un refugio no irradia nada: solo detiene la sangría. No viaja en
+  // inventarios (nadie se lleva puesta una choza), así que exige posición.
+  const shelters = allEntities(world)
+    .filter((e) => e.components.shelter && e.components.position)
+    .map((e) => ({ range: e.components.shelter!.range, position: e.components.position! }));
   for (const entity of allEntities(world)) {
     const temperature = entity.components.temperature;
     const pos = entity.components.position;
@@ -84,11 +90,15 @@ function runTemperatureSystem(world: WorldState, events: SimEvent[]): void {
       );
       return distance <= source.heat.range ? total + source.heat.warmthPerTick : total;
     }, 0);
+    const sheltered = shelters.some(
+      (s) =>
+        Math.max(Math.abs(s.position.x - pos.x), Math.abs(s.position.y - pos.y)) <= s.range,
+    );
 
     const before = temperature.current;
     temperature.current = Math.min(
       temperature.max,
-      Math.max(0, temperature.current - temperature.lossPerTick + warmth),
+      Math.max(0, temperature.current - (sheltered ? 0 : temperature.lossPerTick) + warmth),
     );
 
     const lowThreshold = temperature.max * LOW_TEMPERATURE_FRACTION;
@@ -170,6 +180,13 @@ const SPAWN_OFFSETS = [
   { x: 1, y: 1 },
 ];
 
+/** La primera celda adyacente libre, en el orden determinista de siempre. */
+function freeAdjacentCell(world: WorldState, pos: { x: number; y: number }) {
+  return SPAWN_OFFSETS.map((o) => ({ x: pos.x + o.x, y: pos.y + o.y })).find(
+    (c) => inBounds(world, c) && entitiesAt(world, c).length === 0,
+  );
+}
+
 function runFoodSourceSystem(world: WorldState, events: SimEvent[]): void {
   for (const entity of allEntities(world)) {
     const source = entity.components.foodSource;
@@ -189,9 +206,7 @@ function runFoodSourceSystem(world: WorldState, events: SimEvent[]): void {
     source.nextSpawnAtTick = world.tick + source.intervalTicks;
     if (nearbyFood) continue;
 
-    const cell = SPAWN_OFFSETS.map((o) => ({ x: pos.x + o.x, y: pos.y + o.y })).find(
-      (c) => inBounds(world, c) && entitiesAt(world, c).length === 0,
-    );
+    const cell = freeAdjacentCell(world, pos);
     if (!cell) continue;
     const food = spawn(world, 'food', {
       position: cell,
@@ -203,6 +218,47 @@ function runFoodSourceSystem(world: WorldState, events: SimEvent[]): void {
       simEvent('entity.spawned', world.tick, {
         id: food.id,
         kind: 'food',
+        sourceId: entity.id,
+        at: cell,
+      }),
+    );
+  }
+}
+
+/**
+ * El productor periódico genérico: mismo ritmo y misma prudencia que la fuente
+ * de alimento, pero de lo que declare el arquetipo. La saturación es por tipo
+ * —mientras la rama anterior siga tirada al lado del árbol, no cae otra—, así
+ * que recoger es lo que hace que vuelva a producir.
+ */
+function runItemSourceSystem(world: WorldState, events: SimEvent[]): void {
+  for (const entity of allEntities(world)) {
+    const source = entity.components.itemSource;
+    const pos = entity.components.position;
+    if (!source || !pos || world.tick < source.nextSpawnAtTick) continue;
+
+    const nearbySame = allEntities(world).some(
+      (e) =>
+        e.kind === source.output.kind &&
+        e.components.position &&
+        Math.max(
+          Math.abs(e.components.position.x - pos.x),
+          Math.abs(e.components.position.y - pos.y),
+        ) <= 2,
+    );
+    source.nextSpawnAtTick = world.tick + source.intervalTicks;
+    if (nearbySame) continue;
+
+    const cell = freeAdjacentCell(world, pos);
+    if (!cell) continue;
+    const produced = spawn(world, source.output.kind, {
+      ...structuredClone(source.output.components),
+      position: cell,
+    });
+    events.push(
+      simEvent('entity.spawned', world.tick, {
+        id: produced.id,
+        kind: produced.kind,
         sourceId: entity.id,
         at: cell,
       }),
@@ -448,6 +504,18 @@ function resolveMove(
       to,
       blockerId: blocker === 'bounds' ? 'bounds' : blocker.id,
       blockerKind: blocker === 'bounds' ? 'bounds' : blocker.kind,
+    });
+    return;
+  }
+  // El agua no es sólida —no tapa la vista— pero nadie sabe nadar: caminar
+  // adentro falla con su propio motivo, distinguible de un muro.
+  const wet = entitiesAt(world, to).find((e) => e.components.water);
+  if (wet) {
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'water',
+      to,
+      blockerId: wet.id,
+      blockerKind: wet.kind,
     });
     return;
   }
