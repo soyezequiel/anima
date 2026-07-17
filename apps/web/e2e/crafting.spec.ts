@@ -2,9 +2,8 @@ import { expect, test } from '@playwright/test';
 
 /**
  * El flujo completo de construir, visto desde el navegador y sin claves de
- * IA: pedir algo sin materiales (negativa que dice qué falta), juntar los
- * ingredientes de a uno por chat, y construirlo de verdad — el mundo decide,
- * el evento queda registrado.
+ * IA: pedir algo sin tener nada en mano, que ella misma junte lo que falta y
+ * lo construya de verdad — el mundo decide, y el evento queda registrado.
  */
 
 // La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
@@ -12,9 +11,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
 });
 
-test('craftear desde el chat: negativa honesta, juntar materiales y construir', async ({
-  page,
-}) => {
+test('craftear desde el chat: dice qué falta, lo junta sola y construye', async ({ page }) => {
   await page.goto('/?seed=5&speed=8');
 
   // Esperar a que la historia del hambre termine: la mascota queda libre
@@ -25,35 +22,44 @@ test('craftear desde el chat: negativa honesta, juntar materiales y construir', 
 
   await page.getByTestId('tab-chat').click();
   const chatLog = page.getByTestId('chat-log');
-  const send = async (text: string) => {
-    await page.getByTestId('chat-input').fill(text);
-    await page.getByTestId('chat-send').click();
-  };
+  await page.getByTestId('chat-input').fill('hacé una silla');
+  await page.getByTestId('chat-send').click();
 
-  // 1. Sin materiales en mano: la negativa dice exactamente qué falta.
-  await send('hacé una silla');
+  // Sin materiales en mano, pero juntar es parte de construir: dice qué le
+  // falta y que va a buscarlo, en vez de negarse y devolver la pelota.
   await expect(chatLog).toContainText('me faltan 2 troncos', { timeout: 15_000 });
+  await expect(chatLog).toContainText('los junto y la construyo', { timeout: 5_000 });
 
-  // 2. Juntar los ingredientes de a uno. El segundo pedido debe traer OTRO
-  //    tronco, no redescubrir el que ya lleva (bug del filtro held).
-  await send('traé un tronco');
-  await expect(chatLog.locator('text=Listo, recogí el tronco.')).toHaveCount(1, {
-    timeout: 20_000,
-  });
-  await send('traé un tronco');
-  await expect(chatLog.locator('text=Listo, recogí el tronco.')).toHaveCount(2, {
-    timeout: 20_000,
-  });
+  // Y lo cumple entero, sin más órdenes: la silla existe en el mundo.
+  await expect(chatLog).toContainText('Listo, ya está en su lugar.', { timeout: 30_000 });
 
-  // 3. Con los ingredientes en mano: acepta, y el mundo construye.
-  await send('hacé una silla');
-  await expect(chatLog).toContainText('Voy a construir una silla.', { timeout: 15_000 });
-  await expect(chatLog).toContainText('Listo, ya está en su lugar.', { timeout: 20_000 });
-
-  // 4. El evento del mundo quedó registrado: no es un "sí" de cortesía.
+  // El evento del mundo quedó registrado: no es un "sí" de cortesía.
   await page.getByTestId('tab-dev').click();
   await page.getByTestId('dev-filter').fill('item.crafted');
   await expect(page.getByTestId('dev-log')).toContainText('chair', { timeout: 10_000 });
+});
+
+test('traer de a uno junta objetos distintos, no redescubre el que ya lleva', async ({ page }) => {
+  await page.goto('/?seed=5&speed=8');
+  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+    timeout: 30_000,
+  });
+
+  await page.getByTestId('tab-chat').click();
+  const chatLog = page.getByTestId('chat-log');
+  const recogidos = chatLog.getByText('Listo, recogí el tronco.');
+
+  // El segundo pedido debe traer OTRO tronco: sin el filtro `held`, la
+  // búsqueda devolvía el que ya tenía en la mano (distancia 0) y "cumplía"
+  // sin traer nada.
+  for (const expected of [1, 2]) {
+    await page.getByTestId('chat-input').fill('traé un tronco');
+    await page.getByTestId('chat-send').click();
+    await expect(recogidos).toHaveCount(expected, { timeout: 30_000 });
+  }
+
+  await page.getByTestId('tab-estado').click();
+  await expect(page.getByTestId('inventory')).toContainText('2× tronco');
 });
 
 test('la fogata pide su ingrediente distintivo: el pedernal', async ({ page }) => {
@@ -69,6 +75,4 @@ test('la fogata pide su ingrediente distintivo: el pedernal', async ({ page }) =
   // Sin nada en mano faltan los tres ingredientes, incluido el pedernal.
   const chatLog = page.getByTestId('chat-log');
   await expect(chatLog).toContainText('me faltan 2 troncos y 1 pedernal', { timeout: 15_000 });
-  // Y los ve en el mapa: ofrece que se los pidan en vez de encogerse.
-  await expect(chatLog).toContainText('Veo', { timeout: 5_000 });
 });
