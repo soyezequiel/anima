@@ -121,6 +121,22 @@ export type ModelRequest =
       rejections?: string[];
     }
   | {
+      /**
+       * Traducir la descripción libre del cuidador ("un glorb es un mineral
+       * azul que da calor") a una receta propuesta. Es el mismo trato que
+       * `recipe.propose`: el modelo traduce, la receta viaja cruda y el mundo
+       * la valida — que la describa el cuidador no le da más poder que a la
+       * mascota (ADR 0024).
+       */
+      kind: 'entity.describe';
+      /** La descripción del cuidador, con sus palabras. */
+      description: string;
+      /** Tipos de objeto que existen a su alcance: los ingredientes salen de aquí. */
+      knownKinds: string[];
+      /** Recetas que ya existen: no tiene sentido re-describirlas. */
+      existingRecipes: string[];
+    }
+  | {
       kind: 'dialogue';
       topic: string;
       facts: string[];
@@ -186,6 +202,13 @@ export type CommandInterpretation =
   | { action: 'rename-pet'; name: string }
   /** El cuidador enseña un hecho del mundo (afirmación, no orden ni pregunta). */
   | { action: 'explanation' }
+  /**
+   * El cuidador DESCRIBE un objeto nuevo que quiere que exista en el mundo
+   * ("un glorb es un mineral azul que da calor"). No es construir (eso es
+   * craft-item) ni enseñar cómo funciona lo que ya existe (explanation).
+   * Solo un modelo real llega aquí: el parser determinista no la produce.
+   */
+  | { action: 'describe-entity'; description: string }
   /** Orden física fuera del alcance de sus primitivas. */
   | { action: 'unsupported'; summary: string }
   | { action: 'not-command' };

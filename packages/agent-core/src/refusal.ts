@@ -316,6 +316,27 @@ export function isContinuationMessage(text: string): boolean {
 }
 
 /**
+ * "sí", "dale", "hacela": respuesta afirmativa a una pregunta que la mascota
+ * dejó pendiente (¿la hago parte de mi mundo?). Como isContinuationMessage,
+ * exige que el mensaje sea SOLO eso: "sí, pero antes traé un tronco" es una
+ * orden nueva, no una confirmación.
+ */
+export function isAffirmativeReply(text: string): boolean {
+  const lower = normalizeMessage(text).trim();
+  return /^(y |bueno,? |ok,? )?(si+|claro( que si)?|obvio|dale|ok|okey|de acuerdo|por supuesto|adelante|me encanta|hacela|hacelo|hazla|hazlo|agregala|agregalo|sumala|sumalo|quiero)[\s.!¡¿?]*$/.test(
+    lower,
+  );
+}
+
+/** "no", "mejor no", "dejalo": rechazo explícito de lo que quedó pendiente. */
+export function isNegativeReply(text: string): boolean {
+  const lower = normalizeMessage(text).trim();
+  return /^(y |bueno,? |eh,? |no,? )?(no+|mejor no|nah|no,? gracias|no quiero|dejalo|dejala|cancelalo|cancelala|olvidalo|olvidala)[\s.!¡¿?]*$/.test(
+    lower,
+  );
+}
+
+/**
  * Bautismos: "te voy a llamar Luna", "tu nombre es Sol". Se buscan sobre el
  * texto original (no el normalizado) para conservar mayúsculas y acentos del
  * nombre elegido. Una pregunta ("¿cómo te llamas?") no captura nada después

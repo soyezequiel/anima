@@ -21,6 +21,11 @@ export type AgentEventType =
   | 'skill.used'
   /** Se le ocurrió un objeto que su mundo no sabía construir. */
   | 'recipe.proposed'
+  /**
+   * Tradujo la descripción del cuidador a una receta que la puerta acepta, y
+   * la muestra antes de proponerla: nada entra al mundo sin confirmación.
+   */
+  | 'recipe.preview'
   /** El mundo aceptó su invento: la física ahora lo admite. */
   | 'recipe.learned'
   /** El mundo lo rechazó, con el motivo. Imaginarlo no lo vuelve posible. */

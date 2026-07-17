@@ -43,10 +43,31 @@ export interface PetView {
   inventory: { id: string; kind: string }[];
 }
 
+/**
+ * Vista previa de una receta traducida de la descripción del cuidador (ADR
+ * 0024): lo que la mascota imagina ANTES de que él confirme. Muestra el mejor
+ * desenlace — la intención, no la promesa. Lleva `traits` y no un emoji para
+ * que el dibujo salga de la misma regla que el mundo (appearance.ts): un
+ * objeto es lo que sus componentes le permiten hacer.
+ */
+export interface RecipeCardView {
+  recipeId: string;
+  kind: string;
+  /** Nombre humano ("hoguera simple"), no el id del motor. */
+  name: string;
+  /** "2 troncos", "1 pedernal": qué cuesta, en voz humana. */
+  ingredients: string[];
+  /** Qué HACE lo construido ("da calor", "bloquea el paso"). */
+  does: string[];
+  traits: EntityTraits;
+}
+
 export interface ChatEntry {
   from: 'user' | 'pet' | 'system';
   text: string;
   tick: number;
+  /** Presente solo en la vista previa de una receta descrita por el cuidador. */
+  card?: RecipeCardView;
 }
 
 /**

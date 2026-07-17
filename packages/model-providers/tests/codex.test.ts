@@ -193,6 +193,82 @@ describe('CodexModelProvider', () => {
     });
   });
 
+  it('traduce una descripción del cuidador con el mismo sobre que las recetas', async () => {
+    const seen: CodexTransportInput[] = [];
+    const recipe = {
+      id: 'glorb',
+      output: { kind: 'glorb', components: { heatSource: { warmthPerTick: 0.5, range: 2 } } },
+      ingredients: [{ kind: 'flint', count: 1 }],
+    };
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({ recipeJson: JSON.stringify(recipe), rationale: 'da calor: heatSource' }),
+        seen,
+      ),
+    );
+
+    const response = await provider.complete({
+      kind: 'entity.describe',
+      description: 'un glorb es un mineral azul que da calor',
+      knownKinds: ['log', 'flint'],
+      existingRecipes: ['campfire (2x log + 1x flint)'],
+    });
+
+    // La receta viaja cruda: el mundo la valida, igual que en recipe.propose.
+    expect(response).toEqual({ kind: 'recipe', recipe, rationale: 'da calor: heatSource' });
+    // El prompt lleva la descripción, el catálogo de componentes con sus cotas
+    // y lo que ya existe: los mismos límites que rigen para la mascota.
+    expect(seen[0]?.kind).toBe('entity.describe');
+    expect(seen[0]?.prompt).toContain('un glorb es un mineral azul que da calor');
+    expect(seen[0]?.prompt).toContain('heatSource');
+    expect(seen[0]?.prompt).toContain('No puedes inventar comida');
+    expect(seen[0]?.prompt).toContain('- flint');
+    expect(seen[0]?.prompt).toContain('campfire (2x log + 1x flint)');
+    expect(seen[0]?.schema).toMatchObject({ required: ['recipeJson', 'rationale'] });
+  });
+
+  it('interpreta una descripción de objeto como describe-entity', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'describe-entity',
+          targetKind: '',
+          directions: [],
+          summary: 'un glorb es un mineral azul que da calor',
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'interpret.command',
+      text: 'un glorb es un mineral azul que da calor',
+      facts: [],
+    });
+    expect(response).toEqual({
+      kind: 'command.interpretation',
+      command: {
+        action: 'describe-entity',
+        description: 'un glorb es un mineral azul que da calor',
+      },
+    });
+
+    // Con el summary vacío, vale el mensaje original: la descripción es de él.
+    const emptySummary = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({ action: 'describe-entity', targetKind: '', directions: [], summary: '' }),
+      ),
+    );
+    await expect(
+      emptySummary.complete({
+        kind: 'interpret.command',
+        text: 'un glorb da calor',
+        facts: [],
+      }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'describe-entity', description: 'un glorb da calor' },
+    });
+  });
+
   it('el contrato llega sin el relleno del esquema y valida como criterios', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(

@@ -71,6 +71,13 @@ export class MockModelProvider extends BaseModelProvider {
         return Promise.reject(
           new Error('el proveedor simulado no deriva contratos de habilidades'),
         );
+      case 'entity.describe':
+        // Traducir una descripción libre a una receta exige entender lenguaje
+        // abierto. Fingirlo con reglas produciría objetos que no son lo que el
+        // cuidador describió: es más honesto no saber, como con los contratos.
+        return Promise.reject(
+          new Error('el proveedor simulado no traduce descripciones'),
+        );
       case 'distill.knowledge':
         // Sin comprensión abierta, guarda la enseñanza tal cual la recibió.
         return Promise.resolve({

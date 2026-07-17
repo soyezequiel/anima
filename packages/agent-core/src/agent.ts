@@ -1,7 +1,7 @@
 import type { EventLog } from '@anima/shared';
-import { countedKindLabel, createEventLog, kindLabel, kindWithArticle } from '@anima/shared';
+import { countedKindLabel, createEventLog, isFeminineKind, kindLabel, kindWithArticle } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
-import { missingIngredients, recipeProduces } from '@anima/sim-core';
+import { missingIngredients, recipeProduces, recipeProduct, validateRecipe } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
@@ -19,7 +19,9 @@ import type { RequestDecision, UserRequest } from './refusal.js';
 import {
   displayMissing,
   evaluateUserRequest,
+  isAffirmativeReply,
   isContinuationMessage,
+  isNegativeReply,
   parseUserMessage,
 } from './refusal.js';
 import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
@@ -67,7 +69,20 @@ type InterpretedMessage =
   | UserRequest
   | { kind: 'explanation'; raw: string }
   | { kind: 'learn-skill'; summary: string; raw: string }
-  | { kind: 'rename-pet'; name: string; raw: string };
+  | { kind: 'rename-pet'; name: string; raw: string }
+  /** El cuidador describe un objeto nuevo para que exista en el mundo. */
+  | { kind: 'describe-entity'; description: string; raw: string };
+
+/**
+ * Una descripción del cuidador ya traducida a receta y aceptada por la puerta.
+ * La receta viaja CRUDA: al confirmarse va al mundo por `proposeRecipe` y
+ * step.ts vuelve a validarla — la vista previa no es un permiso.
+ */
+interface InventionProposal {
+  recipe: unknown;
+  recipeId: string;
+  outputKind: string;
+}
 
 /** Nombre de habilidad utilizable: kebab-case sin acentos, corto y estable. */
 function normalizeSkillName(raw: string): string {
@@ -281,6 +296,12 @@ export class AnimaAgent {
   /** Rechazos del mundo a sus inventos: viajan al siguiente intento. */
   private recipeRejections: string[] = [];
   private recipeAttempts = 0;
+  /** Vista previa esperando el sí o el no del cuidador. Efímera: no persiste. */
+  private pendingInvention: InventionProposal | null = null;
+  /** Idea confirmada que el próximo think() lleva al mundo como intención. */
+  private inventionToPropose: InventionProposal | null = null;
+  /** Propuesta confirmada en vuelo: su veredicto del mundo se cuenta en el chat. */
+  private awaitingInventionVerdict: { recipeId: string; outputKind: string } | null = null;
   /** Qué la dañó en el último tick: dispara el reflejo de apartarse. */
   private lastPain: { sourceId: string; sourceKind: string; tick: number } | null = null;
   private lastSelectedGoalId: string | null = null;
@@ -417,11 +438,16 @@ export class AnimaAgent {
           : null;
       }
     }
-    // La actividad en curso y las colas efímeras no se persisten.
+    // La actividad en curso y las colas efímeras no se persisten. La vista
+    // previa también muere aquí: una confirmación no puede sobrevivir a la
+    // sesión en la que se mostró lo que confirmaba.
     this.activity = null;
     this.pendingSpeech = [];
     this.pendingUserMessages = [];
     this.pendingExplanation = null;
+    this.pendingInvention = null;
+    this.inventionToPropose = null;
+    this.awaitingInventionVerdict = null;
   }
 
   // ---- legado ---------------------------------------------------------------
@@ -528,6 +554,19 @@ export class AnimaAgent {
 
     const speech = this.pendingSpeech.shift();
     if (speech !== undefined) return { type: 'speak', text: speech };
+
+    // La idea que el cuidador confirmó viaja al mundo como cualquier invento
+    // propio: por `proposeRecipe`, para que step.ts la vuelva a juzgar. No hay
+    // camino a world.recipes que se salte esa puerta, tampoco para él.
+    if (this.inventionToPropose) {
+      const invention = this.inventionToPropose;
+      this.inventionToPropose = null;
+      this.awaitingInventionVerdict = {
+        recipeId: invention.recipeId,
+        outputKind: invention.outputKind,
+      };
+      return { type: 'proposeRecipe', recipe: invention.recipe };
+    }
 
     if (this.activity) return this.continueActivity(perception);
 
@@ -673,25 +712,47 @@ export class AnimaAgent {
         const reason = String(event.data.reason);
         if (!this.recipeRejections.includes(reason)) this.recipeRejections.push(reason);
         this.emit('recipe.rejected', { reason });
+        // Una idea confirmada por el cuidador que el mundo aun así rechazó
+        // (solo posible si el mundo cambió entre la vista previa y el sí):
+        // decirlo, en vez de dejar la confirmación sin respuesta.
+        if (this.awaitingInventionVerdict) {
+          this.awaitingInventionVerdict = null;
+          this.reply(`Al final mi mundo no la aceptó: ${reason}`);
+        }
       }
       // Lo que el mundo aceptó pasa a ser conocimiento suyo, y sobrevive a su
       // muerte: la receta vive en el mundo, el saber que existe en su memoria.
       if (event.type === 'recipe.learned' && event.data.actorId === this.petId) {
-        const fact = this.memory.addFact(
-          `puedo construir ${String(event.data.outputKind)}`,
-          this.tick,
-        );
+        const outputKind = String(event.data.outputKind);
+        const fact = this.memory.addFact(`puedo construir ${outputKind}`, this.tick);
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
         this.emit('recipe.learned', {
           recipeId: event.data.recipeId,
           outputKind: event.data.outputKind,
         });
-        this.memory.recordEpisode({
-          kind: 'recipe-invented',
-          summary: `se me ocurrió cómo construir ${String(event.data.outputKind)} y funcionó`,
-          tick: this.tick,
-          importance: 0.9,
-        });
+        const fromCaretaker = this.awaitingInventionVerdict?.recipeId === event.data.recipeId;
+        if (fromCaretaker) {
+          // La idea nació de la descripción del cuidador: es un recuerdo del
+          // vínculo, y la confirmación merece un cierre en el chat.
+          this.awaitingInventionVerdict = null;
+          this.memory.recordEpisode({
+            kind: 'caretaker',
+            summary: `mi cuidador me describió ${kindLabel(outputKind)} y ahora es parte de mi mundo`,
+            tick: this.tick,
+            importance: 0.85,
+          });
+          this.reply(
+            `¡Listo! Ya sé construir ${kindWithArticle(outputKind)}. ` +
+              `Pedime «hacé ${kindWithArticle(outputKind)}» cuando quieras.`,
+          );
+        } else {
+          this.memory.recordEpisode({
+            kind: 'recipe-invented',
+            summary: `se me ocurrió cómo construir ${outputKind} y funcionó`,
+            tick: this.tick,
+            importance: 0.9,
+          });
+        }
       }
     }
   }
@@ -890,6 +951,24 @@ export class AnimaAgent {
     this.emit('user.message.received', { text });
     this.memory.noteConversation('user', text, this.tick);
 
+    // Una vista previa espera el sí o el no ANTES que cualquier modelo (y que
+    // la continuación: acá "dale" es una confirmación). Cualquier otro tema la
+    // descarta: nada entra al mundo por silencio ni por un "sí" viejo.
+    if (this.pendingInvention) {
+      const pending = this.pendingInvention;
+      this.pendingInvention = null;
+      if (isAffirmativeReply(text)) {
+        this.inventionToPropose = pending;
+        return;
+      }
+      if (isNegativeReply(text)) {
+        this.reply(
+          `Entendido: ${kindLabel(pending.outputKind)} queda en una idea, nada más.`,
+        );
+        return;
+      }
+    }
+
     // "continua" / "seguí" / "dale" se resuelve ANTES de cualquier modelo y
     // siempre igual: la misma palabra no puede unas veces repetir la última
     // orden, otras saludar y otras depender del humor del proveedor. Si hay
@@ -949,6 +1028,11 @@ export class AnimaAgent {
 
     if (parsed.kind === 'learn-skill') {
       await this.startLearning(parsed.summary, text, perception);
+      return;
+    }
+
+    if (parsed.kind === 'describe-entity') {
+      await this.describeEntity(parsed.description, perception);
       return;
     }
 
@@ -1244,6 +1328,11 @@ export class AnimaAgent {
       };
     }
 
+    if (command.action === 'describe-entity') {
+      const description = command.description.replace(/\s+/g, ' ').trim().slice(0, 400);
+      return { kind: 'describe-entity', description: description || text, raw: text };
+    }
+
     if (command.action === 'unsupported') {
       // Lo que no está codeado no se rechaza de antemano: se intenta APRENDER
       // en el momento — contrato, práctica en mundos imaginados y veredicto
@@ -1376,7 +1465,15 @@ export class AnimaAgent {
   private userRequestFromInterpretation(
     command: Exclude<
       CommandInterpretation,
-      { action: 'unsupported' | 'not-command' | 'explanation' | 'learn-skill' | 'rename-pet' }
+      {
+        action:
+          | 'unsupported'
+          | 'not-command'
+          | 'explanation'
+          | 'learn-skill'
+          | 'rename-pet'
+          | 'describe-entity';
+      }
     >,
     raw: string,
   ): UserRequest {
@@ -1801,6 +1898,90 @@ export class AnimaAgent {
       });
       return null;
     }
+  }
+
+  /**
+   * IA Dios (ADR 0024): el cuidador describió un objeto y la mascota lo
+   * traduce a una receta con el modelo. La MISMA puerta que juzga sus propios
+   * inventos (validateRecipe) juzga la traducción — describir no es poder, ni
+   * siquiera para el cuidador. Aquí la puerta solo decide si vale la pena
+   * preguntar: si la idea es imposible, la respuesta honesta es el motivo del
+   * rechazo; si es posible, se muestra la vista previa y NADA entra al mundo
+   * sin confirmación. La entrada real va después por `proposeRecipe`, donde
+   * step.ts vuelve a validar: no existe camino que se salte esa puerta.
+   */
+  private async describeEntity(description: string, perception: Perception): Promise<void> {
+    const knownKinds = [
+      ...new Set([
+        ...perception.self.heldItems.map((item) => item.kind),
+        ...perception.visibleEntities.map((entity) => entity.kind),
+      ]),
+    ];
+    let proposal: { recipe: unknown; rationale: string };
+    try {
+      const response = await this.config.provider.complete({
+        kind: 'entity.describe',
+        description,
+        knownKinds,
+        existingRecipes: perception.recipes.map(
+          (recipe) =>
+            `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
+        ),
+      });
+      if (response.kind !== 'recipe') {
+        throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
+      }
+      proposal = response;
+    } catch (error) {
+      // Sin modelo que entienda la descripción, no hay traducción que fingir:
+      // se dice, y el mundo queda como estaba.
+      const message = error instanceof Error ? error.message : String(error);
+      this.emit('provider.error', {
+        provider: this.config.provider.name,
+        operation: 'entity.describe',
+        message,
+      });
+      this.reply(
+        `Me encantaría imaginar eso, pero no pude traducir tu descripción (${message}). ` +
+          `Podés volver a intentarlo en un momento.`,
+      );
+      return;
+    }
+
+    const validated = validateRecipe(proposal.recipe, perception.recipes);
+    if (!validated.ok) {
+      this.emit('recipe.rejected', { reason: validated.error, source: 'entity.describe' });
+      this.reply(`Lo imaginé, pero mi mundo no lo acepta: ${validated.error}`);
+      return;
+    }
+
+    const product = recipeProduct(validated.value);
+    if (!product) {
+      // La puerta exige componentes, así que esto es casi imposible; aún así,
+      // sin producto no hay nada que previsualizar ni que confirmar.
+      this.reply('Lo imaginé, pero no logro ver qué produciría. Mejor lo dejamos.');
+      return;
+    }
+
+    this.pendingInvention = {
+      recipe: proposal.recipe,
+      recipeId: validated.value.id,
+      outputKind: product.kind,
+    };
+    // La vista previa muestra el arquetipo (el mejor desenlace): lo que la
+    // mascota INTENTA construir, no lo que cada tirada promete.
+    this.emit('recipe.preview', {
+      recipeId: validated.value.id,
+      outputKind: product.kind,
+      components: structuredClone(product.components),
+      ingredients: validated.value.ingredients.map((i) => ({ kind: i.kind, count: i.count })),
+      rationale: proposal.rationale,
+    });
+    const pronoun = isFeminineKind(product.kind) ? 'La' : 'Lo';
+    this.reply(
+      `Así me imagino ${kindWithArticle(product.kind)} con lo que hay en mi mundo. ` +
+        `¿${pronoun} hago parte de mi mundo?`,
+    );
   }
 
   /**

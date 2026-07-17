@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
+import { emojiFor } from '../phaser/appearance.js';
 import type { GameSession } from '../session/GameSession.js';
-import type { GameView } from '../session/view.js';
+import type { GameView, RecipeCardView } from '../session/view.js';
 
 /**
  * Sugerencias para el primer mensaje: una de cada cosa que se puede hacer
@@ -13,6 +14,28 @@ const FIRST_STEPS = [
   '¿qué estás haciendo?',
   'comer alimento te da energía',
 ];
+
+/**
+ * Vista previa de una receta descrita por el cuidador: qué es, qué cuesta y
+ * qué HACE, antes de confirmar. El dibujo sale de los rasgos (emojiFor), la
+ * misma regla con la que el mundo dibuja lo que Ánima inventa: una tarjeta
+ * inválida nunca llega acá — el agente solo previsualiza lo que la puerta
+ * del mundo aceptó.
+ */
+function RecipeCard({ card }: { card: RecipeCardView }) {
+  return (
+    <span className="recipe-card" data-testid="recipe-preview">
+      <span className="recipe-card-title">
+        <span aria-hidden="true">{emojiFor(card.kind, card.traits) ?? '❔'}</span>{' '}
+        <strong>{card.name}</strong>
+      </span>
+      <span className="recipe-card-line">Ingredientes: {card.ingredients.join(' + ')}</span>
+      {card.does.length > 0 && (
+        <span className="recipe-card-line">Hace: {card.does.join(' · ')}</span>
+      )}
+    </span>
+  );
+}
 
 export function ChatPanel({ view, session }: { view: GameView; session: GameSession }) {
   const [text, setText] = useState('');
@@ -31,7 +54,9 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
             <span className="chat-who">
               {entry.from === 'user' ? 'Tú' : entry.from === 'pet' ? view.identity.name : '·'}
             </span>
-            <span className="chat-text">{entry.text}</span>
+            <span className="chat-text">
+              {entry.card ? <RecipeCard card={entry.card} /> : entry.text}
+            </span>
             <span className="chat-tick muted">t{entry.tick}</span>
           </div>
         ))}

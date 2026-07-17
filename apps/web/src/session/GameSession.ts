@@ -2,7 +2,8 @@ import { AnimaAgent, GOAL_RESTORE_ENERGY } from '@anima/agent-core';
 import type { AgentEvent } from '@anima/agent-core';
 import type { ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
-import type { SimEvent, WorldState } from '@anima/sim-core';
+import { countedKindLabel, kindLabel } from '@anima/shared';
+import type { Components, SimEvent, WorldState } from '@anima/sim-core';
 import { buildPerception, getEntity, stepWorld, takeSnapshot } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
@@ -33,6 +34,7 @@ import {
 import type {
   ChatEntry,
   DevEventView,
+  EntityTraits,
   ExperimentView,
   GameView,
   GoalView,
@@ -73,6 +75,35 @@ interface SessionUiState {
 function defaultStore(): KeyValueStore {
   const storage = (globalThis as { localStorage?: Storage }).localStorage;
   return storage ? new WebStorageKeyValueStore(storage) : new MemoryKeyValueStore();
+}
+
+/**
+ * Traducción de componentes a rasgos: la UI sabe QUÉ hace cada cosa sin
+ * conocer el motor. Es lo que permite dibujar lo que Ánima inventa (o lo que
+ * el cuidador describe), cuyo nombre no está en ninguna tabla nuestra.
+ */
+function traitsFromComponents(components: Components): EntityTraits {
+  return {
+    ...(components.heatSource ? { warm: true } : {}),
+    ...(components.edible ? { edible: true } : {}),
+    ...(components.tool ? { tool: true } : {}),
+    ...(components.foodSource ? { growsFood: true } : {}),
+    ...(components.hazard ? { dangerous: true } : {}),
+    ...(components.portable ? { portable: true } : {}),
+    ...(components.collider?.solid ? { solid: true } : {}),
+  };
+}
+
+/** Qué HACE lo descrito, en frases que el cuidador pueda juzgar antes del sí. */
+function describeComponents(components: Components): string[] {
+  const does: string[] = [];
+  if (components.heatSource) does.push('da calor');
+  if (components.hazard) does.push('daña a quien se le pegue');
+  if (components.tool) does.push('sirve de herramienta');
+  if (components.collider?.solid) does.push('bloquea el paso');
+  if (components.portable) does.push('se puede llevar');
+  if (components.durability) does.push('se puede romper');
+  return does;
 }
 
 function newIdentity(name: string): PetIdentity {
@@ -638,6 +669,28 @@ export class GameSession {
           void this.save();
         }
       }
+      // Vista previa de una receta descrita por el cuidador (ADR 0024): se
+      // vuelve una tarjeta en el chat, junto a la pregunta de confirmación.
+      if (event.type === 'recipe.preview') {
+        const components = (event.data.components ?? {}) as Components;
+        const ingredients = Array.isArray(event.data.ingredients)
+          ? (event.data.ingredients as { kind: string; count: number }[])
+          : [];
+        const kind = String(event.data.outputKind ?? event.data.recipeId ?? '?');
+        this.chat.push({
+          from: 'pet',
+          text: '',
+          tick: event.tick,
+          card: {
+            recipeId: String(event.data.recipeId ?? kind),
+            kind,
+            name: kindLabel(kind),
+            ingredients: ingredients.map((i) => countedKindLabel(i.kind, i.count)),
+            does: describeComponents(components),
+            traits: traitsFromComponents(components),
+          },
+        });
+      }
       this.trackRealWorldSkillRun(event);
     }
   }
@@ -832,18 +885,7 @@ export class GameSession {
         kind: e.kind,
         x: e.components.position!.x,
         y: e.components.position!.y,
-        // Traducción de componentes a rasgos: la UI sabe QUÉ hace cada cosa
-        // sin conocer el motor. Es lo que permite dibujar lo que Ánima
-        // inventa, cuyo nombre no está en ninguna tabla nuestra.
-        traits: {
-          ...(e.components.heatSource ? { warm: true } : {}),
-          ...(e.components.edible ? { edible: true } : {}),
-          ...(e.components.tool ? { tool: true } : {}),
-          ...(e.components.foodSource ? { growsFood: true } : {}),
-          ...(e.components.hazard ? { dangerous: true } : {}),
-          ...(e.components.portable ? { portable: true } : {}),
-          ...(e.components.collider?.solid ? { solid: true } : {}),
-        },
+        traits: traitsFromComponents(e.components),
       }));
 
     const speechFresh =

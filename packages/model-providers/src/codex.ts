@@ -165,6 +165,7 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
         'learn-skill',
         'rename-pet',
         'explanation',
+        'describe-entity',
         'unsupported',
         'not-command',
       ],
@@ -371,6 +372,31 @@ materiales. El mundo validará tu idea y puede rechazarla: proponerla no la
 vuelve posible. Responde únicamente con JSON:
 {"recipeJson": "<la receta serializada como JSON>", "rationale": "por qué esto ayuda, en español"}`,
       };
+    case 'entity.describe':
+      return {
+        schema: RECIPE_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual. Tu cuidador acaba de DESCRIBIR un objeto
+que quiere que exista en tu mundo. Tu tarea es traducir esa descripción a una
+receta construible — lo más fiel que tus componentes permitan, sin prometer lo
+que no admiten.
+${RECIPE_REFERENCE}
+
+La descripción de tu cuidador: ${JSON.stringify(request.description)}
+
+Tipos de objeto que existen a tu alcance (los ingredientes salen SOLO de aquí):
+${request.knownKinds.map((k) => `- ${k}`).join('\n') || '- (ninguno)'}
+Recetas que ya existen (no las repitas):
+${request.existingRecipes.map((r) => `- ${r}`).join('\n') || '- (ninguna)'}
+
+El id de la receta y el kind del producto salen del nombre que usó el cuidador,
+en minusculas-con-guiones ("glorb"). Traduce lo que el objeto HACE a los
+componentes permitidos: "da calor" es heatSource, "sirve para golpear" es tool,
+"estorba el paso" es collider sólido. Si la descripción pide algo que los
+componentes no admiten (comida, criaturas, poderes fuera de cota), NO lo
+disimules con otro componente: proponlo solo con lo posible, que el mundo va a
+juzgar la receta igual. Responde únicamente con JSON:
+{"recipeJson": "<la receta serializada como JSON>", "rationale": "cómo tradujiste la descripción, en español"}`,
+      };
     case 'skill.revise':
       return {
         schema: PROGRAM_SCHEMA,
@@ -485,6 +511,11 @@ no afirmes haber actuado. Acciones ejecutables:
 - rename-pet: le pone un nombre nuevo a la mascota ("te voy a llamar Luna",
   "tu nombre es Sol", "desde hoy te llamás Nube"); name es el nombre elegido,
   tal como lo escribió el cuidador. Preguntar por el nombre NO es rename-pet.
+- describe-entity: DESCRIBE un objeto nuevo que quiere que exista en el mundo,
+  definiendo qué es y qué hace ("un glorb es un mineral azul que da calor").
+  Definir algo nuevo no es pedir que lo fabrique (eso es craft-item, con o sin
+  receta) ni enseñar cómo funciona lo que YA existe (eso es explanation).
+  summary es la descripción completa, con el nombre del objeto incluido.
 - learn-skill: pide una conducta física que NO sabe todavía, pero que sus
   primitivas podrían componer (bailar, patrullar, rondar, alejarse, esconderse,
   dar una vuelta). Una aproximación honesta cuenta: "sentate en la silla" es
@@ -676,7 +707,8 @@ export class CodexModelProvider extends BaseModelProvider {
             reason: parsed.reason.replace(/\s+/g, ' ').trim().slice(0, 240),
           };
         }
-        case 'recipe.propose': {
+        case 'recipe.propose':
+        case 'entity.describe': {
           let recipe: unknown = parsed.recipe;
           if (typeof parsed.recipeJson === 'string') {
             try {
@@ -775,6 +807,16 @@ export class CodexModelProvider extends BaseModelProvider {
             return {
               kind: 'command.interpretation',
               command: { action, name: parsed.name.trim() },
+            };
+          }
+          if (action === 'describe-entity') {
+            if (typeof parsed.summary !== 'string') {
+              throw new Error('describe-entity no contiene la descripción');
+            }
+            // Si el modelo no repitió la descripción, vale el mensaje original.
+            return {
+              kind: 'command.interpretation',
+              command: { action, description: parsed.summary.trim() || request.text },
             };
           }
           if (action === 'unsupported' || action === 'learn-skill') {

@@ -61,6 +61,20 @@ describe('MockModelProvider', () => {
     expect(provider.callCount()).toBe(2);
   });
 
+  it('no finge traducir descripciones: falla con honestidad', async () => {
+    // Sin comprensión de lenguaje, "traducir" una descripción sería inventar
+    // un objeto que no es lo que el cuidador describió (ADR 0024).
+    const provider = new MockModelProvider();
+    await expect(
+      provider.complete({
+        kind: 'entity.describe',
+        description: 'un glorb es un mineral azul que da calor',
+        knownKinds: ['log', 'flint'],
+        existingRecipes: [],
+      }),
+    ).rejects.toThrow('el proveedor simulado no traduce descripciones');
+  });
+
   it('contesta saludos y elogios sin repetir una respuesta genérica', async () => {
     const provider = new MockModelProvider();
     const greeting = await provider.complete({ kind: 'dialogue', topic: 'hola', facts: [] });

@@ -815,6 +815,26 @@ h3 {
   margin-left: auto;
 }
 
+/* Vista previa de una receta descrita por el cuidador (ADR 0024). */
+.recipe-card {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(245, 158, 11, 0.08);
+}
+
+.recipe-card-title {
+  font-size: 14px;
+}
+
+.recipe-card-line {
+  font-size: 12px;
+  color: var(--muted);
+}
+
 .chat-form {
   display: flex;
   gap: 6px;
