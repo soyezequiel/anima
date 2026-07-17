@@ -1,6 +1,6 @@
 import { kindWithArticle } from '@anima/shared';
 import type { ActionIntent, Interaction, PerceivedEntity, Perception } from '@anima/sim-core';
-import { validateInteraction } from '@anima/sim-core';
+import { MAX_RECIPE_DEPTH, recipeProduct, validateInteraction } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { ModelProvider, ModelRequest, ModelResponse } from '@anima/model-providers';
 import type { AgentEvent } from './events.js';
@@ -30,6 +30,67 @@ import type { ProgressController } from './progress.js';
  */
 export const MAX_INVENTION_ATTEMPTS = 3;
 
+/**
+ * Cuántas recetas admite un plan (ADR 0031). Es el tope de capas del árbol: si
+ * una idea necesita más de cuatro pisos, la puerta la iba a rechazar igual
+ * (`expandRecipeCost` la corta), y proponer lo que se va a rechazar solo gasta
+ * turnos y ticks.
+ */
+export const MAX_PLAN_RECIPES = MAX_RECIPE_DEPTH;
+
+/** Lo que se puede leer de una receta cruda sin confiar en ella. */
+interface PlanNode {
+  raw: unknown;
+  /** Qué produce, si lo dice. */
+  produces?: string;
+  /** De qué dice hacerse. */
+  needs: string[];
+}
+
+/**
+ * Lee una propuesta cruda lo justo para poder ordenarla. No valida nada: la
+ * validación es del mundo, y acá solo hace falta saber quién depende de quién.
+ * Lo que no se entienda queda sin dependencias y sale primero — el mundo dirá
+ * lo suyo cuando le llegue.
+ */
+function planNode(raw: unknown): PlanNode {
+  const recipe = raw as { output?: { kind?: unknown }; ingredients?: unknown };
+  const produces = typeof recipe?.output?.kind === 'string' ? recipe.output.kind : undefined;
+  const needs = Array.isArray(recipe?.ingredients)
+    ? recipe.ingredients
+        .map((i) => (i as { kind?: unknown })?.kind)
+        .filter((kind): kind is string => typeof kind === 'string')
+    : [];
+  return { raw, ...(produces !== undefined ? { produces } : {}), needs };
+}
+
+/**
+ * Ordena el plan de las hojas al tronco: primero la tabla, después la pared,
+ * al final la casa. No es un detalle de presentación — la puerta rechaza lo
+ * que se hace de algo que todavía no existe, así que un plan en el orden en
+ * que se le ocurrió al modelo entraría al revés y se caería entero.
+ *
+ * Un plan que se muerde la cola (la tabla se hace de la casa) no se puede
+ * ordenar: lo que quede se emite como vino y que lo rechace el mundo, que para
+ * eso es quien decide.
+ */
+function orderPlan(raws: unknown[]): unknown[] {
+  const pending = raws.slice(0, MAX_PLAN_RECIPES).map(planNode);
+  const ordered: unknown[] = [];
+  while (pending.length > 0) {
+    const madeHere = new Set(
+      pending.map((node) => node.produces).filter((kind): kind is string => kind !== undefined),
+    );
+    const index = pending.findIndex((node) => !node.needs.some((kind) => madeHere.has(kind)));
+    if (index === -1) {
+      ordered.push(...pending.map((node) => node.raw));
+      break;
+    }
+    ordered.push(...pending.splice(index, 1).map((node) => node.raw));
+  }
+  return ordered;
+}
+
 /** Lo que el agente le presta al pipeline: sus órganos, no su clase entera. */
 export interface InventionDeps {
   provider: ModelProvider;
@@ -44,6 +105,14 @@ export interface InventionDeps {
 export class InventionEngine {
   /** Rechazos del mundo a sus recetas: viajan al siguiente intento. */
   private recipeRejections: string[] = [];
+  /** Lo que queda del plan por proponer, ya ordenado de las hojas al tronco. */
+  private pendingPlan: unknown[] = [];
+  /**
+   * El plano que espera a que sus recetas entren antes de proponerse (ADR
+   * 0032). Una obra necesita que sus piezas sean fabricables primero: la casa
+   * después de las paredes, como las paredes después de las tablas.
+   */
+  private pendingBlueprint: unknown | null = null;
   /** Rechazos (puerta o Dios) a sus interacciones: viajan al siguiente intento. */
   private interactionRejections: string[] = [];
 
@@ -84,10 +153,52 @@ export class InventionEngine {
     return true;
   }
 
-  /** El mundo rechazó una propuesta ya emitida: el motivo se recuerda. */
-  recordWorldRejection(kind: 'recipe' | 'interaction', reason: string): void {
-    this.remember(kind === 'recipe' ? this.recipeRejections : this.interactionRejections, reason);
+  /**
+   * El mundo rechazó una propuesta ya emitida: el motivo se recuerda. Un plano
+   * rechazado (obra demasiado grande, bloque imposible) alimenta la MISMA lista
+   * que las recetas, porque las obras nacen de `recipe.propose`: así el motivo
+   * —"solo puedo cargar 6 bloques"— viaja a la próxima idea y el modelo propone
+   * una casa más chica en vez de reintentar la que no le entra en los brazos.
+   */
+  recordWorldRejection(kind: 'recipe' | 'interaction' | 'blueprint', reason: string): void {
+    const list = kind === 'interaction' ? this.interactionRejections : this.recipeRejections;
+    this.remember(list, reason);
     this.deps.emit(`${kind}.rejected`, { reason, source: 'world' });
+    // Si se cayó una pieza (o la obra que la coronaba), lo que se apoyaba en
+    // ella ya no se sostiene: se tira el resto del plan y se vuelve a pensar con
+    // el motivo como dato (ADR 0018).
+    if (kind !== 'interaction') {
+      this.pendingPlan = [];
+      this.pendingBlueprint = null;
+    }
+  }
+
+  /**
+   * La próxima receta del plan que valga la pena proponer, o null si no queda
+   * nada. Lo que el mundo ya sabe hacer se saltea sin gastar un tick: volver a
+   * proponer la tabla que ya existe es un rechazo tonto ("ya sé hacer eso") y
+   * ese rechazo se llevaría puesto el resto del plan.
+   */
+  nextPlanStep(perception: Perception): ActionIntent | null {
+    while (this.pendingPlan.length > 0) {
+      const raw = this.pendingPlan.shift();
+      const node = planNode(raw);
+      const known =
+        node.produces !== undefined &&
+        perception.recipes.some((recipe) => recipeProduct(recipe)?.kind === node.produces);
+      if (!known) return { type: 'proposeRecipe', recipe: raw };
+    }
+    // Las piezas ya entraron: ahora sí la obra (ADR 0032). Si ya está en el
+    // mundo (se aprendió antes, o se restauró de un guardado) no se re-propone.
+    if (this.pendingBlueprint !== null) {
+      const blueprint = this.pendingBlueprint;
+      this.pendingBlueprint = null;
+      const id = (blueprint as { id?: unknown })?.id;
+      const known =
+        typeof id === 'string' && perception.blueprints.some((b) => b.id === id);
+      if (!known) return { type: 'proposeBlueprint', blueprint };
+    }
+    return null;
   }
 
   attemptsLeft(goalId: string): boolean {
@@ -126,10 +237,22 @@ export class InventionEngine {
         (recipe) =>
           `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
       ),
+      // El tope de una obra: lo que puede cargar (ADR 0032). Va siempre — si la
+      // idea resulta un objeto, no estorba; si resulta una obra, evita que
+      // proponga una casa que no le entra en los brazos.
+      blockBudget: perception.self.inventoryCapacity,
       ...(this.recipeRejections.length > 0 ? { rejections: [...this.recipeRejections] } : {}),
     });
     if (response === null) return null;
-    if (response.kind !== 'recipe') {
+    // Tres formas de una misma idea: una receta suelta, un árbol de recetas
+    // (ADR 0031), o una obra —recetas + plano— (ADR 0032). La forma que elige
+    // el modelo ES su decisión sobre qué es la cosa: un objeto, un objeto de
+    // partes, o un lugar hecho de bloques.
+    if (
+      response.kind !== 'recipe' &&
+      response.kind !== 'recipe-plan' &&
+      response.kind !== 'blueprint'
+    ) {
       this.deps.emit('provider.error', {
         provider: this.deps.provider.name,
         operation: 'recipe.propose',
@@ -137,8 +260,22 @@ export class InventionEngine {
       });
       return null;
     }
-    this.deps.emit('recipe.proposed', { rationale: response.rationale });
-    return { type: 'proposeRecipe', recipe: response.recipe };
+    const plan =
+      response.kind === 'recipe'
+        ? [response.recipe]
+        : response.kind === 'recipe-plan'
+          ? response.recipes
+          : response.recipes;
+    this.pendingPlan = orderPlan(plan);
+    this.pendingBlueprint = response.kind === 'blueprint' ? response.blueprint : null;
+    this.deps.emit('recipe.proposed', {
+      rationale: response.rationale,
+      // Cuántas piezas tiene la idea: una casa que necesita paredes que
+      // necesitan tablas son tres, y eso se ve en la evidencia. La obra suma
+      // un paso más: el plano que las dispone.
+      steps: this.pendingPlan.length + (this.pendingBlueprint !== null ? 1 : 0),
+    });
+    return this.nextPlanStep(perception);
   }
 
   // ---- interacciones (ADR 0027) ----------------------------------------------

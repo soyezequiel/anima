@@ -1,12 +1,25 @@
 import type { EventLog, Vec2 } from '@anima/shared';
-import { chebyshev, createEventLog, isFeminineKind, kindLabel, kindWithArticle, manhattan } from '@anima/shared';
-import type { ActionIntent, Direction, EntityId, Perception, SimEvent } from '@anima/sim-core';
-import { missingIngredients, recipeProduces, recipeProduct, validateRecipe } from '@anima/sim-core';
+import { chebyshev, countedKindLabel, createEventLog, isFeminineKind, kindLabel, kindWithArticle, manhattan } from '@anima/shared';
+import type { ActionIntent, Direction, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
+import {
+  blueprintCounts,
+  expandRecipeCost,
+  missingIngredients,
+  recipeProduces,
+  recipeProducing,
+  recipeProduct,
+  validateRecipe,
+} from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
 import type { EvaluationCriterion, SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
-import { describeCriterion, SkillExecution, validateSuccessCriteria } from '@anima/skill-runtime';
+import {
+  describeCriterion,
+  SkillExecution,
+  SpatialMemory,
+  validateSuccessCriteria,
+} from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
 import type { Goal, GoalManagerData, GoalUserRequest, LearningContract } from './goals.js';
@@ -191,6 +204,12 @@ export class AnimaAgent {
   readonly memory: MemoryStore = new MemoryStoreImpl();
   /** Memoria espacial: construida SOLO con percepciones pasadas. */
   readonly places = new PlaceMemory();
+  /**
+   * Huellas y golpes: celdas pisadas y celdas que el mundo rechazó. Una sola
+   * instancia para todas las ejecuciones de skills, así lo aprendido buscando
+   * comida sirve al explorar después — y viceversa.
+   */
+  readonly spatial = new SpatialMemory();
   readonly goals = new GoalManager();
   readonly progress = new ProgressController();
   readonly events: EventLog<AgentEvent> = createEventLog<AgentEvent>();
@@ -678,6 +697,13 @@ export class AnimaAgent {
       // recuerdo — y nunca más hay que inventarlo.
       if (event.type === 'interaction.rejected' && event.data.actorId === this.petId) {
         this.invention.recordWorldRejection('interaction', String(event.data.reason));
+      }
+      // Planos (ADR 0032): el mundo rechazó una obra (demasiado grande para sus
+      // brazos, un bloque imposible). El motivo viaja a la próxima idea para
+      // que proponga una casa que sí pueda levantar, en vez de reintentar la
+      // misma. Sin esto, la obra rechazada se repetía hasta gastar el crédito.
+      if (event.type === 'blueprint.rejected' && event.data.actorId === this.petId) {
+        this.invention.recordWorldRejection('blueprint', String(event.data.reason));
       }
       if (event.type === 'interaction.learned' && event.data.actorId === this.petId) {
         const interactionId = String(event.data.interactionId);
@@ -2004,8 +2030,21 @@ export class AnimaAgent {
   ): Promise<ActionIntent | null> {
     const request = goal.userRequest;
     if (request?.kind !== 'craft-item' || !request.recipeId) return null;
+    // Un plan a medio entrar sigue entrando: las hojas antes que el tronco, una
+    // receta por tick, cada una por la puerta del mundo (ADR 0031). Va antes
+    // que el "ya sabe hacerlo" porque lo que falta son las piezas de abajo, no
+    // la casa: la casa es justamente la que todavía no puede entrar.
+    const pending = this.invention.nextPlanStep(perception);
+    if (pending) return pending;
     // Ya sabe hacerlo: no hay nada que inventar, hay que ponerse a construir.
-    if (perception.recipes.some((r) => r.id === request.recipeId)) return null;
+    // "Saberlo" es tener la receta (un objeto) O el plano (una obra, ADR 0032):
+    // sin mirar los planos, una casa ya aprendida se re-inventaría cada tick.
+    if (
+      perception.recipes.some((r) => r.id === request.recipeId) ||
+      perception.blueprints.some((b) => b.id === request.recipeId)
+    ) {
+      return null;
+    }
     return this.invention.inventRecipe(
       `mi cuidador me pidió construir ${kindWithArticle(request.recipeId)}`,
       perception,
@@ -2237,7 +2276,7 @@ export class AnimaAgent {
       if (!recipeProduces(recipe, 'heatSource')) continue;
       strategies.push({
         label: `build-fire:${recipe.id}`,
-        program: buildFireProgram(recipe, heldCounts(perception)),
+        program: buildFireProgram(recipe, heldCounts(perception), perception.recipes),
       });
     }
     // Después del fuego, no antes: el fuego recupera calor y el refugio solo
@@ -2601,7 +2640,10 @@ export class AnimaAgent {
     this.activity = {
       goalId: goal.id,
       strategy: 'petición-del-usuario',
-      exec: new SkillExecution(program, this.petId, { library: this.config.library }),
+      exec: new SkillExecution(program, this.petId, {
+        library: this.config.library,
+        spatial: this.spatial,
+      }),
       purpose: 'user-request',
       completionReply,
       requestRaw: goal.userRequest?.raw ?? goal.description,
@@ -2625,7 +2667,10 @@ export class AnimaAgent {
     this.activity = {
       goalId: goal.id,
       strategy,
-      exec: new SkillExecution(program, this.petId, { library: this.config.library }),
+      exec: new SkillExecution(program, this.petId, {
+        library: this.config.library,
+        spatial: this.spatial,
+      }),
       purpose: options.purpose ?? 'restore-energy',
       ...(options.skillId !== undefined ? { skillId: options.skillId } : {}),
       ...(options.rememberedPlaceId !== undefined
@@ -2808,8 +2853,15 @@ export class AnimaAgent {
   private missingForCraft(activity: Activity, perception: Perception): string | null {
     const request = this.goals.get(activity.goalId)?.userRequest;
     if (request?.kind !== 'craft-item' || !request.recipeId) return null;
+    // Una obra (ADR 0032) no tiene receta con su nombre: falla distinto y se
+    // explica distinto. Sin esto, no poder levantar una casa se contaba como
+    // «no encuentro el objeto», que no le decía nada al cuidador.
+    const structure = this.missingForStructure(request.recipeId, perception);
+    if (structure) return structure;
     const recipe = perception.recipes.find((r) => r.id === request.recipeId);
     if (!recipe) return null;
+    const tree = this.missingDownTheTree(recipe, perception);
+    if (tree) return tree;
     const missing = missingIngredients(recipe, heldCounts(perception));
     if (missing.length === 0) return null;
     const total = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
@@ -2817,6 +2869,89 @@ export class AnimaAgent {
     // Abortó por `no-candidates`: buscó y no había más. Decirlo evita que el
     // cuidador salga a buscar lo que no existe.
     return `${falta} ${displayMissing(missing)} y no veo más por acá`;
+  }
+
+  /**
+   * Por qué no pudo levantar una obra (ADR 0032). Dos motivos, dos respuestas
+   * honestas: o la obra tiene más bloques de los que le entran en los brazos
+   * (una casa vieja guardada antes de que el mundo cuidara ese límite), o no
+   * consiguió la materia de los bloques. En los dos casos nombra el bloque y el
+   * número — nunca «no encuentro el objeto», que no le sirve a nadie.
+   */
+  private missingForStructure(recipeId: string, perception: Perception): string | null {
+    const blueprint = perception.blueprints.find((b) => b.id === recipeId);
+    if (!blueprint) return null;
+    const counts = [...blueprintCounts(blueprint)];
+    const blocks = counts.map(([kind, n]) => countedKindLabel(kind, n)).join(' y ');
+    if (blueprint.placements.length > perception.self.inventoryCapacity) {
+      return (
+        `${kindWithArticle(recipeId)} son ${blocks}, pero solo puedo cargar ` +
+        `${perception.self.inventoryCapacity} cosas a la vez y no me entra en los brazos: ` +
+        `necesito una ${kindLabel(recipeId)} más chica`
+      );
+    }
+    return `no pude reunir ${blocks} para ${kindWithArticle(recipeId)}`;
+  }
+
+  /**
+   * Lo mismo, pero para lo que se hace de otras cosas (ADR 0031). Decir «me
+   * faltan 8 paredes» cuando sabe hacer paredes sería mentir dos veces: no le
+   * faltan paredes, le faltan los troncos de las tablas de las paredes — y el
+   * cuidador saldría a buscar paredes, que no existen tiradas en ningún lado.
+   *
+   * La cadena se dice entera porque es la respuesta a la pregunta que el
+   * número solo deja peor: por qué una casa cuesta 16 troncos. Un costo grande
+   * sin su porqué suena a capricho; con la cadena, es una casa.
+   */
+  private missingDownTheTree(recipe: Recipe, perception: Perception): string | null {
+    const cost = expandRecipeCost(recipe, perception.recipes);
+    // Un solo paso es la receta de siempre: la explicación de siempre le queda
+    // mejor que una cadena de un eslabón.
+    if (cost.truncated || cost.steps.length <= 1) return null;
+
+    // Lo que lleva encima vale por la materia que costó: ocho tablas en la
+    // mano son ocho troncos que no hay que volver a juntar. Es el mismo
+    // `expandRecipeCost` mirando para el otro lado — si el costo se deriva, lo
+    // que ya tiene también.
+    const credited = new Map<string, number>();
+    const credit = (kind: string, count: number): void => {
+      credited.set(kind, (credited.get(kind) ?? 0) + count);
+    };
+    for (const [kind, count] of heldCounts(perception)) {
+      const made = recipeProducing(perception.recipes, kind);
+      if (!made) {
+        credit(kind, count);
+        continue;
+      }
+      for (const [base, n] of expandRecipeCost(made, perception.recipes, { times: count }).base) {
+        credit(base, n);
+      }
+    }
+
+    const missing = [...cost.base]
+      .map(([kind, need]) => ({ kind, need, have: credited.get(kind) ?? 0 }))
+      .filter((m) => m.have < m.need);
+    if (missing.length === 0) return null;
+
+    // Del tronco a las hojas: "una casa son 8 paredes; una pared son 2 tablas;
+    // y una tabla, 1 tronco".
+    const chain = [...cost.steps]
+      .reverse()
+      .map((step) => {
+        const stepRecipe = perception.recipes.find((r) => r.id === step.recipeId);
+        if (!stepRecipe) return null;
+        const product = recipeProduct(stepRecipe)?.kind ?? step.recipeId;
+        const parts = stepRecipe.ingredients
+          .map((i) => countedKindLabel(i.kind, i.count))
+          .join(' y ');
+        const total = stepRecipe.ingredients.reduce((sum, i) => sum + i.count, 0);
+        return `${kindWithArticle(product)} ${total === 1 ? 'es' : 'son'} ${parts}`;
+      })
+      .filter((part): part is string => part !== null);
+
+    const total = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
+    const falta = total === 1 ? 'me falta' : 'me faltan';
+    return `${chain.join('; ')}. En total ${falta} ${displayMissing(missing)} y no veo más por acá`;
   }
 
   private describeActivityFailure(

@@ -3,7 +3,7 @@ import type { Interaction, Perception } from '@anima/sim-core';
 import type { EntityQuery, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
 import type { GoalUserRequest } from './goals.js';
 import { SKILL_REACH_BLOCKED_FOOD } from './names.js';
-import { gatherAndCraftProgram, heldCounts } from './programs.js';
+import { buildStructureProgram, gatherAndCraftProgram, heldCounts } from './programs.js';
 
 /**
  * De la petición del cuidador al programa que la cumple: composición
@@ -46,6 +46,19 @@ export function programForUserRequest(
       return [{ op: 'wait', ticks: 6 }];
 
     case 'craft-item': {
+      // ¿Objeto u obra? Si lo pedido es un plano (ADR 0032), se levanta como
+      // obra: juntar los bloques y colocarlos donde el plano dice. El plano
+      // manda sobre la receta si por algún motivo existieran los dos con el
+      // mismo nombre — una casa es un lugar, no una cosa.
+      const blueprint = request.recipeId
+        ? perception.blueprints.find((b) => b.id === request.recipeId)
+        : undefined;
+      if (blueprint) {
+        return buildStructureProgram(blueprint, {
+          held: heldCounts(perception),
+          recipes: perception.recipes,
+        });
+      }
       // Juntar lo que falte es parte de construir: el mismo programa que la
       // aproximación del fuego, sin la espera junto al calor. Si ya lleva
       // todo encima, la recolección se salta sola y el mundo vuelve a
@@ -54,7 +67,14 @@ export function programForUserRequest(
         ? perception.recipes.find((r) => r.id === request.recipeId)
         : undefined;
       return recipe
-        ? gatherAndCraftProgram(recipe, { held: heldCounts(perception), searchFirst: true })
+        ? gatherAndCraftProgram(recipe, {
+            held: heldCounts(perception),
+            searchFirst: true,
+            // Con el árbol a la vista (ADR 0031), las piezas que sabe hacer
+            // son un paso más de la obra y no un "no hay": pedirle una casa
+            // es pedirle también las paredes.
+            recipes: perception.recipes,
+          })
         : [{ op: 'abort', reason: 'no-sé-qué-construir' }];
     }
 

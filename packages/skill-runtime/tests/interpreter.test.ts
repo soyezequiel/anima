@@ -45,6 +45,52 @@ describe('intérprete de skills', () => {
     expect(pet?.components.position?.x).toBeLessThan(4);
   });
 
+  it('moveToward rodea un muro con hueco: el camino existe y lo encuentra', () => {
+    const { world, petId } = smallWorld();
+    // Columna de muro con un hueco en y=0: rodear exige ALEJARSE del objetivo
+    // (subir hasta el hueco), lo que el movimiento voraz de antes jamás hacía.
+    for (let y = 1; y < world.config.height; y++) {
+      spawn(world, 'wall', {
+        position: { x: 4, y },
+        collider: { solid: true },
+        hardness: { value: 5 },
+        durability: { current: 10, max: 10 },
+      });
+    }
+    addFood(world, 7, 2);
+    const report = runSkillProgram(world, petId, reachAndEat, { maxTicks: 60 });
+    expect(report.outcome).toBe('completed');
+    expect(report.events.some((e) => e.type === 'item.consumed')).toBe(true);
+    // Pasó por el hueco: alguna posición del camino pisa la columna del muro.
+    expect(report.path.some((p) => p.x === 4 && p.y === 0)).toBe(true);
+  });
+
+  it('miope, aprende del choque contra lo que no ve y replanifica el rodeo', () => {
+    const { world, petId } = smallWorld();
+    // Rango 1: el muro de (3,2) no se percibe desde (1,2). El plan optimista
+    // choca, el rechazo se aprende y el siguiente plan lo rodea.
+    getEntity(world, petId)!.components.agent!.perceptionRange = 1;
+    spawn(world, 'wall', {
+      position: { x: 3, y: 2 },
+      collider: { solid: true },
+      hardness: { value: 5 },
+      durability: { current: 10, max: 10 },
+    });
+    const food = addFood(world, 6, 2);
+    const program: SkillProgram = [
+      { op: 'explore', maxSteps: 50, until: { type: 'sees', query: { kind: 'food' } } },
+      { op: 'findEntities', query: { kind: 'food' }, store: 'foods' },
+      { op: 'selectTarget', from: 'foods', strategy: 'nearest', store: 'food' },
+      { op: 'moveToward', target: 'food', maxSteps: 30 },
+      { op: 'consume', target: 'food' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 120 });
+    expect(report.outcome).toBe('completed');
+    expect(
+      report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === food),
+    ).toBe(true);
+  });
+
   it('rompe el muro con un martillo y llega al alimento', () => {
     const { world, petId } = smallWorld();
     addWallColumn(world, 4);

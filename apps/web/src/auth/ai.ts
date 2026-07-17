@@ -1,4 +1,4 @@
-import type { CodexTransport } from '@anima/model-providers';
+import type { CodexTransport, CodexTransportInput } from '@anima/model-providers';
 import { API_BASE, readStoredAccount } from './cloud.js';
 
 /**
@@ -160,21 +160,94 @@ export function codexHttpTransport(): CodexTransport {
   return async (input) => {
     // Se lee en cada consulta para aplicar cambios sin reconstruir la sesión.
     const settings = readCodexSettings();
+    const body = JSON.stringify({
+      kind: input.kind,
+      prompt: input.prompt,
+      schema: input.schema,
+      ...(settings.model ? { model: settings.model } : {}),
+      ...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
+    });
+    // Con oyente del pensamiento, la consulta va por el endpoint SSE; si esa
+    // ruta no existe (API vieja) o falla al abrir, se cae al endpoint clásico
+    // para que pensar nunca dependa de poder mirar cómo se piensa.
+    if (input.onEvent) {
+      const streamed = await tryStreamingComplete(body, input.onEvent);
+      if (streamed !== null) return streamed;
+    }
     const res = await fetch(`${API_BASE}/ai/complete`, {
       method: 'POST',
       headers: aiHeaders({ 'content-type': 'application/json' }),
-      body: JSON.stringify({
-        kind: input.kind,
-        prompt: input.prompt,
-        schema: input.schema,
-        ...(settings.model ? { model: settings.model } : {}),
-        ...(settings.reasoningEffort ? { reasoningEffort: settings.reasoningEffort } : {}),
-      }),
+      body,
     });
     if (!res.ok) {
-      const body = (await res.json().catch(() => null)) as { error?: string } | null;
-      throw new Error(body?.error ?? `puente de IA: ${res.status}`);
+      const resBody = (await res.json().catch(() => null)) as { error?: string } | null;
+      throw new Error(resBody?.error ?? `puente de IA: ${res.status}`);
     }
     return ((await res.json()) as { text: string }).text;
   };
+}
+
+/**
+ * Consulta por /ai/complete/stream leyendo los eventos SSE a medida que
+ * llegan. Devuelve el texto final, o null si el stream no llegó a abrirse
+ * (para que el llamador reintente por la ruta clásica). Un error DENTRO del
+ * stream ya abierto sí es un fallo de la consulta: viaja como excepción.
+ */
+async function tryStreamingComplete(
+  body: string,
+  onEvent: NonNullable<CodexTransportInput['onEvent']>,
+): Promise<string | null> {
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}/ai/complete/stream`, {
+      method: 'POST',
+      headers: aiHeaders({ 'content-type': 'application/json' }),
+      body,
+    });
+  } catch {
+    return null;
+  }
+  if (!res.ok || !res.body) {
+    // 400/401 significan lo mismo por la ruta clásica: dejar que ella
+    // produzca el error definitivo mantiene un solo camino de fallo.
+    return null;
+  }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let finalText: string | null = null;
+  let streamError: string | null = null;
+  const handleLine = (line: string): void => {
+    if (!line.startsWith('data:')) return;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line.slice('data:'.length).trim());
+    } catch {
+      return;
+    }
+    const event = parsed as { type?: unknown; text?: unknown; error?: unknown };
+    if (event.type === 'reasoning' && typeof event.text === 'string') {
+      onEvent({ type: 'reasoning', text: event.text });
+    } else if (event.type === 'answer' && typeof event.text === 'string') {
+      onEvent({ type: 'answer', text: event.text });
+    } else if (event.type === 'done' && typeof event.text === 'string') {
+      finalText = event.text;
+    } else if (event.type === 'error') {
+      streamError = typeof event.error === 'string' ? event.error : 'fallo del puente de IA';
+    }
+  };
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let separator = buffer.indexOf('\n\n');
+    while (separator >= 0) {
+      handleLine(buffer.slice(0, separator).trim());
+      buffer = buffer.slice(separator + 2);
+      separator = buffer.indexOf('\n\n');
+    }
+  }
+  if (streamError !== null) throw new Error(streamError);
+  if (finalText === null) throw new Error('el puente de IA cortó el stream sin respuesta');
+  return finalText;
 }

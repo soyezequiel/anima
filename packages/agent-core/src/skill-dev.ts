@@ -168,7 +168,7 @@ export async function developSkill(
                   caseResults: best.report.cases.map((c) => ({
                     scenario: c.scenario,
                     seed: c.seed,
-                    passed: c.passed,
+                    verdict: c.verdict,
                     observations: c.observations,
                   })),
                 }

@@ -3,7 +3,7 @@ import type { AgentEvent } from '@anima/agent-core';
 import { MockModelProvider } from '@anima/model-providers';
 import type { SimEvent, WorldState } from '@anima/sim-core';
 import { getEntity } from '@anima/sim-core';
-import { RegressionStore } from '@anima/skill-evaluator';
+import { RegressionStore, sampleSeeds } from '@anima/skill-evaluator';
 import type { SkillDefinition } from '@anima/skill-runtime';
 import { SkillLibrary } from '@anima/skill-runtime';
 import { foodBehindWall, MVP_SCENARIOS } from '@anima/test-scenarios';
@@ -122,7 +122,7 @@ export async function runMilestone(seed = 5): Promise<MilestoneReport> {
     library,
     regressions,
     evaluationScenarios: MVP_SCENARIOS,
-    evaluationSeeds: [11, 22, 33],
+    evaluationSeeds: sampleSeeds(seed),
     guidanceEnabled: true,
   });
 

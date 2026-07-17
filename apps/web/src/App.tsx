@@ -10,11 +10,13 @@ import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
 import { ExperimentsPanel } from './components/ExperimentsPanel.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
+import { MindPanel } from './components/MindPanel.js';
 import { SkillsPanel } from './components/SkillsPanel.js';
 import { StatusPanel } from './components/StatusPanel.js';
+import { ThoughtTicker } from './components/ThoughtTicker.js';
 import { WelcomeOverlay } from './components/WelcomeOverlay.js';
 
-type Tab = 'estado' | 'chat' | 'items' | 'skills' | 'experimentos' | 'dev';
+type Tab = 'estado' | 'chat' | 'mente' | 'items' | 'skills' | 'experimentos' | 'dev';
 
 const WELCOME_SEEN_KEY = 'anima.welcomeSeen';
 
@@ -55,6 +57,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'estado', label: 'Estado' },
     { id: 'chat', label: 'Chat', badge: view.chat.length },
+    { id: 'mente', label: 'Mente', badge: view.thoughts.length },
     { id: 'items', label: 'Items', badge: view.items.length },
     { id: 'skills', label: 'Skills', badge: view.skills.length },
     { id: 'experimentos', label: 'Experimentos', badge: view.experiments.length },
@@ -136,6 +139,8 @@ export function App({ session, account }: { session: GameSession; account: Cloud
       <main className="layout">
         <section className="stage">
           <PhaserStage view={view} />
+          {/* En qué parte del pensamiento va: visible desde cualquier pestaña. */}
+          {view.currentThought && !view.death && <ThoughtTicker thought={view.currentThought} />}
           {view.death && <DeathOverlay report={view.death} session={session} />}
         </section>
         <aside className="panel">
@@ -155,6 +160,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           <div className="panel-body">
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
             {tab === 'chat' && <ChatPanel view={view} session={session} />}
+            {tab === 'mente' && <MindPanel view={view} />}
             {tab === 'items' && <ItemsPanel view={view} />}
             {tab === 'skills' && <SkillsPanel view={view} />}
             {tab === 'experimentos' && <ExperimentsPanel view={view} />}

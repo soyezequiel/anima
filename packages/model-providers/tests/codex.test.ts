@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { validateSkillProgram, validateSuccessCriteria } from '@anima/skill-runtime';
-import type { CodexTransportInput } from '../src/index.js';
+import type { CodexThought, CodexTransportInput } from '../src/index.js';
 import { CodexModelProvider, reachBlockedResourceProgram } from '../src/index.js';
 
 function transportReturning(text: string, seen: CodexTransportInput[] = []) {
@@ -228,6 +228,82 @@ describe('CodexModelProvider', () => {
     expect(seen[0]?.schema).toMatchObject({ required: ['recipeJson', 'rationale'] });
   });
 
+  it('recipe.propose: un array de recetas viaja como árbol de crafteo (ADR 0031)', async () => {
+    const plan = [
+      {
+        id: 'tabla',
+        output: { kind: 'tabla', components: { portable: {} } },
+        ingredients: [{ kind: 'log', count: 1 }],
+      },
+      {
+        id: 'pared',
+        output: { kind: 'pared', components: { portable: {}, collider: { solid: true } } },
+        ingredients: [{ kind: 'tabla', count: 2 }],
+      },
+    ];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ recipeJson: JSON.stringify(plan), rationale: 'partes' })),
+    );
+    const response = await provider.complete({
+      kind: 'recipe.propose',
+      problem: 'construir una pared',
+      wantedId: 'pared',
+      materials: ['log (lo veo)'],
+      existingRecipes: [],
+    });
+    expect(response).toEqual({ kind: 'recipe-plan', recipes: plan, rationale: 'partes' });
+  });
+
+  it('recipe.propose: un objeto con blueprint viaja como obra (ADR 0032)', async () => {
+    const obra = {
+      recipes: [
+        {
+          id: 'pared',
+          output: { kind: 'pared', components: { portable: {}, collider: { solid: true } } },
+          ingredients: [{ kind: 'log', count: 1 }],
+        },
+      ],
+      blueprint: {
+        id: 'casa',
+        placements: [{ kind: 'pared', offset: { x: 0, y: -1 } }],
+      },
+    };
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ recipeJson: JSON.stringify(obra), rationale: 'obra' })),
+    );
+    const response = await provider.complete({
+      kind: 'recipe.propose',
+      problem: 'construir una casa',
+      wantedId: 'casa',
+      materials: ['log (lo veo)'],
+      existingRecipes: [],
+    });
+    expect(response).toEqual({
+      kind: 'blueprint',
+      blueprint: obra.blueprint,
+      recipes: obra.recipes,
+      rationale: 'obra',
+    });
+  });
+
+  it('recipe.propose: una receta suelta sigue viajando como antes', async () => {
+    const recipe = {
+      id: 'brasero',
+      output: { kind: 'brasero', components: { heatSource: { warmthPerTick: 0.5, range: 2 } } },
+      ingredients: [{ kind: 'log', count: 2 }],
+    };
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ recipeJson: JSON.stringify(recipe), rationale: 'calor' })),
+    );
+    const response = await provider.complete({
+      kind: 'recipe.propose',
+      problem: 'tengo frío',
+      materials: ['log (lo veo)'],
+      existingRecipes: [],
+    });
+    expect(response).toEqual({ kind: 'recipe', recipe, rationale: 'calor' });
+  });
+
   it('interpreta una descripción de objeto como describe-entity', async () => {
     const provider = new CodexModelProvider(
       transportReturning(
@@ -399,12 +475,18 @@ describe('CodexModelProvider', () => {
       failureObservations: ['criteria-failed:energyIncreased'],
       baseVersion: 2,
       caseResults: [
-        { scenario: 'open-field', seed: 11, passed: true, observations: [] },
+        { scenario: 'open-field', seed: 11, verdict: 'passed', observations: [] },
         {
           scenario: 'food-behind-wall',
           seed: 11,
-          passed: false,
+          verdict: 'failed',
           observations: ['path-blocked:4'],
+        },
+        {
+          scenario: 'cold-night',
+          seed: 22,
+          verdict: 'inconclusive',
+          observations: ['craft-failed:attempt-failed'],
         },
       ],
       history: [
@@ -429,7 +511,55 @@ describe('CodexModelProvider', () => {
     expect(prompt).toContain('v2 (éxito 50%)');
     expect(prompt).toContain('open-field (semilla 11): PASÓ');
     expect(prompt).toContain('food-behind-wall (semilla 11): FALLÓ — path-blocked:4');
+    // Un mundo que no dio se muestra como tal: si se leyera «FALLÓ», el modelo
+    // gastaría el intento corrigiendo una tirada perdida (ADR 0030).
+    expect(prompt).toContain('cold-night (semilla 22): SIN VEREDICTO');
+    expect(prompt).not.toContain('cold-night (semilla 22): FALLÓ');
     expect(prompt).toContain('(v2, la mejor hasta ahora)');
     expect(prompt).toContain('Intento 3 de 8');
+  });
+});
+
+describe('pensamiento en vivo (hook onThought)', () => {
+  it('cuenta start, los eventos del transporte y el cierre done, con el mismo seq', async () => {
+    const thoughts: CodexThought[] = [];
+    const provider = new CodexModelProvider(
+      async (input) => {
+        input.onEvent?.({ type: 'reasoning', text: '**eligiendo saludo**' });
+        input.onEvent?.({ type: 'answer', text: '{"text":"hola"}' });
+        return '{"text":"hola"}';
+      },
+      { onThought: (thought) => thoughts.push(thought) },
+    );
+    await provider.complete({ kind: 'dialogue', topic: 't', facts: [] });
+    expect(thoughts).toEqual([
+      { seq: 1, kind: 'dialogue', event: 'start' },
+      { seq: 1, kind: 'dialogue', event: 'reasoning', text: '**eligiendo saludo**' },
+      { seq: 1, kind: 'dialogue', event: 'answer', text: '{"text":"hola"}' },
+      { seq: 1, kind: 'dialogue', event: 'done' },
+    ]);
+
+    // La consulta siguiente estrena seq: el oyente puede distinguirlas.
+    await provider.complete({ kind: 'dialogue', topic: 't2', facts: [] });
+    expect(thoughts.at(-1)).toEqual({ seq: 2, kind: 'dialogue', event: 'done' });
+  });
+
+  it('una respuesta inservible cierra con error, no con done', async () => {
+    const thoughts: CodexThought[] = [];
+    const provider = new CodexModelProvider(async () => 'esto no es json', {
+      onThought: (thought) => thoughts.push(thought),
+    });
+    await expect(provider.complete({ kind: 'dialogue', topic: 't', facts: [] })).rejects.toThrow(
+      /JSON/,
+    );
+    expect(thoughts.at(-1)).toMatchObject({ seq: 1, kind: 'dialogue', event: 'error' });
+    expect(thoughts.some((t) => t.event === 'done')).toBe(false);
+  });
+
+  it('sin oyente, el transporte no recibe onEvent', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(transportReturning('{"text":"hola"}', seen));
+    await provider.complete({ kind: 'dialogue', topic: 't', facts: [] });
+    expect(seen[0]?.onEvent).toBeUndefined();
   });
 });

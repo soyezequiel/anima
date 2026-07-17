@@ -1,6 +1,7 @@
 import type { Vec2 } from '@anima/shared';
 import { chebyshev, manhattan } from '@anima/shared';
 import type { Entity, EntityId } from './components.js';
+import type { Blueprint } from './blueprints.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 import type { WorldState } from './world.js';
@@ -40,8 +41,20 @@ export interface Perception {
     health?: { current: number; max: number };
     temperature?: { current: number; max: number };
     heldItems: PerceivedEntity[];
+    /**
+     * Cuántas cosas puede cargar en total. Lo sabe de su propio cuerpo, como la
+     * energía: es lo que le deja entender por qué una obra grande no le entra en
+     * los brazos (ADR 0032) y decirlo con un número, no con un "no pude".
+     */
+    inventoryCapacity: number;
   };
   visibleEntities: PerceivedEntity[];
+  /**
+   * El tamaño del mundo, con el mismo trato que las recetas: saber hasta dónde
+   * llega el suelo es saber la física. Sin esto, planificar un rodeo incluía
+   * celdas que no existen y había que descubrir cada borde chocándolo.
+   */
+  bounds?: { width: number; height: number };
   /**
    * Las recetas del mundo. La mascota sabe cómo se combinan las cosas, igual
    * que sabe que puede moverse: es la física de su mundo, no un secreto. Lo
@@ -54,6 +67,12 @@ export interface Perception {
    * vez de inventarla de nuevo (ADR 0027).
    */
   interactions: Interaction[];
+  /**
+   * Los planos del mundo (ADR 0032), con el mismo trato: saber cómo se dispone
+   * una obra es saber la física. Es lo que permite construir de nuevo una casa
+   * ya aprendida sin volver a imaginarla.
+   */
+  blueprints: Blueprint[];
 }
 
 /**
@@ -150,7 +169,12 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
     }
   }
 
-  const self: Perception['self'] = { id: agentId, position: { ...pos }, heldItems };
+  const self: Perception['self'] = {
+    id: agentId,
+    position: { ...pos },
+    heldItems,
+    inventoryCapacity: agent.components.inventory?.capacity ?? 0,
+  };
   if (agent.components.energy) {
     self.energy = { current: agent.components.energy.current, max: agent.components.energy.max };
   }
@@ -167,7 +191,9 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
     tick: world.tick,
     self,
     visibleEntities,
+    bounds: { width: world.config.width, height: world.config.height },
     recipes: structuredClone(world.recipes),
     interactions: structuredClone(world.interactions),
+    blueprints: structuredClone(world.blueprints),
   };
 }

@@ -113,6 +113,96 @@ export function recipeProduces(recipe: Recipe, component: keyof Components): boo
 }
 
 /**
+ * Cuántas capas admite un árbol de crafteo. Una casa hecha de paredes hechas
+ * de tablas hechas de troncos son tres: cuatro es margen, y el tope existe
+ * para que un árbol enfermo (un ciclo, una idea de veinte pisos) se corte con
+ * un motivo en vez de colgar al que lo recorra.
+ */
+export const MAX_RECIPE_DEPTH = 4;
+
+/**
+ * Qué receta hace este tipo de objeto, mirando su producto esperado (el
+ * desenlace que más pesa): lo que la mascota INTENTA construir es lo que
+ * cuenta al planificar, no lo que puede llegar a salirle mal.
+ *
+ * La puerta garantiza un solo productor por tipo (ADR 0031), así que "la"
+ * receta que hace una tabla es una sola y el árbol tiene una única lectura.
+ */
+export function recipeProducing(
+  recipes: readonly Recipe[],
+  kind: EntityKind,
+): Recipe | undefined {
+  return recipes.find((recipe) => recipeProduct(recipe)?.kind === kind);
+}
+
+/** Lo que cuesta una receta cuando se la sigue hasta abajo (ADR 0031). */
+export interface RecipeCost {
+  /** Materia base: lo que hay que juntar del mundo, ya sumado por tipo. */
+  base: Map<EntityKind, number>;
+  /**
+   * Cuántas veces hay que ejecutar cada receta, de las hojas al tronco: el
+   * orden en que hay que construir. La última es la que se pidió.
+   */
+  steps: Array<{ recipeId: string; times: number }>;
+  /** El árbol no toca el suelo: tiene un ciclo o demasiadas capas. */
+  truncated: boolean;
+}
+
+/**
+ * Sigue una receta hasta la materia base y suma. Es el corazón del ADR 0031:
+ * **el costo de lo complejo no se declara, se deriva**. Nadie escribe lo que
+ * cuesta una casa — cuesta lo que cuestan sus paredes, que cuestan lo que
+ * cuestan sus tablas. Una idea barata no puede serlo por decreto.
+ *
+ * Fuente de verdad única, como `missingIngredients`: el mundo la usa para
+ * decidir si una idea toca el suelo y la mascota para explicar qué le falta,
+ * así que nunca puede decir "necesito 16 troncos" y que el mundo opine otra
+ * cosa.
+ *
+ * Un ingrediente que ninguna receta produce es materia base y ahí termina la
+ * rama: el árbol se apoya en lo que el mundo tiene, no en lo que se imagina.
+ */
+export function expandRecipeCost(
+  recipe: Recipe,
+  recipes: readonly Recipe[],
+  options: { times?: number } = {},
+): RecipeCost {
+  const base = new Map<EntityKind, number>();
+  const steps: Array<{ recipeId: string; times: number }> = [];
+  let truncated = false;
+
+  const addStep = (recipeId: string, times: number): void => {
+    const found = steps.find((step) => step.recipeId === recipeId);
+    if (found) found.times += times;
+    else steps.push({ recipeId, times });
+  };
+
+  const walk = (current: Recipe, times: number, path: string[]): void => {
+    // Un ciclo (la tabla se hace del tronco y el tronco de la tabla) no tiene
+    // materia base abajo: no hay nada que sumar, solo que dejar de girar.
+    if (path.includes(current.id) || path.length >= MAX_RECIPE_DEPTH) {
+      truncated = true;
+      return;
+    }
+    for (const ingredient of current.ingredients) {
+      const need = ingredient.count * times;
+      const sub = recipeProducing(recipes, ingredient.kind);
+      if (!sub) {
+        base.set(ingredient.kind, (base.get(ingredient.kind) ?? 0) + need);
+        continue;
+      }
+      walk(sub, need, [...path, current.id]);
+    }
+    // Después de sus partes: las hojas primero, que es el orden en que hay que
+    // construirlas.
+    addStep(current.id, times);
+  };
+
+  walk(recipe, options.times ?? 1, []);
+  return { base, steps, truncated };
+}
+
+/**
  * Tira el dado del mundo y devuelve el desenlace que tocó. Muta `rng`: la
  * secuencia avanza, así que el segundo intento no repite al primero.
  */

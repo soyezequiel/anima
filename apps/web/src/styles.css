@@ -915,19 +915,82 @@ h3 {
   font-variant-numeric: tabular-nums;
 }
 
-.kv {
-  display: grid;
-  grid-template-columns: 90px 1fr;
-  gap: 4px 8px;
-  margin: 12px 0;
+/* Qué hace ahora: lo único que se mira a cada rato, con jerarquía propia. */
+.now-card {
+  margin: 12px 0 8px;
+  padding: 10px 12px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
-.kv dt {
+.now-goal {
+  font-weight: 600;
+}
+
+.now-detail {
+  margin-top: 2px;
+  font-size: 12px;
+}
+
+.status-inventory {
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+/* Rasgos como fila de pastillas: se leen de un vistazo. */
+.trait-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+
+/* Secciones plegadas: lo terminado y lo que se toca una vez. */
+.status-details {
+  margin: 6px 0;
+}
+
+.status-details > summary {
+  cursor: pointer;
+  font-size: 12px;
   color: var(--muted);
+  list-style: none;
 }
 
-.kv dd {
-  margin: 0;
+.status-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.status-details > summary::before {
+  content: '▸ ';
+}
+
+.status-details[open] > summary::before {
+  content: '▾ ';
+}
+
+.status-details > summary:hover {
+  color: var(--text);
+}
+
+.status-details .list,
+.status-details .color-row {
+  margin-top: 6px;
+}
+
+/* «sabe» sin pastilla: el hecho es el contenido, la etiqueta solo acompaña. */
+.fact-mark {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin-right: 2px;
+}
+
+.status-footer {
+  margin-top: 12px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
 }
 
 .color-row {
@@ -963,33 +1026,112 @@ h3 {
   padding-bottom: 8px;
 }
 
-.chat-entry {
+/* Cada turno es una fila en columna; la burbuja y el tick se alinean del lado
+   de quien habla: tú a la derecha, Ánima a la izquierda. */
+.chat-row {
   display: flex;
-  gap: 8px;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 2px;
 }
 
-.chat-who {
+.chat-row.from-user {
+  align-items: flex-end;
+}
+
+.chat-row.from-pet {
+  align-items: flex-start;
+}
+
+/* Aire extra solo cuando cambia quién habla: los mensajes seguidos del mismo
+   hablante quedan pegados, como un turno; los turnos distintos respiran. */
+.chat-row.group-start {
+  margin-top: 12px;
+}
+
+.chat-log > .chat-row:first-child {
+  margin-top: 0;
+}
+
+.chat-name {
+  font-size: 12px;
   font-weight: 600;
-  min-width: 44px;
+  padding: 0 4px;
 }
 
-.from-pet .chat-who {
+.from-pet .chat-name {
   color: var(--accent);
 }
 
-.from-user .chat-who {
+.from-user .chat-name {
   color: #60a5fa;
 }
 
-.from-system {
-  color: var(--muted);
-  font-style: italic;
+/* La burbuja: ancho acotado y renglón alto, para que el texto se lea cómodo. */
+.chat-bubble {
+  max-width: 82%;
+  padding: 8px 12px;
+  border-radius: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
 }
 
-.thinking-entry {
-  min-height: 24px;
+.from-pet .chat-bubble {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-top-left-radius: 4px;
+}
+
+.from-user .chat-bubble {
+  background: #1e3a5f;
+  border: 1px solid #2c5282;
+  color: #e8f1fb;
+  border-top-right-radius: 4px;
+}
+
+/* Con tarjeta de receta la burbuja no pone chrome propio: la tarjeta ya lo trae. */
+.chat-bubble.bare {
+  background: none;
+  border: none;
+  padding: 0;
+}
+
+/* El tick del mundo: debajo de la burbuja, del lado del hablante, discreto. */
+.chat-row .chat-tick {
+  font-size: 10px;
+  padding: 0 4px;
+  opacity: 0.6;
+}
+
+/* Notas al margen: centradas, chicas y tenues; no compiten con el diálogo. */
+.chat-note {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 6px;
+  color: var(--muted);
+  font-style: italic;
+  font-size: 12px;
+  opacity: 0.7;
+  text-align: center;
+}
+
+.chat-note .chat-tick {
+  font-size: 10px;
+  margin-left: 0;
+}
+
+/* Mientras piensa, la burbuja de Ánima se tiñe apenas de violeta. */
+.thinking-entry .chat-bubble {
   color: #d8b4fe;
+  border-color: #4c1d95;
+}
+
+/* El razonamiento comprimido: latido, línea viva y el desplegable, en columna. */
+.thinking-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
 .thinking-text {
@@ -997,6 +1139,46 @@ h3 {
   align-items: center;
   gap: 6px;
   font-style: italic;
+}
+
+/* Una sola línea que se renueva con cada titular; nunca crece a lo alto. */
+.thinking-headline {
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: thought-step-in 0.35s ease-out;
+}
+
+.thinking-steps summary {
+  color: var(--muted);
+  font-size: 11px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.thinking-steps summary::-webkit-details-marker {
+  display: none;
+}
+
+.thinking-steps summary::before {
+  content: '▸ ';
+}
+
+.thinking-steps[open] summary::before {
+  content: '▾ ';
+}
+
+.thinking-steps-list {
+  margin: 4px 0 0;
+  padding-left: 16px;
+  color: var(--muted);
+  font-size: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .chat-tick {
@@ -1072,6 +1254,235 @@ button:disabled {
   }
 }
 
+/*
+ * Pensamiento en vivo. El ticker flota sobre el escenario mientras hay una
+ * consulta en vuelo: el momento cognitivo, el último titular de razonamiento
+ * real y los tres momentos de toda consulta (pregunta → razona → responde).
+ * Nada acá simula ritmo: cada cambio visible es un evento que llegó.
+ */
+.thought-ticker {
+  position: absolute;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(92%, 640px);
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-size: 12px;
+}
+
+.thought-ticker-icon {
+  font-size: 18px;
+  animation: thought-pulse 1.6s ease-in-out infinite;
+}
+
+.thought-ticker-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.thought-ticker-label {
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  animation: thought-step-in 0.35s ease-out;
+}
+
+.thought-stages {
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.thought-stage {
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.thought-stage[data-state='active'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  animation: thought-pulse 1.6s ease-in-out infinite;
+}
+
+.thought-stage[data-state='done'] {
+  border-color: var(--border);
+  color: var(--text);
+  opacity: 0.75;
+}
+
+/* Mente: el pensamiento del modelo, consulta por consulta. */
+.mind-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+}
+
+.mind-empty {
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mind-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.thought-entry {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  padding: 8px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.thought-entry[data-status='thinking'] {
+  border-color: var(--accent);
+}
+
+.thought-entry[data-status='error'] {
+  border-color: #b91c1c;
+}
+
+.thought-entry-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.thought-entry-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.thought-entry-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+/* La línea humana de la respuesta: lo que la entrada dice de un vistazo. */
+.thought-summary {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--text);
+  animation: thought-step-in 0.35s ease-out;
+}
+
+.thought-reasoning {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.thought-reasoning-line {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+  line-height: 1.4;
+  padding-left: 14px;
+  position: relative;
+  animation: thought-step-in 0.35s ease-out;
+}
+
+.thought-reasoning-line::before {
+  content: '·';
+  position: absolute;
+  left: 4px;
+  color: var(--accent);
+}
+
+/* Toggles de la maquinaria: razonamiento pasado y JSON crudo, plegados. */
+.thought-details > summary {
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--muted);
+  list-style: none;
+  user-select: none;
+}
+
+.thought-details > summary::before {
+  content: '▸ ';
+}
+
+.thought-details[open] > summary::before {
+  content: '▾ ';
+}
+
+.thought-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.thought-details[open] > summary {
+  margin-bottom: 6px;
+}
+
+.thought-answer-json {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.4;
+  overflow-x: auto;
+  background: var(--bg);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.thought-error {
+  margin: 0;
+  font-size: 12px;
+  color: #fca5a5;
+}
+
+@keyframes thought-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes thought-step-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .thinking-dots i {
     animation: none;
@@ -1083,6 +1494,17 @@ button:disabled {
     animation: none;
     opacity: 1;
     transform: translate(-50%, -150%);
+  }
+
+  /* El pensamiento se queda quieto: los pasos aparecen sin deslizarse y lo
+     activo se distingue por color, no por latido. */
+  .thought-ticker-icon,
+  .thought-stage[data-state='active'],
+  .thought-ticker-label,
+  .thought-reasoning-line,
+  .thought-summary {
+    animation: none;
+    opacity: 1;
   }
 }
 

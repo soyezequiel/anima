@@ -174,6 +174,31 @@ export interface ExperimentView {
   detail: string;
 }
 
+/**
+ * Una consulta al modelo real vista desde adentro: el momento cognitivo que
+ * la disparó, los titulares de razonamiento que fueron llegando y la
+ * respuesta final. Solo existe con proveedores que piensan de verdad (Codex):
+ * el mock responde al instante y no tiene pensamiento que contar — la UI
+ * muestra esa ausencia tal cual, sin fingir un ritmo.
+ */
+export interface ThoughtView {
+  /** Identidad de la consulta, creciente por sesión de página. */
+  seq: number;
+  /** El tipo crudo de la petición ('dialogue', 'recipe.propose', ...). */
+  kind: string;
+  /** El momento cognitivo en voz humana ("inventando una receta"). */
+  label: string;
+  /** Titulares de razonamiento del modelo, en el orden en que llegaron. */
+  reasoning: string[];
+  /** Texto de la respuesta cuando ya existe; null mientras piensa. */
+  answer: string | null;
+  status: 'thinking' | 'done' | 'error';
+  /** Detalle del fallo cuando status es 'error'; null si no falló. */
+  error: string | null;
+  /** Tick del mundo en que arrancó la consulta. */
+  tick: number;
+}
+
 export interface DevEventView {
   seq: number;
   tick: number;
@@ -238,6 +263,10 @@ export interface GameView {
   chat: ChatEntry[];
   skills: SkillView[];
   experiments: ExperimentView[];
+  /** Pensamientos en vivo del modelo real, del más viejo al más nuevo. */
+  thoughts: ThoughtView[];
+  /** La consulta todavía en vuelo, si hay una. */
+  currentThought: ThoughtView | null;
   devEvents: DevEventView[];
   regressions: { scenarioName: string; seed: number; description: string }[];
   /** Rasgos emergentes derivados de su historia (0–4, deterministas). */

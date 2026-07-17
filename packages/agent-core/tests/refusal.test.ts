@@ -15,11 +15,13 @@ function perceptionWith(
       position: { x: 1, y: 1 },
       energy: { current: 30, max: 50 },
       heldItems: [],
+      inventoryCapacity: 6,
       ...overrides,
     },
     visibleEntities: visible,
     recipes: [],
     interactions: [],
+    blueprints: [],
   };
 }
 

@@ -18,6 +18,13 @@ export type ActionIntent =
   | { type: 'move'; dir: Direction }
   | { type: 'pickup'; targetId: EntityId }
   | { type: 'drop'; itemId: EntityId }
+  /**
+   * Colocar un bloque que se lleva encima en una celda elegida (ADR 0032). Es
+   * `drop` con puntería: en vez de soltarlo a los pies, lo pone en una celda
+   * adyacente, vacía y dentro del mapa. La primitiva con la que se levantan las
+   * obras — una casa es sus paredes puestas donde van.
+   */
+  | { type: 'place'; itemId: EntityId; at: { x: number; y: number } }
   | { type: 'consume'; targetId: EntityId }
   | { type: 'useItem'; itemId: EntityId; targetId: EntityId }
   | { type: 'craft'; recipeId: string }
@@ -33,6 +40,11 @@ export type ActionIntent =
    * a esta validación — la física no se delega.
    */
   | { type: 'proposeInteraction'; interaction: unknown }
+  /**
+   * Proponerle al mundo un plano nuevo (ADR 0032). Mismo trato que recetas e
+   * interacciones: viaja crudo y la puerta de step.ts valida y decide.
+   */
+  | { type: 'proposeBlueprint'; blueprint: unknown }
   /** Ejecutar una interacción que el mundo ya admite, sobre un objetivo. */
   | { type: 'interact'; interactionId: string; targetId: EntityId }
   | { type: 'speak'; text: string };

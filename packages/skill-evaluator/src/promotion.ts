@@ -36,9 +36,17 @@ export function applyEvaluation(
 
   skill.metrics.lastEvaluationSuccessRate = report.successRate;
 
-  if (report.successRate < policy.successThreshold) {
+  const conclusive = report.cases.length - report.inconclusiveCases;
+  if (conclusive === 0) {
+    // Sin un solo caso que dijera algo no hay nada que promover: no es que
+    // haya fallado, es que no llegamos a saber. Distinguirlo importa, porque
+    // «0%» mandaría al modelo a corregir una skill que quizá está bien.
     reasons.push(
-      `tasa de éxito ${(report.successRate * 100).toFixed(0)}% < umbral ${(policy.successThreshold * 100).toFixed(0)}%`,
+      `sin evidencia concluyente: los ${report.cases.length} casos quedaron a merced del mundo`,
+    );
+  } else if (report.successRate < policy.successThreshold) {
+    reasons.push(
+      `tasa de éxito ${(report.successRate * 100).toFixed(0)}% (${conclusive} casos concluyentes) < umbral ${(policy.successThreshold * 100).toFixed(0)}%`,
     );
   }
   if (report.invariantViolations > 0) {
@@ -51,8 +59,12 @@ export function applyEvaluation(
   }
 
   if (reasons.length > 0) {
+    // Solo lo que falló de verdad se convierte en prueba. Archivar un caso
+    // inconcluyente ataría a todas las versiones futuras a superar una tirada
+    // perdida — una regresión que no prueba nada y no se puede aprobar.
+    const failedCases = report.cases.filter((c) => c.verdict === 'failed');
     let regressionsAdded = 0;
-    for (const failedCase of report.cases.filter((c) => !c.passed)) {
+    for (const failedCase of failedCases) {
       regressions.add({
         skillName: skill.name,
         scenarioName: failedCase.scenario,
@@ -64,8 +76,8 @@ export function applyEvaluation(
     }
     library.markRejected(skill.id, {
       id: `fail-${skill.id}`,
-      scenarioName: report.cases.find((c) => !c.passed)?.scenario ?? 'desconocido',
-      seed: report.cases.find((c) => !c.passed)?.seed ?? -1,
+      scenarioName: failedCases[0]?.scenario ?? 'desconocido',
+      seed: failedCases[0]?.seed ?? -1,
       description: report.failureObservations.join('; '),
       observedAtVersion: skill.version,
     });
@@ -74,7 +86,10 @@ export function applyEvaluation(
 
   library.markPromoted(skill.id);
   reasons.push(
-    `supera todos los casos (${report.cases.length}) incluidas ${report.cases.filter((c) => c.fromRegression).length} regresiones`,
+    `supera los ${conclusive} casos concluyentes, incluidas ${report.cases.filter((c) => c.fromRegression).length} regresiones` +
+      (report.inconclusiveCases > 0
+        ? ` (${report.inconclusiveCases} sin veredicto: el mundo no dio)`
+        : ''),
   );
   if (options.baseline) {
     reasons.push(`no empeora a la versión anterior`);

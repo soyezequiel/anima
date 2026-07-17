@@ -139,10 +139,11 @@ describe('memoria de lugares', () => {
     const memory = new PlaceMemory();
     const fakePerception = (tick: number, entities: PerceivedEntity[]): Perception => ({
       tick,
-      self: { id: 'e1', position: { x: 0, y: 0 }, heldItems: [] },
+      self: { id: 'e1', position: { x: 0, y: 0 }, heldItems: [], inventoryCapacity: 6 },
       visibleEntities: entities,
       recipes: [],
       interactions: [],
+      blueprints: [],
     });
     for (let i = 0; i < PLACE_MEMORY_CAP + 6; i++) {
       memory.update(

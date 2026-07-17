@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MemoryKeyValueStore } from '@anima/persistence';
+import { DEFAULT_EVALUATION_SEED_COUNT, sampleSeeds } from '@anima/skill-evaluator';
 import { GameSession } from '../src/session/GameSession.js';
 
 async function runTicks(session: GameSession, ticks: number): Promise<void> {
@@ -45,7 +46,12 @@ describe('reporte para Claude Code', () => {
     expect(raw.seed).toBe(5);
     expect(raw.tick).toBeGreaterThan(0);
     expect(raw.recipes.length).toBeGreaterThan(0);
-    expect(raw.evaluationSeeds).toEqual([11, 22, 33]);
+    // La grilla de evaluación ya no son tres números escritos a mano: se deriva
+    // de la semilla de la partida y es reproducible (ADR 0030). Lo que se fija
+    // es esa propiedad, no los valores.
+    expect(raw.evaluationSeeds).toEqual(sampleSeeds(raw.seed));
+    expect(raw.evaluationSeeds).toHaveLength(DEFAULT_EVALUATION_SEED_COUNT);
+    expect(raw.evaluationSeeds).not.toEqual(sampleSeeds(raw.seed + 1));
 
     session.dispose();
   });

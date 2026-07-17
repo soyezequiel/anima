@@ -1,6 +1,6 @@
 import { equalsVec2, isAdjacent, manhattan } from '@anima/shared';
 import type { EntityId, WorldState } from '@anima/sim-core';
-import { findByKind, getEntity, restoreSnapshot } from '@anima/sim-core';
+import { findByKind, findRecipe, getEntity, restoreSnapshot } from '@anima/sim-core';
 import type {
   EvaluationCriterion,
   SkillDefinition,
@@ -21,11 +21,19 @@ export interface NamedScenario {
   build: (seed: number) => { world: WorldState; petId: EntityId };
 }
 
+/**
+ * El veredicto de un caso aislado. `inconclusive` existe porque el mundo tira
+ * dados (ADR 0020) y una habilidad no puede responder por lo que el mundo no
+ * le dio (ADR 0008): sin esa categoría, la suerte se lee como capacidad. No
+ * entra al denominador (ADR 0030).
+ */
+export type CaseVerdict = 'passed' | 'failed' | 'inconclusive';
+
 export interface EvaluationCaseResult {
   scenario: string;
   seed: number;
   fromRegression: boolean;
-  passed: boolean;
+  verdict: CaseVerdict;
   runOutcome: SkillRunReport['outcome'];
   runReason?: string;
   criteriaFailed: string[];
@@ -44,9 +52,16 @@ export interface EvaluationReport {
   skillName: string;
   version: number;
   cases: EvaluationCaseResult[];
+  /** Sobre los casos concluyentes: lo inconcluyente no suma ni resta. */
   successRate: number;
+  /** Cuántos casos quedaron a merced del mundo. Contexto de `successRate`. */
+  inconclusiveCases: number;
   invariantViolations: number;
-  /** Observaciones agregadas de los casos fallidos: insumo para la revisión. */
+  /**
+   * Observaciones agregadas de los casos **fallidos**: insumo para la revisión.
+   * Lo inconcluyente queda afuera a propósito — pedirle al modelo que corrija
+   * una tirada perdida es pedirle que arregle la suerte (ADR 0030).
+   */
   failureObservations: string[];
   avgTicksOnSuccess: number | null;
 }
@@ -127,6 +142,43 @@ function checkCriterion(
   }
 }
 
+/**
+ * ¿El intento se lo llevó el dado, sin dejarle con qué reintentar?
+ *
+ * El mundo ya separa las dos cosas: `resolveCraft` marca `attempt-failed`
+ * cuando la chispa no agarró teniendo todo lo necesario —distinto de
+ * `missing-ingredients`— justamente «para que reintentar sea distinguible de
+ * rendirse» (ADR 0020).
+ *
+ * Perder la tirada solo excusa a la habilidad si además la dejó sin material.
+ * Si le sobraba pedernal y paró igual, se rindió: y rendirse es suyo, porque
+ * el ADR 0020 se ocupó de que un fallo se lleve el material pero nunca la
+ * posibilidad de volver a intentarlo.
+ */
+function lostToTheDice(report: SkillRunReport, world: WorldState, petId: EntityId): boolean {
+  const lostRolls = report.events.filter(
+    (e) =>
+      e.type === 'action.resolved' &&
+      e.data.action === 'craft' &&
+      e.data.success === false &&
+      e.data.reason === 'attempt-failed',
+  );
+  if (lostRolls.length === 0) return false;
+
+  const held = new Map<string, number>();
+  for (const itemId of getEntity(world, petId)?.components.inventory?.items ?? []) {
+    const kind = getEntity(world, itemId)?.kind;
+    if (kind) held.set(kind, (held.get(kind) ?? 0) + 1);
+  }
+  // Basta con que UNA de las recetas que perdió siga siendo reintentable para
+  // que el caso vuelva a ser suyo: tenía con qué y decidió no hacerlo.
+  return lostRolls.every((roll) => {
+    const recipe = findRecipe(world.recipes, String(roll.data.recipeId ?? ''));
+    if (!recipe) return true;
+    return recipe.ingredients.some((i) => (held.get(i.kind) ?? 0) < i.count);
+  });
+}
+
 function deriveObservations(report: SkillRunReport, criteriaFailed: string[]): string[] {
   const observations: string[] = [];
   const zeroDamage = report.events.filter(
@@ -204,11 +256,19 @@ function runCase(
   const violated = report.invariantViolations.length > 0;
   const passed = criteriaFailed.length === 0 && !violated && report.outcome === 'completed';
 
+  // Violar un invariante nunca es mala suerte: rompió el mundo, y eso es suyo
+  // caiga como caiga el dado.
+  const verdict: CaseVerdict = passed
+    ? 'passed'
+    : !violated && lostToTheDice(report, world, petId)
+      ? 'inconclusive'
+      : 'failed';
+
   return {
     scenario: scenario.name,
     seed,
     fromRegression,
-    passed,
+    verdict,
     runOutcome: report.outcome,
     ...(report.reason !== undefined ? { runReason: report.reason } : {}),
     criteriaFailed,
@@ -256,16 +316,22 @@ export function evaluateSkill(skill: SkillDefinition, options: EvaluateOptions):
     cases.push(runCase(skill, scenario, regression.seed, true, options));
   }
 
-  const passedCases = cases.filter((c) => c.passed);
+  // El denominador son los casos que dijeron algo. Un mundo que no dio no es
+  // evidencia ni a favor ni en contra (ADR 0030).
+  const conclusive = cases.filter((c) => c.verdict !== 'inconclusive');
+  const passedCases = conclusive.filter((c) => c.verdict === 'passed');
   const successTicks = passedCases.map((c) => c.metrics.ticks);
   return {
     skillId: skill.id,
     skillName: skill.name,
     version: skill.version,
     cases,
-    successRate: cases.length === 0 ? 0 : passedCases.length / cases.length,
+    successRate: conclusive.length === 0 ? 0 : passedCases.length / conclusive.length,
+    inconclusiveCases: cases.length - conclusive.length,
     invariantViolations: cases.reduce((sum, c) => sum + c.metrics.invariantViolations, 0),
-    failureObservations: [...new Set(cases.flatMap((c) => c.observations))],
+    failureObservations: [
+      ...new Set(cases.filter((c) => c.verdict === 'failed').flatMap((c) => c.observations)),
+    ],
     avgTicksOnSuccess:
       successTicks.length === 0
         ? null

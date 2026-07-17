@@ -8,6 +8,7 @@ export type SimEventType =
   | 'entity.destroyed'
   | 'item.pickedUp'
   | 'item.dropped'
+  | 'item.placed'
   | 'item.consumed'
   | 'item.crafted'
   /** El intento salió mal: gastó ingredientes y no produjo nada. */
@@ -20,6 +21,10 @@ export type SimEventType =
   | 'interaction.rejected'
   /** Una interacción aprendida acaba de ejecutarse sobre un objetivo. */
   | 'interaction.performed'
+  /** El mundo aceptó un plano propuesto: desde ahora es una obra construible. */
+  | 'blueprint.learned'
+  /** El mundo rechazó el plano propuesto, con el motivo. */
+  | 'blueprint.rejected'
   | 'tool.broke'
   | 'agent.spoke'
   | 'entity.spawned'

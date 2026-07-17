@@ -45,6 +45,13 @@ const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
     z.object({ type: z.literal('energyBelow'), value: z.number() }).strict(),
     z.object({ type: z.literal('temperatureBelow'), value: z.number() }).strict(),
     z.object({ type: z.literal('canCraft'), recipeId: z.string().min(1) }).strict(),
+    z
+      .object({
+        type: z.literal('holdingCount'),
+        kind: z.string().min(1),
+        count: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
+      })
+      .strict(),
     z.object({ type: z.literal('sees'), query: entityQuerySchema }).strict(),
     z.object({ type: z.literal('not'), cond: conditionSchema }).strict(),
   ]),
@@ -61,6 +68,11 @@ export type SkillCondition =
   | { type: 'temperatureBelow'; value: number }
   /** Tiene en mano todo lo que la receta pide (y el mundo la admite). */
   | { type: 'canCraft'; recipeId: string }
+  /**
+   * Lleva encima al menos `count` bloques de un tipo. Lo que hace juntable una
+   * obra: reunir las seis paredes antes de empezar a colocarlas (ADR 0032).
+   */
+  | { type: 'holdingCount'; kind: string; count: number }
   /**
    * Percibe (a la vista o en la mano) algo que cumple la query. Es la
    * condición que vuelve útil a `explore`: recorrer HASTA VER lo que busca.
@@ -110,6 +122,14 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       .strict(),
     z.object({ op: z.literal('pickup'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('drop'), target: z.string().min(1) }).strict(),
+    z
+      .object({
+        op: z.literal('place'),
+        kind: z.string().min(1),
+        dx: z.number().int().min(-1).max(1),
+        dy: z.number().int().min(-1).max(1),
+      })
+      .strict(),
     z.object({ op: z.literal('consume'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('useItem'), item: z.string().min(1), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('craft'), recipeId: z.string().min(1) }).strict(),
@@ -158,6 +178,14 @@ export type SkillOp =
   | { op: 'explore'; maxSteps: number; until?: SkillCondition }
   | { op: 'pickup'; target: string }
   | { op: 'drop'; target: string }
+  /**
+   * Colocar un bloque que se lleva encima (por tipo) en la celda vecina que
+   * marca el offset, desde la posición actual (ADR 0032). El offset es de una
+   * celda como mucho: la mascota coloca al alcance del brazo. La forma de la
+   * DSL con la que se levanta una obra sin que ella se mueva entre bloque y
+   * bloque — las celdas relativas a su lugar son estables mientras coloca.
+   */
+  | { op: 'place'; kind: string; dx: number; dy: number }
   | { op: 'consume'; target: string }
   | { op: 'useItem'; item: string; target: string }
   /** Construir según una receta del mundo, con lo que lleva en el inventario. */

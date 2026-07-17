@@ -32,8 +32,17 @@ export type ModelRequest =
       failureObservations: string[];
       /** Qué versión es la base y cómo le fue, para razonar sobre la trayectoria. */
       baseVersion?: number;
-      /** Cómo le fue a la base, mundo por mundo: dónde pasa y dónde falla. */
-      caseResults?: { scenario: string; seed: number; passed: boolean; observations: string[] }[];
+      /**
+       * Cómo le fue a la base, mundo por mundo: dónde pasa y dónde falla.
+       * `inconclusive` es el mundo que no dio (ADR 0030): se muestra para que
+       * el modelo no lo confunda con un fallo y corrija lo que no está roto.
+       */
+      caseResults?: {
+        scenario: string;
+        seed: number;
+        verdict: 'passed' | 'failed' | 'inconclusive';
+        observations: string[];
+      }[];
       /** Versiones ya intentadas: enfoques que no hay que repetir. */
       history?: {
         version: number;
@@ -99,6 +108,11 @@ export type ModelRequest =
        * Inventar un objeto que su mundo todavía no sabe construir. El modelo
        * propone el arquetipo; el mundo lo valida y decide. Proponer no es
        * poder: la física no la escribe quien la imagina.
+       *
+       * La respuesta puede ser un `recipe-plan`: lo complejo se hace de lo
+       * simple (ADR 0031), así que una casa se propone junto con las paredes y
+       * las tablas que hacen falta abajo. Cada receta del plan pasa por la
+       * puerta por separado.
        */
       kind: 'recipe.propose';
       /** Para qué lo necesita: el problema, no la solución. */
@@ -117,6 +131,12 @@ export type ModelRequest =
       materials: string[];
       /** Recetas que ya existen: no tiene sentido reinventarlas. */
       existingRecipes: string[];
+      /**
+       * Cuántos bloques puede cargar: el tope de una obra (ADR 0032), porque la
+       * junta entera antes de colocarla. Sin esto el modelo propone casas que no
+       * le entran en los brazos y el mundo las rechaza.
+       */
+      blockBudget?: number;
       /** Rechazos previos del mundo: por qué su idea anterior no era posible. */
       rejections?: string[];
     }
@@ -207,6 +227,24 @@ export type ModelResponse =
   | { kind: 'knowledge'; statement: string; confidence: number }
   /** La receta viaja sin tipar: el mundo es quien la valida (validateRecipe). */
   | { kind: 'recipe'; recipe: unknown; rationale: string }
+  /**
+   * Un árbol de recetas (ADR 0031): la casa, y también la pared y la tabla que
+   * la casa necesita. Viajan sin tipar y entran DE A UNA por la misma puerta,
+   * de las hojas al tronco — proponer un plan no es un permiso para meter
+   * varias cosas de golpe, es poder tener una idea que necesita otra abajo.
+   *
+   * Una respuesta `recipe` de un solo elemento se lee como un plan de uno: la
+   * forma anterior sigue siendo válida, como el caso particular que era.
+   */
+  | { kind: 'recipe-plan'; recipes: unknown[]; rationale: string }
+  /**
+   * Una obra, no un objeto (ADR 0032). Lo que el cuidador pidió es demasiado
+   * grande para una celda: es una disposición de bloques en el espacio. Trae
+   * las recetas de las piezas (las paredes, las tablas — entran primero, como
+   * un `recipe-plan`) y el `blueprint` que las dispone. Ambos viajan sin tipar:
+   * el mundo valida las recetas y el plano por separado.
+   */
+  | { kind: 'blueprint'; recipes: unknown[]; blueprint: unknown; rationale: string }
   /** La interacción viaja sin tipar: la valida el mundo (validateInteraction). */
   | { kind: 'interaction'; interaction: unknown; rationale: string }
   /**

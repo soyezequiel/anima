@@ -131,7 +131,7 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   // Al abrir el panel se consultan los límites de la cuenta.
   await expect(page.getByTestId('ai-limits')).toContainText('Plan: plus');
   await expect(page.getByTestId('ai-limits')).toContainText('Límite semanal: 48% usado');
-  await page.getByTestId('ai-model').fill('gpt-5.6-terra');
+  await page.getByTestId('ai-model').selectOption('gpt-5.6-terra');
   await page.getByTestId('ai-reasoning-effort').selectOption('high');
   await page.getByTestId('ai-settings-toggle').click();
   await page.getByTestId('tab-chat').click();

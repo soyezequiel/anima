@@ -5,14 +5,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { FastifyInstance } from 'fastify';
 import { finalizeEvent, generateSecretKey, getPublicKey } from 'nostr-tools';
 import { writeFile } from 'node:fs/promises';
-import type { AiBridge, AiBridgeFactory, AiLimits } from '../src/ai.js';
+import type { AiBridge, AiBridgeFactory, AiLimits, AiThoughtEvent } from '../src/ai.js';
 import {
   codexErrorDetail,
   codexHomeFor,
   createCodexBridge,
   createCodexBridgeFactory,
+  createThoughtStreamParser,
   isUnsupportedEffortError,
+  isUnsupportedModelError,
   parseRateLimitsResponse,
+  readThoughtEvent,
 } from '../src/ai.js';
 import { buildServer } from '../src/server.js';
 
@@ -40,9 +43,11 @@ function fakeBridge(pubkey: string | null): AiBridge {
       pubkey === null
         ? Promise.resolve(fakeLimits)
         : Promise.reject(new Error('codex app-server: sin sesión')),
-    complete: (input) => {
+    complete: (input, onEvent) => {
       calls.push(input);
       if (input.prompt.includes('explota')) return Promise.reject(new Error('codex exec falló'));
+      onEvent?.({ type: 'reasoning', text: '**pensando el saludo**' });
+      onEvent?.({ type: 'answer', text: '{"text":"hola"}' });
       return Promise.resolve('{"text":"hola"}');
     },
   };
@@ -134,13 +139,14 @@ describe('puente de IA', () => {
       ['POST', '/ai/login'],
       ['POST', '/ai/logout'],
       ['POST', '/ai/complete'],
+      ['POST', '/ai/complete/stream'],
     ] as const) {
       const before = bridgeUsers.length;
       const res = await app.inject({
         method,
         url,
         headers: { authorization: 'Bearer token-falso' },
-        ...(url === '/ai/complete' ? { payload: { prompt: 'hola' } } : {}),
+        ...(url.startsWith('/ai/complete') ? { payload: { prompt: 'hola' } } : {}),
       });
       expect(res.statusCode).toBe(401);
       expect(bridgeUsers.length).toBe(before);
@@ -209,6 +215,55 @@ describe('puente de IA', () => {
     expect(calls).toHaveLength(callsBefore);
   });
 
+  it('retransmite el pensamiento como SSE y cierra con done', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/ai/complete/stream',
+      payload: { prompt: 'di hola' },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toContain('text/event-stream');
+    const frames = res.body
+      .trim()
+      .split('\n\n')
+      .map((frame) => JSON.parse(frame.replace(/^data: /, '')) as unknown);
+    expect(frames).toEqual([
+      { type: 'reasoning', text: '**pensando el saludo**' },
+      { type: 'answer', text: '{"text":"hola"}' },
+      { type: 'done', text: '{"text":"hola"}' },
+    ]);
+  });
+
+  it('un fallo del puente viaja dentro del stream como error, no como status', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/ai/complete/stream',
+      payload: { prompt: 'explota' },
+    });
+    expect(res.statusCode).toBe(200);
+    const frames = res.body
+      .trim()
+      .split('\n\n')
+      .map((frame) => JSON.parse(frame.replace(/^data: /, '')) as { type: string });
+    expect(frames.at(-1)).toEqual({ type: 'error', error: 'codex exec falló' });
+  });
+
+  it('el stream valida el cuerpo con las mismas reglas que la ruta clásica', async () => {
+    const bad = await app.inject({
+      method: 'POST',
+      url: '/ai/complete/stream',
+      payload: { prompt: 42 },
+    });
+    expect(bad.statusCode).toBe(400);
+
+    const badModel = await app.inject({
+      method: 'POST',
+      url: '/ai/complete/stream',
+      payload: { prompt: 'hola', model: 'gpt-5.6 & whoami' },
+    });
+    expect(badModel.statusCode).toBe(400);
+  });
+
   it('valida el cuerpo y traduce fallos del puente a 502', async () => {
     const bad = await app.inject({ method: 'POST', url: '/ai/complete', payload: { prompt: 42 } });
     expect(bad.statusCode).toBe(400);
@@ -273,6 +328,43 @@ describe('errores de codex exec', () => {
     ).toBe(false);
   });
 
+  it('reconoce que la cuenta no ofrece el modelo, y no confunde el rechazo de nivel', () => {
+    expect(
+      isUnsupportedModelError(
+        `ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "model_not_found", "message": "The model 'gpt-5.6-terra' does not exist or you do not have access to it." }, "status": 404 }`,
+      ),
+    ).toBe(true);
+    // El rechazo del nivel de razonamiento tiene su propio reintento: no lo toma.
+    expect(isUnsupportedModelError(unsupportedEffortStderr)).toBe(false);
+    expect(isUnsupportedModelError('ERROR: stream disconnected before completion')).toBe(false);
+  });
+
+  it('reintenta con el modelo por defecto cuando la cuenta no ofrece el pedido', async () => {
+    const modelNotFoundStderr = `ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "model_not_found", "message": "The model 'gpt-5.6-terra' does not exist or you do not have access to it." }, "status": 404 }`;
+    const execArgs: string[][] = [];
+    const bridge = createCodexBridge({
+      exec: async (args) => {
+        execArgs.push(args);
+        if (args.includes('--model')) {
+          return { code: 1, stdout: '', stderr: modelNotFoundStderr, failedToStart: false };
+        }
+        const outFile = args[args.indexOf('--output-last-message') + 1]!;
+        await writeFile(outFile, '{"text":"ok"}', 'utf8');
+        return { code: 0, stdout: '', stderr: '', failedToStart: false };
+      },
+    });
+    const input = { prompt: 'hola', model: 'gpt-5.6-terra', reasoningEffort: 'high' } as const;
+    await expect(bridge.complete(input)).resolves.toBe('{"text":"ok"}');
+    expect(execArgs).toHaveLength(2);
+    expect(execArgs[0]!.join(' ')).toContain('--model gpt-5.6-terra');
+    expect(execArgs[1]!).not.toContain('--model');
+
+    // El modelo rechazado queda recordado: la siguiente consulta ni lo pide.
+    await expect(bridge.complete(input)).resolves.toBe('{"text":"ok"}');
+    expect(execArgs).toHaveLength(3);
+    expect(execArgs[2]!).not.toContain('--model');
+  });
+
   it('extrae el mensaje humano del volcado JSON', () => {
     expect(codexErrorDetail(unsupportedEffortStderr)).toBe(
       "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.",
@@ -318,6 +410,69 @@ describe('errores de codex exec', () => {
     await expect(bridge.complete({ prompt: 'hola' })).rejects.toThrow(
       /código 1: Unsupported value: 'minimal'/,
     );
+  });
+});
+
+describe('pensamiento en vivo del puente', () => {
+  it('traduce el JSONL de codex exec --json a eventos de pensamiento', () => {
+    // Formas observadas en codex-cli 0.144.5.
+    expect(
+      readThoughtEvent(
+        '{"type":"item.completed","item":{"id":"item_0","type":"reasoning","text":"**Pensando algo**"}}',
+      ),
+    ).toEqual({ type: 'reasoning', text: '**Pensando algo**' });
+    expect(
+      readThoughtEvent(
+        '{"type":"item.completed","item":{"id":"item_1","type":"agent_message","text":"{\\"text\\":\\"hola\\"}"}}',
+      ),
+    ).toEqual({ type: 'answer', text: '{"text":"hola"}' });
+    expect(readThoughtEvent('{"type":"thread.started","thread_id":"x"}')).toBeNull();
+    expect(readThoughtEvent('{"type":"turn.started"}')).toBeNull();
+    expect(readThoughtEvent('{"type":"turn.completed","usage":{"input_tokens":1}}')).toBeNull();
+    expect(readThoughtEvent('ruido que no es json')).toBeNull();
+  });
+
+  it('arma líneas completas aunque stdout llegue troceado', () => {
+    const events: AiThoughtEvent[] = [];
+    const push = createThoughtStreamParser((event) => events.push(event));
+    const line = '{"type":"item.completed","item":{"type":"reasoning","text":"paso"}}\n';
+    push(line.slice(0, 25));
+    expect(events).toHaveLength(0);
+    push(line.slice(25));
+    expect(events).toEqual([{ type: 'reasoning', text: 'paso' }]);
+  });
+
+  it('con oyente corre con --json y el resumen de razonamiento; sin oyente, no', async () => {
+    const execArgs: string[][] = [];
+    const bridge = createCodexBridge({
+      exec: async (args, options) => {
+        execArgs.push(args);
+        options.onStdout?.(
+          '{"type":"item.completed","item":{"type":"reasoning","text":"**paso 1**"}}\n',
+        );
+        options.onStdout?.(
+          '{"type":"item.completed","item":{"type":"agent_message","text":"{\\"text\\":\\"ok\\"}"}}\n',
+        );
+        const outFile = args[args.indexOf('--output-last-message') + 1]!;
+        await writeFile(outFile, '{"text":"ok"}', 'utf8');
+        return { code: 0, stdout: '', stderr: '', failedToStart: false };
+      },
+    });
+
+    const events: AiThoughtEvent[] = [];
+    await expect(
+      bridge.complete({ prompt: 'hola' }, (event) => events.push(event)),
+    ).resolves.toBe('{"text":"ok"}');
+    expect(events).toEqual([
+      { type: 'reasoning', text: '**paso 1**' },
+      { type: 'answer', text: '{"text":"ok"}' },
+    ]);
+    expect(execArgs[0]).toContain('--json');
+    expect(execArgs[0]!.join(' ')).toContain('model_reasoning_summary=detailed');
+
+    await expect(bridge.complete({ prompt: 'hola' })).resolves.toBe('{"text":"ok"}');
+    expect(execArgs[1]).not.toContain('--json');
+    expect(execArgs[1]!.join(' ')).not.toContain('model_reasoning_summary');
   });
 });
 

@@ -108,9 +108,12 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return reply.code(204).send();
   });
 
-  app.post('/ai/complete', async (request, reply) => {
-    const ai = aiBridge(request, reply);
-    if (!ai) return reply;
+  // Validación compartida de /ai/complete y /ai/complete/stream: responde el
+  // 400 y devuelve null si el cuerpo no sirve.
+  const parseCompleteBody = (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Parameters<AiBridge['complete']>[0] | null => {
     const body = request.body as {
       prompt?: unknown;
       schema?: unknown;
@@ -118,21 +121,32 @@ export function buildServer(options: ServerOptions): FastifyInstance {
       reasoningEffort?: unknown;
     } | null;
     if (typeof body?.prompt !== 'string' || body.prompt.length === 0) {
-      return reply.code(400).send({ error: 'se espera { prompt: string }' });
+      void reply.code(400).send({ error: 'se espera { prompt: string }' });
+      return null;
     }
     if (body.model !== undefined && !isCodexModel(body.model)) {
-      return reply.code(400).send({ error: 'modelo Codex inválido' });
+      void reply.code(400).send({ error: 'modelo Codex inválido' });
+      return null;
     }
     if (body.reasoningEffort !== undefined && !isCodexReasoningEffort(body.reasoningEffort)) {
-      return reply.code(400).send({ error: 'nivel de razonamiento Codex inválido' });
+      void reply.code(400).send({ error: 'nivel de razonamiento Codex inválido' });
+      return null;
     }
+    const completeInput: Parameters<AiBridge['complete']>[0] = { prompt: body.prompt };
+    if (body.schema !== undefined) completeInput.schema = body.schema;
+    if (body.model !== undefined) completeInput.model = body.model;
+    if (body.reasoningEffort !== undefined) {
+      completeInput.reasoningEffort = body.reasoningEffort;
+    }
+    return completeInput;
+  };
+
+  app.post('/ai/complete', async (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    const completeInput = parseCompleteBody(request, reply);
+    if (!completeInput) return reply;
     try {
-      const completeInput: Parameters<AiBridge['complete']>[0] = { prompt: body.prompt };
-      if (body.schema !== undefined) completeInput.schema = body.schema;
-      if (body.model !== undefined) completeInput.model = body.model;
-      if (body.reasoningEffort !== undefined) {
-        completeInput.reasoningEffort = body.reasoningEffort;
-      }
       const text = await ai.complete(completeInput);
       return { text };
     } catch (error) {
@@ -140,6 +154,37 @@ export function buildServer(options: ServerOptions): FastifyInstance {
         .code(502)
         .send({ error: error instanceof Error ? error.message : 'fallo del puente de IA' });
     }
+  });
+
+  // La misma consulta, pero contando el pensamiento en vivo: cada evento del
+  // puente (titulares de razonamiento, respuesta) viaja como SSE en cuanto
+  // llega, y el cierre es siempre un `done` con el texto final o un `error`.
+  // Los errores viajan dentro del stream porque el 200 ya salió al abrirlo.
+  app.post('/ai/complete/stream', async (request, reply) => {
+    const ai = aiBridge(request, reply);
+    if (!ai) return reply;
+    const completeInput = parseCompleteBody(request, reply);
+    if (!completeInput) return reply;
+    // SSE artesanal: la respuesta deja de ser de Fastify y pasa a ser nuestra.
+    reply.hijack();
+    reply.raw.writeHead(200, {
+      'content-type': 'text/event-stream',
+      'cache-control': 'no-cache',
+      connection: 'keep-alive',
+    });
+    const send = (event: Record<string, unknown>): void => {
+      reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+    try {
+      const text = await ai.complete(completeInput, (event) => send({ ...event }));
+      send({ type: 'done', text });
+    } catch (error) {
+      send({
+        type: 'error',
+        error: error instanceof Error ? error.message : 'fallo del puente de IA',
+      });
+    }
+    reply.raw.end();
   });
 
   app.post('/auth/challenge', () => {

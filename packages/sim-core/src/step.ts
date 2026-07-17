@@ -7,6 +7,7 @@ import { simEvent } from './events.js';
 import { matchesInteractionTarget } from './interactions.js';
 import { validateInteraction } from './interaction-validation.js';
 import { PROTECTED_KINDS, validateRecipe } from './recipe-validation.js';
+import { validateBlueprint } from './blueprint-validation.js';
 import {
   findRecipe,
   missingIngredients,
@@ -16,7 +17,7 @@ import {
   scaleByQuality,
 } from './recipes.js';
 import type { WorldState } from './world.js';
-import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, removeEntity, spawn } from './world.js';
+import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, obtainableKinds, removeEntity, spawn } from './world.js';
 
 /** Umbral (fracción del máximo) bajo el cual se emite `energy.low` al cruzarlo. */
 export const LOW_ENERGY_FRACTION = 0.35;
@@ -310,6 +311,9 @@ function resolveAction(
     case 'drop':
       resolveDrop(world, actor, intent, events);
       return;
+    case 'place':
+      resolvePlace(world, actor, intent, events);
+      return;
     case 'consume':
       resolveConsume(world, actor, intent, events);
       return;
@@ -324,6 +328,9 @@ function resolveAction(
       return;
     case 'proposeInteraction':
       resolveProposeInteraction(world, actor, intent, events);
+      return;
+    case 'proposeBlueprint':
+      resolveProposeBlueprint(world, actor, intent, events);
       return;
     case 'interact':
       resolveInteract(world, actor, intent, events);
@@ -498,6 +505,11 @@ function resolveInteract(
  * no la vuelve posible: la física es del mundo, y aquí es donde se comprueba
  * que la idea no invente materia, comida ni poderes que no existen. Un rechazo
  * lleva el motivo, para que la mascota pueda corregir en vez de adivinar.
+ *
+ * La materia sale del mundo, no de la propuesta (ADR 0031): quien decide si un
+ * ingrediente existe es quien tiene las entidades a la vista, y ese es el
+ * mundo. Por eso `obtainableKinds` se calcula aquí y no lo manda el agente —
+ * si lo mandara, bastaría con mentir en la lista para inventar materia.
  */
 function resolveProposeRecipe(
   world: WorldState,
@@ -505,7 +517,7 @@ function resolveProposeRecipe(
   intent: Extract<ActionIntent, { type: 'proposeRecipe' }>,
   events: SimEvent[],
 ): void {
-  const validated = validateRecipe(intent.recipe, world.recipes);
+  const validated = validateRecipe(intent.recipe, world.recipes, obtainableKinds(world));
   if (!validated.ok) {
     events.push(
       simEvent('recipe.rejected', world.tick, {
@@ -526,6 +538,45 @@ function resolveProposeRecipe(
     }),
   );
   resolved(world, events, actor.id, intent, true, { recipeId: validated.value.id });
+}
+
+/**
+ * La mascota propone un plano; el mundo valida y decide (ADR 0032). Idéntico a
+ * las recetas: la materia se mira desde acá, no desde la propuesta, y la puerta
+ * también conoce las recetas del mundo para saber qué bloques se pueden
+ * fabricar. No hay camino a `world.blueprints` que se salte esta puerta.
+ */
+function resolveProposeBlueprint(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'proposeBlueprint' }>,
+  events: SimEvent[],
+): void {
+  const validated = validateBlueprint(
+    intent.blueprint,
+    world.blueprints,
+    world.recipes,
+    obtainableKinds(world),
+    // Lo que puede cargar: una obra se junta entera antes de colocarse, así que
+    // el inventario es el techo real del tamaño de la obra (ADR 0032).
+    actor.components.inventory?.capacity,
+  );
+  if (!validated.ok) {
+    events.push(
+      simEvent('blueprint.rejected', world.tick, { actorId: actor.id, reason: validated.error }),
+    );
+    resolved(world, events, actor.id, intent, false, { reason: validated.error });
+    return;
+  }
+  world.blueprints.push(validated.value);
+  events.push(
+    simEvent('blueprint.learned', world.tick, {
+      actorId: actor.id,
+      blueprintId: validated.value.id,
+      blocks: validated.value.placements.length,
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, { blueprintId: validated.value.id });
 }
 
 /**
@@ -746,6 +797,51 @@ function resolveDrop(
   item.components.position = { ...actorPos };
   events.push(simEvent('item.dropped', world.tick, { actorId: actor.id, itemId: item.id }));
   resolved(world, events, actor.id, intent, true, { itemId: item.id });
+}
+
+/**
+ * Colocar un bloque en una celda elegida (ADR 0032). Es `drop` con puntería, y
+ * las tres condiciones que exige son las que hacen que una obra se pueda
+ * levantar sin trampas: la celda tiene que estar dentro del mapa, vacía, y al
+ * alcance del brazo (adyacente). No hay teletransporte de materia — un bloque
+ * se pone donde la mascota llega, no donde se le antoja.
+ */
+function resolvePlace(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'place' }>,
+  events: SimEvent[],
+): void {
+  const inventory = actor.components.inventory;
+  const actorPos = actor.components.position;
+  const item = getEntity(world, intent.itemId);
+  if (!inventory || !actorPos || !item || !isInInventory(world, actor.id, intent.itemId)) {
+    resolved(world, events, actor.id, intent, false, { reason: 'not-held' });
+    return;
+  }
+  if (!inBounds(world, intent.at)) {
+    resolved(world, events, actor.id, intent, false, { reason: 'out-of-bounds' });
+    return;
+  }
+  if (!isAdjacent(actorPos, intent.at)) {
+    resolved(world, events, actor.id, intent, false, { reason: 'out-of-reach' });
+    return;
+  }
+  if (entitiesAt(world, intent.at).length > 0) {
+    resolved(world, events, actor.id, intent, false, { reason: 'cell-occupied' });
+    return;
+  }
+  inventory.items.splice(inventory.items.indexOf(intent.itemId), 1);
+  item.components.position = { ...intent.at };
+  events.push(
+    simEvent('item.placed', world.tick, {
+      actorId: actor.id,
+      itemId: item.id,
+      itemKind: item.kind,
+      at: { ...intent.at },
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, { itemId: item.id, at: { ...intent.at } });
 }
 
 function resolveConsume(

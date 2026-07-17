@@ -128,8 +128,8 @@ describe('el ciclo de revisión itera con memoria', () => {
 
     // La primera revisión ve dónde pasó y dónde falló la v1, mundo por mundo.
     const cases = revisions[0]?.caseResults ?? [];
-    expect(cases.some((c) => c.passed)).toBe(true);
-    expect(cases.some((c) => !c.passed)).toBe(true);
+    expect(cases.some((c) => c.verdict === 'passed')).toBe(true);
+    expect(cases.some((c) => c.verdict === 'failed')).toBe(true);
 
     // La segunda revisión NO parte de la v2 (que empeoró): parte de la v1,
     // la mejor hasta ahora, y lleva la historia completa de lo intentado.

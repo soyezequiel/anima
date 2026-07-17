@@ -54,17 +54,32 @@ export interface AiLimits {
   secondary: AiLimitWindow | null;
 }
 
+/**
+ * Un paso del pensamiento en vivo de una consulta: los titulares de
+ * razonamiento que `codex exec --json` va soltando y el mensaje final.
+ * El texto llega tal cual lo emite el CLI; quien lo muestra decide el formato.
+ */
+export type AiThoughtEvent = { type: 'reasoning'; text: string } | { type: 'answer'; text: string };
+
 export interface AiBridge {
   status(): Promise<AiStatus>;
   startLogin(): Promise<{ authUrl: string } | { error: string }>;
   logout(): Promise<void>;
   limits(): Promise<AiLimits>;
-  complete(input: {
-    prompt: string;
-    schema?: unknown;
-    model?: string;
-    reasoningEffort?: CodexReasoningEffort;
-  }): Promise<string>;
+  /**
+   * Con `onEvent`, la consulta corre con `--json` y va contando su
+   * pensamiento a medida que el CLI lo emite; sin él, se comporta igual que
+   * siempre. La respuesta final sale en ambos casos por el valor de retorno.
+   */
+  complete(
+    input: {
+      prompt: string;
+      schema?: unknown;
+      model?: string;
+      reasoningEffort?: CodexReasoningEffort;
+    },
+    onEvent?: (event: AiThoughtEvent) => void,
+  ): Promise<string>;
 }
 
 /** Entrega el puente correspondiente a una identidad (null = invitado). */
@@ -84,12 +99,23 @@ export interface RunResult {
 
 export type CodexExec = (
   args: string[],
-  options: { stdin?: string; timeoutMs: number; env?: NodeJS.ProcessEnv },
+  options: {
+    stdin?: string;
+    timeoutMs: number;
+    env?: NodeJS.ProcessEnv;
+    /** Recibe stdout a medida que llega (para el modo `--json` en vivo). */
+    onStdout?: (chunk: string) => void;
+  },
 ) => Promise<RunResult>;
 
 function runCodex(
   args: string[],
-  options: { stdin?: string; timeoutMs: number; env?: NodeJS.ProcessEnv },
+  options: {
+    stdin?: string;
+    timeoutMs: number;
+    env?: NodeJS.ProcessEnv;
+    onStdout?: (chunk: string) => void;
+  },
 ): Promise<RunResult> {
   return new Promise((resolve) => {
     // En Windows el binario global es un shim .cmd: requiere shell. Los
@@ -114,7 +140,11 @@ function runCodex(
       finish({ code: null, stdout, stderr: `${stderr}\n[timeout]`, failedToStart: false });
     }, options.timeoutMs);
 
-    child.stdout?.on('data', (chunk: Buffer) => (stdout += chunk.toString()));
+    child.stdout?.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      stdout += text;
+      options.onStdout?.(text);
+    });
     child.stderr?.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
     child.on('error', () => {
       clearTimeout(timer);
@@ -129,6 +159,53 @@ function runCodex(
     }
     child.stdin?.end();
   });
+}
+
+/**
+ * Traduce una línea del JSONL de `codex exec --json` a un evento de
+ * pensamiento, o null si la línea no cuenta nada que valga la pena mostrar
+ * (turn.started, uso de tokens, ruido ajeno al protocolo).
+ *
+ * Forma observada en codex-cli 0.144.5: los titulares de razonamiento llegan
+ * como items `reasoning` (solo si la config pide el resumen) y la respuesta
+ * final como un item `agent_message`, todos completos — el CLI no emite
+ * deltas por token.
+ */
+export function readThoughtEvent(line: string): AiThoughtEvent | null {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(line);
+  } catch {
+    return null;
+  }
+  if (typeof parsed !== 'object' || parsed === null) return null;
+  const event = parsed as { type?: unknown; item?: unknown };
+  if (event.type !== 'item.completed') return null;
+  const item = event.item as { type?: unknown; text?: unknown } | undefined;
+  if (typeof item?.text !== 'string' || item.text.length === 0) return null;
+  if (item.type === 'reasoning') return { type: 'reasoning', text: item.text };
+  if (item.type === 'agent_message') return { type: 'answer', text: item.text };
+  return null;
+}
+
+/** Acumula trozos de stdout y emite un evento por cada línea JSONL completa. */
+export function createThoughtStreamParser(
+  onEvent: (event: AiThoughtEvent) => void,
+): (chunk: string) => void {
+  let buffer = '';
+  return (chunk) => {
+    buffer += chunk;
+    let newline = buffer.indexOf('\n');
+    while (newline >= 0) {
+      const line = buffer.slice(0, newline).trim();
+      buffer = buffer.slice(newline + 1);
+      if (line) {
+        const event = readThoughtEvent(line);
+        if (event) onEvent(event);
+      }
+      newline = buffer.indexOf('\n');
+    }
+  };
 }
 
 /**
@@ -195,6 +272,25 @@ export function isUnsupportedEffortError(stderr: string): boolean {
   return (
     /unsupported_value/i.test(stderr) &&
     /reasoning\.effort|model_reasoning_effort|reasoning effort/i.test(stderr)
+  );
+}
+
+/**
+ * Detecta que la cuenta no ofrece el modelo pedido: nombres sugeridos en la UI
+ * pasan el filtro de formato de `isCodexModel` pero pueden no existir para ese
+ * plan (o exigir un CLI más nuevo). Antes que dejar el error crudo, se reintenta
+ * con el modelo por defecto de la cuenta («Automático»). El fallo de nivel de
+ * razonamiento tiene su propio reintento; aquí se lo excluye para no pisarlo.
+ */
+export function isUnsupportedModelError(stderr: string): boolean {
+  if (isUnsupportedEffortError(stderr)) return false;
+  return (
+    /model[_\s-]?not[_\s-]?found|unsupported[_\s-]?model|unknown model|modelo desconocido/i.test(
+      stderr,
+    ) ||
+    /\bmodel\b[^.]{0,80}?(does not exist|no existe|not available|no disponible|do(?:es)? not have access|no access|sin acceso|is invalid|invalid model|modelo inv[aá]lido)/i.test(
+      stderr,
+    )
   );
 }
 
@@ -296,6 +392,9 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
   // Combinaciones modelo|nivel ya rechazadas por el backend: se omite el
   // nivel en vez de pagar un intento fallido en cada consulta.
   const unsupportedEfforts = new Set<string>();
+  // Modelos que la cuenta no ofrece: se dejan de pedir y se cae a «Automático»
+  // sin volver a pagar el intento fallido en cada consulta de la sesión.
+  const unsupportedModels = new Set<string>();
   const execCodex = options.exec ?? runCodex;
   const owner = options.owner ?? 'guest';
   const loginSlot = options.loginSlot ?? createCodexLoginSlot();
@@ -404,15 +503,21 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
       await runCodex(['logout'], { timeoutMs: 15_000, ...(env ? { env } : {}) });
     },
 
-    async complete(input) {
-      const model = input.model ?? defaultModel;
+    async complete(input, onEvent) {
+      const requestedModel = input.model ?? defaultModel;
       const requestedEffort = input.reasoningEffort ?? defaultEffort;
-      if (model !== undefined && !isCodexModel(model)) {
+      if (requestedModel !== undefined && !isCodexModel(requestedModel)) {
         throw new Error('modelo Codex inválido');
       }
       if (!isCodexReasoningEffort(requestedEffort)) {
         throw new Error('nivel de razonamiento Codex inválido');
       }
+      // Si ya sabemos que la cuenta no ofrece este modelo, no lo pedimos: se usa
+      // el predeterminado («Automático») desde la primera consulta.
+      const model =
+        requestedModel !== undefined && !unsupportedModels.has(requestedModel)
+          ? requestedModel
+          : undefined;
       // Si ya sabemos que este modelo rechaza el nivel pedido, ni lo forzamos.
       const comboKey = `${model ?? ''}|${requestedEffort}`;
       const effort = unsupportedEfforts.has(comboKey) ? undefined : requestedEffort;
@@ -423,7 +528,10 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
         if (input.schema !== undefined) {
           await writeFile(schemaFile, JSON.stringify(input.schema), 'utf8');
         }
-        const run = (withEffort: CodexReasoningEffort | undefined): Promise<RunResult> => {
+        const run = (
+          withModel: string | undefined,
+          withEffort: CodexReasoningEffort | undefined,
+        ): Promise<RunResult> => {
           const args = [
             'exec',
             '--skip-git-repo-check',
@@ -437,30 +545,57 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
             '--output-last-message',
             outFile,
           ];
-          if (model) args.push('--model', model);
+          if (withModel) args.push('--model', withModel);
           // Prompts cortos y respuestas JSON: el esfuerzo de razonamiento bajo
           // alcanza y cuida la cuota del usuario (ANIMA_CODEX_EFFORT lo cambia).
           // Sin nivel explícito, decide el predeterminado del modelo.
           if (withEffort !== undefined) args.push('-c', `model_reasoning_effort=${withEffort}`);
           if (input.schema !== undefined) args.push('--output-schema', schemaFile);
+          if (onEvent !== undefined) {
+            // Modo en vivo: eventos JSONL por stdout. Sin el resumen de
+            // razonamiento el CLI se calla los items `reasoning` aunque el
+            // modelo razone (verificado en 0.144.5); la respuesta final sigue
+            // saliendo por el archivo, igual que sin `--json`.
+            args.push('--json');
+            args.push('-c', 'model_reasoning_summary=detailed');
+            args.push('-c', 'show_raw_agent_reasoning=true');
+          }
           args.push('-'); // el prompt entra por stdin
           return execCodex(args, {
             stdin: input.prompt,
             timeoutMs: COMPLETE_TIMEOUT_MS,
+            // El parser vive dentro de run(): un reintento (nivel de
+            // razonamiento rechazado) arranca con el búfer limpio.
+            ...(onEvent ? { onStdout: createThoughtStreamParser(onEvent) } : {}),
             ...(env ? { env } : {}),
           });
         };
-        let result = await run(effort);
+        let currentModel = model;
+        let currentEffort = effort;
+        let result = await run(currentModel, currentEffort);
         if (
           result.code !== 0 &&
           !result.failedToStart &&
-          effort !== undefined &&
+          currentEffort !== undefined &&
           isUnsupportedEffortError(result.stderr)
         ) {
           // El modelo de la cuenta no acepta ese nivel: se recuerda la
           // combinación y se reintenta con el nivel propio del modelo.
           unsupportedEfforts.add(comboKey);
-          result = await run(undefined);
+          currentEffort = undefined;
+          result = await run(currentModel, currentEffort);
+        }
+        if (
+          result.code !== 0 &&
+          !result.failedToStart &&
+          currentModel !== undefined &&
+          isUnsupportedModelError(result.stderr)
+        ) {
+          // La cuenta no ofrece ese modelo: se recuerda para no volver a pedirlo
+          // y se reintenta con el predeterminado de la cuenta («Automático»).
+          unsupportedModels.add(currentModel);
+          currentModel = undefined;
+          result = await run(currentModel, currentEffort);
         }
         if (result.failedToStart) {
           throw new Error('codex CLI no encontrado');

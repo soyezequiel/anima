@@ -3,6 +3,7 @@ import type { Result } from '@anima/shared';
 import { err, ok } from '@anima/shared';
 import type { Components, EntityKind } from './components.js';
 import type { Recipe, RecipeIngredient, RecipeOutcome } from './recipes.js';
+import { expandRecipeCost, recipeProduct, recipeProducing } from './recipes.js';
 
 /**
  * Lo que la mascota propone: un arquetipo único — su idea de QUÉ quiere
@@ -166,9 +167,23 @@ function inventedOutcomes(output: {
   ];
 }
 
+/**
+ * Valida una receta propuesta. `obtainable` es la MATERIA que el mundo tiene
+ * (`obtainableKinds`): sin ella la puerta no puede saber si la idea toca el
+ * suelo (ADR 0031).
+ *
+ * La pasa `step.ts`, que es quien tiene el mundo entero delante. NO la pasa la
+ * vista previa del ADR 0024, y eso es a propósito: el agente solo ve lo que
+ * percibe, así que juzgar con SU lista rechazaría ideas por materiales que
+ * existen tres celdas más allá — y decirle al cuidador «mi mundo no lo acepta»
+ * cuando sí lo acepta es exactamente la clase de mentira que el ADR 0022 vino
+ * a sacar del prompt. La vista previa filtra lo que puede; la última palabra la
+ * tiene el mundo, y no hay camino a `world.recipes` que no pase por acá.
+ */
 export function validateRecipe(
   raw: unknown,
   existing: Recipe[] = [],
+  obtainable?: ReadonlySet<EntityKind>,
 ): Result<Recipe> {
   const parsed = recipeSchema.safeParse(raw);
   if (!parsed.success) {
@@ -186,6 +201,17 @@ export function validateRecipe(
   }
   if (existing.length >= MAX_INVENTED_RECIPES) {
     return err(`Receta inválida: este mundo ya no admite más recetas`);
+  }
+  // Una cosa se hace de una sola manera. No es una verdad del universo: es lo
+  // que hace que el árbol de crafteo (ADR 0031) tenga UNA lectura. Con dos
+  // recetas de tabla, "de qué está hecha una tabla" tendría dos respuestas y
+  // el costo de una casa dependería de cuál mirara cada quien — y un ciclo
+  // podría esconderse detrás de la que nadie mira.
+  const twin = existing.find((r) => recipeProduct(r)?.kind === proposal.output.kind);
+  if (twin) {
+    return err(
+      `Receta inválida: ya sé hacer "${proposal.output.kind}" con la receta "${twin.id}"`,
+    );
   }
 
   // Sin componentes, lo construido sería decoración inerte: existe y no hace
@@ -218,12 +244,55 @@ export function validateRecipe(
     }
   }
 
+  // El árbol tiene que tocar el suelo (ADR 0031): cada ingrediente es materia
+  // que el mundo tiene, o el producto de una receta que ya existe. Sin esto la
+  // puerta admitía "casa = 8 paredes" en un mundo donde nada hace paredes: una
+  // receta muerta, imposible de construir para siempre, que encima le habría
+  // hecho creer a la mascota que ya sabía hacer una casa.
+  //
+  // Que la materia base salga de un `drops` o de un `itemSource` y no esté hoy
+  // en el suelo no es asunto de esta puerta: eso es tener que ir a buscarla,
+  // no es no poder. La puerta juzga si la idea es posible, no si es cómoda.
+  for (const ingredient of proposal.ingredients) {
+    const made = recipeProducing(existing, ingredient.kind);
+    if (!made) {
+      if (obtainable && !obtainable.has(ingredient.kind)) {
+        return err(`Receta inválida: no sé de dónde sacar "${ingredient.kind}"`);
+      }
+      continue;
+    }
+    // Construir deja lo hecho en el suelo y los ingredientes salen del
+    // inventario: una pieza que no se puede levantar no puede ser parte de
+    // nada, por más que exista la receta que la hace. Es la misma frontera que
+    // encontró el ADR 0031 al derivar el costo — lo que no entra en las manos
+    // no se ensambla, se levanta en el suelo, y eso todavía no existe.
+    if (!recipeProduct(made)?.components.portable) {
+      return err(
+        `Receta inválida: sé hacer "${ingredient.kind}" pero no puedo levantarlo para usarlo como ingrediente`,
+      );
+    }
+  }
+
   // Todo desenlace se construye a partir del arquetipo que acaba de pasar por
   // aquí, así que lo validado vale para los tres: no hay forma de que salga de
   // esta puerta un desenlace que la puerta no haya visto.
-  return ok({
+  const candidate: Recipe = {
     id: proposal.id,
     outcomes: inventedOutcomes(proposal.output),
     ingredients: proposal.ingredients,
-  });
+  };
+
+  // Con la receta nueva puesta, seguirla hasta abajo tiene que terminar en
+  // materia base. Si no termina, gira: "la tabla se hace del tronco y el tronco
+  // de la tabla" es alcanzable por ingredientes que la comprobación de arriba
+  // acepta uno por uno (cada uno existe), y solo se ve mirando el árbol entero.
+  const cost = expandRecipeCost(candidate, [...existing, candidate]);
+  if (cost.truncated) {
+    return err(
+      `Receta inválida: "${proposal.id}" no baja hasta materia que exista — ` +
+        `se hace de algo que se hace de ella, o tiene demasiadas capas`,
+    );
+  }
+
+  return ok(candidate);
 }

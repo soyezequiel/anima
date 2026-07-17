@@ -605,3 +605,44 @@ describe('muerte y sucesión en la sesión', () => {
     session.dispose();
   });
 });
+
+describe('pensamiento en vivo en la sesión', () => {
+  it('acumula la consulta, ignora titulares duplicados y la cierra', async () => {
+    const { session } = await makeSession(5);
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'start' });
+    let view = session.getView();
+    expect(view.currentThought).toMatchObject({ seq: 1, kind: 'dialogue', status: 'thinking' });
+    expect(view.thoughts).toHaveLength(1);
+    expect(view.thoughts[0]?.label).toBe('buscando qué decir');
+
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'reasoning', text: '**paso**' });
+    // Un reintento interno puede repetir el titular: no se duplica.
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'reasoning', text: '**paso**' });
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'answer', text: '{"text":"hola"}' });
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'done' });
+
+    view = session.getView();
+    expect(view.currentThought).toBeNull();
+    expect(view.thoughts[0]).toMatchObject({
+      status: 'done',
+      reasoning: ['**paso**'],
+      answer: '{"text":"hola"}',
+    });
+    session.dispose();
+  });
+
+  it('un fallo queda contado como error y la vista es una copia inmutable', async () => {
+    const { session } = await makeSession(5);
+    session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'start' });
+    session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'reasoning', text: 'a' });
+    const frozen = session.getView();
+
+    session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'error', message: 'se cortó' });
+    const after = session.getView();
+    expect(after.thoughts[0]).toMatchObject({ status: 'error', error: 'se cortó' });
+    expect(after.currentThought).toBeNull();
+    // La vista anterior no vio el fallo: cada rebuild entrega copias frescas.
+    expect(frozen.thoughts[0]?.status).toBe('thinking');
+    session.dispose();
+  });
+});

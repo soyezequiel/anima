@@ -268,6 +268,13 @@ describe('validateRecipe: higiene', () => {
 describe('el mundo es quien decide', () => {
   it('una receta válida propuesta entra al mundo y queda usable', () => {
     const { world, pet } = buildTestWorld();
+    // Los troncos, antes de la idea: desde el ADR 0031 una receta hecha de
+    // materia que este mundo no tiene no toca el suelo, y la puerta la
+    // rechaza. Que existan es lo que vuelve válida a la silla.
+    for (let i = 0; i < 2; i++) {
+      const log = spawn(world, 'log', { portable: {} });
+      pet.components.inventory!.items.push(log.id);
+    }
     const events = stepWorld(world, [
       { actorId: pet.id, intent: { type: 'proposeRecipe', recipe: validChair } },
     ]);
@@ -276,10 +283,6 @@ describe('el mundo es quien decide', () => {
     expect(world.recipes.map((r) => r.id)).toEqual(['chair']);
 
     // Y se puede construir de verdad con ella.
-    for (let i = 0; i < 2; i++) {
-      const log = spawn(world, 'log', { portable: {} });
-      pet.components.inventory!.items.push(log.id);
-    }
     const crafted = stepWorld(world, [
       { actorId: pet.id, intent: { type: 'craft', recipeId: 'chair' } },
     ]);

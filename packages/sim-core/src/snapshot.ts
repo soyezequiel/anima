@@ -24,12 +24,15 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
   const state = structuredClone(snapshot.state) as WorldState & {
     recipes?: WorldState['recipes'];
     interactions?: WorldState['interactions'];
+    blueprints?: WorldState['blueprints'];
   };
   return {
     ...state,
     recipes: (state.recipes ?? []).map(normalizeRecipe),
     // Un mundo anterior a las interacciones simplemente no admite ninguna.
     interactions: state.interactions ?? [],
+    // Ni a los planos: un legado viejo restaura sin obras y las aprende igual.
+    blueprints: state.blueprints ?? [],
   };
 }
 

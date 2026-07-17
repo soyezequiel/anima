@@ -1,6 +1,6 @@
 import { AnimaAgent, GOAL_RESTORE_ENERGY } from '@anima/agent-core';
 import type { AgentEvent } from '@anima/agent-core';
-import type { ModelProvider } from '@anima/model-providers';
+import type { CodexThought, ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import { countedKindLabel, kindLabel } from '@anima/shared';
 import type { Components, SimEvent, WorldState } from '@anima/sim-core';
@@ -13,7 +13,7 @@ import {
   takeSnapshot,
 } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
-import { RegressionStore } from '@anima/skill-evaluator';
+import { RegressionStore, sampleSeeds } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
 import {
@@ -50,6 +50,7 @@ import type {
   ItemView,
   PickupView,
   SkillView,
+  ThoughtView,
 } from './view.js';
 import { buildClaudeReport, claudeReportFileName } from './claude-report.js';
 
@@ -63,7 +64,28 @@ const PICKUP_VISIBLE_TICKS = 4;
 const DEV_EVENT_LIMIT = 400;
 const AUTOSAVE_EVERY_TICKS = 40;
 const RECENT_ACTIONS_LIMIT = 12;
-const EVALUATION_SEEDS = [11, 22, 33];
+/** Historial de pensamientos que la pestaña Mente conserva. */
+const THOUGHT_LIMIT = 30;
+
+/**
+ * Cada tipo de consulta al modelo, en voz humana: es lo que el jugador ve
+ * mientras la mascota piensa. El kind crudo queda igual en la vista para
+ * quien quiera la verdad técnica (y para los tests).
+ */
+const THOUGHT_LABELS: Record<string, string> = {
+  'skill.propose': 'imaginando una habilidad nueva',
+  'skill.revise': 'corrigiendo una habilidad que falló',
+  'interpret.signal': 'interpretando una señal del cuerpo',
+  'interpret.command': 'entendiendo lo que le pediste',
+  'skill.contract': 'acordando qué debería lograr',
+  'distill.knowledge': 'destilando lo que aprendió',
+  'judge.destruction': 'decidiendo si destruir está bien',
+  'recipe.propose': 'inventando una receta',
+  'entity.describe': 'imaginando el objeto descrito',
+  'interaction.propose': 'imaginando una interacción nueva',
+  'interaction.judge': 'juzgando una interacción',
+  dialogue: 'buscando qué decir',
+};
 
 export interface SessionOptions {
   seed?: number;
@@ -223,6 +245,8 @@ export class GameSession {
   private provider!: ModelProvider;
   private externalProvider: ModelProvider | null = null;
   private aiBusy = false;
+  /** Pensamientos en vivo del modelo real (efímeros, no se guardan). */
+  private thoughts: ThoughtView[] = [];
   private library!: SkillLibrary;
   private regressions!: RegressionStore;
   private identity: PetIdentity = newIdentity('Ánima');
@@ -311,7 +335,9 @@ export class GameSession {
       evaluationScenarios: MVP_SCENARIOS,
       practiceScenarios: PRACTICE_SCENARIOS,
       warmthScenarios: COLD_SCENARIOS,
-      evaluationSeeds: EVALUATION_SEEDS,
+      // La grilla sale de la semilla de la partida: cada mundo evalúa en sus
+      // propios mundos imaginados, no en tres números escritos a mano.
+      evaluationSeeds: sampleSeeds(seed),
       guidanceEnabled: true,
     });
     this.devEvents = [];
@@ -511,6 +537,54 @@ export class GameSession {
     this.notify();
   }
 
+  /**
+   * Pensamiento en vivo del proveedor real (hook onThought de Codex): cada
+   * evento actualiza o abre la entrada de esa consulta. Es efímero a
+   * propósito — no se guarda ni sobrevive a la recarga, igual que aiBusy.
+   */
+  noteAiThought(thought: CodexThought): void {
+    const existing = this.thoughts.find((entry) => entry.seq === thought.seq);
+    switch (thought.event) {
+      case 'start':
+        if (existing) break;
+        this.thoughts.push({
+          seq: thought.seq,
+          kind: thought.kind,
+          label: THOUGHT_LABELS[thought.kind] ?? 'pensando',
+          reasoning: [],
+          answer: null,
+          status: 'thinking',
+          error: null,
+          tick: this.world.tick,
+        });
+        if (this.thoughts.length > THOUGHT_LIMIT) {
+          this.thoughts.splice(0, this.thoughts.length - THOUGHT_LIMIT);
+        }
+        break;
+      case 'reasoning':
+        // Un reintento interno (nivel de razonamiento rechazado) puede
+        // repetir titulares: se ignoran los duplicados consecutivos.
+        if (existing && existing.reasoning.at(-1) !== thought.text) {
+          existing.reasoning.push(thought.text);
+        }
+        break;
+      case 'answer':
+        if (existing) existing.answer = thought.text;
+        break;
+      case 'done':
+        if (existing) existing.status = 'done';
+        break;
+      case 'error':
+        if (existing) {
+          existing.status = 'error';
+          existing.error = thought.message;
+        }
+        break;
+    }
+    this.rebuildView();
+    this.notify();
+  }
+
   dispose(): void {
     this.disposed = true;
     this.running = false;
@@ -685,7 +759,7 @@ export class GameSession {
         view: this.view,
         recipes: this.world.recipes.map((recipe) => structuredClone(recipe)),
         baseRecipeIds: MVP_RECIPES.map((recipe) => recipe.id),
-        evaluationSeeds: EVALUATION_SEEDS,
+        evaluationSeeds: sampleSeeds(this.seed),
         generatedAt,
       }),
     };
@@ -1156,6 +1230,18 @@ export class GameSession {
       petColor: this.petColor,
       aiProvider: this.provider.name,
       aiBusy: this.aiBusy,
+      // Copias frescas: la vista es inmutable aunque el pensamiento siga
+      // creciendo por detrás mientras la consulta corre.
+      thoughts: this.thoughts.map((entry) => ({ ...entry, reasoning: entry.reasoning.slice() })),
+      currentThought: (() => {
+        for (let i = this.thoughts.length - 1; i >= 0; i--) {
+          const entry = this.thoughts[i]!;
+          if (entry.status === 'thinking') {
+            return { ...entry, reasoning: entry.reasoning.slice() };
+          }
+        }
+        return null;
+      })(),
       // La preferencia viaja siempre, aunque el motor activo sea Codex: es del
       // cuidador, no del proveedor, y la UI necesita poder mostrarla apagada.
       mockImperfect: this.mockImperfect,

@@ -239,29 +239,35 @@ export function SettingsMenu({
           <>
             <label>
               <span>Modelo</span>
-              <input
+              {/* Un <select> abre siempre; el <datalist> anterior solo desplegaba
+                  en ciertos estados del input y se sentía intermitente. La opción
+                  vacía es «Automático»: deja que la cuenta elija su modelo. Un
+                  modelo guardado que ya no esté en las sugerencias se muestra
+                  igual para no perderlo en silencio. */}
+              <select
                 data-testid="ai-model"
-                list="codex-model-suggestions"
                 value={settings.model}
-                disabled={view.aiBusy}
-                placeholder="Automático"
-                autoComplete="off"
                 onChange={(event) =>
                   updateSettings({ ...settings, model: event.currentTarget.value })
                 }
-              />
-              <datalist id="codex-model-suggestions">
+              >
+                <option value="">Automático</option>
+                {settings.model &&
+                  !CODEX_MODEL_SUGGESTIONS.includes(
+                    settings.model as (typeof CODEX_MODEL_SUGGESTIONS)[number],
+                  ) && <option value={settings.model}>{settings.model}</option>}
                 {CODEX_MODEL_SUGGESTIONS.map((model) => (
-                  <option key={model} value={model} />
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
                 ))}
-              </datalist>
+              </select>
             </label>
             <label>
               <span>Nivel de razonamiento</span>
               <select
                 data-testid="ai-reasoning-effort"
                 value={settings.reasoningEffort}
-                disabled={view.aiBusy}
                 onChange={(event) =>
                   updateSettings({
                     ...settings,
@@ -279,7 +285,7 @@ export function SettingsMenu({
             </label>
             <small>
               {view.aiBusy
-                ? 'Ánima ya está pensando; el cambio se habilita al terminar.'
+                ? 'Ánima sigue pensando con el ajuste anterior; el cambio se aplica la próxima vez que piense.'
                 : 'Se aplica a la próxima consulta y queda guardado en este navegador.'}
             </small>
             <div className="ai-limits" data-testid="ai-limits">

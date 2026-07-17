@@ -162,26 +162,102 @@ export class MockModelProvider extends BaseModelProvider {
             rationale: 'Si convierto un tronco en algo comestible, dejo de tener problemas.',
           });
         }
-        // Su segunda idea es honesta. Con un nombre pedido por el cuidador no
-        // finge entenderlo: no sabe qué es una casa, sabe apilar troncos, y
-        // propone lo más parecido que sus materiales permiten de verdad.
+        // Una casa no es un objeto, es una obra (ADR 0032): un anillo de
+        // paredes con una puerta. Trae las recetas de las piezas (tabla del
+        // tronco, pared de tablas) y el plano que las dispone alrededor. Deja
+        // el lado de abajo abierto: una casa que la tapia adentro es una
+        // trampa, no una casa.
+        if (request.wantedId === 'casa') {
+          return Promise.resolve({
+            kind: 'blueprint',
+            recipes: [
+              {
+                id: 'tabla',
+                output: { kind: 'tabla', components: { portable: {}, hardness: { value: 1 } } },
+                ingredients: [{ kind: 'log', count: 1 }],
+              },
+              {
+                id: 'pared',
+                output: {
+                  kind: 'pared',
+                  components: {
+                    portable: {},
+                    collider: { solid: true },
+                    hardness: { value: 2 },
+                    durability: { current: 6, max: 6 },
+                    drops: [{ kind: 'tabla', components: { portable: {} } }],
+                  },
+                },
+                ingredients: [{ kind: 'tabla', count: 2 }],
+              },
+            ],
+            blueprint: {
+              id: 'casa',
+              placements: [
+                { kind: 'pared', offset: { x: -1, y: -1 } },
+                { kind: 'pared', offset: { x: 0, y: -1 } },
+                { kind: 'pared', offset: { x: 1, y: -1 } },
+                { kind: 'pared', offset: { x: -1, y: 0 } },
+                { kind: 'pared', offset: { x: 1, y: 0 } },
+              ],
+            },
+            rationale:
+              'Una casa no cabe en una celda: son paredes puestas alrededor, con la ' +
+              'puerta hacia abajo para poder salir.',
+          });
+        }
+        // Su segunda idea es honesta, y desde el ADR 0031 es un ÁRBOL: no sabe
+        // qué es una casa, pero sabe que lo grande se hace de partes, así que
+        // propone las partes. De las hojas al tronco — la tabla sale del
+        // tronco, la pared de las tablas, lo pedido de las paredes.
+        //
+        // Las piezas intermedias nacen `portable`: lo que no se puede levantar
+        // no se puede ensamblar, y la puerta rechaza la idea entera. El mock
+        // acierta en esto a propósito para que el camino feliz exista; en lo
+        // que se equivoca (inventar comida) se equivoca antes.
         if (request.wantedId) {
           return Promise.resolve({
-            kind: 'recipe',
-            recipe: {
-              id,
-              output: {
-                kind: id,
-                components: {
-                  collider: { solid: true },
-                  hardness: { value: 2 },
-                  durability: { current: 6, max: 6 },
-                  drops: [{ kind: 'log', components: { portable: {} } }],
+            kind: 'recipe-plan',
+            recipes: [
+              {
+                id: 'tabla',
+                output: {
+                  kind: 'tabla',
+                  components: { portable: {}, hardness: { value: 1 } },
                 },
+                ingredients: [{ kind: 'log', count: 1 }],
               },
-              ingredients: [{ kind: 'log', count: 2 }],
-            },
-            rationale: 'No sé bien qué es, pero con dos troncos puedo apilar algo sólido.',
+              {
+                id: 'pared',
+                output: {
+                  kind: 'pared',
+                  components: {
+                    portable: {},
+                    collider: { solid: true },
+                    hardness: { value: 2 },
+                    durability: { current: 6, max: 6 },
+                    drops: [{ kind: 'tabla', components: { portable: {} } }],
+                  },
+                },
+                ingredients: [{ kind: 'tabla', count: 2 }],
+              },
+              {
+                id,
+                output: {
+                  kind: id,
+                  components: {
+                    collider: { solid: true },
+                    hardness: { value: 3 },
+                    durability: { current: 12, max: 12 },
+                    drops: [{ kind: 'pared', components: { portable: {} } }],
+                  },
+                },
+                ingredients: [{ kind: 'pared', count: 2 }],
+              },
+            ],
+            rationale:
+              'No sé bien qué es, pero lo grande se hace de partes: tablas del tronco, ' +
+              'paredes de tablas, y con las paredes algo que se parezca.',
           });
         }
         return Promise.resolve({

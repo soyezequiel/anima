@@ -1,6 +1,7 @@
 import type { RngState, Vec2 } from '@anima/shared';
 import { createRng } from '@anima/shared';
 import type { Components, Entity, EntityId, EntityKind } from './components.js';
+import type { Blueprint } from './blueprints.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 
@@ -8,6 +9,49 @@ export interface WorldConfig {
   width: number;
   height: number;
   seed: number;
+}
+
+/**
+ * La materia que este mundo tiene: de dónde puede salir, realmente, un objeto
+ * de cada tipo. Es la base sobre la que la puerta decide si una idea toca el
+ * suelo (ADR 0031) — un ingrediente que no está acá ni lo produce una receta
+ * es un ingrediente imaginario, y una receta hecha de ingredientes imaginarios
+ * es una receta muerta.
+ *
+ * Cuenta lo que existe (en el suelo o en unas manos), lo que las cosas sueltan
+ * al romperse y lo que producen solas: un tronco que todavía está adentro de un
+ * árbol es materia que el mundo tiene, aunque haya que ir a talarlo. Los
+ * productos de las recetas NO entran acá: esto es la materia del mundo, y saber
+ * hacer algo es otra cosa — la puerta las suma por separado a propósito.
+ */
+export function obtainableKinds(world: WorldState): Set<EntityKind> {
+  const kinds = new Set<EntityKind>();
+  const addArchetype = (
+    kind: EntityKind,
+    components: Components,
+    depth: number,
+  ): void => {
+    kinds.add(kind);
+    // Lo que una cosa suelta puede soltar a su vez (la barricada deja troncos):
+    // se sigue, pero con tope — un arquetipo inventado no puede hacer girar
+    // este recorrido.
+    if (depth >= 3) return;
+    for (const drop of components.drops ?? []) {
+      addArchetype(drop.kind, drop.components, depth + 1);
+    }
+    if (components.itemSource) {
+      addArchetype(
+        components.itemSource.output.kind,
+        components.itemSource.output.components,
+        depth + 1,
+      );
+    }
+    if (components.foodSource) kinds.add('food');
+  };
+  for (const entity of Object.values(world.entities)) {
+    addArchetype(entity.kind, entity.components, 0);
+  }
+  return kinds;
 }
 
 /**
@@ -32,11 +76,18 @@ export interface WorldState {
    * no hay que inventarlas de nuevo.
    */
   interactions: Interaction[];
+  /**
+   * Los planos que este mundo admite (ADR 0032). Mismo trato que recetas e
+   * interacciones: estado del mundo, viajan en los snapshots, y una obra
+   * aprendida no se vuelve a inventar. Un plano no es una entidad — es cómo
+   * disponer bloques para que, juntos, sean una casa.
+   */
+  blueprints: Blueprint[];
 }
 
 export function createWorld(
   config: WorldConfig,
-  options: { recipes?: Recipe[]; interactions?: Interaction[] } = {},
+  options: { recipes?: Recipe[]; interactions?: Interaction[]; blueprints?: Blueprint[] } = {},
 ): WorldState {
   return {
     tick: 0,
@@ -46,6 +97,7 @@ export function createWorld(
     entities: {},
     recipes: options.recipes ? structuredClone(options.recipes) : [],
     interactions: options.interactions ? structuredClone(options.interactions) : [],
+    blueprints: options.blueprints ? structuredClone(options.blueprints) : [],
   };
 }
 

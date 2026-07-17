@@ -29,6 +29,11 @@ function humanInventory(inventory: PetView['inventory']): string {
     .join(', ');
 }
 
+/** Para deduplicar memoria: una hipótesis confirmada y su hecho son lo mismo. */
+function normalizeStatement(s: string): string {
+  return s.trim().replace(/\.$/, '').toLowerCase();
+}
+
 function Bar({
   label,
   value,
@@ -58,12 +63,38 @@ function Bar({
 
 export function StatusPanel({ view, session }: { view: GameView; session: GameSession }) {
   const pet = view.pet;
+
+  // El objetivo actual vive en la tarjeta «ahora»: repetirlo en la lista de
+  // objetivos es leerlo dos veces. La lista queda para lo demás pendiente y,
+  // plegada, la historia ya terminada.
+  const currentId = view.currentGoal?.id ?? null;
+  const isOpen = (s: string) => s === 'active' || s === 'pending';
+  const otherActive = view.goals.filter((g) => isOpen(g.status) && g.id !== currentId);
+  const finished = view.goals.filter((g) => !isOpen(g.status));
+
+  // Un hecho que repite palabra por palabra una hipótesis ya listada no
+  // agrega saber, solo bulto.
+  const hypothesisStatements = new Set(view.hypotheses.map((h) => normalizeStatement(h.statement)));
+  const facts = view.facts.filter((f) => !hypothesisStatements.has(normalizeStatement(f)));
+
   return (
     <div className="status-panel">
       {pet && (
         <>
-          <Bar label="Energía" value={pet.energy.current} max={pet.energy.max} color="#f59e0b" testId="energy-value" />
-          <Bar label="Salud" value={pet.health.current} max={pet.health.max} color="#ef4444" testId="health-value" />
+          <Bar
+            label="Energía"
+            value={pet.energy.current}
+            max={pet.energy.max}
+            color="#f59e0b"
+            testId="energy-value"
+          />
+          <Bar
+            label="Salud"
+            value={pet.health.current}
+            max={pet.health.max}
+            color="#ef4444"
+            testId="health-value"
+          />
           {/* Solo donde hace frío: en los mundos templados no existe la señal. */}
           {pet.temperature && (
             <Bar
@@ -77,34 +108,40 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
         </>
       )}
 
-      <dl className="kv">
-        {/* Fuera de la cabecera: un número girando en la periferia cansa, y
-            aquí se mira cuando importa. */}
-        <dt>Mundo</dt>
-        <dd data-testid="world-seed">{view.seed}</dd>
-        <dt>Tick</dt>
-        <dd data-testid="world-tick">{view.tick}</dd>
-        <dt>Objetivo</dt>
-        <dd data-testid="current-goal">{view.currentGoal?.description ?? '(observando)'}</dd>
-        <dt>Estrategia</dt>
-        <dd data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
-          {view.currentStrategy ? humanStrategy(view.currentStrategy) : '—'}
-        </dd>
-        <dt>Acción</dt>
-        <dd data-testid="current-action">{view.lastAction ?? '—'}</dd>
-        <dt>Inventario</dt>
-        <dd data-testid="inventory">
-          {pet && pet.inventory.length > 0 ? humanInventory(pet.inventory) : '(vacío)'}
-        </dd>
-      </dl>
+      {/* Qué hace AHORA, en una sola tarjeta: objetivo grande, el cómo debajo.
+          Es lo que se mira a cada rato; el resto del panel es consulta. */}
+      <div className="now-card">
+        <div className="now-goal" data-testid="current-goal">
+          {view.currentGoal?.description ?? '(observando)'}
+        </div>
+        {(view.currentStrategy || view.lastAction) && (
+          <div className="now-detail muted">
+            <span data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
+              {view.currentStrategy ? humanStrategy(view.currentStrategy) : '—'}
+            </span>
+            {' · '}
+            <span data-testid="current-action">{view.lastAction ?? '—'}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="status-inventory muted">
+        lleva:{' '}
+        <span data-testid="inventory">
+          {pet && pet.inventory.length > 0 ? humanInventory(pet.inventory) : '(nada)'}
+        </span>
+      </div>
 
       <h3>Personalidad</h3>
-      {/* Rasgos DERIVADOS de su historia real: nada de azar ni de modelo. */}
-      <ul className="list" data-testid="personality-list">
+      {/* Rasgos DERIVADOS de su historia real: nada de azar ni de modelo.
+          La evidencia va en el tooltip: el rasgo se lee de un vistazo y el
+          porqué está a un hover de distancia. */}
+      <ul className="list trait-row" data-testid="personality-list">
         {view.personality.map((trait) => (
           <li key={trait.id}>
-            <span className="pill pill-trait">{trait.label}</span>{' '}
-            <span className="muted">{trait.evidence}</span>
+            <span className="pill pill-trait" title={trait.evidence}>
+              {trait.label}
+            </span>
           </li>
         ))}
         {view.personality.length === 0 && (
@@ -113,45 +150,72 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
       </ul>
 
       <h3>Objetivos</h3>
-      <ul className="list" data-testid="goal-list">
-        {view.goals.map((g) => (
-          <li key={g.id}>
-            <span className={`pill pill-${g.status}`}>{g.status}</span> {g.description}
-            <span className="muted"> · {g.source}</span>
-          </li>
-        ))}
-        {view.goals.length === 0 && <li className="muted">todavía sin objetivos</li>}
-      </ul>
+      <div data-testid="goal-list">
+        {otherActive.length > 0 && (
+          <ul className="list">
+            {otherActive.map((g) => (
+              <li key={g.id} title={g.source}>
+                <span className={`pill pill-${g.status}`}>{g.status}</span> {g.description}
+              </li>
+            ))}
+          </ul>
+        )}
+        {finished.length > 0 && (
+          <details className="status-details">
+            <summary>
+              {finished.length} {finished.length === 1 ? 'terminado' : 'terminados'}
+            </summary>
+            <ul className="list">
+              {finished.map((g) => (
+                <li key={g.id} title={g.source}>
+                  <span className={`pill pill-${g.status}`}>{g.status}</span> {g.description}
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        {view.goals.length === 0 && <div className="muted">todavía sin objetivos</div>}
+      </div>
 
       <h3>Memoria</h3>
       <ul className="list" data-testid="memory-list">
         {view.hypotheses.map((h) => (
           <li key={`hyp-${h.statement}`}>
-            <span className={`pill pill-${h.resolved}`}>hipótesis {h.resolved}</span> {h.statement}{' '}
-            <span className="muted">({h.confidence})</span>
+            <span className={`pill pill-${h.resolved}`} title={`confianza ${h.confidence}`}>
+              hipótesis {h.resolved}
+            </span>{' '}
+            {h.statement}
           </li>
         ))}
-        {view.facts.map((f) => (
+        {facts.map((f) => (
           <li key={`fact-${f}`}>
-            <span className="pill pill-fact">sabe</span> {f}
+            <span className="fact-mark">sabe</span> {f}
           </li>
         ))}
-        {view.facts.length === 0 && view.hypotheses.length === 0 && (
+        {facts.length === 0 && view.hypotheses.length === 0 && (
           <li className="muted">aún no sabe nada del mundo</li>
         )}
       </ul>
 
-      <h3>Apariencia</h3>
-      <div className="color-row">
-        {COLORS.map((c) => (
-          <button
-            key={c}
-            className={`color-dot ${view.petColor === c ? 'active' : ''}`}
-            style={{ background: c }}
-            aria-label={`color ${c}`}
-            onClick={() => session.setPetColor(c)}
-          />
-        ))}
+      {/* Se toca una vez y nunca más: plegada para que no compita con lo vivo. */}
+      <details className="status-details">
+        <summary>Apariencia</summary>
+        <div className="color-row">
+          {COLORS.map((c) => (
+            <button
+              key={c}
+              className={`color-dot ${view.petColor === c ? 'active' : ''}`}
+              style={{ background: c }}
+              aria-label={`color ${c}`}
+              onClick={() => session.setPetColor(c)}
+            />
+          ))}
+        </div>
+      </details>
+
+      <div className="status-footer muted">
+        mundo <span data-testid="world-seed">{view.seed}</span> · tick{' '}
+        <span data-testid="world-tick">{view.tick}</span>
       </div>
     </div>
   );

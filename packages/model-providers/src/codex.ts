@@ -16,19 +16,48 @@ import { BaseModelProvider } from './types.js';
  * con cualquier otro proveedor.
  */
 
+/**
+ * Un paso del pensamiento en vivo que el transporte puede reenviar mientras
+ * la consulta corre: un titular de razonamiento o el texto de la respuesta.
+ */
+export type CodexThoughtEvent =
+  | { type: 'reasoning'; text: string }
+  | { type: 'answer'; text: string };
+
 export interface CodexTransportInput {
   /** Tipo de petición (informativo para telemetría e intercepción en pruebas). */
   kind: ModelRequest['kind'];
   prompt: string;
   /** JSON Schema que debe cumplir la respuesta final del modelo. */
   schema: Record<string, unknown>;
+  /**
+   * Si el transporte sabe contar el pensamiento en vivo (el puente SSE lo
+   * sabe; uno de pruebas puede ignorarlo), entrega aquí cada evento a medida
+   * que llega. Opcional en los dos sentidos: sin él todo funciona igual.
+   */
+  onEvent?: (event: CodexThoughtEvent) => void;
 }
 
 export type CodexTransport = (input: CodexTransportInput) => Promise<string>;
 
+/**
+ * El pensamiento en vivo visto desde afuera: qué consulta es (`seq` la
+ * distingue de las demás, `kind` dice el momento cognitivo) y qué pasó.
+ * `done`/`error` cierran siempre lo que `start` abrió, haya o no streaming.
+ */
+export type CodexThought = { seq: number; kind: ModelRequest['kind'] } & (
+  | { event: 'start' }
+  | { event: 'reasoning'; text: string }
+  | { event: 'answer'; text: string }
+  | { event: 'done' }
+  | { event: 'error'; message: string }
+);
+
 export interface CodexProviderHooks {
   /** Señal de "pensando": true al iniciar una consulta, false al terminar. */
   onBusy?: (busy: boolean) => void;
+  /** Pensamiento en vivo de cada consulta, si a alguien le interesa verlo. */
+  onThought?: (thought: CodexThought) => void;
 }
 
 const DSL_REFERENCE = `Las habilidades de la mascota son programas JSON en una DSL cerrada.
@@ -427,10 +456,32 @@ ${request.rejections.map((r) => `- ${r}`).join('\n')}`
     : ''
 }
 
-Inventa UN objeto que ayude con el problema y se pueda construir con esos
-materiales. El mundo validará tu idea y puede rechazarla: proponerla no la
-vuelve posible. Responde únicamente con JSON:
-{"recipeJson": "<la receta serializada como JSON>", "rationale": "por qué esto ayuda, en español"}`,
+Inventa lo que ayude con el problema y se pueda construir con esos materiales.
+El mundo validará tu idea y puede rechazarla: proponerla no la vuelve posible.
+
+Lo que pediste puede ser de tres tamaños, y ELIGES la forma según lo que la
+cosa ES de verdad:
+- Un OBJETO simple: una receta suelta (el JSON de arriba).
+- Un objeto HECHO DE PARTES (una casa no cabe hecha de troncos de un salto,
+  pero sí de tablas hechas de troncos): un ARRAY de recetas, de las hojas al
+  tronco — primero la tabla (del tronco), después la pared (de tablas), al
+  final lo pedido (de paredes). Cada pieza intermedia debe ser "portable" para
+  poder usarla de ingrediente.
+- Algo demasiado GRANDE para una sola celda (una casa, un refugio de varias
+  paredes): una OBRA. No es un objeto que aparece, son BLOQUES colocados en el
+  suelo alrededor. Devuelve {"recipes":[<las recetas de los bloques, como el
+  array de arriba>], "blueprint":{"id":"${request.wantedId ?? 'obra'}",
+  "placements":[{"kind":"tipo-de-bloque","offset":{"x":-1..1,"y":-1..1}}]}}.
+  Cada offset es una celda contigua (x,y ∈ {-1,0,1}, nunca 0,0), los bloques
+  deben ser "portable" y sólidos, y DEJA UNA ABERTURA para no tapiarte adentro.
+  IMPORTANTE: junta la obra entera antes de colocarla, así que no puede tener
+  más de ${request.blockBudget ?? 6} bloques (lo que podés cargar). Una casa de
+  ${Math.max(3, (request.blockBudget ?? 6) - 1)} paredes con una puerta alcanza;
+  usa bloques de UN solo material (una pared de un tronco) para que te entren.
+
+Responde únicamente con JSON, con la idea (receta, array de recetas, u obra)
+serializada como string:
+{"recipeJson": "<tu idea serializada como JSON>", "rationale": "por qué esto ayuda, en español"}`,
       };
     case 'entity.describe':
       return {
@@ -560,13 +611,18 @@ ${
   request.caseResults && request.caseResults.length > 0
     ? `\nResultado mundo por mundo:
 ${request.caseResults
-  .map(
-    (c) =>
-      `- ${c.scenario} (semilla ${c.seed}): ${c.passed ? 'PASÓ' : `FALLÓ — ${c.observations.join('; ') || 'sin detalle'}`}`,
-  )
+  .map((c) => {
+    if (c.verdict === 'passed') return `- ${c.scenario} (semilla ${c.seed}): PASÓ`;
+    if (c.verdict === 'inconclusive') {
+      return `- ${c.scenario} (semilla ${c.seed}): SIN VEREDICTO — el mundo no dio (tirada perdida sin material para reintentar)`;
+    }
+    return `- ${c.scenario} (semilla ${c.seed}): FALLÓ — ${c.observations.join('; ') || 'sin detalle'}`;
+  })
   .join('\n')}
 Compara los mundos donde pasa con los mundos donde falla: la diferencia entre
-ellos suele ser la causa raíz. El programa debe funcionar en TODOS a la vez.\n`
+ellos suele ser la causa raíz. El programa debe funcionar en TODOS a la vez.
+Los SIN VEREDICTO no son defectos tuyos y no hay que corregirlos: ahí el mundo
+tiró mal y se quedó sin con qué reintentar. No cuentan ni a favor ni en contra.\n`
     : ''
 }
 Intento ${request.attempt}${request.maxAttempts !== undefined ? ` de ${request.maxAttempts}` : ''}.
@@ -808,12 +864,35 @@ export class CodexModelProvider extends BaseModelProvider {
     super();
   }
 
+  /** Distingue cada consulta en el hook onThought, incluso del mismo kind. */
+  private thoughtSeq = 0;
+
   async complete(request: ModelRequest): Promise<ModelResponse> {
     this.recordCall(request.kind);
     const { prompt, schema } = buildCodexPrompt(request);
+    const kind = request.kind;
+    const onThought = this.hooks.onThought;
+    const seq = ++this.thoughtSeq;
     this.hooks.onBusy?.(true);
+    onThought?.({ seq, kind, event: 'start' });
+    let failure: string | null = null;
     try {
-      const raw = await this.transport({ kind: request.kind, prompt, schema });
+      const raw = await this.transport({
+        kind,
+        prompt,
+        schema,
+        ...(onThought
+          ? {
+              onEvent: (event: CodexThoughtEvent) => {
+                if (event.type === 'reasoning') {
+                  onThought({ seq, kind, event: 'reasoning', text: event.text });
+                } else {
+                  onThought({ seq, kind, event: 'answer', text: event.text });
+                }
+              },
+            }
+          : {}),
+      });
       const parsed = parseJson(raw);
       switch (request.kind) {
         case 'skill.propose':
@@ -846,7 +925,38 @@ export class CodexModelProvider extends BaseModelProvider {
             reason: parsed.reason.replace(/\s+/g, ' ').trim().slice(0, 240),
           };
         }
-        case 'recipe.propose':
+        case 'recipe.propose': {
+          let value: unknown = parsed.recipe;
+          if (typeof parsed.recipeJson === 'string') {
+            try {
+              value = JSON.parse(parsed.recipeJson);
+            } catch {
+              throw new Error('recipeJson no es JSON válido');
+            }
+          }
+          const rationale = typeof parsed.rationale === 'string' ? parsed.rationale : '';
+          // La respuesta puede ser de tres formas, y la forma ES la decisión de
+          // qué es la cosa (ADR 0031/0032): un array es un árbol de recetas
+          // (objeto de partes), un objeto con `blueprint` es una obra (bloques
+          // en el espacio), y un objeto suelto es un objeto. Nada se valida
+          // aquí: todo viaja crudo al mundo, que es quien decide.
+          if (Array.isArray(value)) {
+            return { kind: 'recipe-plan', recipes: value, rationale };
+          }
+          if (value !== null && typeof value === 'object' && 'blueprint' in value) {
+            const obj = value as { blueprint: unknown; recipes?: unknown };
+            return {
+              kind: 'blueprint',
+              blueprint: obj.blueprint,
+              recipes: Array.isArray(obj.recipes) ? obj.recipes : [],
+              rationale,
+            };
+          }
+          if (value === null || typeof value !== 'object') {
+            throw new Error('la respuesta no contiene una receta');
+          }
+          return { kind: 'recipe', recipe: value, rationale };
+        }
         case 'entity.describe': {
           let recipe: unknown = parsed.recipe;
           if (typeof parsed.recipeJson === 'string') {
@@ -1058,8 +1168,20 @@ export class CodexModelProvider extends BaseModelProvider {
         }
       }
       throw new Error('tipo de petición desconocido');
+    } catch (error) {
+      // También los fallos de parseo/validación: para quien mira el
+      // pensamiento, una respuesta inservible es una consulta fallida.
+      failure = error instanceof Error ? error.message : 'consulta fallida';
+      throw error;
     } finally {
       this.hooks.onBusy?.(false);
+      if (onThought) {
+        onThought(
+          failure === null
+            ? { seq, kind, event: 'done' }
+            : { seq, kind, event: 'error', message: failure },
+        );
+      }
     }
   }
 }

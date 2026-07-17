@@ -1,7 +1,9 @@
 import type { Vec2 } from '@anima/shared';
 import { chebyshev } from '@anima/shared';
-import type { Direction, Perception, Recipe } from '@anima/sim-core';
+import type { Blueprint, Direction, Perception, Recipe } from '@anima/sim-core';
+import { blueprintCounts, MAX_RECIPE_DEPTH, recipeProduct, recipeProducing } from '@anima/sim-core';
 import type { SkillCondition, SkillOp, SkillProgram } from '@anima/skill-runtime';
+import { MAX_REPEAT_LIMIT } from '@anima/skill-runtime';
 
 /**
  * Programas deterministas de fábrica: las estrategias que la mascota trae
@@ -68,6 +70,13 @@ export const SHELTER_APPROACH_PROGRAM: SkillProgram = [
  * silla": si le faltan materiales los va a buscar, porque juntar es parte de
  * construir, no otra petición.
  *
+ * Y desde el ADR 0031 se compone consigo mismo: si lo que falta es una pieza
+ * que SABE hacer, hacerla es parte de construir igual que buscarla. El
+ * programa de una casa contiene el de la pared, que contiene el de la tabla, y
+ * la recursión termina en la materia del mundo. Es lo que vuelve conducta al
+ * árbol de crafteo — sin esto, "me faltan 8 paredes" sería el final de la
+ * historia teniendo el bosque al lado.
+ *
  * Sus fallos dicen la verdad al controlador de progreso: sin materiales a la
  * vista aborta con `no-candidates` (falta el RECURSO → pedir ayuda, ADR
  * 0008); con el camino bloqueado aborta con `camino-bloqueado` (falta la
@@ -87,9 +96,26 @@ export function gatherAndCraftProgram(
      * congelándose sería peor que preguntar.
      */
     searchFirst?: boolean;
+    /**
+     * Las recetas que el mundo admite. Con ellas, un ingrediente que la
+     * mascota SABE hacer deja de ser un "no hay" y pasa a ser un paso más
+     * (ADR 0031). Sin ellas el programa es el de antes: juntar del suelo y
+     * construir.
+     */
+    recipes?: readonly Recipe[];
   } = {},
+  depth = 0,
 ): SkillProgram {
   const done: SkillCondition = { type: 'canCraft', recipeId: recipe.id };
+  // Qué ingredientes de esta receta sabe fabricar: lo que cambia no es solo
+  // cómo conseguirlos, también cuántas vueltas hacen falta.
+  const makeableKinds = new Set(
+    depth < MAX_RECIPE_DEPTH
+      ? recipe.ingredients
+          .map((i) => i.kind)
+          .filter((kind) => recipeProducing(options.recipes ?? [], kind))
+      : [],
+  );
   const gather: SkillOp[] = recipe.ingredients
     // Solo lo que efectivamente falta: con 2 troncos ya en la mano y el
     // pedernal en el suelo, buscar troncos abortaría (no hay ninguno suelto)
@@ -101,32 +127,18 @@ export function gatherAndCraftProgram(
     .filter((need) => need.remaining > 0)
     .map((need) => ({
       op: 'repeatWithLimit' as const,
-      max: need.remaining,
+      // Recoger no falla, pero construir es intentar (ADR 0020): una pieza que
+      // hay que FABRICAR puede salir mal y llevarse el material. Sin margen
+      // para reintentar, una tirada perdida en la tabla mataba la casa entera
+      // aunque quedaran troncos de sobra — y cuanto más hondo es el árbol, más
+      // tiradas hay, así que la obra larga se caía casi siempre. El doble de
+      // vueltas no cuesta nada cuando sale bien: `until` corta apenas alcanza.
+      max: makeableKinds.has(need.kind)
+        ? Math.min(need.remaining * 2, MAX_REPEAT_LIMIT)
+        : need.remaining,
       // Si a mitad de camino ya puede construir, no junta de más.
       until: done,
-      body: [
-        // Con searchFirst, si el ingrediente no está a la vista sale a
-        // recorrer hasta verlo: sin esto, un tronco fuera del rango de
-        // percepción era "no hay troncos" y el pedido moría sin haber
-        // buscado. Si ya lo ve, la exploración no cuesta ni un tick.
-        ...(options.searchFirst
-          ? [
-              {
-                op: 'explore' as const,
-                maxSteps: 50,
-                until: { type: 'sees' as const, query: { kind: need.kind, held: false } },
-              },
-            ]
-          : []),
-        {
-          op: 'findEntities' as const,
-          query: { kind: need.kind, held: false },
-          store: `mat-${need.kind}`,
-        },
-        { op: 'selectTarget' as const, from: `mat-${need.kind}`, strategy: 'nearest' as const, store: `next-${need.kind}` },
-        { op: 'moveToward' as const, target: `next-${need.kind}`, maxSteps: 40 },
-        { op: 'pickup' as const, target: `next-${need.kind}` },
-      ],
+      body: fetchOrMakeOps(need.kind, options, depth),
     }));
   const afterCraft: SkillOp[] =
     options.waitAfterTicks !== undefined ? [{ op: 'wait', ticks: options.waitAfterTicks }] : [];
@@ -137,6 +149,98 @@ export function gatherAndCraftProgram(
       if: done,
       then: [{ op: 'craft', recipeId: recipe.id }, ...afterCraft],
       else: [{ op: 'abort', reason: `no-candidates:ingredientes-${recipe.id}` }],
+    },
+  ];
+}
+
+/** Ir a buscar un objeto que está a la vista y traerlo. */
+function fetchOps(kind: string, searchFirst: boolean): SkillOp[] {
+  return [
+    // Con searchFirst, si el ingrediente no está a la vista sale a recorrer
+    // hasta verlo: sin esto, un tronco fuera del rango de percepción era "no
+    // hay troncos" y el pedido moría sin haber buscado. Si ya lo ve, la
+    // exploración no cuesta ni un tick.
+    ...(searchFirst
+      ? [
+          {
+            op: 'explore' as const,
+            maxSteps: 50,
+            until: { type: 'sees' as const, query: { kind, held: false } },
+          },
+        ]
+      : []),
+    { op: 'findEntities' as const, query: { kind, held: false }, store: `mat-${kind}` },
+    {
+      op: 'selectTarget' as const,
+      from: `mat-${kind}`,
+      strategy: 'nearest' as const,
+      store: `next-${kind}`,
+    },
+    { op: 'moveToward' as const, target: `next-${kind}`, maxSteps: 40 },
+    { op: 'pickup' as const, target: `next-${kind}` },
+  ];
+}
+
+/**
+ * Conseguir UNA pieza: la que está tirada por ahí, o —si no hay ninguna y sabe
+ * hacerla— fabricarla (ADR 0031). Es donde el árbol de crafteo se vuelve
+ * conducta: "me faltan 2 paredes" deja de ser el final de la historia y pasa a
+ * ser el principio de otra, la de hacer paredes.
+ *
+ * Cuál de las dos ramas toca lo decide el MUNDO en el momento (`sees`), no el
+ * planificador al generar el programa: una tabla tirada en el suelo es más
+ * barata que partir un tronco, y si aparece una a mitad de la obra, la usa.
+ *
+ * Lo construido nace en el suelo, al lado (`resolveCraft`), no en las manos:
+ * por eso fabricar una pieza termina en recogerla. Sin eso, la mascota haría
+ * ocho paredes y seguiría sin tener ninguna.
+ */
+function fetchOrMakeOps(
+  kind: string,
+  options: { searchFirst?: boolean; recipes?: readonly Recipe[] },
+  depth: number,
+): SkillOp[] {
+  const fetch = fetchOps(kind, options.searchFirst ?? false);
+  const recipes = options.recipes;
+  if (!recipes || depth >= MAX_RECIPE_DEPTH) return fetch;
+  const sub = recipeProducing(recipes, kind);
+  if (!sub) return fetch;
+
+  const made = recipeProduct(sub)?.kind ?? kind;
+  return [
+    {
+      op: 'branch',
+      // Sin `searchFirst` en la rama de buscar: ya sabe que lo ve, y explorar
+      // 50 pasos para llegar a lo que tiene delante sería absurdo.
+      if: { type: 'sees', query: { kind, held: false } },
+      then: fetchOps(kind, false),
+      else: [
+        // Lo que lleva encima NO viaja a la sub-receta: `held` cuenta lo que
+        // tenía al planificar y adentro de un bucle eso ya es mentira. El
+        // `until: canCraft` de la sub-receta se encarga sin necesidad de
+        // adivinarlo — si ya tiene las tablas, no junta ninguna. Y la espera
+        // de después de construir es del fuego que se acaba de encender, no
+        // de cada tabla que se parte por el camino.
+        ...gatherAndCraftProgram(sub, { searchFirst: options.searchFirst ?? false, recipes }, depth + 1),
+        // Solo si salió. El intento pudo fallar (ADR 0020) y entonces no hay
+        // nada en el suelo que levantar: ir a buscarlo abortaría la obra
+        // entera por "no lo encuentro", cuando lo que pasó es que esta vez no
+        // salió y hay que volver a intentarlo.
+        {
+          op: 'branch',
+          if: { type: 'sees', query: { kind: made, held: false } },
+          then: [
+            { op: 'findEntities', query: { kind: made, held: false }, store: `made-${made}` },
+            {
+              op: 'selectTarget',
+              from: `made-${made}`,
+              strategy: 'nearest',
+              store: `pick-${made}`,
+            },
+            { op: 'pickup', target: `pick-${made}` },
+          ],
+        },
+      ],
     },
   ];
 }
@@ -155,8 +259,59 @@ export function heldCounts(perception: Perception): Map<string, number> {
  * hecho; la espera posterior transcurre a distancia segura, dentro del rango
  * de calor.
  */
-export function buildFireProgram(recipe: Recipe, held: Map<string, number>): SkillProgram {
-  return gatherAndCraftProgram(recipe, { held, waitAfterTicks: 20 });
+export function buildFireProgram(
+  recipe: Recipe,
+  held: Map<string, number>,
+  recipes: readonly Recipe[] = [],
+): SkillProgram {
+  return gatherAndCraftProgram(recipe, { held, waitAfterTicks: 20, recipes });
+}
+
+/**
+ * Levantar una obra (ADR 0032). Dos actos, en orden:
+ *
+ * 1. **Juntar** todos los bloques que el plano pide, con la maquinaria del eje
+ *    A (los fabrica si sabe, los recoge si los ve). Termina con todo encima —
+ *    por eso una obra no puede pedir más bloques de los que entran en los
+ *    brazos.
+ * 2. **Colocar** cada bloque en su celda, sin moverse: las celdas relativas a
+ *    donde quedó parada son estables mientras coloca. Si una quedó ocupada, esa
+ *    colocación falla y la obra queda a medias — construir es intentar (ADR
+ *    0020), ahora en el espacio.
+ *
+ * No hay entidad al final: la casa es las paredes puestas donde van. El
+ * "listo" es haber intentado todas las colocaciones.
+ */
+export function buildStructureProgram(
+  blueprint: Blueprint,
+  options: { held?: Map<string, number>; recipes?: readonly Recipe[] } = {},
+): SkillProgram {
+  const gather: SkillOp[] = [...blueprintCounts(blueprint)].map(([kind, count]) => {
+    const held = options.held?.get(kind) ?? 0;
+    const remaining = Math.max(0, count - held);
+    const makeable = !!recipeProducing(options.recipes ?? [], kind);
+    return {
+      op: 'repeatWithLimit' as const,
+      // Margen para reintentar lo que se fabrica y puede fallar (ADR 0020),
+      // como en el árbol de crafteo. Lo que solo se recoge no falla.
+      max: Math.max(1, makeable ? Math.min(remaining * 2, MAX_REPEAT_LIMIT) : remaining),
+      until: { type: 'holdingCount' as const, kind, count },
+      body: fetchOrMakeOps(
+        kind,
+        { ...(options.recipes ? { recipes: options.recipes } : {}), searchFirst: true },
+        0,
+      ),
+    };
+  });
+  // Colocar es lo último y de a un bloque por tick. El offset va tal cual: el
+  // mundo revalida que la celda esté vacía, dentro y al alcance.
+  const place: SkillOp[] = blueprint.placements.map((placement) => ({
+    op: 'place' as const,
+    kind: placement.kind,
+    dx: placement.offset.x,
+    dy: placement.offset.y,
+  }));
+  return [...gather, ...place];
 }
 
 /**

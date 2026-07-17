@@ -252,7 +252,20 @@ describe('«construí una fogata con esos troncos»', () => {
 
   it('de la idea a la cosa: propone, el mundo la valida y termina construyéndola', async () => {
     const { world, petId } = coldWorld();
-    give(world, petId, 'log', 2);
+    // Cuatro troncos en la mano, no dos: desde el ADR 0031 la idea de un
+    // castillo es un ÁRBOL (tablas del tronco, paredes de tablas, castillo de
+    // paredes) y su costo sale de multiplicar la cadena, no de lo que a nadie
+    // se le ocurra declarar. Que cueste más que una fogata es el punto.
+    give(world, petId, 'log', 4);
+    // Y un bosque de troncos alrededor, porque el árbol multiplica los dados:
+    // cada pieza es un intento que puede salir mal (ADR 0020), y siete
+    // intentos seguidos salen todos bien menos de la mitad de las veces. Acá
+    // se mide que sepa ir de la idea a la cosa, no que tenga suerte — con lo
+    // justo, mediríamos la suerte.
+    for (let x = 2; x <= 7; x++) {
+      spawn(world, 'log', { position: { x, y: 1 }, portable: {} });
+      spawn(world, 'log', { position: { x, y: 3 }, portable: {} });
+    }
     const provider = new FakeLanguageModel({
       'interpret.command': {
         kind: 'command.interpretation',
@@ -262,7 +275,7 @@ describe('«construí una fogata con esos troncos»', () => {
     const { agent, perception } = makeAgent(world, petId, provider);
     await say(agent, perception(), 'construí un castillo');
 
-    for (let i = 0; i < 25 && !allEntities(world).some((e) => e.kind === 'castillo'); i++) {
+    for (let i = 0; i < 120 && !allEntities(world).some((e) => e.kind === 'castillo'); i++) {
       const intent = await agent.think(perception());
       if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
     }
@@ -273,6 +286,62 @@ describe('«construí una fogata con esos troncos»', () => {
     expect(agent.events.ofType('recipe.rejected').length).toBeGreaterThan(0);
     expect(world.recipes.some((r) => r.id === 'castillo')).toBe(true);
     expect(allEntities(world).some((e) => e.kind === 'castillo')).toBe(true);
+
+    // Y no lo construyó de la nada: el árbol entró entero y en orden — la
+    // tabla antes que la pared, la pared antes que el castillo. Cada receta
+    // pasó por la puerta del mundo por separado (ADR 0031).
+    expect(world.recipes.map((r) => r.id)).toEqual(
+      expect.arrayContaining(['tabla', 'pared', 'castillo']),
+    );
+    const learned = agent.events
+      .ofType('recipe.learned')
+      .map((event) => event.data.recipeId as string);
+    expect(learned.indexOf('tabla')).toBeLessThan(learned.indexOf('pared'));
+    expect(learned.indexOf('pared')).toBeLessThan(learned.indexOf('castillo'));
+  });
+
+  /**
+   * La corrida real que motivó el ADR 0031: «construi una ciudad» → «me faltan
+   * 3 troncos y 4 pedernales». Una ciudad salía lo mismo que una fogata, y el
+   * cuidador salía a buscar cuatro pedernales para una ciudad.
+   */
+  it('lo que se hace de partes se explica por partes, y el costo sale de la cadena', async () => {
+    const { world, petId } = coldWorld();
+    // Dos troncos: el castillo del mock necesita cuatro (2 paredes × 2 tablas
+    // × 1 tronco). Nadie escribió ese cuatro en ningún lado.
+    give(world, petId, 'log', 2);
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'castillo' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    const said: string[] = [];
+    await say(agent, perception(), 'construí un castillo');
+
+    // Con margen: antes de rendirse sale a recorrer el mapa buscando troncos
+    // (ADR 0028), y eso lleva sus ticks.
+    for (let i = 0; i < 200; i++) {
+      const intent = await agent.think(perception());
+      if (!intent) continue;
+      if (intent.type === 'speak') said.push(intent.text);
+      agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    const failure = said.find((text) => text.startsWith('No pude completar eso'));
+    expect(failure).toBeDefined();
+    // La cadena entera, que es la respuesta a «por qué tanto»: sin ella, un
+    // costo grande suena a capricho y con ella es una casa.
+    expect(failure).toContain('2 paredes');
+    expect(failure).toContain('2 tablas');
+    expect(failure).toContain('1 tronco');
+    // Y el total en materia real, no en piezas intermedias: nadie puede salir
+    // a buscar paredes, y ella sabe hacerlas — lo que falta son troncos.
+    // Cuántos exactamente depende de cómo cayeron los dados de sus intentos
+    // (ADR 0020), y eso no es lo que esta prueba mide.
+    expect(failure).toMatch(/me faltan \d+ troncos/);
+    expect(failure).not.toMatch(/faltan \d+ paredes/);
   });
 
   it('las recetas del mundo viajan al modelo: sin eso no podría elegir craft-item', async () => {
