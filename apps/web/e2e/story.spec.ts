@@ -75,9 +75,13 @@ test('el chat conversa y responde una petición', async ({ page }) => {
 test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   await page.goto('/?seed=5&speed=1');
 
-  // Pausar congela el tick.
-  await page.getByTestId('pause-button').click();
-  await expect(page.getByTestId('pause-button')).toHaveText(/Continuar/);
+  const slider = page.getByTestId('speed-slider');
+  const speedValue = page.getByTestId('speed-value');
+
+  // El cero de la escala es la pausa: llevar el pulgar ahí congela el tick.
+  await expect(speedValue).toHaveText('1x');
+  await slider.press('ArrowLeft');
+  await expect(speedValue).toHaveText('pausa');
   const tickText = await page.locator('.subtitle').textContent();
   await page.waitForTimeout(700);
   await expect(page.locator('.subtitle')).toHaveText(tickText ?? '');
@@ -86,10 +90,13 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   await page.getByTestId('step-button').click();
   await expect(page.locator('.subtitle')).not.toHaveText(tickText ?? '');
 
-  // Cambiar velocidad y reanudar.
-  await page.getByTestId('speed-4').click();
-  await page.getByTestId('pause-button').click();
-  await expect(page.getByTestId('pause-button')).toHaveText(/Pausa/);
+  // Salir del cero reanuda, y seguir subiendo recorre la escala: 1x, 2x, 4x.
+  await slider.press('ArrowRight');
+  await expect(speedValue).toHaveText('1x');
+  await expect(page.getByTestId('step-button')).toBeHidden();
+  await slider.press('ArrowRight');
+  await slider.press('ArrowRight');
+  await expect(speedValue).toHaveText('4x');
 
   // Modo desarrollador: eventos estructurados con filtro.
   await page.getByTestId('tab-dev').click();

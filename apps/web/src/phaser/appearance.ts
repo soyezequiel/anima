@@ -8,10 +8,12 @@ import type { EntityTraits } from '../session/view.js';
 
 export const KIND_EMOJI: Record<string, string> = {
   food: '🍎',
-  // El 🪵 es un tronco, y por eso es del tronco. La rama es lo otro: una vara
-  // fina que apenas sirve de herramienta.
+  // El 🪵 es un leño grueso, y por eso es del tronco. La rama es lo otro: una
+  // vara fina y ramificada que apenas sirve de herramienta. El 🌿 de antes
+  // parecía una planta viva, no madera: tronco y rama no se distinguían como
+  // dos formas del mismo material.
   log: '🪵',
-  branch: '🌿',
+  branch: '🪾',
   flint: '🪨',
   hammer: '🔨',
   tree: '🌳',

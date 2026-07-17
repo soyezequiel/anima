@@ -11,6 +11,8 @@ import { reachBlockedResourceProgram } from '@anima/model-providers';
 // La bienvenida del primer uso se prueba en onboarding.spec.ts; aquí estorbaría.
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
+  // El chip de identidad busca el perfil en relés públicos; aquí no viene al caso.
+  await page.routeWebSocket(/^wss:\/\//, (ws) => ws.close());
 });
 
 test('la mascota aprende usando el proveedor codex (puente interceptado)', async ({ page }) => {
@@ -125,6 +127,7 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   // Mientras Codex responde, el estado se ve en el mundo, el chat y el chip.
   // Los ajustes elegidos se aplican en vivo y persisten en el navegador.
   await page.getByTestId('ai-settings-toggle').click();
+  await expect(page.getByTestId('ai-provider-toggle')).toBeChecked();
   // Al abrir el panel se consultan los límites de la cuenta.
   await expect(page.getByTestId('ai-limits')).toContainText('Plan: plus');
   await expect(page.getByTestId('ai-limits')).toContainText('Límite semanal: 48% usado');
@@ -145,11 +148,13 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   const storedSettings = await page.evaluate(() => localStorage.getItem('anima:ai:codex-settings'));
   expect(storedSettings).toContain('gpt-5.6-terra');
 
-  // Volver al simulado funciona; con la sesión de Codex aún viva, el botón
-  // de cerrar sesión sigue disponible y la termina en el servidor.
-  await page.getByTestId('ai-use-mock').click();
+  // El interruptor de ajustes vuelve al simulado; con la sesión de Codex aún
+  // viva, cerrarla sigue estando a mano en el mismo panel.
+  await page.getByTestId('ai-settings-toggle').click();
+  await page.getByTestId('ai-provider-toggle').click();
   await expect(page.getByTestId('ai-chip')).toContainText('simulado', { timeout: 15_000 });
-  await expect(page.getByTestId('ai-logout-codex')).toBeVisible();
+  await page.getByTestId('ai-settings-toggle').click();
+  await expect(page.getByTestId('ai-provider-toggle')).not.toBeChecked();
   await page.getByTestId('ai-logout-codex').click();
   await expect(page.getByTestId('ai-logout-codex')).toBeHidden();
   expect(logoutCalls).toBe(1);

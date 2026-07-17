@@ -28,8 +28,9 @@ describe('los gráficos se reutilizan por lo que la cosa es', () => {
     expect(emojiFor('log', {})).toBe('🪵');
     expect(emojiFor('tree', {})).toBe('🌳');
     expect(emojiFor('campfire', {})).toBe('🔥');
-    // La rama no es un tronco: es una vara fina que apenas sirve.
-    expect(emojiFor('branch', {})).toBe('🌿');
+    // La rama no es un tronco: es una vara fina y ramificada, madera seca en
+    // vez de leño grueso. Antes era 🌿 y parecía una planta, no madera.
+    expect(emojiFor('branch', {})).toBe('🪾');
   });
 
   it('lo que Ánima inventa se dibuja como lo que es, sin estar en ninguna tabla', () => {
