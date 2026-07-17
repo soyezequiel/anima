@@ -10,9 +10,7 @@ test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => localStorage.setItem('anima.welcomeSeen', '1'));
 });
 
-test('renombrar desde el encabezado: se aplica, habla y sobrevive a recargar', async ({
-  page,
-}) => {
+test('renombrar desde el encabezado: se aplica, habla y sobrevive a recargar', async ({ page }) => {
   await page.goto('/?seed=5&speed=8&fresh=1');
   await expect(page.getByTestId('pet-name')).toHaveText('Ánima');
 
@@ -42,7 +40,7 @@ test('bautismo por chat y personalidad visible en Estado', async ({ page }) => {
   // la historia completada, rasgos derivados con su evidencia.
   await page.getByTestId('tab-estado').click();
   await expect(page.getByTestId('personality-list')).toBeVisible();
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
   await expect(page.getByTestId('personality-list')).toContainText('perseverante', {

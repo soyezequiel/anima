@@ -12,13 +12,13 @@ test.beforeEach(async ({ page }) => {
 
 test('la sesión sobrevive a una recarga de página', async ({ page }) => {
   await page.goto('/?seed=5&speed=8&fresh=1');
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 
   // Recarga sin parámetros: debe cargar el guardado, no un mundo nuevo.
   await page.goto('/');
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 10_000,
   });
   await page.getByTestId('tab-skills').click();
@@ -29,7 +29,7 @@ test('la sesión sobrevive a una recarga de página', async ({ page }) => {
 
 test('muerte, informe de legado y sucesora que hereda', async ({ page }) => {
   await page.goto('/?seed=5&speed=8&fresh=1');
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
   await expect(page.getByTestId('generation')).toHaveText('gen 1');
@@ -57,7 +57,7 @@ test('muerte, informe de legado y sucesora que hereda', async ({ page }) => {
   await expect(page.getByTestId('memory-list')).toContainText('según');
 
   // Y completa su propia historia sin morir en el intento.
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 });

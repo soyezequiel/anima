@@ -78,6 +78,12 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
       )}
 
       <dl className="kv">
+        {/* Fuera de la cabecera: un número girando en la periferia cansa, y
+            aquí se mira cuando importa. */}
+        <dt>Mundo</dt>
+        <dd data-testid="world-seed">{view.seed}</dd>
+        <dt>Tick</dt>
+        <dd data-testid="world-tick">{view.tick}</dd>
         <dt>Objetivo</dt>
         <dd data-testid="current-goal">{view.currentGoal?.description ?? '(observando)'}</dd>
         <dt>Estrategia</dt>

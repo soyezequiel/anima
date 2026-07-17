@@ -110,8 +110,8 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   await page.goto('/?seed=5&speed=8&fresh=1');
 
   // El proveedor activo es codex y la historia se completa con él.
-  await expect(page.getByTestId('ai-chip')).toContainText('codex');
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-ai', 'codex');
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
   expect(completeCalls).toBeGreaterThanOrEqual(3); // interpret + propose + revise
@@ -140,7 +140,6 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   await expect(page.getByTestId('stage-thinking')).toBeVisible();
   await expect(page.getByTestId('chat-thinking')).toBeVisible();
   await expect(page.getByTestId('chat-send')).toBeDisabled();
-  await expect(page.getByTestId('ai-chip')).toContainText('pensando');
   await expect(page.getByTestId('chat-thinking')).toBeHidden({ timeout: 10_000 });
   await expect(page.locator('.chat-entry.from-pet').filter({ hasText: 'hola' })).toBeVisible();
   await expect(page.getByTestId('chat-send')).toBeEnabled();
@@ -152,7 +151,7 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   // viva, cerrarla sigue estando a mano en el mismo panel.
   await page.getByTestId('ai-settings-toggle').click();
   await page.getByTestId('ai-provider-toggle').click();
-  await expect(page.getByTestId('ai-chip')).toContainText('simulado', { timeout: 15_000 });
+  await expect(page.locator('.app')).toHaveAttribute('data-ai', 'mock', { timeout: 15_000 });
   await page.getByTestId('ai-settings-toggle').click();
   await expect(page.getByTestId('ai-provider-toggle')).not.toBeChecked();
   await page.getByTestId('ai-logout-codex').click();
@@ -193,7 +192,7 @@ test('con identidad iniciada, el puente de IA viaja con el token de sesión', as
   );
 
   await page.goto('/?seed=5&speed=8&fresh=1');
-  await expect(page.getByTestId('ai-chip')).toContainText('codex');
+  await expect(page.locator('.app')).toHaveAttribute('data-ai', 'codex');
   // Cada consulta al puente lleva la identidad: la cuenta de Codex es propia.
   expect(aiAuthHeaders.length).toBeGreaterThan(0);
   for (const header of aiAuthHeaders) {
@@ -209,7 +208,7 @@ test('si la sesión de Codex se pierde, la app degrada a simulado', async ({ pag
     localStorage.setItem('anima:ai:choice', 'codex');
   });
   await page.goto('/?seed=5&speed=8&fresh=1');
-  await expect(page.getByTestId('ai-chip')).toContainText('simulado');
+  await expect(page.locator('.app')).toHaveAttribute('data-ai', 'mock');
   // Y la preferencia quedó degradada para no reintentar en cada carga.
   const choice = await page.evaluate(() => localStorage.getItem('anima:ai:choice'));
   expect(choice).toBeNull();

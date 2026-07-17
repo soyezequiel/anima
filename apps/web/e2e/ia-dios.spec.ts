@@ -76,7 +76,12 @@ test('describe un glorb, lo confirma en el chat y la mascota lo construye', asyn
       }
       return route.fulfill({
         json: {
-          text: JSON.stringify({ action: 'not-command', targetKind: '', directions: [], summary: '' }),
+          text: JSON.stringify({
+            action: 'not-command',
+            targetKind: '',
+            directions: [],
+            summary: '',
+          }),
         },
       });
     }
@@ -108,7 +113,7 @@ test('describe un glorb, lo confirma en el chat y la mascota lo construye', asyn
   });
 
   await page.goto('/?seed=5&speed=8&fresh=1');
-  await expect(page.getByTestId('ai-chip')).toContainText('codex');
+  await expect(page.locator('.app')).toHaveAttribute('data-ai', 'codex');
 
   // El cuidador describe el objeto: aparece la vista previa y la pregunta.
   await page.getByTestId('tab-chat').click();

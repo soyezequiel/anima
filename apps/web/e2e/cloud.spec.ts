@@ -85,6 +85,11 @@ test('con perfil publicado, el chip muestra la foto y el nombre en vez de la npu
     .poll(() => avatar.evaluate((img: HTMLImageElement) => img.naturalWidth))
     .toBeGreaterThan(0);
 
+  // Cerrar sesión vive detrás del chip: sin abrirlo, no se toca.
+  await expect(page.getByTestId('logout-button')).toBeHidden();
+  await chip.click();
+  await expect(page.getByTestId('account-npub')).toHaveText(npub);
+
   // Al salir, el perfil cacheado no queda para el siguiente que use el navegador.
   await page.getByTestId('logout-button').click();
   await expect(page.getByTestId('login-nostr')).toBeVisible({ timeout: 15_000 });
@@ -104,7 +109,7 @@ test('login NIP-07, sincronización remota y continuidad sin datos locales', asy
   });
 
   // La historia se completa y se autoguarda... en el servidor.
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
   await page.waitForTimeout(500);
@@ -116,7 +121,7 @@ test('login NIP-07, sincronización remota y continuidad sin datos locales', asy
   await expect(page.getByTestId('account-chip')).toContainText(npub.slice(0, 10), {
     timeout: 15_000,
   });
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 15_000,
   });
   await page.getByTestId('tab-skills').click();
@@ -125,6 +130,7 @@ test('login NIP-07, sincronización remota y continuidad sin datos locales', asy
   await expect(page.getByTestId('chat-log')).toContainText('Sesión restaurada');
 
   // Logout: vuelve al modo invitado y el token deja de existir.
+  await page.getByTestId('account-chip').click();
   await page.getByTestId('logout-button').click();
   await expect(page.getByTestId('login-nostr')).toBeVisible({ timeout: 15_000 });
 });
@@ -133,7 +139,7 @@ test('el modo invitado sigue funcionando sin servidor de identidad', async ({ pa
   // Sin window.nostr y sin token: la app funciona 100% local.
   await page.goto('/?seed=7&speed=8&fresh=1');
   await expect(page.getByTestId('login-nostr')).toBeVisible();
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 });

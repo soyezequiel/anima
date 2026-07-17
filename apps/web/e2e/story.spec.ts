@@ -19,7 +19,7 @@ test('la historia completa de aprendizaje se ve en la UI', async ({ page }) => {
 
   // La historia se completa: energía descendió, fallo, v1 rechazada,
   // v2 promovida, alimento alcanzado.
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 
@@ -78,17 +78,20 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   const slider = page.getByTestId('speed-slider');
   const speedValue = page.getByTestId('speed-value');
 
+  // El tick vive en el panel Estado, que es la pestaña de arranque.
+  const tick = page.getByTestId('world-tick');
+
   // El cero de la escala es la pausa: llevar el pulgar ahí congela el tick.
   await expect(speedValue).toHaveText('1x');
   await slider.press('ArrowLeft');
   await expect(speedValue).toHaveText('pausa');
-  const tickText = await page.locator('.subtitle').textContent();
+  const tickText = await tick.textContent();
   await page.waitForTimeout(700);
-  await expect(page.locator('.subtitle')).toHaveText(tickText ?? '');
+  await expect(tick).toHaveText(tickText ?? '');
 
   // Avanzar un solo tick en pausa.
   await page.getByTestId('step-button').click();
-  await expect(page.locator('.subtitle')).not.toHaveText(tickText ?? '');
+  await expect(tick).not.toHaveText(tickText ?? '');
 
   // Salir del cero reanuda, y seguir subiendo recorre la escala: 1x, 2x, 4x.
   await slider.press('ArrowRight');
@@ -104,8 +107,11 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   await page.getByTestId('dev-filter').fill('goal.created');
   await expect(page.getByTestId('dev-log')).toContainText('recuperar energía');
 
-  // Reiniciar con otra semilla resetea el mundo.
+  // Reiniciar con otra semilla resetea el mundo: vive tras el ⚙, porque
+  // descarta el mundo actual y no es algo que se toque al pasar.
+  await page.getByTestId('ai-settings-toggle').click();
   await page.getByTestId('seed-input').fill('9');
   await page.getByTestId('reset-button').click();
-  await expect(page.locator('.subtitle')).toContainText('mundo 9');
+  await page.getByTestId('tab-estado').click();
+  await expect(page.getByTestId('world-seed')).toHaveText('9');
 });

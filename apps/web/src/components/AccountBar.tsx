@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { CloudAccount } from '../auth/cloud.js';
 import { loginWithSigner, logoutCloud, nip07Signer } from '../auth/cloud.js';
 import type { NostrProfile } from '../auth/profile.js';
@@ -9,6 +9,7 @@ import {
   readCachedProfile,
   shortNpub,
 } from '../auth/profile.js';
+import { useDismissablePanel } from './useDismissablePanel.js';
 
 /**
  * Identidad Nostr en la cabecera. Con launcher (BAL) la conexión es
@@ -23,6 +24,8 @@ export function AccountBar({ account }: { account: CloudAccount | null }) {
     pubkey ? readCachedProfile(pubkey) : null,
   );
   const [avatarBroken, setAvatarBroken] = useState(false);
+  const menuRef = useRef<HTMLDetailsElement>(null);
+  useDismissablePanel(menuRef);
 
   // El perfil vive en los relés, no en el servidor de Ánima: se busca en
   // segundo plano y el chip se conforma con la npub hasta que llega.
@@ -43,35 +46,44 @@ export function AccountBar({ account }: { account: CloudAccount | null }) {
     const picture = avatarBroken ? null : profile?.picture;
     return (
       <div className="account-bar">
-        <span
-          className={`account-chip${picture ? ' with-avatar' : ''}`}
-          data-testid="account-chip"
-          title={`${npubOf(account.pubkey)} · ${account.method}`}
-        >
-          {picture ? (
-            <img
-              className="account-avatar"
-              src={picture}
-              alt=""
-              referrerPolicy="no-referrer"
-              onError={() => setAvatarBroken(true)}
-            />
-          ) : (
-            <span aria-hidden="true">☁</span>
-          )}
-          <span className="account-name">{profile?.name ?? shortNpub(account.pubkey)}</span>
-        </span>
-        <button
-          data-testid="logout-button"
-          disabled={busy}
-          onClick={() => {
-            setBusy(true);
-            forgetCachedProfile();
-            void logoutCloud(account).then(() => window.location.reload());
-          }}
-        >
-          Salir
-        </button>
+        <details className="account-menu" ref={menuRef}>
+          <summary
+            className={`account-chip${picture ? ' with-avatar' : ''}`}
+            data-testid="account-chip"
+            aria-label="Tu cuenta"
+          >
+            {picture ? (
+              <img
+                className="account-avatar"
+                src={picture}
+                alt=""
+                referrerPolicy="no-referrer"
+                onError={() => setAvatarBroken(true)}
+              />
+            ) : (
+              <span aria-hidden="true">☁</span>
+            )}
+            <span className="account-name">{profile?.name ?? shortNpub(account.pubkey)}</span>
+          </summary>
+          <div className="account-menu-panel">
+            {/* La npub entera y de una pieza: es la identidad, y copiarla es
+                lo único que se puede querer hacer con ella. */}
+            <small className="account-npub" data-testid="account-npub">
+              {npubOf(account.pubkey)}
+            </small>
+            <button
+              data-testid="logout-button"
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                forgetCachedProfile();
+                void logoutCloud(account).then(() => window.location.reload());
+              }}
+            >
+              Cerrar sesión
+            </button>
+          </div>
+        </details>
       </div>
     );
   }

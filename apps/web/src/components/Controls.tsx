@@ -1,9 +1,7 @@
-import { useState } from 'react';
 import type { GameSession } from '../session/GameSession.js';
 import type { GameView } from '../session/view.js';
 
 const SPEEDS = [1, 2, 4, 8];
-const TOP_SPEED = SPEEDS.at(-1) ?? 8;
 
 /**
  * La pausa es el cero de la escala: estar quieto es correr a ninguna
@@ -28,7 +26,6 @@ function speedIndex(view: GameView): number {
 }
 
 export function Controls({ session, view }: { session: GameSession; view: GameView }) {
-  const [seedInput, setSeedInput] = useState(String(view.seed));
   const index = speedIndex(view);
   // Fuera de la escala manda la verdad (?speed=3 dice «3x»), no la posición.
   const label = view.running ? `${view.speed}x` : 'pausa';
@@ -48,9 +45,8 @@ export function Controls({ session, view }: { session: GameSession; view: GameVi
   return (
     <div className="controls">
       <div className={`speed-slider${view.running ? '' : ' paused'}`}>
-        <span className="speed-end" aria-hidden="true">
-          ⏸
-        </span>
+        {/* Sin extremos rotulados: el pulgar ya dice dónde está en la escala,
+            y el valor de al lado dice lo único que no se puede deducir. */}
         <input
           type="range"
           data-testid="speed-slider"
@@ -62,9 +58,6 @@ export function Controls({ session, view }: { session: GameSession; view: GameVi
           aria-valuetext={label}
           onChange={(event) => applyIndex(Number(event.currentTarget.value))}
         />
-        <span className="speed-end" aria-hidden="true">
-          {TOP_SPEED}x
-        </span>
         <span className="speed-value" data-testid="speed-value">
           {label}
         </span>
@@ -74,25 +67,6 @@ export function Controls({ session, view }: { session: GameSession; view: GameVi
           ⏭ 1 tick
         </button>
       )}
-      <form
-        className="seed-form"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const seed = Number(seedInput);
-          if (Number.isFinite(seed)) session.reset(seed);
-        }}
-      >
-        <input
-          data-testid="seed-input"
-          value={seedInput}
-          onChange={(e) => setSeedInput(e.target.value)}
-          size={4}
-          aria-label="semilla"
-        />
-        <button type="submit" data-testid="reset-button">
-          ⟳ Reiniciar
-        </button>
-      </form>
     </div>
   );
 }

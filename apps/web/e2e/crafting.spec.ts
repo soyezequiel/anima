@@ -16,7 +16,7 @@ test('craftear desde el chat: dice qué falta, lo junta sola y construye', async
 
   // Esperar a que la historia del hambre termine: la mascota queda libre
   // para atender pedidos sin competir con su propia supervivencia.
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 
@@ -41,7 +41,7 @@ test('craftear desde el chat: dice qué falta, lo junta sola y construye', async
 
 test('traer de a uno junta objetos distintos, no redescubre el que ya lleva', async ({ page }) => {
   await page.goto('/?seed=5&speed=8');
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 
@@ -64,7 +64,7 @@ test('traer de a uno junta objetos distintos, no redescubre el que ya lleva', as
 
 test('la fogata pide su ingrediente distintivo: el pedernal', async ({ page }) => {
   await page.goto('/?seed=5&speed=8');
-  await expect(page.getByTestId('story-status')).toHaveText('historia completada', {
+  await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 30_000,
   });
 

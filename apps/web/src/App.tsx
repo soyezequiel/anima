@@ -3,8 +3,8 @@ import { PhaserStage } from './phaser/PhaserStage.js';
 import type { GameSession } from './session/GameSession.js';
 import type { CloudAccount } from './auth/cloud.js';
 import { AccountBar } from './components/AccountBar.js';
-import { AiBar } from './components/AiBar.js';
 import { ChatPanel } from './components/ChatPanel.js';
+import { SettingsMenu } from './components/SettingsMenu.js';
 import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
@@ -60,7 +60,13 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   ];
 
   return (
-    <div className="app">
+    // Estado de fondo en la raíz: ni la historia ni el motor tienen ya un
+    // cartel propio en la cabecera, pero siguen siendo observables.
+    <div
+      className="app"
+      data-story={view.storyCompleted ? 'completed' : 'learning'}
+      data-ai={view.aiProvider}
+    >
       <header className="topbar">
         <h1>
           {nameDraft === null ? (
@@ -104,19 +110,16 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           )}{' '}
           <span className="gen-badge" data-testid="generation">
             gen {view.identity.generation}
-          </span>{' '}
-          <span className="subtitle">
-            mundo {view.seed} · tick {view.tick}
           </span>
         </h1>
-        <span
-          className={`story-badge ${view.storyCompleted ? 'done' : ''}`}
-          data-testid="story-status"
-        >
-          {view.storyCompleted ? 'historia completada' : 'aprendiendo…'}
-        </span>
+        {/* Solo mientras aprende: una vez completada dejaba de decir nada. */}
+        {!view.storyCompleted && (
+          <span className="story-badge" data-testid="story-status">
+            aprendiendo…
+          </span>
+        )}
         <Controls session={session} view={view} />
-        <AiBar view={view} account={account} />
+        <SettingsMenu session={session} view={view} account={account} />
         <AccountBar account={account} />
         <button
           className="help-button"
