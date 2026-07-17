@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAX_INVENTED_RECIPES, spawn, stepWorld, validateRecipe } from '../src/index.js';
-import type { Recipe } from '../src/index.js';
+import type { Recipe, RecipeProposal } from '../src/index.js';
 import { buildTestWorld } from './helpers.js';
 
 /**
@@ -9,7 +9,7 @@ import { buildTestWorld } from './helpers.js';
  * declarándolo resuelto. Estas pruebas son intentos de romper el mundo.
  */
 
-const validChair: Recipe = {
+const validChair: RecipeProposal = {
   id: 'chair',
   output: {
     kind: 'chair',
@@ -21,6 +21,13 @@ const validChair: Recipe = {
     },
   },
   ingredients: [{ kind: 'log', count: 2 }],
+};
+
+/** La misma silla pero ya del lado del mundo: con desenlaces, como sale de la puerta. */
+const chairInWorld: Recipe = {
+  id: 'chair',
+  outcomes: [{ weight: 1, output: validChair.output }],
+  ingredients: validChair.ingredients,
 };
 
 const reject = (recipe: unknown, existing: Recipe[] = []): string => {
@@ -46,6 +53,54 @@ describe('validateRecipe: lo que sí pasa', () => {
       ingredients: [{ kind: 'log', count: 2 }],
     });
     expect(result.ok).toBe(true);
+  });
+});
+
+/**
+ * La mascota propone QUÉ; el mundo decide CÓMO le sale. Un peso es
+ * infalsificable —la puerta puede comprobar que una idea no crea materia, pero
+ * no que "sale bien 9 de cada 10"—, así que la suerte no es suya.
+ */
+describe('validateRecipe: la idea es de ella, la suerte es del mundo', () => {
+  it('lo que sale de la puerta tiene desenlaces aunque haya entrado un arquetipo solo', () => {
+    const result = validateRecipe(validChair);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.outcomes.length).toBeGreaterThan(1);
+    expect(result.value.outcomes.some((o) => o.output === undefined)).toBe(true);
+  });
+
+  it('no puede declarar sus propios pesos: los que proponga se ignoran', () => {
+    const result = validateRecipe({
+      ...validChair,
+      outcomes: [{ weight: 999, output: validChair.output, quality: { min: 5, max: 5 } }],
+    });
+    // El esquema es `strict`: un campo que no le corresponde ni siquiera pasa.
+    expect(result.ok).toBe(false);
+  });
+
+  it('lo que propuso es el techo: la calidad nunca lo mejora', () => {
+    const result = validateRecipe(validChair);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    // Si algún desenlace escalara por encima de 1, las cotas del esquema
+    // (tool.power <= 8, warmthPerTick <= 1...) dejarían de valer después de la
+    // tirada: la calidad sería la rendija para superar los límites del mundo.
+    for (const outcome of result.value.outcomes) {
+      expect(outcome.quality?.max ?? 1).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it('ningún desenlace perdona todo: fallar tiene que costar algo', () => {
+    const result = validateRecipe(validChair);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const cost = new Map(result.value.ingredients.map((i) => [i.kind, i.count]));
+    for (const outcome of result.value.outcomes) {
+      const spared = (outcome.spares ?? []).reduce((sum, s) => sum + s.count, 0);
+      const total = [...cost.values()].reduce((sum, c) => sum + c, 0);
+      expect(spared).toBeLessThan(total);
+    }
   });
 });
 
@@ -198,12 +253,12 @@ describe('validateRecipe: higiene', () => {
   });
 
   it('no puede pisar una receta existente', () => {
-    expect(reject(validChair, [validChair])).toContain('ya existe');
+    expect(reject(validChair, [chairInWorld])).toContain('ya existe');
   });
 
   it('inventar no puede ser spam: hay un tope por mundo', () => {
     const many = Array.from({ length: MAX_INVENTED_RECIPES }, (_, i) => ({
-      ...validChair,
+      ...chairInWorld,
       id: `receta-${i}`,
     }));
     expect(reject({ ...validChair, id: 'una-mas' }, many)).toContain('no admite más recetas');

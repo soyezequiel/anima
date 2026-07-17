@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { ActorIntent, Entity, WorldState } from '@anima/sim-core';
 import { allEntities, checkInvariants, getEntity, stepWorld } from '@anima/sim-core';
-import { coldNightUnlit } from '../src/index.js';
+import { CAMPFIRE_RECIPE, coldNightUnlit, withoutChance } from '../src/index.js';
 
 /**
  * La historia del crafteo a nivel motor: talar el árbol, juntar los troncos y
@@ -47,6 +47,12 @@ describe('escenario cold-night-unlit', () => {
   it('talar, juntar y craftear: la fogata existe y el frío se revierte', () => {
     const { world, petId } = coldNightUnlit.build(1);
     const pet = getEntity(world, petId)!;
+    // Sin la tirada: que el mundo PERMITA la cadena entera —talar, juntar,
+    // construir, calentarse— es una pregunta distinta de si la chispa agarró
+    // esta vez. Mezclarlas haría que esta historia se cuente o no según la
+    // suerte de la semilla, y que rompa el día que otro sistema consuma el
+    // dado antes que ella. Que prender pueda no salir se prueba en sim-core.
+    world.recipes = [withoutChance(CAMPFIRE_RECIPE)];
 
     // 1. Buscar el martillo: sin él, el árbol no cae.
     const hammer = allEntities(world).find((e) => e.kind === 'hammer')!;

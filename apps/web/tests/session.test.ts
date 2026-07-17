@@ -417,7 +417,15 @@ describe('reglas del mundo al restaurar', () => {
     const world = (first as unknown as { world: WorldState }).world;
     world.recipes.push({
       id: 'hoguera-simple',
-      output: { kind: 'hoguera-simple', components: { heatSource: { warmthPerTick: 0.4, range: 2 } } },
+      outcomes: [
+        {
+          weight: 1,
+          output: {
+            kind: 'hoguera-simple',
+            components: { heatSource: { warmthPerTick: 0.4, range: 2 } },
+          },
+        },
+      ],
       ingredients: [{ kind: 'log', count: 2 }],
     });
     await first.save();

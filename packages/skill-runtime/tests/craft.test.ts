@@ -3,12 +3,21 @@ import type { EntityId, Recipe, WorldState } from '@anima/sim-core';
 import { allEntities, createWorld, spawn } from '@anima/sim-core';
 import { runSkillProgram, validateSkillProgram } from '../src/index.js';
 
+/**
+ * Un solo desenlace, sin calidad: lo que se prueba acá es el programa que
+ * junta y construye, y una tirada lo volvería un test que a veces pasa.
+ */
 const CAMPFIRE: Recipe = {
   id: 'campfire',
-  output: {
-    kind: 'campfire',
-    components: { heatSource: { warmthPerTick: 3, range: 2 }, hazard: { damagePerTick: 1 } },
-  },
+  outcomes: [
+    {
+      weight: 1,
+      output: {
+        kind: 'campfire',
+        components: { heatSource: { warmthPerTick: 3, range: 2 }, hazard: { damagePerTick: 1 } },
+      },
+    },
+  ],
   ingredients: [
     { kind: 'log', count: 2 },
     { kind: 'flint', count: 1 },

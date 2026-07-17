@@ -1,22 +1,71 @@
 import type { Vec2 } from '@anima/shared';
 import { createRng, nextInt } from '@anima/shared';
-import type { EntityId, Recipe, WorldState } from '@anima/sim-core';
-import { createWorld, spawn } from '@anima/sim-core';
+import type { EntityId, Recipe, RecipeOutcome, WorldState } from '@anima/sim-core';
+import { createWorld, recipeProduct, spawn } from '@anima/sim-core';
+
+/** El arquetipo de un desenlace que sí produce algo. */
+type Archetype = NonNullable<RecipeOutcome['output']>;
+
+/**
+ * Los dos oficios del mundo del MVP fallan distinto, y esa diferencia es la
+ * que hace que la tirada signifique algo en vez de ser ruido:
+ *
+ * - Encender es azaroso. La chispa prende o no prende, y cuando prende puede
+ *   salir pobre. Fallar cuesta la madera pero nunca el pedernal: una piedra no
+ *   se gasta porque la chispa no agarre, así que el fuego siempre se puede
+ *   volver a intentar. Es la diferencia entre un fallo y un castigo.
+ * - La carpintería siempre sale. Lo que varía es cuán bien: la misma silla
+ *   puede quedar firme o renga según cómo vino la madera. No hay desenlace
+ *   fallido porque no hay nada que pueda no ocurrir — la madera ya está ahí.
+ *
+ * Fabricar algo dos veces con lo mismo en la mano da dos objetos distintos, y
+ * la misma semilla los repite clavados.
+ */
+const LIGHTING_QUALITY = { good: { min: 0.9, max: 1.15 }, poor: { min: 0.55, max: 0.85 } };
+const CARPENTRY_QUALITY = { good: { min: 0.9, max: 1.2 }, poor: { min: 0.6, max: 0.85 } };
+
+/** Enciende: casi siempre agarra, a veces flojo, cada tanto nada. */
+function lightingOutcomes(
+  output: Archetype,
+  sparedOnFailure: Recipe['ingredients'],
+): RecipeOutcome[] {
+  return [
+    { weight: 7, output, quality: LIGHTING_QUALITY.good },
+    { weight: 2, output: structuredClone(output), quality: LIGHTING_QUALITY.poor },
+    { weight: 1, spares: sparedOnFailure },
+  ];
+}
+
+/** Carpintea: siempre sale algo, y de ahí para abajo es cuestión de suerte. */
+function carpentryOutcomes(output: Archetype): RecipeOutcome[] {
+  return [
+    { weight: 6, output, quality: CARPENTRY_QUALITY.good },
+    { weight: 4, output: structuredClone(output), quality: CARPENTRY_QUALITY.poor },
+  ];
+}
 
 /**
  * La fogata: calienta a distancia 2 y quema al que se pega. Se construye con
  * troncos (del árbol talado) y un pedernal que la encienda — el ingrediente
  * que la mascota no siempre tiene, y por el que tiene que pedir ayuda.
+ *
+ * Una fogata pobre calienta la mitad pero alcanza igual de lejos: el alcance
+ * es la forma del fuego, no su calidad. Y como el daño no se gradúa, arrimarse
+ * a una fogata mala quema exactamente igual que a una buena — la mala decisión
+ * de pegarse al fuego cuesta lo mismo, salga como salga.
  */
 export const CAMPFIRE_RECIPE: Recipe = {
   id: 'campfire',
-  output: {
-    kind: 'campfire',
-    components: {
-      heatSource: { warmthPerTick: 0.3, range: 2 },
-      hazard: { damagePerTick: 1 },
+  outcomes: lightingOutcomes(
+    {
+      kind: 'campfire',
+      components: {
+        heatSource: { warmthPerTick: 0.3, range: 2 },
+        hazard: { damagePerTick: 1 },
+      },
     },
-  },
+    [{ kind: 'flint', count: 1 }],
+  ),
   ingredients: [
     { kind: 'log', count: 2 },
     { kind: 'flint', count: 1 },
@@ -30,10 +79,14 @@ export const CAMPFIRE_RECIPE: Recipe = {
  * lugar (se puede construir un obstáculo), se rompe fácil y al romperse
  * devuelve un tronco. Lo que hace real a un objeto no es su nombre: son sus
  * componentes.
+ *
+ * Su durabilidad ahora sale de la tirada: una silla renga aguanta 4 golpes y
+ * una firme 7. El tronco que deja al romperse no se gradúa — la suerte decide
+ * qué tan bueno sale algo, nunca cuánta materia hay (ADR 0008).
  */
 export const CHAIR_RECIPE: Recipe = {
   id: 'chair',
-  output: {
+  outcomes: carpentryOutcomes({
     kind: 'chair',
     components: {
       collider: { solid: true },
@@ -41,7 +94,7 @@ export const CHAIR_RECIPE: Recipe = {
       durability: { current: 6, max: 6 },
       drops: [{ kind: 'log', components: { portable: {} } }],
     },
-  },
+  }),
   ingredients: [{ kind: 'log', count: 2 }],
 };
 
@@ -49,16 +102,23 @@ export const CHAIR_RECIPE: Recipe = {
  * La antorcha: calor chico y portátil. Es el eslabón intermedio de la cadena
  * de combinaciones — con lo mismo que enciende una fogata se puede hacer algo
  * más barato y más débil, y elegir entre las dos es una decisión real.
+ *
+ * Se enciende, así que puede no encenderse: gastar el único tronco en una
+ * antorcha que no prendió y conservar el pedernal es exactamente la clase de
+ * consecuencia que el mundo no tenía.
  */
 export const TORCH_RECIPE: Recipe = {
   id: 'torch',
-  output: {
-    kind: 'torch',
-    components: {
-      portable: {},
-      heatSource: { warmthPerTick: 0.15, range: 1 },
+  outcomes: lightingOutcomes(
+    {
+      kind: 'torch',
+      components: {
+        portable: {},
+        heatSource: { warmthPerTick: 0.15, range: 1 },
+      },
     },
-  },
+    [{ kind: 'flint', count: 1 }],
+  ),
   ingredients: [
     { kind: 'log', count: 1 },
     { kind: 'flint', count: 1 },
@@ -69,10 +129,14 @@ export const TORCH_RECIPE: Recipe = {
  * La empalizada: un muro que se fabrica. Devuelve un tronco al romperse
  * (menos de lo que costó: la materia no crece) y es más blanda que el muro
  * de piedra — la rama no la daña, el martillo sí.
+ *
+ * Con la tirada, "más blanda que el muro" dejó de ser un número y pasó a ser
+ * un rango: una empalizada floja (dureza ~1.8) cede ante cosas que una firme
+ * (~3.6) aguanta.
  */
 export const BARRICADE_RECIPE: Recipe = {
   id: 'barricade',
-  output: {
+  outcomes: carpentryOutcomes({
     kind: 'barricade',
     components: {
       collider: { solid: true },
@@ -80,7 +144,7 @@ export const BARRICADE_RECIPE: Recipe = {
       durability: { current: 8, max: 8 },
       drops: [{ kind: 'log', components: { portable: {} } }],
     },
-  },
+  }),
   ingredients: [{ kind: 'log', count: 2 }],
 };
 
@@ -95,6 +159,24 @@ export const MVP_RECIPES: Recipe[] = [
   TORCH_RECIPE,
   BARRICADE_RECIPE,
 ];
+
+/**
+ * La misma receta pero sin tirada: su desenlace más probable, garantizado.
+ *
+ * Es para las pruebas que miden OTRA cosa — si la mascota entendió el pedido,
+ * si el reflejo la aparta del fuego, si sobrevive a la noche. Con la receta
+ * real esas pruebas pasarían o no según cómo cayó el dado de su semilla, y un
+ * test que depende de la suerte no mide lo que dice medir: mediría la suerte.
+ * Que construir pueda salir mal se prueba en sim-core, que es de quien es esa
+ * regla, y ahí se prueba a propósito.
+ */
+export function withoutChance(recipe: Recipe): Recipe {
+  const product = recipeProduct(recipe);
+  return {
+    ...recipe,
+    outcomes: product ? [{ weight: 1, output: structuredClone(product) }] : [],
+  };
+}
 
 export interface ScenarioBundle {
   world: WorldState;
@@ -379,13 +461,16 @@ export const practiceRoom: ScenarioSpec = {
     // aquí, porque una conducta enseñada sobre un objeto ("sentate en la
     // silla") necesita ese objeto para poder practicarse y juzgarse. En los
     // bordes, para no estorbar el paso.
+    // Salen a calidad de catálogo, sin tirada: son la muestra contra la que se
+    // juzga una conducta enseñada, y una silla que unas corridas aguanta 4
+    // golpes y otras 7 haría que la misma lección se apruebe o no por suerte.
     spawn(world, 'chair', {
       position: { x: 10, y: 0 },
-      ...structuredClone(CHAIR_RECIPE.output.components),
+      ...structuredClone(recipeProduct(CHAIR_RECIPE)!.components),
     });
     spawn(world, 'torch', {
       position: { x: 0, y: 8 },
-      ...structuredClone(TORCH_RECIPE.output.components),
+      ...structuredClone(recipeProduct(TORCH_RECIPE)!.components),
     });
     return { world, petId, meta: { name: 'practice-room', seed } };
   },

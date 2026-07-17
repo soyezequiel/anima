@@ -5,7 +5,7 @@ import type { EntityId, WorldState } from '@anima/sim-core';
 import { allEntities, buildPerception, createWorld, spawn, stepWorld } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import { SkillLibrary } from '@anima/skill-runtime';
-import { CAMPFIRE_RECIPE, MVP_SCENARIOS } from '@anima/test-scenarios';
+import { CAMPFIRE_RECIPE, MVP_SCENARIOS, withoutChance } from '@anima/test-scenarios';
 import { AnimaAgent } from '../src/index.js';
 
 /**
@@ -32,7 +32,12 @@ class FakeLanguageModel extends MockModelProvider {
 }
 
 function coldWorld(): { world: WorldState; petId: EntityId } {
-  const world = createWorld({ width: 9, height: 5, seed: 1 }, { recipes: [CAMPFIRE_RECIPE] });
+  // Sin tirada: acá se mide si entiende el pedido y junta lo que falta, no si
+  // el fuego prendió — eso se prueba en sim-core.
+  const world = createWorld(
+    { width: 9, height: 5, seed: 1 },
+    { recipes: [withoutChance(CAMPFIRE_RECIPE)] },
+  );
   const petId = spawn(world, 'pet', {
     position: { x: 1, y: 2 },
     collider: { solid: true },

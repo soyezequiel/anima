@@ -30,11 +30,29 @@ function pct(value: number | null): string {
   return value === null ? 's/d' : `${Math.round(value * 100)}%`;
 }
 
+/**
+ * Describe una receta por sus desenlaces: qué puede salir, con qué chance y
+ * entre qué calidades. El reporte tiene que poder decir la verdad sobre un
+ * mundo que ya no es un guion — si siguiera anunciando "resultado fijo",
+ * mentiría sobre la brecha que él mismo señaló.
+ */
 function describeRecipe(recipe: Recipe, invented: boolean): string {
   const ingredients = recipe.ingredients.map((i) => `${i.count}× ${i.kind}`).join(' + ');
-  const componentKeys = Object.keys(recipe.output.components).join(', ') || 'sin componentes';
   const origin = invented ? 'inventada por Ánima' : 'base del mundo';
-  return `- \`${recipe.id}\` (${origin}): ${ingredients} → 1× ${recipe.output.kind} (${componentKeys}). Resultado fijo: siempre el mismo arquetipo.`;
+  const total = recipe.outcomes.reduce((sum, o) => sum + o.weight, 0);
+  const outcomes = recipe.outcomes.map((outcome) => {
+    const chance = total > 0 ? `${Math.round((outcome.weight / total) * 100)}%` : 's/d';
+    if (!outcome.output) {
+      const spared = (outcome.spares ?? []).map((s) => `${s.count}× ${s.kind}`).join(' + ');
+      return `${chance} no sale nada${spared ? ` (conserva ${spared})` : ''}`;
+    }
+    const components = Object.keys(outcome.output.components).join(', ') || 'sin componentes';
+    const quality = outcome.quality
+      ? `, calidad ${outcome.quality.min}–${outcome.quality.max}`
+      : '';
+    return `${chance} 1× ${outcome.output.kind} (${components}${quality})`;
+  });
+  return `- \`${recipe.id}\` (${origin}): ${ingredients} → ${outcomes.join(' · ')}.`;
 }
 
 export function buildClaudeReport(input: ClaudeReportInput): string {
@@ -144,21 +162,26 @@ ${hypothesisLines.join('\n') || '- (ninguna)'}
 
 ## Brechas contra la visión
 
-### 1. El crafteo de objetos es 100% determinista
+### 1. Lo que el mundo suelta sigue siendo fijo
 
-- \`resolveCraft\` (\`packages/sim-core/src/step.ts\`) consume los ingredientes
-  y spawnea \`recipe.output\` clonado tal cual, siempre: no hay tirada de
-  éxito, ni calidad variable, ni resultados alternativos. \`Recipe\`
-  (\`packages/sim-core/src/recipes.ts\`) declara un único \`output\` fijo.
-- Los \`drops\` (talar el árbol, romper objetos) también son listas fijas: el
-  mundo nunca sorprende con lo que suelta.
-- Evidencia viva: las ${recipes.length} recetas de esta corrida producen
-  siempre el mismo arquetipo.
-- **Qué construir**: resultados ponderados por receta (lista de \`outcomes\`
-  con pesos, resueltos con el RNG del mundo), calidad/durabilidad variable del
-  producto, fallo parcial que consume solo parte de los ingredientes, y drops
-  probabilísticos. La puerta \`validateRecipe\` (ADR 0018) debe validar los
-  outcomes igual que hoy valida el output único.
+El crafteo ya no es determinista: \`Recipe\` declara \`outcomes\` ponderados y
+\`resolveCraft\` (\`packages/sim-core/src/step.ts\`) los resuelve tirando
+\`world.rng\` — mismo dado seedeado, así que varía entre intentos y se reproduce
+con la misma semilla. La calidad escala los componentes graduables del producto.
+Lo de arriba, en «Recetas del mundo», lo muestra receta por receta.
+
+Lo que quedó determinista de este eje:
+
+- Los \`drops\` (talar el árbol, romper objetos) son listas fijas: el mundo
+  nunca sorprende con lo que suelta. La calidad no los toca a propósito — la
+  suerte decide qué tan bueno sale algo, nunca cuánta materia hay (ADR 0008),
+  así que los drops probabilísticos son una decisión aparte y no una extensión
+  de la tirada de crafteo.
+- \`scaleByQuality\` (\`packages/sim-core/src/recipes.ts\`) deja fuera
+  \`heatSource.range\` y \`hazard\`: hoy son forma, no calidad. Si el mundo
+  quisiera fogatas que alcancen más lejos según cómo salieron, va ahí.
+- **Qué construir**: drops probabilísticos con el mismo dado, y materiales con
+  propiedades variables de origen (un tronco que ya viene mejor o peor).
 
 ### 2. El crafteo de habilidades es determinista de punta a punta
 
@@ -187,14 +210,15 @@ ${hypothesisLines.join('\n') || '- (ninguna)'}
 
 ## Prioridades sugeridas
 
-1. Outcomes ponderados en \`Recipe\` + tirada con el RNG del mundo en
-   \`resolveCraft\` (es la brecha más directa contra la visión).
-2. Calidad variable del producto crafteado (componentes escalados por la
-   tirada) y su validación en \`validateRecipe\`.
-3. Evaluación de skills con semillas muestreadas + métrica de éxito como
-   distribución (sin perder las regresiones fijas).
-4. Drops probabilísticos y ramas caídas del árbol (desbloquea troncos).
-5. Un segundo escenario jugable más grande que ejercite todo lo anterior.
+1. Evaluación de skills con semillas muestreadas + métrica de éxito como
+   distribución (sin perder las regresiones fijas). Ahora aprieta más que
+   antes: con el crafteo variable, una skill que construye puede pasar o fallar
+   por la tirada, y un veredicto booleano sobre 3 semillas lo lee como
+   capacidad cuando es suerte.
+2. Drops probabilísticos y ramas caídas del árbol (desbloquea troncos: es el
+   hallazgo abierto del ADR 0018 y lo que hace fracasar a \`conseguir-calor\`
+   una versión tras otra).
+3. Un segundo escenario jugable más grande que ejercite todo lo anterior.
 
 ## Datos crudos (JSON)
 

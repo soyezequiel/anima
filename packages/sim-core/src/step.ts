@@ -5,7 +5,14 @@ import type { Entity, EntityId } from './components.js';
 import type { SimEvent } from './events.js';
 import { simEvent } from './events.js';
 import { validateRecipe } from './recipe-validation.js';
-import { findRecipe, missingIngredients } from './recipes.js';
+import {
+  findRecipe,
+  missingIngredients,
+  recipeProduct,
+  rollOutcome,
+  rollQuality,
+  scaleByQuality,
+} from './recipes.js';
 import type { WorldState } from './world.js';
 import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, removeEntity, spawn } from './world.js';
 
@@ -288,7 +295,7 @@ function resolveProposeRecipe(
     simEvent('recipe.learned', world.tick, {
       actorId: actor.id,
       recipeId: validated.value.id,
-      outputKind: validated.value.output.kind,
+      outputKind: recipeProduct(validated.value)?.kind,
       ingredients: validated.value.ingredients,
     }),
   );
@@ -296,9 +303,16 @@ function resolveProposeRecipe(
 }
 
 /**
- * Craftear: el mundo comprueba los ingredientes, los consume y coloca lo
- * producido. Nadie fabrica nada por creer que puede — si falta algo, el
+ * Craftear: el mundo comprueba los ingredientes, tira su dado, y de ahí sale
+ * lo que salga. Nadie fabrica nada por creer que puede — si falta algo, el
  * fallo dice exactamente qué falta y en qué cantidad.
+ *
+ * Tener los ingredientes da derecho al INTENTO, no al producto: la receta
+ * declara sus desenlaces y `world.rng` elige entre ellos, así que la misma
+ * receta con lo mismo en la mano puede dar una fogata redonda, una pobre, o
+ * humo. Que sea el rng del mundo —y no `Math.random()`— es lo que mantiene en
+ * pie el principio 1: el snapshot lleva el estado del dado, así que la corrida
+ * se reproduce clavada aunque deje de ser predecible.
  */
 function resolveCraft(
   world: WorldState,
@@ -341,24 +355,61 @@ function resolveCraft(
     return;
   }
 
+  // El espacio se mira ANTES de tirar: si no hay dónde poner lo construido, el
+  // intento no llega a ocurrir, y no debe gastar ni ingredientes ni tirada.
   const cell = [actorPos, ...SPAWN_OFFSETS.map((o) => addVec2(actorPos, o))].find(
     (c) => inBounds(world, c) && entitiesAt(world, c).length === 0,
   );
-  if (!cell) {
+  if (!cell && recipe.outcomes.some((o) => o.output !== undefined)) {
     resolved(world, events, actor.id, intent, false, { reason: 'no-space', recipeId: recipe.id });
     return;
   }
 
+  const outcome = rollOutcome(recipe, world.rng);
+  if (!outcome) {
+    resolved(world, events, actor.id, intent, false, { reason: 'no-outcomes', recipeId: recipe.id });
+    return;
+  }
+  const quality = rollQuality(outcome, world.rng);
+
+  // Lo que el desenlace perdona no se gasta: un intento fallido puede dejar el
+  // pedernal intacto y llevarse solo la madera.
+  const spared = new Map<string, number>();
+  for (const spare of outcome.spares ?? []) {
+    spared.set(spare.kind, (spared.get(spare.kind) ?? 0) + spare.count);
+  }
   const consumed: EntityId[] = [];
   for (const ingredient of recipe.ingredients) {
-    for (const itemId of (heldByKind.get(ingredient.kind) ?? []).slice(0, ingredient.count)) {
+    const take = Math.max(0, ingredient.count - (spared.get(ingredient.kind) ?? 0));
+    for (const itemId of (heldByKind.get(ingredient.kind) ?? []).slice(0, take)) {
       consumed.push(itemId);
       removeEntity(world, itemId);
     }
   }
-  const product = spawn(world, recipe.output.kind, {
-    ...structuredClone(recipe.output.components),
-    position: cell,
+
+  if (!outcome.output) {
+    events.push(
+      simEvent('craft.failed', world.tick, {
+        actorId: actor.id,
+        recipeId: recipe.id,
+        consumed,
+      }),
+    );
+    // Falló el intento, no la receta: tiene los ingredientes y la sabe hacer.
+    // El motivo lo dice para que reintentar sea distinguible de rendirse.
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'attempt-failed',
+      recipeId: recipe.id,
+      consumed,
+    });
+    return;
+  }
+
+  // `cell` existe: el desenlace produce algo, así que el chequeo de espacio de
+  // arriba ya se hizo cargo.
+  const product = spawn(world, outcome.output.kind, {
+    ...scaleByQuality(outcome.output.components, quality),
+    position: cell!,
   });
   events.push(
     simEvent('item.crafted', world.tick, {
@@ -366,11 +417,16 @@ function resolveCraft(
       recipeId: recipe.id,
       itemId: product.id,
       itemKind: product.kind,
+      quality,
       consumed,
       at: cell,
     }),
   );
-  resolved(world, events, actor.id, intent, true, { recipeId: recipe.id, itemId: product.id });
+  resolved(world, events, actor.id, intent, true, {
+    recipeId: recipe.id,
+    itemId: product.id,
+    quality,
+  });
 }
 
 function resolveMove(

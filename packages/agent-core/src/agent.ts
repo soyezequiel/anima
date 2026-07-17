@@ -1,7 +1,7 @@
 import type { EventLog } from '@anima/shared';
 import { countedKindLabel, createEventLog, kindLabel } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
-import { missingIngredients } from '@anima/sim-core';
+import { missingIngredients, recipeProduces } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
@@ -1658,7 +1658,7 @@ export class AnimaAgent {
     // Si su mundo sabe hacer fuego (de fábrica o porque ella lo inventó),
     // construirlo es una aproximación primitiva más: juntar y craftear.
     for (const recipe of perception.recipes) {
-      if (recipe.output.components.heatSource === undefined) continue;
+      if (!recipeProduces(recipe, 'heatSource')) continue;
       strategies.push({
         label: `build-fire:${recipe.id}`,
         program: buildFireProgram(recipe, heldCounts(perception)),
@@ -1673,9 +1673,7 @@ export class AnimaAgent {
 
     // Si nada de lo que sabe construir da calor, quizá pueda inventarlo. Es
     // el paso previo a rendirse: primero la idea, después la habilidad.
-    const knowsFire = perception.recipes.some(
-      (recipe) => recipe.output.components.heatSource !== undefined,
-    );
+    const knowsFire = perception.recipes.some((recipe) => recipeProduces(recipe, 'heatSource'));
     if (!knowsFire && this.recipeAttempts < MAX_RECIPE_ATTEMPTS) {
       const invention = await this.inventRecipe(
         'tengo frío y no tengo nada que dé calor',

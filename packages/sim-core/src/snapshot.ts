@@ -1,4 +1,5 @@
 import { hashValue } from '@anima/shared';
+import { normalizeRecipe } from './recipes.js';
 import type { WorldState } from './world.js';
 
 export interface WorldSnapshot {
@@ -15,11 +16,13 @@ export function takeSnapshot(world: WorldState): WorldSnapshot {
  * Restaura un mundo desde un snapshot. Es la frontera por donde entran datos
  * viejos (guardados de sesión, regresiones archivadas), así que normaliza los
  * campos que no existían cuando se escribieron: un mundo anterior a las
- * recetas simplemente no admite ninguna.
+ * recetas simplemente no admite ninguna, y uno anterior a los desenlaces trae
+ * recetas de `output` único, que se leen como lo que eran — un solo desenlace
+ * seguro. Sin esto, un legado guardado antes de la tirada dejaría de craftear.
  */
 export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
   const state = structuredClone(snapshot.state) as WorldState & { recipes?: WorldState['recipes'] };
-  return { ...state, recipes: state.recipes ?? [] };
+  return { ...state, recipes: (state.recipes ?? []).map(normalizeRecipe) };
 }
 
 export function serializeSnapshot(snapshot: WorldSnapshot): string {

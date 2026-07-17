@@ -1,6 +1,6 @@
 import { countedKindLabel, isFeminineKind, kindLabel } from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
-import { missingIngredients } from '@anima/sim-core';
+import { missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { Goal } from './goals.js';
 
@@ -135,11 +135,16 @@ export function evaluateUserRequest(
       for (const item of perception.self.heldItems) {
         held.set(item.kind, (held.get(item.kind) ?? 0) + 1);
       }
+      // Lo que la receta da cuando sale bien: es lo que ella nombra al aceptar
+      // la orden. Sigue siendo la respuesta honesta aunque la tirada pueda
+      // darle otra cosa — "voy a construir" es lo que se propone hacer, no lo
+      // que promete que va a pasar.
+      const productKind = recipeProduct(recipe)?.kind ?? recipe.id;
       const missing = missingIngredients(recipe, held);
       if (missing.length > 0) {
         const totalMissing = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
         const falta = totalMissing === 1 ? 'me falta' : 'me faltan';
-        const outputPronoun = isFeminineKind(recipe.output.kind) ? 'la' : 'lo';
+        const outputPronoun = isFeminineKind(productKind) ? 'la' : 'lo';
         // Si TODO lo que falta está a la vista y alcanza, juntar es parte de
         // construir: la orden se acepta entera y no se le devuelve al cuidador
         // el trabajo de pilotear cada recogida. Solo cuando falta el RECURSO
@@ -150,14 +155,14 @@ export function evaluateUserRequest(
         if (gatherable) {
           return {
             classification: 'accepted',
-            reason: `Entiendo, quiero construir ${withArticle(recipe.output.kind)}; ${falta} ${displayMissing(missing)}.`,
+            reason: `Entiendo, quiero construir ${withArticle(productKind)}; ${falta} ${displayMissing(missing)}.`,
             alternative: `Veo lo que falta cerca: ${missingPronoun(missing)} junto y ${outputPronoun} construyo.`,
           };
         }
         const visible = missing.filter((m) => visibleCount(m.kind) > 0);
         return {
           classification: 'cannot',
-          reason: `Entiendo, quiero construir ${withArticle(recipe.output.kind)}, pero ${falta} ${displayMissing(missing)}.`,
+          reason: `Entiendo, quiero construir ${withArticle(productKind)}, pero ${falta} ${displayMissing(missing)}.`,
           alternative:
             visible.length > 0
               ? `Veo ${displayMissing(visible)} cerca, pero no alcanza para todo. Si me consigues el resto, ${outputPronoun} construyo.`
@@ -166,7 +171,7 @@ export function evaluateUserRequest(
       }
       return {
         classification: 'accepted',
-        reason: `Voy a construir ${withArticle(recipe.output.kind)}.`,
+        reason: `Voy a construir ${withArticle(productKind)}.`,
       };
     }
 

@@ -1,8 +1,10 @@
+import type { RngState } from '@anima/shared';
+import { nextFloat } from '@anima/shared';
 import type { Components, EntityKind } from './components.js';
 
 /**
  * Receta: una regla del mundo, no una idea del agente. Declara qué consume y
- * qué arquetipo produce. Es dato puro y vive en el WorldState, así que viaja
+ * qué desenlaces admite. Es dato puro y vive en el WorldState, así que viaja
  * en los snapshots: un mundo restaurado craftea exactamente igual.
  */
 export interface RecipeIngredient {
@@ -10,10 +12,46 @@ export interface RecipeIngredient {
   count: number;
 }
 
+/**
+ * Un desenlace posible de una receta. Construir no es aplicar una fórmula: es
+ * intentar algo, y el intento puede salir mejor, peor, o directamente no salir.
+ *
+ * La receta declara todos los desenlaces que el mundo admite y cuánto pesa
+ * cada uno; cuál toca lo decide el mundo con SU generador (`world.rng`), nunca
+ * `Math.random()`. Por eso dos crafteos seguidos de la misma receta pueden dar
+ * cosas distintas y la misma semilla los repite igual: el mundo dejó de ser un
+ * guion sin dejar de ser reproducible.
+ */
+export interface RecipeOutcome {
+  /** Peso relativo dentro de la receta. La probabilidad es weight / Σ pesos. */
+  weight: number;
+  /**
+   * El arquetipo que aparece, completo, como los `drops`. Ausente: el intento
+   * no produce nada — la receta salió mal.
+   */
+  output?: { kind: EntityKind; components: Components };
+  /**
+   * Qué tan bueno sale: un factor muestreado en [min, max] que escala los
+   * componentes graduables del producto. Ausente equivale a 1 — sale
+   * exactamente como lo declara el arquetipo.
+   */
+  quality?: { min: number; max: number };
+  /**
+   * Lo que este desenlace NO gasta, aunque la receta lo pida. El fuego que no
+   * prende quema el tronco pero deja el pedernal: un fallo que se lleva todo
+   * no se puede reintentar, y entonces no es un fallo sino un castigo.
+   */
+  spares?: RecipeIngredient[];
+}
+
 export interface Recipe {
   id: string;
-  /** Lo que aparece al craftear. Arquetipo completo, como los `drops`. */
-  output: { kind: EntityKind; components: Components };
+  /**
+   * Los desenlaces que la receta admite. Nunca vacío. Uno solo, con peso 1 y
+   * sin `quality`, es una receta determinista: la forma vieja del mundo sigue
+   * siendo expresable, ahora como el caso particular que era.
+   */
+  outcomes: RecipeOutcome[];
   ingredients: RecipeIngredient[];
 }
 
@@ -45,4 +83,127 @@ export function missingIngredients(
     }
   }
   return missing;
+}
+
+/**
+ * Lo que la receta produce cuando sale como se espera: el desenlace que más
+ * pesa de los que producen algo. Es lo que la mascota nombra al hablar de ella
+ * ("voy a construir una fogata") — una intención, no una promesa: el mundo
+ * puede darle cualquiera de los otros.
+ */
+export function recipeProduct(
+  recipe: Recipe,
+): { kind: EntityKind; components: Components } | undefined {
+  let best: RecipeOutcome | undefined;
+  for (const outcome of recipe.outcomes) {
+    if (!outcome.output) continue;
+    if (!best || outcome.weight > best.weight) best = outcome;
+  }
+  return best?.output;
+}
+
+/** Todo lo que la receta puede llegar a producir, sin repetir. */
+export function recipeProductKinds(recipe: Recipe): EntityKind[] {
+  return [...new Set(recipe.outcomes.flatMap((o) => (o.output ? [o.output.kind] : [])))];
+}
+
+/** true si algún desenlace produce algo con este componente. */
+export function recipeProduces(recipe: Recipe, component: keyof Components): boolean {
+  return recipe.outcomes.some((o) => o.output?.components[component] !== undefined);
+}
+
+/**
+ * Tira el dado del mundo y devuelve el desenlace que tocó. Muta `rng`: la
+ * secuencia avanza, así que el segundo intento no repite al primero.
+ */
+export function rollOutcome(recipe: Recipe, rng: RngState): RecipeOutcome | undefined {
+  const weights = recipe.outcomes.map((o) => Math.max(0, o.weight));
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  if (total <= 0) return undefined;
+  let roll = nextFloat(rng) * total;
+  for (const [index, outcome] of recipe.outcomes.entries()) {
+    roll -= weights[index]!;
+    if (roll < 0) return outcome;
+  }
+  // Solo alcanzable por error de redondeo con `roll` pegado al total.
+  return recipe.outcomes[recipe.outcomes.length - 1];
+}
+
+/** Dos decimales: el mundo no necesita más y el snapshot queda legible. */
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Muestrea qué tan bueno salió. Muta `rng` solo si el desenlace gradúa.
+ *
+ * Redondea al centésimo para que el número que viaja al evento, al snapshot y
+ * a los componentes del producto sea el mismo y se pueda leer. Cien escalones
+ * de calidad son más de los que el mundo puede distinguir.
+ */
+export function rollQuality(outcome: RecipeOutcome, rng: RngState): number {
+  if (!outcome.quality) return 1;
+  const { min, max } = outcome.quality;
+  if (max <= min) return round2(min);
+  return round2(min + nextFloat(rng) * (max - min));
+}
+
+/**
+ * Escala los componentes graduables del producto por la calidad de la tirada.
+ *
+ * Gradúa solo los que miden QUÉ TAN BUENO es un objeto sin cambiar QUÉ ES, y
+ * lo que queda afuera importa tanto como lo que entra:
+ *
+ * - `collider`/`portable` son marcas: no existe el medio sólido.
+ * - `hazard` queda afuera a propósito — escalarlo haría que "mejor" quisiera
+ *   decir "más peligroso", y la calidad de una fogata no es cuánto quema.
+ * - `heatSource.range` es la forma del objeto, no su calidad: un fuego tibio
+ *   sigue alcanzando igual de lejos, solo calienta menos.
+ * - `drops` son materia, y la materia no la decide la suerte (ADR 0008).
+ */
+export function scaleByQuality(components: Components, factor: number): Components {
+  const scaled = structuredClone(components);
+  if (scaled.durability) {
+    // Lo recién construido nace entero: la calidad decide cuánto aguanta, no
+    // cuán usado viene.
+    const max = Math.max(1, Math.round(scaled.durability.max * factor));
+    scaled.durability = { current: max, max };
+  }
+  if (scaled.heatSource) {
+    scaled.heatSource = {
+      ...scaled.heatSource,
+      warmthPerTick: round2(scaled.heatSource.warmthPerTick * factor),
+    };
+  }
+  if (scaled.tool) {
+    scaled.tool = { ...scaled.tool, power: round2(scaled.tool.power * factor) };
+  }
+  if (scaled.hardness) {
+    scaled.hardness = { ...scaled.hardness, value: round2(scaled.hardness.value * factor) };
+  }
+  return scaled;
+}
+
+/** La forma que tenían las recetas antes de los desenlaces: un `output` fijo. */
+interface StoredRecipe {
+  id: string;
+  outcomes?: RecipeOutcome[];
+  output?: { kind: EntityKind; components: Components };
+  ingredients: RecipeIngredient[];
+}
+
+/**
+ * Normaliza una receta que puede venir de antes de los desenlaces. Un mundo
+ * guardado con `output` único se lee como una receta de un solo desenlace, que
+ * es exactamente lo que era: sin esto, un legado viejo dejaría de craftear.
+ */
+export function normalizeRecipe(stored: StoredRecipe): Recipe {
+  if (stored.outcomes && stored.outcomes.length > 0) {
+    return { id: stored.id, outcomes: stored.outcomes, ingredients: stored.ingredients };
+  }
+  return {
+    id: stored.id,
+    outcomes: stored.output ? [{ weight: 1, output: stored.output }] : [],
+    ingredients: stored.ingredients,
+  };
 }

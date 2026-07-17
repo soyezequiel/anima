@@ -1,7 +1,20 @@
 import { z } from 'zod';
 import type { Result } from '@anima/shared';
 import { err, ok } from '@anima/shared';
-import type { Recipe } from './recipes.js';
+import type { Components, EntityKind } from './components.js';
+import type { Recipe, RecipeIngredient, RecipeOutcome } from './recipes.js';
+
+/**
+ * Lo que la mascota propone: un arquetipo único — su idea de QUÉ quiere
+ * construir. Que no tenga desenlaces no es un olvido: con qué fidelidad le sale
+ * lo decide el mundo del otro lado de esta puerta. Entra una propuesta y sale
+ * una `Recipe`, y esa asimetría es el punto.
+ */
+export interface RecipeProposal {
+  id: string;
+  output: { kind: EntityKind; components: Components };
+  ingredients: RecipeIngredient[];
+}
 
 /**
  * La puerta por la que entra una receta inventada. Es a las recetas lo que
@@ -114,6 +127,34 @@ const recipeSchema = z
  */
 const PROTECTED_KINDS = new Set(['pet', 'food', 'tree']);
 
+/**
+ * Cómo le sale a la mascota lo que inventó. La receta que propone dice QUÉ
+ * quiere construir; con qué fidelidad le sale lo decide el mundo, y el reparto
+ * no es un detalle: un peso es infalsificable. Esta puerta puede comprobar que
+ * una idea no crea materia, pero no puede comprobar que "sale bien 9 de cada
+ * 10" — así que dejarle declarar sus propios pesos sería dejarla inventarse la
+ * suerte, la versión probabilística de aprobarse su propio examen.
+ *
+ * Una idea nueva sale peor que las recetas que el mundo ya traía: el arquetipo
+ * que propuso —ya limitado por las cotas del esquema— es el TECHO, no el
+ * promedio. Y como ningún desenlace escala por encima de 1, lo que el esquema
+ * topea sigue topeado DESPUÉS de la tirada: la calidad no es una rendija por
+ * donde colar una antorcha que caliente más que el máximo del mundo.
+ */
+function inventedOutcomes(output: {
+  kind: EntityKind;
+  components: Components;
+}): RecipeOutcome[] {
+  return [
+    { weight: 6, output: structuredClone(output), quality: { min: 0.8, max: 1 } },
+    { weight: 3, output: structuredClone(output), quality: { min: 0.5, max: 0.75 } },
+    // Sin `spares`: estrenar una idea propia cuesta el material. Que el mundo
+    // perdone un ingrediente al fallar es un gesto que se ganaron las recetas
+    // que ya existían, no la que se acaba de ocurrir.
+    { weight: 1 },
+  ];
+}
+
 export function validateRecipe(
   raw: unknown,
   existing: Recipe[] = [],
@@ -124,13 +165,13 @@ export function validateRecipe(
       `Receta inválida: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`,
     );
   }
-  const recipe = parsed.data as Recipe;
+  const proposal = parsed.data as RecipeProposal;
 
-  if (PROTECTED_KINDS.has(recipe.output.kind)) {
-    return err(`Receta inválida: no se puede fabricar "${recipe.output.kind}"`);
+  if (PROTECTED_KINDS.has(proposal.output.kind)) {
+    return err(`Receta inválida: no se puede fabricar "${proposal.output.kind}"`);
   }
-  if (existing.some((r) => r.id === recipe.id)) {
-    return err(`Receta inválida: ya existe una receta "${recipe.id}"`);
+  if (existing.some((r) => r.id === proposal.id)) {
+    return err(`Receta inválida: ya existe una receta "${proposal.id}"`);
   }
   if (existing.length >= MAX_INVENTED_RECIPES) {
     return err(`Receta inválida: este mundo ya no admite más recetas`);
@@ -138,23 +179,23 @@ export function validateRecipe(
 
   // Sin componentes, lo construido sería decoración inerte: existe y no hace
   // nada. Un objeto es lo que sus componentes le permiten hacer.
-  if (Object.keys(recipe.output.components).length === 0) {
+  if (Object.keys(proposal.output.components).length === 0) {
     return err('Receta inválida: lo construido no haría absolutamente nada');
   }
 
-  const ingredientKinds = new Set(recipe.ingredients.map((i) => i.kind));
+  const ingredientKinds = new Set(proposal.ingredients.map((i) => i.kind));
 
   // Convertir algo en más de sí mismo es duplicar materia.
-  if (ingredientKinds.has(recipe.output.kind)) {
+  if (ingredientKinds.has(proposal.output.kind)) {
     return err(
-      `Receta inválida: "${recipe.output.kind}" no puede ser ingrediente de sí mismo`,
+      `Receta inválida: "${proposal.output.kind}" no puede ser ingrediente de sí mismo`,
     );
   }
 
   // Lo que deja al romperse no puede superar lo que costó: si no, construir y
   // romper en bucle fabrica materia de la nada.
-  const totalIngredients = recipe.ingredients.reduce((sum, i) => sum + i.count, 0);
-  const drops = recipe.output.components.drops ?? [];
+  const totalIngredients = proposal.ingredients.reduce((sum, i) => sum + i.count, 0);
+  const drops = proposal.output.components.drops ?? [];
   if (drops.length > totalIngredients) {
     return err(
       `Receta inválida: deja ${drops.length} objetos al romperse pero cuesta ${totalIngredients}: crearía materia`,
@@ -166,5 +207,12 @@ export function validateRecipe(
     }
   }
 
-  return ok(recipe);
+  // Todo desenlace se construye a partir del arquetipo que acaba de pasar por
+  // aquí, así que lo validado vale para los tres: no hay forma de que salga de
+  // esta puerta un desenlace que la puerta no haya visto.
+  return ok({
+    id: proposal.id,
+    outcomes: inventedOutcomes(proposal.output),
+    ingredients: proposal.ingredients,
+  });
 }

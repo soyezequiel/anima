@@ -5,7 +5,12 @@ import type { EntityId, WorldState } from '@anima/sim-core';
 import { buildPerception, createWorld, spawn, stepWorld } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import { SkillLibrary } from '@anima/skill-runtime';
-import { CAMPFIRE_RECIPE, COLD_SCENARIOS, MVP_SCENARIOS } from '@anima/test-scenarios';
+import {
+  CAMPFIRE_RECIPE,
+  COLD_SCENARIOS,
+  MVP_SCENARIOS,
+  withoutChance,
+} from '@anima/test-scenarios';
 import { AnimaAgent, GOAL_RESTORE_WARMTH, SKILL_GET_WARM } from '../src/index.js';
 
 /**
@@ -37,7 +42,9 @@ interface ColdOptions {
 function coldWorld(options: ColdOptions = {}): { world: WorldState; petId: EntityId } {
   const world = createWorld(
     { width: 9, height: 5, seed: 1 },
-    options.recipes === false ? {} : { recipes: [CAMPFIRE_RECIPE] },
+    // Sin tirada: lo que se mide es que reaccione al frío construyendo, no que
+    // la chispa haya agarrado.
+    options.recipes === false ? {} : { recipes: [withoutChance(CAMPFIRE_RECIPE)] },
   );
   const petId = spawn(world, 'pet', {
     position: { x: 1, y: 2 },

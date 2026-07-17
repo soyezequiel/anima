@@ -145,7 +145,7 @@ describe('negativas y autonomía', () => {
 describe('construir juntando lo que falta', () => {
   const CHAIR: Recipe = {
     id: 'chair',
-    output: { kind: 'chair', components: { collider: { solid: true } } },
+    outcomes: [{ weight: 1, output: { kind: 'chair', components: { collider: { solid: true } } } }],
     ingredients: [{ kind: 'log', count: 2 }],
   };
   const order = { kind: 'craft-item', recipeId: 'chair', raw: 'construí una silla' } as const;

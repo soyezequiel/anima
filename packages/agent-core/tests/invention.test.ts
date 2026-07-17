@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { MockModelProvider } from '@anima/model-providers';
 import type { EntityId, WorldState } from '@anima/sim-core';
-import { buildPerception, createWorld, spawn, stepWorld } from '@anima/sim-core';
+import { buildPerception, createWorld, recipeProduces, spawn, stepWorld } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import { SkillLibrary } from '@anima/skill-runtime';
 import { COLD_SCENARIOS, MVP_SCENARIOS } from '@anima/test-scenarios';
@@ -83,7 +83,9 @@ describe('Ánima inventa recetas', () => {
     // El atajo no entró al mundo — ni entonces ni después, aunque más tarde se
     // le ocurriera algo válido. Ninguna receta suya fabrica comida.
     expect(world.recipes.some((r) => r.id === 'bocado')).toBe(false);
-    expect(world.recipes.some((r) => r.output.components.edible !== undefined)).toBe(false);
+    // Ninguno de sus desenlaces, tampoco: el atajo no puede colarse por el
+    // resultado raro de una tirada con suerte.
+    expect(world.recipes.some((r) => recipeProduces(r, 'edible'))).toBe(false);
   });
 
   it('aprende del rechazo: corrige en vez de insistir, y el mundo acepta', async () => {

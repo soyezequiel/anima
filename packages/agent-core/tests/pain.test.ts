@@ -4,7 +4,7 @@ import type { EntityId, WorldState } from '@anima/sim-core';
 import { buildPerception, createWorld, spawn, stepWorld } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import { SkillLibrary } from '@anima/skill-runtime';
-import { CAMPFIRE_RECIPE, MVP_SCENARIOS } from '@anima/test-scenarios';
+import { CAMPFIRE_RECIPE, MVP_SCENARIOS, withoutChance } from '@anima/test-scenarios';
 import { AnimaAgent } from '../src/index.js';
 
 /**
@@ -15,7 +15,12 @@ import { AnimaAgent } from '../src/index.js';
  */
 
 function worldWithPet(): { world: WorldState; petId: EntityId } {
-  const world = createWorld({ width: 9, height: 5, seed: 1 }, { recipes: [CAMPFIRE_RECIPE] });
+  // Sin tirada: el reflejo ante el fuego no puede depender de que el fuego
+  // haya prendido esta vez.
+  const world = createWorld(
+    { width: 9, height: 5, seed: 1 },
+    { recipes: [withoutChance(CAMPFIRE_RECIPE)] },
+  );
   const petId = spawn(world, 'pet', {
     position: { x: 4, y: 2 },
     collider: { solid: true },

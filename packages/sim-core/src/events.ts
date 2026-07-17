@@ -10,6 +10,8 @@ export type SimEventType =
   | 'item.dropped'
   | 'item.consumed'
   | 'item.crafted'
+  /** El intento salió mal: gastó ingredientes y no produjo nada. */
+  | 'craft.failed'
   | 'recipe.learned'
   | 'recipe.rejected'
   | 'tool.broke'
