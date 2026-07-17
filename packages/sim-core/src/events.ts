@@ -14,6 +14,12 @@ export type SimEventType =
   | 'craft.failed'
   | 'recipe.learned'
   | 'recipe.rejected'
+  /** El mundo aceptó una interacción propuesta: desde ahora es una regla. */
+  | 'interaction.learned'
+  /** El mundo rechazó la interacción propuesta, con el motivo. */
+  | 'interaction.rejected'
+  /** Una interacción aprendida acaba de ejecutarse sobre un objetivo. */
+  | 'interaction.performed'
   | 'tool.broke'
   | 'agent.spoke'
   | 'entity.spawned'

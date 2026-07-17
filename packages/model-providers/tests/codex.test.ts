@@ -105,6 +105,7 @@ describe('CodexModelProvider', () => {
       required: [
         'action',
         'targetKind',
+        'verb',
         'amount',
         'directions',
         'skillName',

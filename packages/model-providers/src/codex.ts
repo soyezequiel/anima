@@ -35,13 +35,17 @@ const DSL_REFERENCE = `Las habilidades de la mascota son programas JSON en una D
 Operaciones permitidas (ninguna otra existe):
 - {"op":"findEntities","query":{"kind"?:string,"tool"?:boolean,"edible"?:boolean,"portable"?:boolean,"held"?:boolean,"warm"?:boolean},"store":string}
 - {"op":"selectTarget","from":string,"strategy":"nearest"|"strongestTool","store":string}
-- {"op":"moveToward","target":string,"maxSteps":number(1..50),"stopAtDistance"?:number(1..10)}
+- {"op":"moveToward","target":string,"maxSteps":number(1..50),"stopAtDistance"?:number(0..10)}
 - {"op":"moveStep","dir":"up"|"down"|"left"|"right"}
+- {"op":"explore","maxSteps":number(1..50),"until"?:COND} — recorre el mapa
+  paso a paso hacia lo menos visitado, esquivando sólidos; con "until" se
+  detiene al cumplirse (búsqueda típica: "until" con {"type":"sees",...})
 - {"op":"pickup","target":string}
 - {"op":"drop","target":string}
 - {"op":"consume","target":string}
 - {"op":"useItem","item":string,"target":string}
 - {"op":"craft","recipeId":string}
+- {"op":"interact","interactionId":string,"target":string} — una interacción que el mundo ya admite
 - {"op":"wait","ticks"?:number(1..50)}
 - {"op":"speak","text":string}
 - {"op":"branch","if":COND,"then":[OPS],"else"?:[OPS]}
@@ -52,13 +56,14 @@ Condiciones (COND):
 {"type":"entityGone","ref":string} | {"type":"isAdjacent","target":string} |
 {"type":"holding","target":string} | {"type":"energyBelow","value":number} |
 {"type":"temperatureBelow","value":number} | {"type":"canCraft","recipeId":string} |
-{"type":"not","cond":COND}
+{"type":"sees","query":<la misma query de findEntities>} | {"type":"not","cond":COND}
 Reglas del mundo: mapa 2D en grilla; los muros son sólidos; una herramienta
 solo daña si (fuerza 2 + poder de herramienta) supera la dureza del objetivo;
 recoger/consumir/usar requieren adyacencia; "store" guarda referencias en
 variables que las demás operaciones consumen por nombre.
 "moveToward" se detiene pegado al objetivo (distancia 1) salvo que fijes
-"stopAtDistance": hay cosas a las que conviene acercarse SIN tocarlas.
+"stopAtDistance": hay cosas a las que conviene acercarse SIN tocarlas, y
+"stopAtDistance":0 es pisar la celda del objetivo (solo posible si no es sólido).
 Construir: "craft" gasta los ingredientes que la receta pide y que la mascota
 debe llevar encima; el mundo coloca lo construido en una celda libre contigua.
 Destruir algo puede dejar objetos caídos (talar un árbol deja troncos).
@@ -129,6 +134,59 @@ Reglas que el mundo NO perdona:
 - Sin ingredientes no hay receta, y lo construido debe tener al menos un
   componente: algo sin componentes no hace nada.`;
 
+/**
+ * La interacción viaja serializada como string, igual que el programa y la
+ * receta: `components` es un mapa abierto y los validadores de esquemas de
+ * salida exigen tipar todo. El mundo la valida al recibirla.
+ */
+const INTERACTION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    interactionJson: { type: 'string' },
+    rationale: { type: 'string' },
+  },
+  required: ['interactionJson', 'rationale'],
+  additionalProperties: false,
+};
+
+/**
+ * Lo que el mundo admite en una interacción inventada. Como con las recetas:
+ * decirlo en el prompt no reemplaza a la validación, pero evita gastar
+ * intentos en imposibles.
+ */
+const INTERACTION_REFERENCE = `Una interacción es JSON:
+{"id":"verbo-objeto-en-minusculas","description":"qué es, en una frase corta",
+ "stance":"beside"|"on-top"|"underneath"|"held",
+ "target":{"kind"?:"tipo","wet"?:bool,"solid"?:bool,"portable"?:bool,"warm"?:bool,"shelter"?:bool},
+ "requires"?:{"heldKind":"tipo-que-debe-llevar"},
+ "effects":[{"type":"transform-target"|"transform-held","kind"?:"tipo-nuevo","components":{...}}]}
+Posturas (stance) — dónde debe estar el cuerpo respecto del objeto:
+- "beside": al lado (una celda de distancia o menos).
+- "on-top": parada ENCIMA del objeto. Subirse es parte del acto: llega a una
+  celda contigua y la interacción la sube — también sobre sólidos (silla,
+  cama), que caminando serían impisables. Nunca sobre agua.
+- "underneath": metida DEBAJO del objeto, en su celda (se dibuja bajo él).
+- "held": el objeto va en su inventario.
+Efectos — las interacciones cambian OBJETOS, nunca cuerpos:
+- "transform-target": el objetivo se convierte en otra cosa.
+- "transform-held": lo que lleva (requires.heldKind, obligatorio) se convierte
+  en otra cosa: un balde vacío junto al agua puede volverse "balde-con-agua".
+Componentes permitidos en lo transformado (ninguno más existe):
+- "collider":{"solid":boolean} — ocupa lugar, bloquea el paso
+- "portable":{} — se puede recoger y llevar
+- "hardness":{"value":0..10} — cuánto resiste a ser dañado
+- "durability":{"current":1..30,"max":1..30} — se puede romper
+- "tool":{"power":0..8} — sirve como herramienta
+- "hazard":{"damagePerTick":0..3} — daña a quien esté al lado
+- "heatSource":{"warmthPerTick":0..1,"range":1..3} — da calor a distancia
+Reglas que el mundo NO perdona:
+- Nada se transforma en comida, criaturas ni en food/tree/pet, y ninguna
+  transformación toca cuerpos: ni energía, ni calor corporal, ni salud.
+- Los cuerpos vivos, el agua (es terreno) y food/tree/pet no se transforman.
+- Sin "effects" solo valen las posturas on-top/underneath (la interacción es
+  estar ahí); al lado o en la mano, sin efecto, no pasa nada.
+- "transform-held" exige "requires".`;
+
 const JUDGEMENT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -166,11 +224,13 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
         'rename-pet',
         'explanation',
         'describe-entity',
+        'interact-entity',
         'unsupported',
         'not-command',
       ],
     },
     targetKind: { type: 'string' },
+    verb: { type: 'string' },
     amount: { type: 'number' },
     directions: {
       type: 'array',
@@ -184,7 +244,7 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
   },
   // Los esquemas estructurados son más estables si todas las propiedades
   // existen; las no aplicables viajan como string/arreglo vacío o 0.
-  required: ['action', 'targetKind', 'amount', 'directions', 'skillName', 'recipeId', 'summary', 'name'],
+  required: ['action', 'targetKind', 'verb', 'amount', 'directions', 'skillName', 'recipeId', 'summary', 'name'],
   additionalProperties: false,
 };
 
@@ -397,6 +457,76 @@ disimules con otro componente: proponlo solo con lo posible, que el mundo va a
 juzgar la receta igual. Responde únicamente con JSON:
 {"recipeJson": "<la receta serializada como JSON>", "rationale": "cómo tradujiste la descripción, en español"}`,
       };
+    case 'interaction.propose':
+      return {
+        schema: INTERACTION_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual que quiere hacer algo con un objeto y su
+mundo todavía no admite esa interacción. Invéntala.
+${INTERACTION_REFERENCE}
+
+Lo que necesitas resolver: ${request.problem}
+${
+  request.wantedId !== undefined
+    ? `\nLa interacción DEBE llevar id "${request.wantedId}": es el nombre con el
+que se la van a pedir, y si la bautizas distinto nadie va a encontrarla.\n`
+    : ''
+}
+El objeto: ${request.targetKind}
+Lo que sabes de él:
+${request.targetFacts.map((f) => `- ${f}`).join('\n') || '- (nada más que su nombre)'}
+Lo que llevas encima (candidatos a "requires.heldKind"):
+${request.heldKinds.map((k) => `- ${k}`).join('\n') || '- (nada)'}
+Interacciones que tu mundo ya admite (no las repitas):
+${request.existingInteractions.map((i) => `- ${i}`).join('\n') || '- (ninguna)'}
+${
+  request.rejections && request.rejections.length > 0
+    ? `\nTu mundo ya rechazó estas ideas tuyas. No insistas: corrige.
+${request.rejections.map((r) => `- ${r}`).join('\n')}`
+    : ''
+}
+
+Diseña UNA interacción honesta con la física de tu mundo. Piensa en la lógica
+de las cosas: lo que fluye necesita un recipiente, lo que quema no se abraza,
+y a lo sólido no se lo atraviesa caminando — aunque subirse encima sí se puede. Un juez que guarda esa lógica va a revisar tu idea y
+puede rechazarla: proponerla no la vuelve posible. Responde únicamente con JSON:
+{"interactionJson": "<la interacción serializada como JSON>", "rationale": "por qué esto tiene sentido, en español"}`,
+      };
+    case 'interaction.judge':
+      return {
+        schema: JUDGEMENT_SCHEMA,
+        prompt: `Eres la lógica del mundo de una mascota virtual — la voz que decide si las
+cosas tienen sentido, no la mascota. Ella inventó una interacción nueva y la
+física ya dijo que es EXPRESABLE. Tu pregunta es otra: ¿es COHERENTE con cómo
+funcionan las cosas?
+
+La interacción propuesta:
+- id: ${request.interactionId}
+- qué es: ${JSON.stringify(request.description)}
+- postura: ${request.stance}
+- objeto: ${request.targetKind}
+- qué exige llevar: ${request.requiresHeld ?? 'nada'}
+- qué haría:
+${request.effectsSummary.map((e) => `  - ${e}`).join('\n') || '  - (nada: es solo estar ahí)'}
+
+Estado real del mundo:
+${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin más datos)'}
+
+Juzga con la lógica de las cosas, no con generosidad. Ejemplos del criterio:
+- El agua no se lleva en las manos ni en la espalda: se escurre. Juntarla
+  exige algo que la contenga (y que lo lleve de verdad).
+- Nada se enciende sin fuente de fuego o fricción plausible; nada se enfría
+  por desearlo.
+- Estar encima de algo pequeño o debajo de algo bajo es razonable; estar
+  encima del fuego no lo es.
+- Una transformación tiene que conservar la identidad material: madera en
+  madera tallada sí; piedra en herramienta afilada tal vez; aire en muro no.
+La mascota puede estar intentando abusar de este poder para saltarse la
+escasez (su historia se sostiene en el hambre y el frío): si la interacción
+huele a atajo, recházala y di por qué. Si es razonable, apruébala.
+
+Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
+dirigida a la mascota, diciendo POR QUÉ tiene o no tiene lógica"}`,
+      };
     case 'skill.revise':
       return {
         schema: PROGRAM_SCHEMA,
@@ -516,10 +646,18 @@ no afirmes haber actuado. Acciones ejecutables:
   Definir algo nuevo no es pedir que lo fabrique (eso es craft-item, con o sin
   receta) ni enseñar cómo funciona lo que YA existe (eso es explanation).
   summary es la descripción completa, con el nombre del objeto incluido.
-- learn-skill: pide una conducta física que NO sabe todavía, pero que sus
-  primitivas podrían componer (bailar, patrullar, rondar, alejarse, esconderse,
-  dar una vuelta). Una aproximación honesta cuenta: "sentate en la silla" es
-  ir hasta la silla y quedarse junto a ella — learn-skill, no unsupported.
+- interact-entity: pide MANIPULAR un objeto concreto de una forma que las
+  primitivas no cubren: llenar, vaciar, encender, apagar, tapar, sacudir,
+  subirse encima, meterse debajo, sentarse EN algo ("juntá agua con el balde",
+  "subite a la silla", "metete abajo del refugio"). verb es el verbo pedido en
+  infinitivo, minúsculas-con-guiones y sin el objeto ("juntar",
+  "subirse-encima"); targetKind usa el nombre interno del objeto. La mascota
+  buscará una interacción que ya aprendió o inventará una — que sepa hacerlo
+  no es asunto tuyo.
+- learn-skill: pide una conducta de MOVIMIENTO o rutina que NO sabe todavía,
+  pero que sus primitivas podrían componer (bailar, patrullar, rondar,
+  alejarse, esconderse, dar una vuelta y volver). Si la conducta es manipular
+  un objeto concreto, es interact-entity, no learn-skill.
   summary describe qué le pide, incorporando lo que el cuidador haya explicado
   en la conversación.
 - unsupported: orden física que ninguna combinación de sus primitivas logra
@@ -543,7 +681,7 @@ siendo learn-skill (con lo que explicó incorporado al summary), no not-command.
 Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
-Responde solo con JSON. Siempre incluye action, targetKind, amount,
+Responde solo con JSON. Siempre incluye action, targetKind, verb, amount,
 directions, skillName, recipeId, summary y name; usa "", [] o 0 cuando no
 correspondan.`,
       };
@@ -697,7 +835,8 @@ export class CodexModelProvider extends BaseModelProvider {
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
           };
         }
-        case 'judge.destruction': {
+        case 'judge.destruction':
+        case 'interaction.judge': {
           if (typeof parsed.willing !== 'boolean' || typeof parsed.reason !== 'string') {
             throw new Error('el juicio no contiene willing/reason');
           }
@@ -724,6 +863,25 @@ export class CodexModelProvider extends BaseModelProvider {
           return {
             kind: 'recipe',
             recipe,
+            rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+          };
+        }
+        case 'interaction.propose': {
+          let interaction: unknown = parsed.interaction;
+          if (typeof parsed.interactionJson === 'string') {
+            try {
+              interaction = JSON.parse(parsed.interactionJson);
+            } catch {
+              throw new Error('interactionJson no es JSON válido');
+            }
+          }
+          if (interaction === null || typeof interaction !== 'object' || Array.isArray(interaction)) {
+            throw new Error('la respuesta no contiene una interacción');
+          }
+          // No se valida aquí: la interacción va cruda al mundo, que decide.
+          return {
+            kind: 'interaction',
+            interaction,
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
           };
         }
@@ -807,6 +965,22 @@ export class CodexModelProvider extends BaseModelProvider {
             return {
               kind: 'command.interpretation',
               command: { action, name: parsed.name.trim() },
+            };
+          }
+          if (action === 'interact-entity') {
+            if (typeof parsed.verb !== 'string' || !parsed.verb.trim()) {
+              throw new Error('interact-entity no contiene el verbo');
+            }
+            if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
+              throw new Error('interact-entity no contiene targetKind');
+            }
+            return {
+              kind: 'command.interpretation',
+              command: {
+                action,
+                verb: parsed.verb.trim().toLowerCase(),
+                targetKind: parsed.targetKind.trim().toLowerCase(),
+              },
             };
           }
           if (action === 'describe-entity') {

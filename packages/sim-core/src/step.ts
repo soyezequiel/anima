@@ -4,7 +4,9 @@ import { DIRECTION_DELTAS } from './actions.js';
 import type { Entity, EntityId } from './components.js';
 import type { SimEvent } from './events.js';
 import { simEvent } from './events.js';
-import { validateRecipe } from './recipe-validation.js';
+import { matchesInteractionTarget } from './interactions.js';
+import { validateInteraction } from './interaction-validation.js';
+import { PROTECTED_KINDS, validateRecipe } from './recipe-validation.js';
 import {
   findRecipe,
   missingIngredients,
@@ -320,7 +322,175 @@ function resolveAction(
     case 'proposeRecipe':
       resolveProposeRecipe(world, actor, intent, events);
       return;
+    case 'proposeInteraction':
+      resolveProposeInteraction(world, actor, intent, events);
+      return;
+    case 'interact':
+      resolveInteract(world, actor, intent, events);
+      return;
   }
+}
+
+/**
+ * La mascota propone una interacción; el mundo la valida y decide, igual que
+ * con las recetas. El juicio de coherencia (la IA Dios, ADR 0027) ocurre antes
+ * y en el agente, pero no cuenta aquí: no existe camino a `world.interactions`
+ * que se salte esta puerta.
+ */
+function resolveProposeInteraction(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'proposeInteraction' }>,
+  events: SimEvent[],
+): void {
+  const validated = validateInteraction(intent.interaction, world.interactions);
+  if (!validated.ok) {
+    events.push(
+      simEvent('interaction.rejected', world.tick, {
+        actorId: actor.id,
+        reason: validated.error,
+      }),
+    );
+    resolved(world, events, actor.id, intent, false, { reason: validated.error });
+    return;
+  }
+  world.interactions.push(validated.value);
+  events.push(
+    simEvent('interaction.learned', world.tick, {
+      actorId: actor.id,
+      interactionId: validated.value.id,
+      description: validated.value.description,
+      stance: validated.value.stance,
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, { interactionId: validated.value.id });
+}
+
+/**
+ * Ejecutar una interacción que el mundo ya admite. El mundo comprueba TODO de
+ * nuevo — postura, objetivo, lo que hay que llevar — porque la interacción es
+ * una regla, no un permiso: saberla no exime de estar donde hay que estar.
+ */
+function resolveInteract(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'interact' }>,
+  events: SimEvent[],
+): void {
+  const interaction = world.interactions.find((i) => i.id === intent.interactionId);
+  if (!interaction) {
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'unknown-interaction',
+      interactionId: intent.interactionId,
+    });
+    return;
+  }
+  const target = getEntity(world, intent.targetId);
+  if (!target) {
+    resolved(world, events, actor.id, intent, false, { reason: 'target-unavailable' });
+    return;
+  }
+  if (!matchesInteractionTarget(target, interaction.target)) {
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'target-mismatch',
+      interactionId: interaction.id,
+      targetKind: target.kind,
+    });
+    return;
+  }
+
+  const actorPos = actor.components.position;
+  const targetPos = target.components.position;
+  if (interaction.stance === 'held') {
+    if (!isInInventory(world, actor.id, target.id)) {
+      resolved(world, events, actor.id, intent, false, { reason: 'not-holding-target' });
+      return;
+    }
+  } else if (interaction.stance === 'beside') {
+    if (!actorPos || !targetPos || !isAdjacent(actorPos, targetPos)) {
+      resolved(world, events, actor.id, intent, false, { reason: 'out-of-reach' });
+      return;
+    }
+  } else {
+    // on-top / underneath: terminar en la celda del objeto. Llegar a una celda
+    // adyacente alcanza, porque subirse (o meterse debajo) ES parte del acto:
+    // el movimiento nunca deja PISAR un sólido — nadie atraviesa una silla
+    // caminando —, pero treparse a ella es exactamente lo que esta postura
+    // significa. Sin esto, on-top sobre cualquier sólido sería imposible por
+    // definición y "subite a la silla" (el ejemplo del ADR 0027) no existiría.
+    // Para el motor encima/debajo son la misma condición; la diferencia es de
+    // dibujo y el evento la conserva.
+    if (!actorPos || !targetPos || !isAdjacent(actorPos, targetPos)) {
+      resolved(world, events, actor.id, intent, false, { reason: 'not-on-target' });
+      return;
+    }
+    // El agua no sostiene a nadie: no hay postura que valga sobre ella.
+    if (target.components.water) {
+      resolved(world, events, actor.id, intent, false, { reason: 'target-not-mountable' });
+      return;
+    }
+    actor.components.position = { x: targetPos.x, y: targetPos.y };
+  }
+
+  let heldRequired: Entity | null = null;
+  if (interaction.requires) {
+    const heldId = (actor.components.inventory?.items ?? []).find(
+      (id) => getEntity(world, id)?.kind === interaction.requires!.heldKind,
+    );
+    heldRequired = heldId ? getEntity(world, heldId) ?? null : null;
+    if (!heldRequired) {
+      resolved(world, events, actor.id, intent, false, {
+        reason: 'missing-required-item',
+        requiredKind: interaction.requires.heldKind,
+      });
+      return;
+    }
+  }
+
+  // Guardia de ejecución que la puerta no puede dar: la puerta ve tipos y
+  // rasgos declarados, pero recién aquí se sabe QUÉ entidad es. Los cuerpos
+  // vivos, el agua (terreno) y lo protegido (los mismos PROTECTED_KINDS de
+  // las recetas: el recurso no se transforma) quedan intactos.
+  const transformsTarget = interaction.effects.some((e) => e.type === 'transform-target');
+  if (
+    transformsTarget &&
+    (target.components.agent || target.components.water || PROTECTED_KINDS.has(target.kind))
+  ) {
+    resolved(world, events, actor.id, intent, false, {
+      reason: 'target-immutable',
+      targetKind: target.kind,
+    });
+    return;
+  }
+
+  const transformed: { id: EntityId; from: string; to: string }[] = [];
+  for (const effect of interaction.effects) {
+    const subject = effect.type === 'transform-target' ? target : heldRequired;
+    if (!subject) continue;
+    const fromKind = subject.kind;
+    const keepPosition = subject.components.position;
+    subject.kind = effect.kind ?? subject.kind;
+    subject.components = {
+      ...structuredClone(effect.components),
+      ...(keepPosition ? { position: keepPosition } : {}),
+    };
+    transformed.push({ id: subject.id, from: fromKind, to: subject.kind });
+  }
+
+  events.push(
+    simEvent('interaction.performed', world.tick, {
+      actorId: actor.id,
+      interactionId: interaction.id,
+      targetId: target.id,
+      targetKind: target.kind,
+      stance: interaction.stance,
+      transformed,
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, {
+    interactionId: interaction.id,
+    targetId: target.id,
+  });
 }
 
 /**

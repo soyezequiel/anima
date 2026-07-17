@@ -41,6 +41,29 @@ export interface PetView {
   /** Solo en mundos con frío: null donde la mascota no siente temperatura. */
   temperature: { current: number; max: number } | null;
   inventory: { id: string; kind: string }[];
+  /**
+   * Postura sobre un objeto tras una interacción (ADR 0027): comparte celda
+   * con él, encima o debajo. El dibujo decide quién tapa a quién; null cuando
+   * está simplemente parada en el suelo.
+   */
+  mount: { targetId: string; mode: 'on-top' | 'underneath' } | null;
+}
+
+/**
+ * Una interacción que el mundo admite (ADR 0027): la inventó Ánima, la validó
+ * la física, la aprobó la IA Dios, y quedó guardada — reusable sin costo.
+ */
+export interface InteractionView {
+  id: string;
+  /** Qué es, en voz humana: "juntar agua del estanque con un balde". */
+  description: string;
+  stance: 'beside' | 'on-top' | 'underneath' | 'held';
+  /** La postura en voz humana: "al lado", "encima", "debajo", "en la mano". */
+  stanceLabel: string;
+  /** A qué se aplica, en voz humana. */
+  targetLabel: string;
+  /** Qué exige llevar encima, en voz humana; null si nada. */
+  requiresLabel: string | null;
 }
 
 /** Una característica medible de un tipo: "Calor" → "0.3 por tick · alcance 2". */
@@ -187,6 +210,13 @@ export interface GameView {
   aiProvider: string;
   /** true mientras una consulta al modelo real está en vuelo. */
   aiBusy: boolean;
+  /**
+   * Si el proveedor simulado propone primero sus ideas equivocadas (ADR 0006,
+   * adenda): el ciclo fallar→corregir a la vista. Es una preferencia guardada,
+   * no el estado de un proveedor: existe (y se puede leer) aunque ahora mismo
+   * piense con Codex — quien decide si aplica es `aiProvider`.
+   */
+  mockImperfect: boolean;
   identity: { name: string; generation: number; ancestorId: string | null };
   /** Informe de legado cuando la mascota está muerta; null en vida. */
   death: LegacyReport | null;
@@ -195,6 +225,8 @@ export interface GameView {
   entities: EntityView[];
   /** Catálogo de tipos de objeto: lo que hay, lo que lleva y lo construible. */
   items: ItemView[];
+  /** Interacciones aprendidas del mundo (ADR 0027), reusables sin costo. */
+  interactions: InteractionView[];
   pet: PetView | null;
   goals: GoalView[];
   currentGoal: GoalView | null;

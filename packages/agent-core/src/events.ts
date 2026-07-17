@@ -30,6 +30,14 @@ export type AgentEventType =
   | 'recipe.learned'
   /** El mundo lo rechazó, con el motivo. Imaginarlo no lo vuelve posible. */
   | 'recipe.rejected'
+  /** Se le ocurrió una interacción que su mundo no admitía (ADR 0027). */
+  | 'interaction.proposed'
+  /** El veredicto de la IA Dios: si la interacción tiene lógica, y por qué. */
+  | 'interaction.judged'
+  /** El mundo la aceptó: es una regla, y no habrá que inventarla de nuevo. */
+  | 'interaction.learned'
+  /** La puerta o el mundo la rechazaron, con el motivo. */
+  | 'interaction.rejected'
   | 'memory.created'
   | 'memory.consolidated'
   | 'hypothesis.updated'

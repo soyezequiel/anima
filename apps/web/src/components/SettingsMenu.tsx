@@ -199,6 +199,36 @@ export function SettingsMenu({
         {codexMissing && !usingCodex && (
           <small>No se encontró el CLI de Codex en esta máquina (npm i -g @openai/codex).</small>
         )}
+        {/* Las respuestas tontas son del simulado (ADR 0006), pero el
+            interruptor se queda a la vista igual con Codex encendido: una
+            opción escondida es una opción que no existe. Deshabilitado y
+            diciendo por qué, como el de Codex cuando falta el CLI. */}
+        <div className="ai-toggle">
+          <label htmlFor="mock-imperfect-toggle">
+            <span>Respuestas tontas</span>
+            <small>
+              {usingCodex
+                ? 'Solo aplican al modelo simulado; ahora la mascota piensa con Codex.'
+                : view.mockImperfect
+                  ? 'El simulado propone primero un atajo imposible y aprende del rechazo del mundo: el ciclo completo, a la vista.'
+                  : 'Apagadas: el simulado propone directo la idea corregida, sin el desvío del error.'}
+            </small>
+          </label>
+          <input
+            id="mock-imperfect-toggle"
+            type="checkbox"
+            role="switch"
+            data-testid="mock-imperfect-toggle"
+            checked={view.mockImperfect}
+            disabled={usingCodex}
+            title={
+              usingCodex
+                ? 'Solo aplica al modelo simulado: apaga «Pensar con Codex» para usarlo'
+                : 'Primeras ideas equivocadas a propósito: así se ve cómo el mundo la corrige'
+            }
+            onChange={(event) => session.setMockImperfect(event.currentTarget.checked)}
+          />
+        </div>
         {phase === 'waiting' && <small className="muted">esperando autorización…</small>}
         {phase === 'error' && (
           <span className="account-error" data-testid="ai-error">

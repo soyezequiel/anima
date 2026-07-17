@@ -231,7 +231,9 @@ describe('«construí una fogata con esos troncos»', () => {
     await say(agent, perception(), 'construí una casa');
 
     const said: string[] = [];
-    for (let i = 0; i < 30; i++) {
+    // Margen amplio: ahora un pedido del cuidador sale a RECORRER el mapa
+    // buscando el ingrediente que no ve antes de dar el "no hay" por cierto.
+    for (let i = 0; i < 140; i++) {
       const intent = await agent.think(perception());
       if (!intent) continue;
       if (intent.type === 'speak') said.push(intent.text);

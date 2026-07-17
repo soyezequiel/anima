@@ -48,27 +48,37 @@ export const MAX_INVENTED_RECIPES = 12;
  * - `position`: la pone el mundo al construir, no la receta.
  * - `dead`: no tiene sentido en algo que nace.
  */
+/**
+ * Las cotas de lo inventable, compartidas entre las dos puertas: lo que una
+ * receta puede producir y aquello en lo que una interacción puede transformar
+ * un objeto son EL MISMO techo. Si vivieran en dos tablas, tarde o temprano
+ * divergerían y una de las dos sería la rendija.
+ */
+export const INVENTED_COMPONENT_BOUNDS = {
+  collider: z.object({ solid: z.boolean() }).strict().optional(),
+  portable: z.object({}).strict().optional(),
+  hardness: z.object({ value: z.number().min(0).max(10) }).strict().optional(),
+  durability: z
+    .object({ current: z.number().int().min(1).max(30), max: z.number().int().min(1).max(30) })
+    .strict()
+    .refine((d) => d.current <= d.max, { message: 'current no puede superar max' })
+    .optional(),
+  // Acotado al martillo: no puede inventar una herramienta mejor que la
+  // mejor que su mundo ya tiene.
+  tool: z.object({ power: z.number().min(0).max(8) }).strict().optional(),
+  hazard: z.object({ damagePerTick: z.number().min(0).max(3) }).strict().optional(),
+  heatSource: z
+    .object({
+      warmthPerTick: z.number().min(0).max(1),
+      range: z.number().int().min(1).max(3),
+    })
+    .strict()
+    .optional(),
+};
+
 const outputComponentsSchema = z
   .object({
-    collider: z.object({ solid: z.boolean() }).strict().optional(),
-    portable: z.object({}).strict().optional(),
-    hardness: z.object({ value: z.number().min(0).max(10) }).strict().optional(),
-    durability: z
-      .object({ current: z.number().int().min(1).max(30), max: z.number().int().min(1).max(30) })
-      .strict()
-      .refine((d) => d.current <= d.max, { message: 'current no puede superar max' })
-      .optional(),
-    // Acotado al martillo: no puede inventar una herramienta mejor que la
-    // mejor que su mundo ya tiene.
-    tool: z.object({ power: z.number().min(0).max(8) }).strict().optional(),
-    hazard: z.object({ damagePerTick: z.number().min(0).max(3) }).strict().optional(),
-    heatSource: z
-      .object({
-        warmthPerTick: z.number().min(0).max(1),
-        range: z.number().int().min(1).max(3),
-      })
-      .strict()
-      .optional(),
+    ...INVENTED_COMPONENT_BOUNDS,
     drops: z
       .array(
         z
@@ -123,9 +133,10 @@ const recipeSchema = z
 
 /**
  * Tipos que la mascota nunca puede fabricar: son su propio cuerpo o el recurso
- * del que depende. Inventar "food" con otro nombre es el mismo agujero.
+ * del que depende. Inventar "food" con otro nombre es el mismo agujero. Se
+ * exporta porque las interacciones tampoco pueden transformar nada EN esto.
  */
-const PROTECTED_KINDS = new Set(['pet', 'food', 'tree']);
+export const PROTECTED_KINDS = new Set(['pet', 'food', 'tree']);
 
 /**
  * Cómo le sale a la mascota lo que inventó. La receta que propone dice QUÉ

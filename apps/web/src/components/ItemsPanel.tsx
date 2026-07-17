@@ -115,6 +115,35 @@ export function ItemsPanel({ view }: { view: GameView }) {
           <ItemCard key={item.kind} item={item} />
         ))}
       </ul>
+      <h3>Interacciones aprendidas ({view.interactions.length})</h3>
+      {view.interactions.length === 0 && (
+        <p className="muted" data-testid="no-interactions">
+          Todavía no hay interacciones: aparecen cuando la mascota inventa una forma nueva de usar
+          un objeto, la física la admite y la IA Dios la aprueba. Una vez aprendida, la reusa sin
+          volver a inventarla.
+        </p>
+      )}
+      <ul className="list">
+        {view.interactions.map((interaction) => (
+          <li
+            key={interaction.id}
+            className="item-card"
+            data-testid="interaction-entry"
+            data-interaction={interaction.id}
+          >
+            <div className="item-head item-head-plain">
+              <span className="item-head-row">
+                <strong>{interaction.description}</strong>
+                <span className="pill pill-origin-invented">inventada (IA)</span>
+              </span>
+              <span className="muted item-does">
+                {`postura: ${interaction.stanceLabel} · objetivo: ${interaction.targetLabel}`}
+                {interaction.requiresLabel ? ` · lleva: ${interaction.requiresLabel}` : ''}
+              </span>
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }

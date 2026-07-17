@@ -52,6 +52,55 @@ describe('MockModelProvider', () => {
     }
   });
 
+  it('con la imperfección apagada, la primera idea ya es la corregida', async () => {
+    const provider = new MockModelProvider({ imperfect: false });
+
+    const proposal = await provider.complete({
+      kind: 'skill.propose',
+      skillName: 'x',
+      problem: 'alimento bloqueado',
+      context: [],
+    });
+    expect(JSON.stringify(proposal)).toContain('strongestTool');
+
+    // Sin el atajo de inventar comida: propone directo lo honesto.
+    const recipe = await provider.complete({
+      kind: 'recipe.propose',
+      problem: 'tengo frío',
+      materials: ['log (lo llevo encima)'],
+      existingRecipes: [],
+    });
+    expect(recipe.kind).toBe('recipe');
+    if (recipe.kind === 'recipe') {
+      expect((recipe.recipe as { id: string }).id).toBe('hoguera-simple');
+    }
+  });
+
+  it('la imperfección se puede apagar y encender en vivo', async () => {
+    const provider = new MockModelProvider();
+    expect(provider.isImperfect()).toBe(true);
+    provider.setImperfect(false);
+    const recipe = await provider.complete({
+      kind: 'recipe.propose',
+      problem: 'tengo frío',
+      materials: ['log (lo llevo encima)'],
+      existingRecipes: [],
+    });
+    if (recipe.kind === 'recipe') {
+      expect((recipe.recipe as { id: string }).id).toBe('hoguera-simple');
+    }
+    provider.setImperfect(true);
+    const shortcut = await provider.complete({
+      kind: 'recipe.propose',
+      problem: 'tengo frío',
+      materials: ['log (lo llevo encima)'],
+      existingRecipes: [],
+    });
+    if (shortcut.kind === 'recipe') {
+      expect((shortcut.recipe as { id: string }).id).toBe('bocado');
+    }
+  });
+
   it('cuenta las llamadas por tipo', async () => {
     const provider = new MockModelProvider();
     await provider.complete({ kind: 'dialogue', topic: 'hola', facts: [] });

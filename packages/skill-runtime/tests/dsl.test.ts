@@ -12,6 +12,27 @@ describe('validación de la DSL', () => {
     expect(result.ok).toBe(true);
   });
 
+  it('acepta explore con until sees, con los mismos límites de la repetición', () => {
+    const ok = validateSkillProgram([
+      {
+        op: 'explore',
+        maxSteps: 50,
+        until: { type: 'sees', query: { kind: 'branch', held: false } },
+      },
+    ]);
+    expect(ok.ok).toBe(true);
+
+    const tooLong = validateSkillProgram([
+      { op: 'explore', maxSteps: MAX_REPEAT_LIMIT + 1 },
+    ]);
+    expect(tooLong.ok).toBe(false);
+
+    const emptyQuery = validateSkillProgram([
+      { op: 'explore', maxSteps: 10, until: { type: 'sees', query: {} } },
+    ]);
+    expect(emptyQuery.ok).toBe(false);
+  });
+
   it('rechaza operaciones fuera de la lista cerrada', () => {
     const result = validateSkillProgram([{ op: 'evalJavascript', code: 'alert(1)' }]);
     expect(result.ok).toBe(false);

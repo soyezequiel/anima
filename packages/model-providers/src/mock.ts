@@ -11,19 +11,44 @@ import { BaseModelProvider } from './types.js';
  * Esto es deliberado: el ciclo cerrado de desarrollo de habilidades debe
  * demostrar que una v1 defectuosa se rechaza y una v2 corregida se promueve,
  * sin que el generador sea juez de su propio trabajo.
+ *
+ * La imperfección se puede apagar (`imperfect: false`, o `setImperfect` en
+ * vivo desde los ajustes de la UI): el mock propone entonces directamente la
+ * idea corregida. Es un modo de observación —ver el mundo sin el desvío del
+ * error— y por eso el DEFAULT es imperfecto: los tests y la historia del
+ * producto (fallar, ser corregida, aprender) dependen de que el primer
+ * intento se equivoque (ADR 0006, adenda).
  */
 export class MockModelProvider extends BaseModelProvider {
   readonly name = 'mock';
+  private imperfect: boolean;
+
+  constructor(options: { imperfect?: boolean } = {}) {
+    super();
+    this.imperfect = options.imperfect ?? true;
+  }
+
+  /** Enciende o apaga las primeras ideas equivocadas, en vivo. */
+  setImperfect(value: boolean): void {
+    this.imperfect = value;
+  }
+
+  isImperfect(): boolean {
+    return this.imperfect;
+  }
 
   complete(request: ModelRequest): Promise<ModelResponse> {
     this.recordCall(request.kind);
     switch (request.kind) {
       case 'skill.propose':
+        // Sin imperfección, la primera propuesta ya es la corregida: elegir
+        // la herramienta más capaz, no la más cercana.
         return Promise.resolve({
           kind: 'skill.program',
-          program: reachBlockedResourceProgram('nearest'),
-          rationale:
-            'Ir hacia el alimento; si el camino se bloquea, tomar la herramienta más cercana y golpear el muro hasta abrir paso.',
+          program: reachBlockedResourceProgram(this.imperfect ? 'nearest' : 'strongestTool'),
+          rationale: this.imperfect
+            ? 'Ir hacia el alimento; si el camino se bloquea, tomar la herramienta más cercana y golpear el muro hasta abrir paso.'
+            : 'Ir hacia el alimento; si el camino se bloquea, tomar la herramienta más poderosa y golpear el muro hasta abrir paso.',
         });
       case 'skill.revise': {
         const sawNoDamage = request.failureObservations.some((o) =>
@@ -87,6 +112,19 @@ export class MockModelProvider extends BaseModelProvider {
         return Promise.reject(
           new Error('el proveedor simulado no traduce descripciones'),
         );
+      case 'interaction.propose':
+        // Inventar una interacción exige imaginar la lógica de las cosas, y el
+        // mock no la tiene. Como con las descripciones (ADR 0006): fingirlo
+        // con reglas produciría interacciones que nadie pidió.
+        return Promise.reject(
+          new Error('el proveedor simulado no inventa interacciones'),
+        );
+      case 'interaction.judge':
+        // Sin comprensión abierta no hay juez: nada entra. Es el lado seguro —
+        // la IA Dios existe justamente para que este poder no ande sin ella.
+        return Promise.reject(
+          new Error('el proveedor simulado no puede juzgar la lógica de una interacción'),
+        );
       case 'distill.knowledge':
         // Sin comprensión abierta, guarda la enseñanza tal cual la recibió.
         return Promise.resolve({
@@ -107,8 +145,9 @@ export class MockModelProvider extends BaseModelProvider {
         // Imperfecto a propósito, como el resto del mock (ADR 0006): su primer
         // impulso ante cualquier problema es inventar comida — el atajo que
         // resolvería todo declarándolo resuelto. El mundo lo rechaza, y solo
-        // entonces propone algo honesto.
-        const scolded = request.rejections?.length ?? 0;
+        // entonces propone algo honesto. Con la imperfección apagada, el atajo
+        // se saltea y la primera idea ya es la honesta.
+        const scolded = this.imperfect ? (request.rejections?.length ?? 0) : 1;
         // Cuando el cuidador nombró lo que quiere, la idea lleva ESE nombre:
         // bautizarla distinto dejaría la petición sin su receta.
         const id = request.wantedId ?? (scolded === 0 ? 'bocado' : 'hoguera-simple');

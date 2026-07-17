@@ -1,7 +1,7 @@
 import { chebyshev, isAdjacent } from '@anima/shared';
 import type { ActionIntent, Direction, Perception, PerceivedEntity, SimEvent } from '@anima/sim-core';
 import { missingIngredients } from '@anima/sim-core';
-import type { SkillCondition, SkillOp, SkillProgram } from './dsl.js';
+import type { EntityQuery, SkillCondition, SkillOp, SkillProgram } from './dsl.js';
 import type { SkillLibrary } from './skill.js';
 
 export interface RuntimeLimits {
@@ -55,7 +55,29 @@ interface MoveState {
   pendingDir?: Direction;
 }
 
+interface ExploreState {
+  maxSteps: number;
+  stepsTaken: number;
+  until?: SkillCondition;
+  /** Cuántas veces pisó (o intentó pisar) cada celda: guía del "menos visitado". */
+  visits: Map<string, number>;
+  /** Celda destino del paso pendiente de resolver, para penalizarla si falla. */
+  pendingDest?: string;
+}
+
 type LastMove = 'none' | 'reached' | 'blocked' | 'exhausted' | 'lost';
+
+/** true si la entidad percibida cumple la query (el mismo filtro de findEntities). */
+function matchesQuery(e: PerceivedEntity, query: EntityQuery): boolean {
+  if (query.kind !== undefined && e.kind !== query.kind) return false;
+  if (query.tool !== undefined && (e.toolPower !== undefined) !== query.tool) return false;
+  if (query.edible !== undefined && (e.edible ?? false) !== query.edible) return false;
+  if (query.portable !== undefined && (e.portable ?? false) !== query.portable) return false;
+  if (query.held !== undefined && (e.held ?? false) !== query.held) return false;
+  if (query.warm !== undefined && (e.warmth !== undefined) !== query.warm) return false;
+  if (query.shelter !== undefined && (e.shelter ?? false) !== query.shelter) return false;
+  return true;
+}
 
 /**
  * Ejecuta un programa de la DSL de forma incremental: cada llamada a `next()`
@@ -69,6 +91,7 @@ export class SkillExecution {
   private lastMove: LastMove = 'none';
   private lastActionOk = true;
   private move: MoveState | null = null;
+  private explore: ExploreState | null = null;
   private waitRemaining = 0;
   private pendingSingle = false;
   private intentsEmitted = 0;
@@ -111,6 +134,16 @@ export class SkillExecution {
       }
       return;
     }
+    if (this.explore?.pendingDest) {
+      const dest = this.explore.pendingDest;
+      delete this.explore.pendingDest;
+      // El mundo rechazó el paso (borde del mapa, sólido fuera de la vista):
+      // penalizar fuerte esa celda para no insistir contra lo impasable.
+      if (!success) {
+        this.explore.visits.set(dest, (this.explore.visits.get(dest) ?? 0) + 5);
+      }
+      return;
+    }
     if (this.pendingSingle) {
       this.pendingSingle = false;
       this.lastActionOk = success;
@@ -140,6 +173,13 @@ export class SkillExecution {
     // Movimiento multi-tick en curso.
     if (this.move) {
       const output = this.stepMove(perception);
+      if (output) return output;
+      if (this.finished) return { kind: 'done', result: this.finished };
+    }
+
+    // Exploración multi-tick en curso.
+    if (this.explore) {
+      const output = this.stepExplore(perception);
       if (output) return output;
       if (this.finished) return { kind: 'done', result: this.finished };
     }
@@ -183,17 +223,7 @@ export class SkillExecution {
     switch (op.op) {
       case 'findEntities': {
         const all = [...perception.visibleEntities, ...perception.self.heldItems];
-        const matches = all.filter((e) => {
-          if (op.query.kind !== undefined && e.kind !== op.query.kind) return false;
-          if (op.query.tool !== undefined && (e.toolPower !== undefined) !== op.query.tool) return false;
-          if (op.query.edible !== undefined && (e.edible ?? false) !== op.query.edible) return false;
-          if (op.query.portable !== undefined && (e.portable ?? false) !== op.query.portable)
-            return false;
-          if (op.query.held !== undefined && (e.held ?? false) !== op.query.held) return false;
-          if (op.query.warm !== undefined && (e.warmth !== undefined) !== op.query.warm) return false;
-          if (op.query.shelter !== undefined && (e.shelter ?? false) !== op.query.shelter) return false;
-          return true;
-        });
+        const matches = all.filter((e) => matchesQuery(e, op.query));
         this.vars.set(op.store, matches);
         frame.index += 1;
         return null;
@@ -271,6 +301,17 @@ export class SkillExecution {
         frame.index += 1;
         this.pendingSingle = true;
         return this.emit({ type: 'move', dir: op.dir });
+      case 'explore': {
+        frame.index += 1;
+        this.explore = {
+          maxSteps: op.maxSteps,
+          stepsTaken: 0,
+          ...(op.until ? { until: op.until } : {}),
+          visits: new Map(),
+        };
+        const output = this.stepExplore(perception);
+        return output ?? null;
+      }
       case 'wait':
         frame.index += 1;
         this.waitRemaining = (op.ticks ?? 1) - 1;
@@ -283,6 +324,21 @@ export class SkillExecution {
         this.pendingSingle = true;
         // El mundo decide si se puede: aquí solo se expresa la intención.
         return this.emit({ type: 'craft', recipeId: op.recipeId });
+      case 'interact': {
+        const target = this.resolveEntity(op.target);
+        if (!target) {
+          this.finish('aborted', `target-missing:${op.target}`);
+          return null;
+        }
+        frame.index += 1;
+        this.pendingSingle = true;
+        // Postura, objetivo y requisitos los vuelve a comprobar el mundo.
+        return this.emit({
+          type: 'interact',
+          interactionId: op.interactionId,
+          targetId: target.id,
+        });
+      }
       case 'pickup':
       case 'drop':
       case 'consume':
@@ -384,6 +440,65 @@ export class SkillExecution {
     this.move = null;
   }
 
+  /**
+   * Un paso de exploración: hacia la celda vecina menos visitada que no se vea
+   * ocupada por un sólido (ni agua). Sin destino y sin mapa — solo percepción
+   * y memoria de por dónde ya pasó — cubre el espacio en vez de oscilar, y el
+   * `until` (evaluado ANTES de cada paso) la corta apenas encuentra lo que
+   * busca. Si ya lo ve al empezar, no cuesta ni un tick.
+   */
+  private stepExplore(perception: Perception): SkillStepOutput | null {
+    const explore = this.explore!;
+    if (explore.until && this.evalCondition(explore.until, perception)) {
+      this.endExplore('reached');
+      return null;
+    }
+    if (explore.stepsTaken >= explore.maxSteps) {
+      this.endExplore(explore.until ? 'exhausted' : 'reached');
+      return null;
+    }
+
+    const selfPos = perception.self.position;
+    explore.visits.set(
+      `${selfPos.x},${selfPos.y}`,
+      (explore.visits.get(`${selfPos.x},${selfPos.y}`) ?? 0) + 1,
+    );
+
+    const deltas: Record<Direction, { x: number; y: number }> = {
+      right: { x: 1, y: 0 },
+      down: { x: 0, y: 1 },
+      left: { x: -1, y: 0 },
+      up: { x: 0, y: -1 },
+    };
+    // Orden fijo para desempates: la exploración es determinista.
+    const order: Direction[] = ['right', 'down', 'left', 'up'];
+    let best: { dir: Direction; dest: string; visits: number } | null = null;
+    for (const dir of order) {
+      const dest = { x: selfPos.x + deltas[dir].x, y: selfPos.y + deltas[dir].y };
+      const solidThere = perception.visibleEntities.some(
+        (e) =>
+          (e.solid || e.wet) && e.position && e.position.x === dest.x && e.position.y === dest.y,
+      );
+      if (solidThere) continue;
+      const key = `${dest.x},${dest.y}`;
+      const visits = explore.visits.get(key) ?? 0;
+      if (!best || visits < best.visits) best = { dir, dest: key, visits };
+    }
+    if (!best) {
+      this.endExplore('blocked');
+      return null;
+    }
+    explore.pendingDest = best.dest;
+    explore.stepsTaken += 1;
+    return this.emit({ type: 'move', dir: best.dir });
+  }
+
+  private endExplore(result: LastMove): void {
+    this.lastMove = result;
+    this.lastActionOk = result === 'reached';
+    this.explore = null;
+  }
+
   private findCurrent(id: string, perception: Perception): PerceivedEntity | undefined {
     return (
       perception.visibleEntities.find((e) => e.id === id) ??
@@ -429,6 +544,10 @@ export class SkillExecution {
         // Sin sentido del frío, nunca tiene frío (no es lo mismo que tener 0).
         return perception.self.temperature !== undefined &&
           perception.self.temperature.current < cond.value;
+      case 'sees': {
+        const all = [...perception.visibleEntities, ...perception.self.heldItems];
+        return all.some((e) => matchesQuery(e, cond.query));
+      }
       case 'canCraft': {
         const recipe = perception.recipes.find((r) => r.id === cond.recipeId);
         if (!recipe) return false;

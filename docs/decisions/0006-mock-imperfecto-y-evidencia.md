@@ -23,3 +23,22 @@ demostración guiada se registra como primera evidencia positiva (es
 información real a favor). Con 3 evidencias la confianza llega a 0.8 y la
 consolidación la convierte en conocimiento. Alternativa descartada: bajar el
 umbral (debilitaría todas las confirmaciones futuras).
+
+## Adenda (2026-07-17): la imperfección tiene interruptor, y el default es que esté encendida
+
+Las «respuestas tontas» del mock se pueden apagar desde los ajustes de la UI
+(`MockModelProvider.setImperfect`). El interruptor está siempre a la vista —
+con Codex encendido queda deshabilitado y dice por qué, en vez de esconderse:
+una opción que solo aparece cuando ya sabías dónde buscarla no existe. La
+preferencia es del cuidador y se guarda con la sesión, así que sobrevive a ir
+y volver de Codex. Apagadas, el mock propone directamente la idea corregida:
+la herramienta más capaz a la primera, la hoguera sin pasar por el atajo de
+inventar comida. Es un modo de observación — ver el mundo sin el desvío del
+error — y una forma de comparar en vivo qué aporta el ciclo de corrección.
+
+Lo que NO cambia: el default es imperfecto, porque los tests del ciclo
+fallar→rechazar→corregir→promover dependen de que el primer intento se
+equivoque, y porque ese arco ES la historia del producto. Y las negativas
+honestas (no traducir descripciones, no derivar contratos, no juzgar la
+lógica de una interacción) no tienen interruptor: fingir comprensión no es un
+modo, es el agujero que este ADR cierra.

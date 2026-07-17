@@ -12,34 +12,6 @@ export const MAX_REPEAT_LIMIT = 50;
 export const MAX_PROGRAM_DEPTH = 6;
 export const MAX_PROGRAM_OPS = 200;
 
-const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
-  z.discriminatedUnion('type', [
-    z.object({ type: z.literal('always') }).strict(),
-    z.object({ type: z.literal('lastMoveBlocked') }).strict(),
-    z.object({ type: z.literal('lastActionFailed') }).strict(),
-    z.object({ type: z.literal('entityGone'), ref: z.string().min(1) }).strict(),
-    z.object({ type: z.literal('isAdjacent'), target: z.string().min(1) }).strict(),
-    z.object({ type: z.literal('holding'), target: z.string().min(1) }).strict(),
-    z.object({ type: z.literal('energyBelow'), value: z.number() }).strict(),
-    z.object({ type: z.literal('temperatureBelow'), value: z.number() }).strict(),
-    z.object({ type: z.literal('canCraft'), recipeId: z.string().min(1) }).strict(),
-    z.object({ type: z.literal('not'), cond: conditionSchema }).strict(),
-  ]),
-) as z.ZodType<SkillCondition>;
-
-export type SkillCondition =
-  | { type: 'always' }
-  | { type: 'lastMoveBlocked' }
-  | { type: 'lastActionFailed' }
-  | { type: 'entityGone'; ref: string }
-  | { type: 'isAdjacent'; target: string }
-  | { type: 'holding'; target: string }
-  | { type: 'energyBelow'; value: number }
-  | { type: 'temperatureBelow'; value: number }
-  /** Tiene en mano todo lo que la receta pide (y el mundo la admite). */
-  | { type: 'canCraft'; recipeId: string }
-  | { type: 'not'; cond: SkillCondition };
-
 const entityQuerySchema = z
   .object({
     kind: z.string().min(1).optional(),
@@ -61,6 +33,40 @@ const entityQuerySchema = z
   .refine((q) => Object.keys(q).length > 0, { message: 'query vacía' });
 
 export type EntityQuery = z.infer<typeof entityQuerySchema>;
+
+const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
+  z.discriminatedUnion('type', [
+    z.object({ type: z.literal('always') }).strict(),
+    z.object({ type: z.literal('lastMoveBlocked') }).strict(),
+    z.object({ type: z.literal('lastActionFailed') }).strict(),
+    z.object({ type: z.literal('entityGone'), ref: z.string().min(1) }).strict(),
+    z.object({ type: z.literal('isAdjacent'), target: z.string().min(1) }).strict(),
+    z.object({ type: z.literal('holding'), target: z.string().min(1) }).strict(),
+    z.object({ type: z.literal('energyBelow'), value: z.number() }).strict(),
+    z.object({ type: z.literal('temperatureBelow'), value: z.number() }).strict(),
+    z.object({ type: z.literal('canCraft'), recipeId: z.string().min(1) }).strict(),
+    z.object({ type: z.literal('sees'), query: entityQuerySchema }).strict(),
+    z.object({ type: z.literal('not'), cond: conditionSchema }).strict(),
+  ]),
+) as z.ZodType<SkillCondition>;
+
+export type SkillCondition =
+  | { type: 'always' }
+  | { type: 'lastMoveBlocked' }
+  | { type: 'lastActionFailed' }
+  | { type: 'entityGone'; ref: string }
+  | { type: 'isAdjacent'; target: string }
+  | { type: 'holding'; target: string }
+  | { type: 'energyBelow'; value: number }
+  | { type: 'temperatureBelow'; value: number }
+  /** Tiene en mano todo lo que la receta pide (y el mundo la admite). */
+  | { type: 'canCraft'; recipeId: string }
+  /**
+   * Percibe (a la vista o en la mano) algo que cumple la query. Es la
+   * condición que vuelve útil a `explore`: recorrer HASTA VER lo que busca.
+   */
+  | { type: 'sees'; query: EntityQuery }
+  | { type: 'not'; cond: SkillCondition };
 
 export const SELECT_STRATEGIES = ['nearest', 'strongestTool'] as const;
 export type SelectStrategy = (typeof SELECT_STRATEGIES)[number];
@@ -85,18 +91,35 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
         maxSteps: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
         /**
          * A qué distancia (Chebyshev) detenerse. Por defecto 1: pegado, que es
-         * lo que hace falta para recoger o usar. Hay cosas a las que conviene
-         * acercarse SIN tocarlas: el fuego calienta a 2 y quema a 1.
+         * lo que hace falta para recoger, usar o interactuar (las posturas
+         * encima/debajo suben a la mascota como parte del acto, ADR 0027). Hay
+         * cosas a las que conviene acercarse SIN tocarlas: el fuego calienta a
+         * 2 y quema a 1. Y 0 es pisar la celda del objetivo; contra un sólido
+         * simplemente nunca llega, y ese fallo es del mundo, no de la DSL.
          */
-        stopAtDistance: z.number().int().min(1).max(10).optional(),
+        stopAtDistance: z.number().int().min(0).max(10).optional(),
       })
       .strict(),
     z.object({ op: z.literal('moveStep'), dir: directionSchema }).strict(),
+    z
+      .object({
+        op: z.literal('explore'),
+        maxSteps: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
+        until: conditionSchema.optional(),
+      })
+      .strict(),
     z.object({ op: z.literal('pickup'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('drop'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('consume'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('useItem'), item: z.string().min(1), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('craft'), recipeId: z.string().min(1) }).strict(),
+    z
+      .object({
+        op: z.literal('interact'),
+        interactionId: z.string().min(1),
+        target: z.string().min(1),
+      })
+      .strict(),
     z.object({ op: z.literal('wait'), ticks: z.number().int().min(1).max(MAX_REPEAT_LIMIT).optional() }).strict(),
     z.object({ op: z.literal('speak'), text: z.string().max(300) }).strict(),
     z
@@ -125,12 +148,22 @@ export type SkillOp =
   | { op: 'selectTarget'; from: string; strategy: SelectStrategy; store: string }
   | { op: 'moveToward'; target: string; maxSteps: number; stopAtDistance?: number }
   | { op: 'moveStep'; dir: 'up' | 'down' | 'left' | 'right' }
+  /**
+   * Recorrer el mapa sin destino: cada paso va hacia la celda vecina menos
+   * visitada, esquivando los sólidos que percibe. Con `until` se detiene al
+   * cumplirse la condición (típicamente `sees`: buscar hasta encontrar); sin
+   * ella camina hasta agotar `maxSteps`. Es la respuesta a "no lo veo": no
+   * abortar en el acto, salir a mirar.
+   */
+  | { op: 'explore'; maxSteps: number; until?: SkillCondition }
   | { op: 'pickup'; target: string }
   | { op: 'drop'; target: string }
   | { op: 'consume'; target: string }
   | { op: 'useItem'; item: string; target: string }
   /** Construir según una receta del mundo, con lo que lleva en el inventario. */
   | { op: 'craft'; recipeId: string }
+  /** Ejecutar una interacción que el mundo admite (ADR 0027) sobre un objetivo. */
+  | { op: 'interact'; interactionId: string; target: string }
   | { op: 'wait'; ticks?: number }
   | { op: 'speak'; text: string }
   | { op: 'branch'; if: SkillCondition; then: SkillOp[]; else?: SkillOp[] }

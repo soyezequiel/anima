@@ -1,11 +1,11 @@
 import type { EventLog, Vec2 } from '@anima/shared';
-import { chebyshev, countedKindLabel, createEventLog, isFeminineKind, kindLabel, kindWithArticle, manhattan } from '@anima/shared';
-import type { ActionIntent, Direction, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
+import { chebyshev, createEventLog, isFeminineKind, kindLabel, kindWithArticle, manhattan } from '@anima/shared';
+import type { ActionIntent, Direction, EntityId, Perception, SimEvent } from '@anima/sim-core';
 import { missingIngredients, recipeProduces, recipeProduct, validateRecipe } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
-import type { EvaluationCriterion, SkillCondition, SkillDefinition, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
+import type { EvaluationCriterion, SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
 import { describeCriterion, SkillExecution, validateSuccessCriteria } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
@@ -28,18 +28,28 @@ import {
 } from './refusal.js';
 import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
 import { developSkill, evaluateAndApply } from './skill-dev.js';
-
-export const GOAL_RESTORE_ENERGY = 'recuperar energía';
-export const GOAL_RESTORE_WARMTH = 'recuperar calor';
-/** El dolor como motivo: cuando el reflejo de un paso no alcanza. */
-export const GOAL_BE_SAFE = 'ponerse a salvo';
-export const SKILL_REACH_BLOCKED_FOOD = 'alcanzar-alimento-bloqueado';
-/**
- * Como SKILL_REACH_BLOCKED_FOOD: nombre reservado para la necesidad del
- * cuerpo, para que un contrato enseñado no pueda secuestrar la habilidad de
- * no morirse de frío (ADR 0016).
- */
-export const SKILL_GET_WARM = 'conseguir-calor';
+import { InventionEngine } from './invention.js';
+import {
+  GOAL_BE_SAFE,
+  GOAL_RESTORE_ENERGY,
+  GOAL_RESTORE_WARMTH,
+  normalizeSkillName,
+  SKILL_GET_WARM,
+  SKILL_REACH_BLOCKED_FOOD,
+} from './names.js';
+import {
+  buildFireProgram,
+  DIRECT_APPROACH_PROGRAM,
+  heldCounts,
+  rememberedFoodProgram,
+  rememberedHeatProgram,
+  retreatProgram,
+  SHELTER_APPROACH_PROGRAM,
+  stepsToward,
+  WARMTH_APPROACH_PROGRAM,
+} from './programs.js';
+import type { UserRequestProgramDeps } from './user-request-programs.js';
+import { completionReply, programForUserRequest } from './user-request-programs.js';
 
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
@@ -56,12 +66,6 @@ const LOW_HEALTH_FRACTION = 0.5;
  * más chocaría con calentarse, que ocurre exactamente a 2.
  */
 const SAFE_DISTANCE = 2;
-/**
- * Cuántas veces puede intentar inventar algo antes de rendirse y pedir ayuda.
- * Inventar cuesta una consulta al modelo por intento: sin tope, un mundo donde
- * nada sirve la dejaría proponiendo para siempre.
- */
-const MAX_RECIPE_ATTEMPTS = 3;
 
 /** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
 const USER_REQUEST_WEIGHTS: Record<
@@ -72,6 +76,7 @@ const USER_REQUEST_WEIGHTS: Record<
   'move-direction': { priority: 1, urgency: 0.75 },
   'run-skill': { priority: 1, urgency: 0.7 },
   'craft-item': { priority: 1, urgency: 0.7 },
+  'interact-entity': { priority: 1, urgency: 0.7 },
   'fetch-item': { priority: 0.6, urgency: 0.35 },
   'destroy-entity': { priority: 0.6, urgency: 0.35 },
   'wait-here': { priority: 0.6, urgency: 0.35 },
@@ -99,217 +104,6 @@ interface InventionProposal {
   recipe: unknown;
   recipeId: string;
   outputKind: string;
-}
-
-/** Nombre de habilidad utilizable: kebab-case sin acentos, corto y estable. */
-function normalizeSkillName(raw: string): string {
-  return raw
-    .normalize('NFD')
-    .replace(/\p{Diacritic}/gu, '')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-}
-
-/** Estrategia primitiva: ir directo al alimento y comerlo. Sin herramientas. */
-const DIRECT_APPROACH_PROGRAM: SkillProgram = [
-  { op: 'findEntities', query: { kind: 'food' }, store: 'foods' },
-  { op: 'selectTarget', from: 'foods', strategy: 'nearest', store: 'food' },
-  { op: 'moveToward', target: 'food', maxSteps: 30 },
-  {
-    op: 'branch',
-    if: { type: 'lastMoveBlocked' },
-    then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-  },
-  { op: 'consume', target: 'food' },
-];
-
-/**
- * Aproximación primitiva al calor: acercarse a lo que irradia sin pegarse.
- * Busca por `warm` y no por tipo: la mascota percibe qué da calor, no sabe
- * que eso se llama fogata. El `stopAtDistance: 2` es un reflejo prudente
- * incorporado, no conocimiento adquirido (ver ADR 0017).
- */
-const WARMTH_APPROACH_PROGRAM: SkillProgram = [
-  { op: 'findEntities', query: { warm: true }, store: 'heatSources' },
-  { op: 'selectTarget', from: 'heatSources', strategy: 'nearest', store: 'heat' },
-  { op: 'moveToward', target: 'heat', maxSteps: 30, stopAtDistance: 2 },
-  {
-    op: 'branch',
-    if: { type: 'lastMoveBlocked' },
-    then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-  },
-  // Quedarse el tiempo suficiente para que el calor haga efecto.
-  { op: 'wait', ticks: 20 },
-];
-
-/**
- * El plan B sereno: sin fuego a la vista ni forma de hacerlo, un refugio no
- * devuelve el calor perdido pero para la sangría. Se pega (el refugio no
- * quema, la distancia prudente del fuego aquí no hace falta) y se queda.
- */
-const SHELTER_APPROACH_PROGRAM: SkillProgram = [
-  { op: 'findEntities', query: { shelter: true }, store: 'shelters' },
-  { op: 'selectTarget', from: 'shelters', strategy: 'nearest', store: 'shelter' },
-  { op: 'moveToward', target: 'shelter', maxSteps: 30 },
-  {
-    op: 'branch',
-    if: { type: 'lastMoveBlocked' },
-    then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-  },
-  { op: 'wait', ticks: 20 },
-];
-
-/**
- * Juntar los ingredientes que falten y construir. Se genera desde la receta
- * —dato del mundo—, igual que los programas de las peticiones del usuario:
- * composición determinista de primitivas, no una skill que haya que aprender.
- * Es el mismo programa para "tengo frío: hago fuego" y para "construí una
- * silla": si le faltan materiales los va a buscar, porque juntar es parte de
- * construir, no otra petición.
- *
- * Sus fallos dicen la verdad al controlador de progreso: sin materiales a la
- * vista aborta con `no-candidates` (falta el RECURSO → pedir ayuda, ADR
- * 0008); con el camino bloqueado aborta con `camino-bloqueado` (falta la
- * CAPACIDAD → el ciclo de skills tiene algo que aportar).
- */
-function gatherAndCraftProgram(
-  recipe: Recipe,
-  options: { held?: Map<string, number>; waitAfterTicks?: number } = {},
-): SkillProgram {
-  const done: SkillCondition = { type: 'canCraft', recipeId: recipe.id };
-  const gather: SkillOp[] = recipe.ingredients
-    // Solo lo que efectivamente falta: con 2 troncos ya en la mano y el
-    // pedernal en el suelo, buscar troncos abortaría (no hay ninguno suelto)
-    // aunque no hiciera falta ninguno.
-    .map((ingredient) => ({
-      kind: ingredient.kind,
-      remaining: ingredient.count - (options.held?.get(ingredient.kind) ?? 0),
-    }))
-    .filter((need) => need.remaining > 0)
-    .map((need) => ({
-      op: 'repeatWithLimit' as const,
-      max: need.remaining,
-      // Si a mitad de camino ya puede construir, no junta de más.
-      until: done,
-      body: [
-        {
-          op: 'findEntities' as const,
-          query: { kind: need.kind, held: false },
-          store: `mat-${need.kind}`,
-        },
-        { op: 'selectTarget' as const, from: `mat-${need.kind}`, strategy: 'nearest' as const, store: `next-${need.kind}` },
-        { op: 'moveToward' as const, target: `next-${need.kind}`, maxSteps: 40 },
-        { op: 'pickup' as const, target: `next-${need.kind}` },
-      ],
-    }));
-  const afterCraft: SkillOp[] =
-    options.waitAfterTicks !== undefined ? [{ op: 'wait', ticks: options.waitAfterTicks }] : [];
-  return [
-    ...gather,
-    {
-      op: 'branch',
-      if: done,
-      then: [{ op: 'craft', recipeId: recipe.id }, ...afterCraft],
-      else: [{ op: 'abort', reason: `no-candidates:ingredientes-${recipe.id}` }],
-    },
-  ];
-}
-
-/** Lo que lleva encima, contado por tipo: insumo para saber qué falta juntar. */
-function heldCounts(perception: Perception): Map<string, number> {
-  const held = new Map<string, number>();
-  for (const item of perception.self.heldItems) {
-    held.set(item.kind, (held.get(item.kind) ?? 0) + 1);
-  }
-  return held;
-}
-
-/**
- * "No hay fuego: hacelo". El reflejo de dolor la aparta del fuego recién
- * hecho; la espera posterior transcurre a distancia segura, dentro del rango
- * de calor.
- */
-function buildFireProgram(recipe: Recipe, held: Map<string, number>): SkillProgram {
-  return gatherAndCraftProgram(recipe, { held, waitAfterTicks: 20 });
-}
-
-/**
- * Camino greedy de pasos hacia una POSICIÓN, calculado al planificar: la DSL
- * solo sabe perseguir entidades percibidas, y una posición recordada no es
- * ninguna. Sin pathfinding, a propósito (ADR 0005): si el mundo pone un
- * obstáculo, el programa aborta con `camino-bloqueado` y eso también es
- * información. `preferAxis` decide los desempates para poder generar dos
- * variantes deterministas del mismo camino.
- */
-function stepsToward(
-  from: Vec2,
-  to: Vec2,
-  stopAt: number,
-  preferAxis: 'x' | 'y',
-): { dirs: Direction[]; end: Vec2 } {
-  const dirs: Direction[] = [];
-  const cur = { ...from };
-  while (chebyshev(cur, to) > stopAt && dirs.length < 40) {
-    const dx = to.x - cur.x;
-    const dy = to.y - cur.y;
-    const moveX =
-      dx !== 0 &&
-      (dy === 0 || (preferAxis === 'x' ? Math.abs(dx) >= Math.abs(dy) : Math.abs(dx) > Math.abs(dy)));
-    if (moveX) {
-      dirs.push(dx > 0 ? 'right' : 'left');
-      cur.x += Math.sign(dx);
-    } else {
-      dirs.push(dy > 0 ? 'down' : 'up');
-      cur.y += Math.sign(dy);
-    }
-  }
-  return { dirs, end: cur };
-}
-
-/** Un paso por op; el primero que el mundo rechaza corta el programa. */
-function walkOps(dirs: Direction[]): SkillOp[] {
-  return dirs.flatMap((dir): SkillOp[] => [
-    { op: 'moveStep', dir },
-    {
-      op: 'branch',
-      if: { type: 'lastActionFailed' },
-      then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-    },
-  ]);
-}
-
-/**
- * Ir a donde recordaba comida y buscarla DE VERDAD al llegar: la memoria solo
- * aporta el destino; comer exige percibirla. Si al llegar no hay nada
- * comestible, `selectTarget` aborta con `no-candidates:rememberedFoods` — la
- * señal con la que el recuerdo se invalida y el fallo se registra honesto.
- */
-function rememberedFoodProgram(dirs: Direction[]): SkillProgram {
-  return [
-    ...walkOps(dirs),
-    { op: 'findEntities', query: { edible: true, held: false }, store: 'rememberedFoods' },
-    { op: 'selectTarget', from: 'rememberedFoods', strategy: 'nearest', store: 'rememberedFood' },
-    { op: 'moveToward', target: 'rememberedFood', maxSteps: 12 },
-    { op: 'consume', target: 'rememberedFood' },
-  ];
-}
-
-/** Como la comida recordada, pero con la distancia prudente del calor. */
-function rememberedHeatProgram(dirs: Direction[]): SkillProgram {
-  return [
-    ...walkOps(dirs),
-    { op: 'findEntities', query: { warm: true }, store: 'rememberedHeats' },
-    { op: 'selectTarget', from: 'rememberedHeats', strategy: 'nearest', store: 'rememberedHeat' },
-    { op: 'moveToward', target: 'rememberedHeat', maxSteps: 12, stopAtDistance: 2 },
-    { op: 'wait', ticks: 20 },
-  ];
-}
-
-/** Alejarse hasta la celda segura y quedarse hasta que el daño pare. */
-function retreatProgram(dirs: Direction[]): SkillProgram {
-  return [...walkOps(dirs), { op: 'wait', ticks: 5 }];
 }
 
 export interface AgentConfig {
@@ -410,9 +204,8 @@ export class AnimaAgent {
   private pendingUserMessages: string[] = [];
   private pendingExplanation: string | null = null;
   private energyHypothesisId: string | null = null;
-  /** Rechazos del mundo a sus inventos: viajan al siguiente intento. */
-  private recipeRejections: string[] = [];
-  private recipeAttempts = 0;
+  /** El pipeline de invención: recetas e interacciones, un solo triaje. */
+  private readonly invention: InventionEngine;
   /** Vista previa esperando el sí o el no del cuidador. Efímera: no persiste. */
   private pendingInvention: InventionProposal | null = null;
   /** Idea confirmada que el próximo think() lleva al mundo como intención. */
@@ -440,6 +233,26 @@ export class AnimaAgent {
       ...config,
     };
     this.petName = config.petName;
+    // El pipeline no recibe la clase entera: solo los órganos que necesita,
+    // por funciones — así queda a la vista qué puede tocar y qué no.
+    this.invention = new InventionEngine({
+      provider: this.config.provider,
+      memory: this.memory,
+      goals: this.goals,
+      progress: this.progress,
+      emit: (type, data) => this.emit(type, data),
+      reply: (text) => this.reply(text),
+      currentTick: () => this.tick,
+    });
+  }
+
+  /** Lo que los programas de peticiones necesitan saber del agente. */
+  private userProgramDeps(): UserRequestProgramDeps {
+    return {
+      library: this.config.library,
+      findInteraction: (verb, targetKind, perception) =>
+        this.invention.findInteractionFor(verb, targetKind, perception),
+    };
   }
 
   /**
@@ -851,8 +664,7 @@ export class AnimaAgent {
       // intento. Sin esto insistiría con la misma idea imposible para siempre.
       if (event.type === 'recipe.rejected' && event.data.actorId === this.petId) {
         const reason = String(event.data.reason);
-        if (!this.recipeRejections.includes(reason)) this.recipeRejections.push(reason);
-        this.emit('recipe.rejected', { reason });
+        this.invention.recordWorldRejection('recipe', reason);
         // Una idea confirmada por el cuidador que el mundo aun así rechazó
         // (solo posible si el mundo cambió entre la vista previa y el sí):
         // decirlo, en vez de dejar la confirmación sin respuesta.
@@ -860,6 +672,28 @@ export class AnimaAgent {
           this.awaitingInventionVerdict = null;
           this.reply(`Al final mi mundo no la aceptó: ${reason}`);
         }
+      }
+      // Interacciones (ADR 0027): mismo trato que las recetas. El rechazo del
+      // mundo viaja al próximo intento; lo aceptado queda como regla y como
+      // recuerdo — y nunca más hay que inventarlo.
+      if (event.type === 'interaction.rejected' && event.data.actorId === this.petId) {
+        this.invention.recordWorldRejection('interaction', String(event.data.reason));
+      }
+      if (event.type === 'interaction.learned' && event.data.actorId === this.petId) {
+        const interactionId = String(event.data.interactionId);
+        const description = String(event.data.description ?? interactionId);
+        const fact = this.memory.addFact(`aprendí a ${description}`, this.tick);
+        this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+        this.emit('interaction.learned', { interactionId, description });
+        this.memory.recordEpisode({
+          kind: 'interaction-invented',
+          summary: `inventé una interacción y mi mundo la aceptó: ${description}`,
+          tick: this.tick,
+          importance: 0.85,
+        });
+        this.reply(
+          `¡Mi mundo lo aceptó! Ya sé ${description}, y quedó aprendido: no hace falta inventarlo de nuevo.`,
+        );
       }
       // Lo que el mundo aceptó pasa a ser conocimiento suyo, y sobrevive a su
       // muerte: la receta vive en el mundo, el saber que existe en su memoria.
@@ -1777,6 +1611,13 @@ export class AnimaAgent {
         return { kind: 'run-skill', skillName: normalizeSkillName(command.skillName), raw };
       case 'craft-item':
         return { kind: 'craft-item', recipeId: command.recipeId, raw };
+      case 'interact-entity':
+        return {
+          kind: 'interact-entity',
+          verb: normalizeSkillName(command.verb) || 'usar',
+          targetKind: command.targetKind,
+          raw,
+        };
     }
   }
 
@@ -1996,6 +1837,7 @@ export class AnimaAgent {
           userRequest: {
             kind: request.kind,
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+            ...('verb' in request ? { verb: request.verb } : {}),
             ...('amount' in request && request.amount !== undefined
               ? { amount: request.amount }
               : {}),
@@ -2034,8 +1876,21 @@ export class AnimaAgent {
       // construir vuelve a ser el programa de siempre.
       const invention = await this.inventForRequest(goal, perception);
       if (invention) return invention;
-      const program = this.programForUserRequest(goal.userRequest, perception);
-      this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
+      // Lo mismo con las interacciones (ADR 0027): reuso primero — si ya está
+      // en world.interactions no cuesta ni una consulta —, inventar después,
+      // y solo si la puerta y la IA Dios dicen que sí.
+      if (goal.userRequest.kind === 'interact-entity') {
+        const proposal = await this.invention.inventInteraction(goal, perception);
+        if (proposal) return proposal;
+        // El juez pudo haber vetado (el objetivo quedó suspendido): no hay
+        // programa que ejecutar sobre un veto.
+        if (this.goals.get(goal.id)?.status !== 'active') {
+          this.lastSelectedGoalId = null;
+          return null;
+        }
+      }
+      const program = programForUserRequest(goal.userRequest, perception, this.userProgramDeps());
+      this.startUserActivity(goal, program, completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
     if (goal.description === GOAL_BE_SAFE) {
@@ -2151,60 +2006,11 @@ export class AnimaAgent {
     if (request?.kind !== 'craft-item' || !request.recipeId) return null;
     // Ya sabe hacerlo: no hay nada que inventar, hay que ponerse a construir.
     if (perception.recipes.some((r) => r.id === request.recipeId)) return null;
-    if (this.progress.recipeAttemptsFor(goal.id) >= MAX_RECIPE_ATTEMPTS) return null;
-    return this.inventRecipe(
+    return this.invention.inventRecipe(
       `mi cuidador me pidió construir ${kindWithArticle(request.recipeId)}`,
       perception,
       { goalId: goal.id, wantedId: request.recipeId },
     );
-  }
-
-  /**
-   * Inventar un objeto que su mundo no sabe construir. El modelo propone; la
-   * intención va al mundo, que valida y decide. Un rechazo no se pierde: se
-   * recuerda y viaja al siguiente intento, para que corrija en vez de insistir.
-   * Devuelve la intención de proponer, o null si no hay nada que proponer.
-   */
-  private async inventRecipe(
-    problem: string,
-    perception: Perception,
-    options: { goalId: string; wantedId?: string },
-  ): Promise<ActionIntent | null> {
-    const materials = [
-      ...new Set([
-        ...perception.self.heldItems.map((item) => `${item.kind} (lo llevo encima)`),
-        ...perception.visibleEntities.filter((e) => e.portable).map((e) => `${e.kind} (lo veo)`),
-      ]),
-    ];
-    // Sin materiales no hay nada que inventar: es falta de recurso, no de idea.
-    if (materials.length === 0) return null;
-
-    this.progress.recordRecipeAttempt(options.goalId);
-    try {
-      const response = await this.config.provider.complete({
-        kind: 'recipe.propose',
-        problem,
-        materials,
-        ...(options.wantedId !== undefined ? { wantedId: options.wantedId } : {}),
-        existingRecipes: perception.recipes.map(
-          (recipe) =>
-            `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
-        ),
-        ...(this.recipeRejections.length > 0 ? { rejections: [...this.recipeRejections] } : {}),
-      });
-      if (response.kind !== 'recipe') {
-        throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
-      }
-      this.emit('recipe.proposed', { rationale: response.rationale });
-      return { type: 'proposeRecipe', recipe: response.recipe };
-    } catch (error) {
-      this.emit('provider.error', {
-        provider: this.config.provider.name,
-        operation: 'recipe.propose',
-        message: error instanceof Error ? error.message : String(error),
-      });
-      return null;
-    }
   }
 
   /**
@@ -2471,8 +2277,8 @@ export class AnimaAgent {
     // Si nada de lo que sabe construir da calor, quizá pueda inventarlo. Es
     // el paso previo a rendirse: primero la idea, después la habilidad.
     const knowsFire = perception.recipes.some((recipe) => recipeProduces(recipe, 'heatSource'));
-    if (!knowsFire && this.progress.recipeAttemptsFor(goal.id) < MAX_RECIPE_ATTEMPTS) {
-      const invention = await this.inventRecipe(
+    if (!knowsFire && this.invention.attemptsLeft(goal.id)) {
+      const invention = await this.invention.inventRecipe(
         'tengo frío y no tengo nada que dé calor',
         perception,
         { goalId: goal.id },
@@ -2785,218 +2591,6 @@ export class AnimaAgent {
     return null;
   }
 
-  private programForUserRequest(request: GoalUserRequest, perception: Perception): SkillProgram {
-    const targetKind = request.targetKind ?? 'unknown';
-    switch (request.kind) {
-      case 'wait-here':
-        return [{ op: 'wait', ticks: 6 }];
-
-      case 'craft-item': {
-        // Juntar lo que falte es parte de construir: el mismo programa que la
-        // aproximación del fuego, sin la espera junto al calor. Si ya lleva
-        // todo encima, la recolección se salta sola y el mundo vuelve a
-        // comprobar los ingredientes por su cuenta.
-        const recipe = request.recipeId
-          ? perception.recipes.find((r) => r.id === request.recipeId)
-          : undefined;
-        return recipe
-          ? gatherAndCraftProgram(recipe, { held: heldCounts(perception) })
-          : [{ op: 'abort', reason: 'no-sé-qué-construir' }];
-      }
-
-      case 'run-skill': {
-        const stable = request.skillName
-          ? this.config.library.findStable(request.skillName)
-          : undefined;
-        // Solo se ejecuta lo que pasó por el evaluador: una habilidad que ya
-        // no está estable (deprecada por una versión peor, archivada) no se
-        // corre por inercia.
-        return stable
-          ? [{ op: 'runSkill', skillId: stable.id }]
-          : [{ op: 'abort', reason: 'no-conozco-esa-habilidad' }];
-      }
-
-      case 'move-direction': {
-        const program: SkillProgram = [];
-        for (const direction of request.directions ?? []) {
-          program.push(
-            { op: 'moveStep', dir: direction },
-            {
-              op: 'branch',
-              if: { type: 'lastActionFailed' },
-              then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-            },
-          );
-        }
-        return program.length > 0
-          ? program
-          : [{ op: 'abort', reason: 'dirección-no-especificada' }];
-      }
-
-      case 'fetch-item': {
-        const fetchOne: SkillOp[] = [
-          // held:false: "traé un tronco" pide OTRO tronco. Sin el filtro, la
-          // búsqueda devolvía el que ya llevaba (nearest lo ordena a distancia
-          // 0) y el programa terminaba "cumplido" sin traer nada — pedir dos
-          // ingredientes iguales era imposible.
-          { op: 'findEntities', query: { kind: targetKind, held: false }, store: 'requestedItems' },
-          {
-            op: 'selectTarget',
-            from: 'requestedItems',
-            strategy: 'nearest',
-            store: 'requestedItem',
-          },
-          {
-            op: 'branch',
-            if: { type: 'not', cond: { type: 'holding', target: 'requestedItem' } },
-            then: [
-              { op: 'moveToward', target: 'requestedItem', maxSteps: 40 },
-              {
-                op: 'branch',
-                if: { type: 'lastMoveBlocked' },
-                then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-              },
-              { op: 'pickup', target: 'requestedItem' },
-              {
-                op: 'branch',
-                if: { type: 'lastActionFailed' },
-                then: [{ op: 'abort', reason: 'no-pude-recogerlo' }],
-              },
-            ],
-          },
-        ];
-        // "conseguí los 2 troncos" son 2 recogidas, no una recogida y un
-        // "Listo" que deja al cuidador contando por la mascota.
-        const amount = Math.min(request.amount ?? 1, 8);
-        return amount > 1 ? [{ op: 'repeatWithLimit', max: amount, body: fetchOne }] : fetchOne;
-      }
-
-      case 'consume-item': {
-        const stable =
-          targetKind === 'food'
-            ? this.config.library.findStable(SKILL_REACH_BLOCKED_FOOD)
-            : undefined;
-        if (stable) return [{ op: 'runSkill', skillId: stable.id }];
-        return [
-          { op: 'findEntities', query: { kind: targetKind }, store: 'requestedFoods' },
-          {
-            op: 'selectTarget',
-            from: 'requestedFoods',
-            strategy: 'nearest',
-            store: 'requestedFood',
-          },
-          {
-            op: 'branch',
-            if: { type: 'not', cond: { type: 'holding', target: 'requestedFood' } },
-            then: [
-              { op: 'moveToward', target: 'requestedFood', maxSteps: 40 },
-              {
-                op: 'branch',
-                if: { type: 'lastMoveBlocked' },
-                then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-              },
-            ],
-          },
-          { op: 'consume', target: 'requestedFood' },
-          {
-            op: 'branch',
-            if: { type: 'lastActionFailed' },
-            then: [{ op: 'abort', reason: 'no-pude-comerlo' }],
-          },
-        ];
-      }
-
-      case 'destroy-entity':
-        return [
-          { op: 'findEntities', query: { kind: targetKind }, store: 'requestedTargets' },
-          {
-            op: 'selectTarget',
-            from: 'requestedTargets',
-            strategy: 'nearest',
-            store: 'requestedTarget',
-          },
-          { op: 'findEntities', query: { tool: true }, store: 'availableTools' },
-          {
-            op: 'selectTarget',
-            from: 'availableTools',
-            strategy: 'strongestTool',
-            store: 'bestTool',
-          },
-          {
-            op: 'branch',
-            if: { type: 'not', cond: { type: 'holding', target: 'bestTool' } },
-            then: [
-              { op: 'moveToward', target: 'bestTool', maxSteps: 40 },
-              { op: 'pickup', target: 'bestTool' },
-              {
-                op: 'branch',
-                if: { type: 'lastActionFailed' },
-                then: [{ op: 'abort', reason: 'no-pude-recoger-la-herramienta' }],
-              },
-            ],
-          },
-          { op: 'moveToward', target: 'requestedTarget', maxSteps: 40 },
-          {
-            op: 'branch',
-            if: { type: 'lastMoveBlocked' },
-            then: [{ op: 'abort', reason: 'camino-bloqueado' }],
-          },
-          {
-            op: 'repeatWithLimit',
-            max: 20,
-            until: { type: 'entityGone', ref: 'requestedTarget' },
-            body: [{ op: 'useItem', item: 'bestTool', target: 'requestedTarget' }],
-          },
-          {
-            op: 'branch',
-            if: { type: 'not', cond: { type: 'entityGone', ref: 'requestedTarget' } },
-            then: [{ op: 'abort', reason: 'objetivo-resistió' }],
-          },
-        ];
-    }
-  }
-
-  private completionReply(request: GoalUserRequest): string {
-    // El nombre sale del vocabulario compartido: "recogí el tronco", nunca
-    // "recogí eso" para un objeto con nombre conocido.
-    const name = request.targetKind ? kindLabel(request.targetKind) : 'eso';
-    const target = request.targetKind
-      ? `${/a$/.test(name) ? 'la' : 'el'} ${name}`
-      : 'eso';
-    switch (request.kind) {
-      case 'wait-here':
-        return 'Listo, esperé aquí un momento.';
-      case 'run-skill':
-        return `Listo, hice "${request.skillName ?? 'eso'}".`;
-      case 'craft-item':
-        // Sin género: lo construido puede ser "la silla" o "el brasero" que
-        // Ánima inventó, y acá solo hay un recipeId para adivinar.
-        return 'Listo, ya está en su lugar.';
-      case 'move-direction': {
-        const labels = {
-          up: 'hacia arriba',
-          down: 'hacia abajo',
-          left: 'a la izquierda',
-          right: 'a la derecha',
-        } as const;
-        const destination = (request.directions ?? [])
-          .map((direction) => labels[direction])
-          .join(' y ');
-        return `Listo, me moví ${destination}.`;
-      }
-      case 'fetch-item': {
-        const amount = request.amount ?? 1;
-        return amount > 1 && request.targetKind
-          ? `Listo, junté ${countedKindLabel(request.targetKind, amount)}.`
-          : `Listo, recogí ${target}.`;
-      }
-      case 'consume-item':
-        return `Listo, comí ${target}.`;
-      case 'destroy-entity':
-        return `Listo, destruí ${target}.`;
-    }
-  }
-
   private startUserActivity(
     goal: Goal,
     program: SkillProgram,
@@ -3240,6 +2834,8 @@ export class AnimaAgent {
       'no-pude-comerlo': 'no pude comer el alimento',
       'no-pude-recoger-la-herramienta': 'no pude recoger la herramienta',
       'objetivo-resistió': 'el objeto resistió mis intentos',
+      'sin-interaccion': 'no se me ocurrió una forma de hacerlo que mi mundo acepte',
+      'no-pude-interactuar': 'el mundo no aceptó la interacción en ese momento',
       completed: 'la acción no produjo el resultado esperado',
       aborted: 'tuve que detenerme',
     };

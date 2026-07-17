@@ -1,6 +1,7 @@
 import type { RngState, Vec2 } from '@anima/shared';
 import { createRng } from '@anima/shared';
 import type { Components, Entity, EntityId, EntityKind } from './components.js';
+import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 
 export interface WorldConfig {
@@ -25,9 +26,18 @@ export interface WorldState {
    * así viajan en los snapshots y un mundo restaurado craftea igual.
    */
   recipes: Recipe[];
+  /**
+   * Las interacciones que este mundo admite (ADR 0027). Mismo trato que las
+   * recetas: estado del mundo, viajan en los snapshots, y una vez aprendidas
+   * no hay que inventarlas de nuevo.
+   */
+  interactions: Interaction[];
 }
 
-export function createWorld(config: WorldConfig, options: { recipes?: Recipe[] } = {}): WorldState {
+export function createWorld(
+  config: WorldConfig,
+  options: { recipes?: Recipe[]; interactions?: Interaction[] } = {},
+): WorldState {
   return {
     tick: 0,
     config,
@@ -35,6 +45,7 @@ export function createWorld(config: WorldConfig, options: { recipes?: Recipe[] }
     nextId: 1,
     entities: {},
     recipes: options.recipes ? structuredClone(options.recipes) : [],
+    interactions: options.interactions ? structuredClone(options.interactions) : [],
   };
 }
 

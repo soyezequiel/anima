@@ -209,6 +209,11 @@ export class WorldScene extends Phaser.Scene {
       return;
     }
     const pixel = this.toPixel(view.pet.x, view.pet.y);
+    // Postura sobre un objeto (ADR 0027): comparte celda con él, y el desvío
+    // vertical hace legible el eje z que la grilla no tiene — un poco más
+    // arriba si está encima, un poco más abajo (y detrás) si está debajo.
+    const mount = view.pet.mount;
+    if (mount) pixel.y += (mount.mode === 'on-top' ? -0.14 : 0.14) * this.cell;
     if (!this.pet) {
       const k = this.cellScale;
       const body = this.add.circle(0, 0, this.cell / 2 - 10 * k, 0xf59e0b);
@@ -224,5 +229,7 @@ export class WorldScene extends Phaser.Scene {
     const color = Number.parseInt(view.petColor.replace('#', ''), 16);
     if (!Number.isNaN(color)) this.petBody?.setFillStyle(color);
     this.pet.setAlpha(view.pet.alive ? 1 : 0.35);
+    // Debajo de algo, el objeto la tapa; en cualquier otro caso, ella tapa.
+    this.pet.setDepth(mount?.mode === 'underneath' ? 0.5 : 2);
   }
 }

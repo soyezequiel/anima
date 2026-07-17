@@ -19,6 +19,7 @@ function perceptionWith(
     },
     visibleEntities: visible,
     recipes: [],
+    interactions: [],
   };
 }
 
@@ -121,14 +122,19 @@ describe('negativas y autonomía', () => {
     expect(decision.alternative).toBeDefined();
   });
 
-  it('needs_information: no sabe dónde encontrar lo que le piden', () => {
+  it('lo que no ve, lo va a buscar: acepta anunciando que recorre el mapa', () => {
+    // Antes esto era needs_information («No sé dónde encontrar martillo»):
+    // devolverle al cuidador el trabajo de señalar con el dedo. Ahora los
+    // programas de pedidos exploran hasta ver lo que buscan, así que la
+    // respuesta honesta es aceptar y salir a mirar.
     const decision = evaluateUserRequest(
       { kind: 'fetch-item', targetKind: 'hammer', raw: 'trae un martillo' },
       perceptionWith(),
       new MemoryStore(),
       undefined,
     );
-    expect(decision.classification).toBe('needs_information');
+    expect(decision.classification).toBe('accepted');
+    expect(decision.reason).toContain('recorrer el mapa');
   });
 
   it('accepted: acepta lo que puede y quiere hacer', () => {

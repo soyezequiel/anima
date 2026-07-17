@@ -1,6 +1,7 @@
 import type { Vec2 } from '@anima/shared';
 import { chebyshev, manhattan } from '@anima/shared';
 import type { Entity, EntityId } from './components.js';
+import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 import type { WorldState } from './world.js';
 import { allEntities, getEntity } from './world.js';
@@ -47,6 +48,12 @@ export interface Perception {
    * que no le regala nadie es tener los ingredientes ni querer construirlo.
    */
   recipes: Recipe[];
+  /**
+   * Las interacciones del mundo, con el mismo trato que las recetas: saberlas
+   * es saber la física. Es lo que permite REUSAR una interacción aprendida en
+   * vez de inventarla de nuevo (ADR 0027).
+   */
+  interactions: Interaction[];
 }
 
 /**
@@ -156,5 +163,11 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
       max: agent.components.temperature.max,
     };
   }
-  return { tick: world.tick, self, visibleEntities, recipes: structuredClone(world.recipes) };
+  return {
+    tick: world.tick,
+    self,
+    visibleEntities,
+    recipes: structuredClone(world.recipes),
+    interactions: structuredClone(world.interactions),
+  };
 }

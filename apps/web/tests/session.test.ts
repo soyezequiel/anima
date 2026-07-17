@@ -550,6 +550,25 @@ describe('reglas del mundo al restaurar', () => {
     expect(view.pet?.temperature).toEqual({ current: 50, max: 50 });
     session.dispose();
   });
+
+  it('las respuestas tontas del mock se apagan desde la sesión y sobreviven al guardado', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    // Encendidas por defecto: el ciclo fallar→corregir es la historia.
+    expect(session.getView().mockImperfect).toBe(true);
+
+    session.setMockImperfect(false);
+    expect(session.getView().mockImperfect).toBe(false);
+    const provider = (session as unknown as { provider: MockModelProvider }).provider;
+    expect(provider.isImperfect()).toBe(false);
+    await session.save();
+    session.dispose();
+
+    // La preferencia es de la sesión: restaurar la respeta.
+    const restored = await GameSession.create({ autostart: false, store });
+    expect(restored.getView().mockImperfect).toBe(false);
+    restored.dispose();
+  });
 });
 
 describe('muerte y sucesión en la sesión', () => {

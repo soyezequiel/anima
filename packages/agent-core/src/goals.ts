@@ -21,8 +21,11 @@ export interface GoalUserRequest {
     | 'wait-here'
     | 'move-direction'
     | 'run-skill'
-    | 'craft-item';
+    | 'craft-item'
+    | 'interact-entity';
   targetKind?: string;
+  /** El verbo pedido (interact-entity): "juntar", "subirse-encima". */
+  verb?: string;
   /** Cuántas unidades pidió (fetch-item): "conseguí los 2 troncos" son 2. */
   amount?: number;
   directions?: Direction[];

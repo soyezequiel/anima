@@ -20,6 +20,12 @@ export type UserRequest =
   | { kind: 'run-skill'; skillName: string; raw: string }
   /** Construir algo según una receta que su mundo admite. */
   | { kind: 'craft-item'; recipeId: string; raw: string }
+  /**
+   * Manipular un objeto de una forma que las primitivas no cubren (ADR 0027):
+   * la mascota busca una interacción aprendida, o inventa una y el mundo (la
+   * puerta y la IA Dios) decide.
+   */
+  | { kind: 'interact-entity'; verb: string; targetKind: string; raw: string }
   | { kind: 'unknown'; raw: string };
 
 export type RequestClassification =
@@ -252,6 +258,48 @@ export function evaluateUserRequest(
       };
     }
 
+    case 'interact-entity': {
+      const verbPhrase = request.verb.replace(/-/g, ' ');
+      if (request.targetKind === 'unknown' || !request.targetKind) {
+        return {
+          classification: 'needs_information',
+          reason: `Entiendo que quieres que haga "${verbPhrase}", pero no con qué objeto.`,
+          alternative: '¿Puedes nombrarlo?',
+        };
+      }
+      const targetName = displayKind(request.targetKind);
+      const visibleTarget =
+        perception.visibleEntities.some((e) => e.kind === request.targetKind) ||
+        perception.self.heldItems.some((e) => e.kind === request.targetKind);
+      if (!visibleTarget) {
+        return {
+          classification: 'needs_information',
+          reason: `No veo ningún ${targetName} desde aquí.`,
+          alternative: '¿Puedes mostrarme dónde está?',
+        };
+      }
+      // ¿Ya lo sabe hacer? Saberlo es física suya: se acepta sin inventar nada.
+      const known = perception.interactions.some(
+        (interaction) =>
+          interaction.target.kind === request.targetKind ||
+          interaction.id.startsWith(request.verb),
+      );
+      if (known) {
+        return {
+          classification: 'accepted',
+          reason: `Voy a ${verbPhrase} con ${withArticle(request.targetKind)}: ya sé cómo.`,
+        };
+      }
+      // No saberlo no es no poder: puede tener la idea y que su mundo (la
+      // puerta y el juez de la lógica) decida — el mismo trato que las
+      // recetas sin receta (ADR 0018 / 0027).
+      return {
+        classification: 'accepted',
+        reason: `Todavía no sé ${verbPhrase} con ${withArticle(request.targetKind)}.`,
+        alternative: 'Déjame imaginar cómo, y que mi mundo juzgue si tiene lógica.',
+      };
+    }
+
     case 'fetch-item':
     case 'consume-item': {
       const targetName = displayKind(request.targetKind);
@@ -263,12 +311,17 @@ export function evaluateUserRequest(
         };
       }
       const visible = perception.visibleEntities.some((e) => e.kind === request.targetKind);
-      const remembered = memory.retrieve(request.targetKind, 3);
-      if (!visible && remembered.episodes.length === 0 && remembered.facts.length === 0) {
+      const held = perception.self.heldItems.some((e) => e.kind === request.targetKind);
+      if (!visible && !held) {
+        // No verlo ya no es no saber: los programas de pedidos recorren el
+        // mapa hasta ver lo que buscan (op `explore`). Aceptar anunciando la
+        // búsqueda es mejor que devolverle al cuidador el trabajo de señalar
+        // con el dedo — y si el mapa entero no lo tiene, el fallo posterior
+        // («no encuentro el objeto») será verdad buscada, no ceguera de rango.
+        const pronoun = isFeminineKind(request.targetKind) ? 'la' : 'lo';
         return {
-          classification: 'needs_information',
-          reason: `No sé dónde encontrar ${targetName}.`,
-          alternative: '¿Puedes darme una pista de dónde buscar?',
+          classification: 'accepted',
+          reason: `No veo ${targetName} desde aquí: voy a recorrer el mapa para buscar${pronoun}.`,
         };
       }
       return request.kind === 'consume-item'

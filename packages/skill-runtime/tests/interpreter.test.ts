@@ -151,6 +151,59 @@ describe('intérprete de skills', () => {
     expect(report.invariantViolations).toEqual([]);
   });
 
+  it('explore recorre el mapa hasta VER lo que busca, y entonces lo alcanza', () => {
+    const { world, petId } = smallWorld();
+    // Miope a propósito: la rama existe pero queda fuera del rango sensorial.
+    // Sin explore, findEntities devolvería vacío y el programa abortaría con
+    // "no-candidates" sin haber dado un solo paso.
+    getEntity(world, petId)!.components.agent!.perceptionRange = 2;
+    const branch = spawn(world, 'branch', {
+      position: { x: 7, y: 1 },
+      portable: {},
+      tool: { power: 1 },
+    });
+    const program: SkillProgram = [
+      { op: 'explore', maxSteps: 50, until: { type: 'sees', query: { kind: 'branch', held: false } } },
+      { op: 'findEntities', query: { kind: 'branch', held: false }, store: 'branches' },
+      { op: 'selectTarget', from: 'branches', strategy: 'nearest', store: 'branch' },
+      { op: 'moveToward', target: 'branch', maxSteps: 40 },
+      { op: 'pickup', target: 'branch' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 120 });
+    expect(report.outcome).toBe('completed');
+    const pet = getEntity(world, petId);
+    expect(pet?.components.inventory?.items).toContain(branch.id);
+  });
+
+  it('explore no cuesta ni un tick si ya lo ve (o lo lleva encima)', () => {
+    const { world, petId } = smallWorld();
+    addFood(world, 2, 2); // pegada: visible desde el arranque
+    const program: SkillProgram = [
+      { op: 'explore', maxSteps: 50, until: { type: 'sees', query: { edible: true } } },
+      { op: 'findEntities', query: { edible: true }, store: 'foods' },
+      { op: 'selectTarget', from: 'foods', strategy: 'nearest', store: 'food' },
+      { op: 'consume', target: 'food' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 10 });
+    expect(report.outcome).toBe('completed');
+    // Sin pasos de exploración: la mascota nunca se movió de (1,2).
+    expect(report.events.filter((e) => e.type === 'entity.moved')).toHaveLength(0);
+  });
+
+  it('explore sin hallazgo agota sus pasos y el programa aborta honesto', () => {
+    const { world, petId } = smallWorld();
+    const program: SkillProgram = [
+      { op: 'explore', maxSteps: 12, until: { type: 'sees', query: { kind: 'unicornio' } } },
+      { op: 'findEntities', query: { kind: 'unicornio' }, store: 'list' },
+      { op: 'selectTarget', from: 'list', strategy: 'nearest', store: 'x' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 60 });
+    expect(report.outcome).toBe('aborted');
+    expect(report.reason).toBe('no-candidates:list');
+    // Pero buscó de verdad: caminó antes de rendirse.
+    expect(report.events.filter((e) => e.type === 'entity.moved').length).toBeGreaterThan(6);
+  });
+
   it('aborta si una variable no existe', () => {
     const { world, petId } = smallWorld();
     const report = runSkillProgram(world, petId, [{ op: 'consume', target: 'nada' }], {

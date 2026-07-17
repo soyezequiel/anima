@@ -137,6 +137,47 @@ export type ModelRequest =
       existingRecipes: string[];
     }
   | {
+      /**
+       * Inventar una interacción con un objeto que su mundo todavía no admite
+       * (ADR 0027). El modelo propone; la puerta determinista y la IA Dios
+       * juzgan después. Proponer no es poder, tampoco aquí.
+       */
+      kind: 'interaction.propose';
+      /** Para qué la necesita: el problema, no la solución. */
+      problem: string;
+      /** El id que la interacción DEBE tener (sale del pedido del cuidador). */
+      wantedId?: string;
+      /** El tipo del objeto con el que quiere interactuar. */
+      targetKind: string;
+      /** Lo que se sabe del objetivo: rasgos observables, en voz humana. */
+      targetFacts: string[];
+      /** Tipos que lleva encima: candidatos a `requires.heldKind`. */
+      heldKinds: string[];
+      /** Interacciones que ya existen: no tiene sentido reinventarlas. */
+      existingInteractions: string[];
+      /** Rechazos previos (de la puerta o del Dios): corregir, no insistir. */
+      rejections?: string[];
+    }
+  | {
+      /**
+       * La IA Dios (ADR 0027): juzga si una interacción propuesta tiene LÓGICA
+       * en el mundo, no si es físicamente expresable (eso ya lo decidió la
+       * puerta determinista). Es la voz que dice que el agua no se lleva en
+       * las manos: coherencia, no física. Responde con un `judgement`.
+       */
+      kind: 'interaction.judge';
+      interactionId: string;
+      description: string;
+      stance: string;
+      targetKind: string;
+      /** Qué haría, en frases humanas ("el balde se vuelve balde-con-agua"). */
+      effectsSummary: string[];
+      /** Qué exige llevar encima, si algo. */
+      requiresHeld?: string;
+      /** Estado real y verificable del mundo: la base del juicio. */
+      facts: string[];
+    }
+  | {
       kind: 'dialogue';
       topic: string;
       facts: string[];
@@ -166,6 +207,8 @@ export type ModelResponse =
   | { kind: 'knowledge'; statement: string; confidence: number }
   /** La receta viaja sin tipar: el mundo es quien la valida (validateRecipe). */
   | { kind: 'recipe'; recipe: unknown; rationale: string }
+  /** La interacción viaja sin tipar: la valida el mundo (validateInteraction). */
+  | { kind: 'interaction'; interaction: unknown; rationale: string }
   /**
    * Un juicio de valores, no de física. `willing: false` mantiene la negativa;
    * `true` la levanta. El agente solo lo consulta cuando ya comprobó que la
@@ -209,6 +252,12 @@ export type CommandInterpretation =
    * Solo un modelo real llega aquí: el parser determinista no la produce.
    */
   | { action: 'describe-entity'; description: string }
+  /**
+   * Pide MANIPULAR un objeto concreto de una forma que las primitivas no
+   * cubren (llenar, encender, tapar, subirse encima): la mascota buscará una
+   * interacción aprendida o inventará una y la someterá a juicio (ADR 0027).
+   */
+  | { action: 'interact-entity'; verb: string; targetKind: string }
   /** Orden física fuera del alcance de sus primitivas. */
   | { action: 'unsupported'; summary: string }
   | { action: 'not-command' };

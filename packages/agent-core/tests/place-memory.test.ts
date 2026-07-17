@@ -142,6 +142,7 @@ describe('memoria de lugares', () => {
       self: { id: 'e1', position: { x: 0, y: 0 }, heldItems: [] },
       visibleEntities: entities,
       recipes: [],
+      interactions: [],
     });
     for (let i = 0; i < PLACE_MEMORY_CAP + 6; i++) {
       memory.update(

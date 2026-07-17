@@ -26,6 +26,15 @@ export type ActionIntent =
    * el mundo la valida y decide. La física sigue siendo del mundo.
    */
   | { type: 'proposeRecipe'; recipe: unknown }
+  /**
+   * Proponerle al mundo una interacción nueva (ADR 0027). El mismo trato que
+   * las recetas: viaja cruda y la puerta de step.ts decide. El juicio de
+   * coherencia (la IA Dios) ya ocurrió del lado del agente, pero no reemplaza
+   * a esta validación — la física no se delega.
+   */
+  | { type: 'proposeInteraction'; interaction: unknown }
+  /** Ejecutar una interacción que el mundo ya admite, sobre un objetivo. */
+  | { type: 'interact'; interactionId: string; targetId: EntityId }
   | { type: 'speak'; text: string };
 
 export interface ActorIntent {

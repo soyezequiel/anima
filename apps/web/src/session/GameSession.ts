@@ -45,6 +45,7 @@ import type {
   ExperimentView,
   GameView,
   GoalView,
+  InteractionView,
   ItemStat,
   ItemView,
   PickupView,
@@ -79,6 +80,8 @@ export interface SessionOptions {
 interface SessionUiState {
   chat: ChatEntry[];
   petColor: string;
+  /** Si el mock propone primero sus ideas equivocadas (ADR 0006, adenda). */
+  mockImperfect?: boolean;
 }
 
 function defaultStore(): KeyValueStore {
@@ -233,6 +236,9 @@ export class GameSession {
   private agentEventCursor = 0;
   private lastSpeech: { text: string; tick: number } | null = null;
   private lastPickup: PickupView | null = null;
+  /** Última interacción de postura (encima/debajo): mientras la mascota siga
+   * en la celda del objeto, el dibujo respeta quién está arriba de quién. */
+  private lastMount: { targetId: string; mode: 'on-top' | 'underneath' } | null = null;
   private lastAction: string | null = null;
   private recentActions: string[] = [];
   private deathReport: LegacyReport | null = null;
@@ -247,6 +253,11 @@ export class GameSession {
   private speed = 1;
   private seed = 5;
   private petColor = '#f59e0b';
+  /**
+   * Respuestas tontas del simulado (ADR 0006): encendidas por defecto — el
+   * ciclo fallar→corregir ES la historia. Apagarlas es un modo de observación.
+   */
+  private mockImperfect = true;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private stepping = false;
   private disposed = false;
@@ -286,6 +297,9 @@ export class GameSession {
     const bundle = foodBehindWall.build(seed);
     this.world = bundle.world;
     this.provider = this.externalProvider ?? new MockModelProvider();
+    if (this.provider instanceof MockModelProvider) {
+      this.provider.setImperfect(this.mockImperfect);
+    }
     this.library = new SkillLibrary();
     this.regressions = new RegressionStore();
     this.agent = new AnimaAgent({
@@ -305,6 +319,7 @@ export class GameSession {
     this.agentEventCursor = 0;
     this.lastSpeech = null;
     this.lastPickup = null;
+    this.lastMount = null;
     this.lastAction = null;
     this.recentActions = [];
     this.deathReport = null;
@@ -378,6 +393,12 @@ export class GameSession {
     const ui = data.ui as Partial<SessionUiState> | undefined;
     this.chat = ui?.chat ?? [];
     if (ui?.petColor !== undefined) this.petColor = ui.petColor;
+    if (ui?.mockImperfect !== undefined) {
+      this.mockImperfect = ui.mockImperfect;
+      if (this.provider instanceof MockModelProvider) {
+        this.provider.setImperfect(this.mockImperfect);
+      }
+    }
     this.agentEventCursor = this.agent.events.events.length;
     this.storyWasCompleted =
       this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed';
@@ -419,7 +440,11 @@ export class GameSession {
       agent: this.agent,
       library: this.library,
       regressions: this.regressions,
-      ui: { chat: this.chat, petColor: this.petColor } satisfies SessionUiState,
+      ui: {
+        chat: this.chat,
+        petColor: this.petColor,
+        mockImperfect: this.mockImperfect,
+      } satisfies SessionUiState,
       now: () => new Date().toISOString(),
     });
     try {
@@ -462,6 +487,20 @@ export class GameSession {
     this.petColor = color;
     this.rebuildView();
     this.notify();
+  }
+
+  /**
+   * Enciende o apaga las respuestas tontas del proveedor simulado, en vivo.
+   * Solo tiene efecto con el mock: con Codex el interruptor ni se muestra.
+   */
+  setMockImperfect(value: boolean): void {
+    this.mockImperfect = value;
+    if (this.provider instanceof MockModelProvider) {
+      this.provider.setImperfect(value);
+    }
+    this.rebuildView();
+    this.notify();
+    void this.save();
   }
 
   /** Señal externa de "el modelo está pensando" (proveedores lentos). */
@@ -737,6 +776,12 @@ export class GameSession {
           kind: getEntity(this.world, itemId)?.kind ?? '?',
           tick: event.tick,
         };
+      }
+      if (event.type === 'interaction.performed') {
+        const stance = String(event.data.stance);
+        if (stance === 'on-top' || stance === 'underneath') {
+          this.lastMount = { targetId: String(event.data.targetId), mode: stance };
+        }
       }
       if (event.type === 'pet.died') {
         this.chat.push({
@@ -1036,6 +1081,26 @@ export class GameSession {
       );
   }
 
+  /** Las interacciones del mundo, en voz humana (ADR 0027). */
+  private interactionViews(): InteractionView[] {
+    const stanceLabels: Record<string, string> = {
+      beside: 'al lado',
+      'on-top': 'encima',
+      underneath: 'debajo',
+      held: 'en la mano',
+    };
+    return this.world.interactions.map((interaction) => ({
+      id: interaction.id,
+      description: interaction.description,
+      stance: interaction.stance,
+      stanceLabel: stanceLabels[interaction.stance] ?? interaction.stance,
+      targetLabel: interaction.target.kind
+        ? kindLabel(interaction.target.kind)
+        : 'lo que tenga esos rasgos',
+      requiresLabel: interaction.requires ? kindLabel(interaction.requires.heldKind) : null,
+    }));
+  }
+
   private rebuildView(): void {
     const pet = getEntity(this.world, this.agent.petId);
     const petPos = pet?.components.position;
@@ -1070,6 +1135,19 @@ export class GameSession {
         ? this.lastPickup
         : null;
 
+    // La postura dura mientras siga parada en la celda del objeto: al bajarse
+    // (o si el objeto ya no está) el dibujo vuelve al orden de siempre.
+    const mountTarget = this.lastMount ? getEntity(this.world, this.lastMount.targetId) : null;
+    const mount =
+      this.lastMount &&
+      petPos &&
+      mountTarget?.components.position &&
+      mountTarget.components.position.x === petPos.x &&
+      mountTarget.components.position.y === petPos.y
+        ? { targetId: this.lastMount.targetId, mode: this.lastMount.mode }
+        : null;
+    if (!mount) this.lastMount = null;
+
     this.view = {
       seed: this.seed,
       tick: this.world.tick,
@@ -1078,6 +1156,9 @@ export class GameSession {
       petColor: this.petColor,
       aiProvider: this.provider.name,
       aiBusy: this.aiBusy,
+      // La preferencia viaja siempre, aunque el motor activo sea Codex: es del
+      // cuidador, no del proveedor, y la UI necesita poder mostrarla apagada.
+      mockImperfect: this.mockImperfect,
       identity: {
         name: this.identity.name,
         generation: this.identity.generation,
@@ -1088,6 +1169,7 @@ export class GameSession {
       worldSize: { width: this.world.config.width, height: this.world.config.height },
       entities,
       items: this.itemViews(),
+      interactions: this.interactionViews(),
       pet:
         pet && petPos
           ? {
@@ -1113,6 +1195,7 @@ export class GameSession {
                 id,
                 kind: getEntity(this.world, id)?.kind ?? '?',
               })),
+              mount,
             }
           : null,
       goals,

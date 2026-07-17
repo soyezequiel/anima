@@ -21,8 +21,16 @@ export function takeSnapshot(world: WorldState): WorldSnapshot {
  * seguro. Sin esto, un legado guardado antes de la tirada dejaría de craftear.
  */
 export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
-  const state = structuredClone(snapshot.state) as WorldState & { recipes?: WorldState['recipes'] };
-  return { ...state, recipes: (state.recipes ?? []).map(normalizeRecipe) };
+  const state = structuredClone(snapshot.state) as WorldState & {
+    recipes?: WorldState['recipes'];
+    interactions?: WorldState['interactions'];
+  };
+  return {
+    ...state,
+    recipes: (state.recipes ?? []).map(normalizeRecipe),
+    // Un mundo anterior a las interacciones simplemente no admite ninguna.
+    interactions: state.interactions ?? [],
+  };
 }
 
 export function serializeSnapshot(snapshot: WorldSnapshot): string {
