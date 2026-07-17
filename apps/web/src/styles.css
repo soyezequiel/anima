@@ -618,6 +618,9 @@ select {
 }
 
 .stage {
+  /* Ancla del velo de muerte: sin esto su `inset: 0` cubría la app entera
+     y dejaba las pestañas inclickeables con la mascota muerta. */
+  position: relative;
   flex: 1;
   min-width: 0;
   padding: 16px;
@@ -1081,6 +1084,43 @@ button:disabled {
     opacity: 1;
     transform: translate(-50%, -150%);
   }
+}
+
+/* Items: catálogo de tipos de objeto con su origen a la vista. */
+.item-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.item-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+
+.item-where {
+  font-size: 12px;
+  margin-left: auto;
+}
+
+.item-does {
+  font-size: 12px;
+}
+
+/* Violeta como todo lo que sale del modelo (pensamiento, rasgos): IA. */
+.pill-origin-invented {
+  background: #3b0764;
+  color: #d8b4fe;
+  border-color: #6b21a8;
+}
+
+.pill-origin-builtin {
+  background: var(--panel-2);
+  color: var(--muted);
 }
 
 /* Skills */

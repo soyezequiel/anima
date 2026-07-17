@@ -446,6 +446,51 @@ describe('reglas del mundo al restaurar', () => {
     session.dispose();
   });
 
+  it('el catálogo de items separa lo de fábrica de lo inventado en runtime', async () => {
+    const { session } = await makeSession(5);
+    const view = session.getView();
+
+    // Recién nacido, todo lo que existe o se sabe construir viene del código.
+    expect(view.items.length).toBeGreaterThan(0);
+    expect(view.items.every((i) => i.origin === 'builtin')).toBe(true);
+    const water = view.items.find((i) => i.kind === 'water');
+    expect(water?.inWorld).toBeGreaterThan(0);
+    const campfire = view.items.find((i) => i.kind === 'campfire');
+    expect(campfire).toMatchObject({ origin: 'builtin', craftable: true, inWorld: 0 });
+    expect(campfire?.does).toContain('da calor');
+
+    // Entra una receta que no es del MVP: la construyó un modelo en runtime.
+    const world = (session as unknown as { world: WorldState }).world;
+    world.recipes.push({
+      id: 'hoguera-simple',
+      outcomes: [
+        {
+          weight: 1,
+          output: {
+            kind: 'hoguera-simple',
+            components: { heatSource: { warmthPerTick: 0.4, range: 2 } },
+          },
+        },
+      ],
+      ingredients: [{ kind: 'log', count: 2 }],
+    });
+    await session.stepOnce();
+
+    const items = session.getView().items;
+    const invented = items.find((i) => i.kind === 'hoguera-simple');
+    expect(invented).toMatchObject({
+      origin: 'invented',
+      name: 'hoguera simple',
+      craftable: true,
+    });
+    expect(invented?.does).toContain('da calor');
+    // Lo inventado va primero: es la novedad que el panel quiere mostrar.
+    expect(items[0]?.kind).toBe('hoguera-simple');
+    // Y lo de fábrica no cambia de origen por convivir con un invento.
+    expect(items.find((i) => i.kind === 'campfire')?.origin).toBe('builtin');
+    session.dispose();
+  });
+
   it('una mascota guardada sin frío lo adopta al restaurar, cómoda al máximo', async () => {
     const store = new MemoryKeyValueStore();
     const { session: first } = await makeSession(5, store);

@@ -4,7 +4,14 @@ import type { ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import { countedKindLabel, kindLabel } from '@anima/shared';
 import type { Components, SimEvent, WorldState } from '@anima/sim-core';
-import { buildPerception, getEntity, stepWorld, takeSnapshot } from '@anima/sim-core';
+import {
+  buildPerception,
+  getEntity,
+  recipeProduct,
+  recipeProductKinds,
+  stepWorld,
+  takeSnapshot,
+} from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
 import { RegressionStore } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
@@ -38,6 +45,7 @@ import type {
   ExperimentView,
   GameView,
   GoalView,
+  ItemView,
   PickupView,
   SkillView,
 } from './view.js';
@@ -865,6 +873,71 @@ export class GameSession {
     }));
   }
 
+  /**
+   * Catálogo de tipos de objeto para la UI. El origen no vive en la receta ni
+   * en la entidad (un objeto es lo que sus componentes le permiten hacer, no
+   * de dónde salió): se deriva acá, igual que en el reporte para Claude — lo
+   * que no está entre las recetas base del MVP lo construyó un modelo en
+   * runtime, y sus productos (y lo que dejan al romperse) heredan ese origen.
+   */
+  private itemViews(): ItemView[] {
+    const baseIds = new Set(MVP_RECIPES.map((recipe) => recipe.id));
+    const inventedKinds = new Set<string>();
+    const builtinProductKinds = new Set<string>();
+    const craftable = new Map<string, Components>();
+    for (const recipe of this.world.recipes) {
+      const product = recipeProduct(recipe);
+      if (product && !craftable.has(product.kind)) craftable.set(product.kind, product.components);
+      const kinds = recipeProductKinds(recipe);
+      if (baseIds.has(recipe.id)) {
+        for (const kind of kinds) builtinProductKinds.add(kind);
+        continue;
+      }
+      for (const kind of kinds) inventedKinds.add(kind);
+      for (const outcome of recipe.outcomes) {
+        for (const drop of outcome.output?.components.drops ?? []) inventedKinds.add(drop.kind);
+      }
+    }
+    // Si una receta base ya produce ese tipo, la definición sigue siendo del
+    // código aunque un invento lo fabrique por otro camino.
+    for (const kind of builtinProductKinds) inventedKinds.delete(kind);
+
+    const pet = getEntity(this.world, this.agent.petId);
+    const inventoryIds = new Set(pet?.components.inventory?.items ?? []);
+    const counts = new Map<string, { components: Components; inWorld: number; inInventory: number }>();
+    for (const entity of Object.values(this.world.entities)) {
+      if (entity.id === this.agent.petId) continue;
+      const carried = inventoryIds.has(entity.id);
+      if (!entity.components.position && !carried) continue;
+      const entry =
+        counts.get(entity.kind) ?? { components: entity.components, inWorld: 0, inInventory: 0 };
+      if (carried) entry.inInventory += 1;
+      else entry.inWorld += 1;
+      counts.set(entity.kind, entry);
+    }
+
+    const kinds = [...new Set([...counts.keys(), ...craftable.keys()])];
+    return kinds
+      .map((kind) => {
+        const counted = counts.get(kind);
+        const components = counted?.components ?? craftable.get(kind) ?? {};
+        return {
+          kind,
+          name: kindLabel(kind),
+          origin: (inventedKinds.has(kind) ? 'invented' : 'builtin') as ItemView['origin'],
+          inWorld: counted?.inWorld ?? 0,
+          inInventory: counted?.inInventory ?? 0,
+          craftable: craftable.has(kind),
+          traits: traitsFromComponents(components),
+          does: describeComponents(components),
+        };
+      })
+      // Lo inventado primero (es la novedad), después alfabético.
+      .sort((a, b) =>
+        a.origin === b.origin ? a.name.localeCompare(b.name, 'es') : a.origin === 'invented' ? -1 : 1,
+      );
+  }
+
   private rebuildView(): void {
     const pet = getEntity(this.world, this.agent.petId);
     const petPos = pet?.components.position;
@@ -916,6 +989,7 @@ export class GameSession {
       legacyCount: this.legacyCount,
       worldSize: { width: this.world.config.width, height: this.world.config.height },
       entities,
+      items: this.itemViews(),
       pet:
         pet && petPos
           ? {

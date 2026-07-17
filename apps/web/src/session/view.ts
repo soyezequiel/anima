@@ -44,6 +44,30 @@ export interface PetView {
 }
 
 /**
+ * Un tipo de objeto del mundo, para el catálogo de la UI. Reúne en una sola
+ * fila lo que existe en el mapa, lo que va en la mochila y lo que las recetas
+ * saben construir. `origin` dice de dónde salió su definición: `builtin` viene
+ * del código (escenarios y recetas del MVP); `invented` la construyó un modelo
+ * en tiempo de ejecución (un invento de la mascota o una descripción del
+ * cuidador, ADR 0018 / 0024) y entró al mundo por la puerta de validación.
+ */
+export interface ItemView {
+  kind: string;
+  /** Nombre humano ("pedernal", "hoguera simple"), no el id del motor. */
+  name: string;
+  origin: 'builtin' | 'invented';
+  /** Cuántos hay ahora en el mapa. */
+  inWorld: number;
+  /** Cuántos lleva la mascota. */
+  inInventory: number;
+  /** true si alguna receta viva del mundo lo produce. */
+  craftable: boolean;
+  traits: EntityTraits;
+  /** Qué HACE ("da calor", "bloquea el paso"), en voz humana. */
+  does: string[];
+}
+
+/**
  * Vista previa de una receta traducida de la descripción del cuidador (ADR
  * 0024): lo que la mascota imagina ANTES de que él confirme. Muestra el mejor
  * desenlace — la intención, no la promesa. Lleva `traits` y no un emoji para
@@ -155,6 +179,8 @@ export interface GameView {
   legacyCount: number;
   worldSize: { width: number; height: number };
   entities: EntityView[];
+  /** Catálogo de tipos de objeto: lo que hay, lo que lleva y lo construible. */
+  items: ItemView[];
   pet: PetView | null;
   goals: GoalView[];
   currentGoal: GoalView | null;
