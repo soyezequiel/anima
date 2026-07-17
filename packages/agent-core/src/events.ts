@@ -45,6 +45,8 @@ export type AgentEventType =
   /** El cuidador le puso un nombre nuevo; la capa de identidad lo persiste. */
   | 'pet.renamed'
   /** Se apartó de algo que la estaba dañando. Reflejo del cuerpo, no decisión. */
-  | 'pain.reflex';
+  | 'pain.reflex'
+  /** Fue a donde recordaba algo y ya no estaba: el recuerdo se descarta. */
+  | 'place.invalidated';
 
 export type AgentEvent = StructuredEvent<AgentEventType>;

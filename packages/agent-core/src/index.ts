@@ -1,6 +1,7 @@
 export * from './events.js';
 export * from './goals.js';
 export * from './personality.js';
+export * from './place-memory.js';
 export * from './progress.js';
 export * from './refusal.js';
 export * from './skill-dev.js';

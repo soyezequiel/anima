@@ -45,6 +45,35 @@ export interface Perception {
   recipes: Recipe[];
 }
 
+/**
+ * Línea de Bresenham entre dos celdas: true si ninguna celda INTERMEDIA está
+ * ocupada por un sólido. Los extremos no cuentan: el observador no se tapa a
+ * sí mismo y un muro no se esconde detrás de su propia celda. Determinista.
+ */
+function hasLineOfSight(from: Vec2, to: Vec2, solidCells: ReadonlySet<string>): boolean {
+  let x = from.x;
+  let y = from.y;
+  const dx = Math.abs(to.x - from.x);
+  const dy = -Math.abs(to.y - from.y);
+  const sx = from.x < to.x ? 1 : -1;
+  const sy = from.y < to.y ? 1 : -1;
+  let err = dx + dy;
+  for (;;) {
+    if (x === to.x && y === to.y) return true;
+    const e2 = 2 * err;
+    if (e2 >= dy) {
+      err += dy;
+      x += sx;
+    }
+    if (e2 <= dx) {
+      err += dx;
+      y += sy;
+    }
+    if (x === to.x && y === to.y) return true;
+    if (solidCells.has(`${x},${y}`)) return false;
+  }
+}
+
 function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean): PerceivedEntity {
   const perceived: PerceivedEntity = { id: entity.id, kind: entity.kind };
   const pos = entity.components.position;
@@ -75,6 +104,17 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
   const range = agent.components.agent?.perceptionRange ?? 5;
   const heldIds = new Set(agent.components.inventory?.items ?? []);
 
+  // Celdas que tapan la vista: todo sólido con posición, salvo el observador.
+  // Los extremos de cada línea se excluyen en hasLineOfSight, así que un
+  // sólido nunca se oculta a sí mismo.
+  const solidCells = new Set<string>();
+  for (const entity of allEntities(world)) {
+    const entityPos = entity.components.position;
+    if (entity.id !== agentId && entityPos && entity.components.collider?.solid) {
+      solidCells.add(`${entityPos.x},${entityPos.y}`);
+    }
+  }
+
   const visibleEntities: PerceivedEntity[] = [];
   const heldItems: PerceivedEntity[] = [];
   for (const entity of allEntities(world)) {
@@ -84,7 +124,15 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
       continue;
     }
     const entityPos = entity.components.position;
-    if (entityPos && chebyshev(pos, entityPos) <= range) {
+    if (!entityPos || chebyshev(pos, entityPos) > range) continue;
+    // La vista exige línea despejada (Bresenham), pero no es el único sentido:
+    // lo comestible se huele y una fuente de calor se siente, igual que el
+    // calor del motor atraviesa muros (runTemperatureSystem). Sin ese canal,
+    // la comida tras el muro no existiría para ella y la historia del MVP
+    // —querer lo que se ve y no se alcanza— no podría empezar (ADR 0025).
+    const sensedWithoutSight =
+      entity.components.edible !== undefined || entity.components.heatSource !== undefined;
+    if (sensedWithoutSight || hasLineOfSight(pos, entityPos, solidCells)) {
       visibleEntities.push(perceiveEntity(entity, pos, false));
     }
   }

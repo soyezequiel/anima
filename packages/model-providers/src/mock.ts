@@ -52,6 +52,15 @@ export class MockModelProvider extends BaseModelProvider {
             confidence: guided ? 0.5 : 0.65,
           });
         }
+        if (request.signal === 'health-low') {
+          // El mismo trato que la temperatura: la señal del cuerpo se traduce
+          // a una hipótesis accionable, no a un diagnóstico.
+          return Promise.resolve({
+            kind: 'interpretation',
+            hypothesis: 'alejarme de lo que me hace daño detiene el dolor',
+            confidence: 0.65,
+          });
+        }
         return Promise.resolve({
           kind: 'interpretation',
           hypothesis: `la señal ${request.signal} indica algo que aún no comprendo`,

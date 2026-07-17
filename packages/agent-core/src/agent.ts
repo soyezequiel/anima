@@ -1,6 +1,6 @@
-import type { EventLog } from '@anima/shared';
-import { countedKindLabel, createEventLog, isFeminineKind, kindLabel, kindWithArticle } from '@anima/shared';
-import type { ActionIntent, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
+import type { EventLog, Vec2 } from '@anima/shared';
+import { chebyshev, countedKindLabel, createEventLog, isFeminineKind, kindLabel, kindWithArticle, manhattan } from '@anima/shared';
+import type { ActionIntent, Direction, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
 import { missingIngredients, recipeProduces, recipeProduct, validateRecipe } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
@@ -13,6 +13,8 @@ import type { Goal, GoalManagerData, GoalUserRequest, LearningContract } from '.
 import { GoalManager } from './goals.js';
 import type { PersonalityTrait } from './personality.js';
 import { derivePersonality } from './personality.js';
+import type { PlaceMemoryData } from './place-memory.js';
+import { PlaceMemory } from './place-memory.js';
 import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
@@ -29,6 +31,8 @@ import { developSkill, evaluateAndApply } from './skill-dev.js';
 
 export const GOAL_RESTORE_ENERGY = 'recuperar energía';
 export const GOAL_RESTORE_WARMTH = 'recuperar calor';
+/** El dolor como motivo: cuando el reflejo de un paso no alcanza. */
+export const GOAL_BE_SAFE = 'ponerse a salvo';
 export const SKILL_REACH_BLOCKED_FOOD = 'alcanzar-alimento-bloqueado';
 /**
  * Como SKILL_REACH_BLOCKED_FOOD: nombre reservado para la necesidad del
@@ -39,6 +43,19 @@ export const SKILL_GET_WARM = 'conseguir-calor';
 
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
+/**
+ * Bajo esta fracción de salud, con el peligro todavía al alcance, el dolor
+ * deja de ser un reflejo de un paso y pasa a ser un motivo: nace el objetivo
+ * de ponerse a salvo, por encima del hambre — morirse ahora le gana a comer
+ * después.
+ */
+const LOW_HEALTH_FRACTION = 0.5;
+/**
+ * Distancia (Chebyshev) a la que lo que daña deja de alcanzarla. Es la misma
+ * distancia prudente del fuego (calienta a 2, quema a 1, ADR 0017): exigir
+ * más chocaría con calentarse, que ocurre exactamente a 2.
+ */
+const SAFE_DISTANCE = 2;
 /**
  * Cuántas veces puede intentar inventar algo antes de rendirse y pedir ayuda.
  * Inventar cuesta una consulta al modelo por intento: sin tope, un mundo donde
@@ -201,6 +218,83 @@ function buildFireProgram(recipe: Recipe, held: Map<string, number>): SkillProgr
   return gatherAndCraftProgram(recipe, { held, waitAfterTicks: 20 });
 }
 
+/**
+ * Camino greedy de pasos hacia una POSICIÓN, calculado al planificar: la DSL
+ * solo sabe perseguir entidades percibidas, y una posición recordada no es
+ * ninguna. Sin pathfinding, a propósito (ADR 0005): si el mundo pone un
+ * obstáculo, el programa aborta con `camino-bloqueado` y eso también es
+ * información. `preferAxis` decide los desempates para poder generar dos
+ * variantes deterministas del mismo camino.
+ */
+function stepsToward(
+  from: Vec2,
+  to: Vec2,
+  stopAt: number,
+  preferAxis: 'x' | 'y',
+): { dirs: Direction[]; end: Vec2 } {
+  const dirs: Direction[] = [];
+  const cur = { ...from };
+  while (chebyshev(cur, to) > stopAt && dirs.length < 40) {
+    const dx = to.x - cur.x;
+    const dy = to.y - cur.y;
+    const moveX =
+      dx !== 0 &&
+      (dy === 0 || (preferAxis === 'x' ? Math.abs(dx) >= Math.abs(dy) : Math.abs(dx) > Math.abs(dy)));
+    if (moveX) {
+      dirs.push(dx > 0 ? 'right' : 'left');
+      cur.x += Math.sign(dx);
+    } else {
+      dirs.push(dy > 0 ? 'down' : 'up');
+      cur.y += Math.sign(dy);
+    }
+  }
+  return { dirs, end: cur };
+}
+
+/** Un paso por op; el primero que el mundo rechaza corta el programa. */
+function walkOps(dirs: Direction[]): SkillOp[] {
+  return dirs.flatMap((dir): SkillOp[] => [
+    { op: 'moveStep', dir },
+    {
+      op: 'branch',
+      if: { type: 'lastActionFailed' },
+      then: [{ op: 'abort', reason: 'camino-bloqueado' }],
+    },
+  ]);
+}
+
+/**
+ * Ir a donde recordaba comida y buscarla DE VERDAD al llegar: la memoria solo
+ * aporta el destino; comer exige percibirla. Si al llegar no hay nada
+ * comestible, `selectTarget` aborta con `no-candidates:rememberedFoods` — la
+ * señal con la que el recuerdo se invalida y el fallo se registra honesto.
+ */
+function rememberedFoodProgram(dirs: Direction[]): SkillProgram {
+  return [
+    ...walkOps(dirs),
+    { op: 'findEntities', query: { edible: true, held: false }, store: 'rememberedFoods' },
+    { op: 'selectTarget', from: 'rememberedFoods', strategy: 'nearest', store: 'rememberedFood' },
+    { op: 'moveToward', target: 'rememberedFood', maxSteps: 12 },
+    { op: 'consume', target: 'rememberedFood' },
+  ];
+}
+
+/** Como la comida recordada, pero con la distancia prudente del calor. */
+function rememberedHeatProgram(dirs: Direction[]): SkillProgram {
+  return [
+    ...walkOps(dirs),
+    { op: 'findEntities', query: { warm: true }, store: 'rememberedHeats' },
+    { op: 'selectTarget', from: 'rememberedHeats', strategy: 'nearest', store: 'rememberedHeat' },
+    { op: 'moveToward', target: 'rememberedHeat', maxSteps: 12, stopAtDistance: 2 },
+    { op: 'wait', ticks: 20 },
+  ];
+}
+
+/** Alejarse hasta la celda segura y quedarse hasta que el daño pare. */
+function retreatProgram(dirs: Direction[]): SkillProgram {
+  return [...walkOps(dirs), { op: 'wait', ticks: 5 }];
+}
+
 export interface AgentConfig {
   petId: EntityId;
   petName: string;
@@ -243,6 +337,8 @@ export interface AgentPersistentState {
   lastSelectedGoalId: string | null;
   /** Última orden explícita, para resolver referencias como "hacelo igual". */
   lastUserRequest?: UserRequest | null;
+  /** Dónde vio por última vez lo que le importa. Falta en guardados viejos. */
+  places?: PlaceMemoryData;
 }
 
 /**
@@ -264,10 +360,12 @@ interface Activity {
   goalId: string;
   strategy: string;
   exec: SkillExecution;
-  purpose: 'restore-energy' | 'user-request';
+  purpose: 'restore-energy' | 'user-request' | 'be-safe';
   completionReply?: string;
   requestRaw?: string;
   skillId?: string;
+  /** Recuerdo que esta actividad fue a comprobar: se invalida si mintió. */
+  rememberedPlaceId?: string;
   consumedFood: boolean;
   energyAtStart: number;
 }
@@ -280,6 +378,8 @@ interface Activity {
  */
 export class AnimaAgent {
   readonly memory: MemoryStore = new MemoryStoreImpl();
+  /** Memoria espacial: construida SOLO con percepciones pasadas. */
+  readonly places = new PlaceMemory();
   readonly goals = new GoalManager();
   readonly progress = new ProgressController();
   readonly events: EventLog<AgentEvent> = createEventLog<AgentEvent>();
@@ -398,6 +498,7 @@ export class AnimaAgent {
       energyHypothesisId: this.energyHypothesisId,
       lastSelectedGoalId: this.lastSelectedGoalId,
       lastUserRequest: this.lastUserRequest,
+      places: this.places.serialize(),
     });
   }
 
@@ -410,6 +511,9 @@ export class AnimaAgent {
     this.events.events.push(...clone.events);
     this.energyHypothesisId = clone.energyHypothesisId;
     this.lastSelectedGoalId = clone.lastSelectedGoalId;
+    // Un guardado anterior a la memoria de lugares llega sin el campo: se
+    // restaura como lo que era, una mascota que aún no recordaba lugares.
+    this.places.loadFrom(clone.places ?? { places: [] });
     if (clone.lastUserRequest !== undefined) {
       this.lastUserRequest = clone.lastUserRequest;
     } else {
@@ -542,6 +646,9 @@ export class AnimaAgent {
   /** Un paso de decisión. Devuelve la intención para este tick (o ninguna). */
   async think(perception: Perception): Promise<ActionIntent | null> {
     this.tick = perception.tick;
+    // Cada percepción alimenta la memoria de lugares: dónde vio por última
+    // vez lo que le importa. Es lo único que puede apuntar fuera de su vista.
+    this.places.update(perception);
 
     // El dolor manda: antes de conversar, planificar o continuar nada, el
     // cuerpo se aparta de lo que lo está dañando. Es un reflejo, no una
@@ -661,6 +768,23 @@ export class AnimaAgent {
   observe(events: SimEvent[]): void {
     this.activity?.exec.observe(events);
     for (const event of events) {
+      // Lo que ella misma consumió, recogió o destruyó ya no está donde lo
+      // recordaba: la memoria de lugares se corrige con lo que hizo su propio
+      // cuerpo (solo lo suyo: los eventos ajenos no son percepción).
+      if (
+        (event.type === 'item.consumed' || event.type === 'item.pickedUp') &&
+        event.data.actorId === this.petId &&
+        typeof event.data.itemId === 'string'
+      ) {
+        this.places.forget(event.data.itemId);
+      }
+      if (
+        event.type === 'entity.destroyed' &&
+        event.data.byId === this.petId &&
+        typeof event.data.id === 'string'
+      ) {
+        this.places.forget(event.data.id);
+      }
       if (event.type === 'item.consumed' && event.data.actorId === this.petId) {
         if (this.activity) this.activity.consumedFood = true;
         // La evidencia se atribuye por afinidad semántica: comer solo puede
@@ -760,8 +884,146 @@ export class AnimaAgent {
   // ---- señales internas ---------------------------------------------------
 
   private async processSignals(perception: Perception): Promise<void> {
+    // El dolor primero: si está malherida junto a un peligro, entender el
+    // hambre puede esperar un tick.
+    await this.processPainSignal(perception);
     await this.processEnergySignal(perception);
     await this.processColdSignal(perception);
+  }
+
+  /** Le duele tocarlo: lo aprendió con su cuerpo («estar pegado a...»). */
+  private hurtsToTouch(kind: string): boolean {
+    const statement = `estar pegado a un ${kindLabel(kind)} hace daño`;
+    return this.memory.factList().some((f) => f.statement === statement);
+  }
+
+  /**
+   * Posiciones de los peligros que CONOCE: los que ve ahora y los que
+   * recuerda. Conocer viene de los hechos de dolor, no del motor: un peligro
+   * que nunca la lastimó no está en esta lista, y eso es correcto.
+   */
+  private knownHazardPositions(perception: Perception): Vec2[] {
+    const positions: Vec2[] = [];
+    const visibleIds = new Set<string>();
+    for (const entity of perception.visibleEntities) {
+      visibleIds.add(entity.id);
+      if (entity.position && this.hurtsToTouch(entity.kind)) positions.push(entity.position);
+    }
+    for (const place of this.places.all()) {
+      if (!visibleIds.has(place.entityId) && this.hurtsToTouch(place.kind)) {
+        positions.push(place.position);
+      }
+    }
+    return positions;
+  }
+
+  /**
+   * Pasos hacia una posición evitando TERMINAR pegada a lo que sabe que daña.
+   * La consulta de los hechos de dolor vive aquí, al generar el programa: el
+   * intérprete de la DSL no se entera y sigue igual de simple. De las dos
+   * variantes deterministas del camino se prefiere la que no acaba junto a un
+   * peligro; si ninguna lo evita, llegar importa más que el rasguño (y el
+   * reflejo sigue existiendo).
+   */
+  private walkStepsAvoidingHazards(perception: Perception, to: Vec2, stopAt: number): Direction[] {
+    const hazards = this.knownHazardPositions(perception);
+    const risky = (cell: Vec2): boolean => hazards.some((h) => chebyshev(h, cell) <= 1);
+    const variants = (['x', 'y'] as const).map((axis) =>
+      stepsToward(perception.self.position, to, stopAt, axis),
+    );
+    return (variants.find((v) => !risky(v.end)) ?? variants[0]!).dirs;
+  }
+
+  /**
+   * El dolor sostenido es una señal del cuerpo, como el frío (ADR 0017):
+   * cuando la salud cae bajo el umbral Y un peligro conocido sigue al
+   * alcance, apartarse deja de ser el reflejo de un paso y pasa a ser un
+   * objetivo con prioridad por encima del hambre. El reflejo (painReflex)
+   * queda intacto: esto es lo que pasa cuando el reflejo no alcanzó.
+   */
+  private async processPainSignal(perception: Perception): Promise<void> {
+    const health = perception.self.health;
+    if (!health) return;
+    const fraction = health.current / health.max;
+    if (fraction >= LOW_HEALTH_FRACTION) return;
+    // Sin un peligro conocido al alcance no hay de qué ponerse a salvo: la
+    // salud también se agota por hambre o por frío, y esas señales ya tienen
+    // su propio objetivo.
+    const selfPos = perception.self.position;
+    const nearHazard = this.knownHazardPositions(perception).some(
+      (h) => chebyshev(selfPos, h) < SAFE_DISTANCE,
+    );
+    if (!nearHazard) return;
+    if (this.goals.findOpen(GOAL_BE_SAFE)) return;
+
+    const alreadyUnderstands =
+      this.memory.factList().some((f) => f.statement.includes('a salvo') || f.statement.includes('alejar')) ||
+      this.memory
+        .hypothesisList()
+        .some((h) => h.statement.includes('a salvo') || h.statement.includes('alejar'));
+    if (!alreadyUnderstands) {
+      if (this.config.guidanceEnabled) {
+        this.emit('guidance.shown', {
+          signal: 'health-low',
+          hint: 'evidencia histórica: criaturas que siguen junto a lo que las daña dejan de existir',
+        });
+      }
+      try {
+        const interpretation = await this.config.provider.complete({
+          kind: 'interpret.signal',
+          signal: 'health-low',
+        });
+        if (interpretation.kind === 'interpretation') {
+          const hypothesis = this.memory.addHypothesis(
+            interpretation.hypothesis,
+            this.tick,
+            interpretation.confidence,
+          );
+          this.emit('hypothesis.updated', {
+            hypothesisId: hypothesis.id,
+            statement: hypothesis.statement,
+            confidence: hypothesis.confidence,
+            source: 'internal-signal',
+          });
+        }
+      } catch (error) {
+        // Sin interpretación igual le duele: el objetivo nace lo mismo, y el
+        // cuerpo no espera a que el modelo conteste.
+        this.emit('provider.error', {
+          provider: this.config.provider.name,
+          operation: 'interpret.signal',
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
+      this.memory.recordEpisode({
+        kind: 'signal',
+        summary: 'estoy malherida y necesito ponerme a salvo',
+        tick: this.tick,
+        importance: 0.9,
+      });
+    }
+
+    const goal = this.goals.create(
+      {
+        description: GOAL_BE_SAFE,
+        source: 'internal-signal',
+        // 1.5 + urgencia mínima (0.5 al cruzar el umbral) supera el máximo
+        // alcanzable por hambre (0.9+1), frío (0.95+1) y peticiones (1+0.8):
+        // morirse ahora le gana a comer después.
+        priority: 1.5,
+        urgency: Math.min(1, 1 - fraction),
+        expectedValue: 1,
+        preconditions: [],
+        successCriteria: ['ningún peligro conocido queda al alcance y la salud deja de bajar'],
+        failureCriteria: ['la salud llega a cero'],
+      },
+      this.tick,
+    );
+    this.emit('goal.created', {
+      goalId: goal.id,
+      description: goal.description,
+      source: goal.source,
+    });
   }
 
   /**
@@ -1759,6 +2021,9 @@ export class AnimaAgent {
       this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
+    if (goal.description === GOAL_BE_SAFE) {
+      return this.pursueSafety(goal, perception);
+    }
     if (goal.description === GOAL_RESTORE_WARMTH) {
       return this.pursueWarmth(goal, perception);
     }
@@ -1770,7 +2035,12 @@ export class AnimaAgent {
     // aproximación primitiva. Solo crear una skill si hay evidencia de que
     // falta una capacidad (todas las estrategias conocidas prohibidas).
     const stable = this.config.library.findStable(SKILL_REACH_BLOCKED_FOOD);
-    const strategies: { label: string; program: SkillProgram; skillId?: string }[] = [];
+    const strategies: {
+      label: string;
+      program: SkillProgram;
+      skillId?: string;
+      rememberedPlaceId?: string;
+    }[] = [];
     if (stable) {
       strategies.push({
         label: `stable-skill:${stable.name}@v${stable.version}`,
@@ -1779,10 +2049,30 @@ export class AnimaAgent {
       });
     }
     strategies.push({ label: 'direct-approach', program: DIRECT_APPROACH_PROGRAM });
+    // Sin nada comestible al alcance de los sentidos, perseguir lo visible es
+    // abortar en el acto: si recuerda dónde HABÍA comida, ir a mirar va
+    // primero. Si el recuerdo miente, se invalida y el fallo queda registrado.
+    if (!perception.visibleEntities.some((e) => e.edible)) {
+      const remembered = this.places.recall({ edible: true }, perception)[0];
+      if (remembered) {
+        strategies.unshift({
+          label: `comida-recordada:${remembered.entityId}`,
+          program: rememberedFoodProgram(
+            this.walkStepsAvoidingHazards(perception, remembered.position, 1),
+          ),
+          rememberedPlaceId: remembered.entityId,
+        });
+      }
+    }
 
     const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
     if (viable) {
-      this.startActivity(goal, viable.label, viable.program, perception, viable.skillId);
+      this.startActivity(goal, viable.label, viable.program, perception, {
+        ...(viable.skillId !== undefined ? { skillId: viable.skillId } : {}),
+        ...(viable.rememberedPlaceId !== undefined
+          ? { rememberedPlaceId: viable.rememberedPlaceId }
+          : {}),
+      });
       return this.continueActivity(perception);
     }
 
@@ -1985,6 +2275,116 @@ export class AnimaAgent {
   }
 
   /**
+   * El dolor como motivo, no el reflejo: alejarse de lo que sabe que daña
+   * hasta la distancia segura y quedarse ahí hasta que la salud deje de
+   * bajar. Estrategias deterministas (celda segura + camino de pasos); la
+   * escalada habla el mismo idioma que el frío y el hambre (ADR 0008), pero
+   * sin el paso de crear una habilidad: apartarse no es una capacidad que
+   * falte — si no hay celda a donde ir, lo que falta es espacio, y eso solo
+   * lo arregla el cuidador.
+   */
+  private pursueSafety(goal: Goal, perception: Perception): ActionIntent | null {
+    const selfPos = perception.self.position;
+    const hazards = this.knownHazardPositions(perception);
+    const minDistance = hazards.reduce(
+      (min, hazard) => Math.min(min, chebyshev(selfPos, hazard)),
+      Infinity,
+    );
+    if (minDistance >= SAFE_DISTANCE) {
+      // Fuera del alcance del daño la salud deja de bajar (el peligro del
+      // motor solo alcanza a los adyacentes): estar lejos ES estar a salvo.
+      this.goals.complete(goal.id);
+      this.emit('goal.completed', { goalId: goal.id, strategy: 'ya-a-salvo' });
+      this.memory.recordEpisode({
+        kind: 'safety',
+        summary: 'me aparté de lo que me estaba dañando y me puse a salvo',
+        tick: this.tick,
+        importance: 0.8,
+      });
+      this.lastSelectedGoalId = null;
+      return null;
+    }
+
+    // Celdas candidatas: cercanas, sin sólidos visibles encima y lejos de
+    // TODO peligro conocido. Orden determinista: la más cercana primero.
+    const solids = new Set(
+      perception.visibleEntities
+        .filter((e) => e.solid && e.position)
+        .map((e) => `${e.position!.x},${e.position!.y}`),
+    );
+    const candidates: Vec2[] = [];
+    for (let dy = -4; dy <= 4; dy++) {
+      for (let dx = -4; dx <= 4; dx++) {
+        const cell = { x: selfPos.x + dx, y: selfPos.y + dy };
+        if (cell.x < 0 || cell.y < 0) continue;
+        if (solids.has(`${cell.x},${cell.y}`)) continue;
+        if (hazards.some((hazard) => chebyshev(hazard, cell) < SAFE_DISTANCE)) continue;
+        candidates.push(cell);
+      }
+    }
+    candidates.sort(
+      (a, b) => manhattan(selfPos, a) - manhattan(selfPos, b) || a.y - b.y || a.x - b.x,
+    );
+
+    // Un plan que pisa un sólido que VE (o el peligro mismo) es un plan que
+    // ya sabe fallido: se descarta al planificar, no caminando. Lo que no ve
+    // (bordes del mundo, sólidos lejanos) lo dirá el mundo con
+    // `camino-bloqueado`, como siempre.
+    const planPath = (cell: Vec2): Direction[] | null => {
+      for (const axis of ['x', 'y'] as const) {
+        const { dirs } = stepsToward(selfPos, cell, 0, axis);
+        const walked = { ...selfPos };
+        let knownBlocked = false;
+        for (const dir of dirs) {
+          walked.x += dir === 'right' ? 1 : dir === 'left' ? -1 : 0;
+          walked.y += dir === 'down' ? 1 : dir === 'up' ? -1 : 0;
+          if (
+            solids.has(`${walked.x},${walked.y}`) ||
+            hazards.some((hazard) => hazard.x === walked.x && hazard.y === walked.y)
+          ) {
+            knownBlocked = true;
+            break;
+          }
+        }
+        if (!knownBlocked) return dirs;
+      }
+      return null;
+    };
+
+    const viable = candidates
+      .map((cell) => ({ cell, dirs: planPath(cell), label: `retirada:${cell.x},${cell.y}` }))
+      .find(
+        (candidate) =>
+          candidate.dirs !== null && !this.progress.isForbidden(goal.id, candidate.label),
+      );
+    if (viable) {
+      this.startActivity(goal, viable.label, retreatProgram(viable.dirs!), perception, {
+        purpose: 'be-safe',
+      });
+      return this.continueActivity(perception);
+    }
+
+    // Acorralada: ninguna celda segura que intentar. Mismo idioma que el
+    // resto de las necesidades: pedir ayuda una vez, después suspender.
+    if (!this.progress.helpRequestedFor(goal.id)) {
+      this.progress.markHelpRequested(goal.id);
+      this.emit('help.requested', { goalId: goal.id });
+      return {
+        type: 'speak',
+        text: 'Algo me está haciendo daño y no encuentro por dónde apartarme. ¿Puedes ayudarme?',
+      };
+    }
+    this.goals.suspend(
+      goal.id,
+      'sin salida a la vista tras pedir ayuda',
+      'nueva información del usuario o cambio en el entorno',
+    );
+    this.emit('goal.suspended', { goalId: goal.id, reason: 'sin salida a la vista' });
+    this.lastSelectedGoalId = null;
+    return null;
+  }
+
+  /**
    * Perseguir el calor tiene la misma forma que perseguir el alimento: skill
    * estable, si no aproximación primitiva, y si todo está prohibido, el ciclo
    * cerrado. La diferencia está en qué falta cuando falla: sin nada que dé
@@ -1994,7 +2394,12 @@ export class AnimaAgent {
    */
   private async pursueWarmth(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
     const stable = this.config.library.findStable(SKILL_GET_WARM);
-    const strategies: { label: string; program: SkillProgram; skillId?: string }[] = [];
+    const strategies: {
+      label: string;
+      program: SkillProgram;
+      skillId?: string;
+      rememberedPlaceId?: string;
+    }[] = [];
     if (stable) {
       strategies.push({
         label: `stable-skill:${stable.name}@v${stable.version}`,
@@ -2012,10 +2417,30 @@ export class AnimaAgent {
         program: buildFireProgram(recipe, heldCounts(perception)),
       });
     }
+    // Sin nada cálido al alcance de los sentidos, ir a donde RECUERDA que
+    // había calor va primero: caminar hasta un fuego que ya existe es más
+    // barato que construir uno nuevo.
+    if (!perception.visibleEntities.some((e) => e.warmth !== undefined)) {
+      const remembered = this.places.recall({ warm: true }, perception)[0];
+      if (remembered) {
+        strategies.unshift({
+          label: `calor-recordado:${remembered.entityId}`,
+          program: rememberedHeatProgram(
+            this.walkStepsAvoidingHazards(perception, remembered.position, 2),
+          ),
+          rememberedPlaceId: remembered.entityId,
+        });
+      }
+    }
 
     const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
     if (viable) {
-      this.startActivity(goal, viable.label, viable.program, perception, viable.skillId);
+      this.startActivity(goal, viable.label, viable.program, perception, {
+        ...(viable.skillId !== undefined ? { skillId: viable.skillId } : {}),
+        ...(viable.rememberedPlaceId !== undefined
+          ? { rememberedPlaceId: viable.rememberedPlaceId }
+          : {}),
+      });
       return this.continueActivity(perception);
     }
 
@@ -2074,7 +2499,7 @@ export class AnimaAgent {
           `stable-skill:${outcome.stableSkill.name}@v${outcome.stableSkill.version}`,
           outcome.stableSkill.program,
           perception,
-          outcome.stableSkill.id,
+          { skillId: outcome.stableSkill.id },
         );
         return this.continueActivity(perception);
       }
@@ -2323,7 +2748,7 @@ export class AnimaAgent {
         `stable-skill:${outcome.stableSkill.name}@v${outcome.stableSkill.version}`,
         outcome.stableSkill.program,
         perception,
-        outcome.stableSkill.id,
+        { skillId: outcome.stableSkill.id },
       );
       return this.continueActivity(perception);
     }
@@ -2572,15 +2997,22 @@ export class AnimaAgent {
     strategy: string,
     program: SkillProgram,
     perception: Perception,
-    skillId?: string,
+    options: {
+      skillId?: string;
+      rememberedPlaceId?: string;
+      purpose?: 'restore-energy' | 'be-safe';
+    } = {},
   ): void {
     this.emit('strategy.selected', { goalId: goal.id, strategy });
     this.activity = {
       goalId: goal.id,
       strategy,
       exec: new SkillExecution(program, this.petId, { library: this.config.library }),
-      purpose: 'restore-energy',
-      ...(skillId !== undefined ? { skillId } : {}),
+      purpose: options.purpose ?? 'restore-energy',
+      ...(options.skillId !== undefined ? { skillId: options.skillId } : {}),
+      ...(options.rememberedPlaceId !== undefined
+        ? { rememberedPlaceId: options.rememberedPlaceId }
+        : {}),
       consumedFood: false,
       energyAtStart: perception.self.energy?.current ?? 0,
     };
@@ -2632,6 +3064,45 @@ export class AnimaAgent {
       return null;
     }
 
+    if (activity.purpose === 'be-safe') {
+      // A salvo es un estado del mundo, no del programa: se mide con la
+      // percepción actual, no con que el paseo haya terminado sin tropiezos.
+      const selfPos = perception.self.position;
+      const minDistance = this.knownHazardPositions(perception).reduce(
+        (min, hazard) => Math.min(min, chebyshev(selfPos, hazard)),
+        Infinity,
+      );
+      const safe = minDistance >= SAFE_DISTANCE;
+      const record = this.progress.record(
+        activity.goalId,
+        activity.strategy,
+        safe,
+        out.result.reason,
+      );
+      if (safe) {
+        this.goals.complete(activity.goalId);
+        this.emit('goal.completed', { goalId: activity.goalId, strategy: activity.strategy });
+        this.memory.recordEpisode({
+          kind: 'safety',
+          summary: 'me aparté de lo que me estaba dañando y me puse a salvo',
+          tick: this.tick,
+          importance: 0.8,
+        });
+      } else {
+        this.emit('strategy.failed', {
+          goalId: activity.goalId,
+          strategy: activity.strategy,
+          outcome: out.result.outcome,
+          reason: out.result.reason ?? null,
+        });
+        if (record.forbidden) {
+          this.emit('strategy.forbidden', { goalId: activity.goalId, strategy: activity.strategy });
+        }
+      }
+      this.lastSelectedGoalId = null;
+      return null;
+    }
+
     const energyNow = perception.self.energy?.current ?? 0;
     const success =
       out.result.outcome === 'completed' &&
@@ -2644,6 +3115,25 @@ export class AnimaAgent {
       success,
       out.result.reason,
     );
+    // El recuerdo prometía algo ahí y al llegar no había nada de eso: el
+    // recuerdo era mentira, se descarta, y el fallo ya quedó registrado
+    // arriba con su razón (`no-candidates`: falta el recurso, ADR 0008).
+    if (
+      activity.rememberedPlaceId !== undefined &&
+      out.result.reason?.startsWith('no-candidates:remembered') === true
+    ) {
+      this.places.forget(activity.rememberedPlaceId);
+      this.emit('place.invalidated', {
+        entityId: activity.rememberedPlaceId,
+        strategy: activity.strategy,
+      });
+      this.memory.recordEpisode({
+        kind: 'memory-stale',
+        summary: 'fui a buscar algo donde lo recordaba y ya no estaba',
+        tick: this.tick,
+        importance: 0.5,
+      });
+    }
     if (activity.skillId) {
       this.config.library.recordUse(activity.skillId, success, this.now());
       this.emit('skill.used', { skillId: activity.skillId, success });

@@ -54,9 +54,11 @@ function forestWorld(options: WorldOptions = {}): { world: WorldState; petId: En
     inventory: { items: [], capacity: 4 },
     agent: { name: 'Anima', perceptionRange: 12 },
   }).id;
+  // En diagonal, no en fila: con línea de visión, un árbol alineado detrás de
+  // otro queda oculto y "veo 3 tree distintos" contaría solo los visibles.
   for (let i = 0; i < (options.trees ?? 2); i++) {
     spawn(world, 'tree', {
-      position: { x: 6 + i, y: 4 },
+      position: { x: 6 + i, y: 4 - i },
       collider: { solid: true },
       hardness: { value: 5 },
       durability: { current: 15, max: 15 },
