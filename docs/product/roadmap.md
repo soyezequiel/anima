@@ -20,23 +20,31 @@ pre-codeados. En cuatro pasos, cada uno mostrable por sí solo:
    empieza cómoda y aprieta tras resolver el hambre.
 3. **Arquetipos propuestos por el modelo** — hecho (ADR 0018): Ánima inventa
    recetas, el mundo las valida (`validateRecipe`) y decide; un rechazo enseña.
-   No puede inventar comida: inventar da capacidades, no recursos. Placeholder
-   gráfico: cuadrado con el nombre. Abierto: los troncos son inconseguibles en
-   el mundo jugable porque se niega a talar el árbol (ver el ADR).
+   No puede inventar comida: inventar da capacidades, no recursos. Se dibujan
+   por lo que son (un invento que irradia calor se ve 🔥) y solo si nada los
+   explica, placeholder con su nombre.
 4. **Comportamientos nuevos** — DSL de reglas o JS enjaulado (ADR 0014),
-   solo si los componentes existentes no alcanzan.
+   solo si los componentes existentes no alcanzan. **Es el único paso que
+   queda**, y a propósito: hasta ahora todo se expresó con los componentes
+   que ya existían.
+
+Lo que quedó abierto del ADR 0018 (talar el árbol es `will_not`, así que con
+el mock los troncos solo salían del árbol) dejó de bloquear: el mapa tiene
+troncos y pedernal sueltos, y con un modelo real ella juzga si talar vale la
+pena viendo cuántos árboles quedan (ADR 0019).
 
 ## 1. Profundidad del mundo y de la criatura
 
 Es donde el producto crece de verdad: hoy la arquitectura aguanta mucho más de
 lo que el mundo ofrece.
 
-- **Un solo escenario**: todo ocurre en `food-behind-wall` 9×5. Faltan mapas más
-  grandes y más entidades con consecuencias propias (agua, refugio, ramas que
-  caen).
-- **Más señales internas**: la spec menciona temperatura y dolor; la
-  temperatura ya existe en el motor (ADR 0015), falta el dolor. Cada señal
-  nueva es un motivo nuevo para formular hipótesis.
+- **Un solo escenario**: todo ocurre en `food-behind-wall`, ahora 13×7 y con
+  materiales sueltos. Faltan mapas distintos y más entidades con consecuencias
+  propias (agua, refugio, ramas que caen).
+- **Más señales internas**: temperatura (ADR 0015) y dolor ya existen; el dolor
+  es hoy un reflejo que la aparta y deja un hecho aprendido, todavía no un
+  motivo que la mueva a planificar. Cada señal nueva es un motivo nuevo para
+  formular hipótesis.
 - **Percepción real**: hoy es solo por rango (ver ADR 0005). Faltan línea de
   visión y memoria de lugares que ya no se ven.
 - **Relación emocional**: nombre editable, preferencias, rasgos de personalidad,
