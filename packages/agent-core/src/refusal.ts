@@ -1,4 +1,4 @@
-import { kindLabel } from '@anima/shared';
+import { countedKindLabel, isFeminineKind, kindLabel } from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
 import { missingIngredients } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
@@ -11,7 +11,8 @@ import type { Goal } from './goals.js';
  */
 export type UserRequest =
   | { kind: 'destroy-entity'; targetKind: string; raw: string }
-  | { kind: 'fetch-item'; targetKind: string; raw: string }
+  /** `amount`: cuántas unidades pidió ("conseguí los 2 troncos"). 1 si no dijo. */
+  | { kind: 'fetch-item'; targetKind: string; amount?: number; raw: string }
   | { kind: 'consume-item'; targetKind: string; raw: string }
   | { kind: 'wait-here'; raw: string }
   | { kind: 'move-direction'; directions: Direction[]; raw: string }
@@ -36,27 +37,33 @@ const CRITICAL_ENERGY_FRACTION = 0.2;
  * el dibujo del mundo tienen que llamar a las cosas igual. */
 const displayKind = kindLabel;
 
-/** Plural en español: "2 troncos", "2 pedernales". */
-function pluralKind(kind: string, amount: number): string {
-  const name = displayKind(kind);
-  if (amount === 1) return name;
-  return /[aeiou]$/.test(name) ? `${name}s` : `${name}es`;
-}
-
 /** "una silla", "un tronco": el género se adivina por la terminación. */
 function withArticle(kind: string): string {
   const name = displayKind(kind);
-  return /a$/.test(name) ? `una ${name}` : `un ${name}`;
+  return `${isFeminineKind(kind) ? 'una' : 'un'} ${name}`;
 }
 
 /** "2 troncos y 1 pedernal" — para decir qué falta en voz humana. */
 function displayMissing(missing: { kind: string; need: number; have: number }[]): string {
-  return missing
-    .map((m) => {
-      const amount = m.need - m.have;
-      return `${amount} ${pluralKind(m.kind, amount)}`;
-    })
-    .join(' y ');
+  return missing.map((m) => countedKindLabel(m.kind, m.need - m.have)).join(' y ');
+}
+
+/**
+ * Pronombre acusativo que concuerda con lo que falta: "los junto", "la
+ * traigo". Con géneros mezclados, el masculino plural — como en español.
+ */
+function missingPronoun(missing: { kind: string; need: number; have: number }[]): string {
+  const total = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
+  const feminine = missing.every((m) => isFeminineKind(m.kind));
+  if (total === 1) return feminine ? 'la' : 'lo';
+  return feminine ? 'las' : 'los';
+}
+
+/** "alimento", "un tronco", "2 troncos": lo que va a buscar, en voz humana. */
+function fetchPhrase(kind: string, amount: number): string {
+  if (amount > 1) return countedKindLabel(kind, amount);
+  // "alimento" es incontable: "un alimento" suena a etiqueta de supermercado.
+  return kind === 'food' ? displayKind(kind) : withArticle(kind);
 }
 
 function displayDirections(directions: Direction[]): string {
@@ -132,19 +139,29 @@ export function evaluateUserRequest(
       if (missing.length > 0) {
         const totalMissing = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
         const falta = totalMissing === 1 ? 'me falta' : 'me faltan';
-        // Falta un recurso, no una capacidad (ADR 0008): sabe hacerlo, no
-        // tiene con qué. Si lo ve cerca lo dice, en vez de prometer traerlo:
-        // ir a buscarlo es otra petición, y el cuidador puede pedírsela.
-        const visible = missing.filter((m) =>
-          perception.visibleEntities.some((e) => e.kind === m.kind),
-        );
+        const outputPronoun = isFeminineKind(recipe.output.kind) ? 'la' : 'lo';
+        // Si TODO lo que falta está a la vista y alcanza, juntar es parte de
+        // construir: la orden se acepta entera y no se le devuelve al cuidador
+        // el trabajo de pilotear cada recogida. Solo cuando falta el RECURSO
+        // (no está o no alcanza) la negativa es honesta (ADR 0008).
+        const visibleCount = (kind: string): number =>
+          perception.visibleEntities.filter((e) => e.kind === kind).length;
+        const gatherable = missing.every((m) => visibleCount(m.kind) >= m.need - m.have);
+        if (gatherable) {
+          return {
+            classification: 'accepted',
+            reason: `Entiendo, quiero construir ${withArticle(recipe.output.kind)}; ${falta} ${displayMissing(missing)}.`,
+            alternative: `Veo lo que falta cerca: ${missingPronoun(missing)} junto y ${outputPronoun} construyo.`,
+          };
+        }
+        const visible = missing.filter((m) => visibleCount(m.kind) > 0);
         return {
           classification: 'cannot',
           reason: `Entiendo, quiero construir ${withArticle(recipe.output.kind)}, pero ${falta} ${displayMissing(missing)}.`,
           alternative:
             visible.length > 0
-              ? `Veo ${displayMissing(visible)} cerca: pídeme que lo traiga y voy.`
-              : `Si me consigues ${displayMissing(missing)}, la construyo.`,
+              ? `Veo ${displayMissing(visible)} cerca, pero no alcanza para todo. Si me consigues el resto, ${outputPronoun} construyo.`
+              : `Si me consigues ${displayMissing(missing)}, ${outputPronoun} construyo.`,
         };
       }
       return {
@@ -245,7 +262,10 @@ export function evaluateUserRequest(
       }
       return request.kind === 'consume-item'
         ? { classification: 'accepted', reason: `Voy a comer ${targetName}.` }
-        : { classification: 'accepted', reason: `Voy a buscar ${targetName}.` };
+        : {
+            classification: 'accepted',
+            reason: `Voy a buscar ${fetchPhrase(request.targetKind, request.amount ?? 1)}.`,
+          };
     }
   }
 }
@@ -255,6 +275,33 @@ function normalizeMessage(text: string): string {
     .toLowerCase()
     .normalize('NFD')
     .replace(/\p{Diacritic}/gu, '');
+}
+
+/** "trae 2 troncos", "conseguí los dos", "ambas": cuántas unidades pide. */
+function parseAmount(lower: string): number | undefined {
+  const digits = /\b([2-9])\b/.exec(lower);
+  if (digits) return Number(digits[1]);
+  if (/\b(ambos|ambas)\b/.test(lower)) return 2;
+  const words: [RegExp, number][] = [
+    [/\bdos\b/, 2],
+    [/\btres\b/, 3],
+    [/\bcuatro\b/, 4],
+    [/\bcinco\b/, 5],
+  ];
+  for (const [pattern, value] of words) if (pattern.test(lower)) return value;
+  return undefined;
+}
+
+/**
+ * "continua", "seguí", "dale": pedir que retome lo pendiente, no una orden
+ * nueva. Se exige que el mensaje sea SOLO eso (con muletillas chicas): "sigue
+ * derecho hacia arriba" contiene "sigue" y aun así es una orden de movimiento.
+ */
+export function isContinuationMessage(text: string): boolean {
+  const lower = normalizeMessage(text).trim();
+  return /^(y |bueno,? |ok,? |dale,? )?(continua(la|lo)?|continuar|segui(la|lo)?|sigue|seguir|prosigue|dale|hacelo( igual)?|hazlo|hace eso|intenta(lo)? de nuevo|intentalo|proba(lo)? de nuevo|probalo|retoma(la|lo)?|termina(la|lo)?|otra vez|de nuevo)[\s.!¡¿?]*$/.test(
+    lower,
+  );
 }
 
 /** Parser local de peticiones frecuentes. El resto se deriva al proveedor de diálogo. */
@@ -282,6 +329,9 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     ['flint', 'flint'],
     ['fogata', 'campfire'],
     ['hoguera', 'campfire'],
+    ['silla', 'chair'],
+    ['antorcha', 'torch'],
+    ['empalizada', 'barricade'],
   ];
   const mentions = aliases
     .map(([word, kind]) => ({ kind, index: lower.indexOf(word) }))
@@ -338,8 +388,20 @@ export function parseUserMessage(text: string): UserRequest | { kind: 'explanati
     const match = recipeWords.find(([pattern]) => pattern.test(lower));
     if (match) return { kind: 'craft-item', recipeId: match[1], raw: text };
   }
-  if (/\b(trae|traer|busca|buscar|recoge|recoger|agarra|agarrar|toma|tomar)\b/.test(lower)) {
-    return { kind: 'fetch-item', targetKind: kindWord('other'), raw: text };
+  // Con sufijos: "traé", "traelos", "buscame", "conseguilos" son la misma
+  // orden que "trae" — los clíticos del español rioplatense van pegados.
+  if (
+    /\b(trae\w*|traer|busca\w*|buscar|recoge\w*|recoger|agarra\w*|agarrar|toma\w*|tomar|consigue\w*|consegui\w*|conseguir|junta\w*|juntar)\b/.test(
+      lower,
+    )
+  ) {
+    const amount = parseAmount(lower);
+    return {
+      kind: 'fetch-item',
+      targetKind: kindWord('other'),
+      ...(amount !== undefined ? { amount } : {}),
+      raw: text,
+    };
   }
   if (/energ/.test(lower) && /(com|aliment|fruta|manzana)/.test(lower)) {
     return { kind: 'explanation', raw: text };

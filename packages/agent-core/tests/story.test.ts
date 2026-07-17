@@ -211,7 +211,10 @@ describe('diálogo y órdenes del usuario', () => {
     expect(result.worldEvents.some((event) => event.type === 'item.consumed')).toBe(true);
   });
 
-  it('explica el límite si el modelo interpreta una acción aún no ejecutable', async () => {
+  it('una acción aún no ejecutable dispara un intento de aprendizaje, no una negativa seca', async () => {
+    // Un solo guion: tras interpretar, el agente pedirá un contrato de
+    // aprendizaje y este proveedor ya no tendrá qué responder — el caso
+    // "quiero aprenderlo pero no encuentro cómo".
     const provider = new ScriptedModelProvider([
       {
         kind: 'command.interpretation',
@@ -231,13 +234,14 @@ describe('diálogo y órdenes del usuario', () => {
       result.worldEvents.some(
         (event) =>
           event.type === 'agent.spoke' &&
-          String(event.data.text).includes('construir una casa con la rama'),
+          String(event.data.text).includes('no consigo imaginar en qué se notaría'),
       ),
     ).toBe(true);
     expect(agent.goals.all().some((goal) => goal.source === 'user-request')).toBe(false);
-    expect(agent.events.ofType('user.request.refused')[0]?.data).toMatchObject({
-      classification: 'cannot',
-    });
+    // Lo pedido queda recordado como deseo no cumplido, no descartado.
+    expect(
+      agent.memory.episodeList().some((episode) => episode.kind === 'unmet-request'),
+    ).toBe(true);
   });
 
   it('ejecuta una orden natural de comer en el mundo', async () => {
@@ -279,7 +283,13 @@ describe('diálogo y órdenes del usuario', () => {
     expect(refusals).toHaveLength(2);
     expect(refusals.map((event) => event.data.request)).toEqual([
       expect.objectContaining({ kind: 'destroy-entity', targetKind: 'tree' }),
-      expect.objectContaining({ kind: 'destroy-entity', targetKind: 'tree', raw: 'hacelo igual' }),
+      // La repetición conserva el texto de la orden original: la meta se
+      // llama como lo que se pidió, no "hacelo igual".
+      expect.objectContaining({
+        kind: 'destroy-entity',
+        targetKind: 'tree',
+        raw: 'intenta talar el árbol con el hammer',
+      }),
     ]);
     expect(provider.callCount('dialogue')).toBe(0);
   });

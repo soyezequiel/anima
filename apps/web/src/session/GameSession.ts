@@ -39,6 +39,7 @@ import type {
   PickupView,
   SkillView,
 } from './view.js';
+import { buildClaudeReport, claudeReportFileName } from './claude-report.js';
 
 const BASE_TICKS_PER_SECOND = 4;
 const SPEECH_VISIBLE_TICKS = 14;
@@ -50,6 +51,7 @@ const PICKUP_VISIBLE_TICKS = 4;
 const DEV_EVENT_LIMIT = 400;
 const AUTOSAVE_EVERY_TICKS = 40;
 const RECENT_ACTIONS_LIMIT = 12;
+const EVALUATION_SEEDS = [11, 22, 33];
 
 export interface SessionOptions {
   seed?: number;
@@ -171,7 +173,7 @@ export class GameSession {
       evaluationScenarios: MVP_SCENARIOS,
       practiceScenarios: PRACTICE_SCENARIOS,
       warmthScenarios: COLD_SCENARIOS,
-      evaluationSeeds: [11, 22, 33],
+      evaluationSeeds: EVALUATION_SEEDS,
       guidanceEnabled: true,
     });
     this.devEvents = [];
@@ -260,9 +262,23 @@ export class GameSession {
         this.notify();
       });
     }
+    // La orden en curso sobrevive al guardado (vive en las metas del agente);
+    // decirlo evita que la recarga parezca amnesia: "¿y la silla?" tiene
+    // respuesta porque la silla sigue pendiente.
+    const pendingGoal = this.agent.goals
+      .all()
+      .find(
+        (goal) =>
+          goal.status === 'active' &&
+          ((goal.source === 'user-request' && goal.userRequest) ||
+            (goal.source === 'learning' && goal.learning)),
+      );
+    const pendingNote = pendingGoal
+      ? ` Sigo con lo pendiente: "${pendingGoal.userRequest?.raw ?? pendingGoal.learning?.raw ?? pendingGoal.description}".`
+      : '';
     this.chat.push({
       from: 'system',
-      text: `Sesión restaurada (tick ${this.world.tick}).`,
+      text: `Sesión restaurada (tick ${this.world.tick}).${pendingNote}`,
       tick: this.world.tick,
     });
   }
@@ -487,6 +503,25 @@ export class GameSession {
       data: { note: 'muerte forzada desde el modo desarrollador' },
     });
     if (!this.running) setTimeout(() => void this.stepOnce(), 0);
+  }
+
+  /**
+   * Reporte en Markdown para un agente de código (Claude Code): estado real
+   * de la corrida + brechas contra la visión del producto. Va con nombre de
+   * archivo sugerido para que la UI lo descargue tal cual.
+   */
+  buildClaudeReport(): { fileName: string; markdown: string } {
+    const generatedAt = new Date().toISOString();
+    return {
+      fileName: claudeReportFileName(this.view, generatedAt),
+      markdown: buildClaudeReport({
+        view: this.view,
+        recipes: this.world.recipes.map((recipe) => structuredClone(recipe)),
+        baseRecipeIds: MVP_RECIPES.map((recipe) => recipe.id),
+        evaluationSeeds: EVALUATION_SEEDS,
+        generatedAt,
+      }),
+    };
   }
 
   // ---- entrada del usuario --------------------------------------------------

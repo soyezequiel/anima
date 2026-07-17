@@ -102,7 +102,7 @@ describe('CodexModelProvider', () => {
       command: { action: 'move-direction', directions: ['up', 'left'] },
     });
     expect(seen[0]?.schema).toMatchObject({
-      required: ['action', 'targetKind', 'directions', 'skillName', 'recipeId', 'summary'],
+      required: ['action', 'targetKind', 'amount', 'directions', 'skillName', 'recipeId', 'summary'],
     });
     expect(seen[0]?.prompt).toContain('pegá un pasito rumbo al rincón noroeste');
     expect(seen[0]?.prompt).toContain('Mascota: Estoy junto al árbol.');

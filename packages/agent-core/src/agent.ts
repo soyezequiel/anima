@@ -1,10 +1,11 @@
 import type { EventLog } from '@anima/shared';
-import { createEventLog, kindLabel } from '@anima/shared';
+import { countedKindLabel, createEventLog, kindLabel } from '@anima/shared';
 import type { ActionIntent, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
+import { missingIngredients } from '@anima/sim-core';
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
-import type { SkillCondition, SkillDefinition, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
+import type { EvaluationCriterion, SkillCondition, SkillDefinition, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
 import { describeCriterion, SkillExecution, validateSuccessCriteria } from '@anima/skill-runtime';
 import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
@@ -13,7 +14,7 @@ import { GoalManager } from './goals.js';
 import type { ProgressData } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
-import { evaluateUserRequest, parseUserMessage } from './refusal.js';
+import { evaluateUserRequest, isContinuationMessage, parseUserMessage } from './refusal.js';
 import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
 import { developSkill, evaluateAndApply } from './skill-dev.js';
 
@@ -104,44 +105,77 @@ const WARMTH_APPROACH_PROGRAM: SkillProgram = [
 ];
 
 /**
- * Aproximación primitiva a "no hay fuego: hacelo". Se genera desde la receta
+ * Juntar los ingredientes que falten y construir. Se genera desde la receta
  * —dato del mundo—, igual que los programas de las peticiones del usuario:
  * composición determinista de primitivas, no una skill que haya que aprender.
+ * Es el mismo programa para "tengo frío: hago fuego" y para "construí una
+ * silla": si le faltan materiales los va a buscar, porque juntar es parte de
+ * construir, no otra petición.
  *
  * Sus fallos dicen la verdad al controlador de progreso: sin materiales a la
  * vista aborta con `no-candidates` (falta el RECURSO → pedir ayuda, ADR
  * 0008); con el camino bloqueado aborta con `camino-bloqueado` (falta la
  * CAPACIDAD → el ciclo de skills tiene algo que aportar).
  */
-function buildFireProgram(recipe: Recipe): SkillProgram {
+function gatherAndCraftProgram(
+  recipe: Recipe,
+  options: { held?: Map<string, number>; waitAfterTicks?: number } = {},
+): SkillProgram {
   const done: SkillCondition = { type: 'canCraft', recipeId: recipe.id };
-  const gather: SkillOp[] = recipe.ingredients.map((ingredient) => ({
-    op: 'repeatWithLimit',
-    max: ingredient.count,
-    // Si ya puede construir (traía cosas encima), no junta de más.
-    until: done,
-    body: [
-      {
-        op: 'findEntities',
-        query: { kind: ingredient.kind, held: false },
-        store: `mat-${ingredient.kind}`,
-      },
-      { op: 'selectTarget', from: `mat-${ingredient.kind}`, strategy: 'nearest', store: `next-${ingredient.kind}` },
-      { op: 'moveToward', target: `next-${ingredient.kind}`, maxSteps: 40 },
-      { op: 'pickup', target: `next-${ingredient.kind}` },
-    ],
-  }));
+  const gather: SkillOp[] = recipe.ingredients
+    // Solo lo que efectivamente falta: con 2 troncos ya en la mano y el
+    // pedernal en el suelo, buscar troncos abortaría (no hay ninguno suelto)
+    // aunque no hiciera falta ninguno.
+    .map((ingredient) => ({
+      kind: ingredient.kind,
+      remaining: ingredient.count - (options.held?.get(ingredient.kind) ?? 0),
+    }))
+    .filter((need) => need.remaining > 0)
+    .map((need) => ({
+      op: 'repeatWithLimit' as const,
+      max: need.remaining,
+      // Si a mitad de camino ya puede construir, no junta de más.
+      until: done,
+      body: [
+        {
+          op: 'findEntities' as const,
+          query: { kind: need.kind, held: false },
+          store: `mat-${need.kind}`,
+        },
+        { op: 'selectTarget' as const, from: `mat-${need.kind}`, strategy: 'nearest' as const, store: `next-${need.kind}` },
+        { op: 'moveToward' as const, target: `next-${need.kind}`, maxSteps: 40 },
+        { op: 'pickup' as const, target: `next-${need.kind}` },
+      ],
+    }));
+  const afterCraft: SkillOp[] =
+    options.waitAfterTicks !== undefined ? [{ op: 'wait', ticks: options.waitAfterTicks }] : [];
   return [
     ...gather,
     {
       op: 'branch',
       if: done,
-      // El reflejo de dolor la aparta del fuego recién hecho; la espera
-      // posterior transcurre a distancia segura, dentro del rango de calor.
-      then: [{ op: 'craft', recipeId: recipe.id }, { op: 'wait', ticks: 20 }],
+      then: [{ op: 'craft', recipeId: recipe.id }, ...afterCraft],
       else: [{ op: 'abort', reason: `no-candidates:ingredientes-${recipe.id}` }],
     },
   ];
+}
+
+/** Lo que lleva encima, contado por tipo: insumo para saber qué falta juntar. */
+function heldCounts(perception: Perception): Map<string, number> {
+  const held = new Map<string, number>();
+  for (const item of perception.self.heldItems) {
+    held.set(item.kind, (held.get(item.kind) ?? 0) + 1);
+  }
+  return held;
+}
+
+/**
+ * "No hay fuego: hacelo". El reflejo de dolor la aparta del fuego recién
+ * hecho; la espera posterior transcurre a distancia segura, dentro del rango
+ * de calor.
+ */
+function buildFireProgram(recipe: Recipe, held: Map<string, number>): SkillProgram {
+  return gatherAndCraftProgram(recipe, { held, waitAfterTicks: 20 });
 }
 
 export interface AgentConfig {
@@ -308,6 +342,7 @@ export class AnimaAgent {
           parsed.kind !== 'explanation' &&
           (parsed.kind === 'wait-here' ||
             parsed.kind === 'move-direction' ||
+            parsed.kind === 'craft-item' ||
             ('targetKind' in parsed && parsed.targetKind !== 'unknown'))
         ) {
           this.lastUserRequest = structuredClone(parsed);
@@ -784,19 +819,51 @@ export class AnimaAgent {
     this.emit('user.message.received', { text });
     this.memory.noteConversation('user', text, this.tick);
 
+    // "continua" / "seguí" / "dale" se resuelve ANTES de cualquier modelo y
+    // siempre igual: la misma palabra no puede unas veces repetir la última
+    // orden, otras saludar y otras depender del humor del proveedor. Si hay
+    // una tarea del cuidador en curso, la confirma (la actividad sigue sola);
+    // si no, repite la última orden explícita.
+    let parsed: InterpretedMessage | null = null;
+    if (isContinuationMessage(text)) {
+      const pending = this.goals
+        .all()
+        .find(
+          (goal) =>
+            goal.status === 'active' &&
+            ((goal.source === 'user-request' && goal.userRequest) ||
+              (goal.source === 'learning' && goal.learning)),
+        );
+      if (pending) {
+        this.reply(
+          `Sigo con eso: "${pending.userRequest?.raw ?? pending.learning?.raw ?? pending.description}".`,
+        );
+        return;
+      }
+      if (this.lastUserRequest) {
+        // Conserva el texto de la orden original: la meta se llama "construí
+        // una fogata", no "continua" — el panel y la restauración se leen así.
+        parsed = structuredClone(this.lastUserRequest);
+      } else {
+        this.reply('No tengo nada pendiente ahora mismo. ¿Qué hacemos?');
+        return;
+      }
+    }
+
     // Quién interpreta el chat depende del proveedor. Un modelo que entiende
     // lenguaje interpreta TODO (distingue "¿para qué sirve?" de "para" como
     // orden, y una pregunta sobre comida de una lección sobre comida). El
     // parser determinista manda solo con proveedores que no interpretan
     // (el mock), y queda de red de seguridad si el modelo falla.
-    const fromParser = this.config.provider.interpretsLanguage
-      ? null
-      : this.contextualizeUserMessage(parseUserMessage(text), text, perception);
-
-    const parsed: InterpretedMessage | null =
-      fromParser && fromParser.kind !== 'unknown'
-        ? fromParser
-        : await this.interpretWithModel(text, perception);
+    if (parsed === null) {
+      const fromParser = this.config.provider.interpretsLanguage
+        ? null
+        : this.contextualizeUserMessage(parseUserMessage(text), text, perception);
+      parsed =
+        fromParser && fromParser.kind !== 'unknown'
+          ? fromParser
+          : await this.interpretWithModel(text, perception);
+    }
     if (parsed === null) return; // El modelo ya respondió (charla, negativa o fallo).
 
     if (parsed.kind === 'explanation') {
@@ -813,6 +880,7 @@ export class AnimaAgent {
       parsed.kind === 'wait-here' ||
       parsed.kind === 'move-direction' ||
       parsed.kind === 'run-skill' ||
+      parsed.kind === 'craft-item' ||
       ('targetKind' in parsed && parsed.targetKind !== 'unknown')
     ) {
       this.lastUserRequest = structuredClone(parsed);
@@ -919,6 +987,13 @@ export class AnimaAgent {
         operation: 'skill.contract',
         message: error instanceof Error ? error.message : String(error),
       });
+      // Que no encuentre cómo no la exime de recordarlo: su cuidador lo quiso.
+      this.memory.recordEpisode({
+        kind: 'unmet-request',
+        summary: `mi cuidador me pidió ${summary || raw} y todavía no encuentro cómo aprenderlo`,
+        tick: this.tick,
+        importance: 0.5,
+      });
       this.reply(
         `Quiero aprender eso, pero no consigo imaginar en qué se notaría que lo logré. ¿Me lo explicas con lo que tendría que hacer paso a paso?`,
       );
@@ -1023,8 +1098,7 @@ export class AnimaAgent {
     text: string,
     perception: Perception,
   ): Promise<InterpretedMessage | null> {
-    let command: CommandInterpretation;
-    try {
+    const consult = async (): Promise<CommandInterpretation> => {
       const interpretation = await this.config.provider.complete({
         kind: 'interpret.command',
         text,
@@ -1041,7 +1115,19 @@ export class AnimaAgent {
       if (interpretation.kind !== 'command.interpretation') {
         throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
       }
-      command = interpretation.command;
+      return interpretation.command;
+    };
+
+    let command: CommandInterpretation;
+    try {
+      // Un reintento inmediato antes de rendirse: un corte de red de un
+      // instante no debería costarle al cuidador su orden. Uno solo, para no
+      // martillar a un proveedor caído con la cola de mensajes.
+      try {
+        command = await consult();
+      } catch {
+        command = await consult();
+      }
     } catch (error) {
       // Red de seguridad: si el modelo no responde, el parser determinista
       // todavía reconoce una orden clara. Solo si él tampoco entiende, el
@@ -1069,30 +1155,13 @@ export class AnimaAgent {
     }
 
     if (command.action === 'unsupported') {
-      const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 160);
-      // El modelo debe nombrar lo pedido con una frase nominal, pero a veces
-      // devuelve la explicación entera ("Crear X no es posible: el mundo..."):
-      // incrustada en la plantilla sale una frase ilegible. Ante la duda, una
-      // negativa honesta y genérica antes que una mal pegada.
-      const isPhrase =
-        summary.length > 0 && summary.length <= 60 && !/[.:;]/.test(summary);
-      const reason = isPhrase
-        ? `Entiendo que me pides ${summary}, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.`
-        : 'Entiendo lo que me pides, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.';
-      this.emit('user.request.refused', {
-        request: { kind: 'unknown', raw: text, interpretedAs: summary },
-        classification: 'cannot',
-        reason,
-      });
-      // Que no pueda no la exime de recordarlo: es algo que su cuidador quiso.
-      this.memory.recordEpisode({
-        kind: 'unmet-request',
-        summary: `mi cuidador me pidió ${summary || text} y mi cuerpo no da para eso`,
-        tick: this.tick,
-        importance: 0.5,
-      });
-      this.reply(reason);
-      return null;
+      // Lo que no está codeado no se rechaza de antemano: se intenta APRENDER
+      // en el momento — contrato, práctica en mundos imaginados y veredicto
+      // del evaluador. "Sentarse en la silla" no existe como primitiva, pero
+      // ir hasta la silla y quedarse ahí sí se puede componer; y si de verdad
+      // es imposible (volar), lo dirán las pruebas, no una tabla.
+      const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 300);
+      return { kind: 'learn-skill', summary: summary || text, raw: text };
     }
 
     if (command.action === 'explanation') return { kind: 'explanation', raw: text };
@@ -1157,6 +1226,23 @@ export class AnimaAgent {
     }
     const energy = perception.self.energy;
     if (energy) facts.push(`mi energía actual es ${Math.round(energy.current)} de ${energy.max}`);
+    // Lo pendiente del cuidador es contexto de primera: "¿y la silla?" tiene
+    // que entenderse aunque la orden original ya haya salido de la ventana de
+    // turnos recientes del historial.
+    const pending = this.goals
+      .all()
+      .filter(
+        (goal) =>
+          (goal.status === 'active' || goal.status === 'suspended') &&
+          ((goal.source === 'user-request' && goal.userRequest) ||
+            (goal.source === 'learning' && goal.learning)),
+      )
+      .slice(-3);
+    for (const goal of pending) {
+      facts.push(
+        `tengo pendiente lo que me pediste: "${goal.userRequest?.raw ?? goal.learning?.raw ?? goal.description}"`,
+      );
+    }
     return facts;
   }
 
@@ -1168,8 +1254,16 @@ export class AnimaAgent {
     raw: string,
   ): UserRequest {
     switch (command.action) {
-      case 'destroy-entity':
       case 'fetch-item':
+        return {
+          kind: command.action,
+          targetKind: command.targetKind,
+          ...(command.amount !== undefined && command.amount > 1
+            ? { amount: command.amount }
+            : {}),
+          raw,
+        };
+      case 'destroy-entity':
       case 'consume-item':
         return { kind: command.action, targetKind: command.targetKind, raw };
       case 'wait-here':
@@ -1206,7 +1300,10 @@ export class AnimaAgent {
     const visibleError = compact.length > 280 ? `${compact.slice(0, 277)}...` : compact;
     const providerName =
       this.config.provider.name === 'codex' ? 'Codex' : this.config.provider.name;
-    this.reply(`No pude consultar a ${providerName}: ${visibleError || 'error desconocido'}`);
+    this.reply(
+      `No pude consultar a ${providerName}: ${visibleError || 'error desconocido'}. ` +
+        `Vuelve a pedírmelo en un momento, o dame una orden simple (buscar, traer, construir).`,
+    );
   }
 
   private dialogueHistory(): { from: 'user' | 'pet'; text: string }[] {
@@ -1237,6 +1334,27 @@ export class AnimaAgent {
     }
 
     if ('targetKind' in parsed && parsed.targetKind === 'unknown') {
+      // "conseguilos" después de una silla frustrada: lo que falta lo dice la
+      // última receta pedida, con su cantidad exacta — ni uno de menos (quedaba
+      // corta) ni de más (recogía troncos que nadie necesitaba).
+      const lastRequest = this.lastUserRequest;
+      if (parsed.kind === 'fetch-item' && lastRequest?.kind === 'craft-item') {
+        const recipe = perception.recipes.find((r) => r.id === lastRequest.recipeId);
+        if (recipe) {
+          const held = new Map<string, number>();
+          for (const item of perception.self.heldItems) {
+            held.set(item.kind, (held.get(item.kind) ?? 0) + 1);
+          }
+          const firstMissing = missingIngredients(recipe, held)[0];
+          if (firstMissing) {
+            return {
+              ...parsed,
+              targetKind: firstMissing.kind,
+              amount: firstMissing.need - firstMissing.have,
+            };
+          }
+        }
+      }
       const previous = this.lastUserRequest;
       if (
         previous &&
@@ -1375,6 +1493,9 @@ export class AnimaAgent {
           userRequest: {
             kind: request.kind,
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+            ...('amount' in request && request.amount !== undefined
+              ? { amount: request.amount }
+              : {}),
             ...('directions' in request ? { directions: request.directions } : {}),
             ...('skillName' in request ? { skillName: request.skillName } : {}),
             ...('recipeId' in request ? { recipeId: request.recipeId } : {}),
@@ -1404,7 +1525,7 @@ export class AnimaAgent {
       return this.pursueLearning(goal, goal.learning);
     }
     if (goal.source === 'user-request' && goal.userRequest) {
-      const program = this.programForUserRequest(goal.userRequest);
+      const program = this.programForUserRequest(goal.userRequest, perception);
       this.startUserActivity(goal, program, this.completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
@@ -1538,7 +1659,10 @@ export class AnimaAgent {
     // construirlo es una aproximación primitiva más: juntar y craftear.
     for (const recipe of perception.recipes) {
       if (recipe.output.components.heatSource === undefined) continue;
-      strategies.push({ label: `build-fire:${recipe.id}`, program: buildFireProgram(recipe) });
+      strategies.push({
+        label: `build-fire:${recipe.id}`,
+        program: buildFireProgram(recipe, heldCounts(perception)),
+      });
     }
 
     const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
@@ -1686,6 +1810,31 @@ export class AnimaAgent {
   }
 
   /**
+   * Mundos de práctica que contienen aquello de lo que habla el contrato: una
+   * habilidad sobre sillas no se puede juzgar donde no hay sillas — la vara
+   * sería imposible por diseño, como pasaba con el abrigo sin mundos fríos
+   * (ADR 0016). Si ningún mundo lo contiene, se practica en todos y el
+   * veredicto (honesto) lo da el evaluador.
+   */
+  private practiceScenariosFor(criteria: EvaluationCriterion[]): NamedScenario[] {
+    const scenarios = this.practiceScenarios();
+    const kinds = [...new Set(criteria.map((c) => c.kind).filter((k): k is string => !!k))];
+    if (kinds.length === 0) return scenarios;
+    const probeSeed = this.config.evaluationSeeds[0] ?? 1;
+    const fitting = scenarios.filter((scenario) => {
+      try {
+        const { world } = scenario.build(probeSeed);
+        return kinds.every((kind) =>
+          Object.values(world.entities).some((entity) => entity.kind === kind),
+        );
+      } catch {
+        return false;
+      }
+    });
+    return fitting.length > 0 ? fitting : scenarios;
+  }
+
+  /**
    * Aprender lo que el cuidador pidió: diseñar, probar en mundos imaginados y
    * aceptar el veredicto. Si sale bien, la conducta queda en la biblioteca con
    * su nombre y se puede pedir para siempre; si sale mal, se dice con qué se
@@ -1716,7 +1865,7 @@ export class AnimaAgent {
         successCriteria: contract.successCriteria,
       },
       contract.context,
-      this.practiceScenarios(),
+      this.practiceScenariosFor(contract.successCriteria),
     );
 
     if (outcome.stableSkill) {
@@ -1840,19 +1989,24 @@ export class AnimaAgent {
     return null;
   }
 
-  private programForUserRequest(request: GoalUserRequest): SkillProgram {
+  private programForUserRequest(request: GoalUserRequest, perception: Perception): SkillProgram {
     const targetKind = request.targetKind ?? 'unknown';
     switch (request.kind) {
       case 'wait-here':
         return [{ op: 'wait', ticks: 6 }];
 
-      case 'craft-item':
-        // La decisión de si puede ya la tomó evaluateUserRequest con los
-        // ingredientes a la vista; aquí solo se expresa la intención y el
-        // mundo vuelve a comprobarlo por su cuenta.
-        return request.recipeId
-          ? [{ op: 'craft', recipeId: request.recipeId }]
+      case 'craft-item': {
+        // Juntar lo que falte es parte de construir: el mismo programa que la
+        // aproximación del fuego, sin la espera junto al calor. Si ya lleva
+        // todo encima, la recolección se salta sola y el mundo vuelve a
+        // comprobar los ingredientes por su cuenta.
+        const recipe = request.recipeId
+          ? perception.recipes.find((r) => r.id === request.recipeId)
+          : undefined;
+        return recipe
+          ? gatherAndCraftProgram(recipe, { held: heldCounts(perception) })
           : [{ op: 'abort', reason: 'no-sé-qué-construir' }];
+      }
 
       case 'run-skill': {
         const stable = request.skillName
@@ -1883,8 +2037,8 @@ export class AnimaAgent {
           : [{ op: 'abort', reason: 'dirección-no-especificada' }];
       }
 
-      case 'fetch-item':
-        return [
+      case 'fetch-item': {
+        const fetchOne: SkillOp[] = [
           // held:false: "traé un tronco" pide OTRO tronco. Sin el filtro, la
           // búsqueda devolvía el que ya llevaba (nearest lo ordena a distancia
           // 0) y el programa terminaba "cumplido" sin traer nada — pedir dos
@@ -1915,6 +2069,11 @@ export class AnimaAgent {
             ],
           },
         ];
+        // "conseguí los 2 troncos" son 2 recogidas, no una recogida y un
+        // "Listo" que deja al cuidador contando por la mascota.
+        const amount = Math.min(request.amount ?? 1, 8);
+        return amount > 1 ? [{ op: 'repeatWithLimit', max: amount, body: fetchOne }] : fetchOne;
+      }
 
       case 'consume-item': {
         const stable =
@@ -2029,8 +2188,12 @@ export class AnimaAgent {
           .join(' y ');
         return `Listo, me moví ${destination}.`;
       }
-      case 'fetch-item':
-        return `Listo, recogí ${target}.`;
+      case 'fetch-item': {
+        const amount = request.amount ?? 1;
+        return amount > 1 && request.targetKind
+          ? `Listo, junté ${countedKindLabel(request.targetKind, amount)}.`
+          : `Listo, recogí ${target}.`;
+      }
       case 'consume-item':
         return `Listo, comí ${target}.`;
       case 'destroy-entity':

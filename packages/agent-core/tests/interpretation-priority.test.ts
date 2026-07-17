@@ -140,6 +140,28 @@ describe('prioridad de interpretación con modelo real', () => {
     expect((accepted[0]?.data.request as { kind: string }).kind).toBe('move-direction');
   });
 
+  it('un corte momentáneo no cuesta la orden: reintenta una vez y la ejecuta', async () => {
+    const provider = new FakeLanguageModel({
+      'interpret.command': { kind: 'command.interpretation', command: { action: 'wait-here' } },
+    });
+    const original = provider.complete.bind(provider);
+    let failures = 1;
+    provider.complete = (request) => {
+      if (failures > 0) {
+        failures -= 1;
+        return Promise.reject(new Error('corte de red momentáneo'));
+      }
+      return original(request);
+    };
+    const { agent, perception } = makeAgent(provider);
+
+    const reply = await say(agent, perception(), 'cualquier cosa rara');
+
+    expect(reply).toBe('Puedo esperar aquí un momento.');
+    // El reintento absorbió el corte: al usuario no le llegó ningún error.
+    expect(agent.events.ofType('provider.error')).toHaveLength(0);
+  });
+
   it('si el modelo falla, el parser rescata una orden clara', async () => {
     const provider = new FakeLanguageModel({});
     provider.complete = () => Promise.reject(new Error('cuota agotada'));

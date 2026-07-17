@@ -31,3 +31,29 @@ const KIND_LABELS: Record<string, string> = {
 export function kindLabel(kind: string): string {
   return KIND_LABELS[kind] ?? kind.replace(/-/g, ' ');
 }
+
+/**
+ * Género gramatical adivinado por la terminación del nombre humano. Es una
+ * heurística (vale también para lo que Ánima inventa, que no está en la
+ * tabla): "silla" → femenino, "tronco" → masculino.
+ */
+export function isFeminineKind(kind: string): boolean {
+  return /a$/.test(kindLabel(kind));
+}
+
+/** "un tronco", "una silla": artículo indeterminado según el género. */
+export function kindWithArticle(kind: string): string {
+  return `${isFeminineKind(kind) ? 'una' : 'un'} ${kindLabel(kind)}`;
+}
+
+/**
+ * "1 tronco", "2 troncos", "2 pedernales": cantidad con el plural español.
+ * Vive junto al vocabulario porque el plural depende del nombre humano, no
+ * del identificador del motor.
+ */
+export function countedKindLabel(kind: string, amount: number): string {
+  const name = kindLabel(kind);
+  if (amount === 1) return `1 ${name}`;
+  const plural = /[aeiouáéíóú]$/.test(name) ? `${name}s` : `${name}es`;
+  return `${amount} ${plural}`;
+}

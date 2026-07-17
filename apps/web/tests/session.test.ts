@@ -192,6 +192,65 @@ describe('GameSession (capa de sesión de la UI)', () => {
 });
 
 describe('persistencia de la sesión', () => {
+  it('una orden de construir sobrevive a la recarga: la retoma sola y la termina', async () => {
+    const store = new MemoryKeyValueStore();
+    const { session } = await makeSession(5, store);
+    session.sendUserMessage('construí una silla');
+    await runUntil(
+      session,
+      () =>
+        session.getView().chat.some((entry) => entry.text.includes('quiero construir una silla')),
+      30,
+    );
+    session.dispose();
+
+    // "Recarga de página" en mitad de la tarea: la meta viaja en el guardado.
+    const restored = await GameSession.create({ autostart: false, store });
+    expect(
+      restored
+        .getView()
+        .chat.some((entry) =>
+          entry.text.includes('Sigo con lo pendiente: "construí una silla"'),
+        ),
+    ).toBe(true);
+
+    // Y no hace falta repetir la orden: junta los troncos y la construye.
+    await runUntil(
+      restored,
+      () => restored.getView().chat.some((entry) => entry.text === 'Listo, ya está en su lugar.'),
+      400,
+    );
+    expect(
+      restored.getView().chat.some((entry) => entry.text === 'Listo, ya está en su lugar.'),
+    ).toBe(true);
+    expect(restored.getView().entities.some((entity) => entity.kind === 'chair')).toBe(true);
+    restored.dispose();
+  });
+
+  it('«continua» confirma la tarea en curso, siempre igual', async () => {
+    const { session } = await makeSession(5);
+    session.sendUserMessage('construí una silla');
+    await runUntil(
+      session,
+      () =>
+        session.getView().chat.some((entry) => entry.text.includes('quiero construir una silla')),
+      30,
+    );
+
+    session.sendUserMessage('continua');
+    await runUntil(
+      session,
+      () => session.getView().chat.some((entry) => entry.text.includes('Sigo con eso')),
+      30,
+    );
+    expect(
+      session
+        .getView()
+        .chat.some((entry) => entry.text === 'Sigo con eso: "construí una silla".'),
+    ).toBe(true);
+    session.dispose();
+  });
+
   it('guarda al completar la historia y otra sesión continúa desde ahí', async () => {
     const store = new MemoryKeyValueStore();
     const { session } = await makeSession(5, store);

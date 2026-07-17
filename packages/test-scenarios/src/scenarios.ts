@@ -375,6 +375,18 @@ export const practiceRoom: ScenarioSpec = {
     spawnFood(world, propSpots[nextInt(rng, 0, propSpots.length - 1)] ?? propSpots[0]!);
     spawnBranch(world, { x: 9, y: 1 });
     spawnHammer(world, { x: 2, y: 6 });
+    // Mobiliario de muestra: lo que el mundo sabe construir también existe
+    // aquí, porque una conducta enseñada sobre un objeto ("sentate en la
+    // silla") necesita ese objeto para poder practicarse y juzgarse. En los
+    // bordes, para no estorbar el paso.
+    spawn(world, 'chair', {
+      position: { x: 10, y: 0 },
+      ...structuredClone(CHAIR_RECIPE.output.components),
+    });
+    spawn(world, 'torch', {
+      position: { x: 0, y: 8 },
+      ...structuredClone(TORCH_RECIPE.output.components),
+    });
     return { world, petId, meta: { name: 'practice-room', seed } };
   },
 };

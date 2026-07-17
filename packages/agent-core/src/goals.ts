@@ -23,6 +23,8 @@ export interface GoalUserRequest {
     | 'run-skill'
     | 'craft-item';
   targetKind?: string;
+  /** Cuántas unidades pidió (fetch-item): "conseguí los 2 troncos" son 2. */
+  amount?: number;
   directions?: Direction[];
   skillName?: string;
   recipeId?: string;

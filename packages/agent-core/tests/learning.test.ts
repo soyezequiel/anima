@@ -227,11 +227,13 @@ describe('honestidad cuando no puede', () => {
     expect(regressions.forSkill('baile-basico').length).toBeGreaterThan(0);
   });
 
-  it('lo que su cuerpo no permite se rechaza, pero queda recordado', async () => {
+  it('lo que su cuerpo no permite se intenta aprender, y si no hay cómo, queda recordado', async () => {
     const provider = new TeachableModel({
       'interpret.command': [
         { kind: 'command.interpretation', command: { action: 'unsupported', summary: 'saltar' } },
       ],
+      // Sin guion de skill.contract: el proveedor base no sabe derivarlo, que
+      // es el caso "de verdad no encuentro cómo aprender esto".
     });
     const { agent, bundle } = makeAgent(provider);
 
@@ -239,11 +241,70 @@ describe('honestidad cuando no puede', () => {
     const intent = await agent.think(buildPerception(bundle.world, bundle.petId));
 
     expect(intent?.type).toBe('speak');
-    expect(intent && intent.type === 'speak' && intent.text).toContain('mi cuerpo no da para eso');
-    // No se lo traga: es algo que su cuidador quiso y ella no pudo.
+    // Ya no es una negativa de tabla: intentó abrir el ciclo de aprendizaje
+    // y pide los pasos que le faltan para poder acordar un contrato.
+    expect(intent && intent.type === 'speak' && intent.text).toContain(
+      'no consigo imaginar en qué se notaría',
+    );
+    // No se lo traga: es algo que su cuidador quiso y ella todavía no pudo.
     expect(
       agent.memory.episodeList().some((episode) => episode.kind === 'unmet-request'),
     ).toBe(true);
+  });
+
+  it('«sentate en la silla»: lo no codeado se aprende en el momento y se ejecuta', async () => {
+    // Aproximación honesta con sus primitivas: ir hasta la silla y quedarse.
+    const SIT: SkillProgram = [
+      { op: 'findEntities', query: { kind: 'chair' }, store: 'chairs' },
+      { op: 'selectTarget', from: 'chairs', strategy: 'nearest', store: 'chair' },
+      { op: 'moveToward', target: 'chair', maxSteps: 40 },
+      { op: 'wait', ticks: 4 },
+    ];
+    const provider = new TeachableModel({
+      // Incluso si el modelo lo clasifica como "unsupported", el agente lo
+      // convierte en un intento de aprendizaje en vez de una negativa.
+      'interpret.command': [
+        {
+          kind: 'command.interpretation',
+          command: { action: 'unsupported', summary: 'sentarse en la silla' },
+        },
+      ],
+      'skill.contract': [
+        {
+          kind: 'skill.contract',
+          contract: {
+            name: 'sentarse-en-la-silla',
+            purpose: 'ir hasta la silla y quedarse junto a ella',
+            expectedOutcome: 'termina junto a la silla, quieta',
+            successCriteria: [{ type: 'reachedAdjacentKind', kind: 'chair' }],
+          },
+        },
+      ],
+      'skill.propose': [
+        { kind: 'skill.program', program: SIT, rationale: 'ir a la silla y quedarse ahí' },
+      ],
+    });
+    const { agent, library, bundle } = makeAgent(provider);
+
+    const result = await runAgentInWorld(bundle.world, agent, {
+      maxTicks: 80,
+      userMessagesAt: { 0: 'sentate en la silla' },
+    });
+
+    // Se aprendió de verdad: el evaluador la midió en mundos con silla (la
+    // sala de práctica la tiene) y la promovió.
+    expect(library.findStable('sentarse-en-la-silla')).toBeDefined();
+    const said = speechOf(result.worldEvents);
+    expect(said.some((text) => text.includes('Lo aprendí'))).toBe(true);
+    expect(said.some((text) => text === 'Listo, hice "sentarse-en-la-silla".')).toBe(true);
+
+    // Y pasó en el mundo real: la mascota terminó pegada a la silla.
+    const world = bundle.world;
+    const chair = Object.values(world.entities).find((e) => e.kind === 'chair')!;
+    const pet = world.entities[bundle.petId]!;
+    const dx = Math.abs(chair.components.position!.x - pet.components.position!.x);
+    const dy = Math.abs(chair.components.position!.y - pet.components.position!.y);
+    expect(Math.max(dx, dy)).toBe(1);
   });
 
   it('un contrato inmedible no se acepta: prefiere pedir que le expliquen', async () => {

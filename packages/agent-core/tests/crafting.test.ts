@@ -105,7 +105,7 @@ describe('«construí una fogata con esos troncos»', () => {
     expect(refused[0]?.data.classification).toBe('cannot');
   });
 
-  it('si ve el ingrediente que falta, lo dice en vez de prometer traerlo', async () => {
+  it('si ve el ingrediente que falta, lo junta y construye sin otra orden', async () => {
     const { world, petId } = coldWorld();
     give(world, petId, 'log', 2);
     spawn(world, 'flint', { position: { x: 3, y: 2 }, portable: {} });
@@ -114,8 +114,18 @@ describe('«construí una fogata con esos troncos»', () => {
 
     const reply = await say(agent, perception(), 'construí una fogata');
 
-    expect(reply).toContain('Veo');
-    expect(reply).toContain('pedernal');
+    // Ya no es una negativa: juntar es parte de construir. Dice qué falta y
+    // que lo va a buscar ella.
+    expect(reply).toContain('me falta 1 pedernal');
+    expect(reply).toContain('lo junto y la construyo');
+    expect(agent.events.ofType('user.request.refused')).toHaveLength(0);
+
+    // Y lo cumple entera: recoge el pedernal y la fogata aparece en el mundo.
+    for (let i = 0; i < 30 && !allEntities(world).some((e) => e.kind === 'campfire'); i++) {
+      const intent = await agent.think(buildPerception(world, petId));
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+    expect(allEntities(world).some((e) => e.kind === 'campfire')).toBe(true);
   });
 
   it('con todo en la mano: acepta y el mundo construye la fogata de verdad', async () => {
@@ -194,42 +204,29 @@ describe('juntar ingredientes pidiendo de a uno', () => {
   });
 });
 
-describe('la negativa por acción imposible se lee bien', () => {
-  const refuse = (summary: string): ModelResponse => ({
+describe('lo que no está codeado intenta aprenderse, no se rechaza de plano', () => {
+  const unsupported = (summary: string): ModelResponse => ({
     kind: 'command.interpretation',
     command: { action: 'unsupported', summary },
   });
 
-  it('con una frase nominal, nombra lo que le pidieron', async () => {
+  it('una orden fuera del catálogo abre el ciclo de aprendizaje', async () => {
     const { world, petId } = coldWorld();
-    const { agent, perception } = makeAgent(world, petId, new FakeLanguageModel({
-      'interpret.command': refuse('saltar el muro'),
-    }));
+    const provider = new FakeLanguageModel({
+      'interpret.command': unsupported('saltar el muro'),
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
 
     const reply = await say(agent, perception(), 'saltá el muro');
 
-    expect(reply).toBe(
-      'Entiendo que me pides saltar el muro, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.',
-    );
-  });
-
-  it('si el modelo devuelve una explicación entera, no la pega mal', async () => {
-    const { world, petId } = coldWorld();
-    // Caso real: el modelo respondió con la explicación completa en summary y
-    // la plantilla producía "Entiendo que me pides Crear una fogata no es
-    // posible: el mundo no admite construir ni fabricar objetos., pero...".
-    const { agent, perception } = makeAgent(world, petId, new FakeLanguageModel({
-      'interpret.command': refuse(
-        'Crear una fogata no es posible: el mundo no admite construir ni fabricar objetos.',
-      ),
-    }));
-
-    const reply = await say(agent, perception(), 'crea una fogata');
-
-    expect(reply).toBe(
-      'Entiendo lo que me pides, pero mi cuerpo no da para eso: no hay forma de lograrlo con lo que sé hacer.',
-    );
-    expect(reply).not.toContain('no es posible:');
+    // Intentó derivar un contrato de aprendizaje (el proveedor de prueba no
+    // sabe derivarlos, así que pide más detalle en vez de negarse en seco).
+    expect(provider.callCount('skill.contract')).toBe(1);
+    expect(reply).toContain('no consigo imaginar en qué se notaría');
+    // Y lo pedido no se pierde: queda recordado como deseo no cumplido.
+    expect(
+      agent.memory.episodeList().some((episode) => episode.kind === 'unmet-request'),
+    ).toBe(true);
   });
 });
 

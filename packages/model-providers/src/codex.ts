@@ -163,6 +163,7 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
       ],
     },
     targetKind: { type: 'string' },
+    amount: { type: 'number' },
     directions: {
       type: 'array',
       items: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
@@ -173,8 +174,8 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
     summary: { type: 'string' },
   },
   // Los esquemas estructurados son más estables si todas las propiedades
-  // existen; las no aplicables viajan como string/arreglo vacío.
-  required: ['action', 'targetKind', 'directions', 'skillName', 'recipeId', 'summary'],
+  // existen; las no aplicables viajan como string/arreglo vacío o 0.
+  required: ['action', 'targetKind', 'amount', 'directions', 'skillName', 'recipeId', 'summary'],
   additionalProperties: false,
 };
 
@@ -419,7 +420,9 @@ ${PRIMITIVES_REFERENCE}
 Tu única tarea es clasificar la intención; no decidas si conviene obedecer y
 no afirmes haber actuado. Acciones ejecutables:
 - destroy-entity: destruir/talar/romper un objeto; targetKind usa el nombre interno.
-- fetch-item: buscar, recoger o llevar un objeto; targetKind usa el nombre interno.
+- fetch-item: buscar, recoger o llevar un objeto; targetKind usa el nombre
+  interno y amount cuántas unidades pide (1 si no lo dice; "los dos"/"ambos"
+  son 2; "conseguilos" tras hablar de 2 troncos son 2).
 - consume-item: comer un objeto; targetKind usa el nombre interno.
 - wait-here: esperar o quedarse quieta.
 - move-direction: moverse; directions usa up/down/left/right en el orden pedido.
@@ -431,8 +434,10 @@ no afirmes haber actuado. Acciones ejecutables:
   unsupported.
 - learn-skill: pide una conducta física que NO sabe todavía, pero que sus
   primitivas podrían componer (bailar, patrullar, rondar, alejarse, esconderse,
-  dar una vuelta). summary describe qué le pide, incorporando lo que el
-  cuidador haya explicado en la conversación.
+  dar una vuelta). Una aproximación honesta cuenta: "sentate en la silla" es
+  ir hasta la silla y quedarse junto a ella — learn-skill, no unsupported.
+  summary describe qué le pide, incorporando lo que el cuidador haya explicado
+  en la conversación.
 - unsupported: orden física que ninguna combinación de sus primitivas logra
   (saltar, volar, construir algo que no tiene receta). summary es una frase
   NOMINAL breve de lo que te pidió, en infinitivo y sin explicar ni negar:
@@ -453,8 +458,9 @@ siendo learn-skill (con lo que explicó incorporado al summary), no not-command.
 Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
-Responde solo con JSON. Siempre incluye action, targetKind, directions,
-skillName, recipeId y summary; usa "" o [] cuando no correspondan.`,
+Responde solo con JSON. Siempre incluye action, targetKind, amount,
+directions, skillName, recipeId y summary; usa "", [] o 0 cuando no
+correspondan.`,
       };
     case 'skill.contract':
       return {
@@ -654,9 +660,18 @@ export class CodexModelProvider extends BaseModelProvider {
             if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
               throw new Error('la orden interpretada no contiene targetKind');
             }
+            const targetKind = parsed.targetKind.trim().toLowerCase();
+            const amount =
+              action === 'fetch-item' && typeof parsed.amount === 'number' && parsed.amount > 1
+                ? Math.min(8, Math.round(parsed.amount))
+                : undefined;
             return {
               kind: 'command.interpretation',
-              command: { action, targetKind: parsed.targetKind.trim().toLowerCase() },
+              command: {
+                action,
+                targetKind,
+                ...(amount !== undefined ? { amount } : {}),
+              },
             };
           }
           if (action === 'move-direction') {

@@ -141,7 +141,8 @@ export type CommandDirection = 'up' | 'down' | 'left' | 'right';
  */
 export type CommandInterpretation =
   | { action: 'destroy-entity'; targetKind: string }
-  | { action: 'fetch-item'; targetKind: string }
+  /** `amount`: cuántas unidades pidió ("los dos troncos" son 2). 1 si no dijo. */
+  | { action: 'fetch-item'; targetKind: string; amount?: number }
   | { action: 'consume-item'; targetKind: string }
   | { action: 'wait-here' }
   | { action: 'move-direction'; directions: CommandDirection[] }

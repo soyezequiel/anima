@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import type { Perception } from '@anima/sim-core';
+import type { Perception, Recipe } from '@anima/sim-core';
 import { MemoryStore } from '@anima/memory';
 import type { Goal } from '../src/index.js';
-import { evaluateUserRequest, parseUserMessage } from '../src/index.js';
+import { evaluateUserRequest, isContinuationMessage, parseUserMessage } from '../src/index.js';
 
 function perceptionWith(
   overrides: Partial<Perception['self']> = {},
@@ -139,6 +139,83 @@ describe('negativas y autonomía', () => {
       undefined,
     );
     expect(decision.classification).toBe('accepted');
+  });
+});
+
+describe('construir juntando lo que falta', () => {
+  const CHAIR: Recipe = {
+    id: 'chair',
+    output: { kind: 'chair', components: { collider: { solid: true } } },
+    ingredients: [{ kind: 'log', count: 2 }],
+  };
+  const order = { kind: 'craft-item', recipeId: 'chair', raw: 'construí una silla' } as const;
+
+  it('con los materiales a la vista acepta: los junta y construye', () => {
+    const perception: Perception = {
+      ...perceptionWith({}, [
+        { id: 'e5', kind: 'log', position: { x: 2, y: 1 }, portable: true },
+        { id: 'e6', kind: 'log', position: { x: 3, y: 2 }, portable: true },
+      ]),
+      recipes: [CHAIR],
+    };
+    const decision = evaluateUserRequest(order, perception, new MemoryStore(), undefined);
+    expect(decision.classification).toBe('accepted');
+    expect(decision.reason).toContain('me faltan 2 troncos');
+    expect(decision.alternative).toContain('los junto y la construyo');
+  });
+
+  it('sin los materiales a la vista la negativa sigue siendo honesta', () => {
+    const perception: Perception = { ...perceptionWith({}, []), recipes: [CHAIR] };
+    const decision = evaluateUserRequest(order, perception, new MemoryStore(), undefined);
+    expect(decision.classification).toBe('cannot');
+    expect(decision.alternative).toBe('Si me consigues 2 troncos, la construyo.');
+  });
+
+  it('si lo visible no alcanza, dice que no alcanza (no promete de más)', () => {
+    const perception: Perception = {
+      ...perceptionWith({}, [{ id: 'e5', kind: 'log', position: { x: 2, y: 1 }, portable: true }]),
+      recipes: [CHAIR],
+    };
+    const decision = evaluateUserRequest(order, perception, new MemoryStore(), undefined);
+    expect(decision.classification).toBe('cannot');
+    expect(decision.alternative).toContain('no alcanza para todo');
+  });
+});
+
+describe('cantidades y continuación', () => {
+  it('extrae cuántas unidades pide una orden de buscar', () => {
+    expect(parseUserMessage('trae 2 troncos')).toMatchObject({
+      kind: 'fetch-item',
+      targetKind: 'log',
+      amount: 2,
+    });
+    expect(parseUserMessage('conseguí los dos troncos')).toMatchObject({
+      kind: 'fetch-item',
+      targetKind: 'log',
+      amount: 2,
+    });
+    // Sin cantidad explícita no se inventa una.
+    const single = parseUserMessage('trae un tronco');
+    expect(single).toMatchObject({ kind: 'fetch-item', targetKind: 'log' });
+    expect('amount' in single).toBe(false);
+    // "conseguilos" es buscar aunque no diga qué: el contexto lo completa.
+    expect(parseUserMessage('conseguilos')).toMatchObject({
+      kind: 'fetch-item',
+      targetKind: 'unknown',
+    });
+  });
+
+  it('reconoce "continua" y variantes sin confundirlas con órdenes', () => {
+    expect(isContinuationMessage('continua')).toBe(true);
+    expect(isContinuationMessage('continuá')).toBe(true);
+    expect(isContinuationMessage('seguí')).toBe(true);
+    expect(isContinuationMessage('dale')).toBe(true);
+    expect(isContinuationMessage('hacelo igual')).toBe(true);
+    expect(isContinuationMessage('otra vez!')).toBe(true);
+    // Contienen palabras de continuación pero son otra cosa.
+    expect(isContinuationMessage('sigue derecho hacia arriba')).toBe(false);
+    expect(isContinuationMessage('y la silla?')).toBe(false);
+    expect(isContinuationMessage('continua buscando troncos por el bosque')).toBe(false);
   });
 });
 
