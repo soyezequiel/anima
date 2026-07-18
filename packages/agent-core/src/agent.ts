@@ -28,7 +28,7 @@ import type { PersonalityTrait } from './personality.js';
 import { derivePersonality } from './personality.js';
 import type { PlaceMemoryData } from './place-memory.js';
 import { PlaceMemory } from './place-memory.js';
-import type { ProgressData } from './progress.js';
+import type { ProgressData, StrategyRecord } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
 import {
@@ -53,6 +53,7 @@ import {
 import {
   buildFireProgram,
   DIRECT_APPROACH_PROGRAM,
+  gatherAndCraftProgram,
   heldCounts,
   rememberedFoodProgram,
   rememberedHeatProgram,
@@ -87,6 +88,30 @@ const SAFE_DISTANCE = 2;
 const DEED_VERBS: Record<string, string> = {
   tree: 'talé',
 };
+
+type VisibleEntity = Perception['self']['heldItems'][number];
+
+/**
+ * Cómo se le nombra una cosa vista al diseñador de una habilidad: no solo su
+ * tipo, también lo que el motor sabe de ella y él necesita para razonar —si
+ * sirve de herramienta y con cuánta fuerza, si se come, y si es un sólido que
+ * cierra el paso y con qué dureza cede. Un muro descripto solo como "veo: wall"
+ * se lee como algo a rodear; dicho "sólido, cierra el paso, se rompe (dureza
+ * 5)" se lee como lo que es: un obstáculo que una herramienta fuerte abre.
+ */
+function describeVisibleEntity(e: VisibleEntity): string {
+  const notes: string[] = [];
+  if (e.edible) notes.push('comestible');
+  if (e.toolPower !== undefined) notes.push(`herramienta, poder ${e.toolPower}`);
+  if (e.solid) {
+    notes.push(
+      e.hardness !== undefined
+        ? `sólido, cierra el paso, se rompe con una herramienta más fuerte que su dureza ${e.hardness}`
+        : 'sólido, cierra el paso',
+    );
+  }
+  return `veo: ${e.kind}${notes.length > 0 ? ` (${notes.join('; ')})` : ''}`;
+}
 
 /** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
 const USER_REQUEST_WEIGHTS: Record<
@@ -254,6 +279,13 @@ export class AnimaAgent {
   private petName: string;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
   private suspensionEdibles = new Map<string, Set<string>>();
+  /**
+   * Poder de la herramienta que ya NO hizo mella al romper, por objetivo. Es la
+   * marca de "muy duro": mientras exista, el objetivo de romper no vuelve a
+   * golpear con lo mismo — busca (o inventa) algo más fuerte antes. Transitorio
+   * como la actividad: si se restaura un guardado, se re-aprende al reintentar.
+   */
+  private destroyToolFloor = new Map<string, number>();
   private tick = 0;
 
   constructor(config: AgentConfig) {
@@ -844,6 +876,23 @@ export class AnimaAgent {
       // misma. Sin esto, la obra rechazada se repetía hasta gastar el crédito.
       if (event.type === 'blueprint.rejected' && event.data.actorId === this.petId) {
         this.invention.recordWorldRejection('blueprint', String(event.data.reason));
+      }
+      // Descomposiciones (la cuarta puerta): el motivo del rechazo viaja al
+      // próximo intento, como con todo lo que se inventa.
+      if (event.type === 'decomposition.rejected' && event.data.actorId === this.petId) {
+        this.invention.recordWorldRejection('decomposition', String(event.data.reason));
+      }
+      // Lo aprendido queda como recuerdo: ahora sabe en qué se deshace esa cosa,
+      // y no vuelve a preguntárselo ni en otra sesión.
+      if (event.type === 'decomposition.learned' && event.data.actorId === this.petId) {
+        const targetKind = String(event.data.targetKind);
+        const drops = Array.isArray(event.data.drops) ? (event.data.drops as string[]) : [];
+        const fact = this.memory.addFact(
+          `romper ${targetKind} deja ${drops.join(', ') || 'algo'}`,
+          this.tick,
+        );
+        this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+        this.emit('decomposition.learned', { targetKind, drops });
       }
       if (event.type === 'interaction.learned' && event.data.actorId === this.petId) {
         const interactionId = String(event.data.interactionId);
@@ -1813,6 +1862,41 @@ export class AnimaAgent {
    * que le falló, recuperado por afinidad de términos. Alimenta las propuestas
    * de habilidades para que la idea nueva no ignore la historia.
    */
+  /**
+   * Una pista concreta cuando el fracaso fue de camino, no de recurso: si lo
+   * que la trabó fue un obstáculo (`camino-bloqueado`) y entre ella y la comida
+   * hay un sólido rompible, decírselo al diseñador evita que proponga —una
+   * versión tras otra— rodear algo que no tiene rodeo. Nombra el obstáculo que
+   * está EN EL MEDIO (no un árbol de una esquina) y la herramienta más fuerte a
+   * mano: la idea es agarrarla, romper y recién cruzar. Sin obstáculo rompible
+   * entre medio no dice nada: no todo camino cerrado se abre a los golpes.
+   */
+  private obstacleContext(forbidden: StrategyRecord[], perception: Perception): string[] {
+    const pathBlocked = forbidden.some((s) => s.lastReason?.includes('bloqueado') ?? false);
+    if (!pathBlocked) return [];
+    // El obstáculo es el sólido rompible más cercano. No se ata a ver la comida:
+    // lo que le cierra el paso suele ser justo lo que se la tapa (la vista exige
+    // línea despejada, ADR 0025), así que exigir verla lo volvería mudo cuando
+    // más hace falta. Rompible = tiene dureza; el muro de piedra la tiene, el
+    // agua no. El empate lo gana el que aparece antes (los muros, no un árbol de
+    // una esquina), que es determinismo, no capricho.
+    const barrier = perception.visibleEntities
+      .filter((e) => e.solid === true && e.hardness !== undefined)
+      .sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity))[0];
+    if (!barrier) return [];
+    const strongest = [...perception.visibleEntities, ...perception.self.heldItems]
+      .filter((e) => e.toolPower !== undefined)
+      .sort((a, b) => (b.toolPower ?? 0) - (a.toolPower ?? 0))[0];
+    if (strongest) {
+      return [
+        `el camino directo está cerrado por un ${barrier.kind} y no hay rodeo: para pasar hay que romperlo. Tenés a la vista un ${strongest.kind} (herramienta, poder ${strongest.toolPower}): la idea es agarrarlo, romper el ${barrier.kind} y recién entonces cruzar hasta la comida.`,
+      ];
+    }
+    return [
+      `el camino directo está cerrado por un ${barrier.kind} y no hay rodeo: para pasar hay que romperlo con una herramienta más fuerte que su dureza ${barrier.hardness}.`,
+    ];
+  }
+
   private experienceContext(query: string): string[] {
     return this.memory
       .retrieve(query, 3)
@@ -2171,6 +2255,24 @@ export class AnimaAgent {
           return null;
         }
       }
+      // Romper algo que no cedió a su herramienta no es rendirse: antes de
+      // volver a golpear, se hace (o inventa) una más fuerte. Solo si no queda
+      // por dónde, se rinde. `undefined` = "no está trabada, golpeá normal".
+      if (goal.userRequest.kind === 'destroy-entity') {
+        const escalated = await this.escalateDestroyIfBlocked(goal, perception);
+        if (escalated !== undefined) return escalated;
+        // Antes del primer golpe: imaginar en qué se deshace (la cuarta puerta).
+        // La materia no desaparece — si nadie definió todavía qué deja este
+        // tipo, se piensa AHORA y no después, cuando ya no haya nada que dejar.
+        // Reuso primero: lo que el mundo ya sabe no cuesta ni una consulta.
+        const targetKind = goal.userRequest.targetKind;
+        if (targetKind !== undefined) {
+          const decomposition = await this.invention.inventDecomposition(targetKind, perception, {
+            goalId: goal.id,
+          });
+          if (decomposition) return decomposition;
+        }
+      }
       const program = programForUserRequest(goal.userRequest, perception, this.userProgramDeps(perception));
       this.startUserActivity(goal, program, completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
@@ -2354,6 +2456,95 @@ export class AnimaAgent {
       perception,
       { goalId: goal.id, wantedId: request.recipeId },
     );
+  }
+
+  /** El poder de la herramienta más fuerte que lleva o ve (0 si no hay ninguna). */
+  private strongestToolPower(perception: Perception): number {
+    return [...perception.self.heldItems, ...perception.visibleEntities].reduce(
+      (max, e) => Math.max(max, e.toolPower ?? 0),
+      0,
+    );
+  }
+
+  /**
+   * Romper algo que no cedió a su herramienta (`objetivo-muy-duro`) marca un
+   * "piso" de dureza en el objetivo. Mientras ese piso exista, antes de volver a
+   * golpear con lo mismo, la mascota busca una herramienta más fuerte por su
+   * cuenta y sin pedir permiso: la usa si ya la tiene, la FABRICA si su mundo la
+   * sabe hacer (fabricar y golpear en un mismo programa, para que el final sea
+   * romper y no "hice un pico"), o la INVENTA si no existe todavía (ADR 0036),
+   * gastando el mismo crédito acotado que el frío y el hambre. Solo cuando no
+   * queda herramienta, ni receta, ni crédito, se rinde con la verdad.
+   *
+   * Devuelve la intención con la que sigue, `null` si ya cerró el objetivo este
+   * tick, o `undefined` para "no está trabada: golpeá con el programa de siempre".
+   */
+  private async escalateDestroyIfBlocked(
+    goal: Goal,
+    perception: Perception,
+  ): Promise<ActionIntent | null | undefined> {
+    const floor = this.destroyToolFloor.get(goal.id);
+    if (floor === undefined) return undefined;
+    const targetKind = goal.userRequest?.targetKind;
+    // ¿Ya tiene o ve algo más fuerte que lo que no hizo mella? A golpear con eso.
+    if (this.strongestToolPower(perception) > floor) return undefined;
+
+    const deps = this.userProgramDeps(perception);
+    // ¿Su mundo ya sabe hacer una herramienta más fuerte? Fabricarla y golpear
+    // en un mismo programa: al terminar de craftear, el `strongestTool` del
+    // programa de romper elige la recién hecha por ser la de más poder.
+    const stronger = perception.recipes.find(
+      (r) => (recipeProduct(r)?.components.tool?.power ?? 0) > floor,
+    );
+    if (stronger) {
+      const craft = gatherAndCraftProgram(stronger, {
+        held: heldCounts(perception),
+        searchFirst: true,
+        recipes: perception.recipes,
+        rememberedWalk: deps.rememberedWalk,
+      });
+      const strike = programForUserRequest(goal.userRequest!, perception, deps);
+      this.startUserActivity(
+        goal,
+        [...craft, ...strike],
+        completionReply(goal.userRequest!),
+        perception,
+      );
+      return this.continueActivity(perception);
+    }
+
+    // No la sabe hacer: inventarla, si queda crédito. El invento entra por la
+    // puerta del mundo como cualquier otro; un rechazo viaja al próximo intento.
+    if (this.invention.attemptsLeft(goal.id)) {
+      const intent = await this.invention.inventRecipe(
+        `necesito una herramienta más fuerte para romper ${kindWithArticle(targetKind ?? 'eso')}`,
+        perception,
+        { goalId: goal.id },
+      );
+      if (intent) return intent;
+    }
+
+    // Sin herramienta, sin receta y sin crédito: rendirse con la verdad, no con
+    // un silencio.
+    this.goals.fail(goal.id);
+    this.destroyToolFloor.delete(goal.id);
+    this.emit('strategy.failed', {
+      goalId: goal.id,
+      strategy: 'petición-del-usuario',
+      outcome: 'aborted',
+      reason: 'sin-herramienta-mas-fuerte',
+    });
+    this.memory.recordEpisode({
+      kind: 'failure',
+      summary: `no pude romper ${targetKind ?? 'eso'}: no me alcanza ninguna herramienta`,
+      tick: this.tick,
+      importance: 0.6,
+    });
+    this.reply(
+      `No pude romper ${kindWithArticle(targetKind ?? 'eso')}: no logro hacerme una herramienta más fuerte.`,
+    );
+    this.lastSelectedGoalId = null;
+    return null;
   }
 
   /**
@@ -2889,10 +3080,10 @@ export class AnimaAgent {
     goal: Goal,
     perception: Perception,
   ): Promise<ActionIntent | null> {
-    const failures = this.progress
-      .strategiesTried(goal.id)
-      .filter((s) => s.forbidden)
-      .map((s) => `estrategia fallida: ${s.strategy} (${s.failures} fallos)`);
+    const triedStrategies = this.progress.strategiesTried(goal.id).filter((s) => s.forbidden);
+    const failures = triedStrategies.map(
+      (s) => `estrategia fallida: ${s.strategy} (${s.failures} fallos)`,
+    );
     const contract: SkillContract = {
       name: SKILL_REACH_BLOCKED_FOOD,
       purpose: 'llegar hasta el alimento aunque el camino directo esté bloqueado, y consumirlo',
@@ -2904,10 +3095,9 @@ export class AnimaAgent {
     };
     const context = [
       ...failures,
+      ...this.obstacleContext(triedStrategies, perception),
       ...this.experienceContext(contract.purpose),
-      ...perception.visibleEntities.map(
-        (e) => `veo: ${e.kind}${e.toolPower ? ` (herramienta, poder ${e.toolPower})` : ''}`,
-      ),
+      ...perception.visibleEntities.map(describeVisibleEntity),
     ];
 
     const outcome = await this.runSkillDevelopment(
@@ -3008,6 +3198,7 @@ export class AnimaAgent {
       const success = out.result.outcome === 'completed';
       if (success) {
         this.goals.complete(activity.goalId);
+        this.destroyToolFloor.delete(activity.goalId);
         this.emit('goal.completed', { goalId: activity.goalId, strategy: activity.strategy });
         this.memory.recordEpisode({
           kind: 'promise-kept',
@@ -3017,7 +3208,35 @@ export class AnimaAgent {
         });
         this.reply(activity.completionReply ?? 'Listo.');
       } else {
+        const reason = out.result.reason ?? out.result.outcome;
+        const goal = this.goals.get(activity.goalId);
+        // "Muy duro" no es el final del pedido: es "me falta una herramienta más
+        // fuerte". El objetivo sigue VIVO y el próximo tick intenta fabricarla —
+        // o inventarla si su mundo no la sabe hacer (ADR 0036), ahora también
+        // naciendo de un pedido y sin pedir permiso. Marcar el piso de dureza es
+        // lo que evita volver a golpear con lo mismo.
+        if (reason === 'objetivo-muy-duro' && goal?.userRequest?.kind === 'destroy-entity') {
+          this.destroyToolFloor.set(activity.goalId, this.strongestToolPower(perception));
+          this.emit('strategy.failed', {
+            goalId: activity.goalId,
+            strategy: activity.strategy,
+            outcome: out.result.outcome,
+            reason,
+          });
+          const target = goal.userRequest.targetKind;
+          this.memory.addHypothesis(
+            `me falta una herramienta más fuerte para romper ${kindWithArticle(target ?? 'eso')}`,
+            this.tick,
+            0.7,
+          );
+          this.reply(
+            `${target ? kindWithArticle(target).replace(/^\w/, (c) => c.toUpperCase()) : 'Eso'} no cedió a mi herramienta. Voy a intentar hacerme algo más fuerte.`,
+          );
+          this.lastSelectedGoalId = null;
+          return null;
+        }
         this.goals.fail(activity.goalId);
+        this.destroyToolFloor.delete(activity.goalId);
         this.emit('strategy.failed', {
           goalId: activity.goalId,
           strategy: activity.strategy,
@@ -3030,12 +3249,17 @@ export class AnimaAgent {
           tick: this.tick,
           importance: 0.6,
         });
+        // Un fracaso no es un callejón: antes de callarse, lo vuelve aprendizaje
+        // y una oferta concreta. Si el motivo no da para eso, cae en la
+        // explicación de siempre — pero nunca en un silencio a la espera.
+        const reaction = this.reactToRequestFailure(reason, goal, perception);
         this.reply(
-          `No pude completar eso: ${this.describeActivityFailure(
-            out.result.reason ?? out.result.outcome,
-            activity,
-            perception,
-          )}.`,
+          reaction ??
+            `No pude completar eso: ${this.describeActivityFailure(
+              out.result.reason ?? out.result.outcome,
+              activity,
+              perception,
+            )}.`,
         );
       }
       this.lastSelectedGoalId = null;
@@ -3277,6 +3501,41 @@ export class AnimaAgent {
     const total = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
     const falta = total === 1 ? 'me falta' : 'me faltan';
     return `${chain.join('; ')}. En total ${falta} ${displayMissing(missing)} y no veo más por acá`;
+  }
+
+  /**
+   * Reacción ante un pedido que no salió. Antes, un fracaso era un callejón: la
+   * mascota decía "no pude" y se quedaba a la espera. Aquí el fracaso se vuelve
+   * dos cosas — aprendizaje y una oferta concreta —, para que responder no sea
+   * rendirse. Hoy cubre los dos desenlaces de "romper":
+   *  - inmune: es una verdad del mundo (indestructible), se aprende como HECHO
+   *    para no volver a estrellarse contra ello, y se ofrece un plan B según lo
+   *    que el objeto permita (recogerlo, moverlo).
+   *  - muy-duro se maneja aparte (no aquí): no es un final sino un "me falta una
+   *    herramienta más fuerte", y el objetivo sigue vivo para fabricarla sola.
+   */
+  private reactToRequestFailure(
+    reason: string,
+    goal: Goal | undefined,
+    perception: Perception,
+  ): string | null {
+    const kind = goal?.userRequest?.targetKind;
+    if (!kind) return null;
+    const article = kindWithArticle(kind);
+    const capital = article.charAt(0).toUpperCase() + article.slice(1);
+
+    if (reason === 'objetivo-inmune') {
+      this.memory.addFact(`${kindLabel(kind)} no se puede romper`, this.tick, 0.9);
+      const portable = perception.visibleEntities.some(
+        (e) => e.kind === kind && e.portable === true,
+      );
+      const it = isFeminineKind(kind) ? 'la' : 'lo';
+      return portable
+        ? `${capital} no se puede romper, pero puedo recoger${it} o llevar${it} a otro lado si querés.`
+        : `${capital} no se puede romper, para mí es indestructible. ¿Querés que haga otra cosa?`;
+    }
+
+    return null;
   }
 
   private describeActivityFailure(

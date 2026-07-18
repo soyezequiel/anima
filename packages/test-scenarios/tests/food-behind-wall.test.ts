@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ActorIntent } from '@anima/sim-core';
-import { checkInvariants, getEntity, stepWorld } from '@anima/sim-core';
+import { checkInvariants, getEntity, spawn, stepWorld } from '@anima/sim-core';
 import { foodBehindWall } from '../src/index.js';
 
 /**
@@ -67,6 +67,32 @@ describe('escenario food-behind-wall', () => {
     const before = pet.components.temperature!.current;
     stepWorld(world, wait(petId));
     expect(pet.components.temperature!.current).toBe(before);
+  });
+
+  it('la piedra (pedernal) ahora se puede picar: tiene durabilidad y un martillo la rompe', () => {
+    const { world, petId } = foodBehindWall.build(1);
+    const flint = Object.values(world.entities).find(
+      (e) => e.kind === 'flint' && e.components.position?.x === 1 && e.components.position.y === 0,
+    )!;
+    // La regla del mundo para "romper" es tener durabilidad: antes el pedernal
+    // no la tenía y era indestructible. Ahora sí.
+    expect(flint.components.durability).toBeDefined();
+    expect(flint.components.hardness?.value).toBe(3);
+
+    // Y de hecho cede: martillo en mano, la mascota al lado, un golpe.
+    const pet = getEntity(world, petId)!;
+    const hammer = spawn(world, 'hammer', {
+      portable: {},
+      tool: { power: 8 },
+      durability: { current: 20, max: 20 },
+    });
+    pet.components.inventory!.items.push(hammer.id);
+    pet.components.position = { x: 2, y: 0 }; // adyacente al pedernal de (1,0)
+    const events = stepWorld(world, [
+      { actorId: petId, intent: { type: 'useItem', itemId: hammer.id, targetId: flint.id } },
+    ]);
+    expect(events.some((e) => e.type === 'entity.destroyed' && e.data.id === flint.id)).toBe(true);
+    expect(world.entities[flint.id]).toBeUndefined();
   });
 
   it('el mismo seed produce el mismo mundo (determinismo del escenario)', () => {

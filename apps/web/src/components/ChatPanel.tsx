@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { emojiFor } from '../phaser/appearance.js';
 import type { GameSession } from '../session/GameSession.js';
-import type { GameView, RecipeCardView, ThoughtView } from '../session/view.js';
+import type { ChatEntry as ChatEntryView, GameView, RecipeCardView, ThoughtView } from '../session/view.js';
 
 /**
  * Sugerencias para el primer mensaje: una de cada cosa que se puede hacer
@@ -90,10 +90,74 @@ function RecipeCard({ card }: { card: RecipeCardView }) {
   );
 }
 
+function ChatEntryRow({
+  entry,
+  prev,
+  petName,
+}: {
+  entry: ChatEntryView;
+  prev: ChatEntryView | undefined;
+  petName: string;
+}) {
+  // Los mensajes de sistema (mundo creado, sesión restaurada) son notas al
+  // margen: van centrados y en voz baja, para que no compitan con el diálogo
+  // real de Tú y Ánima.
+  if (entry.from === 'system') {
+    return (
+      <div className="chat-entry from-system chat-note">
+        <span className="chat-text">
+          {entry.card ? <RecipeCard card={entry.card} /> : entry.text}
+        </span>
+        <span className="chat-tick muted">t{entry.tick}</span>
+      </div>
+    );
+  }
+  // Cada hablante a su lado (tú a la derecha, Ánima a la izquierda) en burbujas.
+  // El nombre aparece solo cuando cambia quién habla, así una ráfaga de mensajes
+  // de Ánima se lee como un turno, no como una lista.
+  const startsGroup = !prev || prev.from !== entry.from;
+  return (
+    <div
+      className={`chat-entry chat-row from-${entry.from}${startsGroup ? ' group-start' : ''}${
+        entry.pending ? ' pending' : ''
+      }`}
+      data-testid={entry.pending ? 'chat-pending' : undefined}
+    >
+      {startsGroup && (
+        <span className="chat-name">{entry.from === 'user' ? 'Tú' : petName}</span>
+      )}
+      <div className={`chat-bubble${entry.card ? ' bare' : ''}`}>
+        {entry.card ? <RecipeCard card={entry.card} /> : entry.text}
+      </div>
+      {entry.pending ? (
+        // Encolado: aún no lo leyó. En vez del tick del mundo, un latido de "sin
+        // leer" que se apaga solo cuando el agente atiende el mensaje.
+        <span className="chat-pending-hint" aria-label="mensaje sin leer, en cola">
+          sin leer
+          <span className="thinking-dots" aria-hidden="true">
+            <i />
+            <i />
+            <i />
+          </span>
+        </span>
+      ) : (
+        <span className="chat-tick muted">t{entry.tick}</span>
+      )}
+    </div>
+  );
+}
+
 export function ChatPanel({ view, session }: { view: GameView; session: GameSession }) {
   const [text, setText] = useState('');
   const logRef = useRef<HTMLDivElement>(null);
   const userHasSpoken = view.chat.some((entry) => entry.from === 'user');
+
+  // Los mensajes encolados (mandados mientras piensa, aún sin leer) van DEBAJO
+  // del "pensando": llegaron después de que Ánima empezara a pensar. El resto es
+  // historia asentada y va arriba, en orden. Al leerse, la marca `pending` se
+  // apaga y el mensaje sube solo a su lugar cronológico.
+  const settled = view.chat.filter((entry) => !entry.pending);
+  const queued = view.chat.filter((entry) => entry.pending);
 
   // El autoscroll sigue el crecimiento del razonamiento en vivo, no solo los
   // mensajes cerrados: mientras piensa, la línea viva empuja el log hacia abajo.
@@ -104,43 +168,13 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
   return (
     <div className="chat-panel">
       <div className="chat-log" ref={logRef} data-testid="chat-log" aria-busy={view.aiBusy}>
-        {view.chat.map((entry, i) => {
-          // Los mensajes de sistema (mundo creado, sesión restaurada) son notas
-          // al margen: van centrados y en voz baja, para que no compitan con el
-          // diálogo real de Tú y Ánima.
-          if (entry.from === 'system') {
-            return (
-              <div key={i} className="chat-entry from-system chat-note">
-                <span className="chat-text">
-                  {entry.card ? <RecipeCard card={entry.card} /> : entry.text}
-                </span>
-                <span className="chat-tick muted">t{entry.tick}</span>
-              </div>
-            );
-          }
-          // Cada hablante a su lado (tú a la derecha, Ánima a la izquierda) en
-          // burbujas. El nombre aparece solo cuando cambia quién habla, así una
-          // ráfaga de mensajes de Ánima se lee como un turno, no como una lista.
-          const prev = view.chat[i - 1];
-          const startsGroup = !prev || prev.from !== entry.from;
-          return (
-            <div
-              key={i}
-              className={`chat-entry chat-row from-${entry.from}${startsGroup ? ' group-start' : ''}`}
-            >
-              {startsGroup && (
-                <span className="chat-name">
-                  {entry.from === 'user' ? 'Tú' : view.identity.name}
-                </span>
-              )}
-              <div className={`chat-bubble${entry.card ? ' bare' : ''}`}>
-                {entry.card ? <RecipeCard card={entry.card} /> : entry.text}
-              </div>
-              <span className="chat-tick muted">t{entry.tick}</span>
-            </div>
-          );
-        })}
+        {settled.map((entry, i) => (
+          <ChatEntryRow key={i} entry={entry} prev={settled[i - 1]} petName={view.identity.name} />
+        ))}
         {view.aiBusy && <ChatThinking thought={view.currentThought} name={view.identity.name} />}
+        {queued.map((entry, i) => (
+          <ChatEntryRow key={`q${i}`} entry={entry} prev={queued[i - 1]} petName={view.identity.name} />
+        ))}
       </div>
       {!userHasSpoken && (
         <div className="chat-chips" data-testid="chat-chips">

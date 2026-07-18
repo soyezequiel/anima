@@ -1,0 +1,249 @@
+/*
+ * Rediseño UX de Ánima — capa de estilos nueva.
+ * Importar DESPUÉS de styles.css. Reutiliza las variables de tema (--panel,
+ * --amber, etc.) ya definidas en :root por styles.css.
+ */
+
+/* ── Micro-interacciones transversales ─────────────────────────────────── */
+button {
+  transition:
+    transform 0.12s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease,
+    filter 0.15s ease;
+}
+button:active {
+  transform: translateY(1px) scale(0.985);
+}
+.tab {
+  transition:
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+.chip,
+.item-card,
+.filter-chip {
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    background 0.15s ease,
+    filter 0.15s ease;
+}
+.item-card:hover {
+  border-color: #5b5148;
+  transform: translateY(-1px);
+}
+.help-button:hover {
+  transform: scale(1.1);
+}
+.settings-menu summary {
+  transition:
+    border-color 0.15s ease,
+    transform 0.15s ease;
+}
+.settings-menu summary:hover {
+  transform: rotate(12deg);
+}
+
+/* ── Cabecera de signos vitales SIEMPRE visible ────────────────────────── */
+.vitals-header {
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(#1e1a17, var(--panel));
+}
+.vitals-row {
+  display: flex;
+  gap: 16px;
+}
+.vital {
+  flex: 1;
+}
+.vital-top {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11.5px;
+  color: var(--muted);
+  margin-bottom: 4px;
+}
+.vital-top b {
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.vital-track {
+  height: 9px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.vital-fill {
+  height: 100%;
+  border-radius: 999px;
+  /* La barra se anima sola cuando cambia el valor: feedback claro. */
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.vital-energy {
+  color: var(--ambertx, #fcd34d);
+}
+.vital-energy .vital-fill {
+  background: linear-gradient(90deg, #b45309, #f59e0b, #fbbf24);
+  background-size: 200% 100%;
+  animation: rd-sheen 2.6s linear infinite;
+}
+.vital-health {
+  color: #fca5a5;
+}
+.vital-health .vital-fill {
+  background: linear-gradient(90deg, #991b1b, #ef4444);
+}
+.vital-warmth {
+  color: #38bdf8;
+}
+.vital-warmth .vital-fill {
+  background: linear-gradient(90deg, #0369a1, #38bdf8);
+}
+@keyframes rd-sheen {
+  0% {
+    background-position: -140% 0;
+  }
+  60%,
+  100% {
+    background-position: 240% 0;
+  }
+}
+
+/* Tarjeta “Ahora”: reusa .now-card de styles.css y le suma el filo ámbar. */
+.now-card.rd-now {
+  position: relative;
+  overflow: hidden;
+}
+.now-card.rd-now::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--accent);
+}
+.now-eyebrow {
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.now-carry {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.now-carry .pill {
+  font-size: 11px;
+}
+
+/* ── Pestañas más aireadas + enlace dev discreto ──────────────────────── */
+.tabs.rd-tabs {
+  align-items: center;
+  padding: 6px 12px 0;
+}
+.tab.rd-dev {
+  margin-left: auto;
+  color: var(--muted);
+  opacity: 0.7;
+  font-size: 11px;
+  padding: 8px 8px 10px;
+}
+
+/* ── Feed de charla unificado ─────────────────────────────────────────── */
+.feed-filter {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 13px;
+}
+.filter-chip {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.filter-chip:hover {
+  filter: brightness(1.18);
+}
+.filter-chip.active {
+  border-color: var(--accent);
+  background: #3a1d05;
+  color: var(--ambertx, #fcd34d);
+}
+.feed-card {
+  display: flex;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  transition:
+    transform 0.15s ease,
+    border-color 0.15s ease;
+}
+.feed-card:hover {
+  transform: translateY(-1px);
+}
+.feed-card.milestone {
+  border: 1px solid #166534;
+  background: linear-gradient(rgba(20, 83, 45, 0.35), var(--panel-2));
+}
+.feed-card.milestone .feed-title {
+  color: #86efac;
+}
+.feed-card.rejected {
+  border: 1px solid #7f1d1d;
+  background: var(--panel-2);
+}
+.feed-card.rejected .feed-title {
+  color: #fca5a5;
+}
+.feed-card.thought {
+  border: 1px solid #4c2889;
+  background: rgba(46, 16, 101, 0.32);
+}
+.feed-title {
+  font-weight: 600;
+  font-size: 13.5px;
+}
+.feed-sub {
+  font-size: 12.5px;
+  color: var(--muted);
+  margin-top: 2px;
+}
+.feed-tick {
+  font-size: 11px;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-top: 4px;
+}
+.feed-tag {
+  font-size: 11px;
+  color: #d8b4fe;
+  background: #2e1065;
+  border: 1px solid #4c2889;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-weight: 600;
+  height: fit-content;
+  white-space: nowrap;
+}
+
+/* ── Panel Aprendizaje (Mente + Skills + Experimentos) ────────────────── */
+.learning-panel > .intro {
+  margin: 0 0 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+.learning-panel section {
+  margin-bottom: 18px;
+}

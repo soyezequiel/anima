@@ -124,7 +124,7 @@ test('login NIP-07, sincronización remota y continuidad sin datos locales', asy
   await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 15_000,
   });
-  await page.getByTestId('tab-skills').click();
+  await page.getByTestId('tab-aprendizaje').click();
   await expect(page.getByTestId('skill-item')).toHaveCount(2);
   await page.getByTestId('tab-chat').click();
   await expect(page.getByTestId('chat-log')).toContainText('Sesión restaurada');

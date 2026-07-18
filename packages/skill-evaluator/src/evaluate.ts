@@ -256,6 +256,22 @@ function runCase(
   const violated = report.invariantViolations.length > 0;
   const passed = criteriaFailed.length === 0 && !violated && report.outcome === 'completed';
 
+  // «Había comida y no llegaste» ≠ «no había comida». Si el objetivo (comer,
+  // acercarse) falló pero la cosa SIGUE en el mundo, no faltó recurso: faltó
+  // alcanzarla. Nombrarlo le dice a la revisión que el problema es el camino
+  // —algo cerraba el paso— y no que el escenario no tuviera qué comer.
+  const unreachedTargets = passed
+    ? []
+    : skill.successCriteria
+        .filter(
+          (c) =>
+            (c.type === 'consumedKind' || c.type === 'reachedAdjacentKind') &&
+            c.kind !== undefined &&
+            criteriaFailed.includes(`${c.type}:${c.kind}`) &&
+            findByKind(world, c.kind).length > 0,
+        )
+        .map((c) => `objetivo-presente-no-alcanzado:${c.kind}`);
+
   // Violar un invariante nunca es mala suerte: rompió el mundo, y eso es suyo
   // caiga como caiga el dado.
   const verdict: CaseVerdict = passed
@@ -279,7 +295,9 @@ function runCase(
       damageTaken: report.damageTaken,
       invariantViolations: report.invariantViolations.length,
     },
-    observations: passed ? [] : deriveObservations(report, criteriaFailed),
+    observations: passed
+      ? []
+      : [...new Set([...deriveObservations(report, criteriaFailed), ...unreachedTargets])],
   };
 }
 

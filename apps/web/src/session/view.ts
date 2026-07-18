@@ -129,6 +129,13 @@ export interface ChatEntry {
   tick: number;
   /** Presente solo en la vista previa de una receta descrita por el cuidador. */
   card?: RecipeCardView;
+  /**
+   * Mensaje del cuidador que se mandó mientras Ánima ya estaba pensando: está
+   * encolado y aún no lo leyó. La UI lo dibuja debajo del "pensando" (llegó
+   * después) y con un latido de "sin leer" hasta que el agente lo atiende
+   * (`user.message.received`), momento en que la marca se apaga.
+   */
+  pending?: boolean;
 }
 
 /**

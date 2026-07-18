@@ -1,6 +1,12 @@
 import { kindWithArticle } from '@anima/shared';
 import type { ActionIntent, Interaction, PerceivedEntity, Perception } from '@anima/sim-core';
-import { MAX_RECIPE_DEPTH, recipeProduct, validateInteraction } from '@anima/sim-core';
+import {
+  MAX_RECIPE_DEPTH,
+  decompositionFor,
+  recipeProduct,
+  validateDecomposition,
+  validateInteraction,
+} from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { ModelProvider, ModelRequest, ModelResponse } from '@anima/model-providers';
 import type { AgentEvent } from './events.js';
@@ -91,6 +97,16 @@ function orderPlan(raws: unknown[]): unknown[] {
   return ordered;
 }
 
+/**
+ * Cuántos de cada tipo, en orden de aparición: "2x esquirla" se lee mejor que
+ * dos renglones iguales, y el juez pesa mejor una lista corta.
+ */
+function countByKind(drops: readonly { kind: string }[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const drop of drops) counts.set(drop.kind, (counts.get(drop.kind) ?? 0) + 1);
+  return counts;
+}
+
 /** Lo que el agente le presta al pipeline: sus órganos, no su clase entera. */
 export interface InventionDeps {
   provider: ModelProvider;
@@ -115,6 +131,8 @@ export class InventionEngine {
   private pendingBlueprint: unknown | null = null;
   /** Rechazos (puerta o Dios) a sus interacciones: viajan al siguiente intento. */
   private interactionRejections: string[] = [];
+  /** Rechazos a sus descomposiciones: mismo trato, viajan al próximo intento. */
+  private decompositionRejections: string[] = [];
 
   constructor(private readonly deps: InventionDeps) {}
 
@@ -160,14 +178,23 @@ export class InventionEngine {
    * —"solo puedo cargar 6 bloques"— viaja a la próxima idea y el modelo propone
    * una casa más chica en vez de reintentar la que no le entra en los brazos.
    */
-  recordWorldRejection(kind: 'recipe' | 'interaction' | 'blueprint', reason: string): void {
-    const list = kind === 'interaction' ? this.interactionRejections : this.recipeRejections;
+  recordWorldRejection(
+    kind: 'recipe' | 'interaction' | 'blueprint' | 'decomposition',
+    reason: string,
+  ): void {
+    const list =
+      kind === 'interaction'
+        ? this.interactionRejections
+        : kind === 'decomposition'
+          ? this.decompositionRejections
+          : this.recipeRejections;
     this.remember(list, reason);
     this.deps.emit(`${kind}.rejected`, { reason, source: 'world' });
     // Si se cayó una pieza (o la obra que la coronaba), lo que se apoyaba en
     // ella ya no se sostiene: se tira el resto del plan y se vuelve a pensar con
-    // el motivo como dato (ADR 0018).
-    if (kind !== 'interaction') {
+    // el motivo como dato (ADR 0018). Las interacciones y las descomposiciones
+    // no participan del plan de recetas: rechazarlas no tira nada.
+    if (kind === 'recipe' || kind === 'blueprint') {
       this.pendingPlan = [];
       this.pendingBlueprint = null;
     }
@@ -479,6 +506,128 @@ export class InventionEngine {
 
     // Aprobada por la física y por el Dios: al mundo, que vuelve a validar.
     return { type: 'proposeInteraction', interaction: proposal.interaction };
+  }
+
+  // ---- descomposiciones (la cuarta puerta) -----------------------------------
+
+  /**
+   * Inventar en QUÉ se deshace algo al romperse. Es la cuarta puerta y sigue el
+   * mismo camino que las interacciones: el modelo propone, la física
+   * determinista filtra, y la IA Dios juzga la coherencia — que un pedernal
+   * deje esquirlas y no diez troncos no lo sabe ningún esquema, porque la
+   * materia base no tiene receta que acote su costo. Ahí, y no en un tope
+   * numérico, vive la conservación (ADR 0008).
+   *
+   * Una diferencia deliberada con las interacciones: un veto aquí NO cancela el
+   * acto. Que el Dios rechace unos fragmentos significa "romperlo no deja eso",
+   * no "no se puede romper" — el golpe sigue su curso y la cosa se rompe sin
+   * dejar nada, que es exactamente como se comportaba el mundo antes. Suspender
+   * el objetivo convertiría una idea fallida en una prohibición.
+   */
+  async inventDecomposition(
+    targetKind: string,
+    perception: Perception,
+    options: { goalId: string },
+  ): Promise<ActionIntent | null> {
+    // Reuso primero: si el mundo ya sabe en qué se deshace, no cuesta nada.
+    if (decompositionFor(perception.decompositions, targetKind)) return null;
+
+    // Lo que ya declara qué deja (un árbol, una silla con sus materiales) no
+    // necesita regla: su propio `drops` manda sobre la del tipo.
+    const sample =
+      perception.visibleEntities.find((e) => e.kind === targetKind) ??
+      perception.self.heldItems.find((e) => e.kind === targetKind);
+    if (sample?.leavesRemains) return null;
+
+    const veto = this.deps.memory
+      .factList()
+      .find((f) => f.statement.startsWith(`romper ${targetKind} no deja nada`));
+    // Ya se pensó una vez y el Dios dijo que no queda nada: no se re-pregunta.
+    if (veto) return null;
+
+    if (!this.spendAttempt(options.goalId)) return null;
+
+    const targetFacts = this.targetFacts(targetKind, perception);
+    const knownKinds = [
+      ...new Set([
+        ...perception.visibleEntities.map((e) => e.kind),
+        ...perception.self.heldItems.map((e) => e.kind),
+      ]),
+    ].filter((kind) => kind !== targetKind);
+
+    const proposal = await this.consult({
+      kind: 'decomposition.propose',
+      targetKind,
+      targetFacts,
+      knownKinds,
+      ...(this.decompositionRejections.length > 0
+        ? { rejections: [...this.decompositionRejections] }
+        : {}),
+    });
+    if (proposal === null) return null;
+    if (proposal.kind !== 'decomposition') {
+      this.deps.emit('provider.error', {
+        provider: this.deps.provider.name,
+        operation: 'decomposition.propose',
+        message: `respuesta inesperada del proveedor: ${proposal.kind}`,
+      });
+      return null;
+    }
+    this.deps.emit('decomposition.proposed', {
+      targetKind,
+      rationale: proposal.rationale,
+    });
+
+    // La puerta local decide si vale la pena molestar al juez; el motivo de un
+    // rechazo viaja al próximo intento, como con las recetas.
+    const validated = validateDecomposition(proposal.decomposition, perception.decompositions);
+    if (!validated.ok) {
+      this.remember(this.decompositionRejections, validated.error);
+      this.deps.emit('decomposition.rejected', { reason: validated.error, source: 'gate' });
+      return null;
+    }
+
+    // El juicio de la IA Dios: la física ya dijo "expresable"; falta que sea
+    // materia honesta — que lo que queda salga del objeto y valga menos.
+    const judgement = await this.consult(
+      {
+        kind: 'decomposition.judge',
+        targetKind,
+        dropsSummary: [...countByKind(validated.value.drops)].map(
+          ([kind, count]) => `${count}x ${kind}`,
+        ),
+        facts: targetFacts,
+      },
+      'statu-quo',
+    );
+    if (judgement === null) return null;
+    if (judgement.kind !== 'judgement') {
+      this.deps.emit('provider.error', {
+        provider: this.deps.provider.name,
+        operation: 'decomposition.judge',
+        message: `respuesta inesperada del proveedor: ${judgement.kind}`,
+        recoveredWith: 'statu-quo',
+      });
+      return null;
+    }
+    this.deps.emit('decomposition.judged', {
+      targetKind,
+      willing: judgement.willing,
+      reason: judgement.reason,
+    });
+    if (!judgement.willing) {
+      // El veto es conocimiento y persiste: romper eso no deja nada, y no hay
+      // que volver a imaginarlo. Pero el acto sigue en pie — se rompe igual.
+      const fact = this.deps.memory.addFact(
+        `romper ${targetKind} no deja nada: ${judgement.reason}`,
+        this.deps.currentTick(),
+      );
+      this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });
+      return null;
+    }
+
+    // Aprobada por la física y por el Dios: al mundo, que vuelve a validar.
+    return { type: 'proposeDecomposition', decomposition: proposal.decomposition };
   }
 
   private suspendVetoed(goal: Goal, reason: string): void {

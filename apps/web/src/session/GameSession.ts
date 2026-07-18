@@ -778,7 +778,9 @@ export class GameSession {
   sendUserMessage(text: string): void {
     const trimmed = text.trim();
     if (!trimmed) return;
-    this.chat.push({ from: 'user', text: trimmed, tick: this.world.tick });
+    // Si ya está pensando, el mensaje entra encolado: se dibuja debajo del
+    // "pensando" y con la marca de sin leer hasta que el agente lo atienda.
+    this.chat.push({ from: 'user', text: trimmed, tick: this.world.tick, pending: this.aiBusy });
     this.agent.receiveUserMessage(trimmed);
     this.rebuildView();
     this.notify();
@@ -944,6 +946,16 @@ export class GameSession {
     for (; this.agentEventCursor < events.length; this.agentEventCursor++) {
       const event = events[this.agentEventCursor]!;
       this.pushDev('agent', event);
+      // El agente leyó un mensaje encolado: se apaga su marca de "sin leer"
+      // (el más viejo con ese texto, en el mismo orden FIFO en que la cola los
+      // atiende) y pasa a ser historia normal por encima del próximo pensar.
+      if (event.type === 'user.message.received') {
+        const text = String(event.data.text ?? '');
+        const entry =
+          this.chat.find((e) => e.pending && e.from === 'user' && e.text === text) ??
+          this.chat.find((e) => e.pending && e.from === 'user');
+        if (entry) entry.pending = false;
+      }
       // Bautismo por chat: el nombre vive en la identidad (capa de sesión),
       // así que el evento del agente es quien la actualiza y persiste.
       if (event.type === 'pet.renamed') {

@@ -25,6 +25,10 @@ export type SimEventType =
   | 'blueprint.learned'
   /** El mundo rechazó el plano propuesto, con el motivo. */
   | 'blueprint.rejected'
+  /** El mundo aceptó una descomposición: desde ahora ese tipo deja eso al romperse. */
+  | 'decomposition.learned'
+  /** El mundo rechazó la descomposición propuesta, con el motivo. */
+  | 'decomposition.rejected'
   | 'tool.broke'
   | 'agent.spoke'
   | 'entity.spawned'

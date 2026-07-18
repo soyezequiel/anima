@@ -21,7 +21,7 @@ test('la sesión sobrevive a una recarga de página', async ({ page }) => {
   await expect(page.locator('.app')).toHaveAttribute('data-story', 'completed', {
     timeout: 10_000,
   });
-  await page.getByTestId('tab-skills').click();
+  await page.getByTestId('tab-aprendizaje').click();
   await expect(page.getByTestId('skill-item')).toHaveCount(2);
   await page.getByTestId('tab-chat').click();
   await expect(page.getByTestId('chat-log')).toContainText('Sesión restaurada');
@@ -50,7 +50,7 @@ test('muerte, informe de legado y sucesora que hereda', async ({ page }) => {
   await expect(overlay).not.toBeVisible();
 
   // Heredó la skill (re-verificada) y el conocimiento como testimonio.
-  await page.getByTestId('tab-skills').click();
+  await page.getByTestId('tab-aprendizaje').click();
   await expect(page.getByTestId('skill-item').first()).toBeVisible();
   await expect(page.getByTestId('skill-item').first()).toHaveAttribute('data-status', 'stable');
   await page.getByTestId('tab-estado').click();

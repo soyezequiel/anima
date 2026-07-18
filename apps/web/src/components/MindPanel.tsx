@@ -57,18 +57,36 @@ function summarizeCommand(parsed: Record<string, unknown>): string | null {
 }
 
 /**
+ * El modelo a veces envuelve su JSON en una cerca de markdown (```json … ```).
+ * La quitamos antes de parsear para que no se cuele como un muro de texto.
+ */
+function stripFence(raw: string): string {
+  const fenced = raw.trim().match(/^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i);
+  return fenced?.[1] !== undefined ? fenced[1].trim() : raw.trim();
+}
+
+/** Parsea la respuesta como objeto, tolerando la cerca de markdown. null si no lo es. */
+function parseObject(raw: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(stripFence(raw)) as unknown;
+    if (value === null || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * La línea humana de una respuesta: el campo en voz de persona que cada tipo
  * de consulta ya trae (el porqué, la hipótesis, lo que dijo). null cuando no
  * hay ninguno legible — entonces solo queda el JSON crudo, colapsado.
  */
 function summarizeAnswer(kind: string, raw: string): string | null {
-  let parsed: Record<string, unknown>;
-  try {
-    const value = JSON.parse(raw) as unknown;
-    if (value === null || typeof value !== 'object' || Array.isArray(value)) return raw;
-    parsed = value as Record<string, unknown>;
-  } catch {
-    return raw; // No era JSON: es texto plano, ya es humano.
+  const parsed = parseObject(raw);
+  if (parsed === null) {
+    // Sin objeto legible: el diálogo ya es texto humano; el resto no debe
+    // volcar su blob crudo en la línea siempre visible — se pliega tras el toggle.
+    return kind === 'dialogue' ? stripFence(raw) : null;
   }
   switch (kind) {
     case 'dialogue':
@@ -108,7 +126,7 @@ function summarizeAnswer(kind: string, raw: string): string | null {
  */
 function prettyRaw(raw: string): string {
   try {
-    const value = JSON.parse(raw) as unknown;
+    const value = JSON.parse(stripFence(raw)) as unknown;
     if (value === null || typeof value !== 'object' || Array.isArray(value)) {
       return JSON.stringify(value, null, 2);
     }

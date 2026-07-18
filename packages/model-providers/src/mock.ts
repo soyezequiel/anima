@@ -125,6 +125,18 @@ export class MockModelProvider extends BaseModelProvider {
         return Promise.reject(
           new Error('el proveedor simulado no puede juzgar la lógica de una interacción'),
         );
+      case 'decomposition.propose':
+        // Decidir en qué se deshace algo exige imaginar de qué está hecho el
+        // mundo, y el mock no lo imagina. Sin él, romper deja lo de siempre
+        // (nada): el motor no cambia, cambia quién sabe la regla.
+        return Promise.reject(
+          new Error('el proveedor simulado no inventa descomposiciones'),
+        );
+      case 'decomposition.judge':
+        // Mismo lado seguro que el juez de interacciones: sin Dios, nada entra.
+        return Promise.reject(
+          new Error('el proveedor simulado no puede juzgar una descomposición'),
+        );
       case 'distill.knowledge':
         // Sin comprensión abierta, guarda la enseñanza tal cual la recibió.
         return Promise.resolve({

@@ -204,6 +204,37 @@ export type ModelRequest =
       facts: string[];
     }
   | {
+      /**
+       * Inventar en QUÉ se deshace un objeto al romperse (la cuarta puerta).
+       * Solo para materia base: lo crafteado ya sabe lo que costó y lo devuelve
+       * solo. La materia no desaparece — picar un pedernal deja algo, y qué
+       * cosa es lo que este momento cognitivo decide.
+       */
+      kind: 'decomposition.propose';
+      /** El tipo que se está por romper. */
+      targetKind: string;
+      /** Lo que se sabe del objetivo: rasgos observables, en voz humana. */
+      targetFacts: string[];
+      /** Tipos que ya existen en su mundo: los fragmentos deberían parecerse. */
+      knownKinds: string[];
+      /** Rechazos previos (de la puerta o del Dios): corregir, no insistir. */
+      rejections?: string[];
+    }
+  | {
+      /**
+       * La IA Dios juzgando una descomposición: ¿es coherente que romper ESTO
+       * deje ESO? Aquí vive la conservación de materia fina — que un pedernal
+       * deje esquirlas sí, diez troncos no. La puerta determinista ya comprobó
+       * que es expresable; esto es sentido común, no física.
+       */
+      kind: 'decomposition.judge';
+      targetKind: string;
+      /** Qué dejaría, en frases humanas ("2x esquirla"). */
+      dropsSummary: string[];
+      /** Estado real y verificable del mundo: la base del juicio. */
+      facts: string[];
+    }
+  | {
       kind: 'dialogue';
       topic: string;
       facts: string[];
@@ -253,6 +284,11 @@ export type ModelResponse =
   | { kind: 'blueprint'; recipes: unknown[]; blueprint: unknown; rationale: string }
   /** La interacción viaja sin tipar: la valida el mundo (validateInteraction). */
   | { kind: 'interaction'; interaction: unknown; rationale: string }
+  /**
+   * En qué se deshace un tipo al romperse. Viaja sin tipar, como todo lo que
+   * propone un modelo: la valida el mundo (validateDecomposition).
+   */
+  | { kind: 'decomposition'; decomposition: unknown; rationale: string }
   /**
    * Un juicio de valores, no de física. `willing: false` mantiene la negativa;
    * `true` la levanta. El agente solo lo consulta cuando ya comprobó que la

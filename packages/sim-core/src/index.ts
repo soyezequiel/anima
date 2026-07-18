@@ -5,6 +5,8 @@ export * from './blueprints.js';
 export * from './blueprint-validation.js';
 export * from './interactions.js';
 export * from './interaction-validation.js';
+export * from './decompositions.js';
+export * from './decomposition-validation.js';
 export * from './world.js';
 export * from './actions.js';
 export * from './events.js';

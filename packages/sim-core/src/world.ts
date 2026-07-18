@@ -2,6 +2,7 @@ import type { RngState, Vec2 } from '@anima/shared';
 import { createRng } from '@anima/shared';
 import type { Components, Entity, EntityId, EntityKind } from './components.js';
 import type { Blueprint } from './blueprints.js';
+import type { Decomposition } from './decompositions.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 
@@ -51,6 +52,14 @@ export function obtainableKinds(world: WorldState): Set<EntityKind> {
   for (const entity of Object.values(world.entities)) {
     addArchetype(entity.kind, entity.components, 0);
   }
+  // Lo que las cosas dejan al romperse por una regla aprendida es materia igual
+  // de real que la que sueltan por su arquetipo: los fragmentos de un pedernal
+  // que la IA Dios definió pueden ser ingrediente de una idea futura.
+  for (const decomposition of world.decompositions) {
+    for (const drop of decomposition.drops) {
+      addArchetype(drop.kind, drop.components, 1);
+    }
+  }
   return kinds;
 }
 
@@ -83,11 +92,23 @@ export interface WorldState {
    * disponer bloques para que, juntos, sean una casa.
    */
   blueprints: Blueprint[];
+  /**
+   * En qué se deshace cada tipo al ser destruido (la cuarta puerta, ADR 0027).
+   * Mismo trato que recetas, interacciones y planos: estado del mundo, viaja en
+   * los snapshots, y una descomposición aprendida no se vuelve a inventar. La
+   * materia no desaparece al romperse: se transforma en lo que esta regla dice.
+   */
+  decompositions: Decomposition[];
 }
 
 export function createWorld(
   config: WorldConfig,
-  options: { recipes?: Recipe[]; interactions?: Interaction[]; blueprints?: Blueprint[] } = {},
+  options: {
+    recipes?: Recipe[];
+    interactions?: Interaction[];
+    blueprints?: Blueprint[];
+    decompositions?: Decomposition[];
+  } = {},
 ): WorldState {
   return {
     tick: 0,
@@ -98,6 +119,7 @@ export function createWorld(
     recipes: options.recipes ? structuredClone(options.recipes) : [],
     interactions: options.interactions ? structuredClone(options.interactions) : [],
     blueprints: options.blueprints ? structuredClone(options.blueprints) : [],
+    decompositions: options.decompositions ? structuredClone(options.decompositions) : [],
   };
 }
 

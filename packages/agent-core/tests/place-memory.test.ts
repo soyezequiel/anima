@@ -144,6 +144,7 @@ describe('memoria de lugares', () => {
       recipes: [],
       interactions: [],
       blueprints: [],
+      decompositions: [],
     });
     for (let i = 0; i < PLACE_MEMORY_CAP + 6; i++) {
       memory.update(

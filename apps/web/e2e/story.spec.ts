@@ -37,7 +37,7 @@ test('la historia completa de aprendizaje se ve en la UI', async ({ page }) => {
   await expect(page.getByTestId('memory-list')).toContainText('consumir alimento recupera energía');
 
   // Panel de skills: v1 archivada y v2 estable, con regresiones conservadas.
-  await page.getByTestId('tab-skills').click();
+  await page.getByTestId('tab-aprendizaje').click();
   const skillItems = page.getByTestId('skill-item');
   await expect(skillItems).toHaveCount(2);
   await expect(skillItems.filter({ hasText: 'v1' })).toHaveAttribute('data-status', 'archived');
@@ -48,8 +48,7 @@ test('la historia completa de aprendizaje se ve en la UI', async ({ page }) => {
   await skillItems.filter({ hasText: 'v2' }).getByRole('button').first().click();
   await expect(page.getByTestId('skill-comparison')).toContainText('→ 100%');
 
-  // Historial de experimentos: rechazo y promoción visibles.
-  await page.getByTestId('tab-experimentos').click();
+  // Historial de experimentos: rechazo y promoción visibles (misma pestaña).
   await expect(page.getByTestId('experiment-item').filter({ hasText: 'RECHAZADA' })).toHaveCount(1);
   await expect(page.getByTestId('experiment-item').filter({ hasText: 'PROMOVIDA' })).toHaveCount(1);
 
@@ -78,7 +77,8 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   const slider = page.getByTestId('speed-slider');
   const speedValue = page.getByTestId('speed-value');
 
-  // El tick vive en el panel Estado, que es la pestaña de arranque.
+  // El tick vive en el panel Estado; el arranque ahora es Chat.
+  await page.getByTestId('tab-estado').click();
   const tick = page.getByTestId('world-tick');
 
   // El cero de la escala es la pausa: llevar el pulgar ahí congela el tick.

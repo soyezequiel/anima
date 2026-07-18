@@ -3,20 +3,24 @@ import { PhaserStage } from './phaser/PhaserStage.js';
 import type { GameSession } from './session/GameSession.js';
 import type { CloudAccount } from './auth/cloud.js';
 import { AccountBar } from './components/AccountBar.js';
-import { ChatPanel } from './components/ChatPanel.js';
+import { ChatFeedPanel } from './components/ChatFeedPanel.js';
 import { SettingsMenu } from './components/SettingsMenu.js';
 import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
-import { ExperimentsPanel } from './components/ExperimentsPanel.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
-import { MindPanel } from './components/MindPanel.js';
-import { SkillsPanel } from './components/SkillsPanel.js';
+import { LearningPanel } from './components/LearningPanel.js';
 import { StatusPanel } from './components/StatusPanel.js';
 import { ThoughtTicker } from './components/ThoughtTicker.js';
+import { VitalsHeader } from './components/VitalsHeader.js';
 import { WelcomeOverlay } from './components/WelcomeOverlay.js';
 
-type Tab = 'estado' | 'chat' | 'mente' | 'items' | 'skills' | 'experimentos' | 'dev';
+/**
+ * Rediseño UX: de 7 pestañas a 4 (+ enlace dev discreto) y signos vitales
+ * SIEMPRE visibles encima de las pestañas. El usuario nuevo entra por Chat
+ * —la acción principal— y nunca pierde el contexto vital.
+ */
+type Tab = 'chat' | 'estado' | 'objetos' | 'aprendizaje' | 'dev';
 
 const WELCOME_SEEN_KEY = 'anima.welcomeSeen';
 
@@ -33,7 +37,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     (listener) => session.subscribe(listener),
     () => session.getView(),
   );
-  const [tab, setTab] = useState<Tab>('estado');
+  const [tab, setTab] = useState<Tab>('chat');
   const [showWelcome, setShowWelcome] = useState(() => !welcomeAlreadySeen());
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -46,32 +50,22 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     try {
       localStorage.setItem(WELCOME_SEEN_KEY, '1');
     } catch {
-      // Sin storage (modo incógnito estricto): la bienvenida vuelve la próxima
-      // vez, que es mejor que romperse.
+      // Sin storage (incógnito estricto): la bienvenida vuelve la próxima vez.
     }
     setShowWelcome(false);
-    // La acción está en el chat: que el primer paso caiga donde se juega.
     setTab('chat');
   };
 
+  // Pestañas primarias + una técnica (dev) empujada al costado y de bajo peso.
   const tabs: { id: Tab; label: string; badge?: number }[] = [
-    { id: 'estado', label: 'Estado' },
     { id: 'chat', label: 'Chat', badge: view.chat.length },
-    { id: 'mente', label: 'Mente', badge: view.thoughts.length },
-    { id: 'items', label: 'Items', badge: view.items.length },
-    { id: 'skills', label: 'Skills', badge: view.skills.length },
-    { id: 'experimentos', label: 'Experimentos', badge: view.experiments.length },
-    { id: 'dev', label: 'Dev' },
+    { id: 'estado', label: 'Estado' },
+    { id: 'objetos', label: 'Objetos', badge: view.items.length },
+    { id: 'aprendizaje', label: 'Aprendizaje', badge: view.skills.length },
   ];
 
   return (
-    // Estado de fondo en la raíz: ni la historia ni el motor tienen ya un
-    // cartel propio en la cabecera, pero siguen siendo observables.
-    <div
-      className="app"
-      data-story={view.storyCompleted ? 'completed' : 'learning'}
-      data-ai={view.aiProvider}
-    >
+    <div className="app" data-story={view.storyCompleted ? 'completed' : 'learning'} data-ai={view.aiProvider}>
       <header className="topbar">
         <h1>
           {nameDraft === null ? (
@@ -117,7 +111,6 @@ export function App({ session, account }: { session: GameSession; account: Cloud
             gen {view.identity.generation}
           </span>
         </h1>
-        {/* Solo mientras aprende: una vez completada dejaba de decir nada. */}
         {!view.storyCompleted && (
           <span className="story-badge" data-testid="story-status">
             aprendiendo…
@@ -136,18 +129,19 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           ?
         </button>
       </header>
+
       <main className="layout">
         <section className="stage">
-          <PhaserStage
-            view={view}
-            onDropItem={(kind, at) => session.placeItemOnMap(kind, at)}
-          />
-          {/* En qué parte del pensamiento va: visible desde cualquier pestaña. */}
+          <PhaserStage view={view} onDropItem={(kind, at) => session.placeItemOnMap(kind, at)} />
           {view.currentThought && !view.death && <ThoughtTicker thought={view.currentThought} />}
           {view.death && <DeathOverlay report={view.death} session={session} />}
         </section>
+
         <aside className="panel">
-          <nav className="tabs">
+          {/* Signos vitales + «Ahora» SIEMPRE visibles, sin importar la pestaña. */}
+          <VitalsHeader view={view} />
+
+          <nav className="tabs rd-tabs">
             {tabs.map((t) => (
               <button
                 key={t.id}
@@ -159,18 +153,27 @@ export function App({ session, account }: { session: GameSession; account: Cloud
                 {t.badge !== undefined && t.badge > 0 && <span className="badge">{t.badge}</span>}
               </button>
             ))}
+            {/* Registro técnico: accesible pero fuera del foco. */}
+            <button
+              className={`tab rd-dev${tab === 'dev' ? ' active' : ''}`}
+              data-testid="tab-dev"
+              title="Registro técnico"
+              onClick={() => setTab('dev')}
+            >
+              dev
+            </button>
           </nav>
+
           <div className="panel-body">
+            {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
-            {tab === 'chat' && <ChatPanel view={view} session={session} />}
-            {tab === 'mente' && <MindPanel view={view} />}
-            {tab === 'items' && <ItemsPanel view={view} />}
-            {tab === 'skills' && <SkillsPanel view={view} />}
-            {tab === 'experimentos' && <ExperimentsPanel view={view} />}
+            {tab === 'objetos' && <ItemsPanel view={view} />}
+            {tab === 'aprendizaje' && <LearningPanel view={view} />}
             {tab === 'dev' && <DevPanel view={view} session={session} />}
           </div>
         </aside>
       </main>
+
       {showWelcome && <WelcomeOverlay onStart={startPlaying} />}
     </div>
   );

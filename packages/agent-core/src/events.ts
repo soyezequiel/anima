@@ -53,6 +53,14 @@ export type AgentEventType =
   | 'interaction.learned'
   /** La puerta o el mundo la rechazaron, con el motivo. */
   | 'interaction.rejected'
+  /** Se le ocurrió en qué se deshace algo al romperlo (la cuarta puerta). */
+  | 'decomposition.proposed'
+  /** El veredicto de la IA Dios: si esos fragmentos son materia honesta. */
+  | 'decomposition.judged'
+  /** El mundo la aceptó: romper ese tipo deja eso, y ya no se re-imagina. */
+  | 'decomposition.learned'
+  /** La puerta o el mundo la rechazaron, con el motivo. */
+  | 'decomposition.rejected'
   | 'memory.created'
   | 'memory.consolidated'
   | 'hypothesis.updated'

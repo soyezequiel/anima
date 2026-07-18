@@ -248,8 +248,21 @@ function spawnLog(world: WorldState, pos: Vec2): void {
   spawn(world, 'log', { position: pos, portable: {} });
 }
 
+/**
+ * El pedernal es materia de crafteo (fogata, antorcha, forja…) Y ahora, como
+ * una roca, se puede picar: tiene durabilidad y una dureza baja (3, contra el 5
+ * del muro y el árbol). Con una herramienta decente —un pico, un martillo— cede
+ * de un golpe; con una rama sola (poder 1, no le hace mella) la mascota tiene
+ * que hacerse algo más fuerte primero. Sin `durability` era indestructible: dar
+ * "picá la piedra" era pedir lo imposible sin que nadie lo supiera.
+ */
 function spawnFlint(world: WorldState, pos: Vec2): void {
-  spawn(world, 'flint', { position: pos, portable: {} });
+  spawn(world, 'flint', {
+    position: pos,
+    portable: {},
+    hardness: { value: 3 },
+    durability: { current: 3, max: 3 },
+  });
 }
 
 function spawnBranch(world: WorldState, pos: Vec2): void {

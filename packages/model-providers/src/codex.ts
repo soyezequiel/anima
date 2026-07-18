@@ -216,6 +216,34 @@ Reglas que el mundo NO perdona:
   estar ahí); al lado o en la mano, sin efecto, no pasa nada.
 - "transform-held" exige "requires".`;
 
+const DECOMPOSITION_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    decompositionJson: { type: 'string' },
+    rationale: { type: 'string' },
+  },
+  required: ['decompositionJson', 'rationale'],
+  additionalProperties: false,
+};
+
+/**
+ * Lo que el mundo admite en una descomposición. Como con recetas e
+ * interacciones: decirlo en el prompt no reemplaza a la validación, pero evita
+ * gastar intentos en imposibles.
+ */
+const DECOMPOSITION_REFERENCE = `Una descomposición es JSON:
+{"id":"romper-<tipo>","targetKind":"<el tipo que se rompe>",
+ "drops":[{"kind":"tipo-del-fragmento","components":{...}}]}
+Componentes permitidos en un fragmento (ninguno más existe):
+- "portable":{} — se puede recoger y llevar
+- "collider":{"solid":boolean} — ocupa lugar, bloquea el paso
+- "hardness":{"value":0..10} — cuánto resiste a ser dañado
+- "tool":{"power":0..8} — sirve como herramienta
+Reglas que el mundo NO perdona:
+- Nunca dejar food, tree ni pet: romper algo no fabrica comida ni criaturas.
+- Un tipo no puede dejar VARIOS de sí mismo (sería una fábrica de materia).
+- Entre 1 y 8 fragmentos.`;
+
 const JUDGEMENT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -584,6 +612,62 @@ huele a atajo, recházala y di por qué. Si es razonable, apruébala.
 Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
 dirigida a la mascota, diciendo POR QUÉ tiene o no tiene lógica"}`,
       };
+    case 'decomposition.propose':
+      return {
+        schema: DECOMPOSITION_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual que está por romper algo y todavía no
+sabe en qué se deshace. La materia no desaparece al romperse: se transforma.
+Decide en qué.
+${DECOMPOSITION_REFERENCE}
+
+El objeto que se rompe: ${request.targetKind}
+Lo que sabes de él:
+${request.targetFacts.map((f) => `- ${f}`).join('\n') || '- (nada más que su nombre)'}
+Tipos que ya existen en tu mundo (si un fragmento encaja con uno, reúsalo):
+${request.knownKinds.map((k) => `- ${k}`).join('\n') || '- (ninguno)'}
+${
+  request.rejections && request.rejections.length > 0
+    ? `\nTu mundo ya rechazó estas ideas tuyas. No insistas: corrige.
+${request.rejections.map((r) => `- ${r}`).join('\n')}`
+    : ''
+}
+
+Piensa en la materia real: una piedra picada deja esquirlas o lascas, no
+tablas; algo de madera deja astillas; algo tejido deja fibras. Los fragmentos
+son MENOS que el entero — romper nunca enriquece. Un juez va a revisar tu idea
+y puede rechazarla: proponerla no la vuelve posible. Responde únicamente con
+JSON: {"decompositionJson": "<la descomposición serializada como JSON>",
+"rationale": "por qué eso es lo que queda, en español"}`,
+      };
+    case 'decomposition.judge':
+      return {
+        schema: JUDGEMENT_SCHEMA,
+        prompt: `Eres la lógica del mundo de una mascota virtual — la voz que decide si las
+cosas tienen sentido. Ella decidió en qué se deshace algo al romperlo y la
+física ya dijo que es EXPRESABLE. Tu pregunta es otra: ¿es COHERENTE que romper
+ESTO deje ESO?
+
+Lo que se rompe: ${request.targetKind}
+Lo que dejaría:
+${request.dropsSummary.map((d) => `  - ${d}`).join('\n') || '  - (nada)'}
+
+Estado real del mundo:
+${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin más datos)'}
+
+Aquí es donde vive la conservación de la materia, y no hay tabla que la mida
+por ti: júzgala con sentido común. El criterio:
+- Los fragmentos salen DEL objeto: una piedra da piedra (esquirlas, lascas,
+  grava), no madera ni metal ni cosas fabricadas.
+- Romper empobrece: lo que queda vale MENOS y sirve para menos que el entero.
+  Un pedernal puede dejar dos esquirlas; jamás diez troncos ni una herramienta
+  mejor que la que se usó para romperlo.
+- Nada de atajos a la escasez: su historia se sostiene en el hambre y el frío.
+  Si la descomposición huele a fábrica de recursos, recházala y di por qué.
+Si es razonable y modesta, apruébala.
+
+Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
+dirigida a la mascota, diciendo POR QUÉ tiene o no tiene lógica"}`,
+      };
     case 'skill.revise':
       return {
         schema: PROGRAM_SCHEMA,
@@ -928,6 +1012,7 @@ export class CodexModelProvider extends BaseModelProvider {
           };
         }
         case 'judge.destruction':
+        case 'decomposition.judge':
         case 'interaction.judge': {
           if (typeof parsed.willing !== 'boolean' || typeof parsed.reason !== 'string') {
             throw new Error('el juicio no contiene willing/reason');
@@ -1005,6 +1090,29 @@ export class CodexModelProvider extends BaseModelProvider {
           return {
             kind: 'interaction',
             interaction,
+            rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+          };
+        }
+        case 'decomposition.propose': {
+          let decomposition: unknown = parsed.decomposition;
+          if (typeof parsed.decompositionJson === 'string') {
+            try {
+              decomposition = JSON.parse(parsed.decompositionJson);
+            } catch {
+              throw new Error('decompositionJson no es JSON válido');
+            }
+          }
+          if (
+            decomposition === null ||
+            typeof decomposition !== 'object' ||
+            Array.isArray(decomposition)
+          ) {
+            throw new Error('la respuesta no contiene una descomposición');
+          }
+          // No se valida aquí: va cruda al mundo, que es quien decide.
+          return {
+            kind: 'decomposition',
+            decomposition,
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
           };
         }

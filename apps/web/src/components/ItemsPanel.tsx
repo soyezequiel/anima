@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
-import { appearanceFor, hexColor } from '../phaser/appearance.js';
 import { DND_ITEM_KIND } from '../dnd.js';
+import { ItemIcon } from './ItemIcon.js';
 import type { GameView, ItemView } from '../session/view.js';
 
 /**
@@ -9,29 +9,6 @@ import type { GameView, ItemView } from '../session/view.js';
  * lleva su origen a la vista — de fábrica (definido en el código) o inventado
  * (lo construyó un modelo en tiempo de ejecución, ADR 0018 / 0024).
  */
-
-/**
- * El mismo dibujo que el tablero, por la misma regla (appearance.ts): una cosa
- * no puede verse de dos maneras según dónde la mires. Acá el bloque ámbar no
- * necesita rótulo — el nombre ya está al lado.
- */
-function ItemIcon({ item }: { item: ItemView }) {
-  const look = appearanceFor(item.kind, item.traits);
-  if (look.as === 'emoji') {
-    return (
-      <span className="item-icon" aria-hidden="true">
-        {look.emoji}
-      </span>
-    );
-  }
-  return (
-    <span
-      className="item-icon item-icon-block"
-      aria-hidden="true"
-      style={{ background: hexColor(look.fill), borderColor: hexColor(look.stroke) }}
-    />
-  );
-}
 
 function whereLine(item: ItemView): string {
   const parts: string[] = [];
@@ -49,7 +26,7 @@ function ItemCard({ item }: { item: ItemView }) {
   const head = (
     <>
       <span className="item-head-row">
-        <ItemIcon item={item} />
+        <ItemIcon kind={item.kind} traits={item.traits} />
         <strong>{item.name}</strong>
         <span className={`pill pill-origin-${item.origin}`}>
           {item.origin === 'invented' ? 'inventado (IA)' : 'de fábrica'}

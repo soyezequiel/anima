@@ -169,6 +169,53 @@ describe('craftear', () => {
 
     expect(a.world.entities).toEqual(b.world.entities);
   });
+
+  /**
+   * La silla no se hace del aire y tampoco vuelve a la nada: lo que costó
+   * armarla es lo que deja al desarmarla. El producto nace con `drops` = los
+   * materiales gastados, así que el camino destruir→drops de siempre los
+   * devuelve. Nada de fabricar de más — es exactamente lo que entró (ADR 0008).
+   */
+  const CHAIR: Recipe = {
+    id: 'chair',
+    outcomes: [
+      {
+        weight: 1,
+        output: { kind: 'chair', components: { collider: { solid: true }, durability: { current: 4, max: 4 } } },
+      },
+    ],
+    ingredients: [{ kind: 'log', count: 3 }],
+  };
+
+  it('desarmar (romper) un objeto crafteado devuelve la materia que costó', () => {
+    const { world, pet } = buildCraftWorld([CHAIR]);
+    give(world, pet, 'log', 3);
+
+    stepWorld(world, craft(pet.id, 'chair'));
+    const chair = allEntities(world).find((e) => e.kind === 'chair')!;
+    // El producto lleva de qué está hecho: tres troncos, tal como entraron.
+    expect(chair.components.drops).toHaveLength(3);
+    expect(chair.components.drops!.every((d) => d.kind === 'log')).toBe(true);
+    expect(allEntities(world).filter((e) => e.kind === 'log')).toHaveLength(0);
+
+    // Un martillo la rompe de un golpe (poder 8 > durabilidad 4).
+    const hammer = spawn(world, 'hammer', {
+      portable: {},
+      tool: { power: 8 },
+      durability: { current: 20, max: 20 },
+    });
+    pet.components.inventory!.items.push(hammer.id);
+    // La mascota, ya adyacente a la silla que cayó a su lado, la desarma.
+    const events = stepWorld(world, [
+      { actorId: pet.id, intent: { type: 'useItem', itemId: hammer.id, targetId: chair.id } },
+    ]);
+
+    expect(events.some((e) => e.type === 'entity.destroyed')).toBe(true);
+    // Los tres troncos volvieron al mundo: la materia se conservó.
+    const logs = allEntities(world).filter((e) => e.kind === 'log');
+    expect(logs).toHaveLength(3);
+    expect(logs.every((l) => l.components.portable)).toBe(true);
+  });
 });
 
 /**

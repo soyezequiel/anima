@@ -59,7 +59,10 @@ test('traer de a uno junta objetos distintos, no redescubre el que ya lleva', as
   }
 
   await page.getByTestId('tab-estado').click();
-  await expect(page.getByTestId('inventory')).toContainText('2× tronco');
+  // La mochila es una casilla por tipo, con el nombre y cuánto lleva: dos
+  // troncos son una sola celda «tronco ×2», no dos filas.
+  const carried = page.getByTestId('inventory').locator('.inventory-cell', { hasText: 'tronco' });
+  await expect(carried).toContainText('×2');
 });
 
 test('la fogata pide su ingrediente distintivo: el pedernal', async ({ page }) => {

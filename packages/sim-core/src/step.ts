@@ -1,11 +1,13 @@
 import { addVec2, isAdjacent } from '@anima/shared';
 import type { ActionIntent, ActorIntent } from './actions.js';
 import { DIRECTION_DELTAS } from './actions.js';
-import type { Entity, EntityId } from './components.js';
+import type { Components, Entity, EntityId, EntityKind } from './components.js';
 import type { SimEvent } from './events.js';
 import { simEvent } from './events.js';
 import { matchesInteractionTarget } from './interactions.js';
 import { validateInteraction } from './interaction-validation.js';
+import { decompositionFor } from './decompositions.js';
+import { validateDecomposition } from './decomposition-validation.js';
 import { PROTECTED_KINDS, validateRecipe } from './recipe-validation.js';
 import { validateBlueprint } from './blueprint-validation.js';
 import {
@@ -332,6 +334,9 @@ function resolveAction(
     case 'proposeBlueprint':
       resolveProposeBlueprint(world, actor, intent, events);
       return;
+    case 'proposeDecomposition':
+      resolveProposeDecomposition(world, actor, intent, events);
+      return;
     case 'interact':
       resolveInteract(world, actor, intent, events);
       return;
@@ -580,6 +585,41 @@ function resolveProposeBlueprint(
 }
 
 /**
+ * La mascota propone en qué se deshace un tipo al romperse (la cuarta puerta,
+ * ADR 0027). Mismo trato que recetas e interacciones: el juicio de coherencia
+ * de la IA Dios ocurrió antes y en el agente, pero no cuenta aquí — no hay
+ * camino a `world.decompositions` que se salte esta validación determinista.
+ */
+function resolveProposeDecomposition(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'proposeDecomposition' }>,
+  events: SimEvent[],
+): void {
+  const validated = validateDecomposition(intent.decomposition, world.decompositions);
+  if (!validated.ok) {
+    events.push(
+      simEvent('decomposition.rejected', world.tick, {
+        actorId: actor.id,
+        reason: validated.error,
+      }),
+    );
+    resolved(world, events, actor.id, intent, false, { reason: validated.error });
+    return;
+  }
+  world.decompositions.push(validated.value);
+  events.push(
+    simEvent('decomposition.learned', world.tick, {
+      actorId: actor.id,
+      decompositionId: validated.value.id,
+      targetKind: validated.value.targetKind,
+      drops: validated.value.drops.map((d) => d.kind),
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, { decompositionId: validated.value.id });
+}
+
+/**
  * Craftear: el mundo comprueba los ingredientes, tira su dado, y de ahí sale
  * lo que salga. Nadie fabrica nada por creer que puede — si falta algo, el
  * fallo dice exactamente qué falta y en qué cantidad.
@@ -656,9 +696,20 @@ function resolveCraft(
     spared.set(spare.kind, (spared.get(spare.kind) ?? 0) + spare.count);
   }
   const consumed: EntityId[] = [];
+  // Lo que se gasta no se pierde: se guarda como el `drops` del producto, para
+  // que desarmarlo (romperlo) devuelva exactamente la materia que costó
+  // — "todo lo que costó", sin fabricar de más (conservación, ADR 0008). Cada
+  // material vuelve tal como entró (sus componentes, sin la posición vieja), no
+  // como un arquetipo genérico: los troncos que hicieron la silla son troncos.
+  const reclaimed: Array<{ kind: EntityKind; components: Components }> = [];
   for (const ingredient of recipe.ingredients) {
     const take = Math.max(0, ingredient.count - (spared.get(ingredient.kind) ?? 0));
     for (const itemId of (heldByKind.get(ingredient.kind) ?? []).slice(0, take)) {
+      const item = getEntity(world, itemId);
+      if (item) {
+        const { position: _discarded, ...rest } = item.components;
+        reclaimed.push({ kind: item.kind, components: structuredClone(rest) });
+      }
       consumed.push(itemId);
       removeEntity(world, itemId);
     }
@@ -684,9 +735,16 @@ function resolveCraft(
 
   // `cell` existe: el desenlace produce algo, así que el chequeo de espacio de
   // arriba ya se hizo cargo.
+  // El producto lleva de qué está hecho: al romperlo, el camino destruir→drops
+  // (ver `resolveUseItem`) devuelve la materia. Si la receta ya declara sus
+  // propios `drops`, esa es una decisión deliberada (una silla que deja menos de
+  // lo que costó) y manda; si no declara nada, el default deja de ser "nada" y
+  // pasa a ser la materia entera que se gastó — "todo lo que costó".
+  const scaled = scaleByQuality(outcome.output.components, quality);
   const product = spawn(world, outcome.output.kind, {
-    ...scaleByQuality(outcome.output.components, quality),
+    ...scaled,
     position: cell!,
+    ...(scaled.drops === undefined && reclaimed.length > 0 ? { drops: reclaimed } : {}),
   });
   events.push(
     simEvent('item.crafted', world.tick, {
@@ -949,7 +1007,13 @@ function resolveUseItem(
   );
   if (targetDurability.current <= 0) {
     const dropOrigin = target.components.position ? { ...target.components.position } : null;
-    const drops = target.components.drops ?? [];
+    // La materia no se esfuma: primero lo que la entidad declara dejar (un árbol
+    // sabe que deja troncos, una silla los materiales que costó); si no declara
+    // nada, la regla de descomposición que el mundo aprendió para su tipo (el
+    // pedernal que la IA Dios definió). Sin ninguna de las dos, recién ahí no
+    // deja nada — el comportamiento viejo, ahora el último recurso y no el único.
+    const drops =
+      target.components.drops ?? decompositionFor(world.decompositions, target.kind)?.drops ?? [];
     removeEntity(world, target.id);
     events.push(
       simEvent('entity.destroyed', world.tick, { id: target.id, kind: target.kind, byId: actor.id }),

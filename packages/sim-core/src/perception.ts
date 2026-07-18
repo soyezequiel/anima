@@ -2,6 +2,7 @@ import type { Vec2 } from '@anima/shared';
 import { chebyshev, manhattan } from '@anima/shared';
 import type { Entity, EntityId } from './components.js';
 import type { Blueprint } from './blueprints.js';
+import type { Decomposition } from './decompositions.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 import type { WorldState } from './world.js';
@@ -28,6 +29,14 @@ export interface PerceivedEntity {
   wet?: boolean;
   /** Refugio: al lado de esto no se pierde calor corporal. */
   shelter?: boolean;
+  /**
+   * true si ya se sabe que deja algo al romperse (un árbol deja troncos; una
+   * silla, los materiales que costó). Lo que NO lo trae es materia cuya
+   * descomposición todavía nadie definió: es la señal de que hay que
+   * imaginarla antes de romperla (la cuarta puerta), y no volver a hacerlo
+   * para lo que ya la tiene.
+   */
+  leavesRemains?: boolean;
   /** true si el observador la lleva en su inventario. */
   held?: boolean;
 }
@@ -73,6 +82,13 @@ export interface Perception {
    * ya aprendida sin volver a imaginarla.
    */
   blueprints: Blueprint[];
+  /**
+   * En qué se deshace cada tipo al romperse (la cuarta puerta, ADR 0027), con
+   * el mismo trato: saberlo es saber la física. Es lo que permite REUSAR una
+   * descomposición aprendida en vez de volver a preguntarle a la IA Dios qué
+   * deja un pedernal que ya se rompió una vez.
+   */
+  decompositions: Decomposition[];
 }
 
 /**
@@ -119,6 +135,7 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   if (entity.components.heatSource) perceived.warmth = entity.components.heatSource.warmthPerTick;
   if (entity.components.water) perceived.wet = true;
   if (entity.components.shelter) perceived.shelter = true;
+  if ((entity.components.drops ?? []).length > 0) perceived.leavesRemains = true;
   if (held) perceived.held = true;
   return perceived;
 }
@@ -195,5 +212,6 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
     recipes: structuredClone(world.recipes),
     interactions: structuredClone(world.interactions),
     blueprints: structuredClone(world.blueprints),
+    decompositions: structuredClone(world.decompositions),
   };
 }

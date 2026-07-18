@@ -45,6 +45,13 @@ export type ActionIntent =
    * interacciones: viaja crudo y la puerta de step.ts valida y decide.
    */
   | { type: 'proposeBlueprint'; blueprint: unknown }
+  /**
+   * Proponerle al mundo en qué se deshace un tipo al romperse (la cuarta puerta,
+   * ADR 0027). Mismo trato: viaja cruda y la puerta de step.ts valida y decide.
+   * La materia base que no tiene receta no desaparece al destruirse — deja lo
+   * que esta regla, una vez aprendida, diga.
+   */
+  | { type: 'proposeDecomposition'; decomposition: unknown }
   /** Ejecutar una interacción que el mundo ya admite, sobre un objetivo. */
   | { type: 'interact'; interactionId: string; targetId: EntityId }
   | { type: 'speak'; text: string };

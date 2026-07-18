@@ -513,8 +513,14 @@ describe('reglas del mundo al restaurar', () => {
     expect(tree?.stats).toContainEqual({ label: 'Deja al romperse', value: '3 troncos' });
     expect(tree?.stats.find((s) => s.label === 'Produce')?.value).toContain('rama cada');
 
-    // Lo que no tiene nada medible no inventa filas.
-    expect(view.items.find((i) => i.kind === 'flint')?.stats).toEqual([]);
+    // Lo que no tiene nada medible no inventa filas: el tronco es solo portable.
+    expect(view.items.find((i) => i.kind === 'log')?.stats).toEqual([]);
+
+    // El pedernal ahora es una roca picable (tiene dureza y resistencia), así
+    // que sí muestra sus números — antes era indestructible y no mostraba nada.
+    const flint = view.items.find((i) => i.kind === 'flint');
+    expect(flint?.stats).toContainEqual({ label: 'Dureza', value: '3' });
+    expect(flint?.stats).toContainEqual({ label: 'Resistencia', value: '3 de 3' });
 
     // Entra una receta que no es del MVP: la construyó un modelo en runtime.
     const world = (session as unknown as { world: WorldState }).world;

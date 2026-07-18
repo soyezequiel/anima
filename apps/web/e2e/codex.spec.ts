@@ -117,7 +117,7 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   expect(completeCalls).toBeGreaterThanOrEqual(3); // interpret + propose + revise
 
   // El arco de aprendizaje es el mismo: v1 rechazada, v2 promovida.
-  await page.getByTestId('tab-skills').click();
+  await page.getByTestId('tab-aprendizaje').click();
   await expect(page.getByTestId('skill-item')).toHaveCount(2);
   await expect(page.getByTestId('skill-item').filter({ hasText: 'v2' })).toHaveAttribute(
     'data-status',
@@ -142,7 +142,27 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   // Enviar sigue habilitado mientras piensa: el mensaje se encola y se atiende
   // en el próximo tick, así el cuidador no tiene que esperar a que termine.
   await expect(page.getByTestId('chat-send')).toBeEnabled();
+
+  // Encolar mientras piensa: un segundo mensaje entra marcado "sin leer" y va
+  // DEBAJO del "pensando" en el log, porque llegó después de que empezara a
+  // pensar (antes quedaba arriba, como si hubiera llegado primero).
+  await page.getByTestId('chat-input').fill('mientras tanto, traé un tronco');
+  await page.getByTestId('chat-send').click();
+  await expect(page.getByTestId('chat-pending')).toContainText('mientras tanto');
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const rows = [...document.querySelectorAll('[data-testid="chat-log"] > *')];
+        const thinking = rows.findIndex((n) => n.getAttribute('data-testid') === 'chat-thinking');
+        const pending = rows.findIndex((n) => n.getAttribute('data-testid') === 'chat-pending');
+        return thinking >= 0 && pending > thinking;
+      }),
+    )
+    .toBe(true);
+
   await expect(page.getByTestId('chat-thinking')).toBeHidden({ timeout: 10_000 });
+  // Ya leído: la marca de encolado se apaga (el agente atendió el mensaje).
+  await expect(page.getByTestId('chat-pending')).toHaveCount(0, { timeout: 10_000 });
   await expect(page.locator('.chat-entry.from-pet').filter({ hasText: 'hola' })).toBeVisible();
   await expect(page.getByTestId('chat-send')).toBeEnabled();
   expect(dialogueRequest).toMatchObject({ model: 'gpt-5.6-terra', reasoningEffort: 'high' });

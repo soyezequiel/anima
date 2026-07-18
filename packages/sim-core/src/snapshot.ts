@@ -25,6 +25,7 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
     recipes?: WorldState['recipes'];
     interactions?: WorldState['interactions'];
     blueprints?: WorldState['blueprints'];
+    decompositions?: WorldState['decompositions'];
   };
   return {
     ...state,
@@ -33,6 +34,9 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
     interactions: state.interactions ?? [],
     // Ni a los planos: un legado viejo restaura sin obras y las aprende igual.
     blueprints: state.blueprints ?? [],
+    // Ni a las descomposiciones: lo que ya sabía romper deja lo de siempre por
+    // su `drops`; lo que no, lo aprende cuando le toque romperlo.
+    decompositions: state.decompositions ?? [],
   };
 }
 

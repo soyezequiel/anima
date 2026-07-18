@@ -941,8 +941,41 @@ h3 {
 }
 
 .status-inventory {
-  font-size: 12px;
   margin-bottom: 4px;
+}
+
+/* La mochila como una grilla de casillas: ícono, nombre y cuánto lleva. */
+.inventory-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.inventory-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.inventory-name {
+  font-weight: 600;
+}
+
+.inventory-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.inventory-empty {
+  font-size: 12px;
 }
 
 /* Rasgos como fila de pastillas: se leen de un vistazo. */
@@ -1126,6 +1159,59 @@ h3 {
 .chat-note .chat-tick {
   font-size: 10px;
   margin-left: 0;
+}
+
+/* Un mensaje encolado: se mandó mientras Ánima pensaba y aún no lo leyó. Va
+   debajo del "pensando" (llegó después) y su burbuja late en voz baja para
+   decir "sin leer", hasta que el agente lo atiende y la marca se apaga. */
+.chat-row.pending {
+  /* Entra deslizándose desde abajo: se siente "recién puesto en la cola". */
+  animation: queued-in 0.28s ease-out;
+}
+
+.chat-row.pending .chat-bubble {
+  animation: queued-pulse 1.6s ease-in-out infinite;
+}
+
+/* En lugar del tick del mundo, la marca viva de sin leer, del lado del cuidador. */
+.chat-pending-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  padding: 0 4px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.chat-pending-hint .thinking-dots {
+  min-width: 0;
+}
+
+.chat-pending-hint .thinking-dots i {
+  width: 4px;
+  height: 4px;
+}
+
+@keyframes queued-pulse {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes queued-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Mientras piensa, la burbuja de Ánima se tiñe apenas de violeta. */

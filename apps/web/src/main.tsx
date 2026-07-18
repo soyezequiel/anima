@@ -13,6 +13,7 @@ import {
 import { forgetAccount, initCloud } from './auth/cloud.js';
 import { GameSession } from './session/GameSession.js';
 import './styles.css';
+import './styles-redesign.css';
 
 // Una sesión por carga de página (sobrevive al doble montaje de StrictMode).
 // El orden importa: initCloud captura el contexto del launcher (lnOrigin)

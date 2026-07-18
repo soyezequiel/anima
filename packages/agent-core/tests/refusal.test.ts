@@ -22,6 +22,7 @@ function perceptionWith(
     recipes: [],
     interactions: [],
     blueprints: [],
+    decompositions: [],
   };
 }
 

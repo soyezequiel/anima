@@ -55,7 +55,49 @@ function makeSkill(library: SkillLibrary, strategy: 'nearest' | 'strongestTool',
   );
 }
 
+/**
+ * Pura navegación, sin herramienta ni muro: la forma exacta que el modelo
+ * propuso —una versión tras otra— en el reporte real. En campo abierto llega;
+ * contra el muro completo no hay rodeo y nunca alcanza la comida.
+ */
+const NAVIGATION_ONLY_PROGRAM: SkillProgram = [
+  { op: 'findEntities', query: { kind: 'food' }, store: 'foods' },
+  { op: 'selectTarget', from: 'foods', strategy: 'nearest', store: 'food' },
+  { op: 'explore', maxSteps: 50, until: { type: 'isAdjacent', target: 'food' } },
+  { op: 'consume', target: 'food' },
+];
+
 describe('evaluador de skills', () => {
+  it('«había comida y no llegaste»: nombra el objetivo presente pero no alcanzado', () => {
+    const library = new SkillLibrary();
+    const skill = library.addExperimental(
+      {
+        name: 'alcanzar-alimento-bloqueado',
+        description: 'Llega hasta el alimento aunque haya un obstáculo y lo consume',
+        motivation: 'el camino directo al alimento falló repetidamente',
+        program: NAVIGATION_ONLY_PROGRAM,
+        expectedOutcome: 'la energía de la mascota aumenta tras consumir el alimento',
+        successCriteria: [
+          { type: 'consumedKind', kind: 'food' },
+          { type: 'energyIncreased' },
+        ],
+        createdAt: now(),
+      },
+    );
+    const report = evaluateSkill(skill, { scenarios: MVP_SCENARIOS, seeds: SEEDS, maxTicks: 200 });
+    // Pasa campo abierto, falla el muro: no es azar, es que no hay rodeo.
+    expect(report.successRate).toBeGreaterThan(0);
+    expect(report.successRate).toBeLessThan(1);
+    // La nueva pista distingue «no había comida» de «no llegaste a la que había».
+    expect(report.failureObservations).toContain('objetivo-presente-no-alcanzado:food');
+    // Y NO aparece en el escenario sin muro, donde sí la alcanza y la come.
+    const openFieldCases = report.cases.filter((c) => c.scenario === 'open-field');
+    expect(
+      openFieldCases.some((c) => c.observations.includes('objetivo-presente-no-alcanzado:food')),
+    ).toBe(false);
+  });
+
+
   it('rechaza la v1 defectuosa y conserva los fallos como regresiones', () => {
     const library = new SkillLibrary();
     const regressions = new RegressionStore();
