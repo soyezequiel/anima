@@ -1,5 +1,6 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { GameView, ThoughtView } from '../session/view.js';
+import { parseReasoning, type ReasoningStep } from './reasoning.js';
 
 /**
  * La mente en vivo: cada consulta al modelo real, en una línea humana de qué
@@ -149,17 +150,43 @@ function prettyRaw(raw: string): string {
   }
 }
 
-function cleanHeadline(text: string): string {
-  return text.replace(/\*\*/g, '').trim();
+function ReasoningStepItem({ step }: { step: ReasoningStep }) {
+  const hasDetail = step.body.length > 0 || step.code.length > 0;
+  if (!hasDetail) {
+    return (
+      <li className="reasoning-step">
+        <span className="reasoning-headline">{step.headline}</span>
+      </li>
+    );
+  }
+  return (
+    <li className="reasoning-step">
+      <details className="reasoning-step-details">
+        <summary>
+          <span className="reasoning-headline">{step.headline}</span>
+          {step.code.length > 0 && (
+            <span className="reasoning-code-chip" aria-label="incluye código">
+              {'{ }'}
+            </span>
+          )}
+        </summary>
+        {step.body.length > 0 && <p className="reasoning-body">{step.body}</p>}
+        {step.code.map((snippet, i) => (
+          <pre key={i} className="reasoning-code">
+            {snippet}
+          </pre>
+        ))}
+      </details>
+    </li>
+  );
 }
 
 function ReasoningList({ lines }: { lines: string[] }) {
+  const steps = useMemo(() => parseReasoning(lines), [lines]);
   return (
     <ul className="thought-reasoning">
-      {lines.map((line, i) => (
-        <li key={i} className="thought-reasoning-line">
-          {cleanHeadline(line)}
-        </li>
+      {steps.map((step, i) => (
+        <ReasoningStepItem key={i} step={step} />
       ))}
     </ul>
   );

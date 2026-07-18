@@ -101,6 +101,21 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   await slider.press('ArrowRight');
   await expect(speedValue).toHaveText('4x');
 
+  // El brillo de la barra de energía late al ritmo del gasto: a 4× la energía
+  // baja cuatro veces más rápido y el brillo la acompaña.
+  const sheen = page.locator('.vital-energy .vital-fill');
+  await expect(sheen).toHaveCSS('animation-duration', '0.65s');
+  await slider.press('ArrowLeft');
+  await slider.press('ArrowLeft');
+  await expect(speedValue).toHaveText('1x');
+  await expect(sheen).toHaveCSS('animation-duration', '2.6s');
+
+  // En pausa no se gasta nada, así que el brillo se congela con el mundo.
+  await slider.press('ArrowLeft');
+  await expect(speedValue).toHaveText('pausa');
+  await expect(sheen).toHaveCSS('animation-play-state', 'paused');
+  await slider.press('ArrowRight');
+
   // Modo desarrollador: eventos estructurados con filtro.
   await page.getByTestId('tab-dev').click();
   await expect(page.getByTestId('dev-log')).toContainText('action.resolved', { timeout: 10_000 });

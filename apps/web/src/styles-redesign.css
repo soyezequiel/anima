@@ -88,7 +88,14 @@ button:active {
 .vital-energy .vital-fill {
   background: linear-gradient(90deg, #b45309, #f59e0b, #fbbf24);
   background-size: 200% 100%;
-  animation: rd-sheen 2.6s linear infinite;
+  /* El período lo fija VitalsHeader a partir de la velocidad del mundo: el
+     brillo late al ritmo real del gasto, no a uno decorativo. */
+  animation: rd-sheen var(--sheen-period, 2.6s) linear infinite;
+}
+
+/* En pausa no se gasta energía: el brillo se congela con el mundo. */
+.vitals-header[data-drain='paused'] .vital-energy .vital-fill {
+  animation-play-state: paused;
 }
 .vital-health {
   color: #fca5a5;
@@ -246,4 +253,131 @@ button:active {
 }
 .learning-panel section {
   margin-bottom: 18px;
+}
+
+/* ── Razonamiento legible ──────────────────────────────────────────────
+   El crudo del modelo llega sin jerarquía. Acá cada paso es un titular
+   clickeable: se lee la secuencia de un vistazo y la prosa (y el JSON que
+   venía mezclado) esperan detrás del toggle. */
+
+.thought-reasoning {
+  display: grid;
+  gap: 2px;
+}
+
+.reasoning-step {
+  font-size: 12px;
+  line-height: 1.45;
+  padding-left: 16px;
+  position: relative;
+  font-style: normal;
+  color: var(--muted);
+  animation: thought-step-in 0.35s ease-out;
+}
+
+/* La guía vertical que hilvana los pasos como una secuencia. */
+.reasoning-step::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 16px;
+  bottom: -2px;
+  width: 1px;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+.reasoning-step:last-child::after {
+  display: none;
+}
+
+.reasoning-step::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+.reasoning-headline {
+  color: var(--fg);
+  font-style: normal;
+}
+
+.reasoning-step-details > summary {
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  border-radius: 4px;
+  padding: 1px 4px;
+  margin-left: -4px;
+  transition: background 0.15s ease;
+}
+
+.reasoning-step-details > summary::-webkit-details-marker {
+  display: none;
+}
+
+.reasoning-step-details > summary:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.reasoning-step-details[open] > summary .reasoning-headline {
+  color: var(--accent);
+}
+
+.reasoning-code-chip {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  color: var(--muted);
+  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+  border-radius: 4px;
+  padding: 0 3px;
+  flex: none;
+}
+
+.reasoning-body {
+  margin: 4px 0 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+
+.reasoning-code {
+  margin: 0 0 6px;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--fg) 6%, transparent);
+  color: var(--muted);
+  overflow-x: auto;
+  max-height: 180px;
+}
+
+/* La tarjeta «pensó» del feed: remate visible, hilo plegado. */
+.feed-thought-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.feed-thought-details > summary {
+  padding: 1px 0;
+}
+
+.feed-card.thought .thought-headline {
+  color: #f3e8ff;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-step {
+    animation: none;
+  }
 }

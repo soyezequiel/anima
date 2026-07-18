@@ -8,6 +8,7 @@ import type {
   RecipeCardView,
   ThoughtView,
 } from '../session/view.js';
+import { parseReasoning, parseReasoningStep } from './reasoning.js';
 
 /**
  * Chat como FEED unificado. Por defecto («Todo») mezcla la charla con los
@@ -108,12 +109,31 @@ function MilestoneCard({ exp }: { exp: ExperimentView }) {
 }
 
 function ThoughtCard({ thought }: { thought: ThoughtView }) {
-  const headline = thought.reasoning.at(-1) ?? thought.answer ?? thought.label;
+  // El feed muestra el remate y cuánto costó llegar; el hilo entero espera
+  // plegado. Volcar el razonamiento crudo acá tapaba la conversación.
+  const steps = useMemo(() => parseReasoning(thought.reasoning), [thought.reasoning]);
+  const last = steps.at(-1);
+  const headline = last?.headline ?? cleanHeadline(thought.answer ?? thought.label);
+  const stepWord = steps.length === 1 ? 'paso' : 'pasos';
   return (
     <div className="feed-card thought" data-testid="feed-thought">
       <span className="feed-tag">pensó</span>
-      <div className="feed-sub" style={{ color: '#f3e8ff' }}>
-        {cleanHeadline(headline)}
+      <div className="feed-thought-body">
+        <div className="feed-sub thought-headline">{headline}</div>
+        {steps.length > 1 && (
+          <details className="thought-details feed-thought-details">
+            <summary>
+              cómo llegó · {steps.length} {stepWord}
+            </summary>
+            <ul className="thought-reasoning">
+              {steps.slice(0, -1).map((step, i) => (
+                <li key={i} className="reasoning-step">
+                  <span className="reasoning-headline">{step.headline}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
     </div>
   );
@@ -121,7 +141,8 @@ function ThoughtCard({ thought }: { thought: ThoughtView }) {
 
 function ChatThinking({ thought, name }: { thought: ThoughtView | null; name: string }) {
   const steps = thought?.reasoning ?? [];
-  const headline = steps.at(-1);
+  // En vivo solo cabe el titular del último paso: el crudo desbordaba la burbuja.
+  const headline = steps.length > 0 ? parseReasoningStep(steps.at(-1)!).headline : undefined;
   return (
     <div className="chat-entry chat-row from-pet group-start thinking-entry" data-testid="chat-thinking" role="status" aria-live="polite">
       <span className="chat-name">{name}</span>

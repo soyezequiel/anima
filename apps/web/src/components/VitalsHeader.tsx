@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react';
 import type { GameSession } from '../session/GameSession.js';
 import type { GameView } from '../session/view.js';
 import { kindLabel } from '@anima/shared';
@@ -32,13 +33,28 @@ function carryChips(inventory: { kind: string }[]): { kind: string; n: number }[
   return [...counts].map(([kind, n]) => ({ kind, n }));
 }
 
+/**
+ * El brillo de la barra de energía late al ritmo del gasto real. La energía
+ * baja `decayPerTick` por tick y el mundo corre a 4 ticks/s × velocidad, así
+ * que la velocidad es lo único que mueve el gasto en runtime: en pausa el
+ * brillo se congela (no se gasta nada) y a 4× late cuatro veces más rápido.
+ */
+const SHEEN_AT_1X_MS = 2600;
+
 export function VitalsHeader({ view }: { view: GameView }) {
   const pet = view.pet;
   const strategy = humanStrategy(view.currentStrategy);
   const chips = pet ? carryChips(pet.inventory) : [];
+  // La pausa vive en `running`, no en `speed`: al pausar la velocidad queda
+  // guardada para cuando se reanude.
+  const paused = !view.running;
 
   return (
-    <div className="vitals-header">
+    <div
+      className="vitals-header"
+      data-drain={paused ? 'paused' : 'running'}
+      style={{ '--sheen-period': `${SHEEN_AT_1X_MS / (view.speed || 1)}ms` } as CSSProperties}
+    >
       {pet && (
         <div className="vitals-row">
           <div className="vital vital-energy">
