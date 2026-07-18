@@ -251,13 +251,20 @@ describe('el frío como motivo', () => {
    * `activeGoal: null` — no peleando y perdiendo, sino dormida.
    */
   describe('un motivo que se agrava despierta lo que se abandonó (ADR 0046)', () => {
-    /** Vive hasta que el objetivo de calor queda suspendido, y lo devuelve. */
+    /**
+     * Vive hasta que el objetivo de calor queda suspendido, y lo devuelve.
+     *
+     * El presupuesto es holgado desde el ADR 0054: rendirse ahora incluye
+     * salir a BUSCAR calor y techo (hasta 40 pasos cada uno) después de pedir
+     * ayuda. Se rinde igual —lo que sigue lo comprueba— pero tarda más, que es
+     * exactamente el punto: antes se rendía sin haber dado un paso.
+     */
     async function suspendUntilGivenUp(
       world: WorldState,
       petId: EntityId,
       agent: AnimaAgent,
     ): Promise<void> {
-      for (let i = 0; i < 30; i++) {
+      for (let i = 0; i < 300; i++) {
         const intent = await agent.think(buildPerception(world, petId));
         agent.observe(stepWorld(world, [{ actorId: petId, intent: intent ?? { type: 'wait' } }]));
         if (agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status === 'suspended') return;

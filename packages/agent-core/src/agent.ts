@@ -47,7 +47,13 @@ import {
 } from '@anima/skill-runtime';
 import type { EvaluationCaseHook, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
-import type { Goal, GoalManagerData, GoalUserRequest, LearningContract } from './goals.js';
+import type {
+  Goal,
+  GoalManagerData,
+  GoalStep,
+  GoalUserRequest,
+  LearningContract,
+} from './goals.js';
 import { GoalManager } from './goals.js';
 import type { PersonalityTrait } from './personality.js';
 import { derivePersonality } from './personality.js';
@@ -84,6 +90,9 @@ import {
   rememberedFoodProgram,
   rememberedHeatProgram,
   retreatProgram,
+  SEEK_FOOD_PROGRAM,
+  SEEK_SHELTER_PROGRAM,
+  SEEK_WARMTH_PROGRAM,
   SHELTER_APPROACH_PROGRAM,
   stepsToward,
   WARMTH_APPROACH_PROGRAM,
@@ -640,6 +649,106 @@ export class AnimaAgent {
       need: m.need,
       have: m.have,
     }));
+  }
+
+  /**
+   * Los pasos de un encargo, plantados como objetivos hijos (ADR 0053): un
+   * «conseguir N× tal cosa» por cada materia que el plan pide, y un remate
+   * («levantar la obra» / «armarlo»). Son objetivos de verdad —persisten, se
+   * ven, se completan— pero no compiten en la fila: quien trabaja es el
+   * programa del padre; los hijos son el mapa de ese trabajo.
+   *
+   * Idempotente a propósito: se llama en cada arranque y reanudación, y solo
+   * repone lo que falte — si una receta inventada a mitad de camino agrega una
+   * materia nueva, su paso aparece; los ya creados no se duplican.
+   */
+  private ensureRequestSteps(goal: Goal, perception: Perception): void {
+    const request = goal.userRequest;
+    if (request?.kind !== 'craft-item' || !request.recipeId) return;
+    const existing = this.goals.childrenOf(goal.id);
+    const asStep = (step: GoalStep, description: string): void => {
+      const child = this.goals.create(
+        {
+          description,
+          source: goal.source,
+          priority: goal.priority,
+          urgency: goal.urgency,
+          expectedValue: goal.expectedValue,
+          preconditions: [],
+          successCriteria: [],
+          failureCriteria: [],
+          parentGoalId: goal.id,
+          step,
+        },
+        this.tick,
+      );
+      this.emit('goal.created', {
+        goalId: child.id,
+        description,
+        source: goal.source,
+        parentGoalId: goal.id,
+      });
+    };
+    for (const count of this.neededCountsFor(goal, perception)) {
+      if (count.have >= count.need) continue;
+      if (existing.some((c) => c.step?.kind === 'gather' && c.step.targetKind === count.kind)) {
+        continue;
+      }
+      // "4× pared escuela" y no "4 pared escuelas": el plural español de un
+      // nombre compuesto va en la cabeza ("paredes escuela"), y el pluralizador
+      // —que no puede saber si la segunda palabra es sustantivo o adjetivo—
+      // se lo pegaba al final. La notación con × esquiva la gramática y dice
+      // lo mismo, además de leerse igual que los chips de materia.
+      asStep(
+        { kind: 'gather', targetKind: count.kind, need: count.need },
+        `conseguir ${count.need}× ${kindLabel(count.kind)}`,
+      );
+    }
+    if (!existing.some((c) => c.step?.kind === 'assemble')) {
+      const isStructure = perception.blueprints.some((b) => b.id === request.recipeId);
+      asStep(
+        { kind: 'assemble' },
+        isStructure
+          ? `levantar ${kindWithArticle(request.recipeId)}`
+          : `armar ${kindWithArticle(request.recipeId)}`,
+      );
+    }
+  }
+
+  /**
+   * Da por cumplidos los pasos que el mundo ya cumplió (ADR 0053). La vara es
+   * la MISMA cuenta con la que el encargo se suspende y retoma
+   * (`neededCountsFor`): un paso de juntar se cierra cuando esa materia ya no
+   * falta — porque la juntó, se la trajeron, o la obra ya la tiene puesta. El
+   * remate no se cierra acá: lo cierra el padre al completarse, en cascada.
+   *
+   * Cerrado es cerrado: si después suelta el material, el paso no revive — el
+   * encargo entero se volverá a suspender con la lista fresca, que es el
+   * mecanismo que ya existe para eso.
+   */
+  private settleRequestSteps(perception: Perception): void {
+    for (const goal of this.goals.all()) {
+      if (goal.status !== 'active' && goal.status !== 'suspended') continue;
+      if (goal.userRequest?.kind !== 'craft-item') continue;
+      const children = this.goals
+        .childrenOf(goal.id)
+        .filter((c) => c.status === 'active' || c.status === 'suspended');
+      if (children.length === 0) continue;
+      const counts = new Map(
+        this.neededCountsFor(goal, perception).map((c) => [c.kind, c] as const),
+      );
+      for (const child of children) {
+        if (child.step?.kind !== 'gather') continue;
+        const count = counts.get(child.step.targetKind);
+        if (count && count.have < count.need) continue;
+        this.goals.complete(child.id);
+        this.emit('goal.step.completed', {
+          goalId: child.id,
+          parentGoalId: goal.id,
+          description: child.description,
+        });
+      }
+    }
   }
 
   /**
@@ -1206,6 +1315,10 @@ export class AnimaAgent {
     // (ADR 0046). Va después de las señales del cuerpo y antes de elegir
     // objetivo: hambre y frío siguen mandando sobre lo que le pidieron.
     this.reviveSuppliedRequests(perception);
+    // Los pasos cumplidos se marcan con la misma foto del mundo (ADR 0053):
+    // después de revivir, para que un encargo recién despertado ya muestre
+    // tachado lo que consiguió mientras esperaba.
+    this.settleRequestSteps(perception);
 
     const speech = this.pendingSpeech.shift();
     if (speech !== undefined) return { type: 'speak', text: speech };
@@ -3168,6 +3281,14 @@ export class AnimaAgent {
         });
       }
     }
+    // Ya pidió ayuda y nadie vino: antes de rendirse, SALIR A BUSCAR (ADR
+    // 0054). Va acá y no antes a propósito — pedir ayuda temprano es
+    // información que el cuidador necesita pronto, y caminar cuesta energía.
+    // Lo que se reemplaza no es el aviso, es el callejón sin salida que venía
+    // después: quedarse parada esperando a que la comida viniera sola.
+    if (this.progress.helpRequestedFor(goal.id)) {
+      strategies.push({ label: 'buscar-comida', program: SEEK_FOOD_PROGRAM });
+    }
 
     const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
     if (viable) {
@@ -3655,6 +3776,15 @@ export class AnimaAgent {
         });
       }
     }
+    // Ya pidió ayuda y nadie vino: últimas dos antes de rendirse, salir a
+    // BUSCAR calor y, si tampoco, techo (ADR 0054). Van después del aviso —
+    // que el cuidador se entere temprano sigue importando— pero antes de
+    // quedarse quieta: fue quedarse quieta, con un refugio a diez celdas
+    // detrás de un muro, lo que mató a la generación 3.
+    if (this.progress.helpRequestedFor(goal.id)) {
+      strategies.push({ label: 'buscar-calor', program: SEEK_WARMTH_PROGRAM });
+      strategies.push({ label: 'buscar-refugio', program: SEEK_SHELTER_PROGRAM });
+    }
 
     const viable = strategies.find((s) => !this.progress.isForbidden(goal.id, s.label));
     if (viable) {
@@ -4106,6 +4236,11 @@ export class AnimaAgent {
     completionReply: string,
     perception: Perception,
   ): void {
+    // Al ponerse a trabajar el encargo, sus pasos se vuelven objetivos hijos
+    // (ADR 0053). Acá y no al aceptar el pedido: recién ahora hay percepción, y
+    // la cuenta de qué falta puede haber cambiado —una receta inventada en el
+    // medio— así que cada reanudación repone los pasos que falten.
+    this.ensureRequestSteps(goal, perception);
     this.emit('strategy.selected', { goalId: goal.id, strategy: 'petición-del-usuario' });
     this.activity = {
       goalId: goal.id,

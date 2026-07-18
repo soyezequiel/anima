@@ -690,3 +690,67 @@ button:active {
   border-color: color-mix(in srgb, #ef4444 50%, var(--border));
   background: color-mix(in srgb, #ef4444 10%, var(--panel));
 }
+
+/* Los pasos de un objetivo (ADR 0053): cuelgan del padre con una espina
+   vertical propia, y cada uno abre una columna donde el texto y su materia
+   quedan alineados. Sin la espina y sin esa columna, un chip de materia se
+   leía como un paso hermano más en vez de como parte del paso de arriba. */
+.goal-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 10px;
+  display: grid;
+  gap: 6px;
+  border-left: 2px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+}
+
+.goal-step {
+  display: grid;
+  grid-template-columns: 14px 1fr;
+  align-items: start;
+  gap: 6px;
+  font-size: 12px;
+}
+
+/* Texto del paso y su materia, en una sola columna: el chip queda debajo del
+   título y alineado con él, nunca al margen de la viñeta. */
+.goal-step-body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.goal-step-mark {
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.goal-step-done .goal-step-mark {
+  color: #22c55e;
+}
+
+.goal-step-done .goal-step-desc {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, #22c55e 55%, transparent);
+}
+
+.goal-step-failed .goal-step-mark {
+  color: #ef4444;
+}
+
+.goal-step-needs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.goal-step-needs .goal-need {
+  padding: 2px 7px;
+  font-size: 11px;
+}

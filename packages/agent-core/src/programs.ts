@@ -52,6 +52,37 @@ export const WARMTH_APPROACH_PROGRAM: SkillProgram = [
 ];
 
 /**
+ * Cuántos pasos se le conceden a salir a buscar antes de admitir que no
+ * encontró. Alcanza para cruzar un mapa mediano; pasado eso, seguir caminando
+ * con el cuerpo en rojo gasta más de lo que promete.
+ */
+const SEEK_MAX_STEPS = 40;
+
+/**
+ * Salir a BUSCAR lo que no ve (ADR 0054).
+ *
+ * Todas las estrategias del cuerpo —comida, calor, refugio— arrancaban con
+ * `findEntities` sobre lo VISIBLE, y la vista exige línea despejada (ADR 0025).
+ * Detrás de un muro, un refugio a diez celdas no existe. Una generación murió
+ * de frío parada, repitiendo «no veo nada que dé calor» con un refugio y tres
+ * pedernales en el mapa: nunca dio un paso para mirar.
+ *
+ * `explore` recorre lo menos visitado HASTA VER lo que busca; si se agota sin
+ * encontrar, el programa sigue igual y la aproximación de siempre aborta por
+ * `no-candidates`. Buscar y no encontrar es una respuesta honesta —y una que
+ * solo se puede dar después de haber buscado.
+ */
+export const SEEK_FOOD_PROGRAM: SkillProgram = [
+  { op: 'explore', maxSteps: SEEK_MAX_STEPS, until: { type: 'sees', query: { edible: true } } },
+  ...DIRECT_APPROACH_PROGRAM,
+];
+
+export const SEEK_WARMTH_PROGRAM: SkillProgram = [
+  { op: 'explore', maxSteps: SEEK_MAX_STEPS, until: { type: 'sees', query: { warm: true } } },
+  ...WARMTH_APPROACH_PROGRAM,
+];
+
+/**
  * El plan B sereno: sin fuego a la vista ni forma de hacerlo, un refugio no
  * devuelve el calor perdido pero para la sangría. Se pega (el refugio no
  * quema, la distancia prudente del fuego aquí no hace falta) y se queda.
@@ -66,6 +97,12 @@ export const SHELTER_APPROACH_PROGRAM: SkillProgram = [
     then: [{ op: 'abort', reason: 'camino-bloqueado' }],
   },
   { op: 'wait', ticks: 20 },
+];
+
+/** Buscar techo cuando no se ve ninguno. El último recurso antes de rendirse. */
+export const SEEK_SHELTER_PROGRAM: SkillProgram = [
+  { op: 'explore', maxSteps: SEEK_MAX_STEPS, until: { type: 'sees', query: { shelter: true } } },
+  ...SHELTER_APPROACH_PROGRAM,
 ];
 
 /**

@@ -1836,13 +1836,15 @@ export class GameSession {
    * que la pantalla no cuente una prioridad distinta de la que se obedece.
    */
   private goalViews(perception: Perception | null): GoalView[] {
+    const all = this.agent.goals.all();
     const plans = new Map(
       (perception ? this.agent.goalPlans(perception) : []).map((plan) => [plan.goalId, plan]),
     );
+    // La fila es de los padres: los hijos no compiten (ADR 0053), así que
+    // tampoco reciben número.
     const rank = new Map<string, number>();
-    this.agent.goals
-      .all()
-      .filter((g) => g.status === 'active')
+    all
+      .filter((g) => g.status === 'active' && g.parentGoalId === undefined)
       .sort(
         (a, b) =>
           b.priority + b.urgency - (a.priority + a.urgency) ||
@@ -1853,38 +1855,70 @@ export class GameSession {
     // final lo terminado: lo que se consulta es lo que todavía está en juego.
     const weight = (g: { status: string; id: string }): number =>
       g.status === 'active' ? (rank.get(g.id) ?? 0) : g.status === 'suspended' ? 1000 : 2000;
-    return this.agent.goals
-      .all()
+    type PlanNeed = ReturnType<AnimaAgent['goalPlans']>[number]['needs'][number];
+    const needViews = (needs: PlanNeed[]): GoalView['needs'] =>
+      needs
+        .filter((need) => need.have < need.need)
+        .map((need) => ({
+          kind: need.kind,
+          label: kindLabel(need.kind),
+          short: need.need - need.have,
+          need: need.need,
+          have: need.have,
+          visible: need.visible,
+          fromLabel: need.from ? kindLabel(need.from) : null,
+        }));
+    const viewOf = (
+      g: (typeof all)[number],
+      needs: PlanNeed[],
+      structure: ReturnType<AnimaAgent['goalPlans']>[number]['structure'],
+    ): GoalView => ({
+      id: g.id,
+      description: g.description,
+      status: g.status,
+      source: g.source,
+      score: g.priority + g.urgency,
+      rank: rank.get(g.id) ?? null,
+      suspendedReason: g.suspendedReason ?? null,
+      needs: needViews(needs),
+      structure: structure
+        ? {
+            label: kindLabel(structure.blueprintId),
+            placed: structure.placed,
+            total: structure.total,
+          }
+        : null,
+      children: [],
+    });
+    return all
+      .filter((g) => g.parentGoalId === undefined)
       .map((g) => {
         const plan = plans.get(g.id);
-        const structure = plan?.structure;
-        return {
-          id: g.id,
-          description: g.description,
-          status: g.status,
-          source: g.source,
-          score: g.priority + g.urgency,
-          rank: rank.get(g.id) ?? null,
-          suspendedReason: g.suspendedReason ?? null,
-          needs: (plan?.needs ?? [])
-            .filter((need) => need.have < need.need)
-            .map((need) => ({
-              kind: need.kind,
-              label: kindLabel(need.kind),
-              short: need.need - need.have,
-              need: need.need,
-              have: need.have,
-              visible: need.visible,
-              fromLabel: need.from ? kindLabel(need.from) : null,
-            })),
-          structure: structure
-            ? {
-                label: kindLabel(structure.blueprintId),
-                placed: structure.placed,
-                total: structure.total,
-              }
-            : null,
-        };
+        const view = viewOf(g, plan?.needs ?? [], plan?.structure);
+        // Los hijos viajan DENTRO del padre. Un paso de juntar muestra la
+        // cuenta viva de SU materia — el mismo dato del plan del padre, no una
+        // segunda cuenta que pueda discrepar.
+        view.children = all
+          .filter((child) => child.parentGoalId === g.id)
+          .map((child) => {
+            const step = child.step;
+            const own =
+              step?.kind === 'gather'
+                ? (plan?.needs ?? []).filter((need) => need.kind === step.targetKind)
+                : [];
+            const view = viewOf(child, own, undefined);
+            // El título de un paso de juntar se REDACTA acá, no se lee del que
+            // quedó guardado al crearlo. Un texto congelado envejece mal: los
+            // pasos creados antes de arreglar el plural siguen diciendo "4
+            // pared escuelas" para siempre en las partidas ya guardadas. El
+            // guardado conserva su descripción para el registro; la pantalla
+            // dice lo que es verdad ahora.
+            if (step?.kind === 'gather') {
+              view.description = `conseguir ${step.need}× ${kindLabel(step.targetKind)}`;
+            }
+            return view;
+          });
+        return view;
       })
       .sort((a, b) => weight(a) - weight(b) || Number(a.id.slice(5)) - Number(b.id.slice(5)));
   }

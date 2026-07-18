@@ -51,6 +51,17 @@ export interface LearningContract {
   context: string[];
 }
 
+/**
+ * El paso concreto que un sub-objetivo representa (ADR 0053). Es dato y no
+ * texto para que el agente pueda darlo por cumplido con la misma cuenta con la
+ * que se suspende y retoma (`neededCountsFor`), sin re-parsear su descripción.
+ */
+export type GoalStep =
+  /** Reunir tanta materia de tal tipo. `need` es el total del plan original. */
+  | { kind: 'gather'; targetKind: string; need: number }
+  /** El remate: levantar la obra o armar el objeto con lo reunido. */
+  | { kind: 'assemble' };
+
 /** Los objetivos son estructuras, nunca texto libre suelto. */
 export interface Goal {
   id: string;
@@ -64,7 +75,10 @@ export interface Goal {
   preconditions: string[];
   successCriteria: string[];
   failureCriteria: string[];
+  /** De quién es paso este objetivo: lo vuelve hijo, fuera de la fila. */
   parentGoalId?: string;
+  /** Qué paso del padre es, cuando es un hijo (ADR 0053). */
+  step?: GoalStep;
   suspendedReason?: string;
   /** Condición (texto estructurado breve) que permitiría reactivarlo. */
   reactivateWhen?: string;
@@ -107,10 +121,15 @@ export class GoalManager {
     return goal;
   }
 
-  /** Objetivo activo con mayor score (prioridad + urgencia). Determinista. */
+  /**
+   * Objetivo activo con mayor score (prioridad + urgencia). Determinista.
+   * Los hijos no entran en la fila (ADR 0053): son pasos del padre, no
+   * competidores — quien trabaja es el programa del padre, y un hijo elegido
+   * como objetivo propio intentaría perseguirse sin tener petición que cumplir.
+   */
   selectActive(): Goal | undefined {
     return this.goals
-      .filter((g) => g.status === 'active')
+      .filter((g) => g.status === 'active' && g.parentGoalId === undefined)
       .sort(
         (a, b) =>
           b.priority + b.urgency - (a.priority + a.urgency) ||
@@ -133,14 +152,33 @@ export class GoalManager {
     return this.goals.find((g) => g.id === id);
   }
 
+  /** Los hijos todavía abiertos de un objetivo, en orden de creación. */
+  childrenOf(id: string): Goal[] {
+    return this.goals.filter((g) => g.parentGoalId === id);
+  }
+
+  /**
+   * Terminar el padre arrastra a los hijos (ADR 0053): la obra hecha da por
+   * hechos sus pasos, y un pedido que fracasa no deja pasos huérfanos
+   * fingiendo que siguen en marcha. Solo el cierre cascada — suspender no,
+   * porque un paso no está "esperando" nada propio: espera lo que el padre.
+   */
   complete(id: string): void {
     const goal = this.get(id);
-    if (goal) goal.status = 'completed';
+    if (!goal) return;
+    goal.status = 'completed';
+    for (const child of this.childrenOf(id)) {
+      if (child.status === 'active' || child.status === 'suspended') child.status = 'completed';
+    }
   }
 
   fail(id: string): void {
     const goal = this.get(id);
-    if (goal) goal.status = 'failed';
+    if (!goal) return;
+    goal.status = 'failed';
+    for (const child of this.childrenOf(id)) {
+      if (child.status === 'active' || child.status === 'suspended') child.status = 'failed';
+    }
   }
 
   suspend(id: string, reason: string, reactivateWhen: string): void {

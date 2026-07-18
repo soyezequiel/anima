@@ -409,6 +409,12 @@ export interface GoalView {
   needs: GoalNeedView[];
   /** Si es una obra: bloques puestos de cuántos, para la barra de avance. */
   structure: { label: string; placed: number; total: number } | null;
+  /**
+   * Sus pasos, cuando los descompuso (ADR 0053): objetivos hijos de verdad,
+   * anidados acá para que la pantalla los dibuje dentro de la tarjeta del
+   * padre. Un hijo nunca tiene hijos propios.
+   */
+  children: GoalView[];
 }
 
 export interface GameView {

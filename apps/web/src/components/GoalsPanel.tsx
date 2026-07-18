@@ -40,7 +40,21 @@ function needHint(need: GoalNeedView): { text: string; tone: 'ready' | 'harvest'
   return { text: 'no lo ve', tone: 'absent' };
 }
 
-function Need({ need, byKind }: { need: GoalNeedView; byKind: Map<string, ItemView> }) {
+function Need({
+  need,
+  byKind,
+  ofTotal = false,
+}: {
+  need: GoalNeedView;
+  byKind: Map<string, ItemView>;
+  /**
+   * Decir "falta 1 de 4" en vez de "1×". Dentro de un paso el total ya está
+   * escrito en su título ("conseguir 4× pared escuela"), y un chip que dice
+   * "1×" al lado parecía contradecirlo: son cosas distintas —lo que falta y lo
+   * que pide— pero nada lo decía.
+   */
+  ofTotal?: boolean;
+}) {
   const known = byKind.get(need.kind);
   const hint = needHint(need);
   return (
@@ -56,9 +70,52 @@ function Need({ need, byKind }: { need: GoalNeedView; byKind: Map<string, ItemVi
         material={known?.material}
         glyph={known?.glyph}
       />
-      <span className="goal-need-count">{need.short}×</span>
-      <span className="goal-need-label">{need.label}</span>
+      {ofTotal ? (
+        <span className="goal-need-count">
+          falta {need.short} de {need.need}
+        </span>
+      ) : (
+        <>
+          <span className="goal-need-count">{need.short}×</span>
+          <span className="goal-need-label">{need.label}</span>
+        </>
+      )}
       <span className="goal-need-hint muted">{hint.text}</span>
+    </li>
+  );
+}
+
+/**
+ * Un paso del objetivo (sub-objetivo, ADR 0053): fila chica con tilde cuando
+ * está cumplido y la cuenta viva de su materia cuando es un paso de juntar.
+ * Comparte los estados del padre porque ES un objetivo de verdad — solo que
+ * vive dentro de su tarjeta, no en la fila.
+ */
+function StepRow({ step, byKind }: { step: GoalView; byKind: Map<string, ItemView> }) {
+  const done = step.status === 'completed';
+  const failed = step.status === 'failed';
+  return (
+    <li
+      className={`goal-step${done ? ' goal-step-done' : ''}${failed ? ' goal-step-failed' : ''}`}
+      data-testid="goal-step"
+      data-status={step.status}
+    >
+      <span className="goal-step-mark" aria-hidden="true">
+        {done ? '✓' : failed ? '✕' : '○'}
+      </span>
+      {/* Título y materia en UNA columna: así el chip cuelga debajo del texto
+          del paso, alineado con él, y se lee como suyo. Suelto al mismo margen
+          que la viñeta parecía un paso hermano más. */}
+      <div className="goal-step-body">
+        <span className="goal-step-desc">{step.description}</span>
+        {!done && step.needs.length > 0 && (
+          <ul className="goal-needs goal-step-needs">
+            {step.needs.map((need) => (
+              <Need key={need.kind} need={need} byKind={byKind} ofTotal />
+            ))}
+          </ul>
+        )}
+      </div>
     </li>
   );
 }
@@ -73,6 +130,8 @@ function GoalCard({
   byKind: Map<string, ItemView>;
 }) {
   const structure = goal.structure;
+  const steps = goal.children;
+  const stepsDone = steps.filter((s) => s.status === 'completed').length;
   return (
     <li
       className={current ? 'goal-card goal-card-current' : 'goal-card'}
@@ -112,7 +171,23 @@ function GoalCard({
         </div>
       )}
 
-      {goal.needs.length > 0 && (
+      {/* Cuando descompuso el encargo en pasos, los pasos son la historia: cada
+          uno lleva su propia cuenta de materia. Repetir los chips en el padre
+          sería contar lo mismo dos veces en la misma tarjeta. */}
+      {steps.length > 0 && (
+        <>
+          <div className="goal-needs-title muted">
+            sus pasos ({stepsDone} de {steps.length})
+          </div>
+          <ul className="goal-steps" data-testid="goal-steps">
+            {steps.map((step) => (
+              <StepRow key={step.id} step={step} byKind={byKind} />
+            ))}
+          </ul>
+        </>
+      )}
+
+      {steps.length === 0 && goal.needs.length > 0 && (
         <>
           <div className="goal-needs-title muted">le falta conseguir</div>
           <ul className="goal-needs list" data-testid="goal-needs">

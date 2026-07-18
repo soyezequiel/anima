@@ -6,6 +6,10 @@ export type AgentEventType =
   | 'goal.completed'
   | 'goal.suspended'
   | 'goal.reactivated'
+  /** Un paso (sub-objetivo) quedó cumplido por la cuenta del mundo (ADR 0053).
+   * Es SU evento y no `goal.completed` a propósito: quien escucha el cierre de
+   * un encargo entero no tiene por qué enterarse de cada paso intermedio. */
+  | 'goal.step.completed'
   | 'strategy.selected'
   | 'strategy.failed'
   | 'strategy.forbidden'

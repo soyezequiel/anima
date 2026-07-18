@@ -1045,6 +1045,31 @@ describe('pensamiento en vivo en la sesión', () => {
     session.dispose();
   });
 
+  /**
+   * ADR 0053. Los pasos de un encargo viajan como hijos DENTRO del padre: la
+   * pantalla los dibuja anidados, cada uno con su estado y su materia viva.
+   */
+  it('los pasos de un encargo llegan anidados dentro del objetivo padre', async () => {
+    const { session } = await makeSession(5);
+    // "fogata" la entiende el parser local: craft-item sin modelo de por medio.
+    session.sendUserMessage('hacé una fogata');
+    await runUntil(session, () => {
+      const goal = session.getView().goals.find((g) => g.description.includes('fogata'));
+      return (goal?.children.length ?? 0) > 0;
+    }, 40);
+
+    const view = session.getView();
+    const parent = view.goals.find((g) => g.description.includes('fogata'));
+    expect(parent).toBeDefined();
+    expect(parent!.children.length).toBeGreaterThan(0);
+    // El remate está siempre; los de juntar dependen de lo que ya lleve.
+    expect(parent!.children.some((c) => c.description.startsWith('armar'))).toBe(true);
+    // Un hijo nunca aparece suelto en la lista de arriba.
+    expect(view.goals.every((g) => g.children.every((c) => c.children.length === 0))).toBe(true);
+    expect(view.goals.some((g) => parent!.children.some((c) => c.id === g.id))).toBe(false);
+    session.dispose();
+  });
+
   it('un fallo queda contado como error y la vista es una copia inmutable', async () => {
     const { session } = await makeSession(5);
     session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'start' });
