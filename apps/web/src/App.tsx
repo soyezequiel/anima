@@ -9,6 +9,7 @@ import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
 import { GoalsPanel } from './components/GoalsPanel.js';
+import { useExpansion } from './components/expansion.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
 import { LearningPanel } from './components/LearningPanel.js';
 import { StatusPanel } from './components/StatusPanel.js';
@@ -51,6 +52,12 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     setFocusItem((previous) => ({ kind, nonce: (previous?.nonce ?? 0) + 1 }));
     setTab('objetos');
   };
+  /**
+   * Qué está desplegado (ADR 0069). Vive acá arriba y no en cada fila porque
+   * el panel se rehace con cada tick del mundo: un `useState` adentro se
+   * perdía a los pocos segundos y el árbol se cerraba solo.
+   */
+  const expansion = useExpansion();
   const [showWelcome, setShowWelcome] = useState(() => !welcomeAlreadySeen());
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -176,7 +183,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
 
         <aside className="panel">
           {/* Signos vitales + «Ahora» SIEMPRE visibles, sin importar la pestaña. */}
-          <VitalsHeader view={view} />
+          <VitalsHeader view={view} onInspect={inspectItem} expansion={expansion} />
 
           <nav className="tabs rd-tabs">
             {tabs.map((t) => (
@@ -203,9 +210,9 @@ export function App({ session, account }: { session: GameSession; account: Cloud
 
           <div className="panel-body">
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
-            {tab === 'objetivos' && <GoalsPanel view={view} />}
+            {tab === 'objetivos' && <GoalsPanel view={view} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
-            {tab === 'objetos' && <ItemsPanel view={view} focus={focusItem} />}
+            {tab === 'objetos' && <ItemsPanel view={view} focus={focusItem} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'obras' && <WorksPanel view={view} onInspect={inspectItem} />}
             {tab === 'aprendizaje' && <LearningPanel view={view} />}
             {tab === 'dev' && <DevPanel view={view} session={session} />}

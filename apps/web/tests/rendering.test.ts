@@ -3,6 +3,8 @@ import { kindLabel } from '@anima/shared';
 import { appearanceFor, emojiFor, hexColor } from '../src/phaser/appearance.js';
 import { GLYPH_SIZE, materialFor, paletteFor, parseGlyph, patternFor } from '../src/phaser/matter.js';
 import { skillDevLine, skillDevPurpose } from '../src/components/thinking.js';
+import { materialChildren } from '../src/components/MaterialTree.js';
+import type { ItemView } from '../src/session/view.js';
 
 /**
  * Cómo se ve y cómo se llama una cosa. Dos reglas: el nombre interno nunca se
@@ -280,5 +282,76 @@ describe('el renglón del ciclo cuenta en qué va', () => {
       'para llegar hasta el alimento aunque el camino esté bloqueado',
     );
     expect(skillDevPurpose({ ...base, phase: 'designing', purpose: null })).toBeNull();
+  });
+});
+
+/**
+ * ADR 0069. El árbol de materiales, por niveles y a demanda.
+ *
+ * Lo único que el árbol CALCULA es cuánto hace falta a cada altura. El resto
+ * —qué se abre, qué se dibuja— es interfaz. Esta cuenta merece prueba porque
+ * equivocarla no se ve: el árbol queda igual de lindo y el cuidador junta de
+ * menos.
+ */
+describe('el árbol de materiales cuenta por rama', () => {
+  const catalogo = (
+    recetas: Record<string, { kind: string; count: number }[]>,
+  ): Map<string, ItemView> =>
+    new Map(
+      Object.entries(recetas).map(([kind, ingredientes]) => [
+        kind,
+        {
+          kind,
+          name: kind,
+          ingredients: ingredientes.map((i) => ({
+            kind: i.kind,
+            count: i.count,
+            label: `${i.count} ${i.kind}`,
+          })),
+        } as ItemView,
+      ]),
+    );
+
+  it('multiplica por toda la rama, no por la receta suelta', () => {
+    // 3 encimeras → 6 tablas → 12 ramas: la cocina real del cuidador.
+    const byKind = catalogo({
+      encimera: [{ kind: 'tabla', count: 2 }],
+      tabla: [
+        { kind: 'rama', count: 2 },
+        { kind: 'fibra', count: 1 },
+      ],
+      rama: [],
+      fibra: [],
+    });
+
+    const nivel1 = materialChildren('encimera', 3, byKind);
+    expect(nivel1).toEqual([{ kind: 'tabla', count: 6, raw: false, circular: false }]);
+
+    const nivel2 = materialChildren('tabla', nivel1[0]!.count, byKind, ['encimera']);
+    expect(nivel2).toEqual([
+      { kind: 'rama', count: 12, raw: true, circular: false },
+      { kind: 'fibra', count: 6, raw: true, circular: false },
+    ]);
+  });
+
+  it('marca la materia prima: ahí el árbol toca el suelo', () => {
+    const byKind = catalogo({ tabla: [{ kind: 'rama', count: 2 }], rama: [] });
+    expect(materialChildren('tabla', 1, byKind)[0]).toMatchObject({ kind: 'rama', raw: true });
+    // Y una materia prima no tiene hijos: no hay nada más abajo.
+    expect(materialChildren('rama', 1, byKind)).toEqual([]);
+  });
+
+  it('marca los círculos en vez de perseguirlos para siempre', () => {
+    // Una receta que vuelve sobre sí misma (ADR 0031 las admite).
+    const byKind = catalogo({
+      ladrillo: [{ kind: 'polvo', count: 2 }],
+      polvo: [{ kind: 'ladrillo', count: 1 }],
+    });
+    const hijos = materialChildren('polvo', 2, byKind, ['ladrillo']);
+    expect(hijos[0]).toMatchObject({ kind: 'ladrillo', circular: true });
+  });
+
+  it('un tipo que el catálogo no conoce se trata como materia prima', () => {
+    expect(materialChildren('desconocido', 1, new Map())).toEqual([]);
   });
 });

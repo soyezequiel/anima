@@ -1,4 +1,6 @@
 import { ItemIcon } from './ItemIcon.js';
+import { MaterialTree } from './MaterialTree.js';
+import type { Expansion } from './expansion.js';
 import type { GameView, GoalNeedView, GoalView, ItemView } from '../session/view.js';
 
 /**
@@ -43,10 +45,18 @@ function needHint(need: GoalNeedView): { text: string; tone: 'ready' | 'harvest'
 function Need({
   need,
   byKind,
+  onInspect,
+  expansion,
+  scope,
   ofTotal = false,
 }: {
   need: GoalNeedView;
   byKind: Map<string, ItemView>;
+  /** Llevar al catálogo: la ficha del objeto responde mejor que un resumen. */
+  onInspect: (kind: string) => void;
+  expansion: Expansion;
+  /** De qué objetivo cuelga: dos objetivos que piden lo mismo no se pisan. */
+  scope: string;
   /**
    * Decir "falta 1 de 4" en vez de "1×". Dentro de un paso el total ya está
    * escrito en su título ("conseguir 4× pared escuela"), y un chip que dice
@@ -55,6 +65,8 @@ function Need({
    */
   ofTotal?: boolean;
 }) {
+  const treeId = `arbol:${scope}:${need.kind}`;
+  const openTree = expansion.isOpen(treeId);
   const known = byKind.get(need.kind);
   const hint = needHint(need);
   return (
@@ -81,6 +93,33 @@ function Need({
         </>
       )}
       <span className="goal-need-hint muted">{hint.text}</span>
+      {/* De qué está hecho, hasta la materia prima (ADR 0069). Se abre acá y no
+          se muestra siempre: la respuesta a «por qué no lo consigue» suele
+          estar dos niveles más abajo, pero mostrarla entera de entrada sería
+          tapar la lista con un árbol que casi nunca se mira. */}
+      {byKind.get(need.kind)?.ingredients.length ? (
+        <button
+          type="button"
+          className="need-tree-toggle"
+          data-testid="need-tree-toggle"
+          data-kind={need.kind}
+          aria-expanded={openTree}
+          onClick={() => expansion.toggle(treeId)}
+          title="Ver de qué está hecho"
+        >
+          {openTree ? '▾ de qué está hecho' : '▸ de qué está hecho'}
+        </button>
+      ) : null}
+      {openTree && (
+        <MaterialTree
+          kind={need.kind}
+          count={need.short}
+          byKind={byKind}
+          onInspect={onInspect}
+          expansion={expansion}
+          rootPath={scope}
+        />
+      )}
     </li>
   );
 }
@@ -91,7 +130,17 @@ function Need({
  * Comparte los estados del padre porque ES un objetivo de verdad — solo que
  * vive dentro de su tarjeta, no en la fila.
  */
-function StepRow({ step, byKind }: { step: GoalView; byKind: Map<string, ItemView> }) {
+function StepRow({
+  step,
+  byKind,
+  onInspect,
+  expansion,
+}: {
+  step: GoalView;
+  byKind: Map<string, ItemView>;
+  onInspect: (kind: string) => void;
+  expansion: Expansion;
+}) {
   const done = step.status === 'completed';
   const failed = step.status === 'failed';
   return (
@@ -111,7 +160,15 @@ function StepRow({ step, byKind }: { step: GoalView; byKind: Map<string, ItemVie
         {!done && step.needs.length > 0 && (
           <ul className="goal-needs goal-step-needs">
             {step.needs.map((need) => (
-              <Need key={need.kind} need={need} byKind={byKind} ofTotal />
+              <Need
+                key={need.kind}
+                need={need}
+                byKind={byKind}
+                onInspect={onInspect}
+                expansion={expansion}
+                scope={step.id}
+                ofTotal
+              />
             ))}
           </ul>
         )}
@@ -120,14 +177,24 @@ function StepRow({ step, byKind }: { step: GoalView; byKind: Map<string, ItemVie
   );
 }
 
-function GoalCard({
+/**
+ * La tarjeta de un objetivo. Se exporta porque la barra de arriba muestra
+ * EXACTAMENTE esta (ADR 0069): antes tenía su propio resumen —descripción y
+ * poco más— y el cuidador veía dos versiones distintas del mismo objetivo
+ * según dónde mirara. Una sola tarjeta, un solo relato.
+ */
+export function GoalCard({
   goal,
   current,
   byKind,
+  onInspect,
+  expansion,
 }: {
   goal: GoalView;
   current: boolean;
   byKind: Map<string, ItemView>;
+  onInspect: (kind: string) => void;
+  expansion: Expansion;
 }) {
   const structure = goal.structure;
   const steps = goal.children;
@@ -181,7 +248,13 @@ function GoalCard({
           </div>
           <ul className="goal-steps" data-testid="goal-steps">
             {steps.map((step) => (
-              <StepRow key={step.id} step={step} byKind={byKind} />
+              <StepRow
+                key={step.id}
+                step={step}
+                byKind={byKind}
+                onInspect={onInspect}
+                expansion={expansion}
+              />
             ))}
           </ul>
         </>
@@ -192,7 +265,14 @@ function GoalCard({
           <div className="goal-needs-title muted">le falta conseguir</div>
           <ul className="goal-needs list" data-testid="goal-needs">
             {goal.needs.map((need) => (
-              <Need key={need.kind} need={need} byKind={byKind} />
+              <Need
+                key={need.kind}
+                need={need}
+                byKind={byKind}
+                onInspect={onInspect}
+                expansion={expansion}
+                scope={goal.id}
+              />
             ))}
           </ul>
         </>
@@ -207,7 +287,15 @@ function GoalCard({
   );
 }
 
-export function GoalsPanel({ view }: { view: GameView }) {
+export function GoalsPanel({
+  view,
+  onInspect,
+  expansion,
+}: {
+  view: GameView;
+  onInspect: (kind: string) => void;
+  expansion: Expansion;
+}) {
   // El catálogo se indexa una vez y lo comparten todas las tarjetas: un tronco
   // se dibuja igual acá que en la mochila y que en el tablero.
   const byKind = new Map(view.items.map((item) => [item.kind, item]));
@@ -233,7 +321,14 @@ export function GoalsPanel({ view }: { view: GameView }) {
       )}
       <ul className="list goals-list" data-testid="goal-list">
         {open.map((goal) => (
-          <GoalCard key={goal.id} goal={goal} current={goal.id === currentId} byKind={byKind} />
+          <GoalCard
+            key={goal.id}
+            goal={goal}
+            current={goal.id === currentId}
+            byKind={byKind}
+            onInspect={onInspect}
+            expansion={expansion}
+          />
         ))}
       </ul>
 
@@ -244,7 +339,14 @@ export function GoalsPanel({ view }: { view: GameView }) {
           </summary>
           <ul className="list goals-list" data-testid="goal-list-finished">
             {finished.map((goal) => (
-              <GoalCard key={goal.id} goal={goal} current={false} byKind={byKind} />
+              <GoalCard
+                key={goal.id}
+                goal={goal}
+                current={false}
+                byKind={byKind}
+                onInspect={onInspect}
+                expansion={expansion}
+              />
             ))}
           </ul>
         </details>

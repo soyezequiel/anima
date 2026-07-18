@@ -1,6 +1,8 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { DND_ITEM_KIND } from '../dnd.js';
 import { ItemIcon } from './ItemIcon.js';
+import { MaterialTree } from './MaterialTree.js';
+import type { Expansion } from './expansion.js';
 import type { GameView, ItemIngredientView, ItemView } from '../session/view.js';
 
 /**
@@ -57,10 +59,15 @@ function Ingredients({
 function ItemCard({
   item,
   byKind,
+  onInspect,
+  expansion,
   focusNonce,
 }: {
   item: ItemView;
   byKind: Map<string, ItemView>;
+  /** Seguir bajando por el árbol sin salir del catálogo. */
+  onInspect?: ((kind: string) => void) | undefined;
+  expansion: Expansion;
   /**
    * Cambia cada vez que alguien pide mirar ESTE objeto de cerca (ADR 0056,
    * adenda). `undefined` = nadie lo pidió. Es un contador y no un booleano
@@ -158,6 +165,24 @@ function ItemCard({
               <dd>{stat.value}</dd>
             </Fragment>
           ))}
+          {/* Y su árbol, nivel por nivel y a demanda (ADR 0069). Llegar acá
+              desde una obra o desde un objetivo y no poder seguir bajando era
+              cortar el camino justo donde empieza la pregunta interesante. */}
+          {item.ingredients.length > 0 && onInspect && (
+            <>
+              <dt>De qué sale</dt>
+              <dd>
+                <MaterialTree
+                  kind={item.kind}
+                  count={1}
+                  byKind={byKind}
+                  onInspect={onInspect}
+                  expansion={expansion}
+                  rootPath={`ficha:${item.kind}`}
+                />
+              </dd>
+            </>
+          )}
         </dl>
       )}
     </li>
@@ -167,8 +192,13 @@ function ItemCard({
 export function ItemsPanel({
   view,
   focus,
+  onInspect,
+  expansion,
 }: {
   view: GameView;
+  /** Saltar a otra ficha desde el árbol: el catálogo se recorre a sí mismo. */
+  onInspect?: (kind: string) => void;
+  expansion: Expansion;
   /** Qué objeto mirar de cerca, si se llegó acá desde otra pestaña. */
   focus?: { kind: string; nonce: number } | null;
 }) {
@@ -197,6 +227,8 @@ export function ItemsPanel({
             key={item.kind}
             item={item}
             byKind={byKind}
+            onInspect={onInspect}
+            expansion={expansion}
             {...(focus?.kind === item.kind ? { focusNonce: focus.nonce } : {})}
           />
         ))}
@@ -208,6 +240,8 @@ export function ItemsPanel({
             key={item.kind}
             item={item}
             byKind={byKind}
+            onInspect={onInspect}
+            expansion={expansion}
             {...(focus?.kind === item.kind ? { focusNonce: focus.nonce } : {})}
           />
         ))}

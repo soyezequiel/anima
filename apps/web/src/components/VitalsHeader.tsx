@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { GoalCard } from './GoalsPanel.js';
+import type { Expansion } from './expansion.js';
 import type { GameView } from '../session/view.js';
 import { kindLabel } from '@anima/shared';
 
@@ -130,10 +132,19 @@ function Vital({
   );
 }
 
-export function VitalsHeader({ view }: { view: GameView }) {
+export function VitalsHeader({
+  view,
+  onInspect,
+  expansion,
+}: {
+  view: GameView;
+  onInspect: (kind: string) => void;
+  expansion: Expansion;
+}) {
   const pet = view.pet;
   const strategy = humanStrategy(view.currentStrategy);
   const chips = pet ? carryChips(pet.inventory) : [];
+  const byKind = new Map(view.items.map((item) => [item.kind, item]));
 
   return (
     <div className="vitals-header">
@@ -168,9 +179,25 @@ export function VitalsHeader({ view }: { view: GameView }) {
 
       <div className="now-card rd-now">
         <div className="now-eyebrow">Ahora</div>
-        <div className="now-goal" data-testid="current-goal">
-          {view.currentGoal?.description ?? '(observando)'}
-        </div>
+        {/* La MISMA tarjeta que la pestaña de Objetivos (ADR 0069). Antes acá
+            vivía un resumen propio —la descripción y nada más— y el cuidador
+            veía dos versiones distintas del mismo objetivo según dónde mirara:
+            una con su materia, su avance y sus pasos, otra con una frase. */}
+        {view.currentGoal ? (
+          <ul className="list now-goal-card">
+            <GoalCard
+              goal={view.currentGoal}
+              current
+              byKind={byKind}
+              onInspect={onInspect}
+              expansion={expansion}
+            />
+          </ul>
+        ) : (
+          <div className="now-goal" data-testid="current-goal">
+            (observando)
+          </div>
+        )}
         {(strategy || view.lastAction) && (
           <div className="now-detail muted">
             <span data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
