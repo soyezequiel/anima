@@ -244,6 +244,117 @@ describe('el frío como motivo', () => {
     expect(pet.components.temperature!.current).toBeGreaterThan(10);
   });
 
+  /**
+   * ADR 0046. El caso que mató a once generaciones seguidas: el objetivo de
+   * calor se suspendía tras pedir ayuda y solo podía despertarlo el cuidador
+   * hablando. La mascota se congelaba con "recuperar calor" pendiente y
+   * `activeGoal: null` — no peleando y perdiendo, sino dormida.
+   */
+  describe('un motivo que se agrava despierta lo que se abandonó (ADR 0046)', () => {
+    /** Vive hasta que el objetivo de calor queda suspendido, y lo devuelve. */
+    async function suspendUntilGivenUp(
+      world: WorldState,
+      petId: EntityId,
+      agent: AnimaAgent,
+    ): Promise<void> {
+      for (let i = 0; i < 30; i++) {
+        const intent = await agent.think(buildPerception(world, petId));
+        agent.observe(stepWorld(world, [{ actorId: petId, intent: intent ?? { type: 'wait' } }]));
+        if (agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status === 'suspended') return;
+      }
+    }
+
+    it('se reactiva solo porque el frío empeoró, sin que el cuidador diga nada', async () => {
+      const { world, petId } = coldWorld({ fire: false, recipes: false });
+      const { agent } = makeAgent(world, petId);
+      const pet = world.entities[petId]!;
+
+      await suspendUntilGivenUp(world, petId, agent);
+      expect(agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status).toBe('suspended');
+
+      // El mundo no trae ningún alivio y el cuidador no abre la boca: lo único
+      // que cambia es que el cuerpo se enfría más.
+      const atSuspension = pet.components.temperature!.current;
+      pet.components.temperature!.current = atSuspension - 0.1 * pet.components.temperature!.max - 1;
+
+      await agent.think(buildPerception(world, petId));
+
+      expect(agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status).toBe('active');
+      const revived = agent.events.ofType('goal.reactivated');
+      expect(revived.at(-1)?.data.reason).toBe('el motivo empeoró desde que se rindió');
+    });
+
+    it('se reactiva si aparece una fuente de calor que antes no estaba', async () => {
+      const { world, petId } = coldWorld({ fire: false, recipes: false });
+      const { agent } = makeAgent(world, petId);
+
+      await suspendUntilGivenUp(world, petId, agent);
+      expect(agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status).toBe('suspended');
+
+      // Alguien enciende un fuego. No hace falta que se lo digan.
+      spawn(world, 'campfire', {
+        position: { x: 6, y: 2 },
+        heatSource: { warmthPerTick: 2, range: 2 },
+        hazard: { damagePerTick: 1 },
+      });
+
+      await agent.think(buildPerception(world, petId));
+
+      expect(agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status).toBe('active');
+      const revived = agent.events.ofType('goal.reactivated');
+      expect(revived.at(-1)?.data.reason).toBe('apareció algo que da calor');
+    });
+
+    it('no se reactiva sola mientras el frío no empeore: revivir no es un bucle', async () => {
+      const { world, petId } = coldWorld({ fire: false, recipes: false });
+      const { agent } = makeAgent(world, petId);
+      const pet = world.entities[petId]!;
+
+      await suspendUntilGivenUp(world, petId, agent);
+      const suspended = agent.goals.byDescription(GOAL_RESTORE_WARMTH);
+      expect(suspended?.status).toBe('suspended');
+
+      // Una caída menor al umbral no alcanza: sin esto reactivaría cada tick y
+      // el "no puedo" volvería a ser el bucle que el ADR 0028 prohíbe.
+      pet.components.temperature!.current -= 0.01 * pet.components.temperature!.max;
+      await agent.think(buildPerception(world, petId));
+
+      expect(agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status).toBe('suspended');
+      expect(agent.events.ofType('goal.reactivated')).toHaveLength(0);
+    });
+
+    it('al revivir recupera un intento de diseño: reintenta distinto, no lo mismo', async () => {
+      // Tiene que ser un bloqueo de CAPACIDAD (fuego amurallado): si faltara el
+      // recurso, ninguna habilidad lo conjura y no diseñar es lo correcto
+      // (ADR 0008). El crédito devuelto solo tiene sentido donde diseñar sirve.
+      const { world, petId } = coldWorld({ fire: true });
+      for (let y = 0; y < 5; y++) {
+        spawn(world, 'wall', {
+          position: { x: 4, y },
+          collider: { solid: true },
+          hardness: { value: 5 },
+          durability: { current: 10, max: 10 },
+        });
+      }
+      const { agent } = makeAgent(world, petId, new RecordingModel(), COLD_SCENARIOS);
+      const pet = world.entities[petId]!;
+
+      await suspendUntilGivenUp(world, petId, agent);
+      expect(agent.goals.byDescription(GOAL_RESTORE_WARMTH)?.status).toBe('suspended');
+      const designsBefore = agent.events.ofType('skill.requested').length;
+      expect(designsBefore).toBeGreaterThan(0);
+
+      pet.components.temperature!.current -= 0.1 * pet.components.temperature!.max + 1;
+      for (let i = 0; i < 12; i++) {
+        const intent = await agent.think(buildPerception(world, petId));
+        agent.observe(stepWorld(world, [{ actorId: petId, intent: intent ?? { type: 'wait' } }]));
+      }
+
+      // Volvió a diseñar en vez de repetir la escalada agotada y re-pedir ayuda.
+      expect(agent.events.ofType('skill.requested').length).toBeGreaterThan(designsBefore);
+    });
+  });
+
   it('el ciclo de aprendizaje se abre cuando falta CAPACIDAD, no recurso', async () => {
     // Fuego visible pero amurallado: acercarse falla por camino-bloqueado
     // (capacidad — una skill podría romper el muro), no por no-candidates.

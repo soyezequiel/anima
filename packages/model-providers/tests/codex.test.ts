@@ -76,6 +76,43 @@ describe('CodexModelProvider', () => {
     expect(seen[0]?.prompt).toContain('Mensaje de tu cuidador: hacelo igual');
   });
 
+  /**
+   * ADR 0013 revisado. El prompt de charla ordenaba literalmente «pide que
+   * reformule la orden, porque este canal solo conversa», y el clasificador
+   * mandaba todo pedido implícito a not-command. Entre las dos cosas, un
+   * "tenés árboles para cortarlos" se contestaba con una explicación de la
+   * interfaz — rompiendo el personaje y devolviéndole el trabajo al cuidador.
+   */
+  it('el prompt de charla no le hace explicar la interfaz ni pedir que reformulen', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(transportReturning('{"text":"voy"}', seen));
+    await provider.complete({ kind: 'dialogue', topic: 'no lo veo', facts: [] });
+
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain('Nunca hables de la interfaz');
+    expect(prompt).not.toContain('pide que reformule la orden');
+    expect(prompt).not.toContain('este canal solo');
+  });
+
+  it('el clasificador manda los pedidos implícitos a la acción, no a not-command', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({ action: 'destroy-entity', targetKind: 'tree', summary: '' }),
+        seen,
+      ),
+    );
+    await provider.complete({
+      kind: 'interpret.command',
+      text: 'tenés árboles para cortarlos y conseguir troncos',
+      facts: ['ahora veo: tree'],
+    });
+
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain('Un pedido no deja de ser un pedido por estar dicho de costado');
+    expect(prompt).toContain('Ante la duda entre not-command y una acción, elige la acción');
+  });
+
   it('interpreta una orden libre como una intención estructurada', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(

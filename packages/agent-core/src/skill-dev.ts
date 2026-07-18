@@ -237,6 +237,11 @@ export async function developSkill(
       });
       // Un programa inválido no costó simulación: no consume el intento.
       // El error de validación vuelve al modelo como retroalimentación.
+      // El tope cuenta errores CONSECUTIVOS: lo que mata el ciclo es insistir
+      // con una forma que no se puede leer, no haberse equivocado tres veces
+      // sueltas a lo largo de ocho versiones. Sin el reseteo, un tropiezo de
+      // forma en la v2, otro en la v5 y otro en la v7 cerraban un ciclo que
+      // venía corrigiendo bien.
       invalidRetries += 1;
       if (invalidRetries > 2) break;
       retryFeedback = {
@@ -273,7 +278,10 @@ export async function developSkill(
       };
       continue;
     }
+    // La propuesta se pudo leer y es nueva: la racha de tropiezos se corta acá.
     retryFeedback = null;
+    invalidRetries = 0;
+    repeatedRetries = 0;
 
     const skill = config.library.addExperimental(
       {

@@ -624,6 +624,26 @@ export class GameSession {
     }
   }
 
+  /**
+   * Las reglas de construcción que la antecesora dejó en su mundo pasan al de
+   * la sucesora (ADR 0047). Merge por id y nunca reemplazo, igual que
+   * `adoptNewWorldRules`: el mundo nuevo ya trae las reglas base del juego, así
+   * que lo único que entra por acá es lo que ella consiguió que su mundo
+   * aceptara. Los legados anteriores al ADR no traen las listas y se leen igual.
+   */
+  private inheritWorldRules(legacy: LegacyReport): void {
+    const knownRecipes = new Set(this.world.recipes.map((r) => r.id));
+    for (const recipe of legacy.worldRecipes ?? []) {
+      if (!knownRecipes.has(recipe.id)) this.world.recipes.push(structuredClone(recipe));
+    }
+    const knownBlueprints = new Set(this.world.blueprints.map((b) => b.id));
+    for (const blueprint of legacy.worldBlueprints ?? []) {
+      if (!knownBlueprints.has(blueprint.id)) {
+        this.world.blueprints.push(structuredClone(blueprint));
+      }
+    }
+  }
+
   reset(seed: number): void {
     this.resetToNewPet(seed);
     void this.save();
@@ -1113,6 +1133,12 @@ export class GameSession {
     const testimony = testimonyFromLegacy(legacy);
     this.identity = successorIdentity(legacy, { now: () => new Date().toISOString() });
     this.buildFreshRuntime(this.seed);
+    // Lo que su antecesora consiguió que el mundo admitiera es física, no
+    // progreso personal (ADR 0047): el mismo criterio con el que
+    // `adoptNewWorldRules` mergea las reglas nuevas del juego en una partida
+    // vieja. Sin esto la sucesora heredaba la creencia "puedo construir un
+    // muro-escuela" sin la receta, y la reinventaba con otro nombre cada vida.
+    this.inheritWorldRules(legacy);
     const result = this.agent.adoptLegacy(testimony);
     this.ingestAgentEvents();
 

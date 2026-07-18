@@ -267,4 +267,72 @@ describe('muerte, legado y sucesión', () => {
     expect(successor.ancestorId).toBe('pet-1');
     expect(successor.name).toBe('Ánima');
   });
+
+  /**
+   * ADR 0047. Once generaciones seguidas murieron de hipotermia mientras el
+   * informe calculaba "morí de frío: busca una fuente de calor antes de que el
+   * cuerpo se enfríe del todo", se lo mostraba al cuidador en la pantalla de
+   * muerte, y lo tiraba al heredar.
+   */
+  describe('la herencia lleva la lección que evita la muerte (ADR 0047)', () => {
+    it('el testimonio incluye causa, proyectos inconclusos y recomendaciones', () => {
+      const testimony = testimonyFromLegacy(legacy);
+      expect(testimony.cause).toBe('starvation');
+      expect(testimony.recommendations?.length).toBeGreaterThan(0);
+      expect(testimony.unfinishedGoals?.length).toBeGreaterThan(0);
+    });
+
+    it('la sucesora recuerda de qué murió su antecesora y qué dejó pendiente', () => {
+      const successorSetup = makeSetup();
+      successorSetup.agent.adoptLegacy(testimonyFromLegacy(legacy));
+
+      const episodes = successorSetup.agent.memory.episodeList();
+      const death = episodes.find((e) => e.summary.includes('murió de starvation'));
+      expect(death).toBeDefined();
+      // Como FRACASO, que es el tipo que alimenta el contexto con el que
+      // después diseña habilidades: la lección tiene que llegar a donde se
+      // decide cómo intentarlo, no quedarse en color narrativo.
+      expect(death?.kind).toBe('failure');
+      expect(death?.summary).toContain('sin terminar');
+    });
+
+    it('las recomendaciones entran como testimonio a comprobar, no como verdad propia', () => {
+      const successorSetup = makeSetup();
+      successorSetup.agent.adoptLegacy(testimonyFromLegacy(legacy));
+
+      const advice = successorSetup.agent.memory
+        .hypothesisList()
+        .filter((h) => h.statement.includes('no dejes que la energía llegue a cero'));
+      expect(advice.length).toBeGreaterThan(0);
+      expect(advice[0]?.statement.startsWith('según Ánima,')).toBe(true);
+      expect(advice[0]?.confidence).toBeLessThanOrEqual(0.65);
+      // Y nunca como hecho: lo heredado se verifica en el mundo propio.
+      expect(successorSetup.agent.memory.factList()).toHaveLength(0);
+    });
+
+    it('el informe se lleva las reglas de construcción del mundo que muere', () => {
+      // Sin esto la sucesora hereda la creencia "puedo construir X" sin la
+      // receta, y la reinventa con otro nombre cada generación.
+      expect(legacy.worldRecipes).toBeDefined();
+      expect(legacy.worldRecipes?.length).toBeGreaterThan(0);
+      expect(legacy.worldBlueprints).toBeDefined();
+    });
+
+    it('un legado viejo sin los campos nuevos se adopta igual', () => {
+      // Compatibilidad: los guardados anteriores al ADR no traen nada de esto.
+      const old = structuredClone(legacy) as Partial<typeof legacy>;
+      delete old.worldRecipes;
+      delete old.worldBlueprints;
+      const successorSetup = makeSetup();
+      expect(() =>
+        successorSetup.agent.adoptLegacy({
+          fromName: 'Ánima',
+          generation: 1,
+          knowledge: [],
+          skills: [],
+        }),
+      ).not.toThrow();
+      expect(successorSetup.agent.memory.episodeList().length).toBeGreaterThan(0);
+    });
+  });
 });

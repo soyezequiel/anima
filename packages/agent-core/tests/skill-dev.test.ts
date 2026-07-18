@@ -84,6 +84,59 @@ describe('desarrollo de skills con propuestas inválidas', () => {
     expect(String(rejected[0]?.data.reason)).toContain('programa inválido');
   });
 
+  /**
+   * El tope de propuestas ilegibles cuenta errores CONSECUTIVOS. El contador no
+   * se reseteaba nunca, así que tres tropiezos de forma sueltos —uno en la v2,
+   * otro en la v5, otro en la v7— cerraban un ciclo de ocho versiones que venía
+   * corrigiendo bien, y el objetivo moría por un límite del compilador y no por
+   * una razón del mundo.
+   */
+  it('un tropiezo de forma aislado no gasta el crédito de los anteriores', async () => {
+    const provider = new ScriptedModelProvider([
+      // v1: inválida. Racha de ilegibles = 1.
+      { kind: 'skill.program', program: [{ op: 'volar' }], rationale: 'inválida' },
+      // Se corrige y se mide: la racha tiene que volver a cero acá.
+      { kind: 'skill.program', program: DO_NOTHING, rationale: 'medida, floja' },
+      // Otra inválida más adelante: si el contador no se hubiera reseteado,
+      // esta sería la tercera y el ciclo se cortaría sin llegar a la buena.
+      { kind: 'skill.program', program: [{ op: 'nadar' }], rationale: 'inválida otra vez' },
+      { kind: 'skill.program', program: [{ op: 'excavar' }], rationale: 'y otra' },
+      {
+        kind: 'skill.program',
+        program: reachBlockedResourceProgram('strongestTool'),
+        rationale: 'la buena',
+      },
+    ]);
+    const events = createEventLog<AgentEvent>();
+    const outcome = await developSkill(CONTRACT, [], devConfig(provider, 4), events, 0);
+
+    // Llegó hasta la versión que sirve en vez de cortarse en la tercera forma
+    // mala. Las inválidas no consumen intento, así que hubo crédito de sobra.
+    expect(outcome.stableSkill).not.toBeNull();
+    expect(events.ofType('skill.rejected')).toHaveLength(3);
+  });
+
+  it('insistir con formas ilegibles seguidas sí corta el ciclo', async () => {
+    // La otra mitad de la regla: lo que mata el ciclo es la RACHA, y ese tope
+    // sigue existiendo — si no, un modelo que nunca produce algo legible
+    // consumiría consultas para siempre.
+    const provider = new ScriptedModelProvider([
+      { kind: 'skill.program', program: [{ op: 'volar' }], rationale: '1' },
+      { kind: 'skill.program', program: [{ op: 'nadar' }], rationale: '2' },
+      { kind: 'skill.program', program: [{ op: 'excavar' }], rationale: '3' },
+      {
+        kind: 'skill.program',
+        program: reachBlockedResourceProgram('strongestTool'),
+        rationale: 'nunca se le pide',
+      },
+    ]);
+    const events = createEventLog<AgentEvent>();
+    const outcome = await developSkill(CONTRACT, [], devConfig(provider, 4), events, 0);
+
+    expect(outcome.stableSkill).toBeNull();
+    expect(events.ofType('skill.rejected')).toHaveLength(3);
+  });
+
   it('la revisión dice POR QUÉ se repregunta: forma inválida no es prueba fallada', async () => {
     const provider = new RecordingProvider([
       { kind: 'skill.program', program: [{ op: 'volar' }], rationale: 'v inválida' },

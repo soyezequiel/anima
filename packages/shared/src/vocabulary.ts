@@ -76,3 +76,14 @@ export function countedKindLabel(kind: string, amount: number): string {
   const plural = /[aeiouáéíóú]$/.test(name) ? `${name}s` : `${name}es`;
   return `${amount} ${plural}`;
 }
+
+/**
+ * "un tronco", "un tronco o un pedernal": los tipos que está esperando, en voz
+ * humana. La "o" y no la "y" es a propósito — con que aparezca uno cualquiera
+ * ya vuelve a intentarlo.
+ */
+export function displayKindList(kinds: string[]): string {
+  const names = kinds.map(kindWithArticle);
+  if (names.length <= 1) return names[0] ?? 'lo que falta';
+  return `${names.slice(0, -1).join(', ')} o ${names[names.length - 1]}`;
+}

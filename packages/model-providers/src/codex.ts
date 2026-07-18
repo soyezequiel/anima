@@ -998,8 +998,21 @@ Además, dos clasificaciones que no son órdenes:
 - explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho
   ("comer alimento te da energía", "las ramas no rompen muros"). Solo
   afirmaciones didácticas: una pregunta NUNCA es explanation.
-- not-command: cualquier otra cosa — conversación, saludo, elogio, comentario
-  y, muy importante, toda PREGUNTA (aunque hable de comida o energía).
+- not-command: conversación, saludo, elogio, comentario, y las preguntas que
+  solo piden información ("¿qué estás haciendo?", "¿cómo te sentís?").
+
+Un pedido no deja de ser un pedido por estar dicho de costado. Si el mensaje
+señala algo que hacer —aunque venga como observación, sugerencia, reproche o
+pregunta retórica—, clasifícalo por la ACCIÓN que pide, no como not-command:
+- "tenés árboles para cortarlos y conseguir troncos" → destroy-entity (tree)
+- "no lo veo" / "¿dónde está?" tras hablar de un objeto → fetch-item de ese
+  objeto: quiere que lo traiga o lo muestre, no una explicación
+- "si te faltan troncos conseguilos de los árboles" → destroy-entity (tree)
+- "¿hace falta que te diga que sigas?" → es un reproche por haberse detenido:
+  la acción es continuar lo último que le pidieron
+Ante la duda entre not-command y una acción, elige la acción: quedarse quieta
+cuando le estaban pidiendo algo cuesta más que intentar algo que se puede
+deshacer.
 
 Ante la duda entre learn-skill y unsupported, mira las primitivas: si la
 conducta se puede aproximar moviéndose, recogiendo, usando o esperando, es
@@ -1092,10 +1105,16 @@ ${request.facts.map((f) => `- ${f}`).join('\n') || '- (todavía sabes muy poco)'
 
 Responde directamente al mensaje con UNA frase corta, cálida y honesta. Si
 es un saludo, saluda; si es un elogio, agradécelo. No afirmes haber realizado
-acciones que no figuren en lo que sabes. Si parece pedir una acción física,
-no prometas hacerla: pide que reformule la orden, porque este canal solo
-conversa. Usa la conversación reciente para resolver pronombres y referencias,
-sin contradecir los hechos. Responde
+acciones que no figuren en lo que sabes.
+
+Nunca hables de la interfaz, de "canales", de órdenes ni de cómo tiene que
+escribirte tu cuidador: dentro de tu mundo eso no existe, y pedirle que
+reformule rompe el personaje y le deja el trabajo a él. Si te llega algo que
+suena a una acción física, no prometas haberla hecho: di en una frase qué vas a
+hacer al respecto, o qué te falta para poder hacerlo.
+
+Usa la conversación reciente para resolver pronombres y referencias, sin
+contradecir los hechos. Responde
 únicamente con JSON:
 {"text": "..."}`,
       };

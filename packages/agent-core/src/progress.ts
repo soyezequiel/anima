@@ -159,6 +159,19 @@ export class ProgressController {
   }
 
   /**
+   * Devuelve UN intento de diseño al objetivo que revive (ADR 0046). Sin esto,
+   * un motivo que empeora reactivaba un objetivo con el crédito de habilidades
+   * ya gastado: volvía a correr las mismas estrategias, fallaba igual y pedía
+   * ayuda de nuevo — reintentar lo mismo, que es justo lo que el ADR 0028
+   * prohíbe. Devolver uno solo (y no borrar la cuenta) mantiene el techo: el
+   * crédito se recupera al ritmo al que el cuerpo se apaga, no gratis.
+   */
+  refundSkillDevAttempt(goalId: string): void {
+    const spent = this.skillDevAttempts.get(goalId) ?? 0;
+    if (spent > 0) this.skillDevAttempts.set(goalId, spent - 1);
+  }
+
+  /**
    * Protocolo de bloqueo cuando no queda ninguna estrategia viable:
    * crear/mejorar una habilidad -> pedir ayuda -> suspender el objetivo.
    */

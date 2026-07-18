@@ -92,7 +92,11 @@ describe('historia completa del MVP (headless, sin IA externa)', () => {
   it('recuerda el descubrimiento y puede explicarlo', () => {
     const facts = agent.memory.factList().map((f) => f.statement);
     expect(facts).toContain('consumir alimento recupera energía');
-    expect(facts.some((f) => f.includes('branch') && f.includes('no puede'))).toBe(true);
+    // En voz humana: lo que ella sabe se lee en el chat, en el panel y en el
+    // legado. Antes decía «la herramienta branch no puede dañar un wall» — el
+    // motor filtrándose a la ficción.
+    expect(facts.some((f) => f.includes('rama') && f.includes('no puede dañar'))).toBe(true);
+    expect(facts.every((f) => !f.includes('branch') && !f.includes('wall'))).toBe(true);
     const explanation = agent.explainLearning();
     expect(explanation).toContain('habilidad');
     expect(explanation.length).toBeLessThan(500);

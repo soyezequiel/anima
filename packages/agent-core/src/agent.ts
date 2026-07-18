@@ -3,6 +3,7 @@ import {
   chebyshev,
   countedKindLabel,
   createEventLog,
+  displayKindList,
   isFeminineKind,
   kindLabel,
   kindWithArticle,
@@ -13,6 +14,7 @@ import type {
   Direction,
   EntityId,
   Perception,
+  PerceivedEntity,
   Recipe,
   SimEvent,
 } from '@anima/sim-core';
@@ -88,6 +90,17 @@ import { completionReply, programForUserRequest } from './user-request-programs.
 
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
+/**
+ * Cuánto tiene que empeorar una necesidad del cuerpo, desde que se rindió, para
+ * que vuelva a intentarlo sola (ADR 0046). Es una fracción del máximo: perder
+ * otro 10% de calor después de haber dicho "no puedo" es información nueva
+ * sobre el mundo — el motivo no solo sigue vivo, está ganando.
+ *
+ * No es cero a propósito: reactivar en cada tick sería el mismo bucle que el
+ * ADR 0028 evita. Cada reactivación re-arma la marca en el valor nuevo, así que
+ * los reintentos se espacian solos a medida que el cuerpo se apaga.
+ */
+const WORSENED_MOTIVE_DROP = 0.1;
 /**
  * Bajo esta fracción de salud, con el peligro todavía al alcance, el dolor
  * deja de ser un reflejo de un paso y pasa a ser un motivo: nace el objetivo
@@ -257,6 +270,16 @@ export interface LegacyTestimony {
   message?: string;
   /** Rasgos derivados de la historia de la antecesora ("curiosa", ...). */
   traits?: string[];
+  /**
+   * De qué murió, qué dejó a medias y qué le recomendaría a quien venga (ADR
+   * 0047). El informe ya calculaba las tres cosas y las mostraba en la pantalla
+   * de muerte, pero las descartaba al heredar: la sucesora nacía sin la única
+   * lección que le habría salvado la vida. Entra como MEMORIA —episodios e
+   * hipótesis—, nunca como objetivo: su vida la elige ella.
+   */
+  cause?: string;
+  unfinishedGoals?: string[];
+  recommendations?: string[];
 }
 
 interface Activity {
@@ -354,6 +377,22 @@ export class AnimaAgent {
   private petName: string;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
   private suspensionEdibles = new Map<string, Set<string>>();
+  /**
+   * Fuentes de calor visibles al suspender, y cuán frío tenía en ese momento
+   * (ADR 0046). Es el gemelo de `suspensionEdibles`, más la marca del motivo:
+   * sin ella, "el frío empeoró" no se puede medir contra nada y el objetivo
+   * dormía para siempre. Transitorio como el resto de las marcas de progreso.
+   */
+  private suspensionWarmth = new Map<string, { sources: Set<string>; fraction: number }>();
+  /** Cuán apretaba el hambre al suspender: la misma marca, para el otro motivo. */
+  private suspensionFractions = new Map<string, number>();
+  /**
+   * Materia que le faltaba al suspender un pedido del cuidador (ADR 0046). Un
+   * encargo que se queda sin material no está fracasado, está esperando: cuando
+   * eso aparece —porque lo juntó, porque lo fabricó, porque el cuidador se lo
+   * trajo— la obra se retoma sola desde donde quedó.
+   */
+  private suspensionMaterials = new Map<string, string[]>();
   /**
    * Poder de la herramienta que ya NO hizo mella al romper, por objetivo. Es la
    * marca de "muy duro": mientras exista, el objetivo de romper no vuelve a
@@ -604,6 +643,39 @@ export class AnimaAgent {
       });
     }
 
+    // Cómo murió su antecesora y qué dejó sin terminar (ADR 0047). Va como
+    // episodio de FRACASO a propósito: es el tipo que `experienceContext`
+    // levanta al escribir el contrato de una habilidad, así que la lección
+    // llega justo donde se decide cómo intentarlo — no es solo color.
+    if (testimony.cause) {
+      const pending =
+        testimony.unfinishedGoals && testimony.unfinishedGoals.length > 0
+          ? `, con ${testimony.unfinishedGoals.join(' y ')} sin terminar`
+          : '';
+      this.memory.recordEpisode({
+        kind: 'failure',
+        summary: `mi antecesora ${testimony.fromName} murió de ${testimony.cause}${pending}`,
+        tick: this.tick,
+        importance: 0.95,
+      });
+    }
+    // Lo que le recomendó a quien viniera después. Es testimonio, no verdad
+    // propia: entra con el mismo techo de confianza que el resto de lo heredado
+    // y ella tendrá que comprobarlo en su mundo.
+    for (const advice of testimony.recommendations ?? []) {
+      const hypothesis = this.memory.addHypothesis(
+        `según ${testimony.fromName}, ${advice}`,
+        this.tick,
+        0.65,
+      );
+      this.emit('hypothesis.updated', {
+        hypothesisId: hypothesis.id,
+        statement: hypothesis.statement,
+        confidence: hypothesis.confidence,
+        source: 'legacy-testimony',
+      });
+    }
+
     for (const entry of testimony.knowledge) {
       const hypothesis = this.memory.addHypothesis(
         `según ${testimony.fromName}, ${entry.statement}`,
@@ -761,6 +833,10 @@ export class AnimaAgent {
 
     await this.processUserMessages(perception);
     await this.processSignals(perception);
+    // Un encargo que esperaba materia vuelve solo apenas esa materia existe
+    // (ADR 0046). Va después de las señales del cuerpo y antes de elegir
+    // objetivo: hambre y frío siguen mandando sobre lo que le pidieron.
+    this.reviveSuppliedRequests(perception);
 
     const speech = this.pendingSpeech.shift();
     if (speech !== undefined) return { type: 'speak', text: speech };
@@ -978,8 +1054,13 @@ export class AnimaAgent {
         typeof event.data.damage === 'number' &&
         event.data.damage > 0
       ) {
+        // En voz humana, no con los identificadores del motor: este hecho se
+        // lee en el chat, en el panel de aprendizaje y en el informe de legado,
+        // y «la herramienta hammer puede dañar un wall» es el motor filtrándose
+        // a la ficción. La tabla de nombres vive en @anima/shared justamente
+        // para que la mascota y el dibujo llamen igual a las cosas.
         const fact = this.memory.addFact(
-          `la herramienta ${String(event.data.itemKind)} puede dañar un ${String(event.data.targetKind)}`,
+          `${kindWithArticle(String(event.data.itemKind))} puede dañar ${kindWithArticle(String(event.data.targetKind))}`,
           this.tick,
         );
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
@@ -1266,6 +1347,62 @@ export class AnimaAgent {
   }
 
   /**
+   * Un motivo que se agrava despierta lo que se abandonó (ADR 0046).
+   *
+   * Un objetivo del cuerpo se suspende cuando no queda estrategia viable, pero
+   * el cuerpo no deja de necesitarlo: seguirlo tratando como cerrado es la
+   * razón por la que se moría con el motivo vivo y ninguna meta activa. Vuelve
+   * a estar activo por dos caminos, y los dos son información NUEVA:
+   *  - el mundo trajo un alivio que no estaba cuando se rindió (una fogata que
+   *    alguien encendió, un alimento que apareció);
+   *  - la señal empeoró de forma apreciable desde entonces, lo que dice que
+   *    esperar no era una estrategia.
+   *
+   * Reactivar limpia las estrategias prohibidas: lo que falló con 40% de calor
+   * no está condenado a fallar con 20%, y el mundo entretanto cambió.
+   */
+  private reviveSuspendedNeed(
+    goal: Goal,
+    fraction: number,
+    perception: Perception,
+    options: {
+      relievedBy: (entity: PerceivedEntity) => boolean;
+      seenAtSuspension: Set<string>;
+      fractionAtSuspension: number;
+      reliefReason: string;
+      onRevived: () => void;
+    },
+  ): boolean {
+    const relief = perception.visibleEntities.find(
+      (e) => options.relievedBy(e) && !options.seenAtSuspension.has(e.id),
+    );
+    const worsened = fraction <= options.fractionAtSuspension - WORSENED_MOTIVE_DROP;
+    if (!relief && !worsened) return false;
+
+    this.goals.reactivate(goal.id);
+    this.progress.resetGoal(goal.id);
+    // Que el motivo empeore es permiso para volver a DISEÑAR, no solo para
+    // reintentar lo mismo: sin el crédito devuelto, revivir era repetir.
+    if (!relief) this.progress.refundSkillDevAttempt(goal.id);
+    options.onRevived();
+    this.emit('goal.reactivated', {
+      goalId: goal.id,
+      reason: relief ? options.reliefReason : 'el motivo empeoró desde que se rindió',
+    });
+    // Que el cuerpo insista es un episodio, no telemetría: alimenta la
+    // experiencia que después arma el contrato de la habilidad que le falta.
+    if (!relief) {
+      this.memory.recordEpisode({
+        kind: 'signal',
+        summary: `me rendí con "${goal.description}" y la cosa empeoró: lo intento de nuevo`,
+        tick: this.tick,
+        importance: 0.7,
+      });
+    }
+    return true;
+  }
+
+  /**
    * El frío es una necesidad del cuerpo, como el hambre: su contrato es fijo y
    * nace de ella, no de una conversación (ver ADR 0016). Tampoco nace sabiendo
    * qué significa tener frío: interpreta la señal igual que la del hambre.
@@ -1276,7 +1413,25 @@ export class AnimaAgent {
     if (!temperature) return;
     const fraction = temperature.current / temperature.max;
     if (fraction >= LOW_TEMPERATURE_FRACTION) return;
-    if (this.goals.findOpen(GOAL_RESTORE_WARMTH)) return;
+    const open = this.goals.findOpen(GOAL_RESTORE_WARMTH);
+    if (open) {
+      // Suspendido no es cerrado (ADR 0046): mientras siga teniendo frío, el
+      // objetivo puede volver solo — por una fuente de calor nueva o porque el
+      // frío ganó terreno. Antes solo lo despertaba que hablara el cuidador.
+      if (open.status === 'suspended') {
+        const marks = this.suspensionWarmth.get(open.id);
+        this.reviveSuspendedNeed(open, fraction, perception, {
+          relievedBy: (e) => e.warmth !== undefined || e.shelter === true,
+          seenAtSuspension: marks?.sources ?? new Set<string>(),
+          // Sin marca (un guardado viejo), el propio umbral de alerta hace de
+          // referencia: cualquier empeoramiento real cuenta igual.
+          fractionAtSuspension: marks?.fraction ?? LOW_TEMPERATURE_FRACTION,
+          reliefReason: 'apareció algo que da calor',
+          onRevived: () => this.suspensionWarmth.delete(open.id),
+        });
+      }
+      return;
+    }
 
     const alreadyUnderstands =
       this.memory.factList().some((f) => f.statement.includes('calor')) ||
@@ -1350,19 +1505,21 @@ export class AnimaAgent {
     if (fraction >= LOW_ENERGY_FRACTION) return;
     const open = this.goals.findOpen(GOAL_RESTORE_ENERGY);
     if (open) {
-      // Cambio relevante del entorno: solo reactiva si hay alimento NUEVO,
-      // distinto del que ya veía (y no alcanzaba) cuando se suspendió.
+      // Cambio relevante del entorno: alimento NUEVO, distinto del que ya veía
+      // (y no alcanzaba) cuando se suspendió. Desde el ADR 0046 el hambre que
+      // se agrava despierta igual: rendirse no puede ser para siempre mientras
+      // el cuerpo siga pidiendo.
       if (open.status === 'suspended') {
-        const seenAtSuspension = this.suspensionEdibles.get(open.id) ?? new Set<string>();
-        const freshFood = perception.visibleEntities.some(
-          (e) => e.edible && !seenAtSuspension.has(e.id),
-        );
-        if (freshFood) {
-          this.goals.reactivate(open.id);
-          this.progress.resetGoal(open.id);
-          this.suspensionEdibles.delete(open.id);
-          this.emit('goal.reactivated', { goalId: open.id, reason: 'alimento nuevo visible' });
-        }
+        this.reviveSuspendedNeed(open, fraction, perception, {
+          relievedBy: (e) => e.edible === true,
+          seenAtSuspension: this.suspensionEdibles.get(open.id) ?? new Set<string>(),
+          fractionAtSuspension: this.suspensionFractions.get(open.id) ?? LOW_ENERGY_FRACTION,
+          reliefReason: 'alimento nuevo visible',
+          onRevived: () => {
+            this.suspensionEdibles.delete(open.id);
+            this.suspensionFractions.delete(open.id);
+          },
+        });
       }
       return;
     }
@@ -1602,6 +1759,8 @@ export class AnimaAgent {
         this.goals.reactivate(goal.id);
         this.progress.resetGoal(goal.id);
         this.suspensionEdibles.delete(goal.id);
+        this.suspensionFractions.delete(goal.id);
+        this.suspensionWarmth.delete(goal.id);
         this.emit('goal.reactivated', {
           goalId: goal.id,
           reason: 'nueva información del usuario',
@@ -2074,6 +2233,36 @@ export class AnimaAgent {
   }
 
   /**
+   * Lo que ya se intentó con este nombre de habilidad y cómo falló, para que un
+   * ciclo NUEVO no empiece ciego. Dentro de un ciclo el modelo recibe la
+   * historia de sus versiones y se le pide un enfoque distinto; entre ciclos no
+   * recibía nada, así que al reabrirse el objetivo volvía a proponer la v1 que
+   * ya había fallado ocho veces. Es el mismo "no repitas" del ADR 0028, una
+   * escala más arriba.
+   *
+   * Se resume por enfoque, no versión por versión: ocho líneas casi idénticas
+   * inflaban la consulta sin decir nada nuevo (ADR 0040 — la latencia compite
+   * con el hambre).
+   */
+  private previousAttemptsContext(skillName: string, limit = 4): string[] {
+    const failures = new Map<string, number>();
+    for (const version of this.config.library.versionsOf(skillName)) {
+      for (const failure of version.knownFailures) {
+        const key = failure.description;
+        failures.set(key, (failures.get(key) ?? 0) + 1);
+      }
+    }
+    if (failures.size === 0) return [];
+    const worst = [...failures.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit);
+    return [
+      `ya intenté "${skillName}" antes y no salió; NO repitas estos enfoques:`,
+      ...worst.map(([description, times]) =>
+        times > 1 ? `- ${description} (falló ${times} veces)` : `- ${description}`,
+      ),
+    ];
+  }
+
+  /**
    * Episodios significativos con el cuidador (enseñanzas, pedidos cumplidos,
    * ayudas, el bautismo, lo que dejó su antecesora), los más recientes
    * primero. Es la memoria del vínculo, no telemetría.
@@ -2532,12 +2721,21 @@ export class AnimaAgent {
     this.goals.suspend(
       goal.id,
       'sin estrategias viables tras pedir ayuda',
-      'nueva información del usuario o cambio en el entorno',
+      'nueva información del usuario, alimento nuevo o hambre que empeora',
     );
     this.suspensionEdibles.set(
       goal.id,
       new Set(perception.visibleEntities.filter((e) => e.edible).map((e) => e.id)),
     );
+    // Contra qué se medirá "empeoró" (ADR 0046). Sin esta marca, rendirse era
+    // definitivo salvo que hablara el cuidador.
+    const energyAtSuspension = perception.self.energy;
+    if (energyAtSuspension) {
+      this.suspensionFractions.set(
+        goal.id,
+        energyAtSuspension.current / energyAtSuspension.max,
+      );
+    }
     this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
     this.lastSelectedGoalId = null;
     return null;
@@ -3013,6 +3211,9 @@ export class AnimaAgent {
       };
       const context = [
         ...this.experienceContext(contract.purpose),
+        // Lo que ya falló en ciclos anteriores: sin esto, un objetivo que
+        // revive vuelve a proponer la versión que ya perdió ocho veces.
+        ...this.previousAttemptsContext(contract.name),
         ...perception.recipes.map(
           (recipe) =>
             `puedo construir "${recipe.id}" con ${recipe.ingredients
@@ -3058,8 +3259,20 @@ export class AnimaAgent {
     this.goals.suspend(
       goal.id,
       'sin estrategias viables tras pedir ayuda',
-      'nueva información del usuario o algo que dé calor',
+      'nueva información del usuario, algo que dé calor o frío que empeora',
     );
+    // Contra qué se medirá "empeoró", y qué fuentes de calor ya había descartado
+    // (ADR 0046). Sin estas dos marcas el objetivo dormía hasta que hablara el
+    // cuidador, y el cuerpo se enfriaba con la meta apagada.
+    const temperature = perception.self.temperature;
+    this.suspensionWarmth.set(goal.id, {
+      sources: new Set(
+        perception.visibleEntities
+          .filter((e) => e.warmth !== undefined || e.shelter === true)
+          .map((e) => e.id),
+      ),
+      fraction: temperature ? temperature.current / temperature.max : LOW_TEMPERATURE_FRACTION,
+    });
     this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
     this.lastSelectedGoalId = null;
     return null;
@@ -3149,8 +3362,10 @@ export class AnimaAgent {
           for (const pair of pairs) {
             const [item, target] = pair.split('->');
             if (item && target) {
+              // En voz humana, igual que su gemelo positivo: lo que ella sabe
+              // se lee, y el motor no habla castellano.
               const fact = this.memory.addFact(
-                `la herramienta ${item} no puede dañar un ${target}`,
+                `${kindWithArticle(item)} no puede dañar ${kindWithArticle(target)}`,
                 this.tick,
               );
               this.emit('memory.created', { kind: 'fact', statement: fact.statement });
@@ -3262,7 +3477,9 @@ export class AnimaAgent {
         // perseguir, así que llegar aquí ya implica un criterio mirado.
         criterionSource: 'caretaker',
       },
-      contract.context,
+      // Lo que ya falló con este nombre viaja al ciclo nuevo: reintentar es
+      // volver a intentarlo distinto, no volver a empezar de cero.
+      [...contract.context, ...this.previousAttemptsContext(contract.name)],
       this.practiceScenariosFor(contract.successCriteria),
       resume,
     );
@@ -3486,6 +3703,38 @@ export class AnimaAgent {
           this.lastSelectedGoalId = null;
           return null;
         }
+        // Quedarse sin materia no es fracasar: es esperar (ADR 0046). Fallar el
+        // objetivo lo cerraba para siempre, y por eso conseguir después el
+        // tronco que faltaba no retomaba nada — el cuidador tenía que volver a
+        // pedir la obra entera. Se suspende con la lista de lo que falta, y
+        // vuelve sola cuando eso aparece. El programa de la obra ya es
+        // reanudable: no recoloca lo que ya está puesto.
+        const missingKinds = this.missingKindsForRequest(goal, perception);
+        if (reason.startsWith('no-candidates') && missingKinds.length > 0) {
+          this.goals.suspend(
+            activity.goalId,
+            'me quedé sin material a mitad del encargo',
+            `aparezca ${displayKindList(missingKinds)}`,
+          );
+          this.suspensionMaterials.set(activity.goalId, missingKinds);
+          this.destroyToolFloor.delete(activity.goalId);
+          this.emit('goal.suspended', {
+            goalId: activity.goalId,
+            reason: 'falta material para el encargo',
+          });
+          this.memory.recordEpisode({
+            kind: 'failure',
+            summary: `me faltó material para ${activity.requestRaw ?? 'lo que me pidieron'}: sigo pendiente`,
+            tick: this.tick,
+            importance: 0.6,
+          });
+          this.reply(
+            `No pude completar eso: ${this.describeActivityFailure(reason, activity, perception)}. ` +
+              `Lo dejo a medias y sigo apenas consiga lo que falta.`,
+          );
+          this.lastSelectedGoalId = null;
+          return null;
+        }
         this.goals.fail(activity.goalId);
         this.destroyToolFloor.delete(activity.goalId);
         this.emit('strategy.failed', {
@@ -3679,18 +3928,86 @@ export class AnimaAgent {
   }
 
   /**
+   * Qué tipos de materia le faltan para un encargo, como lista de `kind`. Es la
+   * misma cuenta que la frase honesta de `missingForCraft`, pero en datos: la
+   * frase es para el cuidador, esto es para poder retomar sola cuando aparezca.
+   * Vale para obras (bloques del plano) y para objetos (ingredientes).
+   */
+  private missingKindsForRequest(goal: Goal | undefined, perception: Perception): string[] {
+    const recipeId = goal?.userRequest?.recipeId;
+    if (goal?.userRequest?.kind !== 'craft-item' || !recipeId) return [];
+    const held = heldCounts(perception);
+    const blueprint = perception.blueprints.find((b) => b.id === recipeId);
+    if (blueprint) {
+      return [...blueprintCounts(blueprint)]
+        .filter(([kind, need]) => (held.get(kind) ?? 0) < need)
+        .map(([kind]) => kind);
+    }
+    const recipe = perception.recipes.find((r) => r.id === recipeId);
+    if (!recipe) return [];
+    return missingIngredients(recipe, held).map((m) => m.kind);
+  }
+
+  /**
+   * Retoma los encargos que quedaron esperando materia (ADR 0046). Basta con
+   * que UNO de los tipos que faltaban esté ahora a la vista o en la mano: el
+   * programa de la obra vuelve a correr, no recoloca lo ya puesto y, si todavía
+   * falta otra cosa, se volverá a suspender con la lista nueva. Sin esto, cada
+   * pieza conseguida necesitaba que el cuidador dijera «seguí».
+   */
+  private reviveSuppliedRequests(perception: Perception): void {
+    for (const goal of this.goals.all()) {
+      if (goal.status !== 'suspended') continue;
+      const waitingFor = this.suspensionMaterials.get(goal.id);
+      if (!waitingFor || waitingFor.length === 0) continue;
+      // La cuenta se REHACE contra la percepción de ahora. Preguntar si "tiene"
+      // alguno de los tipos que faltaban no sirve: tener uno de los dos muros
+      // que pide el plano es justo la situación en la que se suspendió, y
+      // revivir por eso sería un bucle suspender/revivir cada tick.
+      const stillMissing = this.missingKindsForRequest(goal, perception);
+      const arrived =
+        // Ya no falta nada: lo fabricó, se lo trajeron, o lo juntó de otro lado.
+        stillMissing.length === 0 ||
+        // O lo que falta está a la vista y no es lo que ya lleva encima.
+        stillMissing.some((kind) =>
+          perception.visibleEntities.some((e) => e.kind === kind && e.held !== true),
+        );
+      if (!arrived) continue;
+      this.goals.reactivate(goal.id);
+      this.progress.resetGoal(goal.id);
+      this.suspensionMaterials.delete(goal.id);
+      this.emit('goal.reactivated', {
+        goalId: goal.id,
+        reason: 'apareció el material que faltaba',
+      });
+    }
+  }
+
+  /**
    * Por qué no pudo levantar una obra. Desde el ADR 0034 la obra se construye de
    * a un bloque volviendo al ancla, así que las manos ya no son el techo: si
    * falla, es porque no consiguió la materia de los bloques (o no pudo volver al
    * sitio a colocarla). Nombra el bloque y el número — nunca «no encuentro el
    * objeto», que no le sirve a nadie.
+   *
+   * El número es el que FALTA, no el que pide el plano: enumerar la receta
+   * entera le hacía decir «no pude reunir 1 pizarra» con la pizarra en la mano,
+   * y mandaba al cuidador a buscar cinco muros cuando ya tenía cuatro. Se
+   * acredita lo que lleva encima igual que en `missingDownTheTree`.
    */
   private missingForStructure(recipeId: string, perception: Perception): string | null {
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
     if (!blueprint) return null;
-    const counts = [...blueprintCounts(blueprint)];
-    const blocks = counts.map(([kind, n]) => countedKindLabel(kind, n)).join(' y ');
-    return `no pude reunir ${blocks} para ${kindWithArticle(recipeId)}`;
+    const held = heldCounts(perception);
+    const missing = [...blueprintCounts(blueprint)]
+      .map(([kind, need]) => ({ kind, need, have: held.get(kind) ?? 0 }))
+      .filter((m) => m.have < m.need);
+    // Los tiene todos y aun así falló: lo que no consiguió es el SITIO, no la
+    // materia. Decir que le faltan bloques ahí sería mentir con precisión.
+    if (missing.length === 0) {
+      return `tengo todo para ${kindWithArticle(recipeId)}, pero no pude colocarlo donde iba`;
+    }
+    return `no pude reunir ${displayMissing(missing)} para ${kindWithArticle(recipeId)}`;
   }
 
   /**

@@ -1,6 +1,6 @@
 import type { AnimaAgent, LegacyTestimony } from '@anima/agent-core';
 import type { Vec2 } from '@anima/shared';
-import type { WorldState } from '@anima/sim-core';
+import type { Blueprint, Recipe, WorldState } from '@anima/sim-core';
 import { getEntity } from '@anima/sim-core';
 import type { SkillDefinition, SkillLibrary } from '@anima/skill-runtime';
 import type { KeyValueStore } from './kv.js';
@@ -47,6 +47,16 @@ export interface LegacyReport {
   messageToUser: string;
   /** Habilidades estables como artefactos versionados reutilizables. */
   skillArtifacts: SkillDefinition[];
+  /**
+   * Las reglas de construcción que su mundo admitía al morir, recetas y planos
+   * (ADR 0047). Sin esto la sucesora heredaba la CREENCIA "puedo construir un
+   * muro-escuela" pero no la receta, así que tenía que reinventarla — y como la
+   * inventa un modelo, le ponía otro nombre cada vez: `wall-escuela`,
+   * `pared-escuela`, `muro-escuela`, `muro-aula`, cuatro nombres para el mismo
+   * objeto en cuatro generaciones. Opcional: los legados viejos no lo traen.
+   */
+  worldRecipes?: Recipe[];
+  worldBlueprints?: Blueprint[];
 }
 
 export interface BuildLegacyInput {
@@ -135,10 +145,20 @@ export function buildLegacyReport(input: BuildLegacyInput): LegacyReport {
     messageToSuccessor,
     messageToUser: `Gracias por acompañarme. Cuida a quien venga después de mí.`,
     skillArtifacts: structuredClone(stableSkills),
+    worldRecipes: structuredClone(input.world.recipes),
+    worldBlueprints: structuredClone(input.world.blueprints),
   };
 }
 
-/** Convierte un informe en el testimonio que la sucesora puede adoptar. */
+/**
+ * Convierte un informe en el testimonio que la sucesora puede adoptar.
+ *
+ * Hasta el ADR 0047 esto dejaba afuera `recommendations`, `unfinishedGoals` y
+ * la causa de muerte: el juego calculaba "morí de frío: busca una fuente de
+ * calor antes de que el cuerpo se enfríe del todo", se lo mostraba al cuidador
+ * en la pantalla de muerte, y lo borraba justo en el momento de heredar. Once
+ * generaciones seguidas murieron de lo mismo con el consejo en la mano.
+ */
 export function testimonyFromLegacy(legacy: LegacyReport): LegacyTestimony {
   return {
     fromName: legacy.identity.name,
@@ -146,6 +166,9 @@ export function testimonyFromLegacy(legacy: LegacyReport): LegacyTestimony {
     knowledge: structuredClone(legacy.knowledge),
     skills: structuredClone(legacy.skillArtifacts),
     message: legacy.messageToSuccessor,
+    cause: legacy.cause.cause,
+    unfinishedGoals: [...legacy.unfinishedGoals],
+    recommendations: [...legacy.recommendations],
     // Legados anteriores a la personalidad no traen rasgos: viajan sin ellos.
     ...(legacy.traits && legacy.traits.length > 0 ? { traits: [...legacy.traits] } : {}),
   };
