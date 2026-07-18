@@ -75,6 +75,62 @@ button:active {
   border-radius: 999px;
   background: var(--panel-2);
   overflow: hidden;
+  position: relative;
+}
+
+/* El tramo que acaba de cambiar. No hay animación de fondo: la barra está
+   quieta salvo cuando el valor se mueve de verdad, y entonces marca
+   exactamente cuánto se movió y para qué lado. */
+.vital-pulse {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  pointer-events: none;
+  border-radius: 999px;
+  animation: vital-pulse-out 900ms cubic-bezier(0.2, 0, 0.3, 1) forwards;
+}
+
+/* Lo perdido queda como estela clara donde estaba la barra. */
+.vital-pulse[data-dir='drain'] {
+  background: rgba(255, 255, 255, 0.75);
+}
+
+/* Lo ganado (comió) entra brillante y desde el borde. */
+.vital-pulse[data-dir='gain'] {
+  background: #fef3c7;
+  animation-name: vital-pulse-gain;
+}
+
+@keyframes vital-pulse-out {
+  from {
+    opacity: 0.85;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes vital-pulse-gain {
+  0% {
+    opacity: 1;
+    transform: scaleX(0);
+    transform-origin: left;
+  }
+  40% {
+    opacity: 1;
+    transform: scaleX(1);
+  }
+  100% {
+    opacity: 0;
+    transform: scaleX(1);
+  }
+}
+
+/* Sin movimiento: el cambio se sigue marcando, pero sin animarlo. */
+@media (prefers-reduced-motion: reduce) {
+  .vital-pulse {
+    animation-duration: 1ms;
+  }
 }
 .vital-fill {
   height: 100%;
@@ -87,15 +143,6 @@ button:active {
 }
 .vital-energy .vital-fill {
   background: linear-gradient(90deg, #b45309, #f59e0b, #fbbf24);
-  background-size: 200% 100%;
-  /* El período lo fija VitalsHeader a partir de la velocidad del mundo: el
-     brillo late al ritmo real del gasto, no a uno decorativo. */
-  animation: rd-sheen var(--sheen-period, 2.6s) linear infinite;
-}
-
-/* En pausa no se gasta energía: el brillo se congela con el mundo. */
-.vitals-header[data-drain='paused'] .vital-energy .vital-fill {
-  animation-play-state: paused;
 }
 .vital-health {
   color: #fca5a5;
@@ -108,15 +155,6 @@ button:active {
 }
 .vital-warmth .vital-fill {
   background: linear-gradient(90deg, #0369a1, #38bdf8);
-}
-@keyframes rd-sheen {
-  0% {
-    background-position: -140% 0;
-  }
-  60%,
-  100% {
-    background-position: 240% 0;
-  }
 }
 
 /* Tarjeta “Ahora”: reusa .now-card de styles.css y le suma el filo ámbar. */

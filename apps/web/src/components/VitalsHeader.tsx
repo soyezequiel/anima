@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { GameSession } from '../session/GameSession.js';
 import type { GameView } from '../session/view.js';
 import { kindLabel } from '@anima/shared';
@@ -34,69 +34,113 @@ function carryChips(inventory: { kind: string }[]): { kind: string; n: number }[
 }
 
 /**
- * El brillo de la barra de energía late al ritmo del gasto real. La energía
- * baja `decayPerTick` por tick y el mundo corre a 4 ticks/s × velocidad, así
- * que la velocidad es lo único que mueve el gasto en runtime: en pausa el
- * brillo se congela (no se gasta nada) y a 4× late cuatro veces más rápido.
+ * El pulso de una barra: nace cuando el valor que se muestra cambia de verdad.
+ *
+ * El gasto es discreto y lento — `decayPerTick` (0.05) sobre un máximo de 50
+ * mueve la barra 0.1% por tick, que es sub-píxel. Lo que sí se ve es el número
+ * redondeado bajando de a 1 cada 20 ticks. Así que el pulso se ata a ese
+ * cambio observable y no a un temporizador: si no pasa nada, la barra está
+ * quieta; cuando pasa, el tramo que se ganó o se perdió se enciende y se apaga.
  */
-const SHEEN_AT_1X_MS = 2600;
+type Pulse = { from: number; to: number; dir: 'drain' | 'gain'; key: number };
+
+function useVitalPulse(shown: number, max: number): Pulse | null {
+  const prev = useRef(shown);
+  const seq = useRef(0);
+  const [pulse, setPulse] = useState<Pulse | null>(null);
+
+  useEffect(() => {
+    const before = prev.current;
+    if (before === shown) return;
+    prev.current = shown;
+    seq.current += 1;
+    setPulse({
+      from: pct(before, max),
+      to: pct(shown, max),
+      dir: shown < before ? 'drain' : 'gain',
+      key: seq.current,
+    });
+  }, [shown, max]);
+
+  return pulse;
+}
+
+function Vital({
+  className,
+  label,
+  testId,
+  current,
+  max,
+}: {
+  className: string;
+  label: string;
+  testId: string;
+  current: number;
+  max: number;
+}) {
+  const shown = Math.round(current);
+  const pulse = useVitalPulse(shown, max);
+  return (
+    <div className={`vital ${className}`}>
+      <div className="vital-top">
+        <span>{label}</span>
+        <b data-testid={testId}>
+          {shown}/{max}
+        </b>
+      </div>
+      <div className="vital-track">
+        <div className="vital-fill" style={{ width: `${pct(current, max)}%` }} />
+        {/* El tramo que cambió: se remonta en cada pulso (key) para que la
+            animación vuelva a correr, y se apaga sola. */}
+        {pulse && (
+          <span
+            key={pulse.key}
+            className="vital-pulse"
+            data-dir={pulse.dir}
+            aria-hidden="true"
+            style={{
+              left: `${Math.min(pulse.from, pulse.to)}%`,
+              width: `${Math.max(Math.abs(pulse.to - pulse.from), 0.8)}%`,
+            }}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
 
 export function VitalsHeader({ view }: { view: GameView }) {
   const pet = view.pet;
   const strategy = humanStrategy(view.currentStrategy);
   const chips = pet ? carryChips(pet.inventory) : [];
-  // La pausa vive en `running`, no en `speed`: al pausar la velocidad queda
-  // guardada para cuando se reanude.
-  const paused = !view.running;
 
   return (
-    <div
-      className="vitals-header"
-      data-drain={paused ? 'paused' : 'running'}
-      style={{ '--sheen-period': `${SHEEN_AT_1X_MS / (view.speed || 1)}ms` } as CSSProperties}
-    >
+    <div className="vitals-header">
       {pet && (
         <div className="vitals-row">
-          <div className="vital vital-energy">
-            <div className="vital-top">
-              <span>⚡ Energía</span>
-              <b data-testid="energy-value">
-                {Math.round(pet.energy.current)}/{pet.energy.max}
-              </b>
-            </div>
-            <div className="vital-track">
-              <div className="vital-fill" style={{ width: `${pct(pet.energy.current, pet.energy.max)}%` }} />
-            </div>
-          </div>
-
-          <div className="vital vital-health">
-            <div className="vital-top">
-              <span>❤️ Salud</span>
-              <b data-testid="health-value">
-                {Math.round(pet.health.current)}/{pet.health.max}
-              </b>
-            </div>
-            <div className="vital-track">
-              <div className="vital-fill" style={{ width: `${pct(pet.health.current, pet.health.max)}%` }} />
-            </div>
-          </div>
-
+          <Vital
+            className="vital-energy"
+            label="⚡ Energía"
+            testId="energy-value"
+            current={pet.energy.current}
+            max={pet.energy.max}
+          />
+          <Vital
+            className="vital-health"
+            label="❤️ Salud"
+            testId="health-value"
+            current={pet.health.current}
+            max={pet.health.max}
+          />
           {/* Solo donde hace frío: en mundos templados no existe la señal. */}
           {pet.temperature && (
-            <div className="vital vital-warmth">
-              <div className="vital-top">
-                <span>❄ Calor</span>
-                <b data-testid="temperature-value">
-                  {Math.round(pet.temperature.current)}/{pet.temperature.max}
-                </b>
-              </div>
-              <div className="vital-track">
-                <div
-                  className="vital-fill"
-                  style={{ width: `${pct(pet.temperature.current, pet.temperature.max)}%` }}
-                />
-              </div>
-            </div>
+            <Vital
+              className="vital-warmth"
+              label="❄ Calor"
+              testId="temperature-value"
+              current={pet.temperature.current}
+              max={pet.temperature.max}
+            />
           )}
         </div>
       )}

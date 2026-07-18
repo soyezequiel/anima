@@ -101,20 +101,21 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   await slider.press('ArrowRight');
   await expect(speedValue).toHaveText('4x');
 
-  // El brillo de la barra de energía late al ritmo del gasto: a 4× la energía
-  // baja cuatro veces más rápido y el brillo la acompaña.
-  const sheen = page.locator('.vital-energy .vital-fill');
-  await expect(sheen).toHaveCSS('animation-duration', '0.65s');
-  await slider.press('ArrowLeft');
-  await slider.press('ArrowLeft');
-  await expect(speedValue).toHaveText('1x');
-  await expect(sheen).toHaveCSS('animation-duration', '2.6s');
+  // La barra de energía no tiene animación de fondo: se mueve solo cuando el
+  // valor se mueve de verdad, y entonces marca el tramo perdido.
+  const energyFill = page.locator('.vital-energy .vital-fill');
+  await expect(energyFill).toHaveCSS('animation-name', 'none');
 
-  // En pausa no se gasta nada, así que el brillo se congela con el mundo.
-  await slider.press('ArrowLeft');
-  await expect(speedValue).toHaveText('pausa');
-  await expect(sheen).toHaveCSS('animation-play-state', 'paused');
-  await slider.press('ArrowRight');
+  // Al cambiar el número mostrado nace el pulso, marcando el tramo que se
+  // movió: `drain` si gastó, `gain` si comió. Cuál de los dos llega primero
+  // depende de qué haga la mascota, así que se afirma el vínculo, no el signo.
+  const energyValue = page.getByTestId('energy-value');
+  const before = await energyValue.textContent();
+  await expect(page.locator('.vital-energy .vital-pulse')).toHaveCount(0);
+  await expect(energyValue).not.toHaveText(before ?? '', { timeout: 15_000 });
+  const pulse = page.locator('.vital-energy .vital-pulse');
+  await expect(pulse).toHaveCount(1);
+  expect(['drain', 'gain']).toContain(await pulse.getAttribute('data-dir'));
 
   // Modo desarrollador: eventos estructurados con filtro.
   await page.getByTestId('tab-dev').click();
