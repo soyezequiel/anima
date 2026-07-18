@@ -57,6 +57,101 @@ function SkillCard({ skill, previous }: { skill: SkillView; previous: SkillView 
   );
 }
 
+/**
+ * Los motivos vienen en código (`aborted:target-missing:foodTarget`). El
+ * cuidador no lee códigos: los traducimos a una frase corta.
+ */
+function humanReason(raw: string): string {
+  const [head, ...rest] = raw.split(':');
+  const detail = rest.join(' · ');
+  switch (head) {
+    case 'aborted':
+      return rest[0] === 'target-missing'
+        ? `se cortó: no encontró ${rest.slice(1).join(' ') || 'el objetivo'}`
+        : `se cortó: ${detail}`;
+    case 'criteria-failed':
+      return rest.length > 1
+        ? `no cumplió: ${rest[0]} = ${rest.slice(1).join(':')}`
+        : `no cumplió: ${detail}`;
+    case 'objetivo-presente-no-alcanzado':
+      return `tenía ${detail} a la vista y no llegó`;
+    case 'no-damage-dealt':
+      return `golpeó sin hacer daño (${detail})`;
+    case 'path-blocked':
+      return `el camino se le bloqueó ${detail} vez/veces`;
+    case 'craft-missing':
+      return `le faltaban ingredientes (${detail})`;
+    case 'craft-failed':
+      return `no pudo construir: ${detail}`;
+    case 'timeout':
+      return 'se le acabó el tiempo';
+    case 'limit-exceeded':
+      return `pasó el límite de pasos${detail ? `: ${detail}` : ''}`;
+    default:
+      return raw;
+  }
+}
+
+type RegressionGroup = {
+  scenarioName: string;
+  version: string | null;
+  reasons: string[];
+  seeds: number[];
+};
+
+/** Junta las regresiones que fallan igual: una fila por historia, no por semilla. */
+function groupRegressions(regressions: GameView['regressions']): RegressionGroup[] {
+  const groups = new Map<string, RegressionGroup>();
+  for (const r of regressions) {
+    const match = /^v(\d+) falló: (.*)$/.exec(r.description);
+    const version = match?.[1] ?? null;
+    const reasons = match?.[2]?.split(', ').filter(Boolean) ?? [r.description];
+    const key = `${r.scenarioName}|${r.description}`;
+    const group: RegressionGroup = groups.get(key) ?? {
+      scenarioName: r.scenarioName,
+      version,
+      reasons,
+      seeds: [],
+    };
+    group.seeds.push(r.seed);
+    groups.set(key, group);
+  }
+  return [...groups.values()].sort((a, b) => b.seeds.length - a.seeds.length);
+}
+
+function RegressionRow({ group }: { group: RegressionGroup }) {
+  const [open, setOpen] = useState(false);
+  const extra = group.reasons.length - 1;
+  return (
+    <li className="regression-card" data-testid="regression-item">
+      <button className="regression-head" onClick={() => setOpen(!open)}>
+        <span className="pill pill-failed">×{group.seeds.length}</span>
+        <strong>{group.scenarioName}</strong>
+        <span className="muted">
+          {humanReason(group.reasons[0] ?? 'sin motivo registrado')}
+          {extra > 0 && ` · +${extra} motivo${extra > 1 ? 's' : ''}`}
+        </span>
+      </button>
+      {open && (
+        <div className="regression-detail">
+          <ul className="list">
+            {group.reasons.map((reason, i) => (
+              <li key={i} className="muted">
+                {humanReason(reason)}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">
+            {group.version && `falló en v${group.version} · `}semillas{' '}
+            {group.seeds.slice(0, 6).join(', ')}
+            {group.seeds.length > 6 && ` y ${group.seeds.length - 6} más`}
+          </p>
+        </div>
+      )}
+    </li>
+  );
+}
+
 export function SkillsPanel({ view }: { view: GameView }) {
   const byName = new Map<string, SkillView[]>();
   for (const skill of view.skills) {
@@ -80,12 +175,13 @@ export function SkillsPanel({ view }: { view: GameView }) {
       </ul>
       {view.regressions.length > 0 && (
         <>
-          <h3>Regresiones conservadas</h3>
+          <h3>Regresiones conservadas ({view.regressions.length})</h3>
+          <p className="muted regression-hint">
+            Casos que alguna vez falló y que ahora vuelve a probar en cada versión.
+          </p>
           <ul className="list" data-testid="regression-list">
-            {view.regressions.map((r, i) => (
-              <li key={i} className="muted">
-                {r.scenarioName} (semilla {r.seed}): {r.description}
-              </li>
+            {groupRegressions(view.regressions).map((group, i) => (
+              <RegressionRow key={i} group={group} />
             ))}
           </ul>
         </>

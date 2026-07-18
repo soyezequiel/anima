@@ -1744,6 +1744,46 @@ button:disabled {
   white-space: pre;
 }
 
+/* Regresiones: una fila por historia, el detalle a un clic */
+.regression-hint {
+  margin: 2px 0 8px;
+  font-size: 12px;
+}
+
+.regression-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.regression-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  width: 100%;
+  text-align: left;
+  border: none;
+  border-radius: 0;
+  padding: 8px 10px;
+}
+
+.regression-head .muted {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.regression-detail {
+  padding: 8px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12px;
+}
+
+.regression-detail p {
+  margin: 6px 0 0;
+}
+
 /* Experimentos */
 .timeline {
   list-style: none;
