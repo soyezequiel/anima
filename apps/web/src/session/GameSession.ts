@@ -58,6 +58,7 @@ import type {
   ItemStat,
   ItemView,
   PickupView,
+  PlannedStructureView,
   SkillDevProgressView,
   SkillView,
   ThoughtView,
@@ -1674,6 +1675,23 @@ export class GameSession {
    * que no está entre las recetas base del MVP lo construyó un modelo en
    * runtime, y sus productos (y lo que dejan al romperse) heredan ese origen.
    */
+  /**
+   * Las obras plantadas, listas para dibujar (ADR 0049). El agente ya sabe
+   * dónde va cada bloque y cuáles puso: acá solo se traduce a lo que la
+   * pantalla necesita, con el nombre en voz humana.
+   */
+  private plannedStructureViews(): PlannedStructureView[] {
+    const pet = getEntity(this.world, this.agent.petId);
+    if (!pet || pet.components.dead) return [];
+    const perception = buildPerception(this.world, this.agent.petId);
+    return this.agent.plannedStructures(perception).map((planned) => ({
+      blueprintId: planned.blueprintId,
+      label: kindLabel(planned.blueprintId),
+      cells: planned.cells,
+      remaining: planned.cells.filter((cell) => !cell.done).length,
+    }));
+  }
+
   private itemViews(): ItemView[] {
     const lineage = lineageOf(this.world.recipes);
     const baseIds = new Set(MVP_RECIPES.map((recipe) => recipe.id));
@@ -1878,6 +1896,7 @@ export class GameSession {
       legacyCount: this.legacyCount,
       worldSize: { width: this.world.config.width, height: this.world.config.height },
       entities,
+      plannedStructures: this.plannedStructureViews(),
       items: this.itemViews(),
       interactions: this.interactionViews(),
       pet:

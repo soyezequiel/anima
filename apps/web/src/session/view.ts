@@ -43,6 +43,29 @@ export interface EntityView {
   glyph?: string[] | undefined;
 }
 
+/**
+ * Una obra plantada, celda por celda: dónde va a quedar cada bloque y cuáles ya
+ * están puestos (ADR 0049). Es lo que deja ver la construcción antes de que
+ * exista — y, de paso, hace evidente que el sitio está libre, porque la silueta
+ * se dibuja sobre suelo vacío.
+ */
+export interface PlannedCellView {
+  kind: string;
+  x: number;
+  y: number;
+  /** Ya levantado: se dibuja apagado, no como fantasma pendiente. */
+  done: boolean;
+}
+
+export interface PlannedStructureView {
+  blueprintId: string;
+  /** Cómo se llama la obra en voz humana ("escuela"). */
+  label: string;
+  cells: PlannedCellView[];
+  /** Cuántas celdas faltan: para decir "3 de 6" sin recontar en la pantalla. */
+  remaining: number;
+}
+
 export interface PetView {
   id: string;
   x: number;
@@ -371,6 +394,8 @@ export interface GameView {
   legacyCount: number;
   worldSize: { width: number; height: number };
   entities: EntityView[];
+  /** Las obras plantadas, para dibujar dónde va a quedar cada pieza (ADR 0049). */
+  plannedStructures: PlannedStructureView[];
   /** Catálogo de tipos de objeto: lo que hay, lo que lleva y lo construible. */
   items: ItemView[];
   /** Interacciones aprendidas del mundo (ADR 0027), reusables sin costo. */

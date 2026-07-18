@@ -11,6 +11,8 @@ import {
 } from '@anima/shared';
 import type {
   ActionIntent,
+  Blueprint,
+  BlueprintPlacement,
   Direction,
   EntityId,
   Perception,
@@ -75,6 +77,7 @@ import {
 } from './names.js';
 import {
   buildFireProgram,
+  countPlacements,
   DIRECT_APPROACH_PROGRAM,
   gatherAndCraftProgram,
   heldCounts,
@@ -109,6 +112,8 @@ const WORSENED_MOTIVE_DROP = 0.1;
  * cuerpo pasa por encima de la palabra.
  */
 const CRITICAL_NEED_FRACTION = 0.2;
+/** Cuán lejos busca un claro donde plantar una obra, en celdas (ADR 0049). */
+const STRUCTURE_SITE_SEARCH = 6;
 /**
  * Bajo esta fracción de salud, con el peligro todavía al alcance, el dolor
  * deja de ser un reflejo de un paso y pasa a ser un motivo: nace el objetivo
@@ -263,6 +268,12 @@ export interface AgentPersistentState {
   lastUserRequest?: UserRequest | null;
   /** Dónde vio por última vez lo que le importa. Falta en guardados viejos. */
   places?: PlaceMemoryData;
+  /**
+   * Dónde está plantada cada obra en curso (ADR 0049). Persiste porque el sitio
+   * es del MUNDO, no del plan: si se recalculara al retomar, una obra a medias
+   * se mudaría y dejaría sus bloques viejos tirados donde estaban.
+   */
+  structureSites?: { goalId: string; blueprintId: string; anchor: Vec2 }[];
 }
 
 /**
@@ -402,6 +413,12 @@ export class AnimaAgent {
    */
   private suspensionMaterials = new Map<string, string[]>();
   /**
+   * Dónde quedó plantada cada obra, por objetivo (ADR 0049). Se elige una vez,
+   * al empezar, y no se vuelve a mover: es lo que hace que retomar una obra sea
+   * seguir la misma y no empezar otra al lado.
+   */
+  private structureSites = new Map<string, { blueprintId: string; anchor: Vec2 }>();
+  /**
    * Poder de la herramienta que ya NO hizo mella al romper, por objetivo. Es la
    * marca de "muy duro": mientras exista, el objetivo de romper no vuelve a
    * golpear con lo mismo — busca (o inventa) algo más fuerte antes. Transitorio
@@ -466,7 +483,189 @@ export class AnimaAgent {
           : undefined;
       },
       harvestSource: (kind) => this.harvestSourceFor(kind, perception),
+      structureSite: (blueprint) => {
+        const goalId = this.activeStructureGoalId(blueprint);
+        if (goalId === null) return null;
+        const anchor = this.siteFor(goalId, blueprint, perception);
+        if (!anchor) return null;
+        return {
+          approach: this.walkStepsAvoidingHazards(perception, anchor, 0),
+          pending: this.pendingPlacements(blueprint, anchor, perception),
+        };
+      },
     };
+  }
+
+  /**
+   * Las obras plantadas y cómo van, para que se puedan DIBUJAR (ADR 0049).
+   * Cada celda dice qué bloque le toca y si ya está puesto: con eso la pantalla
+   * muestra la silueta de lo que va a levantar antes de que exista. Es lectura
+   * pura — nada de lo que pase acá cambia el mundo ni sus objetivos.
+   */
+  plannedStructures(perception: Perception): {
+    goalId: string;
+    blueprintId: string;
+    cells: { kind: string; x: number; y: number; done: boolean }[];
+  }[] {
+    const planned: {
+      goalId: string;
+      blueprintId: string;
+      cells: { kind: string; x: number; y: number; done: boolean }[];
+    }[] = [];
+    for (const [goalId, site] of this.structureSites) {
+      const goal = this.goals.get(goalId);
+      if (!goal || (goal.status !== 'active' && goal.status !== 'suspended')) continue;
+      const blueprint = perception.blueprints.find((b) => b.id === site.blueprintId);
+      if (!blueprint) continue;
+      const pending = new Set(
+        this.pendingPlacements(blueprint, site.anchor, perception).map(
+          (p) => `${p.kind}@${p.offset.x},${p.offset.y}`,
+        ),
+      );
+      planned.push({
+        goalId,
+        blueprintId: blueprint.id,
+        cells: blueprint.placements.map((placement) => ({
+          kind: placement.kind,
+          x: site.anchor.x + placement.offset.x,
+          y: site.anchor.y + placement.offset.y,
+          done: !pending.has(`${placement.kind}@${placement.offset.x},${placement.offset.y}`),
+        })),
+      });
+    }
+    return planned;
+  }
+
+  /** El objetivo que está levantando este plano, si hay uno abierto. */
+  private activeStructureGoalId(blueprint: Blueprint): string | null {
+    const goal = this.goals
+      .all()
+      .find(
+        (candidate) =>
+          (candidate.status === 'active' || candidate.status === 'suspended') &&
+          candidate.userRequest?.kind === 'craft-item' &&
+          candidate.userRequest.recipeId === blueprint.id,
+      );
+    return goal?.id ?? null;
+  }
+
+  /**
+   * El sitio de esta obra: el ya elegido si lo hay, o uno nuevo. Guardarlo es
+   * lo que hace que retomar sea seguir la misma obra y no empezar otra al lado
+   * (ADR 0049). Si el plano cambió (ella lo reinventó), el sitio viejo no vale.
+   */
+  private siteFor(goalId: string, blueprint: Blueprint, perception: Perception): Vec2 | null {
+    const known = this.structureSites.get(goalId);
+    if (known && known.blueprintId === blueprint.id) {
+      // El sitio se eligió con lo que VEÍA, y la vista exige línea despejada
+      // (ADR 0025): una roca detrás de otra no estaba en el mapa que miró. Al
+      // acercarse aparece, y entonces el claro no era tal.
+      //
+      // Mudarse solo es legítimo mientras no haya puesto nada: una vez que hay
+      // un bloque en el suelo, el sitio es ese y lo que estorba se resuelve de
+      // otra forma. Sin esta condición, descubrir un obstáculo a mitad de obra
+      // dejaría media choza abandonada y empezaría otra al lado.
+      const untouched =
+        this.pendingPlacements(blueprint, known.anchor, perception).length ===
+        blueprint.placements.length;
+      if (!untouched || this.siteFits(blueprint, known.anchor, perception)) return known.anchor;
+    }
+    const chosen = this.chooseStructureSite(blueprint, perception);
+    if (!chosen) return known?.anchor ?? null;
+    this.structureSites.set(goalId, { blueprintId: blueprint.id, anchor: chosen });
+    return chosen;
+  }
+
+  /**
+   * Lo que le falta levantar de una obra: las celdas que todavía no tienen su
+   * bloque. Volver a pedir lo ya puesto era lo que trababa la obra — con dos
+   * muros colocados y cuatro en la mano, exigía cinco en la mano y no entraban.
+   */
+  private pendingPlacements(
+    blueprint: Blueprint,
+    anchor: Vec2,
+    perception: Perception,
+  ): BlueprintPlacement[] {
+    return blueprint.placements.filter((placement) => {
+      const x = anchor.x + placement.offset.x;
+      const y = anchor.y + placement.offset.y;
+      return !perception.visibleEntities.some(
+        (e) =>
+          e.kind === placement.kind &&
+          e.held !== true &&
+          e.position?.x === x &&
+          e.position?.y === y,
+      );
+    });
+  }
+
+  /**
+   * Dónde plantar una obra: un ancla desde la que TODAS las celdas del plano
+   * caen en suelo libre (ADR 0049).
+   *
+   * Antes el ancla era «donde esté parada cuando arranque», así que la obra se
+   * replantaba sola en cada reanudación —dejando bloques sueltos de intentos
+   * anteriores por el mapa— y podía pedirle al mundo celdas ya ocupadas, que el
+   * motor rechazaba una por una sin que ella entendiera por qué.
+   *
+   * Elegido una vez, el sitio se guarda: la obra vuelve siempre al mismo lugar.
+   * Se prefiere lo más cerca posible, para no caminar de más con las manos
+   * llenas.
+   */
+  private chooseStructureSite(blueprint: Blueprint, perception: Perception): Vec2 | null {
+    const bounds = perception.bounds;
+    const self = perception.self.position;
+    let best: { anchor: Vec2; distance: number } | null = null;
+    for (let dy = -STRUCTURE_SITE_SEARCH; dy <= STRUCTURE_SITE_SEARCH; dy++) {
+      for (let dx = -STRUCTURE_SITE_SEARCH; dx <= STRUCTURE_SITE_SEARCH; dx++) {
+        const anchor = { x: self.x + dx, y: self.y + dy };
+        if (
+          bounds &&
+          (anchor.x < 0 || anchor.y < 0 || anchor.x >= bounds.width || anchor.y >= bounds.height)
+        ) {
+          continue;
+        }
+        if (!this.siteFits(blueprint, anchor, perception)) continue;
+        const distance = Math.abs(dx) + Math.abs(dy);
+        if (!best || distance < best.distance) best = { anchor, distance };
+      }
+    }
+    return best?.anchor ?? null;
+  }
+
+  /**
+   * ¿Entra la obra acá? Todas sus celdas dentro del mapa y sobre suelo que no
+   * estorbe. Lo mira con lo que VE: la vista exige línea despejada (ADR 0025),
+   * así que esto es "hasta donde sé", no una verdad del mundo — por eso el
+   * sitio se revalida al llegar.
+   */
+  private siteFits(blueprint: Blueprint, anchor: Vec2, perception: Perception): boolean {
+    const bounds = perception.bounds;
+    // Estorba lo sólido y lo que está puesto. Lo suelto y recogible no: se
+    // levanta del piso y la celda queda libre.
+    const blocked = new Set<string>();
+    for (const entity of perception.visibleEntities) {
+      if (entity.position === undefined || entity.held === true) continue;
+      if (entity.solid === true || entity.portable !== true || entity.wet === true) {
+        blocked.add(`${entity.position.x},${entity.position.y}`);
+      }
+    }
+    return blueprint.placements.every((placement) => {
+      const x = anchor.x + placement.offset.x;
+      const y = anchor.y + placement.offset.y;
+      if (bounds && (x < 0 || y < 0 || x >= bounds.width || y >= bounds.height)) return false;
+      // La celda que ya tiene SU bloque cuenta como resuelta: así una obra a
+      // medias se retoma en su sitio en vez de mudarse.
+      const already = perception.visibleEntities.some(
+        (e) =>
+          e.kind === placement.kind &&
+          e.held !== true &&
+          e.position?.x === x &&
+          e.position?.y === y,
+      );
+      if (already) return true;
+      return !blocked.has(`${x},${y}`);
+    });
   }
 
   /**
@@ -578,6 +777,11 @@ export class AnimaAgent {
       lastSelectedGoalId: this.lastSelectedGoalId,
       lastUserRequest: this.lastUserRequest,
       places: this.places.serialize(),
+      structureSites: [...this.structureSites.entries()].map(([goalId, site]) => ({
+        goalId,
+        blueprintId: site.blueprintId,
+        anchor: { ...site.anchor },
+      })),
     });
   }
 
@@ -593,6 +797,14 @@ export class AnimaAgent {
     // Un guardado anterior a la memoria de lugares llega sin el campo: se
     // restaura como lo que era, una mascota que aún no recordaba lugares.
     this.places.loadFrom(clone.places ?? { places: [] });
+    // Guardados anteriores al sitio fijo no lo traen: la obra elegirá uno la
+    // próxima vez que la retome, como hacía siempre.
+    this.structureSites = new Map(
+      (clone.structureSites ?? []).map((site) => [
+        site.goalId,
+        { blueprintId: site.blueprintId, anchor: site.anchor },
+      ]),
+    );
     if (clone.lastUserRequest !== undefined) {
       this.lastUserRequest = clone.lastUserRequest;
     } else {
@@ -4164,9 +4376,15 @@ export class AnimaAgent {
       const arrived =
         // Ya no falta nada: lo fabricó, se lo trajeron, o lo juntó de otro lado.
         stillMissing.length === 0 ||
-        // O lo que falta está a la vista y no es lo que ya lleva encima.
+        // O lo que falta está a la vista y se puede LEVANTAR. `portable` no es
+        // un detalle: un bloque ya colocado en la obra deja de serlo (ADR
+        // 0034), y sin este filtro sus propias paredes contaban como "apareció
+        // material" — revivía, fallaba igual, se suspendía y volvía a verlas,
+        // en un bucle de un mensaje idéntico cada cincuenta ticks.
         stillMissing.some((kind) =>
-          perception.visibleEntities.some((e) => e.kind === kind && e.held !== true),
+          perception.visibleEntities.some(
+            (e) => e.kind === kind && e.held !== true && e.portable === true,
+          ),
         );
       if (!arrived) continue;
       this.goals.reactivate(goal.id);
@@ -4195,7 +4413,15 @@ export class AnimaAgent {
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
     if (!blueprint) return null;
     const held = heldCounts(perception);
-    const missing = [...blueprintCounts(blueprint)]
+    // Lo que falta es lo que falta LEVANTAR, no lo que pide el plano entero:
+    // con dos muros ya puestos y cuatro en la mano decía "me falta 1" cuando en
+    // realidad le sobraban. Descontar solo el inventario era media cuenta.
+    const goalId = this.activeStructureGoalId(blueprint);
+    const anchor = goalId === null ? null : this.structureSites.get(goalId)?.anchor;
+    const remaining = anchor
+      ? countPlacements(this.pendingPlacements(blueprint, anchor, perception))
+      : blueprintCounts(blueprint);
+    const missing = [...remaining]
       .map(([kind, need]) => ({ kind, need, have: held.get(kind) ?? 0 }))
       .filter((m) => m.have < m.need);
     // Los tiene todos y aun así falló: lo que no consiguió es el SITIO, no la

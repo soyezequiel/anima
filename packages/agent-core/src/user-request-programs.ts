@@ -1,5 +1,11 @@
 import { countedKindLabel, kindLabel, kindWithArticle } from '@anima/shared';
-import type { Direction, Interaction, Perception } from '@anima/sim-core';
+import type {
+  Blueprint,
+  BlueprintPlacement,
+  Direction,
+  Interaction,
+  Perception,
+} from '@anima/sim-core';
 import type { EntityQuery, SkillLibrary, SkillOp, SkillProgram } from '@anima/skill-runtime';
 import type { GoalUserRequest } from './goals.js';
 import { SKILL_REACH_BLOCKED_FOOD } from './names.js';
@@ -35,6 +41,15 @@ export interface UserRequestProgramDeps {
    * «no hay troncos» con el bosque delante.
    */
   harvestSource(kind: string): string | undefined;
+  /**
+   * Dónde se planta esta obra y qué le falta (ADR 0049): los pasos hasta el
+   * sitio elegido y las celdas que todavía no tienen su bloque. `null` si no
+   * hay claro donde levantarla — ahí la obra no arranca en vez de desparramar
+   * bloques en celdas ocupadas.
+   */
+  structureSite(
+    blueprint: Blueprint,
+  ): { approach: Direction[]; pending: BlueprintPlacement[] } | null;
 }
 
 /**
@@ -68,12 +83,17 @@ export function programForUserRequest(
         ? perception.blueprints.find((b) => b.id === request.recipeId)
         : undefined;
       if (blueprint) {
+        // Dónde va la obra lo decide el agente (tiene el sitio guardado) y no
+        // el generador: plantarla donde esté parada la mudaba en cada
+        // reanudación y podía pedir celdas ocupadas (ADR 0049).
+        const site = deps.structureSite(blueprint);
         return buildStructureProgram(blueprint, {
           held: heldCounts(perception),
           recipes: perception.recipes,
           rememberedWalk: deps.rememberedWalk,
           harvestSource: deps.harvestSource,
           capacity: perception.self.inventoryCapacity,
+          ...(site ? { approach: site.approach, pending: site.pending } : {}),
         });
       }
       // Juntar lo que falte es parte de construir: el mismo programa que la

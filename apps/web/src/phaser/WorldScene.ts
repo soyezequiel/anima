@@ -24,6 +24,10 @@ export class WorldScene extends Phaser.Scene {
   /** Balanceo del cuerpo mientras el modelo piensa; null cuando no piensa. */
   private thinkingSway: Phaser.Tweens.Tween | null = null;
   private grid: Phaser.GameObjects.Graphics | null = null;
+  /** Las siluetas de lo que va a construir (ADR 0049); null si no hay obra. */
+  private ghosts: Phaser.GameObjects.Container | null = null;
+  /** Última forma dibujada: redibujar solo cuando el plan cambia de verdad. */
+  private plannedSignature: string | null = null;
   private cell = BASE_CELL;
   private lastView: GameView | null = null;
   private ready = false;
@@ -55,6 +59,7 @@ export class WorldScene extends Phaser.Scene {
     this.lastView = view;
     if (!this.ready) return;
     this.drawGrid(view);
+    this.syncPlannedStructures(view);
     this.syncEntities(view);
     this.syncPet(view);
     this.syncThinkingPose(view);
@@ -70,6 +75,11 @@ export class WorldScene extends Phaser.Scene {
     this.cell = cell;
     this.discard(this.grid);
     this.grid = null;
+    // Las siluetas están dibujadas a la escala vieja: se rehacen como todo lo
+    // demás. La firma se limpia para que el próximo view las vuelva a pintar.
+    this.ghosts?.destroy();
+    this.ghosts = null;
+    this.plannedSignature = null;
     for (const sprite of this.sprites.values()) this.discard(sprite);
     this.sprites.clear();
     // Los tweens de la pose pensativa apuntan a los HIJOS del contenedor:
@@ -178,6 +188,57 @@ export class WorldScene extends Phaser.Scene {
 
   private toPixel(cellX: number, cellY: number): { x: number; y: number } {
     return { x: cellX * this.cell + this.cell / 2, y: cellY * this.cell + this.cell / 2 };
+  }
+
+  /**
+   * La obra que todavía no existe, dibujada donde va a quedar (ADR 0049).
+   *
+   * Cada celda pendiente es una silueta punteada con el emoji del bloque en
+   * transparente; las ya levantadas no se dibujan —ahí ya hay una entidad de
+   * verdad— pero su celda queda marcada tenue para que se lea la forma entera.
+   * Va por debajo de todo lo real: es un plan, no una cosa.
+   */
+  private syncPlannedStructures(view: GameView): void {
+    const planned = view.plannedStructures;
+    const signature = JSON.stringify(planned);
+    if (signature === this.plannedSignature) return;
+    this.plannedSignature = signature;
+    this.ghosts?.destroy();
+    this.ghosts = null;
+    if (planned.length === 0) return;
+
+    const container = this.add.container(0, 0);
+    const k = this.cellScale;
+    const graphics = this.add.graphics();
+    container.add(graphics);
+    for (const structure of planned) {
+      for (const cell of structure.cells) {
+        const pixel = this.toPixel(cell.x, cell.y);
+        const size = this.cell - 8 * k;
+        if (cell.done) {
+          // Ya está: solo el contorno tenue, para que la silueta se lea entera.
+          graphics.lineStyle(2 * k, 0x86efac, 0.25);
+          graphics.strokeRect(pixel.x - size / 2, pixel.y - size / 2, size, size);
+          continue;
+        }
+        graphics.fillStyle(0xbbf7d0, 0.1);
+        graphics.fillRect(pixel.x - size / 2, pixel.y - size / 2, size, size);
+        graphics.lineStyle(2 * k, 0xbbf7d0, 0.55);
+        graphics.strokeRect(pixel.x - size / 2, pixel.y - size / 2, size, size);
+        const look = appearanceFor(cell.kind, {}, {});
+        if (look.as === 'emoji') {
+          const text = this.add.text(pixel.x, pixel.y, look.emoji, {
+            fontSize: `${Math.round(28 * k)}px`,
+          });
+          text.setOrigin(0.5);
+          text.setAlpha(0.35);
+          container.add(text);
+        }
+      }
+    }
+    // Encima del suelo, debajo de todo lo que existe de verdad.
+    container.setDepth(0.5);
+    this.ghosts = container;
   }
 
   private drawGrid(view: GameView): void {

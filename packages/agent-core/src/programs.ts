@@ -1,6 +1,12 @@
 import type { Vec2 } from '@anima/shared';
 import { chebyshev } from '@anima/shared';
-import type { Blueprint, Direction, Perception, Recipe } from '@anima/sim-core';
+import type {
+  Blueprint,
+  BlueprintPlacement,
+  Direction,
+  Perception,
+  Recipe,
+} from '@anima/sim-core';
 import { blueprintCounts, MAX_RECIPE_DEPTH, recipeProduct, recipeProducing } from '@anima/sim-core';
 import type { SkillCondition, SkillOp, SkillProgram } from '@anima/skill-runtime';
 import { MAX_REPEAT_LIMIT } from '@anima/skill-runtime';
@@ -419,6 +425,16 @@ function fetchOrMakeOps(
   ];
 }
 
+/** Cuántos bloques de cada tipo piden estas celdas. Hermano de `blueprintCounts`,
+ * pero sobre un subconjunto: lo que falta levantar, no el plano entero. */
+export function countPlacements(placements: BlueprintPlacement[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const placement of placements) {
+    counts.set(placement.kind, (counts.get(placement.kind) ?? 0) + 1);
+  }
+  return counts;
+}
+
 /** Lo que lleva encima, contado por tipo: insumo para saber qué falta juntar. */
 export function heldCounts(perception: Perception): Map<string, number> {
   const held = new Map<string, number>();
@@ -468,11 +484,27 @@ export function buildStructureProgram(
     rememberedWalk?: RememberedWalk;
     capacity?: number;
     harvestSource?: HarvestSource;
+    /**
+     * Pasos hasta el sitio elegido (ADR 0049). El ancla se marca DESPUÉS de
+     * caminar, así la obra cae siempre en el mismo lugar aunque la retome desde
+     * la otra punta del mapa. Vacío = plantarla donde está parada, como antes.
+     */
+    approach?: Direction[];
+    /**
+     * Las celdas que todavía faltan. Lo ya colocado no se vuelve a pedir: con
+     * dos muros puestos y cuatro en la mano, exigir los cinco del plano dejaba
+     * la obra trabada para siempre — y con las manos llenas, sin lugar para la
+     * herramienta, era imposible por construcción.
+     */
+    pending?: BlueprintPlacement[];
   } = {},
 ): SkillProgram {
   // La materia de la obra no se suelta al hacer lugar: son los bloques del plano.
   const keepKinds = [...blueprintCounts(blueprint).keys()];
-  const capacity = Math.max(1, options.capacity ?? 6);
+  // Una ranura libre para la herramienta: acopiar hasta llenar las manos deja
+  // sin lugar el martillo con el que se consigue el material que falta.
+  const capacity = Math.max(1, (options.capacity ?? 6) - 1);
+  const placements = options.pending ?? blueprint.placements;
   const BASE = 'obra-ancla';
   const CELL = 'obra-celda';
   const fetchOptions = (): Parameters<typeof fetchOrMakeOps>[1] => ({
@@ -483,11 +515,16 @@ export function buildStructureProgram(
     searchFirst: true,
   });
 
-  const steps: SkillOp[] = [{ op: 'markAnchor', store: BASE }];
+  // Caminar primero al sitio, marcar el ancla después: el ancla es el LUGAR de
+  // la obra, no donde ella estaba cuando se le ocurrió empezar (ADR 0049).
+  const steps: SkillOp[] = [
+    ...(options.approach ?? []).map((dir) => ({ op: 'moveStep' as const, dir })),
+    { op: 'markAnchor', store: BASE },
+  ];
   // En tandas de a lo sumo `capacity` colocaciones: una obra grande son varios
   // viajes de acopio, no un imposible.
-  for (let i = 0; i < blueprint.placements.length; i += capacity) {
-    const batch = blueprint.placements.slice(i, i + capacity);
+  for (let i = 0; i < placements.length; i += capacity) {
+    const batch = placements.slice(i, i + capacity);
     const counts = new Map<string, number>();
     for (const p of batch) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
 
