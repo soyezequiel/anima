@@ -125,6 +125,91 @@ describe('intérprete de skills', () => {
     expect(report.invariantViolations).toEqual([]);
   });
 
+  // El loop de "romper" con corte al primer golpe inútil: mismo cuerpo que arma
+  // programForUserRequest para destroy-entity. Antes repetía el mismo no-op 20
+  // veces y terminaba en "objetivo-resistió"; ahora corta y dice la verdad.
+  const strikeProgram = (targetKind: string): SkillProgram => [
+    { op: 'findEntities', query: { tool: true }, store: 'tools' },
+    { op: 'selectTarget', from: 'tools', strategy: 'strongestTool', store: 'tool' },
+    { op: 'moveToward', target: 'tool', maxSteps: 20 },
+    { op: 'pickup', target: 'tool' },
+    { op: 'findEntities', query: { kind: targetKind }, store: 'targets' },
+    { op: 'selectTarget', from: 'targets', strategy: 'nearest', store: 'target' },
+    { op: 'moveToward', target: 'target', maxSteps: 20 },
+    {
+      op: 'repeatWithLimit',
+      max: 20,
+      until: { type: 'entityGone', ref: 'target' },
+      body: [
+        { op: 'useItem', item: 'tool', target: 'target' },
+        {
+          op: 'branch',
+          if: { type: 'lastActionUnaffected' },
+          then: [{ op: 'abort', reason: 'objetivo-inmune' }],
+        },
+        {
+          op: 'branch',
+          if: { type: 'lastStrikeIneffective' },
+          then: [{ op: 'abort', reason: 'objetivo-muy-duro' }],
+        },
+      ],
+    },
+    {
+      op: 'branch',
+      if: { type: 'not', cond: { type: 'entityGone', ref: 'target' } },
+      then: [{ op: 'abort', reason: 'objetivo-resistió' }],
+    },
+  ];
+
+  const useItemAttempts = (report: { events: { type: string; data: Record<string, unknown> }[] }) =>
+    report.events.filter((e) => e.type === 'action.resolved' && e.data.action === 'useItem').length;
+
+  it('un objetivo inmune (sin durabilidad) corta al primer golpe, no a los veinte', () => {
+    const { world, petId } = smallWorld();
+    addHammer(world, 2, 3);
+    // Un pedernal: portable pero sin durabilidad — como el del reporte real.
+    // Ninguna herramienta lo afecta: el mundo responde 'target-unaffected'.
+    const flint = spawn(world, 'flint', { position: { x: 3, y: 2 }, portable: {} }).id;
+    const report = runSkillProgram(world, petId, strikeProgram('flint'), { maxTicks: 120 });
+    expect(report.outcome).toBe('aborted');
+    expect(report.reason).toBe('objetivo-inmune');
+    // Lo que arreglamos: un solo intento, no el loop pegado de 20.
+    expect(useItemAttempts(report)).toBe(1);
+    // El pedernal sigue ahí: no se rompió (imposible) pero tampoco quedó en bucle.
+    expect(getEntity(world, flint)).toBeDefined();
+  });
+
+  it('un objetivo demasiado duro (la herramienta no hace mella) también corta al primer golpe', () => {
+    const { world, petId } = smallWorld();
+    addHammer(world, 2, 3); // poder 8; fuerza de la mascota 2 → poder efectivo 10
+    // Dureza 100: 10 - 100 < 0 → daño 0. Pega, pero no le quita durabilidad.
+    const rock = spawn(world, 'rock', {
+      position: { x: 3, y: 2 },
+      durability: { current: 10, max: 10 },
+      hardness: { value: 100 },
+    }).id;
+    const report = runSkillProgram(world, petId, strikeProgram('rock'), { maxTicks: 120 });
+    expect(report.outcome).toBe('aborted');
+    expect(report.reason).toBe('objetivo-muy-duro');
+    expect(useItemAttempts(report)).toBe(1);
+    // No perdió durabilidad: el golpe no hizo nada, y no insistió.
+    expect(getEntity(world, rock)?.components.durability?.current).toBe(10);
+  });
+
+  it('un objetivo que sí cede se rompe: el progreso real no se corta', () => {
+    const { world, petId } = smallWorld();
+    addHammer(world, 2, 3);
+    // Dureza 0, durabilidad baja: cada golpe hace mella y termina destruyéndolo.
+    spawn(world, 'rock', {
+      position: { x: 3, y: 2 },
+      durability: { current: 5, max: 5 },
+      hardness: { value: 0 },
+    });
+    const report = runSkillProgram(world, petId, strikeProgram('rock'), { maxTicks: 120 });
+    expect(report.outcome).toBe('completed');
+    expect(report.events.some((e) => e.type === 'entity.destroyed')).toBe(true);
+  });
+
   it('repeatWithLimit se detiene en el límite aunque la condición nunca se cumpla', () => {
     const { world, petId } = smallWorld();
     const program: SkillProgram = [

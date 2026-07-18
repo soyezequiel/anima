@@ -3294,6 +3294,8 @@ export class AnimaAgent {
       'no-pude-comerlo': 'no pude comer el alimento',
       'no-pude-recoger-la-herramienta': 'no pude recoger la herramienta',
       'objetivo-resistió': 'el objeto resistió mis intentos',
+      'objetivo-inmune': 'ese objeto no se puede romper, para mí es indestructible',
+      'objetivo-muy-duro': 'mi herramienta no le hizo mella; haría falta algo más fuerte',
       'sin-interaccion': 'no se me ocurrió una forma de hacerlo que mi mundo acepte',
       'no-pude-interactuar': 'el mundo no aceptó la interacción en ese momento',
       completed: 'la acción no produjo el resultado esperado',

@@ -194,6 +194,10 @@ export class SkillExecution {
   private vars = new Map<string, VarValue>();
   private lastMove: LastMove = 'none';
   private lastActionOk = true;
+  /** Motivo con el que el mundo rechazó la última acción (undefined si salió bien). */
+  private lastActionReason: string | undefined;
+  /** Daño que causó el último golpe (0 si no golpeó o no hizo mella). */
+  private lastDamage = 0;
   private move: MoveState | null = null;
   private explore: ExploreState | null = null;
   private waitRemaining = 0;
@@ -255,6 +259,12 @@ export class SkillExecution {
     if (this.pendingSingle) {
       this.pendingSingle = false;
       this.lastActionOk = success;
+      // Razón y daño de la última acción: dejan distinguir "no se puede" (inmune)
+      // de "no le hice mella" (muy duro), y cortar un golpe inútil sin repetirlo.
+      const data = resolution?.data;
+      this.lastActionReason =
+        !success && typeof data?.reason === 'string' ? data.reason : undefined;
+      this.lastDamage = success && typeof data?.damage === 'number' ? data.damage : 0;
     }
   }
 
@@ -663,6 +673,9 @@ export class SkillExecution {
   private endMove(result: LastMove): void {
     this.lastMove = result;
     this.lastActionOk = result === 'reached';
+    // Moverse no es golpear: que un golpe viejo no ensucie las condiciones de golpe.
+    this.lastActionReason = undefined;
+    this.lastDamage = 0;
     this.move = null;
   }
 
@@ -719,6 +732,8 @@ export class SkillExecution {
   private endExplore(result: LastMove): void {
     this.lastMove = result;
     this.lastActionOk = result === 'reached';
+    this.lastActionReason = undefined;
+    this.lastDamage = 0;
     this.explore = null;
   }
 
@@ -748,6 +763,11 @@ export class SkillExecution {
         return this.lastMove === 'blocked' || this.lastMove === 'exhausted';
       case 'lastActionFailed':
         return !this.lastActionOk;
+      case 'lastActionUnaffected':
+        return this.lastActionReason === 'target-unaffected';
+      case 'lastStrikeIneffective':
+        // Sin progreso: o el golpe falló, o pegó sin quitar durabilidad.
+        return !this.lastActionOk || this.lastDamage <= 0;
       case 'not':
         return !this.evalCondition(cond.cond, perception);
       case 'entityGone': {

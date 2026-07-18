@@ -149,7 +149,6 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
               key={suggestion}
               type="button"
               className="chip"
-              disabled={view.aiBusy}
               onClick={() => session.sendUserMessage(suggestion)}
             >
               {suggestion}
@@ -171,8 +170,13 @@ export function ChatPanel({ view, session }: { view: GameView; session: GameSess
           onChange={(e) => setText(e.target.value)}
           placeholder="Pedile algo, enseñale un hecho o preguntale qué hace…"
         />
-        <button type="submit" data-testid="chat-send" disabled={view.aiBusy}>
-          {view.aiBusy ? 'Pensando…' : 'Enviar'}
+        {/* Se puede enviar aunque esté pensando: el mensaje se encola
+            (pendingUserMessages) y lo atiende en el próximo tick. El estado
+            "pensando" ya se ve en el log, así que el botón no necesita
+            bloquearse — bloquearlo solo impedía encolar (y también el Enter,
+            al ser el único submit del form). */}
+        <button type="submit" data-testid="chat-send">
+          Enviar
         </button>
       </form>
     </div>

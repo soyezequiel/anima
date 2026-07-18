@@ -41,6 +41,8 @@ const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
     z.object({ type: z.literal('always') }).strict(),
     z.object({ type: z.literal('lastMoveBlocked') }).strict(),
     z.object({ type: z.literal('lastActionFailed') }).strict(),
+    z.object({ type: z.literal('lastActionUnaffected') }).strict(),
+    z.object({ type: z.literal('lastStrikeIneffective') }).strict(),
     z.object({ type: z.literal('entityGone'), ref: z.string().min(1) }).strict(),
     z.object({ type: z.literal('isAdjacent'), target: z.string().min(1) }).strict(),
     z.object({ type: z.literal('holding'), target: z.string().min(1) }).strict(),
@@ -78,6 +80,20 @@ export type SkillCondition =
   | { type: 'always' }
   | { type: 'lastMoveBlocked' }
   | { type: 'lastActionFailed' }
+  /**
+   * La última acción falló porque el objetivo NO puede recibirla en absoluto
+   * (`target-unaffected`): no es "todavía no", es "nunca" — un pedernal no tiene
+   * durabilidad, ninguna herramienta lo rompe. Distinta de `lastActionFailed`
+   * (que también cubre un fallo transitorio) para poder decir la verdad
+   * categórica y no mandar a Ánima a buscar una herramienta más fuerte en vano.
+   */
+  | { type: 'lastActionUnaffected' }
+  /**
+   * El último golpe no hizo mella: o falló, o pegó sin quitar durabilidad
+   * (`damage` 0 porque la dureza supera al poder). Repetir el MISMO golpe no va
+   * a cambiar nada — un solo intento inútil ya lo prueba, no hacen falta veinte.
+   */
+  | { type: 'lastStrikeIneffective' }
   | { type: 'entityGone'; ref: string }
   | { type: 'isAdjacent'; target: string }
   | { type: 'holding'; target: string }

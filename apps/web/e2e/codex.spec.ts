@@ -139,7 +139,9 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   await page.getByTestId('chat-send').click();
   await expect(page.getByTestId('stage-thinking')).toBeVisible();
   await expect(page.getByTestId('chat-thinking')).toBeVisible();
-  await expect(page.getByTestId('chat-send')).toBeDisabled();
+  // Enviar sigue habilitado mientras piensa: el mensaje se encola y se atiende
+  // en el próximo tick, así el cuidador no tiene que esperar a que termine.
+  await expect(page.getByTestId('chat-send')).toBeEnabled();
   await expect(page.getByTestId('chat-thinking')).toBeHidden({ timeout: 10_000 });
   await expect(page.locator('.chat-entry.from-pet').filter({ hasText: 'hola' })).toBeVisible();
   await expect(page.getByTestId('chat-send')).toBeEnabled();

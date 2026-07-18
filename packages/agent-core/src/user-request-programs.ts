@@ -316,7 +316,24 @@ export function programForUserRequest(
           op: 'repeatWithLimit',
           max: 20,
           until: { type: 'entityGone', ref: 'requestedTarget' },
-          body: [{ op: 'useItem', item: 'bestTool', target: 'requestedTarget' }],
+          body: [
+            { op: 'useItem', item: 'bestTool', target: 'requestedTarget' },
+            // Golpear no es insistir a ciegas: si el golpe no cambió nada, un solo
+            // intento ya lo prueba. Dejar de repetir el mismo no-op veinte veces
+            // (lo que dejaba a Ánima pegada) y decir la verdad de por qué no salió.
+            {
+              op: 'branch',
+              // Categóricamente inmune (sin durabilidad): no se puede romper, nunca.
+              if: { type: 'lastActionUnaffected' },
+              then: [{ op: 'abort', reason: 'objetivo-inmune' }],
+            },
+            {
+              op: 'branch',
+              // Pegó pero no hizo mella: la herramienta es demasiado débil para su dureza.
+              if: { type: 'lastStrikeIneffective' },
+              then: [{ op: 'abort', reason: 'objetivo-muy-duro' }],
+            },
+          ],
         },
         {
           op: 'branch',
