@@ -84,6 +84,7 @@ import {
   SKILL_REACH_BLOCKED_FOOD,
 } from './names.js';
 import {
+  breakThroughProgram,
   buildFireProgram,
   countPlacements,
   DIRECT_APPROACH_PROGRAM,
@@ -303,6 +304,13 @@ export interface AgentPersistentState {
   structureSites?: { goalId: string; blueprintId: string; anchor: Vec2 }[];
   /** Tipos que todavía espera dibujar (ADR 0064). Falta en guardados viejos. */
   pendingGlyphs?: string[];
+  /**
+   * Qué materia espera cada encargo dormido, y desde cuándo (ADR 0066). Sin
+   * esto, recargar la página dejaba huérfano a todo encargo suspendido: sin la
+   * lista, ningún camino podía despertarlo — ni ver el material, ni recordarlo,
+   * ni volver a salir a buscarlo.
+   */
+  suspensionMaterials?: { goalId: string; kinds: string[]; sinceTick: number }[];
 }
 
 /**
@@ -334,7 +342,13 @@ interface Activity {
   goalId: string;
   strategy: string;
   exec: SkillExecution;
-  purpose: 'restore-energy' | 'user-request' | 'be-safe';
+  /**
+   * `open-path` (ADR 0066) es trabajo AL SERVICIO de un encargo, no el encargo:
+   * abrirse paso no cumple nada por sí solo. Termine como termine, el objetivo
+   * queda vivo para que el próximo tick vuelva a intentar lo que quería hacer,
+   * ahora con el camino despejado.
+   */
+  purpose: 'restore-energy' | 'user-request' | 'be-safe' | 'open-path';
   completionReply?: string;
   requestRaw?: string;
   skillId?: string;
@@ -956,6 +970,52 @@ export class AnimaAgent {
    * vista: prometer una cosecha de algo que no ve sería un plan sobre un
    * recuerdo, y para eso ya está el GPS.
    */
+  /**
+   * Qué la está ENCERRANDO (ADR 0066): un sólido que ve, que se puede romper, y
+   * que tiene detrás una celda del mapa donde nunca estuvo.
+   *
+   * Es la diferencia entre «no hay» y «hay pero no llego», que desde adentro de
+   * su cabeza se parecen. Buscó y no encontró; si además hay una pared tapando
+   * mundo sin pisar, lo que falta no es materia: es camino. La partida que lo
+   * motivó tenía una columna de muro sin abertura partiendo el mapa en dos, con
+   * toda la madera del otro lado.
+   *
+   * No toca lo que ella misma levanta —los bloques de sus obras— ni lo que no
+   * tiene con qué romper: para eso está el veredicto del propio golpe.
+   */
+  private frontierBlocker(perception: Perception): string | undefined {
+    const mine = new Set(perception.blueprints.flatMap((b) => b.placements.map((p) => p.kind)));
+    const visited = this.spatial.visits;
+    const bounds = perception.bounds;
+    if (!bounds) return undefined;
+    const hidesUnwalkedGround = (at: Vec2): boolean =>
+      [
+        { x: at.x + 1, y: at.y },
+        { x: at.x - 1, y: at.y },
+        { x: at.x, y: at.y + 1 },
+        { x: at.x, y: at.y - 1 },
+      ].some(
+        (cell) =>
+          cell.x >= 0 &&
+          cell.y >= 0 &&
+          cell.x < bounds.width &&
+          cell.y < bounds.height &&
+          !visited.has(`${cell.x},${cell.y}`),
+      );
+    const candidates = perception.visibleEntities.filter(
+      (entity) =>
+        entity.solid === true &&
+        entity.held !== true &&
+        entity.hardness !== undefined &&
+        !mine.has(entity.kind) &&
+        entity.position !== undefined &&
+        hidesUnwalkedGround(entity.position),
+    );
+    return candidates.sort(
+      (a, b) => (a.hardness ?? 0) - (b.hardness ?? 0) || (a.distance ?? 0) - (b.distance ?? 0),
+    )[0]?.kind;
+  }
+
   private harvestSourceFor(kind: string, perception: Perception): string | undefined {
     const sources = perception.visibleEntities.filter(
       (entity) =>
@@ -1066,6 +1126,11 @@ export class AnimaAgent {
       // tipos inventados antes de la recarga se quedaban sin cara para
       // siempre — nadie volvía a proponerlos nunca.
       pendingGlyphs: [...this.pendingGlyphs],
+      suspensionMaterials: [...this.suspensionMaterials.entries()].map(([goalId, kinds]) => ({
+        goalId,
+        kinds: [...kinds],
+        sinceTick: this.suspensionTick.get(goalId) ?? this.tick,
+      })),
       structureSites: [...this.structureSites.entries()].map(([goalId, site]) => ({
         goalId,
         blueprintId: site.blueprintId,
@@ -1087,6 +1152,12 @@ export class AnimaAgent {
     // restaura como lo que era, una mascota que aún no recordaba lugares.
     this.places.loadFrom(clone.places ?? { places: [] });
     this.pendingGlyphs = clone.pendingGlyphs ?? [];
+    this.suspensionMaterials = new Map(
+      (clone.suspensionMaterials ?? []).map((entry) => [entry.goalId, entry.kinds]),
+    );
+    this.suspensionTick = new Map(
+      (clone.suspensionMaterials ?? []).map((entry) => [entry.goalId, entry.sinceTick]),
+    );
     // Guardados anteriores al sitio fijo no lo traen: la obra elegirá uno la
     // próxima vez que la retome, como hacía siempre.
     this.structureSites = new Map(
@@ -4421,7 +4492,7 @@ export class AnimaAgent {
     options: {
       skillId?: string;
       rememberedPlaceId?: string;
-      purpose?: 'restore-energy' | 'be-safe';
+      purpose?: 'restore-energy' | 'be-safe' | 'open-path';
     } = {},
   ): void {
     this.emit('strategy.selected', { goalId: goal.id, strategy });
@@ -4450,6 +4521,30 @@ export class AnimaAgent {
 
     // La actividad terminó: comparar expectativa y realidad.
     this.activity = null;
+
+    // Abrirse paso no cumple ni fracasa el encargo (ADR 0066): es un rodeo. Se
+    // registra qué pasó y el objetivo sigue vivo — si el muro cayó, el próximo
+    // intento encuentra el material que antes no existía para ella; si no cayó,
+    // el rótulo queda prohibido y no se reintenta contra lo mismo.
+    if (activity.purpose === 'open-path') {
+      const abierto = out.result.outcome === 'completed';
+      // Se anota como cualquier otra estrategia: dos fracasos la prohiben, y
+      // eso es lo que evita golpear para siempre contra lo que no cede.
+      this.progress.record(activity.goalId, activity.strategy, abierto, out.result.reason);
+      // Solo se anuncia el fracaso cuando fracasó: un `strategy.failed` con el
+      // motivo en null al abrir el paso contaba una derrota que no ocurrió, y
+      // el registro técnico es lo que se lee para entender qué pasó.
+      if (!abierto) {
+        this.emit('strategy.failed', {
+          goalId: activity.goalId,
+          strategy: activity.strategy,
+          outcome: out.result.outcome,
+          reason: out.result.reason ?? null,
+        });
+      }
+      this.lastSelectedGoalId = null;
+      return null;
+    }
 
     if (activity.purpose === 'user-request') {
       // Terminar el programa no es terminar la OBRA (ADR 0059). Colocar cada
@@ -4512,6 +4607,26 @@ export class AnimaAgent {
         // vuelve sola cuando eso aparece. El programa de la obra ya es
         // reanudable: no recoloca lo que ya está puesto.
         const missingKinds = this.missingKindsForRequest(goal, perception);
+        // Buscó y no encontró. Antes de darlo por «no hay», mirar si lo que
+        // falta no es materia sino CAMINO (ADR 0066): una pared que tapa mundo
+        // sin pisar. Romperla no cumple el encargo —por eso no es su
+        // actividad— pero lo desatasca, y el próximo intento ya busca del otro
+        // lado. Si el rótulo está prohibido es que ya lo intentó y no cedió.
+        if (reason.startsWith('no-candidates') && missingKinds.length > 0 && goal) {
+          const blocker = this.frontierBlocker(perception);
+          const label = blocker ? `abrir-paso:${blocker}` : null;
+          if (blocker && label && !this.progress.isForbidden(activity.goalId, label)) {
+            this.reply(
+              `No encuentro ${displayKindList(missingKinds)} de este lado. ` +
+                `Voy a abrirme paso por ${kindWithArticle(blocker)}.`,
+            );
+            this.startActivity(goal, label, breakThroughProgram(blocker), perception, {
+              purpose: 'open-path',
+            });
+            this.lastSelectedGoalId = null;
+            return null;
+          }
+        }
         if (reason.startsWith('no-candidates') && missingKinds.length > 0) {
           // Lo que espera que APAREZCA no es lo que le falta, sino lo que le
           // falta CONSEGUIR: un pizarrón no aparece tirado, se fabrica con dos
@@ -4789,6 +4904,24 @@ export class AnimaAgent {
   private reviveSuppliedRequests(perception: Perception): void {
     for (const goal of this.goals.all()) {
       if (goal.status !== 'suspended') continue;
+      // Un guardado anterior al ADR 0066 no trae la lista de lo que esperaba:
+      // se rehace de la cuenta de siempre. Sin esto, todo encargo dormido en
+      // una partida vieja queda huérfano para siempre — que era exactamente el
+      // estado en el que estaba la escuela del cuidador al recargar.
+      if (
+        !this.suspensionMaterials.has(goal.id) &&
+        goal.source === 'user-request' &&
+        goal.suspendedReason === 'me quedé sin material a mitad del encargo'
+      ) {
+        const faltan = this.findableMaterialsFor(
+          this.missingKindsForRequest(goal, perception),
+          perception,
+        );
+        if (faltan.length > 0) {
+          this.suspensionMaterials.set(goal.id, faltan);
+          this.suspensionTick.set(goal.id, this.tick);
+        }
+      }
       const waitingFor = this.suspensionMaterials.get(goal.id);
       // Lo dejó por una urgencia del cuerpo (ADR 0048), no por falta de
       // materia: vuelve cuando el cuerpo sale del rojo. Sin esto, atender el

@@ -160,3 +160,79 @@ describe('un encargo sin material sale a buscarlo (ADR 0065)', () => {
     ).toBe(true);
   });
 });
+
+/**
+ * ADR 0066. Recargar la página no puede huerfanar un encargo dormido.
+ *
+ * `suspensionMaterials` —qué materia espera cada encargo suspendido— vivía solo
+ * en memoria. Al restaurar un guardado la lista llegaba vacía, y sin lista
+ * NINGÚN camino podía despertarlo: ni ver el material, ni recordarlo, ni salir
+ * a buscarlo. La escuela del cuidador quedó así, parada en una esquina.
+ */
+describe('un encargo dormido sobrevive a la recarga (ADR 0066)', () => {
+  async function suspendUntilGivenUp(
+    world: WorldState,
+    petId: EntityId,
+    agent: AnimaAgent,
+  ): Promise<void> {
+    for (let i = 0; i < 300; i++) {
+      const intent = await agent.think(buildPerception(world, petId));
+      agent.observe(stepWorld(world, intent ? [{ actorId: petId, intent }] : []));
+      const encargo = agent.goals.all().find((g) => g.userRequest?.kind === 'craft-item');
+      if (encargo?.status === 'suspended') return;
+    }
+  }
+
+  it('lo que esperaba viaja en el guardado', async () => {
+    const { world, petId } = emptyWorld();
+    const agent = makeAgent(petId);
+    agent.receiveUserMessage('construí una choza');
+    await suspendUntilGivenUp(world, petId, agent);
+
+    const guardado = agent.exportState();
+    expect(guardado.suspensionMaterials?.length).toBeGreaterThan(0);
+    expect(guardado.suspensionMaterials?.[0]?.kinds).toContain('log');
+  });
+
+  it('restaurado, sigue despertando y termina la obra', async () => {
+    const { world, petId } = emptyWorld();
+    const agent = makeAgent(petId);
+    agent.receiveUserMessage('construí una choza');
+    await suspendUntilGivenUp(world, petId, agent);
+
+    // La recarga: otro agente que arranca del guardado.
+    const otro = makeAgent(petId);
+    otro.importState(agent.exportState());
+    dropWoodFarAway(world);
+
+    const enPie = () =>
+      Object.values(world.entities).filter((e) => e.kind === 'muro' && e.components.position).length;
+    for (let i = 0; i < 900 && enPie() < 2; i++) {
+      const intent = await otro.think(buildPerception(world, petId));
+      otro.observe(stepWorld(world, intent ? [{ actorId: petId, intent }] : []));
+    }
+    expect(enPie()).toBe(2);
+  });
+
+  it('un guardado viejo, sin la lista, la rehace en vez de quedarse huérfano', async () => {
+    const { world, petId } = emptyWorld();
+    const agent = makeAgent(petId);
+    agent.receiveUserMessage('construí una choza');
+    await suspendUntilGivenUp(world, petId, agent);
+
+    // Exactamente lo que traía una partida guardada antes de este arreglo.
+    const viejo = agent.exportState();
+    delete viejo.suspensionMaterials;
+    const otro = makeAgent(petId);
+    otro.importState(viejo);
+    dropWoodFarAway(world);
+
+    const enPie = () =>
+      Object.values(world.entities).filter((e) => e.kind === 'muro' && e.components.position).length;
+    for (let i = 0; i < 900 && enPie() < 2; i++) {
+      const intent = await otro.think(buildPerception(world, petId));
+      otro.observe(stepWorld(world, intent ? [{ actorId: petId, intent }] : []));
+    }
+    expect(enPie()).toBe(2);
+  });
+});

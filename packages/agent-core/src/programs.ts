@@ -99,6 +99,53 @@ export const SHELTER_APPROACH_PROGRAM: SkillProgram = [
   { op: 'wait', ticks: 20 },
 ];
 
+/**
+ * Abrirse paso a golpes (ADR 0066): buscar la herramienta más fuerte y romper
+ * el obstáculo que la separa del resto del mundo.
+ *
+ * No es "destruir algo": es dejar de estar encerrada. Se usa cuando ya buscó y
+ * no encontró — la partida real que lo motivó tenía una columna de muro sin
+ * abertura partiendo el mapa en dos, con toda la madera del otro lado. Ella
+ * podía explorar para siempre: de su lado no había nada que encontrar.
+ *
+ * `kind` es el tipo del obstáculo, que el agente elige mirando cuál tapa
+ * espacio sin visitar. Golpear lo que uno mismo construyó ya lo impide la
+ * regla de no comerse lo hecho (ADR 0058), que se aplica al elegirlo.
+ */
+export function breakThroughProgram(kind: string): SkillProgram {
+  return [
+    { op: 'findEntities', query: { tool: true }, store: 'paso-herramientas' },
+    { op: 'selectTarget', from: 'paso-herramientas', strategy: 'strongestTool', store: 'paso-tool' },
+    {
+      op: 'branch',
+      if: { type: 'not', cond: { type: 'holding', target: 'paso-tool' } },
+      then: [
+        { op: 'moveToward', target: 'paso-tool', maxSteps: 40 },
+        { op: 'pickup', target: 'paso-tool' },
+      ],
+    },
+    { op: 'findEntities', query: { kind }, store: 'paso-obstaculos' },
+    { op: 'selectTarget', from: 'paso-obstaculos', strategy: 'nearest', store: 'paso-obstaculo' },
+    { op: 'moveToward', target: 'paso-obstaculo', maxSteps: 40 },
+    {
+      op: 'repeatWithLimit',
+      max: 20,
+      until: { type: 'entityGone', ref: 'paso-obstaculo' },
+      body: [
+        { op: 'useItem', item: 'paso-tool', target: 'paso-obstaculo' },
+        // Lo mismo que al destruir por encargo: si el golpe no hace mella, un
+        // intento ya lo prueba. Insistir veinte veces contra algo inmune es lo
+        // que la dejaba pegada.
+        {
+          op: 'branch',
+          if: { type: 'lastActionUnaffected' },
+          then: [{ op: 'abort', reason: 'obstaculo-inmune' }],
+        },
+      ],
+    },
+  ];
+}
+
 /** Buscar techo cuando no se ve ninguno. El último recurso antes de rendirse. */
 export const SEEK_SHELTER_PROGRAM: SkillProgram = [
   { op: 'explore', maxSteps: SEEK_MAX_STEPS, until: { type: 'sees', query: { shelter: true } } },
