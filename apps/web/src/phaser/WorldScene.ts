@@ -1,7 +1,8 @@
 import Phaser from 'phaser';
-import { kindLabel } from '@anima/shared';
 import type { EntityTraits, GameView } from '../session/view.js';
+import type { MatterLook } from './appearance.js';
 import { appearanceFor } from './appearance.js';
+import { GLYPH_SIZE, toneAt } from './matter.js';
 
 /** Celda de referencia: toda la geometría se define a esta escala y se reescala desde aquí. */
 export const BASE_CELL = 64;
@@ -89,6 +90,32 @@ export class WorldScene extends Phaser.Scene {
     graphics.setDepth(0);
   }
 
+  /**
+   * La textura de un glifo, pintada una sola vez por tipo. Son 256 casillas:
+   * dibujarlas como rectángulos sueltos serían 256 objetos por entidad y el
+   * tablero tiene muchas. Como textura es una imagen sola, y además la
+   * comparten todas las entidades del mismo tipo.
+   */
+  private matterTexture(kind: string, look: MatterLook): string | null {
+    const key = `matter:${kind}`;
+    if (this.textures.exists(key)) return key;
+    const canvas = this.textures.createCanvas(key, GLYPH_SIZE, GLYPH_SIZE);
+    if (!canvas) return null;
+    const ctx = canvas.getContext();
+    for (let y = 0; y < GLYPH_SIZE; y++) {
+      for (let x = 0; x < GLYPH_SIZE; x++) {
+        const color = toneAt(look.glyph, x, y, look.palette);
+        if (!color) continue;
+        ctx.fillStyle = color;
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    canvas.refresh();
+    // Sin esto el escalado interpola y el pixel art sale borroso.
+    canvas.setFilter(Phaser.Textures.FilterMode.NEAREST);
+    return key;
+  }
+
   private makeEntitySprite(kind: string, traits: EntityTraits): Phaser.GameObjects.Container {
     const k = this.cellScale;
     const container = this.add.container(0, 0);
@@ -97,24 +124,17 @@ export class WorldScene extends Phaser.Scene {
       const text = this.add.text(0, 0, look.emoji, { fontSize: `${Math.round(34 * k)}px` });
       text.setOrigin(0.5);
       container.add(text);
-    } else if (!look.labelled) {
+    } else if (look.as === 'block') {
       const rect = this.add.rectangle(0, 0, this.cell - 6 * k, this.cell - 6 * k, look.fill);
       rect.setStrokeStyle(2 * k, look.stroke);
       container.add(rect);
     } else {
-      // Último recurso: nada en el mundo se parece a esto. Un cuadrado con su
-      // nombre en voz humana ("tronco", no "log"), porque el tipo interno es
-      // un identificador y no significa nada para quien juega.
-      const rect = this.add.rectangle(0, 0, this.cell - 14 * k, this.cell - 14 * k, look.fill, 0.9);
-      rect.setStrokeStyle(2 * k, look.stroke);
-      const label = this.add.text(0, 0, kindLabel(kind), {
-        fontSize: `${Math.round(11 * k)}px`,
-        color: '#fef3c7',
-        align: 'center',
-        wordWrap: { width: this.cell - 18 * k },
-      });
-      label.setOrigin(0.5);
-      container.add([rect, label]);
+      const key = this.matterTexture(kind, look);
+      if (key) {
+        const image = this.add.image(0, 0, key);
+        image.setDisplaySize(this.cell - 6 * k, this.cell - 6 * k);
+        container.add(image);
+      }
     }
     container.setDepth(1);
     return container;

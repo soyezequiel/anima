@@ -1,4 +1,6 @@
 import type { EntityTraits } from '../session/view.js';
+import type { Glyph, Palette } from './matter.js';
+import { paletteFor, parseGlyph, patternFor } from './matter.js';
 
 /**
  * Qué aspecto tiene cada cosa. Es lógica pura y vive fuera de la escena: no
@@ -55,33 +57,61 @@ export function emojiFor(kind: string, traits: EntityTraits): string | undefined
 }
 
 /**
- * Cómo se ve algo cuando no hay emoji que lo explique: un bloque de color.
- * `labelled` distingue los dos casos, que no son el mismo — el muro es gris y
- * se reconoce solo; lo que no se parece a nada es ámbar y necesita decir su
- * nombre, porque el dibujo no lo dice.
+ * El muro: lo único que sigue siendo un bloque liso. Es pared del mundo, no
+ * una cosa que Ánima pueda juntar, y se reconoce solo sin decir su nombre.
  */
 export interface BlockLook {
   as: 'block';
   fill: number;
   stroke: number;
-  labelled: boolean;
 }
 
-export type Appearance = { as: 'emoji'; emoji: string } | BlockLook;
+/** Materia dibujada: una grilla de índices más la paleta que los resuelve. */
+export interface MatterLook {
+  as: 'matter';
+  glyph: Glyph;
+  palette: Palette;
+}
 
-const WALL_LOOK: BlockLook = { as: 'block', fill: 0x64748b, stroke: 0x334155, labelled: false };
-const UNKNOWN_LOOK: BlockLook = { as: 'block', fill: 0x92400e, stroke: 0xfbbf24, labelled: true };
+export type Appearance = { as: 'emoji'; emoji: string } | BlockLook | MatterLook;
+
+const WALL_LOOK: BlockLook = { as: 'block', fill: 0x64748b, stroke: 0x334155 };
 
 /**
  * El aspecto completo de una cosa. Vive acá y no en la escena porque el
  * tablero no es el único que dibuja: el catálogo de items muestra lo mismo, y
  * dos reglas separadas se irían despegando hasta que una cosa se viera de dos
  * maneras según dónde la mires.
+ *
+ * La cascada baja de lo más específico a lo más genérico y NUNCA se queda sin
+ * respuesta:
+ *
+ *   1. el muro, que es aparte;
+ *   2. el emoji, por nombre exacto o por lo que la cosa hace;
+ *   3. el glifo que dibujó la IA Dios, si validó;
+ *   4. materia procedural: paleta del material + patrón de la forma.
+ *
+ * El paso 4 no puede fallar, y por eso el cuadrado ámbar con el nombre escrito
+ * adentro ya no existe. Un objeto recién inventado se dibuja aunque la IA esté
+ * caída, aunque no tenga rasgos reconocibles y aunque nadie lo haya visto
+ * nunca: en el peor caso sale una masa de color estable, que sigue siendo un
+ * dibujo y no una disculpa.
  */
-export function appearanceFor(kind: string, traits: EntityTraits): Appearance {
+export function appearanceFor(
+  kind: string,
+  traits: EntityTraits,
+  /** Lo que la IA Dios dibujó para este tipo, si es que dibujó algo. */
+  glyph?: unknown,
+): Appearance {
   if (kind === 'wall') return WALL_LOOK;
   const emoji = emojiFor(kind, traits);
-  return emoji ? { as: 'emoji', emoji } : UNKNOWN_LOOK;
+  if (emoji) return { as: 'emoji', emoji };
+  const drawn = parseGlyph(glyph);
+  return {
+    as: 'matter',
+    glyph: drawn ?? patternFor(kind),
+    palette: paletteFor(kind),
+  };
 }
 
 /** El color de un bloque como lo escribe CSS (Phaser lo quiere en número). */
