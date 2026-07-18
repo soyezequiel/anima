@@ -122,6 +122,13 @@ const RECOVERED_NEED_FRACTION = 0.6;
  */
 const RETRY_SEARCH_TICKS = 120;
 /**
+ * Cuántas veces, como mucho, se abre paso a golpes por un mismo encargo (ADR
+ * 0067). Dos o tres aperturas alcanzan para cruzar un mapa partido; a partir de
+ * ahí, que la materia siga sin aparecer significa que el problema no era el
+ * camino, y seguir rompiendo es demoler el mundo por nada.
+ */
+const MAX_PATH_OPENINGS = 3;
+/**
  * Cuánto tiene que empeorar una necesidad del cuerpo, desde que se rindió, para
  * que vuelva a intentarlo sola (ADR 0046). Es una fracción del máximo: perder
  * otro 10% de calor después de haber dicho "no puedo" es información nueva
@@ -311,6 +318,12 @@ export interface AgentPersistentState {
    * ni volver a salir a buscarlo.
    */
   suspensionMaterials?: { goalId: string; kinds: string[]; sinceTick: number }[];
+  /**
+   * Cuántas veces se abrió paso por cada encargo (ADR 0068). Se guarda porque
+   * es un TOPE: en memoria, cada recarga lo volvía a cero y el límite dejaba de
+   * existir — cinco recargas son cinco veces el presupuesto de demolición.
+   */
+  pathOpenings?: { goalId: string; count: number }[];
 }
 
 /**
@@ -484,6 +497,14 @@ export class AnimaAgent {
    * el material aparezca solo delante de sus ojos.
    */
   private suspensionTick = new Map<string, number>();
+  /** Cuántas veces se abrió paso por cada encargo (ADR 0067): su tope. */
+  private pathOpenings = new Map<string, number>();
+  /**
+   * Lo último que pidió por cada encargo (ADR 0068). Pedir lo mismo cada dos
+   * minutos es ruido: se vuelve a pedir cuando la lista CAMBIA — porque
+   * consiguió parte, o porque ahora le falta otra cosa.
+   */
+  private lastAskedFor = new Map<string, string>();
   /**
    * Dónde quedó plantada cada obra, por objetivo (ADR 0049). Se elige una vez,
    * al empezar, y no se vuelve a mover: es lo que hace que retomar una obra sea
@@ -1126,6 +1147,7 @@ export class AnimaAgent {
       // tipos inventados antes de la recarga se quedaban sin cara para
       // siempre — nadie volvía a proponerlos nunca.
       pendingGlyphs: [...this.pendingGlyphs],
+      pathOpenings: [...this.pathOpenings.entries()].map(([goalId, count]) => ({ goalId, count })),
       suspensionMaterials: [...this.suspensionMaterials.entries()].map(([goalId, kinds]) => ({
         goalId,
         kinds: [...kinds],
@@ -1152,6 +1174,9 @@ export class AnimaAgent {
     // restaura como lo que era, una mascota que aún no recordaba lugares.
     this.places.loadFrom(clone.places ?? { places: [] });
     this.pendingGlyphs = clone.pendingGlyphs ?? [];
+    this.pathOpenings = new Map(
+      (clone.pathOpenings ?? []).map((entry) => [entry.goalId, entry.count]),
+    );
     this.suspensionMaterials = new Map(
       (clone.suspensionMaterials ?? []).map((entry) => [entry.goalId, entry.kinds]),
     );
@@ -4613,13 +4638,29 @@ export class AnimaAgent {
         // actividad— pero lo desatasca, y el próximo intento ya busca del otro
         // lado. Si el rótulo está prohibido es que ya lo intentó y no cedió.
         if (reason.startsWith('no-candidates') && missingKinds.length > 0 && goal) {
-          const blocker = this.frontierBlocker(perception);
+          // Lo que podría estar del otro lado es la materia ENCONTRABLE, no los
+          // bloques del plano (ADR 0066, adenda). Una encimera no aparece
+          // tirada detrás de una pared: se fabrica. Romper para buscarla es
+          // destruir el mundo persiguiendo algo que no está en ninguna parte —
+          // se la vio abriendo agujeros en loop «buscando un fogón de cocina».
+          const buscables = this.findableMaterialsFor(missingKinds, perception);
+          // Y con un TOPE por encargo (ADR 0067). Abrirse paso sirve para
+          // alcanzar territorio nuevo; si después de varias aperturas la
+          // materia sigue sin aparecer, el problema no era el camino y seguir
+          // rompiendo es demoler el mundo por nada. Se la vio abriendo agujeros
+          // en serie por una cocina que pedía ramas, en un mundo sin ramas.
+          //
+          // No alcanza con `isForbidden`: eso cuenta FRACASOS, y cada apertura
+          // salía bien. Lo que hay que limitar acá son los éxitos inútiles.
+          const abiertas = this.pathOpenings.get(activity.goalId) ?? 0;
+          const blocker = abiertas >= MAX_PATH_OPENINGS ? undefined : this.frontierBlocker(perception);
           const label = blocker ? `abrir-paso:${blocker}` : null;
           if (blocker && label && !this.progress.isForbidden(activity.goalId, label)) {
             this.reply(
-              `No encuentro ${displayKindList(missingKinds)} de este lado. ` +
+              `No encuentro ${displayKindList(buscables)} de este lado. ` +
                 `Voy a abrirme paso por ${kindWithArticle(blocker)}.`,
             );
+            this.pathOpenings.set(activity.goalId, abiertas + 1);
             this.startActivity(goal, label, breakThroughProgram(blocker), perception, {
               purpose: 'open-path',
             });
@@ -4651,9 +4692,50 @@ export class AnimaAgent {
             tick: this.tick,
             importance: 0.6,
           });
+          // Cuando no hay NINGUNA vía conocida para esa materia, decirlo (ADR
+          // 0067). El cuidador veía «me faltan 3 encimeras» y no tenía forma de
+          // saber que el problema real era que en ese mundo nada da ramas: la
+          // cocina era imposible y el mensaje sonaba a cuestión de tiempo.
+          //
+          // Se agrega al aviso, no lo reemplaza: la promesa de retomar sigue
+          // siendo cierta y es lo que el cuidador necesita oír. Y se dice en
+          // primera persona —«no veo de dónde sacar»— porque es un juicio sobre
+          // lo que ella sabe, no sobre el mundo: puede haber un arbusto del
+          // otro lado del mapa que todavía no vio.
+          // Y si no ve de dónde sacarlo, PEDIRLO (ADR 0068). Antes contaba el
+          // problema y se quedaba esperando; contar no es pedir, y el cuidador
+          // no tenía qué hacer con «me faltan 3 encimeras» —las encimeras no se
+          // consiguen, se fabrican—. Lo que se pide es la materia BASE y con
+          // cantidad: «14 ramas y 7 fibras» es algo que él puede traer.
+          // Pide lo que NO tiene forma de conseguir, no «todo o nada» (ADR
+          // 0068). A la cocina le faltaban ramas, fibra y pedernal: la fibra
+          // sale de un arbusto y el pedernal está tirado —esos los junta ella—,
+          // pero nada da ramas. Exigir que TODO fuera imposible para pedir era
+          // no pedir nunca: alcanza con que una pieza lo sea.
+          const pedido = goal
+            ? this.missingBaseMaterials(goal, perception).filter((m) =>
+                this.beyondHerWorld(m.kind, perception),
+              )
+            : [];
+          const lista = pedido.map((m) => countedKindLabel(m.kind, m.count)).join(', ');
+          // No repetir el mismo pedido en cada reintento: se pide cuando lo que
+          // necesita CAMBIA —porque consiguió parte, o porque ahora le falta
+          // otra cosa—. Repetirlo cada dos minutos era el ruido que hacía que
+          // el aviso dejara de leerse.
+          const pedirAhora = lista.length > 0 && this.lastAskedFor.get(activity.goalId) !== lista;
+          if (pedirAhora) {
+            this.lastAskedFor.set(activity.goalId, lista);
+            this.emit('help.requested', { goalId: activity.goalId });
+          }
+          // El pedido reemplaza SOLO el cierre, no la explicación: lo que viene
+          // antes es la cadena entera («2 paredes, 2 tablas, 1 tronco») que
+          // responde «por qué tanto», y es lo que vuelve entendible un costo
+          // grande. Se cambia la promesa vaga por una pregunta concreta.
           this.reply(
             `No pude completar eso: ${this.describeActivityFailure(reason, activity, perception)}. ` +
-              `Lo dejo a medias y sigo apenas consiga lo que falta.`,
+              (pedirAhora
+                ? `No veo de dónde sacarlo por acá — ¿me conseguís ${lista}? Lo retomo apenas lo tenga.`
+                : `Lo dejo a medias y sigo apenas consiga lo que falta.`),
           );
           this.lastSelectedGoalId = null;
           return null;
@@ -4880,6 +4962,63 @@ export class AnimaAgent {
    * Es la diferencia entre dormir esperando un pizarrón —que no va a aparecer
    * nunca, porque los pizarrones se hacen— y despertar cuando hay arcilla.
    */
+  /**
+   * ¿Su mundo tiene CON QUÉ dar esto? (ADR 0067)
+   *
+   * Materia que ninguna receta produce, que nada de lo que ve deja al
+   * romperse, que no recuerda haber visto y que no tiene delante. No es «no la
+   * encuentro»: es que no existe la forma de conseguirla.
+   *
+   * La partida que lo motivó tenía una cocina cuyas piezas pedían RAMAS, y en
+   * ese mundo el árbol da troncos, el arbusto fibra, la roca piedra — nada da
+   * ramas. Gastadas las tres iniciales, la cocina quedó imposible para siempre,
+   * y ella siguió buscando (y rompiendo paredes) sin final.
+   *
+   * Es un juicio sobre lo que SABE, no sobre el mundo: si mañana aparece una
+   * rama, el objetivo despierta igual. Por eso solo apaga la búsqueda, no el
+   * objetivo.
+   */
+  /**
+   * Cuánta materia BASE le falta para terminar el encargo (ADR 0068), ya
+   * sumada por tipo y descontando lo que lleva encima.
+   *
+   * Es lo que hace falta para poder PEDIR algo concreto. «Me faltan 3
+   * encimeras» no le sirve al cuidador: las encimeras no se consiguen, se
+   * fabrican. «Me faltan 14 ramas» sí — eso puede traerlo.
+   */
+  private missingBaseMaterials(goal: Goal, perception: Perception): { kind: string; count: number }[] {
+    const base = new Map<string, number>();
+    for (const need of this.neededCountsFor(goal, perception)) {
+      const faltan = need.need - need.have;
+      if (faltan <= 0) continue;
+      const recipe = recipeProducing(perception.recipes, need.kind);
+      if (!recipe) {
+        base.set(need.kind, (base.get(need.kind) ?? 0) + faltan);
+        continue;
+      }
+      for (const [kind, count] of expandRecipeCost(recipe, perception.recipes, { times: faltan })
+        .base) {
+        base.set(kind, (base.get(kind) ?? 0) + count);
+      }
+    }
+    // Lo que ya tiene en la mano no hace falta pedirlo.
+    for (const item of perception.self.heldItems) {
+      const tiene = base.get(item.kind);
+      if (tiene !== undefined) base.set(item.kind, tiene - 1);
+    }
+    return [...base]
+      .filter(([, count]) => count > 0)
+      .map(([kind, count]) => ({ kind, count }))
+      .sort((a, b) => b.count - a.count);
+  }
+
+  private beyondHerWorld(kind: string, perception: Perception): boolean {
+    if (recipeProducing(perception.recipes, kind)) return false;
+    if (this.harvestSourceFor(kind, perception)) return false;
+    if (this.places.recall({ kind }, perception).length > 0) return false;
+    return !perception.visibleEntities.some((e) => e.kind === kind && e.held !== true);
+  }
+
   private findableMaterialsFor(kinds: string[], perception: Perception): string[] {
     const found = new Set<string>();
     const walk = (kind: string, depth: number): void => {
@@ -4976,6 +5115,11 @@ export class AnimaAgent {
       // reintentar no es repetir: es salir a buscar de nuevo, con el mapa que
       // ya caminó. Rendirse para siempre por no haberlo encontrado una vez es
       // lo que la dejaba quieta con la obra a medias.
+      // El reintento NO se corta aunque hoy parezca imposible (ADR 0067): «no
+      // veo de dónde sacarlo» es un juicio sobre lo que sabe, y lo que sabe
+      // cambia — un mundo pelado hoy puede tener madera mañana porque el
+      // cuidador la trajo o porque algo se rompió. Volver a mirar cada dos
+      // minutos es barato; declararlo imposible y dejar de mirar, no.
       const retry =
         !arrived &&
         !remembered &&
