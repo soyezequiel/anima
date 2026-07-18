@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { kindLabel } from '@anima/shared';
 import { appearanceFor, emojiFor, hexColor } from '../src/phaser/appearance.js';
 import { GLYPH_SIZE, materialFor, paletteFor, parseGlyph, patternFor } from '../src/phaser/matter.js';
+import { skillDevLine, skillDevPurpose } from '../src/components/thinking.js';
 
 /**
  * Cómo se ve y cómo se llama una cosa. Dos reglas: el nombre interno nunca se
@@ -236,5 +237,48 @@ describe('de qué está hecho algo se sigue por sus recetas', () => {
       ['b', 'a'],
     ]);
     expect(materialFor('a', circular)).toBeUndefined();
+  });
+});
+
+/**
+ * El renglón del ciclo de aprendizaje (ADR 0060). Es el texto que acompaña al
+ * encabezado del pensamiento en vuelo, y los dos salen de relojes distintos:
+ * el encabezado del pedido al modelo, el renglón de los eventos del ciclo. Por
+ * eso cada fase tiene que decir SU momento sin ambigüedad — un renglón que
+ * sobrevive a su ciclo termina contradiciendo al encabezado.
+ */
+describe('el renglón del ciclo cuenta en qué va', () => {
+  const base = {
+    skillName: 'alcanzar-alimento-bloqueado',
+    purpose: 'llegar hasta el alimento aunque el camino esté bloqueado',
+    version: 1,
+    maxVersions: 8,
+    attemptsDone: 0,
+    casesTotal: 40,
+    lastRate: null,
+    bestRate: null,
+  };
+
+  it('nombra la habilidad en todas las fases, sin guiones', () => {
+    for (const phase of ['designing', 'testing', 'revising', 'passed'] as const) {
+      const line = skillDevLine({ ...base, phase });
+      expect(line).toContain('«alcanzar alimento bloqueado»');
+      expect(line).not.toContain('-');
+    }
+  });
+
+  it('cada fase dice su momento: diseñar, probar, corregir, pasar', () => {
+    expect(skillDevLine({ ...base, phase: 'designing' })).toContain('diseñando');
+    expect(skillDevLine({ ...base, phase: 'testing' })).toContain('40 mundos imaginados');
+    expect(skillDevLine({ ...base, phase: 'revising', lastRate: 0.5 })).toContain('logró 50%');
+    expect(skillDevLine({ ...base, phase: 'revising', lastRate: 0.5 })).toContain('corrigiendo');
+    expect(skillDevLine({ ...base, phase: 'passed', lastRate: 1 })).toContain('pasó con 100%');
+  });
+
+  it('el propósito se dice corto, y sin propósito no inventa nada', () => {
+    expect(skillDevPurpose({ ...base, phase: 'designing' })).toBe(
+      'para llegar hasta el alimento aunque el camino esté bloqueado',
+    );
+    expect(skillDevPurpose({ ...base, phase: 'designing', purpose: null })).toBeNull();
   });
 });

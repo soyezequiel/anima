@@ -877,3 +877,33 @@ button:active {
     border-color: var(--accent);
   }
 }
+
+/* Modo creativo (ADR 0061): cambia las reglas del mundo, así que se ve
+   encendido de un vistazo desde la barra. Apagado es un botón más; encendido
+   se enciende de verdad. */
+.creative-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel-2);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 120ms ease, border-color 120ms ease, background 120ms ease;
+}
+
+.creative-toggle:hover {
+  color: var(--text);
+  border-color: var(--accent);
+}
+
+.creative-toggle.active {
+  color: #fde68a;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}

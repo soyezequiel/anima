@@ -163,6 +163,8 @@ interface SessionUiState {
   petColor: string;
   /** Si el mock propone primero sus ideas equivocadas (ADR 0006, adenda). */
   mockImperfect?: boolean;
+  /** Modo creativo: el cuerpo siempre lleno (ADR 0061). */
+  creativeMode?: boolean;
 }
 
 /**
@@ -416,6 +418,12 @@ export class GameSession {
    * ciclo fallar→corregir ES la historia. Apagarlas es un modo de observación.
    */
   private mockImperfect = true;
+  /**
+   * Modo creativo (ADR 0061): el cuerpo se mantiene lleno. Apagado por
+   * defecto — el cuerpo que se vacía ES el motor de su autonomía, y encenderlo
+   * de fábrica volvería decorativas la mitad de sus conductas.
+   */
+  private creativeMode = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Paso en vuelo. Un stepOnce concurrente no se descarta: espera a que este
@@ -692,6 +700,7 @@ export class GameSession {
         ),
     );
     if (ui?.petColor !== undefined) this.petColor = ui.petColor;
+    if (ui?.creativeMode !== undefined) this.creativeMode = ui.creativeMode;
     if (ui?.mockImperfect !== undefined) {
       this.mockImperfect = ui.mockImperfect;
       if (this.provider instanceof MockModelProvider) {
@@ -747,6 +756,7 @@ export class GameSession {
         chat: this.chat.filter((entry) => !entry.ephemeral),
         petColor: this.petColor,
         mockImperfect: this.mockImperfect,
+        creativeMode: this.creativeMode,
       } satisfies SessionUiState,
       now: () => new Date().toISOString(),
     });
@@ -790,6 +800,38 @@ export class GameSession {
     this.petColor = color;
     this.rebuildView();
     this.notify();
+  }
+
+  /**
+   * Deja el cuerpo lleno: energía, salud y calor al máximo (ADR 0061).
+   *
+   * No apaga el desgaste del mundo —el mundo sigue siendo el mundo— sino que
+   * la repone. La diferencia importa: los eventos de daño y de frío se emiten
+   * igual, así que sus reflejos (apartarse del fuego) siguen funcionando; lo
+   * que no llega a pasar es que la carencia se vuelva urgencia.
+   */
+  private topUpVitals(): void {
+    if (!this.creativeMode) return;
+    const pet = getEntity(this.world, this.agent.petId);
+    if (!pet || pet.components.dead) return;
+    const { energy, health, temperature } = pet.components;
+    if (energy) energy.current = energy.max;
+    if (health) health.current = health.max;
+    if (temperature) temperature.current = temperature.max;
+  }
+
+  /**
+   * Enciende o apaga el modo creativo (ADR 0061). Al encenderlo repone en el
+   * acto: esperar al próximo tick dejaría las barras a medias justo cuando el
+   * cuidador acaba de pedir que estén llenas.
+   */
+  setCreativeMode(value: boolean): void {
+    if (this.creativeMode === value) return;
+    this.creativeMode = value;
+    this.topUpVitals();
+    this.rebuildView();
+    this.notify();
+    void this.save();
   }
 
   /**
@@ -923,6 +965,12 @@ export class GameSession {
       if (this.running) this.pause();
       return;
     }
+    // El relleno del modo creativo va ANTES que nada (ADR 0061): la percepción
+    // con la que va a pensar este tick se arma más abajo, y si el cuerpo
+    // todavía estuviera a medias, sentiría un hambre que ya no existe. Un
+    // mundo recién creado arranca con la energía baja a propósito, así que sin
+    // esto el primer tick del modo creativo ya le nacía el objetivo del cuerpo.
+    this.topUpVitals();
 
     // Con la mente afuera (pensamiento o práctica en vuelo), el paso respira
     // una macrotarea: las carreras contra timer 0 (ADR 0039/0043) y las
@@ -1081,7 +1129,13 @@ export class GameSession {
     intent: ActionIntent | null,
     agentEventStart: number | null,
   ): Promise<void> {
+    // Modo creativo (ADR 0061): el cuerpo se rellena a los dos lados del paso.
+    // ANTES, para que un solo tick no pueda matarla —el mundo emite `pet.died`
+    // dentro de `stepWorld` y rellenar después ya no lo desharía—. DESPUÉS,
+    // para que lo que perciba y piense el próximo tick sea un cuerpo entero.
+    this.topUpVitals();
     const events = stepWorld(this.world, intent ? [{ actorId: this.agent.petId, intent }] : []);
+    this.topUpVitals();
     this.agent.observe(events);
     this.ingestWorldEvents(events);
     this.ingestAgentEvents();
@@ -1486,7 +1540,18 @@ export class GameSession {
         break;
       }
       case 'skill.promoted':
-        dev.phase = 'passed';
+        // Promovida: el ciclo TERMINÓ (ADR 0060). Se limpia, igual que en la
+        // meseta y por el mismo motivo: este renglón cuenta lo que está
+        // pasando, y un ciclo cerrado ya no está pasando.
+        //
+        // Dejarlo puesto no era inofensivo. El encabezado sale del pensamiento
+        // en vuelo y el renglón de los eventos del ciclo: dos relojes. Con el
+        // estado viejo colgado, el ciclo SIGUIENTE mostraba su encabezado
+        // ("corrigiendo una habilidad que falló") al lado del "¡pasó con
+        // 100%!" del anterior, y quedaba diciendo que corregía algo que
+        // acababa de aprobar. El registro permanente del logro no se pierde:
+        // vive en la tarjeta de hito del chat, que sale de los eventos.
+        this.skillDev = null;
         break;
       case 'skill.rejected':
         // Programa inválido o repetido: vuelve al modelo sin gastar intento.
@@ -2051,6 +2116,7 @@ export class GameSession {
       // La preferencia viaja siempre, aunque el motor activo sea Codex: es del
       // cuidador, no del proveedor, y la UI necesita poder mostrarla apagada.
       mockImperfect: this.mockImperfect,
+      creativeMode: this.creativeMode,
       identity: {
         name: this.identity.name,
         generation: this.identity.generation,

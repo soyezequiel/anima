@@ -61,9 +61,16 @@ describe('GameSession (capa de sesión de la UI)', () => {
 
   it('expone los sueños y el progreso del ciclo de desarrollo al view model', async () => {
     const { session } = await makeSession(5);
+
     await runUntil(session, () => session.getView().storyCompleted);
 
     const view = session.getView();
+    // Terminado el ciclo, el renglón se apaga y lo que queda es el historial
+    // (ADR 0060). Antes esta prueba exigía lo contrario —que el estado siguiera
+    // ahí— y ese estado colgado era justo lo que ponía "corrigiendo una
+    // habilidad que falló" al lado del "¡pasó con 100%!" del ciclo anterior.
+    expect(view.skillDev).toBeNull();
+    expect(view.experiments.some((e) => e.kind === 'promoted')).toBe(true);
     // Cada caso evaluado dejó su mundo imaginado, el más nuevo primero: la
     // última versión probada (la v2 que pasó) encabeza la lista.
     expect(view.dreams.length).toBeGreaterThan(0);
@@ -73,13 +80,6 @@ describe('GameSession (capa de sesión de la UI)', () => {
     expect(dream.path.length).toBeGreaterThan(0);
     expect(dream.width).toBeGreaterThan(0);
 
-    // El ciclo quedó contado: la v1 falló (un intento gastado) y la v2 pasó.
-    expect(view.skillDev).not.toBeNull();
-    expect(view.skillDev!.phase).toBe('passed');
-    expect(view.skillDev!.version).toBe(2);
-    expect(view.skillDev!.attemptsDone).toBeGreaterThanOrEqual(1);
-    expect(view.skillDev!.maxVersions).toBeGreaterThan(0);
-    expect(view.skillDev!.casesTotal).toBeGreaterThan(0);
     session.dispose();
   });
 
@@ -1108,6 +1108,105 @@ describe('pensamiento en vivo en la sesión', () => {
     expect(work!.blocks).toHaveLength(1);
     expect(work!.blocks[0]).toMatchObject({ kind: 'muro-aula', count: 2 });
     session.dispose();
+  });
+
+  /**
+   * ADR 0060. El renglón del ciclo cuenta lo que está pasando; un ciclo
+   * cerrado ya no está pasando. Si el estado queda colgado, el ciclo siguiente
+   * muestra su encabezado ("corrigiendo una habilidad que falló") al lado del
+   * "¡pasó con 100%!" del anterior — dos relojes distintos contando como si
+   * fueran el mismo momento.
+   */
+  it('al promoverse una habilidad, el renglón del ciclo se apaga', async () => {
+    const { session } = await makeSession(5);
+    await runUntil(session, () => session.getView().skills.some((s) => s.status === 'stable'));
+
+    const view = session.getView();
+    // Hubo promoción de verdad...
+    expect(view.skills.some((s) => s.status === 'stable')).toBe(true);
+    // ...y el ciclo ya no se anuncia como en curso.
+    expect(view.skillDev).toBeNull();
+    // El logro no se pierde: queda en el historial de experimentos.
+    expect(view.experiments.some((e) => e.kind === 'promoted')).toBe(true);
+    session.dispose();
+  });
+
+  /**
+   * ADR 0061. El modo creativo mantiene el cuerpo lleno para poder construir y
+   * experimentar sin que el hambre o el frío la maten en el medio — que es
+   * exactamente lo que pasó varias veces mirando paneles.
+   */
+  describe('modo creativo', () => {
+    it('mantiene energía, salud y calor al máximo mientras el mundo avanza', async () => {
+      const { session } = await makeSession(5);
+      const world = (session as unknown as { world: WorldState }).world;
+      const petId = (session as unknown as { agent: { petId: string } }).agent.petId;
+      const pet = world.entities[petId]!;
+      // Un cuerpo ya castigado: el modo lo repara al encenderse, sin esperar.
+      pet.components.energy!.current = 4;
+      pet.components.health!.current = 2;
+
+      session.setCreativeMode(true);
+      expect(session.getView().creativeMode).toBe(true);
+      expect(session.getView().pet!.energy.current).toBe(pet.components.energy!.max);
+      expect(session.getView().pet!.health.current).toBe(pet.components.health!.max);
+
+      for (let i = 0; i < 60; i++) await session.stepOnce();
+
+      const view = session.getView();
+      expect(view.pet!.alive).toBe(true);
+      expect(view.pet!.energy.current).toBe(view.pet!.energy.max);
+      expect(view.pet!.health.current).toBe(view.pet!.health.max);
+      if (view.pet!.temperature) {
+        expect(view.pet!.temperature.current).toBe(view.pet!.temperature.max);
+      }
+      session.dispose();
+    });
+
+    /**
+     * El caso que motivó el modo: el frío la mata sola. Sin el modo, con el
+     * calor en cero la salud cae un punto por tick hasta la hipotermia — que
+     * es como murió la generación 3 mientras se revisaban paneles.
+     */
+    it('sobrevive a un frío que la estaría matando, y sin el modo no', async () => {
+      const congelar = async (creativo: boolean) => {
+        const { session } = await makeSession(5);
+        const world = (session as unknown as { world: WorldState }).world;
+        const petId = (session as unknown as { agent: { petId: string } }).agent.petId;
+        const pet = world.entities[petId]!;
+        if (!pet.components.temperature) return null;
+        if (creativo) session.setCreativeMode(true);
+        pet.components.temperature.current = 0;
+        pet.components.health!.current = 2;
+        for (let i = 0; i < 30; i++) await session.stepOnce();
+        const vivo = session.getView().pet!.alive;
+        session.dispose();
+        return vivo;
+      };
+
+      const conModo = await congelar(true);
+      const sinModo = await congelar(false);
+      // Solo tiene sentido comparar en un mundo con frío.
+      if (conModo === null || sinModo === null) return;
+      expect(sinModo).toBe(false);
+      expect(conModo).toBe(true);
+    });
+
+    it('apagado, el cuerpo sigue siendo mortal: el modo no es el estado normal', async () => {
+      const { session } = await makeSession(5);
+      const world = (session as unknown as { world: WorldState }).world;
+      const petId = (session as unknown as { agent: { petId: string } }).agent.petId;
+      const pet = world.entities[petId]!;
+      expect(session.getView().creativeMode).toBe(false);
+      pet.components.energy!.current = 3;
+
+      await session.stepOnce();
+      // Sin el modo, nadie la repone: la energía siguió su curso.
+      expect(session.getView().pet!.energy.current).toBeLessThan(
+        session.getView().pet!.energy.max,
+      );
+      session.dispose();
+    });
   });
 
   it('un fallo queda contado como error y la vista es una copia inmutable', async () => {

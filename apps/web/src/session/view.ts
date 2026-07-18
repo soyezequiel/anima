@@ -457,6 +457,11 @@ export interface GameView {
    * piense con Codex — quien decide si aplica es `aiProvider`.
    */
   mockImperfect: boolean;
+  /**
+   * Modo creativo (ADR 0061): el cuerpo se mantiene lleno para poder construir
+   * y experimentar sin que el hambre o el frío la maten en el medio.
+   */
+  creativeMode: boolean;
   identity: { name: string; generation: number; ancestorId: string | null };
   /** Informe de legado cuando la mascota está muerta; null en vida. */
   death: LegacyReport | null;

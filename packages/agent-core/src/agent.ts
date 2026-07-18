@@ -105,6 +105,15 @@ import { completionReply, programForUserRequest } from './user-request-programs.
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
 /**
+ * A partir de dónde una necesidad del cuerpo se da por SATISFECHA y su
+ * objetivo se cierra, aunque no lo haya resuelto ella (ADR 0062).
+ *
+ * Cómodamente por encima del umbral que la enciende (0.35) a propósito: con
+ * los dos en el mismo número, un cuerpo oscilando alrededor de la línea abriría
+ * y cerraría el objetivo cada tick. Esa distancia ES la histéresis.
+ */
+const RECOVERED_NEED_FRACTION = 0.6;
+/**
  * Cuánto tiene que empeorar una necesidad del cuerpo, desde que se rindió, para
  * que vuelva a intentarlo sola (ADR 0046). Es una fracción del máximo: perder
  * otro 10% de calor después de haber dicho "no puedo" es información nueva
@@ -751,6 +760,24 @@ export class AnimaAgent {
         });
       }
     }
+  }
+
+  /**
+   * ¿Quedó la obra a medias? (ADR 0059). Se pregunta al MUNDO —qué celdas del
+   * plano siguen vacías— y no al programa, que solo sabe si llegó al final de
+   * sus operaciones sin abortar.
+   *
+   * Solo aplica a los encargos que son obras: un «traé un tronco» no tiene
+   * celdas que revisar, y ahí terminar el programa sí es haberlo cumplido.
+   */
+  private unfinishedStructure(goalId: string, perception: Perception): boolean {
+    const goal = this.goals.get(goalId);
+    const recipeId = goal?.userRequest?.recipeId;
+    if (goal?.userRequest?.kind !== 'craft-item' || !recipeId) return false;
+    const blueprint = perception.blueprints.find((b) => b.id === recipeId);
+    const anchor = this.structureSites.get(goalId)?.anchor;
+    if (!blueprint || !anchor) return false;
+    return this.pendingPlacements(blueprint, anchor, perception).length > 0;
   }
 
   /**
@@ -1762,11 +1789,48 @@ export class AnimaAgent {
   // ---- señales internas ---------------------------------------------------
 
   private async processSignals(perception: Perception): Promise<void> {
+    // Lo primero: soltar lo que el cuerpo ya no pide. Va antes de interpretar
+    // señales para que un objetivo satisfecho no llegue a competir un tick más.
+    this.closeSatisfiedNeeds(perception);
     // El dolor primero: si está malherida junto a un peligro, entender el
     // hambre puede esperar un tick.
     await this.processPainSignal(perception);
     await this.processEnergySignal(perception);
     await this.processColdSignal(perception);
+  }
+
+  /**
+   * Cierra los objetivos del cuerpo cuya necesidad ya no existe (ADR 0062).
+   *
+   * Un objetivo del cuerpo nacía con la carencia pero solo se cerraba si lo
+   * resolvía ELLA: si el cuidador la alimentaba, o el sol la entibiaba, o el
+   * modo creativo le llenaba el cuerpo, «recuperar energía» seguía abierto —
+   * compitiendo en la fila y apareciendo en pantalla— por un hambre que ya no
+   * tenía. Sentir hambre sin tener hambre no es un objetivo: es un fantasma.
+   *
+   * La necesidad se da por satisfecha bien por encima del umbral que la
+   * enciende, para que un cuerpo en el borde no abra y cierre en bucle.
+   */
+  private closeSatisfiedNeeds(perception: Perception): void {
+    const satisfied = (description: string, level: { current: number; max: number } | undefined) => {
+      if (!level || level.max <= 0) return;
+      if (level.current / level.max < RECOVERED_NEED_FRACTION) return;
+      const open = this.goals.findOpen(description);
+      if (!open) return;
+      // Si está trabajando para eso AHORA, no se toca: el final de la
+      // actividad es donde ella aprende («consumir alimento recupera
+      // energía») y comparar lo que esperaba con lo que pasó. Cortarla a
+      // mitad porque el cuerpo ya se llenó le robaría justo la lección que
+      // fue a buscar — comer y no entender por qué se siente mejor.
+      if (this.activity?.goalId === open.id) return;
+      this.goals.complete(open.id);
+      this.progress.resetGoal(open.id);
+      this.suspensionMaterials.delete(open.id);
+      this.lastSelectedGoalId = null;
+      this.emit('goal.completed', { goalId: open.id, strategy: 'el cuerpo dejó de pedirlo' });
+    };
+    satisfied(GOAL_RESTORE_ENERGY, perception.self.energy);
+    satisfied(GOAL_RESTORE_WARMTH, perception.self.temperature ?? undefined);
   }
 
   /** Le duele meterse ahí: lo aprendió con su cuerpo («estar encima de...»). */
@@ -4307,7 +4371,14 @@ export class AnimaAgent {
     this.activity = null;
 
     if (activity.purpose === 'user-request') {
-      const success = out.result.outcome === 'completed';
+      // Terminar el programa no es terminar la OBRA (ADR 0059). Colocar cada
+      // bloque está protegido por «solo si de verdad lo tengo en la mano», así
+      // que cuando falta material las celdas se saltean y el programa llega al
+      // final sin abortar: "completado" describía la ejecución, no el mundo. Se
+      // la vio decir «Listo» con media escuela en pie.
+      const unfinished =
+        out.result.outcome === 'completed' && this.unfinishedStructure(activity.goalId, perception);
+      const success = out.result.outcome === 'completed' && !unfinished;
       if (success) {
         this.goals.complete(activity.goalId);
         this.destroyToolFloor.delete(activity.goalId);
@@ -4320,7 +4391,13 @@ export class AnimaAgent {
         });
         this.reply(activity.completionReply ?? 'Listo.');
       } else {
-        const reason = out.result.reason ?? out.result.outcome;
+        // Una obra a medias se cuenta como lo que es: se quedó sin material.
+        // Así entra por la misma puerta que ya sabe suspender con la lista de
+        // lo que falta y despertar cuando aparezca (ADR 0046), en vez de
+        // fracasar y cerrar el encargo para siempre.
+        const reason = unfinished
+          ? 'no-candidates:obra-incompleta'
+          : (out.result.reason ?? out.result.outcome);
         const goal = this.goals.get(activity.goalId);
         // "Muy duro" no es el final del pedido: es "me falta una herramienta más
         // fuerte". El objetivo sigue VIVO y el próximo tick intenta fabricarla —

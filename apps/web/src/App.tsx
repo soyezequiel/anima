@@ -137,6 +137,23 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           </span>
         )}
         <Controls session={session} view={view} />
+        {/* Modo creativo (ADR 0061). Va en la barra y no dentro de Ajustes
+            porque cambia las reglas del mundo mientras se juega: tiene que
+            verse encendido de un vistazo, no dos clics adentro de un menú. */}
+        <button
+          className={`creative-toggle${view.creativeMode ? ' active' : ''}`}
+          data-testid="creative-toggle"
+          role="switch"
+          aria-checked={view.creativeMode}
+          title={
+            view.creativeMode
+              ? 'Modo creativo encendido: su cuerpo se mantiene lleno'
+              : 'Modo creativo: mantiene energía, salud y calor al máximo'
+          }
+          onClick={() => session.setCreativeMode(!view.creativeMode)}
+        >
+          <span aria-hidden="true">✨</span> Creativo
+        </button>
         <SettingsMenu session={session} view={view} account={account} />
         <AccountBar account={account} />
         <button
