@@ -114,6 +114,13 @@ const LOW_TEMPERATURE_FRACTION = 0.35;
  */
 const RECOVERED_NEED_FRACTION = 0.6;
 /**
+ * Cada cuántos ticks un encargo que se quedó sin material vuelve a salir a
+ * buscarlo (ADR 0065). Suficiente para que no sea un bucle de reintentos —el
+ * programa explora hasta cincuenta pasos cada vez— y poco para que una obra a
+ * medias no se quede a medias para siempre.
+ */
+const RETRY_SEARCH_TICKS = 120;
+/**
  * Cuánto tiene que empeorar una necesidad del cuerpo, desde que se rindió, para
  * que vuelva a intentarlo sola (ADR 0046). Es una fracción del máximo: perder
  * otro 10% de calor después de haber dicho "no puedo" es información nueva
@@ -294,6 +301,8 @@ export interface AgentPersistentState {
    * se mudaría y dejaría sus bloques viejos tirados donde estaban.
    */
   structureSites?: { goalId: string; blueprintId: string; anchor: Vec2 }[];
+  /** Tipos que todavía espera dibujar (ADR 0064). Falta en guardados viejos. */
+  pendingGlyphs?: string[];
 }
 
 /**
@@ -455,6 +464,12 @@ export class AnimaAgent {
    * trajo— la obra se retoma sola desde donde quedó.
    */
   private suspensionMaterials = new Map<string, string[]>();
+  /**
+   * Cuándo se rindió cada encargo por falta de materia (ADR 0065). Es lo que
+   * permite volver a INTENTARLO al rato en vez de esperar para siempre a que
+   * el material aparezca solo delante de sus ojos.
+   */
+  private suspensionTick = new Map<string, number>();
   /**
    * Dónde quedó plantada cada obra, por objetivo (ADR 0049). Se elige una vez,
    * al empezar, y no se vuelve a mover: es lo que hace que retomar una obra sea
@@ -1046,6 +1061,11 @@ export class AnimaAgent {
       lastSelectedGoalId: this.lastSelectedGoalId,
       lastUserRequest: this.lastUserRequest,
       places: this.places.serialize(),
+      // La intención de dibujar también se guarda (ADR 0064). Era la única
+      // cola que vivía solo en memoria: recargar la página la borraba, y los
+      // tipos inventados antes de la recarga se quedaban sin cara para
+      // siempre — nadie volvía a proponerlos nunca.
+      pendingGlyphs: [...this.pendingGlyphs],
       structureSites: [...this.structureSites.entries()].map(([goalId, site]) => ({
         goalId,
         blueprintId: site.blueprintId,
@@ -1066,6 +1086,7 @@ export class AnimaAgent {
     // Un guardado anterior a la memoria de lugares llega sin el campo: se
     // restaura como lo que era, una mascota que aún no recordaba lugares.
     this.places.loadFrom(clone.places ?? { places: [] });
+    this.pendingGlyphs = clone.pendingGlyphs ?? [];
     // Guardados anteriores al sitio fijo no lo traen: la obra elegirá uno la
     // próxima vez que la retome, como hacía siempre.
     this.structureSites = new Map(
@@ -1313,6 +1334,58 @@ export class AnimaAgent {
    * saltea lo que ya está dibujado por si el tipo entró por dos caminos: la
    * cola es una intención, no una verdad, y la percepción manda sobre ella.
    */
+  /**
+   * Dibujar lo que TIENE A LA VISTA y todavía no tiene cara (ADR 0063).
+   *
+   * Es la misma puerta que `drawSomethingNew`, adelantada. Aquella espera un
+   * tick ocioso, y con eso alcanza para los tipos que aparecen mientras no
+   * pasa nada; pero los que nacen en medio de una obra —los muros de la
+   * escuela— no ven un tick ocioso en cientos de turnos. Justo lo que el
+   * cuidador está mirando levantarse era lo último en dejar de ser un bloque
+   * genérico.
+   *
+   * Dos condiciones para no romper la razón por la que dibujar iba último:
+   * que el tipo esté DELANTE de ella (si no se ve, puede esperar) y que el
+   * cuerpo no esté en rojo (el hambre y el frío siguen mandando).
+   */
+  /**
+   * Vuelve a poner en la cola tipos que quedaron sin dibujo (ADR 0064).
+   *
+   * La cola se llenaba solo en el instante en que el mundo aceptaba algo nuevo.
+   * Ese instante no vuelve: si se perdió —porque la cola no se guardaba, o
+   * porque el tipo lo inventó una antecesora y se heredó con el mundo— nadie
+   * volvía a proponer ese dibujo nunca. Quien sabe cuáles son «los inventados»
+   * es la app (el motor no distingue una receta de fábrica de una inventada),
+   * así que se lo pasa desde afuera.
+   */
+  requestGlyphsFor(kinds: readonly string[]): void {
+    for (const kind of kinds) {
+      if (!this.pendingGlyphs.includes(kind)) this.pendingGlyphs.push(kind);
+    }
+  }
+
+  private async drawWhatIsInSight(perception: Perception): Promise<ActionIntent | null> {
+    if (this.pendingGlyphs.length === 0 || this.bodyInTheRed(perception)) return null;
+    const atHand = (kind: string): boolean =>
+      perception.visibleEntities.some((e) => e.kind === kind) ||
+      perception.self.heldItems.some((e) => e.kind === kind);
+    for (let i = 0; i < this.pendingGlyphs.length; i++) {
+      const kind = this.pendingGlyphs[i]!;
+      // Ya dibujado por otra vía: sale de la cola sin gastar consulta.
+      if (perception.drawnKinds.includes(kind)) {
+        this.pendingGlyphs.splice(i, 1);
+        i -= 1;
+        continue;
+      }
+      if (!atHand(kind)) continue;
+      this.pendingGlyphs.splice(i, 1);
+      const intent = await this.invention.inventGlyph(kind, perception);
+      if (intent) return intent;
+      return null;
+    }
+    return null;
+  }
+
   private async drawSomethingNew(perception: Perception): Promise<ActionIntent | null> {
     while (this.pendingGlyphs.length > 0) {
       const kind = this.pendingGlyphs.shift();
@@ -1383,6 +1456,14 @@ export class AnimaAgent {
     // actividad se queda con el turno para siempre y las prioridades declaradas
     // no llegan a compararse nunca.
     this.yieldActivityToUrgentNeed(perception);
+    // Ponerle cara a lo que ya está DELANTE de los ojos (ADR 0063). Un tipo
+    // nuevo se dibujaba solo en los ticks ociosos, y construyendo una escuela
+    // no hay ninguno: lo que el cuidador está mirando levantarse era
+    // justamente lo que más tardaba en tener dibujo. Cuesta un tick, una vez
+    // por tipo, contra los cientos que dura una obra — y no se cobra nunca con
+    // el cuerpo en rojo.
+    const sketch = await this.drawWhatIsInSight(perception);
+    if (sketch) return sketch;
     if (this.activity) return this.continueActivity(perception);
 
     const goal = this.goals.selectActive();
@@ -4443,6 +4524,7 @@ export class AnimaAgent {
             `aparezca ${displayKindList(waitingFor)}`,
           );
           this.suspensionMaterials.set(activity.goalId, waitingFor);
+          this.suspensionTick.set(activity.goalId, this.tick);
           this.destroyToolFloor.delete(activity.goalId);
           this.emit('goal.suspended', {
             goalId: activity.goalId,
@@ -4750,13 +4832,33 @@ export class AnimaAgent {
             (e) => e.kind === kind && e.held !== true && e.portable === true,
           ),
         );
-      if (!arrived) continue;
+      // O lo RECUERDA: vio ese material antes, en un lugar al que sabe volver
+      // (ADR 0065). Esperar a verlo desde donde está parada convierte la
+      // memoria de lugares en adorno — y la deja en una esquina esperando un
+      // tronco que está a diez celdas, del otro lado del mapa.
+      const remembered =
+        !arrived && stillMissing.some((kind) => this.places.recall({ kind }, perception).length > 0);
+      // Y si ni lo ve ni lo recuerda, igual vuelve a INTENTARLO cada tanto. El
+      // programa del encargo explora antes de darse por vencido, así que
+      // reintentar no es repetir: es salir a buscar de nuevo, con el mapa que
+      // ya caminó. Rendirse para siempre por no haberlo encontrado una vez es
+      // lo que la dejaba quieta con la obra a medias.
+      const retry =
+        !arrived &&
+        !remembered &&
+        this.tick - (this.suspensionTick.get(goal.id) ?? this.tick) >= RETRY_SEARCH_TICKS;
+      if (!arrived && !remembered && !retry) continue;
       this.goals.reactivate(goal.id);
       this.progress.resetGoal(goal.id);
-      this.suspensionMaterials.delete(goal.id);
+      this.suspensionTick.set(goal.id, this.tick);
+      if (arrived) this.suspensionMaterials.delete(goal.id);
       this.emit('goal.reactivated', {
         goalId: goal.id,
-        reason: 'apareció el material que faltaba',
+        reason: arrived
+          ? 'apareció el material que faltaba'
+          : remembered
+            ? 'recordó dónde había de lo que le falta'
+            : 'vuelve a salir a buscar lo que le falta',
       });
     }
   }

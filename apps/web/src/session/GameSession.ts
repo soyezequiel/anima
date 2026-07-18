@@ -474,6 +474,10 @@ export class GameSession {
         tick: session.world.tick,
       });
     }
+    // Lo inventado que quedó sin cara vuelve a la cola de dibujos (ADR 0064):
+    // vale tanto para lo que se perdió al recargar como para lo que su mundo
+    // heredó ya inventado de una antecesora.
+    session.agent.requestGlyphsFor(session.undrawnInventedKinds());
     session.legacyCount = (await loadLegacies(session.store)).length;
     session.rebuildView();
     if (options.autostart !== false && !session.deathReport) session.start();
@@ -1783,6 +1787,27 @@ export class GameSession {
       cells: planned.cells,
       remaining: planned.cells.filter((cell) => !cell.done).length,
     }));
+  }
+
+  /**
+   * Los tipos que su mundo inventó y todavía no tienen dibujo (ADR 0064).
+   *
+   * Quién es «inventado» lo sabe la app y no el motor: la diferencia es estar
+   * o no en `MVP_RECIPES`. Se le pasan al agente al cargar para que la cola de
+   * dibujos se rearme sola — lo que ella inventó en otra sesión, o lo que
+   * heredó del mundo de una antecesora, sigue mereciendo su cara.
+   */
+  private undrawnInventedKinds(): string[] {
+    const baseIds = new Set(MVP_RECIPES.map((recipe) => recipe.id));
+    const drawn = new Set(Object.keys(this.world.glyphs));
+    const pending = new Set<string>();
+    for (const recipe of this.world.recipes) {
+      if (baseIds.has(recipe.id)) continue;
+      for (const kind of recipeProductKinds(recipe)) {
+        if (!drawn.has(kind)) pending.add(kind);
+      }
+    }
+    return [...pending];
   }
 
   private itemViews(): ItemView[] {
