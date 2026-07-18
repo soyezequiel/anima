@@ -14,15 +14,17 @@ type Archetype = NonNullable<RecipeOutcome['output']>;
  *   salir pobre. Fallar cuesta la madera pero nunca el pedernal: una piedra no
  *   se gasta porque la chispa no agarre, así que el fuego siempre se puede
  *   volver a intentar. Es la diferencia entre un fallo y un castigo.
- * - La carpintería siempre sale. Lo que varía es cuán bien: la misma silla
- *   puede quedar firme o renga según cómo vino la madera. No hay desenlace
- *   fallido porque no hay nada que pueda no ocurrir — la madera ya está ahí.
+ * - Dar forma siempre sale. Lo que varía es cuán bien: la misma silla puede
+ *   quedar firme o renga según cómo vino la madera. No hay desenlace fallido
+ *   porque no hay nada que pueda no ocurrir — la materia ya está ahí. Vale
+ *   igual para la madera, la piedra y el barro: no es el oficio del carpintero,
+ *   es el de cualquiera que trabaja algo que ya tiene en la mano.
  *
  * Fabricar algo dos veces con lo mismo en la mano da dos objetos distintos, y
  * la misma semilla los repite clavados.
  */
 const LIGHTING_QUALITY = { good: { min: 0.9, max: 1.15 }, poor: { min: 0.55, max: 0.85 } };
-const CARPENTRY_QUALITY = { good: { min: 0.9, max: 1.2 }, poor: { min: 0.6, max: 0.85 } };
+const SHAPING_QUALITY = { good: { min: 0.9, max: 1.2 }, poor: { min: 0.6, max: 0.85 } };
 
 /** Enciende: casi siempre agarra, a veces flojo, cada tanto nada. */
 function lightingOutcomes(
@@ -36,11 +38,11 @@ function lightingOutcomes(
   ];
 }
 
-/** Carpintea: siempre sale algo, y de ahí para abajo es cuestión de suerte. */
-function carpentryOutcomes(output: Archetype): RecipeOutcome[] {
+/** Da forma: siempre sale algo, y de ahí para abajo es cuestión de suerte. */
+function shapingOutcomes(output: Archetype): RecipeOutcome[] {
   return [
-    { weight: 6, output, quality: CARPENTRY_QUALITY.good },
-    { weight: 4, output: structuredClone(output), quality: CARPENTRY_QUALITY.poor },
+    { weight: 6, output, quality: SHAPING_QUALITY.good },
+    { weight: 4, output: structuredClone(output), quality: SHAPING_QUALITY.poor },
   ];
 }
 
@@ -50,9 +52,9 @@ function carpentryOutcomes(output: Archetype): RecipeOutcome[] {
  * que la mascota no siempre tiene, y por el que tiene que pedir ayuda.
  *
  * Una fogata pobre calienta la mitad pero alcanza igual de lejos: el alcance
- * es la forma del fuego, no su calidad. Y como el daño no se gradúa, arrimarse
- * a una fogata mala quema exactamente igual que a una buena — la mala decisión
- * de pegarse al fuego cuesta lo mismo, salga como salga.
+ * es la forma del fuego, no su calidad. Y como el daño no se gradúa, meterse
+ * en una fogata mala quema exactamente igual que en una buena — la mala
+ * decisión de pisar el fuego cuesta lo mismo, salga como salga.
  */
 export const CAMPFIRE_RECIPE: Recipe = {
   id: 'campfire',
@@ -86,7 +88,7 @@ export const CAMPFIRE_RECIPE: Recipe = {
  */
 export const CHAIR_RECIPE: Recipe = {
   id: 'chair',
-  outcomes: carpentryOutcomes({
+  outcomes: shapingOutcomes({
     kind: 'chair',
     components: {
       collider: { solid: true },
@@ -126,26 +128,42 @@ export const TORCH_RECIPE: Recipe = {
 };
 
 /**
- * La empalizada: un muro que se fabrica. Devuelve un tronco al romperse
- * (menos de lo que costó: la materia no crece) y es más blanda que el muro
- * de piedra — la rama no la daña, el martillo sí.
+ * La muralla: el muro de verdad, el que se levanta con ladrillos. Es más dura
+ * que el muro de piedra del mundo (6 contra 5) y devuelve un ladrillo al
+ * romperse — menos de los dos que costó, porque la materia no crece.
  *
- * Con la tirada, "más blanda que el muro" dejó de ser un número y pasó a ser
- * un rango: una empalizada floja (dureza ~1.8) cede ante cosas que una firme
- * (~3.6) aguanta.
+ * Era una empalizada de dos troncos, y era el problema: costaba lo mismo que
+ * la silla, bloqueaba igual y aguantaba un poco más. O sea, una silla mejor.
+ * Dos recetas que se pisan no son dos decisiones, son una decisión y un
+ * error de diseño.
+ *
+ * Hecha de ladrillos deja de pisarse con nada y, sobre todo, se convierte en
+ * el primer árbol de crafteo de dos capas que el mundo trae de fábrica: la
+ * muralla cuesta ladrillos, que cuestan arcilla. Nadie declara que la muralla
+ * vale cuatro arcillas — se deriva (ADR 0031), que es exactamente lo que ese
+ * ADR vino a habilitar y hasta hoy ninguna receta semilla ejercía.
  */
 export const BARRICADE_RECIPE: Recipe = {
   id: 'barricade',
-  outcomes: carpentryOutcomes({
+  outcomes: shapingOutcomes({
     kind: 'barricade',
     components: {
       collider: { solid: true },
-      hardness: { value: 3 },
-      durability: { current: 8, max: 8 },
-      drops: [{ kind: 'log', components: { portable: {} } }],
+      hardness: { value: 6 },
+      durability: { current: 14, max: 14 },
+      drops: [
+        {
+          kind: 'brick',
+          components: {
+            portable: {},
+            hardness: { value: 6 },
+            durability: { current: 6, max: 6 },
+          },
+        },
+      ],
     },
   }),
-  ingredients: [{ kind: 'log', count: 2 }],
+  ingredients: [{ kind: 'brick', count: 2 }],
 };
 
 /**
@@ -161,7 +179,7 @@ export const BARRICADE_RECIPE: Recipe = {
  */
 export const SHELTER_RECIPE: Recipe = {
   id: 'shelter',
-  outcomes: carpentryOutcomes({
+  outcomes: shapingOutcomes({
     kind: 'shelter',
     components: {
       shelter: { range: 1 },
@@ -178,9 +196,56 @@ export const SHELTER_RECIPE: Recipe = {
 };
 
 /**
+ * El pico de piedra: el escalón que faltaba entre la rama (poder 1, apenas
+ * araña) y el martillo (poder 8, regalo del mundo que no se puede rehacer).
+ * Es la primera receta que mezcla los tres reinos —piedra, madera, fibra— y
+ * por eso el ejemplo del que Ánima puede aprender que los materiales se
+ * combinan por lo que son, no por lo que se llaman.
+ *
+ * Con la tirada, el poder sale del rango: un pico firme (≥6) abre la veta de
+ * mineral (dureza 7); uno flojo no le hace mella y solo sirve para picar
+ * rocas. La misma receta puede darte la llave del metal o un palo con punta.
+ */
+export const STONE_PICK_RECIPE: Recipe = {
+  id: 'stone-pick',
+  outcomes: shapingOutcomes({
+    kind: 'stone-pick',
+    components: {
+      portable: {},
+      tool: { power: 6 },
+      durability: { current: 12, max: 12 },
+    },
+  }),
+  ingredients: [
+    { kind: 'stone', count: 1 },
+    { kind: 'branch', count: 1 },
+    { kind: 'fiber', count: 1 },
+  ],
+};
+
+/**
+ * El ladrillo: arcilla moldeada en materia dura. No hace nada solo — es
+ * materia intermedia a propósito: más duro que la empalizada (6 contra ~3),
+ * existe para que las ideas futuras (un muro propio, un horno) tengan un
+ * bloque del que apoyarse. Moldear no es encender: siempre sale algo.
+ */
+export const BRICK_RECIPE: Recipe = {
+  id: 'brick',
+  outcomes: shapingOutcomes({
+    kind: 'brick',
+    components: {
+      portable: {},
+      hardness: { value: 6 },
+      durability: { current: 6, max: 6 },
+    },
+  }),
+  ingredients: [{ kind: 'clay', count: 2 }],
+};
+
+/**
  * Lo que el mundo del MVP admite construir. Estilo Doodle God: los mismos
- * materiales base (troncos, pedernal) combinan en cosas distintas, y gastarlos
- * en una es no tenerlos para otra.
+ * materiales base (troncos, pedernal, piedra, fibra, arcilla) combinan en
+ * cosas distintas, y gastarlos en una es no tenerlos para otra.
  */
 export const MVP_RECIPES: Recipe[] = [
   CAMPFIRE_RECIPE,
@@ -188,6 +253,8 @@ export const MVP_RECIPES: Recipe[] = [
   TORCH_RECIPE,
   BARRICADE_RECIPE,
   SHELTER_RECIPE,
+  STONE_PICK_RECIPE,
+  BRICK_RECIPE,
 ];
 
 /**
@@ -265,6 +332,148 @@ function spawnFlint(world: WorldState, pos: Vec2): void {
   });
 }
 
+/**
+ * La piedra: materia base del oficio duro. Como el pedernal, se puede picar
+ * (dureza 4, un punto más: es piedra entera, no una esquirla) — sin
+ * `durability` sería indestructible y "romper la piedra" un pedido imposible.
+ */
+function spawnStone(world: WorldState, pos: Vec2): void {
+  spawn(world, 'stone', {
+    position: pos,
+    portable: {},
+    hardness: { value: 4 },
+    durability: { current: 4, max: 4 },
+  });
+}
+
+/** La fibra: blanda, liviana, lo que ata. No resiste nada — no lo necesita. */
+function spawnFiber(world: WorldState, pos: Vec2): void {
+  spawn(world, 'fiber', { position: pos, portable: {} });
+}
+
+/** La arcilla: barro moldeable. Vive junto al agua, que es donde se forma. */
+function spawnClay(world: WorldState, pos: Vec2): void {
+  spawn(world, 'clay', { position: pos, portable: {} });
+}
+
+/**
+ * El barrial: la orilla de la que sale arcilla, y la única materia del mundo
+ * que se junta sin romper nada — no es sólido, no tiene durabilidad, solo
+ * rezuma. Existe porque la muralla cuesta 2 ladrillos = 4 arcillas, y con
+ * arcilla suelta y nada que la reponga esa receta habría nacido muerta: se
+ * podría construir una muralla en la vida del mundo y ninguna más.
+ *
+ * Su reloj (550) va después de todos los otros (ramas 350, comida 400, fibra
+ * 450, resina 500) para que las fuentes no se peleen por las celdas libres, y
+ * muy lejos de los 200 ticks de una evaluación.
+ */
+function spawnClayPit(world: WorldState, pos: Vec2): void {
+  spawn(world, 'clay-pit', {
+    position: pos,
+    itemSource: {
+      intervalTicks: 550,
+      nextSpawnAtTick: 550,
+      output: { kind: 'clay', components: { portable: {} } },
+    },
+  });
+}
+
+/** La resina: savia del pino. Combustible y pegamento en potencia. */
+function spawnResin(world: WorldState, pos: Vec2): void {
+  spawn(world, 'resin', { position: pos, portable: {} });
+}
+
+/**
+ * La roca: de dónde sale la piedra. Sólida pero blanda (dureza 2): la rama la
+ * pica despacio (daño 1 por golpe), el martillo o un buen pico de un golpe.
+ * Es el primer peldaño de la escalera: picar rocas con lo que hay para
+ * hacerse la herramienta que abre lo que hay después.
+ */
+function spawnRock(world: WorldState, pos: Vec2): void {
+  const stone = { portable: {}, hardness: { value: 4 }, durability: { current: 4, max: 4 } };
+  spawn(world, 'rock', {
+    position: pos,
+    collider: { solid: true },
+    hardness: { value: 2 },
+    durability: { current: 6, max: 6 },
+    drops: [
+      { kind: 'stone', components: structuredClone(stone) },
+      { kind: 'stone', components: structuredClone(stone) },
+    ],
+  });
+}
+
+/**
+ * El arbusto: la fuente renovable de fibra, como el árbol lo es de ramas. No
+ * es sólido (se pisa, no se choca) y cede a cualquier herramienta: arrancarlo
+ * da fibra ya, dejarlo da fibra para siempre — la misma decisión que talar o
+ * no talar, en chico. Su primer brote (450) queda fuera del horizonte de una
+ * evaluación (200) y no compite con los ticks del árbol (350/400).
+ */
+function spawnBush(world: WorldState, pos: Vec2): void {
+  const fiber = { portable: {} };
+  spawn(world, 'bush', {
+    position: pos,
+    durability: { current: 2, max: 2 },
+    itemSource: {
+      intervalTicks: 450,
+      nextSpawnAtTick: 450,
+      output: { kind: 'fiber', components: structuredClone(fiber) },
+    },
+    drops: [
+      { kind: 'fiber', components: structuredClone(fiber) },
+      { kind: 'fiber', components: structuredClone(fiber) },
+    ],
+  });
+}
+
+/**
+ * El pino: el árbol de la resina. Tan duro de talar como el árbol común, pero
+ * lo que gotea es distinto: resina en vez de ramas, y sin alimento — elegir
+ * qué árbol respetar dejó de ser una sola pregunta. Su primer brote (500) es
+ * posterior a cualquier evaluación y distinto de todos los demás relojes.
+ */
+function spawnPine(world: WorldState, pos: Vec2): void {
+  const resin = { portable: {} };
+  spawn(world, 'pine', {
+    position: pos,
+    collider: { solid: true },
+    hardness: { value: 5 },
+    durability: { current: 15, max: 15 },
+    itemSource: {
+      intervalTicks: 500,
+      nextSpawnAtTick: 500,
+      output: { kind: 'resin', components: structuredClone(resin) },
+    },
+    drops: [
+      { kind: 'log', components: { portable: {} } },
+      { kind: 'log', components: { portable: {} } },
+      { kind: 'resin', components: structuredClone(resin) },
+    ],
+  });
+}
+
+/**
+ * La veta: el mineral que todavía no se puede tener. Dureza 7: la rama y un
+ * pico flojo no le hacen mella; el martillo (poder 8) y un pico bien salido
+ * (≥6 de tirada, con la fuerza de la mascota) sí. Es el techo de la escalera
+ * del MVP — el mineral que suelta no tiene receta que lo use, y eso también
+ * es a propósito: materia para las ideas que Ánima todavía no tuvo.
+ */
+function spawnVein(world: WorldState, pos: Vec2): void {
+  const ore = { portable: {}, hardness: { value: 6 }, durability: { current: 5, max: 5 } };
+  spawn(world, 'vein', {
+    position: pos,
+    collider: { solid: true },
+    hardness: { value: 7 },
+    durability: { current: 9, max: 9 },
+    drops: [
+      { kind: 'ore', components: structuredClone(ore) },
+      { kind: 'ore', components: structuredClone(ore) },
+    ],
+  });
+}
+
 function spawnBranch(world: WorldState, pos: Vec2): void {
   spawn(world, 'branch', {
     position: pos,
@@ -274,12 +483,24 @@ function spawnBranch(world: WorldState, pos: Vec2): void {
   });
 }
 
+/**
+ * El martillo: una reliquia gastada, no un regalo eterno. Sigue siendo la
+ * herramienta más fuerte del mundo (poder 8), pero llega con 8 usos de los 20
+ * que tuvo: alcanza para romper el muro (2 golpes) y talar un árbol (3), que
+ * son las dos historias que este mundo cuenta, y no mucho más.
+ *
+ * Que venga entero era una decisión de cuando no había forma de fabricarse una
+ * herramienta fuerte: con el martillo perfecto tirado en el piso, hacerse un
+ * pico (poder 6) es trabajar para conseguir algo peor, y toda la escalera de
+ * piedra queda de adorno. Gastado, el martillo pasa de ser LA solución a ser
+ * la ayuda del principio — y lo que venga después hay que ganárselo.
+ */
 function spawnHammer(world: WorldState, pos: Vec2): void {
   spawn(world, 'hammer', {
     position: pos,
     portable: {},
     tool: { power: 8 },
-    durability: { current: 20, max: 20 },
+    durability: { current: 8, max: 20 },
   });
 }
 
@@ -391,15 +612,54 @@ export const foodBehindWall: ScenarioSpec = {
     // lado de la comida, y su movimiento es voraz, no un pathfinding — un
     // material inalcanzable detrás del muro sería un pedido que acepta y
     // nunca cumple.
+    // Dos troncos por lado, que es exactamente lo que cuesta UNA fogata: con
+    // lo tirado se enciende un fuego, y para el refugio (3) o un segundo fuego
+    // hay que talar o esperar las ramas. Eran tres por lado, de cuando la
+    // madera no se renovaba; con árboles que sueltan ramas solos, alfombrar el
+    // piso de troncos vaciaba la decisión de talar o cuidar.
     spawnLog(world, { x: 1, y: 6 });
-    spawnLog(world, { x: 3, y: 6 });
     spawnLog(world, { x: 0, y: 4 });
     spawnFlint(world, { x: 3, y: 0 });
     spawnFlint(world, { x: 1, y: 0 });
     spawnLog(world, { x: 11, y: 2 });
     spawnLog(world, { x: 8, y: 5 });
-    spawnLog(world, { x: 10, y: 0 });
     spawnFlint(world, { x: 12, y: 4 });
+
+    // Las materias nuevas, repartidas con la misma regla que las viejas: hay
+    // en ambos lados del muro, y las fuentes sólidas van en bordes y esquinas
+    // para no cerrar ningún camino (el corredor y=3 queda siempre libre).
+    //
+    // El taller (x<5) tiene piedra, fibra y rama sueltas: el pico de piedra
+    // se puede estrenar sin cruzar el muro. La arcilla no — vive junto al
+    // estanque, del lado de la comida, porque el barro se forma donde hay
+    // agua: el ladrillo cuesta el viaje.
+    // Una sola piedra suelta, en el taller: alcanza para estrenar el primer
+    // pico sin minar. Del lado de la comida no hay ninguna a propósito — ahí
+    // está la roca de (10,5), y conseguir la segunda piedra es picarla.
+    spawnStone(world, { x: 4, y: 0 });
+    // La fibra suelta va a MÁS de 2 celdas de su arbusto: a esa distancia la
+    // fuente se cree saturada (regla de itemSource) y no brota nunca.
+    spawnFiber(world, { x: 3, y: 2 });
+    spawnFiber(world, { x: 10, y: 4 });
+    // Las dos arcillas sueltas alcanzan para UN ladrillo; la muralla cuesta
+    // dos. La diferencia la pone el barrial, y por eso las sueltas van a más
+    // de 2 celdas de él: pegadas, la fuente se creería saturada y no rezumaría
+    // nunca (la misma regla de `itemSource` que ordena la fibra).
+    spawnClay(world, { x: 6, y: 1 });
+    spawnClay(world, { x: 12, y: 1 });
+    spawnClayPit(world, { x: 9, y: 0 });
+    spawnResin(world, { x: 11, y: 4 });
+    // Las fuentes: romperlas da materia ya, cuidarlas da materia para siempre
+    // (las renovables), y la veta ni siquiera se abre sin herramienta buena.
+    spawnRock(world, { x: 2, y: 6 });
+    spawnRock(world, { x: 10, y: 5 });
+    spawnBush(world, { x: 0, y: 2 });
+    spawnBush(world, { x: 9, y: 1 });
+    // El pino NO va en una esquina: suelta 3 cosas al caer y los drops solo
+    // aparecen en celdas libres — en un rincón entre el árbol y el borde, la
+    // resina (la última de la lista) se perdería.
+    spawnPine(world, { x: 7, y: 6 });
+    spawnVein(world, { x: 6, y: 0 });
 
     // La rama siempre queda más cerca de la mascota que el martillo.
     const branchSpots: Vec2[] = [
@@ -448,8 +708,9 @@ export const openField: ScenarioSpec = {
 
 /**
  * Noche fría: la mascota pierde calor corporal y la única fuente de calor es
- * una fogata encendida. El fuego calienta a distancia 2 pero quema al que se
- * pega (hazard a distancia 1): la distancia correcta se aprende, no se regala.
+ * una fogata encendida. El fuego calienta hasta distancia 2 y solo quema a
+ * quien se le mete adentro (ADR 0041): arrimarse es la respuesta correcta y el
+ * mundo ya no la castiga por darla.
  * Aún fuera de MVP_SCENARIOS: entra a las evaluaciones cuando el agente sepa
  * reaccionar al frío (paso «fogata»).
  */
@@ -545,6 +806,14 @@ export const practiceRoom: ScenarioSpec = {
     spawnFood(world, propSpots[nextInt(rng, 0, propSpots.length - 1)] ?? propSpots[0]!);
     spawnBranch(world, { x: 9, y: 1 });
     spawnHammer(world, { x: 2, y: 6 });
+    // Las materias nuevas también: una conducta enseñada sobre ellas ("juntá
+    // piedra", "hacete un pico") necesita que existan aquí para practicarse.
+    spawnStone(world, { x: 9, y: 7 });
+    spawnFiber(world, { x: 1, y: 3 });
+    // Dos arcillas: acá se practica, y practicar un ladrillo pide poder
+    // hacerlo entero.
+    spawnClay(world, { x: 9, y: 3 });
+    spawnClay(world, { x: 9, y: 5 });
     // Mobiliario de muestra: lo que el mundo sabe construir también existe
     // aquí, porque una conducta enseñada sobre un objeto ("sentate en la
     // silla") necesita ese objeto para poder practicarse y juzgarse. En los

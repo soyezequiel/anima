@@ -19,11 +19,18 @@ export const KIND_EMOJI: Record<string, string> = {
   flint: '🪨',
   hammer: '🔨',
   tree: '🌳',
+  // El pino es el árbol de la resina: otra silueta para que "qué árbol talo"
+  // se pueda decidir mirando. El arbusto sí es una planta viva (el 🌿 que a
+  // la rama le quedaba mal acá es exacto): fibra que brota, no madera.
+  pine: '🌲',
+  bush: '🌿',
   cactus: '🌵',
   campfire: '🔥',
   chair: '🪑',
   torch: '🕯️',
-  barricade: '🚧',
+  // 🧱 y no 🚧: desde que se levanta con ladrillos es un muro, no una valla
+  // de obra.
+  barricade: '🧱',
   water: '🌊',
   shelter: '🛖',
 };

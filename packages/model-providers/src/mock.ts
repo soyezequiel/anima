@@ -125,6 +125,26 @@ export class MockModelProvider extends BaseModelProvider {
         return Promise.reject(
           new Error('el proveedor simulado no puede juzgar la lógica de una interacción'),
         );
+      case 'recipe.judge':
+        // Aquí el mock NO puede rechazar, y la asimetría con los otros dos
+        // jueces es deliberada. A las interacciones y a las descomposiciones
+        // les rechaza también el `propose`: sin comprensión abierta la puerta
+        // entera no existe, y no existir es coherente. Pero recetas SÍ propone
+        // (ADR 0006), así que negar el juicio dejaría la mitad de la máquina en
+        // pie y la otra mitad muerta — ninguna receta entraría jamás en un
+        // mundo simulado, y lo que se estaría probando no sería la invención
+        // sino su ausencia.
+        //
+        // Así que responde como `judge.destruction`: un veredicto fijo, no un
+        // juicio. Y el fijo es `true` porque el statu quo de las recetas era
+        // entrar sin juez (ADR 0018): el doble de prueba conserva la conducta
+        // anterior y deja que lo que filtre sea la puerta determinista, que sí
+        // sabe medir. El sentido de las cosas lo cuida Codex, no esto.
+        return Promise.resolve({
+          kind: 'judgement',
+          willing: true,
+          reason: 'el proveedor simulado no juzga el sentido de una receta: solo la física decide',
+        });
       case 'decomposition.propose':
         // Decidir en qué se deshace algo exige imaginar de qué está hecho el
         // mundo, y el mock no lo imagina. Sin él, romper deja lo de siempre
@@ -137,6 +157,12 @@ export class MockModelProvider extends BaseModelProvider {
         return Promise.reject(
           new Error('el proveedor simulado no puede juzgar una descomposición'),
         );
+      case 'glyph.propose':
+        // Dibujar exige imaginar cómo se ve algo, y el mock no imagina. Sin él
+        // no se pierde nada visible: la pantalla ya sabe dibujar sola lo que
+        // nadie dibujó, componiendo material y forma. El dibujo de la IA es
+        // una mejora sobre ese piso, nunca un requisito para que se vea algo.
+        return Promise.reject(new Error('el proveedor simulado no dibuja'));
       case 'distill.knowledge':
         // Sin comprensión abierta, guarda la enseñanza tal cual la recibió.
         return Promise.resolve({

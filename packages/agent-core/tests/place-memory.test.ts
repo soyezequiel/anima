@@ -140,6 +140,7 @@ describe('memoria de lugares', () => {
     const fakePerception = (tick: number, entities: PerceivedEntity[]): Perception => ({
       tick,
       self: { id: 'e1', position: { x: 0, y: 0 }, heldItems: [], inventoryCapacity: 6 },
+      drawnKinds: [],
       visibleEntities: entities,
       recipes: [],
       interactions: [],

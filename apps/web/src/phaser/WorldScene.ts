@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import type { EntityTraits, GameView } from '../session/view.js';
-import type { MatterLook } from './appearance.js';
+import type { AppearanceHints, MatterLook } from './appearance.js';
 import { appearanceFor } from './appearance.js';
 import { GLYPH_SIZE, toneAt } from './matter.js';
 
@@ -20,6 +20,8 @@ export class WorldScene extends Phaser.Scene {
   private cell = BASE_CELL;
   private lastView: GameView | null = null;
   private ready = false;
+  /** Id de la entidad señalada con el puntero; null si el cursor no toca ninguna. */
+  private hovered: string | null = null;
 
   constructor() {
     super('world');
@@ -54,7 +56,50 @@ export class WorldScene extends Phaser.Scene {
     this.discard(this.pet);
     this.pet = null;
     this.petBody = null;
+    // Los sprites que estaban levantados ya no existen: el señalado se vuelve a
+    // pedir desde afuera en el próximo movimiento del puntero.
+    this.hovered = null;
     if (this.lastView) this.applyView(this.lastView);
+  }
+
+  /**
+   * Señala una entidad (o ninguna). La escena sigue sin decidir nada: quién
+   * está bajo el puntero lo calcula la capa que conoce la geometría de la
+   * pantalla, acá solo se dibuja el acuse — el objeto se levanta un poco, que
+   * es lo que hace que el rótulo se lea como suyo y no como del tablero.
+   */
+  setHovered(id: string | null): void {
+    if (id === this.hovered) return;
+    const before = this.hovered ? this.sprites.get(this.hovered) : undefined;
+    this.hovered = id;
+    if (before) this.lift(before, false);
+    const after = id ? this.sprites.get(id) : undefined;
+    if (after) this.lift(after, true);
+  }
+
+  /**
+   * Levanta o baja un sprite. Se guarda el tween en el propio objeto para
+   * cortarlo si el puntero va y viene rápido: dos tweens peleando por la misma
+   * escala dejan el objeto en un tamaño intermedio que ya no vuelve.
+   */
+  private lift(sprite: Phaser.GameObjects.Container, lifted: boolean): void {
+    this.stopLift(sprite);
+    sprite.setDepth(lifted ? 2.5 : 1);
+    sprite.setData(
+      'lift',
+      this.tweens.add({
+        targets: sprite,
+        scale: lifted ? 1.16 : 1,
+        duration: 140,
+        ease: lifted ? 'Back.easeOut' : 'Quad.easeOut',
+      }),
+    );
+  }
+
+  private stopLift(sprite: Phaser.GameObjects.Container): void {
+    const running = sprite.getData('lift') as Phaser.Tweens.Tween | undefined;
+    running?.stop();
+    sprite.setData('lift', undefined);
   }
 
   /** Un tween sobre un objeto ya destruido revienta al siguiente frame. */
@@ -96,11 +141,12 @@ export class WorldScene extends Phaser.Scene {
    * tablero tiene muchas. Como textura es una imagen sola, y además la
    * comparten todas las entidades del mismo tipo.
    */
-  private matterTexture(kind: string, material: string | undefined, look: MatterLook): string | null {
-    // El material entra en la clave: si Ánima inventa después la receta que
-    // dice de qué está hecho algo, el color cambia y la textura vieja no
-    // puede quedarse pegada.
-    const key = `matter:${kind}:${material ?? ''}`;
+  private matterTexture(kind: string, hints: AppearanceHints, look: MatterLook): string | null {
+    // Todo lo que cambia el dibujo entra en la clave. El material, porque si
+    // Ánima inventa después la receta que dice de qué está hecho algo, el color
+    // cambia. Y si lo dibujó, porque el día que dibuje algo que hasta entonces
+    // salía procedural, la textura vieja no puede quedarse pegada.
+    const key = `matter:${kind}:${hints.material ?? ''}:${hints.glyph ? 'propio' : 'derivado'}`;
     if (this.textures.exists(key)) return key;
     const canvas = this.textures.createCanvas(key, GLYPH_SIZE, GLYPH_SIZE);
     if (!canvas) return null;
@@ -122,11 +168,11 @@ export class WorldScene extends Phaser.Scene {
   private makeEntitySprite(
     kind: string,
     traits: EntityTraits,
-    material?: string,
+    hints: AppearanceHints,
   ): Phaser.GameObjects.Container {
     const k = this.cellScale;
     const container = this.add.container(0, 0);
-    const look = appearanceFor(kind, traits, { material });
+    const look = appearanceFor(kind, traits, hints);
     if (look.as === 'emoji') {
       const text = this.add.text(0, 0, look.emoji, { fontSize: `${Math.round(34 * k)}px` });
       text.setOrigin(0.5);
@@ -136,7 +182,7 @@ export class WorldScene extends Phaser.Scene {
       rect.setStrokeStyle(2 * k, look.stroke);
       container.add(rect);
     } else {
-      const key = this.matterTexture(kind, material, look);
+      const key = this.matterTexture(kind, hints, look);
       if (key) {
         const image = this.add.image(0, 0, key);
         image.setDisplaySize(this.cell - 6 * k, this.cell - 6 * k);
@@ -154,7 +200,10 @@ export class WorldScene extends Phaser.Scene {
       const pixel = this.toPixel(entity.x, entity.y);
       let sprite = this.sprites.get(entity.id);
       if (!sprite) {
-        sprite = this.makeEntitySprite(entity.kind, entity.traits, entity.material);
+        sprite = this.makeEntitySprite(entity.kind, entity.traits, {
+          material: entity.material,
+          glyph: entity.glyph,
+        });
         sprite.setPosition(pixel.x, pixel.y);
         this.sprites.set(entity.id, sprite);
       } else if (sprite.x !== pixel.x || sprite.y !== pixel.y) {
@@ -167,6 +216,10 @@ export class WorldScene extends Phaser.Scene {
     for (const [id, sprite] of this.sprites) {
       if (seen.has(id)) continue;
       this.sprites.delete(id);
+      // Lo señalado se fue del mundo: sin esto, el tween de levantarlo seguiría
+      // corriendo encima del de irse.
+      this.stopLift(sprite);
+      if (this.hovered === id) this.hovered = null;
       if (view.pickup?.itemId === id && view.pet) {
         this.flyToPet(sprite, this.toPixel(view.pet.x, view.pet.y));
       } else {

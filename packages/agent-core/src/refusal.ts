@@ -468,12 +468,28 @@ export function parseUserMessage(
     ['tronco', 'log'],
     ['log', 'log'],
     ['pedernal', 'flint'],
-    ['piedra', 'flint'],
     ['flint', 'flint'],
+    // "piedra" era `flint` de cuando el pedernal era la única piedra que había.
+    // Desde que existe `stone`, ese alias mandaba a buscar lo otro: quien pide
+    // una piedra quiere la piedra, y el que quiere la chispa la nombra.
+    ['piedra', 'stone'],
+    ['stone', 'stone'],
+    ['roca', 'rock'],
+    ['fibra', 'fiber'],
+    ['arcilla', 'clay'],
+    ['barro', 'clay'],
+    ['resina', 'resin'],
+    ['mineral', 'ore'],
+    ['veta', 'vein'],
+    ['ladrillo', 'brick'],
+    ['pico', 'stone-pick'],
+    ['arbusto', 'bush'],
+    ['pino', 'pine'],
     ['fogata', 'campfire'],
     ['hoguera', 'campfire'],
     ['silla', 'chair'],
     ['antorcha', 'torch'],
+    ['muralla', 'barricade'],
     ['empalizada', 'barricade'],
   ];
   const mentions = aliases
@@ -526,7 +542,9 @@ export function parseUserMessage(
       [/\b(fogata|hoguera|fuego|campfire)\b/, 'campfire'],
       [/\b(silla|asiento|chair)\b/, 'chair'],
       [/\b(antorcha|torch)\b/, 'torch'],
-      [/\b(empalizada|barricada|barrera|valla)\b/, 'barricade'],
+      [/\b(muralla|empalizada|barricada|barrera|valla)\b/, 'barricade'],
+      [/\b(ladrillo|ladrillos|brick)\b/, 'brick'],
+      [/\b(pico|pica|pickaxe)\b/, 'stone-pick'],
     ];
     const match = recipeWords.find(([pattern]) => pattern.test(lower));
     if (match) return { kind: 'craft-item', recipeId: match[1], raw: text };

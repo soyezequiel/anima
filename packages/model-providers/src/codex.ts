@@ -158,7 +158,7 @@ Componentes permitidos en lo construido (ninguno más existe):
 - "hardness":{"value":0..10} — cuánto resiste a ser dañado
 - "durability":{"current":1..30,"max":1..30} — se puede romper
 - "tool":{"power":0..8} — sirve como herramienta
-- "hazard":{"damagePerTick":0..3} — daña a quien esté al lado
+- "hazard":{"damagePerTick":0..3} — daña a quien esté ENCIMA (no a los de al lado)
 - "heatSource":{"warmthPerTick":0..1,"range":1..3} — da calor a distancia
 - "drops":[{"kind":...,"components":{...}}] — qué deja al romperse
 Reglas que el mundo NO perdona:
@@ -213,7 +213,7 @@ Componentes permitidos en lo transformado (ninguno más existe):
 - "hardness":{"value":0..10} — cuánto resiste a ser dañado
 - "durability":{"current":1..30,"max":1..30} — se puede romper
 - "tool":{"power":0..8} — sirve como herramienta
-- "hazard":{"damagePerTick":0..3} — daña a quien esté al lado
+- "hazard":{"damagePerTick":0..3} — daña a quien esté ENCIMA (no a los de al lado)
 - "heatSource":{"warmthPerTick":0..1,"range":1..3} — da calor a distancia
 Reglas que el mundo NO perdona:
 - Nada se transforma en comida, criaturas ni en food/tree/pet, y ninguna
@@ -250,6 +250,34 @@ Reglas que el mundo NO perdona:
 - Nunca dejar food, tree ni pet: romper algo no fabrica comida ni criaturas.
 - Un tipo no puede dejar VARIOS de sí mismo (sería una fábrica de materia).
 - Entre 1 y 8 fragmentos.`;
+
+const GLYPH_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    glyphJson: { type: 'string' },
+    rationale: { type: 'string' },
+  },
+  required: ['glyphJson', 'rationale'],
+  additionalProperties: false,
+};
+
+/**
+ * Lo que el mundo admite en un dibujo. La regla que más importa está primero:
+ * se eligen índices, no colores. Un dibujante que entiende eso no puede sacar
+ * un objeto del color que no le toca, por mal que dibuje.
+ */
+const GLYPH_REFERENCE = `Un dibujo es JSON:
+{"kind":"<el tipo que se dibuja>","rows":["<16 caracteres>", ... 16 filas]}
+Cada carácter es un ÍNDICE de paleta, NO un color:
+- "0" — vacío: el fondo del mundo se ve a través
+- "1" — el color base del material
+- "2" — su sombra: zonas oscuras, bordes de abajo
+- "3" — su luz: brillos, bordes de arriba
+El color NO lo eliges tú: lo pone el mundo según de qué está hecha la cosa.
+Tú eliges forma y volumen.
+Reglas que el mundo NO perdona:
+- Exactamente 16 filas de exactamente 16 caracteres. Solo 0, 1, 2 y 3.
+- Al menos 12 casillas pintadas: un lienzo casi vacío es un objeto invisible.`;
 
 const JUDGEMENT_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -400,6 +428,40 @@ const CRITERIA_REFERENCE = `Criterios que el evaluador sabe medir (elige 1 a 3, 
 - maxTicks / maxIntents: cota de costo. (kind:"", value:N)
 Los tipos con kind usan el nombre interno del objeto. Rellena con "" y 0 lo
 que no aplique. maxTicks/maxIntents solos no valen: no describen ningún logro.`;
+
+/**
+ * Los resultados de evaluación, agrupados para el prompt. Con 20 semillas por
+ * escenario (ADR 0030), listar los 40+ mundos uno por uno inflaba la consulta
+ * de revisión sin decir nada nuevo: casi todos repetían el mismo fallo. Se
+ * agrupa por escenario + veredicto + observaciones, con algunas semillas de
+ * ejemplo — alcanza para comparar los mundos que pasan con los que fallan, y
+ * una consulta más corta es una respuesta que llega antes (ADR 0040: la
+ * latencia del modelo compite con el hambre).
+ */
+function summarizeCaseResults(
+  cases: NonNullable<Extract<ModelRequest, { kind: 'skill.revise' }>['caseResults']>,
+): string[] {
+  const groups = new Map<
+    string,
+    { scenario: string; verdict: 'passed' | 'failed' | 'inconclusive'; detail: string; seeds: number[] }
+  >();
+  for (const c of cases) {
+    const detail = c.verdict === 'failed' ? c.observations.join('; ') || 'sin detalle' : '';
+    const key = `${c.scenario}|${c.verdict}|${detail}`;
+    const group = groups.get(key) ?? { scenario: c.scenario, verdict: c.verdict, detail, seeds: [] };
+    group.seeds.push(c.seed);
+    groups.set(key, group);
+  }
+  return [...groups.values()].map((g) => {
+    const worlds = g.seeds.length === 1 ? '1 mundo' : `${g.seeds.length} mundos`;
+    const sample = `semillas ${g.seeds.slice(0, 3).join(', ')}${g.seeds.length > 3 ? ', …' : ''}`;
+    if (g.verdict === 'passed') return `- ${g.scenario}: PASÓ en ${worlds} (${sample})`;
+    if (g.verdict === 'inconclusive') {
+      return `- ${g.scenario}: SIN VEREDICTO en ${worlds} — el mundo no dio (tirada perdida sin material para reintentar)`;
+    }
+    return `- ${g.scenario}: FALLÓ en ${worlds} — ${g.detail} (${sample})`;
+  });
+}
 
 export function buildCodexPrompt(request: ModelRequest): {
   prompt: string;
@@ -646,6 +708,97 @@ y puede rechazarla: proponerla no la vuelve posible. Responde únicamente con
 JSON: {"decompositionJson": "<la descomposición serializada como JSON>",
 "rationale": "por qué eso es lo que queda, en español"}`,
       };
+    case 'glyph.propose':
+      return {
+        schema: GLYPH_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual que acaba de conocer algo que nunca
+antes se había visto, y todavía no sabe qué cara ponerle. Dibújalo.
+${GLYPH_REFERENCE}
+
+Lo que hay que dibujar: ${request.targetKind}
+Lo que sabes de eso:
+${request.targetFacts.map((f) => `- ${f}`).join('\n') || '- (nada más que su nombre)'}
+${request.material ? `Está hecho de: ${request.material}` : ''}
+${
+  request.rejections && request.rejections.length > 0
+    ? `\nTu mundo ya rechazó estos dibujos tuyos. No insistas: corrige.
+${request.rejections.map((r) => `- ${r}`).join('\n')}`
+    : ''
+}
+
+Se va a ver MUY chico, del tamaño de una uña. Eso manda sobre todo lo demás:
+- La silueta tiene que leerse de un vistazo: forma clara y maciza.
+- Nada de detalles de un solo píxel de ancho — a ese tamaño desaparecen.
+- Deja al menos un píxel de margen vacío en los cuatro bordes.
+- Usa "2" y "3" para dar volumen, no para texturar al azar: luz arriba,
+  sombra abajo.
+- Cada casilla pintada pertenece a la forma. Nada de ruido suelto.
+
+Responde únicamente con JSON: {"glyphJson": "<el dibujo serializado como JSON>",
+"rationale": "qué decidiste dibujar, en español"}`,
+      };
+    case 'recipe.judge':
+      return {
+        schema: JUDGEMENT_SCHEMA,
+        prompt: `Eres la lógica del mundo de una mascota virtual — la voz que decide si las
+cosas tienen sentido, no la mascota. Ella inventó una receta y la física ya dijo
+que es POSIBLE: no crea materia, no gira en círculos, sus propiedades están en
+cota. Tu pregunta es una sola:
+
+¿PUEDE ESTO SALIR DE ESTOS MATERIALES EN UN SOLO PASO?
+
+Lo que quería resolver: ${request.problem}
+
+La receta propuesta:
+- lo que construye: ${request.outputKind}
+- de qué se hace:
+${request.ingredientsSummary.map((i) => `  - ${i}`).join('\n') || '  - (de nada)'}
+- qué haría lo construido:
+${request.effectsSummary.map((e) => `  - ${e}`).join('\n') || '  - (nada)'}
+${
+  request.dropsSummary && request.dropsSummary.length > 0
+    ? `- qué deja al romperse:\n${request.dropsSummary.map((d) => `  - ${d}`).join('\n')}`
+    : ''
+}
+
+Lo que su mundo YA sabe construir (sus ingredientes pueden salir de aquí):
+${request.knownRecipes.map((r) => `- ${r}`).join('\n') || '- (nada todavía)'}
+
+Estado real del mundo:
+${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin más datos)'}
+
+NO estás juzgando si la cosa puede existir. El catálogo de este mundo es
+abierto: se puede llegar a construir cualquier cosa, incluso un celular, si se
+baja por la cadena de piezas hasta la materia prima. Lo que juzgas es si ESTE
+paso es UN paso o es un salto que se saltea todo lo del medio.
+
+El criterio:
+- Un paso convierte materiales en algo que está a UNA transformación de ellos.
+  Una rama y un pedernal dan un cuchillo de piedra, un hacha tosca, una lanza:
+  atar, afilar, astillar. Eso es un paso.
+- Un celular NO sale de una rama y un pedernal, y no porque sea imposible: es
+  que le faltan todas las piezas del medio. Necesitaría un procesador, memoria,
+  una pantalla, una carcasa — y cada una su propia cadena hacia abajo. Si la
+  idea salta esos pisos, recházala y DI CUÁLES FALTAN: ella puede proponerlos
+  como un árbol de recetas, y la próxima idea va a nacer de tu respuesta.
+- La complejidad de lo que sale tiene que corresponderse con la de lo que entra.
+  Cuanto más sofisticado el producto, más pisos exige. Dos ramas atadas son una
+  vara más larga, no un mecanismo.
+- Nada de atajos a la escasez: su historia se sostiene en el hambre y el frío.
+
+Le quedan ${request.depthBudget} capas de receta por debajo antes del tope de su
+mundo. Tenlo en cuenta: si lo que pide la idea no entra en esas capas, decíselo
+así — que la cosa la excede POR AHORA, no que es imposible para siempre.
+
+Si el paso es honesto —lo que sale está a una transformación de lo que entra—
+apruébalo, por raro que suene el nombre. Si es un salto, recházalo nombrando los
+pisos que faltan. Rechazar le cuesta un intento; aprobar un salto le regala una
+cadena entera que nunca recorrió.
+
+Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
+dirigida a la mascota; si la rechazas, NOMBRA las piezas intermedias que le
+faltan para que pueda proponerlas"}`,
+      };
     case 'decomposition.judge':
       return {
         schema: JUDGEMENT_SCHEMA,
@@ -706,16 +859,8 @@ Observaciones del evaluador sobre esa base (fallos medidos en simulación):
 ${request.failureObservations.map((o) => `- ${o}`).join('\n') || '- (sin observaciones)'}
 ${
   request.caseResults && request.caseResults.length > 0
-    ? `\nResultado mundo por mundo:
-${request.caseResults
-  .map((c) => {
-    if (c.verdict === 'passed') return `- ${c.scenario} (semilla ${c.seed}): PASÓ`;
-    if (c.verdict === 'inconclusive') {
-      return `- ${c.scenario} (semilla ${c.seed}): SIN VEREDICTO — el mundo no dio (tirada perdida sin material para reintentar)`;
-    }
-    return `- ${c.scenario} (semilla ${c.seed}): FALLÓ — ${c.observations.join('; ') || 'sin detalle'}`;
-  })
-  .join('\n')}
+    ? `\nResultado por mundos (agrupados cuando fallan igual):
+${summarizeCaseResults(request.caseResults).join('\n')}
 Compara los mundos donde pasa con los mundos donde falla: la diferencia entre
 ellos suele ser la causa raíz. El programa debe funcionar en TODOS a la vez.
 Los SIN VEREDICTO no son defectos tuyos y no hay que corregirlos: ahí el mundo
@@ -1020,6 +1165,7 @@ export class CodexModelProvider extends BaseModelProvider {
         }
         case 'judge.destruction':
         case 'decomposition.judge':
+        case 'recipe.judge':
         case 'interaction.judge': {
           if (typeof parsed.willing !== 'boolean' || typeof parsed.reason !== 'string') {
             throw new Error('el juicio no contiene willing/reason');
@@ -1120,6 +1266,25 @@ export class CodexModelProvider extends BaseModelProvider {
           return {
             kind: 'decomposition',
             decomposition,
+            rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+          };
+        }
+        case 'glyph.propose': {
+          let glyph: unknown = parsed.glyph;
+          if (typeof parsed.glyphJson === 'string') {
+            try {
+              glyph = JSON.parse(parsed.glyphJson);
+            } catch {
+              throw new Error('glyphJson no es JSON válido');
+            }
+          }
+          if (glyph === null || typeof glyph !== 'object' || Array.isArray(glyph)) {
+            throw new Error('la respuesta no contiene un dibujo');
+          }
+          // No se valida aquí: va crudo al mundo, que es quien decide.
+          return {
+            kind: 'glyph',
+            glyph,
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
           };
         }

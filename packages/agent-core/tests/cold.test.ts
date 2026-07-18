@@ -231,14 +231,16 @@ describe('el frío como motivo', () => {
     // Construyó el fuego con sus propias manos: sin modelo, sin usuario.
     const fire = Object.values(world.entities).find((e) => e.kind === 'campfire');
     expect(fire).toBeDefined();
-    // El reflejo la apartó: viva, a distancia segura, y calentándose.
+    // Viva, sin quemarse y donde el fuego la alcanza: al lado, no encima y no
+    // lejos. Desde el ADR 0041 quedarse arrimada es la respuesta correcta.
     expect(pet.components.dead).toBeUndefined();
     expect(pet.components.health!.current).toBeGreaterThanOrEqual(9);
     const distance = Math.max(
       Math.abs(pet.components.position!.x - fire!.components.position!.x),
       Math.abs(pet.components.position!.y - fire!.components.position!.y),
     );
-    expect(distance).toBeGreaterThan(1);
+    expect(distance).toBeGreaterThanOrEqual(1);
+    expect(distance).toBeLessThanOrEqual(2);
     expect(pet.components.temperature!.current).toBeGreaterThan(10);
   });
 

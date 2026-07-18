@@ -653,6 +653,40 @@ select {
   z-index: 6;
 }
 
+/*
+ * Nombre de lo que hay bajo el cursor. Aparece subiendo un par de píxeles y en
+ * menos de lo que dura el gesto de señalar: el rótulo tiene que sentirse parte
+ * del objeto que se levanta en el tablero, no un panel que se abre.
+ */
+.entity-tip {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: rgba(12, 26, 16, 0.92);
+  border: 1px solid rgba(134, 239, 172, 0.35);
+  color: #ecfdf5;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  z-index: 4;
+  animation: entity-tip-in 0.14s ease-out;
+}
+
+@keyframes entity-tip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% + 4px)) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -100%) scale(1);
+  }
+}
+
 .speech-bubble {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -843,6 +877,40 @@ h3 {
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--muted);
+}
+
+/* Lo que se gasta: el número de usos que le quedan, con su barrita. */
+.pill-wear {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.wear-count {
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.wear-track {
+  display: inline-block;
+  width: 28px;
+  height: 3px;
+  border-radius: 999px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.wear-fill {
+  display: block;
+  height: 100%;
+  background: var(--muted);
+  transition: width 0.3s ease;
+}
+
+/* A punto de romperse: el aviso llega antes que la sorpresa. */
+.wear-fill[data-low] {
+  background: #fca5a5;
 }
 
 .pill-stable,
@@ -1583,6 +1651,11 @@ button:disabled {
     opacity: 0.8;
   }
 
+  /* El nombre de lo señalado aparece de una vez, sin subir. */
+  .entity-tip {
+    animation: none;
+  }
+
   /* El rótulo se queda quieto y legible; sigue caducando por ticks. */
   .pickup-flash {
     animation: none;
@@ -1672,6 +1745,29 @@ button:disabled {
 
 .item-does {
   font-size: 12px;
+}
+
+/* Con qué se hace, en la tarjeta cerrada: una fila que envuelve, porque una
+   receta de cuatro ingredientes no puede empujar el ancho del panel. */
+.item-recipe {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  font-size: 12px;
+}
+
+.item-ingredients {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+}
+
+.item-ingredient {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .item-stats {

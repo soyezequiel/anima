@@ -3,6 +3,7 @@ import { createRng } from '@anima/shared';
 import type { Components, Entity, EntityId, EntityKind } from './components.js';
 import type { Blueprint } from './blueprints.js';
 import type { Decomposition } from './decompositions.js';
+import type { GlyphRegistry } from './glyphs.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 
@@ -99,6 +100,17 @@ export interface WorldState {
    * materia no desaparece al romperse: se transforma en lo que esta regla dice.
    */
   decompositions: Decomposition[];
+  /**
+   * Cómo se ve cada tipo que nadie dibujó a mano (la quinta puerta). Mismo
+   * trato que las otras cuatro: estado del mundo, viaja en los snapshots, y un
+   * tipo ya dibujado no se vuelve a dibujar.
+   *
+   * A diferencia de las otras, esta puerta no decide nada de la física — un
+   * dibujo no cambia lo que una cosa puede hacer. Vive igual en el mundo
+   * porque es lo que hace que sobreviva al guardado y que dos sesiones vean lo
+   * mismo: si viviera en la pantalla, cada recarga reinventaría el aspecto.
+   */
+  glyphs: GlyphRegistry;
 }
 
 export function createWorld(
@@ -108,6 +120,7 @@ export function createWorld(
     interactions?: Interaction[];
     blueprints?: Blueprint[];
     decompositions?: Decomposition[];
+    glyphs?: GlyphRegistry;
   } = {},
 ): WorldState {
   return {
@@ -120,6 +133,7 @@ export function createWorld(
     interactions: options.interactions ? structuredClone(options.interactions) : [],
     blueprints: options.blueprints ? structuredClone(options.blueprints) : [],
     decompositions: options.decompositions ? structuredClone(options.decompositions) : [],
+    glyphs: options.glyphs ? structuredClone(options.glyphs) : {},
   };
 }
 

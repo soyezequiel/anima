@@ -6,6 +6,7 @@ import { countedKindLabel, kindLabel } from '@anima/shared';
 import type { ActionIntent, Components, Recipe, SimEvent, WorldState } from '@anima/sim-core';
 import {
   buildPerception,
+  expandRecipeCost,
   getEntity,
   inBounds,
   isBlocked,
@@ -49,6 +50,7 @@ import type {
   GameView,
   GoalView,
   InteractionView,
+  ItemIngredientView,
   ItemStat,
   ItemView,
   PickupView,
@@ -60,6 +62,15 @@ import type { Lineage } from '../phaser/matter.js';
 import { materialFor } from '../phaser/matter.js';
 
 const BASE_TICKS_PER_SECOND = 4;
+/**
+ * Presupuesto biológico de un pensamiento en vuelo (ADR 0040): cuántos ticks
+ * puede costarle al cuerpo una consulta al modelo. Pasado el presupuesto, la
+ * simulación se sostiene —la UI y el chat siguen vivos— hasta que la
+ * respuesta llegue. Sin esta cota, la latencia del proveedor real se
+ * convertía en inanición: una vida son 300 ticks y un solo ciclo de
+ * desarrollo de habilidades puede tardar varios minutos de reloj.
+ */
+export const THINK_TICK_BUDGET = 20;
 const SPEECH_VISIBLE_TICKS = 14;
 /**
  * Ventana corta: la recogida es un acento, no un cartel que se queda. A
@@ -106,6 +117,9 @@ interface PendingThink {
   /** Cursor de eventos del agente al lanzar el think: de ahí se detecta si
    * este pensamiento atendió un mensaje del usuario (para guardar). */
   agentEventStart: number;
+  /** Ticks que el cuerpo ya pagó por este pensamiento (ADR 0040): al llegar
+   * a THINK_TICK_BUDGET la simulación se sostiene hasta la respuesta. */
+  passiveTicks: number;
 }
 
 export interface SessionOptions {
@@ -149,6 +163,11 @@ function traitsFromComponents(components: Components): EntityTraits {
   };
 }
 
+/** Un ingrediente para la vista: el tipo se conserva porque la UI lo dibuja. */
+function ingredientView(kind: string, count: number): ItemIngredientView {
+  return { kind, count, label: countedKindLabel(kind, count) };
+}
+
 /**
  * La cadena por la que se hereda el color: producto → primer ingrediente.
  *
@@ -179,7 +198,7 @@ function describeComponents(components: Components): string[] {
   const does: string[] = [];
   if (components.heatSource) does.push('da calor');
   if (components.shelter) does.push('detiene la pérdida de calor');
-  if (components.hazard) does.push('daña a quien se le pegue');
+  if (components.hazard) does.push('daña a quien se le meta encima');
   if (components.edible) does.push('se puede comer');
   if (components.tool) does.push('sirve de herramienta');
   if (components.water) does.push('no se puede atravesar');
@@ -727,7 +746,18 @@ export class GameSession {
 
     const pending = this.pendingThink;
     if (pending && pending.outcome === null) {
+      if (pending.passiveTicks >= THINK_TICK_BUDGET) {
+        // Presupuesto biológico agotado (ADR 0040): la simulación se sostiene
+        // hasta que la respuesta llegue. Los eventos que el agente emita a
+        // mitad del pensamiento se siguen ingiriendo para que el chat y el
+        // panel Dev no se congelen con ella.
+        this.ingestAgentEvents();
+        this.rebuildView();
+        this.notify();
+        return;
+      }
       // Sigue pensando: el mundo avanza sin ella este tick.
+      pending.passiveTicks += 1;
       await this.advanceWorld(null, null);
       return;
     }
@@ -755,7 +785,9 @@ export class GameSession {
         new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0)),
       ]);
       if (raced === 'pending') {
-        const inFlight: PendingThink = { outcome: null, agentEventStart };
+        // El tick que lanzó el pensamiento también cuenta: el presupuesto es
+        // el costo TOTAL en cuerpo de una consulta, no solo su cola.
+        const inFlight: PendingThink = { outcome: null, agentEventStart, passiveTicks: 1 };
         this.pendingThink = inFlight;
         void settled.then(async (result) => {
           inFlight.outcome = result;
@@ -1358,14 +1390,11 @@ export class GameSession {
     const baseIds = new Set(MVP_RECIPES.map((recipe) => recipe.id));
     const inventedKinds = new Set<string>();
     const builtinProductKinds = new Set<string>();
-    const craftable = new Map<string, { components: Components; ingredients: string[] }>();
+    const craftable = new Map<string, { components: Components; recipe: Recipe }>();
     for (const recipe of this.world.recipes) {
       const product = recipeProduct(recipe);
       if (product && !craftable.has(product.kind)) {
-        craftable.set(product.kind, {
-          components: product.components,
-          ingredients: recipe.ingredients.map((i) => countedKindLabel(i.kind, i.count)),
-        });
+        craftable.set(product.kind, { components: product.components, recipe });
       }
       const kinds = recipeProductKinds(recipe);
       if (baseIds.has(recipe.id)) {
@@ -1408,6 +1437,12 @@ export class GameSession {
           // fogata floja en el mundo, el catálogo cuenta esa y no el arquetipo.
           const instances = counted?.instances ?? (recipe ? [recipe.components] : []);
           const shape = instances[0] ?? {};
+          const cost = recipe ? expandRecipeCost(recipe.recipe, this.world.recipes) : undefined;
+          // El árbol solo se muestra cuando dice algo que los ingredientes
+          // directos no dicen ya. Un solo paso (la receta y nada debajo)
+          // significa que sus ingredientes SON la materia base: repetirlos
+          // abajo con otro título sería fingir profundidad.
+          const deep = cost !== undefined && cost.steps.length > 1;
           return {
             kind,
             name: kindLabel(kind),
@@ -1415,9 +1450,16 @@ export class GameSession {
             inWorld: counted?.inWorld ?? 0,
             inInventory: counted?.inInventory ?? 0,
             craftable: recipe !== undefined,
-            ingredients: recipe?.ingredients ?? [],
+            ingredients: (recipe?.recipe.ingredients ?? []).map((i) =>
+              ingredientView(i.kind, i.count),
+            ),
+            baseCost: deep
+              ? [...cost.base].map(([baseKind, count]) => ingredientView(baseKind, count))
+              : [],
+            costTruncated: cost?.truncated ?? false,
             traits: traitsFromComponents(shape),
             material: materialFor(kind, lineage),
+            glyph: this.world.glyphs[kind],
             does: describeComponents(shape),
             stats: itemStats(instances),
           };
@@ -1477,6 +1519,7 @@ export class GameSession {
         y: e.components.position!.y,
         traits: traitsFromComponents(e.components),
         material: materialFor(e.kind, lineage),
+        glyph: this.world.glyphs[e.kind],
       }));
 
     const speechFresh =
@@ -1557,10 +1600,17 @@ export class GameSession {
                     max: pet.components.temperature.max,
                   }
                 : null,
-              inventory: (pet.components.inventory?.items ?? []).map((id) => ({
-                id,
-                kind: getEntity(this.world, id)?.kind ?? '?',
-              })),
+              inventory: (pet.components.inventory?.items ?? []).map((id) => {
+                const held = getEntity(this.world, id);
+                const durability = held?.components.durability;
+                return {
+                  id,
+                  kind: held?.kind ?? '?',
+                  ...(durability
+                    ? { durability: { current: durability.current, max: durability.max } }
+                    : {}),
+                };
+              }),
               mount,
             }
           : null,

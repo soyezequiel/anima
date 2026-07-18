@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react';
 import { DND_ITEM_KIND } from '../dnd.js';
 import { ItemIcon } from './ItemIcon.js';
-import type { GameView, ItemView } from '../session/view.js';
+import type { GameView, ItemIngredientView, ItemView } from '../session/view.js';
 
 /**
  * Catálogo de todos los tipos de objeto del mundo: los que están en el mapa,
@@ -18,15 +18,56 @@ function whereLine(item: ItemView): string {
   return parts.join(' · ');
 }
 
-function ItemCard({ item }: { item: ItemView }) {
+/**
+ * Los ingredientes dibujados, no solo nombrados: el ícono de cada uno sale del
+ * catálogo (`byKind`), que es la misma regla con la que se dibujan en el
+ * tablero y en la mochila. Un ingrediente que ninguna receta produce y que hoy
+ * no existe en el mundo no está en el catálogo — se dibuja igual, con lo que
+ * su tipo permita deducir.
+ */
+function Ingredients({
+  list,
+  byKind,
+  testId,
+}: {
+  list: ItemIngredientView[];
+  byKind: Map<string, ItemView>;
+  testId: string;
+}) {
+  return (
+    <span className="item-ingredients" data-testid={testId}>
+      {list.map((ingredient) => {
+        const known = byKind.get(ingredient.kind);
+        return (
+          <span key={ingredient.kind} className="item-ingredient">
+            <ItemIcon
+              kind={ingredient.kind}
+              traits={known?.traits ?? {}}
+              material={known?.material}
+              glyph={known?.glyph}
+            />
+            {ingredient.label}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
+
+function ItemCard({ item, byKind }: { item: ItemView; byKind: Map<string, ItemView> }) {
   const [open, setOpen] = useState(false);
   // Un pedernal no tiene nada que desplegar: es portátil y se acabó. Solo abre
   // lo que de verdad tiene detalle.
-  const hasDetail = item.stats.length > 0 || item.ingredients.length > 0;
+  const hasDetail = item.stats.length > 0 || item.baseCost.length > 0 || item.costTruncated;
   const head = (
     <>
       <span className="item-head-row">
-        <ItemIcon kind={item.kind} traits={item.traits} material={item.material} />
+        <ItemIcon
+          kind={item.kind}
+          traits={item.traits}
+          material={item.material}
+          glyph={item.glyph}
+        />
         <strong>{item.name}</strong>
         <span className={`pill pill-origin-${item.origin}`}>
           {item.origin === 'invented' ? 'inventado (IA)' : 'de fábrica'}
@@ -34,6 +75,14 @@ function ItemCard({ item }: { item: ItemView }) {
         <span className="muted item-where">{whereLine(item)}</span>
       </span>
       {item.does.length > 0 && <span className="muted item-does">{item.does.join(' · ')}</span>}
+      {/* Con qué se hizo, sin tener que abrir nada: es lo primero que se
+          pregunta de un objeto crafteado. */}
+      {item.ingredients.length > 0 && (
+        <span className="item-recipe">
+          <span className="muted">se hace con</span>
+          <Ingredients list={item.ingredients} byKind={byKind} testId="item-ingredients" />
+        </span>
+      )}
     </>
   );
   return (
@@ -59,10 +108,21 @@ function ItemCard({ item }: { item: ItemView }) {
       )}
       {open && (
         <dl className="item-stats" data-testid="item-stats">
-          {item.ingredients.length > 0 && (
+          {/* El árbol seguido hasta el suelo (ADR 0031): lo que cuesta de
+              verdad si no se tiene ninguna de las partes intermedias. Solo
+              aparece cuando hay partes intermedias que seguir. */}
+          {item.baseCost.length > 0 && (
             <>
-              <dt>Cuesta</dt>
-              <dd>{item.ingredients.join(' + ')}</dd>
+              <dt>Sale de</dt>
+              <dd>
+                <Ingredients list={item.baseCost} byKind={byKind} testId="item-base-cost" />
+              </dd>
+            </>
+          )}
+          {item.costTruncated && (
+            <>
+              <dt>Ojo</dt>
+              <dd>su árbol no toca el suelo: da vueltas o tiene demasiadas capas</dd>
             </>
           )}
           {item.stats.map((stat) => (
@@ -80,6 +140,9 @@ function ItemCard({ item }: { item: ItemView }) {
 export function ItemsPanel({ view }: { view: GameView }) {
   const invented = view.items.filter((i) => i.origin === 'invented');
   const builtin = view.items.filter((i) => i.origin === 'builtin');
+  // El catálogo se indexa una vez y lo comparten todas las tarjetas: cada
+  // ingrediente se dibuja con la misma definición que tiene su propia fila.
+  const byKind = new Map(view.items.map((item) => [item.kind, item]));
   return (
     <div className="items-panel">
       <p className="muted">
@@ -96,13 +159,13 @@ export function ItemsPanel({ view }: { view: GameView }) {
       )}
       <ul className="list">
         {invented.map((item) => (
-          <ItemCard key={item.kind} item={item} />
+          <ItemCard key={item.kind} item={item} byKind={byKind} />
         ))}
       </ul>
       <h3>De fábrica ({builtin.length})</h3>
       <ul className="list">
         {builtin.map((item) => (
-          <ItemCard key={item.kind} item={item} />
+          <ItemCard key={item.kind} item={item} byKind={byKind} />
         ))}
       </ul>
       <h3>Interacciones aprendidas ({view.interactions.length})</h3>

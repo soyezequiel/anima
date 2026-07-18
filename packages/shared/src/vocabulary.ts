@@ -19,10 +19,27 @@ const KIND_LABELS: Record<string, string> = {
   campfire: 'fogata',
   chair: 'silla',
   torch: 'antorcha',
-  barricade: 'empalizada',
+  // El id sigue siendo `barricade` (viaja en partidas guardadas), pero desde
+  // que se levanta con ladrillos "empalizada" era mentira: una empalizada es
+  // de estacas.
+  barricade: 'muralla',
   cactus: 'cactus',
   water: 'agua',
   shelter: 'refugio',
+  stone: 'piedra',
+  fiber: 'fibra',
+  clay: 'arcilla',
+  resin: 'resina',
+  ore: 'mineral',
+  rock: 'roca',
+  bush: 'arbusto',
+  pine: 'pino',
+  vein: 'veta',
+  // 'pico' a secas y no 'pico de piedra': la heurística de género mira la
+  // última letra del nombre, y "de piedra" lo volvería "una pico".
+  'stone-pick': 'pico',
+  brick: 'ladrillo',
+  'clay-pit': 'barrial',
 };
 
 /**

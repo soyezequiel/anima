@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
+import { kindLabel } from '@anima/shared';
 import { useEffect, useRef, useState } from 'react';
-import type { DragEvent } from 'react';
+import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { GameView } from '../session/view.js';
 import { DND_ITEM_KIND } from '../dnd.js';
 import { KIND_EMOJI } from './appearance.js';
@@ -31,6 +32,10 @@ export function PhaserStage({
   // La celda bajo el cursor mientras se arrastra un item: se resalta para que
   // el jugador vea dónde va a caer antes de soltar. null cuando no hay arrastre.
   const [dropCell, setDropCell] = useState<{ x: number; y: number } | null>(null);
+  // La celda bajo el cursor cuando no se arrastra nada. Se guarda la CELDA y no
+  // la entidad: si lo señalado se mueve o desaparece mientras el puntero está
+  // quieto, el rótulo sigue al mundo en vez de quedarse hablando de un fantasma.
+  const [hoverCell, setHoverCell] = useState<{ x: number; y: number } | null>(null);
 
   const cols = view.worldSize.width;
   const rows = view.worldSize.height;
@@ -38,12 +43,31 @@ export function PhaserStage({
   // La celda bajo el puntero, en coordenadas de mundo; null si cae fuera del
   // tablero. Se mide contra el propio `.stage-board`, que tiene el tamaño exacto
   // cols*cell × rows*cell, así el redondeo coincide con lo que dibuja Phaser.
-  const cellFromEvent = (e: DragEvent<HTMLDivElement>): { x: number; y: number } | null => {
+  const cellFromEvent = (
+    e: DragEvent<HTMLDivElement> | ReactPointerEvent<HTMLDivElement>,
+  ): { x: number; y: number } | null => {
     const rect = e.currentTarget.getBoundingClientRect();
     const x = Math.floor((e.clientX - rect.left) / cell);
     const y = Math.floor((e.clientY - rect.top) / cell);
     if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
     return { x, y };
+  };
+
+  // Lo que hay bajo el cursor. Cuando dos cosas comparten celda gana la última,
+  // que es la que Phaser dibuja arriba: se nombra lo que se ve.
+  const hovered = hoverCell
+    ? ([...view.entities].reverse().find((e) => e.x === hoverCell.x && e.y === hoverCell.y) ?? null)
+    : null;
+
+  // El puntero se mueve muchas veces por celda; solo el cambio de celda es una
+  // novedad. Comparar acá evita un render de React por cada píxel recorrido.
+  const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
+    const at = cellFromEvent(e);
+    setHoverCell((previous) => {
+      if (at === null) return previous === null ? previous : null;
+      if (previous && previous.x === at.x && previous.y === at.y) return previous;
+      return at;
+    });
   };
 
   const isItemDrag = (e: DragEvent<HTMLDivElement>) => e.dataTransfer.types.includes(DND_ITEM_KIND);
@@ -111,6 +135,12 @@ export function PhaserStage({
     sceneRef.current?.applyView(view);
   }, [view]);
 
+  // Se avisa después de aplicar el view: si la entidad acaba de aparecer, su
+  // sprite ya existe cuando la escena lo busca para levantarlo.
+  useEffect(() => {
+    sceneRef.current?.setHovered(hovered?.id ?? null);
+  }, [hovered?.id, view]);
+
   const bubble = !view.aiBusy && view.speech && view.pet && (
     <div
       className="speech-bubble"
@@ -164,6 +194,23 @@ export function PhaserStage({
     </div>
   );
 
+  // Rótulo de lo señalado. La `key` lo ata a esa entidad concreta: pasar de un
+  // objeto a otro reinicia la aparición en vez de que el nombre cambie a mitad
+  // de camino dentro del mismo cartel.
+  const hoverTip = hovered && (
+    <div
+      key={hovered.id}
+      className="entity-tip"
+      data-testid="entity-tip"
+      style={{
+        left: hovered.x * cell + cell / 2,
+        top: hovered.y * cell - 2,
+      }}
+    >
+      {kindLabel(hovered.kind)}
+    </div>
+  );
+
   const dropHint = dropCell && (
     <div
       className="drop-cell"
@@ -185,11 +232,14 @@ export function PhaserStage({
         onDragOver={handleDragOver}
         onDragLeave={() => setDropCell(null)}
         onDrop={handleDrop}
+        onPointerMove={handlePointerMove}
+        onPointerLeave={() => setHoverCell(null)}
       >
         <div ref={hostRef} />
         {bubble}
         {thinkingBubble}
         {pickupFlash}
+        {hoverTip}
         {dropHint}
       </div>
     </div>

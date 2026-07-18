@@ -26,6 +26,7 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
     interactions?: WorldState['interactions'];
     blueprints?: WorldState['blueprints'];
     decompositions?: WorldState['decompositions'];
+    glyphs?: WorldState['glyphs'];
   };
   return {
     ...state,
@@ -37,6 +38,9 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
     // Ni a las descomposiciones: lo que ya sabía romper deja lo de siempre por
     // su `drops`; lo que no, lo aprende cuando le toque romperlo.
     decompositions: state.decompositions ?? [],
+    // Ni a los dibujos: un legado viejo restaura sin ninguno y se dibuja con lo
+    // procedural hasta que a Ánima le toque dibujar cada cosa.
+    glyphs: state.glyphs ?? {},
   };
 }
 

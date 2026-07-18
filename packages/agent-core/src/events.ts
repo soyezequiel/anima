@@ -39,6 +39,11 @@ export type AgentEventType =
    * la muestra antes de proponerla: nada entra al mundo sin confirmación.
    */
   | 'recipe.preview'
+  /**
+   * El veredicto de la IA Dios sobre una receta inventada (ADR 0042): si de
+   * esos materiales puede salir eso, y si ese nombre dice la verdad.
+   */
+  | 'recipe.judged'
   /** El mundo aceptó su invento: la física ahora lo admite. */
   | 'recipe.learned'
   /** El mundo lo rechazó, con el motivo. Imaginarlo no lo vuelve posible. */
@@ -61,6 +66,12 @@ export type AgentEventType =
   | 'decomposition.learned'
   /** La puerta o el mundo la rechazaron, con el motivo. */
   | 'decomposition.rejected'
+  /** Dibujó cómo se ve un tipo que nadie había dibujado (la quinta puerta). */
+  | 'glyph.proposed'
+  /** El mundo lo aceptó: ese tipo se ve así, y ya no se re-dibuja. */
+  | 'glyph.learned'
+  /** La puerta o el mundo lo rechazaron, con el motivo. */
+  | 'glyph.rejected'
   | 'memory.created'
   | 'memory.consolidated'
   | 'hypothesis.updated'

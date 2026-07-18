@@ -153,8 +153,10 @@ test('describe un glorb, lo confirma en el chat y la mascota lo construye', asyn
   await expect(glorb).toContainText('inventado (IA)');
   await expect(glorb).toContainText('🔥');
   await expect(glorb).toContainText('da calor');
+  // Con qué se hizo se ve sin abrir nada: el pedernal es materia base, así que
+  // ahí termina el árbol y no hay un "sale de" debajo.
+  await expect(glorb.getByTestId('item-ingredients')).toContainText('1 pedernal');
   await glorb.getByRole('button').click();
-  await expect(glorb.getByTestId('item-stats')).toContainText('1 pedernal');
   // El alcance no lo gradúa la calidad: sale 2 salga como salga.
   await expect(glorb.getByTestId('item-stats')).toContainText('alcance 2');
 

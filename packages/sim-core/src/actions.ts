@@ -52,6 +52,14 @@ export type ActionIntent =
    * que esta regla, una vez aprendida, diga.
    */
   | { type: 'proposeDecomposition'; decomposition: unknown }
+  /**
+   * Proponerle al mundo cómo se ve un tipo (la quinta puerta). Mismo trato:
+   * viaja crudo y la puerta de step.ts valida y decide. Es la única de las
+   * cinco que no toca la física — un dibujo no cambia lo que una cosa puede
+   * hacer— pero entra por la misma vía porque es dato que propone un modelo, y
+   * eso se valida siempre.
+   */
+  | { type: 'proposeGlyph'; glyph: unknown }
   /** Ejecutar una interacción que el mundo ya admite, sobre un objetivo. */
   | { type: 'interact'; interactionId: string; targetId: EntityId }
   | { type: 'speak'; text: string };

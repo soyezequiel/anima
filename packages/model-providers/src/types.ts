@@ -148,6 +148,46 @@ export type ModelRequest =
     }
   | {
       /**
+       * La IA Dios juzgando una receta inventada (ADR 0042). La puerta
+       * determinista ya midió lo que se puede medir — que no cree materia, que
+       * no cicle, que los componentes estén en cota. Lo que ninguna tabla mide
+       * es la PROPORCIÓN entre lo que la cosa es y lo que costó.
+       *
+       * "celular = 1 rama + 1 pedernal" pasa todas las comprobaciones porque
+       * cada una mira un paso aislado, y el paso está bien formado. Lo que está
+       * mal es que falten los pasos del medio: un celular no es imposible en un
+       * mundo abierto, pero se gana bajando por procesador, memoria y pantalla,
+       * y cada una por su propia cadena, hasta la materia prima. El juez no
+       * prohíbe la idea: exige el árbol que la sostiene (ADR 0031).
+       */
+      kind: 'recipe.judge';
+      /** Para qué la inventó: el problema que decía resolver. */
+      problem: string;
+      /** Cómo se llamará lo construido. */
+      outputKind: string;
+      /** De qué se hace, en frases humanas ("1x rama", "2x pedernal"). */
+      ingredientsSummary: string[];
+      /** Qué haría lo construido, en frases humanas ("se puede llevar"). */
+      effectsSummary: string[];
+      /** Qué dejaría al romperse, si algo. */
+      dropsSummary?: string[];
+      /**
+       * Qué sabe construir ya su mundo. Es lo que separa un salto de un paso:
+       * "celular de procesador + pantalla" es honesto SI el procesador y la
+       * pantalla están en esta lista, y es el mismo salto de siempre si no.
+       */
+      knownRecipes: string[];
+      /**
+       * Cuántas capas de receta le quedan por debajo antes del tope del mundo.
+       * El juez tiene que saber si el árbol que va a exigir cabe: pedirle seis
+       * pisos a un mundo que admite cuatro es mandarla a una pared.
+       */
+      depthBudget: number;
+      /** Estado real y verificable del mundo: la base del juicio. */
+      facts: string[];
+    }
+  | {
+      /**
        * Traducir la descripción libre del cuidador ("un glorb es un mineral
        * azul que da calor") a una receta propuesta. Es el mismo trato que
        * `recipe.propose`: el modelo traduce, la receta viaja cruda y el mundo
@@ -222,6 +262,27 @@ export type ModelRequest =
     }
   | {
       /**
+       * Dibujar un tipo que nadie dibujó a mano (la quinta puerta). El catálogo
+       * del mundo es abierto —la mascota bautiza lo que inventa como quiera— así
+       * que ninguna tabla de dibujos hecha de antemano lo cubre. Dibuja quien
+       * mejor sabe qué inventó.
+       *
+       * Elige FORMA, nunca color: la respuesta son índices de paleta, y el color
+       * lo pone quien pinta a partir del material. Es lo que mantiene coherente
+       * un catálogo infinito.
+       */
+      kind: 'glyph.propose';
+      /** El tipo que hay que dibujar. */
+      targetKind: string;
+      /** Lo que se sabe de él: rasgos observables, en voz humana. */
+      targetFacts: string[];
+      /** De qué está hecho, si se sabe. Orienta la forma, nunca el color. */
+      material?: string;
+      /** Rechazos previos de la puerta: corregir, no insistir. */
+      rejections?: string[];
+    }
+  | {
+      /**
        * La IA Dios juzgando una descomposición: ¿es coherente que romper ESTO
        * deje ESO? Aquí vive la conservación de materia fina — que un pedernal
        * deje esquirlas sí, diez troncos no. La puerta determinista ya comprobó
@@ -289,6 +350,11 @@ export type ModelResponse =
    * propone un modelo: la valida el mundo (validateDecomposition).
    */
   | { kind: 'decomposition'; decomposition: unknown; rationale: string }
+  /**
+   * Cómo se ve un tipo. Viaja sin tipar, como todo lo que propone un modelo:
+   * lo valida el mundo (validateGlyph).
+   */
+  | { kind: 'glyph'; glyph: unknown; rationale: string }
   /**
    * Un juicio de valores, no de física. `willing: false` mantiene la negativa;
    * `true` la levanta. El agente solo lo consulta cuando ya comprobó que la

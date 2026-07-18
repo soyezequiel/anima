@@ -7,7 +7,7 @@ import { entitiesAt, getEntity, removeEntity, spawn } from '@anima/sim-core';
 import type { RegressionStore } from '@anima/skill-evaluator';
 import { evaluateSkill } from '@anima/skill-evaluator';
 import type { SkillLibrary } from '@anima/skill-runtime';
-import { GameSession } from '../src/session/GameSession.js';
+import { GameSession, THINK_TICK_BUDGET } from '../src/session/GameSession.js';
 import type { PickupView } from '../src/session/view.js';
 
 async function makeSession(seed: number, store = new MemoryKeyValueStore()) {
@@ -135,6 +135,33 @@ describe('GameSession (capa de sesión de la UI)', () => {
       await runUntil(session, () => session.getView().pickup === null, 12);
       expect(session.getView().pickup).toBeNull();
     }
+    session.dispose();
+  });
+
+  it('la vida que le queda a la herramienta que lleva viaja al view y baja al usarla', async () => {
+    const { session } = await makeSession(5);
+    // Cada lectura del martillo mientras está en la mochila, en orden.
+    const readings: number[] = [];
+    await runUntil(session, () => {
+      const held = session.getView().pet?.inventory.find((i) => i.kind === 'hammer');
+      if (held?.durability && readings[readings.length - 1] !== held.durability.current) {
+        readings.push(held.durability.current);
+      }
+      return session.getView().storyCompleted;
+    });
+
+    // El martillo de este escenario nace gastado (8 de 20): la reliquia se ve
+    // como lo que es, no como una herramienta entera.
+    expect(readings.length).toBeGreaterThan(0);
+    expect(readings[0]).toBe(8);
+    // Y se gasta: cada uso deja menos, nunca más.
+    expect(readings.length).toBeGreaterThan(1);
+    expect(readings.every((v, i) => i === 0 || v < readings[i - 1]!)).toBe(true);
+
+    // Lo que no se rompe no inventa un número que no tiene.
+    const others = session.getView().pet!.inventory.filter((i) => i.kind !== 'hammer');
+    expect(others.every((i) => i.durability === undefined)).toBe(true);
+
     session.dispose();
   });
 
@@ -275,6 +302,52 @@ describe('GameSession (capa de sesión de la UI)', () => {
           (event) => event.type === 'ai.timing' && event.json.includes('interpret.command'),
         ),
     ).toBe(true);
+    session.dispose();
+  });
+
+  it('el pensamiento en vuelo tiene presupuesto: agotado, la simulación se sostiene (ADR 0040)', async () => {
+    const fallback = new MockModelProvider();
+    let release!: (response: ModelResponse) => void;
+    const provider: ModelProvider = {
+      name: 'codex',
+      interpretsLanguage: true,
+      complete(request) {
+        if (request.kind === 'interpret.command') {
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        return fallback.complete(request);
+      },
+      callCount(kind) {
+        return fallback.callCount(kind);
+      },
+    };
+    const session = await GameSession.create({
+      seed: 5,
+      autostart: false,
+      fresh: true,
+      store: new MemoryKeyValueStore(),
+      provider,
+    });
+
+    session.sendUserMessage('a partir de ahora te llamás Chispa');
+    await session.stepOnce(); // lanza el pensamiento: primer tick del presupuesto
+    const launched = session.getView().tick;
+    // Muchos más pasos que el presupuesto: el cuerpo solo paga los del tope.
+    for (let i = 0; i < THINK_TICK_BUDGET + 15; i++) {
+      await session.stepOnce();
+    }
+    expect(session.getView().tick).toBe(launched + THINK_TICK_BUDGET - 1);
+
+    // Llega la respuesta: el mundo se suelta y el pensamiento se aplica.
+    release({
+      kind: 'command.interpretation',
+      command: { action: 'rename-pet', name: 'Chispa' },
+    });
+    await vi.waitFor(() => {
+      expect(session.getView().identity.name).toBe('Chispa');
+    });
     session.dispose();
   });
 
@@ -498,9 +571,11 @@ describe('reglas del mundo al restaurar', () => {
     const world = (session as unknown as { world: WorldState }).world;
     expect(world.recipes.map((r) => r.id).sort()).toEqual([
       'barricade',
+      'brick',
       'campfire',
       'chair',
       'shelter',
+      'stone-pick',
       'torch',
     ]);
     session.dispose();
@@ -531,10 +606,12 @@ describe('reglas del mundo al restaurar', () => {
     const restored = (session as unknown as { world: WorldState }).world;
     expect(restored.recipes.map((r) => r.id).sort()).toEqual([
       'barricade',
+      'brick',
       'campfire',
       'chair',
       'hoguera-simple',
       'shelter',
+      'stone-pick',
       'torch',
     ]);
     session.dispose();
@@ -555,7 +632,10 @@ describe('reglas del mundo al restaurar', () => {
 
     // Sus números, y lo que cuesta: la fogata todavía no existe, así que sale
     // del arquetipo de la receta.
-    expect(campfire?.ingredients).toEqual(['2 troncos', '1 pedernal']);
+    expect(campfire?.ingredients.map((i) => i.label)).toEqual(['2 troncos', '1 pedernal']);
+    // El tronco y el pedernal son materia base: el árbol no tiene un piso más
+    // abajo que mostrar, así que no lo muestra.
+    expect(campfire?.baseCost).toEqual([]);
     expect(campfire?.stats).toContainEqual({ label: 'Calor', value: '0.3 por tick · alcance 2' });
     expect(campfire?.stats).toContainEqual({ label: 'Daño al tocarlo', value: '1 por tick' });
 
@@ -603,6 +683,48 @@ describe('reglas del mundo al restaurar', () => {
     expect(items[0]?.kind).toBe('hoguera-simple');
     // Y lo de fábrica no cambia de origen por convivir con un invento.
     expect(items.find((i) => i.kind === 'campfire')?.origin).toBe('builtin');
+    session.dispose();
+  });
+
+  it('el catálogo baja el árbol de crafteo hasta la materia base', async () => {
+    const { session } = await makeSession(5);
+    const world = (session as unknown as { world: WorldState }).world;
+    // Dos pisos: la mesa se hace de tablas y la tabla se hace de troncos. Nadie
+    // declara lo que cuesta la mesa; se deriva (ADR 0031).
+    world.recipes.push(
+      {
+        id: 'tabla',
+        outcomes: [{ weight: 1, output: { kind: 'tabla', components: { portable: {} } } }],
+        ingredients: [{ kind: 'log', count: 3 }],
+      },
+      {
+        id: 'mesa',
+        outcomes: [
+          { weight: 1, output: { kind: 'mesa', components: { collider: { solid: true } } } },
+        ],
+        ingredients: [
+          { kind: 'tabla', count: 2 },
+          { kind: 'flint', count: 1 },
+        ],
+      },
+    );
+    await session.stepOnce();
+
+    const items = session.getView().items;
+    const mesa = items.find((i) => i.kind === 'mesa');
+    // Arriba, el paso que de verdad hace la mascota: mesa ← tablas.
+    expect(mesa?.ingredients.map((i) => i.label)).toEqual(['2 tablas', '1 pedernal']);
+    // Abajo, lo que hay que juntar del mundo si no se tiene ninguna tabla:
+    // 2 tablas × 3 troncos = 6, y el pedernal ya era materia base.
+    expect(mesa?.baseCost).toEqual([
+      { kind: 'log', count: 6, label: '6 troncos' },
+      { kind: 'flint', count: 1, label: '1 pedernal' },
+    ]);
+    expect(mesa?.costTruncated).toBe(false);
+
+    // La tabla es de un solo piso: su materia base ya está arriba y repetirla
+    // sería fingir profundidad.
+    expect(items.find((i) => i.kind === 'tabla')?.baseCost).toEqual([]);
     session.dispose();
   });
 

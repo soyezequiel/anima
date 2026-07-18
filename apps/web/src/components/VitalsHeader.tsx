@@ -1,5 +1,4 @@
 import { useEffect, useRef, useState } from 'react';
-import type { GameSession } from '../session/GameSession.js';
 import type { GameView } from '../session/view.js';
 import { kindLabel } from '@anima/shared';
 
@@ -26,11 +25,33 @@ function humanStrategy(raw: string | null): string | null {
   return raw;
 }
 
-/** «2× tronco, pedernal»: agrupado y con nombres humanos. */
-function carryChips(inventory: { kind: string }[]): { kind: string; n: number }[] {
+type CarryChip = {
+  key: string;
+  kind: string;
+  n: number;
+  durability?: { current: number; max: number };
+};
+
+/**
+ * «2× tronco, pedernal»: agrupado y con nombres humanos. Lo que se gasta NO se
+ * agrupa: dos martillos con vidas distintas son dos recursos distintos, y un
+ * promedio o un total escondería justo el número que hace falta ver — cuánto
+ * le queda al que está por romperse.
+ */
+function carryChips(
+  inventory: { id: string; kind: string; durability?: { current: number; max: number } }[],
+): CarryChip[] {
+  const chips: CarryChip[] = [];
   const counts = new Map<string, number>();
-  for (const it of inventory) counts.set(it.kind, (counts.get(it.kind) ?? 0) + 1);
-  return [...counts].map(([kind, n]) => ({ kind, n }));
+  for (const it of inventory) {
+    if (it.durability) {
+      chips.push({ key: it.id, kind: it.kind, n: 1, durability: it.durability });
+      continue;
+    }
+    counts.set(it.kind, (counts.get(it.kind) ?? 0) + 1);
+  }
+  for (const [kind, n] of counts) chips.push({ key: kind, kind, n });
+  return chips;
 }
 
 /**
@@ -165,9 +186,33 @@ export function VitalsHeader({ view }: { view: GameView }) {
               lleva:
             </span>
             {chips.map((c) => (
-              <span key={c.kind} className="pill">
+              <span
+                key={c.key}
+                className={`pill${c.durability ? ' pill-wear' : ''}`}
+                data-testid={c.durability ? `carry-durability-${c.kind}` : undefined}
+                title={
+                  c.durability
+                    ? `le quedan ${c.durability.current} usos de ${c.durability.max}`
+                    : undefined
+                }
+              >
                 {c.n > 1 ? `${c.n}× ` : ''}
                 {kindLabel(c.kind)}
+                {c.durability && (
+                  <>
+                    {' '}
+                    <b className="wear-count">
+                      {c.durability.current}/{c.durability.max}
+                    </b>
+                    <span className="wear-track" aria-hidden="true">
+                      <span
+                        className="wear-fill"
+                        data-low={c.durability.current / c.durability.max <= 0.25 ? '' : undefined}
+                        style={{ width: `${pct(c.durability.current, c.durability.max)}%` }}
+                      />
+                    </span>
+                  </>
+                )}
               </span>
             ))}
           </div>

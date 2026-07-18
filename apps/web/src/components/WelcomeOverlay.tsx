@@ -21,8 +21,8 @@ export function WelcomeOverlay({ onStart }: { onStart: () => void }) {
             hechos («comer alimento da energía») o preguntale qué está haciendo.
           </li>
           <li>
-            🔨 <strong>Pedile que construya.</strong> Hay troncos y pedernal
-            sueltos por el mapa: una fogata, una silla, una antorcha…
+            🔨 <strong>Pedile que construya.</strong> Hay madera, piedra, fibra
+            y arcilla por el mapa: una fogata, un pico, una muralla…
           </li>
           <li>
             🐾 <strong>Puede negarse.</strong> Tiene sus propios motivos —cuida

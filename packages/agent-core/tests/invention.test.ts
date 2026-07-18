@@ -107,8 +107,8 @@ describe('Ánima inventa recetas', () => {
     const pet = world.entities[petId]!;
 
     // Nadie craftea a mano: el ciclo entero es suyo. Inventa la receta (tras
-    // el rechazo del atajo), la construye con los troncos que lleva, el
-    // reflejo la aparta del fuego y la espera la calienta.
+    // el rechazo del atajo), la construye con los troncos que lleva y se queda
+    // al lado, que es donde el fuego calienta sin quemar (ADR 0041).
     await run(world, petId, agent, 30);
 
     const fire = Object.values(world.entities).find((e) => e.kind === 'hoguera-simple');
@@ -118,7 +118,8 @@ describe('Ánima inventa recetas', () => {
       Math.abs(pet.components.position!.x - fire!.components.position!.x),
       Math.abs(pet.components.position!.y - fire!.components.position!.y),
     );
-    expect(distance).toBeGreaterThan(1);
+    expect(distance).toBeGreaterThanOrEqual(1);
+    expect(distance).toBeLessThanOrEqual(2);
     expect(pet.components.temperature!.current).toBeGreaterThan(10);
   });
 

@@ -7,6 +7,8 @@ export * from './interactions.js';
 export * from './interaction-validation.js';
 export * from './decompositions.js';
 export * from './decomposition-validation.js';
+export * from './glyphs.js';
+export * from './glyph-validation.js';
 export * from './world.js';
 export * from './actions.js';
 export * from './events.js';

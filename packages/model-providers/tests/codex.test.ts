@@ -509,14 +509,43 @@ describe('CodexModelProvider', () => {
     const prompt = seen[0]?.prompt ?? '';
     expect(prompt).toContain('v1 (éxito 0%)');
     expect(prompt).toContain('v2 (éxito 50%)');
-    expect(prompt).toContain('open-field (semilla 11): PASÓ');
-    expect(prompt).toContain('food-behind-wall (semilla 11): FALLÓ — path-blocked:4');
+    expect(prompt).toContain('open-field: PASÓ en 1 mundo (semillas 11)');
+    expect(prompt).toContain('food-behind-wall: FALLÓ en 1 mundo — path-blocked:4 (semillas 11)');
     // Un mundo que no dio se muestra como tal: si se leyera «FALLÓ», el modelo
     // gastaría el intento corrigiendo una tirada perdida (ADR 0030).
-    expect(prompt).toContain('cold-night (semilla 22): SIN VEREDICTO');
-    expect(prompt).not.toContain('cold-night (semilla 22): FALLÓ');
+    expect(prompt).toContain('cold-night: SIN VEREDICTO');
+    expect(prompt).not.toContain('cold-night: FALLÓ');
     expect(prompt).toContain('(v2, la mejor hasta ahora)');
     expect(prompt).toContain('Intento 3 de 8');
+  });
+
+  it('los mundos que fallan igual se agrupan: 20 semillas no son 20 renglones (ADR 0040)', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ program: [{ op: 'wait' }], rationale: '' }), seen),
+    );
+    await provider.complete({
+      kind: 'skill.revise',
+      skillName: 'x',
+      problem: 'llegar hasta el alimento',
+      successCriteria: [],
+      context: [],
+      previousProgram: [{ op: 'wait' }],
+      failureObservations: ['criteria-failed:consumedKind:food'],
+      caseResults: Array.from({ length: 20 }, (_, i) => ({
+        scenario: 'food-behind-wall',
+        seed: 100 + i,
+        verdict: 'failed' as const,
+        observations: ['criteria-failed:consumedKind:food'],
+      })),
+      attempt: 2,
+    });
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain(
+      'food-behind-wall: FALLÓ en 20 mundos — criteria-failed:consumedKind:food (semillas 100, 101, 102, …)',
+    );
+    // Una sola línea para los 20: el prompt no repite la misma evidencia.
+    expect(prompt.match(/FALLÓ en/g)).toHaveLength(1);
   });
 });
 

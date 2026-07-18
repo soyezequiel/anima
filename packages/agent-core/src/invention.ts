@@ -5,7 +5,9 @@ import {
   decompositionFor,
   recipeProduct,
   validateDecomposition,
+  validateGlyph,
   validateInteraction,
+  validateRecipe,
 } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { ModelProvider, ModelRequest, ModelResponse } from '@anima/model-providers';
@@ -22,11 +24,17 @@ import type { ProgressController } from './progress.js';
  * compartido: crédito de intentos por objetivo, memoria de rechazos que viaja
  * al siguiente intento, y consultas al proveedor con el error como dato.
  *
- * La única diferencia estructural entre ambas es deliberada: las
- * interacciones tienen un juez de coherencia (la IA Dios) y las recetas no.
- * Si mañana se abre una tercera puerta de invención (refugios, interacciones
- * por necesidad propia), debería ser una configuración más de este pipeline,
- * no una tercera copia.
+ * Desde el ADR 0042 las tres puertas que tocan la física comparten también el
+ * juez: el modelo propone, la puerta determinista filtra lo que se puede medir,
+ * y la IA Dios cuida lo que no se mide. Las recetas fueron las últimas en
+ * tenerlo, y el hueco se veía: "celular = 1 rama + 1 pedernal" pasaba todas las
+ * comprobaciones —no crea materia, no cicla, sus propiedades están en cota—
+ * porque cada una mira UN paso aislado y ese paso está bien formado. Lo que
+ * ninguna medía es que faltaran los pasos del MEDIO. El juez no prohíbe el
+ * celular: exige la cadena que lo sostiene (ADR 0031/0042).
+ *
+ * Si mañana se abre una puerta más, debería ser una configuración más de este
+ * pipeline, no otra copia.
  */
 
 /**
@@ -129,10 +137,18 @@ export class InventionEngine {
    * después de las paredes, como las paredes después de las tablas.
    */
   private pendingBlueprint: unknown | null = null;
+  /**
+   * Para qué nació el plan. Viaja hasta el juez (ADR 0042) porque una receta se
+   * juzga contra el problema que decía resolver: "una vara larga" tiene sentido
+   * si no llega a la fruta, y ninguno si tiene frío.
+   */
+  private pendingProblem = '';
   /** Rechazos (puerta o Dios) a sus interacciones: viajan al siguiente intento. */
   private interactionRejections: string[] = [];
   /** Rechazos a sus descomposiciones: mismo trato, viajan al próximo intento. */
   private decompositionRejections: string[] = [];
+  /** Rechazos a sus dibujos: mismo trato, viajan al próximo intento. */
+  private glyphRejections: string[] = [];
 
   constructor(private readonly deps: InventionDeps) {}
 
@@ -179,7 +195,7 @@ export class InventionEngine {
    * una casa más chica en vez de reintentar la que no le entra en los brazos.
    */
   recordWorldRejection(
-    kind: 'recipe' | 'interaction' | 'blueprint' | 'decomposition',
+    kind: 'recipe' | 'interaction' | 'blueprint' | 'decomposition' | 'glyph',
     reason: string,
   ): void {
     const list =
@@ -187,7 +203,9 @@ export class InventionEngine {
         ? this.interactionRejections
         : kind === 'decomposition'
           ? this.decompositionRejections
-          : this.recipeRejections;
+          : kind === 'glyph'
+            ? this.glyphRejections
+            : this.recipeRejections;
     this.remember(list, reason);
     this.deps.emit(`${kind}.rejected`, { reason, source: 'world' });
     // Si se cayó una pieza (o la obra que la coronaba), lo que se apoyaba en
@@ -206,14 +224,28 @@ export class InventionEngine {
    * proponer la tabla que ya existe es un rechazo tonto ("ya sé hacer eso") y
    * ese rechazo se llevaría puesto el resto del plan.
    */
-  nextPlanStep(perception: Perception): ActionIntent | null {
+  async nextPlanStep(perception: Perception): Promise<ActionIntent | null> {
     while (this.pendingPlan.length > 0) {
       const raw = this.pendingPlan.shift();
       const node = planNode(raw);
       const known =
         node.produces !== undefined &&
         perception.recipes.some((recipe) => recipeProduct(recipe)?.kind === node.produces);
-      if (!known) return { type: 'proposeRecipe', recipe: raw };
+      if (known) continue;
+      // Cada receta pasa por el Dios antes de llegar al mundo (ADR 0042). Se
+      // juzga aquí, de a una y en el momento de emitirla, y no el plan entero
+      // de golpe: una receta se juzga por lo que ES, y en un árbol de cuatro
+      // capas las de abajo todavía no existían cuando el modelo las pensó.
+      const verdict = await this.judgeRecipe(raw, perception);
+      if (verdict === 'rejected') return null;
+      if (verdict === 'unavailable') {
+        // El juez no contestó. Nada entra —es el lado seguro, el mismo que las
+        // otras dos puertas— pero el plan se conserva: no fue una mala idea,
+        // fue un fallo de infraestructura, y castigarla por eso sería mentirle.
+        this.pendingPlan.unshift(raw);
+        return null;
+      }
+      return { type: 'proposeRecipe', recipe: raw };
     }
     // Las piezas ya entraron: ahora sí la obra (ADR 0032). Si ya está en el
     // mundo (se aprendió antes, o se restauró de un guardado) no se re-propone.
@@ -232,6 +264,152 @@ export class InventionEngine {
     return this.deps.progress.recipeAttemptsFor(goalId) < MAX_INVENTION_ATTEMPTS;
   }
 
+  /** El hecho con el que se recuerda un veto de receta: nombre + motivo. */
+  private recipeVetoPrefix(outputKind: string): string {
+    return `no tiene sentido construir ${outputKind}`;
+  }
+
+  /**
+   * Qué haría lo construido, en frases humanas. El juez pesa mejor "da calor" e
+   * "irradia calor" que un JSON de componentes, y sobre todo: puede contrastar
+   * lo que la cosa HACE con lo que la cosa DICE LLAMARSE, que es exactamente
+   * donde se cuela un celular hecho de una rama.
+   */
+  private describeComponents(components: Record<string, unknown>): string[] {
+    const said: string[] = [];
+    const value = (key: string, field: string): number | undefined => {
+      const component = components[key] as Record<string, unknown> | undefined;
+      const raw = component?.[field];
+      return typeof raw === 'number' ? raw : undefined;
+    };
+    if (components.portable) said.push('se puede llevar encima');
+    const solid = (components.collider as { solid?: unknown } | undefined)?.solid;
+    if (solid === true) said.push('es sólido: bloquea el paso');
+    const hardness = value('hardness', 'value');
+    if (hardness !== undefined) said.push(`tiene dureza ${hardness}`);
+    const durability = value('durability', 'max');
+    if (durability !== undefined) said.push(`aguanta ${durability} golpes antes de romperse`);
+    const power = value('tool', 'power');
+    if (power !== undefined) said.push(`sirve como herramienta de fuerza ${power}`);
+    const warmth = value('heatSource', 'warmthPerTick');
+    if (warmth !== undefined) said.push(`da calor (${warmth} por tick)`);
+    const damage = value('hazard', 'damagePerTick');
+    if (damage !== undefined) said.push(`hace daño al tocarlo (${damage} por tick)`);
+    return said;
+  }
+
+  /**
+   * El juicio de la IA Dios sobre UNA receta (ADR 0042). Tres respuestas, y la
+   * diferencia entre las dos últimas importa: `rejected` es "el mundo dijo que
+   * no" y cuesta el plan entero; `unavailable` es "no hubo quien dijera nada" y
+   * no cuesta nada, porque un proveedor caído no es un veredicto.
+   *
+   * Antes del juez corre la puerta determinista, igual que en las otras dos
+   * puertas: si la idea ya es imposible, no vale la pena molestar al Dios. Se
+   * la llama SIN `obtainable` a propósito — el agente solo percibe su entorno, y
+   * juzgar la materia con su lista rechazaría ideas por ingredientes que existen
+   * tres celdas más allá (recipe-validation.ts:174). Sin ese argumento la puerta
+   * local es un subconjunto estricto de la del mundo: lo que rechaza aquí lo
+   * rechazaría allá igual, así que no puede perderse ninguna idea viable.
+   */
+  private async judgeRecipe(
+    raw: unknown,
+    perception: Perception,
+  ): Promise<'approved' | 'rejected' | 'unavailable'> {
+    const gated = validateRecipe(raw, perception.recipes);
+    if (!gated.ok) {
+      this.remember(this.recipeRejections, gated.error);
+      this.deps.emit('recipe.rejected', { reason: gated.error, source: 'gate' });
+      this.pendingPlan = [];
+      this.pendingBlueprint = null;
+      return 'rejected';
+    }
+
+    const recipe = raw as {
+      output?: { kind?: string; components?: Record<string, unknown> };
+      ingredients?: { kind?: string; count?: number }[];
+    };
+    const outputKind = recipe.output?.kind ?? '';
+    const components = recipe.output?.components ?? {};
+
+    // Lo ya vetado no se re-imagina, ni en esta sesión ni tras restaurar un
+    // guardado: el veto es conocimiento, y volver a proponerlo gastaría una
+    // consulta para escuchar el mismo "no".
+    const veto = this.deps.memory
+      .factList()
+      .find((f) => f.statement.startsWith(this.recipeVetoPrefix(outputKind)));
+    if (veto) {
+      this.remember(this.recipeRejections, veto.statement);
+      this.deps.emit('recipe.rejected', { reason: veto.statement, source: 'memory' });
+      this.pendingPlan = [];
+      this.pendingBlueprint = null;
+      return 'rejected';
+    }
+
+    const drops = (components.drops ?? []) as { kind: string }[];
+    const judgement = await this.consult(
+      {
+        kind: 'recipe.judge',
+        problem: this.pendingProblem,
+        outputKind,
+        ingredientsSummary: (recipe.ingredients ?? []).map((i) => `${i.count}x ${i.kind}`),
+        effectsSummary: this.describeComponents(components),
+        ...(drops.length > 0
+          ? { dropsSummary: [...countByKind(drops)].map(([kind, count]) => `${count}x ${kind}`) }
+          : {}),
+        // Lo que ya sabe hacer es lo que separa un paso de un salto: un celular
+        // hecho de procesador y pantalla es honesto SI esas dos ya existen, y es
+        // el mismo salto de siempre si no.
+        knownRecipes: perception.recipes.map(
+          (r) => `${recipeProduct(r)?.kind ?? r.id} (${r.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
+        ),
+        // Cuánto árbol le queda por debajo. Sin esto el juez puede exigirle seis
+        // pisos a un mundo que admite cuatro, que es mandarla contra una pared.
+        depthBudget: MAX_RECIPE_DEPTH,
+        facts: [
+          `llevo encima: ${perception.self.heldItems.map((item) => item.kind).join(', ') || 'nada'}`,
+          `veo alrededor: ${[...new Set(perception.visibleEntities.map((e) => e.kind))].join(', ') || 'nada'}`,
+          ...this.deps.memory
+            .factList()
+            .slice(-3)
+            .map((f) => `sé que ${f.statement}`),
+        ],
+      },
+      'statu-quo',
+    );
+    if (judgement === null) return 'unavailable';
+    if (judgement.kind !== 'judgement') {
+      this.deps.emit('provider.error', {
+        provider: this.deps.provider.name,
+        operation: 'recipe.judge',
+        message: `respuesta inesperada del proveedor: ${judgement.kind}`,
+        recoveredWith: 'statu-quo',
+      });
+      return 'unavailable';
+    }
+    this.deps.emit('recipe.judged', {
+      outputKind,
+      willing: judgement.willing,
+      reason: judgement.reason,
+    });
+    if (judgement.willing) return 'approved';
+
+    // El veto persiste, como el de las interacciones: viaja en su memoria y en
+    // el legado, y el motivo se dice en voz alta — que sepa POR QUÉ su idea no
+    // tenía sentido es la mitad de lo que la hace inventar mejor la próxima.
+    const fact = this.deps.memory.addFact(
+      `${this.recipeVetoPrefix(outputKind)}: ${judgement.reason}`,
+      this.deps.currentTick(),
+    );
+    this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });
+    this.remember(this.recipeRejections, fact.statement);
+    this.deps.reply(`Lo imaginé, pero no tiene sentido: ${judgement.reason}`);
+    // Lo que se apoyaba en esta pieza ya no se sostiene (ADR 0018).
+    this.pendingPlan = [];
+    this.pendingBlueprint = null;
+    return 'rejected';
+  }
+
   // ---- recetas (ADR 0018) ---------------------------------------------------
 
   /**
@@ -239,6 +417,12 @@ export class InventionEngine {
    * intención va al mundo, que valida y decide. Un rechazo no se pierde: se
    * recuerda y viaja al siguiente intento, para que corrija en vez de
    * insistir. Devuelve la intención de proponer, o null si no hay nada.
+   *
+   * Corregir NO cuesta un tick (ADR 0042). Cuando la puerta o el Dios rechazan
+   * una idea, la mascota vuelve a pensar en el acto, dentro del mismo turno, en
+   * vez de quedarse sin hacer nada hasta el siguiente: el rechazo llegó de sus
+   * propios filtros, no del mundo, así que no hubo acto que gastar. El tope de
+   * intentos sigue siendo el mismo, y es lo que impide que esto gire.
    */
   async inventRecipe(
     problem: string,
@@ -253,8 +437,27 @@ export class InventionEngine {
     ];
     // Sin materiales no hay nada que inventar: es falta de recurso, no de idea.
     if (materials.length === 0) return null;
-    if (!this.spendAttempt(options.goalId)) return null;
 
+    while (this.spendAttempt(options.goalId)) {
+      const step = await this.proposeOnce(problem, perception, options, materials);
+      if (step !== null) return step;
+      // El plan quedó en pie: no lo rechazó nadie, no hubo quien juzgara. Con el
+      // proveedor caído, insistir es gastar intentos contra una puerta cerrada.
+      if (this.pendingPlan.length > 0 || this.pendingBlueprint !== null) return null;
+    }
+    return null;
+  }
+
+  /**
+   * Una vuelta del ciclo: consultar, ordenar el plan y llevar su primera pieza
+   * hasta la puerta. Devuelve la intención, o null si no salió nada de aquí.
+   */
+  private async proposeOnce(
+    problem: string,
+    perception: Perception,
+    options: { goalId: string; wantedId?: string },
+    materials: string[],
+  ): Promise<ActionIntent | null> {
     // La experiencia pasada viaja con la propuesta (ADR 0033): lo que ya hizo
     // o ya le falló, relacionado con el problema, para que la idea nueva no
     // ignore la historia. Recuperación acotada: nunca "toda la memoria".
@@ -304,6 +507,7 @@ export class InventionEngine {
           : response.recipes;
     this.pendingPlan = orderPlan(plan);
     this.pendingBlueprint = response.kind === 'blueprint' ? response.blueprint : null;
+    this.pendingProblem = problem;
     this.deps.emit('recipe.proposed', {
       rationale: response.rationale,
       // Cuántas piezas tiene la idea: una casa que necesita paredes que
@@ -628,6 +832,53 @@ export class InventionEngine {
 
     // Aprobada por la física y por el Dios: al mundo, que vuelve a validar.
     return { type: 'proposeDecomposition', decomposition: proposal.decomposition };
+  }
+
+  /**
+   * Dibujar un tipo que nadie dibujó a mano (la quinta puerta).
+   *
+   * Es la más barata de las cinco y la única sin juez: un dibujo no toca la
+   * física, así que nadie puede romper el mundo dibujando mal. Lo peor que
+   * puede pasar es que quede feo, y contra eso la pantalla ya tiene su piso —
+   * compone material y forma sola. El dibujo de la IA es una mejora sobre ese
+   * piso, nunca un requisito.
+   *
+   * Por eso tampoco gasta el crédito de invención (`spendAttempt`): ese crédito
+   * cuida los intentos que pueden cambiar el mundo, y dibujar no lo cambia.
+   * Cobrárselo haría que dibujar le quitara oportunidades de resolver el hambre
+   * o el frío, que es exactamente al revés de lo que queremos.
+   */
+  async inventGlyph(targetKind: string, perception: Perception): Promise<ActionIntent | null> {
+    // Reuso primero: lo que ya está dibujado no se vuelve a dibujar.
+    if (perception.drawnKinds.includes(targetKind)) return null;
+
+    const proposal = await this.consult({
+      kind: 'glyph.propose',
+      targetKind,
+      targetFacts: this.targetFacts(targetKind, perception),
+      ...(this.glyphRejections.length > 0 ? { rejections: [...this.glyphRejections] } : {}),
+    });
+    if (proposal === null) return null;
+    if (proposal.kind !== 'glyph') {
+      this.deps.emit('provider.error', {
+        provider: this.deps.provider.name,
+        operation: 'glyph.propose',
+        message: `respuesta inesperada del proveedor: ${proposal.kind}`,
+      });
+      return null;
+    }
+    this.deps.emit('glyph.proposed', { targetKind, rationale: proposal.rationale });
+
+    // La puerta local ahorra el viaje al mundo cuando el dibujo no es dibujo;
+    // el motivo viaja al próximo intento, como con todo lo demás.
+    const validated = validateGlyph(proposal.glyph, perception.drawnKinds);
+    if (!validated.ok) {
+      this.remember(this.glyphRejections, validated.error);
+      this.deps.emit('glyph.rejected', { reason: validated.error, source: 'gate' });
+      return null;
+    }
+
+    return { type: 'proposeGlyph', glyph: proposal.glyph };
   }
 
   private suspendVetoed(goal: Goal, reason: string): void {

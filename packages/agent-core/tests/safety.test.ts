@@ -12,6 +12,11 @@ import { AnimaAgent, GOAL_BE_SAFE, GOAL_RESTORE_ENERGY } from '../src/index.js';
  * umbral y el peligro sigue al alcance, nace el objetivo «ponerse a salvo»,
  * por encima del hambre. El reflejo de un paso (painReflex) queda intacto:
  * esto es lo que pasa cuando ese paso no existe.
+ *
+ * Desde el ADR 0041 el fuego solo lastima a quien está ENCIMA, así que estar
+ * en peligro es estar dentro y salir siempre es un paso. El reflejo alcanza en
+ * cuanto haya una celda libre, y el objetivo solo nace cuando no la hay: el
+ * caso vivo de «ponerse a salvo» es estar acorralada dentro del fuego.
  */
 
 function hurtWorld(options: { health?: number; energy?: number } = {}): {
@@ -20,9 +25,8 @@ function hurtWorld(options: { health?: number; energy?: number } = {}): {
 } {
   const world = createWorld({ width: 9, height: 5, seed: 1 });
   const petId = spawn(world, 'pet', {
-    // Pegada al fuego, con la única escapada de un paso tapada: el reflejo
-    // no alcanza (los pasos laterales siguen a distancia 1) y hace falta un
-    // plan de más de un paso.
+    // Dentro del fuego, con tres lados tapados: el reflejo todavía alcanza
+    // porque le queda libre la celda de la derecha.
     position: { x: 1, y: 2 },
     collider: { solid: true },
     energy: { current: options.energy ?? 45, max: 50, decayPerTick: 0.01 },
@@ -32,23 +36,11 @@ function hurtWorld(options: { health?: number; energy?: number } = {}): {
     agent: { name: 'Anima', perceptionRange: 12 },
   }).id;
   spawn(world, 'campfire', {
-    position: { x: 2, y: 2 },
+    position: { x: 1, y: 2 },
     heatSource: { warmthPerTick: 0.3, range: 2 },
     hazard: { damagePerTick: 1 },
   });
-  spawn(world, 'wall', {
-    position: { x: 0, y: 2 },
-    collider: { solid: true },
-    hardness: { value: 5 },
-    durability: { current: 10, max: 10 },
-  });
-  return { world, petId };
-}
-
-/** Encerrada del todo: muros arriba, abajo y a la izquierda; fuego a la derecha. */
-function boxedWorld(): { world: WorldState; petId: EntityId } {
-  const { world, petId } = hurtWorld();
-  for (const pos of [{ x: 1, y: 1 }, { x: 1, y: 3 }]) {
+  for (const pos of [{ x: 0, y: 2 }, { x: 1, y: 1 }, { x: 1, y: 3 }]) {
     spawn(world, 'wall', {
       position: pos,
       collider: { solid: true },
@@ -56,6 +48,21 @@ function boxedWorld(): { world: WorldState; petId: EntityId } {
       durability: { current: 10, max: 10 },
     });
   }
+  return { world, petId };
+}
+
+/** Encerrada del todo: muros en los cuatro lados y el fuego bajo sus pies. */
+function boxedWorld(options: { energy?: number } = {}): {
+  world: WorldState;
+  petId: EntityId;
+} {
+  const { world, petId } = hurtWorld(options);
+  spawn(world, 'wall', {
+    position: { x: 2, y: 2 },
+    collider: { solid: true },
+    hardness: { value: 5 },
+    durability: { current: 10, max: 10 },
+  });
   return { world, petId };
 }
 
@@ -80,8 +87,8 @@ async function tick(world: WorldState, petId: EntityId, agent: AnimaAgent) {
 }
 
 describe('el dolor como motivo', () => {
-  it('con la salud baja y el peligro al alcance nace «ponerse a salvo»', async () => {
-    const { world, petId } = hurtWorld();
+  it('con la salud baja y sin salida nace «ponerse a salvo»', async () => {
+    const { world, petId } = boxedWorld();
     const agent = makeAgent(petId);
 
     for (let i = 0; i < 3 && !agent.goals.byDescription(GOAL_BE_SAFE); i++) {
@@ -96,7 +103,7 @@ describe('el dolor como motivo', () => {
   });
 
   it('ponerse a salvo le gana al hambre: morirse ahora vence a comer después', async () => {
-    const { world, petId } = hurtWorld({ energy: 15 });
+    const { world, petId } = boxedWorld({ energy: 15 });
     spawn(world, 'food', {
       position: { x: 6, y: 2 },
       portable: {},
@@ -121,7 +128,7 @@ describe('el dolor como motivo', () => {
     );
   });
 
-  it('se retira a distancia segura, la salud deja de bajar y el objetivo se cumple', async () => {
+  it('con una celda libre el reflejo basta: sale, la salud se estabiliza y no nace objetivo', async () => {
     const { world, petId } = hurtWorld();
     const agent = makeAgent(petId);
     const pet = world.entities[petId]!;
@@ -129,13 +136,10 @@ describe('el dolor como motivo', () => {
     for (let i = 0; i < 12; i++) await tick(world, petId, agent);
 
     expect(pet.components.dead).toBeUndefined();
-    const distance = Math.max(
-      Math.abs(pet.components.position!.x - 2),
-      Math.abs(pet.components.position!.y - 2),
-    );
-    expect(distance).toBeGreaterThanOrEqual(2);
-    expect(agent.goals.byDescription(GOAL_BE_SAFE)?.status).toBe('completed');
-    // A esa distancia el fuego ya no la alcanza: la salud se estabilizó.
+    // Fuera de la celda del fuego el daño para; no hace falta plan ninguno.
+    expect(pet.components.position).not.toEqual({ x: 1, y: 2 });
+    expect(agent.events.ofType('pain.reflex').length).toBeGreaterThan(0);
+    expect(agent.goals.byDescription(GOAL_BE_SAFE)).toBeUndefined();
     const healthAtEnd = pet.components.health!.current;
     for (let i = 0; i < 5; i++) await tick(world, petId, agent);
     expect(pet.components.health!.current).toBe(healthAtEnd);
@@ -157,22 +161,20 @@ describe('el dolor como motivo', () => {
     expect(agent.events.ofType('skill.requested')).toHaveLength(0);
   });
 
-  it('el reflejo sigue intacto: en campo abierto se aparta en un paso y no hay objetivo', async () => {
+  it('el reflejo no salta de un fuego a otro: elige la celda que no quema', async () => {
     const { world, petId } = hurtWorld();
-    // Sin el muro a la izquierda el reflejo alcanza: quita el muro.
-    const wall = Object.values(world.entities).find((e) => e.kind === 'wall');
-    delete world.entities[wall!.id];
+    // La única salida que le quedaba, ahora también en llamas: si el reflejo
+    // midiera solo contra el fuego que la quemó, saltaría de uno al otro.
+    spawn(world, 'campfire', {
+      position: { x: 2, y: 2 },
+      heatSource: { warmthPerTick: 0.3, range: 2 },
+      hazard: { damagePerTick: 1 },
+    });
     const agent = makeAgent(petId);
     const pet = world.entities[petId]!;
 
-    for (let i = 0; i < 6; i++) await tick(world, petId, agent);
+    for (let i = 0; i < 8; i++) await tick(world, petId, agent);
 
-    expect(agent.events.ofType('pain.reflex').length).toBeGreaterThan(0);
-    expect(agent.goals.byDescription(GOAL_BE_SAFE)).toBeUndefined();
-    const distance = Math.max(
-      Math.abs(pet.components.position!.x - 2),
-      Math.abs(pet.components.position!.y - 2),
-    );
-    expect(distance).toBeGreaterThanOrEqual(2);
+    expect(pet.components.position).not.toEqual({ x: 2, y: 2 });
   });
 });

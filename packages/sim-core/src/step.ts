@@ -8,6 +8,7 @@ import { matchesInteractionTarget } from './interactions.js';
 import { validateInteraction } from './interaction-validation.js';
 import { decompositionFor } from './decompositions.js';
 import { validateDecomposition } from './decomposition-validation.js';
+import { validateGlyph } from './glyph-validation.js';
 import { PROTECTED_KINDS, validateRecipe } from './recipe-validation.js';
 import { validateBlueprint } from './blueprint-validation.js';
 import {
@@ -132,7 +133,14 @@ function runTemperatureSystem(world: WorldState, events: SimEvent[]): void {
 }
 
 /**
- * Los peligros del mundo (espinas, fuego) dañan a los agentes adyacentes.
+ * Los peligros del mundo (espinas, fuego) dañan a quien está ENCIMA de ellos,
+ * no a quien está al lado. Arrimarse al fuego es exactamente lo que hay que
+ * hacer para entrar en calor —`heatSource.range` llega a 2— y cobrarle daño
+ * por hacerlo ponía a la mascota entre dos reglas que se contradicen: el frío
+ * la empujaba a acercarse y el dolor la empujaba a alejarse, un tic cada uno,
+ * hasta morir sin haber decidido nada. El castigo ahora es por meterse dentro,
+ * que es una decisión y no un roce.
+ *
  * La salud puede agotarse sin pasar por el hambre: la causa de muerte es
  * distinta y el informe de legado la refleja.
  */
@@ -147,10 +155,7 @@ function runHazardSystem(world: WorldState, events: SimEvent[]): void {
     if (!health || !pos || !entity.components.agent || entity.components.dead) continue;
     for (const hazard of hazards) {
       const hazardPos = hazard.components.position!;
-      if (
-        Math.max(Math.abs(hazardPos.x - pos.x), Math.abs(hazardPos.y - pos.y)) > 1 ||
-        health.current <= 0
-      ) {
+      if (hazardPos.x !== pos.x || hazardPos.y !== pos.y || health.current <= 0) {
         continue;
       }
       const damage = hazard.components.hazard!.damagePerTick;
@@ -336,6 +341,9 @@ function resolveAction(
       return;
     case 'proposeDecomposition':
       resolveProposeDecomposition(world, actor, intent, events);
+      return;
+    case 'proposeGlyph':
+      resolveProposeGlyph(world, actor, intent, events);
       return;
     case 'interact':
       resolveInteract(world, actor, intent, events);
@@ -617,6 +625,34 @@ function resolveProposeDecomposition(
     }),
   );
   resolved(world, events, actor.id, intent, true, { decompositionId: validated.value.id });
+}
+
+/**
+ * La mascota propone cómo se ve un tipo (la quinta puerta). Es la única de las
+ * cinco que no toca la física: un dibujo no cambia lo que una cosa puede hacer,
+ * y por eso no hay juez de coherencia detrás — nadie puede romper el mundo
+ * dibujando mal. Pasa igual por una puerta determinista porque es dato de un
+ * modelo, y eso se valida siempre.
+ */
+function resolveProposeGlyph(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'proposeGlyph' }>,
+  events: SimEvent[],
+): void {
+  const validated = validateGlyph(intent.glyph, Object.keys(world.glyphs));
+  if (!validated.ok) {
+    events.push(
+      simEvent('glyph.rejected', world.tick, { actorId: actor.id, reason: validated.error }),
+    );
+    resolved(world, events, actor.id, intent, false, { reason: validated.error });
+    return;
+  }
+  world.glyphs[validated.value.kind] = validated.value.rows;
+  events.push(
+    simEvent('glyph.learned', world.tick, { actorId: actor.id, kind: validated.value.kind }),
+  );
+  resolved(world, events, actor.id, intent, true, { kind: validated.value.kind });
 }
 
 /**

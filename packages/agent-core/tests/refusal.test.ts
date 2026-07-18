@@ -18,6 +18,7 @@ function perceptionWith(
       inventoryCapacity: 6,
       ...overrides,
     },
+    drawnKinds: [],
     visibleEntities: visible,
     recipes: [],
     interactions: [],

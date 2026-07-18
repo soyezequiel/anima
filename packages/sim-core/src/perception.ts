@@ -1,6 +1,6 @@
 import type { Vec2 } from '@anima/shared';
 import { chebyshev, manhattan } from '@anima/shared';
-import type { Entity, EntityId } from './components.js';
+import type { Entity, EntityId, EntityKind } from './components.js';
 import type { Blueprint } from './blueprints.js';
 import type { Decomposition } from './decompositions.js';
 import type { Interaction } from './interactions.js';
@@ -89,6 +89,13 @@ export interface Perception {
    * deja un pedernal que ya se rompió una vez.
    */
   decompositions: Decomposition[];
+  /**
+   * Qué tipos ya tienen dibujo (la quinta puerta). Solo los NOMBRES, no las
+   * grillas: la mascota necesita saber qué le falta dibujar, y cargarle 256
+   * caracteres por cada cosa que ya dibujó sería llenarle la cabeza con lo que
+   * ya está hecho. Es lo que permite no volver a dibujar lo mismo.
+   */
+  drawnKinds: EntityKind[];
 }
 
 /**
@@ -213,5 +220,6 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
     interactions: structuredClone(world.interactions),
     blueprints: structuredClone(world.blueprints),
     decompositions: structuredClone(world.decompositions),
+    drawnKinds: Object.keys(world.glyphs),
   };
 }

@@ -75,11 +75,31 @@ const LOW_TEMPERATURE_FRACTION = 0.35;
  */
 const LOW_HEALTH_FRACTION = 0.5;
 /**
- * Distancia (Chebyshev) a la que lo que daña deja de alcanzarla. Es la misma
- * distancia prudente del fuego (calienta a 2, quema a 1, ADR 0017): exigir
- * más chocaría con calentarse, que ocurre exactamente a 2.
+ * Distancia (Chebyshev) a la que lo que daña deja de alcanzarla. El peligro
+ * solo lastima a quien está ENCIMA (ADR 0041), así que salirse de la celda ya
+ * es estar a salvo. Antes valía 2 y peleaba contra el calor: la fogata calienta
+ * hasta 2 y quemaba a 1, de modo que «a salvo» y «en calor» no tenían ninguna
+ * celda en común y la mascota oscilaba entre las dos hasta morir.
  */
-const SAFE_DISTANCE = 2;
+const SAFE_DISTANCE = 1;
+
+/**
+ * El hecho que deja el dolor en la memoria. Dice «encima» y no «pegado»
+ * porque desde el ADR 0041 eso es literalmente lo que pasa: al lado del fuego
+ * se está en calor, dentro del fuego se está en problemas.
+ */
+function hazardFact(kind: string): string {
+  return `estar encima de un ${kindLabel(kind)} hace daño`;
+}
+
+/**
+ * La redacción anterior, cuando el daño alcanzaba a los adyacentes. Sigue
+ * contando como saber que eso duele: una mascota que aprendió con el cuerpo
+ * viejo no debería olvidarse del fuego porque cambió la física.
+ */
+function legacyHazardFact(kind: string): string {
+  return `estar pegado a un ${kindLabel(kind)} hace daño`;
+}
 
 /**
  * Verbo del recuerdo de acción según lo destruido (ADR 0033): romper una
@@ -253,6 +273,11 @@ export class AnimaAgent {
     AgentConfig;
   private activity: Activity | null = null;
   private pendingSpeech: string[] = [];
+  /**
+   * Tipos que aparecieron y todavía no tienen dibujo (la quinta puerta). Se
+   * vacía en los ratos ociosos, nunca compitiendo con una necesidad.
+   */
+  private pendingGlyphs: string[] = [];
   private pendingUserMessages: string[] = [];
   private pendingExplanation: string | null = null;
   private energyHypothesisId: string | null = null;
@@ -629,6 +654,25 @@ export class AnimaAgent {
   }
 
   /** Un paso de decisión. Devuelve la intención para este tick (o ninguna). */
+  /**
+   * Lo próximo que valga la pena dibujar, o null si no queda nada.
+   *
+   * La cola se llena cuando el mundo acepta algo nuevo — una receta, una
+   * descomposición — porque ahí es donde nacen los tipos que nadie dibujó. Se
+   * saltea lo que ya está dibujado por si el tipo entró por dos caminos: la
+   * cola es una intención, no una verdad, y la percepción manda sobre ella.
+   */
+  private async drawSomethingNew(perception: Perception): Promise<ActionIntent | null> {
+    while (this.pendingGlyphs.length > 0) {
+      const kind = this.pendingGlyphs.shift();
+      if (kind === undefined) break;
+      if (perception.drawnKinds.includes(kind)) continue;
+      const intent = await this.invention.inventGlyph(kind, perception);
+      if (intent) return intent;
+    }
+    return null;
+  }
+
   async think(perception: Perception): Promise<ActionIntent | null> {
     this.tick = perception.tick;
     // Cada percepción alimenta la memoria de lugares: dónde vio por última
@@ -673,7 +717,16 @@ export class AnimaAgent {
     if (this.activity) return this.continueActivity(perception);
 
     const goal = this.goals.selectActive();
-    if (!goal) return null; // Observación pasiva.
+    if (!goal) {
+      // Sin nada urgente que hacer, se pone a imaginar cómo se ven las cosas
+      // que todavía no dibujó (la quinta puerta). Va acá y no antes a
+      // propósito: dibujar no cambia el mundo, así que solo ocupa los ticks
+      // que de otro modo se irían en no hacer nada. Nunca le quita un turno al
+      // hambre, al frío ni a lo que le pidió el cuidador.
+      const drawing = await this.drawSomethingNew(perception);
+      if (drawing) return drawing;
+      return null; // Observación pasiva.
+    }
     if (goal.id !== this.lastSelectedGoalId) {
       this.lastSelectedGoalId = goal.id;
       this.emit('goal.selected', { goalId: goal.id, description: goal.description });
@@ -699,10 +752,13 @@ export class AnimaAgent {
     const selfPos = perception.self.position;
     if (!source?.position) return null;
     const sourcePos = source.position;
-    if (Math.max(Math.abs(sourcePos.x - selfPos.x), Math.abs(sourcePos.y - selfPos.y)) > 1) {
+    if (chebyshev(sourcePos, selfPos) >= SAFE_DISTANCE) {
       return null; // Ya está fuera de alcance: no hay de qué huir.
     }
 
+    // Salir de este fuego para caer en otro no es escapar. El reflejo mide
+    // contra todos los peligros que conoce, no solo contra el que la quemó.
+    const others = this.knownHazardPositions(perception);
     const candidates = [
       { dir: 'up', delta: { x: 0, y: -1 } },
       { dir: 'down', delta: { x: 0, y: 1 } },
@@ -714,13 +770,16 @@ export class AnimaAgent {
         const dest = { x: selfPos.x + delta.x, y: selfPos.y + delta.y };
         return {
           dir,
-          gain: Math.max(Math.abs(sourcePos.x - dest.x), Math.abs(sourcePos.y - dest.y)),
+          gain: Math.min(
+            chebyshev(sourcePos, dest),
+            ...others.map((h) => chebyshev(h, dest)),
+          ),
           blocked: perception.visibleEntities.some(
             (e) => e.solid && e.position && e.position.x === dest.x && e.position.y === dest.y,
           ),
         };
       })
-      .filter((option) => !option.blocked && option.gain > 1)
+      .filter((option) => !option.blocked && option.gain >= SAFE_DISTANCE)
       .sort((a, b) => b.gain - a.gain)[0];
     if (!escape) return null;
 
@@ -854,7 +913,7 @@ export class AnimaAgent {
       ) {
         const sourceKind = String(event.data.itemKind);
         this.lastPain = { sourceId: event.data.byId, sourceKind, tick: this.tick };
-        const statement = `estar pegado a un ${kindLabel(sourceKind)} hace daño`;
+        const statement = hazardFact(sourceKind);
         if (!this.memory.factList().some((f) => f.statement === statement)) {
           const fact = this.memory.addFact(statement, this.tick);
           this.emit('memory.created', { kind: 'fact', statement: fact.statement });
@@ -908,6 +967,18 @@ export class AnimaAgent {
         );
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
         this.emit('decomposition.learned', { targetKind, drops });
+        // Los fragmentos son tipos nuevos que nadie vio nunca: a la cola de
+        // dibujo. Es el momento en que existen, y por eso el momento de
+        // imaginarles una cara.
+        this.pendingGlyphs.push(...drops);
+      }
+      // El motivo del rechazo de un dibujo viaja al próximo intento, igual que
+      // el de una receta. Es lo que hace que corrija en vez de insistir.
+      if (event.type === 'glyph.rejected' && event.data.actorId === this.petId) {
+        this.invention.recordWorldRejection('glyph', String(event.data.reason));
+      }
+      if (event.type === 'glyph.learned' && event.data.actorId === this.petId) {
+        this.emit('glyph.learned', { kind: String(event.data.kind) });
       }
       if (event.type === 'interaction.learned' && event.data.actorId === this.petId) {
         const interactionId = String(event.data.interactionId);
@@ -935,6 +1006,9 @@ export class AnimaAgent {
           recipeId: event.data.recipeId,
           outputKind: event.data.outputKind,
         });
+        // Lo que acaba de volverse posible todavía no tiene cara: a la cola de
+        // dibujo, para el próximo rato libre.
+        this.pendingGlyphs.push(outputKind);
         const fromCaretaker = this.awaitingInventionVerdict?.recipeId === event.data.recipeId;
         if (fromCaretaker) {
           // La idea nació de la descripción del cuidador: es un recuerdo del
@@ -972,10 +1046,10 @@ export class AnimaAgent {
     await this.processColdSignal(perception);
   }
 
-  /** Le duele tocarlo: lo aprendió con su cuerpo («estar pegado a...»). */
+  /** Le duele meterse ahí: lo aprendió con su cuerpo («estar encima de...»). */
   private hurtsToTouch(kind: string): boolean {
-    const statement = `estar pegado a un ${kindLabel(kind)} hace daño`;
-    return this.memory.factList().some((f) => f.statement === statement);
+    const statements = [hazardFact(kind), legacyHazardFact(kind)];
+    return this.memory.factList().some((f) => statements.includes(f.statement));
   }
 
   /**
@@ -999,16 +1073,17 @@ export class AnimaAgent {
   }
 
   /**
-   * Pasos hacia una posición evitando TERMINAR pegada a lo que sabe que daña.
+   * Pasos hacia una posición evitando TERMINAR encima de lo que sabe que daña.
    * La consulta de los hechos de dolor vive aquí, al generar el programa: el
    * intérprete de la DSL no se entera y sigue igual de simple. De las dos
-   * variantes deterministas del camino se prefiere la que no acaba junto a un
+   * variantes deterministas del camino se prefiere la que no acaba dentro de un
    * peligro; si ninguna lo evita, llegar importa más que el rasguño (y el
    * reflejo sigue existiendo).
    */
   private walkStepsAvoidingHazards(perception: Perception, to: Vec2, stopAt: number): Direction[] {
     const hazards = this.knownHazardPositions(perception);
-    const risky = (cell: Vec2): boolean => hazards.some((h) => chebyshev(h, cell) <= 1);
+    const risky = (cell: Vec2): boolean =>
+      hazards.some((h) => chebyshev(h, cell) < SAFE_DISTANCE);
     const variants = (['x', 'y'] as const).map((axis) =>
       stepsToward(perception.self.position, to, stopAt, axis),
     );
@@ -2412,8 +2487,9 @@ export class AnimaAgent {
     goal: Goal,
     perception: Perception,
   ): Promise<ActionIntent | null> {
-    // Un plan a medio proponer sigue entrando, hoja por hoja (ADR 0031).
-    const pending = this.invention.nextPlanStep(perception);
+    // Un plan a medio proponer sigue entrando, hoja por hoja (ADR 0031), y cada
+    // hoja pasa por el juez antes de tocar el mundo (ADR 0042).
+    const pending = await this.invention.nextPlanStep(perception);
     if (pending) return pending;
     // Lo que su cuerpo aprendió que NO puede vencer hace la idea concreta —
     // "algo que rompa el muro" en vez de un deseo vago. Sin barrera conocida,
@@ -2455,7 +2531,7 @@ export class AnimaAgent {
     // receta por tick, cada una por la puerta del mundo (ADR 0031). Va antes
     // que el "ya sabe hacerlo" porque lo que falta son las piezas de abajo, no
     // la casa: la casa es justamente la que todavía no puede entrar.
-    const pending = this.invention.nextPlanStep(perception);
+    const pending = await this.invention.nextPlanStep(perception);
     if (pending) return pending;
     // Ya sabe hacerlo: no hay nada que inventar, hay que ponerse a construir.
     // "Saberlo" es tener la receta (un objeto) O el plano (una obra, ADR 0032):
@@ -2664,7 +2740,7 @@ export class AnimaAgent {
     );
     if (minDistance >= SAFE_DISTANCE) {
       // Fuera del alcance del daño la salud deja de bajar (el peligro del
-      // motor solo alcanza a los adyacentes): estar lejos ES estar a salvo.
+      // motor solo alcanza a quien está encima): salirse ES estar a salvo.
       this.goals.complete(goal.id);
       this.emit('goal.completed', { goalId: goal.id, strategy: 'ya-a-salvo' });
       this.memory.recordEpisode({

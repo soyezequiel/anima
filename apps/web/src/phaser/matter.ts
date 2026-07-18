@@ -23,7 +23,11 @@
  * sale color piedra aunque el dibujante quisiera otra cosa.
  */
 
-export const GLYPH_SIZE = 16;
+// La medida la manda el mundo, no la pantalla: si la puerta de sim-core
+// aceptara otra grilla y acá quedara un 16 escrito a mano, todo lo que entrara
+// se vería roto sin que nada avisara.
+export { GLYPH_SIZE } from '@anima/sim-core';
+import { GLYPH_SIZE } from '@anima/sim-core';
 
 /** Los tres tonos de un material. El índice `0` del glifo es transparente. */
 export interface Palette {
@@ -58,6 +62,9 @@ const PALETTES = {
   fuego: { base: '#f97316', shadow: '#b91c1c', light: '#fde047' },
   cuero: { base: '#a8734a', shadow: '#6b4423', light: '#d4a373' },
   hielo: { base: '#a5f3fc', shadow: '#0e7490', light: '#ecfeff' },
+  // Ámbar: la resina no es madera ni fuego, es lo pegajoso y translúcido
+  // entre los dos.
+  resina: { base: '#e0a112', shadow: '#8a5a08', light: '#fcd35e' },
 } satisfies Record<string, Palette>;
 
 /**
@@ -69,13 +76,14 @@ const MATERIAL_WORDS: [palette: Palette, words: string[]][] = [
   [PALETTES.piedra, ['piedra', 'roca', 'stone', 'rock', 'flint', 'pedernal', 'granito', 'pebble']],
   [PALETTES.madera, ['madera', 'wood', 'log', 'tronco', 'rama', 'branch', 'tabla', 'plank']],
   [PALETTES.hueso, ['hueso', 'bone', 'asta', 'colmillo', 'tusk', 'diente', 'tooth']],
-  [PALETTES.metal, ['metal', 'hierro', 'iron', 'acero', 'steel', 'cobre', 'copper', 'bronce']],
+  [PALETTES.metal, ['metal', 'hierro', 'iron', 'acero', 'steel', 'cobre', 'copper', 'bronce', 'mineral', 'ore', 'veta', 'vein']],
   [PALETTES.planta, ['planta', 'hoja', 'leaf', 'fibra', 'fiber', 'liana', 'pasto', 'grass']],
-  [PALETTES.tierra, ['tierra', 'barro', 'mud', 'clay', 'arcilla', 'arena', 'sand', 'dirt']],
+  [PALETTES.tierra, ['tierra', 'barro', 'mud', 'clay', 'arcilla', 'arena', 'sand', 'dirt', 'ladrillo', 'brick']],
   [PALETTES.agua, ['agua', 'water', 'liquido', 'jugo']],
   [PALETTES.fuego, ['fuego', 'fire', 'brasa', 'ember', 'llama', 'flame', 'ceniza', 'ash']],
   [PALETTES.cuero, ['cuero', 'leather', 'piel', 'hide', 'pellejo']],
   [PALETTES.hielo, ['hielo', 'ice', 'nieve', 'snow', 'escarcha']],
+  [PALETTES.resina, ['resina', 'resin', 'savia', 'sap', 'ambar', 'amber', 'brea', 'tar']],
 ];
 
 /**
@@ -370,10 +378,10 @@ const MASAS: readonly [Glyph, ...Glyph[]] = [MASA_REDONDA, MASA_ANGULOSA, MASA_A
 const FORM_WORDS: [glyph: Glyph, words: string[]][] = [
   [POLVO, ['polvo', 'dust', 'ceniza', 'ash', 'arena', 'sand', 'harina', 'grano']],
   [ESQUIRLA, ['esquirla', 'shard', 'astilla', 'splinter', 'fragmento', 'lasca', 'chip']],
-  [BARRA, ['barra', 'bar', 'vara', 'rod', 'palo', 'stick', 'lingote', 'ingot', 'eje']],
+  [BARRA, ['barra', 'bar', 'vara', 'rod', 'palo', 'stick', 'lingote', 'ingot', 'eje', 'ladrillo', 'brick']],
   [LAMINA, ['lamina', 'sheet', 'placa', 'plate', 'tabla', 'plank', 'plancha', 'loseta']],
   [FIBRA, ['fibra', 'fiber', 'cuerda', 'rope', 'hilo', 'thread', 'soga', 'trenza']],
-  [HOJA, ['cuchillo', 'knife', 'hoja', 'blade', 'filo', 'daga', 'hacha', 'axe', 'lanza']],
+  [HOJA, ['cuchillo', 'knife', 'hoja', 'blade', 'filo', 'daga', 'hacha', 'axe', 'lanza', 'pico', 'pick']],
 ];
 
 /** La forma de una cosa: por lo que diga su nombre, y si no dice nada, una masa. */

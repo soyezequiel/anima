@@ -69,7 +69,7 @@ describe('encender es azaroso', () => {
   });
 });
 
-describe('la carpintería siempre sale, pero nunca igual', () => {
+describe('dar forma siempre sale, pero nunca igual', () => {
   it('la silla nunca falla: la madera ya está ahí, no hay nada que pueda no ocurrir', () => {
     const { made, failed, kinds } = attempts(CHAIR_RECIPE, 40);
 
@@ -79,7 +79,7 @@ describe('la carpintería siempre sale, pero nunca igual', () => {
     expect(kinds).toBeGreaterThan(1);
   });
 
-  it('la empalizada tampoco falla', () => {
+  it('la muralla tampoco falla: el barro ya está amasado', () => {
     expect(attempts(BARRICADE_RECIPE, 40).failed).toBe(0);
   });
 

@@ -35,6 +35,12 @@ export interface EntityView {
    * `flint-shard` se dibuja gris piedra aunque su nombre no diga "piedra".
    */
   material?: string | undefined;
+  /**
+   * Lo que Ánima dibujó para este tipo, si lo dibujó (la quinta puerta). Manda
+   * sobre el dibujo procedural: nadie sabe mejor cómo se ve algo que quien lo
+   * inventó. Si falta, la pantalla lo compone sola y no se nota.
+   */
+  glyph?: string[] | undefined;
 }
 
 export interface PetView {
@@ -46,7 +52,12 @@ export interface PetView {
   health: { current: number; max: number };
   /** Solo en mundos con frío: null donde la mascota no siente temperatura. */
   temperature: { current: number; max: number } | null;
-  inventory: { id: string; kind: string }[];
+  /**
+   * Lo que lleva encima, ejemplar por ejemplar. `durability` viaja porque una
+   * herramienta gastada es un recurso que se agota: sin el número, romperse es
+   * una sorpresa y no una decisión del cuidador. Ausente en lo que no se rompe.
+   */
+  inventory: { id: string; kind: string; durability?: { current: number; max: number } }[];
   /**
    * Postura sobre un objeto tras una interacción (ADR 0027): comparte celda
    * con él, encima o debajo. El dibujo decide quién tapa a quién; null cuando
@@ -79,6 +90,18 @@ export interface ItemStat {
 }
 
 /**
+ * Un ingrediente en el catálogo: el tipo además de la etiqueta, porque la UI
+ * lo dibuja y no solo lo nombra. Ver qué se gastó es más rápido con el ícono
+ * que con el nombre.
+ */
+export interface ItemIngredientView {
+  kind: string;
+  count: number;
+  /** "2 troncos": cuánto y de qué, en voz humana. */
+  label: string;
+}
+
+/**
  * Un tipo de objeto del mundo, para el catálogo de la UI. Reúne en una sola
  * fila lo que existe en el mapa, lo que va en la mochila y lo que las recetas
  * saben construir. `origin` dice de dónde salió su definición: `builtin` viene
@@ -97,11 +120,22 @@ export interface ItemView {
   inInventory: number;
   /** true si alguna receta viva del mundo lo produce. */
   craftable: boolean;
-  /** Lo que cuesta construirlo ("2 troncos"); vacío si no hay receta. */
-  ingredients: string[];
+  /** Con qué se lo hace, un paso: los ingredientes directos de su receta. */
+  ingredients: ItemIngredientView[];
+  /**
+   * La materia base a la que baja el árbol de crafteo (ADR 0031): lo que hay
+   * que juntar del mundo si no se tiene ninguna de las partes intermedias.
+   * Vacío cuando no dice nada nuevo — si ningún ingrediente directo se
+   * construye a su vez, esa lista YA es la materia base.
+   */
+  baseCost: ItemIngredientView[];
+  /** El árbol no toca el suelo: tiene un ciclo o demasiadas capas. */
+  costTruncated: boolean;
   traits: EntityTraits;
   /** De qué está hecho, heredado de su receta. Ver `EntityView.material`. */
   material?: string | undefined;
+  /** Lo que Ánima dibujó para este tipo. Ver `EntityView.glyph`. */
+  glyph?: string[] | undefined;
   /** Qué HACE ("da calor", "bloquea el paso"), en voz humana. */
   does: string[];
   /**

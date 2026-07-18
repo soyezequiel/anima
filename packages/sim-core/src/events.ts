@@ -29,6 +29,10 @@ export type SimEventType =
   | 'decomposition.learned'
   /** El mundo rechazó la descomposición propuesta, con el motivo. */
   | 'decomposition.rejected'
+  /** El mundo aceptó un dibujo: desde ahora ese tipo se ve así. */
+  | 'glyph.learned'
+  /** El mundo rechazó el dibujo propuesto, con el motivo. */
+  | 'glyph.rejected'
   | 'tool.broke'
   | 'agent.spoke'
   | 'entity.spawned'
