@@ -66,6 +66,29 @@ export interface PlannedStructureView {
   remaining: number;
 }
 
+/**
+ * Una OBRA que Ánima aprendió a levantar (ADR 0056). Ninguna viene de fábrica:
+ * el mundo nace sin planos, así que todo lo que aparece acá lo imaginó ella
+ * —o lo heredó de una antecesora que lo imaginó—.
+ *
+ * Lleva la forma celda por celda porque el plano ES la idea: «escuela» no
+ * significa nada sin ver que son cinco muros y un pizarrón puestos así.
+ */
+export interface BlueprintView {
+  id: string;
+  /** Cómo se llama en voz humana ("escuela"). */
+  label: string;
+  /** Cuántos bloques de cada tipo pide, para la lista de piezas. */
+  blocks: ItemIngredientView[];
+  /** Cada bloque en su lugar, ya normalizado a una grilla que empieza en 0. */
+  cells: { kind: string; x: number; y: number }[];
+  /** Tamaño de esa grilla, para dibujarla sin recalcular. */
+  width: number;
+  height: number;
+  /** Dónde queda ella misma dentro de la grilla (el ancla del plano). */
+  anchor: { x: number; y: number };
+}
+
 export interface PetView {
   id: string;
   x: number;
@@ -446,6 +469,8 @@ export interface GameView {
   items: ItemView[];
   /** Interacciones aprendidas del mundo (ADR 0027), reusables sin costo. */
   interactions: InteractionView[];
+  /** Las obras que aprendió a levantar (ADR 0056). Ninguna viene de fábrica. */
+  blueprints: BlueprintView[];
   pet: PetView | null;
   goals: GoalView[];
   currentGoal: GoalView | null;

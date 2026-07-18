@@ -60,6 +60,7 @@ import type {
   ExperimentView,
   GameView,
   GoalView,
+  BlueprintView,
   InteractionView,
   ItemIngredientView,
   ItemStat,
@@ -1810,6 +1811,48 @@ export class GameSession {
   }
 
   /** Las interacciones del mundo, en voz humana (ADR 0027). */
+  /**
+   * Las obras aprendidas, listas para dibujar (ADR 0056). El plano guarda
+   * desplazamientos relativos al ancla (que pueden ser negativos); acá se
+   * normalizan a una grilla que empieza en (0,0) para que la pantalla la
+   * pinte sin hacer cuentas — y se ubica dónde queda ella misma, que es la
+   * celda que el plano deja libre a propósito.
+   */
+  private blueprintViews(): BlueprintView[] {
+    return this.world.blueprints.map((blueprint) => {
+      const xs = blueprint.placements.map((p) => p.offset.x);
+      const ys = blueprint.placements.map((p) => p.offset.y);
+      // El ancla (0,0) entra en la cuenta aunque no tenga bloque: es parte de
+      // la forma, y sin ella la silueta se dibujaría corrida.
+      const minX = Math.min(0, ...xs);
+      const minY = Math.min(0, ...ys);
+      const counts = new Map<string, number>();
+      for (const placement of blueprint.placements) {
+        counts.set(placement.kind, (counts.get(placement.kind) ?? 0) + 1);
+      }
+      // De qué está hecha cada pieza NO se calcula acá: la tarjeta lleva a la
+      // ficha del objeto en el catálogo, que ya responde eso y mejor (ADR
+      // 0056, adenda). Bajar el árbol por cada bloque en cada cuadro para
+      // mostrar un total que nadie lee era trabajo puro por tirar.
+      return {
+        id: blueprint.id,
+        label: kindLabel(blueprint.id),
+        blocks: [...counts].map(([kind, count]) => ingredientView(kind, count)),
+        cells: blueprint.placements.map((p) => ({
+          kind: p.kind,
+          x: p.offset.x - minX,
+          y: p.offset.y - minY,
+        })),
+        width: Math.max(0, ...xs) - minX + 1,
+        height: Math.max(0, ...ys) - minY + 1,
+        // `Math.max(0, …)` y no `-minX` a secas: con el mínimo en cero eso da
+        // `-0`, que es el mismo número pero no la misma cosa para nadie que
+        // compare. Basura que no tiene por qué salir del view model.
+        anchor: { x: Math.max(0, -minX), y: Math.max(0, -minY) },
+      };
+    });
+  }
+
   private interactionViews(): InteractionView[] {
     const stanceLabels: Record<string, string> = {
       beside: 'al lado',
@@ -2020,6 +2063,7 @@ export class GameSession {
       plannedStructures: this.plannedStructureViews(perception),
       items: this.itemViews(),
       interactions: this.interactionViews(),
+      blueprints: this.blueprintViews(),
       pet:
         pet && petPos
           ? {

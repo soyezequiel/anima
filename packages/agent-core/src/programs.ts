@@ -432,6 +432,13 @@ function fetchOrMakeOps(
             recipes,
             ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
             ...(options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+            // Y la cosecha VIAJA hacia abajo (ADR 0058). Sin esto se perdía en
+            // el primer escalón: para hacer una pared hace falta un tronco, y
+            // el tronco no se fabrica —se saca de un árbol—, pero la sub-receta
+            // no sabía cómo. Resultado: sin troncos SUELTOS no había pared
+            // posible, rodeada de árboles. Lo que arriba era una capacidad,
+            // un nivel más abajo era ceguera.
+            ...(options.harvestSource ? { harvestSource: options.harvestSource } : {}),
           },
           depth + 1,
         ),
@@ -589,21 +596,42 @@ export function buildStructureProgram(
   const carried = [...(options.held ?? []).values()].reduce((sum, n) => sum + n, 0);
   const freeSlots = (options.capacity ?? 6) - carried;
 
+  /**
+   * Cuántas ranuras hace falta tener libres para conseguir UN bloque más.
+   * Recogerlo cuesta una; FABRICARLO cuesta tantas como ingredientes lleve,
+   * porque la receta los consume de la mano y hay que tenerlos todos a la vez.
+   *
+   * Sin esta cuenta, «¿hay lugar?» era «¿queda alguna ranura?», y eso alcanza
+   * para recoger pero no para fabricar: con cuatro muros y el martillo encima
+   * quedaba UNA ranura libre y un pizarrón que pide DOS arcillas. Nunca entraba
+   * la segunda, la obra no avanzaba, y la mochila llena no era el problema
+   * —había lugar— así que tampoco se descargaba. Trabada para siempre con la
+   * arcilla a cuatro pasos.
+   */
+  const slotsForOneMore = Math.max(
+    1,
+    ...placements.map((placement) => {
+      const recipe = recipeProducing(options.recipes ?? [], placement.kind);
+      if (!recipe) return 1;
+      return recipe.ingredients.reduce((sum, ingredient) => sum + ingredient.count, 0);
+    }),
+  );
+
   // Caminar primero al sitio, marcar el ancla después: el ancla es el LUGAR de
   // la obra, no donde ella estaba cuando se le ocurrió empezar (ADR 0049).
   const steps: SkillOp[] = [
     ...(options.approach ?? []).map((dir) => ({ op: 'moveStep' as const, dir })),
     { op: 'markAnchor', store: BASE },
-    // DESCARGAR PRIMERO, pero solo si hace falta. Con la mochila llena, salir a
-    // buscar la pieza que falta es imposible: no entra. Colocar lo que ya lleva
+    // DESCARGAR PRIMERO, pero solo si hace falta. Sin lugar para la próxima
+    // pieza, salir a buscarla es imposible: no entra. Colocar lo que ya lleva
     // libera las ranuras y la obra sigue — es lo que destrabó una escuela con
     // cuatro muros en la mano y lugar para nada más.
     //
-    // Cuando SÍ hay lugar no se descarga: los bloques suelen ser sólidos, y
-    // levantarlos antes de salir a buscar material puede tapiarle el camino a
-    // ella misma. Con espacio de sobra conviene juntar con el sitio despejado y
-    // colocar todo junto al final.
-    ...(freeSlots > 0 ? [] : placeOps(placements)),
+    // Cuando SÍ hay lugar suficiente no se descarga: los bloques suelen ser
+    // sólidos, y levantarlos antes de salir a buscar material puede tapiarle el
+    // camino a ella misma. Con espacio de sobra conviene juntar con el sitio
+    // despejado y colocar todo junto al final.
+    ...(freeSlots >= slotsForOneMore ? [] : placeOps(placements)),
   ];
 
   // Qué celdas quedan para el ciclo de juntar-y-colocar. Si hubo descarga, las
@@ -613,7 +641,7 @@ export function buildStructureProgram(
   // todas, y `until` se satisface solo con lo que ya lleva encima.
   const stock = new Map(options.held ?? []);
   const batchSource =
-    freeSlots > 0
+    freeSlots >= slotsForOneMore
       ? placements
       : placements.filter((placement) => {
           const have = stock.get(placement.kind) ?? 0;

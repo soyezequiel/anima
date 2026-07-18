@@ -754,3 +754,126 @@ button:active {
   padding: 2px 7px;
   font-size: 11px;
 }
+
+/* ── Obras (ADR 0056) ─────────────────────────────────────────────────────
+   El plano dibujado celda por celda: es la única forma de que «escuela»
+   signifique algo. La grilla usa el mismo ícono que cada bloque tiene en el
+   tablero, así una pieza no se ve de dos maneras según dónde la mires. */
+
+.work-card {
+  display: grid;
+  gap: 8px;
+}
+
+.work-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.work-shape {
+  display: grid;
+  gap: 2px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, #14532d 35%, var(--panel));
+  flex: 0 0 auto;
+}
+
+.work-row {
+  display: flex;
+  gap: 2px;
+}
+
+.work-cell {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+  font-size: 15px;
+  line-height: 1;
+  /* El suelo vacío se insinúa, no se dibuja: lo que importa son los bloques. */
+  background: color-mix(in srgb, var(--fg, var(--text)) 4%, transparent);
+}
+
+.work-cell-block {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* Donde queda ella: el hueco que el plano deja libre a propósito. */
+.work-cell-anchor {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.work-cell .item-icon {
+  display: inline-flex;
+}
+
+.work-stats {
+  flex: 1 1 180px;
+  min-width: 0;
+  margin: 0;
+}
+
+/* Una pieza de obra es una PUERTA (ADR 0056, adenda): lleva al catálogo, abre
+   su ficha y la resalta. Se ve como un chip, se comporta como un enlace. */
+.item-ingredient-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.item-ingredient-link:hover,
+.item-ingredient-link:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.item-ingredient-arrow {
+  color: var(--accent);
+  font-weight: 700;
+  opacity: 0.7;
+}
+
+.work-hint {
+  display: block;
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+/* Llegaste acá desde otra pestaña: un destello que dice «es esta», y se apaga.
+   Un resaltado permanente ensuciaría la lista en cuanto dejás de mirarlo. */
+.item-card-focused {
+  animation: item-focus-flash 1.6s ease-out;
+}
+
+@keyframes item-focus-flash {
+  0%,
+  35% {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, var(--panel-2));
+  }
+  100% {
+    border-color: var(--border);
+    background: var(--panel-2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .item-card-focused {
+    animation: none;
+    border-color: var(--accent);
+  }
+}

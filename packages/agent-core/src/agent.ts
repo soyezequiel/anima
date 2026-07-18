@@ -23,6 +23,8 @@ import type {
 import {
   blueprintCounts,
   expandRecipeCost,
+  isMadeFrom,
+  MAX_RECIPE_DEPTH,
   missingIngredients,
   recipeProduces,
   recipeProducing,
@@ -917,7 +919,15 @@ export class AnimaAgent {
       (entity) =>
         entity.held !== true &&
         entity.kind !== kind &&
-        (entity.dropKinds ?? []).includes(kind),
+        (entity.dropKinds ?? []).includes(kind) &&
+        // Y NUNCA algo hecho de lo que busca (ADR 0058). Romper una pared para
+        // sacarle el tronco del que está hecha es deshacer trabajo propio: se
+        // recupera lo que costó, se pierde la pared, y el saldo es negativo
+        // siempre. Peor todavía porque es lo más BLANDO que ve —una pared
+        // cuesta menos golpes que un árbol—, así que ganaba el orden y se
+        // elegía primero: se la vio demoliendo su escuela para juntar los
+        // troncos con los que levantar su escuela, en un círculo perfecto.
+        !isMadeFrom(entity.kind, kind, perception.recipes),
     );
     if (sources.length === 0) return undefined;
     return sources.sort(
@@ -4345,12 +4355,17 @@ export class AnimaAgent {
         // reanudable: no recoloca lo que ya está puesto.
         const missingKinds = this.missingKindsForRequest(goal, perception);
         if (reason.startsWith('no-candidates') && missingKinds.length > 0) {
+          // Lo que espera que APAREZCA no es lo que le falta, sino lo que le
+          // falta CONSEGUIR: un pizarrón no aparece tirado, se fabrica con dos
+          // arcillas. Esperando el pizarrón se quedaba dormida para siempre con
+          // la arcilla a cuatro pasos; esperando la arcilla, despierta.
+          const waitingFor = this.findableMaterialsFor(missingKinds, perception);
           this.goals.suspend(
             activity.goalId,
             'me quedé sin material a mitad del encargo',
-            `aparezca ${displayKindList(missingKinds)}`,
+            `aparezca ${displayKindList(waitingFor)}`,
           );
-          this.suspensionMaterials.set(activity.goalId, missingKinds);
+          this.suspensionMaterials.set(activity.goalId, waitingFor);
           this.destroyToolFloor.delete(activity.goalId);
           this.emit('goal.suspended', {
             goalId: activity.goalId,
@@ -4584,6 +4599,28 @@ export class AnimaAgent {
   }
 
   /**
+   * Lo que de verdad hay que ENCONTRAR para conseguir estos tipos. Un tipo que
+   * ninguna receta produce se busca tal cual; uno que se fabrica se cambia por
+   * sus ingredientes, y así hasta tocar materia que exista en el mundo.
+   *
+   * Es la diferencia entre dormir esperando un pizarrón —que no va a aparecer
+   * nunca, porque los pizarrones se hacen— y despertar cuando hay arcilla.
+   */
+  private findableMaterialsFor(kinds: string[], perception: Perception): string[] {
+    const found = new Set<string>();
+    const walk = (kind: string, depth: number): void => {
+      const recipe = depth >= MAX_RECIPE_DEPTH ? undefined : recipeProducing(perception.recipes, kind);
+      if (!recipe) {
+        found.add(kind);
+        return;
+      }
+      for (const ingredient of recipe.ingredients) walk(ingredient.kind, depth + 1);
+    };
+    for (const kind of kinds) walk(kind, 0);
+    return [...found];
+  }
+
+  /**
    * Retoma los encargos que quedaron esperando materia (ADR 0046). Basta con
    * que UNO de los tipos que faltaban esté ahora a la vista o en la mano: el
    * programa de la obra vuelve a correr, no recoloca lo ya puesto y, si todavía
@@ -4617,7 +4654,12 @@ export class AnimaAgent {
       // alguno de los tipos que faltaban no sirve: tener uno de los dos muros
       // que pide el plano es justo la situación en la que se suspendió, y
       // revivir por eso sería un bucle suspender/revivir cada tick.
-      const stillMissing = this.missingKindsForRequest(goal, perception);
+      // Se expande a materia encontrable por el mismo motivo que al
+      // suspenderse: lo que tiene que aparecer es la arcilla, no el pizarrón.
+      const stillMissing = this.findableMaterialsFor(
+        this.missingKindsForRequest(goal, perception),
+        perception,
+      );
       const arrived =
         // Ya no falta nada: lo fabricó, se lo trajeron, o lo juntó de otro lado.
         stillMissing.length === 0 ||

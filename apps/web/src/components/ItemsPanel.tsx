@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { DND_ITEM_KIND } from '../dnd.js';
 import { ItemIcon } from './ItemIcon.js';
 import type { GameView, ItemIngredientView, ItemView } from '../session/view.js';
@@ -54,11 +54,35 @@ function Ingredients({
   );
 }
 
-function ItemCard({ item, byKind }: { item: ItemView; byKind: Map<string, ItemView> }) {
+function ItemCard({
+  item,
+  byKind,
+  focusNonce,
+}: {
+  item: ItemView;
+  byKind: Map<string, ItemView>;
+  /**
+   * Cambia cada vez que alguien pide mirar ESTE objeto de cerca (ADR 0056,
+   * adenda). `undefined` = nadie lo pidió. Es un contador y no un booleano
+   * para que pedirlo dos veces seguidas vuelva a abrir y a resaltar.
+   */
+  focusNonce?: number;
+}) {
   const [open, setOpen] = useState(false);
+  const cardRef = useRef<HTMLLIElement>(null);
   // Un pedernal no tiene nada que desplegar: es portátil y se acabó. Solo abre
   // lo que de verdad tiene detalle.
   const hasDetail = item.stats.length > 0 || item.baseCost.length > 0 || item.costTruncated;
+
+  // Llegar desde otra pestaña tiene que TERMINAR en la respuesta, no al lado:
+  // se abre la ficha, se la trae al centro y se la resalta un momento. Sin
+  // esto el salto dejaba al cuidador en una lista larga, buscando a mano el
+  // objeto que acababa de tocar.
+  useEffect(() => {
+    if (focusNonce === undefined) return;
+    if (hasDetail) setOpen(true);
+    cardRef.current?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  }, [focusNonce, hasDetail]);
   const head = (
     <>
       <span className="item-head-row">
@@ -87,7 +111,10 @@ function ItemCard({ item, byKind }: { item: ItemView; byKind: Map<string, ItemVi
   );
   return (
     <li
-      className="item-card item-card-draggable"
+      ref={cardRef}
+      // La `key` del resaltado va en el className y no en el elemento: cambiar
+      // la key remontaría la ficha y perdería el `open` que acabamos de poner.
+      className={`item-card item-card-draggable${focusNonce !== undefined ? ' item-card-focused' : ''}`}
       data-testid="item-entry"
       data-kind={item.kind}
       data-origin={item.origin}
@@ -137,7 +164,14 @@ function ItemCard({ item, byKind }: { item: ItemView; byKind: Map<string, ItemVi
   );
 }
 
-export function ItemsPanel({ view }: { view: GameView }) {
+export function ItemsPanel({
+  view,
+  focus,
+}: {
+  view: GameView;
+  /** Qué objeto mirar de cerca, si se llegó acá desde otra pestaña. */
+  focus?: { kind: string; nonce: number } | null;
+}) {
   const invented = view.items.filter((i) => i.origin === 'invented');
   const builtin = view.items.filter((i) => i.origin === 'builtin');
   // El catálogo se indexa una vez y lo comparten todas las tarjetas: cada
@@ -159,13 +193,23 @@ export function ItemsPanel({ view }: { view: GameView }) {
       )}
       <ul className="list">
         {invented.map((item) => (
-          <ItemCard key={item.kind} item={item} byKind={byKind} />
+          <ItemCard
+            key={item.kind}
+            item={item}
+            byKind={byKind}
+            {...(focus?.kind === item.kind ? { focusNonce: focus.nonce } : {})}
+          />
         ))}
       </ul>
       <h3>De fábrica ({builtin.length})</h3>
       <ul className="list">
         {builtin.map((item) => (
-          <ItemCard key={item.kind} item={item} byKind={byKind} />
+          <ItemCard
+            key={item.kind}
+            item={item}
+            byKind={byKind}
+            {...(focus?.kind === item.kind ? { focusNonce: focus.nonce } : {})}
+          />
         ))}
       </ul>
       <h3>Interacciones aprendidas ({view.interactions.length})</h3>

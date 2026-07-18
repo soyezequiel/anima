@@ -135,6 +135,36 @@ export function recipeProducing(
   return recipes.find((recipe) => recipeProduct(recipe)?.kind === kind);
 }
 
+/**
+ * ¿`product` se hace, en algún paso de su árbol, con `material`? (ADR 0058)
+ *
+ * Sirve para una sola pregunta, pero importante: **nunca romper algo para
+ * sacarle la materia de la que está hecho**. Una casa está hecha de paredes,
+ * que están hechas de tablas, que están hechas de troncos — así que romper la
+ * casa para juntar troncos deshace tres capas de trabajo propio y el saldo es
+ * negativo siempre.
+ *
+ * Se corta por `MAX_RECIPE_DEPTH` y por tipos ya vistos: un árbol con ciclos
+ * responde "no" en vez de colgar.
+ */
+export function isMadeFrom(
+  product: EntityKind,
+  material: EntityKind,
+  recipes: readonly Recipe[],
+): boolean {
+  const seen = new Set<EntityKind>();
+  const walk = (kind: EntityKind, depth: number): boolean => {
+    if (depth >= MAX_RECIPE_DEPTH || seen.has(kind)) return false;
+    seen.add(kind);
+    const recipe = recipeProducing(recipes, kind);
+    if (!recipe) return false;
+    return recipe.ingredients.some(
+      (ingredient) => ingredient.kind === material || walk(ingredient.kind, depth + 1),
+    );
+  };
+  return walk(product, 0);
+}
+
 /** Lo que cuesta una receta cuando se la sigue hasta abajo (ADR 0031). */
 export interface RecipeCost {
   /** Materia base: lo que hay que juntar del mundo, ya sumado por tipo. */

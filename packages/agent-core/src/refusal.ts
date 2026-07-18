@@ -1,6 +1,6 @@
 import { countedKindLabel, isFeminineKind, kindLabel, kindWithArticle } from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
-import { missingIngredients, recipeProduct } from '@anima/sim-core';
+import { isMadeFrom, missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { Goal } from './goals.js';
 
@@ -172,7 +172,11 @@ export function evaluateUserRequest(
           perception.visibleEntities.reduce(
             (total, entity) =>
               total +
-              (entity.held === true
+              // Lo hecho DE eso no cuenta como fuente de eso (ADR 0058):
+              // prometer que junta cinco troncos porque tiene cinco paredes a
+              // la vista es prometer demoler para construir. La misma regla que
+              // usa el planificador al elegir qué romper.
+              (entity.held === true || isMadeFrom(entity.kind, kind, perception.recipes)
                 ? 0
                 : (entity.dropKinds ?? []).filter((drop) => drop === kind).length),
             0,

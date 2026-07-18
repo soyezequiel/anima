@@ -1070,6 +1070,46 @@ describe('pensamiento en vivo en la sesión', () => {
     session.dispose();
   });
 
+  /**
+   * ADR 0056. Las obras aprendidas llegan a la pantalla con su forma dibujable
+   * y su costo real. El plano guarda desplazamientos relativos al ancla, que
+   * pueden ser negativos; la grilla que se dibuja empieza en (0,0).
+   */
+  it('las obras aprendidas viajan con su forma normalizada y su costo en materia bruta', async () => {
+    const { session } = await makeSession(5);
+    // Un plano con desplazamientos negativos y una pieza que a su vez se
+    // craftea: los dos casos que la vista tiene que resolver.
+    const world = (session as unknown as { world: WorldState }).world;
+    world.recipes.push({
+      id: 'muro-aula',
+      ingredients: [{ kind: 'log', count: 2 }],
+      outcomes: [
+        { weight: 1, output: { kind: 'muro-aula', components: { portable: {}, collider: { solid: true } } } },
+      ],
+    });
+    world.blueprints.push({
+      id: 'escuela',
+      placements: [
+        { kind: 'muro-aula', offset: { x: -1, y: 0 } },
+        { kind: 'muro-aula', offset: { x: 1, y: 0 } },
+      ],
+    });
+    await session.stepOnce();
+
+    const work = session.getView().blueprints.find((b) => b.id === 'escuela');
+    expect(work).toBeDefined();
+    expect(work!.label).toBe('escuela');
+    // La grilla empieza en 0 y el ancla queda en el medio: 3 de ancho, 1 de alto.
+    expect({ width: work!.width, height: work!.height }).toEqual({ width: 3, height: 1 });
+    expect(work!.anchor).toEqual({ x: 1, y: 0 });
+    expect(work!.cells.map((c) => c.x).sort()).toEqual([0, 2]);
+    // Las piezas agrupadas por tipo: es lo que la tarjeta vuelve tocable para
+    // saltar a su ficha en el catálogo.
+    expect(work!.blocks).toHaveLength(1);
+    expect(work!.blocks[0]).toMatchObject({ kind: 'muro-aula', count: 2 });
+    session.dispose();
+  });
+
   it('un fallo queda contado como error y la vista es una copia inmutable', async () => {
     const { session } = await makeSession(5);
     session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'start' });

@@ -12,6 +12,7 @@ import { GoalsPanel } from './components/GoalsPanel.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
 import { LearningPanel } from './components/LearningPanel.js';
 import { StatusPanel } from './components/StatusPanel.js';
+import { WorksPanel } from './components/WorksPanel.js';
 import { ThoughtTicker } from './components/ThoughtTicker.js';
 import { VitalsHeader } from './components/VitalsHeader.js';
 import { WelcomeOverlay } from './components/WelcomeOverlay.js';
@@ -21,7 +22,7 @@ import { WelcomeOverlay } from './components/WelcomeOverlay.js';
  * SIEMPRE visibles encima de las pestañas. El usuario nuevo entra por Chat
  * —la acción principal— y nunca pierde el contexto vital.
  */
-type Tab = 'chat' | 'objetivos' | 'estado' | 'objetos' | 'aprendizaje' | 'dev';
+type Tab = 'chat' | 'objetivos' | 'estado' | 'objetos' | 'obras' | 'aprendizaje' | 'dev';
 
 const WELCOME_SEEN_KEY = 'anima.welcomeSeen';
 
@@ -39,6 +40,17 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     () => session.getView(),
   );
   const [tab, setTab] = useState<Tab>('chat');
+  /**
+   * El objeto a mirar de cerca (ADR 0056, adenda): tocar una pieza en Obras
+   * salta a Objetos, abre esa ficha y la resalta. El contador es lo que
+   * permite repetir el salto sobre la MISMA pieza — sin él, volver a tocarla
+   * no cambiaría el estado y la ficha no se movería ni se resaltaría.
+   */
+  const [focusItem, setFocusItem] = useState<{ kind: string; nonce: number } | null>(null);
+  const inspectItem = (kind: string) => {
+    setFocusItem((previous) => ({ kind, nonce: (previous?.nonce ?? 0) + 1 }));
+    setTab('objetos');
+  };
   const [showWelcome, setShowWelcome] = useState(() => !welcomeAlreadySeen());
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -68,6 +80,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     },
     { id: 'estado', label: 'Estado' },
     { id: 'objetos', label: 'Objetos', badge: view.items.length },
+    { id: 'obras', label: 'Obras', badge: view.blueprints.length },
     { id: 'aprendizaje', label: 'Aprendizaje', badge: view.skills.length },
   ];
 
@@ -175,7 +188,8 @@ export function App({ session, account }: { session: GameSession; account: Cloud
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
             {tab === 'objetivos' && <GoalsPanel view={view} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
-            {tab === 'objetos' && <ItemsPanel view={view} />}
+            {tab === 'objetos' && <ItemsPanel view={view} focus={focusItem} />}
+            {tab === 'obras' && <WorksPanel view={view} onInspect={inspectItem} />}
             {tab === 'aprendizaje' && <LearningPanel view={view} />}
             {tab === 'dev' && <DevPanel view={view} session={session} />}
           </div>
