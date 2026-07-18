@@ -11,7 +11,7 @@ import type {
   ThoughtView,
 } from '../session/view.js';
 import { parseReasoning, parseReasoningStep } from './reasoning.js';
-import { skillDevLine, ThinkingClock } from './thinking.js';
+import { skillDevLine, ThinkingClock, WaitHints } from './thinking.js';
 
 /**
  * Chat como FEED unificado. Por defecto («Todo») mezcla la charla con los
@@ -179,6 +179,7 @@ function ChatThinking({
             {cleanHeadline(headline)}
           </span>
         )}
+        {wait && <WaitHints wait={wait} />}
       </div>
     </div>
   );
@@ -283,7 +284,13 @@ export function ChatFeedPanel({ view, session }: { view: GameView; session: Game
           data-testid="chat-input"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder="Pedile algo, enseñale un hecho o preguntale qué hace…"
+          // Mientras piensa, el propio input dice que escribir sigue valiendo:
+          // el mensaje queda encolado (chat-pending) y lo lee al volver.
+          placeholder={
+            view.aiBusy
+              ? 'Está pensando: escribí igual, leerá tu mensaje al volver…'
+              : 'Pedile algo, enseñale un hecho o preguntale qué hace…'
+          }
         />
         <button type="submit" data-testid="chat-send">
           Enviar

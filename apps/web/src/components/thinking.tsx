@@ -44,6 +44,45 @@ export function skillDevLine(dev: SkillDevProgressView): string {
   }
 }
 
+/** La espera corta no necesita pistas: recién pasado esto se invita a mirar. */
+const HINT_AFTER_MS = 8_000;
+/** Cada cuánto rota la pista, para que una espera larga no repita la misma. */
+const HINT_EVERY_MS = 12_000;
+
+/**
+ * Qué puede hacer el cuidador mientras ella piensa. Son invitaciones, no
+ * instrucciones: cosas que ya existen en la UI y que la espera vuelve
+ * relevantes. La primera es la más importante — el chat encolado ya funciona,
+ * pero nadie lo sabe hasta que se lo dicen.
+ */
+const WAIT_HINTS = [
+  'podés seguir escribiéndole: leerá tu mensaje cuando vuelva',
+  'mientras tanto, la pestaña Objetos muestra el árbol de crafteo de cada cosa',
+  'en Aprendizaje están sus habilidades, versión por versión, con sus pruebas',
+  'en Estado se ve su memoria: hechos, hipótesis y episodios',
+  'los sueños en miniatura del tablero son sus evaluaciones reales',
+];
+
+/**
+ * Pista rotativa para la espera larga. Aparece a los segundos y va rotando:
+ * convierte el tiempo muerto en una visita guiada por lo que ya está ahí.
+ */
+export function WaitHints({ wait }: { wait: AiWaitView }) {
+  const [, setBeat] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setBeat((n) => n + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const elapsed = Date.now() - wait.startedAtMs;
+  if (elapsed < HINT_AFTER_MS) return null;
+  const index = Math.floor((elapsed - HINT_AFTER_MS) / HINT_EVERY_MS) % WAIT_HINTS.length;
+  return (
+    <span className="thinking-hint" data-testid="wait-hint" key={index}>
+      {WAIT_HINTS[index]}
+    </span>
+  );
+}
+
 /**
  * Cronómetro vivo de la espera. Se actualiza solo (cada segundo) porque
  * durante la detención del tiempo (ADR 0040) los ticks del mundo no corren y

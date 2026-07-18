@@ -38,6 +38,12 @@ Cuatro piezas, todas de observación — ninguna cambia la simulación:
    balancea despacio y su mirada se va hacia arriba. Puro dibujo en Phaser;
    la física no se entera.
 
+5. **La espera invita.** Pasados unos segundos, bajo el "pensando" del chat
+   rota una pista de qué mirar mientras tanto (el árbol de crafteo, sus
+   habilidades, su memoria), y el input avisa que escribir sigue valiendo: el
+   mensaje queda encolado y lo lee al volver. Invitaciones a lo que ya existe,
+   no contenido nuevo.
+
 ## Consecuencias
 
 - La espera larga dejó de ser tiempo muerto: el momento más lento (desarrollar

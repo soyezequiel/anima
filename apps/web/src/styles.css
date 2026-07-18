@@ -1984,6 +1984,14 @@ button:disabled {
   animation: thought-step-in 0.35s ease-out;
 }
 
+/* Invitación rotativa de la espera larga: qué mirar mientras ella piensa. */
+.thinking-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
+  animation: thought-step-in 0.5s ease-out;
+}
+
 /* Tiempo suspendido: el mundo se desatura y respira despacio, a propósito. */
 .stage-board.stage-held canvas {
   filter: saturate(0.45) brightness(0.82);
