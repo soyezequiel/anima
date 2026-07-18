@@ -7,6 +7,9 @@ import { GLYPH_SIZE, toneAt } from './matter.js';
 /** Celda de referencia: toda la geometría se define a esta escala y se reescala desde aquí. */
 export const BASE_CELL = 64;
 
+/** Cuánto se levanta lo señalado. Aparecer tiene que terminar acá si ya está señalado. */
+const LIFTED_SCALE = 1.16;
+
 /**
  * Escena de renderizado puro: dibuja el view model y anima diferencias.
  * No contiene ninguna regla del mundo — si algo se mueve, rompe o desaparece,
@@ -26,6 +29,17 @@ export class WorldScene extends Phaser.Scene {
   private ready = false;
   /** Id de la entidad señalada con el puntero; null si el cursor no toca ninguna. */
   private hovered: string | null = null;
+  /**
+   * Lo que ya estaba en el mundo la vez anterior. Sobrevive al reescalado a
+   * propósito: `setCell` destruye todos los sprites y los rehace, y eso no es
+   * que las cosas aparezcan de nuevo — el mundo no cambió, cambió la ventana.
+   */
+  private knownEntities = new Set<string>();
+  /**
+   * La primera vista no es una aparición. Al abrir la sesión el mundo ya
+   * estaba: la choza y la piedra llevan ahí desde antes de que mirásemos.
+   */
+  private greeted = false;
 
   constructor() {
     super('world');
@@ -99,11 +113,49 @@ export class WorldScene extends Phaser.Scene {
       'lift',
       this.tweens.add({
         targets: sprite,
-        scale: lifted ? 1.16 : 1,
+        scale: lifted ? LIFTED_SCALE : 1,
         duration: 140,
         ease: lifted ? 'Back.easeOut' : 'Quad.easeOut',
       }),
     );
+  }
+
+  /**
+   * Una cosa entra al mundo: crece hasta su tamaño con un halo que se abre en
+   * su casilla. No promete nada sobre cuánto tardó en hacerse — craftear es un
+   * tick — solo dice dónde acaba de pasar algo, que es lo que el ojo pierde
+   * cuando un objeto se materializa de golpe en un tablero quieto.
+   */
+  private appear(sprite: Phaser.GameObjects.Container, rest: number): void {
+    sprite.setScale(rest * 0.4);
+    sprite.setAlpha(0);
+    // El alfa va en su propio tween y NO se guarda como 'lift': si el puntero
+    // señala la cosa a mitad de aparecer, `stopLift` corta el crecimiento (que
+    // es lo correcto, lo toma el tween de levantar) pero el desvanecido tiene
+    // que llegar a 1 igual, o el objeto queda medio transparente para siempre.
+    this.tweens.add({ targets: sprite, alpha: 1, duration: 200 });
+    sprite.setData(
+      'lift',
+      this.tweens.add({ targets: sprite, scale: rest, duration: 300, ease: 'Back.easeOut' }),
+    );
+    this.halo(sprite.x, sprite.y);
+  }
+
+  /** El halo de aparición: un anillo que se abre y se apaga en la casilla. */
+  private halo(x: number, y: number): void {
+    const ring = this.add.circle(x, y, this.cell * 0.22);
+    ring.setStrokeStyle(2 * this.cellScale, 0xfcd34d, 0.9);
+    // Debajo de las entidades (1) y encima de la grilla (0): el protagonista
+    // es lo que aparece, el halo solo señala dónde mirar.
+    ring.setDepth(0.5);
+    this.tweens.add({
+      targets: ring,
+      scale: 2.4,
+      alpha: 0,
+      duration: 360,
+      ease: 'Quad.easeOut',
+      onComplete: () => ring.destroy(),
+    });
   }
 
   private stopLift(sprite: Phaser.GameObjects.Container): void {
@@ -175,6 +227,24 @@ export class WorldScene extends Phaser.Scene {
     return key;
   }
 
+  /**
+   * Todo lo que decide cómo se ve una entidad, en una cadena comparable. Es lo
+   * mismo que entra en `appearanceFor`: si dos entidades comparten firma, el
+   * mismo sprite las sirve; si a una le cambia, hay que redibujarla.
+   */
+  private lookSignature(kind: string, traits: EntityTraits, hints: AppearanceHints): string {
+    const marks = Object.entries(traits)
+      .filter(([, on]) => on)
+      .map(([name]) => name)
+      .sort()
+      .join(',');
+    // El glifo llega sin validar (lo escribe el modelo): si es cualquier cosa,
+    // `appearanceFor` lo descarta igual. Acá solo hace falta que la firma
+    // cambie cuando cambia el dibujo, así que sirve cualquier forma estable.
+    const drawn = Array.isArray(hints.glyph) ? hints.glyph.join('') : String(hints.glyph ?? '');
+    return `${kind}|${marks}|${hints.material ?? ''}|${drawn}`;
+  }
+
   private makeEntitySprite(
     kind: string,
     traits: EntityTraits,
@@ -208,14 +278,34 @@ export class WorldScene extends Phaser.Scene {
     for (const entity of view.entities) {
       seen.add(entity.id);
       const pixel = this.toPixel(entity.x, entity.y);
+      const hints = { material: entity.material, glyph: entity.glyph };
+      const look = this.lookSignature(entity.kind, entity.traits, hints);
       let sprite = this.sprites.get(entity.id);
+      // Una cosa puede entrar al mundo antes de que Ánima termine de dibujarla:
+      // hasta entonces sale con el dibujo procedural. Cuando el glifo llega (o
+      // cuando la receta dice recién ahora de qué está hecha), el sprite viejo
+      // ya no la representa y hay que rehacerlo — moverlo no alcanza.
+      if (sprite && sprite.getData('look') !== look) {
+        this.stopLift(sprite);
+        this.discard(sprite);
+        this.sprites.delete(entity.id);
+        sprite = undefined;
+      }
       if (!sprite) {
-        sprite = this.makeEntitySprite(entity.kind, entity.traits, {
-          material: entity.material,
-          glyph: entity.glyph,
-        });
+        sprite = this.makeEntitySprite(entity.kind, entity.traits, hints);
+        sprite.setData('look', look);
         sprite.setPosition(pixel.x, pixel.y);
         this.sprites.set(entity.id, sprite);
+        const lifted = this.hovered === entity.id;
+        // Aparecer es entrar al mundo, no volver a dibujarse: lo que ya estaba
+        // (un reescalado, un glifo que llegó tarde) se rehace en silencio.
+        if (!this.knownEntities.has(entity.id) && this.greeted) {
+          this.appear(sprite, lifted ? LIFTED_SCALE : 1);
+        } else if (lifted) {
+          // Si el puntero seguía encima mientras se rehacía, el acuse de
+          // señalado viaja al sprite nuevo: si no, queda apuntado sin levantar.
+          this.lift(sprite, true);
+        }
       } else if (sprite.x !== pixel.x || sprite.y !== pixel.y) {
         this.tweens.add({ targets: sprite, x: pixel.x, y: pixel.y, duration: 140 });
       }
@@ -242,6 +332,11 @@ export class WorldScene extends Phaser.Scene {
         });
       }
     }
+    // Lo de esta vista es lo conocido de la próxima. Se guarda al final, con
+    // las bajas ya descontadas: si algo se va y vuelve (se suelta lo que se
+    // había levantado), vuelve a aparecer, que es exactamente lo que pasó.
+    this.knownEntities = seen;
+    this.greeted = true;
   }
 
   /**

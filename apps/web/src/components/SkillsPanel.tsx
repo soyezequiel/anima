@@ -1,57 +1,144 @@
 import { useState } from 'react';
 import type { GameView, SkillView } from '../session/view.js';
 
-function SkillCard({ skill, previous }: { skill: SkillView; previous: SkillView | undefined }) {
+/** «alcanzar-alimento-bloqueado» → «alcanzar alimento bloqueado» */
+function humanName(name: string): string {
+  return name.replace(/-/g, ' ');
+}
+
+/** Estados del motor, dichos en castellano llano. */
+const STATUS_LABEL: Record<string, string> = {
+  stable: 'en uso',
+  experimental: 'en pruebas',
+  deprecated: 'en desuso',
+  archived: 'descartada',
+};
+
+function pct(rate: number): string {
+  return `${Math.round(rate * 100)}%`;
+}
+
+function SkillCard({
+  skill,
+  previous,
+  current,
+}: {
+  skill: SkillView;
+  previous: SkillView | undefined;
+  current: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const rate = skill.lastEvaluationSuccessRate;
   return (
     <li className="skill-card" data-testid="skill-item" data-status={skill.status}>
       <button className="skill-head" onClick={() => setOpen(!open)}>
-        <span className={`pill pill-${skill.status}`}>{skill.status}</span>
+        <span className={`pill pill-${skill.status}`}>
+          {STATUS_LABEL[skill.status] ?? skill.status}
+        </span>
         <strong>
-          {skill.name} <span className="muted">v{skill.version}</span>
+          {current ? 'versión actual' : 'intento'} <span className="muted">v{skill.version}</span>
         </strong>
         <span className="muted">
-          {skill.lastEvaluationSuccessRate !== null
-            ? `éxito ${Math.round(skill.lastEvaluationSuccessRate * 100)}%`
-            : 'sin evaluar'}
-          {' · '}usos {skill.totalRuns}
+          {rate !== null ? `pasó el ${pct(rate)} de las pruebas` : 'sin evaluar'}
+          {skill.totalRuns > 0 &&
+            ` · usada ${skill.totalRuns} ${skill.totalRuns === 1 ? 'vez' : 'veces'}`}
         </span>
       </button>
       {open && (
         <div className="skill-detail">
           <p>
-            <strong>Motivo de creación:</strong> {skill.motivation}
+            <strong>Para qué la creó:</strong> {skill.motivation}
           </p>
           <p>
-            <strong>Resultado esperado:</strong> {skill.expectedOutcome}
+            <strong>Qué debería lograr:</strong> {skill.expectedOutcome}
           </p>
           <p>
-            <strong>Criterios:</strong> {skill.successCriteria.join(', ')}
+            <strong>Cómo se mide que funcionó:</strong> {skill.successCriteria.join(' · ')}
           </p>
           {previous && (
             <p data-testid="skill-comparison">
-              <strong>vs v{previous.version}:</strong>{' '}
-              {previous.lastEvaluationSuccessRate !== null &&
-              skill.lastEvaluationSuccessRate !== null
-                ? `éxito ${Math.round(previous.lastEvaluationSuccessRate * 100)}% → ${Math.round(skill.lastEvaluationSuccessRate * 100)}%`
+              <strong>Comparada con el intento anterior (v{previous.version}):</strong>{' '}
+              {previous.lastEvaluationSuccessRate !== null && rate !== null
+                ? `éxito ${pct(previous.lastEvaluationSuccessRate)} → ${pct(rate)}`
                 : 'sin datos comparables'}
             </p>
           )}
           {skill.knownFailures.length > 0 && (
             <>
-              <strong>Fallos conocidos:</strong>
+              <strong>Tropiezos conocidos:</strong>
               <ul className="list">
                 {skill.knownFailures.map((f, i) => (
                   <li key={i} className="muted">
-                    {f}
+                    {humanReason(f)}
                   </li>
                 ))}
               </ul>
             </>
           )}
-          <strong>Programa:</strong>
-          <pre className="program">{skill.programSummary.join('\n')}</pre>
+          <details className="program-details">
+            <summary>
+              Ver el plan paso a paso ({skill.programSummary.length}{' '}
+              {skill.programSummary.length === 1 ? 'paso' : 'pasos'})
+            </summary>
+            <pre className="program">{skill.programSummary.join('\n')}</pre>
+          </details>
         </div>
+      )}
+    </li>
+  );
+}
+
+/**
+ * Una habilidad = una tarjeta, con todos sus intentos adentro. La versión que
+ * importa (la estable, o la última si ninguna aprobó) va al frente; el resto
+ * queda plegado como «intentos anteriores» para que ocho versiones muertas no
+ * tapen la historia.
+ */
+function SkillGroup({ versions }: { versions: SkillView[] }) {
+  const sorted = [...versions].sort((a, b) => a.version - b.version);
+  const stable = [...sorted].reverse().find((s) => s.status === 'stable');
+  const current = stable ?? sorted[sorted.length - 1]!;
+  const older = sorted.filter((s) => s.id !== current.id);
+  const previousOf = (skill: SkillView) =>
+    sorted[sorted.findIndex((s) => s.id === skill.id) - 1];
+
+  const chip = stable
+    ? { cls: 'stable', text: '✓ la sabe usar' }
+    : current.status === 'experimental'
+      ? { cls: 'experimental', text: 'aprendiéndola' }
+      : { cls: 'archived', text: 'todavía no le sale' };
+
+  const summary = stable
+    ? `La aprendió al intento ${current.version}${
+        current.totalRuns > 0
+          ? ` y ya la usó ${current.totalRuns} ${current.totalRuns === 1 ? 'vez' : 'veces'}`
+          : ''
+      }.`
+    : current.status === 'experimental'
+      ? `La está aprendiendo: va por el intento ${current.version}.`
+      : `Lo intentó ${sorted.length} ${sorted.length === 1 ? 'vez' : 'veces'}; ninguna versión aprobó las pruebas todavía.`;
+
+  return (
+    <li className="skill-group" data-testid="skill-group">
+      <header className="skill-group-head">
+        <strong className="skill-group-title">{humanName(current.name)}</strong>
+        <span className={`pill pill-${chip.cls}`}>{chip.text}</span>
+      </header>
+      <p className="skill-group-sub muted">{summary}</p>
+      <ul className="list">
+        <SkillCard skill={current} previous={previousOf(current)} current />
+      </ul>
+      {older.length > 0 && (
+        <details className="skill-attempts">
+          <summary>
+            Intentos anteriores ({older.length})
+          </summary>
+          <ul className="list">
+            {[...older].reverse().map((skill) => (
+              <SkillCard key={skill.id} skill={skill} previous={previousOf(skill)} current={false} />
+            ))}
+          </ul>
+        </details>
       )}
     </li>
   );
@@ -125,7 +212,12 @@ function RegressionRow({ group }: { group: RegressionGroup }) {
   return (
     <li className="regression-card" data-testid="regression-item">
       <button className="regression-head" onClick={() => setOpen(!open)}>
-        <span className="pill pill-failed">×{group.seeds.length}</span>
+        <span
+          className="pill pill-failed"
+          title={`falló en ${group.seeds.length} mundos de práctica`}
+        >
+          ×{group.seeds.length}
+        </span>
         <strong>{group.scenarioName}</strong>
         <span className="muted">
           {humanReason(group.reasons[0] ?? 'sin motivo registrado')}
@@ -142,9 +234,9 @@ function RegressionRow({ group }: { group: RegressionGroup }) {
             ))}
           </ul>
           <p className="muted">
-            {group.version && `falló en v${group.version} · `}semillas{' '}
-            {group.seeds.slice(0, 6).join(', ')}
-            {group.seeds.length > 6 && ` y ${group.seeds.length - 6} más`}
+            {group.version !== null && `Le pasó con el intento v${group.version} · `}en{' '}
+            {group.seeds.length} mundos de práctica (semillas {group.seeds.slice(0, 6).join(', ')}
+            {group.seeds.length > 6 && ` y ${group.seeds.length - 6} más`})
           </p>
         </div>
       )}
@@ -159,32 +251,36 @@ export function SkillsPanel({ view }: { view: GameView }) {
     list.push(skill);
     byName.set(skill.name, list);
   }
+  const regressionGroups = groupRegressions(view.regressions);
   return (
     <div className="skills-panel">
       {view.skills.length === 0 && (
-        <p className="muted">Todavía no ha creado ninguna habilidad.</p>
+        <p className="muted">
+          Todavía no inventó ninguna habilidad. Cuando algo le falte —comida que no alcanza, frío
+          que no cede— va a intentar crear una, y acá vas a ver cómo le va.
+        </p>
       )}
-      <ul className="list">
-        {[...byName.values()].flatMap((versions) =>
-          versions
-            .sort((a, b) => a.version - b.version)
-            .map((skill, i, sorted) => (
-              <SkillCard key={skill.id} skill={skill} previous={i > 0 ? sorted[i - 1] : undefined} />
-            )),
-        )}
+      <ul className="list skill-groups">
+        {[...byName.values()].map((versions) => (
+          <SkillGroup key={versions[0]!.name} versions={versions} />
+        ))}
       </ul>
-      {view.regressions.length > 0 && (
-        <>
-          <h3>Regresiones conservadas ({view.regressions.length})</h3>
+      {regressionGroups.length > 0 && (
+        <details className="regressions">
+          <summary>
+            Errores viejos que vigila ({regressionGroups.length}{' '}
+            {regressionGroups.length === 1 ? 'situación' : 'situaciones'})
+          </summary>
           <p className="muted regression-hint">
-            Casos que alguna vez falló y que ahora vuelve a probar en cada versión.
+            Situaciones donde alguna vez falló. Antes de aprobar una versión nueva de cualquier
+            habilidad, la vuelve a rendir en estos casos para no repetir un error ya cometido.
           </p>
           <ul className="list" data-testid="regression-list">
-            {groupRegressions(view.regressions).map((group, i) => (
+            {regressionGroups.map((group, i) => (
               <RegressionRow key={i} group={group} />
             ))}
           </ul>
-        </>
+        </details>
       )}
     </div>
   );

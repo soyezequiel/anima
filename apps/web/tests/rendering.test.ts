@@ -198,7 +198,7 @@ describe('el glifo de la IA Dios se acota antes de dibujarse', () => {
 /**
  * El color se hereda de la receta. El caso real: Ánima inventó un `cuchillo`
  * con `flint-shard` + `branch`, y "cuchillo" no dice de qué está hecho — sin
- * linaje salía de un color arbitrario en vez de gris piedra.
+ * linaje salía de un color arbitrario en vez del de su materia.
  */
 describe('de qué está hecho algo se sigue por sus recetas', () => {
   const lineage = new Map([
@@ -212,11 +212,15 @@ describe('de qué está hecho algo se sigue por sus recetas', () => {
     expect(materialFor('mango-tallado', lineage)).toBe('branch');
   });
 
-  it('el cuchillo inventado sale gris piedra y no de un color cualquiera', () => {
+  it('el cuchillo inventado sale color pedernal y no de un color cualquiera', () => {
     const material = materialFor('cuchillo', lineage);
-    expect(paletteFor('cuchillo', material)).toEqual(paletteFor('piedra'));
-    // Sin linaje caía al color por hash, que no es el de la piedra.
-    expect(paletteFor('cuchillo')).not.toEqual(paletteFor('piedra'));
+    // Del pedernal, que es de lo que está hecho — no del gris de la piedra.
+    // Son dos materiales distintos desde que la piedra existe por su cuenta, y
+    // un cuchillo de pedernal es oscuro, no gris granito.
+    expect(paletteFor('cuchillo', material)).toEqual(paletteFor('pedernal'));
+    expect(paletteFor('cuchillo', material)).not.toEqual(paletteFor('piedra'));
+    // Sin linaje caía al color por hash, que no es el de su materia.
+    expect(paletteFor('cuchillo')).not.toEqual(paletteFor('pedernal'));
   });
 
   it('el nombre propio manda sobre lo heredado', () => {

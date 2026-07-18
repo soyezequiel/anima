@@ -12,6 +12,17 @@ const KIND_LABEL: Record<string, string> = {
   rejected: 'descartada',
 };
 
+/**
+ * El backend enumera cada semilla del banco de pruebas; para leer alcanza con
+ * saber cuántas son. La lista completa vive en el registro técnico del motor.
+ */
+function compactDetail(detail: string): string {
+  return detail.replace(
+    /semillas \d+(?:,\d+)*/g,
+    (m) => `${m.slice('semillas '.length).split(',').length} semillas`,
+  );
+}
+
 export function ExperimentsPanel({ view }: { view: GameView }) {
   return (
     <div className="experiments-panel">
@@ -24,7 +35,7 @@ export function ExperimentsPanel({ view }: { view: GameView }) {
             <span className="muted">t{e.tick}</span>{' '}
             <span className={`pill pill-${e.kind}`}>{KIND_LABEL[e.kind] ?? e.kind}</span>{' '}
             {e.version !== null && <strong>v{e.version} </strong>}
-            <span>{e.detail}</span>
+            <span>{compactDetail(e.detail)}</span>
           </li>
         ))}
       </ol>

@@ -25,7 +25,10 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
     reasoningEffort?: string;
   } | null = null;
 
-  await page.route('**/api/ai/status', (route) =>
+  // Los globs llevan `*` final porque el puente viaja con query string
+  // (?provider=codex) y un glob sin sufijo no la matchea: la consulta se iría
+  // a la API real (y al Codex real, que consume cuota).
+  await page.route('**/api/ai/status*', (route) =>
     route.fulfill({
       json: {
         installed: true,
@@ -34,7 +37,7 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
       },
     }),
   );
-  await page.route('**/api/ai/limits', (route) =>
+  await page.route('**/api/ai/limits*', (route) =>
     route.fulfill({
       json: {
         planType: 'plus',
@@ -43,26 +46,25 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
       },
     }),
   );
-  await page.route('**/api/ai/logout', (route) => {
+  await page.route('**/api/ai/logout*', (route) => {
     logoutCalls += 1;
     return route.fulfill({ status: 204 });
   });
-  await page.route('**/api/ai/complete', async (route) => {
+  // Una sola fuente de respuestas para los dos endpoints del puente: con
+  // oyente del pensamiento el transporte elige /complete/stream (SSE) y solo
+  // cae al clásico si aquel no abre, así que el arco debe ser idéntico por
+  // cualquiera de los dos caminos.
+  const completionFor = async (body: {
+    kind: string;
+    prompt: string;
+    model?: string;
+    reasoningEffort?: string;
+  }): Promise<string> => {
     completeCalls += 1;
-    const body = route.request().postDataJSON() as {
-      kind: string;
-      prompt: string;
-      model?: string;
-      reasoningEffort?: string;
-    };
     if (body.kind === 'interpret.signal') {
-      return route.fulfill({
-        json: {
-          text: JSON.stringify({
-            hypothesis: 'consumir alimento recupera energía',
-            confidence: 0.5,
-          }),
-        },
+      return JSON.stringify({
+        hypothesis: 'consumir alimento recupera energía',
+        confidence: 0.5,
       });
     }
     if (body.kind === 'skill.propose' || body.kind === 'skill.revise') {
@@ -72,30 +74,35 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
         body.kind === 'skill.revise' && body.prompt.includes('no-damage-dealt')
           ? 'strongestTool'
           : 'nearest';
-      return route.fulfill({
-        json: {
-          text: JSON.stringify({
-            program: reachBlockedResourceProgram(strategy),
-            rationale: `estrategia ${strategy}`,
-          }),
-        },
+      return JSON.stringify({
+        program: reachBlockedResourceProgram(strategy),
+        rationale: `estrategia ${strategy}`,
       });
     }
     if (body.kind === 'interpret.command') {
-      return route.fulfill({
-        json: {
-          text: JSON.stringify({
-            action: 'not-command',
-            targetKind: '',
-            directions: [],
-            summary: '',
-          }),
-        },
+      return JSON.stringify({
+        action: 'not-command',
+        targetKind: '',
+        directions: [],
+        summary: '',
       });
     }
     dialogueRequest = body;
     await new Promise((resolve) => setTimeout(resolve, 800));
-    return route.fulfill({ json: { text: JSON.stringify({ text: 'hola' }) } });
+    return JSON.stringify({ text: 'hola' });
+  };
+  await page.route('**/api/ai/complete*', async (route) => {
+    const text = await completionFor(route.request().postDataJSON());
+    return route.fulfill({ json: { text } });
+  });
+  await page.route('**/api/ai/complete/stream*', async (route) => {
+    const text = await completionFor(route.request().postDataJSON());
+    // El mismo formato SSE del puente real: un evento de razonamiento (para
+    // ejercitar el parseo en vivo) y el cierre con el texto definitivo.
+    return route.fulfill({
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ type: 'reasoning', text: 'pensando…' })}\n\ndata: ${JSON.stringify({ type: 'done', text })}\n\n`,
+    });
   });
 
   await page.addInitScript(() => {
@@ -163,7 +170,11 @@ test('la mascota aprende usando el proveedor codex (puente interceptado)', async
   await expect(page.getByTestId('chat-thinking')).toBeHidden({ timeout: 10_000 });
   // Ya leído: la marca de encolado se apaga (el agente atendió el mensaje).
   await expect(page.getByTestId('chat-pending')).toHaveCount(0, { timeout: 10_000 });
-  await expect(page.locator('.chat-entry.from-pet').filter({ hasText: 'hola' })).toBeVisible();
+  // .first(): los dos mensajes encolados reciben su respuesta ('hola' ambas,
+  // el puente interceptado no distingue), y basta con que la primera llegue.
+  await expect(
+    page.locator('.chat-entry.from-pet').filter({ hasText: 'hola' }).first(),
+  ).toBeVisible();
   await expect(page.getByTestId('chat-send')).toBeEnabled();
   expect(dialogueRequest).toMatchObject({ model: 'gpt-5.6-terra', reasoningEffort: 'high' });
   const storedSettings = await page.evaluate(() => localStorage.getItem('anima:ai:codex-settings'));
@@ -192,14 +203,20 @@ test('con identidad iniciada, el puente de IA viaja con el token de sesión', as
       ? route.fulfill({ status: 404, json: { error: 'clave inexistente' } })
       : route.fulfill({ status: 204 }),
   );
-  await page.route('**/api/ai/status', (route) => {
+  await page.route('**/api/ai/status*', (route) => {
     aiAuthHeaders.push(route.request().headers()['authorization']);
     return route.fulfill({
       json: { installed: true, loggedIn: true, detail: 'Logged in using ChatGPT' },
     });
   });
-  await page.route('**/api/ai/complete', (route) =>
+  await page.route('**/api/ai/complete*', (route) =>
     route.fulfill({ json: { text: JSON.stringify({ text: 'hola' }) } }),
+  );
+  await page.route('**/api/ai/complete/stream*', (route) =>
+    route.fulfill({
+      contentType: 'text/event-stream',
+      body: `data: ${JSON.stringify({ type: 'done', text: JSON.stringify({ text: 'hola' }) })}\n\n`,
+    }),
   );
 
   await page.addInitScript(
@@ -223,7 +240,7 @@ test('con identidad iniciada, el puente de IA viaja con el token de sesión', as
 });
 
 test('si la sesión de Codex se pierde, la app degrada a simulado', async ({ page }) => {
-  await page.route('**/api/ai/status', (route) =>
+  await page.route('**/api/ai/status*', (route) =>
     route.fulfill({ json: { installed: true, loggedIn: false, detail: null } }),
   );
   await page.addInitScript(() => {

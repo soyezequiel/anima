@@ -65,6 +65,14 @@ const PALETTES = {
   // Ámbar: la resina no es madera ni fuego, es lo pegajoso y translúcido
   // entre los dos.
   resina: { base: '#e0a112', shadow: '#8a5a08', light: '#fcd35e' },
+  /**
+   * El pedernal es piedra, pero no ES la piedra: es oscuro, casi negro, y se
+   * parte en filos que brillan. Compartía la paleta gris de la piedra y —desde
+   * que la piedra existe como materia propia— eso los volvía dos manchas
+   * grises indistinguibles. El brillo alto es la fractura vidriosa: lo que lo
+   * hace servir para la chispa se ve.
+   */
+  pedernal: { base: '#57534e', shadow: '#292524', light: '#d6d3d1' },
 } satisfies Record<string, Palette>;
 
 /**
@@ -73,7 +81,10 @@ const PALETTES = {
  * viaja con los dos vocabularios según de dónde venga.
  */
 const MATERIAL_WORDS: [palette: Palette, words: string[]][] = [
-  [PALETTES.piedra, ['piedra', 'roca', 'stone', 'rock', 'flint', 'pedernal', 'granito', 'pebble']],
+  // El pedernal va ANTES que la piedra y sin compartirle palabras: es su
+  // propio material, no un tono de aquella.
+  [PALETTES.pedernal, ['pedernal', 'flint', 'silex', 'obsidiana', 'obsidian']],
+  [PALETTES.piedra, ['piedra', 'roca', 'stone', 'rock', 'granito', 'pebble']],
   [PALETTES.madera, ['madera', 'wood', 'log', 'tronco', 'rama', 'branch', 'tabla', 'plank']],
   [PALETTES.hueso, ['hueso', 'bone', 'asta', 'colmillo', 'tusk', 'diente', 'tooth']],
   [PALETTES.metal, ['metal', 'hierro', 'iron', 'acero', 'steel', 'cobre', 'copper', 'bronce', 'mineral', 'ore', 'veta', 'vein']],
@@ -377,7 +388,9 @@ const MASAS: readonly [Glyph, ...Glyph[]] = [MASA_REDONDA, MASA_ANGULOSA, MASA_A
  */
 const FORM_WORDS: [glyph: Glyph, words: string[]][] = [
   [POLVO, ['polvo', 'dust', 'ceniza', 'ash', 'arena', 'sand', 'harina', 'grano']],
-  [ESQUIRLA, ['esquirla', 'shard', 'astilla', 'splinter', 'fragmento', 'lasca', 'chip']],
+  // El pedernal entra acá y no en las masas: no es un canto rodado, es una
+  // lasca con filo. La forma cuenta lo mismo que el color.
+  [ESQUIRLA, ['esquirla', 'shard', 'astilla', 'splinter', 'fragmento', 'lasca', 'chip', 'pedernal', 'flint']],
   [BARRA, ['barra', 'bar', 'vara', 'rod', 'palo', 'stick', 'lingote', 'ingot', 'eje', 'ladrillo', 'brick']],
   [LAMINA, ['lamina', 'sheet', 'placa', 'plate', 'tabla', 'plank', 'plancha', 'loseta']],
   [FIBRA, ['fibra', 'fiber', 'cuerda', 'rope', 'hilo', 'thread', 'soga', 'trenza']],

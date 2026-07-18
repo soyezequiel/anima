@@ -32,7 +32,7 @@ export interface EntityView {
   /**
    * De qué está hecho, siguiendo su receta hacia atrás. Solo sirve para
    * elegir el color de lo que no tiene emoji: un `cuchillo` hecho de
-   * `flint-shard` se dibuja gris piedra aunque su nombre no diga "piedra".
+   * `flint-shard` se dibuja color pedernal aunque su nombre no lo nombre.
    */
   material?: string | undefined;
   /**

@@ -16,7 +16,12 @@ export const KIND_EMOJI: Record<string, string> = {
   // dos formas del mismo material.
   log: '🪵',
   branch: '🪾',
-  flint: '🪨',
+  // El 🪨 es de la piedra, que es exactamente lo que el emoji dibuja. Lo tuvo
+  // el pedernal mientras fue la única piedra del mundo; con las dos existiendo
+  // eran dos grises que no se distinguían. El pedernal ya no está en esta
+  // tabla a propósito: cae al dibujo procedural, que lo saca oscuro y en
+  // esquirla (matter.ts) — la forma y el color dicen cuál es cuál.
+  stone: '🪨',
   hammer: '🔨',
   tree: '🌳',
   // El pino es el árbol de la resina: otra silueta para que "qué árbol talo"
