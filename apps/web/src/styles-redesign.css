@@ -251,6 +251,15 @@ button:active {
 .feed-card.rejected .feed-title {
   color: #fca5a5;
 }
+/* Provisional: ámbar. Ni el verde del logro ni el rojo del rechazo — es una
+   solución con reservas, y el color lo dice antes de leer el texto. */
+.feed-card.provisional {
+  border: 1px solid #92400e;
+  background: linear-gradient(rgba(120, 53, 15, 0.3), var(--panel-2));
+}
+.feed-card.provisional .feed-title {
+  color: #fcd34d;
+}
 .feed-card.thought {
   border: 1px solid #4c2889;
   background: rgba(46, 16, 101, 0.32);

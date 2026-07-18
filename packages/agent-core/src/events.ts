@@ -30,6 +30,12 @@ export type AgentEventType =
   | 'skill.test.failed'
   | 'skill.test.passed'
   | 'skill.promoted'
+  /**
+   * No llegó a la vara pero queda utilizable mientras no haya estable (ADR
+   * 0050). Se anuncia a propósito: usar algo que falla 1 de cada 20 veces sin
+   * decirlo sería vender por probado lo que no lo está.
+   */
+  | 'skill.provisional'
   | 'skill.rejected'
   | 'skill.used'
   /** Se le ocurrió un objeto que su mundo no sabía construir. */
@@ -92,6 +98,10 @@ export type AgentEventType =
   | 'place.invalidated'
   /** El ciclo de desarrollo quedó practicando en segundo plano (ADR 0043):
    * ella sigue viviendo y un think futuro consumirá el veredicto. */
-  | 'skill.dev.background';
+  | 'skill.dev.background'
+  /** El ciclo cortó por meseta (ADR 0051): tenía una versión decente y varias
+   * consultas seguidas no la mejoraron — seguir pagando viajes al modelo no
+   * compraba nada. Queda la provisional (ADR 0050). */
+  | 'skill.dev.plateau';
 
 export type AgentEvent = StructuredEvent<AgentEventType>;

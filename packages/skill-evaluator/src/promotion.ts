@@ -5,16 +5,26 @@ import type { RegressionStore } from './regressions.js';
 export interface PromotionPolicy {
   /** Tasa de éxito mínima sobre todos los casos (incluidas regresiones). */
   successThreshold: number;
+  /**
+   * Desde qué tasa una versión rechazada se guarda como PROVISIONAL (ADR
+   * 0050): no es lo bastante buena para ser estable, pero es lo mejor que
+   * tiene, y quedarse quieta con una solución en la mano es peor que usarla.
+   * 0.6 es "funciona en la mayoría de los mundos", no "funcionó una vez".
+   */
+  provisionalThreshold: number;
 }
 
 export const DEFAULT_PROMOTION_POLICY: PromotionPolicy = {
   successThreshold: 1,
+  provisionalThreshold: 0.6,
 };
 
 export interface PromotionDecision {
   verdict: 'promoted' | 'rejected';
   reasons: string[];
   regressionsAdded: number;
+  /** La rechazada quedó utilizable mientras no haya estable (ADR 0050). */
+  provisional?: boolean;
 }
 
 /**
@@ -74,14 +84,35 @@ export function applyEvaluation(
       });
       regressionsAdded += 1;
     }
-    library.markRejected(skill.id, {
-      id: `fail-${skill.id}`,
-      scenarioName: failedCases[0]?.scenario ?? 'desconocido',
-      seed: failedCases[0]?.seed ?? -1,
-      description: report.failureObservations.join('; '),
-      observedAtVersion: skill.version,
-    });
-    return { verdict: 'rejected', reasons, regressionsAdded };
+    // No llegó a la vara, pero puede ser lo mejor que tiene (ADR 0050). Se
+    // guarda como provisional —usable solo mientras no haya estable— si:
+    //  - de verdad se midió (sin casos concluyentes no sabemos nada);
+    //  - funcionó en la mayoría de los mundos, no apenas en alguno;
+    //  - y NO viola invariantes del mundo. Eso último no se negocia: una
+    //    habilidad que rompe reglas no es "imperfecta", es inadmisible, y
+    //    usarla por urgencia sería exactamente el atajo que el evaluador
+    //    independiente existe para impedir.
+    const usable =
+      conclusive > 0 &&
+      report.invariantViolations === 0 &&
+      report.successRate >= policy.provisionalThreshold;
+    library.markRejected(
+      skill.id,
+      {
+        id: `fail-${skill.id}`,
+        scenarioName: failedCases[0]?.scenario ?? 'desconocido',
+        seed: failedCases[0]?.seed ?? -1,
+        description: report.failureObservations.join('; '),
+        observedAtVersion: skill.version,
+      },
+      usable,
+    );
+    if (usable) {
+      reasons.push(
+        `queda como provisional: la uso si no tengo nada mejor, y sigo corrigiéndola`,
+      );
+    }
+    return { verdict: 'rejected', reasons, regressionsAdded, provisional: usable };
   }
 
   library.markPromoted(skill.id);

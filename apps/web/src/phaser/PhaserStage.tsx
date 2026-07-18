@@ -5,7 +5,7 @@ import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { GameView } from '../session/view.js';
 import { DND_ITEM_KIND } from '../dnd.js';
 import { DreamOverlay } from '../components/DreamOverlay.js';
-import { skillDevLine, ThinkingClock } from '../components/thinking.js';
+import { skillDevLine, skillDevPurpose, ThinkingClock } from '../components/thinking.js';
 import { KIND_EMOJI } from './appearance.js';
 import { BASE_CELL, WorldScene } from './WorldScene.js';
 
@@ -178,6 +178,11 @@ export function PhaserStage({
       {view.skillDev && (
         <span className="thinking-bubble-progress" data-testid="stage-skilldev">
           {skillDevLine(view.skillDev)}
+        </span>
+      )}
+      {view.skillDev && skillDevPurpose(view.skillDev) !== null && (
+        <span className="thinking-bubble-why" data-testid="stage-skilldev-why">
+          {skillDevPurpose(view.skillDev)}
         </span>
       )}
       {view.aiWait && <ThinkingClock wait={view.aiWait} />}

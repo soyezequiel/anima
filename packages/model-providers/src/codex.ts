@@ -146,10 +146,26 @@ const PROGRAM_SCHEMA: Record<string, unknown> = {
   properties: {
     programJson: { type: 'string' },
     rationale: { type: 'string' },
+    // La segunda estrategia (ADR 0051), opcional: mismo viaje, otra idea.
+    altProgramJson: { type: 'string' },
+    altRationale: { type: 'string' },
   },
   required: ['programJson', 'rationale'],
   additionalProperties: false,
 };
+
+/**
+ * La invitación a la segunda estrategia (ADR 0051). Va en propose y en revise:
+ * cada consulta al modelo cuesta ~un minuto de reloj mientras el mundo sigue
+ * andando, y la evaluación local es gratis — dos ideas por viaje es la mitad
+ * de viajes. DISTINTA de verdad: la misma idea con otros números se muere en
+ * el mismo mundo, y el chequeo de repetidos la rechazaría igual.
+ */
+const ALTERNATE_INVITE = `Si ves una SEGUNDA estrategia de verdad distinta (otro plan, no los mismos
+pasos con otros números), inclúyela en "altProgramJson" con su
+"altRationale": el evaluador mide las dos y se queda con la mejor. Si solo
+hay una idea buena, omite esos campos — una alternativa de relleno gasta
+evaluación sin aportar nada.`;
 
 /**
  * La receta viaja serializada como string, igual que el programa: los
@@ -512,7 +528,8 @@ borde falla.`
 }
 
 Diseña UN programa de la DSL que resuelva el problema de forma general (debe
-funcionar también cuando no hay obstáculo). Responde únicamente con JSON:
+funcionar también cuando no hay obstáculo). ${ALTERNATE_INVITE}
+Responde únicamente con JSON:
 {"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "explicación breve en español"}`,
       };
     case 'judge.destruction':
@@ -911,7 +928,8 @@ tiró mal y se quedó sin con qué reintentar. No cuentan ni a favor ni en contr
     : ''
 }
 Intento ${request.attempt}${request.maxAttempts !== undefined ? ` de ${request.maxAttempts}` : ''}.
-${closing} Responde únicamente con JSON:
+${closing} ${ALTERNATE_INVITE}
+Responde únicamente con JSON:
 {"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "qué cambiaste y por qué, breve, en español"}`,
       };
     }
@@ -1230,10 +1248,29 @@ export class CodexModelProvider extends BaseModelProvider {
           if (!Array.isArray(program)) {
             throw new Error('la respuesta no contiene un programa (arreglo de operaciones)');
           }
+          // La segunda estrategia es un regalo, no un contrato (ADR 0051): si
+          // no viene o no se puede leer, la principal sigue valiendo — tirar
+          // una respuesta buena por una alternativa rota sería pagar el viaje
+          // dos veces.
+          let alternate: { program: unknown; rationale: string } | undefined;
+          if (typeof parsed.altProgramJson === 'string') {
+            try {
+              const altProgram: unknown = JSON.parse(parsed.altProgramJson);
+              if (Array.isArray(altProgram)) {
+                alternate = {
+                  program: altProgram,
+                  rationale: typeof parsed.altRationale === 'string' ? parsed.altRationale : '',
+                };
+              }
+            } catch {
+              // Ilegible: se ignora. La principal ya justifica la consulta.
+            }
+          }
           return {
             kind: 'skill.program',
             program,
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+            ...(alternate ? { alternate } : {}),
           };
         }
         case 'judge.destruction':

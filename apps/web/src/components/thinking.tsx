@@ -24,24 +24,46 @@ export function skillDevLine(dev: SkillDevProgressView): string {
   const attempt =
     dev.maxVersions !== null ? `intento ${dev.attemptsDone + 1} de ${dev.maxVersions}` : null;
   const rate = (value: number): string => `${Math.round(value * 100)}%`;
+  // La habilidad se nombra en TODAS las fases, no solo al diseñarla. El
+  // encabezado de arriba dice el momento ("corrigiendo una habilidad que
+  // falló") y es genérico a propósito; si el renglón tampoco la nombra, el
+  // cuidador ve un ciclo entero de ocho intentos sin saber de qué habilidad le
+  // están hablando — sobre todo cuando arranca sola, por frío o por hambre, y
+  // él nunca pidió nada.
+  // Con guiones es un identificador; sin ellos, algo que se lee. Mismo criterio
+  // que el vocabulario del mundo: "conseguir-calor" → «conseguir calor».
+  const name = `«${dev.skillName.replace(/-/g, ' ')}»`;
   switch (dev.phase) {
     case 'designing':
-      return attempt ? `diseñando "${dev.skillName}" · ${attempt}` : `diseñando "${dev.skillName}"`;
+      return attempt ? `diseñando ${name} · ${attempt}` : `diseñando ${name}`;
     case 'testing': {
       const where = dev.casesTotal !== null ? ` en ${dev.casesTotal} mundos imaginados` : '';
-      return `probando la v${dev.version ?? '?'}${where}`;
+      return `probando ${name} v${dev.version ?? '?'}${where}`;
     }
     case 'revising': {
       const result = dev.lastRate !== null ? `logró ${rate(dev.lastRate)}` : 'no alcanzó';
       return attempt
-        ? `la v${dev.version ?? '?'} ${result} · corrigiendo (${attempt})`
-        : `la v${dev.version ?? '?'} ${result} · corrigiendo`;
+        ? `${name} v${dev.version ?? '?'} ${result} · corrigiendo (${attempt})`
+        : `${name} v${dev.version ?? '?'} ${result} · corrigiendo`;
     }
     case 'passed':
       return dev.lastRate !== null
-        ? `¡la v${dev.version ?? '?'} pasó con ${rate(dev.lastRate)}!`
-        : `¡la v${dev.version ?? '?'} pasó!`;
+        ? `¡${name} v${dev.version ?? '?'} pasó con ${rate(dev.lastRate)}!`
+        : `¡${name} v${dev.version ?? '?'} pasó!`;
   }
+}
+
+/**
+ * Para qué quiere la habilidad, en una frase corta. Un ciclo de ocho intentos
+ * que ella abrió sola —porque tiene frío, porque no llega a la comida— aparece
+ * en pantalla sin que el cuidador haya pedido nada: sin el motivo, lo único que
+ * ve es un nombre que no reconoce. Devuelve null cuando no hay nada que aclarar.
+ */
+export function skillDevPurpose(dev: SkillDevProgressView): string | null {
+  if (!dev.purpose) return null;
+  // El contrato trae "propósito: detalle"; para el globo alcanza el propósito.
+  const short = dev.purpose.split(':')[0]?.trim() ?? dev.purpose;
+  return short.length > 0 ? `para ${short}` : null;
 }
 
 /** La espera corta no necesita pistas: recién pasado esto se invita a mirar. */

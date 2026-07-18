@@ -250,6 +250,10 @@ export interface ExperimentView {
     | 'test-failed'
     | 'test-passed'
     | 'promoted'
+    /** No llegó a la vara, pero queda usable mientras no haya estable (ADR 0050). */
+    | 'provisional'
+    /** El ciclo cortó por meseta: seguir puliendo no mejoraba nada (ADR 0051). */
+    | 'plateau'
     | 'rejected';
   detail: string;
 }
@@ -315,6 +319,13 @@ export interface DreamView {
  */
 export interface SkillDevProgressView {
   skillName: string;
+  /**
+   * Para qué la quiere, en su voz ("dejar de perder calor: acercarse a una
+   * fuente de calor o construir una"). Un ciclo de ocho intentos que arrancó
+   * sola —por frío, por hambre— es un cartel que el cuidador no pidió: sin el
+   * motivo, ni siquiera sabe de qué le están hablando.
+   */
+  purpose: string | null;
   /** Versión de la candidata actual; null antes de la primera propuesta. */
   version: number | null;
   /** Tope de versiones del ciclo; null en eventos de sesiones viejas. */

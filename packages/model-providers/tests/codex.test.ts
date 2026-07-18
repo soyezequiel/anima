@@ -131,6 +131,66 @@ describe('CodexModelProvider', () => {
     expect(prompt).toContain('NO escribas un plan en primera persona');
   });
 
+  /**
+   * ADR 0051: una consulta puede traer dos estrategias. El viaje al modelo se
+   * paga una vez; la segunda idea cuesta solo sus tokens de salida.
+   */
+  it('el diseño invita una segunda estrategia y el parse la trae como alternate', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          programJson: '[{"op":"wait","ticks":2}]',
+          rationale: 'acercarse',
+          altProgramJson: '[{"op":"explore","maxSteps":10}]',
+          altRationale: 'buscar primero',
+        }),
+        seen,
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'skill.propose',
+      skillName: 'conseguir-calor',
+      problem: 'entrar en calor',
+      context: [],
+      successCriteria: [],
+    });
+
+    expect(seen[0]?.prompt).toContain('SEGUNDA estrategia');
+    expect(response).toMatchObject({
+      kind: 'skill.program',
+      program: [{ op: 'wait', ticks: 2 }],
+      alternate: { program: [{ op: 'explore', maxSteps: 10 }], rationale: 'buscar primero' },
+    });
+  });
+
+  it('una alternativa ilegible se descarta sin tirar la principal', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          programJson: '[{"op":"wait","ticks":2}]',
+          rationale: 'ok',
+          altProgramJson: 'esto no es json',
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'skill.revise',
+      skillName: 'conseguir-calor',
+      problem: 'entrar en calor',
+      reason: 'evaluation-failed',
+      successCriteria: [],
+      context: [],
+      previousProgram: [],
+      failureObservations: [],
+      attempt: 2,
+    });
+
+    // El regalo roto se queda en la caja; el viaje ya lo justificó la principal.
+    expect(response).toMatchObject({ kind: 'skill.program', program: [{ op: 'wait', ticks: 2 }] });
+    expect('alternate' in response).toBe(false);
+  });
+
   it('interpreta una orden libre como una intención estructurada', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(

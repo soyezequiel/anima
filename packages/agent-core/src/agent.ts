@@ -3011,21 +3011,22 @@ export class AnimaAgent {
       return null;
     }
 
-    // Jerarquía: primero una habilidad estable aplicable, luego la
-    // aproximación primitiva. Solo crear una skill si hay evidencia de que
-    // falta una capacidad (todas las estrategias conocidas prohibidas).
-    const stable = this.config.library.findStable(SKILL_REACH_BLOCKED_FOOD);
+    // Jerarquía: primero la habilidad utilizable —estable, o la mejor
+    // provisional si todavía no hay estable (ADR 0050)—, luego la aproximación
+    // primitiva. Solo crear una skill si hay evidencia de que falta una
+    // capacidad (todas las estrategias conocidas prohibidas).
+    const usable = this.config.library.findUsable(SKILL_REACH_BLOCKED_FOOD);
     const strategies: {
       label: string;
       program: SkillProgram;
       skillId?: string;
       rememberedPlaceId?: string;
     }[] = [];
-    if (stable) {
+    if (usable) {
       strategies.push({
-        label: `stable-skill:${stable.name}@v${stable.version}`,
-        program: stable.program,
-        skillId: stable.id,
+        label: `${usable.status === 'stable' ? 'stable' : 'provisional'}-skill:${usable.name}@v${usable.version}`,
+        program: usable.program,
+        skillId: usable.id,
       });
     }
     strategies.push({ label: 'direct-approach', program: DIRECT_APPROACH_PROGRAM });
@@ -3481,18 +3482,22 @@ export class AnimaAgent {
    * legítima aquí y no lo era para el alimento.
    */
   private async pursueWarmth(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
-    const stable = this.config.library.findStable(SKILL_GET_WARM);
+    // La estable si la hay; si no, la mejor provisional (ADR 0050). Con el
+    // cuerpo enfriándose, una habilidad que funciona 19 de cada 20 veces es
+    // mejor que ninguna: descartarla por no ser perfecta fue lo que dejó a una
+    // generación muriéndose con la solución en la mano.
+    const usable = this.config.library.findUsable(SKILL_GET_WARM);
     const strategies: {
       label: string;
       program: SkillProgram;
       skillId?: string;
       rememberedPlaceId?: string;
     }[] = [];
-    if (stable) {
+    if (usable) {
       strategies.push({
-        label: `stable-skill:${stable.name}@v${stable.version}`,
-        program: stable.program,
-        skillId: stable.id,
+        label: `${usable.status === 'stable' ? 'stable' : 'provisional'}-skill:${usable.name}@v${usable.version}`,
+        program: usable.program,
+        skillId: usable.id,
       });
     }
     strategies.push({ label: 'warmth-approach', program: WARMTH_APPROACH_PROGRAM });

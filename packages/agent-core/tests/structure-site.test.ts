@@ -171,6 +171,54 @@ describe('la obra tiene un sitio, elegido y libre (ADR 0049)', () => {
     if (falta) expect(falta).not.toContain('3 muros');
   });
 
+  it('con la mochila llena coloca lo que lleva para hacerse lugar', async () => {
+    // El caso reportado: 4 muros + pizarrón + martillo = 6 de 6, y le falta un
+    // muro más. Ir a buscarlo es imposible porque no entra. Antes juntaba la
+    // tanda entera ANTES de colocar, así que no colocaba nada y repetía "no
+    // pude reunir 1 muro" para siempre. Colocar lo que lleva libera ranuras.
+    const w = createWorld({ width: 14, height: 9, seed: 2 }, { blueprints: [HUT] });
+    const petId = spawn(w, 'pet', {
+      position: { x: 6, y: 4 },
+      collider: { solid: true },
+      energy: { current: 48, max: 50, decayPerTick: 0.01 },
+      health: { current: 10, max: 10 },
+      strength: { value: 2 },
+      inventory: { items: [], capacity: 3 },
+      agent: { name: 'Anima', perceptionRange: 14 },
+    }).id;
+    // Manos llenas: dos muros de los tres que pide la choza, más el martillo.
+    for (const comps of [
+      { portable: {}, tool: { power: 8 }, durability: { current: 20, max: 20 } },
+      { portable: {}, hardness: { value: 1 }, durability: { current: 4, max: 4 } },
+      { portable: {}, hardness: { value: 1 }, durability: { current: 4, max: 4 } },
+    ] as const) {
+      const kind = 'tool' in comps ? 'hammer' : 'wall';
+      const e = spawn(w, kind, comps as never);
+      delete e.components.position;
+      w.entities[petId]!.components.inventory!.items.push(e.id);
+    }
+    // El tercer muro, tirado lejos: solo lo alcanza si primero hace lugar.
+    spawn(w, 'wall', {
+      position: { x: 10, y: 7 },
+      portable: {},
+      hardness: { value: 1 },
+      durability: { current: 4, max: 4 },
+    });
+
+    const { agent } = makeAgent(petId);
+    agent.receiveUserMessage('construí una choza');
+    await run(w, petId, agent, 250);
+
+    const puestos = Object.values(w.entities).filter(
+      (e) => e.kind === 'wall' && e.components.position && !e.components.portable,
+    ).length;
+    const plan = agent.plannedStructures(buildPerception(w, petId))[0];
+    const hechas = plan?.cells.filter((c) => c.done).length ?? HUT.placements.length;
+    // Lo que importa: descargó y avanzó. Antes quedaba en cero para siempre.
+    expect(hechas).toBeGreaterThanOrEqual(2);
+    expect(puestos + hechas).toBeGreaterThan(0);
+  });
+
   it('la vista del plan distingue lo puesto de lo pendiente', async () => {
     const { world: w, petId } = siteWorld();
     const { agent } = makeAgent(petId);

@@ -51,12 +51,30 @@ export interface SkillDevConfig {
   now: () => string;
   /** Oyente de los mundos imaginados: la UI dibuja los "sueños" con esto. */
   onCase?: EvaluationCaseHook;
+  /**
+   * Corte por meseta (ADR 0051). Cada consulta al modelo cuesta ~un minuto de
+   * reloj mientras el cuerpo sigue gastándose; si ya hay una versión que
+   * funciona en la mayoría de los mundos (`keepMin`, alineado con el umbral
+   * provisional del ADR 0050) y `patience` versiones seguidas no mejoraron
+   * nada, las consultas restantes son plata tirada: se corta, queda la
+   * provisional, y el objetivo puede reabrir el ciclo con la historia entera.
+   */
+  plateau?: { patience: number; keepMin: number };
 }
+
+const DEFAULT_PLATEAU = { patience: 2, keepMin: 0.6 };
 
 export interface SkillDevOutcome {
   stableSkill: SkillDefinition | null;
   versionsTried: number;
   reports: EvaluationReport[];
+  /**
+   * El ciclo cortó por meseta (ADR 0051): había una versión decente en la mano
+   * y varias consultas seguidas no la mejoraron. No es un fracaso distinto —
+   * queda la provisional (ADR 0050) y el objetivo puede reabrir el ciclo — pero
+   * decir por qué se detuvo es parte de no disimular la espera (ADR 0045).
+   */
+  stoppedEarly?: 'plateau';
 }
 
 /**
@@ -121,6 +139,22 @@ export function evaluateAndApply(
       regressionsAdded: decision.regressionsAdded,
     },
   });
+  // No alcanzó la vara, pero es lo mejor que tiene y la puede usar mientras
+  // sigue corrigiéndola (ADR 0050). Se anuncia aparte del fallo: son dos cosas
+  // distintas —«no llegó» y «igual me sirve»— y contarlas juntas haría que
+  // parezca aprobada.
+  if (decision.provisional) {
+    events.emit({
+      type: 'skill.provisional',
+      tick,
+      data: {
+        skillId: skill.id,
+        name: skill.name,
+        version: skill.version,
+        successRate: report.successRate,
+      },
+    });
+  }
   return { report, promoted: false };
 }
 
@@ -174,6 +208,9 @@ export async function developSkill(
   } | null = null;
   let invalidRetries = 0;
   let repeatedRetries = 0;
+  const plateau = config.plateau ?? DEFAULT_PLATEAU;
+  /** Versiones medidas seguidas que no superaron a la mejor: la meseta. */
+  let sinceImprovement = 0;
 
   for (let attempt = 1; attempt <= config.maxVersions; ) {
     const response: ModelResponse =
@@ -227,106 +264,174 @@ export async function developSkill(
           });
     if (response.kind !== 'skill.program') break;
 
-    // Nada de lo que proponga el modelo se ejecuta sin validación.
-    const validated = validateSkillProgram(response.program);
-    if (!validated.ok) {
+    // Una consulta puede traer DOS estrategias (ADR 0051): la principal y una
+    // alternativa. El viaje al modelo se paga una vez; medir es local y gratis.
+    // Cada candidata medida consume un intento — el presupuesto no cambia, los
+    // viajes sí.
+    const candidates = [
+      { program: response.program, rationale: response.rationale, primary: true },
+      ...(response.alternate
+        ? [{ program: response.alternate.program, rationale: response.alternate.rationale, primary: false }]
+        : []),
+    ];
+
+    // Qué le pasó a la PRINCIPAL si no se pudo medir: es la que gobierna la
+    // retroalimentación de forma/repetición. La alternativa es un regalo — si
+    // viene rota o repetida se descarta sin costo ni ceremonia.
+    let primaryInvalid: string | null = null;
+    let primaryRepeated: { version: number; program: unknown } | null = null;
+    let measured = 0;
+    let promotedSkill: SkillDefinition | null = null;
+
+    for (const candidate of candidates) {
+      if (attempt > config.maxVersions) break;
+
+      // Nada de lo que proponga el modelo se ejecuta sin validación.
+      const validated = validateSkillProgram(candidate.program);
+      if (!validated.ok) {
+        if (candidate.primary) {
+          events.emit({
+            type: 'skill.rejected',
+            tick,
+            data: { name: contract.name, attempt, reason: `programa inválido: ${validated.error}` },
+          });
+          primaryInvalid = validated.error;
+        }
+        continue;
+      }
+
+      // Una propuesta idéntica a CUALQUIER versión ya probada no aporta nada.
+      const canonical = JSON.stringify(validated.value);
+      const repeatedVersion = triedPrograms.get(canonical);
+      if (repeatedVersion !== undefined) {
+        if (candidate.primary) {
+          events.emit({
+            type: 'skill.rejected',
+            tick,
+            data: {
+              name: contract.name,
+              attempt,
+              reason: `propuesta idéntica a la v${repeatedVersion} ya probada`,
+            },
+          });
+          primaryRepeated = { version: repeatedVersion, program: validated.value };
+        }
+        continue;
+      }
+
+      const skill = config.library.addExperimental(
+        {
+          name: contract.name,
+          description: contract.purpose,
+          motivation: contract.motivation,
+          program: validated.value,
+          expectedOutcome: contract.expectedOutcome,
+          successCriteria: contract.successCriteria,
+          criterionSource: contract.criterionSource,
+          createdAt: config.now(),
+        },
+        best?.skillId,
+      );
+      triedPrograms.set(canonical, skill.version);
       events.emit({
-        type: 'skill.rejected',
+        type: 'skill.created',
         tick,
-        data: { name: contract.name, attempt, reason: `programa inválido: ${validated.error}` },
+        data: { skillId: skill.id, name: skill.name, version: skill.version, rationale: candidate.rationale },
       });
-      // Un programa inválido no costó simulación: no consume el intento.
-      // El error de validación vuelve al modelo como retroalimentación.
-      // El tope cuenta errores CONSECUTIVOS: lo que mata el ciclo es insistir
-      // con una forma que no se puede leer, no haberse equivocado tres veces
-      // sueltas a lo largo de ocho versiones. Sin el reseteo, un tropiezo de
-      // forma en la v2, otro en la v5 y otro en la v7 cerraban un ciclo que
-      // venía corrigiendo bien.
+
+      const { report, promoted } = evaluateAndApply(
+        skill,
+        config,
+        events,
+        tick,
+        // La vara de promoción es la mejor versión: superar solo a la última
+        // permitiría promover una v3 peor que la v2.
+        best?.report,
+      );
+      reports.push(report);
+      measured += 1;
+      if (promoted) {
+        promotedSkill = skill;
+        break;
+      }
+      const evaluated: EvaluatedVersion = {
+        skillId: skill.id,
+        version: skill.version,
+        program: validated.value,
+        rationale: candidate.rationale,
+        report,
+      };
+      attemptHistory.push(evaluated);
+      // La meseta cuenta mejoras ESTRICTAS: empatar a la mejor no es avanzar.
+      const previousBest = best?.report.successRate ?? -1;
+      sinceImprovement = report.successRate > previousBest ? 0 : sinceImprovement + 1;
+      // Empate incluido: la versión más reciente incorporó más retroalimentación.
+      if (!best || report.successRate >= best.report.successRate) best = evaluated;
+      attempt += 1;
+    }
+
+    if (promotedSkill) {
+      return { stableSkill: promotedSkill, versionsTried: attempt, reports };
+    }
+
+    if (measured > 0) {
+      // Al menos una candidata se midió: la racha de tropiezos se corta acá.
+      retryFeedback = null;
+      invalidRetries = 0;
+      repeatedRetries = 0;
+      // Corte por meseta (ADR 0051): con una versión que ya vale como
+      // provisional en la mano y varias versiones sin mejorar, cada consulta
+      // extra es ~un minuto de mundo que se gasta sin comprar nada. Se corta;
+      // la provisional queda (ADR 0050) y reabrir el ciclo sigue disponible.
+      if (
+        best !== null &&
+        best.report.successRate >= plateau.keepMin &&
+        sinceImprovement >= plateau.patience
+      ) {
+        events.emit({
+          type: 'skill.dev.plateau',
+          tick,
+          data: {
+            name: contract.name,
+            bestRate: best.report.successRate,
+            versionsTried: reports.length,
+          },
+        });
+        return { stableSkill: null, versionsTried: reports.length, reports, stoppedEarly: 'plateau' };
+      }
+      continue;
+    }
+
+    // Nada se pudo medir en esta consulta: gobierna lo que le pasó a la
+    // principal. Un programa inválido no costó simulación y no consume el
+    // intento; el error vuelve al modelo. El tope cuenta rachas CONSECUTIVAS:
+    // lo que mata el ciclo es insistir con una forma ilegible, no tres
+    // tropiezos sueltos a lo largo de ocho versiones.
+    if (primaryInvalid !== null) {
       invalidRetries += 1;
       if (invalidRetries > 2) break;
       retryFeedback = {
         program: response.program,
-        observations: [`programa-invalido: ${validated.error}`],
+        observations: [`programa-invalido: ${primaryInvalid}`],
         reason: 'invalid-program',
       };
       continue;
     }
-
-    // Una propuesta idéntica a CUALQUIER versión ya probada no aporta nada,
-    // pero tampoco costó simulación: vuelve como retroalimentación en lugar
-    // de matar el ciclo, hasta que insistir demuestre que no va a corregir.
-    const canonical = JSON.stringify(validated.value);
-    const repeatedVersion = triedPrograms.get(canonical);
-    if (repeatedVersion !== undefined) {
-      events.emit({
-        type: 'skill.rejected',
-        tick,
-        data: {
-          name: contract.name,
-          attempt,
-          reason: `propuesta idéntica a la v${repeatedVersion} ya probada`,
-        },
-      });
+    if (primaryRepeated !== null) {
       repeatedRetries += 1;
       if (repeatedRetries > 2) break;
       retryFeedback = {
-        program: validated.value,
+        program: primaryRepeated.program,
         observations: [
-          `propuesta-repetida: es idéntica a la v${repeatedVersion}, que ya falló. Cambia de enfoque: no repitas ninguna versión de la historia.`,
+          `propuesta-repetida: es idéntica a la v${primaryRepeated.version}, que ya falló. Cambia de enfoque: no repitas ninguna versión de la historia.`,
         ],
         reason: 'repeated-program',
       };
       continue;
     }
-    // La propuesta se pudo leer y es nueva: la racha de tropiezos se corta acá.
-    retryFeedback = null;
-    invalidRetries = 0;
-    repeatedRetries = 0;
-
-    const skill = config.library.addExperimental(
-      {
-        name: contract.name,
-        description: contract.purpose,
-        motivation: contract.motivation,
-        program: validated.value,
-        expectedOutcome: contract.expectedOutcome,
-        successCriteria: contract.successCriteria,
-        criterionSource: contract.criterionSource,
-        createdAt: config.now(),
-      },
-      best?.skillId,
-    );
-    triedPrograms.set(canonical, skill.version);
-    events.emit({
-      type: 'skill.created',
-      tick,
-      data: { skillId: skill.id, name: skill.name, version: skill.version, rationale: response.rationale },
-    });
-
-    const { report, promoted } = evaluateAndApply(
-      skill,
-      config,
-      events,
-      tick,
-      // La vara de promoción es la mejor versión: superar solo a la última
-      // permitiría promover una v3 peor que la v2.
-      best?.report,
-    );
-    reports.push(report);
-    if (promoted) {
-      return { stableSkill: skill, versionsTried: attempt, reports };
-    }
-    const evaluated: EvaluatedVersion = {
-      skillId: skill.id,
-      version: skill.version,
-      program: validated.value,
-      rationale: response.rationale,
-      report,
-    };
-    attemptHistory.push(evaluated);
-    // Empate incluido: la versión más reciente incorporó más retroalimentación.
-    if (!best || report.successRate >= best.report.successRate) best = evaluated;
-    attempt += 1;
+    // Principal medible pero sin presupuesto (el tope cayó a mitad de la
+    // consulta): no hay nada más que hacer.
+    break;
   }
 
   return { stableSkill: null, versionsTried: reports.length, reports };

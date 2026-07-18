@@ -3,7 +3,20 @@ import type { Result } from '@anima/shared';
 import { err, ok } from '@anima/shared';
 import type { SkillProgram } from './dsl.js';
 
-export type SkillStatus = 'experimental' | 'stable' | 'deprecated' | 'archived';
+/**
+ * `provisional` es "lo mejor que tengo mientras sigo puliendo" (ADR 0050).
+ *
+ * El evaluador exige 100% para promover, y con razón: una habilidad estable se
+ * ejecuta después sin pensar, y una poco confiable es una trampa silenciosa.
+ * Pero tirar a la basura un programa que funciona 19 de cada 20 veces mientras
+ * el frío que esa habilidad resuelve la está matando es peor: una generación
+ * murió congelada justo después de alcanzar por fin la versión perfecta.
+ *
+ * Una provisional no baja la vara de lo estable — sigue sin ser estable, y el
+ * ciclo sigue corrigiéndola. Solo deja de tratar "no perfecta" como
+ * "inservible": se usa cuando no hay nada mejor.
+ */
+export type SkillStatus = 'experimental' | 'provisional' | 'stable' | 'deprecated' | 'archived';
 
 export interface SkillPrecondition {
   description: string;
@@ -291,6 +304,30 @@ export class SkillLibrary {
       .sort((a, b) => b.version - a.version)[0];
   }
 
+  /**
+   * La mejor provisional de una habilidad: medida, imperfecta y utilizable
+   * mientras no haya estable (ADR 0050). Se elige por tasa de éxito, no por
+   * versión: una v5 que empeoró no le gana a la v3 que iba mejor.
+   */
+  findProvisional(name: string): SkillDefinition | undefined {
+    return this.all()
+      .filter((s) => s.name === name && s.status === 'provisional')
+      .sort(
+        (a, b) =>
+          (b.metrics.lastEvaluationSuccessRate ?? 0) - (a.metrics.lastEvaluationSuccessRate ?? 0) ||
+          b.version - a.version,
+      )[0];
+  }
+
+  /**
+   * Lo que puede ejecutar YA: la estable si existe, y si no, la mejor
+   * provisional. El orden importa y no es negociable — una provisional nunca le
+   * gana a una probada.
+   */
+  findUsable(name: string): SkillDefinition | undefined {
+    return this.findStable(name) ?? this.findProvisional(name);
+  }
+
   versionsOf(name: string): SkillDefinition[] {
     return this.all()
       .filter((s) => s.name === name)
@@ -309,11 +346,32 @@ export class SkillLibrary {
     skill.status = 'stable';
   }
 
-  markRejected(id: string, failure: KnownFailure): void {
+  /**
+   * Rechazada, pero guardable como lo mejor que tiene (ADR 0050): `usable`
+   * distingue "no llegó a la vara" de "no sirve". Las provisionales anteriores
+   * del mismo nombre se archivan — se guarda una sola, la de turno.
+   */
+  markRejected(id: string, failure: KnownFailure, usable = false): void {
     const skill = this.skills.get(id);
     if (!skill) throw new Error(`Skill desconocida: ${id}`);
-    skill.status = 'archived';
     skill.knownFailures.push(failure);
+    if (!usable) {
+      skill.status = 'archived';
+      return;
+    }
+    // "Lo mejor que tengo" es lo mejor MEDIDO, no lo último intentado: una v2
+    // que empeoró no destrona a la v1 que iba mejor. Sin esta comparación,
+    // seguir puliendo podía dejarla peor armada que antes de empezar.
+    const rate = skill.metrics.lastEvaluationSuccessRate ?? 0;
+    const incumbent = this.findProvisional(skill.name);
+    if (incumbent && incumbent.id !== skill.id) {
+      if ((incumbent.metrics.lastEvaluationSuccessRate ?? 0) >= rate) {
+        skill.status = 'archived';
+        return;
+      }
+      incumbent.status = 'archived';
+    }
+    skill.status = 'provisional';
   }
 
   recordUse(id: string, success: boolean, at: string): void {

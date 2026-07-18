@@ -11,7 +11,7 @@ import type {
   ThoughtView,
 } from '../session/view.js';
 import { parseReasoning, parseReasoningStep } from './reasoning.js';
-import { skillDevLine, ThinkingClock, WaitHints } from './thinking.js';
+import { skillDevLine, skillDevPurpose, ThinkingClock, WaitHints } from './thinking.js';
 
 /**
  * Chat como FEED unificado. Por defecto («Todo») mezcla la charla con los
@@ -93,14 +93,27 @@ function ChatRow({
 
 function MilestoneCard({ exp }: { exp: ExperimentView }) {
   const rejected = exp.kind === 'rejected';
+  // Provisional y meseta no son ninguno de los dos extremos: no son logros que
+  // celebrar ni fracasos, son decisiones a medias — "me sirve por ahora" (ADR
+  // 0050) y "dejo de pulirla por ahora" (ADR 0051). Contarlas con las palabras
+  // de los extremos mentiría en alguna dirección; comparten el ámbar.
+  const provisional = exp.kind === 'provisional';
+  const plateau = exp.kind === 'plateau';
+  const tone = provisional || plateau ? 'provisional' : rejected ? 'rejected' : 'milestone';
   return (
-    <div className={`feed-card ${rejected ? 'rejected' : 'milestone'}`} data-testid="feed-milestone">
+    <div className={`feed-card ${tone}`} data-testid="feed-milestone">
       <span aria-hidden="true" style={{ fontSize: 18 }}>
-        {rejected ? '🧪' : '✨'}
+        {plateau ? '⏸' : provisional ? '🩹' : rejected ? '🧪' : '✨'}
       </span>
       <div>
         <div className="feed-title">
-          {rejected ? 'Versión rechazada' : 'Nueva habilidad estable'}
+          {plateau
+            ? 'Dejo de pulirla por ahora'
+            : provisional
+              ? 'La uso aunque no esté probada'
+              : rejected
+                ? 'Versión rechazada'
+                : 'Nueva habilidad estable'}
         </div>
         <div className="feed-sub">
           «{exp.skillName}»{exp.version != null ? ` v${exp.version}` : ''} — {exp.detail}
@@ -174,6 +187,11 @@ function ChatThinking({
             {skillDevLine(skillDev)}
           </span>
         )}
+        {skillDev && skillDevPurpose(skillDev) !== null && (
+          <span className="thinking-progress-why" data-testid="chat-skilldev-why">
+            {skillDevPurpose(skillDev)}
+          </span>
+        )}
         {headline !== undefined && (
           <span className="thinking-headline" key={steps.length}>
             {cleanHeadline(headline)}
@@ -204,7 +222,16 @@ export function ChatFeedPanel({ view, session }: { view: GameView; session: Game
     }));
     if (filter === 'todo') {
       for (const exp of view.experiments) {
-        if (exp.kind === 'promoted' || exp.kind === 'rejected') {
+        // Hitos con tarjeta propia: lo aprobado, lo rechazado, y también lo
+        // provisional y el corte por meseta (ADR 0050/0051) — usar algo a
+        // medias o dejar de pulirlo son decisiones que el cuidador tiene que
+        // poder leer, no solo los finales limpios.
+        if (
+          exp.kind === 'promoted' ||
+          exp.kind === 'rejected' ||
+          exp.kind === 'provisional' ||
+          exp.kind === 'plateau'
+        ) {
           items.push({ t: 'milestone', tick: exp.tick, exp });
         }
       }

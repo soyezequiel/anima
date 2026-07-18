@@ -752,6 +752,17 @@ select {
   max-width: 100%;
 }
 
+/* El motivo, en el globo del tablero: por qué existe este ciclo. */
+.thinking-bubble-why {
+  font-size: 10px;
+  font-style: italic;
+  color: rgba(255, 255, 255, 0.55);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+
 .thinking-bubble::after {
   content: '';
   position: absolute;
@@ -1982,6 +1993,14 @@ button:disabled {
   color: #d8b4fe;
   font-size: 12px;
   animation: thought-step-in 0.35s ease-out;
+}
+
+/* Para qué quiere la habilidad. Más apagado que el progreso: es el contexto que
+   explica de dónde salió el ciclo, no el estado del ciclo. */
+.thinking-progress-why {
+  color: var(--muted);
+  font-size: 11px;
+  font-style: italic;
 }
 
 /* Invitación rotativa de la espera larga: qué mirar mientras ella piensa. */

@@ -1434,6 +1434,7 @@ export class GameSession {
     if (event.type === 'skill.requested') {
       this.skillDev = {
         skillName: String(event.data.name ?? ''),
+        purpose: typeof event.data.purpose === 'string' ? event.data.purpose : null,
         version: null,
         maxVersions: typeof event.data.maxVersions === 'number' ? event.data.maxVersions : null,
         attemptsDone: 0,
@@ -1482,6 +1483,11 @@ export class GameSession {
       case 'skill.rejected':
         // Programa inválido o repetido: vuelve al modelo sin gastar intento.
         dev.phase = 'revising';
+        break;
+      case 'skill.dev.plateau':
+        // El ciclo cerró por meseta (ADR 0051): el globo se despide. Dejarlo
+        // en "corrigiendo" para siempre contaría un trabajo que ya no corre.
+        this.skillDev = null;
         break;
       default:
         break;
@@ -1596,6 +1602,22 @@ export class GameSession {
           break;
         case 'skill.promoted':
           push(event, 'promoted', (d.reasons as string[]).join('; '));
+          break;
+        case 'skill.provisional':
+          push(
+            event,
+            'provisional',
+            `Funciona en el ${Math.round((d.successRate as number) * 100)}% de los mundos de ` +
+              `prueba: no alcanza para darla por probada, pero la uso mientras no tenga algo mejor.`,
+          );
+          break;
+        case 'skill.dev.plateau':
+          push(
+            event,
+            'plateau',
+            `Varias versiones seguidas no mejoraron el ${Math.round((d.bestRate as number) * 100)}%: ` +
+              `me quedo con la mejor por ahora y dejo de gastar pensamiento en pulirla.`,
+          );
           break;
         case 'skill.rejected':
           push(event, 'rejected', String(d.reason));

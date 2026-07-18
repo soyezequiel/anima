@@ -515,34 +515,9 @@ export function buildStructureProgram(
     searchFirst: true,
   });
 
-  // Caminar primero al sitio, marcar el ancla después: el ancla es el LUGAR de
-  // la obra, no donde ella estaba cuando se le ocurrió empezar (ADR 0049).
-  const steps: SkillOp[] = [
-    ...(options.approach ?? []).map((dir) => ({ op: 'moveStep' as const, dir })),
-    { op: 'markAnchor', store: BASE },
-  ];
-  // En tandas de a lo sumo `capacity` colocaciones: una obra grande son varios
-  // viajes de acopio, no un imposible.
-  for (let i = 0; i < placements.length; i += capacity) {
-    const batch = placements.slice(i, i + capacity);
-    const counts = new Map<string, number>();
-    for (const p of batch) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
-
-    // Juntar los bloques de la tanda, en un viaje. `until` corta apenas los
-    // tiene (si ya le sobraban de antes, no junta de más); margen doble para lo
-    // que se fabrica y puede fallar (ADR 0020).
-    for (const [kind, count] of counts) {
-      const makeable = !!recipeProducing(options.recipes ?? [], kind);
-      steps.push({
-        op: 'repeatWithLimit',
-        max: makeable ? Math.min(count * 2, MAX_REPEAT_LIMIT) : count,
-        until: { type: 'holdingCount', kind, count },
-        body: fetchOrMakeOps(kind, fetchOptions(), 0),
-      });
-    }
-    // Y repartir la tanda: cada bloque a su celda, caminando hasta ella.
-    for (const placement of batch) {
-      steps.push(
+  /** Poner en su celda lo que YA lleva encima, si esa celda sigue vacía. */
+  const placeOps = (batch: BlueprintPlacement[]): SkillOp[] =>
+    batch.flatMap((placement) => [
         // La coordenada absoluta de esta celda = ancla base + offset del plano.
         { op: 'markCell', from: BASE, dx: placement.offset.x, dy: placement.offset.y, store: CELL },
         {
@@ -570,8 +545,67 @@ export function buildStructureProgram(
             },
           ],
         },
-      );
+      ]);
+
+  // Cuántas ranuras quedan libres: es lo que decide si conviene descargar la
+  // obra antes de salir a buscar, o si alcanza con juntar y colocar al final.
+  const carried = [...(options.held ?? []).values()].reduce((sum, n) => sum + n, 0);
+  const freeSlots = (options.capacity ?? 6) - carried;
+
+  // Caminar primero al sitio, marcar el ancla después: el ancla es el LUGAR de
+  // la obra, no donde ella estaba cuando se le ocurrió empezar (ADR 0049).
+  const steps: SkillOp[] = [
+    ...(options.approach ?? []).map((dir) => ({ op: 'moveStep' as const, dir })),
+    { op: 'markAnchor', store: BASE },
+    // DESCARGAR PRIMERO, pero solo si hace falta. Con la mochila llena, salir a
+    // buscar la pieza que falta es imposible: no entra. Colocar lo que ya lleva
+    // libera las ranuras y la obra sigue — es lo que destrabó una escuela con
+    // cuatro muros en la mano y lugar para nada más.
+    //
+    // Cuando SÍ hay lugar no se descarga: los bloques suelen ser sólidos, y
+    // levantarlos antes de salir a buscar material puede tapiarle el camino a
+    // ella misma. Con espacio de sobra conviene juntar con el sitio despejado y
+    // colocar todo junto al final.
+    ...(freeSlots > 0 ? [] : placeOps(placements)),
+  ];
+
+  // Qué celdas quedan para el ciclo de juntar-y-colocar. Si hubo descarga, las
+  // que esa descarga ya resolvió salen de la lista: volver a pedirlas haría que
+  // el `until` —que mira las manos, no la obra— mandara a juntar de nuevo lo
+  // que acaba de colocar. Si no hubo descarga, las tandas tienen que cubrirlas
+  // todas, y `until` se satisface solo con lo que ya lleva encima.
+  const stock = new Map(options.held ?? []);
+  const batchSource =
+    freeSlots > 0
+      ? placements
+      : placements.filter((placement) => {
+          const have = stock.get(placement.kind) ?? 0;
+          if (have <= 0) return true;
+          stock.set(placement.kind, have - 1);
+          return false;
+        });
+
+  // En tandas de a lo sumo `capacity` colocaciones: una obra grande son varios
+  // viajes de acopio, no un imposible.
+  for (let i = 0; i < batchSource.length; i += capacity) {
+    const batch = batchSource.slice(i, i + capacity);
+    const counts = new Map<string, number>();
+    for (const p of batch) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
+
+    // Juntar los bloques de la tanda, en un viaje. `until` corta apenas los
+    // tiene (si ya le sobraban de antes, no junta de más); margen doble para lo
+    // que se fabrica y puede fallar (ADR 0020).
+    for (const [kind, count] of counts) {
+      const makeable = !!recipeProducing(options.recipes ?? [], kind);
+      steps.push({
+        op: 'repeatWithLimit',
+        max: makeable ? Math.min(count * 2, MAX_REPEAT_LIMIT) : count,
+        until: { type: 'holdingCount', kind, count },
+        body: fetchOrMakeOps(kind, fetchOptions(), 0),
+      });
     }
+    // Y repartir la tanda: cada bloque a su celda, caminando hasta ella.
+    steps.push(...placeOps(batch));
   }
   return steps;
 }

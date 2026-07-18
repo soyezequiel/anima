@@ -137,6 +137,113 @@ describe('desarrollo de skills con propuestas inválidas', () => {
     expect(events.ofType('skill.rejected')).toHaveLength(3);
   });
 
+  /**
+   * ADR 0051. Cada consulta al modelo real cuesta ~un minuto de reloj mientras
+   * el cuerpo se gasta; la evaluación local es de milisegundos. Dos estrategias
+   * por consulta y corte por meseta reducen los viajes sin tocar al evaluador,
+   * que es donde vive la calidad.
+   */
+  describe('aprender más rápido sin bajar la vara (ADR 0051)', () => {
+    it('la alternativa de la misma consulta se mide, y si es la buena, gana', async () => {
+      const provider = new ScriptedModelProvider([
+        {
+          kind: 'skill.program',
+          program: DO_NOTHING,
+          rationale: 'principal floja',
+          alternate: {
+            program: reachBlockedResourceProgram('strongestTool'),
+            rationale: 'la buena, de regalo',
+          },
+        },
+      ]);
+      const events = createEventLog<AgentEvent>();
+      const outcome = await developSkill(CONTRACT, [], devConfig(provider), events, 0);
+
+      // Un solo viaje al modelo, dos versiones medidas, la alternativa promovida.
+      expect(provider.callCount('skill.propose')).toBe(1);
+      expect(provider.callCount('skill.revise')).toBe(0);
+      expect(outcome.stableSkill).not.toBeNull();
+      expect(outcome.versionsTried).toBe(2);
+    });
+
+    it('una alternativa rota no arrastra a la principal: se descarta sin costo', async () => {
+      const provider = new ScriptedModelProvider([
+        {
+          kind: 'skill.program',
+          program: reachBlockedResourceProgram('strongestTool'),
+          rationale: 'principal correcta',
+          alternate: { program: [{ op: 'volar' }], rationale: 'regalo ilegible' },
+        },
+      ]);
+      const events = createEventLog<AgentEvent>();
+      const outcome = await developSkill(CONTRACT, [], devConfig(provider), events, 0);
+
+      expect(outcome.stableSkill).not.toBeNull();
+      // La alternativa ilegible no gastó retroalimentación ni intento: era un
+      // regalo, y un regalo roto se deja en la caja.
+      expect(events.ofType('skill.rejected')).toHaveLength(0);
+    });
+
+    it('con una versión decente y sin mejora, corta antes de gastar los ocho viajes', async () => {
+      // Tres estrategias distintas con la MISMA tasa (~50%): la meseta.
+      const variant = (steps: number): unknown[] => [
+        { op: 'findEntities', query: { kind: 'food' }, store: 'foods' },
+        { op: 'selectTarget', from: 'foods', strategy: 'nearest', store: 'food' },
+        { op: 'moveToward', target: 'food', maxSteps: steps },
+        { op: 'consume', target: 'food' },
+      ];
+      const provider = new ScriptedModelProvider([
+        { kind: 'skill.program', program: variant(30), rationale: 'v1' },
+        { kind: 'skill.program', program: variant(31), rationale: 'v2 igual de floja' },
+        { kind: 'skill.program', program: variant(32), rationale: 'v3 igual de floja' },
+        // Nunca debería llegar a pedirse:
+        { kind: 'skill.program', program: variant(33), rationale: 'v4' },
+      ]);
+      const events = createEventLog<AgentEvent>();
+      const outcome = await developSkill(
+        CONTRACT,
+        [],
+        // keepMin 0.4: el 50% de la aproximación directa cuenta como "decente"
+        // para esta prueba; la política real usa el umbral provisional.
+        { ...devConfig(provider, 8), plateau: { patience: 2, keepMin: 0.4 } },
+        events,
+        0,
+      );
+
+      // Cortó en la tercera versión: dos seguidas sin mejorar la primera.
+      expect(outcome.stoppedEarly).toBe('plateau');
+      expect(outcome.versionsTried).toBe(3);
+      expect(provider.callCount('skill.propose') + provider.callCount('skill.revise')).toBe(3);
+      expect(events.ofType('skill.dev.plateau')).toHaveLength(1);
+    });
+
+    it('sin nada decente en la mano, la meseta no corta: sigue intentando', async () => {
+      const variant = (ticks: number): unknown[] => [{ op: 'wait', ticks }];
+      const provider = new ScriptedModelProvider([
+        { kind: 'skill.program', program: variant(1), rationale: 'v1 inútil' },
+        { kind: 'skill.program', program: variant(2), rationale: 'v2 inútil' },
+        { kind: 'skill.program', program: variant(3), rationale: 'v3 inútil' },
+        {
+          kind: 'skill.program',
+          program: reachBlockedResourceProgram('strongestTool'),
+          rationale: 'v4: la buena',
+        },
+      ]);
+      const events = createEventLog<AgentEvent>();
+      const outcome = await developSkill(
+        CONTRACT,
+        [],
+        { ...devConfig(provider, 8), plateau: { patience: 2, keepMin: 0.4 } },
+        events,
+        0,
+      );
+
+      // Cortar con 0% en la mano sería rendirse, no ahorrar: llegó a la buena.
+      expect(outcome.stoppedEarly).toBeUndefined();
+      expect(outcome.stableSkill).not.toBeNull();
+    });
+  });
+
   it('la revisión dice POR QUÉ se repregunta: forma inválida no es prueba fallada', async () => {
     const provider = new RecordingProvider([
       { kind: 'skill.program', program: [{ op: 'volar' }], rationale: 'v inválida' },

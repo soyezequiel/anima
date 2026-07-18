@@ -326,7 +326,18 @@ export interface ProposedSkillContract {
 }
 
 export type ModelResponse =
-  | { kind: 'skill.program'; program: unknown; rationale: string }
+  /**
+   * Un programa, y opcionalmente un SEGUNDO con otra estrategia (ADR 0051).
+   * La consulta paga una vez el razonamiento y el arranque; el segundo programa
+   * cuesta solo sus tokens de salida, y medirlo es local y gratis. Dos ideas
+   * por viaje: la mejor gana, la otra deja su fracaso en la historia.
+   */
+  | {
+      kind: 'skill.program';
+      program: unknown;
+      rationale: string;
+      alternate?: { program: unknown; rationale: string };
+    }
   | { kind: 'interpretation'; hypothesis: string; confidence: number }
   | { kind: 'command.interpretation'; command: CommandInterpretation }
   | { kind: 'skill.contract'; contract: ProposedSkillContract }
