@@ -1018,6 +1018,33 @@ describe('pensamiento en vivo en la sesión', () => {
     session.dispose();
   });
 
+  /**
+   * ADR 0052. Los objetivos llegan a la pantalla en el orden en que compiten y
+   * con lo que les falta conseguir. Antes el view model llevaba cuatro campos
+   * (id, texto, estado, origen): la pantalla no podía decir ni cuál era la
+   * prioridad real ni qué material estaba esperando.
+   */
+  it('los objetivos llegan ordenados por prioridad y con lo que les falta', async () => {
+    const { session } = await makeSession(5);
+    session.sendUserMessage('traé un tronco');
+    for (let i = 0; i < 3; i++) await session.stepOnce();
+
+    const view = session.getView();
+    const encargo = view.goals.find((g) => g.source === 'user-request');
+    expect(encargo).toBeDefined();
+    // El puesto en la fila, no el orden de creación.
+    expect(view.currentGoal?.rank).toBe(1);
+    expect(encargo!.score).toBeGreaterThan(0);
+
+    // Lo que le falta viaja dibujable: tipo para el ícono y nombre en voz
+    // humana, no el `kind` del motor.
+    const tronco = encargo!.needs.find((n) => n.kind === 'log');
+    expect(tronco).toBeDefined();
+    expect(tronco!.label).toBe('tronco');
+    expect(tronco!.short).toBeGreaterThan(0);
+    session.dispose();
+  });
+
   it('un fallo queda contado como error y la vista es una copia inmutable', async () => {
     const { session } = await makeSession(5);
     session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'start' });

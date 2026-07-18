@@ -5,7 +5,11 @@ import type { GameView, PetView } from '../session/view.js';
 /**
  * StatusPanel del rediseño: SIN las barras de energía/salud/calor —ahora viven
  * en VitalsHeader, siempre visibles. Esta pestaña queda para lo que se consulta:
- * Mochila, Personalidad, Objetivos, Memoria y Apariencia.
+ * Mochila, Personalidad, Memoria y Apariencia.
+ *
+ * Los objetivos se fueron a su propia pestaña (ADR 0052): acá entraban como
+ * dos líneas sin lo único que hacía falta —qué le falta conseguir— y encima el
+ * filtro contaba los suspendidos como terminados.
  */
 
 const COLORS = ['#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#84cc16', '#ec4899'];
@@ -22,11 +26,6 @@ function normalizeStatement(s: string): string {
 
 export function StatusPanel({ view, session }: { view: GameView; session: GameSession }) {
   const pet = view.pet;
-
-  const currentId = view.currentGoal?.id ?? null;
-  const isOpen = (s: string) => s === 'active' || s === 'pending';
-  const otherActive = view.goals.filter((g) => isOpen(g.status) && g.id !== currentId);
-  const finished = view.goals.filter((g) => !isOpen(g.status));
 
   const hypothesisStatements = new Set(view.hypotheses.map((h) => normalizeStatement(h.statement)));
   const facts = view.facts.filter((f) => !hypothesisStatements.has(normalizeStatement(f)));
@@ -62,34 +61,6 @@ export function StatusPanel({ view, session }: { view: GameView; session: GameSe
           <li className="muted">todavía se está formando: su historia dirá quién es</li>
         )}
       </ul>
-
-      <h3>Objetivos</h3>
-      <div data-testid="goal-list">
-        {otherActive.length > 0 && (
-          <ul className="list">
-            {otherActive.map((g) => (
-              <li key={g.id} title={g.source}>
-                <span className={`pill pill-${g.status}`}>{g.status}</span> {g.description}
-              </li>
-            ))}
-          </ul>
-        )}
-        {finished.length > 0 && (
-          <details className="status-details">
-            <summary>
-              {finished.length} {finished.length === 1 ? 'terminado' : 'terminados'}
-            </summary>
-            <ul className="list">
-              {finished.map((g) => (
-                <li key={g.id} title={g.source}>
-                  <span className={`pill pill-${g.status}`}>{g.status}</span> {g.description}
-                </li>
-              ))}
-            </ul>
-          </details>
-        )}
-        {view.goals.length === 0 && <div className="muted">todavía sin objetivos</div>}
-      </div>
 
       <h3>Memoria</h3>
       <ul className="list" data-testid="memory-list">

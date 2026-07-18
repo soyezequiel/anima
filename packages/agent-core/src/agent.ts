@@ -337,6 +337,29 @@ interface SkillDevRun {
 }
 
 /**
+ * Una materia que un objetivo pide y todavía no está reunida (ADR 0052).
+ * `need` es cuánta hace falta para lo que QUEDA por hacer; `have`, cuánta lleva
+ * encima. La resta es lo que hay que salir a buscar.
+ */
+export interface GoalNeed {
+  kind: string;
+  need: number;
+  have: number;
+  /** Hay uno suelto y levantable a la vista: puede ir sola a buscarlo. */
+  visible: boolean;
+  /** De qué se saca rompiéndolo ("tree"), cuando no hay ninguno suelto. */
+  from?: string;
+}
+
+/** Lo que le falta a un objetivo abierto, para dibujarlo. */
+export interface GoalPlan {
+  goalId: string;
+  needs: GoalNeed[];
+  /** Si el objetivo es una obra: cuántos bloques puestos de cuántos. */
+  structure?: { blueprintId: string; placed: number; total: number };
+}
+
+/**
  * El agente cognitivo. Nunca accede al WorldState: recibe percepciones y
  * devuelve intenciones. Las consultas al modelo ocurren solo en momentos
  * cognitivos (señal nueva, creación de habilidad, mensaje del usuario), nunca
@@ -534,6 +557,106 @@ export class AnimaAgent {
       });
     }
     return planned;
+  }
+
+  /**
+   * Lo que cada objetivo abierto necesita que alguien consiga, en DATOS (ADR
+   * 0052). Es la misma cuenta con la que se suspende y se retoma sola
+   * (`neededCountsFor`), pero sin volverse frase: la pantalla necesita el tipo y
+   * el número para dibujarlos, no una oración para leerlos.
+   *
+   * Cada faltante viaja con de dónde sale (`from`) y si hay uno suelto a la
+   * vista (`visible`). Esa diferencia es la que convierte «le falta un tronco»
+   * en algo accionable: si hay uno tirado, ella va sola; si no, alguien tiene
+   * que talar un árbol o traérselo.
+   */
+  goalPlans(perception: Perception): GoalPlan[] {
+    const plans: GoalPlan[] = [];
+    for (const goal of this.goals.all()) {
+      if (goal.status !== 'active' && goal.status !== 'suspended') continue;
+      const needs: GoalNeed[] = this.neededCountsFor(goal, perception).map((count) => {
+        const visible = perception.visibleEntities.some(
+          (e) => e.kind === count.kind && e.held !== true && e.portable === true,
+        );
+        const from = visible ? undefined : this.harvestSourceFor(count.kind, perception);
+        return { ...count, visible, ...(from ? { from } : {}) };
+      });
+      const site = this.structureSites.get(goal.id);
+      const blueprint = site
+        ? perception.blueprints.find((b) => b.id === site.blueprintId)
+        : undefined;
+      const structure =
+        site && blueprint
+          ? {
+              blueprintId: blueprint.id,
+              total: blueprint.placements.length,
+              placed:
+                blueprint.placements.length -
+                this.pendingPlacements(blueprint, site.anchor, perception).length,
+            }
+          : undefined;
+      plans.push({ goalId: goal.id, needs, ...(structure ? { structure } : {}) });
+    }
+    return plans;
+  }
+
+  /**
+   * Qué materia pide un encargo y cuánta lleva ya encima. Una sola cuenta para
+   * los tres que la necesitan: la frase honesta del cuidador, el retomar solo
+   * cuando aparece el material, y la pantalla. Tenerla escrita tres veces era
+   * pedir que las tres dijeran cosas distintas del mismo objetivo.
+   *
+   * Para una obra, lo que pide es lo que falta LEVANTAR (no el plano entero):
+   * con cuatro muros ya puestos, los muros puestos no se vuelven a juntar.
+   */
+  private neededCountsFor(
+    goal: Goal | undefined,
+    perception: Perception,
+  ): { kind: string; need: number; have: number }[] {
+    const request = goal?.userRequest;
+    if (!request) return [];
+    const held = heldCounts(perception);
+    // Traer o romper algo que no está: lo que falta es ese tipo, sin más cuenta
+    // que hacer. Romper no se acredita con lo que lleva encima —tener un tronco
+    // no tala el árbol—, así que ahí `have` es siempre cero.
+    if (request.kind === 'fetch-item' || request.kind === 'destroy-entity') {
+      if (!request.targetKind) return [];
+      return [
+        {
+          kind: request.targetKind,
+          need: request.amount ?? 1,
+          have: request.kind === 'fetch-item' ? (held.get(request.targetKind) ?? 0) : 0,
+        },
+      ];
+    }
+    const recipeId = request.recipeId;
+    if (request.kind !== 'craft-item' || !recipeId) return [];
+    const blueprint = perception.blueprints.find((b) => b.id === recipeId);
+    if (blueprint) return this.blueprintNeeds(blueprint, goal?.id, perception);
+    const recipe = perception.recipes.find((r) => r.id === recipeId);
+    if (!recipe) return [];
+    return missingIngredients(recipe, held).map((m) => ({
+      kind: m.kind,
+      need: m.need,
+      have: m.have,
+    }));
+  }
+
+  /**
+   * Lo que pide una obra descontando lo ya levantado. Sin sitio elegido todavía
+   * la cuenta es el plano entero: nada está puesto porque no hay dónde.
+   */
+  private blueprintNeeds(
+    blueprint: Blueprint,
+    goalId: string | undefined,
+    perception: Perception,
+  ): { kind: string; need: number; have: number }[] {
+    const anchor = goalId === undefined ? undefined : this.structureSites.get(goalId)?.anchor;
+    const remaining = anchor
+      ? countPlacements(this.pendingPlacements(blueprint, anchor, perception))
+      : blueprintCounts(blueprint);
+    const held = heldCounts(perception);
+    return [...remaining].map(([kind, need]) => ({ kind, need, have: held.get(kind) ?? 0 }));
   }
 
   /** El objetivo que está levantando este plano, si hay uno abierto. */
@@ -4320,27 +4443,9 @@ export class AnimaAgent {
    * Vale para obras (bloques del plano) y para objetos (ingredientes).
    */
   private missingKindsForRequest(goal: Goal | undefined, perception: Perception): string[] {
-    const request = goal?.userRequest;
-    if (!request) return [];
-    // Traer o romper algo que no está: lo que falta es ese tipo, sin más
-    // cuenta que hacer. Sin esta rama, cualquier encargo que no fuera
-    // "construí" caía al genérico «no encuentro el objeto» y además fallaba en
-    // vez de suspenderse, aunque ella supiera perfectamente qué le faltaba.
-    if (request.kind === 'fetch-item' || request.kind === 'destroy-entity') {
-      return request.targetKind ? [request.targetKind] : [];
-    }
-    const recipeId = request.recipeId;
-    if (request.kind !== 'craft-item' || !recipeId) return [];
-    const held = heldCounts(perception);
-    const blueprint = perception.blueprints.find((b) => b.id === recipeId);
-    if (blueprint) {
-      return [...blueprintCounts(blueprint)]
-        .filter(([kind, need]) => (held.get(kind) ?? 0) < need)
-        .map(([kind]) => kind);
-    }
-    const recipe = perception.recipes.find((r) => r.id === recipeId);
-    if (!recipe) return [];
-    return missingIngredients(recipe, held).map((m) => m.kind);
+    return this.neededCountsFor(goal, perception)
+      .filter((m) => m.have < m.need)
+      .map((m) => m.kind);
   }
 
   /**
@@ -4417,18 +4522,14 @@ export class AnimaAgent {
   private missingForStructure(recipeId: string, perception: Perception): string | null {
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
     if (!blueprint) return null;
-    const held = heldCounts(perception);
     // Lo que falta es lo que falta LEVANTAR, no lo que pide el plano entero:
     // con dos muros ya puestos y cuatro en la mano decía "me falta 1" cuando en
-    // realidad le sobraban. Descontar solo el inventario era media cuenta.
+    // realidad le sobraban. Descontar solo el inventario era media cuenta. La
+    // cuenta la hace `neededCountsFor`, la misma que mira la pantalla.
     const goalId = this.activeStructureGoalId(blueprint);
-    const anchor = goalId === null ? null : this.structureSites.get(goalId)?.anchor;
-    const remaining = anchor
-      ? countPlacements(this.pendingPlacements(blueprint, anchor, perception))
-      : blueprintCounts(blueprint);
-    const missing = [...remaining]
-      .map(([kind, need]) => ({ kind, need, have: held.get(kind) ?? 0 }))
-      .filter((m) => m.have < m.need);
+    const missing = this.blueprintNeeds(blueprint, goalId ?? undefined, perception).filter(
+      (m) => m.have < m.need,
+    );
     // Los tiene todos y aun así falló: lo que no consiguió es el SITIO, no la
     // materia. Decir que le faltan bloques ahí sería mentir con precisión.
     if (missing.length === 0) {

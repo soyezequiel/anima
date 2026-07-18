@@ -191,6 +191,62 @@ describe('CodexModelProvider', () => {
     expect('alternate' in response).toBe(false);
   });
 
+  /**
+   * El motivo de un veto no es decoración: se dice en el chat, queda como hecho
+   * en su memoria, viaja en el legado y vuelve al modelo en el próximo intento
+   * de invención. Se lo cortaba a 240 caracteres a lo bruto, y el cuidador leía
+   * frases partidas al medio ("Con eso el paso se so") justo donde el prompt
+   * pide lo más útil: qué piezas intermedias le faltan.
+   */
+  it('el motivo del juicio entra entero cuando es largo pero razonable', async () => {
+    const reason =
+      'Un tronco solo no es un muro: es un poste. Te falta el piso del medio. ' +
+      'Bajá un escalón: primero tabla (1x log), y después varias tablas atadas o ' +
+      'pegadas — probá muro-aula con 3x tabla + 1x fiber, o 2x tabla + 1x resin. ' +
+      'Con eso el paso se sostiene y la obra deja de saltarse capas.';
+    expect(reason.length).toBeGreaterThan(240);
+
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ willing: false, reason })),
+    );
+    const response = await provider.complete({
+      kind: 'recipe.judge',
+      problem: 'me pidieron una escuela',
+      outputKind: 'muro-aula',
+      ingredientsSummary: ['1x log'],
+      effectsSummary: ['es sólido'],
+      knownRecipes: [],
+      facts: [],
+      depthBudget: 3,
+    });
+
+    // Entero: la parte accionable sobrevive.
+    expect(response).toMatchObject({ kind: 'judgement', willing: false });
+    expect(response.kind === 'judgement' && response.reason).toContain('3x tabla + 1x fiber');
+    expect(response.kind === 'judgement' && response.reason).toContain('deja de saltarse capas');
+  });
+
+  it('un motivo desmedido se corta en una palabra entera, no por la mitad', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({ willing: false, reason: `${'palabra '.repeat(200)}final` }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'decomposition.judge',
+      targetKind: 'flint',
+      dropsSummary: [],
+      facts: [],
+    });
+
+    const reason = response.kind === 'judgement' ? response.reason : '';
+    expect(reason.length).toBeLessThanOrEqual(601);
+    // Termina en «…», no en media palabra: una frase que termina se lee como
+    // una idea; una cortada al medio se lee como un error del programa.
+    expect(reason.endsWith('…')).toBe(true);
+    expect(reason).not.toMatch(/pala…$/);
+  });
+
   it('interpreta una orden libre como una intención estructurada', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(

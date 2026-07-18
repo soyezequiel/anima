@@ -375,11 +375,40 @@ export interface PersonalityTraitView {
   evidence: string;
 }
 
+/**
+ * Una materia que un objetivo está esperando (ADR 0052). Lleva el tipo —no un
+ * ícono ya resuelto— porque el dibujo sale del catálogo, la misma regla con la
+ * que se pinta en el tablero y en la mochila: una cosa no se ve de dos maneras
+ * según dónde la mires.
+ */
+export interface GoalNeedView {
+  kind: string;
+  label: string;
+  /** Cuántos faltan de verdad (lo que pide menos lo que lleva encima). */
+  short: number;
+  need: number;
+  have: number;
+  /** Hay uno suelto a la vista: puede ir sola, nadie tiene que traerlo. */
+  visible: boolean;
+  /** De qué se saca rompiéndolo, cuando no hay ninguno suelto ("árbol"). */
+  fromLabel: string | null;
+}
+
 export interface GoalView {
   id: string;
   description: string;
   status: string;
   source: string;
+  /** priority + urgency: el número con el que compiten entre sí. */
+  score: number;
+  /** Puesto en la fila de los activos, 1 = el que está haciendo ahora. */
+  rank: number | null;
+  /** Por qué quedó esperando, cuando está suspendido. */
+  suspendedReason: string | null;
+  /** Lo que le falta reunir; vacío si no necesita buscar nada. */
+  needs: GoalNeedView[];
+  /** Si es una obra: bloques puestos de cuántos, para la barra de avance. */
+  structure: { label: string; placed: number; total: number } | null;
 }
 
 export interface GameView {

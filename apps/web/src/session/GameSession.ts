@@ -3,7 +3,14 @@ import type { AgentEvent } from '@anima/agent-core';
 import type { CodexThought, ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import { countedKindLabel, kindLabel } from '@anima/shared';
-import type { ActionIntent, Components, Recipe, SimEvent, WorldState } from '@anima/sim-core';
+import type {
+  ActionIntent,
+  Components,
+  Perception,
+  Recipe,
+  SimEvent,
+  WorldState,
+} from '@anima/sim-core';
 import {
   buildPerception,
   expandRecipeCost,
@@ -1702,10 +1709,8 @@ export class GameSession {
    * dónde va cada bloque y cuáles puso: acá solo se traduce a lo que la
    * pantalla necesita, con el nombre en voz humana.
    */
-  private plannedStructureViews(): PlannedStructureView[] {
-    const pet = getEntity(this.world, this.agent.petId);
-    if (!pet || pet.components.dead) return [];
-    const perception = buildPerception(this.world, this.agent.petId);
+  private plannedStructureViews(perception: Perception | null): PlannedStructureView[] {
+    if (!perception) return [];
     return this.agent.plannedStructures(perception).map((planned) => ({
       blueprintId: planned.blueprintId,
       label: kindLabel(planned.blueprintId),
@@ -1824,15 +1829,75 @@ export class GameSession {
     }));
   }
 
+  /**
+   * Los objetivos en el orden en que compiten (ADR 0052), cada uno con lo que
+   * le falta reunir. El orden no es el de creación sino el de la fila real: el
+   * mismo `priority + urgency` con el que el agente elige a cuál atender, para
+   * que la pantalla no cuente una prioridad distinta de la que se obedece.
+   */
+  private goalViews(perception: Perception | null): GoalView[] {
+    const plans = new Map(
+      (perception ? this.agent.goalPlans(perception) : []).map((plan) => [plan.goalId, plan]),
+    );
+    const rank = new Map<string, number>();
+    this.agent.goals
+      .all()
+      .filter((g) => g.status === 'active')
+      .sort(
+        (a, b) =>
+          b.priority + b.urgency - (a.priority + a.urgency) ||
+          Number(a.id.slice(5)) - Number(b.id.slice(5)),
+      )
+      .forEach((g, i) => rank.set(g.id, i + 1));
+    // Abiertos primero (activos por prioridad, después los que esperan), y al
+    // final lo terminado: lo que se consulta es lo que todavía está en juego.
+    const weight = (g: { status: string; id: string }): number =>
+      g.status === 'active' ? (rank.get(g.id) ?? 0) : g.status === 'suspended' ? 1000 : 2000;
+    return this.agent.goals
+      .all()
+      .map((g) => {
+        const plan = plans.get(g.id);
+        const structure = plan?.structure;
+        return {
+          id: g.id,
+          description: g.description,
+          status: g.status,
+          source: g.source,
+          score: g.priority + g.urgency,
+          rank: rank.get(g.id) ?? null,
+          suspendedReason: g.suspendedReason ?? null,
+          needs: (plan?.needs ?? [])
+            .filter((need) => need.have < need.need)
+            .map((need) => ({
+              kind: need.kind,
+              label: kindLabel(need.kind),
+              short: need.need - need.have,
+              need: need.need,
+              have: need.have,
+              visible: need.visible,
+              fromLabel: need.from ? kindLabel(need.from) : null,
+            })),
+          structure: structure
+            ? {
+                label: kindLabel(structure.blueprintId),
+                placed: structure.placed,
+                total: structure.total,
+              }
+            : null,
+        };
+      })
+      .sort((a, b) => weight(a) - weight(b) || Number(a.id.slice(5)) - Number(b.id.slice(5)));
+  }
+
   private rebuildView(): void {
     const pet = getEntity(this.world, this.agent.petId);
     const petPos = pet?.components.position;
-    const goals: GoalView[] = this.agent.goals.all().map((g) => ({
-      id: g.id,
-      description: g.description,
-      status: g.status,
-      source: g.source,
-    }));
+    // Una sola percepción para todo lo que la pantalla deriva del agente: las
+    // obras plantadas y lo que falta para cada objetivo salen de la misma foto,
+    // así no pueden contradecirse dentro del mismo cuadro.
+    const perception =
+      pet && !pet.components.dead ? buildPerception(this.world, this.agent.petId) : null;
+    const goals: GoalView[] = this.goalViews(perception);
     const activeGoal = this.agent.goals.selectActive();
 
     const strategyEvents = this.agent.events.ofType('strategy.selected');
@@ -1918,7 +1983,7 @@ export class GameSession {
       legacyCount: this.legacyCount,
       worldSize: { width: this.world.config.width, height: this.world.config.height },
       entities,
-      plannedStructures: this.plannedStructureViews(),
+      plannedStructures: this.plannedStructureViews(perception),
       items: this.itemViews(),
       interactions: this.interactionViews(),
       pet:
@@ -1957,14 +2022,7 @@ export class GameSession {
             }
           : null,
       goals,
-      currentGoal: activeGoal
-        ? {
-            id: activeGoal.id,
-            description: activeGoal.description,
-            status: activeGoal.status,
-            source: activeGoal.source,
-          }
-        : null,
+      currentGoal: goals.find((g) => g.id === activeGoal?.id) ?? null,
       currentStrategy: lastStrategy ? String(lastStrategy.data.strategy) : null,
       lastAction: this.lastAction,
       speech: speechFresh,

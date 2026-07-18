@@ -560,3 +560,133 @@ button:active {
     animation: none;
   }
 }
+
+/* ── Objetivos (ADR 0052) ─────────────────────────────────────────────────
+   Cada objetivo es una tarjeta con su puesto en la fila y, cuando necesita
+   material, los faltantes DIBUJADOS. El color de cada faltante es lo único
+   que el cuidador tiene que leer rápido: verde va sola, ámbar hay que
+   romper algo, rojo alguien se lo tiene que traer. */
+
+.goals-list {
+  gap: 10px;
+}
+
+.goal-card {
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+
+/* El que está haciendo ahora se distingue por el borde, no por el tamaño:
+   la fila tiene que seguir leyéndose como una fila. */
+.goal-card-current {
+  border-color: var(--accent);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.goal-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.goal-rank {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-desc {
+  flex: 1 1 140px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.goal-sub,
+.goal-needs-title,
+.goal-waiting {
+  font-size: 11px;
+}
+
+.goal-needs-title {
+  margin-top: 2px;
+}
+
+.goal-progress {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+}
+
+.goal-progress-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--fg, var(--text)) 10%, transparent);
+  overflow: hidden;
+}
+
+.goal-progress-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  transition: width 240ms ease;
+}
+
+.goal-needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.goal-need {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.goal-need .item-icon {
+  display: inline-flex;
+  align-items: center;
+}
+
+.goal-need-count {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-need-hint {
+  font-size: 10px;
+}
+
+/* Hay uno suelto a la vista: puede ir sola, nadie tiene que hacer nada. */
+.goal-need-ready {
+  border-color: color-mix(in srgb, #22c55e 45%, var(--border));
+}
+
+/* Sale de romper otra cosa: tampoco necesita ayuda, pero cuesta golpes. */
+.goal-need-harvest {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+}
+
+/* No lo ve por ningún lado: esto es lo único que de verdad la traba. */
+.goal-need-absent {
+  border-color: color-mix(in srgb, #ef4444 50%, var(--border));
+  background: color-mix(in srgb, #ef4444 10%, var(--panel));
+}

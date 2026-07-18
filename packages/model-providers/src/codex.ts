@@ -136,6 +136,29 @@ con "max". Propiedades extra o operaciones desconocidas invalidan el programa.`;
  * el panel de aprendizaje y en el informe de legado. El motor no habla
  * castellano y la mascota no conoce sus propios identificadores.
  */
+/**
+ * Cuánto puede ocupar el motivo de un juicio. El texto es salida del modelo y
+ * termina en su memoria y en el legado, así que un tope tiene que haber; pero
+ * 240 caracteres cortaban en seco justo donde el prompt pide lo más útil —las
+ * piezas intermedias que le faltan— y el chat mostraba frases partidas al
+ * medio ("Con eso el paso se so").
+ */
+const MAX_JUDGEMENT_REASON = 600;
+
+/**
+ * Recorta sin dejar palabras partidas: si hay que cortar, se corta en el último
+ * espacio y se marca con «…». Una frase incompleta que TERMINA se lee como una
+ * idea; una cortada a mitad de palabra se lee como un error del programa.
+ */
+function trimToWords(text: string, max: number): string {
+  const clean = text.replace(/\s+/g, ' ').trim();
+  if (clean.length <= max) return clean;
+  const cut = clean.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  // Sin espacios (una parrafada sin separar): se corta donde toque, con marca.
+  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[.,;:—-]+$/, '')}…`;
+}
+
 const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   'energy-low': 'te estás quedando sin fuerzas',
   'temperature-low': 'tienes frío y el cuerpo se te está enfriando',
@@ -834,9 +857,11 @@ apruébalo, por raro que suene el nombre. Si es un salto, recházalo nombrando l
 pisos que faltan. Rechazar le cuesta un intento; aprobar un salto le regala una
 cadena entera que nunca recorrió.
 
-Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
-dirigida a la mascota; si la rechazas, NOMBRA las piezas intermedias que le
-faltan para que pueda proponerlas"}`,
+Responde solo con JSON: {"willing": true|false, "reason": "en español, dirigida
+a la mascota, de dos a cuatro frases COMPLETAS; si la rechazas, NOMBRA las
+piezas intermedias que le faltan para que pueda proponerlas. Que entre entero:
+lo que pase de unos 600 caracteres se recorta, y una frase cortada por la mitad
+no le sirve para inventar"}`,
       };
     case 'decomposition.judge':
       return {
@@ -1283,7 +1308,11 @@ export class CodexModelProvider extends BaseModelProvider {
           return {
             kind: 'judgement',
             willing: parsed.willing,
-            reason: parsed.reason.replace(/\s+/g, ' ').trim().slice(0, 240),
+            // El motivo no es decoración: se dice en el chat, queda como hecho
+            // en su memoria, viaja en el legado y —sobre todo— vuelve al modelo
+            // en el próximo intento de invención. Cortarlo corto le mutila la
+            // pista que necesita para inventar mejor.
+            reason: trimToWords(parsed.reason, MAX_JUDGEMENT_REASON),
           };
         }
         case 'recipe.propose': {

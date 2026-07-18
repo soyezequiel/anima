@@ -8,6 +8,7 @@ import { SettingsMenu } from './components/SettingsMenu.js';
 import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
+import { GoalsPanel } from './components/GoalsPanel.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
 import { LearningPanel } from './components/LearningPanel.js';
 import { StatusPanel } from './components/StatusPanel.js';
@@ -20,7 +21,7 @@ import { WelcomeOverlay } from './components/WelcomeOverlay.js';
  * SIEMPRE visibles encima de las pestañas. El usuario nuevo entra por Chat
  * —la acción principal— y nunca pierde el contexto vital.
  */
-type Tab = 'chat' | 'estado' | 'objetos' | 'aprendizaje' | 'dev';
+type Tab = 'chat' | 'objetivos' | 'estado' | 'objetos' | 'aprendizaje' | 'dev';
 
 const WELCOME_SEEN_KEY = 'anima.welcomeSeen';
 
@@ -59,6 +60,12 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   // Pestañas primarias + una técnica (dev) empujada al costado y de bajo peso.
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'chat', label: 'Chat', badge: view.chat.length },
+    // El contador son los ABIERTOS, no todos: lo terminado no reclama atención.
+    {
+      id: 'objetivos',
+      label: 'Objetivos',
+      badge: view.goals.filter((g) => g.status === 'active' || g.status === 'suspended').length,
+    },
     { id: 'estado', label: 'Estado' },
     { id: 'objetos', label: 'Objetos', badge: view.items.length },
     { id: 'aprendizaje', label: 'Aprendizaje', badge: view.skills.length },
@@ -166,6 +173,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
 
           <div className="panel-body">
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
+            {tab === 'objetivos' && <GoalsPanel view={view} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
             {tab === 'objetos' && <ItemsPanel view={view} />}
             {tab === 'aprendizaje' && <LearningPanel view={view} />}
