@@ -92,6 +92,15 @@ export const SHELTER_APPROACH_PROGRAM: SkillProgram = [
  */
 export type RememberedWalk = (kind: string) => Direction[] | undefined;
 
+/**
+ * De qué se cosecha un material: dado lo que falta ("log"), qué tipo hay que
+ * romper para conseguirlo ("tree"). Lo resuelve quien tiene la percepción — el
+ * mundo dice qué deja caer cada cosa (`dropKinds`) — y devuelve undefined si
+ * nada de lo que ve lo deja. Es el gemelo de `RememberedWalk`: el planificador
+ * no mira el mundo, se lo pasan resuelto.
+ */
+export type HarvestSource = (kind: string) => string | undefined;
+
 interface GatherOptions {
   held?: Map<string, number>;
   waitAfterTicks?: number;
@@ -123,6 +132,8 @@ interface GatherOptions {
    * juntar los troncos de una tabla no tira el pedernal ya conseguido arriba.
    */
   keepKinds?: string[];
+  /** De qué romper lo que ninguna receta hace (un tronco sale de un árbol). */
+  harvestSource?: HarvestSource;
 }
 
 export function gatherAndCraftProgram(
@@ -243,8 +254,69 @@ function fetchOps(
 }
 
 /**
+ * Cosechar: romper algo que DEJA CAER lo que falta, y levantarlo del suelo.
+ *
+ * Es la tercera vía de conseguir materia, y faltaba. Un tronco no sale de
+ * ninguna receta: sale de talar un árbol. Sin esta rama, "me faltan troncos"
+ * abortaba con `no-candidates` rodeada de árboles, y el cuidador tenía que
+ * decir "talá un árbol" — la misma intervención en tres partidas seguidas. El
+ * modelo, cuando diseña una habilidad, escribe esta cadena solo; el compositor
+ * determinista no la conocía.
+ *
+ * La herramienta primero (buscarla puede alejarla del objetivo), el objetivo
+ * después, y recién al final recoger lo que cayó: lo que se rompe deja la
+ * materia en el suelo, no en las manos.
+ */
+function harvestOps(kind: string, source: string, keepKinds?: string[]): SkillOp[] {
+  const dropped = { kind, held: false, portable: true } as const;
+  return [
+    { op: 'findEntities', query: { tool: true }, store: `tool-${kind}` },
+    { op: 'selectTarget', from: `tool-${kind}`, strategy: 'strongestTool', store: `best-${kind}` },
+    {
+      op: 'branch',
+      if: { type: 'not', cond: { type: 'holding', target: `best-${kind}` } },
+      then: [
+        { op: 'moveToward', target: `best-${kind}`, maxSteps: 40 },
+        { op: 'pickup', target: `best-${kind}` },
+      ],
+    },
+    { op: 'gpsTo', kind: source, maxSteps: 50, store: `src-${kind}` },
+    {
+      op: 'repeatWithLimit',
+      max: 20,
+      until: { type: 'entityGone', ref: `src-${kind}` },
+      body: [
+        { op: 'useItem', item: `best-${kind}`, target: `src-${kind}` },
+        // No insistir contra lo que no cede: un golpe ya lo prueba. Sin esto
+        // gastaría veinte turnos pegándole a algo demasiado duro mientras el
+        // motivo que la trajo hasta acá sigue empeorando.
+        {
+          op: 'branch',
+          if: { type: 'lastStrikeIneffective' },
+          then: [{ op: 'abort', reason: 'objetivo-muy-duro' }],
+        },
+        {
+          op: 'branch',
+          if: { type: 'lastActionUnaffected' },
+          then: [{ op: 'abort', reason: 'objetivo-inmune' }],
+        },
+      ],
+    },
+    // Solo si de verdad cayó: romperlo pudo fallar, y buscar en el suelo algo
+    // que no está abortaría la obra por "no lo encuentro" cuando lo que pasó
+    // es que el golpe no alcanzó.
+    {
+      op: 'branch',
+      if: { type: 'sees', query: dropped },
+      then: fetchOps(kind, keepKinds ? { keepKinds } : {}),
+    },
+  ];
+}
+
+/**
  * Conseguir UNA pieza: la que está tirada por ahí, o —si no hay ninguna y sabe
- * hacerla— fabricarla (ADR 0031). Es donde el árbol de crafteo se vuelve
+ * hacerla— fabricarla (ADR 0031), o —si tampoco hay receta— cosecharla de algo
+ * que la deja caer. Es donde el árbol de crafteo se vuelve
  * conducta: "me faltan 2 paredes" deja de ser el final de la historia y pasa a
  * ser el principio de otra, la de hacer paredes.
  *
@@ -263,6 +335,7 @@ function fetchOrMakeOps(
     recipes?: readonly Recipe[];
     rememberedWalk?: RememberedWalk;
     keepKinds?: string[];
+    harvestSource?: HarvestSource;
   },
   depth: number,
 ): SkillOp[] {
@@ -275,7 +348,23 @@ function fetchOrMakeOps(
   const recipes = options.recipes;
   if (!recipes || depth >= MAX_RECIPE_DEPTH) return fetch;
   const sub = recipeProducing(recipes, kind);
-  if (!sub) return fetch;
+  if (!sub) {
+    // Ninguna receta lo hace, pero algo que ve lo deja caer al romperse: se
+    // cosecha. Va después de fabricar porque partir una tabla es más barato
+    // que talar un árbol, y antes de rendirse porque rendirse no es una vía.
+    const source = options.harvestSource?.(kind);
+    if (source) {
+      return [
+        {
+          op: 'branch',
+          if: { type: 'sees', query: { kind, held: false, portable: true } },
+          then: fetchOps(kind, options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+          else: harvestOps(kind, source, options.keepKinds),
+        },
+      ];
+    }
+    return fetch;
+  }
 
   const made = recipeProduct(sub)?.kind ?? kind;
   return [
@@ -378,6 +467,7 @@ export function buildStructureProgram(
     recipes?: readonly Recipe[];
     rememberedWalk?: RememberedWalk;
     capacity?: number;
+    harvestSource?: HarvestSource;
   } = {},
 ): SkillProgram {
   // La materia de la obra no se suelta al hacer lugar: son los bloques del plano.
@@ -388,6 +478,7 @@ export function buildStructureProgram(
   const fetchOptions = (): Parameters<typeof fetchOrMakeOps>[1] => ({
     ...(options.recipes ? { recipes: options.recipes } : {}),
     ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
+    ...(options.harvestSource ? { harvestSource: options.harvestSource } : {}),
     keepKinds,
     searchFirst: true,
   });

@@ -102,6 +102,14 @@ const LOW_TEMPERATURE_FRACTION = 0.35;
  */
 const WORSENED_MOTIVE_DROP = 0.1;
 /**
+ * Bajo esta fracción, una necesidad del cuerpo deja de esperar su turno y le
+ * saca la actividad en curso a lo que el cuidador pidió (ADR 0048). Es más
+ * bajo que el umbral de alerta (0.35) a propósito: entre uno y otro ella
+ * atiende el problema pero termina lo que estaba haciendo — recién acá el
+ * cuerpo pasa por encima de la palabra.
+ */
+const CRITICAL_NEED_FRACTION = 0.2;
+/**
  * Bajo esta fracción de salud, con el peligro todavía al alcance, el dolor
  * deja de ser un reflejo de un paso y pasa a ser un motivo: nace el objetivo
  * de ponerse a salvo, por encima del hambre — morirse ahora le gana a comer
@@ -457,7 +465,33 @@ export class AnimaAgent {
           ? this.walkStepsAvoidingHazards(perception, remembered.position, 1)
           : undefined;
       },
+      harvestSource: (kind) => this.harvestSourceFor(kind, perception),
     };
+  }
+
+  /**
+   * De qué romper lo que ninguna receta hace. Un tronco no sale de una receta:
+   * sale de talar un árbol, y hasta ahora eso no era una conducta que el
+   * planificador supiera componer — abortaba «no hay troncos» rodeada de
+   * árboles y el cuidador tenía que decírselo.
+   *
+   * Prefiere lo más blando de lo que ve: si un arbusto y un árbol dejan lo
+   * mismo, romper el arbusto cuesta menos golpes, y los golpes son ticks que el
+   * hambre o el frío están corriendo en contra. Solo mira lo que TIENE a la
+   * vista: prometer una cosecha de algo que no ve sería un plan sobre un
+   * recuerdo, y para eso ya está el GPS.
+   */
+  private harvestSourceFor(kind: string, perception: Perception): string | undefined {
+    const sources = perception.visibleEntities.filter(
+      (entity) =>
+        entity.held !== true &&
+        entity.kind !== kind &&
+        (entity.dropKinds ?? []).includes(kind),
+    );
+    if (sources.length === 0) return undefined;
+    return sources.sort(
+      (a, b) => (a.hardness ?? 0) - (b.hardness ?? 0) || (a.distance ?? 0) - (b.distance ?? 0),
+    )[0]?.kind;
   }
 
   /**
@@ -859,6 +893,11 @@ export class AnimaAgent {
     const devIntent = await this.consumeSkillDevVerdict(perception);
     if (devIntent) return devIntent;
 
+    // Una urgencia del cuerpo puede sacarle el turno a lo que está haciendo
+    // (ADR 0048). Va acá, justo antes de continuar la actividad: si no, la
+    // actividad se queda con el turno para siempre y las prioridades declaradas
+    // no llegan a compararse nunca.
+    this.yieldActivityToUrgentNeed(perception);
     if (this.activity) return this.continueActivity(perception);
 
     const goal = this.goals.selectActive();
@@ -877,6 +916,69 @@ export class AnimaAgent {
       this.emit('goal.selected', { goalId: goal.id, description: goal.description });
     }
     return this.pursueGoal(goal, perception);
+  }
+
+  /**
+   * Soltar lo que está haciendo cuando el cuerpo se lo exige (ADR 0048).
+   *
+   * `think` continuaba la actividad ANTES de re-elegir objetivo, así que quien
+   * agarraba el turno se lo quedaba hasta terminar. Las prioridades estaban
+   * bien puestas —el frío puntúa más que un encargo— pero no llegaban a
+   * compararse nunca: se la vio juntando troncos para el cuidador con el calor
+   * en 6 de 50, y morirse de frío cumpliendo un pedido.
+   *
+   * Solo cede ante lo CRÍTICO, no ante cualquier bajón: interrumpir una obra
+   * larga cada vez que el hambre pica la dejaría sin terminar nada. Y el
+   * encargo interrumpido no se pierde — queda suspendido y vuelve solo cuando
+   * la urgencia pasa, con la misma maquinaria del ADR 0046.
+   */
+  /** Alguna necesidad del cuerpo en rojo: por debajo de esto no se negocia. */
+  private bodyInTheRed(perception: Perception): boolean {
+    const critical = (signal: { current: number; max: number } | undefined): boolean =>
+      signal !== undefined &&
+      signal.max > 0 &&
+      signal.current / signal.max <= CRITICAL_NEED_FRACTION;
+    return critical(perception.self.temperature) || critical(perception.self.energy);
+  }
+
+  private yieldActivityToUrgentNeed(perception: Perception): void {
+    const activity = this.activity;
+    // El cuerpo no se interrumpe a sí mismo: comer y abrigarse SON la urgencia.
+    if (!activity || activity.purpose !== 'user-request') return;
+
+    if (!this.bodyInTheRed(perception)) return;
+
+    // Que la necesidad exista como objetivo activo es lo que decide: si el
+    // cuerpo está en rojo pero nadie abrió el objetivo (o ya está suspendido
+    // sin estrategias), interrumpir no la ayudaría en nada.
+    const urgent = this.goals
+      .all()
+      .find(
+        (goal) =>
+          goal.status === 'active' &&
+          goal.source === 'internal-signal' &&
+          goal.id !== activity.goalId,
+      );
+    if (!urgent) return;
+
+    const interrupted = this.goals.get(activity.goalId);
+    this.activity = null;
+    this.lastSelectedGoalId = null;
+    if (interrupted && interrupted.status === 'active') {
+      this.goals.suspend(
+        interrupted.id,
+        'lo dejé a medias por una urgencia del cuerpo',
+        'el cuerpo deje de estar en rojo',
+      );
+      // Sin materia pendiente: lo que lo despierta es que la urgencia pase, y
+      // de eso se encarga la revisión de encargos suspendidos.
+      this.suspensionMaterials.delete(interrupted.id);
+      this.emit('goal.suspended', {
+        goalId: interrupted.id,
+        reason: 'urgencia del cuerpo',
+      });
+      this.reply(`Dejo esto un momento: ${urgent.description} y no puedo seguir así.`);
+    }
   }
 
   /**
@@ -1659,15 +1761,25 @@ export class AnimaAgent {
     // si no, repite la última orden explícita.
     let parsed: InterpretedMessage | null = null;
     if (isContinuationMessage(text)) {
+      // Suspendido cuenta como pendiente: desde el ADR 0046 un encargo que se
+      // quedó sin material espera en vez de morir, y buscar solo los activos
+      // hacía invisible justo al que el cuidador quiere que retome — "seguí"
+      // caía al modelo y nacía un objetivo duplicado.
       const pending = this.goals
         .all()
         .find(
           (goal) =>
-            goal.status === 'active' &&
+            (goal.status === 'active' || goal.status === 'suspended') &&
             ((goal.source === 'user-request' && goal.userRequest) ||
               (goal.source === 'learning' && goal.learning)),
         );
       if (pending) {
+        if (pending.status === 'suspended') {
+          this.goals.reactivate(pending.id);
+          this.progress.resetGoal(pending.id);
+          this.suspensionMaterials.delete(pending.id);
+          this.emit('goal.reactivated', { goalId: pending.id, reason: 'el cuidador pidió seguir' });
+        }
         this.reply(
           `Sigo con eso: "${pending.userRequest?.raw ?? pending.learning?.raw ?? pending.description}".`,
         );
@@ -2538,6 +2650,26 @@ export class AnimaAgent {
     );
     decision = await this.reconsiderRefusal(request, perception, decision);
     if (decision.classification === 'accepted' && request.kind !== 'unknown') {
+      // Volver a pedir lo mismo RETOMA, no duplica. El encargo abierto se
+      // identifica por lo que pide (qué acción, sobre qué), nunca por el texto:
+      // "construí una escuela" y "continua con la construccion de la escuela"
+      // son el mismo trabajo dicho distinto, y comparar descripciones crudas
+      // dejaba dos objetivos paralelos esperando el mismo material y
+      // reportando cada uno su propio fracaso.
+      const open = this.openRequestLike(request);
+      if (open) {
+        if (open.status === 'suspended') {
+          this.goals.reactivate(open.id);
+          this.progress.resetGoal(open.id);
+          this.suspensionMaterials.delete(open.id);
+          this.emit('goal.reactivated', {
+            goalId: open.id,
+            reason: 'el cuidador volvió a pedir lo mismo',
+          });
+        }
+        this.emit('goal.selected', { goalId: open.id, description: open.description });
+        return decision;
+      }
       const weights = USER_REQUEST_WEIGHTS[request.kind];
       const goal = this.goals.create(
         {
@@ -2571,6 +2703,33 @@ export class AnimaAgent {
       });
     }
     return decision;
+  }
+
+  /**
+   * Un encargo abierto (activo o suspendido) que pide LO MISMO que este.
+   *
+   * La identidad de un pedido es su acción y su objeto, no las palabras: pedir
+   * "construí una escuela" y después "continua con la construcción de la
+   * escuela" es insistir sobre el mismo trabajo. Los movimientos quedan fuera a
+   * propósito — "andá a la izquierda" dos veces son dos pasos, no uno repetido.
+   */
+  private openRequestLike(request: UserRequest): Goal | undefined {
+    // Solo las OBRAS. Construir algo es un trabajo único: volver a nombrarlo
+    // es insistir sobre el mismo, y crear un segundo objetivo dejaba dos
+    // esperando el mismo material y reportando cada uno su fracaso.
+    //
+    // Traer y romper son acciones CONTABLES y quedan afuera a propósito: "traé
+    // un tronco" dicho dos veces son dos troncos, no una insistencia sobre uno.
+    if (request.kind !== 'craft-item' || !request.recipeId) return undefined;
+    return this.goals
+      .all()
+      .find(
+        (goal) =>
+          (goal.status === 'active' || goal.status === 'suspended') &&
+          goal.source === 'user-request' &&
+          goal.userRequest?.kind === 'craft-item' &&
+          goal.userRequest.recipeId === request.recipeId,
+      );
   }
 
   private reply(text: string): void {
@@ -3891,6 +4050,16 @@ export class AnimaAgent {
    */
   private missingForCraft(activity: Activity, perception: Perception): string | null {
     const request = this.goals.get(activity.goalId)?.userRequest;
+    // Buscar o romper algo que no aparece tiene una respuesta mejor que «no
+    // encuentro el objeto»: decir QUÉ es lo que no aparece. Ella lo sabe —
+    // cuando el cuidador preguntó "¿qué no encontrás?" contestó al instante y
+    // con detalle; el problema era que nadie se lo había preguntado a la frase.
+    if (
+      (request?.kind === 'fetch-item' || request?.kind === 'destroy-entity') &&
+      request.targetKind
+    ) {
+      return `no veo ${kindWithArticle(request.targetKind)} por acá`;
+    }
     if (request?.kind !== 'craft-item' || !request.recipeId) return null;
     // Una obra (ADR 0032) no tiene receta con su nombre: falla distinto y se
     // explica distinto. Sin esto, no poder levantar una casa se contaba como
@@ -3934,8 +4103,17 @@ export class AnimaAgent {
    * Vale para obras (bloques del plano) y para objetos (ingredientes).
    */
   private missingKindsForRequest(goal: Goal | undefined, perception: Perception): string[] {
-    const recipeId = goal?.userRequest?.recipeId;
-    if (goal?.userRequest?.kind !== 'craft-item' || !recipeId) return [];
+    const request = goal?.userRequest;
+    if (!request) return [];
+    // Traer o romper algo que no está: lo que falta es ese tipo, sin más
+    // cuenta que hacer. Sin esta rama, cualquier encargo que no fuera
+    // "construí" caía al genérico «no encuentro el objeto» y además fallaba en
+    // vez de suspenderse, aunque ella supiera perfectamente qué le faltaba.
+    if (request.kind === 'fetch-item' || request.kind === 'destroy-entity') {
+      return request.targetKind ? [request.targetKind] : [];
+    }
+    const recipeId = request.recipeId;
+    if (request.kind !== 'craft-item' || !recipeId) return [];
     const held = heldCounts(perception);
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
     if (blueprint) {
@@ -3959,7 +4137,25 @@ export class AnimaAgent {
     for (const goal of this.goals.all()) {
       if (goal.status !== 'suspended') continue;
       const waitingFor = this.suspensionMaterials.get(goal.id);
-      if (!waitingFor || waitingFor.length === 0) continue;
+      // Lo dejó por una urgencia del cuerpo (ADR 0048), no por falta de
+      // materia: vuelve cuando el cuerpo sale del rojo. Sin esto, atender el
+      // frío enterraba el encargo y el cuidador tenía que volver a pedirlo.
+      if (!waitingFor) {
+        if (
+          goal.source === 'user-request' &&
+          goal.suspendedReason === 'lo dejé a medias por una urgencia del cuerpo' &&
+          !this.bodyInTheRed(perception)
+        ) {
+          this.goals.reactivate(goal.id);
+          this.progress.resetGoal(goal.id);
+          this.emit('goal.reactivated', {
+            goalId: goal.id,
+            reason: 'pasó la urgencia del cuerpo',
+          });
+        }
+        continue;
+      }
+      if (waitingFor.length === 0) continue;
       // La cuenta se REHACE contra la percepción de ahora. Preguntar si "tiene"
       // alguno de los tipos que faltaban no sirve: tener uno de los dos muros
       // que pide el plano es justo la situación en la que se suspendió, y

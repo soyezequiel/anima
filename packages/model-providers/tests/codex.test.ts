@@ -113,6 +113,24 @@ describe('CodexModelProvider', () => {
     expect(prompt).toContain('Ante la duda entre not-command y una acción, elige la acción');
   });
 
+  it('la señal del cuerpo se describe como se siente, no como se llama adentro', async () => {
+    // "energy-low" viajaba crudo al prompt y volvía dentro del hecho aprendido:
+    // «Si busco y consumo comida cuando siento energy-low…» quedaba escrito en
+    // el chat, en el panel de aprendizaje y en el informe de legado.
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning('{"hypothesis":"consumir alimento recupera energía","confidence":0.6}', seen),
+    );
+    await provider.complete({ kind: 'interpret.signal', signal: 'energy-low' });
+
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain('te estás quedando sin fuerzas');
+    expect(prompt).not.toContain('energy-low');
+    // Y se le exige un enunciado general, no un plan en primera persona.
+    expect(prompt).toContain('general y\nverificable');
+    expect(prompt).toContain('NO escribas un plan en primera persona');
+  });
+
   it('interpreta una orden libre como una intención estructurada', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(

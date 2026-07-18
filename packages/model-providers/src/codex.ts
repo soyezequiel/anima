@@ -129,6 +129,18 @@ con "max". Propiedades extra o operaciones desconocidas invalidan el programa.`;
 // validadores de esquemas de salida de los proveedores exigen tipar cada
 // arreglo/objeto anidado, y la DSL es recursiva. El string se parsea y
 // valida del lado del cliente con validateSkillProgram.
+/**
+ * Las señales del cuerpo, dichas como se sienten y no como se llaman adentro.
+ * `energy-low` viajaba crudo al prompt y el modelo lo devolvía dentro del
+ * hecho aprendido — "cuando siento energy-low…" quedaba escrito en el chat, en
+ * el panel de aprendizaje y en el informe de legado. El motor no habla
+ * castellano y la mascota no conoce sus propios identificadores.
+ */
+const SIGNAL_DESCRIPTIONS: Record<string, string> = {
+  'energy-low': 'te estás quedando sin fuerzas',
+  'temperature-low': 'tienes frío y el cuerpo se te está enfriando',
+};
+
 const PROGRAM_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -907,13 +919,20 @@ ${closing} Responde únicamente con JSON:
       return {
         schema: INTERPRET_SCHEMA,
         prompt: `Eres la mente de una mascota virtual interpretando una señal interna de su cuerpo.
-Señal: ${request.signal}
+Lo que sientes: ${SIGNAL_DESCRIPTIONS[request.signal] ?? request.signal}
 ${request.userMessage !== undefined ? `Tu cuidador te explicó: "${request.userMessage}"` : 'Nadie te lo explicó; solo tienes una pista del entorno: las criaturas que llegan a cero energía dejan de funcionar.'}
 
-Formula UNA hipótesis accionable y breve en español sobre qué hacer al
-respecto (por ejemplo, qué acción recupera el recurso). La confianza refleja
-cuánta evidencia real tienes (0.3 = pura especulación, 0.7 = explicación
-directa de una fuente confiable). Responde únicamente con JSON:
+Formula UNA hipótesis accionable sobre qué hacer al respecto, con las mismas
+reglas que cualquier cosa que aprendas: UNA sola oración breve, general y
+verificable, en presente y en tercera persona. Tiene que entenderse sola, meses
+después, sin este momento ("consumir alimento recupera energía", "acercarse al
+fuego devuelve el calor"). NO escribas un plan en primera persona ("probaré
+comer y si no funciona descansaré") ni menciones nombres internos del motor:
+hablas de tu mundo, no de tus tripas.
+
+La confianza refleja cuánta evidencia real tienes (0.3 = pura especulación,
+0.7 = explicación directa de una fuente confiable). Responde únicamente con
+JSON:
 {"hypothesis": "...", "confidence": 0.0-1.0}`,
       };
     case 'interpret.command':

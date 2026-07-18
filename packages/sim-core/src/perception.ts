@@ -37,6 +37,15 @@ export interface PerceivedEntity {
    * para lo que ya la tiene.
    */
   leavesRemains?: boolean;
+  /**
+   * QUÉ deja al romperse, por tipo. `leavesRemains` decía que algo cae pero no
+   * qué, y con eso no se puede planificar: "me faltan troncos" y "este árbol
+   * deja troncos" son la misma frase separada por el dato que no se exponía, y
+   * por eso la mascota abortaba «no hay troncos» rodeada de árboles. Solo
+   * aparece cuando el mundo ya lo sabe — si nadie definió la descomposición,
+   * sigue siendo algo que hay que imaginar antes de romper (la cuarta puerta).
+   */
+  dropKinds?: string[];
   /** true si el observador la lleva en su inventario. */
   held?: boolean;
 }
@@ -142,7 +151,14 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   if (entity.components.heatSource) perceived.warmth = entity.components.heatSource.warmthPerTick;
   if (entity.components.water) perceived.wet = true;
   if (entity.components.shelter) perceived.shelter = true;
-  if ((entity.components.drops ?? []).length > 0) perceived.leavesRemains = true;
+  const drops = entity.components.drops ?? [];
+  if (drops.length > 0) {
+    perceived.leavesRemains = true;
+    // Los TIPOS que caen, sin repetir: alcanza para planificar ("necesito
+    // troncos, este árbol deja troncos") y no filtra los arquetipos completos,
+    // que son estado interno del motor.
+    perceived.dropKinds = [...new Set(drops.map((drop) => drop.kind))];
+  }
   if (held) perceived.held = true;
   return perceived;
 }

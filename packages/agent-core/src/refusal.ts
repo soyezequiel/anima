@@ -163,7 +163,27 @@ export function evaluateUserRequest(
         // (no está o no alcanza) la negativa es honesta (ADR 0008).
         const visibleCount = (kind: string): number =>
           perception.visibleEntities.filter((e) => e.kind === kind).length;
-        const gatherable = missing.every((m) => visibleCount(m.kind) >= m.need - m.have);
+        // Lo que se puede COSECHAR también está al alcance: un árbol a la vista
+        // es un tronco a la vista, con unos golpes de por medio. Sin esto se
+        // negaba con "si me conseguís un tronco" rodeada de árboles, y ni
+        // siquiera llegaba a intentarlo — el cuidador tenía que decirle "talá
+        // un árbol" en cada partida.
+        const harvestableCount = (kind: string): number =>
+          perception.visibleEntities.reduce(
+            (total, entity) =>
+              total +
+              (entity.held === true
+                ? 0
+                : (entity.dropKinds ?? []).filter((drop) => drop === kind).length),
+            0,
+          );
+        const reachableCount = (kind: string): number =>
+          visibleCount(kind) + harvestableCount(kind);
+        const gatherable = missing.every((m) => reachableCount(m.kind) >= m.need - m.have);
+        /** Lo que falta y no está suelto: hay que sacarlo rompiendo algo. */
+        const harvestOnly = missing.filter(
+          (m) => visibleCount(m.kind) < m.need - m.have && harvestableCount(m.kind) > 0,
+        );
         // Aunque lo vea, tiene que caberle en los brazos. Con el inventario
         // lleno, recoger falla en silencio y "lo junto y la construyo" se volvía
         // "no veo más por acá" — capacidad, no recurso (ADR 0008). Pero las
@@ -177,7 +197,12 @@ export function evaluateUserRequest(
           return {
             classification: 'accepted',
             reason: `Entiendo, quiero construir ${withArticle(productKind)}; ${falta} ${displayMissing(missing)}.`,
-            alternative: `Veo lo que falta cerca: ${missingPronoun(missing)} junto y ${outputPronoun} construyo.`,
+            // Decir la verdad sobre de dónde va a salir: "lo junto" es mentira
+            // si hay que talar un árbol para tenerlo.
+            alternative:
+              harvestOnly.length > 0
+                ? `${displayMissing(harvestOnly)} no ${harvestOnly.length === 1 ? 'está' : 'están'} por acá suelto, pero puedo sacarlo de lo que hay: voy y ${outputPronoun} construyo.`
+                : `Veo lo que falta cerca: ${missingPronoun(missing)} junto y ${outputPronoun} construyo.`,
           };
         }
         if (gatherable) {

@@ -28,6 +28,13 @@ export interface UserRequestProgramDeps {
    * despejada) pero recordado: ir a donde lo vio evita el vagar a ciegas.
    */
   rememberedWalk(kind: string): Direction[] | undefined;
+  /**
+   * De qué tipo cosechar un material que ninguna receta produce ("log" sale de
+   * romper un "tree"), o undefined si nada de lo que ve lo deja caer. Sin esto,
+   * pedirle una obra cuya materia base se saca del mundo a golpes terminaba en
+   * «no hay troncos» con el bosque delante.
+   */
+  harvestSource(kind: string): string | undefined;
 }
 
 /**
@@ -65,6 +72,7 @@ export function programForUserRequest(
           held: heldCounts(perception),
           recipes: perception.recipes,
           rememberedWalk: deps.rememberedWalk,
+          harvestSource: deps.harvestSource,
           capacity: perception.self.inventoryCapacity,
         });
       }
@@ -84,6 +92,9 @@ export function programForUserRequest(
             // es pedirle también las paredes.
             recipes: perception.recipes,
             rememberedWalk: deps.rememberedWalk,
+            // Y la materia base que no sale de ninguna receta, del mundo a
+            // golpes: pedirle una casa es pedirle también talar los árboles.
+            harvestSource: deps.harvestSource,
           })
         : [{ op: 'abort', reason: 'no-sé-qué-construir' }];
     }
