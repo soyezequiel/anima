@@ -17,12 +17,14 @@ import {
   buildLegacyReport,
   captureSession,
   clearSession,
+  IncompatibleSaveError,
   loadLegacies,
   loadSession,
   MemoryKeyValueStore,
   appendLegacy,
   readJson,
   saveSession,
+  setAsideSave,
   successorIdentity,
   testimonyFromLegacy,
   writeJson,
@@ -163,6 +165,21 @@ describe('guardado y restauración de sesión', () => {
     expect(loaded?.identity.id).toBe('pet-1');
     await clearSession(store);
     expect(await loadSession(store)).toBeNull();
+  });
+
+  it('un guardado de otra versión se avisa y se aparta, no se borra en silencio', async () => {
+    const store = new MemoryKeyValueStore();
+    await saveSession(store, { ...saved, version: saved.version + 1 });
+
+    // "No hay guardado" y "hay uno que no sé leer" no son lo mismo: devolver
+    // null haría que la partida del cuidador se reemplace sin que se entere.
+    await expect(loadSession(store)).rejects.toBeInstanceOf(IncompatibleSaveError);
+
+    await setAsideSave(store);
+    // Ya no estorba al arranque, pero sigue existiendo: no es nuestro para
+    // borrarlo solo porque no sabemos abrirlo.
+    expect(await readJson(store, 'save')).toBeNull();
+    expect(await readJson<SessionSaveData>(store, 'save.incompatible')).not.toBeNull();
   });
 });
 

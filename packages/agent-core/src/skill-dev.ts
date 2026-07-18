@@ -162,8 +162,16 @@ export async function developSkill(
   const triedPrograms = new Map<string, number>();
   /** La mejor versión hasta ahora: la base sobre la que se corrige. */
   let best: EvaluatedVersion | null = null;
-  /** Propuesta inválida o repetida: vuelve al modelo sin gastar el intento. */
-  let retryFeedback: { program: unknown; observations: string[] } | null = null;
+  /**
+   * Propuesta inválida o repetida: vuelve al modelo sin gastar el intento.
+   * Lleva el motivo, porque la consulta de vuelta tiene que decir la verdad:
+   * una forma que no se pudo leer no es una estrategia que no alcanzó.
+   */
+  let retryFeedback: {
+    program: unknown;
+    observations: string[];
+    reason: 'invalid-program' | 'repeated-program';
+  } | null = null;
   let invalidRetries = 0;
   let repeatedRetries = 0;
 
@@ -181,6 +189,9 @@ export async function developSkill(
             kind: 'skill.revise',
             skillName: contract.name,
             problem: contract.purpose,
+            // Sin feedback pendiente, lo que hay es una versión que se midió
+            // en simulación y no alcanzó. Con feedback, ni se llegó a medir.
+            reason: retryFeedback ? retryFeedback.reason : 'evaluation-failed',
             successCriteria: criteria,
             context,
             // Con feedback pendiente se corrige ESA propuesta (su error de forma
@@ -231,6 +242,7 @@ export async function developSkill(
       retryFeedback = {
         program: response.program,
         observations: [`programa-invalido: ${validated.error}`],
+        reason: 'invalid-program',
       };
       continue;
     }
@@ -257,6 +269,7 @@ export async function developSkill(
         observations: [
           `propuesta-repetida: es idéntica a la v${repeatedVersion}, que ya falló. Cambia de enfoque: no repitas ninguna versión de la historia.`,
         ],
+        reason: 'repeated-program',
       };
       continue;
     }

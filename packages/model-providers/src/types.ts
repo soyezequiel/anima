@@ -21,6 +21,14 @@ export type ModelRequest =
   | {
       kind: 'skill.revise';
       skillName: string;
+      /**
+       * Por qué se vuelve a preguntar. No es lo mismo un programa que se midió
+       * en simulación y no alcanzó, que uno que ni siquiera se pudo leer:
+       * decirle «fallaste las pruebas» a quien escribió mal la forma lo manda
+       * a corregir lo que no está roto, y encima le miente sobre unas pruebas
+       * que nunca corrieron.
+       */
+      reason: 'evaluation-failed' | 'invalid-program' | 'repeated-program';
       /** El problema original: la revisión no puede perder de vista el objetivo. */
       problem: string;
       /** Criterios que el evaluador medirá: la vara no cambia entre versiones. */

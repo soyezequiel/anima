@@ -84,6 +84,49 @@ describe('desarrollo de skills con propuestas inválidas', () => {
     expect(String(rejected[0]?.data.reason)).toContain('programa inválido');
   });
 
+  it('la revisión dice POR QUÉ se repregunta: forma inválida no es prueba fallada', async () => {
+    const provider = new RecordingProvider([
+      { kind: 'skill.program', program: [{ op: 'volar' }], rationale: 'v inválida' },
+      {
+        kind: 'skill.program',
+        program: reachBlockedResourceProgram('strongestTool'),
+        rationale: 'corregida',
+      },
+    ]);
+    const events = createEventLog<AgentEvent>();
+    await developSkill(CONTRACT, [], devConfig(provider), events, 0);
+
+    const revisions = provider.seen.filter(
+      (r): r is Extract<ModelRequest, { kind: 'skill.revise' }> => r.kind === 'skill.revise',
+    );
+    expect(revisions).toHaveLength(1);
+    // Nunca se simuló nada: decirle que falló sus pruebas sería mentirle y
+    // mandarlo a corregir una estrategia que nadie midió.
+    expect(revisions[0]?.reason).toBe('invalid-program');
+  });
+
+  it('una propuesta repetida se nombra como tal, no como fallo de evaluación', async () => {
+    const provider = new RecordingProvider([
+      // v1: parcial. Se mide y no alcanza.
+      { kind: 'skill.program', program: DIRECT_APPROACH, rationale: 'directo' },
+      // Idéntica a la v1: no aporta nada y no llegó a simularse de nuevo.
+      { kind: 'skill.program', program: DIRECT_APPROACH, rationale: 'lo mismo' },
+      {
+        kind: 'skill.program',
+        program: reachBlockedResourceProgram('strongestTool'),
+        rationale: 'otro enfoque',
+      },
+    ]);
+    const events = createEventLog<AgentEvent>();
+    await developSkill(CONTRACT, [], devConfig(provider, 4), events, 0);
+
+    const reasons = provider.seen
+      .filter((r): r is Extract<ModelRequest, { kind: 'skill.revise' }> => r.kind === 'skill.revise')
+      .map((r) => r.reason);
+    // La primera revisión sí nace de una evaluación medida; la segunda no.
+    expect(reasons).toEqual(['evaluation-failed', 'repeated-program']);
+  });
+
   it('corta tras varias propuestas inválidas seguidas (sin bucle)', async () => {
     const invalid = { kind: 'skill.program', program: { no: 'es-arreglo' }, rationale: '' } as const;
     const provider = new ScriptedModelProvider([invalid, invalid, invalid, invalid]);

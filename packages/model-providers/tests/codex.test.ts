@@ -447,6 +447,7 @@ describe('CodexModelProvider', () => {
     await provider.complete({
       kind: 'skill.revise',
       skillName: 'x',
+      reason: 'evaluation-failed',
       problem: 'llegar hasta el alimento y consumirlo',
       successCriteria: ['consume un objeto de tipo food'],
       context: ['veo: hammer (herramienta, poder 3)'],
@@ -468,6 +469,7 @@ describe('CodexModelProvider', () => {
     await provider.complete({
       kind: 'skill.revise',
       skillName: 'x',
+      reason: 'evaluation-failed',
       problem: 'llegar hasta el alimento',
       successCriteria: ['su energía termina más alta'],
       context: [],
@@ -527,6 +529,7 @@ describe('CodexModelProvider', () => {
     await provider.complete({
       kind: 'skill.revise',
       skillName: 'x',
+      reason: 'evaluation-failed',
       problem: 'llegar hasta el alimento',
       successCriteria: [],
       context: [],

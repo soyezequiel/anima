@@ -178,6 +178,13 @@ export interface ChatEntry {
    * (`user.message.received`), momento en que la marca se apaga.
    */
   pending?: boolean;
+  /**
+   * Aviso que describe ESTA carga y no la conversación: se muestra, pero no
+   * se guarda. Sin esto cada restauración dejaba su rastro en el historial
+   * persistido y a las veinte recargas el chat era una lista de avisos con la
+   * charla enterrada debajo.
+   */
+  ephemeral?: boolean;
 }
 
 /**

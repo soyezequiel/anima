@@ -45,7 +45,17 @@ export type CodexTransport = (input: CodexTransportInput) => Promise<string>;
  * distingue de las demás, `kind` dice el momento cognitivo) y qué pasó.
  * `done`/`error` cierran siempre lo que `start` abrió, haya o no streaming.
  */
-export type CodexThought = { seq: number; kind: ModelRequest['kind'] } & (
+export type CodexThought = {
+  seq: number;
+  kind: ModelRequest['kind'];
+  /**
+   * Matiz del `kind` cuando el tipo de consulta solo no alcanza para nombrar
+   * el momento: una `skill.revise` puede estar corrigiendo una habilidad que
+   * falló sus pruebas o una que ni se pudo leer, y decirlas igual le miente
+   * al cuidador sobre qué está pasando.
+   */
+  detail?: string;
+} & (
   | { event: 'start' }
   | { event: 'reasoning'; text: string }
   | { event: 'answer'; text: string }
@@ -828,10 +838,31 @@ Si es razonable y modesta, apruébala.
 Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
 dirigida a la mascota, diciendo POR QUÉ tiene o no tiene lógica"}`,
       };
-    case 'skill.revise':
+    case 'skill.revise': {
+      // El encabezado dice la verdad de por qué se vuelve a preguntar. Con
+      // "falló sus pruebas" fijo, una propuesta que ni se pudo leer recibía un
+      // diagnóstico falso y salía a corregir la estrategia en vez de la forma.
+      const headline = {
+        'evaluation-failed': 'corrigiendo una habilidad que falló sus pruebas',
+        'invalid-program':
+          'reescribiendo una habilidad cuyo programa no se pudo siquiera leer: lo que estuvo mal fue la FORMA, no la estrategia, y no llegó a simularse nada',
+        'repeated-program':
+          'buscando un enfoque DISTINTO para una habilidad: tu última propuesta era idéntica a una ya probada',
+      }[request.reason];
+      const evidenceLabel =
+        request.reason === 'evaluation-failed'
+          ? 'Observaciones del evaluador sobre esa base (fallos medidos en simulación):'
+          : 'Qué estuvo mal con tu última propuesta (no se llegó a simular nada):';
+      const closing =
+        request.reason === 'invalid-program'
+          ? `Corrige la FORMA del programa para que respete la DSL. No cambies de
+estrategia por esto: nadie midió todavía si la estrategia sirve.`
+          : `Analiza la causa raíz según la evidencia y produce una versión corregida,
+distinta de todas las ya intentadas. Si la trayectoria muestra que un enfoque
+se estancó, cambia de estrategia en lugar de ajustar números.`;
       return {
         schema: PROGRAM_SCHEMA,
-        prompt: `Eres la mente de una mascota virtual corrigiendo una habilidad que falló sus pruebas.
+        prompt: `Eres la mente de una mascota virtual ${headline}.
 ${DSL_REFERENCE}
 
 Problema a resolver: ${request.problem}
@@ -855,7 +886,7 @@ ${request.history
 Programa base a corregir${request.baseVersion !== undefined ? ` (v${request.baseVersion}, la mejor hasta ahora)` : ''}:
 ${JSON.stringify(request.previousProgram)}
 
-Observaciones del evaluador sobre esa base (fallos medidos en simulación):
+${evidenceLabel}
 ${request.failureObservations.map((o) => `- ${o}`).join('\n') || '- (sin observaciones)'}
 ${
   request.caseResults && request.caseResults.length > 0
@@ -868,12 +899,10 @@ tiró mal y se quedó sin con qué reintentar. No cuentan ni a favor ni en contr
     : ''
 }
 Intento ${request.attempt}${request.maxAttempts !== undefined ? ` de ${request.maxAttempts}` : ''}.
-Analiza la causa raíz según la evidencia y produce una versión corregida,
-distinta de todas las ya intentadas. Si la trayectoria muestra que un enfoque
-se estancó, cambia de estrategia en lugar de ajustar números. Responde
-únicamente con JSON:
+${closing} Responde únicamente con JSON:
 {"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "qué cambiaste y por qué, breve, en español"}`,
       };
+    }
     case 'interpret.signal':
       return {
         schema: INTERPRET_SCHEMA,
@@ -1122,8 +1151,14 @@ export class CodexModelProvider extends BaseModelProvider {
     const kind = request.kind;
     const onThought = this.hooks.onThought;
     const seq = ++this.thoughtSeq;
+    // Una revisión no siempre corrige lo mismo: el motivo viaja con el
+    // pensamiento para que la UI no lo cuente todo como "falló las pruebas".
+    const head =
+      request.kind === 'skill.revise'
+        ? { seq, kind, detail: request.reason }
+        : { seq, kind };
     this.hooks.onBusy?.(true);
-    onThought?.({ seq, kind, event: 'start' });
+    onThought?.({ ...head, event: 'start' });
     let failure: string | null = null;
     try {
       const raw = await this.transport({
@@ -1134,9 +1169,9 @@ export class CodexModelProvider extends BaseModelProvider {
           ? {
               onEvent: (event: CodexThoughtEvent) => {
                 if (event.type === 'reasoning') {
-                  onThought({ seq, kind, event: 'reasoning', text: event.text });
+                  onThought({ ...head, event: 'reasoning', text: event.text });
                 } else {
-                  onThought({ seq, kind, event: 'answer', text: event.text });
+                  onThought({ ...head, event: 'answer', text: event.text });
                 }
               },
             }
@@ -1471,8 +1506,8 @@ export class CodexModelProvider extends BaseModelProvider {
       if (onThought) {
         onThought(
           failure === null
-            ? { seq, kind, event: 'done' }
-            : { seq, kind, event: 'error', message: failure },
+            ? { ...head, event: 'done' }
+            : { ...head, event: 'error', message: failure },
         );
       }
     }

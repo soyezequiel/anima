@@ -35,10 +35,12 @@ import {
   buildLegacyReport,
   captureSession,
   clearSession,
+  IncompatibleSaveError,
   loadLegacies,
   loadSession,
   MemoryKeyValueStore,
   saveSession,
+  setAsideSave,
   successorIdentity,
   testimonyFromLegacy,
   WebStorageKeyValueStore,
@@ -98,6 +100,12 @@ const AI_TIMING_SAMPLES = 5;
 const THOUGHT_LABELS: Record<string, string> = {
   'skill.propose': 'imaginando una habilidad nueva',
   'skill.revise': 'corrigiendo una habilidad que falló',
+  // Una revisión no siempre corrige lo mismo. Cuando el programa ni se pudo
+  // leer no falló ninguna prueba —no llegó a correr ninguna—, y contarlo como
+  // fallo manda al cuidador a buscar un problema de estrategia que no existe.
+  'skill.revise:invalid-program': 'reescribiendo una habilidad que le salió mal escrita',
+  'skill.revise:repeated-program': 'buscando otra forma de encarar la habilidad',
+  'skill.revise:evaluation-failed': 'corrigiendo una habilidad que falló',
   'interpret.signal': 'interpretando una señal del cuerpo',
   'interpret.command': 'entendiendo lo que le pediste',
   'skill.contract': 'acordando qué debería lograr',
@@ -147,6 +155,35 @@ interface SessionUiState {
   /** Si el mock propone primero sus ideas equivocadas (ADR 0006, adenda). */
   mockImperfect?: boolean;
 }
+
+/**
+ * En desarrollo, cualquier cambio en la sesión o debajo de ella (el agente,
+ * el motor) recarga la página entera en vez de aplicarse en caliente.
+ *
+ * La sesión es un singleton de módulo que `main.tsx` crea una sola vez, y
+ * `App.tsx` corta la propagación del Fast Refresh de React. Sin esto, editar
+ * `agent.ts` redefine la clase pero deja VIVA la instancia anterior, con su
+ * prototipo anterior: aparecen fantasmas del tipo «this.<método> is not a
+ * function» por métodos que el fuente sí tiene, y esa pestaña queda rota para
+ * siempre porque ninguna edición posterior fuerza una recarga. Un objeto vivo
+ * no se puede parchear en caliente; lo honesto es empezar de nuevo.
+ */
+if (import.meta.hot) {
+  import.meta.hot.accept(() => {
+    window.location.reload();
+  });
+}
+
+/**
+ * Avisos de sistema que hablan de UNA carga y hoy se marcan `ephemeral`. Los
+ * guardados escritos antes de esa marca los traen adentro, así que se
+ * reconocen por su texto al restaurar y se descartan.
+ */
+const STALE_NOTICE_PREFIXES = [
+  'Sesión restaurada (tick ',
+  'El proveedor de IA está fallando (',
+  'Error interno de la aplicación (',
+];
 
 function defaultStore(): KeyValueStore {
   const storage = (globalThis as { localStorage?: Storage }).localStorage;
@@ -393,12 +430,32 @@ export class GameSession {
     if (options.fresh) {
       await clearSession(session.store);
     }
-    const saved = options.fresh ? null : await loadSession(session.store);
+    // Un guardado de otra versión no es "no hay guardado": se aparta (no se
+    // pisa con el autoguardado siguiente) y se dice, porque lo que se pierde
+    // de vista es la partida del cuidador y él tiene que enterarse.
+    let saved: SessionSaveData | null = null;
+    let setAside = false;
+    if (!options.fresh) {
+      try {
+        saved = await loadSession(session.store);
+      } catch (error) {
+        if (!(error instanceof IncompatibleSaveError)) throw error;
+        await setAsideSave(session.store);
+        setAside = true;
+      }
+    }
     if (saved) {
       session.buildFreshRuntime(saved.seed);
       session.applySave(saved);
     } else {
       session.resetToNewPet(session.seed);
+    }
+    if (setAside) {
+      session.chat.push({
+        from: 'system',
+        text: 'Tu partida anterior está guardada en un formato que esta versión de Ánima no sabe leer. No la borré: quedó apartada. Esta mascota empieza de cero.',
+        tick: session.world.tick,
+      });
     }
     session.legacyCount = (await loadLegacies(session.store)).length;
     session.rebuildView();
@@ -593,7 +650,18 @@ export class GameSession {
     });
     this.adoptNewWorldRules();
     const ui = data.ui as Partial<SessionUiState> | undefined;
-    this.chat = ui?.chat ?? [];
+    // Los guardados viejos traen avisos que hoy son efímeros pero antes se
+    // persistían: uno de restauración por cada recarga, y los de pausa por
+    // error. Se barren acá. Los de error son los peores: apuntan al registro
+    // técnico, que vive en memoria, así que un fallo de hace horas reaparecía
+    // en cada carga como si estuviera pasando ahora.
+    this.chat = (ui?.chat ?? []).filter(
+      (entry) =>
+        !(
+          entry.from === 'system' &&
+          STALE_NOTICE_PREFIXES.some((prefix) => entry.text.startsWith(prefix))
+        ),
+    );
     if (ui?.petColor !== undefined) this.petColor = ui.petColor;
     if (ui?.mockImperfect !== undefined) {
       this.mockImperfect = ui.mockImperfect;
@@ -631,6 +699,9 @@ export class GameSession {
       from: 'system',
       text: `Sesión restaurada (tick ${this.world.tick}).${pendingNote}`,
       tick: this.world.tick,
+      // Habla de esta carga, no de la historia: se muestra y se descarta al
+      // guardar. Persistirlo hacía que cada recarga apilara un aviso más.
+      ephemeral: true,
     });
   }
 
@@ -643,7 +714,8 @@ export class GameSession {
       library: this.library,
       regressions: this.regressions,
       ui: {
-        chat: this.chat,
+        // Los avisos de esta carga no son conversación: se van acá.
+        chat: this.chat.filter((entry) => !entry.ephemeral),
         petColor: this.petColor,
         mockImperfect: this.mockImperfect,
       } satisfies SessionUiState,
@@ -733,7 +805,14 @@ export class GameSession {
         this.thoughts.push({
           seq: thought.seq,
           kind: thought.kind,
-          label: THOUGHT_LABELS[thought.kind] ?? 'pensando',
+          // El matiz gana sobre el tipo: dos revisiones distintas no se
+          // cuentan igual. Sin matiz, la etiqueta de siempre.
+          label:
+            (thought.detail !== undefined
+              ? THOUGHT_LABELS[`${thought.kind}:${thought.detail}`]
+              : undefined) ??
+            THOUGHT_LABELS[thought.kind] ??
+            'pensando',
           reasoning: [],
           answer: null,
           status: 'thinking',
@@ -926,21 +1005,38 @@ export class GameSession {
    * Un proveedor real puede fallar (red, timeout, JSON inválido). Se registra
    * y se reintenta; tras varios fallos seguidos, pausa automática para no
    * lanzar consultas en bucle. Devuelve true si pausó.
+   *
+   * No todo error de un think es del proveedor: un `TypeError` o un
+   * `ReferenceError` no los produce la red ni el modelo, los produce el código
+   * de acá. Mandar al cuidador a «revisar la conexión» por un bug propio
+   * esconde el bug y lo hace buscar donde no está, así que se nombran aparte.
    */
   private noteThinkError(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error);
+    const ownBug = error instanceof TypeError || error instanceof ReferenceError;
     this.consecutiveThinkErrors += 1;
     this.pushDev('agent', {
       type: 'agent.error',
       tick: this.world.tick,
-      data: { message, consecutive: this.consecutiveThinkErrors },
+      data: {
+        message,
+        consecutive: this.consecutiveThinkErrors,
+        origin: ownBug ? 'app' : 'provider',
+      },
     });
     if (this.consecutiveThinkErrors < 3) return false;
     this.consecutiveThinkErrors = 0;
     this.chat.push({
       from: 'system',
-      text: `El proveedor de IA está fallando (${message.slice(0, 160)}). Pausa automática: revisa la conexión o vuelve al modo simulado.`,
+      text: ownBug
+        ? `Error interno de la aplicación (${message.slice(0, 160)}). Pausa automática: no es tu conexión ni el modelo — el detalle está en el registro técnico.`
+        : `El proveedor de IA está fallando (${message.slice(0, 160)}). Pausa automática: revisa la conexión o vuelve al modo simulado.`,
       tick: this.world.tick,
+      // Habla de esta corrida: manda al registro técnico, que vive en memoria
+      // y no se guarda. Persistir el aviso mientras se tira la evidencia hacía
+      // que un fallo de hace horas reapareciera en cada recarga como si fuera
+      // de ahora — que es exactamente lo que nos hizo perseguir un fantasma.
+      ephemeral: true,
     });
     this.pause();
     return true;
