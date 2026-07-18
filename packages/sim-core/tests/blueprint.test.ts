@@ -110,10 +110,10 @@ describe('validateBlueprint: una obra posible', () => {
     expect(rejectBp(validCasa, [casa])).toContain('ya existe');
   });
 
-  it('rechaza una obra más grande de lo que la mascota puede cargar', () => {
-    // El caso real que rompió: el modelo propuso una casa de 7 paredes con
-    // capacidad 6. Se junta entera antes de colocarse (ADR 0032), así que 7 no
-    // le entran en los brazos y la obra era inconstruible. La puerta lo ataja.
+  it('acepta una obra más grande de lo que la mascota puede cargar (se levanta en tandas)', () => {
+    // Desde el ADR 0034 las manos ya no son el techo: una casa de 7 paredes con
+    // capacidad 6 se construye por tandas volviendo al ancla, así que la puerta
+    // la deja pasar. El único límite de tamaño es el footprint (3×3 → 8 bloques).
     const grande = {
       id: 'casa',
       placements: [
@@ -126,12 +126,7 @@ describe('validateBlueprint: una obra posible', () => {
         { kind: 'pared', offset: { x: 0, y: 1 } },
       ],
     };
-    const result = validateBlueprint(grande, [], [paredRecipe], materia, 6);
-    expect(result.ok).toBe(false);
-    expect(result.ok ? '' : result.error).toContain('solo puedo cargar 6');
-    // La misma obra SÍ entra en una mascota con más brazos: el límite es la
-    // capacidad, no un número mágico.
-    expect(validateBlueprint(grande, [], [paredRecipe], materia, 7).ok).toBe(true);
+    expect(validateBlueprint(grande, [], [paredRecipe], materia).ok).toBe(true);
   });
 });
 
@@ -153,7 +148,7 @@ describe('el mundo es quien decide un plano', () => {
     expect(restored.blueprints.map((b) => b.id)).toEqual(['casa']);
   });
 
-  it('el mundo rechaza una obra más grande que los brazos de la mascota', () => {
+  it('el mundo acepta una obra más grande que los brazos: se levanta en tandas (ADR 0034)', () => {
     const { world, pet } = buildTestWorld(); // capacity 4
     world.recipes.push(paredRecipe);
     world.entities['log1'] = { id: 'log1', kind: 'log', components: { position: { x: 3, y: 3 }, portable: {} } };
@@ -170,8 +165,10 @@ describe('el mundo es quien decide un plano', () => {
     const events = stepWorld(world, [
       { actorId: pet.id, intent: { type: 'proposeBlueprint', blueprint: cinco } },
     ]);
-    expect(events.some((e) => e.type === 'blueprint.rejected')).toBe(true);
-    expect(world.blueprints).toHaveLength(0);
+    // Cinco bloques con capacidad 4 ya NO es un rechazo: las manos dejaron de ser
+    // el techo. El plano entra al mundo.
+    expect(events.some((e) => e.type === 'blueprint.rejected')).toBe(false);
+    expect(world.blueprints.map((b) => b.id)).toContain('casa');
   });
 
   it('un plano imposible NO entra, y el rechazo dice por qué', () => {

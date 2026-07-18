@@ -138,7 +138,10 @@ export function App({ session, account }: { session: GameSession; account: Cloud
       </header>
       <main className="layout">
         <section className="stage">
-          <PhaserStage view={view} />
+          <PhaserStage
+            view={view}
+            onDropItem={(kind, at) => session.placeItemOnMap(kind, at)}
+          />
           {/* En qué parte del pensamiento va: visible desde cualquier pestaña. */}
           {view.currentThought && !view.death && <ThoughtTicker thought={view.currentThought} />}
           {view.death && <DeathOverlay report={view.death} session={session} />}

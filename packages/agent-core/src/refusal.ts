@@ -164,11 +164,28 @@ export function evaluateUserRequest(
         const visibleCount = (kind: string): number =>
           perception.visibleEntities.filter((e) => e.kind === kind).length;
         const gatherable = missing.every((m) => visibleCount(m.kind) >= m.need - m.have);
-        if (gatherable) {
+        // Aunque lo vea, tiene que caberle en los brazos. Con el inventario
+        // lleno, recoger falla en silencio y "lo junto y la construyo" se volvía
+        // "no veo más por acá" — capacidad, no recurso (ADR 0008). Pero las
+        // manos llenas de SOBRAS no son un "no puedo": suelta lo que no sirve
+        // para esta obra y junta igual (`makeRoom`). Solo es un "no puedo"
+        // honesto cuando todo lo que carga es material que va a necesitar.
+        const ingredientKinds = new Set(recipe.ingredients.map((i) => i.kind));
+        const freeSlots = perception.self.inventoryCapacity - perception.self.heldItems.length;
+        const droppable = perception.self.heldItems.filter((e) => !ingredientKinds.has(e.kind)).length;
+        if (gatherable && freeSlots + droppable >= totalMissing) {
           return {
             classification: 'accepted',
             reason: `Entiendo, quiero construir ${withArticle(productKind)}; ${falta} ${displayMissing(missing)}.`,
             alternative: `Veo lo que falta cerca: ${missingPronoun(missing)} junto y ${outputPronoun} construyo.`,
+          };
+        }
+        if (gatherable) {
+          const lo = totalMissing === 1 ? 'lo' : 'los';
+          return {
+            classification: 'cannot',
+            reason: `Entiendo, quiero construir ${withArticle(productKind)}; ${falta} ${displayMissing(missing)} y lo veo cerca, pero tengo las manos llenas de cosas que voy a necesitar (cargo ${perception.self.inventoryCapacity}).`,
+            alternative: `Si suelto algo, puedo juntar${lo} y ${outputPronoun} construyo.`,
           };
         }
         const visible = missing.filter((m) => visibleCount(m.kind) > 0);

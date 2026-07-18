@@ -117,6 +117,12 @@ interface GatherOptions {
    * ciegas: va a donde lo vio. Sin esto el programa es el de antes.
    */
   rememberedWalk?: RememberedWalk;
+  /**
+   * Los tipos que NO hay que soltar al hacer lugar: la materia de la obra en
+   * curso (ADR 0032). Se acumula al bajar por el árbol de recetas, así que
+   * juntar los troncos de una tabla no tira el pedernal ya conseguido arriba.
+   */
+  keepKinds?: string[];
 }
 
 export function gatherAndCraftProgram(
@@ -134,6 +140,13 @@ export function gatherAndCraftProgram(
           .filter((kind) => recipeProducing(options.recipes ?? [], kind))
       : [],
   );
+  // Lo que esta obra necesita, sumado a lo que ya venía cuidando de arriba: es
+  // lo que `makeRoom` no puede soltar. Acumular importa en el árbol de recetas
+  // —juntar los troncos de una tabla no debe tirar el pedernal de la fogata.
+  const keepKinds = [
+    ...new Set([...(options.keepKinds ?? []), ...recipe.ingredients.map((i) => i.kind)]),
+  ];
+  const withKeep: GatherOptions = { ...options, keepKinds };
   const gather: SkillOp[] = recipe.ingredients
     // Solo lo que efectivamente falta: con 2 troncos ya en la mano y el
     // pedernal en el suelo, buscar troncos abortaría (no hay ninguno suelto)
@@ -156,7 +169,7 @@ export function gatherAndCraftProgram(
         : need.remaining,
       // Si a mitad de camino ya puede construir, no junta de más.
       until: done,
-      body: fetchOrMakeOps(need.kind, options, depth),
+      body: fetchOrMakeOps(need.kind, withKeep, depth),
     }));
   const afterCraft: SkillOp[] =
     options.waitAfterTicks !== undefined ? [{ op: 'wait', ticks: options.waitAfterTicks }] : [];
@@ -174,7 +187,7 @@ export function gatherAndCraftProgram(
 /** Ir a buscar un objeto que está a la vista y traerlo. */
 function fetchOps(
   kind: string,
-  options: { searchFirst?: boolean; rememberedWalk?: RememberedWalk } = {},
+  options: { searchFirst?: boolean; rememberedWalk?: RememberedWalk; keepKinds?: string[] } = {},
 ): SkillOp[] {
   const searchFirst = options.searchFirst ?? false;
   const seek: SkillOp[] = [];
@@ -184,11 +197,15 @@ function fetchOps(
   // con el hueco para cruzar. Best-effort y sin abortar: si el camino se
   // corta, el `explore` de abajo toma la posta en vez de matar la obra. En la
   // segunda vuelta ya lo ve, así que el `not sees` se salta el rodeo solo.
+  // `portable: true`: solo materia SUELTA. Un bloque ya colocado en una obra
+  // deja de ser portable (ADR 0034), así que sin este filtro la mascota volvía
+  // a recoger su propia pared —el bloque más cercano— en vez de traer una nueva.
+  const looseQuery = { kind, held: false, portable: true } as const;
   const dirs = searchFirst ? options.rememberedWalk?.(kind) : undefined;
   if (dirs && dirs.length > 0) {
     seek.push({
       op: 'branch',
-      if: { type: 'not', cond: { type: 'sees', query: { kind, held: false } } },
+      if: { type: 'not', cond: { type: 'sees', query: looseQuery } },
       then: dirs.map((dir) => ({ op: 'moveStep', dir })),
     });
   }
@@ -200,12 +217,19 @@ function fetchOps(
     seek.push({
       op: 'explore',
       maxSteps: 50,
-      until: { type: 'sees', query: { kind, held: false } },
+      until: { type: 'sees', query: looseQuery },
     });
   }
+  // Con las manos llenas de sobras, soltar lo que no sirve para esta obra ANTES
+  // de intentar recoger: sin esto, recoger fallaba en silencio por inventario
+  // lleno y la obra abortaba como si no viera el material (ADR 0032). Solo actúa
+  // si de verdad no hay lugar, y nunca suelta la materia de la receta (`keep`).
+  const makeRoom: SkillOp[] = options.keepKinds
+    ? [{ op: 'makeRoom', keep: options.keepKinds }]
+    : [];
   return [
     ...seek,
-    { op: 'findEntities', query: { kind, held: false }, store: `mat-${kind}` },
+    { op: 'findEntities', query: looseQuery, store: `mat-${kind}` },
     {
       op: 'selectTarget',
       from: `mat-${kind}`,
@@ -213,6 +237,7 @@ function fetchOps(
       store: `next-${kind}`,
     },
     { op: 'moveToward', target: `next-${kind}`, maxSteps: 40 },
+    ...makeRoom,
     { op: 'pickup', target: `next-${kind}` },
   ];
 }
@@ -233,13 +258,20 @@ function fetchOps(
  */
 function fetchOrMakeOps(
   kind: string,
-  options: { searchFirst?: boolean; recipes?: readonly Recipe[]; rememberedWalk?: RememberedWalk },
+  options: {
+    searchFirst?: boolean;
+    recipes?: readonly Recipe[];
+    rememberedWalk?: RememberedWalk;
+    keepKinds?: string[];
+  },
   depth: number,
 ): SkillOp[] {
-  const fetch = fetchOps(kind, {
+  const fetchOptions = {
     searchFirst: options.searchFirst ?? false,
     ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
-  });
+    ...(options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+  };
+  const fetch = fetchOps(kind, fetchOptions);
   const recipes = options.recipes;
   if (!recipes || depth >= MAX_RECIPE_DEPTH) return fetch;
   const sub = recipeProducing(recipes, kind);
@@ -250,9 +282,10 @@ function fetchOrMakeOps(
     {
       op: 'branch',
       // Sin `searchFirst` en la rama de buscar: ya sabe que lo ve, y explorar
-      // 50 pasos para llegar a lo que tiene delante sería absurdo.
-      if: { type: 'sees', query: { kind, held: false } },
-      then: fetchOps(kind),
+      // 50 pasos para llegar a lo que tiene delante sería absurdo. `portable`:
+      // una pieza suelta que recoger, no una ya colocada en la obra (ADR 0034).
+      if: { type: 'sees', query: { kind, held: false, portable: true } },
+      then: fetchOps(kind, options.keepKinds ? { keepKinds: options.keepKinds } : {}),
       else: [
         // Lo que lleva encima NO viaja a la sub-receta: `held` cuenta lo que
         // tenía al planificar y adentro de un bucle eso ya es mentira. El
@@ -266,6 +299,7 @@ function fetchOrMakeOps(
             searchFirst: options.searchFirst ?? false,
             recipes,
             ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
+            ...(options.keepKinds ? { keepKinds: options.keepKinds } : {}),
           },
           depth + 1,
         ),
@@ -275,9 +309,13 @@ function fetchOrMakeOps(
         // salió y hay que volver a intentarlo.
         {
           op: 'branch',
-          if: { type: 'sees', query: { kind: made, held: false } },
+          if: { type: 'sees', query: { kind: made, held: false, portable: true } },
           then: [
-            { op: 'findEntities', query: { kind: made, held: false }, store: `made-${made}` },
+            {
+              op: 'findEntities',
+              query: { kind: made, held: false, portable: true },
+              store: `made-${made}`,
+            },
             {
               op: 'selectTarget',
               from: `made-${made}`,
@@ -315,54 +353,97 @@ export function buildFireProgram(
 }
 
 /**
- * Levantar una obra (ADR 0032). Dos actos, en orden:
+ * Levantar una obra en tandas (ADR 0034, que releva el "juntar todo primero"
+ * del ADR 0032). En vez de reunir TODOS los bloques de una —lo que ataba la
+ * obra a las 6 manos—, la levanta por tandas de a lo sumo una manada de bloques,
+ * volviendo siempre al mismo punto:
  *
- * 1. **Juntar** todos los bloques que el plano pide, con la maquinaria del eje
- *    A (los fabrica si sabe, los recoge si los ve). Termina con todo encima —
- *    por eso una obra no puede pedir más bloques de los que entran en los
- *    brazos.
- * 2. **Colocar** cada bloque en su celda, sin moverse: las celdas relativas a
- *    donde quedó parada son estables mientras coloca. Si una quedó ocupada, esa
- *    colocación falla y la obra queda a medias — construir es intentar (ADR
- *    0020), ahora en el espacio.
+ * 1. **Recordar el ancla**: la celda donde arranca es el centro de la casa. Se
+ *    guarda una vez y no se mueve; las colocaciones son relativas a ella.
+ * 2. **Por cada tanda** (hasta `capacity` bloques): juntar los bloques de la
+ *    tanda en un solo viaje (los recoge o los fabrica, soltando sobras si hace
+ *    falta), volver al ancla, y colocar cada celda que todavía no tenga su
+ *    bloque (`blockAt`).
  *
- * No hay entidad al final: la casa es las paredes puestas donde van. El
- * "listo" es haber intentado todas las colocaciones.
+ * Juntar la tanda entera antes de volver es lo que la hace rendir: buscar
+ * material mueve a la mascota, y traer de a uno multiplicaba los cruces del
+ * mapa. Volver al ancla mantiene las colocaciones en su lugar; `blockAt` la
+ * vuelve idempotente: puede irse a comer a mitad de la obra y retomar sin
+ * rehacer lo puesto. No hay entidad al final: la casa es las paredes puestas.
  */
 export function buildStructureProgram(
   blueprint: Blueprint,
-  options: { held?: Map<string, number>; recipes?: readonly Recipe[]; rememberedWalk?: RememberedWalk } = {},
+  options: {
+    held?: Map<string, number>;
+    recipes?: readonly Recipe[];
+    rememberedWalk?: RememberedWalk;
+    capacity?: number;
+  } = {},
 ): SkillProgram {
-  const gather: SkillOp[] = [...blueprintCounts(blueprint)].map(([kind, count]) => {
-    const held = options.held?.get(kind) ?? 0;
-    const remaining = Math.max(0, count - held);
-    const makeable = !!recipeProducing(options.recipes ?? [], kind);
-    return {
-      op: 'repeatWithLimit' as const,
-      // Margen para reintentar lo que se fabrica y puede fallar (ADR 0020),
-      // como en el árbol de crafteo. Lo que solo se recoge no falla.
-      max: Math.max(1, makeable ? Math.min(remaining * 2, MAX_REPEAT_LIMIT) : remaining),
-      until: { type: 'holdingCount' as const, kind, count },
-      body: fetchOrMakeOps(
-        kind,
-        {
-          ...(options.recipes ? { recipes: options.recipes } : {}),
-          ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
-          searchFirst: true,
-        },
-        0,
-      ),
-    };
+  // La materia de la obra no se suelta al hacer lugar: son los bloques del plano.
+  const keepKinds = [...blueprintCounts(blueprint).keys()];
+  const capacity = Math.max(1, options.capacity ?? 6);
+  const ANCHOR = 'obra-ancla';
+  // Volver EXACTO a la celda del ancla (Chebyshev 0): las colocaciones se miden
+  // desde donde está parada, así que un paso de más las corre de lugar.
+  const returnToAnchor: SkillOp = {
+    op: 'moveToward',
+    target: ANCHOR,
+    maxSteps: MAX_REPEAT_LIMIT,
+    stopAtDistance: 0,
+  };
+  const fetchOptions = (): Parameters<typeof fetchOrMakeOps>[1] => ({
+    ...(options.recipes ? { recipes: options.recipes } : {}),
+    ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
+    keepKinds,
+    searchFirst: true,
   });
-  // Colocar es lo último y de a un bloque por tick. El offset va tal cual: el
-  // mundo revalida que la celda esté vacía, dentro y al alcance.
-  const place: SkillOp[] = blueprint.placements.map((placement) => ({
-    op: 'place' as const,
-    kind: placement.kind,
-    dx: placement.offset.x,
-    dy: placement.offset.y,
-  }));
-  return [...gather, ...place];
+
+  const steps: SkillOp[] = [{ op: 'markAnchor', store: ANCHOR }];
+  // En tandas de a lo sumo `capacity` colocaciones: una casa de 8 con 6 manos
+  // son dos viajes, no un imposible.
+  for (let i = 0; i < blueprint.placements.length; i += capacity) {
+    const batch = blueprint.placements.slice(i, i + capacity);
+    const counts = new Map<string, number>();
+    for (const p of batch) counts.set(p.kind, (counts.get(p.kind) ?? 0) + 1);
+
+    // Juntar los bloques de la tanda, en un viaje. `until` corta apenas los
+    // tiene (si ya le sobraban de antes, no junta de más); margen doble para lo
+    // que se fabrica y puede fallar (ADR 0020).
+    for (const [kind, count] of counts) {
+      const makeable = !!recipeProducing(options.recipes ?? [], kind);
+      steps.push({
+        op: 'repeatWithLimit',
+        max: makeable ? Math.min(count * 2, MAX_REPEAT_LIMIT) : count,
+        until: { type: 'holdingCount', kind, count },
+        body: fetchOrMakeOps(kind, fetchOptions(), 0),
+      });
+    }
+    // Buscar movió a la mascota: un solo regreso al centro y a colocar la tanda.
+    steps.push(returnToAnchor);
+    for (const placement of batch) {
+      steps.push({
+        op: 'branch',
+        // Solo si esa celda todavía no tiene su bloque: retomar sin repetir.
+        if: {
+          type: 'not',
+          cond: { type: 'blockAt', dx: placement.offset.x, dy: placement.offset.y, kind: placement.kind },
+        },
+        // Y solo si de verdad lo tiene en la mano: si una tirada falló y le
+        // faltó el bloque, deja la celda a medias en vez de abortar la obra.
+        then: [
+          {
+            op: 'branch',
+            if: { type: 'holdingCount', kind: placement.kind, count: 1 },
+            then: [
+              { op: 'place', kind: placement.kind, dx: placement.offset.x, dy: placement.offset.y },
+            ],
+          },
+        ],
+      });
+    }
+  }
+  return steps;
 }
 
 /**

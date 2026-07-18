@@ -2993,30 +2993,40 @@ export class AnimaAgent {
     if (missing.length === 0) return null;
     const total = missing.reduce((sum, m) => sum + (m.need - m.have), 0);
     const falta = total === 1 ? 'me falta' : 'me faltan';
+    // Manos llenas, no ceguera: si lo que falta lo TIENE a la vista pero no le
+    // entra en los brazos (inventario lleno), el fallo es de capacidad y no de
+    // recurso —el mismo trato honesto que una obra que no entra
+    // (`missingForStructure`). Sin esto, "tengo las manos llenas" se contaba
+    // como "no veo más por acá" y el cuidador salía a buscar un pedernal que la
+    // mascota tenía justo al lado (recogerlo fallaba en silencio por lleno).
+    const freeSlots = perception.self.inventoryCapacity - perception.self.heldItems.length;
+    const visibleMissing = missing.filter((m) =>
+      perception.visibleEntities.some((e) => e.kind === m.kind),
+    );
+    if (freeSlots < total && visibleMissing.length > 0) {
+      const lo = total === 1 ? 'lo' : 'los';
+      return (
+        `veo ${displayMissing(visibleMissing)} cerca, pero tengo las manos llenas ` +
+        `(cargo ${perception.self.inventoryCapacity} cosas): necesito soltar algo para juntar${lo}`
+      );
+    }
     // Abortó por `no-candidates`: buscó y no había más. Decirlo evita que el
     // cuidador salga a buscar lo que no existe.
     return `${falta} ${displayMissing(missing)} y no veo más por acá`;
   }
 
   /**
-   * Por qué no pudo levantar una obra (ADR 0032). Dos motivos, dos respuestas
-   * honestas: o la obra tiene más bloques de los que le entran en los brazos
-   * (una casa vieja guardada antes de que el mundo cuidara ese límite), o no
-   * consiguió la materia de los bloques. En los dos casos nombra el bloque y el
-   * número — nunca «no encuentro el objeto», que no le sirve a nadie.
+   * Por qué no pudo levantar una obra. Desde el ADR 0034 la obra se construye de
+   * a un bloque volviendo al ancla, así que las manos ya no son el techo: si
+   * falla, es porque no consiguió la materia de los bloques (o no pudo volver al
+   * sitio a colocarla). Nombra el bloque y el número — nunca «no encuentro el
+   * objeto», que no le sirve a nadie.
    */
   private missingForStructure(recipeId: string, perception: Perception): string | null {
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
     if (!blueprint) return null;
     const counts = [...blueprintCounts(blueprint)];
     const blocks = counts.map(([kind, n]) => countedKindLabel(kind, n)).join(' y ');
-    if (blueprint.placements.length > perception.self.inventoryCapacity) {
-      return (
-        `${kindWithArticle(recipeId)} son ${blocks}, pero solo puedo cargar ` +
-        `${perception.self.inventoryCapacity} cosas a la vez y no me entra en los brazos: ` +
-        `necesito una ${kindLabel(recipeId)} más chica`
-      );
-    }
     return `no pude reunir ${blocks} para ${kindWithArticle(recipeId)}`;
   }
 

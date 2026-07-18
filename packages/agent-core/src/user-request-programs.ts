@@ -65,6 +65,7 @@ export function programForUserRequest(
           held: heldCounts(perception),
           recipes: perception.recipes,
           rememberedWalk: deps.rememberedWalk,
+          capacity: perception.self.inventoryCapacity,
         });
       }
       // Juntar lo que falte es parte de construir: el mismo programa que la

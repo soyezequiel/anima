@@ -52,19 +52,16 @@ const blueprintSchema = z
  * la vista previa no la pasa: juzgar con lo que la mascota percibe rechazaría
  * planos por bloques que existen tres celdas más allá.
  *
- * `capacity` es cuántos bloques puede cargar la mascota: la obra se junta ENTERA
- * antes de colocarse (ADR 0032), así que una obra de más bloques de los que le
- * entran en los brazos es inconstruible. Sin este límite, el mundo aceptaba una
- * casa de 7 paredes que ella no podía levantar, y el intento moría sin decir por
- * qué. Es la restricción del MVP hecha regla — mientras no camine mientras
- * construye, la obra vive dentro de su inventario.
+ * Ya NO se juzga por la capacidad del inventario: desde el ADR 0034 la obra se
+ * levanta por tandas volviendo al ancla, así que las manos dejaron de ser el
+ * techo. El único límite de tamaño es el footprint (3×3 → hasta 8 bloques), que
+ * el schema valida por su cuenta.
  */
 export function validateBlueprint(
   raw: unknown,
   existingBlueprints: Blueprint[] = [],
   recipes: Recipe[] = [],
   obtainable?: ReadonlySet<EntityKind>,
-  capacity?: number,
 ): Result<Blueprint> {
   const parsed = blueprintSchema.safeParse(raw);
   if (!parsed.success) {
@@ -79,11 +76,6 @@ export function validateBlueprint(
   }
   if (existingBlueprints.length >= MAX_BLUEPRINT_BLOCKS) {
     return err('Plano inválido: este mundo ya no admite más planos');
-  }
-  if (capacity !== undefined && blueprint.placements.length > capacity) {
-    return err(
-      `Plano inválido: la obra son ${blueprint.placements.length} bloques y solo puedo cargar ${capacity} a la vez`,
-    );
   }
 
   const seen = new Set<string>();

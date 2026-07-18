@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { useEffect, useRef, useState } from 'react';
+import type { DragEvent } from 'react';
 import type { GameView } from '../session/view.js';
+import { DND_ITEM_KIND } from '../dnd.js';
 import { KIND_EMOJI } from './appearance.js';
 import { BASE_CELL, WorldScene } from './WorldScene.js';
 
@@ -13,15 +15,55 @@ const MIN_CELL = 24;
  * constante. El globo de diálogo se dibuja como overlay HTML para tipografía
  * nítida.
  */
-export function PhaserStage({ view }: { view: GameView }) {
+export function PhaserStage({
+  view,
+  onDropItem,
+}: {
+  view: GameView;
+  /** Soltar un tipo del catálogo sobre el tablero lo pone en esa celda. */
+  onDropItem?: (kind: string, at: { x: number; y: number }) => void;
+}) {
   const boxRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<WorldScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
   const [cell, setCell] = useState(BASE_CELL);
+  // La celda bajo el cursor mientras se arrastra un item: se resalta para que
+  // el jugador vea dónde va a caer antes de soltar. null cuando no hay arrastre.
+  const [dropCell, setDropCell] = useState<{ x: number; y: number } | null>(null);
 
   const cols = view.worldSize.width;
   const rows = view.worldSize.height;
+
+  // La celda bajo el puntero, en coordenadas de mundo; null si cae fuera del
+  // tablero. Se mide contra el propio `.stage-board`, que tiene el tamaño exacto
+  // cols*cell × rows*cell, así el redondeo coincide con lo que dibuja Phaser.
+  const cellFromEvent = (e: DragEvent<HTMLDivElement>): { x: number; y: number } | null => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = Math.floor((e.clientX - rect.left) / cell);
+    const y = Math.floor((e.clientY - rect.top) / cell);
+    if (x < 0 || y < 0 || x >= cols || y >= rows) return null;
+    return { x, y };
+  };
+
+  const isItemDrag = (e: DragEvent<HTMLDivElement>) => e.dataTransfer.types.includes(DND_ITEM_KIND);
+
+  const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
+    if (!onDropItem || !isItemDrag(e)) return;
+    // preventDefault en dragover es lo que habilita el drop (contrato del DnD).
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setDropCell(cellFromEvent(e));
+  };
+
+  const handleDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (!onDropItem || !isItemDrag(e)) return;
+    e.preventDefault();
+    const at = cellFromEvent(e);
+    const kind = e.dataTransfer.getData(DND_ITEM_KIND);
+    setDropCell(null);
+    if (at && kind) onDropItem(kind, at);
+  };
 
   useEffect(() => {
     if (!hostRef.current || gameRef.current) return;
@@ -122,13 +164,33 @@ export function PhaserStage({ view }: { view: GameView }) {
     </div>
   );
 
+  const dropHint = dropCell && (
+    <div
+      className="drop-cell"
+      data-testid="drop-cell"
+      style={{
+        left: dropCell.x * cell,
+        top: dropCell.y * cell,
+        width: cell,
+        height: cell,
+      }}
+    />
+  );
+
   return (
     <div className="stage-wrap" ref={boxRef}>
-      <div className="stage-board" style={{ width: cols * cell, height: rows * cell }}>
+      <div
+        className="stage-board"
+        style={{ width: cols * cell, height: rows * cell }}
+        onDragOver={handleDragOver}
+        onDragLeave={() => setDropCell(null)}
+        onDrop={handleDrop}
+      >
         <div ref={hostRef} />
         {bubble}
         {thinkingBubble}
         {pickupFlash}
+        {dropHint}
       </div>
     </div>
   );

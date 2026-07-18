@@ -53,6 +53,14 @@ const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
       })
       .strict(),
     z.object({ type: z.literal('sees'), query: entityQuerySchema }).strict(),
+    z
+      .object({
+        type: z.literal('blockAt'),
+        dx: z.number().int().min(-1).max(1),
+        dy: z.number().int().min(-1).max(1),
+        kind: z.string().min(1).optional(),
+      })
+      .strict(),
     z.object({ type: z.literal('not'), cond: conditionSchema }).strict(),
   ]),
 ) as z.ZodType<SkillCondition>;
@@ -78,6 +86,13 @@ export type SkillCondition =
    * condición que vuelve útil a `explore`: recorrer HASTA VER lo que busca.
    */
   | { type: 'sees'; query: EntityQuery }
+  /**
+   * ¿Hay ya un bloque en la celda a `(dx,dy)` de donde estoy parada? (de un
+   * `kind`, si se da). Lo que vuelve idempotente levantar una obra en tandas
+   * (ADR 0034): una colocación ya hecha se saltea en vez de repetirse, así la
+   * mascota puede irse a buscar material y retomar sin rehacer lo puesto.
+   */
+  | { type: 'blockAt'; dx: number; dy: number; kind?: string }
   | { type: 'not'; cond: SkillCondition };
 
 export const SELECT_STRATEGIES = ['nearest', 'strongestTool'] as const;
@@ -122,6 +137,8 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       .strict(),
     z.object({ op: z.literal('pickup'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('drop'), target: z.string().min(1) }).strict(),
+    z.object({ op: z.literal('makeRoom'), keep: z.array(z.string().min(1)) }).strict(),
+    z.object({ op: z.literal('markAnchor'), store: z.string().min(1) }).strict(),
     z
       .object({
         op: z.literal('place'),
@@ -178,6 +195,23 @@ export type SkillOp =
   | { op: 'explore'; maxSteps: number; until?: SkillCondition }
   | { op: 'pickup'; target: string }
   | { op: 'drop'; target: string }
+  /**
+   * Soltar a conciencia para hacer lugar (ADR 0032): SOLO si el inventario está
+   * lleno, deja en el suelo la cosa MENOS útil que no sirva para la tarea en
+   * curso —lo que no esté en `keep`, prefiriendo lo que no es herramienta y, si
+   * no queda otra, la herramienta más débil—. Con lugar de sobra no hace nada.
+   * Es lo que permite juntar el pedernal con las manos ocupadas de sobras en
+   * vez de quedar trabada diciendo "no me entra".
+   */
+  | { op: 'makeRoom'; keep: string[] }
+  /**
+   * Recuerda la celda donde estoy parada como el ancla de una obra (ADR 0034):
+   * el punto al que vuelve entre viaje y viaje de material para que las
+   * colocaciones —relativas a su lugar— caigan siempre en la misma casa. Sin
+   * esto, irse a buscar un bloque movía el "centro" y la obra quedaba
+   * desparramada; con esto puede construir en tandas, sin el tope de las manos.
+   */
+  | { op: 'markAnchor'; store: string }
   /**
    * Colocar un bloque que se lleva encima (por tipo) en la celda vecina que
    * marca el offset, desde la posición actual (ADR 0032). El offset es de una

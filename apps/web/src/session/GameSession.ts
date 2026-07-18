@@ -7,8 +7,11 @@ import type { Components, SimEvent, WorldState } from '@anima/sim-core';
 import {
   buildPerception,
   getEntity,
+  inBounds,
+  isBlocked,
   recipeProduct,
   recipeProductKinds,
+  spawn,
   stepWorld,
   takeSnapshot,
 } from '@anima/sim-core';
@@ -792,6 +795,70 @@ export class GameSession {
     this.rebuildView();
     this.notify();
     if (!this.running) void this.stepOnce();
+  }
+
+  /**
+   * Poder del cuidador: pone en el mapa un ejemplar del tipo pedido, en la
+   * celda donde se soltó al arrastrarlo desde el catálogo. No pasa por la
+   * acción `place` de la mascota — esa exige tenerlo en la mochila y estar al
+   * lado —: acá el cuidador materializa desde afuera, como la IA Dios. Copia el
+   * arquetipo del tipo, lo deja fresco y lo asienta en una celda libre dentro
+   * del mapa; si el tipo no es materializable o la celda no sirve, no hace nada.
+   */
+  placeItemOnMap(kind: string, at: { x: number; y: number }): void {
+    if (this.getView().death) return;
+    if (!inBounds(this.world, at)) return;
+    // La celda tiene que estar libre: no se apila sobre un sólido (una roca,
+    // una pared). Sobre suelo o agua sí, igual que cualquier otro objeto.
+    if (isBlocked(this.world, at)) return;
+    const archetype = this.archetypeFor(kind);
+    if (!archetype) return;
+
+    const components = structuredClone(archetype);
+    components.position = { x: at.x, y: at.y };
+    // Un ejemplar recién puesto nace entero y solo: sin la marca de muerto de
+    // un cadáver copiado, sin lo que otro llevaba dentro y sin el desgaste
+    // heredado del ejemplar que sirvió de molde.
+    delete components.dead;
+    if (components.inventory) components.inventory = { ...components.inventory, items: [] };
+    if (components.durability) {
+      components.durability = { ...components.durability, current: components.durability.max };
+    }
+    if (components.energy) {
+      components.energy = { ...components.energy, current: components.energy.max };
+    }
+    if (components.health) {
+      components.health = { ...components.health, current: components.health.max };
+    }
+
+    spawn(this.world, kind, components);
+    this.pushDev('world', {
+      type: 'caretaker.placed',
+      tick: this.world.tick,
+      data: { kind, at },
+    });
+    void this.save();
+    this.rebuildView();
+    this.notify();
+  }
+
+  /**
+   * El molde con que materializar un tipo en el mapa. Lo que ya existe manda
+   * sobre lo que la receta promete —igual que en el catálogo (itemViews)—: un
+   * ejemplar real del mundo o de la mochila es la mejor prueba de qué es ese
+   * tipo. Si solo se sabe construir, cae al producto de la receta. null cuando
+   * el mundo no tiene forma de materializarlo.
+   */
+  private archetypeFor(kind: string): Components | null {
+    for (const entity of Object.values(this.world.entities)) {
+      if (entity.id === this.agent.petId) continue;
+      if (entity.kind === kind) return entity.components;
+    }
+    for (const recipe of this.world.recipes) {
+      const product = recipeProduct(recipe);
+      if (product?.kind === kind) return product.components;
+    }
+    return null;
   }
 
   // ---- suscripción ------------------------------------------------------------

@@ -1,5 +1,6 @@
 import { Fragment, useState } from 'react';
 import { appearanceFor, hexColor } from '../phaser/appearance.js';
+import { DND_ITEM_KIND } from '../dnd.js';
 import type { GameView, ItemView } from '../session/view.js';
 
 /**
@@ -59,7 +60,19 @@ function ItemCard({ item }: { item: ItemView }) {
     </>
   );
   return (
-    <li className="item-card" data-testid="item-entry" data-kind={item.kind} data-origin={item.origin}>
+    <li
+      className="item-card item-card-draggable"
+      data-testid="item-entry"
+      data-kind={item.kind}
+      data-origin={item.origin}
+      // Arrástralo al tablero para ponerlo en el mundo (lo recibe PhaserStage).
+      // El tipo va en el dataTransfer; la celda la resuelve el tablero al soltar.
+      draggable
+      onDragStart={(e) => {
+        e.dataTransfer.setData(DND_ITEM_KIND, item.kind);
+        e.dataTransfer.effectAllowed = 'copy';
+      }}
+    >
       {hasDetail ? (
         <button className="item-head" onClick={() => setOpen(!open)} aria-expanded={open}>
           {head}

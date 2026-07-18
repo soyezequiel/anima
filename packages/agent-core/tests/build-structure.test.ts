@@ -157,10 +157,11 @@ describe('construir una casa es levantar una obra, no hacer un bloque', () => {
     expect(paredes.length).toBe(3);
   });
 
-  it('una obra vieja que no le entra en los brazos falla con motivo, no con "no encuentro el objeto"', async () => {
-    // El caso real reportado: un guardado con una casa de 7 paredes y capacidad
-    // 6. La obra ya está aprendida (la puerta de hoy la rechazaría, pero esta
-    // se guardó antes). Al construirla, la mascota dice por qué no puede.
+  it('una casa más grande que las manos se levanta en tandas (ADR 0034)', async () => {
+    // El caso real reportado, pero al derecho: una casa de 7 paredes y capacidad
+    // 6. Antes el mundo la rechazaba ("no me entra en los brazos"); ahora la
+    // construye de a un bloque volviendo al ancla, sin el tope de las manos. La
+    // puerta va al SUR (offset 0,1 libre): por ahí sale a buscar y vuelve.
     const { world, petId } = openWorld();
     world.recipes.push({
       id: 'pared-de-tronco',
@@ -181,7 +182,7 @@ describe('construir una casa es levantar una obra, no hacer un bloque', () => {
         { kind: 'pared-de-tronco', offset: { x: -1, y: 0 } },
         { kind: 'pared-de-tronco', offset: { x: 1, y: 0 } },
         { kind: 'pared-de-tronco', offset: { x: -1, y: 1 } },
-        { kind: 'pared-de-tronco', offset: { x: 0, y: 1 } },
+        { kind: 'pared-de-tronco', offset: { x: 1, y: 1 } },
       ],
     });
     const provider = new FakeLanguageModel({
@@ -192,79 +193,84 @@ describe('construir una casa es levantar una obra, no hacer un bloque', () => {
     });
     const { agent, perception } = makeAgent(world, petId, provider);
     agent.receiveUserMessage('construí una casa');
-    const said: string[] = [];
-    for (let i = 0; i < 260; i++) {
-      const intent = await agent.think(perception());
-      if (!intent) continue;
-      if (intent.type === 'speak') said.push(intent.text);
-      agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
-    }
-    const failure = said.find((t) => t.startsWith('No pude completar eso'));
-    expect(failure).toBeDefined();
-    // Nombra la casa, el número de bloques y el límite de sus brazos — nunca el
-    // opaco "no encuentro el objeto" que el cuidador vio en la corrida real.
-    expect(failure).toContain('son 7');
-    expect(failure).toContain('solo puedo cargar 6');
-    expect(failure).not.toContain('no encuentro el objeto');
-  });
-
-  it('si el mundo rechaza una obra por grande, el motivo vuelve al modelo para que proponga una más chica', async () => {
-    const { world, petId } = openWorld();
-    // Un modelo que primero propone una casa de 7 paredes (no entra) y, con el
-    // rechazo del mundo como dato, corrige a una de 5. Prueba el lazo entero:
-    // puerta → rechazo → memoria → propuesta más chica → obra construida.
-    let attempt = 0;
-    const paredRecipe = {
-      id: 'pared-de-tronco',
-      output: { kind: 'pared-de-tronco', components: { portable: {}, collider: { solid: true } } },
-      ingredients: [{ kind: 'log', count: 1 }],
-    };
-    const ring = (n: number) =>
-      [
-        { x: -1, y: -1 },
-        { x: 0, y: -1 },
-        { x: 1, y: -1 },
-        { x: -1, y: 0 },
-        { x: 1, y: 0 },
-        { x: -1, y: 1 },
-        { x: 0, y: 1 },
-      ]
-        .slice(0, n)
-        .map((offset) => ({ kind: 'pared-de-tronco', offset }));
-    class Adaptive extends MockModelProvider {
-      override readonly interpretsLanguage = true;
-      override complete(request: ModelRequest): Promise<ModelResponse> {
-        if (request.kind === 'interpret.command') {
-          return Promise.resolve({
-            kind: 'command.interpretation',
-            command: { action: 'craft-item', recipeId: 'casa' },
-          });
-        }
-        if (request.kind === 'recipe.propose') {
-          attempt += 1;
-          // Primer intento: 7 paredes (rechazada). Después: 5.
-          const n = attempt === 1 ? 7 : 5;
-          return Promise.resolve({
-            kind: 'blueprint',
-            recipes: [paredRecipe],
-            blueprint: { id: 'casa', placements: ring(n) },
-            rationale: 'una casa de paredes',
-          });
-        }
-        return super.complete(request);
-      }
-    }
-    const { agent, perception } = makeAgent(world, petId, new Adaptive());
-    agent.receiveUserMessage('construí una casa');
-    for (let i = 0; i < 320; i++) {
+    for (let i = 0; i < 400; i++) {
       const intent = await agent.think(perception());
       if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
     }
-    // El mundo rechazó la primera (grande) y aceptó una obra al final.
-    expect(agent.events.ofType('blueprint.rejected').length).toBeGreaterThan(0);
+    // Las 7 paredes quedaron puestas, aunque nunca cupieran las 7 en la mano.
     const paredes = allEntities(world).filter(
       (e) => e.kind === 'pared-de-tronco' && e.components.position,
     );
-    expect(paredes.length).toBe(5);
+    expect(paredes.length).toBe(7);
+    // Y cada una alrededor del ancla (footprint 3×3): distancia Chebyshev 1.
+    const pet = world.entities[petId]!.components.position!;
+    for (const pared of paredes) {
+      const dx = Math.abs(pared.components.position!.x - pet.x);
+      const dy = Math.abs(pared.components.position!.y - pet.y);
+      expect(Math.max(dx, dy)).toBe(1);
+    }
+  });
+
+  it('retomar sin repetir: no reconstruye las paredes que ya están puestas', async () => {
+    // Idempotencia de la obra (ADR 0034): si dos celdas del plano ya tienen su
+    // pared —una tanda anterior, o un guardado a medias—, la mascota las saltea
+    // (`blockAt`) y solo levanta las que faltan, sin recogerlas ni rehacerlas.
+    const { world, petId } = openWorld();
+    world.recipes.push({
+      id: 'pared-de-tronco',
+      outcomes: [
+        {
+          weight: 1,
+          output: { kind: 'pared-de-tronco', components: { portable: {}, collider: { solid: true } } },
+        },
+      ],
+      ingredients: [{ kind: 'log', count: 1 }],
+    });
+    world.blueprints.push({
+      id: 'casa',
+      placements: [
+        { kind: 'pared-de-tronco', offset: { x: 0, y: -1 } },
+        { kind: 'pared-de-tronco', offset: { x: -1, y: 0 } },
+        { kind: 'pared-de-tronco', offset: { x: 1, y: 0 } },
+        { kind: 'pared-de-tronco', offset: { x: 0, y: 1 } },
+      ],
+    });
+    // Dos paredes YA puestas (a medias): en el norte y el oeste del ancla (7,5),
+    // sin `portable` — son parte de la obra, no materia suelta.
+    const pet0 = world.entities[petId]!.components.position!;
+    const preplaced: Array<[number, number]> = [
+      [0, -1],
+      [-1, 0],
+    ];
+    for (const [dx, dy] of preplaced) {
+      spawn(world, 'pared-de-tronco', {
+        position: { x: pet0.x + dx, y: pet0.y + dy },
+        collider: { solid: true },
+      });
+    }
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'casa' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    agent.receiveUserMessage('construí una casa');
+    let placed = 0;
+    for (let i = 0; i < 300; i++) {
+      const intent = await agent.think(perception());
+      if (intent) {
+        const events = stepWorld(world, [{ actorId: petId, intent }]);
+        agent.observe(events);
+        placed += events.filter((e) => e.type === 'item.placed').length;
+      }
+    }
+    // Las 4 celdas terminaron con su pared…
+    const paredes = allEntities(world).filter(
+      (e) => e.kind === 'pared-de-tronco' && e.components.position,
+    );
+    expect(paredes.length).toBe(4);
+    // …pero solo colocó las 2 que faltaban: las otras dos ya estaban.
+    expect(placed).toBe(2);
   });
 });

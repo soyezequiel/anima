@@ -552,14 +552,14 @@ function resolveProposeBlueprint(
   intent: Extract<ActionIntent, { type: 'proposeBlueprint' }>,
   events: SimEvent[],
 ): void {
+  // Sin la capacidad: desde el ADR 0034 la obra se levanta por tandas volviendo
+  // al ancla, así que las manos dejan de ser el techo. El único límite de tamaño
+  // es el footprint (3×3 → hasta 8 bloques), que valida el schema del plano.
   const validated = validateBlueprint(
     intent.blueprint,
     world.blueprints,
     world.recipes,
     obtainableKinds(world),
-    // Lo que puede cargar: una obra se junta entera antes de colocarse, así que
-    // el inventario es el techo real del tamaño de la obra (ADR 0032).
-    actor.components.inventory?.capacity,
   );
   if (!validated.ok) {
     events.push(
@@ -833,6 +833,11 @@ function resolvePlace(
   }
   inventory.items.splice(inventory.items.indexOf(intent.itemId), 1);
   item.components.position = { ...intent.at };
+  // Colocado es parte de la obra, no materia suelta: deja de poder levantarse
+  // (ADR 0032, "la casa no se recoge"; ADR 0034). Sin esto, al construir en
+  // tandas la mascota recogía su propia pared recién puesta —el bloque suelto
+  // más cercano— y la obra nunca crecía.
+  delete item.components.portable;
   events.push(
     simEvent('item.placed', world.tick, {
       actorId: actor.id,

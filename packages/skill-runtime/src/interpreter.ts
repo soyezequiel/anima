@@ -36,7 +36,15 @@ export type SkillStepOutput =
   | { kind: 'intent'; intent: ActionIntent }
   | { kind: 'done'; result: SkillExecutionResult };
 
-type VarValue = PerceivedEntity | PerceivedEntity[];
+/** Un ancla de obra: una celda fija del mundo a la que la mascota vuelve (ADR 0034). */
+interface Anchor {
+  anchor: Vec2;
+}
+type VarValue = PerceivedEntity | PerceivedEntity[] | Anchor;
+
+function isAnchor(value: VarValue | undefined): value is Anchor {
+  return value !== undefined && !Array.isArray(value) && 'anchor' in value;
+}
 
 interface Frame {
   ops: SkillOp[];
@@ -454,6 +462,30 @@ export class SkillExecution {
           at: { x: perception.self.position.x + op.dx, y: perception.self.position.y + op.dy },
         });
       }
+      case 'markAnchor': {
+        this.vars.set(op.store, { anchor: { ...perception.self.position } });
+        frame.index += 1;
+        return null;
+      }
+      case 'makeRoom': {
+        // Solo actúa con las manos llenas: con lugar de sobra, juntar de más
+        // sería ensuciar el suelo por nada. La cosa a soltar es la MENOS útil
+        // de lo que no sirve para esta tarea (no está en `keep`): primero lo
+        // que no es herramienta, y si no queda otra, la herramienta más débil —
+        // nunca la materia de la receta ni el martillo si hay una rama.
+        const held = perception.self.heldItems;
+        const free = perception.self.inventoryCapacity - held.length;
+        const junk = held
+          .filter((e) => !op.keep.includes(e.kind))
+          .sort((a, b) => (a.toolPower ?? -1) - (b.toolPower ?? -1));
+        if (free > 0 || junk.length === 0) {
+          frame.index += 1;
+          return null;
+        }
+        frame.index += 1;
+        this.pendingSingle = true;
+        return this.emit({ type: 'drop', itemId: junk[0]!.id });
+      }
       case 'pickup':
       case 'drop':
       case 'consume':
@@ -480,22 +512,33 @@ export class SkillExecution {
 
   private stepMove(perception: Perception): SkillStepOutput | null {
     const move = this.move!;
-    const target = this.resolveEntity(move.targetVar);
-    if (!target) {
-      this.endMove('lost');
-      return null;
-    }
-    if (perception.self.heldItems.some((e) => e.id === target.id)) {
-      this.endMove('reached');
-      return null;
-    }
-    const current = this.findCurrent(target.id, perception);
-    if (!current?.position) {
-      this.endMove('lost');
-      return null;
+    // El destino puede ser una entidad (perseguir un pedernal) o un ancla de
+    // obra: una celda fija a la que volver (ADR 0034). El ancla no se busca en
+    // la percepción —es una coordenada, no una cosa que pueda esconderse tras
+    // un muro— así que nunca se "pierde".
+    const value = this.vars.get(move.targetVar);
+    let destination: Vec2;
+    if (isAnchor(value)) {
+      destination = value.anchor;
+    } else {
+      const target = this.resolveEntity(move.targetVar);
+      if (!target) {
+        this.endMove('lost');
+        return null;
+      }
+      if (perception.self.heldItems.some((e) => e.id === target.id)) {
+        this.endMove('reached');
+        return null;
+      }
+      const current = this.findCurrent(target.id, perception);
+      if (!current?.position) {
+        this.endMove('lost');
+        return null;
+      }
+      destination = current.position;
     }
     const selfPos = perception.self.position;
-    if (chebyshev(selfPos, current.position) <= move.stopAtDistance) {
+    if (chebyshev(selfPos, destination) <= move.stopAtDistance) {
       this.endMove('reached');
       return null;
     }
@@ -510,7 +553,7 @@ export class SkillExecution {
     // rechazado se aprende en observe() y el próximo tick se replanifica con
     // esa verdad. Sigue sin omnisciencia: rodea el muro solo si sabe por dónde.
     this.spatial.observe(perception);
-    const dir = this.pathStep(selfPos, current.position, move.stopAtDistance, perception);
+    const dir = this.pathStep(selfPos, destination, move.stopAtDistance, perception);
     if (!dir) {
       this.endMove('blocked');
       return null;
@@ -647,7 +690,7 @@ export class SkillExecution {
 
   private resolveEntity(varName: string): PerceivedEntity | null {
     const value = this.vars.get(varName);
-    if (!value || Array.isArray(value)) return null;
+    if (!value || Array.isArray(value) || isAnchor(value)) return null;
     return value;
   }
 
@@ -699,6 +742,19 @@ export class SkillExecution {
       case 'holdingCount': {
         const held = perception.self.heldItems.filter((e) => e.kind === cond.kind).length;
         return held >= cond.count;
+      }
+      case 'blockAt': {
+        // ¿Ya hay algo (de `kind`, si se pidió) en la celda vecina del offset?
+        // Se mira desde donde la mascota está AHORA, así que solo dice la verdad
+        // parada en el ancla — por eso el programa vuelve antes de preguntar.
+        const cx = perception.self.position.x + cond.dx;
+        const cy = perception.self.position.y + cond.dy;
+        return perception.visibleEntities.some(
+          (e) =>
+            e.position?.x === cx &&
+            e.position.y === cy &&
+            (cond.kind === undefined || e.kind === cond.kind),
+        );
       }
     }
   }

@@ -642,6 +642,17 @@ select {
   position: relative;
 }
 
+/* La celda donde caería el item que se está arrastrando desde el catálogo. */
+.drop-cell {
+  position: absolute;
+  box-sizing: border-box;
+  border: 2px dashed #fde68a;
+  background: rgba(253, 230, 138, 0.22);
+  border-radius: 4px;
+  pointer-events: none;
+  z-index: 6;
+}
+
 .speech-bubble {
   position: absolute;
   transform: translate(-50%, -100%);
@@ -1510,6 +1521,15 @@ button:disabled {
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
+}
+
+/* Se puede arrastrar al tablero: el cursor lo anuncia y agarra al apuntarlo. */
+.item-card-draggable {
+  cursor: grab;
+}
+
+.item-card-draggable:active {
+  cursor: grabbing;
 }
 
 .item-head {

@@ -138,6 +138,48 @@ describe('GameSession (capa de sesión de la UI)', () => {
     session.dispose();
   });
 
+  it('el cuidador pone un item del catálogo en la celda donde lo suelta', async () => {
+    const { session } = await makeSession(5);
+    const view = session.getView();
+
+    // Un tipo que el mundo sabe materializar: hay un ejemplar suyo en el mapa.
+    const placeable = view.items.find((i) => i.inWorld > 0);
+    expect(placeable).toBeDefined();
+    const kind = placeable!.kind;
+
+    // Una celda libre: sin entidad y sin la mascota encima.
+    const occupied = new Set(view.entities.map((e) => `${e.x},${e.y}`));
+    occupied.add(`${view.pet!.x},${view.pet!.y}`);
+    let target: { x: number; y: number } | null = null;
+    for (let y = 0; y < view.worldSize.height && !target; y++) {
+      for (let x = 0; x < view.worldSize.width && !target; x++) {
+        if (!occupied.has(`${x},${y}`)) target = { x, y };
+      }
+    }
+    expect(target).not.toBeNull();
+
+    const before = session.getView().items.find((i) => i.kind === kind)!.inWorld;
+    session.placeItemOnMap(kind, target!);
+
+    const after = session.getView();
+    expect(after.entities.some((e) => e.kind === kind && e.x === target!.x && e.y === target!.y)).toBe(
+      true,
+    );
+    expect(after.items.find((i) => i.kind === kind)!.inWorld).toBe(before + 1);
+
+    // Soltar fuera del mapa no materializa nada.
+    const count = after.entities.length;
+    session.placeItemOnMap(kind, { x: -1, y: 0 });
+    session.placeItemOnMap(kind, { x: view.worldSize.width, y: 0 });
+    expect(session.getView().entities.length).toBe(count);
+
+    // Un tipo que el mundo no conoce tampoco: no hay molde del que copiar.
+    session.placeItemOnMap('tipo-que-no-existe', target!);
+    expect(session.getView().entities.length).toBe(count);
+
+    session.dispose();
+  });
+
   it('muestra en chat y Dev el error concreto del proveedor', async () => {
     const fallback = new MockModelProvider();
     const provider: ModelProvider = {
