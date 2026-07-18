@@ -36,14 +36,20 @@ export const KIND_EMOJI: Record<string, string> = {
  * tanto para el motor como para el dibujo.
  *
  * El orden va de lo más específico a lo más genérico: algo que da calor Y
- * quema es un fuego antes que un peligro cualquiera.
+ * produce comida es un fuego antes que un árbol.
+ *
+ * Solo entran los rasgos que DETERMINAN el aspecto. `tool` y `dangerous`
+ * estuvieron acá y estaban mal: dicen qué hace una cosa, no cómo se ve. Un
+ * martillo, un cuchillo y un hacha son los tres `tool` y no se parecen en
+ * nada; un cuchillo es `dangerous` y no es un cactus. Adivinar por ahí le
+ * puso un 🔨 al primer cuchillo que Ánima inventó. Cuando la alternativa era
+ * un cuadrado con el nombre escrito, adivinar mal salía barato; ahora que
+ * abajo hay un dibujo de verdad, sale caro — así que no se adivina.
  */
 const TRAIT_EMOJI: [trait: keyof EntityTraits, emoji: string][] = [
   ['warm', '🔥'],
   ['growsFood', '🌳'],
   ['edible', '🍎'],
-  ['tool', '🔨'],
-  ['dangerous', '🌵'],
 ];
 
 /**
@@ -97,20 +103,28 @@ const WALL_LOOK: BlockLook = { as: 'block', fill: 0x64748b, stroke: 0x334155 };
  * nunca: en el peor caso sale una masa de color estable, que sigue siendo un
  * dibujo y no una disculpa.
  */
+export interface AppearanceHints {
+  /** Lo que la IA Dios dibujó para este tipo, si es que dibujó algo. */
+  glyph?: unknown;
+  /**
+   * De qué está hecho, heredado de su receta. Lo resuelve `GameSession`, que
+   * es donde viven las recetas; acá solo se usa para elegir la paleta.
+   */
+  material?: string | undefined;
+}
+
 export function appearanceFor(
   kind: string,
   traits: EntityTraits,
-  /** Lo que la IA Dios dibujó para este tipo, si es que dibujó algo. */
-  glyph?: unknown,
+  hints: AppearanceHints = {},
 ): Appearance {
   if (kind === 'wall') return WALL_LOOK;
   const emoji = emojiFor(kind, traits);
   if (emoji) return { as: 'emoji', emoji };
-  const drawn = parseGlyph(glyph);
   return {
     as: 'matter',
-    glyph: drawn ?? patternFor(kind),
-    palette: paletteFor(kind),
+    glyph: parseGlyph(hints.glyph) ?? patternFor(kind),
+    palette: paletteFor(kind, hints.material),
   };
 }
 

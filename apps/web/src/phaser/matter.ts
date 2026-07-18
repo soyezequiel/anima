@@ -119,16 +119,65 @@ export function hashKind(kind: string): number {
   return hash;
 }
 
-/**
- * La paleta de una cosa: por el material que delate su nombre, y si no delata
- * ninguno, una elegida por hash — arbitraria pero constante.
- */
-export function paletteFor(kind: string): Palette {
+/** El material que delata un nombre, si es que delata alguno. */
+function materialNamedBy(kind: string): Palette | undefined {
   const name = normalize(kind);
   for (const [palette, words] of MATERIAL_WORDS) {
     if (words.some((word) => name.includes(word))) return palette;
   }
-  return pick(STRANGE_PALETTES, hashKind(kind));
+  return undefined;
+}
+
+/**
+ * Qué produce cada receta a partir de qué: producto → primer ingrediente.
+ * Es la cadena por la que se hereda el color.
+ */
+export type Lineage = ReadonlyMap<string, string>;
+
+/**
+ * Hasta dónde se sigue la cadena hacia atrás. Mismo tope que `MAX_RECIPE_DEPTH`
+ * en el motor: si a los cuatro saltos nadie dijo de qué está hecho, no lo va a
+ * decir, y una cadena circular no puede colgar el dibujo.
+ */
+const MAX_LINEAGE_DEPTH = 4;
+
+/**
+ * De qué está hecha una cosa, siguiendo las recetas hacia atrás.
+ *
+ * Ánima inventó un `cuchillo` con `flint-shard` + `branch`. El nombre
+ * "cuchillo" no dice de qué está hecho, así que sin esto salía de un color
+ * arbitrario. Siguiendo la receta se llega al pedernal y sale gris piedra.
+ *
+ * Se toma el PRIMER ingrediente, no todos: en un cuchillo la hoja manda sobre
+ * el mango, y lo que define a un objeto suele ser su material principal. Si
+ * algún día hicieran falta dos colores —hoja gris, mango marrón— el glifo
+ * tiene índices libres y esto no habría que rehacerlo.
+ */
+export function materialFor(kind: string, lineage: Lineage): string | undefined {
+  let current: string | undefined = kind;
+  for (let step = 0; step < MAX_LINEAGE_DEPTH && current; step++) {
+    if (materialNamedBy(current)) return current;
+    current = lineage.get(current);
+  }
+  return undefined;
+}
+
+/**
+ * La paleta de una cosa: por lo que diga su propio nombre, si no por el
+ * material que heredó de su receta, y si nada de eso, una elegida por hash —
+ * arbitraria pero constante.
+ *
+ * El nombre propio gana sobre el linaje a propósito: un "hacha de piedra"
+ * hecha con una rama primero es de piedra, porque lo dice.
+ */
+export function paletteFor(kind: string, material?: string): Palette {
+  return (
+    materialNamedBy(kind) ??
+    (material ? materialNamedBy(material) : undefined) ??
+    // El hash va sobre el nombre propio: si fuera sobre el material heredado,
+    // cambiar una receta le cambiaría el color a lo que no tiene material.
+    pick(STRANGE_PALETTES, hashKind(kind))
+  );
 }
 
 const POLVO: Glyph = [
@@ -203,6 +252,30 @@ const LAMINA: Glyph = [
   '0002111112200000',
   '0000222220000000',
   '0000000000000000',
+  '0000000000000000',
+  '0000000000000000',
+];
+
+/**
+ * La hoja con mango: cuchillo, hacha, lanza, punta. Es la forma que faltaba
+ * cuando Ánima inventó su primer cuchillo — hasta entonces todo lo que cortaba
+ * caía en el 🔨 de la tabla de rasgos, que es lo que no queremos.
+ */
+const HOJA: Glyph = [
+  '0000000000000000',
+  '0000000330000000',
+  '0000003113000000',
+  '0000031111300000',
+  '0000031111200000',
+  '0000031111200000',
+  '0000031111200000',
+  '0000031111200000',
+  '0000031111200000',
+  '0000022222200000',
+  '0000002112000000',
+  '0000002112000000',
+  '0000002112000000',
+  '0000002222000000',
   '0000000000000000',
   '0000000000000000',
 ];
@@ -296,10 +369,11 @@ const MASAS: readonly [Glyph, ...Glyph[]] = [MASA_REDONDA, MASA_ANGULOSA, MASA_A
  */
 const FORM_WORDS: [glyph: Glyph, words: string[]][] = [
   [POLVO, ['polvo', 'dust', 'ceniza', 'ash', 'arena', 'sand', 'harina', 'grano']],
-  [ESQUIRLA, ['esquirla', 'shard', 'astilla', 'splinter', 'fragmento', 'lasca', 'punta']],
+  [ESQUIRLA, ['esquirla', 'shard', 'astilla', 'splinter', 'fragmento', 'lasca', 'chip']],
   [BARRA, ['barra', 'bar', 'vara', 'rod', 'palo', 'stick', 'lingote', 'ingot', 'eje']],
   [LAMINA, ['lamina', 'sheet', 'placa', 'plate', 'tabla', 'plank', 'plancha', 'loseta']],
   [FIBRA, ['fibra', 'fiber', 'cuerda', 'rope', 'hilo', 'thread', 'soga', 'trenza']],
+  [HOJA, ['cuchillo', 'knife', 'hoja', 'blade', 'filo', 'daga', 'hacha', 'axe', 'lanza']],
 ];
 
 /** La forma de una cosa: por lo que diga su nombre, y si no dice nada, una masa. */

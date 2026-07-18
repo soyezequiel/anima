@@ -1,6 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { MemoryKeyValueStore } from '@anima/persistence';
-import type { ModelProvider } from '@anima/model-providers';
+import type { ModelProvider, ModelResponse } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import type { WorldState } from '@anima/sim-core';
 import { entitiesAt, getEntity, removeEntity, spawn } from '@anima/sim-core';
@@ -162,9 +162,9 @@ describe('GameSession (capa de sesión de la UI)', () => {
     session.placeItemOnMap(kind, target!);
 
     const after = session.getView();
-    expect(after.entities.some((e) => e.kind === kind && e.x === target!.x && e.y === target!.y)).toBe(
-      true,
-    );
+    expect(
+      after.entities.some((e) => e.kind === kind && e.x === target!.x && e.y === target!.y),
+    ).toBe(true);
     expect(after.items.find((i) => i.kind === kind)!.inWorld).toBe(before + 1);
 
     // Soltar fuera del mapa no materializa nada.
@@ -222,6 +222,62 @@ describe('GameSession (capa de sesión de la UI)', () => {
     session.dispose();
   });
 
+  it('el mundo no espera al modelo: los ticks siguen con un pensamiento en vuelo (ADR 0039)', async () => {
+    const fallback = new MockModelProvider();
+    let release!: (response: ModelResponse) => void;
+    const provider: ModelProvider = {
+      name: 'codex',
+      interpretsLanguage: true,
+      complete(request) {
+        // Una consulta real tarda: se resuelve solo cuando el test la libera.
+        if (request.kind === 'interpret.command') {
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        return fallback.complete(request);
+      },
+      callCount(kind) {
+        return fallback.callCount(kind);
+      },
+    };
+    const session = await GameSession.create({
+      seed: 5,
+      autostart: false,
+      fresh: true,
+      store: new MemoryKeyValueStore(),
+      provider,
+    });
+
+    session.sendUserMessage('a partir de ahora te llamás Chispa');
+    // La consulta quedó en vuelo. El mundo no la espera: cada paso avanza.
+    await session.stepOnce(); // se suma al paso que lanzó el pensamiento
+    const start = session.getView().tick;
+    await session.stepOnce();
+    await session.stepOnce();
+    expect(session.getView().tick).toBe(start + 2);
+    // Y la respuesta todavía no llegó: sigue siendo Ánima.
+    expect(session.getView().identity.name).toBe('Ánima');
+
+    // Llega la respuesta: en pausa se consume sola, sin tick del loop.
+    release({
+      kind: 'command.interpretation',
+      command: { action: 'rename-pet', name: 'Chispa' },
+    });
+    await vi.waitFor(() => {
+      expect(session.getView().identity.name).toBe('Chispa');
+    });
+    // La medición (ADR 0039) quedó en Dev: la consulta con su tipo y duración.
+    expect(
+      session
+        .getView()
+        .devEvents.some(
+          (event) => event.type === 'ai.timing' && event.json.includes('interpret.command'),
+        ),
+    ).toBe(true);
+    session.dispose();
+  });
+
   it('pausa y velocidad quedan reflejadas en el view', async () => {
     const { session } = await makeSession(5);
     expect(session.getView().running).toBe(false);
@@ -251,9 +307,7 @@ describe('persistencia de la sesión', () => {
     expect(
       restored
         .getView()
-        .chat.some((entry) =>
-          entry.text.includes('Sigo con lo pendiente: "construí una silla"'),
-        ),
+        .chat.some((entry) => entry.text.includes('Sigo con lo pendiente: "construí una silla"')),
     ).toBe(true);
 
     // Y no hace falta repetir la orden: junta los troncos y la construye.
@@ -286,9 +340,7 @@ describe('persistencia de la sesión', () => {
       30,
     );
     expect(
-      session
-        .getView()
-        .chat.some((entry) => entry.text === 'Sigo con eso: "construí una silla".'),
+      session.getView().chat.some((entry) => entry.text === 'Sigo con eso: "construí una silla".'),
     ).toBe(true);
     session.dispose();
   });

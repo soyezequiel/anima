@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { kindLabel } from '@anima/shared';
 import { appearanceFor, emojiFor, hexColor } from '../src/phaser/appearance.js';
-import { GLYPH_SIZE, paletteFor, parseGlyph, patternFor } from '../src/phaser/matter.js';
+import { GLYPH_SIZE, materialFor, paletteFor, parseGlyph, patternFor } from '../src/phaser/matter.js';
 
 /**
  * Cómo se ve y cómo se llama una cosa. Dos reglas: el nombre interno nunca se
@@ -52,9 +52,20 @@ describe('los gráficos se reutilizan por lo que la cosa es', () => {
     expect(emojiFor('tree', { growsFood: true })).toBe('🌳');
   });
 
-  it('de lo más específico a lo más genérico: dar calor gana sobre quemar', () => {
-    expect(emojiFor('cosa-nueva', { warm: true, dangerous: true })).toBe('🔥');
-    expect(emojiFor('cosa-nueva', { dangerous: true })).toBe('🌵');
+  it('de lo más específico a lo más genérico: dar calor gana sobre dar comida', () => {
+    expect(emojiFor('cosa-nueva', { warm: true, growsFood: true })).toBe('🔥');
+    expect(emojiFor('cosa-nueva', { growsFood: true })).toBe('🌳');
+  });
+
+  it('solo se adivina por rasgos que digan cómo se ve, no qué hace', () => {
+    // El cuchillo que inventó Ánima salía 🔨 porque es `tool`, y un martillo
+    // y un cuchillo no se parecen en nada. Lo mismo `dangerous`: un cuchillo
+    // es peligroso y no es un cactus. Ahora esos dos caen a materia.
+    expect(emojiFor('cuchillo', { tool: true, dangerous: true, portable: true })).toBeUndefined();
+    expect(emojiFor('lanza-de-hueso', { tool: true })).toBeUndefined();
+    // Pero el martillo y el cactus de fábrica conservan el suyo por nombre.
+    expect(emojiFor('hammer', { tool: true })).toBe('🔨');
+    expect(emojiFor('cactus', { dangerous: true })).toBe('🌵');
   });
 
   it('lo que no se parece a nada no tiene gráfico: va al placeholder', () => {
@@ -114,6 +125,22 @@ describe('lo que no tiene emoji se dibuja como materia', () => {
     expect(patternFor('esquirla')).not.toEqual(patternFor('polvo'));
   });
 
+  it('lo que dejó romper el pedernal se dibuja como lo que es', () => {
+    // Los tres salen de la misma decomposición real (ADR 0037): son piedra,
+    // y cada uno tiene su forma. Que los tres cayeran a la misma masa gris
+    // sería no haber dibujado nada.
+    expect(paletteFor('stone-dust')).toEqual(paletteFor('stone-chip'));
+    expect(patternFor('stone-dust')).not.toEqual(patternFor('stone-chip'));
+    expect(patternFor('stone-chip')).toEqual(patternFor('flint-shard'));
+  });
+
+  it('el cuchillo que inventó Ánima se dibuja como una hoja, no como un martillo', () => {
+    const look = appearanceFor('cuchillo', { tool: true, dangerous: true, portable: true });
+    expect(look).toMatchObject({ as: 'matter', glyph: patternFor('hacha') });
+    // Y no como cualquier otro invento sin forma declarada.
+    expect(patternFor('cuchillo')).not.toEqual(patternFor('chirimbolo'));
+  });
+
   it('lo que no delata nada igual sale estable: mismo nombre, mismo aspecto', () => {
     // Si cambiara entre llamadas, el objeto mutaría de color al recargar.
     expect(appearanceFor('chirimbolo', {})).toEqual(appearanceFor('chirimbolo', {}));
@@ -151,17 +178,59 @@ describe('el glifo de la IA Dios se acota antes de dibujarse', () => {
   });
 
   it('lo que dibujó la IA gana sobre el patrón procedural', () => {
-    const look = appearanceFor('cosa-rara', {}, good);
+    const look = appearanceFor('cosa-rara', {}, { glyph: good });
     expect(look).toMatchObject({ as: 'matter', glyph: good });
     // Pero el color sigue saliendo del material, no de la IA.
     expect((look as { palette: unknown }).palette).toEqual(paletteFor('cosa-rara'));
   });
 
   it('un glifo inválido no rompe: se cae al patrón procedural', () => {
-    expect(appearanceFor('cosa-rara', {}, ['basura'])).toEqual(appearanceFor('cosa-rara', {}));
+    expect(appearanceFor('cosa-rara', {}, { glyph: ['basura'] })).toEqual(
+      appearanceFor('cosa-rara', {}),
+    );
   });
 
   it('el emoji sigue mandando sobre el glifo: lo dibujado a mano se ve mejor', () => {
-    expect(appearanceFor('log', {}, good)).toEqual({ as: 'emoji', emoji: '🪵' });
+    expect(appearanceFor('log', {}, { glyph: good })).toEqual({ as: 'emoji', emoji: '🪵' });
+  });
+});
+
+/**
+ * El color se hereda de la receta. El caso real: Ánima inventó un `cuchillo`
+ * con `flint-shard` + `branch`, y "cuchillo" no dice de qué está hecho — sin
+ * linaje salía de un color arbitrario en vez de gris piedra.
+ */
+describe('de qué está hecho algo se sigue por sus recetas', () => {
+  const lineage = new Map([
+    ['cuchillo', 'flint-shard'],
+    ['flint-shard', 'flint'],
+    ['mango-tallado', 'branch'],
+  ]);
+
+  it('sigue la cadena hasta el primer nombre que delate un material', () => {
+    expect(materialFor('cuchillo', lineage)).toBe('flint-shard');
+    expect(materialFor('mango-tallado', lineage)).toBe('branch');
+  });
+
+  it('el cuchillo inventado sale gris piedra y no de un color cualquiera', () => {
+    const material = materialFor('cuchillo', lineage);
+    expect(paletteFor('cuchillo', material)).toEqual(paletteFor('piedra'));
+    // Sin linaje caía al color por hash, que no es el de la piedra.
+    expect(paletteFor('cuchillo')).not.toEqual(paletteFor('piedra'));
+  });
+
+  it('el nombre propio manda sobre lo heredado', () => {
+    // Un hacha de piedra hecha con una rama primero es de piedra: lo dice.
+    expect(paletteFor('hacha-de-piedra', 'branch')).toEqual(paletteFor('piedra'));
+  });
+
+  it('lo que no lleva a ningún material se queda sin él, sin colgarse', () => {
+    expect(materialFor('chirimbolo', lineage)).toBeUndefined();
+    // Una cadena circular no puede colgar el dibujo.
+    const circular = new Map([
+      ['a', 'b'],
+      ['b', 'a'],
+    ]);
+    expect(materialFor('a', circular)).toBeUndefined();
   });
 });

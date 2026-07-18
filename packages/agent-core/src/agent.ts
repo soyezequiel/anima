@@ -13,7 +13,7 @@ import {
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
-import type { EvaluationCriterion, SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
+import type { EvaluationCriterion, GpsPlaces, SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
 import {
   describeCriterion,
   SkillExecution,
@@ -310,6 +310,21 @@ export class AnimaAgent {
       reply: (text) => this.reply(text),
       currentTick: () => this.tick,
     });
+  }
+
+  /**
+   * La ventana de la memoria de lugares que el GPS de la DSL puede mirar
+   * (ADR 0038): recordar dónde había un tipo y desmentir el recuerdo tras ir
+   * y no encontrar nada. El intérprete no recibe la memoria entera.
+   */
+  private gpsPlaces(): GpsPlaces {
+    return {
+      recall: (kind, perception) =>
+        this.places
+          .recall({ kind }, perception)
+          .map((p) => ({ entityId: p.entityId, position: p.position })),
+      forget: (entityId) => this.places.forget(entityId),
+    };
   }
 
   /** Lo que los programas de peticiones necesitan saber del agente. */
@@ -3148,6 +3163,7 @@ export class AnimaAgent {
       exec: new SkillExecution(program, this.petId, {
         library: this.config.library,
         spatial: this.spatial,
+        places: this.gpsPlaces(),
       }),
       purpose: 'user-request',
       completionReply,
@@ -3175,6 +3191,7 @@ export class AnimaAgent {
       exec: new SkillExecution(program, this.petId, {
         library: this.config.library,
         spatial: this.spatial,
+        places: this.gpsPlaces(),
       }),
       purpose: options.purpose ?? 'restore-energy',
       ...(options.skillId !== undefined ? { skillId: options.skillId } : {}),

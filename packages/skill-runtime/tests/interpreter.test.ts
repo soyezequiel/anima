@@ -360,6 +360,120 @@ describe('intérprete de skills', () => {
   });
 });
 
+describe('gpsTo: el GPS hacia un recurso (ADR 0038)', () => {
+  it('a la vista: llega rodeando obstáculos y store deja el ejemplar listo', () => {
+    const { world, petId } = smallWorld();
+    // El mismo muro con hueco del test de moveToward: el GPS hereda su BFS.
+    for (let y = 1; y < world.config.height; y++) {
+      spawn(world, 'wall', {
+        position: { x: 4, y },
+        collider: { solid: true },
+        hardness: { value: 5 },
+        durability: { current: 10, max: 10 },
+      });
+    }
+    addFood(world, 7, 2);
+    const program: SkillProgram = [
+      { op: 'gpsTo', kind: 'food', maxSteps: 40, store: 'food' },
+      { op: 'consume', target: 'food' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 60 });
+    expect(report.outcome).toBe('completed');
+    expect(report.events.some((e) => e.type === 'item.consumed')).toBe(true);
+  });
+
+  it('fuera de la vista pero recordado: camina hasta el lugar y la vista remata', () => {
+    const { world, petId } = smallWorld();
+    getEntity(world, petId)!.components.agent!.perceptionRange = 2;
+    const foodId = addFood(world, 7, 2);
+    // La memoria de lugares del agente, en miniatura: recuerda dónde vio la
+    // comida mientras no la tenga a la vista (recall excluye lo visible).
+    const places = {
+      recall: (kind: string, perception: { visibleEntities: { id: string }[] }) =>
+        kind === 'food' && !perception.visibleEntities.some((e) => e.id === foodId)
+          ? [{ entityId: foodId, position: { x: 7, y: 2 } }]
+          : [],
+      forget: () => {},
+    };
+    const program: SkillProgram = [
+      { op: 'gpsTo', kind: 'food', maxSteps: 40, store: 'food' },
+      { op: 'consume', target: 'food' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 60, places });
+    expect(report.outcome).toBe('completed');
+    expect(
+      report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === foodId),
+    ).toBe(true);
+  });
+
+  it('el recuerdo que mentía se descarta al llegar, no antes ni desde lejos', () => {
+    const { world, petId } = smallWorld();
+    getEntity(world, petId)!.components.agent!.perceptionRange = 2;
+    // Un recuerdo falso y ningún alimento real: va hasta el lugar, no
+    // encuentra nada, lo desmiente, y la búsqueda sigue (explora) hasta
+    // agotarse — el final honesto de siempre.
+    let forgotten: string | null = null;
+    const places = {
+      recall: (kind: string) =>
+        kind === 'food' && forgotten === null
+          ? [{ entityId: 'e999', position: { x: 7, y: 0 } }]
+          : [],
+      forget: (entityId: string) => {
+        forgotten = entityId;
+      },
+    };
+    const program: SkillProgram = [
+      { op: 'gpsTo', kind: 'food', maxSteps: 30, store: 'food' },
+      {
+        op: 'branch',
+        if: { type: 'lastMoveBlocked' },
+        then: [{ op: 'abort', reason: 'no-lo-encontré' }],
+      },
+      { op: 'consume', target: 'food' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 200, places });
+    expect(report.outcome).toBe('aborted');
+    expect(report.reason).toBe('no-lo-encontré');
+    expect(forgotten).toBe('e999');
+    // Pasó de verdad por el lugar del recuerdo antes de desmentirlo…
+    expect(report.path.some((p) => Math.abs(p.x - 7) <= 1 && Math.abs(p.y - 0) <= 1)).toBe(true);
+    // …y después siguió buscando: caminó más pasos que el viaje al recuerdo.
+    expect(report.events.filter((e) => e.type === 'entity.moved').length).toBeGreaterThan(8);
+  });
+
+  it('sin vista ni recuerdo: explora hasta ver y entonces alcanza', () => {
+    const { world, petId } = smallWorld();
+    getEntity(world, petId)!.components.agent!.perceptionRange = 2;
+    const foodId = addFood(world, 7, 2);
+    const program: SkillProgram = [
+      { op: 'gpsTo', kind: 'food', maxSteps: 50, store: 'food' },
+      { op: 'consume', target: 'food' },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 200 });
+    expect(report.outcome).toBe('completed');
+    expect(
+      report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === foodId),
+    ).toBe(true);
+  });
+
+  it('si el mapa no lo tiene, agota sus pasos y el programa aborta honesto', () => {
+    const { world, petId } = smallWorld();
+    const program: SkillProgram = [
+      { op: 'gpsTo', kind: 'unicornio', maxSteps: 12 },
+      {
+        op: 'branch',
+        if: { type: 'lastMoveBlocked' },
+        then: [{ op: 'abort', reason: 'no-lo-encontré' }],
+      },
+    ];
+    const report = runSkillProgram(world, petId, program, { maxTicks: 60 });
+    expect(report.outcome).toBe('aborted');
+    expect(report.reason).toBe('no-lo-encontré');
+    // Pero buscó de verdad: caminó antes de rendirse.
+    expect(report.events.filter((e) => e.type === 'entity.moved').length).toBeGreaterThan(6);
+  });
+});
+
 describe('composición de skills', () => {
   it('runSkill ejecuta una habilidad de la biblioteca', () => {
     const { world, petId } = smallWorld();

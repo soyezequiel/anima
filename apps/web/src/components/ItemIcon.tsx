@@ -15,13 +15,16 @@ export function ItemIcon({
   kind,
   traits,
   glyph,
+  material,
 }: {
   kind: string;
   traits: EntityTraits;
   /** Lo que la IA Dios dibujó para este tipo, si es que dibujó algo. */
   glyph?: unknown;
+  /** De qué está hecho, heredado de su receta. */
+  material?: string | undefined;
 }) {
-  const look = appearanceFor(kind, traits, glyph);
+  const look = appearanceFor(kind, traits, { glyph, material });
   if (look.as === 'emoji') {
     return (
       <span className="item-icon" aria-hidden="true">

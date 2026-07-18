@@ -184,15 +184,37 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return completeInput;
   };
 
+  // Duración de cada consulta al puente (ADR 0039): el servidor no conoce el
+  // `kind` (solo viaja el prompt), pero el tamaño del prompt y los ms bastan
+  // para correlacionar con los eventos `ai.timing` del navegador.
+  const logCompleteTiming = (
+    request: FastifyRequest,
+    input: Parameters<AiBridge['complete']>[0],
+    startedAt: number,
+    ok: boolean,
+  ): void => {
+    request.log.info(
+      {
+        durationMs: Math.round(performance.now() - startedAt),
+        promptChars: input.prompt.length,
+        ok,
+      },
+      'ai.complete',
+    );
+  };
+
   app.post('/ai/complete', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
     const completeInput = parseCompleteBody(request, reply);
     if (!completeInput) return reply;
+    const startedAt = performance.now();
     try {
       const text = await ai.complete(completeInput);
+      logCompleteTiming(request, completeInput, startedAt, true);
       return { text };
     } catch (error) {
+      logCompleteTiming(request, completeInput, startedAt, false);
       return reply
         .code(502)
         .send({ error: error instanceof Error ? error.message : 'fallo del puente de IA' });
@@ -218,10 +240,13 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     const send = (event: Record<string, unknown>): void => {
       reply.raw.write(`data: ${JSON.stringify(event)}\n\n`);
     };
+    const startedAt = performance.now();
     try {
       const text = await ai.complete(completeInput, (event) => send({ ...event }));
+      logCompleteTiming(request, completeInput, startedAt, true);
       send({ type: 'done', text });
     } catch (error) {
+      logCompleteTiming(request, completeInput, startedAt, false);
       send({
         type: 'error',
         error: error instanceof Error ? error.message : 'fallo del puente de IA',

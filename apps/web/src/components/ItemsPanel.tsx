@@ -26,7 +26,7 @@ function ItemCard({ item }: { item: ItemView }) {
   const head = (
     <>
       <span className="item-head-row">
-        <ItemIcon kind={item.kind} traits={item.traits} />
+        <ItemIcon kind={item.kind} traits={item.traits} material={item.material} />
         <strong>{item.name}</strong>
         <span className={`pill pill-origin-${item.origin}`}>
           {item.origin === 'invented' ? 'inventado (IA)' : 'de fábrica'}

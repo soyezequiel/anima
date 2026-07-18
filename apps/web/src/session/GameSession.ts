@@ -3,7 +3,7 @@ import type { AgentEvent } from '@anima/agent-core';
 import type { CodexThought, ModelProvider } from '@anima/model-providers';
 import { MockModelProvider } from '@anima/model-providers';
 import { countedKindLabel, kindLabel } from '@anima/shared';
-import type { Components, SimEvent, WorldState } from '@anima/sim-core';
+import type { ActionIntent, Components, Recipe, SimEvent, WorldState } from '@anima/sim-core';
 import {
   buildPerception,
   getEntity,
@@ -56,6 +56,8 @@ import type {
   ThoughtView,
 } from './view.js';
 import { buildClaudeReport, claudeReportFileName } from './claude-report.js';
+import type { Lineage } from '../phaser/matter.js';
+import { materialFor } from '../phaser/matter.js';
 
 const BASE_TICKS_PER_SECOND = 4;
 const SPEECH_VISIBLE_TICKS = 14;
@@ -89,6 +91,22 @@ const THOUGHT_LABELS: Record<string, string> = {
   'interaction.judge': 'juzgando una interacción',
   dialogue: 'buscando qué decir',
 };
+
+/** Cómo terminó un think(): con una intención (o ninguna) o con un error. */
+type ThinkOutcome =
+  { status: 'ok'; intent: ActionIntent | null } | { status: 'error'; error: unknown };
+
+/**
+ * Un pensamiento que perdió la carrera contra el tick (ADR 0039): quedó en
+ * vuelo mientras el mundo sigue andando. `outcome` se llena cuando el modelo
+ * responde; el tick que lo encuentre lleno lo consume y aplica la intención.
+ */
+interface PendingThink {
+  outcome: ThinkOutcome | null;
+  /** Cursor de eventos del agente al lanzar el think: de ahí se detecta si
+   * este pensamiento atendió un mensaje del usuario (para guardar). */
+  agentEventStart: number;
+}
 
 export interface SessionOptions {
   seed?: number;
@@ -129,6 +147,23 @@ function traitsFromComponents(components: Components): EntityTraits {
     ...(components.portable ? { portable: true } : {}),
     ...(components.collider?.solid ? { solid: true } : {}),
   };
+}
+
+/**
+ * La cadena por la que se hereda el color: producto → primer ingrediente.
+ *
+ * Se arma acá y no en el dibujo porque las recetas viven acá. El dibujo solo
+ * recibe el material ya resuelto, y así sigue siendo lógica pura que se puede
+ * probar sin un mundo.
+ */
+function lineageOf(recipes: Recipe[]): Lineage {
+  const chain = new Map<string, string>();
+  for (const recipe of recipes) {
+    const product = recipeProduct(recipe);
+    const first = recipe.ingredients[0];
+    if (product && first && !chain.has(product.kind)) chain.set(product.kind, first.kind);
+  }
+  return chain;
 }
 
 /**
@@ -273,6 +308,14 @@ export class GameSession {
   private storyWasCompleted = false;
 
   private consecutiveThinkErrors = 0;
+  /**
+   * Pensamiento en vuelo (ADR 0039). Mientras exista, cada tick avanza el
+   * mundo sin acción de la mascota: pensar no congela la física ni la UI. La
+   * enorme mayoría de los ticks no lo usan — un think local resuelve en
+   * microtareas y gana la carrera del tick; solo una consulta real al modelo
+   * queda en vuelo.
+   */
+  private pendingThink: PendingThink | null = null;
   /** Mundo previo al último think: origen de las regresiones de uso real. */
   private preThinkSnapshot: WorldSnapshot | null = null;
   private activeSkillRun: { skillName: string; snapshot: WorldSnapshot | null } | null = null;
@@ -286,7 +329,12 @@ export class GameSession {
    */
   private mockImperfect = true;
   private timer: ReturnType<typeof setTimeout> | null = null;
-  private stepping = false;
+  /**
+   * Paso en vuelo. Un stepOnce concurrente no se descarta: espera a que este
+   * termine. Descartar (el candado booleano de antes) hacía que los llamados
+   * que coincidían con un paso lento contaran como ticks perdidos.
+   */
+  private stepPromise: Promise<void> | null = null;
   private disposed = false;
 
   private constructor(options: SessionOptions) {
@@ -332,7 +380,10 @@ export class GameSession {
     this.agent = new AnimaAgent({
       petId: bundle.petId,
       petName: this.identity.name,
-      provider: this.provider,
+      // El agente consulta a través de la envoltura de medición: cada llamada
+      // deja su duración en los eventos Dev. `this.provider` sigue crudo para
+      // la vista y los interruptores del mock.
+      provider: this.instrumentProvider(this.provider),
       library: this.library,
       regressions: this.regressions,
       evaluationScenarios: MVP_SCENARIOS,
@@ -353,6 +404,44 @@ export class GameSession {
     this.recentActions = [];
     this.deathReport = null;
     this.storyWasCompleted = false;
+    // Un pensamiento en vuelo de la vida anterior no puede actuar sobre esta:
+    // al soltar la referencia, su resolución tardía cae al vacío.
+    this.pendingThink = null;
+  }
+
+  /**
+   * Envoltura de medición (ADR 0039): cada consulta al modelo deja un evento
+   * Dev `ai.timing` con su tipo, duración y resultado. Es el dato que decide
+   * qué optimizar — sin él, cualquier mejora de latencia es a ciegas.
+   */
+  private instrumentProvider(provider: ModelProvider): ModelProvider {
+    const record = (kind: string, startedAt: number, ok: boolean): void => {
+      this.pushDev('agent', {
+        type: 'ai.timing',
+        tick: this.world.tick,
+        data: { kind, ms: Math.round(performance.now() - startedAt), ok },
+      });
+    };
+    return {
+      get name() {
+        return provider.name;
+      },
+      get interpretsLanguage() {
+        return provider.interpretsLanguage;
+      },
+      callCount: (kind) => provider.callCount(kind),
+      complete: async (request) => {
+        const startedAt = performance.now();
+        try {
+          const response = await provider.complete(request);
+          record(request.kind, startedAt, true);
+          return response;
+        } catch (error) {
+          record(request.kind, startedAt, false);
+          throw error;
+        }
+      },
+    };
   }
 
   private resetToNewPet(seed: number): void {
@@ -606,73 +695,159 @@ export class GameSession {
     );
   }
 
-  /** Avanza exactamente un tick de simulación (usable también en pausa). */
+  /**
+   * Avanza exactamente un tick de simulación (usable también en pausa).
+   *
+   * El mundo no espera al modelo (ADR 0039): un think que resuelve local
+   * (sin consulta, la mayoría de los ticks) se aplica en este mismo tick,
+   * igual que siempre. Uno que consulta al modelo queda en vuelo: los ticks
+   * siguientes avanzan la física sin acción de la mascota — piensa parada,
+   * no congelada — y la intención se aplica en el tick en que la respuesta
+   * llegue. Nunca hay dos pensamientos en vuelo: el agente no es reentrante.
+   */
   async stepOnce(): Promise<void> {
-    if (this.stepping || this.disposed) return;
-    this.stepping = true;
+    if (this.disposed) return;
+    // Un paso ya en vuelo no se duplica: el llamado se suma y espera.
+    if (this.stepPromise) return this.stepPromise;
+    this.stepPromise = this.runStep();
     try {
-      const pet = getEntity(this.world, this.agent.petId);
-      if (!pet || pet.components.dead) {
-        if (this.running) this.pause();
-        return;
-      }
+      await this.stepPromise;
+    } finally {
+      this.stepPromise = null;
+    }
+  }
+
+  /** El cuerpo de un paso. Solo corre uno a la vez (candado en stepOnce). */
+  private async runStep(): Promise<void> {
+    const pet = getEntity(this.world, this.agent.petId);
+    if (!pet || pet.components.dead) {
+      if (this.running) this.pause();
+      return;
+    }
+
+    const pending = this.pendingThink;
+    if (pending && pending.outcome === null) {
+      // Sigue pensando: el mundo avanza sin ella este tick.
+      await this.advanceWorld(null, null);
+      return;
+    }
+
+    let outcome: ThinkOutcome;
+    let agentEventStart: number;
+    if (pending) {
+      this.pendingThink = null;
+      outcome = pending.outcome!;
+      agentEventStart = pending.agentEventStart;
+    } else {
+      agentEventStart = this.agent.events.events.length;
       const perception = buildPerception(this.world, this.agent.petId);
       this.preThinkSnapshot = takeSnapshot(this.world);
-      const agentEventStart = this.agent.events.events.length;
-      let intent = null;
-      try {
-        intent = await this.agent.think(perception);
-        this.consecutiveThinkErrors = 0;
-      } catch (error) {
-        // Un proveedor real puede fallar (red, timeout, JSON inválido). Se
-        // registra y se reintenta; tras varios fallos seguidos, pausa
-        // automática para no lanzar consultas en bucle.
-        const message = error instanceof Error ? error.message : String(error);
-        this.consecutiveThinkErrors += 1;
-        this.pushDev('agent', {
-          type: 'agent.error',
-          tick: this.world.tick,
-          data: { message, consecutive: this.consecutiveThinkErrors },
+      const settled = this.agent.think(perception).then(
+        (intent): ThinkOutcome => ({ status: 'ok', intent }),
+        (error): ThinkOutcome => ({ status: 'error', error }),
+      );
+      // Carrera contra un timer 0: un pensamiento local resuelve en
+      // microtareas y gana siempre — el tick se comporta como antes (y los
+      // tests siguen siendo deterministas). Solo una consulta real (red,
+      // proceso) pierde la carrera y pasa a pensarse en vuelo.
+      const raced = await Promise.race([
+        settled,
+        new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0)),
+      ]);
+      if (raced === 'pending') {
+        const inFlight: PendingThink = { outcome: null, agentEventStart };
+        this.pendingThink = inFlight;
+        void settled.then(async (result) => {
+          inFlight.outcome = result;
+          // En pausa no hay próximo tick que lo consuma: se consume solo.
+          // Dos intentos porque el primero puede sumarse a un paso ya en
+          // vuelo (que no consume); el segundo consume seguro. La identidad
+          // protege de una vida nueva (reset/sucesora): si el pendingThink
+          // ya no es este, la respuesta tardía cae al vacío.
+          for (
+            let attempt = 0;
+            attempt < 2 && !this.disposed && !this.running && this.pendingThink === inFlight;
+            attempt++
+          ) {
+            await this.stepOnce();
+          }
         });
-        if (this.consecutiveThinkErrors >= 3) {
-          this.consecutiveThinkErrors = 0;
-          this.chat.push({
-            from: 'system',
-            text: `El proveedor de IA está fallando (${message.slice(0, 160)}). Pausa automática: revisa la conexión o vuelve al modo simulado.`,
-            tick: this.world.tick,
-          });
-          this.pause();
-          return;
-        }
+        await this.advanceWorld(null, null);
+        return;
       }
-      const events = stepWorld(this.world, intent ? [{ actorId: this.agent.petId, intent }] : []);
-      this.agent.observe(events);
-      this.ingestWorldEvents(events);
-      this.ingestAgentEvents();
+      outcome = raced;
+    }
 
-      if (events.some((e) => e.type === 'pet.died')) {
-        await this.handleDeath();
-      } else {
-        const userTurnProcessed = this.agent.events.events
+    let intent: ActionIntent | null = null;
+    if (outcome.status === 'ok') {
+      intent = outcome.intent;
+      this.consecutiveThinkErrors = 0;
+    } else if (this.noteThinkError(outcome.error)) {
+      return; // Pausa automática: el tick no se aplica.
+    }
+    await this.advanceWorld(intent, agentEventStart);
+  }
+
+  /**
+   * Un proveedor real puede fallar (red, timeout, JSON inválido). Se registra
+   * y se reintenta; tras varios fallos seguidos, pausa automática para no
+   * lanzar consultas en bucle. Devuelve true si pausó.
+   */
+  private noteThinkError(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error);
+    this.consecutiveThinkErrors += 1;
+    this.pushDev('agent', {
+      type: 'agent.error',
+      tick: this.world.tick,
+      data: { message, consecutive: this.consecutiveThinkErrors },
+    });
+    if (this.consecutiveThinkErrors < 3) return false;
+    this.consecutiveThinkErrors = 0;
+    this.chat.push({
+      from: 'system',
+      text: `El proveedor de IA está fallando (${message.slice(0, 160)}). Pausa automática: revisa la conexión o vuelve al modo simulado.`,
+      tick: this.world.tick,
+    });
+    this.pause();
+    return true;
+  }
+
+  /**
+   * Aplica un tick al mundo: la intención (si hay), la observación del agente
+   * y la ingestión de eventos, con el guardado y la muerte de siempre.
+   * `agentEventStart` es null en los ticks pasivos de un pensamiento en vuelo,
+   * donde no hay turno de usuario que detectar.
+   */
+  private async advanceWorld(
+    intent: ActionIntent | null,
+    agentEventStart: number | null,
+  ): Promise<void> {
+    const events = stepWorld(this.world, intent ? [{ actorId: this.agent.petId, intent }] : []);
+    this.agent.observe(events);
+    this.ingestWorldEvents(events);
+    this.ingestAgentEvents();
+
+    if (events.some((e) => e.type === 'pet.died')) {
+      await this.handleDeath();
+    } else {
+      const userTurnProcessed =
+        agentEventStart !== null &&
+        this.agent.events.events
           .slice(agentEventStart)
           .some((event) => event.type === 'user.message.received');
-        const completed =
-          this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed';
-        if (
-          userTurnProcessed ||
-          (completed && !this.storyWasCompleted) ||
-          this.world.tick % AUTOSAVE_EVERY_TICKS === 0
-        ) {
-          await this.save();
-        }
-        this.storyWasCompleted = completed;
+      const completed = this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed';
+      if (
+        userTurnProcessed ||
+        (completed && !this.storyWasCompleted) ||
+        this.world.tick % AUTOSAVE_EVERY_TICKS === 0
+      ) {
+        await this.save();
       }
-
-      this.rebuildView();
-      this.notify();
-    } finally {
-      this.stepping = false;
+      this.storyWasCompleted = completed;
     }
+
+    this.rebuildView();
+    this.notify();
   }
 
   // ---- muerte y sucesión -----------------------------------------------------
@@ -1138,6 +1313,9 @@ export class GameSession {
         case 'moveToward':
           lines.push(`${pad}ir hacia ${op.target} (máx ${op.maxSteps} pasos)`);
           break;
+        case 'gpsTo':
+          lines.push(`${pad}GPS hacia ${op.kind} (máx ${op.maxSteps} pasos)`);
+          break;
         case 'useItem':
           lines.push(`${pad}usar ${op.item} sobre ${op.target}`);
           break;
@@ -1176,6 +1354,7 @@ export class GameSession {
    * runtime, y sus productos (y lo que dejan al romperse) heredan ese origen.
    */
   private itemViews(): ItemView[] {
+    const lineage = lineageOf(this.world.recipes);
     const baseIds = new Set(MVP_RECIPES.map((recipe) => recipe.id));
     const inventedKinds = new Set<string>();
     const builtinProductKinds = new Set<string>();
@@ -1220,31 +1399,38 @@ export class GameSession {
     }
 
     const kinds = [...new Set([...counts.keys(), ...craftable.keys()])];
-    return kinds
-      .map((kind) => {
-        const counted = counts.get(kind);
-        const recipe = craftable.get(kind);
-        // Lo que existe manda sobre lo que la receta promete: si hay una
-        // fogata floja en el mundo, el catálogo cuenta esa y no el arquetipo.
-        const instances = counted?.instances ?? (recipe ? [recipe.components] : []);
-        const shape = instances[0] ?? {};
-        return {
-          kind,
-          name: kindLabel(kind),
-          origin: (inventedKinds.has(kind) ? 'invented' : 'builtin') as ItemView['origin'],
-          inWorld: counted?.inWorld ?? 0,
-          inInventory: counted?.inInventory ?? 0,
-          craftable: recipe !== undefined,
-          ingredients: recipe?.ingredients ?? [],
-          traits: traitsFromComponents(shape),
-          does: describeComponents(shape),
-          stats: itemStats(instances),
-        };
-      })
-      // Lo inventado primero (es la novedad), después alfabético.
-      .sort((a, b) =>
-        a.origin === b.origin ? a.name.localeCompare(b.name, 'es') : a.origin === 'invented' ? -1 : 1,
-      );
+    return (
+      kinds
+        .map((kind) => {
+          const counted = counts.get(kind);
+          const recipe = craftable.get(kind);
+          // Lo que existe manda sobre lo que la receta promete: si hay una
+          // fogata floja en el mundo, el catálogo cuenta esa y no el arquetipo.
+          const instances = counted?.instances ?? (recipe ? [recipe.components] : []);
+          const shape = instances[0] ?? {};
+          return {
+            kind,
+            name: kindLabel(kind),
+            origin: (inventedKinds.has(kind) ? 'invented' : 'builtin') as ItemView['origin'],
+            inWorld: counted?.inWorld ?? 0,
+            inInventory: counted?.inInventory ?? 0,
+            craftable: recipe !== undefined,
+            ingredients: recipe?.ingredients ?? [],
+            traits: traitsFromComponents(shape),
+            material: materialFor(kind, lineage),
+            does: describeComponents(shape),
+            stats: itemStats(instances),
+          };
+        })
+        // Lo inventado primero (es la novedad), después alfabético.
+        .sort((a, b) =>
+          a.origin === b.origin
+            ? a.name.localeCompare(b.name, 'es')
+            : a.origin === 'invented'
+              ? -1
+              : 1,
+        )
+    );
   }
 
   /** Las interacciones del mundo, en voz humana (ADR 0027). */
@@ -1281,6 +1467,7 @@ export class GameSession {
     const strategyEvents = this.agent.events.ofType('strategy.selected');
     const lastStrategy = strategyEvents[strategyEvents.length - 1];
 
+    const lineage = lineageOf(this.world.recipes);
     const entities = Object.values(this.world.entities)
       .filter((e) => e.id !== this.agent.petId && e.components.position)
       .map((e) => ({
@@ -1289,6 +1476,7 @@ export class GameSession {
         x: e.components.position!.x,
         y: e.components.position!.y,
         traits: traitsFromComponents(e.components),
+        material: materialFor(e.kind, lineage),
       }));
 
     const speechFresh =

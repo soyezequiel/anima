@@ -96,8 +96,11 @@ export class WorldScene extends Phaser.Scene {
    * tablero tiene muchas. Como textura es una imagen sola, y además la
    * comparten todas las entidades del mismo tipo.
    */
-  private matterTexture(kind: string, look: MatterLook): string | null {
-    const key = `matter:${kind}`;
+  private matterTexture(kind: string, material: string | undefined, look: MatterLook): string | null {
+    // El material entra en la clave: si Ánima inventa después la receta que
+    // dice de qué está hecho algo, el color cambia y la textura vieja no
+    // puede quedarse pegada.
+    const key = `matter:${kind}:${material ?? ''}`;
     if (this.textures.exists(key)) return key;
     const canvas = this.textures.createCanvas(key, GLYPH_SIZE, GLYPH_SIZE);
     if (!canvas) return null;
@@ -116,10 +119,14 @@ export class WorldScene extends Phaser.Scene {
     return key;
   }
 
-  private makeEntitySprite(kind: string, traits: EntityTraits): Phaser.GameObjects.Container {
+  private makeEntitySprite(
+    kind: string,
+    traits: EntityTraits,
+    material?: string,
+  ): Phaser.GameObjects.Container {
     const k = this.cellScale;
     const container = this.add.container(0, 0);
-    const look = appearanceFor(kind, traits);
+    const look = appearanceFor(kind, traits, { material });
     if (look.as === 'emoji') {
       const text = this.add.text(0, 0, look.emoji, { fontSize: `${Math.round(34 * k)}px` });
       text.setOrigin(0.5);
@@ -129,7 +136,7 @@ export class WorldScene extends Phaser.Scene {
       rect.setStrokeStyle(2 * k, look.stroke);
       container.add(rect);
     } else {
-      const key = this.matterTexture(kind, look);
+      const key = this.matterTexture(kind, material, look);
       if (key) {
         const image = this.add.image(0, 0, key);
         image.setDisplaySize(this.cell - 6 * k, this.cell - 6 * k);
@@ -147,7 +154,7 @@ export class WorldScene extends Phaser.Scene {
       const pixel = this.toPixel(entity.x, entity.y);
       let sprite = this.sprites.get(entity.id);
       if (!sprite) {
-        sprite = this.makeEntitySprite(entity.kind, entity.traits);
+        sprite = this.makeEntitySprite(entity.kind, entity.traits, entity.material);
         sprite.setPosition(pixel.x, pixel.y);
         this.sprites.set(entity.id, sprite);
       } else if (sprite.x !== pixel.x || sprite.y !== pixel.y) {

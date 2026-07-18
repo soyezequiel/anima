@@ -73,6 +73,29 @@ interface ExploreState {
   pendingDest?: string;
 }
 
+interface GpsState {
+  kind: string;
+  maxSteps: number;
+  stepsTaken: number;
+  /** Distancia Chebyshev a la que darse por llegada (sobre el ejemplar visto). */
+  stopAtDistance: number;
+  /** Variable donde dejar el ejemplar alcanzado, si se pidió. */
+  store?: string;
+  /** Celda destino del paso pendiente de resolver, para aprenderla si falla. */
+  pendingDest?: string;
+}
+
+/**
+ * La ventana del GPS a la memoria de lugares (ADR 0025): qué recuerda haber
+ * visto de un tipo (lo visible AHORA no cuenta: eso se persigue con la vista)
+ * y el derecho a desmentir un recuerdo tras ir y no encontrar nada. El agente
+ * pasa la suya; sin ella el GPS navega solo por vista y exploración.
+ */
+export interface GpsPlaces {
+  recall(kind: string, perception: Perception): { entityId: string; position: Vec2 }[];
+  forget(entityId: string): void;
+}
+
 /**
  * Lo que la mascota aprendió del espacio con el cuerpo: por dónde ya pasó y
  * qué celdas el mundo le rechazó (bordes, sólidos fuera de la vista). No es un
@@ -200,6 +223,7 @@ export class SkillExecution {
   private lastDamage = 0;
   private move: MoveState | null = null;
   private explore: ExploreState | null = null;
+  private gps: GpsState | null = null;
   private waitRemaining = 0;
   private pendingSingle = false;
   private intentsEmitted = 0;
@@ -216,16 +240,21 @@ export class SkillExecution {
       library?: SkillLibrary;
       /** Memoria espacial compartida entre ejecuciones (el agente pasa la suya). */
       spatial?: SpatialMemory;
+      /** Memoria de lugares para el GPS (el agente pasa la suya, ADR 0038). */
+      places?: GpsPlaces;
     } = {},
   ) {
     this.limits = { ...DEFAULT_RUNTIME_LIMITS, ...options.limits };
     this.library = options.library;
     this.spatial = options.spatial ?? new SpatialMemory();
+    this.places = options.places;
     this.actorId = actorId;
     this.frames = [{ ops: program, index: 0, callDepth: 0 }];
   }
 
   private readonly spatial: SpatialMemory;
+
+  private readonly places: GpsPlaces | undefined;
 
   private library: SkillLibrary | undefined;
 
@@ -253,6 +282,12 @@ export class SkillExecution {
     if (this.explore?.pendingDest) {
       const dest = this.explore.pendingDest;
       delete this.explore.pendingDest;
+      if (!success) this.spatial.blocked.add(dest);
+      return;
+    }
+    if (this.gps?.pendingDest) {
+      const dest = this.gps.pendingDest;
+      delete this.gps.pendingDest;
       if (!success) this.spatial.blocked.add(dest);
       return;
     }
@@ -298,6 +333,13 @@ export class SkillExecution {
     // Exploración multi-tick en curso.
     if (this.explore) {
       const output = this.stepExplore(perception);
+      if (output) return output;
+      if (this.finished) return { kind: 'done', result: this.finished };
+    }
+
+    // GPS multi-tick en curso.
+    if (this.gps) {
+      const output = this.stepGps(perception);
       if (output) return output;
       if (this.finished) return { kind: 'done', result: this.finished };
     }
@@ -419,6 +461,18 @@ export class SkillExecution {
         frame.index += 1;
         this.pendingSingle = true;
         return this.emit({ type: 'move', dir: op.dir });
+      case 'gpsTo': {
+        frame.index += 1;
+        this.gps = {
+          kind: op.kind,
+          maxSteps: op.maxSteps,
+          stepsTaken: 0,
+          stopAtDistance: op.stopAtDistance ?? 1,
+          ...(op.store !== undefined ? { store: op.store } : {}),
+        };
+        const output = this.stepGps(perception);
+        return output ?? null;
+      }
       case 'explore': {
         frame.index += 1;
         this.explore = {
@@ -700,6 +754,22 @@ export class SkillExecution {
     }
 
     this.spatial.observe(perception);
+    const best = this.leastVisitedStep(perception);
+    if (!best) {
+      this.endExplore('blocked');
+      return null;
+    }
+    explore.pendingDest = best.dest;
+    explore.stepsTaken += 1;
+    return this.emit({ type: 'move', dir: best.dir });
+  }
+
+  /**
+   * Elige el próximo paso de exploración: la celda vecina MENOS visitada que
+   * no se vea ocupada por un sólido (ni agua) ni se sepa bloqueada. Deja la
+   * huella de la celda actual en la memoria compartida. Null si no hay salida.
+   */
+  private leastVisitedStep(perception: Perception): { dir: Direction; dest: string } | null {
     const selfPos = perception.self.position;
     const visits = this.spatial.visits;
     visits.set(`${selfPos.x},${selfPos.y}`, (visits.get(`${selfPos.x},${selfPos.y}`) ?? 0) + 1);
@@ -720,13 +790,7 @@ export class SkillExecution {
       const count = visits.get(key) ?? 0;
       if (!best || count < best.visits) best = { dir, dest: key, visits: count };
     }
-    if (!best) {
-      this.endExplore('blocked');
-      return null;
-    }
-    explore.pendingDest = best.dest;
-    explore.stepsTaken += 1;
-    return this.emit({ type: 'move', dir: best.dir });
+    return best ? { dir: best.dir, dest: best.dest } : null;
   }
 
   private endExplore(result: LastMove): void {
@@ -735,6 +799,96 @@ export class SkillExecution {
     this.lastActionReason = undefined;
     this.lastDamage = 0;
     this.explore = null;
+  }
+
+  /**
+   * Un paso del GPS (ADR 0038), con tres rumbos en orden de certeza:
+   * 1) Un ejemplar A LA VISTA: el más cercano se persigue con el mismo BFS de
+   *    `moveToward`; quedar a `stopAtDistance` es haber llegado, y `store` se
+   *    lleva el ejemplar alcanzado.
+   * 2) Un lugar RECORDADO: camina hasta donde vio uno por última vez. Llegar
+   *    al lado sin que el rumbo 1 haya visto nada prueba que el recuerdo
+   *    mentía: se descarta y se prueba el siguiente. Un camino bloqueado NO
+   *    desmiente el recuerdo — solo lo posterga por el siguiente.
+   * 3) Nada visto ni recordado: EXPLORA hacia lo menos visitado, esperando
+   *    que el rumbo 1 tome el control apenas el recurso entre en la vista.
+   * Sin omnisciencia: los tres rumbos usan solo percepción y memorias propias.
+   */
+  private stepGps(perception: Perception): SkillStepOutput | null {
+    const gps = this.gps!;
+    this.spatial.observe(perception);
+    const selfPos = perception.self.position;
+
+    // 1) A la vista. Nunca lo que lleva encima: el GPS lleva a LUGARES.
+    const seen = perception.visibleEntities
+      .filter((e) => e.kind === gps.kind && e.position)
+      .sort(
+        (a, b) =>
+          (a.distance ?? Infinity) - (b.distance ?? Infinity) ||
+          Number(a.id.slice(1)) - Number(b.id.slice(1)),
+      );
+    const target = seen[0];
+    if (target?.position) {
+      if (chebyshev(selfPos, target.position) <= gps.stopAtDistance) {
+        if (gps.store !== undefined) this.vars.set(gps.store, target);
+        this.endGps('reached');
+        return null;
+      }
+      if (gps.stepsTaken >= gps.maxSteps) {
+        this.endGps('exhausted');
+        return null;
+      }
+      const dir = this.pathStep(selfPos, target.position, gps.stopAtDistance, perception);
+      if (!dir) {
+        this.endGps('blocked');
+        return null;
+      }
+      return this.emitGpsStep(gps, selfPos, dir);
+    }
+
+    // 2) Recordado (recall ya excluye lo visible y ordena por cercanía).
+    for (const place of this.places?.recall(gps.kind, perception) ?? []) {
+      if (chebyshev(selfPos, place.position) <= 1) {
+        this.places!.forget(place.entityId);
+        continue;
+      }
+      if (gps.stepsTaken >= gps.maxSteps) {
+        this.endGps('exhausted');
+        return null;
+      }
+      const dir = this.pathStep(selfPos, place.position, 1, perception);
+      if (!dir) continue;
+      return this.emitGpsStep(gps, selfPos, dir);
+    }
+
+    // 3) Explorar.
+    if (gps.stepsTaken >= gps.maxSteps) {
+      this.endGps('exhausted');
+      return null;
+    }
+    const step = this.leastVisitedStep(perception);
+    if (!step) {
+      this.endGps('blocked');
+      return null;
+    }
+    gps.pendingDest = step.dest;
+    gps.stepsTaken += 1;
+    return this.emit({ type: 'move', dir: step.dir });
+  }
+
+  private emitGpsStep(gps: GpsState, selfPos: Vec2, dir: Direction): SkillStepOutput {
+    const delta = STEP_DELTAS[dir];
+    gps.pendingDest = `${selfPos.x + delta.x},${selfPos.y + delta.y}`;
+    gps.stepsTaken += 1;
+    return this.emit({ type: 'move', dir });
+  }
+
+  private endGps(result: LastMove): void {
+    this.lastMove = result;
+    this.lastActionOk = result === 'reached';
+    this.lastActionReason = undefined;
+    this.lastDamage = 0;
+    this.gps = null;
   }
 
   private findCurrent(id: string, perception: Perception): PerceivedEntity | undefined {

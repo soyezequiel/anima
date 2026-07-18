@@ -2,7 +2,7 @@ import type { Vec2 } from '@anima/shared';
 import type { EntityId, InvariantViolation, SimEvent, WorldState } from '@anima/sim-core';
 import { buildPerception, checkInvariants, getEntity, stepWorld } from '@anima/sim-core';
 import type { SkillProgram } from './dsl.js';
-import type { RuntimeLimits } from './interpreter.js';
+import type { GpsPlaces, RuntimeLimits } from './interpreter.js';
 import { SkillExecution } from './interpreter.js';
 import type { SkillLibrary } from './skill.js';
 
@@ -11,6 +11,8 @@ export interface SkillRunOptions {
   maxTicks: number;
   limits?: Partial<RuntimeLimits>;
   library?: SkillLibrary;
+  /** Memoria de lugares para el GPS de la DSL (ADR 0038). */
+  places?: GpsPlaces;
   /** Verificar invariantes del mundo en cada tick (usado por el evaluador). */
   checkInvariantsEachTick?: boolean;
 }
@@ -47,9 +49,14 @@ export function runSkillProgram(
   program: SkillProgram,
   options: SkillRunOptions,
 ): SkillRunReport {
-  const execOptions: { limits?: Partial<RuntimeLimits>; library?: SkillLibrary } = {};
+  const execOptions: {
+    limits?: Partial<RuntimeLimits>;
+    library?: SkillLibrary;
+    places?: GpsPlaces;
+  } = {};
   if (options.limits) execOptions.limits = options.limits;
   if (options.library) execOptions.library = options.library;
+  if (options.places) execOptions.places = options.places;
   const exec = new SkillExecution(program, actorId, execOptions);
 
   const actor = getEntity(world, actorId);

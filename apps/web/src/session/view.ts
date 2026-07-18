@@ -29,6 +29,12 @@ export interface EntityView {
   x: number;
   y: number;
   traits: EntityTraits;
+  /**
+   * De qué está hecho, siguiendo su receta hacia atrás. Solo sirve para
+   * elegir el color de lo que no tiene emoji: un `cuchillo` hecho de
+   * `flint-shard` se dibuja gris piedra aunque su nombre no diga "piedra".
+   */
+  material?: string | undefined;
 }
 
 export interface PetView {
@@ -94,6 +100,8 @@ export interface ItemView {
   /** Lo que cuesta construirlo ("2 troncos"); vacío si no hay receta. */
   ingredients: string[];
   traits: EntityTraits;
+  /** De qué está hecho, heredado de su receta. Ver `EntityView.material`. */
+  material?: string | undefined;
   /** Qué HACE ("da calor", "bloquea el paso"), en voz humana. */
   does: string[];
   /**

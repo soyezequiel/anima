@@ -168,6 +168,15 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
     z.object({ op: z.literal('moveStep'), dir: directionSchema }).strict(),
     z
       .object({
+        op: z.literal('gpsTo'),
+        kind: z.string().min(1),
+        maxSteps: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
+        stopAtDistance: z.number().int().min(0).max(10).optional(),
+        store: z.string().min(1).optional(),
+      })
+      .strict(),
+    z
+      .object({
         op: z.literal('explore'),
         maxSteps: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
         until: conditionSchema.optional(),
@@ -233,6 +242,17 @@ export type SkillOp =
   | { op: 'selectTarget'; from: string; strategy: SelectStrategy; store: string }
   | { op: 'moveToward'; target: string; maxSteps: number; stopAtDistance?: number; avoidTarget?: boolean }
   | { op: 'moveStep'; dir: 'up' | 'down' | 'left' | 'right' }
+  /**
+   * El GPS hacia un recurso (ADR 0038): "llevame a donde hay X" en una sola
+   * operación. Encadena los tres rumbos que ya existían sueltos — si VE un X,
+   * va derecho rodeando obstáculos (el BFS de `moveToward`); si no lo ve pero
+   * RECUERDA dónde había uno (memoria de lugares, ADR 0025), camina hasta ahí,
+   * y si al llegar no está, el recuerdo se descarta y prueba el siguiente; si
+   * no ve ni recuerda, EXPLORA hacia lo menos visitado hasta verlo. Sigue sin
+   * omnisciencia: solo navega por lo percibido y lo recordado. Al llegar,
+   * `store` guarda el ejemplar alcanzado, listo para pickup/consume/useItem.
+   */
+  | { op: 'gpsTo'; kind: string; maxSteps: number; stopAtDistance?: number; store?: string }
   /**
    * Recorrer el mapa sin destino: cada paso va hacia la celda vecina menos
    * visitada, esquivando los sólidos que percibe. Con `until` se detiene al

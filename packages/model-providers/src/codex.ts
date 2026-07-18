@@ -66,6 +66,13 @@ Operaciones permitidas (ninguna otra existe):
 - {"op":"selectTarget","from":string,"strategy":"nearest"|"strongestTool","store":string}
 - {"op":"moveToward","target":string,"maxSteps":number(1..50),"stopAtDistance"?:number(0..10)}
 - {"op":"moveStep","dir":"up"|"down"|"left"|"right"}
+- {"op":"gpsTo","kind":string,"maxSteps":number(1..50),"stopAtDistance"?:number(0..10),"store"?:string}
+  — el GPS hacia un recurso: si VE un "kind" va derecho rodeando obstáculos;
+  si no lo ve pero RECUERDA dónde había uno, camina hasta ahí (y descarta el
+  recuerdo si al llegar no está); si no, EXPLORA hasta verlo. Al llegar,
+  "store" guarda el ejemplar alcanzado, listo para pickup/consume/useItem.
+  Es el atajo para "andá a donde hay X": reemplaza al trío
+  explore+findEntities+moveToward cuando el objetivo es un tipo de recurso.
 - {"op":"explore","maxSteps":number(1..50),"until"?:COND} — recorre el mapa
   paso a paso hacia lo menos visitado, esquivando sólidos; con "until" se
   detiene al cumplirse (búsqueda típica: "until" con {"type":"sees",...})
