@@ -334,6 +334,18 @@ export class SkillLibrary {
       .sort((a, b) => a.version - b.version);
   }
 
+  /**
+   * La versión más nueva de un nombre, probada o no. Es lo que permite que una
+   * madre estrene a su hija recién nacida (ADR 0055): la hija todavía es
+   * `experimental` porque su vara ES la madre, así que `findUsable` no la ve.
+   * Fuera de ese caso, preferir siempre `findUsable`.
+   */
+  findLatest(name: string): SkillDefinition | undefined {
+    return this.versionsOf(name)
+      .filter((s) => s.status !== 'archived' && s.status !== 'deprecated')
+      .at(-1);
+  }
+
   markPromoted(id: string): void {
     const skill = this.skills.get(id);
     if (!skill) throw new Error(`Skill desconocida: ${id}`);
@@ -344,6 +356,38 @@ export class SkillLibrary {
       }
     }
     skill.status = 'stable';
+    // Sus hijas se promueven con ella (ADR 0055): una sub-habilidad no tiene
+    // vara propia — su examen fue que la madre pasara los cuarenta mundos
+    // usándola. Aprobada la madre, quedan aprobadas.
+    for (const dependency of skill.dependencies) {
+      const child = this.skills.get(dependency.skillId);
+      if (child && child.status === 'experimental') this.markPromoted(child.id);
+    }
+  }
+
+  /**
+   * Archiva las piezas que quedaron huérfanas: nacieron para una madre que no
+   * llegó a ninguna parte (ADR 0055). Sin esto quedarían `experimental` para
+   * siempre, sin nadie que las justifique y visibles para futuras
+   * composiciones — basura con aspecto de conocimiento.
+   *
+   * Una pieza que otra habilidad viva ya usa NO es huérfana: se queda.
+   */
+  archiveOrphans(ids: string[], failure: KnownFailure): void {
+    for (const id of ids) {
+      const child = this.skills.get(id);
+      if (!child || child.status !== 'experimental') continue;
+      const adopted = this.all().some(
+        (other) =>
+          other.id !== id &&
+          other.status !== 'archived' &&
+          other.status !== 'experimental' &&
+          other.dependencies.some((d) => d.skillId === id),
+      );
+      if (adopted) continue;
+      child.knownFailures.push(failure);
+      child.status = 'archived';
+    }
   }
 
   /**

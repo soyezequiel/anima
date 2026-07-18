@@ -8,6 +8,21 @@
  * independiente antes de tocar el mundo real.
  */
 
+/**
+ * Una habilidad de la biblioteca como se la muestra al modelo (ADR 0055):
+ * lo justo para decidir si le sirve de pieza. El `id` interno no viaja — el
+ * modelo compone por NOMBRE, que es lo que puede escribir sin equivocarse.
+ */
+export interface SkillSummary {
+  name: string;
+  /** Para qué sirve, en una línea. */
+  purpose: string;
+  /** Qué deja hecho cuando termina bien. */
+  expectedOutcome: string;
+  /** `probada` (pasó el evaluador) o `a medio probar` (provisional). */
+  trust: 'probada' | 'a medio probar';
+}
+
 export type ModelRequest =
   | {
       kind: 'skill.propose';
@@ -17,6 +32,14 @@ export type ModelRequest =
       context: string[];
       /** Criterios que el evaluador medirá: el programa debe satisfacerlos. */
       successCriteria?: string[];
+      /** Lo que ya sabe hacer, para poder componer con ello (ADR 0055). */
+      library?: SkillSummary[];
+      /**
+       * Si puede contestar «esto es muy grande, creá antes estas piezas»
+       * (ADR 0055). Falso en el ciclo de una sub-habilidad: descomponer lo ya
+       * descompuesto no termina nunca.
+       */
+      mayDecompose?: boolean;
     }
   | {
       kind: 'skill.revise';
@@ -61,6 +84,8 @@ export type ModelRequest =
       attempt: number;
       /** Cuántos intentos hay en total: administrar el crédito también es razonar. */
       maxAttempts?: number;
+      /** Lo que ya sabe hacer, para poder componer con ello (ADR 0055). */
+      library?: SkillSummary[];
     }
   | {
       kind: 'interpret.signal';
@@ -337,6 +362,16 @@ export type ModelResponse =
       program: unknown;
       rationale: string;
       alternate?: { program: unknown; rationale: string };
+    }
+  /**
+   * «Esto es demasiado grande: creá antes estas piezas» (ADR 0055). No es un
+   * programa: es la decisión de partir el problema. Cada pieza se diseña como
+   * habilidad propia y después la madre las compone con `runSkill`.
+   */
+  | {
+      kind: 'skill.decomposition';
+      parts: { name: string; purpose: string; expectedOutcome: string }[];
+      rationale: string;
     }
   | { kind: 'interpretation'; hypothesis: string; confidence: number }
   | { kind: 'command.interpretation'; command: CommandInterpretation }

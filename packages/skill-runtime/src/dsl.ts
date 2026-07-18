@@ -232,7 +232,18 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
         body: z.array(opSchema).min(1),
       })
       .strict(),
-    z.object({ op: z.literal('runSkill'), skillId: z.string().min(1) }).strict(),
+    // Una de las dos formas, nunca ambas: por NOMBRE (lo que escribe el
+    // modelo, resuelto tarde a la mejor versión) o por id congelado (lo que
+    // emiten las rutas de TypeScript). Ver ADR 0055.
+    // (que sea exactamente una de las dos lo comprueba `validateSkillProgram`:
+    // un `.refine` acá rompería la unión discriminada de zod)
+    z
+      .object({
+        op: z.literal('runSkill'),
+        skillId: z.string().min(1).optional(),
+        skillName: z.string().min(1).optional(),
+      })
+      .strict(),
     z.object({ op: z.literal('abort'), reason: z.string().min(1).max(200) }).strict(),
   ]),
 ) as z.ZodType<SkillOp>;
@@ -311,7 +322,7 @@ export type SkillOp =
   | { op: 'speak'; text: string }
   | { op: 'branch'; if: SkillCondition; then: SkillOp[]; else?: SkillOp[] }
   | { op: 'repeatWithLimit'; max: number; until?: SkillCondition; body: SkillOp[] }
-  | { op: 'runSkill'; skillId: string }
+  | { op: 'runSkill'; skillId?: string; skillName?: string }
   | { op: 'abort'; reason: string };
 
 export const skillProgramSchema = z.array(opSchema).min(1);
@@ -338,11 +349,40 @@ function measure(ops: SkillOp[], depth: number): { count: number; maxDepth: numb
   return { count, maxDepth };
 }
 
+/** Los nombres de habilidad que un programa llama, en orden de aparición. */
+export function calledSkillNames(ops: SkillOp[]): string[] {
+  const names: string[] = [];
+  for (const op of ops) {
+    if (op.op === 'runSkill' && op.skillName) names.push(op.skillName);
+    else if (op.op === 'branch') {
+      names.push(...calledSkillNames(op.then), ...calledSkillNames(op.else ?? []));
+    } else if (op.op === 'repeatWithLimit') names.push(...calledSkillNames(op.body));
+  }
+  return names;
+}
+
+/**
+ * Lo que hace falta para juzgar las llamadas a otras habilidades (ADR 0055).
+ * `programOf` devuelve el programa de una habilidad por nombre —así se puede
+ * seguir la cadena— y `selfName` es el nombre de la que se está validando,
+ * que todavía no está en la biblioteca.
+ */
+export interface ComposeContext {
+  programOf(name: string): SkillProgram | undefined;
+  selfName?: string;
+}
+
 /**
  * Valida un programa recibido de una fuente no confiable (un modelo, el
  * backend, un archivo). Devuelve el programa tipado o un error legible.
+ *
+ * Con `compose`, además comprueba las llamadas a otras habilidades: que
+ * existan y que no se cierre un ciclo. Sin esa comprobación, un nombre
+ * inventado por el modelo pasaba limpio, se guardaba, y recién moría en los
+ * cuarenta mundos del evaluador — caro y con un mensaje que hablaba de un id
+ * interno que el modelo nunca vio.
  */
-export function validateSkillProgram(raw: unknown): Result<SkillProgram> {
+export function validateSkillProgram(raw: unknown, compose?: ComposeContext): Result<SkillProgram> {
   const parsed = skillProgramSchema.safeParse(raw);
   if (!parsed.success) {
     return err(`Programa inválido: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`);
@@ -354,5 +394,45 @@ export function validateSkillProgram(raw: unknown): Result<SkillProgram> {
   if (maxDepth > MAX_PROGRAM_DEPTH) {
     return err(`Programa demasiado anidado: profundidad ${maxDepth} (máximo ${MAX_PROGRAM_DEPTH})`);
   }
+  const malformed = badRunSkill(parsed.data);
+  if (malformed) return err(malformed);
+  if (compose) {
+    const cycle = checkCalls(parsed.data, compose, compose.selfName ? [compose.selfName] : []);
+    if (cycle) return err(cycle);
+  }
   return ok(parsed.data);
+}
+
+/** Un `runSkill` sin destino, o con los dos, no dice a quién llamar. */
+function badRunSkill(ops: SkillOp[]): string | null {
+  for (const op of ops) {
+    if (op.op === 'runSkill' && (op.skillId === undefined) === (op.skillName === undefined)) {
+      return 'runSkill necesita skillName (recomendado) o skillId, exactamente uno';
+    }
+    const blocks =
+      op.op === 'branch'
+        ? [op.then, op.else ?? []]
+        : op.op === 'repeatWithLimit'
+          ? [op.body]
+          : [];
+    for (const block of blocks) {
+      const inner = badRunSkill(block);
+      if (inner) return inner;
+    }
+  }
+  return null;
+}
+
+/** Recorre las llamadas en profundidad: nombre desconocido o ciclo. */
+function checkCalls(ops: SkillOp[], compose: ComposeContext, chain: string[]): string | null {
+  for (const name of calledSkillNames(ops)) {
+    if (chain.includes(name)) {
+      return `Habilidad circular: ${[...chain, name].join(' → ')} se llama a sí misma`;
+    }
+    const program = compose.programOf(name);
+    if (!program) return `No existe ninguna habilidad llamada "${name}"`;
+    const deeper = checkCalls(program, compose, [...chain, name]);
+    if (deeper) return deeper;
+  }
+  return null;
 }

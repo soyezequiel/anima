@@ -51,6 +51,15 @@ interface Frame {
   index: number;
   callDepth: number;
   repeat?: { max: number; done: number; until?: SkillCondition };
+  /**
+   * Las variables VISIBLES desde este marco (ADR 0055). `branch` y
+   * `repeatWithLimit` heredan la referencia de su padre —son el mismo
+   * programa, y guardar un objetivo dentro de un `if` tiene que verse
+   * afuera—, pero `runSkill` estrena una bolsa vacía: una habilidad llamada
+   * es otro programa, escrito por otro, que no tiene por qué conocer ni
+   * pisar los nombres de quien la llama.
+   */
+  scope: Map<string, VarValue>;
 }
 
 interface MoveState {
@@ -214,7 +223,15 @@ function matchesQuery(e: PerceivedEntity, query: EntityQuery): boolean {
  */
 export class SkillExecution {
   private frames: Frame[];
-  private vars = new Map<string, VarValue>();
+  /**
+   * Las variables del marco que está corriendo. Es un getter y no un campo
+   * porque cada habilidad llamada tiene las suyas: leer o escribir siempre
+   * ocurre en el ámbito de quien ejecuta, nunca en una bolsa global.
+   */
+  private get vars(): Map<string, VarValue> {
+    return this.frames[this.frames.length - 1]?.scope ?? this.rootScope;
+  }
+  private readonly rootScope = new Map<string, VarValue>();
   private lastMove: LastMove = 'none';
   private lastActionOk = true;
   /** Motivo con el que el mundo rechazó la última acción (undefined si salió bien). */
@@ -249,7 +266,7 @@ export class SkillExecution {
     this.spatial = options.spatial ?? new SpatialMemory();
     this.places = options.places;
     this.actorId = actorId;
-    this.frames = [{ ops: program, index: 0, callDepth: 0 }];
+    this.frames = [{ ops: program, index: 0, callDepth: 0, scope: this.rootScope }];
   }
 
   private readonly spatial: SpatialMemory;
@@ -414,7 +431,9 @@ export class SkillExecution {
       case 'branch': {
         frame.index += 1;
         const taken = this.evalCondition(op.if, perception) ? op.then : op.else;
-        if (taken) this.frames.push({ ops: taken, index: 0, callDepth: frame.callDepth });
+        if (taken) {
+          this.frames.push({ ops: taken, index: 0, callDepth: frame.callDepth, scope: frame.scope });
+        }
         return null;
       }
       case 'repeatWithLimit': {
@@ -424,6 +443,7 @@ export class SkillExecution {
           ops: op.body,
           index: 0,
           callDepth: frame.callDepth,
+          scope: frame.scope,
           repeat: { max: op.max, done: 0, ...(op.until ? { until: op.until } : {}) },
         });
         return null;
@@ -434,12 +454,26 @@ export class SkillExecution {
           this.finish('limit-exceeded', 'call-depth');
           return null;
         }
-        const skill = this.library?.get(op.skillId);
+        // Por NOMBRE se resuelve tarde, a la mejor versión de esa habilidad
+        // (ADR 0055): una madre que llama a «desbloquear-camino» quiere la
+        // que sirve hoy, no la que existía cuando se escribió. Por `skillId`
+        // sigue siendo una versión congelada, que es lo que quieren las dos
+        // rutas de TypeScript que ya lo usaban.
+        const skill = op.skillName
+          ? (this.library?.findUsable(op.skillName) ?? this.library?.findLatest(op.skillName))
+          : op.skillId
+            ? this.library?.get(op.skillId)
+            : undefined;
         if (!skill) {
-          this.finish('aborted', `skill-not-found:${op.skillId}`);
+          this.finish('aborted', `skill-not-found:${op.skillName ?? op.skillId ?? '?'}`);
           return null;
         }
-        this.frames.push({ ops: skill.program, index: 0, callDepth: frame.callDepth + 1 });
+        this.frames.push({
+          ops: skill.program,
+          index: 0,
+          callDepth: frame.callDepth + 1,
+          scope: new Map(),
+        });
         return null;
       }
       case 'abort':

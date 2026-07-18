@@ -508,6 +508,86 @@ describe('composición de skills', () => {
     expect(report.reason).toBe('skill-not-found:fantasma');
   });
 
+  /**
+   * ADR 0055. Las variables son de quien ejecuta, no de la ejecución entera.
+   *
+   * Antes había UNA sola bolsa para todo el programa: una habilidad llamada
+   * que guardara en "objetivo" le pisaba el "objetivo" a quien la llamó, en
+   * silencio y con la forma de un bug de comportamiento, no de un error. Con
+   * `runSkill` usado solo como programa de un op nunca se notó; en cuanto el
+   * modelo empezó a componer, era cuestión de tiempo.
+   */
+  it('una habilidad llamada no le pisa las variables a quien la llama', () => {
+    const { world, petId } = smallWorld();
+    addFood(world, 5, 2);
+    // Un muro lejos, sin tapar el camino: le da a la hija algo que mirar.
+    addWallColumn(world, 8);
+    const library = new SkillLibrary();
+    const inner = library.addExperimental({
+      name: 'mira-una-pared',
+      description: 'guarda una pared en "objetivo"',
+      motivation: 'test',
+      // Usa el MISMO nombre de variable que la madre, con otra cosa adentro.
+      program: [
+        { op: 'findEntities', query: { kind: 'wall' }, store: 'candidatos' },
+        { op: 'selectTarget', from: 'candidatos', strategy: 'nearest', store: 'objetivo' },
+      ],
+      expectedOutcome: 'nada',
+      successCriteria: [],
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    const report = runSkillProgram(
+      world,
+      petId,
+      [
+        { op: 'findEntities', query: { kind: 'food' }, store: 'candidatos' },
+        { op: 'selectTarget', from: 'candidatos', strategy: 'nearest', store: 'objetivo' },
+        { op: 'runSkill', skillId: inner.id },
+        // Si la hija hubiera pisado "objetivo", esto caminaría hasta la pared
+        // y el consume fallaría: la comida seguiría intacta.
+        { op: 'moveToward', target: 'objetivo', maxSteps: 40 },
+        { op: 'consume', target: 'objetivo' },
+      ],
+      { maxTicks: 80, library },
+    );
+    expect(report.outcome).toBe('completed');
+    expect(report.energyDelta).toBeGreaterThan(20);
+  });
+
+  it('runSkill por nombre toma la mejor versión, no una congelada', () => {
+    const { world, petId } = smallWorld();
+    addFood(world, 5, 2);
+    const library = new SkillLibrary();
+    // Una versión vieja que no hace nada, y una nueva que sí come.
+    const vieja = library.addExperimental({
+      name: 'comer',
+      description: 'v1',
+      motivation: 'test',
+      program: [{ op: 'wait' }],
+      expectedOutcome: '',
+      successCriteria: [],
+      createdAt: '2026-01-01T00:00:00Z',
+    });
+    library.markPromoted(vieja.id);
+    const nueva = library.addExperimental({
+      name: 'comer',
+      description: 'v2',
+      motivation: 'test',
+      program: reachAndEat,
+      expectedOutcome: '',
+      successCriteria: [],
+      createdAt: '2026-01-02T00:00:00Z',
+    });
+    library.markPromoted(nueva.id);
+
+    const report = runSkillProgram(world, petId, [{ op: 'runSkill', skillName: 'comer' }], {
+      maxTicks: 60,
+      library,
+    });
+    expect(report.outcome).toBe('completed');
+    expect(report.energyDelta).toBeGreaterThan(20);
+  });
+
   it('corta la recursión por profundidad de llamadas', () => {
     const { world, petId } = smallWorld();
     const library = new SkillLibrary();

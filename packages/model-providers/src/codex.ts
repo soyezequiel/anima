@@ -1,4 +1,4 @@
-import type { ModelRequest, ModelResponse } from './types.js';
+import type { ModelRequest, ModelResponse, SkillSummary } from './types.js';
 import { BaseModelProvider } from './types.js';
 
 /**
@@ -96,6 +96,11 @@ Operaciones permitidas (ninguna otra existe):
 - {"op":"speak","text":string}
 - {"op":"branch","if":COND,"then":[OPS],"else"?:[OPS]}
 - {"op":"repeatWithLimit","max":number(1..50),"until"?:COND,"body":[OPS]}
+- {"op":"runSkill","skillName":string}
+  — ejecuta OTRA habilidad que la mascota ya sabe, como un paso más. Usa el
+nombre exacto de la lista "Ya sabe hacer"; si no está en esa lista, no existe.
+Se resuelve a la mejor versión de esa habilidad en el momento de correr, así
+que si la habilidad llamada mejora, esta mejora con ella.
 - {"op":"abort","reason":string}
 Condiciones (COND):
 {"type":"always"} | {"type":"lastMoveBlocked"} | {"type":"lastActionFailed"} |
@@ -122,6 +127,9 @@ dos lados:
   candidatos y el programa aborta reclamando algo que tiene en la mano. Busca
   sin "held" y guarda el "pickup" detrás de
   {"op":"branch","if":{"type":"not","cond":{"type":"holding","target":"<var>"}},"then":[...]}.
+Componer vale más que repetir: si un paso de tu plan ya es una habilidad de la
+lista, llamala con "runSkill" en vez de reescribir sus operaciones. Una
+habilidad no puede llamarse a sí misma, ni cerrar un círculo con otra.
 Límites duros: máximo 200 operaciones, profundidad 6, repeticiones siempre
 con "max". Propiedades extra o operaciones desconocidas invalidan el programa.`;
 
@@ -159,6 +167,64 @@ function trimToWords(text: string, max: number): string {
   return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[.,;:—-]+$/, '')}…`;
 }
 
+/**
+ * El catálogo de lo que ya sabe hacer (ADR 0055). Sin esto el modelo no podía
+ * componer aunque quisiera: no tenía forma de saber qué nombres existen, y
+ * `runSkill` con un nombre inventado no llama a nadie.
+ */
+/** Cuántas piezas se aceptan de una descomposición. Ver `DECOMPOSE_INVITE`. */
+const MAX_SUB_SKILLS = 3;
+
+/**
+ * Las piezas pedidas, saneadas. Devuelve `[]` ante cualquier duda: si no se
+ * entiende qué piezas pidió, la respuesta no es una descomposición y el
+ * parseo sigue exigiendo un programa — que es el camino de siempre.
+ */
+function parseSubSkills(raw: string): { name: string; purpose: string; expectedOutcome: string }[] {
+  let list: unknown;
+  try {
+    list = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(list)) return [];
+  const parts: { name: string; purpose: string; expectedOutcome: string }[] = [];
+  for (const item of list.slice(0, MAX_SUB_SKILLS)) {
+    if (typeof item !== 'object' || item === null) continue;
+    const part = item as Record<string, unknown>;
+    // El nombre viaja al `runSkill` de la madre y a la biblioteca: se
+    // normaliza acá, en la puerta, y no en cada lugar que lo use después.
+    const name =
+      typeof part.name === 'string'
+        ? part.name
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '-')
+            .replace(/[^a-z0-9áéíóúñ-]/g, '')
+            .slice(0, 60)
+        : '';
+    if (!name) continue;
+    parts.push({
+      name,
+      purpose: typeof part.purpose === 'string' ? part.purpose.trim() : '',
+      expectedOutcome: typeof part.expectedOutcome === 'string' ? part.expectedOutcome.trim() : '',
+    });
+  }
+  return parts;
+}
+
+function skillCatalog(library: SkillSummary[] | undefined): string {
+  if (!library || library.length === 0) return '';
+  const lines = library.map(
+    (s) => `- "${s.name}" (${s.trust}): ${s.purpose}. Al terminar: ${s.expectedOutcome}`,
+  );
+  return `\nYa sabe hacer (podés llamarlas con "runSkill" usando el nombre exacto):
+${lines.join('\n')}
+Una habilidad "a medio probar" funciona casi siempre, no siempre: apoyarte en
+ella es legítimo, pero si el plan entero depende de que nunca falle, conviene
+resolverlo vos.\n`;
+}
+
 const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   'energy-low': 'te estás quedando sin fuerzas',
   'temperature-low': 'tienes frío y el cuerpo se te está enfriando',
@@ -176,6 +242,39 @@ const PROGRAM_SCHEMA: Record<string, unknown> = {
   required: ['programJson', 'rationale'],
   additionalProperties: false,
 };
+
+/**
+ * El sobre cuando además puede PARTIR el problema (ADR 0055). Es el de
+ * siempre más las piezas: `programJson` deja de ser obligatorio porque una
+ * respuesta legítima es «todavía no puedo escribir esto, hacé antes estas
+ * dos». El proveedor exige que venga una de las dos cosas.
+ */
+const DESIGN_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    programJson: { type: 'string' },
+    rationale: { type: 'string' },
+    altProgramJson: { type: 'string' },
+    altRationale: { type: 'string' },
+    subSkillsJson: { type: 'string' },
+  },
+  required: ['rationale'],
+  additionalProperties: false,
+};
+
+/**
+ * La invitación a descomponer (ADR 0055). El límite de tres piezas no es
+ * decorativo: cada una es un viaje al modelo más su diseño, y un problema que
+ * necesita cinco partes casi siempre está mal planteado.
+ */
+const DECOMPOSE_INVITE = `Si el problema es DEMASIADO GRANDE para un solo programa —hace falta resolver
+antes dos o tres cosas más simples, cada una útil por su cuenta— podés no
+escribir el programa todavía y pedir esas piezas en "subSkillsJson": un
+arreglo de {"name","purpose","expectedOutcome"}, máximo 3, con nombres cortos
+en minúsculas y guiones. Cada pieza se diseña primero y después vos las
+compones con "runSkill". Usá esta salida solo si de verdad hace falta: partir
+lo que entra en un programa cuesta tiempo y no mejora nada. Si pides piezas,
+omite "programJson".`;
 
 /**
  * La invitación a la segunda estrategia (ADR 0051). Va en propose y en revise:
@@ -531,10 +630,10 @@ export function buildCodexPrompt(request: ModelRequest): {
   switch (request.kind) {
     case 'skill.propose':
       return {
-        schema: PROGRAM_SCHEMA,
+        schema: request.mayDecompose ? DESIGN_SCHEMA : PROGRAM_SCHEMA,
         prompt: `Eres la mente de una mascota virtual que diseña una habilidad nueva.
 ${DSL_REFERENCE}
-
+${skillCatalog(request.library)}
 Problema a resolver: ${request.problem}
 Nombre de la habilidad: ${request.skillName}
 Contexto observado:
@@ -552,6 +651,7 @@ borde falla.`
 
 Diseña UN programa de la DSL que resuelva el problema de forma general (debe
 funcionar también cuando no hay obstáculo). ${ALTERNATE_INVITE}
+${request.mayDecompose ? DECOMPOSE_INVITE : ''}
 Responde únicamente con JSON:
 {"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "explicación breve en español"}`,
       };
@@ -918,7 +1018,7 @@ se estancó, cambia de estrategia en lugar de ajustar números.`;
         schema: PROGRAM_SCHEMA,
         prompt: `Eres la mente de una mascota virtual ${headline}.
 ${DSL_REFERENCE}
-
+${skillCatalog(request.library)}
 Problema a resolver: ${request.problem}
 Un evaluador independiente solo aprueba si TODOS estos criterios se cumplen en
 TODOS los mundos de prueba:
@@ -1268,6 +1368,21 @@ export class CodexModelProvider extends BaseModelProvider {
               program = JSON.parse(parsed.programJson);
             } catch {
               throw new Error('programJson no es JSON válido');
+            }
+          }
+          // «Todavía no puedo escribir esto: hacé antes estas piezas» (ADR
+          // 0055). Se mira ANTES de exigir un programa, porque justamente es
+          // la respuesta legítima que no trae ninguno. Solo cuenta si de
+          // verdad no propuso programa: pedir piezas Y entregar el programa
+          // sería quedarse con las dos cosas, y el programa vale más.
+          if (!Array.isArray(program) && typeof parsed.subSkillsJson === 'string') {
+            const parts = parseSubSkills(parsed.subSkillsJson);
+            if (parts.length > 0) {
+              return {
+                kind: 'skill.decomposition',
+                parts,
+                rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+              };
             }
           }
           if (!Array.isArray(program)) {
