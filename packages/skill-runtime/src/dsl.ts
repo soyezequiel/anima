@@ -11,6 +11,8 @@ import { err, ok } from '@anima/shared';
 export const MAX_REPEAT_LIMIT = 50;
 export const MAX_PROGRAM_DEPTH = 6;
 export const MAX_PROGRAM_OPS = 200;
+/** Cuán lejos del ancla puede caer una celda de obra (ADR 0035): footprint 9×9. */
+export const MAX_CELL_OFFSET = 4;
 
 const entityQuerySchema = z
   .object({
@@ -61,6 +63,13 @@ const conditionSchema: z.ZodType<SkillCondition> = z.lazy(() =>
         kind: z.string().min(1).optional(),
       })
       .strict(),
+    z
+      .object({
+        type: z.literal('blockAtCell'),
+        target: z.string().min(1),
+        kind: z.string().min(1).optional(),
+      })
+      .strict(),
     z.object({ type: z.literal('not'), cond: conditionSchema }).strict(),
   ]),
 ) as z.ZodType<SkillCondition>;
@@ -93,6 +102,12 @@ export type SkillCondition =
    * mascota puede irse a buscar material y retomar sin rehacer lo puesto.
    */
   | { type: 'blockAt'; dx: number; dy: number; kind?: string }
+  /**
+   * ¿Hay ya un bloque (de `kind`, si se da) en la celda ABSOLUTA que guarda un
+   * ancla? Es el `blockAt` para obras grandes (ADR 0035): la celda no está a un
+   * paso de la mascota sino en una coordenada del mundo, a la que camina.
+   */
+  | { type: 'blockAtCell'; target: string; kind?: string }
   | { type: 'not'; cond: SkillCondition };
 
 export const SELECT_STRATEGIES = ['nearest', 'strongestTool'] as const;
@@ -125,6 +140,13 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
          * simplemente nunca llega, y ese fallo es del mundo, no de la DSL.
          */
         stopAtDistance: z.number().int().min(0).max(10).optional(),
+        /**
+         * Quedar AL LADO del destino, nunca encima (ADR 0035): para colocar un
+         * bloque en una celda hay que estar adyacente, porque pararse en ella la
+         * dejaría ocupada por el propio cuerpo. Trata la celda como un obstáculo
+         * y, si ya está encima, se corre a un lado.
+         */
+        avoidTarget: z.boolean().optional(),
       })
       .strict(),
     z.object({ op: z.literal('moveStep'), dir: directionSchema }).strict(),
@@ -139,6 +161,16 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
     z.object({ op: z.literal('drop'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('makeRoom'), keep: z.array(z.string().min(1)) }).strict(),
     z.object({ op: z.literal('markAnchor'), store: z.string().min(1) }).strict(),
+    z
+      .object({
+        op: z.literal('markCell'),
+        from: z.string().min(1),
+        dx: z.number().int().min(-MAX_CELL_OFFSET).max(MAX_CELL_OFFSET),
+        dy: z.number().int().min(-MAX_CELL_OFFSET).max(MAX_CELL_OFFSET),
+        store: z.string().min(1),
+      })
+      .strict(),
+    z.object({ op: z.literal('placeAt'), kind: z.string().min(1), target: z.string().min(1) }).strict(),
     z
       .object({
         op: z.literal('place'),
@@ -183,7 +215,7 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
 export type SkillOp =
   | { op: 'findEntities'; query: EntityQuery; store: string }
   | { op: 'selectTarget'; from: string; strategy: SelectStrategy; store: string }
-  | { op: 'moveToward'; target: string; maxSteps: number; stopAtDistance?: number }
+  | { op: 'moveToward'; target: string; maxSteps: number; stopAtDistance?: number; avoidTarget?: boolean }
   | { op: 'moveStep'; dir: 'up' | 'down' | 'left' | 'right' }
   /**
    * Recorrer el mapa sin destino: cada paso va hacia la celda vecina menos
@@ -212,6 +244,19 @@ export type SkillOp =
    * desparramada; con esto puede construir en tandas, sin el tope de las manos.
    */
   | { op: 'markAnchor'; store: string }
+  /**
+   * Guarda como ancla la celda a `(dx,dy)` de OTRA ancla (`from`). Con esto una
+   * obra grande deriva cada celda absoluta desde el ancla base y la persigue
+   * como un lugar del mundo (ADR 0035). Los offsets llegan hasta el footprint.
+   */
+  | { op: 'markCell'; from: string; dx: number; dy: number; store: string }
+  /**
+   * Coloca un bloque (por tipo) en la celda ABSOLUTA que guarda un ancla, no a
+   * un paso de donde está parada (ADR 0035). El mundo revalida adyacencia, celda
+   * vacía y dentro del mapa: por eso la mascota camina hasta el lado de la celda
+   * antes. Es lo que levanta obras más grandes que su alcance de brazo.
+   */
+  | { op: 'placeAt'; kind: string; target: string }
   /**
    * Colocar un bloque que se lleva encima (por tipo) en la celda vecina que
    * marca el offset, desde la posición actual (ADR 0032). El offset es de una

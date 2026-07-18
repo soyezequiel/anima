@@ -56,6 +56,7 @@ const CONTRACT = {
     { type: 'consumedKind', kind: 'food' } as const,
     { type: 'energyIncreased' } as const,
   ],
+  criterionSource: 'motive' as const,
 };
 
 describe('desarrollo de skills con propuestas inválidas', () => {

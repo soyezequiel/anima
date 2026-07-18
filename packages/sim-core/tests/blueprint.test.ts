@@ -99,9 +99,17 @@ describe('validateBlueprint: una obra posible', () => {
     ).toContain('no se puede colocar "food"');
   });
 
-  it('rechaza un offset fuera del alcance del brazo (el esquema acota a ±1)', () => {
+  it('acepta un offset lejos del ancla (footprint 9×9): la obra se camina (ADR 0035)', () => {
+    // Antes el esquema acotaba a ±1 (alcance del brazo); ahora la mascota camina
+    // hasta la celda, así que un offset de 3 es una obra grande, no un error.
     expect(
-      rejectBp({ id: 'casa', placements: [{ kind: 'pared', offset: { x: 2, y: 0 } }] }),
+      validateBlueprint({ id: 'casa', placements: [{ kind: 'pared', offset: { x: 3, y: -2 } }] }, [], [paredRecipe], materia).ok,
+    ).toBe(true);
+  });
+
+  it('rechaza un offset más allá del footprint (±4)', () => {
+    expect(
+      rejectBp({ id: 'casa', placements: [{ kind: 'pared', offset: { x: 5, y: 0 } }] }),
     ).toContain('Plano inválido');
   });
 

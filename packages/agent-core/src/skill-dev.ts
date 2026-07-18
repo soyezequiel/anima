@@ -1,6 +1,11 @@
 import type { EventLog } from '@anima/shared';
 import type { ModelProvider, ModelResponse } from '@anima/model-providers';
-import type { EvaluationCriterion, SkillDefinition, SkillLibrary } from '@anima/skill-runtime';
+import type {
+  CriterionSource,
+  EvaluationCriterion,
+  SkillDefinition,
+  SkillLibrary,
+} from '@anima/skill-runtime';
 import { describeCriterion, validateSkillProgram } from '@anima/skill-runtime';
 import type { EvaluationReport, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import { applyEvaluation, evaluateSkill } from '@anima/skill-evaluator';
@@ -19,6 +24,14 @@ export interface SkillContract {
   motivation: string;
   expectedOutcome: string;
   successCriteria: EvaluationCriterion[];
+  /**
+   * Quién escribió la vara (ADR 0030). `motive`: la derivó el motor de una
+   * necesidad del cuerpo, sin trampa posible. `caretaker`: la propuso un modelo
+   * a partir de un pedido y la confirmó el cuidador. Un contrato de motivo no
+   * puede traer criterios de un modelo, y uno de pedido no se promueve sin que
+   * una persona lo haya mirado.
+   */
+  criterionSource: CriterionSource;
 }
 
 export interface SkillDevConfig {
@@ -242,6 +255,7 @@ export async function developSkill(
         program: validated.value,
         expectedOutcome: contract.expectedOutcome,
         successCriteria: contract.successCriteria,
+        criterionSource: contract.criterionSource,
         createdAt: config.now(),
       },
       best?.skillId,

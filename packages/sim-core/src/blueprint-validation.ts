@@ -8,11 +8,18 @@ import { recipeProduct, recipeProducing } from './recipes.js';
 import { PROTECTED_KINDS } from './recipe-validation.js';
 
 /**
- * Cuántos bloques admite un plano. Se junta todo antes de colocar (ADR 0032),
- * así que el tope real es la capacidad del inventario; este es un techo duro
- * por encima de cualquier inventario razonable, para que un plano no sea spam.
+ * Cuántos bloques admite un plano. Desde el ADR 0035 la obra se levanta
+ * caminando entre celda y celda, así que ya no la limita el inventario: este es
+ * un techo duro para que un plano no sea spam ni un mundo entero de paredes.
  */
-export const MAX_BLUEPRINT_BLOCKS = 8;
+export const MAX_BLUEPRINT_BLOCKS = 24;
+
+/**
+ * Cuán lejos del ancla puede caer una celda (ADR 0035): footprint 9×9. Antes era
+ * 1 —solo el alcance del brazo (ADR 0032)—; ahora la mascota camina hasta cada
+ * celda, así que la obra puede ser más grande que su alrededor inmediato.
+ */
+export const MAX_BLUEPRINT_OFFSET = 4;
 
 const blueprintSchema = z
   .object({
@@ -31,7 +38,10 @@ const blueprintSchema = z
               .max(40)
               .regex(/^[a-z][a-z0-9-]*$/, 'solo minúsculas, dígitos y guiones'),
             offset: z
-              .object({ x: z.number().int().min(-1).max(1), y: z.number().int().min(-1).max(1) })
+              .object({
+                x: z.number().int().min(-MAX_BLUEPRINT_OFFSET).max(MAX_BLUEPRINT_OFFSET),
+                y: z.number().int().min(-MAX_BLUEPRINT_OFFSET).max(MAX_BLUEPRINT_OFFSET),
+              })
               .strict(),
           })
           .strict(),

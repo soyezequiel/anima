@@ -239,6 +239,13 @@ export class AnimaAgent {
   private inventionToPropose: InventionProposal | null = null;
   /** Propuesta confirmada en vuelo: su veredicto del mundo se cuenta en el chat. */
   private awaitingInventionVerdict: { recipeId: string; outputKind: string } | null = null;
+  /**
+   * Contrato de una habilidad enseñada esperando el sí o el no del cuidador
+   * (ADR 0030). El criterio de un pedido son palabras, y las palabras no tienen
+   * firma en el mundo: nada se aprende contra una vara que una persona no miró.
+   * Efímero, como la vista previa de una receta: no persiste.
+   */
+  private pendingContract: LearningContract | null = null;
   /** Qué la dañó en el último tick: dispara el reflejo de apartarse. */
   private lastPain: { sourceId: string; sourceKind: string; tick: number } | null = null;
   private lastSelectedGoalId: string | null = null;
@@ -419,6 +426,7 @@ export class AnimaAgent {
     this.pendingInvention = null;
     this.inventionToPropose = null;
     this.awaitingInventionVerdict = null;
+    this.pendingContract = null;
   }
 
   // ---- legado ---------------------------------------------------------------
@@ -429,7 +437,14 @@ export class AnimaAgent {
    * heredada se re-evalúa en mundos aislados antes de poder promoverse.
    */
   adoptLegacy(testimony: LegacyTestimony): {
-    adoptedSkills: { name: string; version: number; promoted: boolean }[];
+    adoptedSkills: {
+      name: string;
+      version: number;
+      promoted: boolean;
+      /** Legado de pedido (o de origen ausente) esperando que la cuidadora
+       * confirme su criterio antes de promoverse (ADR 0030 fase E). */
+      needsConfirmation?: boolean;
+    }[];
   } {
     this.emit('legacy.read', {
       fromName: testimony.fromName,
@@ -471,7 +486,13 @@ export class AnimaAgent {
       });
     }
 
-    const adoptedSkills: { name: string; version: number; promoted: boolean }[] = [];
+    const adoptedSkills: {
+      name: string;
+      version: number;
+      promoted: boolean;
+      needsConfirmation?: boolean;
+    }[] = [];
+    let awaitingConfirmation = 0;
     for (const artifact of testimony.skills) {
       const candidate = this.config.library.addExperimental({
         name: artifact.name,
@@ -480,6 +501,13 @@ export class AnimaAgent {
         program: structuredClone(artifact.program),
         expectedOutcome: artifact.expectedOutcome,
         successCriteria: structuredClone(artifact.successCriteria),
+        // El origen de la vara viaja con el legado (ADR 0030): una skill de
+        // motivo se re-certifica sola en el mundo de la heredera; una de pedido
+        // arrastra la vara que su antecesora ya confirmó. Ausente = artefacto
+        // anterior al ADR, y así queda anotado para re-confirmarse.
+        ...(artifact.criterionSource !== undefined
+          ? { criterionSource: artifact.criterionSource }
+          : {}),
         createdAt: this.now(),
       });
       this.emit('skill.created', {
@@ -488,24 +516,67 @@ export class AnimaAgent {
         version: candidate.version,
         rationale: `artefacto heredado de ${testimony.fromName}`,
       });
-      const { promoted } = evaluateAndApply(
-        candidate,
-        {
-          library: this.config.library,
-          regressions: this.config.regressions,
-          scenarios: this.config.evaluationScenarios,
-          seeds: this.config.evaluationSeeds,
-          maxTicksPerCase: 200,
-          now: () => this.now(),
-        },
-        this.events,
-        this.tick,
-      );
-      adoptedSkills.push({ name: candidate.name, version: candidate.version, promoted });
+
+      // El criterio de un motivo (hambre, frío) es una constante del motor: la
+      // heredera lo re-derivaría igual y no admite trampa, así que se re-evalúa
+      // en su propio mundo y se promueve sola. El de un PEDIDO —o el AUSENTE, de
+      // un guardado anterior al ADR 0030— nació de palabras que la heredera no
+      // miró: promoverlo re-certificaría contra una vara que nadie confirmó, y
+      // el error se lavaría generación tras generación. Ese se adopta como
+      // experimental y espera que la cuidadora confirme su criterio (fase E).
+      if (artifact.criterionSource === 'motive') {
+        const { promoted } = evaluateAndApply(
+          candidate,
+          {
+            library: this.config.library,
+            regressions: this.config.regressions,
+            scenarios: this.config.evaluationScenarios,
+            seeds: this.config.evaluationSeeds,
+            maxTicksPerCase: 200,
+            now: () => this.now(),
+          },
+          this.events,
+          this.tick,
+        );
+        adoptedSkills.push({ name: candidate.name, version: candidate.version, promoted });
+        continue;
+      }
+
+      awaitingConfirmation += 1;
+      this.emit('skill.inherited.unconfirmed', {
+        skillId: candidate.id,
+        name: candidate.name,
+        version: candidate.version,
+        criteria: candidate.successCriteria.map(describeCriterion),
+        origin: artifact.criterionSource ?? 'ausente',
+      });
+      this.memory.recordEpisode({
+        kind: 'legacy',
+        summary: `heredé la conducta "${candidate.name}" pero su criterio necesita que mi cuidadora lo confirme`,
+        tick: this.tick,
+        importance: 0.6,
+      });
+      adoptedSkills.push({
+        name: candidate.name,
+        version: candidate.version,
+        promoted: false,
+        needsConfirmation: true,
+      });
     }
 
     if (testimony.message !== undefined && testimony.message.length > 0) {
       this.reply(`Mi antecesora me dejó un mensaje: "${testimony.message}"`);
+    }
+    // Las conductas heredadas por pedido no se dan por probadas hasta que su
+    // cuidadora confirme el criterio: se re-confirman re-enseñándolas (vuelven a
+    // pasar por el portón de la fase D). Decirlo evita que parezcan perdidas.
+    if (awaitingConfirmation > 0) {
+      const plural = awaitingConfirmation === 1;
+      this.reply(
+        `Heredé ${awaitingConfirmation} conducta${plural ? '' : 's'} que mi antecesora aprendió por ` +
+          `pedido. No ${plural ? 'la' : 'las'} doy por prob${plural ? 'ada' : 'adas'} hasta que ` +
+          `me ${plural ? 'la' : 'las'} vuelvas a enseñar y confirmes su criterio.`,
+      );
     }
     return { adoptedSkills };
   }
@@ -1177,6 +1248,33 @@ export class AnimaAgent {
       }
     }
 
+    // Un contrato de habilidad enseñada espera el mismo sí o no, y por la misma
+    // razón (ADR 0030): el criterio de un pedido lo confirma el cuidador antes
+    // de que se pruebe o se prometa nada. El "no" es información de primera —
+    // le pide una vara mejor, no cierra la puerta.
+    if (this.pendingContract) {
+      const pending = this.pendingContract;
+      this.pendingContract = null;
+      if (isAffirmativeReply(text)) {
+        this.confirmLearningContract(pending);
+        return;
+      }
+      if (isNegativeReply(text)) {
+        this.emit('skill.contract.declined', { name: pending.name });
+        this.memory.recordEpisode({
+          kind: 'unmet-request',
+          summary: `propuse aprender "${pending.name}" pero mi cuidador no aceptó ese criterio`,
+          tick: this.tick,
+          importance: 0.4,
+        });
+        this.reply(
+          `De acuerdo, no lo aprendo así. ¿Cómo sabrías vos que logré "${pending.name}"? ` +
+            `Decímelo y lo intento con esa vara.`,
+        );
+        return;
+      }
+    }
+
     // "continua" / "seguí" / "dale" se resuelve ANTES de cualquier modelo y
     // siempre igual: la misma palabra no puede unas veces repetir la última
     // orden, otras saludar y otras depender del humor del proveedor. Si hay
@@ -1388,6 +1486,41 @@ export class AnimaAgent {
       );
     if (existing) return; // Ya está en ello: no abrir el ciclo dos veces.
 
+    // La vara nació de palabras, así que todavía no promueve nada (ADR 0030):
+    // se muestra el criterio y se espera el sí del cuidador. `crear-casa` anunció
+    // "logrado cuando termina llevando un martillo" palabra por palabra — el bug
+    // estuvo siempre a la vista en el chat, faltaba que fuera un sí de verdad.
+    this.pendingContract = contract;
+    this.emit('skill.contract.preview', {
+      name: contract.name,
+      purpose: contract.purpose,
+      criteria: contract.successCriteria.map(describeCriterion),
+    });
+    this.reply(
+      `Todavía no sé hacerlo, pero quiero aprenderlo. Para mí "${contract.name}" va a estar ` +
+        `logrado cuando ${contract.successCriteria.map(describeCriterion).join(', y cuando ')}. ` +
+        `¿Lo confirmás así? Decime «sí» y me pongo a probarlo en mundos imaginados.`,
+    );
+  }
+
+  /**
+   * El cuidador confirmó el criterio (ADR 0030): recién ahora nace el objetivo
+   * de aprender. Antes de esto no había nada que perseguir — un contrato sin
+   * confirmar es una propuesta, no una empresa.
+   */
+  private confirmLearningContract(contract: LearningContract): void {
+    // Entre la propuesta y el sí pudo abrirse otro ciclo del mismo nombre (dos
+    // enseñanzas seguidas): no se abre dos veces.
+    const existing = this.goals
+      .all()
+      .find(
+        (goal) =>
+          goal.source === 'learning' &&
+          goal.learning?.name === contract.name &&
+          goal.status === 'active',
+      );
+    if (existing) return;
+
     const goal = this.goals.create(
       {
         description: `aprender: ${contract.name}`,
@@ -1414,9 +1547,7 @@ export class AnimaAgent {
       criteria: contract.successCriteria.map(describeCriterion),
     });
     this.reply(
-      `Todavía no sé hacerlo, pero quiero aprenderlo. Para mí "${contract.name}" va a estar ` +
-        `logrado cuando ${contract.successCriteria.map(describeCriterion).join(', y cuando ')}. ` +
-        `Déjame probarlo en mundos imaginados.`,
+      `¡Dale! Me pongo a aprender "${contract.name}" y lo pruebo en mundos imaginados.`,
     );
   }
 
@@ -2112,6 +2243,19 @@ export class AnimaAgent {
       return this.attemptSkillCreation(goal, perception);
     }
     if (step === 'ask-help') {
+      // Llegar aquí por la vía de la CAPACIDAD (no del recurso) significa que ya
+      // agotó aprender una conducta con lo que tiene y sigue trabada por algo
+      // físico. Ese fracaso propio le da permiso de tener una idea: lo que falta
+      // puede ser un objeto que todavía no existe (ADR 0036), así que intenta
+      // inventarlo antes de rendirse a pedir ayuda. Por la vía del recurso no:
+      // ahí no falta una idea, falta materia, y ninguna receta la conjura.
+      if (
+        !this.progress.blockedByMissingResource(goal.id) &&
+        this.invention.attemptsLeft(goal.id)
+      ) {
+        const invention = await this.inventForObstacle(goal, perception);
+        if (invention) return invention;
+      }
       this.progress.markHelpRequested(goal.id);
       this.emit('help.requested', { goalId: goal.id });
       return {
@@ -2131,6 +2275,41 @@ export class AnimaAgent {
     this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
     this.lastSelectedGoalId = null;
     return null;
+  }
+
+  /**
+   * Inventar desde el propio fracaso (ADR 0036). Las estrategias que sabe
+   * quedaron prohibidas por CAPACIDAD —un muro que sus herramientas no dentan,
+   * un paso que no logra abrir—, no por falta de recurso. Ese es exactamente el
+   * momento de tener una idea: lo que falta puede ser un objeto que todavía no
+   * existe. Hasta hoy solo el frío y el pedido del cuidador le daban permiso de
+   * inventar; su hambre bloqueada, no. Reusa el mismo pipeline (mismo crédito
+   * por objetivo, misma puerta del mundo) que el frío y las recetas por encargo.
+   *
+   * Si el mundo acepta el objeto, queda como receta suya y la conducta que la
+   * escalada fabrica después puede fabricarlo y usarlo. Si no hay materiales o
+   * ya gastó el crédito, devuelve null y la escalada sigue con su camino de
+   * siempre — inventar es un intento más, nunca un callejón.
+   */
+  private async inventForObstacle(
+    goal: Goal,
+    perception: Perception,
+  ): Promise<ActionIntent | null> {
+    // Un plan a medio proponer sigue entrando, hoja por hoja (ADR 0031).
+    const pending = this.invention.nextPlanStep(perception);
+    if (pending) return pending;
+    // Lo que su cuerpo aprendió que NO puede vencer hace la idea concreta —
+    // "algo que rompa el muro" en vez de un deseo vago. Sin barrera conocida,
+    // el problema es igual de honesto: lo que sabe usar no alcanza.
+    const barriers = this.memory
+      .factList()
+      .filter((f) => f.statement.includes('no puede dañar'))
+      .slice(-3)
+      .map((f) => f.statement);
+    const problem =
+      'no logro llegar al alimento: lo que sé usar no vence lo que me bloquea' +
+      (barriers.length > 0 ? ` (${barriers.join('; ')})` : '');
+    return this.invention.inventRecipe(problem, perception, { goalId: goal.id });
   }
 
   /**
@@ -2471,7 +2650,10 @@ export class AnimaAgent {
         purpose: 'dejar de perder calor: acercarse a una fuente de calor o construir una',
         motivation: 'tengo frío y lo que sé hacer no alcanza',
         expectedOutcome: 'su calor corporal sube y no se quema en el intento',
+        // El criterio lo dicta el motivo, no un modelo (ADR 0030): tener frío
+        // tiene firma objetiva en el mundo, así que la vara se escribe sola.
         successCriteria: [{ type: 'temperatureIncreased' }, { type: 'noDamageTaken' }],
+        criterionSource: 'motive',
       };
       const context = [
         ...this.experienceContext(contract.purpose),
@@ -2630,6 +2812,10 @@ export class AnimaAgent {
         motivation: `mi cuidador me pidió: "${contract.raw}"`,
         expectedOutcome: contract.expectedOutcome,
         successCriteria: contract.successCriteria,
+        // La vara nació de un pedido y la confirmó el cuidador antes de abrir
+        // este ciclo (ADR 0030): sin esa confirmación no habría objetivo que
+        // perseguir, así que llegar aquí ya implica un criterio mirado.
+        criterionSource: 'caretaker',
       },
       contract.context,
       this.practiceScenariosFor(contract.successCriteria),
@@ -2712,7 +2898,9 @@ export class AnimaAgent {
       purpose: 'llegar hasta el alimento aunque el camino directo esté bloqueado, y consumirlo',
       motivation: failures.join('; ') || 'el camino directo al alimento falló repetidamente',
       expectedOutcome: 'la mascota consume el alimento y su energía aumenta',
+      // Motivo (hambre): la vara la escribe el motor, no un modelo (ADR 0030).
       successCriteria: [{ type: 'consumedKind', kind: 'food' }, { type: 'energyIncreased' }],
+      criterionSource: 'motive',
     };
     const context = [
       ...failures,

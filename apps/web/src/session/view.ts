@@ -164,6 +164,7 @@ export interface ExperimentView {
   version: number | null;
   kind:
     | 'requested'
+    | 'contract-preview'
     | 'contract-agreed'
     | 'created'
     | 'test-started'

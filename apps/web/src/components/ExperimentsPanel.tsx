@@ -2,6 +2,7 @@ import type { GameView } from '../session/view.js';
 
 const KIND_LABEL: Record<string, string> = {
   requested: 'necesidad detectada',
+  'contract-preview': 'contrato propuesto',
   'contract-agreed': 'contrato acordado',
   created: 'candidata creada',
   'test-started': 'pruebas iniciadas',

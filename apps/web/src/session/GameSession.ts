@@ -712,9 +712,14 @@ export class GameSession {
     this.ingestAgentEvents();
 
     const adopted = result.adoptedSkills
-      .map(
-        (s) => `${s.name} (${s.promoted ? 'verificada y promovida' : 'rechazada en sus pruebas'})`,
-      )
+      .map((s) => {
+        const status = s.needsConfirmation
+          ? 'heredada, falta que confirmes su criterio'
+          : s.promoted
+            ? 'verificada y promovida'
+            : 'rechazada en sus pruebas';
+        return `${s.name} (${status})`;
+      })
       .join('; ');
     this.chat = [
       {
@@ -1042,6 +1047,14 @@ export class GameSession {
       switch (event.type) {
         case 'skill.requested':
           push(event, 'requested', `Necesita una habilidad: ${String(d.purpose)}`);
+          break;
+        case 'skill.contract.preview':
+          push(
+            event,
+            'contract-preview',
+            `Propone aprender "${String(d.name)}" y espera tu confirmación. Lo dará por ` +
+              `logrado si: ${(d.criteria as string[]).join('; ')}`,
+          );
           break;
         case 'skill.contract.agreed':
           push(

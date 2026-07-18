@@ -1,8 +1,9 @@
 # ADR 0030 — El criterio no lo escribe quien propone la skill
 
-Fecha: 2026-07-17 · Estado: **propuesta** (no aceptada) · Cierra la deuda del
-ADR 0006/0012 que el ADR 0029 declara «fase 0 innegociable», paga la brecha que
-el ADR 0020 dejó marcada como la más urgente, y bloquea al ADR 0029 entero.
+Fecha: 2026-07-17 · Estado: **aceptada** (2026-07-18: fases C+D+E implementadas)
+· Cierra la deuda del ADR 0006/0012 que el ADR 0029 declara «fase 0
+innegociable», paga la brecha que el ADR 0020 dejó marcada como la más urgente, y
+bloquea al ADR 0029 entero.
 
 > Colisión de numeración: el ADR 0029 reserva el 0030 para «skills en JS
 > enjaulado». Si esto se acepta, aquel corrimiento pasa a 0031/0032/0033: la
@@ -296,13 +297,48 @@ estrictamente mejor, **y las dos tareas desaparecen**:
 |---|---|---|---|---|
 | **A** | Tercer desenlace `inconclusive`: la chispa perdida no cuenta, rendirse sí | `evaluate.ts`, `promotion.ts` | Bajo | **hecha** |
 | **B** | Grilla derivada de la semilla del mundo, n=20 | `seeds.ts`, `GameSession.ts`, `milestone.ts` | Bajo | **hecha** |
-| **C** | Invariante: contrato de motivo ⇒ criterio del motor | `agent.ts:2305/2545`, `skill.ts:75` | Bajo | pendiente |
-| **D** | `pendingContract` + `ContractCard`: el cuidador confirma el criterio | `agent.ts:1329`, `GameSession.ts`, `ChatPanel.tsx` | Medio | pendiente |
-| **E** | `criterionSource` viaja en el artefacto, el legado y el guardado; migración de saves sin origen | `skill.ts`, `persistence/`, `agent.ts:439` | Bajo | pendiente |
+| **C** | Invariante: contrato de motivo ⇒ criterio del motor. `criterionSource: 'motive'` en los dos contratos del motor; `SkillContract.criterionSource` obligatorio | `agent.ts` (frío/hambre), `skill-dev.ts`, `skill.ts` | Bajo | **hecha** |
+| **D** | `pendingContract`: el cuidador confirma el criterio (mismo portón que `pendingInvention`, resuelto antes de cualquier modelo). El diálogo ya lo dice en voz alta; la confirmación viaja por chat («sí»/«no») y el panel de experimentos muestra `contract-preview` | `agent.ts`, `events.ts`, `GameSession.ts`, `view.ts`, `ExperimentsPanel.tsx` | Medio | **hecha** (falta el pulido del `ContractCard` en el chat) |
+| **E** | `criterionSource` viaja en el artefacto, el legado y el guardado; el legado `motive` se re-certifica solo, el `caretaker`/ausente NO se promueve sin re-confirmar | `skill.ts`, `agent.ts:439`, `GameSession.ts` | Bajo | **hecha** |
 | **F** | Re-correr la historia: que la v1 del ADR 0006 caiga por medida, no por suerte | tests, E2E | Bajo | **A+B verificadas** |
 
 A y B son independientes de C, D y E: se pueden hacer en cualquier orden. **F
 es la que dice si funcionó.**
+
+### Lo implementado en C+D (2026-07-18)
+
+- **`CriterionSource = 'motive' | 'caretaker'`** (`skill-runtime/skill.ts`) viaja
+  en `SkillDefinition`, `NewSkillInput` y `SkillContract`. `addExperimental` lo
+  hereda de la versión padre: revisar el programa no cambia quién escribió la vara.
+- **El portón de confirmación** (`agent.ts`): `startLearning` ya no crea el
+  objetivo — deriva el contrato, lo deja en `pendingContract`, emite
+  `skill.contract.preview` y dice el criterio en voz alta pidiendo el sí. El
+  siguiente mensaje se resuelve como el de `pendingInvention`, **antes de
+  cualquier consulta al modelo**: «sí» → `confirmLearningContract` abre el ciclo;
+  «no» → lo deja como propuesta y pide una vara mejor. Los motivos internos
+  (energía, frío, seguridad) siguen sin pedir permiso: su vara la escribe el
+  motor, no un modelo.
+### Lo implementado en E (2026-07-18)
+
+- **El origen persiste solo**: la biblioteca se serializa entera
+  (`SkillLibrary.serialize`), así que `criterionSource` viaja en el guardado sin
+  código de migración — un save anterior al ADR lo trae ausente, que es
+  exactamente «anterior al ADR» y dispara la re-confirmación.
+- **`adoptLegacy` parte por origen**: `motive` se re-evalúa y promueve sola (su
+  vara es una constante del motor, re-derivable, sin trampa); `caretaker` y
+  ausente se adoptan **experimentales y sin promover**, con un evento
+  `skill.inherited.unconfirmed`, un episodio y un aviso en el chat. Así el legado
+  deja de lavar una vara que nadie miró.
+- **La re-confirmación reusa la fase D**: una conducta heredada sin confirmar no
+  es estable, así que re-enseñarla vuelve a pasar por el portón de
+  `pendingContract` y promueve una versión con criterio confirmado. No hizo falta
+  una cola de confirmaciones al nacer.
+
+### Lo que queda (menor)
+
+- El «no» del cuidador a un contrato todavía no re-alimenta el reintento con el
+  criterio rechazado como contexto: hoy lo deja como propuesta y pide una vara
+  mejor de cero.
 
 ### Lo que F midió sobre A+B (semilla 5, `pnpm demo`)
 

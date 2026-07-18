@@ -39,6 +39,23 @@ export interface EvaluationCriterion {
 }
 
 /**
+ * De dónde viene la vara con la que se juzga una habilidad (ADR 0030). No es
+ * un adorno: es lo que impide que la mascota se apruebe su propio examen.
+ *
+ * - `motive`: el criterio lo deriva el motor de un estado medido de la criatura
+ *   (tener frío, tener hambre). Un motivo tiene firma objetiva en el mundo, así
+ *   que la condición de satisfacción se escribe sola y no admite trampa.
+ * - `caretaker`: el criterio nació de un pedido —palabras, sin firma en el
+ *   mundo—, así que lo propuso un modelo y lo confirmó el cuidador. Un pedido
+ *   sin confirmar no promueve nada: `holdingKind: martillo` es un logro válido,
+ *   pero puede no ser *ese* logro.
+ *
+ * Ausente en un artefacto quiere decir "anterior a este ADR": se re-confirma
+ * antes de volver a promoverse.
+ */
+export type CriterionSource = 'motive' | 'caretaker';
+
+/**
  * Un criterio propuesto por un modelo es tan poco confiable como un programa:
  * sin esta puerta, una habilidad podría "aprobarse" contra un contrato vacío
  * o incoherente. Cada forma exige exactamente los campos que el evaluador
@@ -165,6 +182,8 @@ export interface SkillDefinition {
 
   expectedOutcome: string;
   successCriteria: EvaluationCriterion[];
+  /** Quién escribió la vara (ADR 0030). Ausente = artefacto anterior al ADR. */
+  criterionSource?: CriterionSource;
   safetyInvariants: SafetyInvariant[];
 
   dependencies: SkillDependency[];
@@ -183,6 +202,7 @@ export interface NewSkillInput {
   program: SkillProgram;
   expectedOutcome: string;
   successCriteria: EvaluationCriterion[];
+  criterionSource?: CriterionSource;
   preconditions?: SkillPrecondition[];
   safetyInvariants?: SafetyInvariant[];
   dependencies?: SkillDependency[];
@@ -235,6 +255,14 @@ export class SkillLibrary {
       program: input.program,
       expectedOutcome: input.expectedOutcome,
       successCriteria: input.successCriteria,
+      // El origen de la vara viaja con la habilidad y se hereda de la versión
+      // padre si esta revisión no lo declara: revisar el programa no cambia
+      // quién escribió el criterio.
+      ...(input.criterionSource !== undefined
+        ? { criterionSource: input.criterionSource }
+        : parent?.criterionSource !== undefined
+          ? { criterionSource: parent.criterionSource }
+          : {}),
       safetyInvariants: input.safetyInvariants ?? [
         { description: 'No violar invariantes estructurales del mundo' },
       ],

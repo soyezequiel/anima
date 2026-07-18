@@ -59,6 +59,8 @@ interface MoveState {
   stepsTaken: number;
   /** Distancia Chebyshev a la que darse por llegada. */
   stopAtDistance: number;
+  /** Quedar al lado del destino, nunca encima (ADR 0035). */
+  avoidTarget: boolean;
   /** Celda destino del paso pendiente de resolver, para aprenderla si falla. */
   pendingDest?: string;
 }
@@ -398,6 +400,7 @@ export class SkillExecution {
           maxSteps: op.maxSteps,
           stepsTaken: 0,
           stopAtDistance: op.stopAtDistance ?? 1,
+          avoidTarget: op.avoidTarget ?? false,
         };
         const output = this.stepMove(perception);
         return output ?? null;
@@ -466,6 +469,27 @@ export class SkillExecution {
         this.vars.set(op.store, { anchor: { ...perception.self.position } });
         frame.index += 1;
         return null;
+      }
+      case 'markCell': {
+        // La celda absoluta = ancla base + offset. Si no hay base (variable que
+        // no es ancla), no hay dónde anclar: se cae la derivación y el programa
+        // sigue —la colocación de esa celda no encontrará su ancla y se saltea.
+        const base = this.resolveAnchor(op.from);
+        if (base) this.vars.set(op.store, { anchor: { x: base.x + op.dx, y: base.y + op.dy } });
+        frame.index += 1;
+        return null;
+      }
+      case 'placeAt': {
+        const cell = this.resolveAnchor(op.target);
+        const block = perception.self.heldItems.find((e) => e.kind === op.kind);
+        if (!cell || !block) {
+          this.finish('aborted', `no-cell-or-block:${op.kind}`);
+          return null;
+        }
+        frame.index += 1;
+        this.pendingSingle = true;
+        // La celda es absoluta; el mundo revalida adyacencia, vacío y bordes.
+        return this.emit({ type: 'place', itemId: block.id, at: { ...cell } });
       }
       case 'makeRoom': {
         // Solo actúa con las manos llenas: con lugar de sobra, juntar de más
@@ -538,7 +562,14 @@ export class SkillExecution {
       destination = current.position;
     }
     const selfPos = perception.self.position;
-    if (chebyshev(selfPos, destination) <= move.stopAtDistance) {
+    const dist = chebyshev(selfPos, destination);
+    // `avoidTarget`: llegar es quedar AL LADO (distancia 1..stopAt), nunca encima
+    // (distancia 0) — pararse en la celda la ocuparía y no se podría colocar ahí.
+    // Estando encima, no está "llegada": tiene que correrse a un lado.
+    const arrived = move.avoidTarget
+      ? dist >= 1 && dist <= move.stopAtDistance
+      : dist <= move.stopAtDistance;
+    if (arrived) {
       this.endMove('reached');
       return null;
     }
@@ -553,7 +584,7 @@ export class SkillExecution {
     // rechazado se aprende en observe() y el próximo tick se replanifica con
     // esa verdad. Sigue sin omnisciencia: rodea el muro solo si sabe por dónde.
     this.spatial.observe(perception);
-    const dir = this.pathStep(selfPos, destination, move.stopAtDistance, perception);
+    const dir = this.pathStep(selfPos, destination, move.stopAtDistance, perception, move.avoidTarget);
     if (!dir) {
       this.endMove('blocked');
       return null;
@@ -571,12 +602,22 @@ export class SkillExecution {
    * Devuelve null si ningún camino conocido llega — el "camino-bloqueado" de
    * siempre, ahora dicho tras haber considerado el rodeo y no solo la recta.
    */
-  private pathStep(from: Vec2, to: Vec2, stopAt: number, perception: Perception): Direction | null {
+  private pathStep(
+    from: Vec2,
+    to: Vec2,
+    stopAt: number,
+    perception: Perception,
+    avoidTarget = false,
+  ): Direction | null {
     const key = (x: number, y: number): string => `${x},${y}`;
     const obstacles = new Set<string>([...this.spatial.blocked, ...this.spatial.solids]);
     for (const e of perception.visibleEntities) {
       if ((e.solid || e.wet) && e.position) obstacles.add(key(e.position.x, e.position.y));
     }
+    // La celda destino como obstáculo: así el camino termina a su lado (donde se
+    // puede colocar) y nunca encima de ella (ADR 0035). El arranque no se filtra
+    // por obstáculos, así que estar YA encima igual encuentra el paso a un lado.
+    if (avoidTarget) obstacles.add(key(to.x, to.y));
     const bounds = perception.bounds;
     const inWorld = (x: number, y: number): boolean =>
       bounds
@@ -694,6 +735,11 @@ export class SkillExecution {
     return value;
   }
 
+  private resolveAnchor(varName: string): Vec2 | null {
+    const value = this.vars.get(varName);
+    return isAnchor(value) ? value.anchor : null;
+  }
+
   private evalCondition(cond: SkillCondition, perception: Perception): boolean {
     switch (cond.type) {
       case 'always':
@@ -753,6 +799,19 @@ export class SkillExecution {
           (e) =>
             e.position?.x === cx &&
             e.position.y === cy &&
+            (cond.kind === undefined || e.kind === cond.kind),
+        );
+      }
+      case 'blockAtCell': {
+        // Igual que `blockAt` pero sobre una celda ABSOLUTA guardada en un ancla
+        // (ADR 0035): no depende de dónde esté parada, así que vale también antes
+        // de caminar hasta ella. Sin el ancla, no hay celda que juzgar: false.
+        const cell = this.resolveAnchor(cond.target);
+        if (!cell) return false;
+        return perception.visibleEntities.some(
+          (e) =>
+            e.position?.x === cell.x &&
+            e.position.y === cell.y &&
             (cond.kind === undefined || e.kind === cond.kind),
         );
       }

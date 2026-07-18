@@ -192,6 +192,8 @@ describe('construir una casa es levantar una obra, no hacer un bloque', () => {
       },
     });
     const { agent, perception } = makeAgent(world, petId, provider);
+    // El ancla es donde arranca la obra: la posición al pedirla.
+    const base = { ...world.entities[petId]!.components.position! };
     agent.receiveUserMessage('construí una casa');
     for (let i = 0; i < 400; i++) {
       const intent = await agent.think(perception());
@@ -202,12 +204,64 @@ describe('construir una casa es levantar una obra, no hacer un bloque', () => {
       (e) => e.kind === 'pared-de-tronco' && e.components.position,
     );
     expect(paredes.length).toBe(7);
-    // Y cada una alrededor del ancla (footprint 3×3): distancia Chebyshev 1.
-    const pet = world.entities[petId]!.components.position!;
+    // Y cada una en su celda del plano (ancla base + offset), no donde quedó
+    // parada la mascota: la obra es una disposición en el mundo, no a su lado.
+    const expected = new Set(
+      world.blueprints
+        .find((b) => b.id === 'casa')!
+        .placements.map((p) => `${base.x + p.offset.x},${base.y + p.offset.y}`),
+    );
     for (const pared of paredes) {
-      const dx = Math.abs(pared.components.position!.x - pet.x);
-      const dy = Math.abs(pared.components.position!.y - pet.y);
-      expect(Math.max(dx, dy)).toBe(1);
+      const pos = pared.components.position!;
+      expect(expected.has(`${pos.x},${pos.y}`)).toBe(true);
+    }
+  });
+
+  it('obra grande: camina hasta celdas lejos del ancla, no solo su alrededor (ADR 0035)', async () => {
+    // Una pared larga hacia el norte: 6 celdas en fila a dos filas de distancia,
+    // más allá del alcance del brazo. La mascota tiene que CAMINAR hasta cada una.
+    const { world, petId } = openWorld();
+    world.recipes.push({
+      id: 'pared-de-tronco',
+      outcomes: [
+        {
+          weight: 1,
+          output: { kind: 'pared-de-tronco', components: { portable: {}, collider: { solid: true } } },
+        },
+      ],
+      ingredients: [{ kind: 'log', count: 1 }],
+    });
+    // Fila a y = base-2 (fuera del 3×3), de x = base-2 a base+3: seis paredes que
+    // el viejo footprint jamás habría permitido.
+    world.blueprints.push({
+      id: 'muralla',
+      placements: [-2, -1, 0, 1, 2, 3].map((dx) => ({
+        kind: 'pared-de-tronco',
+        offset: { x: dx, y: -2 },
+      })),
+    });
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'muralla' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    const base = { ...world.entities[petId]!.components.position! };
+    agent.receiveUserMessage('construí una muralla');
+    for (let i = 0; i < 400; i++) {
+      const intent = await agent.think(perception());
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+    const paredes = allEntities(world).filter(
+      (e) => e.kind === 'pared-de-tronco' && e.components.position,
+    );
+    // Las seis, cada una en su columna, todas a dos filas del ancla — imposible
+    // sin caminar hasta ellas.
+    expect(paredes.length).toBe(6);
+    const cells = new Set(paredes.map((p) => `${p.components.position!.x},${p.components.position!.y}`));
+    for (const dx of [-2, -1, 0, 1, 2, 3]) {
+      expect(cells.has(`${base.x + dx},${base.y - 2}`)).toBe(true);
     }
   });
 

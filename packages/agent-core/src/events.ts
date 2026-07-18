@@ -10,6 +10,19 @@ export type AgentEventType =
   | 'strategy.failed'
   | 'strategy.forbidden'
   | 'skill.requested'
+  /**
+   * Vista previa del contrato de una habilidad enseñada (ADR 0030): se le
+   * muestra el criterio al cuidador y se espera su sí antes de aprender nada.
+   */
+  | 'skill.contract.preview'
+  /** El cuidador rechazó el criterio propuesto: no se aprende contra esa vara. */
+  | 'skill.contract.declined'
+  /**
+   * Conducta heredada de un legado cuyo criterio nació de un pedido (o falta):
+   * se adopta experimental y NO se promueve hasta que la cuidadora lo confirme
+   * (ADR 0030 fase E). Sin esto, el legado lavaría una vara que nadie miró.
+   */
+  | 'skill.inherited.unconfirmed'
   /** Contrato acordado con el cuidador antes de intentar aprender algo. */
   | 'skill.contract.agreed'
   | 'skill.created'

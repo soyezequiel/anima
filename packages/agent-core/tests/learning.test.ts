@@ -108,7 +108,9 @@ describe('aprender una conducta que el cuidador pide', () => {
 
     const result = await runAgentInWorld(bundle.world, agent, {
       maxTicks: 40,
-      userMessagesAt: { 0: 'baila' },
+      // El criterio de un pedido lo confirma el cuidador (ADR 0030): "baila"
+      // muestra la vara, "sí" la acepta y recién ahí arranca el aprendizaje.
+      userMessagesAt: { 0: 'baila', 1: 'sí' },
     });
 
     // La habilidad existe de verdad: pasó por el evaluador, no por la charla.
@@ -116,7 +118,8 @@ describe('aprender una conducta que el cuidador pide', () => {
     expect(learned).toBeDefined();
     expect(agent.events.ofType('skill.promoted')).toHaveLength(1);
 
-    // Y el contrato quedó a la vista antes de intentar nada.
+    // El criterio se le mostró y se confirmó antes de intentar nada.
+    expect(agent.events.ofType('skill.contract.preview')).toHaveLength(1);
     const agreed = agent.events.ofType('skill.contract.agreed');
     expect(agreed).toHaveLength(1);
     expect(agreed[0]?.data.criteria).toEqual([
@@ -151,8 +154,10 @@ describe('aprender una conducta que el cuidador pide', () => {
     const { agent, bundle } = makeAgent(provider);
 
     const result = await runAgentInWorld(bundle.world, agent, {
+      // Solo la primera vez hay contrato que confirmar; la segunda es una orden
+      // de correr lo ya aprendido, sin vara nueva que mirar.
       maxTicks: 60,
-      userMessagesAt: { 0: 'baila', 25: 'baila otra vez' },
+      userMessagesAt: { 0: 'baila', 1: 'sí', 25: 'baila otra vez' },
     });
 
     const said = speechOf(result.worldEvents);
@@ -179,7 +184,7 @@ describe('aprender una conducta que el cuidador pide', () => {
 
     await runAgentInWorld(bundle.world, agent, {
       maxTicks: 60,
-      userMessagesAt: { 0: 'baila', 25: 'baila otra vez' },
+      userMessagesAt: { 0: 'baila', 1: 'sí', 25: 'baila otra vez' },
     });
 
     const commands = requestsOfKind(provider.seen, 'interpret.command');
@@ -210,7 +215,7 @@ describe('honestidad cuando no puede', () => {
 
     const result = await runAgentInWorld(bundle.world, agent, {
       maxTicks: 40,
-      userMessagesAt: { 0: 'baila' },
+      userMessagesAt: { 0: 'baila', 1: 'sí' },
     });
 
     expect(library.findStable('baile-basico')).toBeUndefined();
@@ -288,7 +293,7 @@ describe('honestidad cuando no puede', () => {
 
     const result = await runAgentInWorld(bundle.world, agent, {
       maxTicks: 80,
-      userMessagesAt: { 0: 'sentate en la silla' },
+      userMessagesAt: { 0: 'sentate en la silla', 1: 'sí' },
     });
 
     // Se aprendió de verdad: el evaluador la midió en mundos con silla (la

@@ -353,23 +353,23 @@ export function buildFireProgram(
 }
 
 /**
- * Levantar una obra en tandas (ADR 0034, que releva el "juntar todo primero"
- * del ADR 0032). En vez de reunir TODOS los bloques de una —lo que ataba la
- * obra a las 6 manos—, la levanta por tandas de a lo sumo una manada de bloques,
- * volviendo siempre al mismo punto:
+ * Levantar una obra caminando entre celda y celda (ADR 0035, que releva el
+ * footprint 3×3 del ADR 0032 y usa las tandas del ADR 0034). La obra ya no tiene
+ * que caber alrededor de la mascota ni entrarle en las manos:
  *
- * 1. **Recordar el ancla**: la celda donde arranca es el centro de la casa. Se
- *    guarda una vez y no se mueve; las colocaciones son relativas a ella.
+ * 1. **Recordar el ancla base** (`markAnchor`): la celda donde arranca fija el
+ *    origen de la obra. Cada celda del plano es ese ancla más su offset.
  * 2. **Por cada tanda** (hasta `capacity` bloques): juntar los bloques de la
  *    tanda en un solo viaje (los recoge o los fabrica, soltando sobras si hace
- *    falta), volver al ancla, y colocar cada celda que todavía no tenga su
- *    bloque (`blockAt`).
+ *    falta), y después ir CELDA POR CELDA: derivar la coordenada absoluta
+ *    (`markCell`), caminar hasta su lado (`moveToward` a distancia 1) y colocar
+ *    ahí (`placeAt`).
  *
- * Juntar la tanda entera antes de volver es lo que la hace rendir: buscar
- * material mueve a la mascota, y traer de a uno multiplicaba los cruces del
- * mapa. Volver al ancla mantiene las colocaciones en su lugar; `blockAt` la
- * vuelve idempotente: puede irse a comer a mitad de la obra y retomar sin
- * rehacer lo puesto. No hay entidad al final: la casa es las paredes puestas.
+ * Juntar la tanda antes de repartir es lo que rinde: buscar material mueve mucho
+ * a la mascota, y traer de a uno multiplicaba los cruces. `blockAtCell` la vuelve
+ * idempotente —una celda ya puesta se saltea—, así que puede irse a comer a
+ * mitad de la obra y retomar. Límite honesto: si al colocar se tapia el paso a
+ * una celda que falta, esa queda a medias (el mundo siendo honesto, ADR 0032).
  */
 export function buildStructureProgram(
   blueprint: Blueprint,
@@ -383,15 +383,8 @@ export function buildStructureProgram(
   // La materia de la obra no se suelta al hacer lugar: son los bloques del plano.
   const keepKinds = [...blueprintCounts(blueprint).keys()];
   const capacity = Math.max(1, options.capacity ?? 6);
-  const ANCHOR = 'obra-ancla';
-  // Volver EXACTO a la celda del ancla (Chebyshev 0): las colocaciones se miden
-  // desde donde está parada, así que un paso de más las corre de lugar.
-  const returnToAnchor: SkillOp = {
-    op: 'moveToward',
-    target: ANCHOR,
-    maxSteps: MAX_REPEAT_LIMIT,
-    stopAtDistance: 0,
-  };
+  const BASE = 'obra-ancla';
+  const CELL = 'obra-celda';
   const fetchOptions = (): Parameters<typeof fetchOrMakeOps>[1] => ({
     ...(options.recipes ? { recipes: options.recipes } : {}),
     ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
@@ -399,9 +392,9 @@ export function buildStructureProgram(
     searchFirst: true,
   });
 
-  const steps: SkillOp[] = [{ op: 'markAnchor', store: ANCHOR }];
-  // En tandas de a lo sumo `capacity` colocaciones: una casa de 8 con 6 manos
-  // son dos viajes, no un imposible.
+  const steps: SkillOp[] = [{ op: 'markAnchor', store: BASE }];
+  // En tandas de a lo sumo `capacity` colocaciones: una obra grande son varios
+  // viajes de acopio, no un imposible.
   for (let i = 0; i < blueprint.placements.length; i += capacity) {
     const batch = blueprint.placements.slice(i, i + capacity);
     const counts = new Map<string, number>();
@@ -419,28 +412,37 @@ export function buildStructureProgram(
         body: fetchOrMakeOps(kind, fetchOptions(), 0),
       });
     }
-    // Buscar movió a la mascota: un solo regreso al centro y a colocar la tanda.
-    steps.push(returnToAnchor);
+    // Y repartir la tanda: cada bloque a su celda, caminando hasta ella.
     for (const placement of batch) {
-      steps.push({
-        op: 'branch',
-        // Solo si esa celda todavía no tiene su bloque: retomar sin repetir.
-        if: {
-          type: 'not',
-          cond: { type: 'blockAt', dx: placement.offset.x, dy: placement.offset.y, kind: placement.kind },
+      steps.push(
+        // La coordenada absoluta de esta celda = ancla base + offset del plano.
+        { op: 'markCell', from: BASE, dx: placement.offset.x, dy: placement.offset.y, store: CELL },
+        {
+          op: 'branch',
+          // Solo si esa celda todavía no tiene su bloque: retomar sin repetir.
+          if: { type: 'not', cond: { type: 'blockAtCell', target: CELL, kind: placement.kind } },
+          // Y solo si de verdad lo tiene en la mano: si una tirada falló y le
+          // faltó el bloque, deja la celda a medias en vez de abortar la obra.
+          then: [
+            {
+              op: 'branch',
+              if: { type: 'holdingCount', kind: placement.kind, count: 1 },
+              then: [
+                // Caminar hasta el LADO de la celda (nunca encima: el mundo la
+                // vería ocupada por la propia mascota) y colocar ahí.
+                {
+                  op: 'moveToward',
+                  target: CELL,
+                  maxSteps: MAX_REPEAT_LIMIT,
+                  stopAtDistance: 1,
+                  avoidTarget: true,
+                },
+                { op: 'placeAt', kind: placement.kind, target: CELL },
+              ],
+            },
+          ],
         },
-        // Y solo si de verdad lo tiene en la mano: si una tirada falló y le
-        // faltó el bloque, deja la celda a medias en vez de abortar la obra.
-        then: [
-          {
-            op: 'branch',
-            if: { type: 'holdingCount', kind: placement.kind, count: 1 },
-            then: [
-              { op: 'place', kind: placement.kind, dx: placement.offset.x, dy: placement.offset.y },
-            ],
-          },
-        ],
-      });
+      );
     }
   }
   return steps;
