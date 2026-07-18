@@ -63,6 +63,11 @@ const session = await GameSession.create({
 busyRef.notify = (busy) => session.setAiBusy(busy);
 thoughtRef.notify = (thought) => session.noteAiThought(thought);
 
+// Ayuda de desarrollo: la sesión a mano en la consola (window.anima) para
+// inspeccionar el view model o simular estados (p. ej. setAiBusy) sin
+// conectar un proveedor real. No es API: nada del código la usa.
+(globalThis as { anima?: GameSession }).anima = session;
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App session={session} account={cloud.account} />

@@ -2,13 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { emojiFor } from '../phaser/appearance.js';
 import type { GameSession } from '../session/GameSession.js';
 import type {
+  AiWaitView,
   ChatEntry as ChatEntryView,
   ExperimentView,
   GameView,
   RecipeCardView,
+  SkillDevProgressView,
   ThoughtView,
 } from '../session/view.js';
 import { parseReasoning, parseReasoningStep } from './reasoning.js';
+import { skillDevLine, ThinkingClock } from './thinking.js';
 
 /**
  * Chat como FEED unificado. Por defecto («Todo») mezcla la charla con los
@@ -139,7 +142,17 @@ function ThoughtCard({ thought }: { thought: ThoughtView }) {
   );
 }
 
-function ChatThinking({ thought, name }: { thought: ThoughtView | null; name: string }) {
+function ChatThinking({
+  thought,
+  name,
+  skillDev,
+  wait,
+}: {
+  thought: ThoughtView | null;
+  name: string;
+  skillDev: SkillDevProgressView | null;
+  wait: AiWaitView | null;
+}) {
   const steps = thought?.reasoning ?? [];
   // En vivo solo cabe el titular del último paso: el crudo desbordaba la burbuja.
   const headline = steps.length > 0 ? parseReasoningStep(steps.at(-1)!).headline : undefined;
@@ -154,7 +167,13 @@ function ChatThinking({ thought, name }: { thought: ThoughtView | null; name: st
             <i />
             <i />
           </span>
+          {wait && <ThinkingClock wait={wait} />}
         </span>
+        {skillDev && (
+          <span className="thinking-progress" data-testid="chat-skilldev">
+            {skillDevLine(skillDev)}
+          </span>
+        )}
         {headline !== undefined && (
           <span className="thinking-headline" key={steps.length}>
             {cleanHeadline(headline)}
@@ -229,7 +248,14 @@ export function ChatFeedPanel({ view, session }: { view: GameView; session: Game
           if (item.t === 'milestone') return <MilestoneCard key={`m${i}`} exp={item.exp} />;
           return <ThoughtCard key={`t${i}`} thought={item.thought} />;
         })}
-        {view.aiBusy && <ChatThinking thought={view.currentThought} name={view.identity.name} />}
+        {view.aiBusy && (
+          <ChatThinking
+            thought={view.currentThought}
+            name={view.identity.name}
+            skillDev={view.skillDev}
+            wait={view.aiWait}
+          />
+        )}
         {queued.map((entry, i) => (
           <ChatRow key={`q${i}`} entry={entry} prev={queued[i - 1]} petName={view.identity.name} />
         ))}

@@ -14,6 +14,12 @@
       "port": 5174
     },
     {
+      "name": "web-alt2",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@anima/web", "dev", "--port", "5175"],
+      "port": 5175
+    },
+    {
       "name": "api",
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "api", "dev"],

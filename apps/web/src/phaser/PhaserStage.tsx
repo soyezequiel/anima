@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { GameView } from '../session/view.js';
 import { DND_ITEM_KIND } from '../dnd.js';
+import { DreamOverlay } from '../components/DreamOverlay.js';
+import { skillDevLine, ThinkingClock } from '../components/thinking.js';
 import { KIND_EMOJI } from './appearance.js';
 import { BASE_CELL, WorldScene } from './WorldScene.js';
 
@@ -165,12 +167,32 @@ export function PhaserStage({
         top: view.pet.y * cell - 6,
       }}
     >
-      <span>pensando</span>
-      <span className="thinking-dots" aria-hidden="true">
-        <i />
-        <i />
-        <i />
+      <span className="thinking-bubble-row">
+        <span>{view.currentThought?.label ?? 'pensando'}</span>
+        <span className="thinking-dots" aria-hidden="true">
+          <i />
+          <i />
+          <i />
+        </span>
       </span>
+      {view.skillDev && (
+        <span className="thinking-bubble-progress" data-testid="stage-skilldev">
+          {skillDevLine(view.skillDev)}
+        </span>
+      )}
+      {view.aiWait && <ThinkingClock wait={view.aiWait} />}
+    </div>
+  );
+
+  // Presupuesto biológico agotado (ADR 0040): el tiempo del mundo está
+  // suspendido a propósito. Decirlo —con reloj— es lo que separa "espera
+  // deliberada" de "se colgó".
+  const timeHeld = view.aiWait?.held ?? false;
+  const heldChip = timeHeld && view.aiWait && (
+    <div className="time-held-chip" data-testid="time-held" role="status" aria-live="polite">
+      <span aria-hidden="true">⏳</span>
+      <span>el mundo espera su mente</span>
+      <ThinkingClock wait={view.aiWait} />
     </div>
   );
 
@@ -227,7 +249,7 @@ export function PhaserStage({
   return (
     <div className="stage-wrap" ref={boxRef}>
       <div
-        className="stage-board"
+        className={timeHeld ? 'stage-board stage-held' : 'stage-board'}
         style={{ width: cols * cell, height: rows * cell }}
         onDragOver={handleDragOver}
         onDragLeave={() => setDropCell(null)}
@@ -238,9 +260,11 @@ export function PhaserStage({
         <div ref={hostRef} />
         {bubble}
         {thinkingBubble}
+        {heldChip}
         {pickupFlash}
         {hoverTip}
         {dropHint}
+        <DreamOverlay dreams={view.dreams} active={view.aiBusy} petColor={view.petColor} />
       </div>
     </div>
   );

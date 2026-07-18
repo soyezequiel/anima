@@ -89,6 +89,9 @@ export type AgentEventType =
   /** Se apartó de algo que la estaba dañando. Reflejo del cuerpo, no decisión. */
   | 'pain.reflex'
   /** Fue a donde recordaba algo y ya no estaba: el recuerdo se descarta. */
-  | 'place.invalidated';
+  | 'place.invalidated'
+  /** El ciclo de desarrollo quedó practicando en segundo plano (ADR 0043):
+   * ella sigue viviendo y un think futuro consumirá el veredicto. */
+  | 'skill.dev.background';
 
 export type AgentEvent = StructuredEvent<AgentEventType>;

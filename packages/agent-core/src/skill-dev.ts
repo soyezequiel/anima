@@ -7,7 +7,12 @@ import type {
   SkillLibrary,
 } from '@anima/skill-runtime';
 import { describeCriterion, validateSkillProgram } from '@anima/skill-runtime';
-import type { EvaluationReport, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
+import type {
+  EvaluationCaseHook,
+  EvaluationReport,
+  NamedScenario,
+  RegressionStore,
+} from '@anima/skill-evaluator';
 import { applyEvaluation, evaluateSkill } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
 
@@ -44,6 +49,8 @@ export interface SkillDevConfig {
   /** Cuántas versiones puede intentar antes de rendirse (propuesta + revisiones). */
   maxVersions: number;
   now: () => string;
+  /** Oyente de los mundos imaginados: la UI dibuja los "sueños" con esto. */
+  onCase?: EvaluationCaseHook;
 }
 
 export interface SkillDevOutcome {
@@ -61,7 +68,7 @@ export function evaluateAndApply(
   skill: SkillDefinition,
   config: Pick<
     SkillDevConfig,
-    'library' | 'regressions' | 'scenarios' | 'seeds' | 'maxTicksPerCase' | 'now'
+    'library' | 'regressions' | 'scenarios' | 'seeds' | 'maxTicksPerCase' | 'now' | 'onCase'
   >,
   events: EventLog<AgentEvent>,
   tick: number,
@@ -84,6 +91,7 @@ export function evaluateAndApply(
     regressions: config.regressions.forSkill(skill.name),
     maxTicks: config.maxTicksPerCase,
     library: config.library,
+    ...(config.onCase ? { onCase: config.onCase } : {}),
   });
   const decisionOptions: Parameters<typeof applyEvaluation>[4] = { now: config.now };
   if (baseline) decisionOptions.baseline = baseline;
@@ -135,7 +143,14 @@ export async function developSkill(
   events.emit({
     type: 'skill.requested',
     tick,
-    data: { name: contract.name, purpose: contract.purpose, motivation: contract.motivation },
+    data: {
+      name: contract.name,
+      purpose: contract.purpose,
+      motivation: contract.motivation,
+      // Cuántas versiones puede costar el ciclo: la UI lo usa para decir
+      // "intento 2 de 8" mientras el cuidador espera.
+      maxVersions: config.maxVersions,
+    },
   });
 
   const reports: EvaluationReport[] = [];

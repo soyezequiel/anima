@@ -249,6 +249,72 @@ export interface ThoughtView {
   tick: number;
 }
 
+/**
+ * Un mundo imaginado durante la evaluación de una habilidad: la escenografía
+ * como empezó y el camino que la mascota recorrió en él. La UI los dibuja
+ * como "sueños" mientras piensa — es la evaluación real, no una animación
+ * inventada. Efímeros: no se guardan.
+ */
+export interface DreamView {
+  /** Identidad estable para React: skill@versión:escenario:semilla. */
+  id: string;
+  skillName: string;
+  version: number;
+  scenario: string;
+  seed: number;
+  verdict: 'passed' | 'failed' | 'inconclusive';
+  width: number;
+  height: number;
+  entities: {
+    kind: string;
+    x: number;
+    y: number;
+    solid?: boolean;
+    edible?: boolean;
+    warm?: boolean;
+    growsFood?: boolean;
+  }[];
+  path: { x: number; y: number }[];
+}
+
+/**
+ * El ciclo de desarrollo de una habilidad visto en vivo: en qué versión va,
+ * qué está haciendo con ella y cómo le fue a las anteriores. Es lo que
+ * convierte la espera larga (un developSkill puede encadenar varias consultas
+ * al modelo) en una historia que se puede seguir. Efímero, como aiBusy.
+ */
+export interface SkillDevProgressView {
+  skillName: string;
+  /** Versión de la candidata actual; null antes de la primera propuesta. */
+  version: number | null;
+  /** Tope de versiones del ciclo; null en eventos de sesiones viejas. */
+  maxVersions: number | null;
+  /** Cuántas versiones ya se probaron (la actual no incluida). */
+  attemptsDone: number;
+  phase: 'designing' | 'testing' | 'revising' | 'passed';
+  /** Casos del último banco de pruebas (escenarios × semillas + regresiones). */
+  casesTotal: number | null;
+  /** Tasa de éxito de la última versión probada (0..1); null sin pruebas aún. */
+  lastRate: number | null;
+  /** La mejor tasa lograda hasta ahora (0..1); null sin pruebas aún. */
+  bestRate: number | null;
+}
+
+/**
+ * La espera de una consulta al modelo real, con lo que hace falta para que no
+ * parezca un cuelgue: desde cuándo corre, cuánto suele tardar una consulta de
+ * ese tipo (historial de esta sesión) y si el mundo ya se sostiene porque el
+ * presupuesto biológico se agotó (ADR 0040). null cuando nadie piensa afuera.
+ */
+export interface AiWaitView {
+  /** Date.now() del arranque de la consulta en vuelo. */
+  startedAtMs: number;
+  /** Mediana de las últimas consultas del mismo tipo; null sin historial. */
+  expectedMs: number | null;
+  /** true: presupuesto agotado, el tiempo del mundo está suspendido. */
+  held: boolean;
+}
+
 export interface DevEventView {
   seq: number;
   tick: number;
@@ -317,6 +383,12 @@ export interface GameView {
   thoughts: ThoughtView[];
   /** La consulta todavía en vuelo, si hay una. */
   currentThought: ThoughtView | null;
+  /** La espera de la consulta en vuelo; null cuando no piensa afuera. */
+  aiWait: AiWaitView | null;
+  /** El ciclo de desarrollo de habilidad en curso, visto en vivo. */
+  skillDev: SkillDevProgressView | null;
+  /** Mundos imaginados recientes (el más nuevo primero), para dibujarlos. */
+  dreams: DreamView[];
   devEvents: DevEventView[];
   regressions: { scenarioName: string; seed: number; description: string }[];
   /** Rasgos emergentes derivados de su historia (0–4, deterministas). */

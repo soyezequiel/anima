@@ -16,6 +16,10 @@ export class WorldScene extends Phaser.Scene {
   private sprites = new Map<string, Phaser.GameObjects.Container>();
   private pet: Phaser.GameObjects.Container | null = null;
   private petBody: Phaser.GameObjects.Arc | null = null;
+  /** Los ojos, para la mirada pensativa (se van hacia arriba mientras piensa). */
+  private petEyes: Phaser.GameObjects.Arc[] = [];
+  /** Balanceo del cuerpo mientras el modelo piensa; null cuando no piensa. */
+  private thinkingSway: Phaser.Tweens.Tween | null = null;
   private grid: Phaser.GameObjects.Graphics | null = null;
   private cell = BASE_CELL;
   private lastView: GameView | null = null;
@@ -39,6 +43,7 @@ export class WorldScene extends Phaser.Scene {
     this.drawGrid(view);
     this.syncEntities(view);
     this.syncPet(view);
+    this.syncThinkingPose(view);
   }
 
   /**
@@ -53,6 +58,11 @@ export class WorldScene extends Phaser.Scene {
     this.grid = null;
     for (const sprite of this.sprites.values()) this.discard(sprite);
     this.sprites.clear();
+    // Los tweens de la pose pensativa apuntan a los HIJOS del contenedor:
+    // matarlos antes de destruirlo, o revientan al siguiente frame.
+    for (const eye of this.petEyes) this.tweens.killTweensOf(eye);
+    this.petEyes = [];
+    this.thinkingSway = null;
     this.discard(this.pet);
     this.pet = null;
     this.petBody = null;
@@ -303,6 +313,7 @@ export class WorldScene extends Phaser.Scene {
       this.pet = this.add.container(pixel.x, pixel.y, [body, eyeL, eyeR]);
       this.pet.setDepth(2);
       this.petBody = body;
+      this.petEyes = [eyeL, eyeR];
     } else if (this.pet.x !== pixel.x || this.pet.y !== pixel.y) {
       this.tweens.add({ targets: this.pet, x: pixel.x, y: pixel.y, duration: 160 });
     }
@@ -311,5 +322,53 @@ export class WorldScene extends Phaser.Scene {
     this.pet.setAlpha(view.pet.alive ? 1 : 0.35);
     // Debajo de algo, el objeto la tapa; en cualquier otro caso, ella tapa.
     this.pet.setDepth(mount?.mode === 'underneath' ? 0.5 : 2);
+  }
+
+  /**
+   * Lenguaje corporal del pensar: mientras el modelo trabaja, el cuerpo se
+   * balancea despacio y la mirada se va hacia arriba, como quien busca la
+   * idea en el techo. Es puro dibujo — no toca la simulación — y se deshace
+   * solo cuando la respuesta llega.
+   */
+  private syncThinkingPose(view: GameView): void {
+    const pet = this.pet;
+    if (!pet) return;
+    const busy = view.aiBusy && (view.pet?.alive ?? false);
+    const k = this.cellScale;
+    if (busy && !this.thinkingSway) {
+      pet.setAngle(-3);
+      this.thinkingSway = this.tweens.add({
+        targets: pet,
+        angle: 3,
+        duration: 1400,
+        yoyo: true,
+        repeat: -1,
+        ease: 'Sine.easeInOut',
+      });
+      this.petEyes.forEach((eye, i) => {
+        this.tweens.killTweensOf(eye);
+        this.tweens.add({
+          targets: eye,
+          x: (i === 0 ? -6 : 12) * k,
+          y: -9 * k,
+          duration: 260,
+          ease: 'Quad.easeOut',
+        });
+      });
+    } else if (!busy && this.thinkingSway) {
+      this.thinkingSway.stop();
+      this.thinkingSway = null;
+      this.tweens.add({ targets: pet, angle: 0, duration: 200, ease: 'Quad.easeOut' });
+      this.petEyes.forEach((eye, i) => {
+        this.tweens.killTweensOf(eye);
+        this.tweens.add({
+          targets: eye,
+          x: (i === 0 ? -9 : 9) * k,
+          y: -6 * k,
+          duration: 260,
+          ease: 'Quad.easeOut',
+        });
+      });
+    }
   }
 }

@@ -716,12 +716,16 @@ select {
   position: absolute;
   transform: translate(-50%, -100%);
   display: flex;
-  align-items: center;
-  gap: 7px;
+  /* En columna desde que la burbuja también cuenta el progreso del ciclo y el
+     reloj: el pill de una sola línea no tenía dónde ponerlos. */
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   min-height: 30px;
-  padding: 6px 10px;
+  max-width: 290px;
+  padding: 6px 12px;
   border: 1px solid #c084fc;
-  border-radius: 999px;
+  border-radius: 14px;
   background: rgba(59, 7, 100, 0.96);
   color: #f3e8ff;
   font-size: 12px;
@@ -729,6 +733,23 @@ select {
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.48);
   pointer-events: none;
   z-index: 6;
+}
+
+.thinking-bubble-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* El renglón del ciclo de desarrollo: "probando la v3 en 40 mundos...". */
+.thinking-bubble-progress {
+  font-weight: 500;
+  font-size: 11px;
+  color: #d8b4fe;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 
 .thinking-bubble::after {
@@ -1935,4 +1956,117 @@ button:disabled {
 
 .source-world strong {
   color: #60a5fa;
+}
+
+/*
+ * La espera visible (ADR 0040 y compañía): reloj de la consulta en vuelo,
+ * progreso del ciclo de desarrollo en el chat, la detención del tiempo dicha
+ * en voz alta y el visor de sueños. Todo esto existe para que pensar largo no
+ * parezca un cuelgue: la espera se cuenta, no se disimula.
+ */
+
+.thinking-clock {
+  font-weight: 500;
+  font-size: 11px;
+  opacity: 0.8;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.thinking-clock-expected {
+  opacity: 0.7;
+}
+
+/* El renglón del ciclo en la burbuja del chat, hermano del titular en vivo. */
+.thinking-progress {
+  color: #d8b4fe;
+  font-size: 12px;
+  animation: thought-step-in 0.35s ease-out;
+}
+
+/* Tiempo suspendido: el mundo se desatura y respira despacio, a propósito. */
+.stage-board.stage-held canvas {
+  filter: saturate(0.45) brightness(0.82);
+  transition: filter 0.6s ease;
+}
+
+.time-held-chip {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 12px;
+  border: 1px solid #c084fc;
+  border-radius: 999px;
+  background: rgba(30, 10, 60, 0.92);
+  color: #ede9fe;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  z-index: 8;
+  animation: time-held-in 0.5s ease-out;
+}
+
+@keyframes time-held-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0);
+  }
+}
+
+/* El visor de sueños: los mundos imaginados de la evaluación, en miniatura. */
+.dream-overlay {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid #6d28d9;
+  border-radius: 12px;
+  background: rgba(11, 18, 38, 0.94);
+  color: #e0e7ff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+  z-index: 6;
+  animation: time-held-in 0.5s ease-out;
+}
+
+.dream-overlay-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  font-style: italic;
+  color: #c4b5fd;
+}
+
+.dream-overlay-dots i {
+  width: 4px;
+  height: 4px;
+}
+
+.dream-canvas {
+  width: 168px;
+  height: auto;
+  border-radius: 6px;
+}
+
+.dream-overlay-caption {
+  font-size: 10px;
+  max-width: 168px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

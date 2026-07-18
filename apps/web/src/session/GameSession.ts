@@ -17,6 +17,7 @@ import {
   takeSnapshot,
 } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
+import type { EvaluationCaseTrace } from '@anima/skill-evaluator';
 import { RegressionStore, sampleSeeds } from '@anima/skill-evaluator';
 import type { SkillOp } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
@@ -45,6 +46,7 @@ import {
 import type {
   ChatEntry,
   DevEventView,
+  DreamView,
   EntityTraits,
   ExperimentView,
   GameView,
@@ -54,6 +56,7 @@ import type {
   ItemStat,
   ItemView,
   PickupView,
+  SkillDevProgressView,
   SkillView,
   ThoughtView,
 } from './view.js';
@@ -82,6 +85,10 @@ const AUTOSAVE_EVERY_TICKS = 40;
 const RECENT_ACTIONS_LIMIT = 12;
 /** Historial de pensamientos que la pestaña Mente conserva. */
 const THOUGHT_LIMIT = 30;
+/** Mundos imaginados que se conservan para dibujar (el más nuevo primero). */
+const DREAM_LIMIT = 12;
+/** Cuántas duraciones por tipo de consulta se recuerdan para estimar. */
+const AI_TIMING_SAMPLES = 5;
 
 /**
  * Cada tipo de consulta al modelo, en voz humana: es lo que el jugador ve
@@ -304,6 +311,14 @@ export class GameSession {
   private aiBusy = false;
   /** Pensamientos en vivo del modelo real (efímeros, no se guardan). */
   private thoughts: ThoughtView[] = [];
+  /** Mundos imaginados durante las evaluaciones (efímeros, no se guardan). */
+  private dreams: DreamView[] = [];
+  /** El ciclo de desarrollo de habilidad en curso, derivado de sus eventos. */
+  private skillDev: SkillDevProgressView | null = null;
+  /** La consulta al modelo real en vuelo: tipo y arranque (Date.now()). */
+  private queryWait: { kind: string; startedAtMs: number } | null = null;
+  /** Duraciones recientes por tipo de consulta (ms): base de la estimación. */
+  private aiTimings = new Map<string, number[]>();
   private library!: SkillLibrary;
   private regressions!: RegressionStore;
   private identity: PetIdentity = newIdentity('Ánima');
@@ -335,6 +350,14 @@ export class GameSession {
    * queda en vuelo.
    */
   private pendingThink: PendingThink | null = null;
+  /**
+   * Ticks de mundo que el cuerpo ya pagó por la práctica de habilidad en
+   * segundo plano (ADR 0043). Mismo presupuesto biológico que un pensamiento
+   * en vuelo (ADR 0040): mientras dura el crédito ella vive con normalidad
+   * (chatea, se mueve, atiende otros objetivos); agotado, el tiempo se
+   * sostiene hasta el veredicto.
+   */
+  private devPassiveTicks = 0;
   /** Mundo previo al último think: origen de las regresiones de uso real. */
   private preThinkSnapshot: WorldSnapshot | null = null;
   private activeSkillRun: { skillName: string; snapshot: WorldSnapshot | null } | null = null;
@@ -412,6 +435,10 @@ export class GameSession {
       // propios mundos imaginados, no en tres números escritos a mano.
       evaluationSeeds: sampleSeeds(seed),
       guidanceEnabled: true,
+      // Cada mundo imaginado durante una evaluación llega como traza: la UI
+      // los dibuja como "sueños" mientras ella piensa (son las evaluaciones
+      // reales, no una animación inventada).
+      onEvaluationCase: (trace) => this.noteDream(trace),
     });
     this.devEvents = [];
     this.devSeq = 0;
@@ -423,9 +450,38 @@ export class GameSession {
     this.recentActions = [];
     this.deathReport = null;
     this.storyWasCompleted = false;
+    this.dreams = [];
+    this.skillDev = null;
+    this.queryWait = null;
     // Un pensamiento en vuelo de la vida anterior no puede actuar sobre esta:
     // al soltar la referencia, su resolución tardía cae al vacío.
     this.pendingThink = null;
+  }
+
+  /**
+   * Cuánto suele tardar una consulta de este tipo, según esta sesión: la
+   * mediana de las últimas duraciones que terminaron bien. null sin datos —
+   * mejor no prometer nada que inventar un número.
+   */
+  private expectedMsFor(kind: string): number | null {
+    const samples = this.aiTimings.get(kind);
+    if (!samples || samples.length === 0) return null;
+    const sorted = [...samples].sort((a, b) => a - b);
+    const median = sorted[Math.floor(sorted.length / 2)] ?? null;
+    // Menos de un segundo (el mock, una respuesta cacheada) no es una espera:
+    // prometer "~0:00" es ruido, mejor callar hasta tener una medición real.
+    return median !== null && median >= 1000 ? median : null;
+  }
+
+  /** Guarda un mundo imaginado (el más nuevo primero), con tope. */
+  private noteDream(trace: EvaluationCaseTrace): void {
+    this.dreams.unshift({
+      id: `${trace.skillName}@${trace.version}:${trace.scenario}:${trace.seed}`,
+      ...trace,
+    });
+    if (this.dreams.length > DREAM_LIMIT) this.dreams.length = DREAM_LIMIT;
+    // Sin notify: los sueños llegan en ráfaga sincrónica dentro de un think;
+    // el próximo tick (o la próxima ingesta durante la espera) los publica.
   }
 
   /**
@@ -435,11 +491,20 @@ export class GameSession {
    */
   private instrumentProvider(provider: ModelProvider): ModelProvider {
     const record = (kind: string, startedAt: number, ok: boolean): void => {
+      const ms = Math.round(performance.now() - startedAt);
       this.pushDev('agent', {
         type: 'ai.timing',
         tick: this.world.tick,
-        data: { kind, ms: Math.round(performance.now() - startedAt), ok },
+        data: { kind, ms, ok },
       });
+      // Las duraciones que terminaron bien alimentan la estimación de "cuánto
+      // suele tardar" que la UI muestra durante la espera.
+      if (ok) {
+        const samples = this.aiTimings.get(kind) ?? [];
+        samples.push(ms);
+        if (samples.length > AI_TIMING_SAMPLES) samples.shift();
+        this.aiTimings.set(kind, samples);
+      }
     };
     return {
       get name() {
@@ -655,6 +720,13 @@ export class GameSession {
    */
   noteAiThought(thought: CodexThought): void {
     const existing = this.thoughts.find((entry) => entry.seq === thought.seq);
+    // La espera visible sigue a la consulta en vuelo: arranca con `start` y
+    // se apaga con su cierre (`done`/`error`), llegue en el orden que llegue.
+    if (thought.event === 'start') {
+      this.queryWait = { kind: thought.kind, startedAtMs: Date.now() };
+    } else if (thought.event === 'done' || thought.event === 'error') {
+      if (this.queryWait?.kind === thought.kind) this.queryWait = null;
+    }
     switch (thought.event) {
       case 'start':
         if (existing) break;
@@ -744,6 +816,32 @@ export class GameSession {
       return;
     }
 
+    // Con la mente afuera (pensamiento o práctica en vuelo), el paso respira
+    // una macrotarea: las carreras contra timer 0 (ADR 0039/0043) y las
+    // respuestas del proveedor necesitan que el event loop avance. En el
+    // navegador cada tick ya nace de un timer y esto no cambia nada; protege
+    // a quien encadene stepOnce en un bucle apretado (los tests), donde la
+    // cascada de microtareas puede matar de hambre a esos timers.
+    if (this.pendingThink?.outcome === null || this.agent.skillDevInFlight) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+
+    // Presupuesto biológico de la práctica en segundo plano (ADR 0043): el
+    // mismo trato que un pensamiento en vuelo (ADR 0040). Mientras dura el
+    // crédito, la vida sigue entera — este tick piensa y actúa con
+    // normalidad. Agotado, el tiempo se sostiene hasta el veredicto: la UI,
+    // el chat y los eventos del ciclo (versiones, pruebas) siguen vivos.
+    if (!this.agent.skillDevInFlight) {
+      this.devPassiveTicks = 0;
+    } else if (this.devPassiveTicks >= THINK_TICK_BUDGET) {
+      this.ingestAgentEvents();
+      this.rebuildView();
+      this.notify();
+      return;
+    } else {
+      this.devPassiveTicks += 1;
+    }
+
     const pending = this.pendingThink;
     if (pending && pending.outcome === null) {
       if (pending.passiveTicks >= THINK_TICK_BUDGET) {
@@ -756,9 +854,13 @@ export class GameSession {
         this.notify();
         return;
       }
-      // Sigue pensando: el mundo avanza sin ella este tick.
+      // Sigue pensando: el mundo avanza sin su mente este tick, pero el
+      // cuerpo conserva sus reflejos (ADR 0043) — apartarse de lo que la
+      // está quemando no puede esperar a que la respuesta vuelva del
+      // datacenter. Percepción fresca: el reflejo ve el mundo de AHORA.
       pending.passiveTicks += 1;
-      await this.advanceWorld(null, null);
+      const reflex = this.agent.reflexIntent(buildPerception(this.world, this.agent.petId));
+      await this.advanceWorld(reflex, null);
       return;
     }
 
@@ -1195,6 +1297,71 @@ export class GameSession {
         });
       }
       this.trackRealWorldSkillRun(event);
+      this.trackSkillDevProgress(event);
+    }
+  }
+
+  /**
+   * El ciclo de desarrollo visto en vivo: cada evento del ciclo actualiza un
+   * estado chiquito que la UI muestra mientras la mascota piensa ("versión 3,
+   * probando en 40 mundos..."). Sin esto, un developSkill largo son minutos de
+   * puntitos suspensivos; con esto, es una historia que se puede seguir.
+   */
+  private trackSkillDevProgress(event: AgentEvent): void {
+    if (event.type === 'skill.requested') {
+      this.skillDev = {
+        skillName: String(event.data.name ?? ''),
+        version: null,
+        maxVersions: typeof event.data.maxVersions === 'number' ? event.data.maxVersions : null,
+        attemptsDone: 0,
+        phase: 'designing',
+        casesTotal: null,
+        lastRate: null,
+        bestRate: null,
+      };
+      return;
+    }
+    const dev = this.skillDev;
+    if (!dev) return;
+    const version = typeof event.data.version === 'number' ? event.data.version : null;
+    switch (event.type) {
+      case 'skill.created':
+        if (version !== null) dev.version = version;
+        dev.phase = 'testing';
+        break;
+      case 'skill.test.started': {
+        if (version !== null) dev.version = version;
+        dev.phase = 'testing';
+        const scenarios = Array.isArray(event.data.scenarios) ? event.data.scenarios.length : 0;
+        const seeds = Array.isArray(event.data.seeds) ? event.data.seeds.length : 0;
+        const regressions = typeof event.data.regressions === 'number' ? event.data.regressions : 0;
+        dev.casesTotal = scenarios * seeds + regressions;
+        break;
+      }
+      case 'skill.test.failed': {
+        const rate = typeof event.data.successRate === 'number' ? event.data.successRate : null;
+        dev.attemptsDone += 1;
+        dev.lastRate = rate;
+        if (rate !== null) dev.bestRate = Math.max(dev.bestRate ?? 0, rate);
+        dev.phase = 'revising';
+        break;
+      }
+      case 'skill.test.passed': {
+        const rate = typeof event.data.successRate === 'number' ? event.data.successRate : null;
+        dev.lastRate = rate;
+        if (rate !== null) dev.bestRate = Math.max(dev.bestRate ?? 0, rate);
+        dev.phase = 'passed';
+        break;
+      }
+      case 'skill.promoted':
+        dev.phase = 'passed';
+        break;
+      case 'skill.rejected':
+        // Programa inválido o repetido: vuelve al modelo sin gastar intento.
+        dev.phase = 'revising';
+        break;
+      default:
+        break;
     }
   }
 
@@ -1565,6 +1732,18 @@ export class GameSession {
         }
         return null;
       })(),
+      aiWait: this.queryWait
+        ? {
+            startedAtMs: this.queryWait.startedAtMs,
+            expectedMs: this.expectedMsFor(this.queryWait.kind),
+            held:
+              this.pendingThink !== null &&
+              this.pendingThink.outcome === null &&
+              this.pendingThink.passiveTicks >= THINK_TICK_BUDGET,
+          }
+        : null,
+      skillDev: this.skillDev ? { ...this.skillDev } : null,
+      dreams: this.dreams.slice(),
       // La preferencia viaja siempre, aunque el motor activo sea Codex: es del
       // cuidador, no del proveedor, y la UI necesita poder mostrarla apagada.
       mockImperfect: this.mockImperfect,

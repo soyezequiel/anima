@@ -59,6 +59,48 @@ describe('GameSession (capa de sesión de la UI)', () => {
     session.dispose();
   });
 
+  it('expone los sueños y el progreso del ciclo de desarrollo al view model', async () => {
+    const { session } = await makeSession(5);
+    await runUntil(session, () => session.getView().storyCompleted);
+
+    const view = session.getView();
+    // Cada caso evaluado dejó su mundo imaginado, el más nuevo primero: la
+    // última versión probada (la v2 que pasó) encabeza la lista.
+    expect(view.dreams.length).toBeGreaterThan(0);
+    const dream = view.dreams[0]!;
+    expect(dream.version).toBe(2);
+    expect(dream.entities.length).toBeGreaterThan(0);
+    expect(dream.path.length).toBeGreaterThan(0);
+    expect(dream.width).toBeGreaterThan(0);
+
+    // El ciclo quedó contado: la v1 falló (un intento gastado) y la v2 pasó.
+    expect(view.skillDev).not.toBeNull();
+    expect(view.skillDev!.phase).toBe('passed');
+    expect(view.skillDev!.version).toBe(2);
+    expect(view.skillDev!.attemptsDone).toBeGreaterThanOrEqual(1);
+    expect(view.skillDev!.maxVersions).toBeGreaterThan(0);
+    expect(view.skillDev!.casesTotal).toBeGreaterThan(0);
+    session.dispose();
+  });
+
+  it('la espera visible sigue a la consulta en vuelo (aiWait)', async () => {
+    const { session } = await makeSession(5);
+    expect(session.getView().aiWait).toBeNull();
+
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'start' });
+    const waiting = session.getView().aiWait;
+    expect(waiting).not.toBeNull();
+    expect(waiting!.startedAtMs).toBeGreaterThan(0);
+    // Sin historial de esta sesión no se promete ninguna duración.
+    expect(waiting!.expectedMs).toBeNull();
+    // Sin pensamiento en vuelo con presupuesto agotado, el tiempo no está suspendido.
+    expect(waiting!.held).toBe(false);
+
+    session.noteAiThought({ seq: 1, kind: 'dialogue', event: 'done' });
+    expect(session.getView().aiWait).toBeNull();
+    session.dispose();
+  });
+
   it('responde mensajes del usuario y permite reiniciar por semilla', async () => {
     const { session } = await makeSession(7);
     session.sendUserMessage('espera un momento');
@@ -341,6 +383,129 @@ describe('GameSession (capa de sesión de la UI)', () => {
     expect(session.getView().tick).toBe(launched + THINK_TICK_BUDGET - 1);
 
     // Llega la respuesta: el mundo se suelta y el pensamiento se aplica.
+    release({
+      kind: 'command.interpretation',
+      command: { action: 'rename-pet', name: 'Chispa' },
+    });
+    await vi.waitFor(() => {
+      expect(session.getView().identity.name).toBe('Chispa');
+    });
+    session.dispose();
+  });
+
+  it('la práctica en segundo plano deja vivir, y su presupuesto sostiene el tiempo (ADR 0043)', async () => {
+    // Mock de verdad por debajo (la historia entera corre igual), salvo la
+    // PRIMERA propuesta de habilidad, que no responde hasta que se libere:
+    // el ciclo de desarrollo queda practicando en segundo plano.
+    const inner = new MockModelProvider();
+    let release: (() => void) | null = null;
+    const provider: ModelProvider = {
+      name: 'mock-lento',
+      interpretsLanguage: false,
+      complete(request) {
+        if (request.kind === 'skill.propose' && release === null) {
+          const original = inner.complete(request);
+          return new Promise((resolve, reject) => {
+            release = () => {
+              original.then(resolve, reject);
+            };
+          });
+        }
+        return inner.complete(request);
+      },
+      callCount(kind) {
+        return inner.callCount(kind);
+      },
+    };
+    const session = await GameSession.create({
+      seed: 5,
+      autostart: false,
+      fresh: true,
+      store: new MemoryKeyValueStore(),
+      provider,
+    });
+
+    // La historia avanza sola hasta que el hambre abre el ciclo de skills…
+    await runUntil(
+      session,
+      () => session.getView().devEvents.some((e) => e.type === 'skill.dev.background'),
+      400,
+    );
+    expect(session.getView().devEvents.some((e) => e.type === 'skill.dev.background')).toBe(true);
+
+    // …que queda EN VUELO. La vida sigue el crédito entero y ni un tick más:
+    // agotado el presupuesto, el tiempo se sostiene hasta el veredicto.
+    const launched = session.getView().tick;
+    for (let i = 0; i < THINK_TICK_BUDGET + 15; i++) {
+      await session.stepOnce();
+    }
+    const heldAt = session.getView().tick;
+    // El lanzamiento puede repartirse en uno o dos ticks según el intercalado
+    // de timers: lo que se fija es el contrato, no el reparto — vive
+    // aproximadamente el crédito entero y ni un tick más allá de él.
+    expect(heldAt - launched).toBeGreaterThanOrEqual(THINK_TICK_BUDGET - 2);
+    expect(heldAt - launched).toBeLessThanOrEqual(THINK_TICK_BUDGET);
+    await session.stepOnce();
+    expect(session.getView().tick).toBe(heldAt);
+
+    // Llega la propuesta: el ciclo termina, el tiempo se suelta y la historia
+    // completa sigue siendo la de siempre (falla, corrige, come).
+    release!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await runUntil(session, () => session.getView().storyCompleted, 400);
+    expect(session.getView().storyCompleted).toBe(true);
+    session.dispose();
+  });
+
+  it('los reflejos no piensan: se aparta del daño aunque la mente esté en vuelo (ADR 0043)', async () => {
+    const fallback = new MockModelProvider();
+    let release!: (response: ModelResponse) => void;
+    const provider: ModelProvider = {
+      name: 'codex',
+      interpretsLanguage: true,
+      complete(request) {
+        if (request.kind === 'interpret.command') {
+          return new Promise((resolve) => {
+            release = resolve;
+          });
+        }
+        return fallback.complete(request);
+      },
+      callCount(kind) {
+        return fallback.callCount(kind);
+      },
+    };
+    const session = await GameSession.create({
+      seed: 5,
+      autostart: false,
+      fresh: true,
+      store: new MemoryKeyValueStore(),
+      provider,
+    });
+    const world = (session as unknown as { world: WorldState }).world;
+    const petId = (session as unknown as { agent: { petId: string } }).agent.petId;
+    const start = { ...world.entities[petId]!.components.position! };
+    // Un fuego en su propia celda: la quema por dentro (ADR 0041) mientras
+    // su mente está en el proveedor.
+    const fire = { x: start.x, y: start.y };
+    spawn(world, 'campfire', {
+      position: fire,
+      heatSource: { warmthPerTick: 0.3, range: 2 },
+      hazard: { damagePerTick: 1 },
+    });
+
+    session.sendUserMessage('a partir de ahora te llamás Chispa');
+    // La consulta queda en vuelo y los ticks pasivos corren: el primero la
+    // quema, y el reflejo del cuerpo la saca de la celda sin esperar a la
+    // mente. Salir de la celda ya es estar a salvo (ADR 0041).
+    for (let i = 0; i < 6; i++) await session.stepOnce();
+    const pos = world.entities[petId]!.components.position!;
+    const distance = Math.max(Math.abs(pos.x - fire.x), Math.abs(pos.y - fire.y));
+    expect(distance).toBeGreaterThanOrEqual(1);
+    expect(session.getView().devEvents.some((e) => e.type === 'pain.reflex')).toBe(true);
+    // Y la mente sigue afuera: todavía no atendió el mensaje.
+    expect(session.getView().identity.name).toBe('Ánima');
+
     release({
       kind: 'command.interpretation',
       command: { action: 'rename-pet', name: 'Chispa' },

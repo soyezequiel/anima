@@ -66,6 +66,42 @@ export interface EvaluationReport {
   avgTicksOnSuccess: number | null;
 }
 
+/**
+ * Una entidad del mundo imaginado, con lo justo para dibujarla: dónde estaba
+ * y qué rasgos determinan su aspecto. No es el mundo — es la escenografía del
+ * sueño.
+ */
+export interface DreamTraceEntity {
+  kind: string;
+  x: number;
+  y: number;
+  solid?: boolean;
+  edible?: boolean;
+  warm?: boolean;
+  growsFood?: boolean;
+}
+
+/**
+ * La traza visible de un caso evaluado: el mundo imaginado tal como empezó y
+ * el camino que la mascota recorrió en él. Existe para que la UI pueda
+ * MOSTRAR lo que ella imagina mientras desarrolla una habilidad — las
+ * evaluaciones corren igual con o sin quien las mire.
+ */
+export interface EvaluationCaseTrace {
+  skillName: string;
+  version: number;
+  scenario: string;
+  seed: number;
+  verdict: CaseVerdict;
+  width: number;
+  height: number;
+  entities: DreamTraceEntity[];
+  path: { x: number; y: number }[];
+}
+
+/** Oyente de casos evaluados: recibe la traza de cada mundo imaginado. */
+export type EvaluationCaseHook = (trace: EvaluationCaseTrace) => void;
+
 export interface EvaluateOptions {
   scenarios: NamedScenario[];
   seeds: number[];
@@ -73,6 +109,12 @@ export interface EvaluateOptions {
   regressions?: RegressionCase[];
   maxTicks?: number;
   library?: SkillLibrary;
+  /**
+   * Si alguien quiere VER los mundos imaginados (la UI dibuja los "sueños"
+   * mientras la mascota piensa), recibe aquí la traza de cada caso. Opcional
+   * en los dos sentidos: sin oyente no se captura nada y nada cambia.
+   */
+  onCase?: EvaluationCaseHook;
 }
 
 /** Movimientos que el mundo aceptó de verdad: los bloqueados no cuentan. */
@@ -243,6 +285,21 @@ function runCase(
 ): EvaluationCaseResult {
   // Mundo fresco y aislado: nada de lo que pase aquí toca el mundo real.
   const { world, petId } = scenario.build(seed);
+  // La escenografía se captura ANTES de correr: el sueño se dibuja sobre el
+  // mundo como empezó, no sobre lo que quedó de él.
+  const dreamEntities: DreamTraceEntity[] | null = options.onCase
+    ? Object.values(world.entities)
+        .filter((e) => e.id !== petId && e.components.position)
+        .map((e) => ({
+          kind: e.kind,
+          x: e.components.position!.x,
+          y: e.components.position!.y,
+          ...(e.components.collider?.solid ? { solid: true } : {}),
+          ...(e.components.edible ? { edible: true } : {}),
+          ...(e.components.heatSource ? { warm: true } : {}),
+          ...(e.components.foodSource ? { growsFood: true } : {}),
+        }))
+    : null;
   const runOptions: Parameters<typeof runSkillProgram>[3] = {
     maxTicks: options.maxTicks ?? 200,
     checkInvariantsEachTick: true,
@@ -279,6 +336,20 @@ function runCase(
     : !violated && lostToTheDice(report, world, petId)
       ? 'inconclusive'
       : 'failed';
+
+  if (options.onCase && dreamEntities) {
+    options.onCase({
+      skillName: skill.name,
+      version: skill.version,
+      scenario: scenario.name,
+      seed,
+      verdict,
+      width: world.config.width,
+      height: world.config.height,
+      entities: dreamEntities,
+      path: report.path.map((p) => ({ x: p.x, y: p.y })),
+    });
+  }
 
   return {
     scenario: scenario.name,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { MVP_SCENARIOS } from '@anima/test-scenarios';
 import type { SkillProgram } from '@anima/skill-runtime';
 import { SkillLibrary } from '@anima/skill-runtime';
+import type { EvaluationCaseTrace } from '../src/index.js';
 import { applyEvaluation, evaluateSkill, RegressionStore } from '../src/index.js';
 
 const now = () => '2026-07-16T00:00:00Z';
@@ -170,5 +171,35 @@ describe('evaluador de skills', () => {
     expect(decision.verdict).toBe('rejected');
     // La versión estable sigue siendo la buena.
     expect(library.findStable('alcanzar-alimento-bloqueado')?.id).toBe(good.id);
+  });
+
+  it('onCase entrega la traza de cada mundo imaginado: escenografía y camino', () => {
+    const library = new SkillLibrary();
+    const skill = makeSkill(library, 'strongestTool');
+    const traces: EvaluationCaseTrace[] = [];
+    const report = evaluateSkill(skill, {
+      scenarios: MVP_SCENARIOS,
+      seeds: SEEDS,
+      maxTicks: 200,
+      onCase: (trace) => traces.push(trace),
+    });
+    // Una traza por caso, alineada con el reporte.
+    expect(traces).toHaveLength(report.cases.length);
+    for (const [i, trace] of traces.entries()) {
+      const kase = report.cases[i]!;
+      expect(trace.scenario).toBe(kase.scenario);
+      expect(trace.seed).toBe(kase.seed);
+      expect(trace.verdict).toBe(kase.verdict);
+      expect(trace.skillName).toBe(skill.name);
+      expect(trace.version).toBe(skill.version);
+      // La escenografía tiene tamaño y cosas; el camino, al menos el arranque.
+      expect(trace.width).toBeGreaterThan(0);
+      expect(trace.height).toBeGreaterThan(0);
+      expect(trace.entities.length).toBeGreaterThan(0);
+      expect(trace.path.length).toBeGreaterThan(0);
+    }
+    // Sin oyente, nada cambia: mismo reporte que con él.
+    const silent = evaluateSkill(skill, { scenarios: MVP_SCENARIOS, seeds: SEEDS, maxTicks: 200 });
+    expect(silent.cases).toEqual(report.cases);
   });
 });

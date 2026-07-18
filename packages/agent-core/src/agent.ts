@@ -1,6 +1,21 @@
 import type { EventLog, Vec2 } from '@anima/shared';
-import { chebyshev, countedKindLabel, createEventLog, isFeminineKind, kindLabel, kindWithArticle, manhattan } from '@anima/shared';
-import type { ActionIntent, Direction, EntityId, Perception, Recipe, SimEvent } from '@anima/sim-core';
+import {
+  chebyshev,
+  countedKindLabel,
+  createEventLog,
+  isFeminineKind,
+  kindLabel,
+  kindWithArticle,
+  manhattan,
+} from '@anima/shared';
+import type {
+  ActionIntent,
+  Direction,
+  EntityId,
+  Perception,
+  Recipe,
+  SimEvent,
+} from '@anima/sim-core';
 import {
   blueprintCounts,
   expandRecipeCost,
@@ -13,14 +28,20 @@ import {
 import type { MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
-import type { EvaluationCriterion, GpsPlaces, SkillDefinition, SkillLibrary, SkillProgram } from '@anima/skill-runtime';
+import type {
+  EvaluationCriterion,
+  GpsPlaces,
+  SkillDefinition,
+  SkillLibrary,
+  SkillProgram,
+} from '@anima/skill-runtime';
 import {
   describeCriterion,
   SkillExecution,
   SpatialMemory,
   validateSuccessCriteria,
 } from '@anima/skill-runtime';
-import type { NamedScenario, RegressionStore } from '@anima/skill-evaluator';
+import type { EvaluationCaseHook, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
 import type { Goal, GoalManagerData, GoalUserRequest, LearningContract } from './goals.js';
 import { GoalManager } from './goals.js';
@@ -134,19 +155,17 @@ function describeVisibleEntity(e: VisibleEntity): string {
 }
 
 /** Prioridad y urgencia por tipo de petición: los objetivos son estructuras. */
-const USER_REQUEST_WEIGHTS: Record<
-  GoalUserRequest['kind'],
-  { priority: number; urgency: number }
-> = {
-  'consume-item': { priority: 1, urgency: 0.8 },
-  'move-direction': { priority: 1, urgency: 0.75 },
-  'run-skill': { priority: 1, urgency: 0.7 },
-  'craft-item': { priority: 1, urgency: 0.7 },
-  'interact-entity': { priority: 1, urgency: 0.7 },
-  'fetch-item': { priority: 0.6, urgency: 0.35 },
-  'destroy-entity': { priority: 0.6, urgency: 0.35 },
-  'wait-here': { priority: 0.6, urgency: 0.35 },
-};
+const USER_REQUEST_WEIGHTS: Record<GoalUserRequest['kind'], { priority: number; urgency: number }> =
+  {
+    'consume-item': { priority: 1, urgency: 0.8 },
+    'move-direction': { priority: 1, urgency: 0.75 },
+    'run-skill': { priority: 1, urgency: 0.7 },
+    'craft-item': { priority: 1, urgency: 0.7 },
+    'interact-entity': { priority: 1, urgency: 0.7 },
+    'fetch-item': { priority: 0.6, urgency: 0.35 },
+    'destroy-entity': { priority: 0.6, urgency: 0.35 },
+    'wait-here': { priority: 0.6, urgency: 0.35 },
+  };
 
 /**
  * Mensaje del usuario ya clasificado. Además de una orden ejecutable o una
@@ -201,6 +220,13 @@ export interface AgentConfig {
   maxSkillDevAttempts?: number;
   maxVersionsPerDev?: number;
   now?: () => string;
+  /**
+   * Oyente de los mundos imaginados durante una evaluación: recibe la traza
+   * de cada caso (escenografía + camino) para que la UI pueda dibujar lo que
+   * la mascota sueña mientras desarrolla una habilidad. Sin oyente, nada se
+   * captura y nada cambia.
+   */
+  onEvaluationCase?: EvaluationCaseHook;
 }
 
 /** Estado persistible del agente. La actividad en curso no se guarda: al
@@ -247,6 +273,27 @@ interface Activity {
   energyAtStart: number;
 }
 
+/** Cómo retomar el objetivo cuando llegue el veredicto de una práctica. */
+type SkillDevResume = (
+  outcome: SkillDevOutcome,
+  perception: Perception,
+) => Promise<ActionIntent | null>;
+
+/**
+ * Una práctica de habilidad corriendo en segundo plano (ADR 0043): el ciclo
+ * propose→evaluate→revise sigue en su imaginación mientras ella vive — chatea,
+ * se aparta del dolor, atiende otros objetivos. `settled` se llena cuando el
+ * ciclo termina; un think posterior lo consume con `resume`. Efímera como la
+ * actividad: no se persiste — al restaurar, el objetivo sigue activo y el
+ * ciclo se reabre solo.
+ */
+interface SkillDevRun {
+  goalId: string;
+  name: string;
+  settled: { status: 'ok'; outcome: SkillDevOutcome } | { status: 'error'; error: unknown } | null;
+  resume: SkillDevResume;
+}
+
 /**
  * El agente cognitivo. Nunca accede al WorldState: recibe percepciones y
  * devuelve intenciones. Las consultas al modelo ocurren solo en momentos
@@ -272,6 +319,9 @@ export class AnimaAgent {
   > &
     AgentConfig;
   private activity: Activity | null = null;
+  /** La práctica de habilidad en segundo plano, como mucho una a la vez:
+   * los mundos imaginados no son reentrantes y una mente alcanza. */
+  private skillDevRun: SkillDevRun | null = null;
   private pendingSpeech: string[] = [];
   /**
    * Tipos que aparecieron y todavía no tienen dibujo (la quinta puerta). Se
@@ -421,6 +471,16 @@ export class AnimaAgent {
     return this.config.petId;
   }
 
+  /**
+   * true mientras una práctica de habilidad sigue corriendo en segundo plano.
+   * La sesión lo mira para aplicarle el mismo presupuesto biológico que a un
+   * pensamiento en vuelo (ADR 0040): pasado el presupuesto, el tiempo se
+   * sostiene hasta el veredicto — pensar cuesta ticks, no la vida.
+   */
+  get skillDevInFlight(): boolean {
+    return this.skillDevRun !== null && this.skillDevRun.settled === null;
+  }
+
   private now(): string {
     return this.config.now ? this.config.now() : new Date().toISOString();
   }
@@ -492,6 +552,9 @@ export class AnimaAgent {
     // previa también muere aquí: una confirmación no puede sobrevivir a la
     // sesión en la que se mostró lo que confirmaba.
     this.activity = null;
+    // La práctica en vuelo tampoco: su objetivo sigue activo y el ciclo se
+    // reabre solo; un veredicto de otra vida no puede tocar esta.
+    this.skillDevRun = null;
     this.pendingSpeech = [];
     this.pendingUserMessages = [];
     this.pendingExplanation = null;
@@ -606,6 +669,7 @@ export class AnimaAgent {
             seeds: this.config.evaluationSeeds,
             maxTicksPerCase: 200,
             now: () => this.now(),
+            ...(this.config.onEvaluationCase ? { onCase: this.config.onEvaluationCase } : {}),
           },
           this.events,
           this.tick,
@@ -714,6 +778,11 @@ export class AnimaAgent {
       return { type: 'proposeRecipe', recipe: invention.recipe };
     }
 
+    // El veredicto de una práctica en segundo plano (ADR 0043) se consume
+    // apenas llega: retoma el objetivo que la abrió con percepción fresca.
+    const devIntent = await this.consumeSkillDevVerdict(perception);
+    if (devIntent) return devIntent;
+
     if (this.activity) return this.continueActivity(perception);
 
     const goal = this.goals.selectActive();
@@ -732,6 +801,22 @@ export class AnimaAgent {
       this.emit('goal.selected', { goalId: goal.id, description: goal.description });
     }
     return this.pursueGoal(goal, perception);
+  }
+
+  /**
+   * Lo único que el cuerpo hace solo mientras la mente está afuera (ADR
+   * 0043): el reflejo de apartarse de lo que la daña. La sesión lo llama en
+   * los ticks pasivos de un pensamiento en vuelo, con percepción fresca. Es
+   * seguro por construcción: no toca objetivos, actividad ni colas — solo lee
+   * el dolor del último tick y devuelve (a lo sumo) un paso.
+   *
+   * La actividad en curso NO continúa desde acá, a propósito: el think en
+   * vuelo la retomará con su propia percepción, y pisarla desde afuera
+   * duplicaría pasos del programa y fabricaría fallos falsos que terminan
+   * como regresiones de uso real.
+   */
+  reflexIntent(perception: Perception): ActionIntent | null {
+    return this.painReflex(perception);
   }
 
   /**
@@ -770,10 +855,7 @@ export class AnimaAgent {
         const dest = { x: selfPos.x + delta.x, y: selfPos.y + delta.y };
         return {
           dir,
-          gain: Math.min(
-            chebyshev(sourcePos, dest),
-            ...others.map((h) => chebyshev(h, dest)),
-          ),
+          gain: Math.min(chebyshev(sourcePos, dest), ...others.map((h) => chebyshev(h, dest))),
           blocked: perception.visibleEntities.some(
             (e) => e.solid && e.position && e.position.x === dest.x && e.position.y === dest.y,
           ),
@@ -1082,8 +1164,7 @@ export class AnimaAgent {
    */
   private walkStepsAvoidingHazards(perception: Perception, to: Vec2, stopAt: number): Direction[] {
     const hazards = this.knownHazardPositions(perception);
-    const risky = (cell: Vec2): boolean =>
-      hazards.some((h) => chebyshev(h, cell) < SAFE_DISTANCE);
+    const risky = (cell: Vec2): boolean => hazards.some((h) => chebyshev(h, cell) < SAFE_DISTANCE);
     const variants = (['x', 'y'] as const).map((axis) =>
       stepsToward(perception.self.position, to, stopAt, axis),
     );
@@ -1113,7 +1194,9 @@ export class AnimaAgent {
     if (this.goals.findOpen(GOAL_BE_SAFE)) return;
 
     const alreadyUnderstands =
-      this.memory.factList().some((f) => f.statement.includes('a salvo') || f.statement.includes('alejar')) ||
+      this.memory
+        .factList()
+        .some((f) => f.statement.includes('a salvo') || f.statement.includes('alejar')) ||
       this.memory
         .hypothesisList()
         .some((h) => h.statement.includes('a salvo') || h.statement.includes('alejar'));
@@ -1380,9 +1463,7 @@ export class AnimaAgent {
         return;
       }
       if (isNegativeReply(text)) {
-        this.reply(
-          `Entendido: ${kindLabel(pending.outputKind)} queda en una idea, nada más.`,
-        );
+        this.reply(`Entendido: ${kindLabel(pending.outputKind)} queda en una idea, nada más.`);
         return;
       }
     }
@@ -1588,11 +1669,7 @@ export class AnimaAgent {
    * nada hay que acordar qué significaría lograrlo: sin contrato, "aprender"
    * sería decir que sí y no cambiar en nada. El contrato se le muestra.
    */
-  private async startLearning(
-    summary: string,
-    raw: string,
-    perception: Perception,
-  ): Promise<void> {
+  private async startLearning(summary: string, raw: string, perception: Perception): Promise<void> {
     let contract: LearningContract;
     try {
       contract = await this.deriveLearningContract(summary, raw, perception);
@@ -1685,9 +1762,7 @@ export class AnimaAgent {
       purpose: contract.purpose,
       criteria: contract.successCriteria.map(describeCriterion),
     });
-    this.reply(
-      `¡Dale! Me pongo a aprender "${contract.name}" y lo pruebo en mundos imaginados.`,
-    );
+    this.reply(`¡Dale! Me pongo a aprender "${contract.name}" y lo pruebo en mundos imaginados.`);
   }
 
   /** Traduce lo que el cuidador pidió a un contrato que el evaluador sepa medir. */
@@ -2042,9 +2117,7 @@ export class AnimaAgent {
         return {
           kind: command.action,
           targetKind: command.targetKind,
-          ...(command.amount !== undefined && command.amount > 1
-            ? { amount: command.amount }
-            : {}),
+          ...(command.amount !== undefined && command.amount > 1 ? { amount: command.amount } : {}),
           raw,
         };
       case 'destroy-entity':
@@ -2266,10 +2339,7 @@ export class AnimaAgent {
     return facts;
   }
 
-  async decideOnRequest(
-    request: UserRequest,
-    perception: Perception,
-  ): Promise<RequestDecision> {
+  async decideOnRequest(request: UserRequest, perception: Perception): Promise<RequestDecision> {
     let decision = evaluateUserRequest(
       request,
       perception,
@@ -2323,7 +2393,7 @@ export class AnimaAgent {
 
   private async pursueGoal(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
     if (goal.source === 'learning' && goal.learning) {
-      return this.pursueLearning(goal, goal.learning);
+      return this.pursueLearning(goal, goal.learning, perception);
     }
     if (goal.source === 'user-request' && goal.userRequest) {
       // Le pidieron construir algo que su mundo todavía no sabe hacer. Eso no
@@ -2363,7 +2433,11 @@ export class AnimaAgent {
           if (decomposition) return decomposition;
         }
       }
-      const program = programForUserRequest(goal.userRequest, perception, this.userProgramDeps(perception));
+      const program = programForUserRequest(
+        goal.userRequest,
+        perception,
+        this.userProgramDeps(perception),
+      );
       this.startUserActivity(goal, program, completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
@@ -2521,10 +2595,7 @@ export class AnimaAgent {
    * distinto, la petición seguiría sin encontrar su receta y volvería a
    * inventar hasta quedarse sin crédito, sin entender por qué.
    */
-  private async inventForRequest(
-    goal: Goal,
-    perception: Perception,
-  ): Promise<ActionIntent | null> {
+  private async inventForRequest(goal: Goal, perception: Perception): Promise<ActionIntent | null> {
     const request = goal.userRequest;
     if (request?.kind !== 'craft-item' || !request.recipeId) return null;
     // Un plan a medio entrar sigue entrando: las hojas antes que el tronco, una
@@ -2927,6 +2998,9 @@ export class AnimaAgent {
           });
 
     if (step === 'create-skill') {
+      // Una práctica ya corre en segundo plano (esta u otra): una mente
+      // alcanza. Este tick se espera; el veredicto retoma el objetivo.
+      if (this.skillDevRun) return null;
       const contract: SkillContract = {
         name: SKILL_GET_WARM,
         purpose: 'dejar de perder calor: acercarse a una fuente de calor o construir una',
@@ -2950,19 +3024,26 @@ export class AnimaAgent {
         ),
         'el fuego calienta a distancia pero quema al que se le pega',
       ];
-      const outcome = await this.runSkillDevelopment(contract, context, scenarios);
-      this.progress.recordSkillDevAttempt(goal.id);
-      if (outcome.stableSkill) {
+      const resume: SkillDevResume = async (outcome, fresh) => {
+        this.progress.recordSkillDevAttempt(goal.id);
+        if (!outcome.stableSkill) return null;
+        // El objetivo pudo resolverse mientras practicaba (un fuego apareció,
+        // el cuidador la abrigó): la habilidad queda en la biblioteca igual,
+        // pero no se estrena contra un objetivo que ya no existe.
+        const current = this.goals.all().find((g) => g.id === goal.id);
+        if (current?.status !== 'active') return null;
         this.startActivity(
           goal,
           `stable-skill:${outcome.stableSkill.name}@v${outcome.stableSkill.version}`,
           outcome.stableSkill.program,
-          perception,
+          fresh,
           { skillId: outcome.stableSkill.id },
         );
-        return this.continueActivity(perception);
-      }
-      return null;
+        return this.continueActivity(fresh);
+      };
+      const outcome = await this.runSkillDevelopment(goal, contract, context, scenarios, resume);
+      if (outcome === 'in-flight') return null;
+      return resume(outcome, perception);
     }
 
     if (step === 'ask-help') {
@@ -2989,13 +3070,22 @@ export class AnimaAgent {
    * para la necesidad que nace de su cuerpo (recuperar energía) y para la que
    * nace de su cuidador (una conducta enseñada): lo único que cambia es quién
    * escribió el contrato y en qué mundos se practica.
+   *
+   * El ciclo corre en una carrera contra un timer 0 (ADR 0043, el mismo
+   * patrón del ADR 0039 un nivel más adentro). Con un proveedor local (mock)
+   * resuelve en microtareas, gana siempre y el veredicto vuelve en este mismo
+   * think — determinista, como siempre. Con un proveedor real pierde la
+   * carrera y devuelve 'in-flight': el ciclo sigue en segundo plano, ella
+   * sigue viviendo, y un think posterior consume el veredicto con `resume`.
    */
   private async runSkillDevelopment(
+    goal: Goal,
     contract: SkillContract,
     context: string[],
     scenarios: NamedScenario[],
-  ): Promise<SkillDevOutcome> {
-    const outcome = await developSkill(
+    resume: SkillDevResume,
+  ): Promise<SkillDevOutcome | 'in-flight'> {
+    const promise = developSkill(
       contract,
       context,
       {
@@ -3007,12 +3097,47 @@ export class AnimaAgent {
         maxTicksPerCase: 200,
         maxVersions: this.config.maxVersionsPerDev,
         now: () => this.now(),
+        ...(this.config.onEvaluationCase ? { onCase: this.config.onEvaluationCase } : {}),
       },
       this.events,
       this.tick,
+    ).then((outcome) => {
+      this.harvestSkillDevFacts(outcome);
+      return outcome;
+    });
+    const settled = promise.then(
+      (outcome) => ({ status: 'ok' as const, outcome }),
+      (error) => ({ status: 'error' as const, error }),
     );
-    this.harvestSkillDevFacts(outcome);
-    return outcome;
+    const raced = await Promise.race([
+      settled,
+      new Promise<'pending'>((resolve) => setTimeout(() => resolve('pending'), 0)),
+    ]);
+    if (raced !== 'pending') {
+      if (raced.status === 'error') throw raced.error;
+      return raced.outcome;
+    }
+    const run: SkillDevRun = { goalId: goal.id, name: contract.name, settled: null, resume };
+    this.skillDevRun = run;
+    void settled.then((result) => {
+      run.settled = result;
+    });
+    this.emit('skill.dev.background', { goalId: goal.id, name: contract.name });
+    return 'in-flight';
+  }
+
+  /**
+   * Si una práctica en segundo plano terminó, retoma el objetivo que la abrió.
+   * Un fallo del proveedor se relanza desde acá: para la sesión es idéntico a
+   * un think que falló (misma cuenta de errores seguidos, misma pausa a los
+   * tres), y el objetivo sigue activo para reintentar.
+   */
+  private async consumeSkillDevVerdict(perception: Perception): Promise<ActionIntent | null> {
+    const run = this.skillDevRun;
+    if (!run?.settled) return null; // Nada en vuelo, o sigue practicando.
+    this.skillDevRun = null;
+    if (run.settled.status === 'error') throw run.settled.error;
+    return run.resume(run.settled.outcome, perception);
   }
 
   /** Lo aprendido en los experimentos queda en memoria aunque la skill falle. */
@@ -3075,8 +3200,13 @@ export class AnimaAgent {
   private async pursueLearning(
     goal: Goal,
     contract: LearningContract,
+    perception: Perception,
   ): Promise<ActionIntent | null> {
     this.lastSelectedGoalId = null;
+
+    // La práctica ya corre en segundo plano: este tick se espera. El
+    // veredicto la retoma (consumeSkillDevVerdict) con su sí o su no.
+    if (this.skillDevRun) return null;
 
     const already = this.config.library.findStable(contract.name);
     if (already) {
@@ -3087,7 +3217,40 @@ export class AnimaAgent {
       return null;
     }
 
+    const resume: SkillDevResume = async (outcome) => {
+      if (outcome.stableSkill) {
+        this.memory.recordEpisode({
+          kind: 'skill-learned',
+          summary: `mi cuidador me enseñó "${contract.name}" y lo aprendí tras ${outcome.versionsTried} intento(s)`,
+          tick: this.tick,
+          importance: 0.9,
+        });
+        this.goals.complete(goal.id);
+        this.emit('goal.completed', { goalId: goal.id, strategy: `aprendizaje:${contract.name}` });
+        this.reply(
+          `¡Lo aprendí! "${contract.name}" (v${outcome.stableSkill.version}): ${contract.expectedOutcome}. ` +
+            `Lo probé en mundos imaginados y pasó todas las pruebas. Ya puedo repetirlo cuando me lo pidas.`,
+        );
+        this.queueSkillRun(contract.name, contract.raw);
+        return null;
+      }
+
+      this.memory.recordEpisode({
+        kind: 'skill-failed',
+        summary: `no logré aprender "${contract.name}", que mi cuidador me pidió con: "${contract.raw}"`,
+        tick: this.tick,
+        importance: 0.7,
+      });
+      this.goals.fail(goal.id);
+      this.reply(
+        `Intenté aprender "${contract.name}" y no me salió: ${this.describeLearningFailure(outcome)}. ` +
+          `¿Me lo explicas de otra manera, o con pasos más concretos?`,
+      );
+      return null;
+    };
+
     const outcome = await this.runSkillDevelopment(
+      goal,
       {
         name: contract.name,
         purpose: contract.purpose,
@@ -3101,37 +3264,17 @@ export class AnimaAgent {
       },
       contract.context,
       this.practiceScenariosFor(contract.successCriteria),
+      resume,
     );
-
-    if (outcome.stableSkill) {
-      this.memory.recordEpisode({
-        kind: 'skill-learned',
-        summary: `mi cuidador me enseñó "${contract.name}" y lo aprendí tras ${outcome.versionsTried} intento(s)`,
-        tick: this.tick,
-        importance: 0.9,
-      });
-      this.goals.complete(goal.id);
-      this.emit('goal.completed', { goalId: goal.id, strategy: `aprendizaje:${contract.name}` });
+    if (outcome === 'in-flight') {
+      // Que se sepa: aprender lleva su tiempo, pero la vida no se detiene.
       this.reply(
-        `¡Lo aprendí! "${contract.name}" (v${outcome.stableSkill.version}): ${contract.expectedOutcome}. ` +
-          `Lo probé en mundos imaginados y pasó todas las pruebas. Ya puedo repetirlo cuando me lo pidas.`,
+        `Me pongo a practicar "${contract.name}" en mi imaginación. Puede llevarme un rato — ` +
+          `avisame si mientras tanto necesitás otra cosa.`,
       );
-      this.queueSkillRun(contract.name, contract.raw);
       return null;
     }
-
-    this.memory.recordEpisode({
-      kind: 'skill-failed',
-      summary: `no logré aprender "${contract.name}", que mi cuidador me pidió con: "${contract.raw}"`,
-      tick: this.tick,
-      importance: 0.7,
-    });
-    this.goals.fail(goal.id);
-    this.reply(
-      `Intenté aprender "${contract.name}" y no me salió: ${this.describeLearningFailure(outcome)}. ` +
-        `¿Me lo explicas de otra manera, o con pasos más concretos?`,
-    );
-    return null;
+    return resume(outcome, perception);
   }
 
   /** Por qué no lo logró, con lo que midió el evaluador y no con excusas. */
@@ -3171,6 +3314,9 @@ export class AnimaAgent {
     goal: Goal,
     perception: Perception,
   ): Promise<ActionIntent | null> {
+    // Una práctica ya corre en segundo plano: una mente alcanza. Este tick
+    // se espera; el veredicto retoma el objetivo (consumeSkillDevVerdict).
+    if (this.skillDevRun) return null;
     const triedStrategies = this.progress.strategiesTried(goal.id).filter((s) => s.forbidden);
     const failures = triedStrategies.map(
       (s) => `estrategia fallida: ${s.strategy} (${s.failures} fallos)`,
@@ -3191,39 +3337,51 @@ export class AnimaAgent {
       ...perception.visibleEntities.map(describeVisibleEntity),
     ];
 
+    const resume: SkillDevResume = async (outcome, fresh) => {
+      // El intento se consume solo si el ciclo corrió: una excepción del
+      // proveedor (red, timeout) habría abortado antes de llegar aquí y debe
+      // poder reintentarse.
+      this.progress.recordSkillDevAttempt(goal.id);
+
+      if (outcome.stableSkill) {
+        this.memory.recordEpisode({
+          kind: 'skill-created',
+          summary: `desarrollé la habilidad ${outcome.stableSkill.name} (v${outcome.stableSkill.version}) tras ${outcome.versionsTried} intentos`,
+          tick: this.tick,
+          importance: 0.9,
+        });
+        // El hambre pudo resolverse mientras practicaba (comió por otra vía,
+        // el objetivo se completó): la habilidad queda en la biblioteca, pero
+        // no se estrena contra un objetivo que ya no existe.
+        const current = this.goals.all().find((g) => g.id === goal.id);
+        if (current?.status !== 'active') return null;
+        this.startActivity(
+          goal,
+          `stable-skill:${outcome.stableSkill.name}@v${outcome.stableSkill.version}`,
+          outcome.stableSkill.program,
+          fresh,
+          { skillId: outcome.stableSkill.id },
+        );
+        return this.continueActivity(fresh);
+      }
+      this.memory.recordEpisode({
+        kind: 'skill-failed',
+        summary: `no logré desarrollar una habilidad para: ${contract.purpose}`,
+        tick: this.tick,
+        importance: 0.7,
+      });
+      return null;
+    };
+
     const outcome = await this.runSkillDevelopment(
+      goal,
       contract,
       context,
       this.config.evaluationScenarios,
+      resume,
     );
-    // El intento se consume solo si el ciclo corrió: una excepción del
-    // proveedor (red, timeout) habría abortado antes de llegar aquí y debe
-    // poder reintentarse.
-    this.progress.recordSkillDevAttempt(goal.id);
-
-    if (outcome.stableSkill) {
-      this.memory.recordEpisode({
-        kind: 'skill-created',
-        summary: `desarrollé la habilidad ${outcome.stableSkill.name} (v${outcome.stableSkill.version}) tras ${outcome.versionsTried} intentos`,
-        tick: this.tick,
-        importance: 0.9,
-      });
-      this.startActivity(
-        goal,
-        `stable-skill:${outcome.stableSkill.name}@v${outcome.stableSkill.version}`,
-        outcome.stableSkill.program,
-        perception,
-        { skillId: outcome.stableSkill.id },
-      );
-      return this.continueActivity(perception);
-    }
-    this.memory.recordEpisode({
-      kind: 'skill-failed',
-      summary: `no logré desarrollar una habilidad para: ${contract.purpose}`,
-      tick: this.tick,
-      importance: 0.7,
-    });
-    return null;
+    if (outcome === 'in-flight') return null;
+    return resume(outcome, perception);
   }
 
   private startUserActivity(

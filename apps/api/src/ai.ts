@@ -4,6 +4,8 @@ import { mkdirSync } from 'node:fs';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { CodexAppServer, CodexAppServerTurnError } from './codex-app-server.js';
+import type { CodexAppServerLike } from './codex-app-server.js';
 
 /**
  * Puente hacia el CLI de Codex instalado en la máquina del usuario.
@@ -238,6 +240,13 @@ export interface CodexBridgeOptions {
   loginSlot?: CodexLoginSlot;
   /** Solo para pruebas: sustituye la ejecución real de `codex exec`. */
   exec?: CodexExec;
+  /**
+   * Sesión persistente `codex app-server` (ADR 0044). `false` la desactiva;
+   * una instancia inyectada sirve para las pruebas. Ausente: se crea la real,
+   * salvo que también se haya inyectado `exec` (una prueba de exec no quiere
+   * un proceso de verdad por detrás).
+   */
+  appServer?: CodexAppServerLike | false;
 }
 
 function parseLimitWindow(raw: unknown): AiLimitWindow | null {
@@ -412,6 +421,19 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
   // de la cuenta requiere un CLI más nuevo que el instalado.
   const defaultModel = options.model ?? process.env.ANIMA_CODEX_MODEL;
   const defaultEffort = process.env.ANIMA_CODEX_EFFORT ?? 'low';
+  // La sesión persistente que mata el arranque en frío (ADR 0044). Es un
+  // atajo, no la verdad: si su transporte falla, se descarta y el puente
+  // vuelve a `codex exec` por el resto de su vida (un reinicio la reintenta).
+  let appServer: CodexAppServerLike | null =
+    options.appServer === false
+      ? null
+      : (options.appServer ??
+        (options.exec
+          ? null
+          : new CodexAppServer({
+              timeoutMs: COMPLETE_TIMEOUT_MS,
+              ...(env ? { env } : {}),
+            })));
 
   return {
     async status() {
@@ -502,6 +524,10 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
 
     async logout() {
       cachedStatus = null;
+      // El proceso persistente carga las credenciales al arrancar: tras un
+      // logout (y el login que suele seguirlo) tiene que renacer con las
+      // nuevas. dispose() no lo rompe — el próximo complete lo respawnea.
+      appServer?.dispose();
       if (loginSlot.child && loginSlot.owner === owner) {
         loginSlot.child.kill();
         loginSlot.child = null;
@@ -528,6 +554,40 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
       // Si ya sabemos que este modelo rechaza el nivel pedido, ni lo forzamos.
       const comboKey = `${model ?? ''}|${requestedEffort}`;
       const effort = unsupportedEfforts.has(comboKey) ? undefined : requestedEffort;
+
+      // Primero la sesión persistente (ADR 0044): sin proceso nuevo ni
+      // directorio temporal, la consulta empieza donde importa — el modelo.
+      if (appServer) {
+        try {
+          return await appServer.complete(
+            {
+              prompt: input.prompt,
+              ...(input.schema !== undefined ? { schema: input.schema } : {}),
+              ...(model !== undefined ? { model } : {}),
+              ...(effort !== undefined ? { reasoningEffort: effort } : {}),
+            },
+            onEvent,
+          );
+        } catch (error) {
+          if (error instanceof CodexAppServerTurnError) {
+            // El backend rechazó el turno (modelo, nivel, cuota, timeout del
+            // modelo): el proceso sigue sano. La consulta cae a exec, que ya
+            // sabe reintentar y recordar combinaciones no soportadas.
+          } else {
+            // Fallo de transporte o protocolo: la sesión se descarta y este
+            // puente sigue con exec. El protocolo del app-server es
+            // experimental; exec es la verdad de siempre.
+            appServer.dispose();
+            appServer = null;
+            console.warn(
+              `[anima-ai] codex app-server fuera de juego; sigo con codex exec: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
+      }
+
       const workdir = await mkdtemp(join(tmpdir(), 'anima-codex-'));
       const outFile = join(workdir, 'last-message.txt');
       const schemaFile = join(workdir, 'schema.json');
