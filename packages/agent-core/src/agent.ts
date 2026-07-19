@@ -23,9 +23,11 @@ import type {
 import {
   blueprintCounts,
   expandRecipeCost,
+  groundKey,
   isMadeFrom,
   MAX_RECIPE_DEPTH,
   missingIngredients,
+  perceivedGround,
   recipeProduces,
   recipeProducing,
   recipeProduct,
@@ -886,6 +888,7 @@ export class AnimaAgent {
    * (ADR 0049). Si el plano cambió (ella lo reinventó), el sitio viejo no vale.
    */
   private siteFor(goalId: string, blueprint: Blueprint, perception: Perception): Vec2 | null {
+    const onto = this.destinationKindFor(goalId);
     const known = this.structureSites.get(goalId);
     if (known && known.blueprintId === blueprint.id) {
       // El sitio se eligió con lo que VEÍA, y la vista exige línea despejada
@@ -899,12 +902,61 @@ export class AnimaAgent {
       const untouched =
         this.pendingPlacements(blueprint, known.anchor, perception).length ===
         blueprint.placements.length;
-      if (!untouched || this.siteFits(blueprint, known.anchor, perception)) return known.anchor;
+      // Mientras no haya puesto nada, un sitio que NO da al destino que le
+      // pidieron se puede abandonar: al elegirlo quizá no veía el río todavía.
+      const serves = onto === undefined || this.siteReaches(blueprint, known.anchor, onto, perception);
+      if (!untouched || (serves && this.siteFits(blueprint, known.anchor, perception))) {
+        return known.anchor;
+      }
     }
-    const chosen = this.chooseStructureSite(blueprint, perception);
+    const chosen = this.chooseStructureSite(blueprint, perception, onto);
     if (!chosen) return known?.anchor ?? null;
     this.structureSites.set(goalId, { blueprintId: blueprint.id, anchor: chosen });
     return chosen;
+  }
+
+  /**
+   * Sobre QUÉ le pidieron dejar esta obra, si el encargo lo dijo.
+   *
+   * «Fabricá algo, ponelo sobre el agua y cruzá» se parte en pasos (ADR 0078):
+   * el que construye y el que coloca son objetivos distintos, encadenados por
+   * `afterGoalId`. El dato de dónde va vive en el SEGUNDO, así que el primero
+   * elegía sitio a ciegas — y elegir a ciegas es elegir el más cercano. Se la
+   * vio armar el puente entero en el pasto, a cinco celdas del río, con el
+   * "sobre el agua" escrito en su propio plan y sin que nadie lo leyera.
+   */
+  private destinationKindFor(goalId: string): string | undefined {
+    const all = this.goals.all();
+    const seen = new Set<string>([goalId]);
+    let current = goalId;
+    for (;;) {
+      const next = all.find((g) => g.afterGoalId === current && !seen.has(g.id));
+      if (!next) return undefined;
+      if (next.userRequest?.kind === 'place-item' && next.userRequest.onKind !== undefined) {
+        return next.userRequest.onKind;
+      }
+      seen.add(next.id);
+      current = next.id;
+    }
+  }
+
+  /** ¿Alguna pieza de la obra, plantada acá, cae sobre el destino pedido? */
+  private siteReaches(
+    blueprint: Blueprint,
+    anchor: Vec2,
+    onto: string,
+    perception: Perception,
+  ): boolean {
+    const target = new Set<string>();
+    for (const entity of perception.visibleEntities) {
+      if (entity.kind === onto && entity.position && entity.held !== true) {
+        target.add(groundKey(entity.position));
+      }
+    }
+    if (target.size === 0) return false;
+    return blueprint.placements.some((placement) =>
+      target.has(groundKey({ x: anchor.x + placement.offset.x, y: anchor.y + placement.offset.y })),
+    );
   }
 
   /**
@@ -943,10 +995,14 @@ export class AnimaAgent {
    * Se prefiere lo más cerca posible, para no caminar de más con las manos
    * llenas.
    */
-  private chooseStructureSite(blueprint: Blueprint, perception: Perception): Vec2 | null {
+  private chooseStructureSite(
+    blueprint: Blueprint,
+    perception: Perception,
+    onto?: string,
+  ): Vec2 | null {
     const bounds = perception.bounds;
     const self = perception.self.position;
-    let best: { anchor: Vec2; distance: number } | null = null;
+    let best: { anchor: Vec2; serves: boolean; distance: number } | null = null;
     for (let dy = -STRUCTURE_SITE_SEARCH; dy <= STRUCTURE_SITE_SEARCH; dy++) {
       for (let dx = -STRUCTURE_SITE_SEARCH; dx <= STRUCTURE_SITE_SEARCH; dx++) {
         const anchor = { x: self.x + dx, y: self.y + dy };
@@ -961,8 +1017,15 @@ export class AnimaAgent {
         // cercano puede estar del otro lado de un muro, y el caminante greedy
         // no lo rodea — elegirlo era condenar la obra antes de empezarla.
         if (this.clearWalkTo(perception, anchor, 0) === null) continue;
+        // Y si el encargo dijo SOBRE QUÉ va, servir al encargo pesa más que
+        // estar cerca. Sin esto, "lo más cerca posible" gana siempre y una
+        // pasarela para cruzar un río se levanta en tierra firme: cumple el
+        // plano al pie de la letra y no sirve para nada.
+        const serves = onto !== undefined && this.siteReaches(blueprint, anchor, onto, perception);
         const distance = Math.abs(dx) + Math.abs(dy);
-        if (!best || distance < best.distance) best = { anchor, distance };
+        const better =
+          !best || (serves !== best.serves ? serves : distance < best.distance);
+        if (better) best = { anchor, serves, distance };
       }
     }
     return best?.anchor ?? null;
@@ -976,12 +1039,15 @@ export class AnimaAgent {
    */
   private siteFits(blueprint: Blueprint, anchor: Vec2, perception: Perception): boolean {
     const bounds = perception.bounds;
+    const ground = perceivedGround(perception.visibleEntities);
     // Estorba lo sólido y lo que está puesto. Lo suelto y recogible no: se
-    // levanta del piso y la celda queda libre.
+    // levanta del piso y la celda queda libre. El agua NO entra acá: no es un
+    // estorbo sino terreno, y se juzga abajo contra la pieza que va encima.
     const blocked = new Set<string>();
     for (const entity of perception.visibleEntities) {
       if (entity.position === undefined || entity.held === true) continue;
-      if (entity.solid === true || entity.portable !== true || entity.wet === true) {
+      if (entity.wet === true || entity.footing === true) continue;
+      if (entity.solid === true || entity.portable !== true) {
         blocked.add(`${entity.position.x},${entity.position.y}`);
       }
     }
@@ -999,8 +1065,32 @@ export class AnimaAgent {
           e.position?.y === y,
       );
       if (already) return true;
-      return !blocked.has(`${x},${y}`);
+      const key = `${x},${y}`;
+      if (blocked.has(key)) return false;
+      // El agua no veta a una pieza HECHA para el agua. El motor ya la deja
+      // apoyar —`resolvePlace` no cuenta el agua como ocupante, es el suelo
+      // mojado de abajo— y una vez puesta su `footing` vuelve caminable la
+      // celda. Vetarla acá era la única razón por la que un puente no podía
+      // plantarse sobre un río: la mascota inventaba las piezas, las fabricaba
+      // y terminaba armando el puente en el pasto, a cinco celdas del agua.
+      //
+      // La que no trae piso sigue vetada, y eso importa tanto como lo otro: un
+      // plano que manda una baranda al agua no abre ningún paso.
+      if (ground.water.has(key)) return this.bringsFooting(placement.kind, perception);
+      return true;
     });
+  }
+
+  /**
+   * ¿Lo que sale de esta receta se puede pisar? Se pregunta al plano ANTES de
+   * construir, que es cuando todavía se puede elegir otro sitio. Sin receta
+   * conocida la respuesta es no: apoyar sobre el agua algo de lo que no se
+   * sabe nada es tirar la pieza al río.
+   */
+  private bringsFooting(kind: string, perception: Perception): boolean {
+    const recipe = recipeProducing(perception.recipes, kind);
+    if (!recipe) return false;
+    return recipeProduct(recipe)?.components.footing !== undefined;
   }
 
   /**
@@ -2161,13 +2251,16 @@ export class AnimaAgent {
   private clearWalkTo(perception: Perception, to: Vec2, stopAt: number): Direction[] | null {
     const hazards = this.knownHazardPositions(perception);
     const risky = (cell: Vec2): boolean => hazards.some((h) => chebyshev(h, cell) < SAFE_DISTANCE);
-    // Solo lo sólido frena un paso: lo suelto se pisa, y lo recogible se levanta.
-    const solid = new Set<string>();
-    for (const entity of perception.visibleEntities) {
-      if (entity.position && entity.solid === true) {
-        solid.add(`${entity.position.x},${entity.position.y}`);
-      }
-    }
+    // Lo sólido frena un paso; lo suelto se pisa y lo recogible se levanta. Y
+    // el agua frena IGUAL que un muro: nadie sabe nadar. Darla por transitable
+    // rompía la promesa de acá arriba —"es el MISMO cálculo que después se
+    // camina"—, así que elegía sitios del otro lado del río y lo descubría
+    // recién al caminar, abortando con `camino-bloqueado`.
+    //
+    // Lo que tiene un piso encima no cuenta como agua: `perceivedGround` aplica
+    // la precedencia del motor, y es lo que deja usar el paso que ella misma
+    // construyó en vez de seguir viéndolo como un río.
+    const ground = perceivedGround(perception.visibleEntities);
     const walkable = (dirs: Direction[]): boolean => {
       const cur = { ...perception.self.position };
       for (const dir of dirs) {
@@ -2175,7 +2268,8 @@ export class AnimaAgent {
         else if (dir === 'right') cur.x += 1;
         else if (dir === 'up') cur.y -= 1;
         else cur.y += 1;
-        if (solid.has(`${cur.x},${cur.y}`)) return false;
+        const key = groundKey(cur);
+        if (ground.blocked.has(key) || ground.water.has(key)) return false;
       }
       return true;
     };

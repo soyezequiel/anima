@@ -83,9 +83,14 @@ silencio.
 
 ## Limitaciones que quedan
 
-- **Una obra no se planta sobre el agua.** El sitio de una obra exige suelo
-  firme (ADR 0049/0071), así que cruzar poniendo piezas de a una se puede, pero
-  levantar una pasarela como obra no.
+- ~~**Una obra no se planta sobre el agua.**~~ **Resuelto.** El veto no estaba
+  en el motor: `resolvePlace` nunca contó el agua como ocupante y `impedimentAt`
+  siempre dejó pisar lo que trae `footing`. Estaba en `siteFits`, la tercera
+  copia de la regla «qué se puede pisar», que daba toda celda mojada por
+  intransitable sin mirar la pieza que iba encima. Ahora el agua veta a la
+  pieza que no ofrece piso y deja pasar a la que sí — y su espejo, `clearWalkTo`,
+  dejó de creer que se cruza un río a nado. Regresión en
+  `packages/agent-core/tests/obra-sobre-el-agua.test.ts`.
 - **«Regar» no existe en este mundo.** Las interacciones no pueden dar comida ni
   calor (ADR 0018), así que ningún objetivo puede exigir que un brote quede
   *regado*: solo que cambie de estado. En una corrida Ánima resolvió el cambio

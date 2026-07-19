@@ -56,6 +56,51 @@ export interface PerceivedEntity {
   held?: boolean;
 }
 
+/**
+ * El terreno tal como se VE, con la misma precedencia que `impedimentAt`: lo
+ * que ofrece dónde pisar manda, después lo sólido, y el agua al final.
+ *
+ * Existe porque quien planifica razona sobre percepción, no sobre el mundo, y
+ * volver a escribir ahí la regla es tener dos físicas — la que el motor aplica
+ * y la que ella cree. Ya pasó dos veces: el elector de sitios daba el agua por
+ * intransitable aunque la pieza que iba encima fuera un piso, y el validador
+ * de caminos la daba por transitable como si supiera nadar. La misma celda,
+ * dos creencias opuestas, ninguna igual al mundo.
+ *
+ * Las claves son `"x,y"` (ver `groundKey`).
+ */
+export interface PerceivedGround {
+  /** No se pisa: algo sólido o algo fijo que no se levanta. */
+  blocked: ReadonlySet<string>;
+  /** Agua sin nada encima que ofrezca dónde pisar. Tampoco se pisa — todavía. */
+  water: ReadonlySet<string>;
+}
+
+export function groundKey(pos: Vec2): string {
+  return `${pos.x},${pos.y}`;
+}
+
+export function perceivedGround(entities: readonly PerceivedEntity[]): PerceivedGround {
+  const footings = new Set<string>();
+  for (const entity of entities) {
+    if (entity.footing === true && entity.position && entity.held !== true) {
+      footings.add(groundKey(entity.position));
+    }
+  }
+  const blocked = new Set<string>();
+  const water = new Set<string>();
+  for (const entity of entities) {
+    if (entity.position === undefined || entity.held === true) continue;
+    const key = groundKey(entity.position);
+    // Un piso puesto cancela lo que había debajo: es exactamente lo que hace
+    // que el paso que ella misma construyó deje de parecerle un río.
+    if (footings.has(key)) continue;
+    if (entity.solid === true) blocked.add(key);
+    else if (entity.wet === true) water.add(key);
+  }
+  return { blocked, water };
+}
+
 export interface Perception {
   tick: number;
   self: {
