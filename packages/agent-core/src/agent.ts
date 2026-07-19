@@ -869,16 +869,24 @@ export class AnimaAgent {
     return [...remaining].map(([kind, need]) => ({ kind, need, have: held.get(kind) ?? 0 }));
   }
 
-  /** El objetivo que está levantando este plano, si hay uno abierto. */
+  /**
+   * El objetivo que está levantando este plano, si hay uno abierto.
+   *
+   * Cuentan los dos pasos que pueden pedir la obra: el que la construye y el
+   * que la deja puesta en algún lado. Para una obra son el mismo trabajo, y si
+   * el segundo no encontrara sitio abortaría con `sin-sitio` teniendo la obra
+   * a medio levantar delante.
+   */
   private activeStructureGoalId(blueprint: Blueprint): string | null {
     const goal = this.goals
       .all()
-      .find(
-        (candidate) =>
-          (candidate.status === 'active' || candidate.status === 'suspended') &&
-          candidate.userRequest?.kind === 'craft-item' &&
-          candidate.userRequest.recipeId === blueprint.id,
-      );
+      .find((candidate) => {
+        if (candidate.status !== 'active' && candidate.status !== 'suspended') return false;
+        const request = candidate.userRequest;
+        if (request?.kind === 'craft-item') return request.recipeId === blueprint.id;
+        if (request?.kind === 'place-item') return request.targetKind === blueprint.id;
+        return false;
+      });
     return goal?.id ?? null;
   }
 
@@ -927,6 +935,10 @@ export class AnimaAgent {
    */
   private destinationKindFor(goalId: string): string | undefined {
     const all = this.goals.all();
+    // El paso que coloca lleva el destino encima: cuando el activo es ése, no
+    // hay que buscar más adelante.
+    const own = all.find((g) => g.id === goalId)?.userRequest;
+    if (own?.kind === 'place-item' && own.onKind !== undefined) return own.onKind;
     const seen = new Set<string>([goalId]);
     let current = goalId;
     for (;;) {

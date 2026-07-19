@@ -64,6 +64,40 @@ function searchFor(query: EntityQuery): SkillOp {
   return { op: 'explore', maxSteps: 50, until: { type: 'sees', query } };
 }
 
+/**
+ * Levantar una obra en su sitio. Lo llaman los DOS pasos que pueden pedirla:
+ * el que la construye y el que la deja puesta en algún lado. Para una obra son
+ * lo mismo —el sitio ES la colocación—, y tenerlo escrito una sola vez es lo
+ * que evita que los dos pasos discrepen sobre dónde va.
+ */
+function buildWork(
+  blueprint: Blueprint,
+  perception: Perception,
+  deps: UserRequestProgramDeps,
+): SkillProgram {
+  // Dónde va la obra lo decide el agente (tiene el sitio guardado) y no el
+  // generador: plantarla donde esté parada la mudaba en cada reanudación y
+  // podía pedir celdas ocupadas (ADR 0049).
+  const site = deps.structureSite(blueprint);
+  // Sin sitio no se levanta nada (ADR 0071). Antes la ausencia de sitio caía en
+  // «plantala donde estés», que es justo el comportamiento que el ADR 0049 vino
+  // a eliminar: con el mapa cerrado alrededor, colocaba los bloques sobre las
+  // piedras que tenía delante y repetía «la acción no produjo el resultado
+  // esperado». No tener dónde construir es una respuesta legítima, y dicha con
+  // todas las letras es más útil que una obra plantada en el primer lugar que
+  // tocó.
+  if (!site) return [{ op: 'abort', reason: 'sin-sitio' }];
+  return buildStructureProgram(blueprint, {
+    held: heldCounts(perception),
+    recipes: perception.recipes,
+    rememberedWalk: deps.rememberedWalk,
+    harvestSource: deps.harvestSource,
+    capacity: perception.self.inventoryCapacity,
+    approach: site.approach,
+    pending: site.pending,
+  });
+}
+
 export function programForUserRequest(
   request: GoalUserRequest,
   perception: Perception,
@@ -82,29 +116,7 @@ export function programForUserRequest(
       const blueprint = request.recipeId
         ? perception.blueprints.find((b) => b.id === request.recipeId)
         : undefined;
-      if (blueprint) {
-        // Dónde va la obra lo decide el agente (tiene el sitio guardado) y no
-        // el generador: plantarla donde esté parada la mudaba en cada
-        // reanudación y podía pedir celdas ocupadas (ADR 0049).
-        const site = deps.structureSite(blueprint);
-        // Sin sitio no se levanta nada (ADR 0071). Antes la ausencia de sitio
-        // caía en «plantala donde estés», que es justo el comportamiento que el
-        // ADR 0049 vino a eliminar: con el mapa cerrado alrededor, colocaba los
-        // bloques sobre las piedras que tenía delante y repetía «la acción no
-        // produjo el resultado esperado». No tener dónde construir es una
-        // respuesta legítima, y dicha con todas las letras es más útil que una
-        // obra plantada en el primer lugar que tocó.
-        if (!site) return [{ op: 'abort', reason: 'sin-sitio' }];
-        return buildStructureProgram(blueprint, {
-          held: heldCounts(perception),
-          recipes: perception.recipes,
-          rememberedWalk: deps.rememberedWalk,
-          harvestSource: deps.harvestSource,
-          capacity: perception.self.inventoryCapacity,
-          approach: site.approach,
-          pending: site.pending,
-        });
-      }
+      if (blueprint) return buildWork(blueprint, perception, deps);
       // Juntar lo que falte es parte de construir: el mismo programa que la
       // aproximación del fuego, sin la espera junto al calor. Si ya lleva
       // todo encima, la recolección se salta sola y el mundo vuelve a
@@ -244,6 +256,23 @@ export function programForUserRequest(
       if (targetKind === 'unknown' || onKind === 'unknown') {
         return [{ op: 'abort', reason: 'no-sé-qué-poner-ni-dónde' }];
       }
+      // ¿Y si lo que hay que poner resultó ser una OBRA?
+      //
+      // El encargo se tradujo cuando el puente todavía era una cosa: «fabricá
+      // un puente» y después «poné el puente sobre el agua». En el medio, el
+      // juez le dijo que un puente no es una cosa sino una obra (ADR 0079), y
+      // ella rehízo el plan en piezas. Pero este paso siguió buscando una
+      // entidad llamada «puente» que ya nadie iba a fabricar: salía a
+      // recorrer el mapa detrás de un fantasma y abortaba `no-candidates`.
+      //
+      // Para una obra, PONERLA es levantarla en el lugar correcto — y el sitio
+      // ya escucha el `onKind` de este mismo paso. Así que el paso se cumple
+      // construyendo: es idempotente (lo ya colocado no se recoloca), de modo
+      // que sobre una obra terminada no hace nada y sobre una a medias la
+      // completa, que es exactamente lo que «asegurate de que quede puesto»
+      // debería significar.
+      const work = perception.blueprints.find((b) => b.id === targetKind);
+      if (work) return buildWork(work, perception, deps);
       return [
         searchFor({ kind: targetKind }),
         { op: 'findEntities', query: { kind: targetKind }, store: 'toPlace' },

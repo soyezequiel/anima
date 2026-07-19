@@ -46,15 +46,17 @@ class FakeLanguageModel extends MockModelProvider {
  * La forma del vado: un río de una celda de ancho partiendo el mundo en dos.
  *
  * `narrowBank` deja la orilla de acá reducida a dos columnas de tierra (x=4 y
- * x=5) contra un farallón. Es a propósito: en campo abierto el sitio elegido es
- * siempre el más cercano —o sea, tierra firme— y el veto del agua no llega ni a
- * consultarse. Con la orilla angosta, el único sitio donde la obra entra es el
- * que apoya el tablón en el río, y ahí sí se mide lo que este test mide.
+ * x=5) contra un farallón, y la para pegada al agua. Sirve para aislar el veto:
+ * el único sitio donde la obra entra es el que apoya el tablón en el río.
+ *
+ * En campo abierto, en cambio, ella arranca LEJOS del agua (x=2), así que el
+ * sitio más cercano es tierra firme y elegir el río solo puede venir de haber
+ * leído el encargo. Las dos mitades se miden por separado a propósito.
  */
 function riverWorld(narrowBank = false): { world: WorldState; petId: EntityId } {
   const world = createWorld({ width: 13, height: 9, seed: 5 });
   const petId = spawn(world, 'pet', {
-    position: { x: 5, y: 4 },
+    position: narrowBank ? { x: 5, y: 4 } : { x: 2, y: 4 },
     collider: { solid: true },
     energy: { current: 50, max: 50, decayPerTick: 0.001 },
     health: { current: 10, max: 10 },
@@ -259,6 +261,49 @@ describe('el sitio de la obra escucha dónde le pidieron dejarla', () => {
       (e) => e.kind === 'tablon' && e.components.position?.x === 6,
     );
     expect(enElRio.length).toBe(0);
+  });
+});
+
+describe('el paso que coloca sobrevive a que le cambien la forma', () => {
+  it('«ponelo sobre el agua» no sale a buscar un objeto que dejó de existir', async () => {
+    // La corrida real, entera. El encargo se tradujo cuando el puente todavía
+    // era una cosa: fabricarlo y ponerlo. Después el juez dijo que un puente es
+    // una obra y ella lo rehízo en piezas — y este segundo paso se quedó
+    // buscando una entidad "puente" que ya nadie iba a fabricar.
+    const { world, petId } = riverWorld();
+    teachBridge(world);
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: {
+          action: 'sequence',
+          steps: [
+            { action: 'craft-item', recipeId: 'puente' },
+            { action: 'place-item', targetKind: 'puente', onKind: 'agua' },
+          ],
+        },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    agent.receiveUserMessage('fabricá un puente, ponelo sobre el agua y cruzá');
+
+    for (let i = 0; i < 320; i++) {
+      const intent = await agent.think(perception());
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    // Nunca existió una entidad "puente": el puente es la obra (ADR 0032).
+    expect(allEntities(world).some((e) => e.kind === 'puente')).toBe(false);
+    // El paso de colocar no murió buscándola: ni un `no-candidates:toPlace`.
+    const abortos = agent.events
+      .ofType('strategy.failed')
+      .map((e) => String((e.data as { reason?: unknown }).reason ?? ''));
+    expect(abortos.filter((r) => r.includes('toPlace'))).toEqual([]);
+    // Y la obra terminó donde el encargo dijo.
+    const enElRio = allEntities(world).filter(
+      (e) => e.kind === 'tablon' && e.components.position?.x === 6,
+    );
+    expect(enElRio.length).toBeGreaterThan(0);
   });
 });
 

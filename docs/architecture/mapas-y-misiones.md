@@ -91,6 +91,22 @@ silencio.
   pieza que no ofrece piso y deja pasar a la que sí — y su espejo, `clearWalkTo`,
   dejó de creer que se cruza un río a nado. Regresión en
   `packages/agent-core/tests/obra-sobre-el-agua.test.ts`.
+- ~~**El sitio de una obra era «el claro más cercano».**~~ **Resuelto.** Quitar
+  el veto no alcanzaba: en campo abierto el más cercano es siempre tierra firme,
+  así que la pasarela se levantaba al pie de ella con el «sobre el agua» escrito
+  en su propio plan. El dato vivía en el paso SIGUIENTE del encargo
+  (`place-item` con su `onKind`, ADR 0078) y el paso que construía no lo leía.
+  Ahora servir al encargo pesa más que estar cerca, y sin destino declarado se
+  sigue eligiendo lo más cercano — el sesgo es del encargo, no una atracción por
+  el agua.
+- ~~**Un veto reencauzaba la forma y dejaba huérfano el resto del plan.**~~
+  **Resuelto.** El encargo se traducía cuando el puente todavía era una cosa
+  («fabricalo» + «ponelo sobre el agua»); el juez lo mandaba a obra (ADR 0079) y
+  el segundo paso seguía buscando una entidad `puente` que ya nadie iba a
+  fabricar — `no-candidates:toPlace` tras recorrer el mapa. Ahora, si lo que hay
+  que poner resulta ser un plano, poner ES levantar la obra en su sitio: el
+  mismo programa, que es idempotente y por eso completa una obra a medias en vez
+  de perseguir un fantasma.
 - **«Regar» no existe en este mundo.** Las interacciones no pueden dar comida ni
   calor (ADR 0018), así que ningún objetivo puede exigir que un brote quede
   *regado*: solo que cambie de estado. En una corrida Ánima resolvió el cambio
