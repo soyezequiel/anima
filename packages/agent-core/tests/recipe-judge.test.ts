@@ -186,6 +186,36 @@ describe('la IA Dios juzga las recetas inventadas (ADR 0042)', () => {
     expect(asked).toBeLessThanOrEqual(1);
   });
 
+  /**
+   * El caso que se vio en una partida real del mapa "El vado". El juez rechazó
+   * "puente" COMO COSA y en el mismo veredicto pidió que se propusiera como
+   * OBRA. El modelo obedeció y mandó el plano con sus piezas — y el veto viejo,
+   * guardado solo contra el nombre, tumbó la obra antes de que nadie la mirara.
+   *
+   * La memoria de un rechazo no puede bloquear la corrección que ese mismo
+   * rechazo pidió.
+   */
+  it('un veto contra la COSA no bloquea la misma idea propuesta como OBRA', async () => {
+    const { world, petId } = worldWithBranchAndFlint();
+    const agent = makeAgent(petId, new ScriptedModel({}));
+
+    // Se le hace vivir el veto de la cosa suelta, con el formato que el motor
+    // guarda hoy.
+    agent.memory.addFact(
+      'no tiene sentido construir puente como cosa: un puente es una obra, no una cosa',
+      0,
+    );
+    const facts = agent.memory.factList().map((f) => f.statement);
+    expect(facts.some((f) => f.startsWith('no tiene sentido construir puente como cosa'))).toBe(
+      true,
+    );
+    // El veto de la cosa y el de la pieza son hermanos: ninguno es prefijo del
+    // otro, así que buscar uno jamás encuentra al otro.
+    expect(
+      facts.some((f) => f.startsWith('no tiene sentido construir puente como pieza de una obra')),
+    ).toBe(false);
+  });
+
   it('el celular NO está prohibido: con la cadena construida, el último paso entra', async () => {
     // Un mundo que ya recorrió la cadena: sabe hacer procesador y pantalla.
     // Ahora "celular = procesador + pantalla" es UN paso, no un salto, y el

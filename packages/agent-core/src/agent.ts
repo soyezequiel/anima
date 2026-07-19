@@ -223,6 +223,8 @@ const USER_REQUEST_WEIGHTS: Record<GoalUserRequest['kind'], { priority: number; 
     'run-skill': { priority: 1, urgency: 0.7 },
     'craft-item': { priority: 1, urgency: 0.7 },
     'interact-entity': { priority: 1, urgency: 0.7 },
+    // Colocar pesa como construir: es el remate de un trabajo, no un recado.
+    'place-item': { priority: 1, urgency: 0.7 },
     'fetch-item': { priority: 0.6, urgency: 0.35 },
     'destroy-entity': { priority: 0.6, urgency: 0.35 },
     'wait-here': { priority: 0.6, urgency: 0.35 },
@@ -239,7 +241,13 @@ type InterpretedMessage =
   | { kind: 'learn-skill'; summary: string; raw: string }
   | { kind: 'rename-pet'; name: string; raw: string }
   /** El cuidador describe un objeto nuevo para que exista en el mundo. */
-  | { kind: 'describe-entity'; description: string; raw: string };
+  | { kind: 'describe-entity'; description: string; raw: string }
+  /**
+   * El cuidador pidió varias cosas encadenadas. Cada parte es un encargo de
+   * verdad, con su objetivo propio, y van en fila: la segunda espera a que la
+   * primera se cierre.
+   */
+  | { kind: 'sequence'; requests: UserRequest[]; raw: string };
 
 /**
  * Una descripción del cuidador ya traducida a receta y aceptada por la puerta.
@@ -469,6 +477,11 @@ export class AnimaAgent {
   private pendingContract: LearningContract | null = null;
   /** Qué la dañó en el último tick: dispara el reflejo de apartarse. */
   private lastPain: { sourceId: string; sourceKind: string; tick: number } | null = null;
+  /**
+   * El último "no" del mundo, con su motivo. Es memoria de un tick, no un
+   * archivo: lo que se conserva de verdad son los HECHOS que se derivan de él.
+   */
+  private lastWorldRefusal: { reason: string; targetId?: string; tick: number } | null = null;
   private lastSelectedGoalId: string | null = null;
   private lastUserRequest: UserRequest | null = null;
   /** Su nombre actual. La identidad persiste fuera; esto alimenta su habla. */
@@ -1802,6 +1815,24 @@ export class AnimaAgent {
   /** Retroalimentación del mundo tras aplicar la intención. */
   observe(events: SimEvent[]): void {
     this.activity?.exec.observe(events);
+    // Por qué el mundo dijo que no, y sobre qué. El programa de la DSL solo se
+    // entera de que su intención falló ("no pude recogerlo"); el MOTIVO —que
+    // eso no se puede levantar, que estaba fuera de alcance, que no le entra en
+    // las manos— vive únicamente acá. Sin guardarlo, un "no" que era una
+    // propiedad estable del mundo se pierde igual que un tropiezo, y ella
+    // vuelve a intentar lo mismo o se calla.
+    for (const event of events) {
+      if (event.type !== 'action.resolved') continue;
+      if (event.data.actorId !== this.petId || event.data.success !== false) continue;
+      const reason = event.data.reason;
+      const targetId = event.data.itemId ?? event.data.targetId;
+      if (typeof reason !== 'string') continue;
+      this.lastWorldRefusal = {
+        reason,
+        ...(typeof targetId === 'string' ? { targetId } : {}),
+        tick: this.tick,
+      };
+    }
     // `entity.destroyed` no dice con qué se rompió, pero el `entity.damaged`
     // del mismo lote sí: el golpe fatal siempre viaja justo antes de la
     // destrucción. El mapa reconstruye la herramienta del recuerdo.
@@ -2632,6 +2663,11 @@ export class AnimaAgent {
       return;
     }
 
+    if (parsed.kind === 'sequence') {
+      await this.acceptSequence(parsed.requests, perception);
+      return;
+    }
+
     if (
       parsed.kind === 'wait-here' ||
       parsed.kind === 'move-direction' ||
@@ -2941,6 +2977,43 @@ export class AnimaAgent {
       return null;
     }
 
+    if (command.action === 'sequence') {
+      // Cada parte se contextualiza como si la hubieran dicho sola: resolver
+      // "ponelo ahí" necesita mirar lo que ve, igual que una orden suelta.
+      //
+      // Las partes que no son órdenes ejecutables (enseñanzas, charla) se caen:
+      // un encargo es una lista de cosas que hacer, y mezclar en la misma fila
+      // un objetivo con una explicación haría esperar a la segunda parte por
+      // algo que nunca "se cierra".
+      const notARequest = new Set([
+        'unsupported',
+        'not-command',
+        'explanation',
+        'learn-skill',
+        'rename-pet',
+        'describe-entity',
+        'sequence',
+      ]);
+      const requests: UserRequest[] = [];
+      for (const step of command.steps) {
+        if (notARequest.has(step.action)) continue;
+        const parsed = this.contextualizeUserMessage(
+          this.userRequestFromInterpretation(
+            step as Parameters<AnimaAgent['userRequestFromInterpretation']>[0],
+            text,
+          ),
+          text,
+          perception,
+        );
+        if (parsed.kind !== 'unknown' && parsed.kind !== 'explanation' && parsed.kind !== 'rename-pet') {
+          requests.push(parsed);
+        }
+      }
+      if (requests.length === 0) return null;
+      if (requests.length === 1) return requests[0]!;
+      return { kind: 'sequence', requests, raw: text };
+    }
+
     if (command.action === 'rename-pet') {
       return { kind: 'rename-pet', name: command.name, raw: text };
     }
@@ -3209,7 +3282,8 @@ export class AnimaAgent {
           | 'explanation'
           | 'learn-skill'
           | 'rename-pet'
-          | 'describe-entity';
+          | 'describe-entity'
+          | 'sequence';
       }
     >,
     raw: string,
@@ -3233,6 +3307,13 @@ export class AnimaAgent {
         return { kind: 'run-skill', skillName: normalizeSkillName(command.skillName), raw };
       case 'craft-item':
         return { kind: 'craft-item', recipeId: command.recipeId, raw };
+      case 'place-item':
+        return {
+          kind: 'place-item',
+          targetKind: command.targetKind,
+          onKind: command.onKind,
+          raw,
+        };
       case 'interact-entity':
         return {
           kind: 'interact-entity',
@@ -3441,7 +3522,50 @@ export class AnimaAgent {
     return facts;
   }
 
-  async decideOnRequest(request: UserRequest, perception: Perception): Promise<RequestDecision> {
+  /**
+   * Un encargo dicho en varias partes: cada una es un pedido de verdad, con su
+   * objetivo, y quedan en fila en el orden en que las dijeron.
+   *
+   * Se decide sobre TODAS, no solo la primera: si la tercera parte es algo que
+   * no quiere o no puede hacer, el cuidador se entera ahora y no dentro de
+   * cincuenta ticks. Y las que se aceptan quedan encadenadas — la segunda no
+   * arranca hasta que la primera se cierra— porque un encargo con partes es un
+   * orden, no un montón.
+   *
+   * La respuesta es una sola: contestar tres veces a un mensaje es hablarle
+   * encima al cuidador.
+   */
+  private async acceptSequence(requests: UserRequest[], perception: Perception): Promise<void> {
+    const answers: string[] = [];
+    let previousGoalId: string | undefined;
+    for (const request of requests) {
+      const decision = await this.decideOnRequest(
+        request,
+        perception,
+        previousGoalId !== undefined ? { afterGoalId: previousGoalId } : {},
+      );
+      this.emit(
+        decision.classification === 'accepted' ? 'user.request.accepted' : 'user.request.refused',
+        { request, classification: decision.classification, reason: decision.reason },
+      );
+      answers.push(
+        decision.alternative ? `${decision.reason} ${decision.alternative}` : decision.reason,
+      );
+      if (decision.classification === 'accepted') {
+        // Encadena con la última ACEPTADA: una parte rechazada no puede dejar
+        // esperando para siempre a las que vienen detrás.
+        previousGoalId = decision.goalId ?? previousGoalId;
+      }
+    }
+    this.lastUserRequest = structuredClone(requests[0]!);
+    this.reply(answers.join(' '));
+  }
+
+  async decideOnRequest(
+    request: UserRequest,
+    perception: Perception,
+    options: { afterGoalId?: string } = {},
+  ): Promise<RequestDecision & { goalId?: string }> {
     let decision = evaluateUserRequest(
       request,
       perception,
@@ -3469,7 +3593,7 @@ export class AnimaAgent {
           });
         }
         this.emit('goal.selected', { goalId: open.id, description: open.description });
-        return decision;
+        return { ...decision, goalId: open.id };
       }
       const weights = USER_REQUEST_WEIGHTS[request.kind];
       const goal = this.goals.create(
@@ -3482,9 +3606,11 @@ export class AnimaAgent {
           preconditions: [],
           successCriteria: ['la petición queda satisfecha'],
           failureCriteria: [],
+          ...(options.afterGoalId !== undefined ? { afterGoalId: options.afterGoalId } : {}),
           userRequest: {
             kind: request.kind,
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+            ...('onKind' in request ? { onKind: request.onKind } : {}),
             ...('verb' in request ? { verb: request.verb } : {}),
             ...('amount' in request && request.amount !== undefined
               ? { amount: request.amount }
@@ -3501,7 +3627,9 @@ export class AnimaAgent {
         goalId: goal.id,
         description: goal.description,
         source: goal.source,
+        ...(goal.afterGoalId !== undefined ? { afterGoalId: goal.afterGoalId } : {}),
       });
+      return { ...decision, goalId: goal.id };
     }
     return decision;
   }
@@ -5374,6 +5502,27 @@ export class AnimaAgent {
     if (!kind) return null;
     const article = kindWithArticle(kind);
     const capital = article.charAt(0).toUpperCase() + article.slice(1);
+
+    // Lo que el mundo rechazó por una propiedad ESTABLE del objetivo no es un
+    // tropiezo: es física, y se aprende. La diferencia importa — un "no llegué"
+    // se reintenta, un "eso no se levanta" no se reintenta nunca más, y decir
+    // las dos cosas igual la deja golpeando la misma pared.
+    if (reason === 'no-pude-recogerlo' && this.lastWorldRefusal?.reason === 'not-portable') {
+      const fact = this.memory.addFact(
+        `${kindLabel(kind)} no se puede levantar con las manos`,
+        this.tick,
+        0.9,
+      );
+      this.emit('memory.created', { kind: 'fact', statement: fact.statement });
+      // Y no se queda callada: nombra el obstáculo real y pide lo único que
+      // podría destrabarlo. Que sepa QUÉ le falta es la mitad de inventarlo.
+      return (
+        `${capital} no se puede levantar con las manos, así que no puedo traértel${
+          isFeminineKind(kind) ? 'a' : 'o'
+        } así. ` + `Si algo pudiera contenerl${isFeminineKind(kind) ? 'a' : 'o'}, sí: ` +
+        `decime con qué la junto y lo intento.`
+      );
+    }
 
     if (reason === 'objetivo-inmune') {
       this.memory.addFact(`${kindLabel(kind)} no se puede romper`, this.tick, 0.9);

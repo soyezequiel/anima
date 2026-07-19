@@ -1,25 +1,20 @@
 {
-  "name": "@anima/api",
+  "name": "@anima/missions",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
-    "./ai": "./src/ai.ts",
-    "./claude": "./src/claude.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "start": "tsx src/main.ts",
-    "dev": "tsx src/main.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "fastify": "^5.0.0",
-    "nostr-tools": "^2.23.9"
+    "@anima/shared": "workspace:*",
+    "@anima/sim-core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
-    "tsx": "^4.0.0",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

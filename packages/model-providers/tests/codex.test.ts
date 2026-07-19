@@ -247,6 +247,65 @@ describe('CodexModelProvider', () => {
     expect(reason).not.toMatch(/pala…$/);
   });
 
+  it('un encargo de varias partes se lee como varias órdenes en orden', async () => {
+    const empty = { targetKind: '', verb: '', amount: 0, directions: [], skillName: '', recipeId: '', onKind: '', summary: '', name: '', steps: [] };
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          ...empty,
+          action: 'sequence',
+          steps: [
+            { ...empty, action: 'craft-item', recipeId: 'tabla' },
+            { ...empty, action: 'place-item', targetKind: 'tabla', onKind: 'agua' },
+            { ...empty, action: 'move-direction', directions: ['right'] },
+          ],
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'interpret.command',
+      text: 'hacé una tabla, ponela sobre el agua y cruzá',
+      facts: [],
+    });
+    expect(response).toEqual({
+      kind: 'command.interpretation',
+      command: {
+        action: 'sequence',
+        steps: [
+          { action: 'craft-item', recipeId: 'tabla' },
+          { action: 'place-item', targetKind: 'tabla', onKind: 'agua' },
+          { action: 'move-direction', directions: ['right'] },
+        ],
+      },
+    });
+  });
+
+  it('un encargo con una sola parte legible es una orden, no una secuencia', async () => {
+    const empty = { targetKind: '', verb: '', amount: 0, directions: [], skillName: '', recipeId: '', onKind: '', summary: '', name: '', steps: [] };
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          ...empty,
+          action: 'sequence',
+          steps: [
+            { ...empty, action: 'craft-item', recipeId: 'tabla' },
+            // Un paso ilegible se cae solo: no tumba el encargo entero.
+            { ...empty, action: 'fetch-item', targetKind: '' },
+          ],
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'interpret.command',
+      text: 'hacé una tabla',
+      facts: [],
+    });
+    expect(response).toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'craft-item', recipeId: 'tabla' },
+    });
+  });
+
   it('interpreta una orden libre como una intención estructurada', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(
@@ -281,8 +340,10 @@ describe('CodexModelProvider', () => {
         'directions',
         'skillName',
         'recipeId',
+        'onKind',
         'summary',
         'name',
+        'steps',
       ],
     });
     expect(seen[0]?.prompt).toContain('pegá un pasito rumbo al rincón noroeste');
@@ -837,5 +898,31 @@ describe('pensamiento en vivo (hook onThought)', () => {
     const provider = new CodexModelProvider(transportReturning('{"text":"hola"}', seen));
     await provider.complete({ kind: 'dialogue', topic: 't', facts: [] });
     expect(seen[0]?.onEvent).toBeUndefined();
+  });
+});
+
+describe('el juez de interacciones juzga la regla, no el intento', () => {
+  it('le dice explícitamente que no rechace por lo que todavía no tiene encima', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ willing: true, reason: 'ok' }), seen),
+    );
+    await provider.complete({
+      kind: 'interaction.judge',
+      interactionId: 'juntar-agua',
+      description: 'juntar agua con el recipiente',
+      stance: 'beside',
+      targetKind: 'agua',
+      effectsSummary: ['el recipiente se vuelve recipiente-lleno'],
+      requiresHeld: 'recipiente',
+      facts: ['llevo encima: nada'],
+    });
+
+    const prompt = seen[0]?.prompt ?? '';
+    // Una regla vale siempre o no vale nunca: el inventario de este instante no
+    // puede vetarla, porque es justo lo que la regla sirve para conseguir.
+    expect(prompt).toContain('Juzgás una REGLA, no un intento');
+    expect(prompt).toContain('lo comprueba el mundo cada vez');
+    expect(prompt).toContain('CONTEXTO, no condición');
   });
 });

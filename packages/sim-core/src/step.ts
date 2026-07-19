@@ -20,7 +20,7 @@ import {
   scaleByQuality,
 } from './recipes.js';
 import type { WorldState } from './world.js';
-import { allEntities, entitiesAt, getEntity, inBounds, isBlocked, isInInventory, obtainableKinds, removeEntity, spawn } from './world.js';
+import { allEntities, entitiesAt, getEntity, impedimentAt, inBounds, isBlocked, isInInventory, obtainableKinds, removeEntity, spawn } from './world.js';
 
 /** Umbral (fracción del máximo) bajo el cual se emite `energy.low` al cruzarlo. */
 export const LOW_ENERGY_FRACTION = 0.35;
@@ -812,25 +812,17 @@ function resolveMove(
     return;
   }
   const to = addVec2(from, DIRECTION_DELTAS[intent.dir]);
-  const blocker = isBlocked(world, to, actor.id);
-  if (blocker) {
+  // Qué se puede pisar lo decide `impedimentAt`, y solo ella (world.ts): el
+  // motivo del fallo viaja distinguible —un muro no es un río— porque el
+  // agente razona distinto sobre cada uno.
+  const impediment = impedimentAt(world, to, actor.id);
+  if (impediment) {
+    const blocker = impediment.blocker;
     resolved(world, events, actor.id, intent, false, {
-      reason: 'blocked',
+      reason: impediment.reason,
       to,
       blockerId: blocker === 'bounds' ? 'bounds' : blocker.id,
       blockerKind: blocker === 'bounds' ? 'bounds' : blocker.kind,
-    });
-    return;
-  }
-  // El agua no es sólida —no tapa la vista— pero nadie sabe nadar: caminar
-  // adentro falla con su propio motivo, distinguible de un muro.
-  const wet = entitiesAt(world, to).find((e) => e.components.water);
-  if (wet) {
-    resolved(world, events, actor.id, intent, false, {
-      reason: 'water',
-      to,
-      blockerId: wet.id,
-      blockerKind: wet.kind,
     });
     return;
   }
@@ -921,7 +913,15 @@ function resolvePlace(
     resolved(world, events, actor.id, intent, false, { reason: 'out-of-reach' });
     return;
   }
-  if (entitiesAt(world, intent.at).length > 0) {
+  // Sobre el terreno SÍ se construye: el agua no ocupa el lugar de una cosa,
+  // es el suelo (mojado) que hay debajo. Lo que impide colocar es que ya haya
+  // otra cosa ahí — dos objetos no comparten celda.
+  //
+  // Antes esto miraba `entitiesAt(...).length > 0` a secas, y por eso no había
+  // ninguna manera de poner nada encima del agua. No era una decisión de
+  // diseño: era el terreno colándose en una comprobación que hablaba de cosas.
+  const occupants = entitiesAt(world, intent.at).filter((e) => e.components.water === undefined);
+  if (occupants.length > 0) {
     resolved(world, events, actor.id, intent, false, { reason: 'cell-occupied' });
     return;
   }

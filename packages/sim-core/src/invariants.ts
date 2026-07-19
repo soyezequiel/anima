@@ -24,7 +24,10 @@ export function checkInvariants(world: WorldState): InvariantViolation[] {
           detail: `${entity.id} (${entity.kind}) en (${pos.x},${pos.y}) fuera del mapa`,
         });
       }
-      if (entity.components.collider?.solid) {
+      // Un piso no es un muro: lo que ofrece dónde pisar admite que haya algo
+      // encima, que es exactamente para lo que sirve. Sin esta excepción,
+      // pararse sobre lo que uno construyó sería una violación del motor.
+      if (entity.components.collider?.solid && entity.components.footing === undefined) {
         const key = `${pos.x},${pos.y}`;
         const existing = solidTiles.get(key);
         if (existing) {

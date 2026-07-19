@@ -27,6 +27,12 @@ export interface PerceivedEntity {
   warmth?: number;
   /** Agua: se ve (no es sólida) pero no se puede pisar. */
   wet?: boolean;
+  /**
+   * Ofrece dónde pisar: encima de esto se puede caminar aunque el terreno no
+   * lo permitiera. Se expone porque sin verlo, lo que ella misma construyó
+   * para abrirse paso le seguiría pareciendo un obstáculo.
+   */
+  footing?: boolean;
   /** Refugio: al lado de esto no se pierde calor corporal. */
   shelter?: boolean;
   /**
@@ -150,6 +156,7 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   if (entity.components.hardness) perceived.hardness = entity.components.hardness.value;
   if (entity.components.heatSource) perceived.warmth = entity.components.heatSource.warmthPerTick;
   if (entity.components.water) perceived.wet = true;
+  if (entity.components.footing) perceived.footing = true;
   if (entity.components.shelter) perceived.shelter = true;
   const drops = entity.components.drops ?? [];
   if (drops.length > 0) {

@@ -228,6 +228,55 @@ export function programForUserRequest(
       ];
     }
 
+    case 'place-item': {
+      // Poner una cosa EN un lugar nombrado por lo que hay ahí. Es la primitiva
+      // `place` del mundo, alcanzable por fin desde el chat: juntar lo que hay
+      // que poner, ir hasta el lugar, y colocarlo en ESA celda.
+      //
+      // La celda es la del sitio, no un offset desde donde ella esté parada:
+      // sin `markTarget` esto no se podía escribir, y "ponelo sobre el agua"
+      // terminaba desviado a inventar una interacción para un verbo que el
+      // mundo ya sabía hacer.
+      const onKind = request.onKind ?? 'unknown';
+      // Sin saber qué ni dónde, no hay programa. Buscar un tipo que nadie
+      // nombró es recorrer el mapa entero para no encontrar nada y abortar
+      // cincuenta ticks después con un motivo que no dice la verdad.
+      if (targetKind === 'unknown' || onKind === 'unknown') {
+        return [{ op: 'abort', reason: 'no-sé-qué-poner-ni-dónde' }];
+      }
+      return [
+        searchFor({ kind: targetKind }),
+        { op: 'findEntities', query: { kind: targetKind }, store: 'toPlace' },
+        { op: 'selectTarget', from: 'toPlace', strategy: 'nearest', store: 'block' },
+        {
+          op: 'branch',
+          if: { type: 'not', cond: { type: 'holding', target: 'block' } },
+          then: [
+            { op: 'moveToward', target: 'block', maxSteps: 40 },
+            { op: 'pickup', target: 'block' },
+            {
+              op: 'branch',
+              if: { type: 'lastActionFailed' },
+              then: [{ op: 'abort', reason: 'no-pude-recogerlo' }],
+            },
+          ],
+        },
+        searchFor({ kind: onKind }),
+        { op: 'findEntities', query: { kind: onKind }, store: 'spots' },
+        { op: 'selectTarget', from: 'spots', strategy: 'nearest', store: 'spot' },
+        // Al lado, no encima: para colocar hay que llegar con el brazo, y la
+        // celda de destino puede ser justamente la que no se puede pisar.
+        { op: 'moveToward', target: 'spot', maxSteps: 40, stopAtDistance: 1 },
+        { op: 'markTarget', from: 'spot', store: 'spotCell' },
+        { op: 'placeAt', kind: targetKind, target: 'spotCell' },
+        {
+          op: 'branch',
+          if: { type: 'lastActionFailed' },
+          then: [{ op: 'abort', reason: 'no-pude-colocarlo' }],
+        },
+      ];
+    }
+
     case 'interact-entity': {
       const interaction =
         request.verb && request.targetKind
@@ -420,6 +469,9 @@ export function completionReply(request: GoalUserRequest): string {
       return `Listo, comí ${target}.`;
     case 'destroy-entity':
       return `Listo, destruí ${target}.`;
+    case 'place-item':
+      return `Listo, dejé ${request.targetKind ?? 'eso'} sobre ${request.onKind ?? 'ahí'}.`;
+
     case 'interact-entity': {
       const verbPhrase = (request.verb ?? 'hacer eso').replace(/-/g, ' ');
       return request.targetKind

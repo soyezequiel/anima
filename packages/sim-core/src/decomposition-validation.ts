@@ -40,6 +40,7 @@ const dropSchema = z
     components: z
       .object({
         portable: z.object({}).strict().optional(),
+        footing: z.object({}).strict().optional(),
         collider: z.object({ solid: z.boolean() }).strict().optional(),
         hardness: z.object({ value: z.number().min(0).max(10) }).strict().optional(),
         tool: z.object({ power: z.number().min(0).max(8) }).strict().optional(),

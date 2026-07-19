@@ -283,9 +283,41 @@ export class InventionEngine {
     return this.deps.progress.recipeAttemptsFor(goalId) < MAX_INVENTION_ATTEMPTS;
   }
 
-  /** El hecho con el que se recuerda un veto de receta: nombre + motivo. */
-  private recipeVetoPrefix(outputKind: string): string {
-    return `no tiene sentido construir ${outputKind}`;
+  /**
+   * El hecho con el que se recuerda un veto de receta: nombre, FORMA y motivo.
+   *
+   * La forma no es un adorno. Al juez se le pregunta algo distinto según lo que
+   * tenga delante: de una cosa suelta puede decir «eso es una obra, no una
+   * cosa», y de una pieza de obra esa objeción no tiene sentido (ADR 0074).
+   *
+   * Sin la forma en el veto pasaba esto, y se vio en una partida real: el juez
+   * rechazó «puente» como cosa pidiendo textualmente que se propusiera como
+   * OBRA; el modelo obedeció y mandó el plano con sus piezas; y el veto viejo
+   * —guardado solo contra el nombre «puente»— tumbó la obra antes de que nadie
+   * la mirara. La memoria del rechazo bloqueaba justo la corrección que el
+   * rechazo había pedido.
+   *
+   * Los dos prefijos son hermanos y ninguno es prefijo del otro: buscar uno
+   * nunca encuentra al otro por accidente.
+   */
+  private recipeVetoPrefix(outputKind: string, partOfWork: boolean): string {
+    const shape = partOfWork ? 'como pieza de una obra' : 'como cosa';
+    return `no tiene sentido construir ${outputKind} ${shape}`;
+  }
+
+  /**
+   * El veto guardado que corresponde a ESTA forma, si lo hay. Reconoce también
+   * el formato viejo (sin forma), que solo puede haber sido de una cosa suelta:
+   * un guardado anterior no debería perder lo que ya había aprendido.
+   */
+  private vetoFor(outputKind: string, partOfWork: boolean): string | undefined {
+    const prefix = this.recipeVetoPrefix(outputKind, partOfWork);
+    const legacy = `no tiene sentido construir ${outputKind}:`;
+    return this.deps.memory
+      .factList()
+      .find(
+        (f) => f.statement.startsWith(prefix) || (!partOfWork && f.statement.startsWith(legacy)),
+      )?.statement;
   }
 
   /**
@@ -354,12 +386,11 @@ export class InventionEngine {
     // Lo ya vetado no se re-imagina, ni en esta sesión ni tras restaurar un
     // guardado: el veto es conocimiento, y volver a proponerlo gastaría una
     // consulta para escuchar el mismo "no".
-    const veto = this.deps.memory
-      .factList()
-      .find((f) => f.statement.startsWith(this.recipeVetoPrefix(outputKind)));
-    if (veto) {
-      this.remember(this.recipeRejections, veto.statement);
-      this.deps.emit('recipe.rejected', { reason: veto.statement, source: 'memory' });
+    const partOfWork = this.pendingBlueprint !== null;
+    const veto = this.vetoFor(outputKind, partOfWork);
+    if (veto !== undefined) {
+      this.remember(this.recipeRejections, veto);
+      this.deps.emit('recipe.rejected', { reason: veto, source: 'memory' });
       this.pendingPlan = [];
       this.pendingBlueprint = null;
       return 'rejected';
@@ -378,7 +409,7 @@ export class InventionEngine {
           : {}),
         // Si hay un plano esperando, esto es una PIEZA de esa obra y no la cosa
         // pedida (ADR 0074): el modelo ya contestó que lo pedido es un lugar.
-        ...(this.pendingBlueprint !== null ? { partOfWork: true } : {}),
+        ...(partOfWork ? { partOfWork: true } : {}),
         // Lo que ya sabe hacer es lo que separa un paso de un salto: un celular
         // hecho de procesador y pantalla es honesto SI esas dos ya existen, y es
         // el mismo salto de siempre si no.
@@ -420,7 +451,7 @@ export class InventionEngine {
     // el legado, y el motivo se dice en voz alta — que sepa POR QUÉ su idea no
     // tenía sentido es la mitad de lo que la hace inventar mejor la próxima.
     const fact = this.deps.memory.addFact(
-      `${this.recipeVetoPrefix(outputKind)}: ${judgement.reason}`,
+      `${this.recipeVetoPrefix(outputKind, partOfWork)}: ${judgement.reason}`,
       this.deps.currentTick(),
     );
     this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });

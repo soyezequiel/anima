@@ -20,6 +20,8 @@ export type UserRequest =
   | { kind: 'run-skill'; skillName: string; raw: string }
   /** Construir algo según una receta que su mundo admite. */
   | { kind: 'craft-item'; recipeId: string; raw: string }
+  /** Poner algo EN un lugar nombrado por lo que hay ahí (ADR 0078). */
+  | { kind: 'place-item'; targetKind: string; onKind: string; raw: string }
   /**
    * Manipular un objeto de una forma que las primitivas no cubren (ADR 0027):
    * la mascota busca una interacción aprendida, o inventa una y el mundo (la
@@ -343,6 +345,22 @@ export function evaluateUserRequest(
         classification: 'accepted',
         reason: `Todavía no sé ${verbPhrase} con ${withArticle(request.targetKind)}.`,
         alternative: 'Dejame imaginar cómo, y que mi mundo juzgue si tiene lógica.',
+      };
+    }
+
+    case 'place-item': {
+      // Colocar es una primitiva del mundo: no hay nada que saber ni que
+      // inventar. Lo único que puede faltar es la cosa o el lugar, y de eso ya
+      // se encarga el programa, que recorre el mapa antes de rendirse.
+      if (request.targetKind === 'unknown' || request.onKind === 'unknown') {
+        return {
+          classification: 'needs_information',
+          reason: 'Entiendo que querés que ponga algo en algún lado, pero no sé qué ni dónde.',
+        };
+      }
+      return {
+        classification: 'accepted',
+        reason: `Voy a poner ${displayKind(request.targetKind)} sobre ${displayKind(request.onKind)}.`,
       };
     }
 

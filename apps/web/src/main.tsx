@@ -12,6 +12,7 @@ import {
 } from './auth/ai.js';
 import { forgetAccount, initCloud } from './auth/cloud.js';
 import { GameSession } from './session/GameSession.js';
+import { mapById } from '@anima/missions';
 import './styles.css';
 import './styles-redesign.css';
 
@@ -52,11 +53,21 @@ if (aiChoice === 'codex' || aiChoice === 'claude') {
   }
 }
 
+// El mapa que se juega, si el cuidador pidió uno (?map=vado). Sin esto, el
+// mundo de siempre: los mapas son pruebas, no el juego.
+//
+// Un mapa distinto es un mundo distinto, así que arranca de cero: mezclar el
+// guardado de una partida con la geografía de otra dejaría a la mascota parada
+// dentro de un río.
+const mapId = params.get('map');
+const map = mapId ? mapById(mapId) : undefined;
+
 const session = await GameSession.create({
   seed: Number.isFinite(seed) ? seed : 5,
   speed: Number.isFinite(speed) && speed > 0 ? speed : 1,
   autostart: params.get('autostart') !== '0',
-  fresh: params.get('fresh') === '1',
+  fresh: params.get('fresh') === '1' || map !== undefined,
+  ...(map ? { map } : {}),
   ...(cloud.store ? { store: cloud.store } : {}),
   ...(provider ? { provider } : {}),
 });

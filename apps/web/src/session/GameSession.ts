@@ -30,6 +30,8 @@ import type { PrunePlan, PruneRef } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
 import type { EvaluationCaseTrace } from '@anima/skill-evaluator';
 import { RegressionStore, sampleSeeds } from '@anima/skill-evaluator';
+import type { GameMap, MissionStatus } from '@anima/missions';
+import { MissionTracker } from '@anima/missions';
 import type { SkillOp, SkillRemovalPlan } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
 import {
@@ -172,6 +174,11 @@ export interface SessionOptions {
   fresh?: boolean;
   /** Proveedor de modelo (por defecto, MockModelProvider determinista). */
   provider?: ModelProvider;
+  /**
+   * El mapa que se juega. Ausente = el mundo de siempre, sin misión: la vida
+   * no es un nivel, y esa partida sigue siendo la partida principal.
+   */
+  map?: GameMap;
 }
 
 /**
@@ -455,6 +462,15 @@ export class GameSession {
   private running = false;
   private speed = 1;
   private seed = 5;
+  /** El mapa jugado, si esta partida es un mapa con misión. */
+  private readonly map: GameMap | null;
+  /** El juez de la misión: mira el mundo, nunca lo que ella dice. */
+  private missionTracker: MissionTracker | null = null;
+  private missionStatus: MissionStatus | null = null;
+  /** El planteo del mapa se dice UNA vez, por el chat, como cualquier encargo. */
+  private missionBriefingSent = false;
+  /** Hasta dónde leyó el juez los eventos del agente. */
+  private missionAgentCursor = 0;
   private petColor = '#f59e0b';
   /**
    * Respuestas tontas del simulado (ADR 0006): encendidas por defecto — el
@@ -515,6 +531,7 @@ export class GameSession {
     if (options.speed !== undefined) this.speed = options.speed;
     if (options.petColor !== undefined) this.petColor = options.petColor;
     if (options.provider !== undefined) this.externalProvider = options.provider;
+    this.map = options.map ?? null;
     this.seed = options.seed ?? 5;
   }
 
@@ -576,8 +593,15 @@ export class GameSession {
     // esto corre primero y `applySave` vuelve a poner lo que el cuidador podó.
     this.prunedRules.clear();
     this.pendingPrune = null;
-    const bundle = foodBehindWall.build(seed);
+    // El mapa manda si esta partida es un mapa; si no, el mundo de siempre.
+    const bundle = this.map ? this.map.build(seed) : foodBehindWall.build(seed);
     this.world = bundle.world;
+    this.missionTracker = this.map
+      ? new MissionTracker(this.map.mission, this.world, bundle.petId)
+      : null;
+    this.missionStatus = this.missionTracker?.evaluate(this.world) ?? null;
+    this.missionBriefingSent = false;
+    this.missionAgentCursor = 0;
     this.provider = this.externalProvider ?? new MockModelProvider();
     if (this.provider instanceof MockModelProvider) {
       this.provider.setImperfect(this.mockImperfect);
@@ -954,9 +978,29 @@ export class GameSession {
     }
   }
 
+  /**
+   * El planteo del mapa entra por el chat, como cualquier cosa que diga el
+   * cuidador. No hay canal privilegiado: si el encargo no se entiende por la
+   * misma vía por la que se entiende "traé un tronco", el problema es del
+   * sistema y tiene que verse.
+   */
+  private sendMissionBriefing(): void {
+    if (!this.map || this.missionBriefingSent) return;
+    this.missionBriefingSent = true;
+    this.chat.push({
+      from: 'user',
+      text: this.map.mission.briefing,
+      tick: this.world.tick,
+    });
+    this.agent.receiveUserMessage(this.map.mission.briefing);
+  }
+
   start(): void {
     if (this.running || this.disposed) return;
     this.running = true;
+    // El planteo se dice al arrancar, no al construir el mundo: en pausa, el
+    // cuidador ve el mapa antes de que ella empiece a moverse.
+    this.sendMissionBriefing();
     this.rebuildView();
     this.notify();
     this.scheduleNext();
@@ -1336,6 +1380,34 @@ export class GameSession {
   }
 
   /**
+   * El juez de la misión mira este tick. Consume los hechos del mundo Y los del
+   * agente: un `skill.promoted` es el veredicto de un evaluador determinista,
+   * no una afirmación de la mascota, y hay misiones que preguntan por él.
+   *
+   * Nada de lo que ella DIGA entra acá. Si dijera "ya crucé", el juez seguiría
+   * mirando dónde está parada.
+   */
+  private judgeMission(events: SimEvent[]): void {
+    if (!this.missionTracker) return;
+    this.missionTracker.observe(events);
+    // Cursor propio: el de la UI avanza por otros caminos, y un juez que se
+    // saltea eventos juzga distinto según qué panel estuviera abierto.
+    const fresh = this.agent.events.events.slice(this.missionAgentCursor);
+    this.missionAgentCursor = this.agent.events.events.length;
+    this.missionTracker.observe(fresh);
+    const before = this.missionStatus;
+    this.missionStatus = this.missionTracker.evaluate(this.world);
+    if (this.missionStatus.completed && !before?.completed) {
+      this.chat.push({
+        from: 'system',
+        text: `Misión cumplida: ${this.map?.mission.name ?? ''}. El mundo lo confirma, no ella.`,
+        tick: this.world.tick,
+      });
+      void this.save();
+    }
+  }
+
+  /**
    * Aplica un tick al mundo: la intención (si hay), la observación del agente
    * y la ingestión de eventos, con el guardado y la muerte de siempre.
    * `agentEventStart` es null en los ticks pasivos de un pensamiento en vuelo,
@@ -1355,6 +1427,7 @@ export class GameSession {
     this.agent.observe(events);
     this.ingestWorldEvents(events);
     this.ingestAgentEvents();
+    this.judgeMission(events);
 
     if (events.some((e) => e.type === 'pet.died')) {
       await this.handleDeath();
@@ -2604,6 +2677,23 @@ export class GameSession {
         lastTick: e.lastTick,
       })),
       storyCompleted: this.agent.goals.byDescription(GOAL_RESTORE_ENERGY)?.status === 'completed',
+      mission:
+        this.map && this.missionStatus
+          ? {
+              id: this.map.mission.id,
+              name: this.map.mission.name,
+              briefing: this.map.mission.briefing,
+              completed: this.missionStatus.completed,
+              completedAtTick: this.missionStatus.completedAtTick ?? null,
+              objectives: this.missionStatus.objectives.map((objective) => ({
+                id: objective.id,
+                describe: objective.describe,
+                met: objective.met,
+                metAtTick: objective.metAtTick ?? null,
+                detail: objective.detail,
+              })),
+            }
+          : null,
     };
   }
 }

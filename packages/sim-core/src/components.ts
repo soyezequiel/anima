@@ -48,6 +48,24 @@ export interface Components {
    */
   water?: Record<string, never>;
   /**
+   * Ofrece dónde pisar: un cuerpo puede pararse en esta celda aunque el
+   * terreno no lo permitiera. Es la propiedad que le faltaba al mundo para que
+   * una cosa construida pudiera cambiar la FORMA de los caminos.
+   *
+   * Hasta acá, lo que Ánima fabricaba solo podía tapar (sólido) o estorbar; el
+   * terreno era intocable, así que ninguna idea suya —ninguna— podía abrir un
+   * paso donde no lo había. Un mundo donde inventar no puede cambiar por dónde
+   * se camina es un mundo donde inventar sirve menos de lo que promete.
+   *
+   * Deliberadamente NO se llama "puente", "tabla" ni "balsa": es una propiedad,
+   * y cualquier cosa puede tenerla. Qué cosa la tiene, cómo se llama y de qué
+   * está hecha lo decide quien la imagine.
+   *
+   * Un piso es un piso, no un muro: lo que ofrece dónde pisar no cuenta como
+   * obstáculo sólido, ni para caminar ni para el invariante de solapamiento.
+   */
+  footing?: Record<string, never>;
+  /**
    * Refugio: anula la pérdida de calor corporal de los agentes a distancia
    * Chebyshev ≤ range. No calienta ni quema — es la contraparte serena de la
    * fogata: adentro no se pierde nada, pero tampoco se recupera.

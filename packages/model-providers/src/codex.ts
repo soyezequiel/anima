@@ -1,4 +1,10 @@
-import type { ModelRequest, ModelResponse, SkillSummary } from './types.js';
+import type {
+  CommandDirection,
+  CommandInterpretation,
+  ModelRequest,
+  ModelResponse,
+  SkillSummary,
+} from './types.js';
 import { BaseModelProvider } from './types.js';
 
 /**
@@ -315,6 +321,10 @@ const RECIPE_REFERENCE = `Una receta es JSON:
 Componentes permitidos en lo construido (ninguno más existe):
 - "collider":{"solid":boolean} — ocupa lugar, bloquea el paso
 - "portable":{} — se puede recoger y llevar
+- "footing":{} — se puede PISAR ENCIMA: parado ahí, el terreno de abajo deja de
+  importar. Es lo único que vuelve caminable una celda de agua, así que es la
+  propiedad de un piso, una pasarela, una tabla o una balsa. Sin ella, algo
+  puesto sobre el agua es un estorbo que nadie puede pisar.
 - "hardness":{"value":0..10} — cuánto resiste a ser dañado
 - "durability":{"current":1..30,"max":1..30} — se puede romper
 - "tool":{"power":0..8} — sirve como herramienta
@@ -370,6 +380,7 @@ Efectos — las interacciones cambian OBJETOS, nunca cuerpos:
 Componentes permitidos en lo transformado (ninguno más existe):
 - "collider":{"solid":boolean} — ocupa lugar, bloquea el paso
 - "portable":{} — se puede recoger y llevar
+- "footing":{} — se puede PISAR ENCIMA (vuelve caminable el agua de esa celda)
 - "hardness":{"value":0..10} — cuánto resiste a ser dañado
 - "durability":{"current":1..30,"max":1..30} — se puede romper
 - "tool":{"power":0..8} — sirve como herramienta
@@ -403,6 +414,7 @@ const DECOMPOSITION_REFERENCE = `Una descomposición es JSON:
  "drops":[{"kind":"tipo-del-fragmento","components":{...}}]}
 Componentes permitidos en un fragmento (ninguno más existe):
 - "portable":{} — se puede recoger y llevar
+- "footing":{} — se puede pisar encima
 - "collider":{"solid":boolean} — ocupa lugar, bloquea el paso
 - "hardness":{"value":0..10} — cuánto resiste a ser dañado
 - "tool":{"power":0..8} — sirve como herramienta
@@ -459,27 +471,33 @@ const INTERPRET_SCHEMA: Record<string, unknown> = {
   additionalProperties: false,
 };
 
-const COMMAND_SCHEMA: Record<string, unknown> = {
-  type: 'object',
-  properties: {
+const COMMAND_ACTIONS = [
+  'destroy-entity',
+  'fetch-item',
+  'consume-item',
+  'wait-here',
+  'move-direction',
+  'run-skill',
+  'craft-item',
+  'place-item',
+  'learn-skill',
+  'rename-pet',
+  'explanation',
+  'describe-entity',
+  'interact-entity',
+  'unsupported',
+  'not-command',
+] as const;
+
+/**
+ * Los campos de UNA orden. Se arma con función porque la misma forma se usa
+ * dos veces: la orden de arriba y cada paso de un encargo con partes.
+ */
+function commandFields(withSequence: boolean): Record<string, unknown> {
+  return {
     action: {
       type: 'string',
-      enum: [
-        'destroy-entity',
-        'fetch-item',
-        'consume-item',
-        'wait-here',
-        'move-direction',
-        'run-skill',
-        'craft-item',
-        'learn-skill',
-        'rename-pet',
-        'explanation',
-        'describe-entity',
-        'interact-entity',
-        'unsupported',
-        'not-command',
-      ],
+      enum: withSequence ? [...COMMAND_ACTIONS, 'sequence'] : [...COMMAND_ACTIONS],
     },
     targetKind: { type: 'string' },
     verb: { type: 'string' },
@@ -491,12 +509,45 @@ const COMMAND_SCHEMA: Record<string, unknown> = {
     },
     skillName: { type: 'string' },
     recipeId: { type: 'string' },
+    onKind: { type: 'string' },
     summary: { type: 'string' },
     name: { type: 'string' },
+  };
+}
+
+const COMMAND_REQUIRED = [
+  'action',
+  'targetKind',
+  'verb',
+  'amount',
+  'directions',
+  'skillName',
+  'recipeId',
+  'onKind',
+  'summary',
+  'name',
+];
+
+const COMMAND_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    ...commandFields(true),
+    // Los pasos NO anidan otro `steps`: un encargo con partes es una lista de
+    // órdenes simples, no un árbol.
+    steps: {
+      type: 'array',
+      maxItems: 5,
+      items: {
+        type: 'object',
+        properties: commandFields(false),
+        required: COMMAND_REQUIRED,
+        additionalProperties: false,
+      },
+    },
   },
   // Los esquemas estructurados son más estables si todas las propiedades
   // existen; las no aplicables viajan como string/arreglo vacío o 0.
-  required: ['action', 'targetKind', 'verb', 'amount', 'directions', 'skillName', 'recipeId', 'summary', 'name'],
+  required: [...COMMAND_REQUIRED, 'steps'],
   additionalProperties: false,
 };
 
@@ -621,6 +672,126 @@ function summarizeCaseResults(
     }
     return `- ${g.scenario}: FALLÓ en ${worlds} — ${g.detail} (${sample})`;
   });
+}
+
+/**
+ * Lee UNA orden interpretada del JSON del modelo. Se separó de la respuesta
+ * para poder leer también cada paso de un encargo con partes: un paso tiene
+ * exactamente la misma forma que una orden suelta, y duplicar estas
+ * comprobaciones sería tener dos lectores que tarde o temprano difieren.
+ *
+ * `fallbackText` es el mensaje original: sirve cuando el modelo clasifica una
+ * descripción pero no la repite.
+ */
+function readCommand(parsed: Record<string, unknown>, fallbackText: string): CommandInterpretation {
+  const action = parsed.action;
+  if (typeof action !== 'string') {
+    throw new Error('la respuesta no contiene una acción interpretada');
+  }
+  if (action === 'sequence') {
+    if (!Array.isArray(parsed.steps) || parsed.steps.length === 0) {
+      throw new Error('un encargo con partes no trae ninguna');
+    }
+    const steps: CommandInterpretation[] = [];
+    for (const raw of parsed.steps) {
+      if (typeof raw !== 'object' || raw === null) continue;
+      const step = raw as Record<string, unknown>;
+      // Un paso que no se puede leer no tumba el encargo entero: se cae ese
+      // paso y el resto sigue. Perder una parte es mejor que perder todo.
+      if (step.action === 'sequence') continue;
+      try {
+        steps.push(readCommand(step, fallbackText));
+      } catch {
+        continue;
+      }
+    }
+    if (steps.length === 0) throw new Error('ninguna parte del encargo se pudo leer');
+    // Una sola parte no es un encargo con partes: es una orden.
+    return steps.length === 1 ? steps[0]! : { action: 'sequence', steps };
+  }
+  if (action === 'destroy-entity' || action === 'fetch-item' || action === 'consume-item') {
+    if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
+      throw new Error('la orden interpretada no contiene targetKind');
+    }
+    const targetKind = parsed.targetKind.trim().toLowerCase();
+    const amount =
+      action === 'fetch-item' && typeof parsed.amount === 'number' && parsed.amount > 1
+        ? Math.min(8, Math.round(parsed.amount))
+        : undefined;
+    return { action, targetKind, ...(amount !== undefined ? { amount } : {}) };
+  }
+  if (action === 'move-direction') {
+    const allowed = new Set(['up', 'down', 'left', 'right']);
+    if (
+      !Array.isArray(parsed.directions) ||
+      parsed.directions.length === 0 ||
+      !parsed.directions.every((direction) => typeof direction === 'string' && allowed.has(direction))
+    ) {
+      throw new Error('la orden interpretada no contiene direcciones válidas');
+    }
+    return { action, directions: parsed.directions as CommandDirection[] };
+  }
+  if (action === 'wait-here' || action === 'not-command' || action === 'explanation') {
+    return { action };
+  }
+  if (action === 'run-skill') {
+    if (typeof parsed.skillName !== 'string' || !parsed.skillName.trim()) {
+      throw new Error('la orden interpretada no contiene skillName');
+    }
+    return { action, skillName: parsed.skillName.trim() };
+  }
+  if (action === 'craft-item') {
+    if (typeof parsed.recipeId !== 'string' || !parsed.recipeId.trim()) {
+      throw new Error('la orden interpretada no contiene recipeId');
+    }
+    return { action, recipeId: parsed.recipeId.trim().toLowerCase() };
+  }
+  if (action === 'place-item') {
+    if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
+      throw new Error('place-item no dice qué hay que poner');
+    }
+    if (typeof parsed.onKind !== 'string' || !parsed.onKind.trim()) {
+      throw new Error('place-item no dice dónde hay que ponerlo');
+    }
+    return {
+      action,
+      targetKind: parsed.targetKind.trim().toLowerCase(),
+      onKind: parsed.onKind.trim().toLowerCase(),
+    };
+  }
+  if (action === 'rename-pet') {
+    if (typeof parsed.name !== 'string' || parsed.name.trim().length === 0) {
+      throw new Error('rename-pet no contiene un nombre');
+    }
+    return { action, name: parsed.name.trim() };
+  }
+  if (action === 'interact-entity') {
+    if (typeof parsed.verb !== 'string' || !parsed.verb.trim()) {
+      throw new Error('interact-entity no contiene el verbo');
+    }
+    if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
+      throw new Error('interact-entity no contiene targetKind');
+    }
+    return {
+      action,
+      verb: parsed.verb.trim().toLowerCase(),
+      targetKind: parsed.targetKind.trim().toLowerCase(),
+    };
+  }
+  if (action === 'describe-entity') {
+    if (typeof parsed.summary !== 'string') {
+      throw new Error('describe-entity no contiene la descripción');
+    }
+    // Si el modelo no repitió la descripción, vale el mensaje original.
+    return { action, description: parsed.summary.trim() || fallbackText };
+  }
+  if (action === 'unsupported' || action === 'learn-skill') {
+    if (typeof parsed.summary !== 'string') {
+      throw new Error(`la acción ${action} no contiene summary`);
+    }
+    return { action, summary: parsed.summary.trim() || 'esa acción' };
+  }
+  throw new Error(`acción interpretada desconocida: ${action}`);
 }
 
 export function buildCodexPrompt(request: ModelRequest): {
@@ -824,12 +995,20 @@ La interacción propuesta:
 - qué haría:
 ${request.effectsSummary.map((e) => `  - ${e}`).join('\n') || '  - (nada: es solo estar ahí)'}
 
-Estado real del mundo:
+Estado real del mundo (CONTEXTO, no condición):
 ${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin más datos)'}
+
+Juzgás una REGLA, no un intento. Una regla vale siempre o no vale nunca: que
+ahora mismo no tenga encima lo que la regla exige NO es motivo para rechazarla
+— eso lo comprueba el mundo cada vez que ella la ejecuta, y si le falta, no
+pasa nada. Rechazar «con un balde se junta agua» porque todavía no fabricó el
+balde es prohibirle para siempre la regla que necesita para poder usarlo. Si lo
+que exige llevar todavía no existe pero se puede construir, aprobala igual.
 
 Juzga con la lógica de las cosas, no con generosidad. Ejemplos del criterio:
 - El agua no se lleva en las manos ni en la espalda: se escurre. Juntarla
-  exige algo que la contenga (y que lo lleve de verdad).
+  exige algo que la contenga — y que la regla lo EXIJA (requires) es
+  exactamente lo que la vuelve honesta.
 - Nada se enciende sin fuente de fuego o fricción plausible; nada se enfría
   por desearlo.
 - Estar encima de algo pequeño o debajo de algo bajo es razonable; estar
@@ -1171,6 +1350,17 @@ no afirmes haber actuado. Acciones ejecutables:
   recipeId es un id nuevo en minúsculas-con-guiones que nombre lo pedido
   ("casa", "puente"). Que sepa hacerlo o tenga los ingredientes no es asunto
   tuyo: la mascota puede inventar la receta y el mundo decidirá si es posible.
+- place-item: pide POSAR un OBJETO ENTERO —uno que se levanta con las manos y
+  se apoya intacto— en un lugar nombrado por lo que hay ahí ("poné la tabla
+  sobre el agua", "apoyá el ladrillo contra la roca", "dejá la balsa en el
+  río"). targetKind es el objeto y onKind el nombre interno de lo que hay en el
+  lugar. Colocar es algo que la mascota ya sabe hacer, no un verbo que haya que
+  inventar; tampoco es fetch-item, que solo trae.
+  NO uses place-item si lo que hay que poner no es un objeto que se pueda
+  levantar y apoyar intacto: volcar, verter, regar, echar, untar, rociar,
+  aplicar o vaciar algo SOBRE otra cosa son interact-entity (el verbo en
+  infinitivo y el targetKind de lo que RECIBE la acción: "volcar" sobre
+  "brote-seco"). Lo que se derrama no se coloca.
 - rename-pet: le pone un nombre nuevo a la mascota ("te voy a llamar Luna",
   "tu nombre es Sol", "desde hoy te llamás Nube"); name es el nombre elegido,
   tal como lo escribió el cuidador. Preguntar por el nombre NO es rename-pet.
@@ -1200,6 +1390,15 @@ no afirmes haber actuado. Acciones ejecutables:
   "saltar el muro", "volar hasta el árbol". Nunca "X no es posible porque...":
   el agente arma la negativa con sus palabras, tú solo nombras lo pedido.
 
+Cuando el mensaje pide VARIAS cosas encadenadas ("fabricá una tabla, ponela
+sobre el agua y cruzá", "traé dos troncos y hacé una fogata"), usa:
+- sequence: steps lleva cada parte como una orden simple, EN EL ORDEN dicho.
+  Cada paso es una de las acciones de arriba, con sus mismos campos. No pongas
+  un sequence dentro de otro. Usa sequence solo si de verdad hay más de una
+  acción distinta: repetir la misma cosa con otras palabras es UNA orden.
+  Colocar algo que se fabricó en un lugar (ponerlo sobre el agua, apoyarlo en
+  el hueco) es place-item, no interact-entity.
+
 Además, dos clasificaciones que no son órdenes:
 - explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho
   ("comer alimento te da energía", "las ramas no rompen muros"). Solo
@@ -1228,8 +1427,8 @@ Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
 Responde solo con JSON. Siempre incluye action, targetKind, verb, amount,
-directions, skillName, recipeId, summary y name; usa "", [] o 0 cuando no
-correspondan.`,
+directions, skillName, recipeId, onKind, summary, name y steps; usa "", [] o 0
+cuando no correspondan (steps va vacío salvo en sequence).`,
       };
     case 'skill.contract':
       return {
@@ -1605,113 +1804,8 @@ export class CodexModelProvider extends BaseModelProvider {
           };
         }
         case 'interpret.command': {
-          const action = parsed.action;
-          if (typeof action !== 'string') {
-            throw new Error('la respuesta no contiene una acción interpretada');
-          }
-          if (action === 'destroy-entity' || action === 'fetch-item' || action === 'consume-item') {
-            if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
-              throw new Error('la orden interpretada no contiene targetKind');
-            }
-            const targetKind = parsed.targetKind.trim().toLowerCase();
-            const amount =
-              action === 'fetch-item' && typeof parsed.amount === 'number' && parsed.amount > 1
-                ? Math.min(8, Math.round(parsed.amount))
-                : undefined;
-            return {
-              kind: 'command.interpretation',
-              command: {
-                action,
-                targetKind,
-                ...(amount !== undefined ? { amount } : {}),
-              },
-            };
-          }
-          if (action === 'move-direction') {
-            const allowed = new Set(['up', 'down', 'left', 'right']);
-            if (
-              !Array.isArray(parsed.directions) ||
-              parsed.directions.length === 0 ||
-              !parsed.directions.every(
-                (direction) => typeof direction === 'string' && allowed.has(direction),
-              )
-            ) {
-              throw new Error('la orden interpretada no contiene direcciones válidas');
-            }
-            return {
-              kind: 'command.interpretation',
-              command: {
-                action,
-                directions: parsed.directions as ('up' | 'down' | 'left' | 'right')[],
-              },
-            };
-          }
-          if (action === 'wait-here' || action === 'not-command' || action === 'explanation') {
-            return { kind: 'command.interpretation', command: { action } };
-          }
-          if (action === 'run-skill') {
-            if (typeof parsed.skillName !== 'string' || !parsed.skillName.trim()) {
-              throw new Error('la orden interpretada no contiene skillName');
-            }
-            return {
-              kind: 'command.interpretation',
-              command: { action, skillName: parsed.skillName.trim() },
-            };
-          }
-          if (action === 'craft-item') {
-            if (typeof parsed.recipeId !== 'string' || !parsed.recipeId.trim()) {
-              throw new Error('la orden interpretada no contiene recipeId');
-            }
-            return {
-              kind: 'command.interpretation',
-              command: { action, recipeId: parsed.recipeId.trim().toLowerCase() },
-            };
-          }
-          if (action === 'rename-pet') {
-            if (typeof parsed.name !== 'string' || parsed.name.trim().length === 0) {
-              throw new Error('rename-pet no contiene un nombre');
-            }
-            return {
-              kind: 'command.interpretation',
-              command: { action, name: parsed.name.trim() },
-            };
-          }
-          if (action === 'interact-entity') {
-            if (typeof parsed.verb !== 'string' || !parsed.verb.trim()) {
-              throw new Error('interact-entity no contiene el verbo');
-            }
-            if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
-              throw new Error('interact-entity no contiene targetKind');
-            }
-            return {
-              kind: 'command.interpretation',
-              command: {
-                action,
-                verb: parsed.verb.trim().toLowerCase(),
-                targetKind: parsed.targetKind.trim().toLowerCase(),
-              },
-            };
-          }
-          if (action === 'describe-entity') {
-            if (typeof parsed.summary !== 'string') {
-              throw new Error('describe-entity no contiene la descripción');
-            }
-            // Si el modelo no repitió la descripción, vale el mensaje original.
-            return {
-              kind: 'command.interpretation',
-              command: { action, description: parsed.summary.trim() || request.text },
-            };
-          }
-          if (action === 'unsupported' || action === 'learn-skill') {
-            if (typeof parsed.summary !== 'string') {
-              throw new Error(`la acción ${action} no contiene summary`);
-            }
-            return {
-              kind: 'command.interpretation',
-              command: { action, summary: parsed.summary.trim() || 'esa acción' },
-            };
-          }
-          throw new Error(`acción interpretada desconocida: ${action}`);
+          const command = readCommand(parsed, request.text);
+          return { kind: 'command.interpretation', command };
         }
         case 'skill.contract': {
           const { name, purpose, expectedOutcome } = parsed;

@@ -16,7 +16,8 @@
     "test:e2e": "pnpm --filter @anima/web test:e2e",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "mission": "pnpm --filter @anima/missions-runner start"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

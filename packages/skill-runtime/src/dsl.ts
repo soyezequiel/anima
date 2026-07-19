@@ -187,6 +187,9 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
     z.object({ op: z.literal('makeRoom'), keep: z.array(z.string().min(1)) }).strict(),
     z.object({ op: z.literal('markAnchor'), store: z.string().min(1) }).strict(),
     z
+      .object({ op: z.literal('markTarget'), from: z.string().min(1), store: z.string().min(1) })
+      .strict(),
+    z
       .object({
         op: z.literal('markCell'),
         from: z.string().min(1),
@@ -291,6 +294,13 @@ export type SkillOp =
    * desparramada; con esto puede construir en tandas, sin el tope de las manos.
    */
   | { op: 'markAnchor'; store: string }
+  /**
+   * Guarda como ancla la celda de algo que VE (un objetivo ya seleccionado).
+   * Sin esto, lo único que se podía anclar era la propia posición, así que
+   * colocar una cosa EN un lugar concreto del mundo —y no a N pasos de donde
+   * uno está parado— no se podía expresar.
+   */
+  | { op: 'markTarget'; from: string; store: string }
   /**
    * Guarda como ancla la celda a `(dx,dy)` de OTRA ancla (`from`). Con esto una
    * obra grande deriva cada celda absoluta desde el ancla base y la persigue

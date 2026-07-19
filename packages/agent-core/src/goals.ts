@@ -22,8 +22,11 @@ export interface GoalUserRequest {
     | 'move-direction'
     | 'run-skill'
     | 'craft-item'
+    | 'place-item'
     | 'interact-entity';
   targetKind?: string;
+  /** `place-item`: sobre qué hay que ponerlo. */
+  onKind?: string;
   /** El verbo pedido (interact-entity): "juntar", "subirse-encima". */
   verb?: string;
   /** Cuántas unidades pidió (fetch-item): "conseguí los 2 troncos" son 2. */
@@ -79,6 +82,19 @@ export interface Goal {
   parentGoalId?: string;
   /** Qué paso del padre es, cuando es un hijo (ADR 0053). */
   step?: GoalStep;
+  /**
+   * Este objetivo espera a que otro se cierre. Es lo que hace que un encargo
+   * dicho en varias partes ("fabricá una tabla, ponela sobre el agua y cruzá")
+   * se haga EN ESE ORDEN, en vez de que las tres partes compitan por prioridad
+   * y ella empiece por la última.
+   *
+   * No es lo mismo que `parentGoalId`: un hijo es un paso interno que trabaja
+   * el programa del padre, y esto son encargos hermanos, cada uno con su propio
+   * trabajo, puestos en fila. Espera a que se CIERRE, no a que triunfe: si la
+   * primera parte fracasa, la siguiente igual se intenta — el cuidador pidió
+   * tres cosas, no una condicionada a otra.
+   */
+  afterGoalId?: string;
   suspendedReason?: string;
   /** Condición (texto estructurado breve) que permitiría reactivarlo. */
   reactivateWhen?: string;
@@ -129,12 +145,38 @@ export class GoalManager {
    */
   selectActive(): Goal | undefined {
     return this.goals
-      .filter((g) => g.status === 'active' && g.parentGoalId === undefined)
+      .filter(
+        (g) =>
+          g.status === 'active' &&
+          g.parentGoalId === undefined &&
+          // Su turno todavía no llegó: lo que tiene que pasar antes sigue
+          // abierto. Un predecesor que ya no existe no bloquea a nadie.
+          !this.isWaitingForPredecessor(g),
+      )
       .sort(
         (a, b) =>
           b.priority + b.urgency - (a.priority + a.urgency) ||
           Number(a.id.slice(5)) - Number(b.id.slice(5)),
       )[0];
+  }
+
+  /**
+   * true si este objetivo espera a otro que sigue abierto. Un predecesor
+   * suspendido cuenta como abierto: el orden que pidió el cuidador vale
+   * también cuando la parte anterior está esperando material.
+   */
+  private isWaitingForPredecessor(goal: Goal): boolean {
+    if (goal.afterGoalId === undefined) return false;
+    const previous = this.goals.find((g) => g.id === goal.afterGoalId);
+    if (!previous) return false;
+    return previous.status === 'active' || previous.status === 'suspended';
+  }
+
+  /** Los objetivos que esperan su turno detrás de otro, para poder mostrarlos. */
+  waitingFor(goalId: string): Goal[] {
+    return this.goals.filter(
+      (g) => g.afterGoalId === goalId && (g.status === 'active' || g.status === 'suspended'),
+    );
   }
 
   byDescription(description: string): Goal | undefined {

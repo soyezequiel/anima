@@ -138,15 +138,30 @@ export class SpatialMemory {
     const bounds = perception.bounds;
     const seenSolid = new Set<string>();
     const occluders = new Set<string>();
+    // Lo que ofrece dónde pisar gana sobre todo lo demás de la celda, igual que
+    // en el motor (`impedimentAt`): una tabla puesta sobre el agua vuelve
+    // caminable esa celda, y si su mapa mental no lo supiera, el paso que ella
+    // misma construyó le seguiría pareciendo un río.
+    const footings = new Set<string>();
+    for (const e of perception.visibleEntities) {
+      if (e.footing && e.position) footings.add(`${e.position.x},${e.position.y}`);
+    }
     for (const e of perception.visibleEntities) {
       if (!e.position) continue;
       const key = `${e.position.x},${e.position.y}`;
-      if (e.solid || e.wet) {
+      if ((e.solid || e.wet) && !footings.has(key)) {
         this.solids.add(key);
         seenSolid.add(key);
       }
       // Solo lo sólido tapa la vista (el agua se ve a través, como en el mundo).
       if (e.solid) occluders.add(key);
+    }
+    // Lo que se volvió pisable deja de ser obstáculo recordado en el acto: no
+    // hace falta acercarse a "desmentirlo" como a un muro roto, porque no es
+    // una creencia vieja — es un cambio que está viendo.
+    for (const key of footings) {
+      this.solids.delete(key);
+      this.blocked.delete(key);
     }
     for (const set of [this.blocked, this.solids]) {
       for (const key of set) {
@@ -568,6 +583,16 @@ export class SkillExecution {
         frame.index += 1;
         return null;
       }
+      case 'markTarget': {
+        // La celda de lo que ve. Un objetivo sin posición (algo que lleva
+        // encima) no ancla nada: el programa sigue y la colocación que
+        // dependía de esta ancla se saltea, como con `markCell`.
+        const target = this.vars.get(op.from) as PerceivedEntity | undefined;
+        const pos = target && !Array.isArray(target) ? target.position : undefined;
+        if (pos) this.vars.set(op.store, { anchor: { ...pos } });
+        frame.index += 1;
+        return null;
+      }
       case 'markCell': {
         // La celda absoluta = ancla base + offset. Si no hay base (variable que
         // no es ancla), no hay dónde anclar: se cae la derivación y el programa
@@ -709,9 +734,16 @@ export class SkillExecution {
   ): Direction | null {
     const key = (x: number, y: number): string => `${x},${y}`;
     const obstacles = new Set<string>([...this.spatial.blocked, ...this.spatial.solids]);
+    // Misma regla que el motor: lo que ofrece dónde pisar no es obstáculo, y
+    // cancela el agua y la solidez de su propia celda.
+    const footings = new Set<string>();
+    for (const e of perception.visibleEntities) {
+      if (e.footing && e.position) footings.add(key(e.position.x, e.position.y));
+    }
     for (const e of perception.visibleEntities) {
       if ((e.solid || e.wet) && e.position) obstacles.add(key(e.position.x, e.position.y));
     }
+    for (const cell of footings) obstacles.delete(cell);
     // La celda destino como obstáculo: así el camino termina a su lado (donde se
     // puede colocar) y nunca encima de ella (ADR 0035). El arranque no se filtra
     // por obstáculos, así que estar YA encima igual encuentra el paso a un lado.

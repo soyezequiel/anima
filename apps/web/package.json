@@ -14,6 +14,7 @@
   "dependencies": {
     "@anima/agent-core": "workspace:*",
     "@anima/memory": "workspace:*",
+    "@anima/missions": "workspace:*",
     "@anima/model-providers": "workspace:*",
     "@anima/persistence": "workspace:*",
     "@anima/shared": "workspace:*",

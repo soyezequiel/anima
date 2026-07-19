@@ -58,6 +58,13 @@ export const MAX_INVENTED_RECIPES = 12;
 export const INVENTED_COMPONENT_BOUNDS = {
   collider: z.object({ solid: z.boolean() }).strict().optional(),
   portable: z.object({}).strict().optional(),
+  /**
+   * Ofrece dónde pisar. Sin cota que poner: se tiene o no se tiene, como
+   * `portable`. Es lo que permite que una idea cambie por dónde se camina —
+   * la puerta la admite igual que a las demás, y la IA Dios sigue juzgando si
+   * tiene sentido que ESA cosa lo ofrezca.
+   */
+  footing: z.object({}).strict().optional(),
   hardness: z.object({ value: z.number().min(0).max(10) }).strict().optional(),
   durability: z
     .object({ current: z.number().int().min(1).max(30), max: z.number().int().min(1).max(30) })
@@ -88,6 +95,7 @@ const outputComponentsSchema = z
             components: z
               .object({
                 portable: z.object({}).strict().optional(),
+                footing: z.object({}).strict().optional(),
                 collider: z.object({ solid: z.boolean() }).strict().optional(),
                 hardness: z.object({ value: z.number().min(0).max(10) }).strict().optional(),
                 tool: z.object({ power: z.number().min(0).max(8) }).strict().optional(),

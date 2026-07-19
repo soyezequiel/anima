@@ -108,6 +108,19 @@ export function validateInteraction(
     return err('Interacción inválida: sin efectos ni postura, no haría absolutamente nada');
   }
 
+  // Sobre el agua no hay postura que valga: `resolveInteract` rechaza
+  // `on-top`/`underneath` contra el agua con `target-not-mountable`, siempre.
+  // Admitir acá una regla que el mundo nunca va a poder ejecutar es guardar una
+  // promesa rota: se aprende, se celebra, y falla la primera vez que se usa.
+  // Una puerta que acepta lo inejecutable es tan defectuosa como una que
+  // rechaza lo posible.
+  if (
+    proposal.target.wet === true &&
+    (proposal.stance === 'on-top' || proposal.stance === 'underneath')
+  ) {
+    return err('Interacción inválida: sobre el agua no hay dónde pararse ni dónde meterse');
+  }
+
   for (const effect of proposal.effects) {
     if (effect.kind !== undefined && PROTECTED_KINDS.has(effect.kind)) {
       return err(`Interacción inválida: nada puede transformarse en "${effect.kind}"`);

@@ -549,4 +549,29 @@ export interface GameView {
   /** Memoria episódica activa: lo que hizo y le pasó, con conteo (ADR 0033). */
   episodes: { kind: string; summary: string; occurrences: number; lastTick: number }[];
   storyCompleted: boolean;
+  /**
+   * La misión del mapa, si esta partida se juega en uno. `null` en el mundo de
+   * siempre, que no tiene misión: la vida no es un nivel.
+   *
+   * El veredicto viene del juez de misiones, que mira el estado del mundo. Lo
+   * que la mascota diga no lo cambia — y por eso esto no vive en el chat.
+   */
+  mission: MissionView | null;
+}
+
+export interface MissionView {
+  id: string;
+  name: string;
+  /** Lo que el cuidador le planteó al empezar. */
+  briefing: string;
+  completed: boolean;
+  completedAtTick: number | null;
+  objectives: {
+    id: string;
+    describe: string;
+    met: boolean;
+    metAtTick: number | null;
+    /** Por qué se da (o no) por cumplido: el veredicto viene con su cuenta. */
+    detail: string;
+  }[];
 }

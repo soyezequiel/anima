@@ -1,0 +1,31 @@
+{
+  "name": "@anima/missions-runner",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/run.ts"
+  },
+  "scripts": {
+    "start": "tsx src/main.ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anima/agent-core": "workspace:*",
+    "@anima/api": "workspace:*",
+    "@anima/memory": "workspace:*",
+    "@anima/missions": "workspace:*",
+    "@anima/model-providers": "workspace:*",
+    "@anima/shared": "workspace:*",
+    "@anima/sim-core": "workspace:*",
+    "@anima/skill-evaluator": "workspace:*",
+    "@anima/skill-runtime": "workspace:*",
+    "@anima/test-scenarios": "workspace:*"
+  },
+  "devDependencies": {
+    "tsx": "^4.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0"
+  }
+}

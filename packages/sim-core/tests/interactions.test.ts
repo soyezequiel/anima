@@ -248,9 +248,11 @@ describe('proponer e interactuar en el mundo', () => {
       target: { wet: true },
       effects: [],
     };
-    stepWorld(world, [
-      { actorId: pet.id, intent: { type: 'proposeInteraction', interaction: walk } },
-    ]);
+    // Se siembra directamente en el mundo, sin pasar por la puerta: la puerta
+    // ya la rechaza (ver footing.test.ts), y lo que se prueba acá es la OTRA
+    // mitad de la defensa — que el motor tampoco la ejecutaría si por algún
+    // camino (un guardado viejo, una regla heredada) llegara a existir.
+    world.interactions.push(walk);
     pet.components.position = { x: 3, y: 2 };
     const events = stepWorld(world, [
       {

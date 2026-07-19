@@ -9,6 +9,7 @@ import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
 import { GoalsPanel } from './components/GoalsPanel.js';
+import { MissionPanel } from './components/MissionPanel.js';
 import { useExpansion } from './components/expansion.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
 import { LearningPanel } from './components/LearningPanel.js';
@@ -222,6 +223,10 @@ export function App({ session, account }: { session: GameSession; account: Cloud
               dev
             </button>
           </nav>
+
+          {/* La misión enmarca la partida entera: no es una pestaña más, se ve
+              siempre. Sin mapa no hay panel (devuelve null). */}
+          <MissionPanel view={view} />
 
           <div className="panel-body">
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}

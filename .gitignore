@@ -16,3 +16,6 @@ coverage/
 **/data/codex/
 playwright-report/
 test-results/
+
+# Trazas de misiones: salida generada, pesada y reproducible (pnpm mission).
+apps/missions/traces/

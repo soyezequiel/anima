@@ -190,6 +190,42 @@ export function isBlocked(world: WorldState, pos: Vec2, ignoreId?: EntityId): En
   return null;
 }
 
+/**
+ * Por qué un cuerpo no puede pararse en una celda, o `null` si puede.
+ *
+ * Es la ÚNICA fuente de verdad sobre qué es caminable: la usa el resolutor de
+ * `move` y cualquiera que necesite razonar sobre caminos (comprobar que una
+ * misión abrió un paso, dibujar una ruta). Tenerla escrita dos veces sería
+ * tener dos físicas: una que el mundo aplica y otra que alguien cree.
+ */
+export type Impediment =
+  | { reason: 'blocked'; blocker: Entity | 'bounds' }
+  | { reason: 'water'; blocker: Entity };
+
+export function impedimentAt(
+  world: WorldState,
+  pos: Vec2,
+  ignoreId?: EntityId,
+): Impediment | null {
+  if (!inBounds(world, pos)) return { reason: 'blocked', blocker: 'bounds' };
+  const cell = entitiesAt(world, pos).filter((e) => e.id !== ignoreId);
+  // Lo que ofrece dónde pisar manda sobre todo lo demás de la celda: un piso
+  // puesto encima del agua se pisa, y el piso mismo no es un muro.
+  if (cell.some((e) => e.components.footing)) return null;
+  const solid = cell.find((e) => e.components.collider?.solid);
+  if (solid) return { reason: 'blocked', blocker: solid };
+  // El agua no es sólida —no tapa la vista— pero nadie sabe nadar: caminar
+  // adentro falla con motivo propio, distinguible de un muro.
+  const wet = cell.find((e) => e.components.water);
+  if (wet) return { reason: 'water', blocker: wet };
+  return null;
+}
+
+/** true si un cuerpo puede ocupar esa celda. Complemento de `impedimentAt`. */
+export function canStandAt(world: WorldState, pos: Vec2, ignoreId?: EntityId): boolean {
+  return impedimentAt(world, pos, ignoreId) === null;
+}
+
 export function isInInventory(world: WorldState, ownerId: EntityId, itemId: EntityId): boolean {
   return getEntity(world, ownerId)?.components.inventory?.items.includes(itemId) ?? false;
 }

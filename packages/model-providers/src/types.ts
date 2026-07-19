@@ -451,8 +451,33 @@ export type CommandInterpretation =
   | { action: 'run-skill'; skillName: string }
   /** Construir algo que su mundo admite, por el id de la receta. */
   | { action: 'craft-item'; recipeId: string }
+  /**
+   * Poner una cosa que lleva (o puede levantar) EN un lugar del mundo, dicho
+   * por lo que hay ahí: «poné la tabla sobre el agua», «apoyá el ladrillo
+   * contra la roca».
+   *
+   * Existe porque `place` era una primitiva del mundo sin ninguna vía desde el
+   * chat: se podía colocar bloques levantando una obra y de ninguna otra
+   * manera. Un pedido de colocar terminaba desviado a la puerta de
+   * interacciones, que inventaba un sinsentido para un verbo que el mundo ya
+   * sabía hacer.
+   */
+  | { action: 'place-item'; targetKind: string; onKind: string }
   /** Conducta que no tiene pero que sus primitivas podrían componer. */
   | { action: 'learn-skill'; summary: string }
+  /**
+   * Un encargo con varias partes, en el orden en que se dijeron: «fabricá una
+   * tabla, ponela sobre el agua y cruzá» son TRES órdenes, no una.
+   *
+   * Sin esto, la traducción se quedaba con el primer verbo y tiraba el resto
+   * de la frase — y lo peor no era que no hiciera lo demás, sino que daba el
+   * encargo por cumplido al terminar la primera parte. Un cuidador que habla
+   * como se habla quedaba sistemáticamente a medias.
+   *
+   * No anida: los pasos son órdenes simples. Un plan de planes sería un
+   * lenguaje, y para eso ya están las habilidades.
+   */
+  | { action: 'sequence'; steps: CommandInterpretation[] }
   /** El cuidador le pone un nombre nuevo ("te voy a llamar Luna"). */
   | { action: 'rename-pet'; name: string }
   /** El cuidador enseña un hecho del mundo (afirmación, no orden ni pregunta). */
