@@ -171,21 +171,27 @@ button:active {
   width: 3px;
   background: var(--accent);
 }
+/* 10.5px caía entre píxeles y salía borroso en pantallas sin escalar; el
+   versalita espaciado ya lo distingue del título sin necesitar medio punto. */
 .now-eyebrow {
-  font-size: 10.5px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
-  margin-bottom: 3px;
+  margin-bottom: 5px;
 }
 .now-carry {
-  margin-top: 8px;
+  margin-top: 6px;
   display: flex;
-  gap: 6px;
+  gap: 4px;
   flex-wrap: wrap;
   align-items: center;
 }
 .now-carry .pill {
+  font-size: 11px;
+  padding: 1px 7px;
+}
+.now-carry-label {
   font-size: 11px;
 }
 
@@ -614,7 +620,13 @@ button:active {
   font-size: 13px;
 }
 
-.goal-sub,
+/* Tres tamaños dentro de la tarjeta y ni uno más: 13 el título, 12 los pasos
+   —lo que de verdad se lee—, 11 la ficha, los rótulos y las pistas. (El 10 es
+   del versalita «Ahora», que es marco y no contenido.) Antes convivían 10,
+   10.5, 11, 12, 13 y 14 en el mismo palmo de pantalla; ninguna de esas
+   diferencias significaba nada, pero el ojo las lee igual e intenta deducir la
+   jerarquía que insinúan. Menos escalones, menos que descifrar. */
+.goal-meta,
 .goal-needs-title,
 .goal-waiting {
   font-size: 11px;
@@ -624,10 +636,9 @@ button:active {
   margin-top: 2px;
 }
 
-.goal-progress {
-  display: grid;
-  gap: 4px;
-  font-size: 11px;
+/* La ficha entera en un renglón; si no entra, corta por los puntos. */
+.goal-meta {
+  line-height: 1.45;
 }
 
 .goal-progress-bar {
@@ -650,15 +661,32 @@ button:active {
   gap: 6px;
 }
 
+/* Una sola línea, siempre. El chip es angosto y el texto de dónde sale («no lo
+   ve», «sale de tronco») se partía en tres renglones dentro de la píldora, que
+   entonces medía más alto que el paso del que cuelga: tres líneas para decir
+   dos palabras. Prefiere romper la fila y poner el chip entero abajo. */
 .goal-need {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
+  gap: 5px;
+  padding: 2px 7px;
   border: 1px solid var(--border);
   border-radius: 999px;
   background: var(--panel);
   font-size: 12px;
+  white-space: nowrap;
+}
+
+/* El árbol abierto sí necesita las dos dimensiones: deja de ser una píldora. */
+.goal-need:has(.mat-tree) {
+  display: flex;
+  flex-wrap: wrap;
+  border-radius: 10px;
+}
+
+.goal-need .mat-tree {
+  flex-basis: 100%;
+  white-space: normal;
 }
 
 .goal-need .item-icon {
@@ -671,8 +699,12 @@ button:active {
   font-variant-numeric: tabular-nums;
 }
 
+/* Al mismo cuerpo que el resto de la ficha. A 10px era el texto más chico de
+   la tarjeta siendo lo único accionable que tiene —si puede ir sola o si la
+   tenés que ayudar—: la jerarquía tipográfica decía exactamente lo contrario
+   de la jerarquía real. Ensancha el chip, y el chip que no entra se va abajo. */
 .goal-need-hint {
-  font-size: 10px;
+  font-size: 11px;
 }
 
 /* Hay uno suelto a la vista: puede ir sola, nadie tiene que hacer nada. */
@@ -977,27 +1009,29 @@ button:active {
   color: var(--accent);
 }
 
+/* Al cuerpo de la ficha: el árbol se abre DENTRO de la tarjeta y su escala es
+   la de la tarjeta, no una propia media talla más chica. */
 .mat-tag {
-  font-size: 10px;
+  font-size: 11px;
 }
 
-/* El desplegable del árbol dentro de un chip de materia: ocupa su propia
-   línea para no empujar la cuenta ni la pista. */
+/* El desplegable del árbol dentro de un chip de materia. Reducido a la flecha,
+   cabe al final de la misma línea —antes se llevaba un renglón entero para
+   escribir «de qué está hecho» en cada chip— y es la misma flecha que abre cada
+   rama del árbol de abajo. */
 .need-tree-toggle {
-  flex-basis: 100%;
-  margin-top: 2px;
   padding: 0;
   border: 0;
   background: none;
   color: var(--accent);
   font: inherit;
-  font-size: 10px;
-  text-align: left;
+  font-size: 11px;
+  line-height: 1;
   cursor: pointer;
 }
 
 .need-tree-toggle:hover {
-  text-decoration: underline;
+  color: var(--text);
 }
 
 /* La tarjeta del objetivo dentro de la barra de arriba: la MISMA que en la
@@ -1008,8 +1042,14 @@ button:active {
   padding: 0;
 }
 
+/* Acá la tarjeta no dibuja su propio filo ámbar. Lo dibuja el marco «Ahora»
+   —que para eso existe— y los dos se apilaban en la misma columna de píxeles:
+   como adentro la tarjeta va sin padding, la sombra interior de 3px caía
+   encima de la primera letra de cada renglón. De ahí el recorte que se veía en
+   «se lo pediste» o «cocina: 0 de 4». Un solo filo, y el texto entero. */
 .now-goal-card .goal-card {
   padding: 0;
   border: 0;
   background: none;
+  box-shadow: none;
 }

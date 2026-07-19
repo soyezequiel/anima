@@ -16,7 +16,17 @@ function pct(value: number, max: number): number {
   return Math.max(0, Math.min(100, (value / max) * 100));
 }
 
-/** La estrategia en voz humana (misma idea que StatusPanel.humanStrategy). */
+/**
+ * La estrategia en voz humana (misma idea que StatusPanel.humanStrategy).
+ *
+ * Devuelve null cuando no la sabe decir. Antes escupía el identificador crudo
+ * —«petición-del-usuario» con guiones y todo, debajo de una tarjeta que ya
+ * decía «se lo pediste»— y eso es lo peor de los dos mundos: jerga del motor
+ * ocupando un renglón para repetir lo de arriba. Las que sí están mapeadas son
+ * las que dicen CÓMO está encarando el objetivo, que es información nueva; el
+ * resto no gana nada por estar escrito. El valor crudo sigue en el `title`
+ * para cuando haga falta depurar.
+ */
 function humanStrategy(raw: string | null): string | null {
   if (!raw) return null;
   if (raw === 'direct-approach') return 'ir directo al alimento';
@@ -24,36 +34,47 @@ function humanStrategy(raw: string | null): string | null {
   if (raw.startsWith('build-fire:')) return `construir ${kindLabel(raw.slice('build-fire:'.length))}`;
   const stable = /^stable-skill:(.+)@v(\d+)$/.exec(raw);
   if (stable) return `usa su habilidad «${stable[1]}» (v${stable[2]})`;
-  return raw;
+  return null;
 }
 
 type CarryChip = {
   key: string;
   kind: string;
   n: number;
-  durability?: { current: number; max: number };
+  /** El más gastado del montón; el resto aguanta más que este por definición. */
+  worst?: { current: number; max: number };
 };
 
 /**
- * «2× tronco, pedernal»: agrupado y con nombres humanos. Lo que se gasta NO se
- * agrupa: dos martillos con vidas distintas son dos recursos distintos, y un
- * promedio o un total escondería justo el número que hace falta ver — cuánto
- * le queda al que está por romperse.
+ * «2× tronco, pedernal»: agrupado y con nombres humanos.
+ *
+ * Lo que se gasta también se agrupa, pero mostrando el PEOR de su montón. Antes
+ * cada unidad iba en su propio chip para no esconder al que está por romperse,
+ * y el precio era leer «tabla de ramas» cinco veces seguidas con cinco barras
+ * llenas al lado: el nombre repetido tapaba la única unidad que importaba. El
+ * peor la responde igual —si ese aguanta, aguantan todos— en una línea.
+ *
+ * Y la barra aparece solo cuando hay desgaste de verdad: «8/8» no le dice nada
+ * a nadie, es el número que sale cuando no pasó nada todavía.
  */
 function carryChips(
   inventory: { id: string; kind: string; durability?: { current: number; max: number } }[],
 ): CarryChip[] {
-  const chips: CarryChip[] = [];
-  const counts = new Map<string, number>();
+  const byKind = new Map<string, CarryChip>();
   for (const it of inventory) {
-    if (it.durability) {
-      chips.push({ key: it.id, kind: it.kind, n: 1, durability: it.durability });
-      continue;
+    const chip = byKind.get(it.kind) ?? { key: it.kind, kind: it.kind, n: 0 };
+    chip.n += 1;
+    if (it.durability && (!chip.worst || wear(it.durability) < wear(chip.worst))) {
+      chip.worst = it.durability;
     }
-    counts.set(it.kind, (counts.get(it.kind) ?? 0) + 1);
+    byKind.set(it.kind, chip);
   }
-  for (const [kind, n] of counts) chips.push({ key: kind, kind, n });
-  return chips;
+  return [...byKind.values()];
+}
+
+/** Cuánto le queda, en partes de uno: compara martillos de vidas distintas. */
+function wear(d: { current: number; max: number }): number {
+  return d.current / Math.max(1, d.max);
 }
 
 /**
@@ -188,6 +209,7 @@ export function VitalsHeader({
             <GoalCard
               goal={view.currentGoal}
               current
+              framed
               byKind={byKind}
               onInspect={onInspect}
               expansion={expansion}
@@ -198,50 +220,65 @@ export function VitalsHeader({
             (observando)
           </div>
         )}
+        {/* Sin guiones de relleno: un «—» donde no hay estrategia es un hueco
+            que el ojo igual tiene que leer para descubrir que está vacío. */}
         {(strategy || view.lastAction) && (
           <div className="now-detail muted">
-            <span data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
-              {strategy ?? '—'}
-            </span>
-            {' · '}
-            <span data-testid="current-action">{view.lastAction ?? '—'}</span>
+            {strategy && (
+              <span data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
+                {strategy}
+              </span>
+            )}
+            {strategy && view.lastAction ? ' · ' : ''}
+            {view.lastAction && <span data-testid="current-action">{view.lastAction}</span>}
           </div>
         )}
-        {chips.length > 0 && (
+        {pet && chips.length > 0 && (
           <div className="now-carry">
-            <span className="muted" style={{ fontSize: 11 }}>
-              lleva:
+            {/* Con el tope al lado (ADR 0070): «no lo junté» y «no me entra»
+                se veían igual, y son dos problemas distintos —uno lo arregla
+                el mundo, el otro lo arreglás vos desde Ajustes—. */}
+            <span
+              className="now-carry-label muted"
+              data-testid="carry-count"
+              title={`lleva ${pet.inventory.length} de ${pet.inventoryCapacity} que le entran`}
+            >
+              lleva {pet.inventory.length}/{pet.inventoryCapacity}:
             </span>
-            {chips.map((c) => (
-              <span
-                key={c.key}
-                className={`pill${c.durability ? ' pill-wear' : ''}`}
-                data-testid={c.durability ? `carry-durability-${c.kind}` : undefined}
-                title={
-                  c.durability
-                    ? `le quedan ${c.durability.current} usos de ${c.durability.max}`
-                    : undefined
-                }
-              >
-                {c.n > 1 ? `${c.n}× ` : ''}
-                {kindLabel(c.kind)}
-                {c.durability && (
-                  <>
-                    {' '}
-                    <b className="wear-count">
-                      {c.durability.current}/{c.durability.max}
-                    </b>
-                    <span className="wear-track" aria-hidden="true">
-                      <span
-                        className="wear-fill"
-                        data-low={c.durability.current / c.durability.max <= 0.25 ? '' : undefined}
-                        style={{ width: `${pct(c.durability.current, c.durability.max)}%` }}
-                      />
-                    </span>
-                  </>
-                )}
-              </span>
-            ))}
+            {chips.map((c) => {
+              // Gastado de verdad: entero no se dibuja, solo ocupa lugar.
+              const worn = c.worst && c.worst.current < c.worst.max ? c.worst : null;
+              return (
+                <span
+                  key={c.key}
+                  className={`pill${worn ? ' pill-wear' : ''}`}
+                  data-testid={worn ? `carry-durability-${c.kind}` : undefined}
+                  title={
+                    worn
+                      ? `al más gastado le quedan ${worn.current} usos de ${worn.max}`
+                      : undefined
+                  }
+                >
+                  {c.n > 1 ? `${c.n}× ` : ''}
+                  {kindLabel(c.kind)}
+                  {worn && (
+                    <>
+                      {' '}
+                      <b className="wear-count">
+                        {worn.current}/{worn.max}
+                      </b>
+                      <span className="wear-track" aria-hidden="true">
+                        <span
+                          className="wear-fill"
+                          data-low={wear(worn) <= 0.25 ? '' : undefined}
+                          style={{ width: `${pct(worn.current, worn.max)}%` }}
+                        />
+                      </span>
+                    </>
+                  )}
+                </span>
+              );
+            })}
           </div>
         )}
       </div>

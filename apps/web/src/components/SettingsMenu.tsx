@@ -492,6 +492,36 @@ export function SettingsMenu({
           </div>
         )}
 
+        {/* La mochila (ADR 0070). Va acá y no en la barra de arriba porque no
+            es un modo que se prenda y se apague mirando: es un número que se
+            deja puesto. Se aplica en vivo sobre la mascota que hay. */}
+        {view.pet && (
+          <div className="settings-section">
+            <label htmlFor="backpack-input">
+              <span>Tamaño de la mochila</span>
+              <small>
+                Cuántas cosas puede llevar encima a la vez. Achicarla no le tira nada al piso:
+                deja de levantar hasta que se descargue sola.
+              </small>
+            </label>
+            <div className="seed-row">
+              <input
+                id="backpack-input"
+                data-testid="backpack-input"
+                type="range"
+                min={1}
+                max={20}
+                value={view.pet.inventoryCapacity}
+                aria-label="tamaño de la mochila"
+                onChange={(e) => session.setBackpackSize(Number(e.target.value))}
+              />
+              <output data-testid="backpack-value" htmlFor="backpack-input">
+                {view.pet.inventory.length}/{view.pet.inventoryCapacity}
+              </output>
+            </div>
+          </div>
+        )}
+
         <div className="settings-section">
           <form
             className="seed-form"

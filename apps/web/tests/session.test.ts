@@ -1209,6 +1209,125 @@ describe('pensamiento en vivo en la sesión', () => {
     });
   });
 
+  /**
+   * El tamaño de la mochila es del cuidador, no de la mascota (ADR 0070): se
+   * mueve en vivo, sobrevive al guardado y a la muerte, y achicarlo no puede
+   * traducirse en un montón de cosas tiradas en el piso.
+   */
+  describe('el tamaño de la mochila (ADR 0070)', () => {
+    const petOf = (session: GameSession) => {
+      const world = (session as unknown as { world: WorldState }).world;
+      const petId = (session as unknown as { agent: { petId: string } }).agent.petId;
+      return world.entities[petId]!;
+    };
+
+    it('cambia la capacidad real del motor, no solo lo que se muestra', async () => {
+      const { session } = await makeSession(5);
+      expect(session.getView().pet!.inventoryCapacity).toBe(
+        petOf(session).components.inventory!.capacity,
+      );
+
+      session.setBackpackSize(12);
+      expect(petOf(session).components.inventory!.capacity).toBe(12);
+      expect(session.getView().pet!.inventoryCapacity).toBe(12);
+      session.dispose();
+    });
+
+    it('se queda dentro de sus topes en vez de aceptar cualquier número', async () => {
+      const { session } = await makeSession(5);
+      session.setBackpackSize(999);
+      expect(session.getView().pet!.inventoryCapacity).toBe(20);
+      session.setBackpackSize(-5);
+      expect(session.getView().pet!.inventoryCapacity).toBe(1);
+      session.dispose();
+    });
+
+    /**
+     * Lo que motivó la regla: soltar en su nombre inventaría objetos en el
+     * suelo que ella no decidió soltar. El exceso se drena solo cuando fabrica
+     * o coloca, porque el motor ya se niega a levantar con las manos llenas.
+     */
+    it('achicarla por debajo de lo que lleva no le tira nada al piso', async () => {
+      const { session } = await makeSession(5);
+      const world = (session as unknown as { world: WorldState }).world;
+      const inventory = petOf(session).components.inventory!;
+      // La carga se arma a mano y no esperando a que junte sola: lo que se
+      // prueba es qué pasa al achicar con las manos llenas, y hacerlo depender
+      // de que este mundo le ofrezca tres troncos volvía el test un sorteo
+      // —cuando no salía, se saltaba en silencio y no probaba nada—.
+      for (let i = 0; i < 3; i++) {
+        const item = spawn(world, 'tronco', { position: { x: 1 + i, y: 1 } });
+        delete item.components.position; // es exactamente lo que hace levantar
+        inventory.items.push(item.id);
+      }
+      const llevaba = inventory.items.slice();
+      expect(llevaba.length).toBeGreaterThanOrEqual(3);
+      const enElSuelo = Object.values(world.entities).filter((e) => e.components.position).length;
+
+      session.setBackpackSize(1);
+
+      expect(inventory.items).toEqual(llevaba);
+      expect(session.getView().pet!.inventory).toHaveLength(llevaba.length);
+      // Nada apareció en el mundo: no hubo soltada fantasma.
+      expect(Object.values(world.entities).filter((e) => e.components.position).length).toBe(
+        enElSuelo,
+      );
+      session.dispose();
+    });
+
+    /**
+     * La otra mitad de la regla: el exceso no es eterno. Con las manos llenas
+     * el motor ya se niega a levantar (`resolvePickup`), así que la mochila
+     * apretada se drena sola en vez de necesitar que alguien la vacíe.
+     */
+    it('con la mochila llena por encima del tope, deja de levantar', async () => {
+      const { session } = await makeSession(5);
+      const world = (session as unknown as { world: WorldState }).world;
+      const inventory = petOf(session).components.inventory!;
+      for (let i = 0; i < 3; i++) {
+        const item = spawn(world, 'tronco', { position: { x: 1 + i, y: 1 } });
+        delete item.components.position;
+        inventory.items.push(item.id);
+      }
+      session.setBackpackSize(1);
+
+      const cargaInicial = inventory.items.length;
+      for (let i = 0; i < 40; i++) await session.stepOnce();
+
+      // Nunca sumó: por encima del tope no entra nada nuevo.
+      expect(inventory.items.length).toBeLessThanOrEqual(cargaInicial);
+      session.dispose();
+    });
+
+    it('sobrevive a recargar la partida: el mundo guardado no pisa la perilla', async () => {
+      const store = new MemoryKeyValueStore();
+      const { session } = await makeSession(5, store);
+      session.setBackpackSize(15);
+      await session.save();
+      session.dispose();
+
+      const revivida = await GameSession.create({ seed: 5, autostart: false, store });
+      expect(revivida.getView().pet!.inventoryCapacity).toBe(15);
+      revivida.dispose();
+    });
+
+    it('la mascota nueva nace con la mochila que eligió el cuidador', async () => {
+      const { session } = await makeSession(5);
+      session.setBackpackSize(3);
+      session.reset(77);
+      expect(session.getView().pet!.inventoryCapacity).toBe(3);
+      session.dispose();
+    });
+
+    it('sin tocar la perilla, manda el mundo', async () => {
+      const { session } = await makeSession(5);
+      const delEscenario = petOf(session).components.inventory!.capacity;
+      session.reset(77);
+      expect(session.getView().pet!.inventoryCapacity).toBe(delEscenario);
+      session.dispose();
+    });
+  });
+
   it('un fallo queda contado como error y la vista es una copia inmutable', async () => {
     const { session } = await makeSession(5);
     session.noteAiThought({ seq: 1, kind: 'recipe.propose', event: 'start' });

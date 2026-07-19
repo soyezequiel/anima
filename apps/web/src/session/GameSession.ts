@@ -158,6 +158,15 @@ export interface SessionOptions {
   provider?: ModelProvider;
 }
 
+/**
+ * Los topes de la mochila (ADR 0070). Abajo de 4 no le entra una fogata en
+ * mano y fabricar se vuelve un ir y venir; se permite igual, porque estrangular
+ * la mochila a propósito es una forma legítima de mirar cómo se las arregla.
+ * Arriba de 20 deja de ser una restricción y el mundo pierde el problema.
+ */
+const MIN_BACKPACK = 1;
+const MAX_BACKPACK = 20;
+
 interface SessionUiState {
   chat: ChatEntry[];
   petColor: string;
@@ -165,6 +174,12 @@ interface SessionUiState {
   mockImperfect?: boolean;
   /** Modo creativo: el cuerpo siempre lleno (ADR 0061). */
   creativeMode?: boolean;
+  /**
+   * Cuántas manos le puso el cuidador (ADR 0070). Ausente = las que le dio el
+   * mundo al nacer; no se guarda un 6 que nadie eligió, porque entonces un
+   * cambio en el escenario no llegaría nunca a las partidas ya empezadas.
+   */
+  backpackSize?: number;
 }
 
 /**
@@ -424,6 +439,17 @@ export class GameSession {
    * de fábrica volvería decorativas la mitad de sus conductas.
    */
   private creativeMode = false;
+  /**
+   * Manos que le puso el cuidador (ADR 0070), o null si todavía no tocó la
+   * perilla y las que valen son las del mundo.
+   *
+   * Es null y no 6 a propósito. El 6 es del escenario (`spawnPet`), que lo
+   * eligió con un motivo —una fogata son 3 objetos en mano más la herramienta,
+   * y con 4 juntar ingredientes era soltar cosas—. Copiarlo acá lo duplicaría:
+   * el día que el escenario cambie de idea, las partidas guardadas seguirían
+   * arrastrando el número viejo sin que nadie lo haya pedido.
+   */
+  private backpackSize: number | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   /**
    * Paso en vuelo. Un stepOnce concurrente no se descarta: espera a que este
@@ -534,6 +560,10 @@ export class GameSession {
     // Un pensamiento en vuelo de la vida anterior no puede actuar sobre esta:
     // al soltar la referencia, su resolución tardía cae al vacío.
     this.pendingThink = null;
+    // La mochila que eligió el cuidador es suya, no de esta mascota: sobrevive
+    // a la muerte y al reinicio, como el color (ADR 0070). Va acá, después de
+    // que el mundo nuevo ya fabricó la mascota con la capacidad del escenario.
+    this.applyBackpackSize();
   }
 
   /**
@@ -705,6 +735,12 @@ export class GameSession {
     );
     if (ui?.petColor !== undefined) this.petColor = ui.petColor;
     if (ui?.creativeMode !== undefined) this.creativeMode = ui.creativeMode;
+    // El mundo restaurado trae SU capacidad dentro del snapshot de la entidad;
+    // la perilla del cuidador vuelve a caer encima (ADR 0070).
+    if (ui?.backpackSize !== undefined) {
+      this.backpackSize = ui.backpackSize;
+      this.applyBackpackSize();
+    }
     if (ui?.mockImperfect !== undefined) {
       this.mockImperfect = ui.mockImperfect;
       if (this.provider instanceof MockModelProvider) {
@@ -761,6 +797,7 @@ export class GameSession {
         petColor: this.petColor,
         mockImperfect: this.mockImperfect,
         creativeMode: this.creativeMode,
+        ...(this.backpackSize === null ? {} : { backpackSize: this.backpackSize }),
       } satisfies SessionUiState,
       now: () => new Date().toISOString(),
     });
@@ -836,6 +873,41 @@ export class GameSession {
     this.rebuildView();
     this.notify();
     void this.save();
+  }
+
+  /**
+   * Le cambia el tamaño de la mochila, en vivo (ADR 0070).
+   *
+   * **Achicar no le tira nada al piso.** Si venía cargada por encima del tope
+   * nuevo, se queda con lo que lleva y deja de poder levantar más hasta que
+   * baje sola: soltar en su nombre inventaría un montón de cosas en el suelo
+   * que ella no decidió soltar, en un lugar que nadie eligió, y encima podría
+   * romperle el objetivo en curso. El motor ya se comporta así —`resolvePickup`
+   * compara `items.length >= capacity`—, así que el exceso se drena solo a
+   * medida que fabrica o coloca.
+   */
+  setBackpackSize(value: number): void {
+    const size = Math.max(MIN_BACKPACK, Math.min(MAX_BACKPACK, Math.round(value)));
+    if (this.backpackSize === size) return;
+    this.backpackSize = size;
+    this.applyBackpackSize();
+    this.rebuildView();
+    this.notify();
+    void this.save();
+  }
+
+  /**
+   * Vuelca la perilla sobre la mascota viva. Se llama en cada punto donde
+   * aparece una mascota que la sesión no fabricó en este instante —al restaurar
+   * un guardado y al nacer una nueva—, porque en los dos casos la capacidad
+   * viene del mundo y pisaría la que el cuidador eligió.
+   */
+  private applyBackpackSize(): void {
+    if (this.backpackSize === null) return;
+    const pet = getEntity(this.world, this.agent.petId);
+    const inventory = pet?.components.inventory;
+    if (!inventory) return;
+    inventory.capacity = this.backpackSize;
   }
 
   /**
@@ -2187,6 +2259,7 @@ export class GameSession {
                     : {}),
                 };
               }),
+              inventoryCapacity: pet.components.inventory?.capacity ?? 0,
               mount,
             }
           : null,

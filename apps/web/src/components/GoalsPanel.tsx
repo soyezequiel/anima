@@ -32,6 +32,17 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 /**
+ * El motor guarda el encargo como «petición del usuario: crea una cocina»
+ * porque ahí adentro el prefijo ES el dato que distingue un encargo de un
+ * impulso propio (y hay tests que buscan el objetivo por ese nombre exacto).
+ * En pantalla, en cambio, al lado ya hay un «se lo pediste» diciendo lo mismo:
+ * el título se queda con el encargo y la procedencia se dice una sola vez.
+ */
+function goalTitle(description: string): string {
+  return description.replace(/^petición del usuario:\s*/i, '');
+}
+
+/**
  * De dónde puede salir lo que falta. La diferencia entre las tres es
  * exactamente la diferencia entre «ya va sola» y «necesita que la ayudes»: es
  * lo único accionable de toda la tarjeta.
@@ -58,10 +69,12 @@ function Need({
   /** De qué objetivo cuelga: dos objetivos que piden lo mismo no se pisan. */
   scope: string;
   /**
-   * Decir "falta 1 de 4" en vez de "1×". Dentro de un paso el total ya está
-   * escrito en su título ("conseguir 4× pared escuela"), y un chip que dice
-   * "1×" al lado parecía contradecirlo: son cosas distintas —lo que falta y lo
-   * que pide— pero nada lo decía.
+   * Decir "0/4" en vez de "1×". Dentro de un paso el total ya está escrito en
+   * su título ("conseguir 4× pared escuela"), y un chip que dice "1×" al lado
+   * parecía contradecirlo: son cosas distintas —lo que falta y lo que pide—
+   * pero nada lo decía. La forma larga («falta 1 de 4») decía lo mismo tres
+   * veces contando el título; lleva/pide lo dice una sola y agrega el único
+   * número que el título NO tiene: cuánto juntó ya.
    */
   ofTotal?: boolean;
 }) {
@@ -84,7 +97,7 @@ function Need({
       />
       {ofTotal ? (
         <span className="goal-need-count">
-          falta {need.short} de {need.need}
+          {need.have}/{need.need}
         </span>
       ) : (
         <>
@@ -96,7 +109,12 @@ function Need({
       {/* De qué está hecho, hasta la materia prima (ADR 0069). Se abre acá y no
           se muestra siempre: la respuesta a «por qué no lo consigue» suele
           estar dos niveles más abajo, pero mostrarla entera de entrada sería
-          tapar la lista con un árbol que casi nunca se mira. */}
+          tapar la lista con un árbol que casi nunca se mira.
+
+          La flecha va sola, con la frase en el título: escrita entera se
+          repetía en cada chip y pesaba más que la materia que anuncia — y es
+          la misma flecha con la que se abre cada rama del árbol que despliega,
+          así que el gesto ya se aprende una sola vez. */}
       {byKind.get(need.kind)?.ingredients.length ? (
         <button
           type="button"
@@ -106,8 +124,9 @@ function Need({
           aria-expanded={openTree}
           onClick={() => expansion.toggle(treeId)}
           title="Ver de qué está hecho"
+          aria-label="Ver de qué está hecho"
         >
-          {openTree ? '▾ de qué está hecho' : '▸ de qué está hecho'}
+          {openTree ? '▾' : '▸'}
         </button>
       ) : null}
       {openTree && (
@@ -189,12 +208,21 @@ export function GoalCard({
   byKind,
   onInspect,
   expansion,
+  framed = false,
 }: {
   goal: GoalView;
   current: boolean;
   byKind: Map<string, ItemView>;
   onInspect: (kind: string) => void;
   expansion: Expansion;
+  /**
+   * La tarjeta ya vive dentro de algo que dice que es la actual —el marco
+   * «Ahora» del encabezado—. Entonces «lo que hace ahora» es el mismo dato
+   * escrito dos veces a tres centímetros de distancia. En la pestaña de
+   * Objetivos, en cambio, es lo único que distingue esta tarjeta de las otras
+   * cinco de la lista, y ahí sí se escribe.
+   */
+  framed?: boolean;
 }) {
   const structure = goal.structure;
   const steps = goal.children;
@@ -214,39 +242,47 @@ export function GoalCard({
             {goal.rank}
           </span>
         )}
-        <strong className="goal-desc">{goal.description}</strong>
+        <strong className="goal-desc">{goalTitle(goal.description)}</strong>
         <span className={`pill pill-${goal.status}`}>
           {STATUS_LABEL[goal.status] ?? goal.status}
         </span>
       </div>
-      <div className="goal-sub muted">
-        {current ? 'lo que hace ahora · ' : ''}
-        {SOURCE_LABEL[goal.source] ?? goal.source}
+
+      {/* De dónde salió y cuánto lleva, en UNA línea.
+          Eran tres renglones apilados —procedencia, puestos de la obra, cuenta
+          de pasos— cada uno con su propio rótulo, y ninguno decía nada que el
+          de al lado no pudiera decir en la misma línea. Peor: dos avances
+          distintos escritos como dos titulares competían por ser EL avance.
+          Juntos y separados por puntos se leen como lo que son, la ficha del
+          objetivo; y la barra —que es el avance de verdad— queda sola. */}
+      <div className="goal-meta muted" data-testid="goal-progress">
+        {[
+          current && !framed ? 'lo que hace ahora' : null,
+          SOURCE_LABEL[goal.source] ?? goal.source,
+          structure ? `${structure.label} ${structure.placed}/${structure.total} puestos` : null,
+          steps.length > 0 ? `${stepsDone}/${steps.length} pasos` : null,
+        ]
+          .filter(Boolean)
+          .join(' · ')}
       </div>
 
       {/* Una obra tiene avance aunque no le falte nada: cuántos bloques
           levantó de cuántos. Sin esto, "en marcha" durante cien ticks se ve
           igual que estar trabada. */}
       {structure && (
-        <div className="goal-progress" data-testid="goal-progress">
-          <div className="goal-progress-bar" aria-hidden="true">
-            <span style={{ width: `${(structure.placed / Math.max(1, structure.total)) * 100}%` }} />
-          </div>
-          <span className="muted">
-            {structure.label}: {structure.placed} de {structure.total} puestos
-          </span>
+        <div className="goal-progress-bar" aria-hidden="true">
+          <span style={{ width: `${(structure.placed / Math.max(1, structure.total)) * 100}%` }} />
         </div>
       )}
 
       {/* Cuando descompuso el encargo en pasos, los pasos son la historia: cada
           uno lleva su propia cuenta de materia. Repetir los chips en el padre
-          sería contar lo mismo dos veces en la misma tarjeta. */}
+          sería contar lo mismo dos veces en la misma tarjeta. El rótulo «sus
+          pasos» se fue con ellos: una lista de viñetas debajo de un objetivo
+          no necesita que le avisen que son sus pasos, y su cuenta ya está
+          arriba con el resto de la ficha. */}
       {steps.length > 0 && (
-        <>
-          <div className="goal-needs-title muted">
-            sus pasos ({stepsDone} de {steps.length})
-          </div>
-          <ul className="goal-steps" data-testid="goal-steps">
+        <ul className="goal-steps" data-testid="goal-steps">
             {steps.map((step) => (
               <StepRow
                 key={step.id}
@@ -254,10 +290,9 @@ export function GoalCard({
                 byKind={byKind}
                 onInspect={onInspect}
                 expansion={expansion}
-              />
-            ))}
-          </ul>
-        </>
+            />
+          ))}
+        </ul>
       )}
 
       {steps.length === 0 && goal.needs.length > 0 && (

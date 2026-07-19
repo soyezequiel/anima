@@ -105,6 +105,12 @@ export interface PetView {
    */
   inventory: { id: string; kind: string; durability?: { current: number; max: number } }[];
   /**
+   * Cuántas manos tiene, o sea el tope de `inventory` (ADR 0070). Sale del
+   * mundo —lo fija `spawnPet`— y el cuidador puede moverlo. Sin este número en
+   * pantalla, «no pude juntarlo» y «no me entra» se ven exactamente igual.
+   */
+  inventoryCapacity: number;
+  /**
    * Postura sobre un objeto tras una interacción (ADR 0027): comparte celda
    * con él, encima o debajo. El dibujo decide quién tapa a quién; null cuando
    * está simplemente parada en el suelo.
