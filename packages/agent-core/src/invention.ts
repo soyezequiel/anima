@@ -387,6 +387,36 @@ export class InventionEngine {
       return 'rejected';
     }
 
+    // ¿Le entra en las manos? Construir consume los ingredientes del inventario,
+    // así que hay que tenerlos TODOS a la vez: una receta que pide más piezas
+    // que ranuras no es cara, es imposible — y no de un modo que se note.
+    //
+    // La corrida real: una balsa de 4 tablas, 2 fibras y 1 resina, con seis
+    // manos. Juntó las cuatro tablas y las dos fibras, llenó el inventario
+    // exacto, y se quedó dando vueltas con tres resinas a la vista que no podía
+    // levantar. Nada le sobraba —soltar cualquier cosa rompía la receta— así que
+    // ninguna regla de hacer lugar podía destrabarla. Y el mensaje culpaba al
+    // mundo: «me falta una resina y no veo más por acá», con tres delante.
+    //
+    // Va en la puerta del AGENTE y no en la del mundo porque no es física: con
+    // una mochila más grande la misma receta es perfectamente posible. Es un
+    // límite de su cuerpo, y por eso el motivo habla de sus manos.
+    const capacity = perception.self.inventoryCapacity;
+    const pieces = (gated.value.ingredients ?? []).reduce((sum, i) => sum + i.count, 0);
+    if (pieces > capacity) {
+      const made = recipeProduct(gated.value)?.kind ?? gated.value.id;
+      const reason =
+        `Receta inválida: "${made}" pide ${pieces} ingredientes de una vez ` +
+        `y solo puedo llevar ${capacity} cosas encima. Para construir hay que tenerlos todos ` +
+        `en la mano al mismo tiempo, así que esta receta no la puedo hacer nunca: ` +
+        `necesito una que entre en ${capacity}.`;
+      this.remember(this.recipeRejections, reason);
+      this.deps.emit('recipe.rejected', { reason, source: 'gate' });
+      this.pendingPlan = [];
+      this.pendingBlueprint = null;
+      return 'rejected';
+    }
+
     const recipe = raw as {
       output?: { kind?: string; components?: Record<string, unknown> };
       ingredients?: { kind?: string; count?: number }[];

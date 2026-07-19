@@ -627,9 +627,26 @@ export class SkillExecution {
         // nunca la materia de la receta ni el martillo si hay una rama.
         const held = perception.self.heldItems;
         const free = perception.self.inventoryCapacity - held.length;
+        // Lo que no sirve para esta tarea, de menos a más útil.
         const junk = held
           .filter((e) => !op.keep.includes(e.kind))
           .sort((a, b) => (a.toolPower ?? -1) - (b.toolPower ?? -1));
+        // Y el EXCEDENTE de lo que sí sirve: guardar más de lo que la tarea
+        // pide no es cuidar la materia, es ocupar la mano con la que habría
+        // que agarrar lo que falta. Va después de lo inútil —primero se suelta
+        // lo que no sirve para nada— y se cuenta por tipo: sobra lo que pasa
+        // de `atMost`, nunca lo que la receta necesita.
+        if (op.atMost) {
+          const seen = new Map<string, number>();
+          for (const item of held) {
+            if (!op.keep.includes(item.kind)) continue;
+            const limit = op.atMost[item.kind];
+            if (limit === undefined) continue;
+            const count = (seen.get(item.kind) ?? 0) + 1;
+            seen.set(item.kind, count);
+            if (count > limit) junk.push(item);
+          }
+        }
         if (free > 0 || junk.length === 0) {
           frame.index += 1;
           return null;

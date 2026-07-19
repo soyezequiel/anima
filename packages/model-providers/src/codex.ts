@@ -350,7 +350,10 @@ Componentes permitidos en lo construido (ninguno más existe):
 - "tool":{"power":0..8} — sirve como herramienta
 - "hazard":{"damagePerTick":0..3} — daña a quien esté ENCIMA (no a los de al lado)
 - "heatSource":{"warmthPerTick":0..1,"range":1..3} — da calor a distancia
-- "drops":[{"kind":...,"components":{...}}] — qué deja al romperse
+- "drops":[{"kind":...,"components":{...}}] — qué deja al romperse.
+  OJO: un fragmento admite SOLO estos cinco y ninguno más — "portable",
+  "footing", "collider", "hardness", "tool". Nada de "durability" ahí adentro:
+  lo que ya está roto no se vuelve a romper. Es el error que más se repite.
 Reglas que el mundo NO perdona:
 - No puedes inventar comida ni nada que la produzca ("edible", "nutrition",
   "foodSource" no existen aquí), ni criaturas, ni fabricar food/tree/pet.
@@ -358,7 +361,12 @@ Reglas que el mundo NO perdona:
 - Un objeto no puede ser ingrediente de sí mismo, y no puede dejar al romperse
   más objetos de los que costó: eso sería crear materia.
 - Sin ingredientes no hay receta, y lo construido debe tener al menos un
-  componente: algo sin componentes no hace nada.`;
+  componente: algo sin componentes no hace nada.
+- LA CUENTA DE LAS MANOS: para construir hay que tener TODOS los ingredientes
+  encima al mismo tiempo. Sumá las cantidades: si el total pasa de lo que la
+  mascota puede cargar, la receta es imposible por más razonable que suene.
+  Una balsa de 4 tablas + 2 fibras + 1 resina son SIETE cosas en la mano, y
+  con seis ranuras nunca se puede hacer. Ante la duda, menos ingredientes.`;
 
 /**
  * La interacción viaja serializada como string, igual que el programa y la

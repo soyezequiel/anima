@@ -222,6 +222,12 @@ interface GatherOptions {
    * juntar los troncos de una tabla no tira el pedernal ya conseguido arriba.
    */
   keepKinds?: string[];
+  /**
+   * Cuánto de cada tipo hace falta de verdad. El excedente por encima de esto
+   * se puede soltar aunque el tipo esté en `keepKinds`: una quinta tabla para
+   * una receta que pide dos no es materia de la receta, es lastre.
+   */
+  keepAtMost?: Record<string, number>;
   /** De qué romper lo que ninguna receta hace (un tronco sale de un árbol). */
   harvestSource?: HarvestSource;
 }
@@ -247,7 +253,16 @@ export function gatherAndCraftProgram(
   const keepKinds = [
     ...new Set([...(options.keepKinds ?? []), ...recipe.ingredients.map((i) => i.kind)]),
   ];
-  const withKeep: GatherOptions = { ...options, keepKinds };
+  // Y CUÁNTO de cada cosa: proteger por tipo y no por cantidad convertía juntar
+  // de más en un candado. Lo que pide esta receta se suma a lo que venía
+  // cuidando de arriba, porque bajar por el árbol no puede bajar el techo de lo
+  // de arriba: los 2 troncos de la tabla no autorizan a soltar el tercer tronco
+  // que la fogata necesitaba.
+  const keepAtMost: Record<string, number> = { ...(options.keepAtMost ?? {}) };
+  for (const ingredient of recipe.ingredients) {
+    keepAtMost[ingredient.kind] = Math.max(keepAtMost[ingredient.kind] ?? 0, ingredient.count);
+  }
+  const withKeep: GatherOptions = { ...options, keepKinds, keepAtMost };
   const gather: SkillOp[] = recipe.ingredients
     // Solo lo que efectivamente falta: con 2 troncos ya en la mano y el
     // pedernal en el suelo, buscar troncos abortaría (no hay ninguno suelto)
@@ -288,7 +303,12 @@ export function gatherAndCraftProgram(
 /** Ir a buscar un objeto que está a la vista y traerlo. */
 function fetchOps(
   kind: string,
-  options: { searchFirst?: boolean; rememberedWalk?: RememberedWalk; keepKinds?: string[] } = {},
+  options: {
+    searchFirst?: boolean;
+    rememberedWalk?: RememberedWalk;
+    keepKinds?: string[];
+    keepAtMost?: Record<string, number>;
+  } = {},
 ): SkillOp[] {
   const searchFirst = options.searchFirst ?? false;
   const seek: SkillOp[] = [];
@@ -326,7 +346,13 @@ function fetchOps(
   // lleno y la obra abortaba como si no viera el material (ADR 0032). Solo actúa
   // si de verdad no hay lugar, y nunca suelta la materia de la receta (`keep`).
   const makeRoom: SkillOp[] = options.keepKinds
-    ? [{ op: 'makeRoom', keep: options.keepKinds }]
+    ? [
+        {
+          op: 'makeRoom',
+          keep: options.keepKinds,
+          ...(options.keepAtMost ? { atMost: options.keepAtMost } : {}),
+        },
+      ]
     : [];
   return [
     ...seek,
@@ -357,7 +383,12 @@ function fetchOps(
  * después, y recién al final recoger lo que cayó: lo que se rompe deja la
  * materia en el suelo, no en las manos.
  */
-function harvestOps(kind: string, source: string, keepKinds?: string[]): SkillOp[] {
+function harvestOps(
+  kind: string,
+  source: string,
+  keepKinds?: string[],
+  keepAtMost?: Record<string, number>,
+): SkillOp[] {
   const dropped = { kind, held: false, portable: true } as const;
   return [
     { op: 'findEntities', query: { tool: true }, store: `tool-${kind}` },
@@ -398,7 +429,10 @@ function harvestOps(kind: string, source: string, keepKinds?: string[]): SkillOp
     {
       op: 'branch',
       if: { type: 'sees', query: dropped },
-      then: fetchOps(kind, keepKinds ? { keepKinds } : {}),
+      then: fetchOps(kind, {
+        ...(keepKinds ? { keepKinds } : {}),
+        ...(keepAtMost ? { keepAtMost } : {}),
+      }),
     },
   ];
 }
@@ -425,14 +459,19 @@ function fetchOrMakeOps(
     recipes?: readonly Recipe[];
     rememberedWalk?: RememberedWalk;
     keepKinds?: string[];
+    keepAtMost?: Record<string, number>;
     harvestSource?: HarvestSource;
   },
   depth: number,
 ): SkillOp[] {
+  const keepOptions = {
+    ...(options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+    ...(options.keepAtMost ? { keepAtMost: options.keepAtMost } : {}),
+  };
   const fetchOptions = {
     searchFirst: options.searchFirst ?? false,
     ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
-    ...(options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+    ...keepOptions,
   };
   const fetch = fetchOps(kind, fetchOptions);
   const recipes = options.recipes;
@@ -448,8 +487,8 @@ function fetchOrMakeOps(
         {
           op: 'branch',
           if: { type: 'sees', query: { kind, held: false, portable: true } },
-          then: fetchOps(kind, options.keepKinds ? { keepKinds: options.keepKinds } : {}),
-          else: harvestOps(kind, source, options.keepKinds),
+          then: fetchOps(kind, keepOptions),
+          else: harvestOps(kind, source, options.keepKinds, options.keepAtMost),
         },
       ];
     }
@@ -464,7 +503,7 @@ function fetchOrMakeOps(
       // 50 pasos para llegar a lo que tiene delante sería absurdo. `portable`:
       // una pieza suelta que recoger, no una ya colocada en la obra (ADR 0034).
       if: { type: 'sees', query: { kind, held: false, portable: true } },
-      then: fetchOps(kind, options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+      then: fetchOps(kind, keepOptions),
       else: [
         // Lo que lleva encima NO viaja a la sub-receta: `held` cuenta lo que
         // tenía al planificar y adentro de un bucle eso ya es mentira. El
@@ -478,7 +517,7 @@ function fetchOrMakeOps(
             searchFirst: options.searchFirst ?? false,
             recipes,
             ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
-            ...(options.keepKinds ? { keepKinds: options.keepKinds } : {}),
+            ...keepOptions,
             // Y la cosecha VIAJA hacia abajo (ADR 0058). Sin esto se perdía en
             // el primer escalón: para hacer una pared hace falta un tronco, y
             // el tronco no se fabrica —se saca de un árbol—, pero la sub-receta
@@ -592,6 +631,9 @@ export function buildStructureProgram(
 ): SkillProgram {
   // La materia de la obra no se suelta al hacer lugar: son los bloques del plano.
   const keepKinds = [...blueprintCounts(blueprint).keys()];
+  // Pero solo hasta donde el plano los pide. Un bloque de más no es materia de
+  // la obra: es una mano ocupada que le falta para el siguiente.
+  const keepAtMost = Object.fromEntries(blueprintCounts(blueprint));
   // Una ranura libre para la herramienta: acopiar hasta llenar las manos deja
   // sin lugar el martillo con el que se consigue el material que falta.
   const capacity = Math.max(1, (options.capacity ?? 6) - 1);
@@ -603,6 +645,7 @@ export function buildStructureProgram(
     ...(options.rememberedWalk ? { rememberedWalk: options.rememberedWalk } : {}),
     ...(options.harvestSource ? { harvestSource: options.harvestSource } : {}),
     keepKinds,
+    keepAtMost,
     searchFirst: true,
   });
 

@@ -184,7 +184,13 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       .strict(),
     z.object({ op: z.literal('pickup'), target: z.string().min(1) }).strict(),
     z.object({ op: z.literal('drop'), target: z.string().min(1) }).strict(),
-    z.object({ op: z.literal('makeRoom'), keep: z.array(z.string().min(1)) }).strict(),
+    z
+      .object({
+        op: z.literal('makeRoom'),
+        keep: z.array(z.string().min(1)),
+        atMost: z.record(z.string().min(1), z.number().int().min(0)).optional(),
+      })
+      .strict(),
     z.object({ op: z.literal('markAnchor'), store: z.string().min(1) }).strict(),
     z
       .object({ op: z.literal('markTarget'), from: z.string().min(1), store: z.string().min(1) })
@@ -297,8 +303,17 @@ export type SkillOp =
    * no queda otra, la herramienta más débil—. Con lugar de sobra no hace nada.
    * Es lo que permite juntar el pedernal con las manos ocupadas de sobras en
    * vez de quedar trabada diciendo "no me entra".
+   *
+   * `atMost` dice CUÁNTO de cada tipo hace falta de verdad. Lo que pase de ahí
+   * es lastre aunque el tipo esté en `keep`: la quinta tabla de una receta que
+   * pide dos no es materia de la receta, es una tabla de más ocupando la mano
+   * con la que tendría que agarrar la fibra. Sin esto, `keep` protegía por
+   * tipo y no por cantidad, y juntar de más se volvía un candado — se la vio
+   * con 5 tablas y 1 pilote en 6 ranuras, caminando el mismo circuito para
+   * siempre porque cada `pickup` moría con "no me entra" y no había nada que
+   * `makeRoom` se creyera autorizada a soltar.
    */
-  | { op: 'makeRoom'; keep: string[] }
+  | { op: 'makeRoom'; keep: string[]; atMost?: Record<string, number> }
   /**
    * Recuerda la celda donde estoy parada como el ancla de una obra (ADR 0034):
    * el punto al que vuelve entre viaje y viaje de material para que las
