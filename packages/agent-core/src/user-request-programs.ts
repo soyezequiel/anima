@@ -87,13 +87,22 @@ export function programForUserRequest(
         // el generador: plantarla donde esté parada la mudaba en cada
         // reanudación y podía pedir celdas ocupadas (ADR 0049).
         const site = deps.structureSite(blueprint);
+        // Sin sitio no se levanta nada (ADR 0071). Antes la ausencia de sitio
+        // caía en «plantala donde estés», que es justo el comportamiento que el
+        // ADR 0049 vino a eliminar: con el mapa cerrado alrededor, colocaba los
+        // bloques sobre las piedras que tenía delante y repetía «la acción no
+        // produjo el resultado esperado». No tener dónde construir es una
+        // respuesta legítima, y dicha con todas las letras es más útil que una
+        // obra plantada en el primer lugar que tocó.
+        if (!site) return [{ op: 'abort', reason: 'sin-sitio' }];
         return buildStructureProgram(blueprint, {
           held: heldCounts(perception),
           recipes: perception.recipes,
           rememberedWalk: deps.rememberedWalk,
           harvestSource: deps.harvestSource,
           capacity: perception.self.inventoryCapacity,
-          ...(site ? { approach: site.approach, pending: site.pending } : {}),
+          approach: site.approach,
+          pending: site.pending,
         });
       }
       // Juntar lo que falte es parte de construir: el mismo programa que la

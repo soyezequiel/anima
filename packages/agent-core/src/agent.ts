@@ -581,8 +581,13 @@ export class AnimaAgent {
         if (goalId === null) return null;
         const anchor = this.siteFor(goalId, blueprint, perception);
         if (!anchor) return null;
+        // El mismo camino con el que se validó el sitio (ADR 0071). Si desde
+        // acá ya no se llega —el sitio se eligió con lo que veía y apareció
+        // algo en el medio—, no hay aproximación que dar: el programa aborta
+        // con `camino-bloqueado` en vez de plantar la obra donde se trabe.
+        const approach = this.clearWalkTo(perception, anchor, 0);
         return {
-          approach: this.walkStepsAvoidingHazards(perception, anchor, 0),
+          approach: approach ?? this.walkStepsAvoidingHazards(perception, anchor, 0),
           pending: this.pendingPlacements(blueprint, anchor, perception),
         };
       },
@@ -937,6 +942,10 @@ export class AnimaAgent {
           continue;
         }
         if (!this.siteFits(blueprint, anchor, perception)) continue;
+        // Libre no alcanza: tiene que poder LLEGAR (ADR 0071). El claro más
+        // cercano puede estar del otro lado de un muro, y el caminante greedy
+        // no lo rodea — elegirlo era condenar la obra antes de empezarla.
+        if (this.clearWalkTo(perception, anchor, 0) === null) continue;
         const distance = Math.abs(dx) + Math.abs(dy);
         if (!best || distance < best.distance) best = { anchor, distance };
       }
@@ -2050,6 +2059,49 @@ export class AnimaAgent {
     const variants = (['x', 'y'] as const).map((axis) =>
       stepsToward(perception.self.position, to, stopAt, axis),
     );
+    return (variants.find((v) => !risky(v.end)) ?? variants[0]!).dirs;
+  }
+
+  /**
+   * Los pasos hasta un sitio, o null si por ninguna de las dos variantes se
+   * llega (ADR 0071).
+   *
+   * El caminante es greedy y ciego a obstáculos a propósito (ADR 0005): no hay
+   * pathfinding y no se agrega acá. Lo que sí se puede hacer sin inventarlo es
+   * PREGUNTARLE ANTES: se simula el camino contra los sólidos que ella ve, y si
+   * choca, ese sitio no cuenta como sitio. Un lugar despejado del otro lado de
+   * un muro estaba libre y estaba cerca, y las dos cosas eran ciertas; lo que
+   * nadie preguntaba era si se podía llegar.
+   *
+   * Es el MISMO cálculo que después se camina, y eso importa más que su
+   * calidad: validar con un criterio y caminar con otro es cómo se elige un
+   * sitio que resulta inalcanzable.
+   */
+  private clearWalkTo(perception: Perception, to: Vec2, stopAt: number): Direction[] | null {
+    const hazards = this.knownHazardPositions(perception);
+    const risky = (cell: Vec2): boolean => hazards.some((h) => chebyshev(h, cell) < SAFE_DISTANCE);
+    // Solo lo sólido frena un paso: lo suelto se pisa, y lo recogible se levanta.
+    const solid = new Set<string>();
+    for (const entity of perception.visibleEntities) {
+      if (entity.position && entity.solid === true) {
+        solid.add(`${entity.position.x},${entity.position.y}`);
+      }
+    }
+    const walkable = (dirs: Direction[]): boolean => {
+      const cur = { ...perception.self.position };
+      for (const dir of dirs) {
+        if (dir === 'left') cur.x -= 1;
+        else if (dir === 'right') cur.x += 1;
+        else if (dir === 'up') cur.y -= 1;
+        else cur.y += 1;
+        if (solid.has(`${cur.x},${cur.y}`)) return false;
+      }
+      return true;
+    };
+    const variants = (['x', 'y'] as const)
+      .map((axis) => stepsToward(perception.self.position, to, stopAt, axis))
+      .filter((v) => walkable(v.dirs));
+    if (variants.length === 0) return null;
     return (variants.find((v) => !risky(v.end)) ?? variants[0]!).dirs;
   }
 
@@ -5278,6 +5330,7 @@ export class AnimaAgent {
     const descriptions: Record<string, string> = {
       'no-conozco-esa-habilidad': 'ya no tengo esa habilidad disponible',
       'camino-bloqueado': 'el camino está bloqueado',
+      'sin-sitio': 'no encuentro un lugar despejado al que pueda llegar para levantarla',
       'no-pude-recogerlo': 'no pude recoger el objeto',
       'no-pude-comerlo': 'no pude comer el alimento',
       'no-pude-recoger-la-herramienta': 'no pude recoger la herramienta',

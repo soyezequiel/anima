@@ -666,8 +666,20 @@ export function buildStructureProgram(
 
   // Caminar primero al sitio, marcar el ancla después: el ancla es el LUGAR de
   // la obra, no donde ella estaba cuando se le ocurrió empezar (ADR 0049).
+  //
+  // Con `walkOps` y no con `moveStep` pelados (ADR 0071). Los pasos sueltos no
+  // comprobaban nada: si algo frenaba el camino —un muro entre ella y el sitio,
+  // que el caminante greedy del ADR 0005 no sabe rodear—, los pasos rebotaban,
+  // el programa seguía como si hubiera llegado y `markAnchor` marcaba el ancla
+  // DONDE QUEDÓ TRABADA. La obra entera se plantaba corrida, sobre celdas que
+  // nadie había validado: se la vio poniendo un fogón sobre una veta y una
+  // encimera sobre el muro que la había frenado. Es decir, la invariante que
+  // este mismo comentario declara no la garantizaba nadie.
+  //
+  // Ahora el primer paso rechazado corta con `camino-bloqueado`. No llegar es
+  // un final honesto; llegar a otro lado y construir ahí, no.
   const steps: SkillOp[] = [
-    ...(options.approach ?? []).map((dir) => ({ op: 'moveStep' as const, dir })),
+    ...walkOps(options.approach ?? []),
     { op: 'markAnchor', store: BASE },
     // DESCARGAR PRIMERO, pero solo si hace falta. Sin lugar para la próxima
     // pieza, salir a buscarla es imposible: no entra. Colocar lo que ya lleva
