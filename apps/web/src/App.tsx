@@ -12,7 +12,7 @@ import { GoalsPanel } from './components/GoalsPanel.js';
 import { MissionPanel } from './components/MissionPanel.js';
 import { useExpansion } from './components/expansion.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
-import { LearningPanel } from './components/LearningPanel.js';
+import { SkillsTab, ThoughtsTab, TrialsTab } from './components/LearningTabs.js';
 import { PruneOverlay } from './components/PruneOverlay.js';
 import { StatusPanel } from './components/StatusPanel.js';
 import { useTabActivity } from './components/tabActivity.js';
@@ -26,7 +26,17 @@ import { WelcomeOverlay } from './components/WelcomeOverlay.js';
  * SIEMPRE visibles encima de las pestañas. El usuario nuevo entra por Chat
  * —la acción principal— y nunca pierde el contexto vital.
  */
-type Tab = 'chat' | 'objetivos' | 'estado' | 'objetos' | 'obras' | 'aprendizaje' | 'dev';
+type Tab =
+  | 'chat'
+  | 'mision'
+  | 'objetivos'
+  | 'estado'
+  | 'objetos'
+  | 'obras'
+  | 'habilidades'
+  | 'pensamiento'
+  | 'ensayos'
+  | 'dev';
 
 const WELCOME_SEEN_KEY = 'anima.welcomeSeen';
 
@@ -43,7 +53,9 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     (listener) => session.subscribe(listener),
     () => session.getView(),
   );
-  const [tab, setTab] = useState<Tab>('chat');
+  // Con un mapa abierto, la misión es lo primero que hay que leer; sin mapa,
+  // el chat de siempre. Inicializador perezoso: se decide una vez, al montar.
+  const [tab, setTab] = useState<Tab>(() => (view.mission ? 'mision' : 'chat'));
   /**
    * El objeto a mirar de cerca (ADR 0056, adenda): tocar una pieza en Obras
    * salta a Objetos, abre esa ficha y la resalta. El contador es lo que
@@ -87,6 +99,19 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   // Pestañas primarias + una técnica (dev) empujada al costado y de bajo peso.
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'chat', label: 'Chat', badge: view.chat.length },
+    // Solo cuando se juega un mapa: la vida no es un nivel, y una pestaña
+    // «Misión» vacía en la partida normal sería una promesa que no se cumple.
+    // El contador son los objetivos que FALTAN: al superarla llega a cero y
+    // desaparece solo.
+    ...(view.mission
+      ? [
+          {
+            id: 'mision' as Tab,
+            label: 'Misión',
+            badge: view.mission.objectives.filter((o) => !o.met).length,
+          },
+        ]
+      : []),
     // El contador son los ABIERTOS, no todos: lo terminado no reclama atención.
     {
       id: 'objetivos',
@@ -96,7 +121,12 @@ export function App({ session, account }: { session: GameSession; account: Cloud
     { id: 'estado', label: 'Estado' },
     { id: 'objetos', label: 'Objetos', badge: view.items.length },
     { id: 'obras', label: 'Obras', badge: view.blueprints.length },
-    { id: 'aprendizaje', label: 'Aprendizaje', badge: view.skills.length },
+    // «Aprendizaje» era una sola pestaña con cuatro cosas distintas apiladas.
+    // Ahora cada una contesta una pregunta: qué sabe hacer, qué está pensando
+    // y cómo llegó hasta acá.
+    { id: 'habilidades', label: 'Habilidades', badge: view.skills.length },
+    { id: 'pensamiento', label: 'Pensamiento', badge: view.thoughts.length },
+    { id: 'ensayos', label: 'Ensayos', badge: view.experiments.length },
   ];
 
   return (
@@ -224,17 +254,16 @@ export function App({ session, account }: { session: GameSession; account: Cloud
             </button>
           </nav>
 
-          {/* La misión enmarca la partida entera: no es una pestaña más, se ve
-              siempre. Sin mapa no hay panel (devuelve null). */}
-          <MissionPanel view={view} />
-
           <div className="panel-body">
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
+            {tab === 'mision' && <MissionPanel view={view} />}
             {tab === 'objetivos' && <GoalsPanel view={view} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
             {tab === 'objetos' && <ItemsPanel view={view} session={session} focus={focusItem} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'obras' && <WorksPanel view={view} onInspect={inspectItem} />}
-            {tab === 'aprendizaje' && <LearningPanel view={view} session={session} />}
+            {tab === 'habilidades' && <SkillsTab view={view} session={session} />}
+            {tab === 'pensamiento' && <ThoughtsTab view={view} />}
+            {tab === 'ensayos' && <TrialsTab view={view} />}
             {tab === 'dev' && <DevPanel view={view} session={session} />}
           </div>
         </aside>

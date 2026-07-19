@@ -1,7 +1,10 @@
 import type { GameView } from '../session/view.js';
 
 /**
- * La misión del mapa: qué le plantearon y qué falta, según el mundo.
+ * La misión del mapa: qué le plantearon y qué falta, según el mundo. Vive en
+ * su propia pestaña —solo existe cuando se juega un mapa— porque leerla es un
+ * acto aparte de mirar el tablero, y tenerla siempre a la vista le comía al
+ * panel el espacio que necesitan el chat y los objetivos.
  *
  * Cada renglón es una condición que el juez mide contra el estado real. Al
  * lado va SU CUENTA —"0/1 entidades colocada en el río"— y no una etiqueta
@@ -19,7 +22,7 @@ export function MissionPanel({ view }: { view: GameView }) {
   const done = mission.objectives.filter((o) => o.met).length;
 
   return (
-    <section className="panel mission-panel">
+    <section className="mission-panel">
       <header className="mission-panel__head">
         <h2>{mission.name}</h2>
         <span className={mission.completed ? 'mission-panel__badge is-done' : 'mission-panel__badge'}>

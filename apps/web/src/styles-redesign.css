@@ -1101,9 +1101,10 @@ button:active {
 }
 
 /* --- Misión del mapa -------------------------------------------------- */
+/* Es el cuerpo de su pestaña: `.panel-body` ya pone el padding y el scroll,
+   así que acá no van ni borde ni relleno propios. */
 .mission-panel {
-  border-bottom: 1px solid var(--rd-border, #2a3441);
-  padding: 0.75rem 0.9rem;
+  padding: 0;
 }
 .mission-panel__head {
   display: flex;
@@ -1127,23 +1128,23 @@ button:active {
   color: #bbf7d0;
 }
 .mission-panel__briefing {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   color: #94a3b8;
-  margin: 0.4rem 0 0.6rem;
-  line-height: 1.35;
+  margin: 0.5rem 0 0.9rem;
+  line-height: 1.45;
 }
 .mission-panel__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.35rem;
+  gap: 0.6rem;
 }
 .mission-panel__item {
   display: flex;
-  gap: 0.45rem;
-  font-size: 0.78rem;
-  line-height: 1.3;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  line-height: 1.35;
 }
 .mission-panel__mark {
   color: #64748b;
@@ -1170,4 +1171,22 @@ button:active {
   font-size: 0.72rem;
   color: #86efac;
   margin: 0.6rem 0 0;
+}
+
+/* «Cómo inventa una habilidad»: se lee una vez y después estorba, pero sacarlo
+   dejaría sin explicación a quien abre la pestaña por primera vez. */
+.learn-how-details {
+  margin-bottom: 0.7rem;
+}
+.learn-how-details > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  padding: 0.25rem 0;
+}
+.learn-how-details > summary:hover {
+  color: #cbd5e1;
+}
+.learn-how-details[open] > summary {
+  margin-bottom: 0.5rem;
 }

@@ -15,15 +15,27 @@ import type { GameView } from '../session/view.js';
  * lectura de la vista, y así ninguna pantalla puede mentir sobre el mundo.
  */
 
-export type ActivityTab = 'chat' | 'objetivos' | 'estado' | 'objetos' | 'obras' | 'aprendizaje';
+export type ActivityTab =
+  | 'chat'
+  | 'mision'
+  | 'objetivos'
+  | 'estado'
+  | 'objetos'
+  | 'obras'
+  | 'habilidades'
+  | 'pensamiento'
+  | 'ensayos';
 
 export const ACTIVITY_TABS: ActivityTab[] = [
   'chat',
+  'mision',
   'objetivos',
   'estado',
   'objetos',
   'obras',
-  'aprendizaje',
+  'habilidades',
+  'pensamiento',
+  'ensayos',
 ];
 
 /**
@@ -51,6 +63,13 @@ function signature(view: GameView, tab: ActivityTab): string {
       const last = view.chat[view.chat.length - 1];
       return `${view.chat.length}|${last?.tick ?? -1}|${last?.from ?? ''}`;
     }
+    case 'mision':
+      // Un objetivo que se cumple (o que se deshace) es la actividad más
+      // importante que hay: es el mundo diciendo que algo cambió de verdad.
+      // Sin mapa no hay misión, y una firma vacía nunca enciende nada.
+      return (
+        view.mission?.objectives.map((o) => `${o.id}:${o.met ? '1' : '0'}`).join(',') ?? ''
+      );
     case 'objetivos':
       // El puesto en la fila también cuenta: cambiar de prioridad ES actividad.
       return view.goals.map((g) => `${g.id}:${g.status}:${g.rank ?? '-'}`).join(',');
@@ -71,11 +90,14 @@ function signature(view: GameView, tab: ActivityTab): string {
         // la más fácil de perderse.
         view.plannedStructures.map((s) => `${s.blueprintId}:${s.remaining}`).join('.'),
       ].join('|');
-    case 'aprendizaje':
-      return [
-        view.skills.map((s) => `${s.id}:${s.version}:${s.status}`).join('.'),
-        view.experiments.length,
-      ].join('|');
+    case 'habilidades':
+      // Una versión nueva o un cambio de estado es actividad; el registro de
+      // ensayos, en cambio, es de la pestaña de al lado.
+      return view.skills.map((s) => `${s.id}:${s.version}:${s.status}`).join('.');
+    case 'pensamiento':
+      return `${view.thoughts.length}|${view.currentThought?.status ?? ''}`;
+    case 'ensayos':
+      return String(view.experiments.length);
   }
 }
 
@@ -92,8 +114,14 @@ function sustained(view: GameView, tab: ActivityTab): boolean {
         view.chat.some((entry) => entry.pending === true) ||
         (view.currentThought?.kind === 'dialogue' && view.currentThought.status === 'thinking')
       );
-    case 'aprendizaje':
+    case 'habilidades':
+      // El ciclo de una habilidad puede tardar minutos: mientras nace, la
+      // pestaña donde va a aparecer se queda encendida.
       return view.skillDev !== null;
+    case 'pensamiento':
+      // Una consulta al modelo en vuelo: se apaga cuando contesta, no a los
+      // cuatro segundos.
+      return view.currentThought?.status === 'thinking';
     default:
       return false;
   }

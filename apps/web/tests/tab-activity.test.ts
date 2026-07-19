@@ -21,6 +21,7 @@ function makeView(patch: Partial<GameView> = {}): GameView {
     plannedStructures: [],
     skills: [],
     experiments: [],
+    thoughts: [],
     pet: null,
     currentThought: null,
     skillDev: null,
@@ -64,7 +65,7 @@ describe('actividad por pestaña', () => {
   it('un ciclo de aprendizaje en curso queda encendido más allá de la ventana', () => {
     const learning = makeView({ skillDev: { skillName: 'buscar-calor' } as never });
     const state = advanceActivity(initialActivity(makeView()), learning, T0);
-    expect(litTabs(state, T0 + ACTIVITY_WINDOW_MS * 100).has('aprendizaje')).toBe(true);
+    expect(litTabs(state, T0 + ACTIVITY_WINDOW_MS * 100).has('habilidades')).toBe(true);
     expect(nextExpiryMs(state, T0)).toBe(null);
   });
 
@@ -73,8 +74,8 @@ describe('actividad por pestaña', () => {
     const done = makeView();
     const running = advanceActivity(initialActivity(makeView()), learning, T0);
     const ended = advanceActivity(running, done, T0 + 5000);
-    expect(litTabs(ended, T0 + 5000).has('aprendizaje')).toBe(true);
-    expect(litTabs(ended, T0 + 5000 + ACTIVITY_WINDOW_MS + 1).has('aprendizaje')).toBe(false);
+    expect(litTabs(ended, T0 + 5000).has('habilidades')).toBe(true);
+    expect(litTabs(ended, T0 + 5000 + ACTIVITY_WINDOW_MS + 1).has('habilidades')).toBe(false);
   });
 
   it('un mensaje del cuidador sin leer mantiene el Chat encendido', () => {
