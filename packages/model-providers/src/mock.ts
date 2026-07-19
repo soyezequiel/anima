@@ -163,6 +163,11 @@ export class MockModelProvider extends BaseModelProvider {
         // nadie dibujó, componiendo material y forma. El dibujo de la IA es
         // una mejora sobre ese piso, nunca un requisito para que se vea algo.
         return Promise.reject(new Error('el proveedor simulado no dibuja'));
+      case 'workGlyphs.propose':
+        // Ni una pieza ni una obra: mismo motivo, mismo piso. Sin dibujos de
+        // obra, lo construido se ve como sus piezas sueltas — que es
+        // exactamente como se veía antes de que la obra tuviera aspecto.
+        return Promise.reject(new Error('el proveedor simulado no dibuja obras'));
       case 'distill.knowledge':
         // Sin comprensión abierta, guarda la enseñanza tal cual la recibió.
         return Promise.resolve({

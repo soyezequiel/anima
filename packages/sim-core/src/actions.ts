@@ -24,7 +24,17 @@ export type ActionIntent =
    * adyacente, vacía y dentro del mapa. La primitiva con la que se levantan las
    * obras — una casa es sus paredes puestas donde van.
    */
-  | { type: 'place'; itemId: EntityId; at: { x: number; y: number } }
+  /**
+   * `partOf` dice que esta pieza va como parte de tal obra en tal lugar de su
+   * plano. Es opcional porque colocar algo suelto sigue siendo colocar: quien
+   * pone una piedra en el piso no está levantando nada.
+   */
+  | {
+      type: 'place';
+      itemId: EntityId;
+      at: { x: number; y: number };
+      partOf?: { blueprintId: string; offset: { x: number; y: number } };
+    }
   | { type: 'consume'; targetId: EntityId }
   | { type: 'useItem'; itemId: EntityId; targetId: EntityId }
   | { type: 'craft'; recipeId: string }
@@ -60,6 +70,13 @@ export type ActionIntent =
    * eso se valida siempre.
    */
   | { type: 'proposeGlyph'; glyph: unknown }
+  /**
+   * Proponerle al mundo cómo se ve una OBRA: el dibujo de cada celda de un
+   * plano, en un solo viaje. Va junto y no de a una pieza porque la coherencia
+   * es el punto — quien dibuja tiene que ver a los vecinos para que la tabla
+   * del medio continúe la del costado en vez de repetirla.
+   */
+  | { type: 'proposeWorkGlyphs'; blueprintId: string; glyphs: unknown }
   /** Ejecutar una interacción que el mundo ya admite, sobre un objetivo. */
   | { type: 'interact'; interactionId: string; targetId: EntityId }
   | { type: 'speak'; text: string };

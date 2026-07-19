@@ -631,7 +631,15 @@ export function buildStructureProgram(
                   stopAtDistance: 1,
                   avoidTarget: true,
                 },
-                { op: 'placeAt', kind: placement.kind, target: CELL },
+                // Y queda escrito que esta pieza es parte de la obra, en su
+                // lugar del plano: es lo que después le permite a la pantalla
+                // dibujarla como el tablón de la punta y no como un tablón.
+                {
+                  op: 'placeAt',
+                  kind: placement.kind,
+                  target: CELL,
+                  partOf: { blueprintId: blueprint.id, offset: { ...placement.offset } },
+                },
               ],
             },
           ],

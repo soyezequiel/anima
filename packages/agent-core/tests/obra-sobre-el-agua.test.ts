@@ -307,6 +307,48 @@ describe('el paso que coloca sobrevive a que le cambien la forma', () => {
   });
 });
 
+describe('lo que se levanta sabe que es parte de una obra', () => {
+  it('cada pieza colocada queda marcada con su lugar en el plano', async () => {
+    const { world, petId } = riverWorld();
+    teachBridge(world);
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'puente' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    agent.receiveUserMessage('construí un puente');
+
+    for (let i = 0; i < 260; i++) {
+      const intent = await agent.think(perception());
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    const puestas = allEntities(world).filter(
+      (e) => e.components.position && e.components.partOfWork,
+    );
+    expect(puestas.length).toBeGreaterThan(0);
+    for (const pieza of puestas) {
+      expect(pieza.components.partOfWork?.blueprintId).toBe('puente');
+      // Y el lugar que dice ocupar es un lugar que el plano tiene.
+      const cabe = world.blueprints[0]!.placements.some(
+        (p) =>
+          p.kind === pieza.kind &&
+          p.offset.x === pieza.components.partOfWork?.offset.x &&
+          p.offset.y === pieza.components.partOfWork?.offset.y,
+      );
+      expect(cabe).toBe(true);
+    }
+    // Lo que sigue suelto en el piso no pertenece a nada: la marca es de lo
+    // que se PUSO en la obra, no del tipo.
+    const sueltas = allEntities(world).filter(
+      (e) => e.kind === 'log' && e.components.position && e.components.portable,
+    );
+    for (const suelta of sueltas) expect(suelta.components.partOfWork).toBeUndefined();
+  });
+});
+
 describe('el terreno que se ve se lee con la precedencia del motor', () => {
   it('un piso puesto sobre el agua deja de contar como agua', () => {
     const { world, petId } = riverWorld();

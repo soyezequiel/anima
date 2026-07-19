@@ -82,6 +82,12 @@ export type AgentEventType =
   | 'glyph.learned'
   /** La puerta o el mundo lo rechazaron, con el motivo. */
   | 'glyph.rejected'
+  /** Dibujó una obra entera, celda por celda: cómo se ve armada. */
+  | 'workGlyphs.proposed'
+  /** El mundo los aceptó: esa obra ya tiene aspecto propio. */
+  | 'workGlyphs.learned'
+  /** La puerta o el mundo los rechazaron, con el motivo. */
+  | 'workGlyphs.rejected'
   | 'memory.created'
   | 'memory.consolidated'
   | 'hypothesis.updated'

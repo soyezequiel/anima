@@ -612,7 +612,12 @@ export class SkillExecution {
         frame.index += 1;
         this.pendingSingle = true;
         // La celda es absoluta; el mundo revalida adyacencia, vacío y bordes.
-        return this.emit({ type: 'place', itemId: block.id, at: { ...cell } });
+        return this.emit({
+          type: 'place',
+          itemId: block.id,
+          at: { ...cell },
+          ...(op.partOf ? { partOf: op.partOf } : {}),
+        });
       }
       case 'makeRoom': {
         // Solo actúa con las manos llenas: con lugar de sobra, juntar de más

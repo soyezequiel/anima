@@ -156,6 +156,12 @@ export interface Perception {
    * ya está hecho. Es lo que permite no volver a dibujar lo mismo.
    */
   drawnKinds: EntityKind[];
+  /**
+   * Qué obras ya tienen aspecto propio, por el mismo criterio y por la misma
+   * razón que `drawnKinds`: solo los nombres de los planos, para saber cuál
+   * falta ilustrar sin cargar ninguna grilla.
+   */
+  illustratedWorks: string[];
 }
 
 /**
@@ -289,5 +295,6 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
     blueprints: structuredClone(world.blueprints),
     decompositions: structuredClone(world.decompositions),
     drawnKinds: Object.keys(world.glyphs),
+    illustratedWorks: Object.keys(world.workGlyphs),
   };
 }

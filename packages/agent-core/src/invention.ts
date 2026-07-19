@@ -1,5 +1,11 @@
-import { kindWithArticle } from '@anima/shared';
-import type { ActionIntent, Interaction, PerceivedEntity, Perception } from '@anima/sim-core';
+import { kindLabel, kindWithArticle } from '@anima/shared';
+import type {
+  ActionIntent,
+  Blueprint,
+  Interaction,
+  PerceivedEntity,
+  Perception,
+} from '@anima/sim-core';
 import {
   MAX_RECIPE_DEPTH,
   decompositionFor,
@@ -8,6 +14,7 @@ import {
   validateGlyph,
   validateInteraction,
   validateRecipe,
+  validateWorkGlyphs,
 } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
 import type { ModelProvider, ModelRequest, ModelResponse } from '@anima/model-providers';
@@ -168,6 +175,8 @@ export class InventionEngine {
   private decompositionRejections: string[] = [];
   /** Rechazos a sus dibujos: mismo trato, viajan al próximo intento. */
   private glyphRejections: string[] = [];
+  /** Rechazos a sus dibujos de obra: lista propia, otro problema que corregir. */
+  private workGlyphRejections: string[] = [];
 
   constructor(private readonly deps: InventionDeps) {}
 
@@ -214,7 +223,7 @@ export class InventionEngine {
    * una casa más chica en vez de reintentar la que no le entra en los brazos.
    */
   recordWorldRejection(
-    kind: 'recipe' | 'interaction' | 'blueprint' | 'decomposition' | 'glyph',
+    kind: 'recipe' | 'interaction' | 'blueprint' | 'decomposition' | 'glyph' | 'workGlyphs',
     reason: string,
   ): void {
     const list =
@@ -224,7 +233,9 @@ export class InventionEngine {
           ? this.decompositionRejections
           : kind === 'glyph'
             ? this.glyphRejections
-            : this.recipeRejections;
+            : kind === 'workGlyphs'
+              ? this.workGlyphRejections
+              : this.recipeRejections;
     this.remember(list, reason);
     this.deps.emit(`${kind}.rejected`, { reason, source: 'world' });
     // Si se cayó una pieza (o la obra que la coronaba), lo que se apoyaba en
@@ -938,6 +949,57 @@ export class InventionEngine {
     }
 
     return { type: 'proposeGlyph', glyph: proposal.glyph };
+  }
+
+  /**
+   * Dibujar una obra entera: una consulta, todas sus celdas.
+   *
+   * Misma inocencia que `inventGlyph` —un dibujo no toca la física, así que no
+   * hay juez detrás ni gasta crédito de invención— y la misma puerta local que
+   * ahorra el viaje al mundo cuando lo que llegó no es dibujable.
+   *
+   * Lo único distinto es la unidad: acá el trabajo es el PLANO, no el tipo. Es
+   * lo que hace que la tabla del medio pueda continuar a la del costado, y lo
+   * que evita pagar medio minuto de reloj por cada pieza.
+   */
+  async inventWorkGlyphs(
+    blueprint: Blueprint,
+    perception: Perception,
+  ): Promise<ActionIntent | null> {
+    // Reuso primero: la obra ya ilustrada no se vuelve a dibujar.
+    if (perception.illustratedWorks.includes(blueprint.id)) return null;
+
+    const proposal = await this.consult({
+      kind: 'workGlyphs.propose',
+      blueprintId: blueprint.id,
+      workLabel: kindLabel(blueprint.id),
+      cells: blueprint.placements.map((p) => ({ offset: { ...p.offset }, kind: p.kind })),
+      ...(this.workGlyphRejections.length > 0
+        ? { rejections: [...this.workGlyphRejections] }
+        : {}),
+    });
+    if (proposal === null) return null;
+    if (proposal.kind !== 'work-glyphs') {
+      this.deps.emit('provider.error', {
+        provider: this.deps.provider.name,
+        operation: 'workGlyphs.propose',
+        message: `respuesta inesperada del proveedor: ${proposal.kind}`,
+      });
+      return null;
+    }
+    this.deps.emit('workGlyphs.proposed', {
+      blueprintId: blueprint.id,
+      rationale: proposal.rationale,
+    });
+
+    const validated = validateWorkGlyphs(proposal.glyphs, blueprint, perception.illustratedWorks);
+    if (!validated.ok) {
+      this.remember(this.workGlyphRejections, validated.error);
+      this.deps.emit('workGlyphs.rejected', { reason: validated.error, source: 'gate' });
+      return null;
+    }
+
+    return { type: 'proposeWorkGlyphs', blueprintId: blueprint.id, glyphs: proposal.glyphs };
   }
 
   private suspendVetoed(goal: Goal, reason: string): void {

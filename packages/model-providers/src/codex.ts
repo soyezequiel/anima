@@ -471,6 +471,21 @@ Reglas que el mundo NO perdona:
 - Exactamente 16 filas de exactamente 16 caracteres. Solo 0, 1, 2 y 3.
 - Al menos 12 casillas pintadas: un lienzo casi vacío es un objeto invisible.`;
 
+/**
+ * Las celdas viajan serializadas como string, igual que el dibujo suelto: el
+ * validador de esquemas de salida exige tipar cada arreglo anidado, y esto son
+ * arreglos de objetos con arreglos adentro.
+ */
+const WORK_GLYPH_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    glyphsJson: { type: 'string' },
+    rationale: { type: 'string' },
+  },
+  required: ['glyphsJson', 'rationale'],
+  additionalProperties: false,
+};
+
 const JUDGEMENT_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -1097,6 +1112,50 @@ Se va a ver MUY chico, del tamaño de una uña. Eso manda sobre todo lo demás:
 
 Responde únicamente con JSON: {"glyphJson": "<el dibujo serializado como JSON>",
 "rationale": "qué decidiste dibujar, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
+      };
+    case 'workGlyphs.propose':
+      return {
+        schema: WORK_GLYPH_SCHEMA,
+        prompt: `Eres la mente de una mascota virtual que acaba de imaginar una OBRA: no una
+cosa, sino varias piezas puestas en el suelo formando algo. Ya sabés dibujar cada
+pieza suelta. Ahora dibujá la obra ARMADA.
+${GLYPH_REFERENCE}
+
+La obra: ${request.workLabel ?? request.blueprintId}
+Sus celdas, con el desplazamiento desde el ancla:
+${request.cells.map((c) => `- (${c.offset.x},${c.offset.y}): ${c.kind}`).join('\n')}
+${
+  request.rejections && request.rejections.length > 0
+    ? `\nTu mundo ya rechazó estos dibujos tuyos. No insistas: corrige.
+${request.rejections.map((r) => `- ${r}`).join('\n')}`
+    : ''
+}
+
+Esto es lo único que importa acá, y es distinto de dibujar una pieza sola:
+
+CADA CELDA ES UN CUADRO DE 16x16 PEGADO AL DE AL LADO, SIN SEPARACIÓN.
+
+O sea que las celdas vecinas forman UN dibujo grande. Aprovechalo:
+- Lo que toca un borde tiene que CONTINUAR en el borde del vecino. Si la tabla
+  del medio termina su veta en la columna 15, la de la derecha la sigue en su
+  columna 0. Si no coinciden, se ve un corte y la obra se lee rota.
+- Por eso, y solo acá, SÍ podés pintar hasta el borde: el margen vacío que se
+  le pide a una pieza suelta es justamente lo que partiría la obra en pedazos.
+  Dejá vacío el borde que da AFUERA de la obra, y lleno el que da a un vecino.
+- Las puntas rematan y el medio continúa. Una pasarela son tablas iguales; un
+  puente son dos cabeceras distintas y un tendido entre ellas.
+- Mirá el plano como una grilla: x crece a la derecha, y crece hacia abajo.
+  Una celda sin vecino a la izquierda es un borde izquierdo de la obra.
+
+Sigue mandando que se ve chico: formas macizas, nada de detalles de un píxel,
+volumen con "2" y "3" (luz arriba, sombra abajo) y no textura al azar.
+
+No hace falta dibujar todas las celdas: la que no dibujes se va a ver con el
+dibujo suelto de su pieza, que es correcto aunque quede menos armado.
+
+Responde únicamente con JSON: {"glyphsJson": "<las celdas serializadas como JSON:
+un arreglo de {\\"offset\\":{\\"x\\":n,\\"y\\":n},\\"rows\\":[16 filas]}>",
+"rationale": "qué forma le diste a la obra y cómo encajan las piezas, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'recipe.judge':
       return {
@@ -1814,6 +1873,27 @@ export class CodexModelProvider extends BaseModelProvider {
           return {
             kind: 'glyph',
             glyph,
+            rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
+          };
+        }
+        case 'workGlyphs.propose': {
+          let pieces: unknown = parsed.glyphs;
+          if (typeof parsed.glyphsJson === 'string') {
+            try {
+              pieces = JSON.parse(parsed.glyphsJson);
+            } catch {
+              throw new Error('glyphsJson no es JSON válido');
+            }
+          }
+          if (!Array.isArray(pieces)) {
+            throw new Error('la respuesta no contiene las celdas de la obra');
+          }
+          // Se arma el sobre que el mundo espera; el contenido va crudo, que es
+          // quien decide (validateWorkGlyphs).
+          return {
+            kind: 'work-glyphs',
+            blueprintId: request.blueprintId,
+            glyphs: { blueprintId: request.blueprintId, pieces },
             rationale: typeof parsed.rationale === 'string' ? parsed.rationale : '',
           };
         }

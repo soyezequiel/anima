@@ -328,6 +328,31 @@ export type ModelRequest =
     }
   | {
       /**
+       * Dibujar una OBRA entera, celda por celda, en un solo viaje.
+       *
+       * Va junto y no de a una pieza por dos razones. La barata: cada consulta
+       * cuesta medio minuto de reloj mientras el mundo sigue andando, y seis
+       * piezas de a una son tres minutos parada. La que importa: la coherencia
+       * es el punto entero. Dibujando de a una, quien dibuja no sabe qué tiene
+       * al lado, y seis tablones correctos puestos en fila se leen como seis
+       * tablones, no como una pasarela. Viendo el plano completo puede hacer
+       * que la del medio continúe a la del costado y que las puntas rematen.
+       *
+       * No reemplaza al dibujo suelto de cada tipo: convive con él. El tablón
+       * que llevás en la mano se sigue viendo como el tablón que ella dibujó.
+       */
+      kind: 'workGlyphs.propose';
+      /** El plano que hay que ilustrar. */
+      blueprintId: string;
+      /** Cómo se llama la obra en voz humana, si tiene un nombre mejor que el id. */
+      workLabel?: string;
+      /** Qué pieza va en cada celda, con su desplazamiento desde el ancla. */
+      cells: { offset: { x: number; y: number }; kind: string }[];
+      /** Rechazos previos de la puerta: corregir, no insistir. */
+      rejections?: string[];
+    }
+  | {
+      /**
        * La IA Dios juzgando una descomposición: ¿es coherente que romper ESTO
        * deje ESO? Aquí vive la conservación de materia fina — que un pedernal
        * deje esquirlas sí, diez troncos no. La puerta determinista ya comprobó
@@ -421,6 +446,11 @@ export type ModelResponse =
    * lo valida el mundo (validateGlyph).
    */
   | { kind: 'glyph'; glyph: unknown; rationale: string }
+  /**
+   * Cómo se ve cada celda de una obra. Viaja sin tipar, como todo lo que
+   * propone un modelo: lo valida el mundo (validateWorkGlyphs).
+   */
+  | { kind: 'work-glyphs'; blueprintId: string; glyphs: unknown; rationale: string }
   /**
    * Un juicio de valores, no de física. `willing: false` mantiene la negativa;
    * `true` la levanta. El agente solo lo consulta cuando ya comprobó que la

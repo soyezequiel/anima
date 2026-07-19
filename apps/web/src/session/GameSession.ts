@@ -25,6 +25,7 @@ import {
   spawn,
   stepWorld,
   takeSnapshot,
+  workGlyphFor,
 } from '@anima/sim-core';
 import type { PrunePlan, PruneRef } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
@@ -2531,7 +2532,18 @@ export class GameSession {
         y: e.components.position!.y,
         traits: traitsFromComponents(e.components),
         material: materialFor(e.kind, lineage),
-        glyph: this.world.glyphs[e.kind],
+        // El dibujo de la obra manda sobre el del tipo, y solo para la pieza
+        // que está puesta en ella: el tablón que lleva en la mano sigue siendo
+        // el tablón que dibujó. Sin dibujo de obra, cae al de siempre — que es
+        // exactamente como se veía antes de que las obras tuvieran aspecto.
+        glyph: e.components.partOfWork
+          ? (workGlyphFor(
+              this.world.workGlyphs,
+              e.components.partOfWork.blueprintId,
+              e.components.partOfWork.offset,
+            ) ?? this.world.glyphs[e.kind])
+          : this.world.glyphs[e.kind],
+        partOfWork: e.components.partOfWork,
       }));
 
     const speechFresh =

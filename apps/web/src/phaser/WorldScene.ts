@@ -11,6 +11,23 @@ export const BASE_CELL = 64;
 const LIFTED_SCALE = 1.16;
 
 /**
+ * Un nombre corto y estable para un dibujo, con el que se lo cachea. Resume las
+ * 256 casillas: dos dibujos iguales dan el mismo nombre —y comparten textura,
+ * que es todo el punto del caché— y dos distintos, distinto. `derivado` es el
+ * caso sin dibujo propio, que la pantalla compone sola.
+ */
+function drawingId(glyph: unknown): string {
+  if (!Array.isArray(glyph)) return 'derivado';
+  const rows = glyph.join('');
+  let hash = 2166136261;
+  for (let i = 0; i < rows.length; i++) {
+    hash ^= rows.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+/**
  * Escena de renderizado puro: dibuja el view model y anima diferencias.
  * No contiene ninguna regla del mundo — si algo se mueve, rompe o desaparece,
  * es porque el motor lo dijo.
@@ -259,17 +276,21 @@ export class WorldScene extends Phaser.Scene {
   }
 
   /**
-   * La textura de un glifo, pintada una sola vez por tipo. Son 256 casillas:
+   * La textura de un glifo, pintada una sola vez por DIBUJO. Son 256 casillas:
    * dibujarlas como rectángulos sueltos serían 256 objetos por entidad y el
    * tablero tiene muchas. Como textura es una imagen sola, y además la
-   * comparten todas las entidades del mismo tipo.
+   * comparten todas las entidades que se ven igual.
    */
   private matterTexture(kind: string, hints: AppearanceHints, look: MatterLook): string | null {
     // Todo lo que cambia el dibujo entra en la clave. El material, porque si
     // Ánima inventa después la receta que dice de qué está hecho algo, el color
-    // cambia. Y si lo dibujó, porque el día que dibuje algo que hasta entonces
-    // salía procedural, la textura vieja no puede quedarse pegada.
-    const key = `matter:${kind}:${hints.material ?? ''}:${hints.glyph ? 'propio' : 'derivado'}`;
+    // cambia. Y el dibujo mismo, resumido: "propio o derivado" alcanzaba
+    // mientras un tipo tenía un dibujo y solo uno, pero desde que una pieza
+    // puede verse distinto DENTRO de su obra, dos entidades del mismo tipo
+    // tienen dibujos distintos — y con la clave vieja la primera en pintarse le
+    // prestaba su textura a todas las demás. Un puente entero con la cara de su
+    // primer tablón.
+    const key = `matter:${kind}:${hints.material ?? ''}:${drawingId(hints.glyph)}`;
     if (this.textures.exists(key)) return key;
     const canvas = this.textures.createCanvas(key, GLYPH_SIZE, GLYPH_SIZE);
     if (!canvas) return null;

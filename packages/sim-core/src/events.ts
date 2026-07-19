@@ -33,6 +33,10 @@ export type SimEventType =
   | 'glyph.learned'
   /** El mundo rechazó el dibujo propuesto, con el motivo. */
   | 'glyph.rejected'
+  /** El mundo aceptó los dibujos de una obra: sus celdas ya tienen aspecto. */
+  | 'workGlyphs.learned'
+  /** El mundo rechazó los dibujos de una obra, con el motivo. */
+  | 'workGlyphs.rejected'
   | 'tool.broke'
   | 'agent.spoke'
   | 'entity.spawned'

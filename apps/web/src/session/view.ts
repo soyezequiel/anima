@@ -41,6 +41,15 @@ export interface EntityView {
    * inventó. Si falta, la pantalla lo compone sola y no se nota.
    */
   glyph?: string[] | undefined;
+  /**
+   * De qué obra es parte y qué lugar ocupa, si está puesta en una. Lo escribe
+   * el mundo al colocarla, así que sobrevive al guardado — y desaparece sola
+   * cuando la pieza deja de estar puesta.
+   *
+   * Sirve para una cosa: elegir el dibujo. Un tablón dentro de un puente no se
+   * ve como un tablón, se ve como el pedazo de puente que le toca ser.
+   */
+  partOfWork?: { blueprintId: string; offset: { x: number; y: number } } | undefined;
 }
 
 /**

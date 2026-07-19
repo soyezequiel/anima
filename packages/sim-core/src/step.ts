@@ -9,8 +9,12 @@ import { validateInteraction } from './interaction-validation.js';
 import { decompositionFor } from './decompositions.js';
 import { validateDecomposition } from './decomposition-validation.js';
 import { validateGlyph } from './glyph-validation.js';
+import type { Glyph } from './glyphs.js';
+import { offsetKey } from './work-glyphs.js';
+import { validateWorkGlyphs } from './work-glyph-validation.js';
 import { PROTECTED_KINDS, validateRecipe } from './recipe-validation.js';
 import { validateBlueprint } from './blueprint-validation.js';
+import { findBlueprint } from './blueprints.js';
 import {
   findRecipe,
   missingIngredients,
@@ -20,7 +24,7 @@ import {
   scaleByQuality,
 } from './recipes.js';
 import type { WorldState } from './world.js';
-import { allEntities, entitiesAt, getEntity, impedimentAt, inBounds, isBlocked, isInInventory, obtainableKinds, removeEntity, spawn } from './world.js';
+import { allEntities, entitiesAt, getEntity, impedimentAt, inBounds, isInInventory, obtainableKinds, removeEntity, spawn } from './world.js';
 
 /** Umbral (fracción del máximo) bajo el cual se emite `energy.low` al cruzarlo. */
 export const LOW_ENERGY_FRACTION = 0.35;
@@ -345,6 +349,9 @@ function resolveAction(
     case 'proposeGlyph':
       resolveProposeGlyph(world, actor, intent, events);
       return;
+    case 'proposeWorkGlyphs':
+      resolveProposeWorkGlyphs(world, actor, intent, events);
+      return;
     case 'interact':
       resolveInteract(world, actor, intent, events);
       return;
@@ -656,6 +663,54 @@ function resolveProposeGlyph(
 }
 
 /**
+ * La mascota propone cómo se ve una obra, celda por celda. Hermana de la de
+ * arriba y con la misma inocencia: un dibujo no cambia lo que una cosa puede
+ * hacer, así que acá tampoco hay juez de coherencia.
+ *
+ * Lo que sí cambia es qué cuenta como duplicado. Un tipo tiene un dibujo y solo
+ * uno; una obra tiene uno POR CELDA, y dos celdas con la misma pieza son dos
+ * dibujos legítimos. Por eso van a registros distintos y no a uno solo: el
+ * tablón suelto conserva su dibujo de siempre, que es lo que se ve cuando lo
+ * llevás en la mano.
+ */
+function resolveProposeWorkGlyphs(
+  world: WorldState,
+  actor: Entity,
+  intent: Extract<ActionIntent, { type: 'proposeWorkGlyphs' }>,
+  events: SimEvent[],
+): void {
+  const blueprint = findBlueprint(world.blueprints, intent.blueprintId);
+  if (!blueprint) {
+    const reason = `Dibujo de obra inválido: no conozco el plano "${intent.blueprintId}"`;
+    events.push(simEvent('workGlyphs.rejected', world.tick, { actorId: actor.id, reason }));
+    resolved(world, events, actor.id, intent, false, { reason });
+    return;
+  }
+  const validated = validateWorkGlyphs(intent.glyphs, blueprint, Object.keys(world.workGlyphs));
+  if (!validated.ok) {
+    events.push(
+      simEvent('workGlyphs.rejected', world.tick, { actorId: actor.id, reason: validated.error }),
+    );
+    resolved(world, events, actor.id, intent, false, { reason: validated.error });
+    return;
+  }
+  const cells: Record<string, Glyph> = { ...world.workGlyphs[blueprint.id] };
+  for (const piece of validated.value.pieces) cells[offsetKey(piece.offset)] = piece.rows;
+  world.workGlyphs[blueprint.id] = cells;
+  events.push(
+    simEvent('workGlyphs.learned', world.tick, {
+      actorId: actor.id,
+      blueprintId: blueprint.id,
+      cells: validated.value.pieces.length,
+    }),
+  );
+  resolved(world, events, actor.id, intent, true, {
+    blueprintId: blueprint.id,
+    cells: validated.value.pieces.length,
+  });
+}
+
+/**
  * Craftear: el mundo comprueba los ingredientes, tira su dado, y de ahí sale
  * lo que salga. Nadie fabrica nada por creer que puede — si falta algo, el
  * fallo dice exactamente qué falta y en qué cantidad.
@@ -932,6 +987,16 @@ function resolvePlace(
   // tandas la mascota recogía su propia pared recién puesta —el bloque suelto
   // más cercano— y la obra nunca crecía.
   delete item.components.portable;
+  // Y queda escrito de qué obra es parte, si lo es. Es lo que le permite a
+  // quien pinta saber que este tablón no es un tablón cualquiera sino el de la
+  // punta derecha del puente — y lo que hace que, al levantarlo, deje de serlo
+  // sin que nadie tenga que acordarse de borrarlo.
+  if (intent.partOf) {
+    item.components.partOfWork = {
+      blueprintId: intent.partOf.blueprintId,
+      offset: { ...intent.partOf.offset },
+    };
+  }
   events.push(
     simEvent('item.placed', world.tick, {
       actorId: actor.id,

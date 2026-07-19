@@ -19,6 +19,7 @@ function perceptionWith(
       ...overrides,
     },
     drawnKinds: [],
+    illustratedWorks: [],
     visibleEntities: visible,
     recipes: [],
     interactions: [],

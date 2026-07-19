@@ -321,6 +321,8 @@ export interface AgentPersistentState {
   structureSites?: { goalId: string; blueprintId: string; anchor: Vec2 }[];
   /** Tipos que todavía espera dibujar (ADR 0064). Falta en guardados viejos. */
   pendingGlyphs?: string[];
+  /** Obras que todavía espera dibujar. Falta en guardados viejos. */
+  pendingWorkGlyphs?: string[];
   /**
    * Qué materia espera cada encargo dormido, y desde cuándo (ADR 0066). Sin
    * esto, recargar la página dejaba huérfano a todo encargo suspendido: sin la
@@ -459,6 +461,11 @@ export class AnimaAgent {
    * vacía en los ratos ociosos, nunca compitiendo con una necesidad.
    */
   private pendingGlyphs: string[] = [];
+  /**
+   * Obras aprendidas que todavía no tienen aspecto propio. Cola aparte de la de
+   * tipos porque es otra unidad de trabajo: un plano entero por consulta.
+   */
+  private pendingWorkGlyphs: string[] = [];
   private pendingUserMessages: string[] = [];
   private pendingExplanation: string | null = null;
   private energyHypothesisId: string | null = null;
@@ -1276,6 +1283,7 @@ export class AnimaAgent {
       // tipos inventados antes de la recarga se quedaban sin cara para
       // siempre — nadie volvía a proponerlos nunca.
       pendingGlyphs: [...this.pendingGlyphs],
+      pendingWorkGlyphs: [...this.pendingWorkGlyphs],
       pathOpenings: [...this.pathOpenings.entries()].map(([goalId, count]) => ({ goalId, count })),
       suspensionMaterials: [...this.suspensionMaterials.entries()].map(([goalId, kinds]) => ({
         goalId,
@@ -1303,6 +1311,7 @@ export class AnimaAgent {
     // restaura como lo que era, una mascota que aún no recordaba lugares.
     this.places.loadFrom(clone.places ?? { places: [] });
     this.pendingGlyphs = clone.pendingGlyphs ?? [];
+    this.pendingWorkGlyphs = clone.pendingWorkGlyphs ?? [];
     this.pathOpenings = new Map(
       (clone.pathOpenings ?? []).map((entry) => [entry.goalId, entry.count]),
     );
@@ -1656,6 +1665,31 @@ export class AnimaAgent {
     return null;
   }
 
+  /**
+   * Dibujar la obra que aprendió, celda por celda y en un solo viaje.
+   *
+   * Una obra no es un montón de piezas: es una forma. Seis tablones correctos
+   * puestos en fila se ven como seis tablones, no como una pasarela — y el
+   * dibujo suelto de cada pieza, que está bien para la que llevás en la mano,
+   * no puede saber qué le toca ser dentro del conjunto. Por eso se pide el
+   * plano entero de una: quien dibuja necesita ver a los vecinos.
+   */
+  private async drawTheWork(perception: Perception): Promise<ActionIntent | null> {
+    if (this.pendingWorkGlyphs.length === 0 || this.bodyInTheRed(perception)) return null;
+    while (this.pendingWorkGlyphs.length > 0) {
+      const blueprintId = this.pendingWorkGlyphs.shift();
+      if (blueprintId === undefined) break;
+      const blueprint = perception.blueprints.find((b) => b.id === blueprintId);
+      // El plano no está (lo podaron, o es de un guardado que ya no lo trae):
+      // no hay nada que ilustrar y la cola sigue.
+      if (!blueprint) continue;
+      if (perception.illustratedWorks.includes(blueprintId)) continue;
+      const intent = await this.invention.inventWorkGlyphs(blueprint, perception);
+      if (intent) return intent;
+    }
+    return null;
+  }
+
   private async drawSomethingNew(perception: Perception): Promise<ActionIntent | null> {
     while (this.pendingGlyphs.length > 0) {
       const kind = this.pendingGlyphs.shift();
@@ -1734,6 +1768,14 @@ export class AnimaAgent {
     // el cuerpo en rojo.
     const sketch = await this.drawWhatIsInSight(perception);
     if (sketch) return sketch;
+    // Y ponerle cara a la OBRA que acaba de imaginar, antes de levantarla. Va
+    // acá por el mismo motivo que la de arriba y con la misma cautela (nunca
+    // con el cuerpo en rojo): si esperara a un rato ocioso, la obra se
+    // levantaría entera con las piezas sueltas y recién después se acomodaría.
+    // Dibujarla primero es lo que hace que se vea armada desde el primer
+    // bloque. Cuesta UNA consulta por plano, no una por pieza.
+    const workSketch = await this.drawTheWork(perception);
+    if (workSketch) return workSketch;
     if (this.activity) return this.continueActivity(perception);
 
     const goal = this.goals.selectActive();
@@ -2098,6 +2140,25 @@ export class AnimaAgent {
       }
       if (event.type === 'glyph.learned' && event.data.actorId === this.petId) {
         this.emit('glyph.learned', { kind: String(event.data.kind) });
+      }
+      // Una obra recién imaginada todavía no tiene forma propia: a la cola, y
+      // se dibuja ANTES de levantarla para que se vea armada desde el primer
+      // bloque. Es el momento en que el plano existe, y por eso el momento de
+      // imaginarle una cara al conjunto.
+      if (event.type === 'blueprint.learned' && event.data.actorId === this.petId) {
+        const blueprintId = String(event.data.blueprintId);
+        if (!this.pendingWorkGlyphs.includes(blueprintId)) {
+          this.pendingWorkGlyphs.push(blueprintId);
+        }
+      }
+      if (event.type === 'workGlyphs.rejected' && event.data.actorId === this.petId) {
+        this.invention.recordWorldRejection('workGlyphs', String(event.data.reason));
+      }
+      if (event.type === 'workGlyphs.learned' && event.data.actorId === this.petId) {
+        this.emit('workGlyphs.learned', {
+          blueprintId: String(event.data.blueprintId),
+          cells: event.data.cells,
+        });
       }
       if (event.type === 'interaction.learned' && event.data.actorId === this.petId) {
         const interactionId = String(event.data.interactionId);

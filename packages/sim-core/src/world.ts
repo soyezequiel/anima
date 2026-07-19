@@ -4,6 +4,7 @@ import type { Components, Entity, EntityId, EntityKind } from './components.js';
 import type { Blueprint } from './blueprints.js';
 import type { Decomposition } from './decompositions.js';
 import type { GlyphRegistry } from './glyphs.js';
+import type { WorkGlyphRegistry } from './work-glyphs.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 
@@ -111,6 +112,13 @@ export interface WorldState {
    * mismo: si viviera en la pantalla, cada recarga reinventaría el aspecto.
    */
   glyphs: GlyphRegistry;
+  /**
+   * Cómo se ve cada celda de una obra, cuando alguien la dibujó como conjunto.
+   * Registro aparte del de arriba a propósito: ver `work-glyphs.ts`. Lo que no
+   * esté acá cae al dibujo suelto de su tipo, así que un mundo sin ninguno se
+   * ve exactamente como antes de que esto existiera.
+   */
+  workGlyphs: WorkGlyphRegistry;
 }
 
 export function createWorld(
@@ -121,6 +129,7 @@ export function createWorld(
     blueprints?: Blueprint[];
     decompositions?: Decomposition[];
     glyphs?: GlyphRegistry;
+    workGlyphs?: WorkGlyphRegistry;
   } = {},
 ): WorldState {
   return {
@@ -134,6 +143,7 @@ export function createWorld(
     blueprints: options.blueprints ? structuredClone(options.blueprints) : [],
     decompositions: options.decompositions ? structuredClone(options.decompositions) : [],
     glyphs: options.glyphs ? structuredClone(options.glyphs) : {},
+    workGlyphs: options.workGlyphs ? structuredClone(options.workGlyphs) : {},
   };
 }
 

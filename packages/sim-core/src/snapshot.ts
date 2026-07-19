@@ -27,6 +27,7 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
     blueprints?: WorldState['blueprints'];
     decompositions?: WorldState['decompositions'];
     glyphs?: WorldState['glyphs'];
+    workGlyphs?: WorldState['workGlyphs'];
   };
   return {
     ...state,
@@ -41,6 +42,9 @@ export function restoreSnapshot(snapshot: WorldSnapshot): WorldState {
     // Ni a los dibujos: un legado viejo restaura sin ninguno y se dibuja con lo
     // procedural hasta que a Ánima le toque dibujar cada cosa.
     glyphs: state.glyphs ?? {},
+    // Ni a los dibujos de obra: lo construido se ve como sus piezas sueltas,
+    // que es exactamente como se veía antes de que esto existiera.
+    workGlyphs: state.workGlyphs ?? {},
   };
 }
 

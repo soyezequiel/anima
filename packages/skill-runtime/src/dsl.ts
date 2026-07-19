@@ -198,7 +198,20 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
         store: z.string().min(1),
       })
       .strict(),
-    z.object({ op: z.literal('placeAt'), kind: z.string().min(1), target: z.string().min(1) }).strict(),
+    z
+      .object({
+        op: z.literal('placeAt'),
+        kind: z.string().min(1),
+        target: z.string().min(1),
+        partOf: z
+          .object({
+            blueprintId: z.string().min(1),
+            offset: z.object({ x: z.number().int(), y: z.number().int() }).strict(),
+          })
+          .strict()
+          .optional(),
+      })
+      .strict(),
     z
       .object({
         op: z.literal('place'),
@@ -313,7 +326,18 @@ export type SkillOp =
    * vacía y dentro del mapa: por eso la mascota camina hasta el lado de la celda
    * antes. Es lo que levanta obras más grandes que su alcance de brazo.
    */
-  | { op: 'placeAt'; kind: string; target: string }
+  /**
+   * `partOf` dice de qué obra es parte esta pieza y qué lugar ocupa en su
+   * plano. Va acá y no en el mundo porque es quien construye el que lo sabe:
+   * el motor ve una cosa colocada en una celda, no una obra. Queda escrito en
+   * la pieza, y por eso sobrevive al guardado y se va cuando la levantan.
+   */
+  | {
+      op: 'placeAt';
+      kind: string;
+      target: string;
+      partOf?: { blueprintId: string; offset: { x: number; y: number } };
+    }
   /**
    * Colocar un bloque que se lleva encima (por tipo) en la celda vecina que
    * marca el offset, desde la posición actual (ADR 0032). El offset es de una

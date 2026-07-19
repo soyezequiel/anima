@@ -66,6 +66,25 @@ export interface Components {
    */
   footing?: Record<string, never>;
   /**
+   * Esta pieza es parte de una obra, y ocupa TAL lugar en su plano.
+   *
+   * Hasta acá, una obra levantada no dejaba ningún rastro: quedaban entidades
+   * sueltas en celdas y nada decía que fueran un puente. La pertenencia se
+   * INFERÍA comparando posiciones contra el ancla, el ancla vivía en la memoria
+   * de la mascota indexada por objetivo, y se descartaba al cerrarse el
+   * objetivo — o sea, justo cuando la obra quedaba terminada. Muerta la
+   * mascota, las paredes quedaban huérfanas de la casa que eran.
+   *
+   * Escribirlo en la pieza lo vuelve dato del mundo: sobrevive al guardado y a
+   * la herencia, y no depende de que alguien recuerde dónde estaba el ancla.
+   *
+   * Lo pone `place` al colocar y se va con la pieza al levantarla: sacar un
+   * tablón de un puente lo devuelve a ser un tablón, sin ninguna regla extra
+   * que lo diga. Es la razón de que viva en la pieza y no en un registro
+   * aparte.
+   */
+  partOfWork?: { blueprintId: string; offset: Vec2 };
+  /**
    * Refugio: anula la pérdida de calor corporal de los agentes a distancia
    * Chebyshev ≤ range. No calienta ni quema — es la contraparte serena de la
    * fogata: adentro no se pierde nada, pero tampoco se recupera.
