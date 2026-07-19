@@ -27,7 +27,83 @@ describe('CodexModelProvider', () => {
     expect(seen[0]?.prompt).toContain('repeatWithLimit');
     expect(seen[0]?.prompt).toContain('llegar al alimento bloqueado');
     expect(seen[0]?.prompt).toContain('veo: hammer');
-    expect(seen[0]?.schema).toMatchObject({ required: ['programJson', 'rationale'] });
+    expect(seen[0]?.schema).toMatchObject({
+      required: ['programJson', 'rationale', 'altProgramJson', 'altRationale'],
+    });
+  });
+
+  // El validador de esquemas de salida exige que `required` nombre TODAS las
+  // propiedades: una sola afuera y la consulta muere antes de que el modelo
+  // conteste. Pasó de verdad — `skill.propose` falló 5 de 5 veces con
+  // "Missing 'programJson'", y era la vía de escape de la mascota cuando se
+  // traba. Este test es el que no deja que vuelva a pasar en silencio.
+  it('todo esquema nombra en required cada una de sus propiedades', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ programJson: '[]', rationale: 'x' }), seen),
+    );
+    await provider.complete({
+      kind: 'skill.propose',
+      skillName: 'x',
+      problem: 'p',
+      context: [],
+      mayDecompose: true,
+    });
+    const schema = seen[0]?.schema as { properties: object; required: string[] };
+    expect([...schema.required].sort()).toEqual(Object.keys(schema.properties).sort());
+  });
+
+  // El otro lado del mismo contrato: si todas las propiedades son
+  // obligatorias, «no aplica» se dice con "" y hay que leerlo como ausencia.
+  it('un campo vacío es una ausencia, no un JSON roto', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          programJson: '',
+          rationale: 'es muy grande para un programa solo',
+          altProgramJson: '',
+          altRationale: '',
+          subSkillsJson: JSON.stringify([
+            { name: 'llegar-al-rio', purpose: 'acercarse', expectedOutcome: 'estar al lado' },
+          ]),
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'skill.propose',
+      skillName: 'x',
+      problem: 'p',
+      context: [],
+      mayDecompose: true,
+    });
+    expect(response.kind).toBe('skill.decomposition');
+    if (response.kind === 'skill.decomposition') {
+      expect(response.parts.map((p) => p.name)).toEqual(['llegar-al-rio']);
+    }
+  });
+
+  it('una alternativa vacía no se confunde con una alternativa rota', async () => {
+    const program = reachBlockedResourceProgram('strongestTool');
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          programJson: JSON.stringify(program),
+          rationale: 'la única idea',
+          altProgramJson: '',
+          altRationale: '',
+        }),
+      ),
+    );
+    const response = await provider.complete({
+      kind: 'skill.propose',
+      skillName: 'x',
+      problem: 'p',
+      context: [],
+    });
+    expect(response.kind).toBe('skill.program');
+    if (response.kind === 'skill.program') {
+      expect(response.alternate).toBeUndefined();
+    }
   });
 
   it('parsea un programa devuelto como programJson (y este valida en la DSL)', async () => {

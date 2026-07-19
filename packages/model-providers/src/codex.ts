@@ -182,6 +182,15 @@ function trimToWords(text: string, max: number): string {
 const MAX_SUB_SKILLS = 3;
 
 /**
+ * «Vino con contenido». Los esquemas de salida obligan a mandar todas las
+ * propiedades, así que un campo que no aplica llega como `""` — y eso NO es
+ * un valor, es una ausencia con otra forma.
+ */
+function nonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim() !== '';
+}
+
+/**
  * Las piezas pedidas, saneadas. Devuelve `[]` ante cualquier duda: si no se
  * entiende qué piezas pidió, la respuesta no es una descomposición y el
  * parseo sigue exigiendo un programa — que es el camino de siempre.
@@ -236,6 +245,15 @@ const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   'temperature-low': 'tenés frío y el cuerpo se te está enfriando',
 };
 
+/**
+ * Un campo que puede no aplicar viaja igual, vacío. El validador de esquemas
+ * de salida exige que `required` nombre TODAS las propiedades: dejar una
+ * afuera no la vuelve opcional, tumba la consulta entera antes de que el
+ * modelo conteste. Era lo que mataba `skill.propose` — la vía de escape que
+ * ella elige justo cuando se traba, muerta por construcción y en silencio.
+ * La convención es la misma que en `COMMAND_SCHEMA`: lo no aplicable llega
+ * como string vacío, y quien parsea lo lee como «no vino».
+ */
 const PROGRAM_SCHEMA: Record<string, unknown> = {
   type: 'object',
   properties: {
@@ -245,15 +263,16 @@ const PROGRAM_SCHEMA: Record<string, unknown> = {
     altProgramJson: { type: 'string' },
     altRationale: { type: 'string' },
   },
-  required: ['programJson', 'rationale'],
+  required: ['programJson', 'rationale', 'altProgramJson', 'altRationale'],
   additionalProperties: false,
 };
 
 /**
  * El sobre cuando además puede PARTIR el problema (ADR 0055). Es el de
- * siempre más las piezas: `programJson` deja de ser obligatorio porque una
- * respuesta legítima es «todavía no puedo escribir esto, hacé antes estas
- * dos». El proveedor exige que venga una de las dos cosas.
+ * siempre más las piezas: `programJson` deja de ser obligatorio POR CONTRATO
+ * —una respuesta legítima es «todavía no puedo escribir esto, hacé antes
+ * estas dos»— pero viaja igual, vacío. El proveedor exige que venga una de
+ * las dos cosas.
  */
 const DESIGN_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -264,7 +283,7 @@ const DESIGN_SCHEMA: Record<string, unknown> = {
     altRationale: { type: 'string' },
     subSkillsJson: { type: 'string' },
   },
-  required: ['rationale'],
+  required: ['programJson', 'rationale', 'altProgramJson', 'altRationale', 'subSkillsJson'],
   additionalProperties: false,
 };
 
@@ -280,7 +299,8 @@ arreglo de {"name","purpose","expectedOutcome"}, máximo 3, con nombres cortos
 en minúsculas y guiones. Cada pieza se diseña primero y después vos las
 compones con "runSkill". Usá esta salida solo si de verdad hace falta: partir
 lo que entra en un programa cuesta tiempo y no mejora nada. Si pides piezas,
-omite "programJson".`;
+mandá "programJson" como string vacío (""). Si NO pedís piezas, el vacío va
+en "subSkillsJson".`;
 
 /**
  * La invitación a la segunda estrategia (ADR 0051). Va en propose y en revise:
@@ -292,8 +312,8 @@ omite "programJson".`;
 const ALTERNATE_INVITE = `Si ves una SEGUNDA estrategia de verdad distinta (otro plan, no los mismos
 pasos con otros números), inclúyela en "altProgramJson" con su
 "altRationale": el evaluador mide las dos y se queda con la mejor. Si solo
-hay una idea buena, omite esos campos — una alternativa de relleno gasta
-evaluación sin aportar nada.`;
+hay una idea buena, mandá esos campos como string vacío ("") — una
+alternativa de relleno gasta evaluación sin aportar nada.`;
 
 /**
  * La receta viaja serializada como string, igual que el programa: los
@@ -1614,7 +1634,11 @@ export class CodexModelProvider extends BaseModelProvider {
         case 'skill.propose':
         case 'skill.revise': {
           let program: unknown = parsed.program;
-          if (typeof parsed.programJson === 'string') {
+          // El string vacío es «este campo no aplica», no basura: el esquema
+          // obliga a mandar todas las propiedades, así que «sin programa» se
+          // dice con "". Tratarlo como JSON roto convertiría la respuesta
+          // legítima del ADR 0055 en un error.
+          if (nonEmptyString(parsed.programJson)) {
             try {
               program = JSON.parse(parsed.programJson);
             } catch {
@@ -1626,7 +1650,7 @@ export class CodexModelProvider extends BaseModelProvider {
           // la respuesta legítima que no trae ninguno. Solo cuenta si de
           // verdad no propuso programa: pedir piezas Y entregar el programa
           // sería quedarse con las dos cosas, y el programa vale más.
-          if (!Array.isArray(program) && typeof parsed.subSkillsJson === 'string') {
+          if (!Array.isArray(program) && nonEmptyString(parsed.subSkillsJson)) {
             const parts = parseSubSkills(parsed.subSkillsJson);
             if (parts.length > 0) {
               return {
@@ -1644,7 +1668,7 @@ export class CodexModelProvider extends BaseModelProvider {
           // una respuesta buena por una alternativa rota sería pagar el viaje
           // dos veces.
           let alternate: { program: unknown; rationale: string } | undefined;
-          if (typeof parsed.altProgramJson === 'string') {
+          if (nonEmptyString(parsed.altProgramJson)) {
             try {
               const altProgram: unknown = JSON.parse(parsed.altProgramJson);
               if (Array.isArray(altProgram)) {

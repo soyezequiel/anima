@@ -4992,11 +4992,16 @@ export class AnimaAgent {
         }
         this.goals.fail(activity.goalId);
         this.destroyToolFloor.delete(activity.goalId);
+        // El motivo que se anuncia es el MISMO que se juzgó arriba (`reason`),
+        // no el crudo del programa. Una obra a medias termina el programa sin
+        // abortar, así que lo crudo es `outcome: "completed", reason: null`: el
+        // registro técnico contaba un encargo que salió bien y murió igual, y
+        // no había forma de leer ahí que el motivo real era "quedó a medias".
         this.emit('strategy.failed', {
           goalId: activity.goalId,
           strategy: activity.strategy,
           outcome: out.result.outcome,
-          reason: out.result.reason ?? null,
+          reason,
         });
         this.memory.recordEpisode({
           kind: 'failure',
