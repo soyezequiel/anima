@@ -174,11 +174,57 @@ button:active {
 /* 10.5px caía entre píxeles y salía borroso en pantallas sin escalar; el
    versalita espaciado ya lo distingue del título sin necesitar medio punto. */
 .now-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
   margin-bottom: 5px;
+}
+
+/* La flecha de plegar. Va en el versalita «Ahora» —el rótulo del marco— y no
+   dentro de la tarjeta: lo que se pliega es la barra entera, no el objetivo. */
+.fold-toggle {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: normal;
+  cursor: pointer;
+}
+
+.fold-toggle:hover {
+  color: var(--accent);
+}
+
+/* Plegada: un renglón. Sigue estando el cuerpo y qué hace, que es lo único que
+   esta barra prometía tener siempre a la vista. */
+.vitals-folded {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 11px;
+  min-width: 0;
+}
+
+.folded-vitals {
+  display: flex;
+  gap: 8px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.folded-goal {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .now-carry {
   margin-top: 6px;

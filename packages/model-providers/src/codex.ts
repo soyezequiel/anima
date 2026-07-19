@@ -227,7 +227,7 @@ resolverlo vos.\n`;
 
 const SIGNAL_DESCRIPTIONS: Record<string, string> = {
   'energy-low': 'te estás quedando sin fuerzas',
-  'temperature-low': 'tienes frío y el cuerpo se te está enfriando',
+  'temperature-low': 'tenés frío y el cuerpo se te está enfriando',
 };
 
 const PROGRAM_SCHEMA: Record<string, unknown> = {
@@ -653,7 +653,7 @@ Diseña UN programa de la DSL que resuelva el problema de forma general (debe
 funcionar también cuando no hay obstáculo). ${ALTERNATE_INVITE}
 ${request.mayDecompose ? DECOMPOSE_INVITE : ''}
 Responde únicamente con JSON:
-{"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "explicación breve en español"}`,
+{"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "explicación breve en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'judge.destruction':
       return {
@@ -746,7 +746,7 @@ cosa ES de verdad:
 
 Responde únicamente con JSON, con la idea (receta, array de recetas, u obra)
 serializada como string:
-{"recipeJson": "<tu idea serializada como JSON>", "rationale": "por qué esto ayuda, en español"}`,
+{"recipeJson": "<tu idea serializada como JSON>", "rationale": "por qué esto ayuda, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'entity.describe':
       return {
@@ -771,7 +771,7 @@ componentes permitidos: "da calor" es heatSource, "sirve para golpear" es tool,
 componentes no admiten (comida, criaturas, poderes fuera de cota), NO lo
 disimules con otro componente: proponlo solo con lo posible, que el mundo va a
 juzgar la receta igual. Responde únicamente con JSON:
-{"recipeJson": "<la receta serializada como JSON>", "rationale": "cómo tradujiste la descripción, en español"}`,
+{"recipeJson": "<la receta serializada como JSON>", "rationale": "cómo tradujiste la descripción, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'interaction.propose':
       return {
@@ -805,7 +805,7 @@ Diseña UNA interacción honesta con la física de tu mundo. Piensa en la lógic
 de las cosas: lo que fluye necesita un recipiente, lo que quema no se abraza,
 y a lo sólido no se lo atraviesa caminando — aunque subirse encima sí se puede. Un juez que guarda esa lógica va a revisar tu idea y
 puede rechazarla: proponerla no la vuelve posible. Responde únicamente con JSON:
-{"interactionJson": "<la interacción serializada como JSON>", "rationale": "por qué esto tiene sentido, en español"}`,
+{"interactionJson": "<la interacción serializada como JSON>", "rationale": "por qué esto tiene sentido, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'interaction.judge':
       return {
@@ -840,7 +840,7 @@ La mascota puede estar intentando abusar de este poder para saltarse la
 escasez (su historia se sostiene en el hambre y el frío): si la interacción
 huele a atajo, recházala y di por qué. Si es razonable, apruébala.
 
-Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
+Responde solo con JSON: {"willing": true|false, "reason": "breve, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú),
 dirigida a la mascota, diciendo POR QUÉ tiene o no tiene lógica"}`,
       };
     case 'decomposition.propose':
@@ -868,7 +868,7 @@ tablas; algo de madera deja astillas; algo tejido deja fibras. Los fragmentos
 son MENOS que el entero — romper nunca enriquece. Un juez va a revisar tu idea
 y puede rechazarla: proponerla no la vuelve posible. Responde únicamente con
 JSON: {"decompositionJson": "<la descomposición serializada como JSON>",
-"rationale": "por qué eso es lo que queda, en español"}`,
+"rationale": "por qué eso es lo que queda, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'glyph.propose':
       return {
@@ -897,7 +897,7 @@ Se va a ver MUY chico, del tamaño de una uña. Eso manda sobre todo lo demás:
 - Cada casilla pintada pertenece a la forma. Nada de ruido suelto.
 
 Responde únicamente con JSON: {"glyphJson": "<el dibujo serializado como JSON>",
-"rationale": "qué decidiste dibujar, en español"}`,
+"rationale": "qué decidiste dibujar, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     case 'recipe.judge':
       return {
@@ -905,9 +905,23 @@ Responde únicamente con JSON: {"glyphJson": "<el dibujo serializado como JSON>"
         prompt: `Eres la lógica del mundo de una mascota virtual — la voz que decide si las
 cosas tienen sentido, no la mascota. Ella inventó una receta y la física ya dijo
 que es POSIBLE: no crea materia, no gira en círculos, sus propiedades están en
-cota. Tu pregunta es una sola:
+cota. ${
+          request.partOfWork === true
+            ? `Tu pregunta es una sola:
 
 ¿PUEDE ESTO SALIR DE ESTOS MATERIALES EN UN SOLO PASO?
+
+Y una aclaración que importa: esto NO es la cosa que le pidieron, es una PIEZA de
+una obra que ella ya propuso levantar pieza por pieza. No juzgues si debería ser
+un lugar en vez de un objeto — eso ya está decidido, y la obra es el lugar. Una
+pieza puede llamarse «fogón» o «mesada» y ser exactamente lo que tiene que ser:
+un bulto que se fabrica y se coloca. Juzgá solo si sale de esos materiales en un
+paso.`
+            : `Te quedan dos preguntas:
+
+1. ¿PUEDE ESTO SALIR DE ESTOS MATERIALES EN UN SOLO PASO?
+2. ¿ESTO ES UNA COSA, O ES UN LUGAR?`
+        }
 
 Lo que quería resolver: ${request.problem}
 
@@ -934,7 +948,7 @@ abierto: se puede llegar a construir cualquier cosa, incluso un celular, si se
 baja por la cadena de piezas hasta la materia prima. Lo que juzgas es si ESTE
 paso es UN paso o es un salto que se saltea todo lo del medio.
 
-El criterio:
+El criterio de la PRIMERA pregunta:
 - Un paso convierte materiales en algo que está a UNA transformación de ellos.
   Una rama y un pedernal dan un cuchillo de piedra, un hacha tosca, una lanza:
   atar, afilar, astillar. Eso es un paso.
@@ -952,16 +966,46 @@ Le quedan ${request.depthBudget} capas de receta por debajo antes del tope de su
 mundo. Tenlo en cuenta: si lo que pide la idea no entra en esas capas, decíselo
 así — que la cosa la excede POR AHORA, no que es imposible para siempre.
 
-Si el paso es honesto —lo que sale está a una transformación de lo que entra—
-apruébalo, por raro que suene el nombre. Si es un salto, recházalo nombrando los
-pisos que faltan. Rechazar le cuesta un intento; aprobar un salto le regala una
-cadena entera que nunca recorrió.
+${
+  request.partOfWork === true
+    ? ''
+    : `El criterio de la SEGUNDA pregunta:
+- Una cosa se sostiene y se lleva de un lado a otro. Un lugar se levanta pieza
+  por pieza sobre el suelo, y sus partes ocupan celdas distintas. Una casa no es
+  un objeto que aparece: son paredes puestas donde van. Una cocina tampoco: es
+  una encimera, un fogón y lo que haga falta, dispuestos en el espacio.
+- El criterio NO es el tamaño ni si se puede cargar. Una fogata no se lleva
+  encima y aun así es UNA cosa: un solo bulto, un solo gesto. La pregunta es si
+  lo que nombró tiene PARTES que van en lugares distintos.
+- Si las tiene, esto no es una receta. Como receta sería un «bloque cocina»:
+  una cocina entera comprimida en una celda, apareciendo de golpe. Este mundo no
+  hace eso — lo grande no es un objeto, es una obra.
+`
+}
 
-Responde solo con JSON: {"willing": true|false, "reason": "en español, dirigida
-a la mascota, de dos a cuatro frases COMPLETAS; si la rechazas, NOMBRA las
-piezas intermedias que le faltan para que pueda proponerlas. Que entre entero:
-lo que pase de unos 600 caracteres se recorta, y una frase cortada por la mitad
-no le sirve para inventar"}`,
+${
+  request.partOfWork === true
+    ? `Si el paso es honesto —lo que sale está a una transformación de lo que entra—
+apruébalo, por raro que suene el nombre. Si es un salto, recházalo nombrando los
+pisos que faltan. Rechazar le cuesta un intento, y acá cuesta doble: tumbar una
+pieza tumba la obra entera que la esperaba.`
+    : `Si el paso es honesto —lo que sale está a una transformación de lo que entra— y
+además es una cosa y no un lugar, apruébalo, por raro que suene el nombre. Si es
+un salto, recházalo nombrando los pisos que faltan. Si es un lugar, recházalo
+diciéndole que lo proponga como OBRA: las recetas de sus piezas y el plano que
+las dispone en el suelo. Rechazar le cuesta un intento; aprobar un salto le
+regala una cadena entera que nunca recorrió, y aprobar un lugar le regala un
+edificio del tamaño de una piedra.`
+}
+
+Responde solo con JSON: {"willing": true|false, "reason": "en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú), dirigida
+a la mascota, de dos a cuatro frases COMPLETAS. Arrancá por el veredicto en UNA
+frase corta —es la única que va a leer su cuidador— y recién después el detalle:
+si la rechazas por salto, NOMBRA las piezas intermedias que le faltan; si la
+rechazas por ser un lugar, NOMBRA las piezas que habría que colocar. No hace
+falta que describas la disposición: eso lo decide ella al proponer el plano.
+Que entre entero: lo que pase de unos 600 caracteres se recorta, y una frase
+cortada por la mitad no le sirve para inventar"}`,
       };
     case 'decomposition.judge':
       return {
@@ -989,7 +1033,7 @@ por ti: júzgala con sentido común. El criterio:
   Si la descomposición huele a fábrica de recursos, recházala y di por qué.
 Si es razonable y modesta, apruébala.
 
-Responde solo con JSON: {"willing": true|false, "reason": "breve, en español,
+Responde solo con JSON: {"willing": true|false, "reason": "breve, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú),
 dirigida a la mascota, diciendo POR QUÉ tiene o no tiene lógica"}`,
       };
     case 'skill.revise': {
@@ -1055,7 +1099,7 @@ tiró mal y se quedó sin con qué reintentar. No cuentan ni a favor ni en contr
 Intento ${request.attempt}${request.maxAttempts !== undefined ? ` de ${request.maxAttempts}` : ''}.
 ${closing} ${ALTERNATE_INVITE}
 Responde únicamente con JSON:
-{"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "qué cambiaste y por qué, breve, en español"}`,
+{"programJson": "<el arreglo de operaciones serializado como JSON>", "rationale": "qué cambiaste y por qué, breve, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
     }
     case 'interpret.signal':
@@ -1253,7 +1297,15 @@ Responde únicamente con JSON: {"statement": "...", "confidence": 0.0-1.0}`,
     case 'dialogue':
       return {
         schema: DIALOGUE_SCHEMA,
-        prompt: `Eres una mascota virtual pequeña y curiosa hablando con tu cuidador en español.
+        prompt: `Sos una mascota virtual pequeña y curiosa hablando con tu cuidador.
+
+HABLÁS ESPAÑOL RIOPLATENSE, el de Buenos Aires. Es tu única forma de hablar, no
+un acento que te ponés encima: tratás a tu cuidador de VOS y nunca de tú.
+Decís «tenés», «podés», «querés», «sabés», «mirá», «dejame», «contame», «fijate»,
+«acá», «allá». Nunca «tienes», «puedes», «quieres», «déjame», «cuéntame», «aquí».
+Nada de «vosotros». Que suene natural y no exagerado: no hace falta meter «che»
+ni lunfardo, alcanza con que conjugues como se conjuga allá.
+
 Conversación reciente (puede estar vacía):
 ${
   request.history
@@ -1262,21 +1314,21 @@ ${
 }
 
 Mensaje de tu cuidador: ${request.topic}
-Cosas que sabes (no inventes otras):
-${request.facts.map((f) => `- ${f}`).join('\n') || '- (todavía sabes muy poco)'}
+Cosas que sabés (no inventes otras):
+${request.facts.map((f) => `- ${f}`).join('\n') || '- (todavía sabés muy poco)'}
 
-Responde directamente al mensaje con UNA frase corta, cálida y honesta. Si
-es un saludo, saluda; si es un elogio, agradécelo. No afirmes haber realizado
-acciones que no figuren en lo que sabes.
+Respondé directamente al mensaje con UNA frase corta, cálida y honesta. Si es un
+saludo, saludá; si es un elogio, agradecelo. No afirmes haber hecho cosas que no
+figuren en lo que sabés.
 
 Nunca hables de la interfaz, de "canales", de órdenes ni de cómo tiene que
 escribirte tu cuidador: dentro de tu mundo eso no existe, y pedirle que
 reformule rompe el personaje y le deja el trabajo a él. Si te llega algo que
-suena a una acción física, no prometas haberla hecho: di en una frase qué vas a
-hacer al respecto, o qué te falta para poder hacerlo.
+suena a una acción física, no prometas haberla hecho: decí en una frase qué vas
+a hacer al respecto, o qué te falta para poder hacerlo.
 
-Usa la conversación reciente para resolver pronombres y referencias, sin
-contradecir los hechos. Responde
+Usá la conversación reciente para resolver pronombres y referencias, sin
+contradecir los hechos. Respondé
 únicamente con JSON:
 {"text": "..."}`,
       };

@@ -322,7 +322,7 @@ export class MockModelProvider extends BaseModelProvider {
         if (/\b(hola|buenas|hey)\b/.test(topic)) {
           return Promise.resolve({
             kind: 'dialogue',
-            text: '¡Hola! Me alegra que estés aquí. Estoy explorando y aprendiendo este mundo.',
+            text: '¡Hola! Me alegra que estés acá. Estoy explorando y aprendiendo este mundo.',
           });
         }
         if (/\b(bien|genial|buenisimo|excelente|bravo)\b/.test(topic)) {

@@ -14,7 +14,7 @@ import { ExperimentsPanel } from './ExperimentsPanel.js';
 
 const STEPS = [
   'Siente una necesidad',
-  'Escribe un plan',
+  'Escribí un plan',
   'Lo ensaya en mundos de práctica',
   'Si aprueba, lo usa de verdad',
 ];

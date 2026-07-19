@@ -511,6 +511,8 @@ export class AnimaAgent {
    * seguir la misma y no empezar otra al lado.
    */
   private structureSites = new Map<string, { blueprintId: string; anchor: Vec2 }>();
+  /** Lo último que dijo, para no decirlo dos veces seguidas (ADR 0073). */
+  private lastReplyText: string | null = null;
   /**
    * Poder de la herramienta que ya NO hizo mella al romper, por objetivo. Es la
    * marca de "muy duro": mientras exista, el objetivo de romper no vuelve a
@@ -1137,6 +1139,9 @@ export class AnimaAgent {
 
   receiveUserMessage(text: string): void {
     this.pendingUserMessages.push(text);
+    // El cuidador habló: lo que venga ya no es repetirse sola, es contestar
+    // (ADR 0073). Aunque diga exactamente lo mismo que la última vez.
+    this.lastReplyText = null;
   }
 
   // ---- persistencia ---------------------------------------------------------
@@ -3483,7 +3488,27 @@ export class AnimaAgent {
       );
   }
 
+  /**
+   * Decir algo al cuidador, sin repetirse (ADR 0073).
+   *
+   * Un anuncio idéntico al último que dijo, sin que el cuidador haya abierto la
+   * boca en el medio, no es información nueva: es la misma frase otra vez. Se la
+   * vio abriéndose paso tres veces seguidas y anunciando las tres con la misma
+   * oración palabra por palabra — la mitad de lo que había escrito en toda la
+   * partida era ese anuncio repetido, y hay que leer los tres para descubrir que
+   * son uno.
+   *
+   * La condición «sin que el cuidador haya hablado» no es un detalle: sin ella,
+   * preguntarle dos veces lo mismo devolvería silencio la segunda vez, que se
+   * lee como que se colgó. Repetirse contestando está bien; repetirse sola es
+   * lo que cansa.
+   *
+   * Callar acá calla las tres cosas de una: el chat, su memoria de conversación
+   * y el historial que viaja al modelo en el próximo diálogo.
+   */
   private reply(text: string): void {
+    if (text === this.lastReplyText) return;
+    this.lastReplyText = text;
     this.pendingSpeech.push(text);
     this.memory.noteConversation('pet', text, this.tick);
   }
@@ -3634,7 +3659,7 @@ export class AnimaAgent {
       this.emit('help.requested', { goalId: goal.id });
       return {
         type: 'speak',
-        text: 'No consigo llegar al alimento y ya probé todo lo que sé. ¿Puedes ayudarme?',
+        text: 'No consigo llegar al alimento y ya probé todo lo que sé. ¿Podés ayudarme?',
       };
     }
     this.goals.suspend(
@@ -4007,7 +4032,7 @@ export class AnimaAgent {
       this.emit('help.requested', { goalId: goal.id });
       return {
         type: 'speak',
-        text: 'Algo me está haciendo daño y no encuentro por dónde apartarme. ¿Puedes ayudarme?',
+        text: 'Algo me está haciendo daño y no encuentro por dónde apartarme. ¿Podés ayudarme?',
       };
     }
     this.goals.suspend(
@@ -4184,7 +4209,7 @@ export class AnimaAgent {
       this.emit('help.requested', { goalId: goal.id });
       return {
         type: 'speak',
-        text: 'Tengo frío y no veo nada que dé calor. ¿Puedes ayudarme?',
+        text: 'Tengo frío y no veo nada que dé calor. ¿Podés ayudarme?',
       };
     }
 

@@ -109,6 +109,25 @@ function orderPlan(raws: unknown[]): unknown[] {
  * Cuántos de cada tipo, en orden de aparición: "2x esquirla" se lee mejor que
  * dos renglones iguales, y el juez pesa mejor una lista corta.
  */
+/**
+ * La primera frase de un veredicto: lo que se le dice al cuidador (ADR 0073).
+ *
+ * Los veredictos del juez se escriben para ella y son largos a propósito —le
+ * nombran las piezas que le faltan, que es de donde nace su próxima idea—. Al
+ * cuidador le alcanza con el titular. Si esa primera frase igual se va de
+ * largo, se corta en palabra entera: una idea que termina se lee; una cortada
+ * al medio parece un error del programa.
+ */
+function firstSentence(reason: string, max = 180): string {
+  const clean = reason.replace(/\s+/g, ' ').trim();
+  const boundary = clean.search(/(?<=[.!?])\s/);
+  const first = boundary > 0 ? clean.slice(0, boundary) : clean;
+  if (first.length <= max) return first;
+  const cut = first.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > max * 0.6 ? cut.slice(0, lastSpace) : cut).replace(/[.,;:—-]+$/, '')}…`;
+}
+
 function countByKind(drops: readonly { kind: string }[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const drop of drops) counts.set(drop.kind, (counts.get(drop.kind) ?? 0) + 1);
@@ -357,6 +376,9 @@ export class InventionEngine {
         ...(drops.length > 0
           ? { dropsSummary: [...countByKind(drops)].map(([kind, count]) => `${count}x ${kind}`) }
           : {}),
+        // Si hay un plano esperando, esto es una PIEZA de esa obra y no la cosa
+        // pedida (ADR 0074): el modelo ya contestó que lo pedido es un lugar.
+        ...(this.pendingBlueprint !== null ? { partOfWork: true } : {}),
         // Lo que ya sabe hacer es lo que separa un paso de un salto: un celular
         // hecho de procesador y pantalla es honesto SI esas dos ya existen, y es
         // el mismo salto de siempre si no.
@@ -403,7 +425,13 @@ export class InventionEngine {
     );
     this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });
     this.remember(this.recipeRejections, fact.statement);
-    this.deps.reply(`Lo imaginé, pero no tiene sentido: ${judgement.reason}`);
+    // Al cuidador, la primera frase (ADR 0073). El veredicto entero está escrito
+    // PARA ELLA —«proponémela como obra: la receta del fogón, la de la mesada…»,
+    // seiscientos caracteres de taller— y volcarlo tal cual al chat era mostrarle
+    // al cuidador un diálogo interno del que no tiene nada que hacer. Sigue
+    // entero donde sirve: en el registro técnico y en su memoria, que es lo que
+    // la hace inventar mejor la próxima.
+    this.deps.reply(`Lo imaginé, pero no tiene sentido: ${firstSentence(judgement.reason)}`);
     // Lo que se apoyaba en esta pieza ya no se sostiene (ADR 0018).
     this.pendingPlan = [];
     this.pendingBlueprint = null;

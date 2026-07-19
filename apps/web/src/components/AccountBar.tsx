@@ -94,7 +94,7 @@ export function AccountBar({ account }: { account: CloudAccount | null }) {
       <button
         data-testid="login-nostr"
         disabled={busy}
-        title="Inicia sesión con tu identidad Nostr (extensión NIP-07); tu progreso se sincroniza con el servidor"
+        title="Iniciá sesión con tu identidad Nostr (extensión NIP-07); tu progreso se sincroniza con el servidor"
         onClick={() => {
           const signer = nip07Signer();
           if (!signer) {

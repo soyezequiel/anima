@@ -124,7 +124,7 @@ function ChatEntryRow({
       data-testid={entry.pending ? 'chat-pending' : undefined}
     >
       {startsGroup && (
-        <span className="chat-name">{entry.from === 'user' ? 'Tú' : petName}</span>
+        <span className="chat-name">{entry.from === 'user' ? 'Vos' : petName}</span>
       )}
       <div className={`chat-bubble${entry.card ? ' bare' : ''}`}>
         {entry.card ? <RecipeCard card={entry.card} /> : entry.text}

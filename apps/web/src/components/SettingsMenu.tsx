@@ -136,7 +136,7 @@ export function SettingsMenu({
     // común es que la API local no esté levantada.
     if (current === null) {
       fail(
-        'la API local no responde: inicia el backend con «pnpm dev:full» (o «pnpm --filter @anima/api dev»)',
+        'la API local no responde: iniciá el backend con «pnpm dev:full» (o «pnpm --filter @anima/api dev»)',
       );
       return;
     }
@@ -150,7 +150,7 @@ export function SettingsMenu({
         fail(
           provider === 'claude'
             ? 'claude auth login no entregó la URL de autorización; podés iniciar sesión con «claude /login» en una terminal y volver a intentar'
-            : 'codex login no entregó la URL de autorización; revisa la consola de la API',
+            : 'codex login no entregó la URL de autorización; revisá la consola de la API',
         );
         return;
       }
@@ -158,7 +158,7 @@ export function SettingsMenu({
       setPhase('waiting');
       const ok = await waitForAiLogin(provider);
       if (!ok) {
-        fail('la autorización no se completó a tiempo; vuelve a intentarlo');
+        fail('la autorización no se completó a tiempo; volvé a intentarlo');
         return;
       }
     }
@@ -230,7 +230,7 @@ export function SettingsMenu({
                 ? 'No se encontró el CLI de Codex en esta máquina'
                 : account
                   ? 'Usa tu propia cuenta de Codex (ChatGPT); queda ligada a tu identidad'
-                  : 'Usa la cuenta de Codex (ChatGPT) de esta máquina; inicia sesión para conectar la tuya'
+                  : 'Usá la cuenta de Codex (ChatGPT) de esta máquina; iniciá sesión para conectar la tuya'
             }
             onChange={(event) => void toggleProvider('codex', event.currentTarget.checked)}
           />
@@ -260,7 +260,7 @@ export function SettingsMenu({
             title={
               claudeMissing
                 ? 'No se encontró el CLI de Claude en esta máquina'
-                : 'Usa la sesión de Claude Code de esta máquina (tu suscripción personal)'
+                : 'Usá la sesión de Claude Code de esta máquina (tu suscripción personal)'
             }
             onChange={(event) => void toggleProvider('claude', event.currentTarget.checked)}
           />

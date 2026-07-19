@@ -205,6 +205,18 @@ export type ModelRequest =
       /** Qué dejaría al romperse, si algo. */
       dropsSummary?: string[];
       /**
+       * Esta receta es una PIEZA de una obra que ya se propuso, no la cosa
+       * pedida (ADR 0074).
+       *
+       * Cambia qué se le pregunta al juez. La pregunta «¿esto es una cosa o un
+       * lugar?» (ADR 0072) solo tiene sentido sobre lo pedido: si la respuesta
+       * del modelo fue un plano, ya contestó que es un lugar —el tipo de la
+       * respuesta ES la decisión, ADR 0032— y volver a preguntárselo a cada
+       * ladrillo hace que rechace ladrillos. Pasó: tumbó un fogón por llamarse
+       * como una cocina.
+       */
+      partOfWork?: boolean;
+      /**
        * Qué sabe construir ya su mundo. Es lo que separa un salto de un paso:
        * "celular de procesador + pantalla" es honesto SI el procesador y la
        * pantalla están en esta lista, y es el mismo salto de siempre si no.

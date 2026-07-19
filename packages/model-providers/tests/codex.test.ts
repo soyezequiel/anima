@@ -721,6 +721,79 @@ describe('CodexModelProvider', () => {
     // Una sola línea para los 20: el prompt no repite la misma evidencia.
     expect(prompt.match(/FALLÓ en/g)).toHaveLength(1);
   });
+
+  /**
+   * El juez de recetas también pregunta si la cosa es una COSA (ADR 0072).
+   *
+   * El caso real: le pidieron una cocina y fabricó un objeto `cocina` de una
+   * celda. El juez había aprobado la receta —y con razón: «1 encimera + 3
+   * piedras + 1 pedernal» es un paso de crafteo honesto—, pero su prompt decía
+   * literalmente «tu pregunta es una sola» y esa pregunta era la granularidad.
+   * Nadie le preguntó nunca si una cocina es una cosa o un lugar, así que el
+   * «bloque casa» que el ADR 0032 vino a eliminar volvió por la invención.
+   */
+  it('el juez de recetas pregunta si es una cosa o un lugar, no solo si es un paso', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ willing: true, reason: 'ok' }), seen),
+    );
+    await provider.complete({
+      kind: 'recipe.judge',
+      problem: 'me pidieron una cocina',
+      outputKind: 'cocina',
+      ingredientsSummary: ['1x encimera', '3x stone'],
+      effectsSummary: ['es sólido'],
+      knownRecipes: [],
+      facts: [],
+      depthBudget: 3,
+    });
+
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain('¿ESTO ES UNA COSA, O ES UN LUGAR?');
+    // Y le da la salida: rechazar un lugar tiene que mandarla a proponer OBRA,
+    // no dejarla sin camino después del veto.
+    expect(prompt).toContain('OBRA');
+    // El criterio no puede ser «no se puede cargar»: la fogata tampoco se lleva
+    // encima y es una cosa. Si el prompt pierde ese matiz, empieza a declarar
+    // obras a los objetos.
+    expect(prompt).toContain('fogata');
+  });
+
+  /**
+   * …pero NO se la pregunta sobre las piezas de una obra (ADR 0074).
+   *
+   * El caso real: le pidieron una cocina, el juez le dijo «es un lugar, no una
+   * cosa», ella se corrigió sola y propuso la obra — y entonces el juez rechazó
+   * el FOGÓN, una de sus piezas, por la misma razón. Un fogón es una cosa: es
+   * el caso de la fogata. La obra se cayó entera y el cuidador no recibió nada.
+   *
+   * El tipo de la respuesta ya ES la decisión (ADR 0032): con un plano esperando,
+   * el modelo ya contestó que lo pedido es un lugar. Repetirle la pregunta a cada
+   * ladrillo es preguntarle si un ladrillo debería ser una casa.
+   */
+  it('no le pregunta si es un lugar cuando juzga una PIEZA de una obra', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(
+      transportReturning(JSON.stringify({ willing: true, reason: 'ok' }), seen),
+    );
+    await provider.complete({
+      kind: 'recipe.judge',
+      problem: 'me pidieron una cocina',
+      outputKind: 'cooking-hearth',
+      ingredientsSummary: ['2x stone', '1x flint'],
+      effectsSummary: ['es sólido', 'da calor'],
+      knownRecipes: [],
+      facts: [],
+      depthBudget: 3,
+      partOfWork: true,
+    });
+
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).not.toContain('¿ESTO ES UNA COSA, O ES UN LUGAR?');
+    expect(prompt).toContain('Tu pregunta es una sola');
+    // Y se le dice por qué, para que no lo deduzca del silencio.
+    expect(prompt).toContain('PIEZA');
+  });
 });
 
 describe('pensamiento en vivo (hook onThought)', () => {

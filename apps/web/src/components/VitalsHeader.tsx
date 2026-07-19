@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { GoalCard } from './GoalsPanel.js';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { GoalCard, goalTitle } from './GoalsPanel.js';
 import type { Expansion } from './expansion.js';
 import type { GameView } from '../session/view.js';
 import { kindLabel } from '@anima/shared';
@@ -14,6 +14,39 @@ import { kindLabel } from '@anima/shared';
 
 function pct(value: number, max: number): number {
   return Math.max(0, Math.min(100, (value / max) * 100));
+}
+
+const FOLDED_KEY = 'anima.nowFolded';
+
+/**
+ * Si el cuidador dejó la barra plegada, y que siga plegada al recargar.
+ *
+ * No usa la expansión compartida (`useExpansion`) a propósito: esa es para
+ * abrir y cerrar cosas mientras se mira algo, y se olvida al recargar — que es
+ * lo correcto para el árbol de un material. Plegar la barra no es explorar, es
+ * decidir cuánta pantalla ocupa: dura hasta que se cambie de opinión. Con la
+ * otra, cada recarga de Vite la desplegaba de nuevo.
+ */
+function useFolded(): [boolean, () => void] {
+  const [folded, setFolded] = useState(() => {
+    try {
+      return localStorage.getItem(FOLDED_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
+  const toggle = useCallback(() => {
+    setFolded((previous) => {
+      const next = !previous;
+      try {
+        localStorage.setItem(FOLDED_KEY, next ? '1' : '0');
+      } catch {
+        // Sin almacenamiento (modo privado) se pliega igual: solo no se recuerda.
+      }
+      return next;
+    });
+  }, []);
+  return [folded, toggle];
 }
 
 /**
@@ -166,6 +199,42 @@ export function VitalsHeader({
   const strategy = humanStrategy(view.currentStrategy);
   const chips = pet ? carryChips(pet.inventory) : [];
   const byKind = new Map(view.items.map((item) => [item.kind, item]));
+  const [folded, toggleFold] = useFolded();
+
+  /* Plegada NO desaparece: queda un renglón con los tres números del cuerpo y
+     qué está haciendo. Esta barra existe para que el contexto vital esté
+     siempre a la vista sin importar la pestaña, así que plegarla hasta la nada
+     sería quitarle su única razón de ser — y el que la plegó quiere su
+     pantalla de vuelta, no quedarse a ciegas. Da el espacio y conserva la
+     respuesta a «¿está viva y en qué anda?». */
+  if (folded) {
+    return (
+      <div className="vitals-header vitals-folded">
+        <button
+          type="button"
+          className="fold-toggle"
+          data-testid="now-fold"
+          aria-expanded={false}
+          onClick={toggleFold}
+          title="Desplegar la barra"
+        >
+          ▸
+        </button>
+        {pet && (
+          <span className="folded-vitals">
+            <span className="vital-energy">⚡{Math.round(pet.energy.current)}</span>
+            <span className="vital-health">❤{Math.round(pet.health.current)}</span>
+            {pet.temperature && (
+              <span className="vital-warmth">❄{Math.round(pet.temperature.current)}</span>
+            )}
+          </span>
+        )}
+        <span className="folded-goal">
+          {view.currentGoal ? goalTitle(view.currentGoal.description) : '(observando)'}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="vitals-header">
@@ -199,7 +268,19 @@ export function VitalsHeader({
       )}
 
       <div className="now-card rd-now">
-        <div className="now-eyebrow">Ahora</div>
+        <div className="now-eyebrow">
+          <button
+            type="button"
+            className="fold-toggle"
+            data-testid="now-fold"
+            aria-expanded
+            onClick={toggleFold}
+            title="Plegar la barra"
+          >
+            ▾
+          </button>
+          Ahora
+        </div>
         {/* La MISMA tarjeta que la pestaña de Objetivos (ADR 0069). Antes acá
             vivía un resumen propio —la descripción y nada más— y el cuidador
             veía dos versiones distintas del mismo objetivo según dónde mirara:

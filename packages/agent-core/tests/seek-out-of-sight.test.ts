@@ -11,7 +11,7 @@ import { AnimaAgent, GOAL_RESTORE_WARMTH } from '../src/index.js';
  * ADR 0054. Lo que no ve, lo busca.
  *
  * La generación 3 murió de frío PARADA. Repitió «Tengo frío y no veo nada que
- * dé calor. ¿Puedes ayudarme?» tres veces, se suspendió «sin estrategias
+ * dé calor. ¿Podés ayudarme?» tres veces, se suspendió «sin estrategias
  * viables tras pedir ayuda», y esperó hasta morir — con un refugio en el mapa,
  * detrás de un muro. La vista exige línea despejada (ADR 0025), así que ese
  * refugio no existía para ella; y todas sus estrategias arrancaban con

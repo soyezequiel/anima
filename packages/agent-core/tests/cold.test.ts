@@ -160,7 +160,7 @@ describe('el frío como motivo', () => {
       if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
     }
 
-    expect(asked).toContain('¿Puedes ayudarme?');
+    expect(asked).toContain('¿Podés ayudarme?');
     expect(agent.events.ofType('help.requested').length).toBeGreaterThan(0);
   });
 

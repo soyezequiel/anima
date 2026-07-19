@@ -99,7 +99,7 @@ export function evaluateUserRequest(
   if (request.kind === 'unknown') {
     return {
       classification: 'needs_information',
-      reason: 'No entiendo qué me pides; ¿puedes decirlo de otra forma?',
+      reason: 'No entiendo qué me pedís; ¿podés decirlo de otra forma?',
     };
   }
 
@@ -140,7 +140,7 @@ export function evaluateUserRequest(
         return {
           classification: 'accepted',
           reason: `Todavía no sé construir ${withArticle(request.recipeId)}.`,
-          alternative: 'Déjame pensar si se me ocurre algo con lo que tengo cerca.',
+          alternative: 'Dejame pensar si se me ocurre algo con lo que tengo cerca.',
         };
       }
       const held = new Map<string, number>();
@@ -238,7 +238,7 @@ export function evaluateUserRequest(
         return {
           classification: 'cannot',
           reason: `Todavía no tengo aprendida la habilidad "${request.skillName}".`,
-          alternative: 'Si me explicas en qué consiste, puedo intentar aprenderla.',
+          alternative: 'Si me explicás en qué consiste, puedo intentar aprenderla.',
         };
       }
       return {
@@ -252,8 +252,8 @@ export function evaluateUserRequest(
       if (request.targetKind === 'unknown') {
         return {
           classification: 'needs_information',
-          reason: 'Entiendo la acción, pero no qué objeto quieres que destruya.',
-          alternative: 'Puedes nombrar un muro, una rama, un martillo o un árbol.',
+          reason: 'Entiendo la acción, pero no qué objeto querés que destruya.',
+          alternative: 'Podés nombrar un muro, una rama, un martillo o un árbol.',
         };
       }
       // PRIMERO los hechos, DESPUÉS los valores. El orden no es estético: un
@@ -267,7 +267,7 @@ export function evaluateUserRequest(
         return {
           classification: 'needs_information',
           reason: `No veo ningún ${targetName} desde aquí.`,
-          alternative: '¿Puedes mostrarme dónde está?',
+          alternative: '¿Podés mostrarme dónde está?',
         };
       }
       const hasAnyTool =
@@ -277,7 +277,7 @@ export function evaluateUserRequest(
         return {
           classification: 'cannot',
           reason: `No tengo ninguna herramienta capaz de dañar ese ${targetName}.`,
-          alternative: 'Si me consigues una herramienta fuerte, puedo intentarlo.',
+          alternative: 'Si me conseguís una herramienta fuerte, puedo intentarlo.',
         };
       }
       // Puede. Ahora sí: ¿quiere? Se niega a destruir lo que cree que necesita.
@@ -309,8 +309,8 @@ export function evaluateUserRequest(
       if (request.targetKind === 'unknown' || !request.targetKind) {
         return {
           classification: 'needs_information',
-          reason: `Entiendo que quieres que haga "${verbPhrase}", pero no con qué objeto.`,
-          alternative: '¿Puedes nombrarlo?',
+          reason: `Entiendo que querés que haga "${verbPhrase}", pero no con qué objeto.`,
+          alternative: '¿Podés nombrarlo?',
         };
       }
       const targetName = displayKind(request.targetKind);
@@ -321,7 +321,7 @@ export function evaluateUserRequest(
         return {
           classification: 'needs_information',
           reason: `No veo ningún ${targetName} desde aquí.`,
-          alternative: '¿Puedes mostrarme dónde está?',
+          alternative: '¿Podés mostrarme dónde está?',
         };
       }
       // ¿Ya lo sabe hacer? Saberlo es física suya: se acepta sin inventar nada.
@@ -342,7 +342,7 @@ export function evaluateUserRequest(
       return {
         classification: 'accepted',
         reason: `Todavía no sé ${verbPhrase} con ${withArticle(request.targetKind)}.`,
-        alternative: 'Déjame imaginar cómo, y que mi mundo juzgue si tiene lógica.',
+        alternative: 'Dejame imaginar cómo, y que mi mundo juzgue si tiene lógica.',
       };
     }
 
@@ -353,7 +353,7 @@ export function evaluateUserRequest(
         return {
           classification: 'needs_information',
           reason: 'Entiendo la acción, pero no qué objeto buscas.',
-          alternative: 'Puedes nombrar comida, una rama o un martillo.',
+          alternative: 'Podés nombrar comida, una rama o un martillo.',
         };
       }
       const visible = perception.visibleEntities.some((e) => e.kind === request.targetKind);

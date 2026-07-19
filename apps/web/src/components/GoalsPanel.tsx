@@ -38,7 +38,7 @@ const SOURCE_LABEL: Record<string, string> = {
  * En pantalla, en cambio, al lado ya hay un «se lo pediste» diciendo lo mismo:
  * el título se queda con el encargo y la procedencia se dice una sola vez.
  */
-function goalTitle(description: string): string {
+export function goalTitle(description: string): string {
   return description.replace(/^petición del usuario:\s*/i, '');
 }
 

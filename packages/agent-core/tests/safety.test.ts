@@ -155,7 +155,7 @@ describe('el dolor como motivo', () => {
       if (intent?.type === 'speak' && intent.text.includes('apartarme')) asked = intent.text;
     }
 
-    expect(asked).toContain('¿Puedes ayudarme?');
+    expect(asked).toContain('¿Podés ayudarme?');
     expect(agent.events.ofType('help.requested').length).toBeGreaterThan(0);
     // El ciclo de skills no se abrió: apartarse no es una capacidad que falte.
     expect(agent.events.ofType('skill.requested')).toHaveLength(0);
