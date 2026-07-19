@@ -12,21 +12,25 @@ import type {
   WorldState,
 } from '@anima/sim-core';
 import {
+  applyPrune,
   buildPerception,
   expandRecipeCost,
   getEntity,
   inBounds,
   isBlocked,
+  planPrune,
+  prunePlanSize,
   recipeProduct,
   recipeProductKinds,
   spawn,
   stepWorld,
   takeSnapshot,
 } from '@anima/sim-core';
+import type { PrunePlan, PruneRef } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
 import type { EvaluationCaseTrace } from '@anima/skill-evaluator';
 import { RegressionStore, sampleSeeds } from '@anima/skill-evaluator';
-import type { SkillOp } from '@anima/skill-runtime';
+import type { SkillOp, SkillRemovalPlan } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
 import {
   COLD_SCENARIOS,
@@ -36,9 +40,19 @@ import {
   PRACTICE_SCENARIOS,
 } from '@anima/test-scenarios';
 import type { KeyValueStore, LegacyReport, PetIdentity, SessionSaveData } from '@anima/persistence';
+import type { CatalogData } from '@anima/persistence';
 import {
   appendLegacy,
   applySessionSave,
+  catalogSize,
+  clearCatalog,
+  collectCatalog,
+  emptyCatalog,
+  forgetFromCatalog,
+  loadCatalog,
+  mergeCatalog,
+  saveCatalog,
+  seedWorldFromCatalog,
   buildLegacyReport,
   captureSession,
   clearSession,
@@ -65,6 +79,8 @@ import type {
   ItemIngredientView,
   ItemStat,
   ItemView,
+  PruneLine,
+  PrunePreview,
   PickupView,
   PlannedStructureView,
   SkillDevProgressView,
@@ -180,6 +196,18 @@ interface SessionUiState {
    * cambio en el escenario no llegaría nunca a las partidas ya empezadas.
    */
   backpackSize?: number;
+  /**
+   * Las reglas de fábrica que el cuidador podó a propósito (ADR 0075).
+   *
+   * Hace falta porque `adoptNewWorldRules` vuelve a sembrar `MVP_RECIPES` en
+   * cada carga —las recetas base son física del juego, no progreso de la
+   * mascota, así que una partida vieja también las recibe— y sin esta
+   * constancia resucitaría justo lo que se acaba de quitar. Es la única
+   * excepción a "borra de verdad, no dejes tombstone": son ids de reglas del
+   * CÓDIGO, un puñado de strings, y sin ellas la poda de lo de fábrica dura
+   * hasta la próxima recarga.
+   */
+  prunedRules?: string[];
 }
 
 /**
@@ -440,6 +468,29 @@ export class GameSession {
    */
   private creativeMode = false;
   /**
+   * La poda pedida y todavía sin confirmar (ADR 0075). Guarda el plan además
+   * de lo que se muestra: al confirmar se aplica lo que se leyó, no un cálculo
+   * nuevo. Nunca se guarda en el save — una pregunta a medio contestar no es
+   * estado de la partida.
+   */
+  /**
+   * Ids de reglas del código que el cuidador podó (ADR 0075). Es del cuidador
+   * y no del mundo: sobrevive al guardado igual que la mochila o el color, y
+   * por eso viaja en `ui` y no en el snapshot.
+   */
+  private prunedRules = new Set<string>();
+  /**
+   * El catálogo del cuidador (ADR 0076): lo aprendido, que vive fuera de toda
+   * partida. Se lee una vez al arrancar y se mantiene en memoria porque hace
+   * falta sincrónicamente al nacer un mundo — `reset` sale de un submit y no
+   * puede esperar una lectura de red.
+   */
+  private catalog: CatalogData = emptyCatalog();
+  private pendingPrune:
+    | { kind: 'world'; plan: PrunePlan; preview: PrunePreview }
+    | { kind: 'skill'; plan: SkillRemovalPlan; preview: PrunePreview }
+    | null = null;
+  /**
    * Manos que le puso el cuidador (ADR 0070), o null si todavía no tocó la
    * perilla y las que valen son las del mundo.
    *
@@ -487,6 +538,10 @@ export class GameSession {
         setAside = true;
       }
     }
+    // El catálogo se lee antes de que exista ningún mundo (ADR 0076): la
+    // mascota nueva tiene que nacer sabiendo, no enterarse un tick después.
+    // Un catálogo ilegible se lee vacío, así que jamás impide arrancar.
+    session.catalog = options.fresh ? emptyCatalog() : await loadCatalog(session.store);
     if (saved) {
       session.buildFreshRuntime(saved.seed);
       session.applySave(saved);
@@ -515,6 +570,12 @@ export class GameSession {
   /** Mundo, agente y biblioteca nuevos. No toca identidad ni chat. */
   private buildFreshRuntime(seed: number): void {
     this.seed = seed;
+    // La poda muere con el mundo que se podó (ADR 0075). Va acá y no en
+    // `resetToNewPet` porque este es el único lugar donde nace un mundo, y
+    // nacen por dos caminos: reiniciar y morirse. Al restaurar un guardado
+    // esto corre primero y `applySave` vuelve a poner lo que el cuidador podó.
+    this.prunedRules.clear();
+    this.pendingPrune = null;
     const bundle = foodBehindWall.build(seed);
     this.world = bundle.world;
     this.provider = this.externalProvider ?? new MockModelProvider();
@@ -636,11 +697,21 @@ export class GameSession {
     };
   }
 
-  private resetToNewPet(seed: number): void {
+  private resetToNewPet(seed: number, options: { fromCatalog?: boolean } = {}): void {
     this.identity = newIdentity('Ánima');
     this.buildFreshRuntime(seed);
+    const adopted = options.fromCatalog === false ? 0 : this.applyCatalogToNewWorld();
     this.chat = [
       { from: 'system', text: `Mundo creado (semilla ${seed}). La energía irá bajando…`, tick: 0 },
+      ...(adopted > 0
+        ? [
+            {
+              from: 'system' as const,
+              text: `Nace sabiendo lo que guardaste: ${adopted} ${adopted === 1 ? 'cosa' : 'cosas'} del catálogo. Las conductas entran a prueba y tienen que volver a rendir en este mundo.`,
+              tick: 0,
+            },
+          ]
+        : []),
       {
         from: 'system',
         text: 'Hablá con ella cuando quieras: pedile cosas, enseñale hechos del mundo o preguntale qué hace.',
@@ -649,6 +720,24 @@ export class GameSession {
     ];
     this.rebuildView();
     this.notify();
+  }
+
+  /**
+   * Vuelca el catálogo del cuidador sobre el mundo recién nacido (ADR 0076).
+   * Devuelve cuántas cosas entraron, para poder decirlo.
+   *
+   * Las reglas se copian; las habilidades NO. Una conducta estable en otro
+   * mundo entra acá como candidata y se vuelve a rendir —`adoptCatalogSkills`
+   * usa la misma maquinaria que el legado (ADR 0047/0030)—: el catálogo guarda
+   * lo aprendido, no una licencia para saltearse el examen.
+   */
+  private applyCatalogToNewWorld(): number {
+    seedWorldFromCatalog(this.world, this.catalog);
+    if (this.catalog.skills.length > 0) {
+      this.agent.adoptCatalogSkills(this.catalog.skills);
+      this.ingestAgentEvents();
+    }
+    return catalogSize(this.catalog);
   }
 
   /**
@@ -664,6 +753,10 @@ export class GameSession {
   private adoptNewWorldRules(): void {
     const known = new Set(this.world.recipes.map((recipe) => recipe.id));
     for (const recipe of MVP_RECIPES) {
+      // Lo que el cuidador podó no vuelve (ADR 0075). Sin esta guarda, quitar
+      // una receta de fábrica duraba hasta la próxima carga: esta función la
+      // volvía a sembrar por no encontrarla, que es exactamente su trabajo.
+      if (this.prunedRules.has(recipe.id)) continue;
       if (!known.has(recipe.id)) this.world.recipes.push(structuredClone(recipe));
     }
     // El frío también es física nueva: una mascota guardada antes de que
@@ -683,6 +776,10 @@ export class GameSession {
    * aceptara. Los legados anteriores al ADR no traen las listas y se leen igual.
    */
   private inheritWorldRules(legacy: LegacyReport): void {
+    // No consulta lo podado a propósito: `buildFreshRuntime` acaba de limpiarlo
+    // (ADR 0075). Una generación nueva hereda TODO lo que su antecesora
+    // consiguió que el mundo admitiera, incluso lo que el cuidador le había
+    // quitado a la anterior — la poda valía para aquel mundo, no para este.
     const knownRecipes = new Set(this.world.recipes.map((r) => r.id));
     for (const recipe of legacy.worldRecipes ?? []) {
       if (!knownRecipes.has(recipe.id)) this.world.recipes.push(structuredClone(recipe));
@@ -695,9 +792,25 @@ export class GameSession {
     }
   }
 
-  reset(seed: number): void {
-    this.resetToNewPet(seed);
+  /**
+   * Mundo nuevo. Por defecto nace con el catálogo puesto (ADR 0076);
+   * `fromCatalog: false` es el «empezar de cero» del cuidador, para mirar cómo
+   * se las arregla una mascota sin nada heredado.
+   *
+   * Empezar de cero NO borra el catálogo: lo ignora para este mundo. Borrarlo
+   * es otra decisión y tiene su propio botón.
+   */
+  reset(seed: number, options: { fromCatalog?: boolean } = {}): void {
+    this.resetToNewPet(seed, options);
     void this.save();
+  }
+
+  /** Tira el catálogo entero. Lo aprendido en la partida en curso vuelve a entrar al guardar. */
+  async forgetCatalog(): Promise<void> {
+    this.catalog = emptyCatalog();
+    await clearCatalog(this.store);
+    this.rebuildView();
+    this.notify();
   }
 
   /** Borra el guardado y arranca una mascota nueva de generación 1. */
@@ -719,8 +832,12 @@ export class GameSession {
       library: this.library,
       regressions: this.regressions,
     });
-    this.adoptNewWorldRules();
     const ui = data.ui as Partial<SessionUiState> | undefined;
+    // Se lee ANTES de adoptar las reglas nuevas y el orden no es casual:
+    // `adoptNewWorldRules` siembra lo que falte de `MVP_RECIPES`, así que si
+    // todavía no sabe qué podó el cuidador, resucita justo eso (ADR 0075).
+    this.prunedRules = new Set(ui?.prunedRules ?? []);
+    this.adoptNewWorldRules();
     // Los guardados viejos traen avisos que hoy son efímeros pero antes se
     // persistían: uno de restauración por cada recarga, y los de pausa por
     // error. Se barren acá. Los de error son los peores: apuntan al registro
@@ -783,6 +900,27 @@ export class GameSession {
     });
   }
 
+  /**
+   * Suma al catálogo lo que este mundo aprendió (ADR 0076). Va pegado al
+   * guardado y no en un momento propio: lo aprendido y la partida tienen que
+   * quedar firmes juntos, o una recarga podría encontrar un catálogo que
+   * promete algo que la partida todavía no vivió.
+   *
+   * Solo suma. Sacar del catálogo es un acto explícito —podar o vaciarlo—,
+   * nunca un efecto de haber jugado en un mundo que no tenía algo: si no,
+   * abrir una partida vieja y guardar borraría lo que otra partida aportó.
+   */
+  private async publishCatalog(): Promise<void> {
+    const mine = collectCatalog({
+      world: this.world,
+      library: this.library,
+      baseRecipeIds: MVP_RECIPES.map((recipe) => recipe.id),
+    });
+    const merged = mergeCatalog(this.catalog, mine);
+    this.catalog = merged;
+    await saveCatalog(this.store, merged);
+  }
+
   async save(): Promise<void> {
     const data = captureSession({
       seed: this.seed,
@@ -798,11 +936,13 @@ export class GameSession {
         mockImperfect: this.mockImperfect,
         creativeMode: this.creativeMode,
         ...(this.backpackSize === null ? {} : { backpackSize: this.backpackSize }),
+        ...(this.prunedRules.size === 0 ? {} : { prunedRules: [...this.prunedRules] }),
       } satisfies SessionUiState,
       now: () => new Date().toISOString(),
     });
     try {
       await saveSession(this.store, data);
+      await this.publishCatalog();
     } catch (error) {
       // Con almacenamiento remoto, un corte de red no debe romper el loop:
       // el siguiente autoguardado reintenta.
@@ -1417,6 +1557,172 @@ export class GameSession {
     void this.save();
     this.rebuildView();
     this.notify();
+  }
+
+  /**
+   * Pide podar algo del mundo (ADR 0075): calcula el arrastre y lo deja
+   * esperando confirmación. **No toca nada todavía** — por eso `cancelPrune`
+   * no tiene que deshacer nada, y por eso el número que se muestra es el
+   * número real y no una estimación.
+   */
+  askPrune(ref: PruneRef): void {
+    const plan = planPrune(this.world, ref);
+    this.pendingPrune = { kind: 'world', plan, preview: this.previewOf(plan) };
+    this.rebuildView();
+    this.notify();
+  }
+
+  /**
+   * Lo mismo, para una habilidad entera: todas sus versiones de una.
+   *
+   * La unidad es el NOMBRE y no el id, aunque la biblioteca guarde versiones,
+   * porque es la unidad en la que el cuidador piensa. «Olvidá abrigarse» no
+   * quiere decir «olvidá la v7 y dejá las seis que fallaron»: los intentos
+   * anteriores son la historia de esa habilidad, y una historia sin su final
+   * es basura, no memoria.
+   */
+  askSkillPrune(name: string): void {
+    const versions = this.library.versionsOf(name);
+    const label = (skillId: string): string => {
+      const skill = this.library.get(skillId);
+      return skill ? `${skill.name} v${skill.version}` : skillId;
+    };
+
+    // La unión de los planes de cada versión: lo que se apoyaba en cualquiera
+    // de ellas se cae igual, y las huérfanas son las que sobreviven a todo.
+    const removed = new Set<string>();
+    const orphaned = new Set<string>();
+    for (const version of versions) {
+      const plan = this.library.planRemove(version.id);
+      for (const id of plan.removed) removed.add(id);
+      for (const id of plan.orphaned) orphaned.add(id);
+    }
+    for (const id of removed) orphaned.delete(id);
+
+    const own = new Set(versions.map((v) => v.id));
+    const plan: SkillRemovalPlan = {
+      root: name,
+      removed: [...removed].sort(),
+      orphaned: [...orphaned].sort(),
+    };
+    const preview: PrunePreview = {
+      title: name,
+      lines: [
+        ...plan.removed
+          .filter((id) => !own.has(id))
+          .map((id) => ({ group: 'Se apoyaban en ella', label: label(id) })),
+        ...plan.orphaned.map((id) => ({ group: 'Pierden su ascendencia', label: label(id) })),
+      ],
+      blocked: versions.length === 0 ? 'esa habilidad ya no está en la biblioteca' : null,
+    };
+    this.pendingPrune = { kind: 'skill', plan, preview };
+    this.rebuildView();
+    this.notify();
+  }
+
+  /** Se arrepintió. Como nada se tocó, alcanza con olvidar el plan. */
+  cancelPrune(): void {
+    if (!this.pendingPrune) return;
+    this.pendingPrune = null;
+    this.rebuildView();
+    this.notify();
+  }
+
+  /**
+   * Ejecuta la poda que estaba esperando. Aplica el plan que se mostró, no uno
+   * recalculado: lo que el cuidador aprobó es la lista que leyó.
+   */
+  confirmPrune(): void {
+    const pending = this.pendingPrune;
+    if (!pending || pending.preview.blocked !== null) return;
+    this.pendingPrune = null;
+    if (pending.kind === 'world') {
+      applyPrune(this.world, pending.plan);
+      // Constancia de lo podado, para que la siembra de reglas de fábrica no
+      // lo resucite en la próxima carga. Se anotan todas y no solo las de
+      // `MVP_RECIPES`: una inventada que se anota de más no molesta —nadie la
+      // vuelve a sembrar— y así el legado tampoco la reintroduce (ADR 0047).
+      for (const id of pending.plan.recipes) this.prunedRules.add(id);
+      for (const id of pending.plan.blueprints) this.prunedRules.add(id);
+      // Y sale del catálogo, o la poda duraría hasta el próximo mundo: el
+      // catálogo lo volvería a sembrar, que es el mismo error que ya cometía
+      // la siembra de reglas de fábrica (ADR 0075 → 0076).
+      this.catalog = forgetFromCatalog(this.catalog, {
+        recipes: pending.plan.recipes,
+        interactions: pending.plan.interactions,
+        blueprints: pending.plan.blueprints,
+        decompositions: pending.plan.decompositions,
+        glyphs: pending.plan.glyphs,
+      });
+      this.pushDev('world', {
+        type: 'caretaker.pruned',
+        tick: this.world.tick,
+        data: { root: pending.plan.root, size: prunePlanSize(pending.plan) },
+      });
+    } else {
+      this.library.remove(pending.plan);
+      // La habilidad se olvida por nombre, también en el catálogo.
+      this.catalog = forgetFromCatalog(this.catalog, { skillNames: [pending.plan.root] });
+      this.pushDev('world', {
+        type: 'caretaker.pruned',
+        tick: this.world.tick,
+        data: { root: { type: 'skill', id: pending.plan.root }, size: pending.plan.removed.length },
+      });
+    }
+    void this.save();
+    this.rebuildView();
+    this.notify();
+  }
+
+  /** El plan del mundo contado en voz humana, agrupado como se va a mostrar. */
+  private previewOf(plan: PrunePlan): PrunePreview {
+    const ref = plan.root;
+    const recipeLabel = (id: string): string => {
+      const recipe = this.world.recipes.find((r) => r.id === id);
+      const product = recipe ? recipeProduct(recipe) : undefined;
+      return product ? kindLabel(product.kind) : id;
+    };
+    const decompositionLabel = (id: string): string => {
+      const found = this.world.decompositions.find((d) => d.id === id);
+      return found ? `romper ${kindLabel(found.targetKind)}` : id;
+    };
+    const title =
+      ref.type === 'kind'
+        ? kindLabel(ref.id)
+        : ref.type === 'recipe'
+          ? `la receta de ${recipeLabel(ref.id)}`
+          : ref.type === 'interaction'
+            ? (this.world.interactions.find((i) => i.id === ref.id)?.description ?? ref.id)
+            : ref.type === 'decomposition'
+              ? decompositionLabel(ref.id)
+              : `la obra ${ref.id}`;
+
+    // El tipo raíz no se lista: ya es el título. Listarlo de nuevo haría que
+    // podar algo sin arrastre pareciera llevarse dos cosas.
+    const lines: PruneLine[] = [
+      ...plan.recipes
+        .filter((id) => !(ref.type === 'recipe' && id === ref.id))
+        .map((id) => ({ group: 'Deja de saber construir', label: recipeLabel(id) })),
+      ...plan.interactions
+        .filter((id) => !(ref.type === 'interaction' && id === ref.id))
+        .map((id) => ({
+          group: 'Interacciones que se olvidan',
+          label: this.world.interactions.find((i) => i.id === id)?.description ?? id,
+        })),
+      ...plan.blueprints
+        .filter((id) => !(ref.type === 'blueprint' && id === ref.id))
+        .map((id) => ({ group: 'Obras que se olvidan', label: id })),
+      ...plan.decompositions
+        .filter((id) => !(ref.type === 'decomposition' && id === ref.id))
+        .map((id) => ({ group: 'Deja de saber en qué se deshace', label: decompositionLabel(id) })),
+    ];
+    if (plan.entities.length > 0 && ref.type === 'kind') {
+      lines.push({
+        group: 'Desaparecen del mapa y de la mochila',
+        label: countedKindLabel(ref.id, plan.entities.length),
+      });
+    }
+    return { title, lines, blocked: plan.blocked ?? null };
   }
 
   /**
@@ -2227,6 +2533,8 @@ export class GameSession {
       items: this.itemViews(),
       interactions: this.interactionViews(),
       blueprints: this.blueprintViews(),
+      prune: this.pendingPrune?.preview ?? null,
+      catalogSize: catalogSize(this.catalog),
       pet:
         pet && petPos
           ? {

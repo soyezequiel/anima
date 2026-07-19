@@ -1256,6 +1256,124 @@ export class AnimaAgent {
    * hipótesis "según X, ..." (no como hechos propios) y cada habilidad
    * heredada se re-evalúa en mundos aislados antes de poder promoverse.
    */
+  /**
+   * Adopta artefactos de habilidad que vienen de OTRO mundo — de una
+   * antecesora (ADR 0047) o del catálogo del cuidador (ADR 0076). El origen
+   * cambia el relato, nunca el trato: toda conducta que llega de afuera entra
+   * como `experimental` y tiene que volver a rendir acá.
+   *
+   * Y el criterio decide cómo rinde (ADR 0030). El de un MOTIVO —hambre,
+   * frío— es una constante del motor: este mundo lo re-derivaría igual y no
+   * admite trampa, así que se re-evalúa solo y se promueve solo. El de un
+   * PEDIDO, o el AUSENTE de un artefacto viejo, nació de palabras que nadie de
+   * acá miró: promoverlo re-certificaría contra una vara sin confirmar, y el
+   * error se lavaría mundo tras mundo. Ese espera a que el cuidador confirme.
+   */
+  private adoptSkillArtifacts(
+    artifacts: readonly SkillDefinition[],
+    motivation: string,
+    rationale: string,
+  ): {
+    adoptedSkills: {
+      name: string;
+      version: number;
+      promoted: boolean;
+      needsConfirmation?: boolean;
+    }[];
+    awaitingConfirmation: number;
+  } {
+    const adoptedSkills: {
+      name: string;
+      version: number;
+      promoted: boolean;
+      needsConfirmation?: boolean;
+    }[] = [];
+    let awaitingConfirmation = 0;
+    for (const artifact of artifacts) {
+      const candidate = this.config.library.addExperimental({
+        name: artifact.name,
+        description: artifact.description,
+        motivation,
+        program: structuredClone(artifact.program),
+        expectedOutcome: artifact.expectedOutcome,
+        successCriteria: structuredClone(artifact.successCriteria),
+        ...(artifact.criterionSource !== undefined
+          ? { criterionSource: artifact.criterionSource }
+          : {}),
+        createdAt: this.now(),
+      });
+      this.emit('skill.created', {
+        skillId: candidate.id,
+        name: candidate.name,
+        version: candidate.version,
+        rationale,
+      });
+
+      if (artifact.criterionSource === 'motive') {
+        const { promoted } = evaluateAndApply(
+          candidate,
+          {
+            library: this.config.library,
+            regressions: this.config.regressions,
+            scenarios: this.config.evaluationScenarios,
+            seeds: this.config.evaluationSeeds,
+            maxTicksPerCase: 200,
+            now: () => this.now(),
+            ...(this.config.onEvaluationCase ? { onCase: this.config.onEvaluationCase } : {}),
+          },
+          this.events,
+          this.tick,
+        );
+        adoptedSkills.push({ name: candidate.name, version: candidate.version, promoted });
+        continue;
+      }
+
+      awaitingConfirmation += 1;
+      this.emit('skill.inherited.unconfirmed', {
+        skillId: candidate.id,
+        name: candidate.name,
+        version: candidate.version,
+        criteria: candidate.successCriteria.map(describeCriterion),
+        origin: artifact.criterionSource ?? 'ausente',
+      });
+      this.memory.recordEpisode({
+        kind: 'legacy',
+        summary: `heredé la conducta "${candidate.name}" pero su criterio necesita que mi cuidadora lo confirme`,
+        tick: this.tick,
+        importance: 0.6,
+      });
+      adoptedSkills.push({
+        name: candidate.name,
+        version: candidate.version,
+        promoted: false,
+        needsConfirmation: true,
+      });
+    }
+    return { adoptedSkills, awaitingConfirmation };
+  }
+
+  /**
+   * Adopta lo que el cuidador guardó en su catálogo (ADR 0076). A diferencia
+   * del legado, no viene con testimonio: no hay antecesora que dejó un
+   * mensaje, ni causa de muerte, ni hipótesis "según ella…". Es solo la
+   * conducta, que igual tiene que volver a demostrarse acá.
+   */
+  adoptCatalogSkills(artifacts: readonly SkillDefinition[]): {
+    adoptedSkills: {
+      name: string;
+      version: number;
+      promoted: boolean;
+      needsConfirmation?: boolean;
+    }[];
+  } {
+    const { adoptedSkills } = this.adoptSkillArtifacts(
+      artifacts,
+      'guardada en el catálogo del cuidador; debe demostrar que funciona en este mundo',
+      'artefacto del catálogo',
+    );
+    return { adoptedSkills };
+  }
+
   adoptLegacy(testimony: LegacyTestimony): {
     adoptedSkills: {
       name: string;
@@ -1339,84 +1457,11 @@ export class AnimaAgent {
       });
     }
 
-    const adoptedSkills: {
-      name: string;
-      version: number;
-      promoted: boolean;
-      needsConfirmation?: boolean;
-    }[] = [];
-    let awaitingConfirmation = 0;
-    for (const artifact of testimony.skills) {
-      const candidate = this.config.library.addExperimental({
-        name: artifact.name,
-        description: artifact.description,
-        motivation: `heredada de ${testimony.fromName} (generación ${testimony.generation}); debe demostrar que funciona en mi propio mundo`,
-        program: structuredClone(artifact.program),
-        expectedOutcome: artifact.expectedOutcome,
-        successCriteria: structuredClone(artifact.successCriteria),
-        // El origen de la vara viaja con el legado (ADR 0030): una skill de
-        // motivo se re-certifica sola en el mundo de la heredera; una de pedido
-        // arrastra la vara que su antecesora ya confirmó. Ausente = artefacto
-        // anterior al ADR, y así queda anotado para re-confirmarse.
-        ...(artifact.criterionSource !== undefined
-          ? { criterionSource: artifact.criterionSource }
-          : {}),
-        createdAt: this.now(),
-      });
-      this.emit('skill.created', {
-        skillId: candidate.id,
-        name: candidate.name,
-        version: candidate.version,
-        rationale: `artefacto heredado de ${testimony.fromName}`,
-      });
-
-      // El criterio de un motivo (hambre, frío) es una constante del motor: la
-      // heredera lo re-derivaría igual y no admite trampa, así que se re-evalúa
-      // en su propio mundo y se promueve sola. El de un PEDIDO —o el AUSENTE, de
-      // un guardado anterior al ADR 0030— nació de palabras que la heredera no
-      // miró: promoverlo re-certificaría contra una vara que nadie confirmó, y
-      // el error se lavaría generación tras generación. Ese se adopta como
-      // experimental y espera que la cuidadora confirme su criterio (fase E).
-      if (artifact.criterionSource === 'motive') {
-        const { promoted } = evaluateAndApply(
-          candidate,
-          {
-            library: this.config.library,
-            regressions: this.config.regressions,
-            scenarios: this.config.evaluationScenarios,
-            seeds: this.config.evaluationSeeds,
-            maxTicksPerCase: 200,
-            now: () => this.now(),
-            ...(this.config.onEvaluationCase ? { onCase: this.config.onEvaluationCase } : {}),
-          },
-          this.events,
-          this.tick,
-        );
-        adoptedSkills.push({ name: candidate.name, version: candidate.version, promoted });
-        continue;
-      }
-
-      awaitingConfirmation += 1;
-      this.emit('skill.inherited.unconfirmed', {
-        skillId: candidate.id,
-        name: candidate.name,
-        version: candidate.version,
-        criteria: candidate.successCriteria.map(describeCriterion),
-        origin: artifact.criterionSource ?? 'ausente',
-      });
-      this.memory.recordEpisode({
-        kind: 'legacy',
-        summary: `heredé la conducta "${candidate.name}" pero su criterio necesita que mi cuidadora lo confirme`,
-        tick: this.tick,
-        importance: 0.6,
-      });
-      adoptedSkills.push({
-        name: candidate.name,
-        version: candidate.version,
-        promoted: false,
-        needsConfirmation: true,
-      });
-    }
+    const { adoptedSkills, awaitingConfirmation } = this.adoptSkillArtifacts(
+      testimony.skills,
+      `heredada de ${testimony.fromName} (generación ${testimony.generation}); debe demostrar que funciona en mi propio mundo`,
+      `artefacto heredado de ${testimony.fromName}`,
+    );
 
     if (testimony.message !== undefined && testimony.message.length > 0) {
       this.reply(`Mi antecesora me dejó un mensaje: "${testimony.message}"`);

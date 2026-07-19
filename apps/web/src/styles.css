@@ -864,6 +864,38 @@ select {
   background: transparent;
 }
 
+/* Hay algo pasando en esa pestaña ahora mismo. Un punto y no un número: el
+   contador dice cuánto hay, esto dice que ACABA de cambiar. Late para que se
+   note desde el tablero, donde está la mirada. */
+.tab-live {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  margin-left: 6px;
+  vertical-align: middle;
+  background: var(--accent);
+  animation: tab-live-pulse 1.4s ease-in-out infinite;
+}
+
+/* La pestaña con actividad se lee entera, no solo el punto: quien no distingue
+   ese color igual ve que la etiqueta se despierta. */
+.tab[data-live='true'] {
+  color: var(--text);
+}
+
+@keyframes tab-live-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.85);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .badge {
   background: var(--panel-2);
   border-radius: 999px;
@@ -1683,6 +1715,13 @@ button:disabled {
     opacity: 0.8;
   }
 
+  /* El punto de actividad se queda quieto y encendido: sigue diciendo lo mismo
+     sin latir. */
+  .tab-live {
+    animation: none;
+    opacity: 1;
+  }
+
   /* El nombre de lo señalado aparece de una vez, sin subir. */
   .entity-tip {
     animation: none;
@@ -2096,4 +2135,124 @@ button:disabled {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* --- Poda del cuidador (ADR 0075) --------------------------------------- */
+
+/* El botón de quitar no compite con el contenido: vive apagado y solo se
+   despierta al pasar por encima de su fila. Una acción destructiva repetida en
+   cada tarjeta del catálogo, siempre encendida, convierte el panel en un campo
+   minado. */
+.item-head-wrap {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.item-head-wrap > .item-head {
+  flex: 1;
+  min-width: 0;
+}
+
+.prune-button {
+  flex: none;
+  align-self: center;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.item-card:hover .prune-button,
+.skill-group:hover .prune-button,
+.prune-button:focus-visible {
+  opacity: 1;
+}
+
+.prune-button:hover,
+.prune-button:focus-visible {
+  color: var(--danger, #e2726e);
+  border-color: var(--danger, #e2726e);
+}
+
+.skill-group-head .prune-button {
+  margin-left: auto;
+}
+
+.prune-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 30;
+  padding: 24px;
+}
+
+.prune-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  max-width: 520px;
+  max-height: 100%;
+  overflow: auto;
+  box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.prune-card h2 {
+  margin-top: 0;
+  font-size: 18px;
+}
+
+.prune-groups {
+  margin: 12px 0;
+}
+
+.prune-group {
+  margin-bottom: 10px;
+}
+
+.prune-group dt {
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: lowercase;
+}
+
+.prune-group dd {
+  margin: 2px 0 0;
+}
+
+.prune-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.prune-list li {
+  padding: 2px 0 2px 10px;
+  border-left: 2px solid var(--border);
+}
+
+.prune-warning {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.prune-blocked {
+  margin: 12px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--danger, #e2726e);
+  background: var(--panel-2);
+}
+
+.prune-card .danger {
+  border-color: var(--danger, #e2726e);
+  color: var(--danger, #e2726e);
 }

@@ -249,6 +249,30 @@ export interface PickupView {
   tick: number;
 }
 
+/**
+ * Una cosa que se cae junto con lo que se pidió podar, en voz humana. El
+ * cuidador no confirma ids: confirma «la receta de la tabla de ramas» y «3
+ * ejemplares en el mapa».
+ */
+export interface PruneLine {
+  /** Qué clase de cosa es: "Recetas", "Interacciones", "En el mapa". */
+  group: string;
+  label: string;
+}
+
+/**
+ * Lo que va a pasar si el cuidador confirma. Se calcula sin tocar nada, así
+ * que cancelar no deshace: nunca llegó a hacerse.
+ */
+export interface PrunePreview {
+  /** Qué se pidió sacar, en voz humana: «el tronco», «juntar agua». */
+  title: string;
+  /** Todo el arrastre, agrupado. Vacío = se lleva solo lo que se pidió. */
+  lines: PruneLine[];
+  /** Por qué no se puede; null si se puede. */
+  blocked: string | null;
+}
+
 export interface SkillView {
   id: string;
   name: string;
@@ -482,6 +506,19 @@ export interface GameView {
   interactions: InteractionView[];
   /** Las obras que aprendió a levantar (ADR 0056). Ninguna viene de fábrica. */
   blueprints: BlueprintView[];
+  /**
+   * La poda que el cuidador pidió y todavía no confirmó (ADR 0075). null
+   * mientras no hay ninguna en curso. Vive en el view y no en el estado local
+   * del panel a propósito: el arrastre lo calcula el mundo, así que el mundo
+   * es quien tiene que contarlo.
+   */
+  prune: PrunePreview | null;
+  /**
+   * Cuántas cosas guarda el catálogo del cuidador (ADR 0076): lo aprendido que
+   * vive fuera de la partida y con lo que nace cada mundo nuevo. 0 = todavía
+   * no aprendió nada que valga la pena guardar.
+   */
+  catalogSize: number;
   pet: PetView | null;
   goals: GoalView[];
   currentGoal: GoalView | null;

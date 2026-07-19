@@ -232,6 +232,18 @@ export interface SkillLibraryData {
   counter: number;
 }
 
+/**
+ * Lo que se lleva puesto olvidar una habilidad. Dato puro: se calcula, se
+ * muestra y se descarta sin haber tocado la biblioteca.
+ */
+export interface SkillRemovalPlan {
+  root: string;
+  /** Ids que desaparecen: la pedida y todo lo que se apoyaba en ella. */
+  removed: string[];
+  /** Ids que sobreviven pero pierden a su ancestro: se les corta el puntero. */
+  orphaned: string[];
+}
+
 export class SkillLibrary {
   private skills = new Map<string, SkillDefinition>();
   private counter = 0;
@@ -416,6 +428,61 @@ export class SkillLibrary {
       incumbent.status = 'archived';
     }
     skill.status = 'provisional';
+  }
+
+  /**
+   * Qué se lleva puesto olvidar una habilidad, sin olvidar nada todavía.
+   * Hermano de `planPrune` del mundo y con el mismo motivo: el arrastre se
+   * mira antes de decidir, no después.
+   *
+   * Una habilidad que usa a otra no sobrevive a su pieza — su programa la
+   * invoca y sin ella no hace nada, así que se cae con ella, y la que la usaba
+   * a esa también. Eso se cierra transitivamente.
+   *
+   * La ascendencia NO arrastra: `parentVersionId` es de dónde salió, no de qué
+   * depende. Una v3 sigue funcionando igual aunque se olvide la v1 de la que
+   * nació; lo único que se pierde es saber de dónde venía. Por eso las hijas
+   * quedan en `orphaned` — se les corta el puntero al aplicar, y siguen vivas.
+   */
+  planRemove(id: string): SkillRemovalPlan {
+    const root = this.skills.get(id);
+    if (!root) return { root: id, removed: [], orphaned: [] };
+
+    const removed = new Set<string>([id]);
+    const pending = [id];
+    while (pending.length > 0) {
+      const fallen = pending.pop()!;
+      for (const skill of this.all()) {
+        if (removed.has(skill.id)) continue;
+        if (skill.dependencies.some((d) => d.skillId === fallen)) {
+          removed.add(skill.id);
+          pending.push(skill.id);
+        }
+      }
+    }
+
+    const orphaned = this.all()
+      .filter((s) => !removed.has(s.id) && s.parentVersionId !== undefined)
+      .filter((s) => removed.has(s.parentVersionId!))
+      .map((s) => s.id);
+
+    return { root: id, removed: [...removed].sort(), orphaned: orphaned.sort() };
+  }
+
+  /**
+   * Ejecuta un plan ya mirado. Borra de verdad, no archiva: `archived` es el
+   * tombstone del EVALUADOR —«se probó y no llegó»—, y esa distinción es
+   * conocimiento que vale guardar. Esto es otra cosa: el cuidador dice que no
+   * quiere saber más nada de esto. Dejarlo como tombstone lo haría reaparecer
+   * en cada listado que mire estados y lo seguiría cargando en el guardado,
+   * que es el problema que se vino a resolver.
+   */
+  remove(plan: SkillRemovalPlan): void {
+    for (const id of plan.removed) this.skills.delete(id);
+    for (const id of plan.orphaned) {
+      const skill = this.skills.get(id);
+      if (skill) delete skill.parentVersionId;
+    }
   }
 
   recordUse(id: string, success: boolean, at: string): void {

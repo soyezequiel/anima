@@ -3,6 +3,7 @@ import { DND_ITEM_KIND } from '../dnd.js';
 import { ItemIcon } from './ItemIcon.js';
 import { MaterialTree } from './MaterialTree.js';
 import type { Expansion } from './expansion.js';
+import type { GameSession } from '../session/GameSession.js';
 import type { GameView, ItemIngredientView, ItemView } from '../session/view.js';
 
 /**
@@ -56,10 +57,35 @@ function Ingredients({
   );
 }
 
+/**
+ * El botón de quitar (ADR 0075). No borra: abre la confirmación, que es donde
+ * se ve el arrastre. Va en su propia función porque aparece en tres lugares y
+ * los tres tienen que verse y sonar igual — la acción destructiva no puede ser
+ * un botón distinto según en qué lista estés.
+ */
+function PruneButton({ onPrune, label }: { onPrune: () => void; label: string }) {
+  return (
+    <button
+      className="prune-button"
+      data-testid="prune-button"
+      title={label}
+      aria-label={label}
+      // El clic no tiene que abrir/cerrar la ficha que lo contiene.
+      onClick={(e) => {
+        e.stopPropagation();
+        onPrune();
+      }}
+    >
+      quitar
+    </button>
+  );
+}
+
 function ItemCard({
   item,
   byKind,
   onInspect,
+  onPrune,
   expansion,
   focusNonce,
 }: {
@@ -67,6 +93,8 @@ function ItemCard({
   byKind: Map<string, ItemView>;
   /** Seguir bajando por el árbol sin salir del catálogo. */
   onInspect?: ((kind: string) => void) | undefined;
+  /** Pedir que este tipo salga del mundo. */
+  onPrune: (kind: string) => void;
   expansion: Expansion;
   /**
    * Cambia cada vez que alguien pide mirar ESTE objeto de cerca (ADR 0056,
@@ -133,13 +161,19 @@ function ItemCard({
         e.dataTransfer.effectAllowed = 'copy';
       }}
     >
-      {hasDetail ? (
-        <button className="item-head" onClick={() => setOpen(!open)} aria-expanded={open}>
-          {head}
-        </button>
-      ) : (
-        <div className="item-head item-head-plain">{head}</div>
-      )}
+      {/* El botón de quitar va al lado de la cabecera y no adentro: la
+          cabecera ya es un botón cuando hay detalle, y un botón dentro de otro
+          no es HTML válido ni se puede alcanzar con el teclado. */}
+      <div className="item-head-wrap">
+        {hasDetail ? (
+          <button className="item-head" onClick={() => setOpen(!open)} aria-expanded={open}>
+            {head}
+          </button>
+        ) : (
+          <div className="item-head item-head-plain">{head}</div>
+        )}
+        <PruneButton label={`Quitar ${item.name} del mundo`} onPrune={() => onPrune(item.kind)} />
+      </div>
       {open && (
         <dl className="item-stats" data-testid="item-stats">
           {/* El árbol seguido hasta el suelo (ADR 0031): lo que cuesta de
@@ -191,17 +225,20 @@ function ItemCard({
 
 export function ItemsPanel({
   view,
+  session,
   focus,
   onInspect,
   expansion,
 }: {
   view: GameView;
+  session: GameSession;
   /** Saltar a otra ficha desde el árbol: el catálogo se recorre a sí mismo. */
   onInspect?: (kind: string) => void;
   expansion: Expansion;
   /** Qué objeto mirar de cerca, si se llegó acá desde otra pestaña. */
   focus?: { kind: string; nonce: number } | null;
 }) {
+  const pruneKind = (kind: string) => session.askPrune({ type: 'kind', id: kind });
   const invented = view.items.filter((i) => i.origin === 'invented');
   const builtin = view.items.filter((i) => i.origin === 'builtin');
   // El catálogo se indexa una vez y lo comparten todas las tarjetas: cada
@@ -228,6 +265,7 @@ export function ItemsPanel({
             item={item}
             byKind={byKind}
             onInspect={onInspect}
+            onPrune={pruneKind}
             expansion={expansion}
             {...(focus?.kind === item.kind ? { focusNonce: focus.nonce } : {})}
           />
@@ -241,6 +279,7 @@ export function ItemsPanel({
             item={item}
             byKind={byKind}
             onInspect={onInspect}
+            onPrune={pruneKind}
             expansion={expansion}
             {...(focus?.kind === item.kind ? { focusNonce: focus.nonce } : {})}
           />
@@ -262,15 +301,21 @@ export function ItemsPanel({
             data-testid="interaction-entry"
             data-interaction={interaction.id}
           >
-            <div className="item-head item-head-plain">
-              <span className="item-head-row">
-                <strong>{interaction.description}</strong>
-                <span className="pill pill-origin-invented">inventada (IA)</span>
-              </span>
-              <span className="muted item-does">
-                {`postura: ${interaction.stanceLabel} · objetivo: ${interaction.targetLabel}`}
-                {interaction.requiresLabel ? ` · lleva: ${interaction.requiresLabel}` : ''}
-              </span>
+            <div className="item-head-wrap">
+              <div className="item-head item-head-plain">
+                <span className="item-head-row">
+                  <strong>{interaction.description}</strong>
+                  <span className="pill pill-origin-invented">inventada (IA)</span>
+                </span>
+                <span className="muted item-does">
+                  {`postura: ${interaction.stanceLabel} · objetivo: ${interaction.targetLabel}`}
+                  {interaction.requiresLabel ? ` · lleva: ${interaction.requiresLabel}` : ''}
+                </span>
+              </div>
+              <PruneButton
+                label={`Que se olvide de ${interaction.description}`}
+                onPrune={() => session.askPrune({ type: 'interaction', id: interaction.id })}
+              />
             </div>
           </li>
         ))}

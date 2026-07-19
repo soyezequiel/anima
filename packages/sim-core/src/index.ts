@@ -10,6 +10,7 @@ export * from './decomposition-validation.js';
 export * from './glyphs.js';
 export * from './glyph-validation.js';
 export * from './world.js';
+export * from './pruning.js';
 export * from './actions.js';
 export * from './events.js';
 export * from './step.js';

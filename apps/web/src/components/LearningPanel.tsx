@@ -1,3 +1,4 @@
+import type { GameSession } from '../session/GameSession.js';
 import type { GameView } from '../session/view.js';
 import { MindPanel } from './MindPanel.js';
 import { SkillsPanel } from './SkillsPanel.js';
@@ -45,7 +46,7 @@ function LiveLearning({ dev }: { dev: NonNullable<GameView['skillDev']> }) {
   );
 }
 
-export function LearningPanel({ view }: { view: GameView }) {
+export function LearningPanel({ view, session }: { view: GameView; session: GameSession }) {
   return (
     <div className="learning-panel" data-testid="learning-panel">
       <div className="learn-how">
@@ -72,7 +73,7 @@ export function LearningPanel({ view }: { view: GameView }) {
           Una tarjeta por habilidad. Tocá una para ver por qué la creó, cómo le fue y qué intentos
           fallaron en el camino.
         </p>
-        <SkillsPanel view={view} />
+        <SkillsPanel view={view} session={session} />
       </section>
 
       <section>

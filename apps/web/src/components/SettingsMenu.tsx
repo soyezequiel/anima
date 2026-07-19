@@ -86,6 +86,8 @@ export function SettingsMenu({
   const [claudeSettings, setClaudeSettings] = useState<ClaudeSettings>(() => readClaudeSettings());
   const [limits, setLimits] = useState<AiLimits | 'loading' | 'error' | null>(null);
   const [seedInput, setSeedInput] = useState(String(view.seed));
+  /** Si el próximo reinicio ignora el catálogo (ADR 0076). Del gesto, no del ajuste. */
+  const [fromScratch, setFromScratch] = useState(false);
   const menuRef = useRef<HTMLDetailsElement>(null);
   useDismissablePanel(menuRef);
 
@@ -529,7 +531,7 @@ export function SettingsMenu({
               e.preventDefault();
               const seed = Number(seedInput);
               if (!Number.isFinite(seed)) return;
-              session.reset(seed);
+              session.reset(seed, { fromCatalog: !fromScratch });
               // Reiniciar es un «ya está»: el panel se aparta para dejar ver
               // el mundo nuevo en vez de quedarse tapándolo.
               if (menuRef.current) menuRef.current.open = false;
@@ -539,8 +541,35 @@ export function SettingsMenu({
               <span>Semilla del mundo</span>
               <small>
                 Reiniciar descarta el mundo actual y empieza uno nuevo con esta semilla.
+                {view.catalogSize > 0 &&
+                  ` La mascota nueva nace con tu catálogo puesto: ${view.catalogSize} ${
+                    view.catalogSize === 1 ? 'cosa guardada' : 'cosas guardadas'
+                  }.`}
               </small>
             </label>
+            {/* El «de cero» es del gesto de reiniciar, no un ajuste que quede
+                puesto: se lee en el submit y vuelve a apagarse solo. Vivir con
+                el catálogo es lo normal; arrancar sin él es la excepción que
+                se pide en el momento (ADR 0076). */}
+            {view.catalogSize > 0 && (
+              <div className="ai-toggle">
+                <label htmlFor="from-scratch">
+                  <span>Empezar de cero</span>
+                  <small>
+                    Sin nada del catálogo: ni recetas, ni interacciones, ni conductas. Para ver cómo
+                    se las arregla sola. No borra el catálogo, lo ignora en este mundo.
+                  </small>
+                </label>
+                <input
+                  id="from-scratch"
+                  type="checkbox"
+                  role="switch"
+                  data-testid="from-scratch-toggle"
+                  checked={fromScratch}
+                  onChange={(e) => setFromScratch(e.target.checked)}
+                />
+              </div>
+            )}
             <div className="seed-row">
               <input
                 id="seed-input"

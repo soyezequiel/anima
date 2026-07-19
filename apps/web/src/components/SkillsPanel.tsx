@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { GameSession } from '../session/GameSession.js';
 import type { GameView, SkillView } from '../session/view.js';
 
 /** «alcanzar-alimento-bloqueado» → «alcanzar alimento bloqueado» */
@@ -94,7 +95,7 @@ function SkillCard({
  * queda plegado como «intentos anteriores» para que ocho versiones muertas no
  * tapen la historia.
  */
-function SkillGroup({ versions }: { versions: SkillView[] }) {
+function SkillGroup({ versions, onForget }: { versions: SkillView[]; onForget: () => void }) {
   const sorted = [...versions].sort((a, b) => a.version - b.version);
   const stable = [...sorted].reverse().find((s) => s.status === 'stable');
   const current = stable ?? sorted[sorted.length - 1]!;
@@ -123,6 +124,18 @@ function SkillGroup({ versions }: { versions: SkillView[] }) {
       <header className="skill-group-head">
         <strong className="skill-group-title">{humanName(current.name)}</strong>
         <span className={`pill pill-${chip.cls}`}>{chip.text}</span>
+        {/* Olvidar se pide sobre la habilidad entera y no sobre una versión
+            (ADR 0075): los intentos anteriores SON esta habilidad, y dejar
+            los seis que fallaron borrando el que aprobó no es olvidar nada. */}
+        <button
+          className="prune-button"
+          data-testid="prune-button"
+          title={`Que se olvide de ${humanName(current.name)}`}
+          aria-label={`Que se olvide de ${humanName(current.name)}`}
+          onClick={onForget}
+        >
+          olvidar
+        </button>
       </header>
       <p className="skill-group-sub muted">{summary}</p>
       <ul className="list">
@@ -244,7 +257,7 @@ function RegressionRow({ group }: { group: RegressionGroup }) {
   );
 }
 
-export function SkillsPanel({ view }: { view: GameView }) {
+export function SkillsPanel({ view, session }: { view: GameView; session: GameSession }) {
   const byName = new Map<string, SkillView[]>();
   for (const skill of view.skills) {
     const list = byName.get(skill.name) ?? [];
@@ -262,7 +275,11 @@ export function SkillsPanel({ view }: { view: GameView }) {
       )}
       <ul className="list skill-groups">
         {[...byName.values()].map((versions) => (
-          <SkillGroup key={versions[0]!.name} versions={versions} />
+          <SkillGroup
+            key={versions[0]!.name}
+            versions={versions}
+            onForget={() => session.askSkillPrune(versions[0]!.name)}
+          />
         ))}
       </ul>
       {regressionGroups.length > 0 && (

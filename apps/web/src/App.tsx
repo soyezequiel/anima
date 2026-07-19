@@ -12,7 +12,9 @@ import { GoalsPanel } from './components/GoalsPanel.js';
 import { useExpansion } from './components/expansion.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
 import { LearningPanel } from './components/LearningPanel.js';
+import { PruneOverlay } from './components/PruneOverlay.js';
 import { StatusPanel } from './components/StatusPanel.js';
+import { useTabActivity } from './components/tabActivity.js';
 import { WorksPanel } from './components/WorksPanel.js';
 import { ThoughtTicker } from './components/ThoughtTicker.js';
 import { VitalsHeader } from './components/VitalsHeader.js';
@@ -58,6 +60,11 @@ export function App({ session, account }: { session: GameSession; account: Cloud
    * perdía a los pocos segundos y el árbol se cerraba solo.
    */
   const expansion = useExpansion();
+  /**
+   * Qué pestaña se está moviendo ahora mismo. Se mira sola —es una lectura del
+   * view— y sirve justamente para las cinco que NO se están viendo.
+   */
+  const live = useTabActivity(view);
   const [showWelcome, setShowWelcome] = useState(() => !welcomeAlreadySeen());
   const [nameDraft, setNameDraft] = useState<string | null>(null);
 
@@ -186,17 +193,25 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           <VitalsHeader view={view} onInspect={inspectItem} expansion={expansion} />
 
           <nav className="tabs rd-tabs">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                className={tab === t.id ? 'tab active' : 'tab'}
-                data-testid={`tab-${t.id}`}
-                onClick={() => setTab(t.id)}
-              >
-                {t.label}
-                {t.badge !== undefined && t.badge > 0 && <span className="badge">{t.badge}</span>}
-              </button>
-            ))}
+            {tabs.map((t) => {
+              // La pestaña abierta no necesita el punto: lo que pasa ahí se ve.
+              const active = live.has(t.id as Exclude<Tab, 'dev'>) && tab !== t.id;
+              return (
+                <button
+                  key={t.id}
+                  className={tab === t.id ? 'tab active' : 'tab'}
+                  data-testid={`tab-${t.id}`}
+                  data-live={active ? 'true' : undefined}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                  {active && (
+                    <span className="tab-live" title={`Hay actividad en ${t.label}`} role="img" aria-label="hay actividad" />
+                  )}
+                  {t.badge !== undefined && t.badge > 0 && <span className="badge">{t.badge}</span>}
+                </button>
+              );
+            })}
             {/* Registro técnico: accesible pero fuera del foco. */}
             <button
               className={`tab rd-dev${tab === 'dev' ? ' active' : ''}`}
@@ -212,15 +227,22 @@ export function App({ session, account }: { session: GameSession; account: Cloud
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
             {tab === 'objetivos' && <GoalsPanel view={view} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
-            {tab === 'objetos' && <ItemsPanel view={view} focus={focusItem} onInspect={inspectItem} expansion={expansion} />}
+            {tab === 'objetos' && <ItemsPanel view={view} session={session} focus={focusItem} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'obras' && <WorksPanel view={view} onInspect={inspectItem} />}
-            {tab === 'aprendizaje' && <LearningPanel view={view} />}
+            {tab === 'aprendizaje' && <LearningPanel view={view} session={session} />}
             {tab === 'dev' && <DevPanel view={view} session={session} />}
           </div>
         </aside>
       </main>
 
       {showWelcome && <WelcomeOverlay onStart={startPlaying} />}
+      {view.prune && (
+        <PruneOverlay
+          preview={view.prune}
+          onConfirm={() => session.confirmPrune()}
+          onCancel={() => session.cancelPrune()}
+        />
+      )}
     </div>
   );
 }
