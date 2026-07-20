@@ -1,4 +1,5 @@
 import type { LegacyReport } from '@anima/persistence';
+import type { SkillSubject } from './skill-subjects.js';
 
 /**
  * View model inmutable que la sesión entrega a la UI en cada tick.
@@ -297,6 +298,8 @@ export interface SkillView {
   knownFailures: string[];
   parentVersionId: string | null;
   programSummary: string[];
+  /** Los objetos que toca, leídos de su programa (ver `skill-subjects.ts`). */
+  subjects: SkillSubject[];
 }
 
 export interface ExperimentView {

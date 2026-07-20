@@ -165,11 +165,20 @@ export type ModelRequest =
       /** Recetas que ya existen: no tiene sentido reinventarlas. */
       existingRecipes: string[];
       /**
-       * Cuántos bloques puede cargar: el tope de una obra (ADR 0032), porque la
-       * junta entera antes de colocarla. Sin esto el modelo propone casas que no
-       * le entran en los brazos y el mundo las rechaza.
+       * Hasta dónde llega una obra desde su ancla, en celdas (ADR 0035). Viaja
+       * porque quien imagina no puede leer al validador: el texto decía «x,y ∈
+       * {-1,0,1}» —el alcance del brazo del ADR 0032— mucho después de que la
+       * obra pasara a levantarse caminando. Con esa reja, el puente más largo
+       * que podía imaginar medía 3 celdas y el cauce medía 4: no era un error
+       * de cálculo, era un imposible.
        */
-      blockBudget?: number;
+      reach?: number;
+      /**
+       * Cuántos bloques admite un plano. Ya no es lo que puede cargar: desde el
+       * ADR 0035 camina hasta cada celda, así que las manos dejaron de ser el
+       * techo.
+       */
+      maxBlocks?: number;
       /** Rechazos previos del mundo: por qué su idea anterior no era posible. */
       rejections?: string[];
       /**

@@ -901,7 +901,13 @@ afirmación suya— contra lo que tú observas.
 Responde solo con JSON: {"willing": true|false, "reason": "en primera persona,
 breve, diciendo POR QUÉ según tu situación concreta"}`,
       };
-    case 'recipe.propose':
+    case 'recipe.propose': {
+      // Los topes reales de una obra los pone el validador del mundo (ADR
+      // 0035). Si no llegan en el pedido se asume ese mismo mundo: lo que no
+      // puede pasar de nuevo es que este texto invente un límite más chico y
+      // le prohíba imaginar lo que el mundo sí acepta.
+      const reach = request.reach ?? 4;
+      const maxBlocks = request.maxBlocks ?? 24;
       return {
         schema: RECIPE_SCHEMA,
         prompt: `Eres la mente de una mascota virtual que necesita algo que su mundo todavía
@@ -946,22 +952,41 @@ cosa ES de verdad:
   tronco — primero la tabla (del tronco), después la pared (de tablas), al
   final lo pedido (de paredes). Cada pieza intermedia debe ser "portable" para
   poder usarla de ingrediente.
-- Algo demasiado GRANDE para una sola celda (una casa, un refugio de varias
-  paredes): una OBRA. No es un objeto que aparece, son BLOQUES colocados en el
-  suelo alrededor. Devuelve {"recipes":[<las recetas de los bloques, como el
+- Algo demasiado GRANDE para una sola celda (una casa, un refugio, un puente,
+  un muro largo): una OBRA. No es un objeto que aparece, son BLOQUES colocados
+  en el suelo. Devuelve {"recipes":[<las recetas de los bloques, como el
   array de arriba>], "blueprint":{"id":"${request.wantedId ?? 'obra'}",
-  "placements":[{"kind":"tipo-de-bloque","offset":{"x":-1..1,"y":-1..1}}]}}.
-  Cada offset es una celda contigua (x,y ∈ {-1,0,1}, nunca 0,0), los bloques
-  deben ser "portable" y sólidos, y DEJA UNA ABERTURA para no tapiarte adentro.
-  IMPORTANTE: junta la obra entera antes de colocarla, así que no puede tener
-  más de ${request.blockBudget ?? 6} bloques (lo que podés cargar). Una casa de
-  ${Math.max(3, (request.blockBudget ?? 6) - 1)} paredes con una puerta alcanza;
-  usa bloques de UN solo material (una pared de un tronco) para que te entren.
+  "placements":[{"kind":"tipo-de-bloque","offset":{"x":..,"y":..}}]}}.
+  Cada offset se mide desde donde te PARÁS para levantar la obra, y llegás
+  hasta ${reach} celdas en cualquier dirección (x,y enteros entre -${reach} y
+  ${reach}, nunca 0,0): la obra puede medir hasta ${reach * 2 + 1} celdas de
+  punta a punta. El 0,0 no está prohibido por capricho: es TU celda, estás
+  parada ahí, sobre suelo firme, y por eso no lleva bloque.
+  Caminás hasta cada celda para colocar su bloque, así que lo que cargás NO es
+  el límite: el plano admite hasta ${maxBlocks} bloques. Los bloques deben ser
+  "portable" (los llevás uno por uno).
+  DALE LA FORMA DEL PROBLEMA, que es lo único que hace que la obra sirva:
+  - Si hay que SALVAR UNA DISTANCIA (cruzar agua, un pozo, un hueco): te parás
+    en la orilla y la obra sale de tus pies HACIA EL OBSTÁCULO, TODA PARA EL
+    MISMO LADO — celdas seguidas, sin huecos, que cubren la distancia ENTERA.
+    No la repartas alrededor tuyo: vos estás en tierra firme, así que un
+    tendido centrado en vos deja la mitad tirada en la orilla y la otra mitad
+    no llega. Como sale toda para un lado, un cruce puede tener hasta ${reach}
+    celdas de largo. Una fila más corta que el obstáculo no cruza nada: contá
+    las celdas antes de elegir el largo. Del otro lado no hace falta bloque, ahí
+    ya pisás tierra. Esos bloques tienen que ser "footing" y NO sólidos — si no,
+    no podés caminarlos.
+  - Si hay que ENCERRAR UN ESPACIO (una casa, un refugio, un corral), la obra
+    es un contorno de bloques sólidos, y DEJA UNA ABERTURA para no tapiarte
+    adentro.
+  Usa bloques de UN solo material (una pasarela de un tronco): cuanto más
+  simple la pieza, menos viajes.
 
 Responde únicamente con JSON, con la idea (receta, array de recetas, u obra)
 serializada como string:
 {"recipeJson": "<tu idea serializada como JSON>", "rationale": "por qué esto ayuda, en español rioplatense (voseo: vos/tenés/podés/mirá, nunca tú)"}`,
       };
+    }
     case 'entity.describe':
       return {
         schema: RECIPE_SCHEMA,

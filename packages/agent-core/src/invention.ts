@@ -7,6 +7,8 @@ import type {
   Perception,
 } from '@anima/sim-core';
 import {
+  MAX_BLUEPRINT_BLOCKS,
+  MAX_BLUEPRINT_OFFSET,
   MAX_RECIPE_DEPTH,
   decompositionFor,
   recipeProduct,
@@ -576,10 +578,14 @@ export class InventionEngine {
         (recipe) =>
           `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
       ),
-      // El tope de una obra: lo que puede cargar (ADR 0032). Va siempre — si la
-      // idea resulta un objeto, no estorba; si resulta una obra, evita que
-      // proponga una casa que no le entra en los brazos.
-      blockBudget: perception.self.inventoryCapacity,
+      // Los topes de una obra salen del VALIDADOR, no de una copia escrita a
+      // mano en el texto de invención (ADR 0035). Esa copia se quedó en el
+      // mundo del ADR 0032 —alcance del brazo, la obra entera en los brazos— y
+      // le prohibía imaginar planos que el mundo aceptaba sin chistar: con un
+      // tope de 3 celdas de largo, ningún puente suyo podía cruzar un cauce de
+      // 4. Un límite que se copia es un límite que se desincroniza.
+      reach: MAX_BLUEPRINT_OFFSET,
+      maxBlocks: MAX_BLUEPRINT_BLOCKS,
       ...(this.recipeRejections.length > 0 ? { rejections: [...this.recipeRejections] } : {}),
     });
     if (response === null) return null;

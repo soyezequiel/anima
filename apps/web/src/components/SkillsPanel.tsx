@@ -1,19 +1,59 @@
 import { useState } from 'react';
 import type { GameSession } from '../session/GameSession.js';
-import type { GameView, SkillView } from '../session/view.js';
+import type { SkillSubject } from '../session/skill-subjects.js';
+import type { GameView, ItemView, SkillView } from '../session/view.js';
+import { ItemIcon } from './ItemIcon.js';
 
 /** «alcanzar-alimento-bloqueado» → «alcanzar alimento bloqueado» */
 function humanName(name: string): string {
   return name.replace(/-/g, ' ');
 }
 
-/** Estados del motor, dichos en castellano llano. */
-const STATUS_LABEL: Record<string, string> = {
-  stable: 'en uso',
-  experimental: 'en pruebas',
-  deprecated: 'en desuso',
-  archived: 'descartada',
-};
+/**
+ * Con qué cosas trata la habilidad, dibujadas.
+ *
+ * Es el ancla visual que al panel le faltaba: los nombres son slugs y todas
+ * las tarjetas se ven iguales, así que encontrar «la de la comida» obligaba a
+ * leer una por una. Un glifo se reconoce de un vistazo, y son los MISMOS que
+ * el tablero y el catálogo (`ItemIcon`) — una cosa no puede verse de dos
+ * maneras según en qué pestaña estés.
+ *
+ * El verbo adelante importa tanto como el dibujo: «come baya» y «golpea roca»
+ * dicen qué papel juega cada cosa. Sin él la tira sería un montón de íconos
+ * sin gramática, que es carga nueva en vez de menos.
+ */
+function SubjectStrip({
+  subjects,
+  byKind,
+}: {
+  subjects: SkillSubject[];
+  byKind: Map<string, ItemView>;
+}) {
+  if (subjects.length === 0) return null;
+  return (
+    <ul className="skill-subjects" data-testid="skill-subjects">
+      {subjects.map((subject) => {
+        const known = subject.kind !== null ? byKind.get(subject.kind) : undefined;
+        return (
+          <li key={subject.kind ?? subject.label} className="skill-subject">
+            <span className="skill-subject-role">{subject.role}</span>
+            {/* Lo buscado por rasgo («algo comestible») no tiene tipo y por lo
+                tanto no tiene dibujo: se dice con palabras y ya. */}
+            {subject.kind !== null && (
+              <ItemIcon
+                kind={subject.kind}
+                traits={known?.traits ?? {}}
+                material={known?.material}
+                glyph={known?.glyph}
+              />
+            )}
+            <span className="skill-subject-name">{subject.label}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
 
 function pct(rate: number): string {
   return `${Math.round(rate * 100)}%`;
@@ -32,9 +72,12 @@ function SkillCard({
   const rate = skill.lastEvaluationSuccessRate;
   return (
     <li className="skill-card" data-testid="skill-item" data-status={skill.status}>
+      {/* El estado ya lo dice el chip del grupo. Repetirlo acá en un `pill`
+          obligaba a leer tres veces el mismo hecho antes de notar que era el
+          mismo; lo que esta línea aporta de nuevo es cómo le fue. */}
       <button className="skill-head" onClick={() => setOpen(!open)}>
-        <span className={`pill pill-${skill.status}`}>
-          {STATUS_LABEL[skill.status] ?? skill.status}
+        <span className="skill-head-caret" aria-hidden="true">
+          {open ? '▾' : '▸'}
         </span>
         <strong>
           {current ? 'versión actual' : 'intento'} <span className="muted">v{skill.version}</span>
@@ -95,7 +138,15 @@ function SkillCard({
  * queda plegado como «intentos anteriores» para que ocho versiones muertas no
  * tapen la historia.
  */
-function SkillGroup({ versions, onForget }: { versions: SkillView[]; onForget: () => void }) {
+function SkillGroup({
+  versions,
+  byKind,
+  onForget,
+}: {
+  versions: SkillView[];
+  byKind: Map<string, ItemView>;
+  onForget: () => void;
+}) {
   const sorted = [...versions].sort((a, b) => a.version - b.version);
   const stable = [...sorted].reverse().find((s) => s.status === 'stable');
   const current = stable ?? sorted[sorted.length - 1]!;
@@ -109,21 +160,25 @@ function SkillGroup({ versions, onForget }: { versions: SkillView[]; onForget: (
       ? { cls: 'experimental', text: 'aprendiéndola' }
       : { cls: 'archived', text: 'todavía no le sale' };
 
-  const summary = stable
-    ? `La aprendió al intento ${current.version}${
+  // Lo que antes era una frase («La aprendió al intento 3 y ya la usó 12
+  // veces») son dos datos sueltos: el chip ya dice si la sabe, y el resto cabe
+  // en un renglón al margen. La prosa repetía el chip con más palabras.
+  const meta = stable
+    ? `v${current.version}${
         current.totalRuns > 0
-          ? ` y ya la usó ${current.totalRuns} ${current.totalRuns === 1 ? 'vez' : 'veces'}`
+          ? ` · usada ${current.totalRuns} ${current.totalRuns === 1 ? 'vez' : 'veces'}`
           : ''
-      }.`
+      }`
     : current.status === 'experimental'
-      ? `La está aprendiendo: va por el intento ${current.version}.`
-      : `Lo intentó ${sorted.length} ${sorted.length === 1 ? 'vez' : 'veces'}; ninguna versión aprobó las pruebas todavía.`;
+      ? `v${current.version} · en pruebas`
+      : `${sorted.length} ${sorted.length === 1 ? 'intento' : 'intentos'} · ninguno aprobó`;
 
   return (
     <li className="skill-group" data-testid="skill-group">
       <header className="skill-group-head">
         <strong className="skill-group-title">{humanName(current.name)}</strong>
         <span className={`pill pill-${chip.cls}`}>{chip.text}</span>
+        <span className="skill-group-meta muted">{meta}</span>
         {/* Olvidar se pide sobre la habilidad entera y no sobre una versión
             (ADR 0075): los intentos anteriores SON esta habilidad, y dejar
             los seis que fallaron borrando el que aprobó no es olvidar nada. */}
@@ -137,7 +192,7 @@ function SkillGroup({ versions, onForget }: { versions: SkillView[]; onForget: (
           olvidar
         </button>
       </header>
-      <p className="skill-group-sub muted">{summary}</p>
+      <SubjectStrip subjects={current.subjects} byKind={byKind} />
       <ul className="list">
         <SkillCard skill={current} previous={previousOf(current)} current />
       </ul>
@@ -265,6 +320,10 @@ export function SkillsPanel({ view, session }: { view: GameView; session: GameSe
     byName.set(skill.name, list);
   }
   const regressionGroups = groupRegressions(view.regressions);
+  // El catálogo se indexa una vez y lo comparten todas las tiras, igual que en
+  // el panel de objetos: cada glifo se dibuja con la misma definición que
+  // tiene su propia ficha.
+  const byKind = new Map(view.items.map((item) => [item.kind, item]));
   return (
     <div className="skills-panel">
       {view.skills.length === 0 && (
@@ -278,12 +337,16 @@ export function SkillsPanel({ view, session }: { view: GameView; session: GameSe
           <SkillGroup
             key={versions[0]!.name}
             versions={versions}
+            byKind={byKind}
             onForget={() => session.askSkillPrune(versions[0]!.name)}
           />
         ))}
       </ul>
+      {/* Las regresiones no son una habilidad más: son el examen que rinden
+          TODAS. Al final de la misma lista competían por atención con las
+          tarjetas; separadas por una línea se leen como lo que son, un pie. */}
       {regressionGroups.length > 0 && (
-        <details className="regressions">
+        <details className="regressions regressions-foot">
           <summary>
             Errores viejos que vigila ({regressionGroups.length}{' '}
             {regressionGroups.length === 1 ? 'situación' : 'situaciones'})

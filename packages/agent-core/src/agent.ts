@@ -177,6 +177,20 @@ function hazardFact(kind: string): string {
 }
 
 /**
+ * Qué obra levanta este encargo, si levanta alguna. Los dos pasos en que se
+ * parte «fabricá un puente y ponelo sobre el agua» (ADR 0078) nombran el mismo
+ * plano en campos distintos: el que construye lo llama `recipeId` y el que
+ * coloca, `targetKind`. Contestar lo mismo para los dos es lo que los deja
+ * compartir una sola obra.
+ */
+function structureBlueprintIdOf(goal: Goal): string | undefined {
+  const request = goal.userRequest;
+  if (request?.kind === 'craft-item') return request.recipeId ?? undefined;
+  if (request?.kind === 'place-item') return request.targetKind;
+  return undefined;
+}
+
+/**
  * La redacción anterior, cuando el daño alcanzaba a los adyacentes. Sigue
  * contando como saber que eso duele: una mascota que aprendió con el cuerpo
  * viejo no debería olvidarse del fuego porque cambió la física.
@@ -318,7 +332,7 @@ export interface AgentPersistentState {
    * es del MUNDO, no del plan: si se recalculara al retomar, una obra a medias
    * se mudaría y dejaría sus bloques viejos tirados donde estaban.
    */
-  structureSites?: { goalId: string; blueprintId: string; anchor: Vec2 }[];
+  structureSites?: { goalId?: string; blueprintId: string; anchor: Vec2 }[];
   /** Tipos que todavía espera dibujar (ADR 0064). Falta en guardados viejos. */
   pendingGlyphs?: string[];
   /** Obras que todavía espera dibujar. Falta en guardados viejos. */
@@ -541,11 +555,17 @@ export class AnimaAgent {
    */
   private lastAskedFor = new Map<string, string>();
   /**
-   * Dónde quedó plantada cada obra, por objetivo (ADR 0049). Se elige una vez,
-   * al empezar, y no se vuelve a mover: es lo que hace que retomar una obra sea
+   * Dónde quedó plantada cada obra, POR PLANO (ADR 0049). Se elige una vez, al
+   * empezar, y no se vuelve a mover: es lo que hace que retomar una obra sea
    * seguir la misma y no empezar otra al lado.
+   *
+   * La clave es el plano y no el objetivo porque una obra es una obra: «fabricá
+   * un puente» y «ponelo sobre el agua» son dos encargos encadenados (ADR 0078)
+   * del MISMO puente. Indexado por objetivo, cada uno abría su propia ancla y se
+   * repartían los tablones — se la vio levantar medio puente en (5,4) y medio en
+   * (5,5), sin terminar ninguno.
    */
-  private structureSites = new Map<string, { blueprintId: string; anchor: Vec2 }>();
+  private structureSites = new Map<string, Vec2>();
   /** Lo último que dijo, para no decirlo dos veces seguidas (ADR 0073). */
   private lastReplyText: string | null = null;
   /**
@@ -647,13 +667,16 @@ export class AnimaAgent {
       blueprintId: string;
       cells: { kind: string; x: number; y: number; done: boolean }[];
     }[] = [];
-    for (const [goalId, site] of this.structureSites) {
-      const goal = this.goals.get(goalId);
-      if (!goal || (goal.status !== 'active' && goal.status !== 'suspended')) continue;
-      const blueprint = perception.blueprints.find((b) => b.id === site.blueprintId);
+    for (const [blueprintId, anchor] of this.structureSites) {
+      const blueprint = perception.blueprints.find((b) => b.id === blueprintId);
       if (!blueprint) continue;
+      // Sin encargo abierto que la pida, la obra deja de estar en curso y su
+      // silueta se borra (ADR 0059). Cualquiera de los encargos encadenados
+      // sirve: es el mismo puente.
+      const goalId = this.activeStructureGoalId(blueprint);
+      if (goalId === null) continue;
       const pending = new Set(
-        this.pendingPlacements(blueprint, site.anchor, perception).map(
+        this.pendingPlacements(blueprint, anchor, perception).map(
           (p) => `${p.kind}@${p.offset.x},${p.offset.y}`,
         ),
       );
@@ -662,8 +685,8 @@ export class AnimaAgent {
         blueprintId: blueprint.id,
         cells: blueprint.placements.map((placement) => ({
           kind: placement.kind,
-          x: site.anchor.x + placement.offset.x,
-          y: site.anchor.y + placement.offset.y,
+          x: anchor.x + placement.offset.x,
+          y: anchor.y + placement.offset.y,
           done: !pending.has(`${placement.kind}@${placement.offset.x},${placement.offset.y}`),
         })),
       });
@@ -693,18 +716,19 @@ export class AnimaAgent {
         const from = visible ? undefined : this.harvestSourceFor(count.kind, perception);
         return { ...count, visible, ...(from ? { from } : {}) };
       });
-      const site = this.structureSites.get(goal.id);
-      const blueprint = site
-        ? perception.blueprints.find((b) => b.id === site.blueprintId)
+      const blueprintId = structureBlueprintIdOf(goal);
+      const anchor = blueprintId === undefined ? undefined : this.structureSites.get(blueprintId);
+      const blueprint = blueprintId
+        ? perception.blueprints.find((b) => b.id === blueprintId)
         : undefined;
       const structure =
-        site && blueprint
+        anchor && blueprint
           ? {
               blueprintId: blueprint.id,
               total: blueprint.placements.length,
               placed:
                 blueprint.placements.length -
-                this.pendingPlacements(blueprint, site.anchor, perception).length,
+                this.pendingPlacements(blueprint, anchor, perception).length,
             }
           : undefined;
       plans.push({ goalId: goal.id, needs, ...(structure ? { structure } : {}) });
@@ -744,7 +768,7 @@ export class AnimaAgent {
     const recipeId = request.recipeId;
     if (request.kind !== 'craft-item' || !recipeId) return [];
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
-    if (blueprint) return this.blueprintNeeds(blueprint, goal?.id, perception);
+    if (blueprint) return this.blueprintNeeds(blueprint, perception);
     const recipe = perception.recipes.find((r) => r.id === recipeId);
     if (!recipe) return [];
     return missingIngredients(recipe, held).map((m) => ({
@@ -867,7 +891,7 @@ export class AnimaAgent {
     const recipeId = goal?.userRequest?.recipeId;
     if (goal?.userRequest?.kind !== 'craft-item' || !recipeId) return false;
     const blueprint = perception.blueprints.find((b) => b.id === recipeId);
-    const anchor = this.structureSites.get(goalId)?.anchor;
+    const anchor = this.structureSites.get(recipeId);
     if (!blueprint || !anchor) return false;
     return this.pendingPlacements(blueprint, anchor, perception).length > 0;
   }
@@ -878,10 +902,9 @@ export class AnimaAgent {
    */
   private blueprintNeeds(
     blueprint: Blueprint,
-    goalId: string | undefined,
     perception: Perception,
   ): { kind: string; need: number; have: number }[] {
-    const anchor = goalId === undefined ? undefined : this.structureSites.get(goalId)?.anchor;
+    const anchor = this.structureSites.get(blueprint.id);
     const remaining = anchor
       ? countPlacements(this.pendingPlacements(blueprint, anchor, perception))
       : blueprintCounts(blueprint);
@@ -900,13 +923,11 @@ export class AnimaAgent {
   private activeStructureGoalId(blueprint: Blueprint): string | null {
     const goal = this.goals
       .all()
-      .find((candidate) => {
-        if (candidate.status !== 'active' && candidate.status !== 'suspended') return false;
-        const request = candidate.userRequest;
-        if (request?.kind === 'craft-item') return request.recipeId === blueprint.id;
-        if (request?.kind === 'place-item') return request.targetKind === blueprint.id;
-        return false;
-      });
+      .find(
+        (candidate) =>
+          (candidate.status === 'active' || candidate.status === 'suspended') &&
+          structureBlueprintIdOf(candidate) === blueprint.id,
+      );
     return goal?.id ?? null;
   }
 
@@ -917,8 +938,8 @@ export class AnimaAgent {
    */
   private siteFor(goalId: string, blueprint: Blueprint, perception: Perception): Vec2 | null {
     const onto = this.destinationKindFor(goalId);
-    const known = this.structureSites.get(goalId);
-    if (known && known.blueprintId === blueprint.id) {
+    const known = this.structureSites.get(blueprint.id);
+    if (known) {
       // El sitio se eligió con lo que VEÍA, y la vista exige línea despejada
       // (ADR 0025): una roca detrás de otra no estaba en el mapa que miró. Al
       // acercarse aparece, y entonces el claro no era tal.
@@ -928,18 +949,18 @@ export class AnimaAgent {
       // otra forma. Sin esta condición, descubrir un obstáculo a mitad de obra
       // dejaría media choza abandonada y empezaría otra al lado.
       const untouched =
-        this.pendingPlacements(blueprint, known.anchor, perception).length ===
+        this.pendingPlacements(blueprint, known, perception).length ===
         blueprint.placements.length;
       // Mientras no haya puesto nada, un sitio que NO da al destino que le
       // pidieron se puede abandonar: al elegirlo quizá no veía el río todavía.
-      const serves = onto === undefined || this.siteReaches(blueprint, known.anchor, onto, perception);
-      if (!untouched || (serves && this.siteFits(blueprint, known.anchor, perception))) {
-        return known.anchor;
+      const serves = onto === undefined || this.siteServes(blueprint, known, onto, perception);
+      if (!untouched || (serves && this.siteFits(blueprint, known, perception))) {
+        return known;
       }
     }
     const chosen = this.chooseStructureSite(blueprint, perception, onto);
-    if (!chosen) return known?.anchor ?? null;
-    this.structureSites.set(goalId, { blueprintId: blueprint.id, anchor: chosen });
+    if (!chosen) return known ?? null;
+    this.structureSites.set(blueprint.id, chosen);
     return chosen;
   }
 
@@ -998,14 +1019,15 @@ export class AnimaAgent {
     anchor: Vec2,
     perception: Perception,
   ): boolean {
-    const ground = perceivedGround(perception.visibleEntities);
-    if (ground.water.size === 0) return false;
-    return blueprint.placements.some((placement) => {
-      if (!this.bringsFooting(placement.kind, perception)) return false;
-      const x = anchor.x + placement.offset.x;
-      const y = anchor.y + placement.offset.y;
-      return ground.water.has(groundKey({ x, y }));
-    });
+    // Y no alcanza con mojar una tabla: el tendido tiene que CRUZAR el agua.
+    // Preguntando «¿alguna pieza cae sobre el agua?» el mejor sitio del mapa
+    // era el que rozaba la primera columna del cauce, y ahí se quedaba.
+    return this.siteCrosses(
+      blueprint,
+      anchor,
+      perceivedGround(perception.visibleEntities).water,
+      perception,
+    );
   }
 
   /**
@@ -1018,23 +1040,106 @@ export class AnimaAgent {
     this.suspensionSeen.set(goalId, new Set(perception.visibleEntities.map((e) => e.id)));
   }
 
-  /** ¿Alguna pieza de la obra, plantada acá, cae sobre el destino pedido? */
-  private siteReaches(
-    blueprint: Blueprint,
-    anchor: Vec2,
-    onto: string,
-    perception: Perception,
-  ): boolean {
+  /** Las celdas de lo que le pidieron como destino, a la vista. */
+  private targetCells(onto: string, perception: Perception): Set<string> {
     const target = new Set<string>();
     for (const entity of perception.visibleEntities) {
       if (entity.kind === onto && entity.position && entity.held !== true) {
         target.add(groundKey(entity.position));
       }
     }
+    return target;
+  }
+
+  /**
+   * ¿Sirve el sitio para lo que le pidieron? Depende de qué clase de obra sea.
+   *
+   * Una obra que se CAMINA (sus piezas se pisan) tiene que ATRAVESAR el
+   * destino: un puente que apenas lo roza no lleva a ninguna parte. Una que
+   * solo se apoya —algo puesto sobre una roca— con tocarlo alcanza; exigirle
+   * cruzar sería pedirle que tape la roca entera.
+   */
+  private siteServes(
+    blueprint: Blueprint,
+    anchor: Vec2,
+    onto: string,
+    perception: Perception,
+  ): boolean {
+    const target = this.targetCells(onto, perception);
     if (target.size === 0) return false;
+    const walks = blueprint.placements.some((p) => this.bringsFooting(p.kind, perception));
+    if (walks) return this.siteCrosses(blueprint, anchor, target, perception);
+    return this.siteReaches(blueprint, anchor, target);
+  }
+
+  /** ¿Alguna pieza de la obra, plantada acá, cae sobre el destino pedido? */
+  private siteReaches(blueprint: Blueprint, anchor: Vec2, target: ReadonlySet<string>): boolean {
     return blueprint.placements.some((placement) =>
       target.has(groundKey({ x: anchor.x + placement.offset.x, y: anchor.y + placement.offset.y })),
     );
+  }
+
+  /**
+   * ¿ATRAVIESA la obra el obstáculo, o apenas lo roza?
+   *
+   * Un puente de cinco tablas es inútil si cuatro caen en el pasto y una en el
+   * agua: cumple el plano al pie de la letra y no cruza nada. Se la vio hacer
+   * exactamente eso — plano de 5 celdas, ancho de cauce 4, plantado de forma
+   * que solo pisaba la primera columna de agua. El plano alcanzaba; la
+   * puntería no.
+   *
+   * Cruzar es tapar el obstáculo ENTERO en la dirección en que la obra corre:
+   * desde cualquier celda suya que pise el obstáculo, avanzando para los dos
+   * lados, no se puede salir de la obra sin haber salido antes del obstáculo.
+   * Una sola celda de agua descubierta en el medio corta el paso ahí.
+   */
+  private siteCrosses(
+    blueprint: Blueprint,
+    anchor: Vec2,
+    obstacle: ReadonlySet<string>,
+    perception: Perception,
+  ): boolean {
+    if (obstacle.size === 0) return false;
+    // Solo cuentan las piezas que se pisan: una obra se cruza caminándola, y un
+    // bloque sólido en el medio del tendido es un tapón, no un tramo.
+    const walkable = new Set<string>();
+    const over: Vec2[] = [];
+    for (const placement of blueprint.placements) {
+      if (!this.bringsFooting(placement.kind, perception)) continue;
+      const cell = { x: anchor.x + placement.offset.x, y: anchor.y + placement.offset.y };
+      const key = groundKey(cell);
+      walkable.add(key);
+      if (obstacle.has(key)) over.push(cell);
+    }
+    if (over.length === 0) return false;
+
+    // La dirección en que corre la obra es su lado más largo. Un puente
+    // este-oeste sobre un río norte-sur tiene que taparlo a lo ANCHO: mirar el
+    // otro eje sería pedirle que cubra el río a lo largo, que no termina nunca.
+    const xs = blueprint.placements.map((p) => p.offset.x);
+    const ys = blueprint.placements.map((p) => p.offset.y);
+    const horizontal =
+      Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+    const bounds = perception.bounds;
+
+    for (const start of over) {
+      for (const dir of [1, -1]) {
+        let { x, y } = start;
+        for (;;) {
+          x += horizontal ? dir : 0;
+          y += horizontal ? 0 : dir;
+          // Se acabó el mapa y todavía era obstáculo: de este lado no hay orilla
+          // donde apoyar el pie.
+          if (bounds && (x < 0 || y < 0 || x >= bounds.width || y >= bounds.height)) return false;
+          const key = groundKey({ x, y });
+          // Salió del obstáculo: de este lado el tendido llega a tierra.
+          if (!obstacle.has(key)) break;
+          // Sigue sobre el obstáculo y la obra ya no lo cubre: el paso se corta.
+          if (!walkable.has(key)) return false;
+        }
+      }
+    }
+    return true;
   }
 
   /**
@@ -1103,7 +1208,7 @@ export class AnimaAgent {
         // dice sola: ver `siteUsesFooting`.
         const serves =
           onto !== undefined
-            ? this.siteReaches(blueprint, anchor, onto, perception)
+            ? this.siteServes(blueprint, anchor, onto, perception)
             : this.siteUsesFooting(blueprint, anchor, perception);
         const distance = Math.abs(dx) + Math.abs(dy);
         const better =
@@ -1354,10 +1459,9 @@ export class AnimaAgent {
         kinds: [...kinds],
         sinceTick: this.suspensionTick.get(goalId) ?? this.tick,
       })),
-      structureSites: [...this.structureSites.entries()].map(([goalId, site]) => ({
-        goalId,
-        blueprintId: site.blueprintId,
-        anchor: { ...site.anchor },
+      structureSites: [...this.structureSites.entries()].map(([blueprintId, anchor]) => ({
+        blueprintId,
+        anchor: { ...anchor },
       })),
     });
   }
@@ -1387,12 +1491,15 @@ export class AnimaAgent {
     );
     // Guardados anteriores al sitio fijo no lo traen: la obra elegirá uno la
     // próxima vez que la retome, como hacía siempre.
-    this.structureSites = new Map(
-      (clone.structureSites ?? []).map((site) => [
-        site.goalId,
-        { blueprintId: site.blueprintId, anchor: site.anchor },
-      ]),
-    );
+    //
+    // Un guardado viejo puede traer DOS anclas del mismo plano, una por
+    // objetivo: es justo el reparto que este índice vino a terminar. Gana la
+    // primera y la otra se olvida — la obra vuelve a ser una.
+    this.structureSites = new Map();
+    for (const site of clone.structureSites ?? []) {
+      if (this.structureSites.has(site.blueprintId)) continue;
+      this.structureSites.set(site.blueprintId, site.anchor);
+    }
     if (clone.lastUserRequest !== undefined) {
       this.lastUserRequest = clone.lastUserRequest;
     } else {
@@ -5721,10 +5828,7 @@ export class AnimaAgent {
     // con dos muros ya puestos y cuatro en la mano decía "me falta 1" cuando en
     // realidad le sobraban. Descontar solo el inventario era media cuenta. La
     // cuenta la hace `neededCountsFor`, la misma que mira la pantalla.
-    const goalId = this.activeStructureGoalId(blueprint);
-    const missing = this.blueprintNeeds(blueprint, goalId ?? undefined, perception).filter(
-      (m) => m.have < m.need,
-    );
+    const missing = this.blueprintNeeds(blueprint, perception).filter((m) => m.have < m.need);
     // Los tiene todos y aun así falló: lo que no consiguió es el SITIO, no la
     // materia. Decir que le faltan bloques ahí sería mentir con precisión.
     if (missing.length === 0) {

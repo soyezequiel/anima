@@ -35,6 +35,7 @@ import type { GameMap, MissionStatus } from '@anima/missions';
 import { MissionTracker } from '@anima/missions';
 import type { SkillOp, SkillRemovalPlan } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
+import { skillSubjects } from './skill-subjects.js';
 import {
   COLD_SCENARIOS,
   foodBehindWall,
@@ -2224,7 +2225,14 @@ export class GameSession {
       knownFailures: skill.knownFailures.map((f) => f.description),
       parentVersionId: skill.parentVersionId ?? null,
       programSummary: this.summarizeOps(skill.program),
+      subjects: skillSubjects(skill.program, (id) => this.recipeProductKind(id)),
     }));
+  }
+
+  /** El tipo que sale de una receta: `craft` nombra la receta, no el producto. */
+  private recipeProductKind(recipeId: string): string | null {
+    const recipe = this.world.recipes.find((r) => r.id === recipeId);
+    return recipe ? (recipeProduct(recipe)?.kind ?? null) : null;
   }
 
   /**
