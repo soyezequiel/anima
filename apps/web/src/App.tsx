@@ -198,7 +198,13 @@ export function App({ session, account }: { session: GameSession; account: Cloud
         </button>
         {/* Hasta dónde ve. Es una lente para mirar un rato —no cambia el
             mundo, solo lo revela— así que va al lado de Creativo pero no se
-            guarda con la partida: reaparecer sola sería dejar el capó abierto. */}
+            guarda con la partida: reaparecer sola sería dejar el capó abierto.
+
+            El tooltip dice que es SOLO la vista, y no por prolijidad: la
+            sombra sugiere «esto no lo conoce», y para la comida y el calor eso
+            es falso —los percibe a través de los muros—. Sin la aclaración, el
+            dibujo desmiente en silencio la regla que sostiene la premisa del
+            juego: querer lo que se huele detrás de una pared (ADR 0025). */}
         <button
           className={`creative-toggle${view.vision ? ' active' : ''}`}
           data-testid="vision-toggle"
@@ -206,8 +212,12 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           aria-checked={view.vision !== null}
           title={
             view.vision
-              ? `Viendo su vista: alcanza ${view.vision.range} celdas, y los muros le tapan el resto`
-              : 'Mostrar hasta dónde ve'
+              ? `Su VISTA: alcanza ${view.vision.range} celdas y los muros la cortan. ` +
+                'Ojo: lo oscuro NO es lo que ignora — la comida y las fuentes de calor las ' +
+                'percibe a través de los muros (las huele, las siente), así que buena parte de ' +
+                'esa sombra la conoce igual.'
+              : 'Mostrar hasta dónde ve. Ojo: es solo la VISTA — la comida y el calor los ' +
+                'percibe a través de los muros, aunque queden en la sombra.'
           }
           onClick={() => session.setVisionShown(view.vision === null)}
         >
