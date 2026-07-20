@@ -6,7 +6,15 @@ import type { Decomposition } from './decompositions.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
 import type { WorldState } from './world.js';
-import { allEntities, getEntity } from './world.js';
+import { allEntities, getEntity, inBounds } from './world.js';
+
+/**
+ * Cuánto ve un agente al que nadie le fijó un rango. Es una constante y no un
+ * `?? 5` suelto porque la usan dos caminos —lo que el agente percibe y lo que
+ * la pantalla dibuja de esa percepción— y si se separan, el dibujo empieza a
+ * mentir sobre lo que ella ve.
+ */
+export const DEFAULT_PERCEPTION_RANGE = 5;
 
 /**
  * Vista parcial de una entidad, tal como el agente puede percibirla.
@@ -222,6 +230,43 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
 }
 
 /**
+ * Qué celdas alcanza la VISTA de un agente ahora mismo, para poder dibujarlas.
+ *
+ * Vive en el motor y no en la pantalla a propósito: es exactamente la regla
+ * que aplica `buildPerception` —cuadrado de Chebyshev y línea de Bresenham
+ * contra los sólidos— y tenerla escrita dos veces significaría que un día el
+ * dibujo diga que ve algo que el agente no ve. La UI pinta lo que el mundo le
+ * dice; no lo recalcula.
+ *
+ * Es SOLO la vista. Lo comestible y las fuentes de calor se perciben a través
+ * de los muros (ver `buildPerception`), así que hay cosas que ella conoce y
+ * que caen fuera de estas celdas: el olfato no tiene forma que dibujar.
+ */
+export function visibleCells(world: WorldState, agentId: EntityId): Vec2[] {
+  const agent = getEntity(world, agentId);
+  const pos = agent?.components.position;
+  if (!agent || !pos) return [];
+  const range = agent.components.agent?.perceptionRange ?? DEFAULT_PERCEPTION_RANGE;
+
+  const solidCells = new Set<string>();
+  for (const entity of allEntities(world)) {
+    const entityPos = entity.components.position;
+    if (entity.id !== agentId && entityPos && entity.components.collider?.solid) {
+      solidCells.add(`${entityPos.x},${entityPos.y}`);
+    }
+  }
+
+  const cells: Vec2[] = [];
+  for (let y = pos.y - range; y <= pos.y + range; y++) {
+    for (let x = pos.x - range; x <= pos.x + range; x++) {
+      if (!inBounds(world, { x, y })) continue;
+      if (hasLineOfSight(pos, { x, y }, solidCells)) cells.push({ x, y });
+    }
+  }
+  return cells;
+}
+
+/**
  * Construye la percepción limitada de un agente. El agente nunca recibe el
  * WorldState completo: solo esta vista, restringida por su rango sensorial.
  */
@@ -231,7 +276,7 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
   if (!agent || !pos) {
     throw new Error(`No se puede percibir: el agente ${agentId} no existe o no tiene posición`);
   }
-  const range = agent.components.agent?.perceptionRange ?? 5;
+  const range = agent.components.agent?.perceptionRange ?? DEFAULT_PERCEPTION_RANGE;
   const heldIds = new Set(agent.components.inventory?.items ?? []);
 
   // Celdas que tapan la vista: todo sólido con posición, salvo el observador.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildPerception, spawn } from '../src/index.js';
+import { buildPerception, spawn, visibleCells } from '../src/index.js';
 import { buildTestWorld, spawnFood, spawnHammer, spawnWall } from './helpers.js';
 
 /**
@@ -77,5 +77,57 @@ describe('línea de visión', () => {
     expect(
       buildPerception(world, pet.id).visibleEntities.some((e) => e.id === wall.id),
     ).toBe(true);
+  });
+});
+
+/**
+ * Las celdas que la vista alcanza, que es lo que la pantalla dibuja. Tiene que
+ * decir exactamente lo mismo que `buildPerception`: si el dibujo y la
+ * percepción se separan, la pantalla miente sobre lo que ella ve.
+ */
+describe('las celdas que alcanza la vista', () => {
+  const has = (cells: { x: number; y: number }[], x: number, y: number) =>
+    cells.some((c) => c.x === x && c.y === y);
+
+  it('no se sale del mapa', () => {
+    const { world, pet } = buildTestWorld();
+    // Rango 10 sobre un mundo de 7×5: el cuadrado se recorta contra el borde.
+    const cells = visibleCells(world, pet.id);
+    expect(cells.every((c) => c.x >= 0 && c.x < 7 && c.y >= 0 && c.y < 5)).toBe(true);
+    expect(cells).toHaveLength(7 * 5);
+  });
+
+  it('un muro deja a oscuras lo que tapa', () => {
+    const { world, pet } = buildTestWorld();
+    for (let y = 0; y < 5; y++) spawnWall(world, 3, y);
+    const cells = visibleCells(world, pet.id);
+
+    // La celda del muro se ve; la de atrás, no.
+    expect(has(cells, 3, 2)).toBe(true);
+    expect(has(cells, 5, 2)).toBe(false);
+    // De este lado sigue viendo.
+    expect(has(cells, 2, 2)).toBe(true);
+  });
+
+  it('coincide con lo que percibe: nada visible cae en celda a oscuras', () => {
+    const { world, pet } = buildTestWorld();
+    for (let y = 0; y < 5; y++) spawnWall(world, 3, y);
+    spawnHammer(world, 5, 2);
+    const cells = visibleCells(world, pet.id);
+    const perception = buildPerception(world, pet.id);
+
+    for (const entity of perception.visibleEntities) {
+      // Lo comestible y el calor se perciben SIN vista (olfato, calor): esos
+      // pueden caer fuera. El resto tiene que estar en una celda alumbrada.
+      if (entity.kind === 'food' || entity.kind === 'campfire') continue;
+      const at = entity.position;
+      if (!at) continue;
+      expect(has(cells, at.x, at.y), `${entity.kind} visible en celda a oscuras`).toBe(true);
+    }
+  });
+
+  it('sin agente no hay celdas, y no explota', () => {
+    const { world } = buildTestWorld();
+    expect(visibleCells(world, 'e999')).toEqual([]);
   });
 });

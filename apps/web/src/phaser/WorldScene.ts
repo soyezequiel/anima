@@ -45,6 +45,13 @@ export class WorldScene extends Phaser.Scene {
   private ghosts: Phaser.GameObjects.Container | null = null;
   /** Última forma dibujada: redibujar solo cuando el plan cambia de verdad. */
   private plannedSignature: string | null = null;
+  /** Hasta dónde ve, dibujado; null cuando el cuidador no lo pidió. */
+  private vision: Phaser.GameObjects.Container | null = null;
+  /** El pulso que recorre el borde de la vista; se detiene al apagarla. */
+  private visionPulse: Phaser.Tweens.Tween | null = null;
+  private visionSignature: string | null = null;
+  /** Hasta dónde barre el pulso; cambia al acercarse a un borde del mundo. */
+  private visionReach: number | null = null;
   private cell = BASE_CELL;
   private lastView: GameView | null = null;
   private ready = false;
@@ -76,6 +83,7 @@ export class WorldScene extends Phaser.Scene {
     this.lastView = view;
     if (!this.ready) return;
     this.drawGrid(view);
+    this.syncVision(view);
     this.syncPlannedStructures(view);
     this.syncEntities(view);
     this.syncPet(view);
@@ -97,6 +105,9 @@ export class WorldScene extends Phaser.Scene {
     this.ghosts?.destroy();
     this.ghosts = null;
     this.plannedSignature = null;
+    // La vista está dibujada a la escala vieja, y su pulso mide el rango en
+    // píxeles: se rehace entera con el próximo view, como todo lo demás.
+    this.clearVision();
     for (const sprite of this.sprites.values()) this.discard(sprite);
     this.sprites.clear();
     // Los tweens de la pose pensativa apuntan a los HIJOS del contenedor:
@@ -205,6 +216,140 @@ export class WorldScene extends Phaser.Scene {
 
   private toPixel(cellX: number, cellY: number): { x: number; y: number } {
     return { x: cellX * this.cell + this.cell / 2, y: cellY * this.cell + this.cell / 2 };
+  }
+
+  /**
+   * Hasta dónde ve, dibujado sobre el suelo.
+   *
+   * Se dibuja la SOMBRA, no la luz. Iluminar lo que ve no se leía: su rango
+   * es más grande que muchos mundos, así que el claro cubría el tablero
+   * entero y no contrastaba contra nada. Oscurecer lo que NO ve deja ver de
+   * una la respuesta que importa —qué le esconde cada muro— porque el muro
+   * proyecta su sombra y la sombra tiene forma.
+   *
+   * El borde marca el cuadrado del rango: hasta ahí llegaría si nada la
+   * tapara. Lo que quede oscuro adentro de ese borde es exactamente lo que le
+   * roba un obstáculo.
+   *
+   * El pulso sale de ella y se expande hasta el borde: es lo que convierte una
+   * mancha quieta en «está mirando». Va acá y no en el claro porque animar la
+   * opacidad de cientos de celdas cada cuadro es caro y además late como un
+   * cartel; un solo contorno que se abre cuesta nada y se lee mejor.
+   *
+   * El contenedor SOBREVIVE entre ticks a propósito: recrearlo mataría el
+   * tween y el pulso volvería a empezar en cada avance del mundo, así que
+   * nunca se vería completo. Solo se redibuja el claro, y solo cuando cambió.
+   */
+  private syncVision(view: GameView): void {
+    if (!view.vision || !view.pet) {
+      this.clearVision();
+      return;
+    }
+    const { range, cells } = view.vision;
+    const pet = view.pet;
+    const k = this.cellScale;
+
+    // Hasta dónde tiene sentido que llegue el pulso. Su rango suele ser MÁS
+    // GRANDE que el mundo —12 celdas sobre un tablero de 13— y un pulso que
+    // se expande hasta el rango se va de la pantalla apenas arranca: se ve un
+    // parpadeo junto a ella y nada más. Acotado al borde del tablero, el
+    // barrido recorre justo lo que hay para mirar.
+    const reach = Math.min(
+      range,
+      Math.max(pet.x, view.worldSize.width - 1 - pet.x, pet.y, view.worldSize.height - 1 - pet.y),
+    );
+
+    if (this.vision && reach !== this.visionReach) this.clearVision();
+    if (!this.vision) {
+      this.visionReach = reach;
+      this.vision = this.add.container(0, 0);
+      // Encima de las cosas, no debajo: la sombra tiene que apagar TAMBIÉN lo
+      // que hay en las celdas que no ve, porque eso es justamente lo que ella
+      // no sabe que está ahí. Por debajo, un tronco fuera de su vista se
+      // seguiría dibujando brillante y la sombra no querría decir nada.
+      //
+      // A ella no la tapa: su propia celda siempre entra en `visibleCells`
+      // —la línea de visión a uno mismo es trivial—, así que nunca cae en la
+      // parte oscura.
+      this.vision.setDepth(2.6);
+      this.vision.add(this.add.graphics());
+      this.vision.add(this.add.graphics());
+      this.startVisionPulse(reach);
+    }
+
+    // Redibujar solo si cambió algo. La firma incluye cuántas celdas ve, que
+    // es lo que se mueve cuando cae un muro sin que ella se mueva.
+    const signature = `${pet.x},${pet.y}|${range}|${cells.length}|${this.cell}`;
+    if (signature === this.visionSignature) return;
+    this.visionSignature = signature;
+
+    const [shadow, edge] = this.vision.list as Phaser.GameObjects.Graphics[];
+    const seen = new Set(cells.map((c) => `${c.x},${c.y}`));
+    shadow!.clear();
+    shadow!.fillStyle(0x0c0a09, 0.55);
+    for (let y = 0; y < view.worldSize.height; y++) {
+      for (let x = 0; x < view.worldSize.width; x++) {
+        if (seen.has(`${x},${y}`)) continue;
+        shadow!.fillRect(x * this.cell, y * this.cell, this.cell, this.cell);
+      }
+    }
+
+    edge!.clear();
+    edge!.lineStyle(2 * k, 0xfde68a, 0.22);
+    const left = (pet.x - range) * this.cell;
+    const top = (pet.y - range) * this.cell;
+    const side = (range * 2 + 1) * this.cell;
+    edge!.strokeRect(left, top, side, side);
+
+    this.positionVisionPulse(pet.x, pet.y);
+  }
+
+  /**
+   * El pulso: un cuadrado que nace en ella y se abre hasta el borde del rango.
+   *
+   * Se respeta `prefers-reduced-motion`: quien pidió que la pantalla no se
+   * mueva igual necesita ver hasta dónde llega la vista, así que el contorno
+   * se dibuja quieto en el borde en vez de latir.
+   */
+  private startVisionPulse(reach: number): void {
+    const graphics = this.add.graphics();
+    const side = (reach * 2 + 1) * this.cell;
+    graphics.lineStyle(2 * this.cellScale, 0xfde68a, 0.85);
+    graphics.strokeRect(-side / 2, -side / 2, side, side);
+    this.vision?.add(graphics);
+
+    const still = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    if (still) {
+      graphics.setAlpha(0.3);
+      return;
+    }
+    graphics.setScale(0.05);
+    this.visionPulse = this.tweens.add({
+      targets: graphics,
+      scale: 1,
+      alpha: { from: 0.55, to: 0 },
+      duration: 2200,
+      ease: 'Sine.easeOut',
+      repeat: -1,
+    });
+  }
+
+  /** El pulso late donde está ella, así que la sigue cuando camina. */
+  private positionVisionPulse(cellX: number, cellY: number): void {
+    const pulse = this.vision?.list[2] as Phaser.GameObjects.Graphics | undefined;
+    if (!pulse) return;
+    const pixel = this.toPixel(cellX, cellY);
+    pulse.setPosition(pixel.x, pixel.y);
+  }
+
+  private clearVision(): void {
+    if (!this.vision) return;
+    this.visionPulse?.remove();
+    this.visionPulse = null;
+    this.vision.destroy(true);
+    this.vision = null;
+    this.visionSignature = null;
+    this.visionReach = null;
   }
 
   /**

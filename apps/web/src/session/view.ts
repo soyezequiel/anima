@@ -99,6 +99,22 @@ export interface BlueprintView {
   anchor: { x: number; y: number };
 }
 
+/**
+ * Su vista, dibujable. Las celdas las calcula el MOTOR (`visibleCells`) con la
+ * misma regla que usa para percibir: la pantalla no vuelve a decidir qué ve,
+ * porque dos copias de esa regla terminan discrepando y entonces el dibujo
+ * miente.
+ *
+ * Es solo la vista. Lo comestible y las fuentes de calor las percibe a través
+ * de los muros —se huelen, se sienten—, así que hay cosas que conoce y que
+ * caen fuera de estas celdas. El olfato no tiene forma que pintar.
+ */
+export interface VisionView {
+  /** Cuántas celdas alcanza en cada dirección (Chebyshev: es un cuadrado). */
+  range: number;
+  cells: { x: number; y: number }[];
+}
+
 export interface PetView {
   id: string;
   x: number;
@@ -516,6 +532,12 @@ export interface GameView {
    * y experimentar sin que el hambre o el frío la maten en el medio.
    */
   creativeMode: boolean;
+  /**
+   * Lo que su vista alcanza ahora mismo, para dibujarlo. `null` cuando el
+   * cuidador no lo pidió — y entonces ni se calcula: son cientos de celdas por
+   * tick que nadie está mirando.
+   */
+  vision: VisionView | null;
   identity: { name: string; generation: number; ancestorId: string | null };
   /** Informe de legado cuando la mascota está muerta; null en vida. */
   death: LegacyReport | null;

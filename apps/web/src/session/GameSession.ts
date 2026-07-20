@@ -25,6 +25,7 @@ import {
   spawn,
   stepWorld,
   takeSnapshot,
+  visibleCells,
   workGlyphFor,
 } from '@anima/sim-core';
 import type { PrunePlan, PruneRef } from '@anima/sim-core';
@@ -92,6 +93,7 @@ import type {
   SkillDevProgressView,
   SkillView,
   ThoughtView,
+  VisionView,
 } from './view.js';
 import { buildClaudeReport, claudeReportFileName } from './claude-report.js';
 import type { Lineage } from '../phaser/matter.js';
@@ -493,6 +495,8 @@ export class GameSession {
    * de fábrica volvería decorativas la mitad de sus conductas.
    */
   private creativeMode = false;
+  /** Mostrar hasta dónde ve. Apagado por defecto: es una lente, no el tablero. */
+  private visionShown = false;
   /**
    * La poda pedida y todavía sin confirmar (ADR 0075). Guarda el plan además
    * de lo que se muestra: al confirmar se aplica lo que se leyó, no un cálculo
@@ -1088,6 +1092,20 @@ export class GameSession {
     this.rebuildView();
     this.notify();
     void this.save();
+  }
+
+  /**
+   * Enciende o apaga el dibujo de su vista.
+   *
+   * No se guarda con la partida: es una lente para mirar un rato, como abrir
+   * el capó, y no una preferencia sobre cómo se juega. Que reaparezca sola en
+   * la próxima sesión sería dejar el capó abierto.
+   */
+  setVisionShown(value: boolean): void {
+    if (this.visionShown === value) return;
+    this.visionShown = value;
+    this.rebuildView();
+    this.notify();
   }
 
   /**
@@ -2249,6 +2267,14 @@ export class GameSession {
     return lines;
   }
 
+  /** Su vista, tal como la calcula el motor. `null` si no hay a quién mirarle. */
+  private visionView(): VisionView | null {
+    const pet = getEntity(this.world, this.agent.petId);
+    const range = pet?.components.agent?.perceptionRange;
+    if (!pet || range === undefined) return null;
+    return { range, cells: visibleCells(this.world, this.agent.petId) };
+  }
+
   private skillViews(): SkillView[] {
     return this.library.all().map((skill) => ({
       id: skill.id,
@@ -2661,6 +2687,10 @@ export class GameSession {
       // cuidador, no del proveedor, y la UI necesita poder mostrarla apagada.
       mockImperfect: this.mockImperfect,
       creativeMode: this.creativeMode,
+      // Solo cuando alguien lo está mirando: recorrer el cuadrado de visión y
+      // trazar Bresenham a cada celda es trabajo real, y a rango 12 son 625
+      // celdas por tick que nadie pidió.
+      vision: this.visionShown ? this.visionView() : null,
       identity: {
         name: this.identity.name,
         generation: this.identity.generation,

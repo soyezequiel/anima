@@ -196,6 +196,23 @@ export function App({ session, account }: { session: GameSession; account: Cloud
         >
           <span aria-hidden="true">✨</span> Creativo
         </button>
+        {/* Hasta dónde ve. Es una lente para mirar un rato —no cambia el
+            mundo, solo lo revela— así que va al lado de Creativo pero no se
+            guarda con la partida: reaparecer sola sería dejar el capó abierto. */}
+        <button
+          className={`creative-toggle${view.vision ? ' active' : ''}`}
+          data-testid="vision-toggle"
+          role="switch"
+          aria-checked={view.vision !== null}
+          title={
+            view.vision
+              ? `Viendo su vista: alcanza ${view.vision.range} celdas, y los muros le tapan el resto`
+              : 'Mostrar hasta dónde ve'
+          }
+          onClick={() => session.setVisionShown(view.vision === null)}
+        >
+          <span aria-hidden="true">👁</span> Visión
+        </button>
         <SettingsMenu session={session} view={view} account={account} />
         <AccountBar account={account} />
         <button
