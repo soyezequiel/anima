@@ -238,9 +238,15 @@ describe('el sitio de la obra escucha dónde le pidieron dejarla', () => {
     expect(canStandAt(world, enElRio[0]!.components.position!)).toBe(true);
   });
 
-  it('sin destino en el encargo sigue eligiendo lo más cercano', async () => {
-    // El sesgo es del ENCARGO, no una atracción por el agua: pedir la obra a
-    // secas tiene que seguir plantándola donde está, que es lo barato.
+  it('sin que nadie diga dónde, un piso se planta igual sobre el agua', async () => {
+    // El fallo del cauce ancho, exacto. Ese mapa dice «tendé algo que aguante
+    // el peso hasta la otra orilla»: para cualquier persona eso es «sobre el
+    // agua», y la traducción devolvió un `craft-item` pelado, sin destino. El
+    // imán se apagó, ganó «el claro más cercano», y levantó el puente en la
+    // orilla a cuatro celdas del cauce.
+    //
+    // Ahora el destino lo declara la obra: sus piezas se pisan, y un piso en el
+    // pasto no sirve para nada.
     const { world, petId } = riverWorld();
     teachBridge(world);
     const provider = new FakeLanguageModel({
@@ -250,7 +256,7 @@ describe('el sitio de la obra escucha dónde le pidieron dejarla', () => {
       },
     });
     const { agent, perception } = makeAgent(world, petId, provider);
-    agent.receiveUserMessage('construí un puente');
+    agent.receiveUserMessage('tendé algo que aguante el peso hasta la otra orilla');
 
     for (let i = 0; i < 260; i++) {
       const intent = await agent.think(perception());
@@ -259,6 +265,42 @@ describe('el sitio de la obra escucha dónde le pidieron dejarla', () => {
 
     const enElRio = allEntities(world).filter(
       (e) => e.kind === 'tablon' && e.components.position?.x === 6,
+    );
+    expect(enElRio.length).toBeGreaterThan(0);
+    expect(canStandAt(world, enElRio[0]!.components.position!)).toBe(true);
+  });
+
+  it('una obra sin piso no se va al agua: el destino lo declara la pieza', async () => {
+    // No es una atracción por el agua: es que un PISO en el pasto no sirve. Una
+    // obra cuyas piezas no se pisan no tiene nada que declarar, así que sigue
+    // plantándose donde está, que es lo barato.
+    const { world, petId } = riverWorld();
+    teachBridge(world);
+    // El mismo plano, con la pieza sólida que NO ofrece dónde pisar.
+    world.blueprints.length = 0;
+    world.blueprints.push({
+      id: 'cerco',
+      placements: [
+        { kind: 'pilote', offset: { x: 1, y: 0 } },
+        { kind: 'pilote', offset: { x: -1, y: 0 } },
+      ],
+    });
+    const provider = new FakeLanguageModel({
+      'interpret.command': {
+        kind: 'command.interpretation',
+        command: { action: 'craft-item', recipeId: 'cerco' },
+      },
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+    agent.receiveUserMessage('construí un cerco');
+
+    for (let i = 0; i < 260; i++) {
+      const intent = await agent.think(perception());
+      if (intent) agent.observe(stepWorld(world, [{ actorId: petId, intent }]));
+    }
+
+    const enElRio = allEntities(world).filter(
+      (e) => e.kind === 'pilote' && e.components.position?.x === 6,
     );
     expect(enElRio.length).toBe(0);
   });

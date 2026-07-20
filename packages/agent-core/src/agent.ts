@@ -959,6 +959,42 @@ export class AnimaAgent {
     }
   }
 
+  /**
+   * ¿Esta obra, plantada acá, usa para algo las piezas que ofrecen dónde pisar?
+   *
+   * Es el destino que la obra declara sin que nadie se lo diga. Un piso existe
+   * para volver pisable lo que no lo era: plantado sobre suelo firme no hace
+   * absolutamente nada, y la misma obra corrida unas celdas abre un paso. Así
+   * que cuando el plano trae piezas con `footing`, el sitio que las apoya sobre
+   * el agua sirve y el que las apoya en el pasto no — sin que el encargo tenga
+   * que nombrar el agua.
+   *
+   * Hace falta porque el destino explícito se perdía por cómo se hablaba. «Ponelo
+   * sobre el agua» se traduce en un paso que lleva el destino adentro; «tendelo
+   * hasta la otra orilla» dice exactamente lo mismo para cualquier persona y se
+   * traduce en un `craft-item` pelado, sin destino. El imán se apagaba en
+   * silencio y volvía a ganar «el claro más cercano», o sea sus propios pies: se
+   * la vio levantar el puente en la orilla, a cuatro celdas del cauce.
+   *
+   * Una obra sin piezas que se pisen (una casa, un fogón) no tiene destino que
+   * declarar, así que esto devuelve false y todo sigue como antes: el sitio más
+   * cercano al que pueda llegar.
+   */
+  private siteUsesFooting(
+    blueprint: Blueprint,
+    anchor: Vec2,
+    perception: Perception,
+  ): boolean {
+    const ground = perceivedGround(perception.visibleEntities);
+    if (ground.water.size === 0) return false;
+    return blueprint.placements.some((placement) => {
+      if (!this.bringsFooting(placement.kind, perception)) return false;
+      const x = anchor.x + placement.offset.x;
+      const y = anchor.y + placement.offset.y;
+      return ground.water.has(groundKey({ x, y }));
+    });
+  }
+
   /** ¿Alguna pieza de la obra, plantada acá, cae sobre el destino pedido? */
   private siteReaches(
     blueprint: Blueprint,
@@ -1036,11 +1072,16 @@ export class AnimaAgent {
         // cercano puede estar del otro lado de un muro, y el caminante greedy
         // no lo rodea — elegirlo era condenar la obra antes de empezarla.
         if (this.clearWalkTo(perception, anchor, 0) === null) continue;
-        // Y si el encargo dijo SOBRE QUÉ va, servir al encargo pesa más que
-        // estar cerca. Sin esto, "lo más cerca posible" gana siempre y una
-        // pasarela para cruzar un río se levanta en tierra firme: cumple el
-        // plano al pie de la letra y no sirve para nada.
-        const serves = onto !== undefined && this.siteReaches(blueprint, anchor, onto, perception);
+        // Que la obra SIRVA pesa más que estar cerca. Sin esto, "lo más cerca
+        // posible" gana siempre y una pasarela para cruzar un río se levanta en
+        // tierra firme: cumple el plano al pie de la letra y no sirve para nada.
+        //
+        // Si el encargo dijo sobre qué va, eso manda. Si no lo dijo, la obra lo
+        // dice sola: ver `siteUsesFooting`.
+        const serves =
+          onto !== undefined
+            ? this.siteReaches(blueprint, anchor, onto, perception)
+            : this.siteUsesFooting(blueprint, anchor, perception);
         const distance = Math.abs(dx) + Math.abs(dy);
         const better =
           !best || (serves !== best.serves ? serves : distance < best.distance);
