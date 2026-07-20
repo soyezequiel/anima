@@ -53,12 +53,12 @@ if (aiChoice === 'codex' || aiChoice === 'claude') {
   }
 }
 
-// El mapa que se juega, si el cuidador pidió uno (?map=vado). Sin esto, el
-// mundo de siempre: los mapas son pruebas, no el juego.
+// El entrenamiento que se juega, si el cuidador eligió uno (?map=vado). Sin
+// esto, el mundo de siempre: los mapas son pruebas, no el juego.
 //
-// Un mapa distinto es un mundo distinto, así que arranca de cero: mezclar el
-// guardado de una partida con la geografía de otra dejaría a la mascota parada
-// dentro de un río.
+// Cada entrenamiento tiene su propia ranura de guardado (ver `mapSlot`), así
+// que entrar y salir no pisa la partida principal ni los otros entrenamientos:
+// se retoma cada uno donde quedó.
 const mapId = params.get('map');
 const map = mapId ? mapById(mapId) : undefined;
 
@@ -66,7 +66,7 @@ const session = await GameSession.create({
   seed: Number.isFinite(seed) ? seed : 5,
   speed: Number.isFinite(speed) && speed > 0 ? speed : 1,
   autostart: params.get('autostart') !== '0',
-  fresh: params.get('fresh') === '1' || map !== undefined,
+  fresh: params.get('fresh') === '1',
   ...(map ? { map } : {}),
   ...(cloud.store ? { store: cloud.store } : {}),
   ...(provider ? { provider } : {}),

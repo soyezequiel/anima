@@ -62,6 +62,7 @@ import {
   IncompatibleSaveError,
   loadLegacies,
   loadSession,
+  mapSlot,
   MemoryKeyValueStore,
   saveSession,
   setAsideSave,
@@ -465,6 +466,12 @@ export class GameSession {
   private seed = 5;
   /** El mapa jugado, si esta partida es un mapa con misión. */
   private readonly map: GameMap | null;
+  /**
+   * Ranura de guardado. Cada entrenamiento tiene la suya: son mundos distintos
+   * y compartir la ranura con la partida principal borraba la mascota del
+   * cuidador al abrir un mapa.
+   */
+  private readonly slot: string | undefined;
   /** El juez de la misión: mira el mundo, nunca lo que ella dice. */
   private missionTracker: MissionTracker | null = null;
   private missionStatus: MissionStatus | null = null;
@@ -533,6 +540,7 @@ export class GameSession {
     if (options.petColor !== undefined) this.petColor = options.petColor;
     if (options.provider !== undefined) this.externalProvider = options.provider;
     this.map = options.map ?? null;
+    this.slot = options.map ? mapSlot(options.map.id) : undefined;
     this.seed = options.seed ?? 5;
   }
 
@@ -540,7 +548,7 @@ export class GameSession {
   static async create(options: SessionOptions = {}): Promise<GameSession> {
     const session = new GameSession(options);
     if (options.fresh) {
-      await clearSession(session.store);
+      await clearSession(session.store, session.slot);
     }
     // Un guardado de otra versión no es "no hay guardado": se aparta (no se
     // pisa con el autoguardado siguiente) y se dice, porque lo que se pierde
@@ -549,10 +557,10 @@ export class GameSession {
     let setAside = false;
     if (!options.fresh) {
       try {
-        saved = await loadSession(session.store);
+        saved = await loadSession(session.store, session.slot);
       } catch (error) {
         if (!(error instanceof IncompatibleSaveError)) throw error;
-        await setAsideSave(session.store);
+        await setAsideSave(session.store, session.slot);
         setAside = true;
       }
     }
@@ -840,7 +848,7 @@ export class GameSession {
 
   /** Borra el guardado y arranca una mascota nueva de generación 1. */
   async restartFresh(): Promise<void> {
-    await clearSession(this.store);
+    await clearSession(this.store, this.slot);
     this.resetToNewPet(this.seed);
     this.start();
     await this.save();
@@ -966,7 +974,7 @@ export class GameSession {
       now: () => new Date().toISOString(),
     });
     try {
-      await saveSession(this.store, data);
+      await saveSession(this.store, data, this.slot);
       await this.publishCatalog();
     } catch (error) {
       // Con almacenamiento remoto, un corte de red no debe romper el loop:

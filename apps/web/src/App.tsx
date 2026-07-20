@@ -9,7 +9,7 @@ import { Controls } from './components/Controls.js';
 import { DeathOverlay } from './components/DeathOverlay.js';
 import { DevPanel } from './components/DevPanel.js';
 import { GoalsPanel } from './components/GoalsPanel.js';
-import { MissionPanel } from './components/MissionPanel.js';
+import { TrainingPanel } from './components/TrainingPanel.js';
 import { useExpansion } from './components/expansion.js';
 import { ItemsPanel } from './components/ItemsPanel.js';
 import { SkillsTab, ThoughtsTab, TrialsTab } from './components/LearningTabs.js';
@@ -28,7 +28,7 @@ import { WelcomeOverlay } from './components/WelcomeOverlay.js';
  */
 type Tab =
   | 'chat'
-  | 'mision'
+  | 'entrenamiento'
   | 'objetivos'
   | 'estado'
   | 'objetos'
@@ -55,7 +55,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   );
   // Con un mapa abierto, la misión es lo primero que hay que leer; sin mapa,
   // el chat de siempre. Inicializador perezoso: se decide una vez, al montar.
-  const [tab, setTab] = useState<Tab>(() => (view.mission ? 'mision' : 'chat'));
+  const [tab, setTab] = useState<Tab>(() => (view.mission ? 'entrenamiento' : 'chat'));
   /**
    * El objeto a mirar de cerca (ADR 0056, adenda): tocar una pieza en Obras
    * salta a Objetos, abre esa ficha y la resalta. El contador es lo que
@@ -99,19 +99,16 @@ export function App({ session, account }: { session: GameSession; account: Cloud
   // Pestañas primarias + una técnica (dev) empujada al costado y de bajo peso.
   const tabs: { id: Tab; label: string; badge?: number }[] = [
     { id: 'chat', label: 'Chat', badge: view.chat.length },
-    // Solo cuando se juega un mapa: la vida no es un nivel, y una pestaña
-    // «Misión» vacía en la partida normal sería una promesa que no se cumple.
-    // El contador son los objetivos que FALTAN: al superarla llega a cero y
-    // desaparece solo.
-    ...(view.mission
-      ? [
-          {
-            id: 'mision' as Tab,
-            label: 'Misión',
-            badge: view.mission.objectives.filter((o) => !o.met).length,
-          },
-        ]
-      : []),
+    // Siempre presente: sin entrenamiento en curso es el selector, y con uno
+    // en curso es la misión. El contador son los objetivos que FALTAN, así que
+    // al superarla llega a cero y desaparece solo.
+    {
+      id: 'entrenamiento',
+      label: 'Entrenamiento',
+      ...(view.mission
+        ? { badge: view.mission.objectives.filter((o) => !o.met).length }
+        : {}),
+    },
     // El contador son los ABIERTOS, no todos: lo terminado no reclama atención.
     {
       id: 'objetivos',
@@ -256,7 +253,7 @@ export function App({ session, account }: { session: GameSession; account: Cloud
 
           <div className="panel-body">
             {tab === 'chat' && <ChatFeedPanel view={view} session={session} />}
-            {tab === 'mision' && <MissionPanel view={view} />}
+            {tab === 'entrenamiento' && <TrainingPanel view={view} />}
             {tab === 'objetivos' && <GoalsPanel view={view} onInspect={inspectItem} expansion={expansion} />}
             {tab === 'estado' && <StatusPanel view={view} session={session} />}
             {tab === 'objetos' && <ItemsPanel view={view} session={session} focus={focusItem} onInspect={inspectItem} expansion={expansion} />}

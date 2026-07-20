@@ -107,8 +107,30 @@ const SAVE_KEY = 'save';
 /** Donde va a parar un guardado ilegible en vez de al tacho. */
 const SET_ASIDE_KEY = 'save.incompatible';
 
-export async function saveSession(store: KeyValueStore, data: SessionSaveData): Promise<void> {
-  await writeJson(store, SAVE_KEY, data);
+/**
+ * En qué ranura vive esta partida. Ausente = la partida principal, la de
+ * siempre, la que estaba antes de que existieran las ranuras.
+ *
+ * Existe porque los entrenamientos son MUNDOS distintos y compartían la ranura
+ * con la partida principal: abrir un mapa borraba la mascota del cuidador sin
+ * avisar. Con un selector a un clic, eso deja de ser un accidente raro y pasa a
+ * ser lo que ocurre siempre.
+ *
+ * La clave se deriva, no se elige: `save` y `save:map:vado`. Un id de ranura
+ * viaja tal cual a la clave, así que solo lo arma el código, nunca el usuario.
+ */
+export type SaveSlot = string | undefined;
+
+function keyFor(slot: SaveSlot): string {
+  return slot === undefined ? SAVE_KEY : `${SAVE_KEY}:${slot}`;
+}
+
+export async function saveSession(
+  store: KeyValueStore,
+  data: SessionSaveData,
+  slot?: SaveSlot,
+): Promise<void> {
+  await writeJson(store, keyFor(slot), data);
 }
 
 /**
@@ -117,8 +139,11 @@ export async function saveSession(store: KeyValueStore, data: SessionSaveData): 
  * diferencia importa, porque "no hay nada" y "hay algo que no sé leer" piden
  * respuestas distintas y solo una de las dos se puede resolver en silencio.
  */
-export async function loadSession(store: KeyValueStore): Promise<SessionSaveData | null> {
-  const data = await readJson<SessionSaveData>(store, SAVE_KEY);
+export async function loadSession(
+  store: KeyValueStore,
+  slot?: SaveSlot,
+): Promise<SessionSaveData | null> {
+  const data = await readJson<SessionSaveData>(store, keyFor(slot));
   if (data === null) return null;
   if (data.version !== SAVE_VERSION) throw new IncompatibleSaveError(data.version);
   return data;
@@ -129,13 +154,19 @@ export async function loadSession(store: KeyValueStore): Promise<SessionSaveData
  * no lo pise. Es una partida ajena: no es nuestra para borrarla, aunque no
  * sepamos abrirla.
  */
-export async function setAsideSave(store: KeyValueStore): Promise<void> {
-  const raw = await store.get(SAVE_KEY);
+export async function setAsideSave(store: KeyValueStore, slot?: SaveSlot): Promise<void> {
+  const key = keyFor(slot);
+  const raw = await store.get(key);
   if (raw === null) return;
-  await store.set(SET_ASIDE_KEY, raw);
-  await store.delete(SAVE_KEY);
+  await store.set(slot === undefined ? SET_ASIDE_KEY : `${SET_ASIDE_KEY}:${slot}`, raw);
+  await store.delete(key);
 }
 
-export async function clearSession(store: KeyValueStore): Promise<void> {
-  await store.delete(SAVE_KEY);
+export async function clearSession(store: KeyValueStore, slot?: SaveSlot): Promise<void> {
+  await store.delete(keyFor(slot));
+}
+
+/** La ranura de un entrenamiento. Deriva del id del mapa, no de su nombre. */
+export function mapSlot(mapId: string): string {
+  return `map:${mapId}`;
 }

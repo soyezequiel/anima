@@ -20,6 +20,7 @@ import {
   IncompatibleSaveError,
   loadLegacies,
   loadSession,
+  mapSlot,
   MemoryKeyValueStore,
   appendLegacy,
   readJson,
@@ -165,6 +166,37 @@ describe('guardado y restauración de sesión', () => {
     expect(loaded?.identity.id).toBe('pet-1');
     await clearSession(store);
     expect(await loadSession(store)).toBeNull();
+  });
+
+  /**
+   * Los entrenamientos son mundos aparte y comparten el almacenamiento con la
+   * partida principal. Cuando la clave era una sola, abrir un mapa BORRABA la
+   * mascota del cuidador sin avisar: con un selector a un clic, eso deja de ser
+   * un accidente raro y pasa a ser lo que ocurre siempre.
+   */
+  it('cada ranura guarda lo suyo: un entrenamiento no pisa la partida principal', async () => {
+    const store = new MemoryKeyValueStore();
+    const training = mapSlot('vado');
+
+    await saveSession(store, saved);
+    await saveSession(store, { ...saved, identity: { ...saved.identity, id: 'pet-vado' } }, training);
+
+    expect((await loadSession(store))?.identity.id).toBe('pet-1');
+    expect((await loadSession(store, training))?.identity.id).toBe('pet-vado');
+
+    // Reiniciar el entrenamiento no toca la partida principal.
+    await clearSession(store, training);
+    expect(await loadSession(store, training)).toBeNull();
+    expect((await loadSession(store))?.identity.id).toBe('pet-1');
+  });
+
+  it('dos entrenamientos distintos no se pisan entre sí', async () => {
+    const store = new MemoryKeyValueStore();
+    await saveSession(store, { ...saved, seed: 1 }, mapSlot('vado'));
+    await saveSession(store, { ...saved, seed: 2 }, mapSlot('brote'));
+
+    expect((await loadSession(store, mapSlot('vado')))?.seed).toBe(1);
+    expect((await loadSession(store, mapSlot('brote')))?.seed).toBe(2);
   });
 
   it('un guardado de otra versión se avisa y se aparta, no se borra en silencio', async () => {

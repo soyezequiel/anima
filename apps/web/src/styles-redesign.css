@@ -1190,3 +1190,107 @@ button:active {
 .learn-how-details[open] > summary {
   margin-bottom: 0.5rem;
 }
+
+/* --- Selector de entrenamientos ---------------------------------------- */
+.training-panel__switch {
+  margin: 0.8rem 0 0.4rem;
+}
+.training-panel__switch button {
+  background: transparent;
+  border: 1px solid #2a3441;
+  border-radius: 6px;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.6rem;
+}
+.training-panel__switch button:hover {
+  color: #e2e8f0;
+  border-color: #475569;
+}
+.training-list > summary {
+  cursor: pointer;
+  font-size: 0.75rem;
+  color: #94a3b8;
+  padding: 0.4rem 0;
+}
+.training-list > summary:hover {
+  color: #cbd5e1;
+}
+.training-list ul {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.6rem;
+}
+.training-card {
+  border: 1px solid #2a3441;
+  border-radius: 8px;
+  padding: 0.6rem 0.7rem;
+}
+.training-card.is-active {
+  border-color: #3f6212;
+  background: rgba(63, 98, 18, 0.12);
+}
+.training-card__head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+}
+.training-card__head h4 {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #e2e8f0;
+}
+.training-card__n {
+  background: #2a3441;
+  border-radius: 999px;
+  color: #cbd5e1;
+  font-size: 0.68rem;
+  padding: 0.05rem 0.4rem;
+}
+.training-card__now {
+  margin-left: auto;
+  font-size: 0.68rem;
+  color: #86efac;
+}
+.training-card__briefing {
+  color: #94a3b8;
+  font-size: 0.74rem;
+  line-height: 1.35;
+  margin: 0.4rem 0;
+}
+.training-card__tests {
+  list-style: none;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+.training-card__tests li {
+  color: #64748b;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+.training-card__tests li::before {
+  content: '· ';
+  color: #475569;
+}
+.training-card__go {
+  background: #1e293b;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  color: #e2e8f0;
+  cursor: pointer;
+  font-size: 0.75rem;
+  padding: 0.35rem 0.7rem;
+  width: 100%;
+}
+.training-card__go:hover:not(:disabled) {
+  background: #334155;
+}
+.training-card__go:disabled {
+  cursor: default;
+  color: #64748b;
+}

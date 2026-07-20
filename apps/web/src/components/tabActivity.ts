@@ -17,7 +17,7 @@ import type { GameView } from '../session/view.js';
 
 export type ActivityTab =
   | 'chat'
-  | 'mision'
+  | 'entrenamiento'
   | 'objetivos'
   | 'estado'
   | 'objetos'
@@ -28,7 +28,7 @@ export type ActivityTab =
 
 export const ACTIVITY_TABS: ActivityTab[] = [
   'chat',
-  'mision',
+  'entrenamiento',
   'objetivos',
   'estado',
   'objetos',
@@ -63,7 +63,7 @@ function signature(view: GameView, tab: ActivityTab): string {
       const last = view.chat[view.chat.length - 1];
       return `${view.chat.length}|${last?.tick ?? -1}|${last?.from ?? ''}`;
     }
-    case 'mision':
+    case 'entrenamiento':
       // Un objetivo que se cumple (o que se deshace) es la actividad más
       // importante que hay: es el mundo diciendo que algo cambió de verdad.
       // Sin mapa no hay misión, y una firma vacía nunca enciende nada.

@@ -514,6 +514,19 @@ export class AnimaAgent {
    */
   private suspensionMaterials = new Map<string, string[]>();
   /**
+   * Qué tenía a la vista al suspender cada encargo: reactivar exige algo NUEVO.
+   *
+   * Es el gemelo de `suspensionEdibles` para la materia, y faltaba. Sin él,
+   * «apareció el material que faltaba» se cumplía con lo que ya estaba ahí
+   * cuando se rindió: se dormía esperando ver una piedra, la piedra nunca se
+   * había ido, y al tick siguiente se despertaba, fallaba igual y se volvía a
+   * dormir. Medido en vivo en el cauce ancho: 100 suspensiones y 100
+   * reactivaciones en 100 ticks, sin una sola acción en el medio.
+   *
+   * Esperar algo que ya tenés delante no es esperar: es girar en el lugar.
+   */
+  private suspensionSeen = new Map<string, Set<string>>();
+  /**
    * Cuándo se rindió cada encargo por falta de materia (ADR 0065). Es lo que
    * permite volver a INTENTARLO al rato en vez de esperar para siempre a que
    * el material aparezca solo delante de sus ojos.
@@ -993,6 +1006,16 @@ export class AnimaAgent {
       const y = anchor.y + placement.offset.y;
       return ground.water.has(groundKey({ x, y }));
     });
+  }
+
+  /**
+   * Deja anotado lo que tenía a la vista al rendirse, para que reactivar exija
+   * una novedad. Se guarda TODO lo visible y no solo lo que le falta: el
+   * material que espera puede cambiar entre una suspensión y la siguiente, y
+   * una lista parcial dejaría colar como novedad algo que ya estaba.
+   */
+  private noteWhatSheSaw(goalId: string, perception: Perception): void {
+    this.suspensionSeen.set(goalId, new Set(perception.visibleEntities.map((e) => e.id)));
   }
 
   /** ¿Alguna pieza de la obra, plantada acá, cae sobre el destino pedido? */
@@ -5139,6 +5162,7 @@ export class AnimaAgent {
           );
           this.suspensionMaterials.set(activity.goalId, waitingFor);
           this.suspensionTick.set(activity.goalId, this.tick);
+          this.noteWhatSheSaw(activity.goalId, perception);
           this.destroyToolFloor.delete(activity.goalId);
           this.emit('goal.suspended', {
             goalId: activity.goalId,
@@ -5194,6 +5218,45 @@ export class AnimaAgent {
               (pedirAhora
                 ? `No veo de dónde sacarlo por acá — ¿me conseguís ${lista}? Lo retomo apenas lo tenga.`
                 : `Lo dejo a medias y sigo apenas consiga lo que falta.`),
+          );
+          this.lastSelectedGoalId = null;
+          return null;
+        }
+        // «No sé qué construir» no es un fracaso: es que la idea todavía no
+        // existe. El encargo nombra algo que no tiene ni receta ni plano —
+        // porque nunca se inventó, o porque el juez acaba de vetar la forma en
+        // que se había pensado— y eso es exactamente el estado en el que la
+        // puerta de invención tiene algo que hacer.
+        //
+        // Matarlo acá era perder la corrección justo cuando llegaba. Se vio en
+        // el cauce ancho: el juez dijo «un puente es un lugar, no una cosa»,
+        // que es una instrucción de cómo rehacerlo, y diez ticks después el
+        // encargo estaba muerto con «no sé qué construir». Quedó parada 490
+        // ticks con el motivo de su fracaso guardado en la memoria y sin nadie
+        // que lo leyera. En otras corridas, con el mismo veto, sí volvía a
+        // proponer y cruzaba: la diferencia no era la idea, era quién llegaba
+        // primero al objetivo.
+        //
+        // Se suspende en vez de fallar, así que el ciclo de invención lo retoma
+        // con el veto como dato. Lo que evita el bucle no es esto sino lo de
+        // siempre: el crédito de intentos por objetivo y el veto guardado, que
+        // ya frena volver a proponer la MISMA forma.
+        if (reason === 'no-sé-qué-construir' && goal?.userRequest?.kind === 'craft-item') {
+          this.goals.suspend(
+            activity.goalId,
+            'todavía no se me ocurre cómo hacer eso',
+            'que se me ocurra una forma nueva',
+          );
+          this.suspensionTick.set(activity.goalId, this.tick);
+          this.emit('goal.suspended', { goalId: activity.goalId, reason: 'falta imaginar cómo' });
+          this.emit('strategy.failed', {
+            goalId: activity.goalId,
+            strategy: activity.strategy,
+            outcome: out.result.outcome,
+            reason,
+          });
+          this.reply(
+            `Todavía no se me ocurre cómo hacer eso. Le sigo dando vueltas.`,
           );
           this.lastSelectedGoalId = null;
           return null;
@@ -5522,6 +5585,7 @@ export class AnimaAgent {
         if (faltan.length > 0) {
           this.suspensionMaterials.set(goal.id, faltan);
           this.suspensionTick.set(goal.id, this.tick);
+          this.noteWhatSheSaw(goal.id, perception);
         }
       }
       const waitingFor = this.suspensionMaterials.get(goal.id);
@@ -5539,6 +5603,28 @@ export class AnimaAgent {
           this.emit('goal.reactivated', {
             goalId: goal.id,
             reason: 'pasó la urgencia del cuerpo',
+          });
+        }
+        // Y el que se durmió porque todavía no se le ocurría CÓMO vuelve a
+        // pensarlo al rato. No espera nada del mundo: espera una idea, y las
+        // ideas no aparecen tiradas en el suelo — aparecen cuando se vuelve a
+        // intentar, ahora con el veto guardado como pista de qué corregir.
+        //
+        // Volver a pensar no es volver a proponer lo mismo: el veto de esa
+        // forma ya está en su memoria y frena la repetición, así que el
+        // reintento solo puede ser una forma distinta. Y el crédito de intentos
+        // por objetivo le pone el techo.
+        if (
+          goal.source === 'user-request' &&
+          goal.suspendedReason === 'todavía no se me ocurre cómo hacer eso' &&
+          this.tick - (this.suspensionTick.get(goal.id) ?? this.tick) >= RETRY_SEARCH_TICKS
+        ) {
+          this.goals.reactivate(goal.id);
+          this.progress.resetGoal(goal.id);
+          this.suspensionTick.set(goal.id, this.tick);
+          this.emit('goal.reactivated', {
+            goalId: goal.id,
+            reason: 'vuelve a pensar cómo hacerlo',
           });
         }
         continue;
@@ -5562,9 +5648,19 @@ export class AnimaAgent {
         // 0034), y sin este filtro sus propias paredes contaban como "apareció
         // material" — revivía, fallaba igual, se suspendía y volvía a verlas,
         // en un bucle de un mensaje idéntico cada cincuenta ticks.
+        // Y sobre todo: algo que NO estaba ahí cuando se rindió. Lo que ya veía
+        // al suspenderse es exactamente la situación que la hizo suspenderse,
+        // así que contarlo como novedad la despierta para volver a fallar en el
+        // mismo tick. Un id nuevo cubre las tres formas legítimas de que la
+        // espera termine (lo fabricó, se lo trajeron, o caminó y encontró más),
+        // porque las tres estrenan entidad o la traen a la vista por primera vez.
         stillMissing.some((kind) =>
           perception.visibleEntities.some(
-            (e) => e.kind === kind && e.held !== true && e.portable === true,
+            (e) =>
+              e.kind === kind &&
+              e.held !== true &&
+              e.portable === true &&
+              !(this.suspensionSeen.get(goal.id)?.has(e.id) ?? false),
           ),
         );
       // O lo RECUERDA: vio ese material antes, en un lugar al que sabe volver
@@ -5591,7 +5687,10 @@ export class AnimaAgent {
       this.goals.reactivate(goal.id);
       this.progress.resetGoal(goal.id);
       this.suspensionTick.set(goal.id, this.tick);
-      if (arrived) this.suspensionMaterials.delete(goal.id);
+      if (arrived) {
+        this.suspensionMaterials.delete(goal.id);
+        this.suspensionSeen.delete(goal.id);
+      }
       this.emit('goal.reactivated', {
         goalId: goal.id,
         reason: arrived
