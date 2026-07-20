@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { kindLabel } from '@anima/shared';
 import type { GameSession } from '../session/GameSession.js';
+import { humanReason } from '../session/failure-reasons.js';
 import type { SkillSubject } from '../session/skill-subjects.js';
 import type { GameView, ItemView, SkillView } from '../session/view.js';
 import { ItemIcon } from './ItemIcon.js';
@@ -217,41 +218,6 @@ function SkillGroup({
       )}
     </li>
   );
-}
-
-/**
- * Los motivos vienen en código (`aborted:target-missing:foodTarget`). El
- * cuidador no lee códigos: los traducimos a una frase corta.
- */
-function humanReason(raw: string): string {
-  const [head, ...rest] = raw.split(':');
-  const detail = rest.join(' · ');
-  switch (head) {
-    case 'aborted':
-      return rest[0] === 'target-missing'
-        ? `se cortó: no encontró ${rest.slice(1).join(' ') || 'el objetivo'}`
-        : `se cortó: ${detail}`;
-    case 'criteria-failed':
-      return rest.length > 1
-        ? `no cumplió: ${rest[0]} = ${rest.slice(1).join(':')}`
-        : `no cumplió: ${detail}`;
-    case 'objetivo-presente-no-alcanzado':
-      return `tenía ${detail} a la vista y no llegó`;
-    case 'no-damage-dealt':
-      return `golpeó sin hacer daño (${detail})`;
-    case 'path-blocked':
-      return `el camino se le bloqueó ${detail} vez/veces`;
-    case 'craft-missing':
-      return `le faltaban ingredientes (${detail})`;
-    case 'craft-failed':
-      return `no pudo construir: ${detail}`;
-    case 'timeout':
-      return 'se le acabó el tiempo';
-    case 'limit-exceeded':
-      return `pasó el límite de pasos${detail ? `: ${detail}` : ''}`;
-    default:
-      return raw;
-  }
 }
 
 type RegressionGroup = {

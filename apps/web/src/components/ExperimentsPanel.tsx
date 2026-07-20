@@ -29,6 +29,15 @@ function humanName(name: string): string {
 }
 
 /**
+ * El lapso de un intento. Un ciclo entero puede resolverse dentro de un mismo
+ * tick —piensa, prueba y falla sin que el mundo avance—, y ahí «t18–t18» es
+ * decir dos veces lo mismo.
+ */
+function span(first: number, last: number): string {
+  return first === last ? `t${first}` : `t${first}–t${last}`;
+}
+
+/**
  * El backend enumera cada semilla del banco de pruebas; para leer alcanza con
  * saber cuántas son. La lista completa vive en el registro técnico del motor.
  */
@@ -70,7 +79,7 @@ function Attempt({ attempt }: { attempt: AttemptGroup }) {
       {attempt.steps.length > 0 && (
         <details className="trial-steps">
           <summary>
-            {attempt.steps.length} {stepWord} · t{attempt.firstTick}–t{attempt.lastTick}
+            {attempt.steps.length} {stepWord} · {span(attempt.firstTick, attempt.lastTick)}
           </summary>
           <ol className="timeline">
             {attempt.steps.map((step, i) => (
@@ -100,8 +109,8 @@ function Trial({ trial }: { trial: SkillTrial }) {
         <strong className="trial-group-title">{humanName(trial.skillName)}</strong>
         <span className={`pill pill-${chip.cls}`}>{chip.text}</span>
         <span className="trial-group-meta muted">
-          {attempts.length} {attempts.length === 1 ? 'intento' : 'intentos'} · t{trial.firstTick}–t
-          {trial.lastTick}
+          {attempts.length} {attempts.length === 1 ? 'intento' : 'intentos'} ·{' '}
+          {span(trial.firstTick, trial.lastTick)}
         </span>
       </header>
       {need !== null && need.detail !== '' && (

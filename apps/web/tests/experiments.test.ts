@@ -93,4 +93,19 @@ describe('groupExperiments', () => {
   it('sin eventos no hay nada que agrupar', () => {
     expect(groupExperiments([])).toEqual([]);
   });
+
+  it('un ciclo entero cae en UN grupo, no en uno por nombre distinto', () => {
+    // La regresión que se vio en pantalla: `skill.test.failed` no trae `name`
+    // y caía bajo el id crudo («skill 1»), partiendo el mismo ciclo en dos
+    // paneles —la candidata en uno, su veredicto en el otro—. La sesión ahora
+    // resuelve el id contra la biblioteca, así que acá llega un solo nombre.
+    const trials = groupExperiments([
+      ev(18, 'alcanzar-alimento-bloqueado', null, 'requested', 'hambre bloqueada'),
+      ev(18, 'alcanzar-alimento-bloqueado', 1, 'created', 'primero el GPS'),
+      ev(18, 'alcanzar-alimento-bloqueado', 1, 'test-failed', 'Éxito 50%'),
+    ]);
+    expect(trials).toHaveLength(1);
+    expect(trials[0]!.attempts.filter((a) => a.version !== null)).toHaveLength(1);
+    expect(trials[0]!.outcome).toBe('rejected');
+  });
 });

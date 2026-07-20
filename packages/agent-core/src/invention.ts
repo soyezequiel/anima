@@ -154,6 +154,24 @@ export interface InventionDeps {
   currentTick(): number;
 }
 
+/**
+ * Con qué nombre se le cobra a un objetivo el crédito de inventar.
+ *
+ * `ProgressController` ya lo dice: «tener ideas se paga por PROBLEMA, no por
+ * vida». Pero el problema se identificaba con el id del objetivo, y eso no es lo
+ * mismo. Una necesidad del cuerpo va y vuelve: al recuperarse, el objetivo se
+ * COMPLETA, y el próximo bajón crea uno nuevo con id nuevo. Cada ciclo
+ * frío→calor→frío regalaba tres inventos frescos, y así tres se volvieron diez —
+ * fogata, antorcha, refugio, la firma de la misma idea intentada de nuevo.
+ *
+ * Un encargo del cuidador sí es un problema por vez: cada pedido es su propio
+ * problema, aunque pida dos veces lo mismo. Una necesidad, no: tener frío hoy es
+ * el mismo problema que tener frío ayer.
+ */
+export function inventionCreditKey(goal: Goal): string {
+  return goal.source === 'internal-signal' ? `need:${goal.description}` : goal.id;
+}
+
 export class InventionEngine {
   /** Rechazos del mundo a sus recetas: viajan al siguiente intento. */
   private recipeRejections: string[] = [];
@@ -555,7 +573,7 @@ export class InventionEngine {
   async inventRecipe(
     problem: string,
     perception: Perception,
-    options: { goalId: string; wantedId?: string; reserved?: string[] },
+    options: { goalId: string; wantedId?: string; reserved?: string[]; creditKey?: string },
   ): Promise<ActionIntent | null> {
     // Lo que un encargo abierto ya tiene reclamado no se ofrece como materia
     // libre. Ofrecerlo era pedirle al modelo que gastara lo ajeno: con «cruzá el
@@ -576,7 +594,10 @@ export class InventionEngine {
     // Sin materiales no hay nada que inventar: es falta de recurso, no de idea.
     if (materials.length === 0) return null;
 
-    while (this.spendAttempt(options.goalId)) {
+    // El crédito se cobra al PROBLEMA; la propiedad del plan sigue siendo del
+    // objetivo. Son dos cosas distintas y antes compartían la misma clave.
+    const creditKey = options.creditKey ?? options.goalId;
+    while (this.spendAttempt(creditKey)) {
       const step = await this.proposeOnce(problem, perception, options, materials);
       if (step !== null) return step;
       // El plan quedó en pie: no lo rechazó nadie, no hubo quien juzgara. Con el

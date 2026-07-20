@@ -76,7 +76,7 @@ import {
 } from './refusal.js';
 import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
 import { developSkill, evaluateAndApply } from './skill-dev.js';
-import { InventionEngine } from './invention.js';
+import { InventionEngine, inventionCreditKey } from './invention.js';
 import {
   GOAL_BE_SAFE,
   GOAL_RESTORE_ENERGY,
@@ -575,6 +575,15 @@ export class AnimaAgent {
    * como la actividad: si se restaura un guardado, se re-aprende al reintentar.
    */
   private destroyToolFloor = new Map<string, number>();
+  /**
+   * Encargos que se trabaron por no tener HERRAMIENTA con qué cosechar, y de
+   * qué querían sacar materia. Se anota acá porque quien lo descubre
+   * (`continueActivity`) es síncrono y hacerse una herramienta puede requerir
+   * inventarla: el camino que decide, que sí es asíncrono, lo consume al tick
+   * siguiente. Es el mismo mecanismo con el que `destroyToolFloor` escala un
+   * golpe que no hizo mella.
+   */
+  private harvestToolBlocked = new Map<string, string>();
   private tick = 0;
 
   constructor(config: AgentConfig) {
@@ -4053,6 +4062,11 @@ export class AnimaAgent {
       // Romper algo que no cedió a su herramienta no es rendirse: antes de
       // volver a golpear, se hace (o inventa) una más fuerte. Solo si no queda
       // por dónde, se rinde. `undefined` = "no está trabada, golpeá normal".
+      // Cosechar sin herramienta tampoco es rendirse: primero se consigue con
+      // qué. Va antes que el resto porque mientras esto no se resuelva, el
+      // encargo no puede avanzar por ningún otro lado.
+      const toolless = await this.escalateHarvestIfToolless(goal, perception);
+      if (toolless !== undefined) return toolless;
       if (goal.userRequest.kind === 'destroy-entity') {
         const escalated = await this.escalateDestroyIfBlocked(goal, perception);
         if (escalated !== undefined) return escalated;
@@ -4161,7 +4175,7 @@ export class AnimaAgent {
       // ahí no falta una idea, falta materia, y ninguna receta la conjura.
       if (
         !this.progress.blockedByMissingResource(goal.id) &&
-        this.invention.attemptsLeft(goal.id)
+        this.invention.attemptsLeft(inventionCreditKey(goal))
       ) {
         const invention = await this.inventForObstacle(goal, perception);
         if (invention) return invention;
@@ -4231,6 +4245,7 @@ export class AnimaAgent {
       (barriers.length > 0 ? ` (${barriers.join('; ')})` : '');
     return this.invention.inventRecipe(problem, perception, {
       goalId: goal.id,
+      creditKey: inventionCreditKey(goal),
       reserved: this.committedKinds(perception, goal.id),
     });
   }
@@ -4297,6 +4312,85 @@ export class AnimaAgent {
    * Devuelve la intención con la que sigue, `null` si ya cerró el objetivo este
    * tick, o `undefined` para "no está trabada: golpeá con el programa de siempre".
    */
+  /**
+   * Le faltó la HERRAMIENTA, no la materia.
+   *
+   * Con «cruzá el río» a un bloque de terminar, cuatro árboles a la vista y
+   * ningún tronco suelto, abortaba con `no-candidates:tool-tronco` y se dormía
+   * «esperando que aparezca un tronco». Los troncos estaban ahí, adentro de los
+   * árboles: lo que faltaba era con qué sacarlos. Y mientras dormía, los
+   * antojos se gastaban lo que el encargo esperaba.
+   *
+   * Una herramienta que falta es un PASO MÁS, no un callejón: se hace si su
+   * mundo ya sabe hacerla, y si no, se inventa. Es la misma escalada que ya
+   * hace `escalateDestroyIfBlocked` cuando un golpe no hace mella, aplicada a
+   * cosechar en vez de a romper.
+   *
+   * `undefined` = «no está trabada por esto, seguí normal».
+   */
+  private async escalateHarvestIfToolless(
+    goal: Goal,
+    perception: Perception,
+  ): Promise<ActionIntent | null | undefined> {
+    const source = this.harvestToolBlocked.get(goal.id);
+    if (source === undefined) return undefined;
+    // Ya lleva o ve una herramienta: consiguió una mientras tanto, o la traba
+    // era otra. Se olvida la marca y el encargo sigue por donde iba.
+    if (this.strongestToolPower(perception) > 0) {
+      this.harvestToolBlocked.delete(goal.id);
+      return undefined;
+    }
+
+    const deps = this.userProgramDeps(perception);
+    // ¿Su mundo ya sabe hacer una herramienta? Hacerla y volver al encargo en
+    // el mismo programa, igual que al escalar un golpe.
+    const toolRecipe = perception.recipes.find((r) => recipeProduces(r, 'tool'));
+    if (toolRecipe && goal.userRequest) {
+      this.harvestToolBlocked.delete(goal.id);
+      this.reply(
+        `No puedo sacar ${kindWithArticle(source)} con las manos. ` +
+          `Primero me hago ${kindWithArticle(recipeProduct(toolRecipe)?.kind ?? 'una herramienta')}.`,
+      );
+      const craft = gatherAndCraftProgram(toolRecipe, {
+        held: heldCounts(perception),
+        searchFirst: true,
+        recipes: perception.recipes,
+        rememberedWalk: deps.rememberedWalk,
+      });
+      const resume = programForUserRequest(goal.userRequest, perception, deps);
+      this.startUserActivity(
+        goal,
+        [...craft, ...resume],
+        completionReply(goal.userRequest),
+        perception,
+      );
+      return this.continueActivity(perception);
+    }
+
+    // No la sabe hacer: inventarla. Es el mismo crédito de siempre — inventar
+    // es un intento más, nunca un callejón.
+    if (this.invention.attemptsLeft(inventionCreditKey(goal))) {
+      const intent = await this.invention.inventRecipe(
+        `necesito una herramienta para sacar ${kindWithArticle(source)} de donde está`,
+        perception,
+        {
+          goalId: goal.id,
+          creditKey: inventionCreditKey(goal),
+          // Nada que reservar contra sí mismo: la herramienta es PARA este
+          // encargo, así que su propia materia no se le esconde.
+          reserved: this.committedKinds(perception, goal.id),
+        },
+      );
+      if (intent) return intent;
+    }
+
+    // Sin receta y sin crédito: se acabó el camino por acá. Se suelta la marca
+    // para que el encargo siga su curso normal —pedir ayuda, dormirse— en vez
+    // de reintentar esto para siempre.
+    this.harvestToolBlocked.delete(goal.id);
+    return undefined;
+  }
+
   private async escalateDestroyIfBlocked(
     goal: Goal,
     perception: Perception,
@@ -4333,11 +4427,15 @@ export class AnimaAgent {
 
     // No la sabe hacer: inventarla, si queda crédito. El invento entra por la
     // puerta del mundo como cualquier otro; un rechazo viaja al próximo intento.
-    if (this.invention.attemptsLeft(goal.id)) {
+    if (this.invention.attemptsLeft(inventionCreditKey(goal))) {
       const intent = await this.invention.inventRecipe(
         `necesito una herramienta más fuerte para romper ${kindWithArticle(targetKind ?? 'eso')}`,
         perception,
-        { goalId: goal.id, reserved: this.committedKinds(perception, goal.id) },
+        {
+          goalId: goal.id,
+          creditKey: inventionCreditKey(goal),
+          reserved: this.committedKinds(perception, goal.id),
+        },
       );
       if (intent) return intent;
     }
@@ -4642,11 +4740,15 @@ export class AnimaAgent {
     // Si nada de lo que sabe construir da calor, quizá pueda inventarlo. Es
     // el paso previo a rendirse: primero la idea, después la habilidad.
     const knowsFire = perception.recipes.some((recipe) => recipeProduces(recipe, 'heatSource'));
-    if (!knowsFire && this.invention.attemptsLeft(goal.id)) {
+    if (!knowsFire && this.invention.attemptsLeft(inventionCreditKey(goal))) {
       const invention = await this.invention.inventRecipe(
         'tengo frío y no tengo nada que dé calor',
         perception,
-        { goalId: goal.id, reserved: this.committedKinds(perception, goal.id) },
+        {
+          goalId: goal.id,
+          creditKey: inventionCreditKey(goal),
+          reserved: this.committedKinds(perception, goal.id),
+        },
       );
       if (invention) return invention;
     }
@@ -5228,6 +5330,19 @@ export class AnimaAgent {
         // sin pisar. Romperla no cumple el encargo —por eso no es su
         // actividad— pero lo desatasca, y el próximo intento ya busca del otro
         // lado. Si el rótulo está prohibido es que ya lo intentó y no cedió.
+        // Lo que faltó no fue la MATERIA sino la HERRAMIENTA con que sacarla
+        // (`no-candidates:tool-<tipo>`): tiene cuatro árboles delante y no
+        // puede talar ninguno. Eso no es un encargo sin camino, es un encargo
+        // con un paso más — y dormirse ahí fue lo que dejó la puerta abierta a
+        // que los antojos se gastaran la materia que estaba esperando.
+        //
+        // Se anota y NO se suspende: hacerse una herramienta puede requerir
+        // inventarla, y eso solo puede pasar en el camino asíncrono.
+        if (reason.startsWith('no-candidates:tool-') && goal) {
+          this.harvestToolBlocked.set(activity.goalId, reason.slice('no-candidates:tool-'.length));
+          this.lastSelectedGoalId = null;
+          return null;
+        }
         if (reason.startsWith('no-candidates') && missingKinds.length > 0 && goal) {
           // Lo que podría estar del otro lado es la materia ENCONTRABLE, no los
           // bloques del plano (ADR 0066, adenda). Una encimera no aparece

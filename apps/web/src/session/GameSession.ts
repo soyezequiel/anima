@@ -36,6 +36,7 @@ import { MissionTracker } from '@anima/missions';
 import type { SkillOp, SkillRemovalPlan } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
 import { skillSubjects } from './skill-subjects.js';
+import { humanReason } from './failure-reasons.js';
 import {
   COLD_SCENARIOS,
   foodBehindWall,
@@ -2086,10 +2087,25 @@ export class GameSession {
 
   private experimentsFromEvents(): ExperimentView[] {
     const experiments: ExperimentView[] = [];
+    /**
+     * El nombre de la habilidad, siempre el nombre.
+     *
+     * No todos los eventos del ciclo lo traen: `skill.test.passed` y
+     * `skill.test.failed` emiten solo `skillId`. Mientras el panel era una
+     * lista plana daba igual —cada evento se imprimía suelto—, pero agrupar
+     * por este campo partía un mismo ciclo en dos: la candidata bajo
+     * «alcanzar alimento bloqueado» y su veredicto bajo «skill 1», que es el
+     * id crudo del motor asomándose a la pantalla.
+     */
+    const nameOf = (data: AgentEvent['data']): string => {
+      if (typeof data.name === 'string' && data.name) return data.name;
+      const id = typeof data.skillId === 'string' ? data.skillId : null;
+      return id ? (this.library.get(id)?.name ?? id) : '';
+    };
     const push = (event: AgentEvent, kind: ExperimentView['kind'], detail: string): void => {
       experiments.push({
         tick: event.tick,
-        skillName: String(event.data.name ?? event.data.skillId ?? ''),
+        skillName: nameOf(event.data),
         version: typeof event.data.version === 'number' ? event.data.version : null,
         kind,
         detail,
@@ -2129,10 +2145,14 @@ export class GameSession {
           );
           break;
         case 'skill.test.failed':
+          // Las observaciones son códigos del evaluador; se dicen en voz
+          // humana acá, donde todavía son una lista y no un renglón pegado.
           push(
             event,
             'test-failed',
-            `Éxito ${Math.round((d.successRate as number) * 100)}%. ${(d.observations as string[]).join('; ')}`,
+            `Éxito ${Math.round((d.successRate as number) * 100)}%. ${(d.observations as string[])
+              .map(humanReason)
+              .join('; ')}`,
           );
           break;
         case 'skill.test.passed':
