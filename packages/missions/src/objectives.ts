@@ -132,8 +132,17 @@ export interface ObjectiveResult {
   met: boolean;
   /** Tick en el que se cumplió por primera vez, si se cumplió. */
   metAtTick?: number;
-  /** Por qué se considera cumplido o qué falta: la explicación va con el veredicto. */
-  detail: string;
+  /**
+   * Qué FALTA para cumplirlo, en voz de cuidador. `null` cuando ya está: el
+   * tilde ya lo dijo, y repetirlo con otras palabras era leer dos veces.
+   *
+   * No dice cómo se mide. Antes volcaba la query (`0/4 entidades nacida en la
+   * partida, colocada en el cauce`), que era el `describe` otra vez pero en
+   * jerga —con cocientes como `6/1`, coordenadas crudas e ids internos entre
+   * comillas—. Lo que hace falta saber es cuánto falta, no contra qué se
+   * compara.
+   */
+  detail: string | null;
 }
 
 function zoneOf(zones: readonly Zone[], id: string): Zone {
@@ -164,18 +173,6 @@ function matchesQuery(entity: Entity, query: EntityQuery, history: MissionHistor
     if (entity.components[key] !== undefined) return false;
   }
   return true;
-}
-
-function describeQuery(query: EntityQuery): string {
-  const parts: string[] = [];
-  if (query.kind) parts.push(`de tipo "${query.kind}"`);
-  if (query.kindIsNew) parts.push('de un tipo que no existía');
-  if (query.createdDuringRun) parts.push('nacida en la partida');
-  if (query.crafted) parts.push('fabricada');
-  if (query.placed) parts.push('colocada');
-  if (query.has?.length) parts.push(`con ${query.has.join(', ')}`);
-  if (query.lacks?.length) parts.push(`sin ${query.lacks.join(', ')}`);
-  return parts.length > 0 ? parts.join(', ') : 'cualquiera';
 }
 
 function matchingEntities(
@@ -232,6 +229,18 @@ export interface ObjectiveContext {
   history: MissionHistory;
   /** Objetivos ya cumplidos y cuándo: lo que `sequence` necesita para juzgar el orden. */
   metAt: ReadonlyMap<string, number>;
+  /**
+   * Cómo se llama cada objetivo en voz humana. Una secuencia solo conoce los
+   * ids de sus partes, y decir «todavía falta "tendido-completo"» es mostrar
+   * el nombre interno; con esto dice qué paso falta con las mismas palabras
+   * con que ese paso figura en la lista.
+   */
+  describeOf: ReadonlyMap<string, string>;
+}
+
+/** «van 2 de 4», o «todavía no» cuando alcanza con uno solo. */
+function shortfall(count: number, min: number): string {
+  return min === 1 ? 'todavía no' : `van ${count} de ${min}`;
 }
 
 /**
@@ -244,11 +253,8 @@ export function evaluateObjective(objective: Objective, ctx: ObjectiveContext): 
     case 'entity-exists': {
       const min = objective.min ?? 1;
       const found = matchingEntities(ctx.world, objective.query, ctx.history);
-      return {
-        ...base,
-        met: found.length >= min,
-        detail: `${found.length}/${min} entidades ${describeQuery(objective.query)}`,
-      };
+      const met = found.length >= min;
+      return { ...base, met, detail: met ? null : shortfall(found.length, min) };
     }
     case 'entity-in-zone': {
       const min = objective.min ?? 1;
@@ -256,10 +262,15 @@ export function evaluateObjective(objective: Objective, ctx: ObjectiveContext): 
       const found = matchingEntities(ctx.world, objective.query, ctx.history).filter((e) =>
         inZone(e.components.position, zone),
       );
+      const met = found.length >= min;
       return {
         ...base,
-        met: found.length >= min,
-        detail: `${found.length}/${min} entidades ${describeQuery(objective.query)} en ${zone.label}`,
+        met,
+        detail: met
+          ? null
+          : min === 1
+            ? `nada en ${zone.label} todavía`
+            : `van ${found.length} de ${min} en ${zone.label}`,
       };
     }
     case 'no-entity': {
@@ -272,42 +283,34 @@ export function evaluateObjective(objective: Objective, ctx: ObjectiveContext): 
         met: found.length === 0,
         detail:
           found.length === 0
-            ? `no queda ninguna ${describeQuery(objective.query)}`
-            : `todavía hay ${found.length} ${describeQuery(objective.query)}`,
+            ? null
+            : `todavía queda${found.length === 1 ? '' : 'n'} ${found.length}`,
       };
     }
     case 'agent-in-zone': {
       const zone = zoneOf(ctx.zones, objective.zone);
       const pos = getEntity(ctx.world, ctx.petId)?.components.position;
-      return {
-        ...base,
-        met: inZone(pos, zone),
-        detail: pos ? `está en (${pos.x},${pos.y}); ${zone.label}` : 'sin posición',
-      };
+      const met = inZone(pos, zone);
+      // Sin coordenadas —«(3,7)» es el motor hablando— y sin repetir la zona:
+      // el `describe` del objetivo ya dice adónde tenía que llegar, así que
+      // nombrarla otra vez es la misma frase dos veces seguidas.
+      return { ...base, met, detail: met ? null : 'todavía no' };
     }
     case 'path-open': {
       const open = pathExists(ctx.world, objective.from, objective.to, ctx.petId);
-      return {
-        ...base,
-        met: open,
-        detail: open
-          ? `hay paso de (${objective.from.x},${objective.from.y}) a (${objective.to.x},${objective.to.y})`
-          : 'sigue sin haber paso',
-      };
+      return { ...base, met: open, detail: open ? null : 'sigue sin haber paso' };
     }
     case 'rule-learned': {
       const min = objective.min ?? 1;
       const count = ctx.history.learned[objective.gate];
-      return {
-        ...base,
-        met: count >= min,
-        detail: `${count}/${min} reglas nuevas de tipo ${objective.gate}`,
-      };
+      const met = count >= min;
+      return { ...base, met, detail: met ? null : shortfall(count, min) };
     }
     case 'event-happened': {
       const min = objective.min ?? 1;
       const count = countEvents(ctx.history, objective.event, objective.where);
-      return { ...base, met: count >= min, detail: `${count}/${min} × ${objective.event}` };
+      const met = count >= min;
+      return { ...base, met, detail: met ? null : shortfall(count, min) };
     }
     case 'all': {
       const parts = objective.of.map((child) => evaluateObjective(child, ctx));
@@ -316,18 +319,18 @@ export function evaluateObjective(objective: Objective, ctx: ObjectiveContext): 
         ...base,
         met: pending.length === 0,
         detail:
-          pending.length === 0
-            ? 'todas las partes'
-            : `falta: ${pending.map((p) => p.describe).join('; ')}`,
+          pending.length === 0 ? null : `falta: ${pending.map((p) => p.describe).join('; ')}`,
       };
     }
     case 'any': {
       const parts = objective.of.map((child) => evaluateObjective(child, ctx));
       const met = parts.find((p) => p.met);
+      // Acá el detalle SÍ sirve cumplido: de varias alternativas, dice cuál
+      // fue la que valió, y eso no está en ninguna otra parte de la pantalla.
       return {
         ...base,
         met: met !== undefined,
-        detail: met ? `por ${met.describe}` : 'ninguna de las alternativas',
+        detail: met ? `por ${met.describe}` : 'ninguna todavía',
       };
     }
     case 'sequence': {
@@ -335,13 +338,16 @@ export function evaluateObjective(objective: Objective, ctx: ObjectiveContext): 
       // Una secuencia satisfecha "de golpe" (todas en el mismo tick) es
       // legítima; lo que se rechaza es el desorden.
       let previous = -Infinity;
+      const named = (id: string): string => ctx.describeOf.get(id) ?? id;
       for (const id of objective.of) {
         const at = ctx.metAt.get(id);
-        if (at === undefined) return { ...base, met: false, detail: `todavía falta "${id}"` };
-        if (at < previous) return { ...base, met: false, detail: `"${id}" ocurrió fuera de orden` };
+        if (at === undefined) return { ...base, met: false, detail: `falta: ${named(id)}` };
+        if (at < previous) {
+          return { ...base, met: false, detail: `${named(id)} pasó fuera de orden` };
+        }
         previous = at;
       }
-      return { ...base, met: true, detail: `en orden: ${objective.of.join(' → ')}` };
+      return { ...base, met: true, detail: null };
     }
   }
 }

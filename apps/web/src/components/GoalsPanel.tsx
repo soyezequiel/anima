@@ -32,6 +32,40 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 /**
+ * Cuánto le falta a un objetivo, en una sola fracción — y de dónde sale ese
+ * número, para poder escribirlo en criollo.
+ *
+ * Un objetivo tenía hasta TRES avances escritos como tres titulares —los
+ * bloques puestos de la obra, la cuenta de pasos, y la lista de materia— y una
+ * barra que solo aparecía para las obras. Tres números compitiendo por ser EL
+ * avance es no tener ninguno: el cuidador miraba «en marcha» durante cien ticks
+ * sin saber si estaba avanzando o trabada.
+ *
+ * Se elige UNO, el más concreto que el objetivo tenga: los bloques de la obra
+ * antes que los pasos, y los pasos antes que la materia. Ese es el que se
+ * dibuja y el que se cuenta.
+ */
+export function goalProgress(
+  goal: GoalView,
+): { done: number; total: number; text: string } | null {
+  if (goal.structure) {
+    const { placed, total } = goal.structure;
+    return { done: placed, total, text: `${placed} de ${total} bloques puestos` };
+  }
+  const steps = goal.children;
+  if (steps.length > 0) {
+    const done = steps.filter((s) => s.status === 'completed').length;
+    return { done, total: steps.length, text: `${done} de ${steps.length} pasos` };
+  }
+  if (goal.needs.length > 0) {
+    const done = goal.needs.reduce((n, need) => n + Math.min(need.have, need.need), 0);
+    const total = goal.needs.reduce((n, need) => n + need.need, 0);
+    if (total > 0) return { done, total, text: `${done} de ${total} juntados` };
+  }
+  return null;
+}
+
+/**
  * El motor guarda el encargo como «petición del usuario: crea una cocina»
  * porque ahí adentro el prefijo ES el dato que distingue un encargo de un
  * impulso propio (y hay tests que buscan el objetivo por ese nombre exacto).
@@ -224,9 +258,8 @@ export function GoalCard({
    */
   framed?: boolean;
 }) {
-  const structure = goal.structure;
   const steps = goal.children;
-  const stepsDone = steps.filter((s) => s.status === 'completed').length;
+  const progress = goalProgress(goal);
   return (
     <li
       className={current ? 'goal-card goal-card-current' : 'goal-card'}
@@ -248,32 +281,40 @@ export function GoalCard({
         </span>
       </div>
 
-      {/* De dónde salió y cuánto lleva, en UNA línea.
+      {/* UN avance, escrito y dibujado en la misma fila.
           Eran tres renglones apilados —procedencia, puestos de la obra, cuenta
-          de pasos— cada uno con su propio rótulo, y ninguno decía nada que el
-          de al lado no pudiera decir en la misma línea. Peor: dos avances
-          distintos escritos como dos titulares competían por ser EL avance.
-          Juntos y separados por puntos se leen como lo que son, la ficha del
-          objetivo; y la barra —que es el avance de verdad— queda sola. */}
+          de pasos—, cada uno con su propio rótulo, y encima la barra aparecía
+          solo para las obras. Tres números compitiendo por ser EL avance es no
+          tener ninguno. Ahora la barra manda y el texto la nombra; la
+          procedencia baja a donde corresponde, que es la letra chica. */}
+      {progress && (
+        <div className="goal-progress-row" data-testid="goal-progress-bar">
+          <div
+            className="goal-progress-bar"
+            role="progressbar"
+            aria-valuenow={progress.done}
+            aria-valuemin={0}
+            aria-valuemax={progress.total}
+            aria-label={`${goalTitle(goal.description)}: ${progress.text}`}
+          >
+            <span
+              style={{ width: `${(progress.done / Math.max(1, progress.total)) * 100}%` }}
+            />
+          </div>
+          <span className="goal-progress-text">{progress.text}</span>
+        </div>
+      )}
+
+      {/* La letra chica: de dónde salió. Es contexto, no titular — antes abría
+          la tarjeta y se llevaba el renglón que ahora usa el avance. */}
       <div className="goal-meta muted" data-testid="goal-progress">
         {[
           current && !framed ? 'lo que hace ahora' : null,
           SOURCE_LABEL[goal.source] ?? goal.source,
-          structure ? `${structure.label} ${structure.placed}/${structure.total} puestos` : null,
-          steps.length > 0 ? `${stepsDone}/${steps.length} pasos` : null,
         ]
           .filter(Boolean)
           .join(' · ')}
       </div>
-
-      {/* Una obra tiene avance aunque no le falte nada: cuántos bloques
-          levantó de cuántos. Sin esto, "en marcha" durante cien ticks se ve
-          igual que estar trabada. */}
-      {structure && (
-        <div className="goal-progress-bar" aria-hidden="true">
-          <span style={{ width: `${(structure.placed / Math.max(1, structure.total)) * 100}%` }} />
-        </div>
-      )}
 
       {/* Cuando descompuso el encargo en pasos, los pasos son la historia: cada
           uno lleva su propia cuenta de materia. Repetir los chips en el padre

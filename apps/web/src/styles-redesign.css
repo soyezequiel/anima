@@ -847,7 +847,26 @@ button:active {
   line-height: 1.45;
 }
 
+/* La barra y su cuenta en la MISMA fila: el dibujo se lee de un vistazo y el
+   número contesta «cuánto» sin gastar un renglón propio. Separados, el texto
+   quedaba a dos líneas de la barra que explicaba y había que unirlos con la
+   vista. */
+.goal-progress-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.goal-progress-text {
+  flex: none;
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--fg, var(--text)) 70%, transparent);
+}
+
 .goal-progress-bar {
+  flex: 1;
+  min-width: 0;
   height: 6px;
   border-radius: 3px;
   background: color-mix(in srgb, var(--fg, var(--text)) 10%, transparent);
@@ -1287,10 +1306,24 @@ button:active {
   background: #14532d;
   color: #bbf7d0;
 }
+/* El enunciado se lee una vez: plegado, deja la lista de lo que falta arriba
+   de todo, que es lo único que cambia mientras la mascota trabaja. */
+.mission-panel__brieffold {
+  margin: 0.4rem 0 0.7rem;
+}
+.mission-panel__brieffold > summary {
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: #64748b;
+  padding: 0.2rem 0;
+}
+.mission-panel__brieffold > summary:hover {
+  color: #cbd5e1;
+}
 .mission-panel__briefing {
   font-size: 0.8rem;
   color: #94a3b8;
-  margin: 0.5rem 0 0.9rem;
+  margin: 0.4rem 0 0;
   line-height: 1.45;
 }
 .mission-panel__list {

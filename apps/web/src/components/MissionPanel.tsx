@@ -30,7 +30,12 @@ export function MissionPanel({ view }: { view: GameView }) {
         </span>
       </header>
 
-      <p className="mission-panel__briefing">«{mission.briefing}»</p>
+      {/* El briefing es el enunciado: se lee una vez, al empezar, y después
+          ocupa cuatro renglones arriba de lo único que cambia —qué falta—. */}
+      <details className="mission-panel__brieffold">
+        <summary>qué le pidieron</summary>
+        <p className="mission-panel__briefing">«{mission.briefing}»</p>
+      </details>
 
       <ul className="mission-panel__list">
         {mission.objectives.map((objective) => (
@@ -41,10 +46,11 @@ export function MissionPanel({ view }: { view: GameView }) {
             <span className="mission-panel__mark">{objective.met ? '✓' : '·'}</span>
             <span className="mission-panel__body">
               <span className="mission-panel__describe">{objective.describe}</span>
-              <span className="mission-panel__detail">
-                {objective.detail}
-                {objective.metAtTick !== null ? ` · tick ${objective.metAtTick}` : ''}
-              </span>
+              {/* Lo cumplido no lleva segunda línea: el tilde ya lo dijo, y el
+                  tick en que pasó es dato de traza, no de progreso. */}
+              {objective.detail !== null && (
+                <span className="mission-panel__detail">{objective.detail}</span>
+              )}
             </span>
           </li>
         ))}

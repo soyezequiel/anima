@@ -16,6 +16,36 @@ function pct(value: number, max: number): number {
   return Math.max(0, Math.min(100, (value / max) * 100));
 }
 
+/**
+ * Lo último que hizo, en castellano.
+ *
+ * Acá se mostraba el `type` del intento tal cual sale del motor, así que la
+ * barra decía «speak», «pickup», «useItem» — nombres internos, en inglés, en la
+ * única línea que el cuidador mira para saber qué está pasando. Un rótulo que
+ * hay que traducir mentalmente cuesta más que uno que no está.
+ *
+ * Lo que no esté en la tabla no se muestra: un tipo nuevo sin traducir es
+ * ruido, y su ausencia se nota menos que su jerga.
+ */
+const ACTION_LABEL: Record<string, string> = {
+  move: 'camina',
+  pickup: 'levanta algo',
+  drop: 'suelta algo',
+  place: 'coloca algo',
+  craft: 'fabrica',
+  consume: 'come',
+  useItem: 'usa una herramienta',
+  interact: 'toca algo',
+  speak: 'habla',
+  wait: 'espera',
+  proposeRecipe: 'imagina una receta',
+  proposeBlueprint: 'imagina una obra',
+  proposeInteraction: 'imagina qué hacer con algo',
+  proposeDecomposition: 'imagina en qué se deshace',
+  proposeGlyph: 'le dibuja una cara',
+  proposeWorkGlyphs: 'dibuja su obra',
+};
+
 const FOLDED_KEY = 'anima.nowFolded';
 
 /**
@@ -197,6 +227,7 @@ export function VitalsHeader({
 }) {
   const pet = view.pet;
   const strategy = humanStrategy(view.currentStrategy);
+  const action = view.lastAction ? (ACTION_LABEL[view.lastAction] ?? null) : null;
   const chips = pet ? carryChips(pet.inventory) : [];
   const byKind = new Map(view.items.map((item) => [item.kind, item]));
   const [folded, toggleFold] = useFolded();
@@ -303,15 +334,15 @@ export function VitalsHeader({
         )}
         {/* Sin guiones de relleno: un «—» donde no hay estrategia es un hueco
             que el ojo igual tiene que leer para descubrir que está vacío. */}
-        {(strategy || view.lastAction) && (
+        {(strategy || action) && (
           <div className="now-detail muted">
             {strategy && (
               <span data-testid="current-strategy" title={view.currentStrategy ?? undefined}>
                 {strategy}
               </span>
             )}
-            {strategy && view.lastAction ? ' · ' : ''}
-            {view.lastAction && <span data-testid="current-action">{view.lastAction}</span>}
+            {strategy && action ? ' · ' : ''}
+            {action && <span data-testid="current-action">{action}</span>}
           </div>
         )}
         {pet && chips.length > 0 && (

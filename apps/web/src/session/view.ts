@@ -583,7 +583,7 @@ export interface MissionView {
     describe: string;
     met: boolean;
     metAtTick: number | null;
-    /** Por qué se da (o no) por cumplido: el veredicto viene con su cuenta. */
-    detail: string;
+    /** Qué falta para cumplirlo; `null` cuando ya está (el tilde ya lo dice). */
+    detail: string | null;
   }[];
 }

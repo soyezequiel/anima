@@ -125,6 +125,11 @@ export class MissionTracker {
       zones: this.mission.zones,
       history: this.history(),
       metAt: this.metAt,
+      // Para que una secuencia nombre sus pasos como los nombra la lista, en
+      // vez de mostrar el id interno del objetivo.
+      describeOf: new Map(
+        flattenObjectives(this.mission.objectives).map((o) => [o.id, o.describe]),
+      ),
     };
     // Dos pasadas: las hojas primero, para que una secuencia lea los ticks de
     // sus partes ya actualizados en este mismo tick.

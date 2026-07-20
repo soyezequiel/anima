@@ -255,6 +255,7 @@ export class InventionEngine {
   recordWorldRejection(
     kind: 'recipe' | 'interaction' | 'blueprint' | 'decomposition' | 'glyph' | 'workGlyphs',
     reason: string,
+    source: 'world' | 'gate' = 'world',
   ): void {
     const list =
       kind === 'interaction'
@@ -267,7 +268,7 @@ export class InventionEngine {
               ? this.workGlyphRejections
               : this.recipeRejections;
     this.remember(list, reason);
-    this.deps.emit(`${kind}.rejected`, { reason, source: 'world' });
+    this.deps.emit(`${kind}.rejected`, { reason, source });
     // Si se cayó una pieza (o la obra que la coronaba), lo que se apoyaba en
     // ella ya no se sostiene: se tira el resto del plan y se vuelve a pensar con
     // el motivo como dato (ADR 0018). Las interacciones y las descomposiciones

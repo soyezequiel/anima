@@ -255,3 +255,104 @@ describe('el juez de misiones', () => {
     expect(tracker.evaluate(world).completed).toBe(false);
   });
 });
+
+/**
+ * Lo que el cuidador lee al lado de cada objetivo. Salía en jerga del motor
+ * —`6/1 entidades de un tipo que no existía`, `está en (3,7)`, ids internos
+ * entre comillas— y encima repetía el `describe` con otras palabras. Ahora
+ * dice qué FALTA, y se calla cuando ya está.
+ */
+describe('lo que se lee al lado de un objetivo', () => {
+  const detailOf = (status: { objectives: { id: string; detail: string | null }[] }, id: string) =>
+    status.objectives.find((o) => o.id === id)?.detail;
+
+  it('no dice nada cuando ya está cumplido', () => {
+    const { world, petId } = worldWithPet();
+    const tracker = new MissionTracker(
+      mission([
+        {
+          id: 'algo-nuevo',
+          describe: 'algo nacido en la partida',
+          kind: 'entity-exists',
+          query: { createdDuringRun: true },
+        },
+      ]),
+      world,
+      petId,
+    );
+    expect(detailOf(tracker.evaluate(world), 'algo-nuevo')).toBe('todavía no');
+
+    spawn(world, 'tronco', { position: { x: 3, y: 1 }, portable: {} });
+    // Cumplido: el tilde ya lo dice. Antes acá salía «1/1 entidades…».
+    expect(detailOf(tracker.evaluate(world), 'algo-nuevo')).toBeNull();
+  });
+
+  it('cuenta cuánto falta cuando hace falta más de uno, sin cocientes al revés', () => {
+    const { world, petId } = worldWithPet();
+    const tracker = new MissionTracker(
+      mission([
+        {
+          id: 'tres',
+          describe: 'tres cosas nuevas',
+          kind: 'entity-exists',
+          query: { createdDuringRun: true },
+          min: 3,
+        },
+      ]),
+      world,
+      petId,
+    );
+    spawn(world, 'tronco', { position: { x: 2, y: 1 }, portable: {} });
+    expect(detailOf(tracker.evaluate(world), 'tres')).toBe('van 1 de 3');
+
+    // De sobra: se calla, en vez de decir «6/3».
+    for (const x of [3, 4]) spawn(world, 'tronco', { position: { x, y: 1 }, portable: {} });
+    expect(detailOf(tracker.evaluate(world), 'tres')).toBeNull();
+  });
+
+  it('no muestra las coordenadas de la mascota', () => {
+    const { world, petId } = worldWithPet();
+    const tracker = new MissionTracker(
+      mission([
+        { id: 'llegar', describe: 'Ánima llegó a la meta', kind: 'agent-in-zone', zone: 'meta' },
+      ]),
+      world,
+      petId,
+    );
+    // Ni coordenadas ni la zona repetida: el `describe` ya dijo adónde iba.
+    const detail = detailOf(tracker.evaluate(world), 'llegar');
+    expect(detail).toBe('todavía no');
+    expect(detail).not.toMatch(/\d+,\d+/);
+  });
+
+  it('una secuencia nombra el paso que falta, no su id interno', () => {
+    const { world, petId } = worldWithPet();
+    const tracker = new MissionTracker(
+      mission([
+        {
+          id: 'en-orden',
+          describe: 'primero una, después la otra',
+          kind: 'sequence',
+          of: ['paso-uno', 'paso-dos'],
+        },
+        {
+          id: 'paso-uno',
+          describe: 'apareció lo primero',
+          kind: 'entity-exists',
+          query: { createdDuringRun: true },
+        },
+        {
+          id: 'paso-dos',
+          describe: 'Ánima llegó a la meta',
+          kind: 'agent-in-zone',
+          zone: 'meta',
+        },
+      ]),
+      world,
+      petId,
+    );
+    const detail = detailOf(tracker.evaluate(world), 'en-orden');
+    expect(detail).toBe('falta: apareció lo primero');
+    expect(detail).not.toContain('paso-uno');
+  });
+});

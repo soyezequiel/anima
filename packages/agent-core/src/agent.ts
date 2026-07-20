@@ -1049,6 +1049,95 @@ export class AnimaAgent {
     this.suspensionSeen.set(goalId, new Set(perception.visibleEntities.map((e) => e.id)));
   }
 
+  /**
+   * El tramo SEGUIDO más largo de un conjunto de celdas, a lo largo de un eje.
+   * Un tendido con un hueco en el medio no es una fila de seis: son dos de tres,
+   * y contra un obstáculo lo que vale es el tramo entero.
+   */
+  private longestRun(cells: Vec2[], horizontal: boolean): number {
+    const lines = new Map<number, number[]>();
+    for (const cell of cells) {
+      const line = horizontal ? cell.y : cell.x;
+      const along = horizontal ? cell.x : cell.y;
+      lines.set(line, [...(lines.get(line) ?? []), along]);
+    }
+    let best = 0;
+    for (const alongs of lines.values()) {
+      const sorted = [...new Set(alongs)].sort((a, b) => a - b);
+      let run = 0;
+      for (let i = 0; i < sorted.length; i++) {
+        run = i > 0 && sorted[i] === sorted[i - 1]! + 1 ? run + 1 : 1;
+        best = Math.max(best, run);
+      }
+    }
+    return best;
+  }
+
+  /**
+   * Por qué esta obra no puede cruzar NUNCA, o null si puede.
+   *
+   * El juez geométrico, hermano de los que ya cuidan las otras puertas: el
+   * mundo mide lo que se puede medir de un plano —que quepa, que sus bloques
+   * existan— pero no si SIRVE para lo que nació. Un puente de cinco celdas
+   * repartidas alrededor de ella pasa todas las validaciones y no cruza nada:
+   * como se para siempre en tierra firme, el medio del tendido cae en la orilla
+   * y contra un cauce de cuatro tapa dos.
+   *
+   * Se la vio hacerlo tres corridas seguidas, incluso con el pedido escrito con
+   * todas las letras en el texto de invención. Decirlo no alcanzó; medirlo sí.
+   *
+   * El motivo viaja con NÚMEROS a la próxima idea (ADR 0018): «tu tramo seguido
+   * más largo es 3 y el obstáculo mide 4» es corregible; «hacelo mejor» no.
+   *
+   * Solo juzga obras que se CAMINAN y que tienen algo que cruzar. Una casa no
+   * cruza nada y acá no se la molesta.
+   */
+  private crossingRejection(
+    blueprint: Blueprint,
+    goalId: string,
+    perception: Perception,
+  ): string | null {
+    const walkable = blueprint.placements.filter((p) => this.bringsFooting(p.kind, perception));
+    if (walkable.length === 0) return null;
+
+    const onto = this.destinationKindFor(goalId);
+    const obstacle =
+      onto !== undefined
+        ? this.targetCells(onto, perception)
+        : perceivedGround(perception.visibleEntities).water;
+    if (obstacle.size === 0) return null;
+
+    // ¿Existe algún sitio, de todos a los que puede llegar, donde esta obra
+    // cruce? Si hay uno, el plano sirve y no hay nada que objetar.
+    if (this.bestStructureSite(blueprint, perception, onto)?.serves === true) return null;
+
+    // No hay ninguno: hay que decirle POR QUÉ, con la medida.
+    const cells = [...obstacle].map((key) => {
+      const [x, y] = key.split(',').map(Number);
+      return { x: x ?? 0, y: y ?? 0 };
+    });
+    const xs = blueprint.placements.map((p) => p.offset.x);
+    const ys = blueprint.placements.map((p) => p.offset.y);
+    const horizontal =
+      Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+    // Los dos se miden en el MISMO eje: el que la obra recorre. Cuántas celdas
+    // de obstáculo seguidas hay que pisar para pasar al otro lado, contra
+    // cuántas seguidas ofrece el tendido. Medir el obstáculo en el eje cruzado
+    // daba el LARGO del río (9 filas) en vez de su ancho (4 columnas).
+    const ancho = this.longestRun(cells, horizontal);
+    const tramo = this.longestRun(
+      walkable.map((p) => ({ x: p.offset.x, y: p.offset.y })),
+      horizontal,
+    );
+    const lado = walkable.every((p) => (horizontal ? p.offset.x : p.offset.y) > 0)
+      ? ''
+      : ' Y vos te parás en el 0,0, que es tierra firme: un tendido repartido a los dos lados deja la mitad en la orilla. Tiene que salir de tus pies hacia UN solo lado.';
+    return (
+      `esa obra no cruza desde ningún lado: su tramo seguido más largo es de ${tramo} ` +
+      `celda${tramo === 1 ? '' : 's'} y lo que hay que cruzar mide ${ancho}.${lado}`
+    );
+  }
+
   /** Las celdas de lo que le pidieron como destino, a la vista. */
   private targetCells(onto: string, perception: Perception): Set<string> {
     const target = new Set<string>();
@@ -1192,6 +1281,21 @@ export class AnimaAgent {
     perception: Perception,
     onto?: string,
   ): Vec2 | null {
+    return this.bestStructureSite(blueprint, perception, onto)?.anchor ?? null;
+  }
+
+  /**
+   * El mejor sitio Y si además SIRVE. Son dos preguntas distintas y hasta ahora
+   * viajaban pegadas: al elegir alcanza con el mejor, pero para juzgar un plano
+   * hace falta saber si existe algún sitio donde la obra haga lo que promete.
+   * Un puente que no cruza desde ninguna parte es un plano imposible, y eso se
+   * puede saber ANTES de juntar la materia.
+   */
+  private bestStructureSite(
+    blueprint: Blueprint,
+    perception: Perception,
+    onto?: string,
+  ): { anchor: Vec2; serves: boolean } | null {
     const bounds = perception.bounds;
     const self = perception.self.position;
     let best: { anchor: Vec2; serves: boolean; distance: number } | null = null;
@@ -1225,7 +1329,7 @@ export class AnimaAgent {
         if (better) best = { anchor, serves, distance };
       }
     }
-    return best?.anchor ?? null;
+    return best ? { anchor: best.anchor, serves: best.serves } : null;
   }
 
   /**
@@ -4230,7 +4334,11 @@ export class AnimaAgent {
   ): Promise<ActionIntent | null> {
     // Un plan a medio proponer sigue entrando, hoja por hoja (ADR 0031), y cada
     // hoja pasa por el juez antes de tocar el mundo (ADR 0042).
-    const pending = await this.invention.nextPlanStep(perception, goal.id);
+    const pending = this.vetCrossing(
+      await this.invention.nextPlanStep(perception, goal.id),
+      goal,
+      perception,
+    );
     if (pending) return pending;
     // Lo que su cuerpo aprendió que NO puede vencer hace la idea concreta —
     // "algo que rompa el muro" en vez de un deseo vago. Sin barrera conocida,
@@ -4243,11 +4351,15 @@ export class AnimaAgent {
     const problem =
       'no logro llegar al alimento: lo que sé usar no vence lo que me bloquea' +
       (barriers.length > 0 ? ` (${barriers.join('; ')})` : '');
-    return this.invention.inventRecipe(problem, perception, {
-      goalId: goal.id,
-      creditKey: inventionCreditKey(goal),
-      reserved: this.committedKinds(perception, goal.id),
-    });
+    return this.vetCrossing(
+      await this.invention.inventRecipe(problem, perception, {
+        goalId: goal.id,
+        creditKey: inventionCreditKey(goal),
+        reserved: this.committedKinds(perception, goal.id),
+      }),
+      goal,
+      perception,
+    );
   }
 
   /**
@@ -4273,7 +4385,11 @@ export class AnimaAgent {
     // receta por tick, cada una por la puerta del mundo (ADR 0031). Va antes
     // que el "ya sabe hacerlo" porque lo que falta son las piezas de abajo, no
     // la casa: la casa es justamente la que todavía no puede entrar.
-    const pending = await this.invention.nextPlanStep(perception, goal.id);
+    const pending = this.vetCrossing(
+      await this.invention.nextPlanStep(perception, goal.id),
+      goal,
+      perception,
+    );
     if (pending) return pending;
     // Ya sabe hacerlo: no hay nada que inventar, hay que ponerse a construir.
     // "Saberlo" es tener la receta (un objeto) O el plano (una obra, ADR 0032):
@@ -4284,10 +4400,14 @@ export class AnimaAgent {
     ) {
       return null;
     }
-    return this.invention.inventRecipe(
-      `mi cuidador me pidió construir ${kindWithArticle(request.recipeId)}`,
+    return this.vetCrossing(
+      await this.invention.inventRecipe(
+        `mi cuidador me pidió construir ${kindWithArticle(request.recipeId)}`,
+        perception,
+        { goalId: goal.id, wantedId: request.recipeId },
+      ),
+      goal,
       perception,
-      { goalId: goal.id, wantedId: request.recipeId },
     );
   }
 
@@ -4328,6 +4448,39 @@ export class AnimaAgent {
    *
    * `undefined` = «no está trabada por esto, seguí normal».
    */
+  /**
+   * La última puerta antes de que un plano toque el mundo: ¿sirve para lo que
+   * nació? Si no, no se emite — se recuerda el motivo medido, que viaja a la
+   * próxima idea igual que un rechazo del mundo (ADR 0018).
+   *
+   * Devuelve la intención si pasa, o null si se la comió el juez. Null no es un
+   * callejón: el crédito sigue, y el siguiente intento nace sabiendo el número
+   * que le faltaba.
+   */
+  private vetCrossing(
+    intent: ActionIntent | null,
+    goal: Goal,
+    perception: Perception,
+  ): ActionIntent | null {
+    if (intent === null || intent.type !== 'proposeBlueprint') return intent;
+    const raw = intent.blueprint as { id?: unknown; placements?: unknown };
+    // Mal formado no es asunto de este juez: lo rechaza el mundo, que para eso
+    // tiene el validador.
+    if (typeof raw?.id !== 'string' || !Array.isArray(raw.placements)) return intent;
+    const placements = raw.placements.filter(
+      (p): p is BlueprintPlacement =>
+        typeof (p as BlueprintPlacement)?.kind === 'string' &&
+        typeof (p as BlueprintPlacement)?.offset?.x === 'number' &&
+        typeof (p as BlueprintPlacement)?.offset?.y === 'number',
+    );
+    if (placements.length !== raw.placements.length) return intent;
+
+    const reason = this.crossingRejection({ id: raw.id, placements }, goal.id, perception);
+    if (reason === null) return intent;
+    this.invention.recordWorldRejection('blueprint', reason, 'gate');
+    return null;
+  }
+
   private async escalateHarvestIfToolless(
     goal: Goal,
     perception: Perception,
@@ -4381,7 +4534,8 @@ export class AnimaAgent {
           reserved: this.committedKinds(perception, goal.id),
         },
       );
-      if (intent) return intent;
+      const vetted = this.vetCrossing(intent, goal, perception);
+      if (vetted) return vetted;
     }
 
     // Sin receta y sin crédito: se acabó el camino por acá. Se suelta la marca
@@ -4437,7 +4591,8 @@ export class AnimaAgent {
           reserved: this.committedKinds(perception, goal.id),
         },
       );
-      if (intent) return intent;
+      const vetted = this.vetCrossing(intent, goal, perception);
+      if (vetted) return vetted;
     }
 
     // Sin herramienta, sin receta y sin crédito: rendirse con la verdad, no con
