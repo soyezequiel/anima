@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { kindLabel } from '@anima/shared';
 import type { GameSession } from '../session/GameSession.js';
 import type { SkillSubject } from '../session/skill-subjects.js';
 import type { GameView, ItemView, SkillView } from '../session/view.js';
@@ -34,6 +35,12 @@ function SubjectStrip({
     <ul className="skill-subjects" data-testid="skill-subjects">
       {subjects.map((subject) => {
         const known = subject.kind !== null ? byKind.get(subject.kind) : undefined;
+        // El programa nombra tipos del motor (`flint`), y esos nunca se le
+        // muestran a quien juega. El catálogo ya tiene el nombre humano de lo
+        // que existe —incluido lo que Ánima inventó, cuyo nombre no está en
+        // ninguna tabla nuestra—; `kindLabel` cubre lo que todavía no está.
+        const name =
+          subject.kind === null ? subject.label : (known?.name ?? kindLabel(subject.kind));
         return (
           <li key={subject.kind ?? subject.label} className="skill-subject">
             <span className="skill-subject-role">{subject.role}</span>
@@ -47,7 +54,7 @@ function SubjectStrip({
                 glyph={known?.glyph}
               />
             )}
-            <span className="skill-subject-name">{subject.label}</span>
+            <span className="skill-subject-name">{name}</span>
           </li>
         );
       })}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { reachBlockedResourceProgram } from '@anima/model-providers';
 import type { SkillOp } from '@anima/skill-runtime';
 import { skillSubjects } from '../src/session/skill-subjects.js';
 
@@ -107,6 +108,21 @@ describe('skillSubjects', () => {
     // Un programa mal armado no tiene que romper el panel.
     const ops: SkillOp[] = [{ op: 'consume', target: 'fantasma' }];
     expect(skillSubjects(ops, noRecipes)).toEqual([]);
+  });
+
+  it('lee el programa REAL de «alcanzar recurso bloqueado»', () => {
+    // No es un programa de laboratorio: es el que produce el sistema —el que
+    // usan los e2e y el proveedor simulado— con sus 4 niveles de anidamiento y
+    // sus 6 stores. Si la resolución se rompe, se rompe acá antes que en nada
+    // inventado por mí para que pase.
+    const subjects = skillSubjects(reachBlockedResourceProgram('strongestTool'), () => null);
+    expect(subjects).toEqual([
+      // La herramienta se junta y DESPUÉS se usa: gana «usa», el papel que
+      // dice para qué la quería.
+      { kind: null, label: 'una herramienta', role: 'usa' },
+      { kind: 'wall', label: 'wall', role: 'golpea' },
+      { kind: 'food', label: 'food', role: 'come' },
+    ]);
   });
 
   it('deja fuera el trámite: soltar y hacer lugar no son objetos de la habilidad', () => {
