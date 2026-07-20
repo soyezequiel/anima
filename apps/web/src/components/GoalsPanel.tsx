@@ -73,7 +73,45 @@ export function goalProgress(
  * el título se queda con el encargo y la procedencia se dice una sola vez.
  */
 export function goalTitle(description: string): string {
-  return description.replace(/^petición del usuario:\s*/i, '');
+  return shorten(description.replace(/^petición del usuario:\s*/i, ''));
+}
+
+/** Cuánto puede medir un título antes de dejar de serlo. */
+const TITLE_MAX = 90;
+
+/**
+ * Un título de una línea, no el encargo entero.
+ *
+ * Casi todos los objetivos nacen cortos («recuperar calor», «armar un
+ * puente»), pero el de una misión nace siendo su briefing COMPLETO —cuatro
+ * oraciones—, y la tarjeta «Ahora» lo pintaba entero en negrita: diez
+ * renglones fijos arriba de todo, empujando la pestaña de abajo fuera de la
+ * pantalla. Y el mismo texto ya estaba dos veces más: en el chat, por donde
+ * entró, y en el panel de la misión.
+ *
+ * Corta por el primer punto; si esa oración tampoco entra, por la última coma
+ * o dos puntos que quepan —«Este río es mucho más ancho que el otro: cuatro
+ * pasos de agua de punta a punta» se lee entero, mientras que cortar por
+ * palabra dejaba un «y tampoco…» colgado—. Recién si no hay ninguna pausa,
+ * por la última palabra.
+ *
+ * El texto íntegro sigue en el `title` del elemento: deja de ocupar la
+ * pantalla, que no es lo mismo que perderse.
+ */
+function shorten(text: string): string {
+  const trimmed = text.trim();
+  if (trimmed.length <= TITLE_MAX) return trimmed;
+
+  const firstSentence = /^(.+?[.?!])\s/.exec(trimmed)?.[1];
+  if (firstSentence && firstSentence.length <= TITLE_MAX) return firstSentence;
+
+  const cut = trimmed.slice(0, TITLE_MAX);
+  // Una pausa de la propia frase corta mejor que un espacio cualquiera.
+  const pause = Math.max(cut.lastIndexOf(','), cut.lastIndexOf(':'), cut.lastIndexOf(';'));
+  if (pause > 40) return cut.slice(0, pause);
+
+  const lastSpace = cut.lastIndexOf(' ');
+  return `${(lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
 }
 
 /**
@@ -275,7 +313,11 @@ export function GoalCard({
             {goal.rank}
           </span>
         )}
-        <strong className="goal-desc">{goalTitle(goal.description)}</strong>
+        {/* El encargo entero en el `title`: recortarlo es sacarlo de la vista,
+            no perderlo. */}
+        <strong className="goal-desc" title={goal.description}>
+          {goalTitle(goal.description)}
+        </strong>
         <span className={`pill pill-${goal.status}`}>
           {STATUS_LABEL[goal.status] ?? goal.status}
         </span>
@@ -384,15 +426,15 @@ export function GoalsPanel({
 
   return (
     <div className="goals-panel">
-      <p className="muted">
-        Todo lo que quiere hacer, en el orden en que compite: el número es su puesto en la fila.
-        Cuando necesita material, acá se ve cuál y cuánto — y si puede ir sola a buscarlo.
-      </p>
-
+      {/* La explicación vive en el vacío, no arriba del contenido: con
+          objetivos en pantalla, las tarjetas ya dicen lo que este párrafo
+          contaba —el puesto en la fila está en el número, la materia que falta
+          en cada renglón— y quedaba como mueble fijo que hay que saltear. */}
       <h3>Abiertos ({open.length})</h3>
       {open.length === 0 && (
         <p className="muted" data-testid="no-open-goals">
-          Ahora mismo no persigue nada: está mirando el mundo.
+          Ahora mismo no persigue nada: está mirando el mundo. Cuando quiera algo va a aparecer acá,
+          en orden de prioridad y con la materia que le falte.
         </p>
       )}
       <ul className="list goals-list" data-testid="goal-list">

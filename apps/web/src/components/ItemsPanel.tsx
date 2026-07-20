@@ -246,11 +246,9 @@ export function ItemsPanel({
   const byKind = new Map(view.items.map((item) => [item.kind, item]));
   return (
     <div className="items-panel">
-      <p className="muted">
-        Todo lo que este mundo tiene o sabe construir. Lo <em>de fábrica</em> viene definido en el
-        código; lo <em>inventado</em> lo construyó la IA en tiempo de ejecución y entró por la
-        puerta de validación del mundo. Tocá un objeto para ver sus números.
-      </p>
+      {/* Los dos encabezados —«Inventados en runtime» y «De fábrica»— ya
+          hacen la distinción que este párrafo explicaba, y «tocá para ver sus
+          números» se aprende tocando una vez. */}
       <h3>Inventados en runtime ({invented.length})</h3>
       {invented.length === 0 && (
         <p className="muted" data-testid="no-invented-items">

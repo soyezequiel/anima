@@ -577,7 +577,7 @@ export class GameSession {
       session.resetToNewPet(session.seed);
     }
     if (setAside) {
-      session.chat.push({
+      session.say({
         from: 'system',
         text: 'Tu partida anterior está guardada en un formato que esta versión de Ánima no sabe leer. No la borré: quedó apartada. Esta mascota empieza de cero.',
         tick: session.world.tick,
@@ -591,6 +591,26 @@ export class GameSession {
     session.rebuildView();
     if (options.autostart !== false && !session.deathReport) session.start();
     return session;
+  }
+
+  // ---- chat -----------------------------------------------------------------
+
+  /**
+   * Dice algo en el chat, sellando la hora de reloj.
+   *
+   * Todo lo que entra a la conversación pasa por acá y no por `chat.push`
+   * directo: el sello tiene que ser el instante en que se dijo, y con doce
+   * lugares distintos empujando mensajes alcanzaba con olvidarse en uno para
+   * que ese quedara sin hora para siempre.
+   */
+  private say(entry: Omit<ChatEntry, 'at'>): void {
+    this.chat.push({ ...entry, at: Date.now() });
+  }
+
+  /** Lo mismo para los arranques, que arman la conversación de cero. */
+  private stamped(entries: Omit<ChatEntry, 'at'>[]): ChatEntry[] {
+    const at = Date.now();
+    return entries.map((entry) => ({ ...entry, at }));
   }
 
   // ---- ciclo de vida --------------------------------------------------------
@@ -736,7 +756,7 @@ export class GameSession {
     this.identity = newIdentity('Ánima');
     this.buildFreshRuntime(seed);
     const adopted = options.fromCatalog === false ? 0 : this.applyCatalogToNewWorld();
-    this.chat = [
+    this.chat = this.stamped([
       { from: 'system', text: `Mundo creado (semilla ${seed}). La energía irá bajando…`, tick: 0 },
       ...(adopted > 0
         ? [
@@ -752,7 +772,7 @@ export class GameSession {
         text: 'Hablá con ella cuando quieras: pedile cosas, enseñale hechos del mundo o preguntale qué hace.',
         tick: 0,
       },
-    ];
+    ]);
     this.rebuildView();
     this.notify();
   }
@@ -925,7 +945,7 @@ export class GameSession {
     const pendingNote = pendingGoal
       ? ` Sigo con lo pendiente: "${pendingGoal.userRequest?.raw ?? pendingGoal.learning?.raw ?? pendingGoal.description}".`
       : '';
-    this.chat.push({
+    this.say({
       from: 'system',
       text: `Sesión restaurada (tick ${this.world.tick}).${pendingNote}`,
       tick: this.world.tick,
@@ -998,7 +1018,7 @@ export class GameSession {
   private sendMissionBriefing(): void {
     if (!this.map || this.missionBriefingSent) return;
     this.missionBriefingSent = true;
-    this.chat.push({
+    this.say({
       from: 'user',
       text: this.map.mission.briefing,
       tick: this.world.tick,
@@ -1374,7 +1394,7 @@ export class GameSession {
     });
     if (this.consecutiveThinkErrors < 3) return false;
     this.consecutiveThinkErrors = 0;
-    this.chat.push({
+    this.say({
       from: 'system',
       text: ownBug
         ? `Error interno de la aplicación (${message.slice(0, 160)}). Pausa automática: no es tu conexión ni el modelo — el detalle está en el registro técnico.`
@@ -1409,7 +1429,7 @@ export class GameSession {
     const before = this.missionStatus;
     this.missionStatus = this.missionTracker.evaluate(this.world);
     if (this.missionStatus.completed && !before?.completed) {
-      this.chat.push({
+      this.say({
         from: 'system',
         text: `Misión cumplida: ${this.map?.mission.name ?? ''}. El mundo lo confirma, no ella.`,
         tick: this.world.tick,
@@ -1515,7 +1535,7 @@ export class GameSession {
         return `${s.name} (${status})`;
       })
       .join('; ');
-    this.chat = [
+    this.chat = this.stamped([
       {
         from: 'system',
         text:
@@ -1524,7 +1544,7 @@ export class GameSession {
           (adopted ? ` Habilidades heredadas: ${adopted}.` : ''),
         tick: 0,
       },
-    ];
+    ]);
     await this.save();
     this.rebuildView();
     this.notify();
@@ -1574,7 +1594,7 @@ export class GameSession {
     if (!trimmed) return;
     // Si ya está pensando, el mensaje entra encolado: se dibuja debajo del
     // "pensando" y con la marca de sin leer hasta que el agente lo atienda.
-    this.chat.push({ from: 'user', text: trimmed, tick: this.world.tick, pending: this.aiBusy });
+    this.say({ from: 'user', text: trimmed, tick: this.world.tick, pending: this.aiBusy });
     this.agent.receiveUserMessage(trimmed);
     this.rebuildView();
     this.notify();
@@ -1867,7 +1887,7 @@ export class GameSession {
       if (event.type === 'agent.spoke') {
         const text = String(event.data.text);
         this.lastSpeech = { text, tick: event.tick };
-        this.chat.push({ from: 'pet', text, tick: event.tick });
+        this.say({ from: 'pet', text, tick: event.tick });
       }
       if (event.type === 'action.requested') {
         const intent = event.data.intent as { type: string };
@@ -1892,7 +1912,7 @@ export class GameSession {
         }
       }
       if (event.type === 'pet.died') {
-        this.chat.push({
+        this.say({
           from: 'system',
           text: `${this.identity.name} ha muerto. Su informe de legado está disponible.`,
           tick: event.tick,
@@ -1933,7 +1953,7 @@ export class GameSession {
           ? (event.data.ingredients as { kind: string; count: number }[])
           : [];
         const kind = String(event.data.outputKind ?? event.data.recipeId ?? '?');
-        this.chat.push({
+        this.say({
           from: 'pet',
           text: '',
           tick: event.tick,
@@ -2069,7 +2089,7 @@ export class GameSession {
         tick: event.tick,
         data: { regressionId: regression.id, skillName: run.skillName, reason },
       });
-      this.chat.push({
+      this.say({
         from: 'system',
         text: `El fallo de "${run.skillName}" quedó registrado como caso de regresión: sus próximas versiones deberán superarlo.`,
         tick: event.tick,

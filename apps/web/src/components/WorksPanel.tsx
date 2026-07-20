@@ -162,16 +162,14 @@ export function WorksPanel({
   const byKind = new Map(view.items.map((item) => [item.kind, item]));
   return (
     <div className="works-panel">
-      <p className="muted">
-        Lo que aprendió a <em>construir en el suelo</em>: no objetos que van a la mochila, sino
-        bloques colocados uno por uno. Ninguna viene de fábrica — el mundo empieza sin planos, así
-        que cada una la imaginó ella (o la heredó de una antecesora). La silueta muestra dónde va
-        cada pieza; 🙂 es la celda donde queda ella.
-      </p>
+      {/* La leyenda del 🙂 no se perdió: cada celda del ancla la lleva en su
+          `title` («acá queda ella»), que es donde sirve —al lado del dibujo—
+          y no en un párrafo que hay que recordar mientras se mira otra cosa. */}
       {view.blueprints.length === 0 && (
         <p className="muted" data-testid="no-works">
-          Todavía no sabe levantar ninguna obra. Aparecen cuando le pedís algo demasiado grande para
-          una sola celda —una casa, un refugio, una escuela— y ella imagina cómo armarlo por partes.
+          Todavía no sabe levantar ninguna obra: el mundo empieza sin planos, así que cada una tiene
+          que imaginarla. Aparecen cuando le pedís algo demasiado grande para una sola celda —una
+          casa, un refugio, una escuela— y ella imagina cómo armarlo por partes.
         </p>
       )}
       <ul className="list">

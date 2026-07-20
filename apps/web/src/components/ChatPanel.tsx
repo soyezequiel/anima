@@ -2,6 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { emojiFor } from '../phaser/appearance.js';
 import type { GameSession } from '../session/GameSession.js';
 import type { ChatEntry as ChatEntryView, GameView, RecipeCardView, ThoughtView } from '../session/view.js';
+import { chatStamp } from './clock.js';
+
+/** La hora del mensaje; el tick queda en el `title`, para cruzarlo con Ensayos. */
+function ChatStamp({ entry }: { entry: ChatEntryView }) {
+  const stamp = chatStamp(entry);
+  return (
+    <span className="chat-tick muted" title={stamp.title}>
+      {stamp.text}
+    </span>
+  );
+}
 
 /**
  * Sugerencias para el primer mensaje: una de cada cosa que se puede hacer
@@ -108,7 +119,7 @@ function ChatEntryRow({
         <span className="chat-text">
           {entry.card ? <RecipeCard card={entry.card} /> : entry.text}
         </span>
-        <span className="chat-tick muted">t{entry.tick}</span>
+        <ChatStamp entry={entry} />
       </div>
     );
   }
@@ -141,7 +152,7 @@ function ChatEntryRow({
           </span>
         </span>
       ) : (
-        <span className="chat-tick muted">t{entry.tick}</span>
+        <ChatStamp entry={entry} />
       )}
     </div>
   );

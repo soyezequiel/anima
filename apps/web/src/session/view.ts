@@ -231,6 +231,18 @@ export interface ChatEntry {
   from: 'user' | 'pet' | 'system';
   text: string;
   tick: number;
+  /**
+   * Cuándo se dijo, en hora de reloj (epoch ms).
+   *
+   * El tick es el tiempo del MUNDO, y no se traduce a hora: la partida se
+   * pausa, se acelera y se retoma al otro día, así que «t19» no dice si eso
+   * pasó recién o hace una semana. Va aparte, sellado al crear el mensaje.
+   *
+   * Opcional porque los guardados anteriores a esto no lo tienen: ahí la UI
+   * cae al tick, que es lo que había. No se rellena con la hora de la carga
+   * —eso sería inventar que un mensaje de anteayer se dijo hoy—.
+   */
+  at?: number;
   /** Presente solo en la vista previa de una receta descrita por el cuidador. */
   card?: RecipeCardView;
   /**

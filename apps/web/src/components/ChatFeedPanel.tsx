@@ -10,6 +10,7 @@ import type {
   SkillDevProgressView,
   ThoughtView,
 } from '../session/view.js';
+import { chatStamp } from './clock.js';
 import { parseReasoning, parseReasoningStep } from './reasoning.js';
 import { skillDevLine, skillDevPurpose, ThinkingClock, WaitHints } from './thinking.js';
 
@@ -46,6 +47,16 @@ function RecipeCard({ card }: { card: RecipeCardView }) {
   );
 }
 
+/** La hora del mensaje; el tick queda en el `title`, para cruzarlo con Ensayos. */
+function ChatStamp({ entry }: { entry: ChatEntryView }) {
+  const stamp = chatStamp(entry);
+  return (
+    <span className="chat-tick muted" title={stamp.title}>
+      {stamp.text}
+    </span>
+  );
+}
+
 function ChatRow({
   entry,
   prev,
@@ -59,7 +70,7 @@ function ChatRow({
     return (
       <div className="chat-entry from-system chat-note">
         <span className="chat-text">{entry.card ? <RecipeCard card={entry.card} /> : entry.text}</span>
-        <span className="chat-tick muted">t{entry.tick}</span>
+        <ChatStamp entry={entry} />
       </div>
     );
   }
@@ -85,7 +96,7 @@ function ChatRow({
           </span>
         </span>
       ) : (
-        <span className="chat-tick muted">t{entry.tick}</span>
+        <ChatStamp entry={entry} />
       )}
     </div>
   );

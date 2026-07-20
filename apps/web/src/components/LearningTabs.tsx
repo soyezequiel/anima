@@ -93,11 +93,11 @@ export function SkillsTab({ view, session }: { view: GameView; session: GameSess
 /** Pensamiento: cada consulta al modelo real, en vivo. */
 export function ThoughtsTab({ view }: { view: GameView }) {
   return (
+    // El panel ya dice esto mismo, y mejor: su estado vacío distingue «no hay
+    // modelo real conectado» de «todavía no pensó», mientras que este párrafo
+    // los mezclaba en una sola frase —y se leía dos veces seguidas, con las
+    // mismas palabras cambiadas de orden—.
     <div className="learning-panel" data-testid="thoughts-tab">
-      <p className="section-sub muted">
-        Lo que pasa por su mente cuando consulta al modelo, en vivo. Con el proveedor simulado esto
-        queda vacío a propósito: responde al instante y no hay nada que contar.
-      </p>
       <MindPanel view={view} />
     </div>
   );

@@ -4,6 +4,8 @@ import { appearanceFor, emojiFor, hexColor } from '../src/phaser/appearance.js';
 import { GLYPH_SIZE, materialFor, paletteFor, parseGlyph, patternFor } from '../src/phaser/matter.js';
 import { skillDevLine, skillDevPurpose } from '../src/components/thinking.js';
 import { materialChildren } from '../src/components/MaterialTree.js';
+import { goalTitle } from '../src/components/GoalsPanel.js';
+import { MAPS } from '@anima/missions';
 import type { ItemView } from '../src/session/view.js';
 
 /**
@@ -353,5 +355,66 @@ describe('el árbol de materiales cuenta por rama', () => {
 
   it('un tipo que el catálogo no conoce se trata como materia prima', () => {
     expect(materialChildren('desconocido', 1, new Map())).toEqual([]);
+  });
+});
+
+/**
+ * El título de un objetivo tiene que caber en un renglón. El de una misión
+ * nace siendo el briefing completo, y la tarjeta «Ahora» —que está fija arriba
+ * de todo— lo pintaba entero: diez renglones que empujaban la pestaña de abajo
+ * fuera de la pantalla.
+ */
+describe('el título de un objetivo cabe en un renglón', () => {
+  it('deja intactos los objetivos que ya son cortos', () => {
+    expect(goalTitle('recuperar calor')).toBe('recuperar calor');
+    expect(goalTitle('armar un puente')).toBe('armar un puente');
+  });
+
+  it('sigue sacando el prefijo con el que el motor marca los encargos', () => {
+    expect(goalTitle('petición del usuario: crea una cocina')).toBe('crea una cocina');
+  });
+
+  it('corta un briefing largo por su primera oración', () => {
+    const briefing =
+      'Este río es mucho más ancho que el otro: cuatro pasos de agua de punta a punta. ' +
+      'La comida está del otro lado. Con una sola tabla no llegás ni a la mitad.';
+    expect(goalTitle(briefing)).toBe(
+      'Este río es mucho más ancho que el otro: cuatro pasos de agua de punta a punta.',
+    );
+  });
+
+  it('si la primera oración no entra, corta por una pausa de la propia frase', () => {
+    // El caso del cauce: la primera oración mide 105, y cortar por palabra
+    // dejaba un «y tampoco…» colgado. La coma cierra una idea completa.
+    const cauce =
+      'Este río es mucho más ancho que el otro: cuatro pasos de agua de punta a punta, ' +
+      'y tampoco se puede nadar. La comida está del otro lado.';
+    expect(goalTitle(cauce)).toBe(
+      'Este río es mucho más ancho que el otro: cuatro pasos de agua de punta a punta',
+    );
+  });
+
+  it('sin ninguna pausa, corta por la última palabra que cabe', () => {
+    const corrido = `${'palabra '.repeat(30)}final.`;
+    const title = goalTitle(corrido);
+    expect(title.length).toBeLessThanOrEqual(91);
+    expect(title.endsWith('…')).toBe(true);
+    // No parte una palabra al medio.
+    expect(title.slice(0, -1).trimEnd().endsWith('palabra')).toBe(true);
+  });
+
+  it('no deja un título en blanco cuando la primera «oración» es un punto suelto', () => {
+    const raro = `. ${'x'.repeat(200)}`;
+    expect(goalTitle(raro).length).toBeGreaterThan(10);
+  });
+
+  it('achica los briefings REALES de los cuatro mapas a un renglón', () => {
+    // No son textos de laboratorio: son los enunciados que de verdad se
+    // vuelven descripción de objetivo y terminan en la tarjeta «Ahora».
+    for (const map of MAPS) {
+      const title = goalTitle(map.mission.briefing);
+      expect(title.length, `«${map.name}» sigue siendo largo: ${title}`).toBeLessThanOrEqual(91);
+      expect(title.length).toBeGreaterThan(20);
+    }
   });
 });
