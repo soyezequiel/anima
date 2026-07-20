@@ -22,6 +22,7 @@ import type {
 } from '@anima/sim-core';
 import {
   blueprintCounts,
+  MAX_BLUEPRINT_OFFSET,
   expandRecipeCost,
   groundKey,
   isMadeFrom,
@@ -1129,6 +1130,18 @@ export class AnimaAgent {
       walkable.map((p) => ({ x: p.offset.x, y: p.offset.y })),
       horizontal,
     );
+    // Ancho mayor que el alcance: NINGUNA obra cruza esto, por bien diseñada
+    // que esté. Decirle "diseñaste mal" sería mandarla a corregir lo
+    // incorregible y quemar sus tres intentos contra una pared. El motivo
+    // nombra el techo para que la próxima idea sea de otra clase, no otra
+    // variante de la misma.
+    if (ancho > MAX_BLUEPRINT_OFFSET) {
+      return (
+        `no es que la hayas diseñado mal: lo que hay que cruzar mide ${ancho} celdas y ` +
+        `una obra no llega más allá de ${MAX_BLUEPRINT_OFFSET} desde donde la plantás. ` +
+        `Ninguna forma de tendido cruza eso — hace falta otra idea, no otro puente.`
+      );
+    }
     const lado = walkable.every((p) => (horizontal ? p.offset.x : p.offset.y) > 0)
       ? ''
       : ' Y vos te parás en el 0,0, que es tierra firme: un tendido repartido a los dos lados deja la mitad en la orilla. Tiene que salir de tus pies hacia UN solo lado.';
@@ -1136,6 +1149,40 @@ export class AnimaAgent {
       `esa obra no cruza desde ningún lado: su tramo seguido más largo es de ${tramo} ` +
       `celda${tramo === 1 ? '' : 's'} y lo que hay que cruzar mide ${ancho}.${lado}`
     );
+  }
+
+  /**
+   * Qué le corta el paso y cuánto mide, medido de lo que VE.
+   *
+   * Es la medida del problema, en datos, antes de imaginar la solución. Sin
+   * esto la mascota diseñaba a ciegas y el juez la corregía después, quemando
+   * intentos: el cauce salía bien en parte porque el propio encargo del
+   * cuidador decía «cuatro pasos», y eso es depender del enunciado. Un mapa que
+   * no lo diga la deja adivinando otra vez.
+   *
+   * El ancho es el del CRUCE, no el del obstáculo: una barrera se cruza por su
+   * parte más angosta, así que de los dos ejes vale el menor. Un río de 4
+   * columnas y 9 filas mide 4 para quien lo quiere cruzar, no 9.
+   *
+   * No nombra ríos ni puentes: el tipo sale del encargo (o del agua que ve) y
+   * el número sale de contar celdas. En otro mapa es otro obstáculo y otro
+   * número.
+   */
+  private obstacleFor(
+    goalId: string,
+    perception: Perception,
+  ): { kind: string; width: number } | undefined {
+    const onto = this.destinationKindFor(goalId);
+    const ground = perceivedGround(perception.visibleEntities);
+    const keys = onto !== undefined ? this.targetCells(onto, perception) : ground.water;
+    if (keys.size === 0) return undefined;
+    const cells = [...keys].map((key) => {
+      const [x, y] = key.split(',').map(Number);
+      return { x: x ?? 0, y: y ?? 0 };
+    });
+    const width = Math.min(this.longestRun(cells, true), this.longestRun(cells, false));
+    if (width === 0) return undefined;
+    return { kind: onto ?? 'agua', width };
   }
 
   /** Las celdas de lo que le pidieron como destino, a la vista. */
@@ -4404,7 +4451,17 @@ export class AnimaAgent {
       await this.invention.inventRecipe(
         `mi cuidador me pidió construir ${kindWithArticle(request.recipeId)}`,
         perception,
-        { goalId: goal.id, wantedId: request.recipeId },
+        {
+          goalId: goal.id,
+          wantedId: request.recipeId,
+          // La medida del problema viaja con el pedido: que no tenga que
+          // adivinar el ancho de lo que le toca cruzar (ni que se lo tenga que
+          // decir el cuidador en la frase del encargo).
+          ...(() => {
+            const obstacle = this.obstacleFor(goal.id, perception);
+            return obstacle ? { obstacle } : {};
+          })(),
+        },
       ),
       goal,
       perception,

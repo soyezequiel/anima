@@ -574,7 +574,13 @@ export class InventionEngine {
   async inventRecipe(
     problem: string,
     perception: Perception,
-    options: { goalId: string; wantedId?: string; reserved?: string[]; creditKey?: string },
+    options: {
+      goalId: string;
+      wantedId?: string;
+      reserved?: string[];
+      creditKey?: string;
+      obstacle?: { kind: string; width: number };
+    },
   ): Promise<ActionIntent | null> {
     // Lo que un encargo abierto ya tiene reclamado no se ofrece como materia
     // libre. Ofrecerlo era pedirle al modelo que gastara lo ajeno: con «cruzá el
@@ -615,7 +621,7 @@ export class InventionEngine {
   private async proposeOnce(
     problem: string,
     perception: Perception,
-    options: { goalId: string; wantedId?: string },
+    options: { goalId: string; wantedId?: string; obstacle?: { kind: string; width: number } },
     materials: string[],
   ): Promise<ActionIntent | null> {
     // La experiencia pasada viaja con la propuesta (ADR 0033): lo que ya hizo
@@ -632,6 +638,7 @@ export class InventionEngine {
       materials,
       ...(priorExperience.length > 0 ? { priorExperience } : {}),
       ...(options.wantedId !== undefined ? { wantedId: options.wantedId } : {}),
+      ...(options.obstacle !== undefined ? { obstacle: options.obstacle } : {}),
       existingRecipes: perception.recipes.map(
         (recipe) =>
           `${recipe.id} (${recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,

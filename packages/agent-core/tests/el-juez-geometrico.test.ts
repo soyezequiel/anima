@@ -186,4 +186,35 @@ describe('un plano que no puede cruzar no entra al mundo', () => {
 
     expect(w.blueprints.map((b) => b.id)).toContain('choza');
   });
+
+  it('un obstáculo más ancho que su alcance se dice imposible, no mal diseñado', async () => {
+    // Un cauce de 9 columnas: no hay forma de tendido que lo cruce, porque una
+    // obra no llega más allá de 4 desde donde se planta. Decirle «diseñaste
+    // mal» sería mandarla a corregir lo incorregible y quemarle los tres
+    // intentos contra una pared.
+    const w = createWorld({ width: 22, height: 9, seed: 7 }, { recipes: [TABLA] });
+    const petId = spawn(w, 'pet', {
+      position: { x: 3, y: 4 },
+      collider: { solid: true },
+      energy: { current: 48, max: 50, decayPerTick: 0.01 },
+      health: { current: 10, max: 10 },
+      strength: { value: 2 },
+      inventory: { items: [], capacity: 6 },
+      agent: { name: 'Anima', perceptionRange: 22 },
+    }).id;
+    for (let x = 6; x <= 14; x++) {
+      for (let y = 0; y < 9; y++) spawn(w, 'agua', { position: { x, y }, water: {} });
+    }
+    for (let i = 0; i < 4; i++) spawn(w, 'tronco', { position: { x: 1 + i, y: 7 }, portable: {} });
+
+    const agent = makeAgent(petId, [PEDIDO, propuesta(HACIA_UN_LADO)]);
+    agent.receiveUserMessage('fabricá un puente y ponelo sobre el agua');
+    await run(w, petId, agent, 30);
+
+    const rechazo = agent.events.events.find((e) => e.type === 'blueprint.rejected');
+    const motivo = String(rechazo?.data.reason ?? '');
+    expect(motivo).toContain('no es que la hayas diseñado mal');
+    expect(motivo).toContain('mide 9 celdas');
+    expect(motivo).toContain('otra idea, no otro puente');
+  });
 });

@@ -39,7 +39,11 @@ const ANY_WORK = JSON.stringify({
   rationale: 'para cruzar',
 });
 
-async function promptFor(extra: { reach?: number; maxBlocks?: number }): Promise<string> {
+async function promptFor(extra: {
+  reach?: number;
+  maxBlocks?: number;
+  obstacle?: { kind: string; width: number };
+}): Promise<string> {
   const seen: CodexTransportInput[] = [];
   const provider = new CodexModelProvider(transportReturning(ANY_WORK, seen));
   await provider.complete({
@@ -116,5 +120,41 @@ describe('la obra se imagina a la medida del mundo, no de una copia vieja', () =
     // El consejo de la abertura sigue existiendo, pero atado a encerrar.
     expect(prompt).toContain('ENCERRAR UN ESPACIO');
     expect(prompt).toContain('ABERTURA');
+  });
+
+  it('la medida del obstáculo viaja y se dice como número, no como adjetivo', async () => {
+    const prompt = await promptFor({
+      reach: 4,
+      maxBlocks: 24,
+      obstacle: { kind: 'agua', width: 4 },
+    });
+
+    // El ancho lo contó ella mirando: sin esto diseñaba a ciegas y el juez la
+    // corregía después, quemando intentos. Peor: en el cauce salía bien en
+    // parte porque el propio encargo del cuidador decía «cuatro pasos» — o sea
+    // que el resultado dependía del enunciado y no de lo que ella percibía.
+    expect(prompt).toContain('agua de 4 celdas de ancho');
+    expect(prompt).toContain('lo contaste vos mirando');
+    expect(prompt).toContain('fila de 4 celdas seguidas lo tapa entero');
+  });
+
+  it('un obstáculo más ancho que su alcance se dice imposible, no «diseñá mejor»', async () => {
+    const prompt = await promptFor({
+      reach: 4,
+      maxBlocks: 24,
+      obstacle: { kind: 'agua', width: 9 },
+    });
+
+    // Mandarla a corregir lo incorregible le quema los tres intentos contra una
+    // pared. Que sepa que el techo es del mundo y no de su idea es lo que hace
+    // que la próxima sea de OTRA clase, no otra variante de la misma.
+    expect(prompt).toContain('más de lo que una sola obra');
+    expect(prompt).toContain('otra cosa');
+    expect(prompt).not.toContain('fila de 9 celdas seguidas lo tapa entero');
+  });
+
+  it('sin nada que cruzar, no le inventamos un obstáculo', async () => {
+    const prompt = await promptFor({ reach: 4, maxBlocks: 24 });
+    expect(prompt).not.toContain('LO QUE TE CORTA EL PASO');
   });
 });

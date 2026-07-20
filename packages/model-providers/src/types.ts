@@ -165,6 +165,16 @@ export type ModelRequest =
       /** Recetas que ya existen: no tiene sentido reinventarlas. */
       existingRecipes: string[];
       /**
+       * Qué le corta el paso y cuánto mide, contado de lo que VE. Es la medida
+       * del problema antes de imaginar la solución: sin ella diseñaba a ciegas
+       * y el juez la corregía después, quemando intentos.
+       *
+       * El ancho es el del CRUCE —una barrera se cruza por su parte más
+       * angosta—, no el largo del obstáculo. Ausente cuando no hay nada que
+       * cruzar, que es la mayoría de las veces.
+       */
+      obstacle?: { kind: string; width: number };
+      /**
        * Hasta dónde llega una obra desde su ancla, en celdas (ADR 0035). Viaja
        * porque quien imagina no puede leer al validador: el texto decía «x,y ∈
        * {-1,0,1}» —el alcance del brazo del ADR 0032— mucho después de que la

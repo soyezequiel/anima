@@ -943,6 +943,20 @@ ${request.rejections.map((r) => `- ${r}`).join('\n')}`
 
 Inventa lo que ayude con el problema y se pueda construir con esos materiales.
 El mundo validará tu idea y puede rechazarla: proponerla no la vuelve posible.
+${
+  request.obstacle
+    ? `\nLO QUE TE CORTA EL PASO, MEDIDO: ${request.obstacle.kind} de ${request.obstacle.width} ${
+        request.obstacle.width === 1 ? 'celda' : 'celdas'
+      } de ancho por su parte más angosta. Eso lo contaste vos mirando, no te lo
+dijo nadie: es EL número contra el que tenés que medir lo que inventes.${
+        request.obstacle.width > reach
+          ? ` Y ojo: ${request.obstacle.width} es más de lo que una sola obra
+puede alcanzar (${reach}). Cruzarlo de un tramo no te da: pensá otra cosa —
+rodearlo, o algo que no necesite tapar todo el ancho— o decí que no podés.`
+          : ` Una fila de ${request.obstacle.width} celdas seguidas lo tapa entero.`
+      }\n`
+    : ''
+}
 
 Lo que pediste puede ser de tres tamaños, y ELIGES la forma según lo que la
 cosa ES de verdad:
