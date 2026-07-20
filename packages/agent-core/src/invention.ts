@@ -171,6 +171,16 @@ export class InventionEngine {
    * si no llega a la fruta, y ninguno si tiene frío.
    */
   private pendingProblem = '';
+  /**
+   * De QUIÉN es el plan que está en curso. El plan vivía suelto en el motor, así
+   * que una idea nacida del frío se seguía emitiendo desde el objetivo del
+   * hambre o desde el encargo del cuidador — y cualquier regla que mire "para
+   * qué objetivo se está inventando" se podía saltear por ese agujero.
+   *
+   * Una idea es de quien la pidió: mientras haya plan abierto, solo su dueño lo
+   * continúa.
+   */
+  private pendingOwnerGoalId: string | null = null;
   /** Rechazos (puerta o Dios) a sus interacciones: viajan al siguiente intento. */
   private interactionRejections: string[] = [];
   /** Rechazos a sus descomposiciones: mismo trato, viajan al próximo intento. */
@@ -247,6 +257,7 @@ export class InventionEngine {
     if (kind === 'recipe' || kind === 'blueprint') {
       this.pendingPlan = [];
       this.pendingBlueprint = null;
+      this.pendingOwnerGoalId = null;
     }
   }
 
@@ -256,7 +267,18 @@ export class InventionEngine {
    * proponer la tabla que ya existe es un rechazo tonto ("ya sé hacer eso") y
    * ese rechazo se llevaría puesto el resto del plan.
    */
-  async nextPlanStep(perception: Perception): Promise<ActionIntent | null> {
+  async nextPlanStep(perception: Perception, goalId?: string): Promise<ActionIntent | null> {
+    // El plan abierto es de quien lo pidió: otro objetivo no lo continúa. Sin
+    // esto, una idea del frío seguía saliendo por el encargo del cuidador y al
+    // revés — y con ella se colaban las piezas de un plan que nadie había
+    // pedido desde acá.
+    if (
+      goalId !== undefined &&
+      this.pendingOwnerGoalId !== null &&
+      this.pendingOwnerGoalId !== goalId
+    ) {
+      return null;
+    }
     while (this.pendingPlan.length > 0) {
       const raw = this.pendingPlan.shift();
       const node = planNode(raw);
@@ -386,6 +408,7 @@ export class InventionEngine {
       this.deps.emit('recipe.rejected', { reason: gated.error, source: 'gate' });
       this.pendingPlan = [];
       this.pendingBlueprint = null;
+      this.pendingOwnerGoalId = null;
       return 'rejected';
     }
 
@@ -416,6 +439,7 @@ export class InventionEngine {
       this.deps.emit('recipe.rejected', { reason, source: 'gate' });
       this.pendingPlan = [];
       this.pendingBlueprint = null;
+      this.pendingOwnerGoalId = null;
       return 'rejected';
     }
 
@@ -436,6 +460,7 @@ export class InventionEngine {
       this.deps.emit('recipe.rejected', { reason: veto, source: 'memory' });
       this.pendingPlan = [];
       this.pendingBlueprint = null;
+      this.pendingOwnerGoalId = null;
       return 'rejected';
     }
 
@@ -509,6 +534,7 @@ export class InventionEngine {
     // Lo que se apoyaba en esta pieza ya no se sostiene (ADR 0018).
     this.pendingPlan = [];
     this.pendingBlueprint = null;
+    this.pendingOwnerGoalId = null;
     return 'rejected';
   }
 
@@ -529,12 +555,22 @@ export class InventionEngine {
   async inventRecipe(
     problem: string,
     perception: Perception,
-    options: { goalId: string; wantedId?: string },
+    options: { goalId: string; wantedId?: string; reserved?: string[] },
   ): Promise<ActionIntent | null> {
+    // Lo que un encargo abierto ya tiene reclamado no se ofrece como materia
+    // libre. Ofrecerlo era pedirle al modelo que gastara lo ajeno: con «cruzá el
+    // río» esperando troncos, el frío inventó una fogata de troncos y el encargo
+    // despertó sin lo suyo. No se le prohíbe tener la idea — se le saca de la
+    // mesa el material que ya está comprometido, y que invente con lo que sobra.
+    const reserved = new Set(options.reserved ?? []);
     const materials = [
       ...new Set([
-        ...perception.self.heldItems.map((item) => `${item.kind} (lo llevo encima)`),
-        ...perception.visibleEntities.filter((e) => e.portable).map((e) => `${e.kind} (lo veo)`),
+        ...perception.self.heldItems
+          .filter((item) => !reserved.has(item.kind))
+          .map((item) => `${item.kind} (lo llevo encima)`),
+        ...perception.visibleEntities
+          .filter((e) => e.portable && !reserved.has(e.kind))
+          .map((e) => `${e.kind} (lo veo)`),
       ]),
     ];
     // Sin materiales no hay nada que inventar: es falta de recurso, no de idea.
@@ -614,6 +650,7 @@ export class InventionEngine {
     this.pendingPlan = orderPlan(plan);
     this.pendingBlueprint = response.kind === 'blueprint' ? response.blueprint : null;
     this.pendingProblem = problem;
+    this.pendingOwnerGoalId = options.goalId;
     this.deps.emit('recipe.proposed', {
       rationale: response.rationale,
       // Cuántas piezas tiene la idea: una casa que necesita paredes que
@@ -621,7 +658,7 @@ export class InventionEngine {
       // un paso más: el plano que las dispone.
       steps: this.pendingPlan.length + (this.pendingBlueprint !== null ? 1 : 0),
     });
-    return this.nextPlanStep(perception);
+    return this.nextPlanStep(perception, options.goalId);
   }
 
   // ---- interacciones (ADR 0027) ----------------------------------------------

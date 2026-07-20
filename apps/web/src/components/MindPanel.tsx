@@ -196,8 +196,16 @@ function ThoughtEntry({ thought }: { thought: ThoughtView }) {
   const live = thought.status === 'thinking';
   const summary = thought.answer !== null ? summarizeAnswer(thought.kind, thought.answer) : null;
   const stepWord = thought.reasoning.length === 1 ? 'paso' : 'pasos';
+  // Una entrada sin línea humana, sin razonamiento y ya terminada no tiene
+  // nada que contar: era una tarjeta entera para decir su propia etiqueta.
+  // Se encoge a un renglón en vez de ocupar el espacio de las que sí hablan.
+  const mute = !live && summary === null && thought.reasoning.length === 0;
   return (
-    <article className="thought-entry" data-testid="thought-entry" data-status={thought.status}>
+    <article
+      className={mute ? 'thought-entry is-mute' : 'thought-entry'}
+      data-testid="thought-entry"
+      data-status={thought.status}
+    >
       <header className="thought-entry-head">
         <span className="thought-entry-label">{thought.label}</span>
         <span className="thought-entry-meta muted">
@@ -230,9 +238,11 @@ function ThoughtEntry({ thought }: { thought: ThoughtView }) {
           </details>
         ))}
 
-      {/* El diálogo ya es su respuesta; para el resto, el JSON crudo espera
-          plegado por si alguien quiere la verdad literal. */}
-      {thought.kind !== 'dialogue' && thought.answer !== null && (
+      {/* El JSON crudo solo cuando NO hay línea humana: ahí es lo único que
+          explica qué contestó. Si ya hay resumen, el crudo es maquinaria —
+          está en el registro técnico, y acá era un pliegue permanente en cada
+          tarjeta que no aportaba nada a quien mira pensar a su mascota. */}
+      {thought.kind !== 'dialogue' && thought.answer !== null && summary === null && (
         <details className="thought-details">
           <summary>respuesta cruda</summary>
           <pre className="thought-answer-json">{prettyRaw(thought.answer)}</pre>

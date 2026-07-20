@@ -26,6 +26,7 @@ function go(mapId: string | null): void {
 }
 
 function TrainingCard({ map, active }: { map: (typeof MAPS)[number]; active: boolean }) {
+  const testWord = map.mission.tests.length === 1 ? 'condición' : 'condiciones';
   return (
     <li className={active ? 'training-card is-active' : 'training-card'}>
       <div className="training-card__head">
@@ -33,12 +34,21 @@ function TrainingCard({ map, active }: { map: (typeof MAPS)[number]; active: boo
         <h4>{map.name}</h4>
         {active && <span className="training-card__now">en curso</span>}
       </div>
-      <p className="training-card__briefing">«{map.mission.briefing}»</p>
-      <ul className="training-card__tests">
-        {map.mission.tests.map((test) => (
-          <li key={test}>{test}</li>
-        ))}
-      </ul>
+      {/* En el mapa que se está jugando el briefing ya lo dice MissionPanel,
+          arriba de esta misma pantalla: repetirlo acá era leerlo dos veces. */}
+      {!active && <p className="training-card__briefing">«{map.mission.briefing}»</p>}
+      {/* Para elegir dónde entrenar alcanza con saber cuántas condiciones
+          exige; la especificación completa es para cuando ya estás adentro. */}
+      <details className="training-card__testfold" open={active}>
+        <summary>
+          {map.mission.tests.length} {testWord}
+        </summary>
+        <ul className="training-card__tests">
+          {map.mission.tests.map((test) => (
+            <li key={test}>{test}</li>
+          ))}
+        </ul>
+      </details>
       <button
         type="button"
         className="training-card__go"

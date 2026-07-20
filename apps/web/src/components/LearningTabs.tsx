@@ -108,8 +108,8 @@ export function TrialsTab({ view }: { view: GameView }) {
   return (
     <div className="learning-panel" data-testid="trials-tab">
       <p className="section-sub muted">
-        Cada paso del aprendizaje en orden, tal como ocurrió: la necesidad, el contrato, cada
-        candidata y el veredicto del evaluador.
+        Una habilidad por panel y un renglón por intento, con su veredicto. Abrí un intento para ver
+        los pasos que lo llevaron hasta ahí.
       </p>
       {view.experiments.length > 0 ? (
         <ExperimentsPanel view={view} />

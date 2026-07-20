@@ -39,6 +39,14 @@ export function DevPanel({ view, session }: { view: GameView; session: GameSessi
           <option value="agent">agente</option>
         </select>
         <span className="muted">{events.length} eventos</span>
+        {/* Semilla y tick: identifican la partida y el momento exactos, que es
+            justo lo que hace falta para reproducir algo raro. Vivían en el pie
+            del panel Estado, donde eran ruido para quien solo mira a su
+            mascota. */}
+        <span className="muted dev-world">
+          mundo <span data-testid="world-seed">{view.seed}</span> · tick{' '}
+          <span data-testid="world-tick">{view.tick}</span>
+        </span>
         <button
           data-testid="dev-kill"
           title="Colapsa energía y salud para observar el flujo de muerte y legado"

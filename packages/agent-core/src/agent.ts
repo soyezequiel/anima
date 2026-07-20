@@ -4216,7 +4216,7 @@ export class AnimaAgent {
   ): Promise<ActionIntent | null> {
     // Un plan a medio proponer sigue entrando, hoja por hoja (ADR 0031), y cada
     // hoja pasa por el juez antes de tocar el mundo (ADR 0042).
-    const pending = await this.invention.nextPlanStep(perception);
+    const pending = await this.invention.nextPlanStep(perception, goal.id);
     if (pending) return pending;
     // Lo que su cuerpo aprendió que NO puede vencer hace la idea concreta —
     // "algo que rompa el muro" en vez de un deseo vago. Sin barrera conocida,
@@ -4229,7 +4229,10 @@ export class AnimaAgent {
     const problem =
       'no logro llegar al alimento: lo que sé usar no vence lo que me bloquea' +
       (barriers.length > 0 ? ` (${barriers.join('; ')})` : '');
-    return this.invention.inventRecipe(problem, perception, { goalId: goal.id });
+    return this.invention.inventRecipe(problem, perception, {
+      goalId: goal.id,
+      reserved: this.committedKinds(perception, goal.id),
+    });
   }
 
   /**
@@ -4255,7 +4258,7 @@ export class AnimaAgent {
     // receta por tick, cada una por la puerta del mundo (ADR 0031). Va antes
     // que el "ya sabe hacerlo" porque lo que falta son las piezas de abajo, no
     // la casa: la casa es justamente la que todavía no puede entrar.
-    const pending = await this.invention.nextPlanStep(perception);
+    const pending = await this.invention.nextPlanStep(perception, goal.id);
     if (pending) return pending;
     // Ya sabe hacerlo: no hay nada que inventar, hay que ponerse a construir.
     // "Saberlo" es tener la receta (un objeto) O el plano (una obra, ADR 0032):
@@ -4334,7 +4337,7 @@ export class AnimaAgent {
       const intent = await this.invention.inventRecipe(
         `necesito una herramienta más fuerte para romper ${kindWithArticle(targetKind ?? 'eso')}`,
         perception,
-        { goalId: goal.id },
+        { goalId: goal.id, reserved: this.committedKinds(perception, goal.id) },
       );
       if (intent) return intent;
     }
@@ -4643,7 +4646,7 @@ export class AnimaAgent {
       const invention = await this.invention.inventRecipe(
         'tengo frío y no tengo nada que dé calor',
         perception,
-        { goalId: goal.id },
+        { goalId: goal.id, reserved: this.committedKinds(perception, goal.id) },
       );
       if (invention) return invention;
     }
@@ -5643,6 +5646,51 @@ export class AnimaAgent {
       .filter(([, count]) => count > 0)
       .map(([kind, count]) => ({ kind, count }))
       .sort((a, b) => b.count - a.count);
+  }
+
+  /**
+   * La materia que YA TIENE DUEÑO: lo que los encargos abiertos del cuidador
+   * todavía necesitan, y que no sobra.
+   *
+   * Nace de una partida perdida entera. Con «cruzá el río» dormido por falta de
+   * troncos, el frío ganó la selección —un encargo suspendido no compite— y se
+   * puso a inventar ofreciéndole al modelo esos mismos troncos como materia
+   * libre. Fabricó una fogata, y el encargo despertó para descubrir que le
+   * faltaba justo lo que ella se había gastado. Diez recetas después, el mapa
+   * era imposible.
+   *
+   * Cuenta lo mismo que se le pide al cuidador cuando no llega
+   * (`missingBaseMaterials`): materia BASE, bajando el árbol de recetas, porque
+   * reservar «tablón» no sirve de nada si lo que se va a gastar es el tronco del
+   * que sale.
+   *
+   * Solo se reserva lo que NO SOBRA: si hay diez troncos a la vista y el encargo
+   * necesita dos, los otros ocho son suyos para lo que quiera. Reservar el tipo
+   * entero convertiría cualquier encargo abierto en una prohibición de vivir, y
+   * la iniciativa propia (ADR 0036) es justamente lo que no queremos apagar.
+   */
+  private committedKinds(perception: Perception, exceptGoalId?: string): string[] {
+    const needed = new Map<string, number>();
+    for (const goal of this.goals.all()) {
+      if (goal.id === exceptGoalId) continue;
+      if (goal.source !== 'user-request' || goal.parentGoalId !== undefined) continue;
+      if (goal.status !== 'active' && goal.status !== 'suspended') continue;
+      for (const { kind, count } of this.missingBaseMaterials(goal, perception)) {
+        needed.set(kind, (needed.get(kind) ?? 0) + count);
+      }
+    }
+    if (needed.size === 0) return [];
+    const available = new Map<string, number>();
+    for (const item of perception.self.heldItems) {
+      available.set(item.kind, (available.get(item.kind) ?? 0) + 1);
+    }
+    for (const entity of perception.visibleEntities) {
+      if (entity.held === true || entity.portable !== true) continue;
+      available.set(entity.kind, (available.get(entity.kind) ?? 0) + 1);
+    }
+    return [...needed]
+      .filter(([kind, count]) => count >= (available.get(kind) ?? 0))
+      .map(([kind]) => kind);
   }
 
   private beyondHerWorld(kind: string, perception: Perception): boolean {

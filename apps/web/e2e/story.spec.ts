@@ -77,8 +77,8 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   const slider = page.getByTestId('speed-slider');
   const speedValue = page.getByTestId('speed-value');
 
-  // El tick vive en el panel Estado; el arranque ahora es Chat.
-  await page.getByTestId('tab-estado').click();
+  // El tick vive en el registro técnico: es dato de depuración, no de mascota.
+  await page.getByTestId('tab-dev').click();
   const tick = page.getByTestId('world-tick');
 
   // El cero de la escala es la pausa: llevar el pulgar ahí congela el tick.
@@ -128,6 +128,6 @@ test('pausa, velocidad y modo desarrollador funcionan', async ({ page }) => {
   await page.getByTestId('ai-settings-toggle').click();
   await page.getByTestId('seed-input').fill('9');
   await page.getByTestId('reset-button').click();
-  await page.getByTestId('tab-estado').click();
+  await page.getByTestId('tab-dev').click();
   await expect(page.getByTestId('world-seed')).toHaveText('9');
 });
