@@ -611,18 +611,6 @@ button:active {
   font-size: 12px;
 }
 
-/* ── Entrenamiento: las condiciones se piden, no se imponen ────────────── */
-.training-card__testfold summary {
-  cursor: pointer;
-  font-size: 11.5px;
-  color: var(--muted);
-}
-.training-card__testfold summary:hover {
-  color: var(--text);
-}
-.training-card__testfold[open] summary {
-  margin-bottom: 4px;
-}
 .skill-attempts summary,
 .program-details summary,
 .regressions summary,
@@ -1389,31 +1377,40 @@ button:active {
 .training-list > summary:hover {
   color: #cbd5e1;
 }
-.training-list ul {
+.training-cards {
   list-style: none;
   margin: 0.5rem 0 0;
   padding: 0;
   display: grid;
-  gap: 0.6rem;
+  gap: 0.4rem;
 }
 .training-card {
   border: 1px solid #2a3441;
   border-radius: 8px;
-  padding: 0.6rem 0.7rem;
+  padding: 0.5rem 0.7rem;
 }
 .training-card.is-active {
   border-color: #3f6212;
   background: rgba(63, 98, 18, 0.12);
 }
+
+/* La tarjeta se lee en UNA línea: número, lugar, desafío y la acción. Antes
+   eran cinco renglones por entrenamiento —cita de tres líneas incluida— y
+   elegir entre cuatro obligaba a leer una pantalla entera. */
 .training-card__head {
   display: flex;
   align-items: baseline;
-  gap: 0.45rem;
+  gap: 0.5rem;
 }
-.training-card__head h4 {
-  margin: 0;
+.training-card__name {
   font-size: 0.85rem;
   color: #e2e8f0;
+}
+/* El desafío en tres palabras: es lo que de verdad distingue un entrenamiento
+   de otro, y hasta ahora no se mostraba en ningún lado. */
+.training-card__goal {
+  font-size: 0.75rem;
+  color: #94a3b8;
 }
 .training-card__n {
   background: #2a3441;
@@ -1427,42 +1424,35 @@ button:active {
   font-size: 0.68rem;
   color: #86efac;
 }
+
+/* El briefing es lo que se le dice a la MASCOTA. Para elegir no hace falta:
+   espera plegado, y quien quiera saber a qué la manda lo abre. */
+.training-card__brieffold > summary {
+  cursor: pointer;
+  font-size: 0.7rem;
+  color: #64748b;
+  padding: 0.25rem 0 0;
+}
+.training-card__brieffold > summary:hover {
+  color: #cbd5e1;
+}
 .training-card__briefing {
   color: #94a3b8;
   font-size: 0.74rem;
   line-height: 1.35;
-  margin: 0.4rem 0;
-}
-.training-card__tests {
-  list-style: none;
-  margin: 0 0 0.5rem;
-  padding: 0;
-  display: grid;
-  gap: 0.15rem;
-}
-.training-card__tests li {
-  color: #64748b;
-  font-size: 0.7rem;
-  line-height: 1.3;
-}
-.training-card__tests li::before {
-  content: '· ';
-  color: #475569;
+  margin: 0.3rem 0 0.1rem;
 }
 .training-card__go {
+  margin-left: auto;
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 6px;
   color: #e2e8f0;
   cursor: pointer;
-  font-size: 0.75rem;
-  padding: 0.35rem 0.7rem;
-  width: 100%;
+  font-size: 0.72rem;
+  padding: 0.25rem 0.6rem;
+  white-space: nowrap;
 }
-.training-card__go:hover:not(:disabled) {
+.training-card__go:hover {
   background: #334155;
-}
-.training-card__go:disabled {
-  cursor: default;
-  color: #64748b;
 }
