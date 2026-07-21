@@ -31,6 +31,8 @@ export interface PerceivedEntity {
   solid?: boolean;
   toolPower?: number;
   hardness?: number;
+  /** Resistencia observable: permite estimar cuántos golpes exige una transformación. */
+  durability?: { current: number; max: number };
   /** Calor que irradia por tick (si es una fuente de calor). */
   warmth?: number;
   /** Agua: se ve (no es sólida) pero no se puede pisar. */
@@ -124,6 +126,8 @@ export interface Perception {
      * los brazos (ADR 0032) y decirlo con un número, no con un "no pude".
      */
     inventoryCapacity: number;
+    /** Fuerza propia: parte del cuerpo y de la regla pública de herramientas. */
+    strength?: number;
   };
   visibleEntities: PerceivedEntity[];
   /**
@@ -213,6 +217,12 @@ function perceiveEntity(entity: Entity, observerPos: Vec2 | null, held: boolean)
   if (entity.components.collider?.solid) perceived.solid = true;
   if (entity.components.tool) perceived.toolPower = entity.components.tool.power;
   if (entity.components.hardness) perceived.hardness = entity.components.hardness.value;
+  if (entity.components.durability) {
+    perceived.durability = {
+      current: entity.components.durability.current,
+      max: entity.components.durability.max,
+    };
+  }
   if (entity.components.heatSource) perceived.warmth = entity.components.heatSource.warmthPerTick;
   if (entity.components.water) perceived.wet = true;
   if (entity.components.footing) perceived.footing = true;
@@ -318,6 +328,7 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
     heldItems,
     inventoryCapacity: agent.components.inventory?.capacity ?? 0,
   };
+  if (agent.components.strength) self.strength = agent.components.strength.value;
   if (agent.components.energy) {
     self.energy = { current: agent.components.energy.current, max: agent.components.energy.max };
   }

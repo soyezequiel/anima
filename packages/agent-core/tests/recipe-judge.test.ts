@@ -196,7 +196,7 @@ describe('la IA Dios juzga las recetas inventadas (ADR 0042)', () => {
    * rechazo pidió.
    */
   it('un veto contra la COSA no bloquea la misma idea propuesta como OBRA', async () => {
-    const { world, petId } = worldWithBranchAndFlint();
+    const { petId } = worldWithBranchAndFlint();
     const agent = makeAgent(petId, new ScriptedModel({}));
 
     // Se le hace vivir el veto de la cosa suelta, con el formato que el motor

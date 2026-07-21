@@ -52,6 +52,7 @@ import {
 } from '@anima/skill-runtime';
 import type { EvaluationCaseHook, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
+import { planCausalRequest } from './causal-world-model.js';
 import {
   conditionForUserRequest,
   evaluateGoalCondition,
@@ -483,6 +484,8 @@ export class AnimaAgent {
    * los mundos imaginados no son reentrantes y una mente alcanza. */
   private skillDevRun: SkillDevRun | null = null;
   private pendingSpeech: string[] = [];
+  /** Número de planes causales intentados por objetivo (efímero; al restaurar se replanifica). */
+  private readonly causalPlanAttempts = new Map<string, number>();
   /**
    * Tipos que aparecieron y todavía no tienen dibujo (la quinta puerta). Se
    * vacía en los ratos ociosos, nunca compitiendo con una necesidad.
@@ -5829,6 +5832,45 @@ export class AnimaAgent {
     completionReply: string,
     perception: Perception,
   ): void {
+    const causal = goal.userRequest
+      ? planCausalRequest(goal.userRequest, perception, {
+          rememberedEntities: this.places.all().map((place) => ({
+            id: place.entityId,
+            kind: place.kind,
+            ...(place.portable !== undefined ? { portable: place.portable } : {}),
+          })),
+        })
+      : undefined;
+    if (causal?.supported) {
+      const attempt = (this.causalPlanAttempts.get(goal.id) ?? 0) + 1;
+      this.causalPlanAttempts.set(goal.id, attempt);
+      if (causal.result.ok) {
+        const steps = causal.result.plan.steps.map((step) => step.id);
+        this.memory.working.planSummary = steps.join(' → ');
+        this.emit(attempt === 1 ? 'causal.plan.created' : 'causal.plan.revised', {
+          goalId: goal.id,
+          attempt,
+          confidence: causal.result.plan.confidence,
+          cost: causal.result.plan.totalCost,
+          risk: causal.result.plan.totalRisk,
+          steps,
+        });
+      } else {
+        delete this.memory.working.planSummary;
+        this.emit('causal.plan.rejected', {
+          goalId: goal.id,
+          reason: causal.result.reason,
+          diagnostics: causal.result.diagnostics,
+          expandedStates: causal.result.expandedStates,
+        });
+        // `no-plan` no demuestra imposibilidad en un mundo parcialmente visto:
+        // conserva el diagnóstico, pero la ejecución contingente todavía puede
+        // explorar y dejar que el mundo confirme o niegue. Lo que sí se rechaza
+        // como plan son cadenas concretas con precondiciones falsas, mediante
+        // `validateCausalPlan`; ausencia de prueba no se convierte en prueba de
+        // ausencia.
+      }
+    }
     // Al ponerse a trabajar el encargo, sus pasos se vuelven objetivos hijos
     // (ADR 0053). Acá y no al aceptar el pedido: recién ahora hay percepción, y
     // la cuenta de qué falta puede haber cambiado —una receta inventada en el

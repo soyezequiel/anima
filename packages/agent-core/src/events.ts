@@ -12,6 +12,12 @@ export type AgentEventType =
    * Es SU evento y no `goal.completed` a propósito: quien escucha el cierre de
    * un encargo entero no tiene por qué enterarse de cada paso intermedio. */
   | 'goal.step.completed'
+  /** El planificador derivó una cadena causal desde percepción/catálogos. */
+  | 'causal.plan.created'
+  /** Un cambio o fallo obligó a buscar otra cadena desde el estado fresco. */
+  | 'causal.plan.revised'
+  /** No existe una cadena causal válida dentro de los límites configurados. */
+  | 'causal.plan.rejected'
   | 'strategy.selected'
   | 'strategy.failed'
   | 'strategy.forbidden'

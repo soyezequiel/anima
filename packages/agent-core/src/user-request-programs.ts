@@ -11,6 +11,8 @@ import type { GoalUserRequest } from './goals.js';
 import { SKILL_REACH_BLOCKED_FOOD } from './names.js';
 import { buildStructureProgram, gatherAndCraftProgram, heldCounts } from './programs.js';
 import { spatialRequestProgram } from './spatial-goals.js';
+import { planCausalRequest } from './causal-world-model.js';
+import { causalPlanToSkillProgram } from './causal-program.js';
 
 /**
  * De la petición del cuidador al programa que la cumple: composición
@@ -190,6 +192,17 @@ export function programForUserRequest(
         perception.self.heldItems.some((item) => item.id === request.targetEntityId)
       ) {
         return [{ op: 'wait', ticks: 1 }];
+      }
+      // Adquisición causal general: si el recurso no está suelto, el modelo
+      // del mundo puede haber derivado una cadena de recetas, herramienta,
+      // transformación o interacción. Sólo se compila una cadena validada;
+      // si no hay una, conserva la búsqueda contingente probada de abajo.
+      if (!request.targetEntityId) {
+        const causal = planCausalRequest(request, perception);
+        if (causal.supported && causal.result.ok) {
+          const compiled = causalPlanToSkillProgram(causal.result.plan);
+          if (compiled) return compiled;
+        }
       }
       const fetchOne: SkillOp[] = [
         ...rememberedApproach,

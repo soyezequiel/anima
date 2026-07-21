@@ -76,6 +76,12 @@ estructurados → jerarquía de estrategias → controlador externo de progreso 
 ciclo cerrado de desarrollo de skills → memoria y explicaciones. Consultas al
 modelo solo en momentos cognitivos.
 
+La composición de recursos, herramientas, fabricación, transformaciones,
+navegación e interacciones cuenta además con un
+[modelo causal declarativo](planificacion-causal.md): deriva estado y acciones
+de percepción/memoria/catálogos validados, busca con costos y límites, y deja
+la validación física final en `sim-core`.
+
 ## model-providers (modelos intercambiables)
 
 Interfaz neutral `ModelProvider.complete(ModelRequest): ModelResponse` con
