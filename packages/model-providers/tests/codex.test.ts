@@ -195,7 +195,10 @@ describe('CodexModelProvider', () => {
     // el chat, en el panel de aprendizaje y en el informe de legado.
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(
-      transportReturning('{"hypothesis":"consumir alimento recupera energía","confidence":0.6}', seen),
+      transportReturning(
+        '{"hypothesis":"consumir alimento recupera energía","confidence":0.6}',
+        seen,
+      ),
     );
     await provider.complete({ kind: 'interpret.signal', signal: 'energy-low' });
 
@@ -324,7 +327,18 @@ describe('CodexModelProvider', () => {
   });
 
   it('un encargo de varias partes se lee como varias órdenes en orden', async () => {
-    const empty = { targetKind: '', verb: '', amount: 0, directions: [], skillName: '', recipeId: '', onKind: '', summary: '', name: '', steps: [] };
+    const empty = {
+      targetKind: '',
+      verb: '',
+      amount: 0,
+      directions: [],
+      skillName: '',
+      recipeId: '',
+      onKind: '',
+      summary: '',
+      name: '',
+      steps: [],
+    };
     const provider = new CodexModelProvider(
       transportReturning(
         JSON.stringify({
@@ -357,7 +371,18 @@ describe('CodexModelProvider', () => {
   });
 
   it('un encargo con una sola parte legible es una orden, no una secuencia', async () => {
-    const empty = { targetKind: '', verb: '', amount: 0, directions: [], skillName: '', recipeId: '', onKind: '', summary: '', name: '', steps: [] };
+    const empty = {
+      targetKind: '',
+      verb: '',
+      amount: 0,
+      directions: [],
+      skillName: '',
+      recipeId: '',
+      onKind: '',
+      summary: '',
+      name: '',
+      steps: [],
+    };
     const provider = new CodexModelProvider(
       transportReturning(
         JSON.stringify({
@@ -414,6 +439,7 @@ describe('CodexModelProvider', () => {
         'verb',
         'amount',
         'directions',
+        'relation',
         'skillName',
         'recipeId',
         'onKind',
@@ -424,6 +450,38 @@ describe('CodexModelProvider', () => {
     });
     expect(seen[0]?.prompt).toContain('pegá un pasito rumbo al rincón noroeste');
     expect(seen[0]?.prompt).toContain('Mascota: Estoy junto al árbol.');
+  });
+
+  it('interpreta cruzar una referencia como una meta espacial, no como una habilidad', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'spatial-relation',
+          relation: 'opposite-side',
+          targetKind: 'wall',
+          verb: '',
+          amount: 0,
+          directions: [],
+          skillName: '',
+          recipeId: '',
+          onKind: '',
+          summary: '',
+          name: '',
+          steps: [],
+        }),
+      ),
+    );
+
+    await expect(
+      provider.complete({
+        kind: 'interpret.command',
+        text: 'cruzá el muro',
+        facts: ['estoy en la celda (2,3)', 'posición visible de wall: (5,0), (5,1)'],
+      }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'spatial-relation', relation: 'opposite-side', targetKind: 'wall' },
+    });
   });
 
   it('interpreta un bautismo como rename-pet con el nombre elegido', async () => {
@@ -601,7 +659,9 @@ describe('CodexModelProvider', () => {
       ingredients: [{ kind: 'log', count: 2 }],
     };
     const provider = new CodexModelProvider(
-      transportReturning(JSON.stringify({ recipeJson: JSON.stringify(recipe), rationale: 'calor' })),
+      transportReturning(
+        JSON.stringify({ recipeJson: JSON.stringify(recipe), rationale: 'calor' }),
+      ),
     );
     const response = await provider.complete({
       kind: 'recipe.propose',

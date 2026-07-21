@@ -13,6 +13,32 @@ export type GoalSource =
 
 export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
 
+/**
+ * Una relación espacial pedida por el cuidador. El vocabulario es chico a
+ * propósito: son relaciones que el motor puede medir, no frases que haya que
+ * volver a interpretar al terminar.
+ */
+export type SpatialRelation = 'opposite-side' | 'near' | 'far-from';
+
+/**
+ * Geometría resuelta cuando se acepta el pedido. Se congela porque "el otro
+ * lado" depende de dónde estaba la mascota al oírlo; recalcularlo mientras se
+ * mueve haría que la meta huyera con ella.
+ */
+export interface SpatialGrounding {
+  relation: SpatialRelation;
+  referenceKind: string;
+  referenceEntityIds: string[];
+  referencePositions: { x: number; y: number }[];
+  destination: { x: number; y: number };
+  /** Solo `opposite-side`: eje normal, centro y lado del que partió. */
+  axis?: 'x' | 'y';
+  origin?: number;
+  startingSide?: -1 | 1;
+  /** Solo `far-from`: distancia Manhattan mínima que cuenta como alejarse. */
+  minimumDistance?: number;
+}
+
 export interface GoalUserRequest {
   kind:
     | 'destroy-entity'
@@ -23,6 +49,7 @@ export interface GoalUserRequest {
     | 'run-skill'
     | 'craft-item'
     | 'place-item'
+    | 'spatial-relation'
     | 'interact-entity';
   targetKind?: string;
   /** `place-item`: sobre qué hay que ponerlo. */
@@ -34,6 +61,9 @@ export interface GoalUserRequest {
   directions?: Direction[];
   skillName?: string;
   recipeId?: string;
+  /** Pedido espacial y su geometría ya anclada en el mundo. */
+  relation?: SpatialRelation;
+  spatial?: SpatialGrounding;
   raw: string;
 }
 

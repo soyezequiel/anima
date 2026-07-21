@@ -1,6 +1,12 @@
 import { chebyshev, isAdjacent } from '@anima/shared';
 import type { Vec2 } from '@anima/shared';
-import type { ActionIntent, Direction, Perception, PerceivedEntity, SimEvent } from '@anima/sim-core';
+import type {
+  ActionIntent,
+  Direction,
+  Perception,
+  PerceivedEntity,
+  SimEvent,
+} from '@anima/sim-core';
 import { missingIngredients } from '@anima/sim-core';
 import type { EntityQuery, SkillCondition, SkillOp, SkillProgram } from './dsl.js';
 import type { SkillLibrary } from './skill.js';
@@ -33,8 +39,7 @@ export interface SkillExecutionResult {
 }
 
 export type SkillStepOutput =
-  | { kind: 'intent'; intent: ActionIntent }
-  | { kind: 'done'; result: SkillExecutionResult };
+  { kind: 'intent'; intent: ActionIntent } | { kind: 'done'; result: SkillExecutionResult };
 
 /** Un ancla de obra: una celda fija del mundo a la que la mascota vuelve (ADR 0034). */
 interface Anchor {
@@ -447,7 +452,12 @@ export class SkillExecution {
         frame.index += 1;
         const taken = this.evalCondition(op.if, perception) ? op.then : op.else;
         if (taken) {
-          this.frames.push({ ops: taken, index: 0, callDepth: frame.callDepth, scope: frame.scope });
+          this.frames.push({
+            ops: taken,
+            index: 0,
+            callDepth: frame.callDepth,
+            scope: frame.scope,
+          });
         }
         return null;
       }
@@ -502,6 +512,20 @@ export class SkillExecution {
           stepsTaken: 0,
           stopAtDistance: op.stopAtDistance ?? 1,
           avoidTarget: op.avoidTarget ?? false,
+        };
+        const output = this.stepMove(perception);
+        return output ?? null;
+      }
+      case 'moveTo': {
+        const targetVar = `__move-to-${frame.callDepth}-${frame.index}`;
+        this.vars.set(targetVar, { anchor: { ...op.position } });
+        frame.index += 1;
+        this.move = {
+          targetVar,
+          maxSteps: op.maxSteps,
+          stepsTaken: 0,
+          stopAtDistance: op.stopAtDistance ?? 0,
+          avoidTarget: false,
         };
         const output = this.stepMove(perception);
         return output ?? null;
@@ -729,7 +753,13 @@ export class SkillExecution {
     // rechazado se aprende en observe() y el próximo tick se replanifica con
     // esa verdad. Sigue sin omnisciencia: rodea el muro solo si sabe por dónde.
     this.spatial.observe(perception);
-    const dir = this.pathStep(selfPos, destination, move.stopAtDistance, perception, move.avoidTarget);
+    const dir = this.pathStep(
+      selfPos,
+      destination,
+      move.stopAtDistance,
+      perception,
+      move.avoidTarget,
+    );
     if (!dir) {
       this.endMove('blocked');
       return null;
@@ -1032,8 +1062,10 @@ export class SkillExecution {
         return (perception.self.energy?.current ?? 0) < cond.value;
       case 'temperatureBelow':
         // Sin sentido del frío, nunca tiene frío (no es lo mismo que tener 0).
-        return perception.self.temperature !== undefined &&
-          perception.self.temperature.current < cond.value;
+        return (
+          perception.self.temperature !== undefined &&
+          perception.self.temperature.current < cond.value
+        );
       case 'sees': {
         const all = [...perception.visibleEntities, ...perception.self.heldItems];
         return all.some((e) => matchesQuery(e, cond.query));

@@ -2,7 +2,7 @@ import { countedKindLabel, isFeminineKind, kindLabel, kindWithArticle } from '@a
 import type { Direction, Perception } from '@anima/sim-core';
 import { isMadeFrom, missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
-import type { Goal } from './goals.js';
+import type { Goal, SpatialGrounding, SpatialRelation } from './goals.js';
 
 /**
  * Peticiones del usuario ya interpretadas a una forma estructurada.
@@ -16,6 +16,14 @@ export type UserRequest =
   | { kind: 'consume-item'; targetKind: string; raw: string }
   | { kind: 'wait-here'; raw: string }
   | { kind: 'move-direction'; directions: Direction[]; raw: string }
+  | {
+      kind: 'spatial-relation';
+      relation: SpatialRelation;
+      targetKind: string;
+      /** Se completa al aceptar, antes de persistir el objetivo. */
+      spatial?: SpatialGrounding;
+      raw: string;
+    }
   /** Ejecutar una habilidad que ya aprendió y demostró en evaluación. */
   | { kind: 'run-skill'; skillName: string; raw: string }
   /** Construir algo según una receta que su mundo admite. */
@@ -131,6 +139,32 @@ export function evaluateUserRequest(
         reason: `Voy ${displayDirections(request.directions)}.`,
       };
 
+    case 'spatial-relation': {
+      if (request.targetKind === 'unknown') {
+        return {
+          classification: 'needs_information',
+          reason: 'Entiendo la relación espacial, pero no respecto de qué objeto.',
+        };
+      }
+      const visible = perception.visibleEntities.some(
+        (entity) => entity.kind === request.targetKind && entity.position !== undefined,
+      );
+      if (!visible) {
+        return {
+          classification: 'needs_information',
+          reason: `No veo ${displayKind(request.targetKind)} para ubicar ese pedido.`,
+          alternative: '¿Podés acercarme o mostrarme cuál es?',
+        };
+      }
+      const action =
+        request.relation === 'opposite-side'
+          ? `cruzar al otro lado de ${displayKind(request.targetKind)}`
+          : request.relation === 'near'
+            ? `acercarme a ${displayKind(request.targetKind)}`
+            : `alejarme de ${displayKind(request.targetKind)}`;
+      return { classification: 'accepted', reason: `Entiendo: voy a ${action}.` };
+    }
+
     case 'craft-item': {
       const recipe = perception.recipes.find((r) => r.id === request.recipeId);
       if (!recipe) {
@@ -198,7 +232,9 @@ export function evaluateUserRequest(
         // honesto cuando todo lo que carga es material que va a necesitar.
         const ingredientKinds = new Set(recipe.ingredients.map((i) => i.kind));
         const freeSlots = perception.self.inventoryCapacity - perception.self.heldItems.length;
-        const droppable = perception.self.heldItems.filter((e) => !ingredientKinds.has(e.kind)).length;
+        const droppable = perception.self.heldItems.filter(
+          (e) => !ingredientKinds.has(e.kind),
+        ).length;
         if (gatherable && freeSlots + droppable >= totalMissing) {
           return {
             classification: 'accepted',
@@ -329,8 +365,7 @@ export function evaluateUserRequest(
       // ¿Ya lo sabe hacer? Saberlo es física suya: se acepta sin inventar nada.
       const known = perception.interactions.some(
         (interaction) =>
-          interaction.target.kind === request.targetKind ||
-          interaction.id.startsWith(request.verb),
+          interaction.target.kind === request.targetKind || interaction.id.startsWith(request.verb),
       );
       if (known) {
         return {
@@ -493,7 +528,10 @@ export function parseRename(text: string): string | null {
 /** Parser local de peticiones frecuentes. El resto se deriva al proveedor de diálogo. */
 export function parseUserMessage(
   text: string,
-): UserRequest | { kind: 'explanation'; raw: string } | { kind: 'rename-pet'; name: string; raw: string } {
+):
+  | UserRequest
+  | { kind: 'explanation'; raw: string }
+  | { kind: 'rename-pet'; name: string; raw: string } {
   const renameTo = parseRename(text);
   if (renameTo !== null) return { kind: 'rename-pet', name: renameTo, raw: text };
   const lower = normalizeMessage(text);
@@ -556,6 +594,21 @@ export function parseUserMessage(
     /\b(anda|andate|ve|vete|mueve|muevete|movete|moverte|camina|camine|corre|dirigete|desplazate|sube|baja|move)\b/.test(
       lower,
     );
+  const spatialTarget = kindWord('other');
+  if (/\b(cruza\w*|cruzar|atraviesa\w*|atravesar|pasa\w*\s+al\s+otro\s+lado)\b/.test(lower)) {
+    return {
+      kind: 'spatial-relation',
+      relation: 'opposite-side',
+      targetKind: spatialTarget,
+      raw: text,
+    };
+  }
+  if (/\b(acerca\w*|acercar\w*|aproxima\w*|aproximar\w*)\b/.test(lower)) {
+    return { kind: 'spatial-relation', relation: 'near', targetKind: spatialTarget, raw: text };
+  }
+  if (/\b(aleja\w*|alejar\w*)\b/.test(lower)) {
+    return { kind: 'spatial-relation', relation: 'far-from', targetKind: spatialTarget, raw: text };
+  }
   if (asksToMove) {
     const directionAliases: [pattern: RegExp, direction: Direction][] = [
       [/\b(arriba|norte|sube|up)\b/, 'up'],

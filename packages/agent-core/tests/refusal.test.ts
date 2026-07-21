@@ -261,6 +261,21 @@ describe('parser mínimo de mensajes', () => {
       kind: 'move-direction',
       directions: ['right'],
     });
+    expect(parseUserMessage('cruzá el muro')).toMatchObject({
+      kind: 'spatial-relation',
+      relation: 'opposite-side',
+      targetKind: 'wall',
+    });
+    expect(parseUserMessage('acercate al árbol')).toMatchObject({
+      kind: 'spatial-relation',
+      relation: 'near',
+      targetKind: 'tree',
+    });
+    expect(parseUserMessage('alejate de la fogata')).toMatchObject({
+      kind: 'spatial-relation',
+      relation: 'far-from',
+      targetKind: 'campfire',
+    });
     expect(parseUserMessage('comer alimento da energía').kind).toBe('explanation');
     expect(parseUserMessage('cuando comes alimento recuperas energía').kind).toBe('explanation');
     expect(parseUserMessage('hola').kind).toBe('unknown');

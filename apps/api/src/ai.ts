@@ -326,6 +326,27 @@ export function codexErrorDetail(stderr: string): string {
 }
 
 /**
+ * `codex exec --json` puede terminar ocasionalmente con código 1 sin escribir
+ * nada en stderr (por ejemplo, al recuperarse de una sesión de app-server que
+ * acaba de fallar). Como no hay un error explícito que el usuario pueda
+ * resolver, ese caso admite un único reintento efímero.
+ */
+export function isSilentCodexFailure(result: RunResult): boolean {
+  return (
+    result.code !== 0 &&
+    !result.failedToStart &&
+    result.stderr.trim().length === 0 &&
+    result.stdout.trim().length === 0
+  );
+}
+
+/** Conserva cualquier diagnóstico aunque el CLI lo haya enviado por stdout. */
+export function codexRunErrorDetail(result: RunResult): string {
+  const output = result.stderr.trim() || result.stdout.trim();
+  return output ? codexErrorDetail(output) : 'el CLI no entregó detalles';
+}
+
+/**
  * Consulta los límites de uso de la cuenta por el protocolo JSON-RPC (por
  * stdio) de `codex app-server`, el mismo que usa la extensión oficial:
  * initialize → initialized → account/rateLimits/read. No consume cuota.
@@ -640,6 +661,9 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
         let currentModel = model;
         let currentEffort = effort;
         let result = await run(currentModel, currentEffort);
+        if (isSilentCodexFailure(result)) {
+          result = await run(currentModel, currentEffort);
+        }
         if (
           result.code !== 0 &&
           !result.failedToStart &&
@@ -669,7 +693,7 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
         }
         if (result.code !== 0) {
           throw new Error(
-            `codex exec terminó con código ${String(result.code)}: ${codexErrorDetail(result.stderr)}`,
+            `codex exec terminó con código ${String(result.code)}: ${codexRunErrorDetail(result)}`,
           );
         }
         const text = await readFile(outFile, 'utf8').catch(() => '');

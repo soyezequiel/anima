@@ -10,6 +10,7 @@ import type { EntityQuery, SkillLibrary, SkillOp, SkillProgram } from '@anima/sk
 import type { GoalUserRequest } from './goals.js';
 import { SKILL_REACH_BLOCKED_FOOD } from './names.js';
 import { buildStructureProgram, gatherAndCraftProgram, heldCounts } from './programs.js';
+import { spatialRequestProgram } from './spatial-goals.js';
 
 /**
  * De la petición del cuidador al programa que la cumple: composición
@@ -162,10 +163,13 @@ export function programForUserRequest(
           },
         );
       }
-      return program.length > 0
-        ? program
-        : [{ op: 'abort', reason: 'dirección-no-especificada' }];
+      return program.length > 0 ? program : [{ op: 'abort', reason: 'dirección-no-especificada' }];
     }
+
+    case 'spatial-relation':
+      return request.spatial
+        ? spatialRequestProgram(request.spatial)
+        : [{ op: 'abort', reason: 'relación-espacial-sin-ubicar' }];
 
     case 'fetch-item': {
       const fetchOne: SkillOp[] = [
@@ -345,7 +349,12 @@ export function programForUserRequest(
       ops.push(
         searchFor({ kind: targetKind }),
         { op: 'findEntities', query: { kind: targetKind }, store: 'interactTargets' },
-        { op: 'selectTarget', from: 'interactTargets', strategy: 'nearest', store: 'interactTarget' },
+        {
+          op: 'selectTarget',
+          from: 'interactTargets',
+          strategy: 'nearest',
+          store: 'interactTarget',
+        },
       );
       if (interaction.stance === 'held') {
         // El objetivo tiene que ir en la mano: recogerlo es parte del pedido.
@@ -488,6 +497,12 @@ export function completionReply(request: GoalUserRequest): string {
         .join(' y ');
       return `Listo, me moví ${destination}.`;
     }
+    case 'spatial-relation':
+      return request.relation === 'opposite-side'
+        ? `Listo, crucé al otro lado de ${name}.`
+        : request.relation === 'near'
+          ? `Listo, me acerqué a ${name}.`
+          : `Listo, me alejé de ${name}.`;
     case 'fetch-item': {
       const amount = request.amount ?? 1;
       return amount > 1 && request.targetKind

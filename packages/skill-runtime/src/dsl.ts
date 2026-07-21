@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { Result } from '@anima/shared';
+import type { Vec2 } from '@anima/shared';
 import { err, ok } from '@anima/shared';
 
 /**
@@ -133,7 +134,9 @@ const directionSchema = z.enum(['up', 'down', 'left', 'right']);
 
 const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
   z.discriminatedUnion('op', [
-    z.object({ op: z.literal('findEntities'), query: entityQuerySchema, store: z.string().min(1) }).strict(),
+    z
+      .object({ op: z.literal('findEntities'), query: entityQuerySchema, store: z.string().min(1) })
+      .strict(),
     z
       .object({
         op: z.literal('selectTarget'),
@@ -163,6 +166,14 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
          * y, si ya está encima, se corre a un lado.
          */
         avoidTarget: z.boolean().optional(),
+      })
+      .strict(),
+    z
+      .object({
+        op: z.literal('moveTo'),
+        position: z.object({ x: z.number().int(), y: z.number().int() }).strict(),
+        maxSteps: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
+        stopAtDistance: z.number().int().min(0).max(10).optional(),
       })
       .strict(),
     z.object({ op: z.literal('moveStep'), dir: directionSchema }).strict(),
@@ -227,7 +238,9 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       })
       .strict(),
     z.object({ op: z.literal('consume'), target: z.string().min(1) }).strict(),
-    z.object({ op: z.literal('useItem'), item: z.string().min(1), target: z.string().min(1) }).strict(),
+    z
+      .object({ op: z.literal('useItem'), item: z.string().min(1), target: z.string().min(1) })
+      .strict(),
     z.object({ op: z.literal('craft'), recipeId: z.string().min(1) }).strict(),
     z
       .object({
@@ -236,7 +249,12 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
         target: z.string().min(1),
       })
       .strict(),
-    z.object({ op: z.literal('wait'), ticks: z.number().int().min(1).max(MAX_REPEAT_LIMIT).optional() }).strict(),
+    z
+      .object({
+        op: z.literal('wait'),
+        ticks: z.number().int().min(1).max(MAX_REPEAT_LIMIT).optional(),
+      })
+      .strict(),
     z.object({ op: z.literal('speak'), text: z.string().max(300) }).strict(),
     z
       .object({
@@ -273,7 +291,15 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
 export type SkillOp =
   | { op: 'findEntities'; query: EntityQuery; store: string }
   | { op: 'selectTarget'; from: string; strategy: SelectStrategy; store: string }
-  | { op: 'moveToward'; target: string; maxSteps: number; stopAtDistance?: number; avoidTarget?: boolean }
+  | {
+      op: 'moveToward';
+      target: string;
+      maxSteps: number;
+      stopAtDistance?: number;
+      avoidTarget?: boolean;
+    }
+  /** Ir a una celda fija del mundo; el BFS comparte la misma memoria que moveToward. */
+  | { op: 'moveTo'; position: Vec2; maxSteps: number; stopAtDistance?: number }
   | { op: 'moveStep'; dir: 'up' | 'down' | 'left' | 'right' }
   /**
    * El GPS hacia un recurso (ADR 0038): "llevame a donde hay X" en una sola
@@ -434,7 +460,9 @@ export interface ComposeContext {
 export function validateSkillProgram(raw: unknown, compose?: ComposeContext): Result<SkillProgram> {
   const parsed = skillProgramSchema.safeParse(raw);
   if (!parsed.success) {
-    return err(`Programa inválido: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`);
+    return err(
+      `Programa inválido: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`,
+    );
   }
   const { count, maxDepth } = measure(parsed.data, 1);
   if (count > MAX_PROGRAM_OPS) {
@@ -459,11 +487,7 @@ function badRunSkill(ops: SkillOp[]): string | null {
       return 'runSkill necesita skillName (recomendado) o skillId, exactamente uno';
     }
     const blocks =
-      op.op === 'branch'
-        ? [op.then, op.else ?? []]
-        : op.op === 'repeatWithLimit'
-          ? [op.body]
-          : [];
+      op.op === 'branch' ? [op.then, op.else ?? []] : op.op === 'repeatWithLimit' ? [op.body] : [];
     for (const block of blocks) {
       const inner = badRunSkill(block);
       if (inner) return inner;

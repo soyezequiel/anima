@@ -65,6 +65,25 @@ describe('intérprete de skills', () => {
     expect(report.path.some((p) => p.x === 4 && p.y === 0)).toBe(true);
   });
 
+  it('moveTo alcanza una celda fija rodeando obstáculos conocidos', () => {
+    const { world, petId } = smallWorld();
+    for (let y = 1; y < world.config.height; y++) {
+      spawn(world, 'wall', {
+        position: { x: 4, y },
+        collider: { solid: true },
+        hardness: { value: 5 },
+        durability: { current: 10, max: 10 },
+      });
+    }
+    const program: SkillProgram = [{ op: 'moveTo', position: { x: 7, y: 2 }, maxSteps: 30 }];
+
+    const report = runSkillProgram(world, petId, program, { maxTicks: 60 });
+
+    expect(report.outcome).toBe('completed');
+    expect(getEntity(world, petId)?.components.position).toEqual({ x: 7, y: 2 });
+    expect(report.path.some((position) => position.x === 4 && position.y === 0)).toBe(true);
+  });
+
   it('miope, aprende del choque contra lo que no ve y replanifica el rodeo', () => {
     const { world, petId } = smallWorld();
     // Rango 1: el muro de (3,2) no se percibe desde (1,2). El plan optimista
@@ -86,9 +105,9 @@ describe('intérprete de skills', () => {
     ];
     const report = runSkillProgram(world, petId, program, { maxTicks: 120 });
     expect(report.outcome).toBe('completed');
-    expect(
-      report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === food),
-    ).toBe(true);
+    expect(report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === food)).toBe(
+      true,
+    );
   });
 
   it('rompe el muro con un martillo y llega al alimento', () => {
@@ -294,7 +313,11 @@ describe('intérprete de skills', () => {
       tool: { power: 1 },
     });
     const program: SkillProgram = [
-      { op: 'explore', maxSteps: 50, until: { type: 'sees', query: { kind: 'branch', held: false } } },
+      {
+        op: 'explore',
+        maxSteps: 50,
+        until: { type: 'sees', query: { kind: 'branch', held: false } },
+      },
       { op: 'findEntities', query: { kind: 'branch', held: false }, store: 'branches' },
       { op: 'selectTarget', from: 'branches', strategy: 'nearest', store: 'branch' },
       { op: 'moveToward', target: 'branch', maxSteps: 40 },
@@ -401,9 +424,9 @@ describe('gpsTo: el GPS hacia un recurso (ADR 0038)', () => {
     ];
     const report = runSkillProgram(world, petId, program, { maxTicks: 60, places });
     expect(report.outcome).toBe('completed');
-    expect(
-      report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === foodId),
-    ).toBe(true);
+    expect(report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === foodId)).toBe(
+      true,
+    );
   });
 
   it('el recuerdo que mentía se descarta al llegar, no antes ni desde lejos', () => {
@@ -451,9 +474,9 @@ describe('gpsTo: el GPS hacia un recurso (ADR 0038)', () => {
     ];
     const report = runSkillProgram(world, petId, program, { maxTicks: 200 });
     expect(report.outcome).toBe('completed');
-    expect(
-      report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === foodId),
-    ).toBe(true);
+    expect(report.events.some((e) => e.type === 'item.consumed' && e.data.itemId === foodId)).toBe(
+      true,
+    );
   });
 
   it('si el mapa no lo tiene, agota sus pasos y el programa aborta honesto', () => {
@@ -491,7 +514,10 @@ describe('composición de skills', () => {
     const report = runSkillProgram(
       world,
       petId,
-      [{ op: 'speak', text: 'voy a comer' }, { op: 'runSkill', skillId: inner.id }],
+      [
+        { op: 'speak', text: 'voy a comer' },
+        { op: 'runSkill', skillId: inner.id },
+      ],
       { maxTicks: 60, library },
     );
     expect(report.outcome).toBe('completed');

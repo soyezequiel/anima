@@ -8,12 +8,14 @@ import { writeFile } from 'node:fs/promises';
 import type { AiBridge, AiBridgeFactory, AiLimits, AiThoughtEvent } from '../src/ai.js';
 import {
   codexErrorDetail,
+  codexRunErrorDetail,
   codexHomeFor,
   createCodexBridge,
   createCodexBridgeFactory,
   createThoughtStreamParser,
   isUnsupportedEffortError,
   isUnsupportedModelError,
+  isSilentCodexFailure,
   parseRateLimitsResponse,
   readThoughtEvent,
 } from '../src/ai.js';
@@ -318,6 +320,39 @@ describe('parseRateLimitsResponse', () => {
 const unsupportedEffortStderr = `stream error: { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 } ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 }`;
 
 describe('errores de codex exec', () => {
+  it('reintenta una vez cuando el CLI termina sin entregar ningún diagnóstico', async () => {
+    let attempts = 0;
+    const bridge = createCodexBridge({
+      exec: async (args) => {
+        attempts += 1;
+        if (attempts === 1) {
+          return { code: 1, stdout: '', stderr: '', failedToStart: false };
+        }
+        const outFile = args[args.indexOf('--output-last-message') + 1]!;
+        await writeFile(outFile, '{"text":"ok"}', 'utf8');
+        return { code: 0, stdout: '', stderr: '', failedToStart: false };
+      },
+    });
+
+    await expect(bridge.complete({ prompt: 'hola' })).resolves.toBe('{"text":"ok"}');
+    expect(attempts).toBe(2);
+  });
+
+  it('usa stdout como diagnóstico y explica un fallo completamente silencioso', () => {
+    const fromStdout = {
+      code: 1,
+      stdout: 'ERROR: conexión cerrada',
+      stderr: '',
+      failedToStart: false,
+    };
+    const silent = { code: 1, stdout: '', stderr: '', failedToStart: false };
+
+    expect(isSilentCodexFailure(silent)).toBe(true);
+    expect(isSilentCodexFailure(fromStdout)).toBe(false);
+    expect(codexRunErrorDetail(fromStdout)).toBe('ERROR: conexión cerrada');
+    expect(codexRunErrorDetail(silent)).toBe('el CLI no entregó detalles');
+  });
+
   it('reconoce el rechazo del nivel de razonamiento', () => {
     expect(isUnsupportedEffortError(unsupportedEffortStderr)).toBe(true);
     expect(isUnsupportedEffortError('ERROR: stream disconnected before completion')).toBe(false);
@@ -460,9 +495,9 @@ describe('pensamiento en vivo del puente', () => {
     });
 
     const events: AiThoughtEvent[] = [];
-    await expect(
-      bridge.complete({ prompt: 'hola' }, (event) => events.push(event)),
-    ).resolves.toBe('{"text":"ok"}');
+    await expect(bridge.complete({ prompt: 'hola' }, (event) => events.push(event))).resolves.toBe(
+      '{"text":"ok"}',
+    );
     expect(events).toEqual([
       { type: 'reasoning', text: '**paso 1**' },
       { type: 'answer', text: '{"text":"ok"}' },

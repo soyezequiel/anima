@@ -105,6 +105,7 @@ import {
 } from './programs.js';
 import type { UserRequestProgramDeps } from './user-request-programs.js';
 import { completionReply, programForUserRequest } from './user-request-programs.js';
+import { groundSpatialRequest, spatialGoalSatisfied } from './spatial-goals.js';
 
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
@@ -237,6 +238,7 @@ const USER_REQUEST_WEIGHTS: Record<GoalUserRequest['kind'], { priority: number; 
   {
     'consume-item': { priority: 1, urgency: 0.8 },
     'move-direction': { priority: 1, urgency: 0.75 },
+    'spatial-relation': { priority: 1, urgency: 0.75 },
     'run-skill': { priority: 1, urgency: 0.7 },
     'craft-item': { priority: 1, urgency: 0.7 },
     'interact-entity': { priority: 1, urgency: 0.7 },
@@ -959,8 +961,7 @@ export class AnimaAgent {
       // otra forma. Sin esta condición, descubrir un obstáculo a mitad de obra
       // dejaría media choza abandonada y empezaría otra al lado.
       const untouched =
-        this.pendingPlacements(blueprint, known, perception).length ===
-        blueprint.placements.length;
+        this.pendingPlacements(blueprint, known, perception).length === blueprint.placements.length;
       // Mientras no haya puesto nada, un sitio que NO da al destino que le
       // pidieron se puede abandonar: al elegirlo quizá no veía el río todavía.
       const serves = onto === undefined || this.siteServes(blueprint, known, onto, perception);
@@ -1024,11 +1025,7 @@ export class AnimaAgent {
    * declarar, así que esto devuelve false y todo sigue como antes: el sitio más
    * cercano al que pueda llegar.
    */
-  private siteUsesFooting(
-    blueprint: Blueprint,
-    anchor: Vec2,
-    perception: Perception,
-  ): boolean {
+  private siteUsesFooting(blueprint: Blueprint, anchor: Vec2, perception: Perception): boolean {
     // Y no alcanza con mojar una tabla: el tendido tiene que CRUZAR el agua.
     // Preguntando «¿alguna pieza cae sobre el agua?» el mejor sitio del mapa
     // era el que rozaba la primera columna del cauce, y ahí se quedaba.
@@ -1119,8 +1116,7 @@ export class AnimaAgent {
     });
     const xs = blueprint.placements.map((p) => p.offset.x);
     const ys = blueprint.placements.map((p) => p.offset.y);
-    const horizontal =
-      Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+    const horizontal = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
     // Los dos se miden en el MISMO eje: el que la obra recorre. Cuántas celdas
     // de obstáculo seguidas hay que pisar para pasar al otro lado, contra
     // cuántas seguidas ofrece el tendido. Medir el obstáculo en el eje cruzado
@@ -1263,8 +1259,7 @@ export class AnimaAgent {
     // otro eje sería pedirle que cubra el río a lo largo, que no termina nunca.
     const xs = blueprint.placements.map((p) => p.offset.x);
     const ys = blueprint.placements.map((p) => p.offset.y);
-    const horizontal =
-      Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
+    const horizontal = Math.max(...xs) - Math.min(...xs) >= Math.max(...ys) - Math.min(...ys);
     const bounds = perception.bounds;
 
     for (const start of over) {
@@ -1371,8 +1366,7 @@ export class AnimaAgent {
             ? this.siteServes(blueprint, anchor, onto, perception)
             : this.siteUsesFooting(blueprint, anchor, perception);
         const distance = Math.abs(dx) + Math.abs(dy);
-        const better =
-          !best || (serves !== best.serves ? serves : distance < best.distance);
+        const better = !best || (serves !== best.serves ? serves : distance < best.distance);
         if (better) best = { anchor, serves, distance };
       }
     }
@@ -2573,7 +2567,10 @@ export class AnimaAgent {
    * enciende, para que un cuerpo en el borde no abra y cierre en bucle.
    */
   private closeSatisfiedNeeds(perception: Perception): void {
-    const satisfied = (description: string, level: { current: number; max: number } | undefined) => {
+    const satisfied = (
+      description: string,
+      level: { current: number; max: number } | undefined,
+    ) => {
       if (!level || level.max <= 0) return;
       if (level.current / level.max < RECOVERED_NEED_FRACTION) return;
       const open = this.goals.findOpen(description);
@@ -3503,7 +3500,11 @@ export class AnimaAgent {
           text,
           perception,
         );
-        if (parsed.kind !== 'unknown' && parsed.kind !== 'explanation' && parsed.kind !== 'rename-pet') {
+        if (
+          parsed.kind !== 'unknown' &&
+          parsed.kind !== 'explanation' &&
+          parsed.kind !== 'rename-pet'
+        ) {
           requests.push(parsed);
         }
       }
@@ -3604,6 +3605,17 @@ export class AnimaAgent {
     }
     const visibleKinds = [...new Set(perception.visibleEntities.map((entity) => entity.kind))];
     if (visibleKinds.length > 0) facts.push(`ahora veo: ${visibleKinds.join(', ')}`);
+    facts.push(`estoy en la celda (${perception.self.position.x},${perception.self.position.y})`);
+    const positioned = new Map<string, string[]>();
+    for (const entity of perception.visibleEntities) {
+      if (!entity.position || entity.held === true) continue;
+      const cells = positioned.get(entity.kind) ?? [];
+      if (cells.length < 12) cells.push(`(${entity.position.x},${entity.position.y})`);
+      positioned.set(entity.kind, cells);
+    }
+    for (const [kind, cells] of [...positioned].slice(0, 10)) {
+      facts.push(`posición visible de ${kind}: ${cells.join(', ')}`);
+    }
     if (perception.self.heldItems.length > 0) {
       facts.push(
         `llevo conmigo: ${perception.self.heldItems
@@ -3801,6 +3813,13 @@ export class AnimaAgent {
         return { kind: 'wait-here', raw };
       case 'move-direction':
         return { kind: 'move-direction', directions: [...command.directions], raw };
+      case 'spatial-relation':
+        return {
+          kind: 'spatial-relation',
+          relation: command.relation,
+          targetKind: command.targetKind,
+          raw,
+        };
       case 'run-skill':
         return { kind: 'run-skill', skillName: normalizeSkillName(command.skillName), raw };
       case 'craft-item':
@@ -4073,6 +4092,13 @@ export class AnimaAgent {
     );
     decision = await this.reconsiderRefusal(request, perception, decision);
     if (decision.classification === 'accepted' && request.kind !== 'unknown') {
+      if (request.kind === 'spatial-relation') {
+        const grounded = groundSpatialRequest(request, perception);
+        if (!grounded.ok) {
+          return { classification: 'needs_information', reason: grounded.reason };
+        }
+        request = { ...request, spatial: grounded.grounding };
+      }
       // Volver a pedir lo mismo RETOMA, no duplica. El encargo abierto se
       // identifica por lo que pide (qué acción, sobre qué), nunca por el texto:
       // "construí una escuela" y "continua con la construccion de la escuela"
@@ -4116,6 +4142,8 @@ export class AnimaAgent {
             ...('directions' in request ? { directions: request.directions } : {}),
             ...('skillName' in request ? { skillName: request.skillName } : {}),
             ...('recipeId' in request ? { recipeId: request.recipeId } : {}),
+            ...('relation' in request ? { relation: request.relation } : {}),
+            ...('spatial' in request && request.spatial ? { spatial: request.spatial } : {}),
             raw: request.raw,
           },
         },
@@ -4351,10 +4379,7 @@ export class AnimaAgent {
     // definitivo salvo que hablara el cuidador.
     const energyAtSuspension = perception.self.energy;
     if (energyAtSuspension) {
-      this.suspensionFractions.set(
-        goal.id,
-        energyAtSuspension.current / energyAtSuspension.max,
-      );
+      this.suspensionFractions.set(goal.id, energyAtSuspension.current / energyAtSuspension.max);
     }
     this.emit('goal.suspended', { goalId: goal.id, reason: 'sin estrategias viables' });
     this.lastSelectedGoalId = null;
@@ -5482,9 +5507,17 @@ export class AnimaAgent {
       // que cuando falta material las celdas se saltean y el programa llega al
       // final sin abortar: "completado" describía la ejecución, no el mundo. Se
       // la vio decir «Listo» con media escuela en pie.
+      const currentGoal = this.goals.get(activity.goalId);
+      const spatial =
+        currentGoal?.userRequest?.kind === 'spatial-relation'
+          ? currentGoal.userRequest.spatial
+          : undefined;
+      const spatialSatisfied = spatial
+        ? spatialGoalSatisfied(spatial, perception.self.position)
+        : true;
       const unfinished =
         out.result.outcome === 'completed' && this.unfinishedStructure(activity.goalId, perception);
-      const success = out.result.outcome === 'completed' && !unfinished;
+      const success = out.result.outcome === 'completed' && !unfinished && spatialSatisfied;
       if (success) {
         this.goals.complete(activity.goalId);
         this.destroyToolFloor.delete(activity.goalId);
@@ -5503,8 +5536,58 @@ export class AnimaAgent {
         // fracasar y cerrar el encargo para siempre.
         const reason = unfinished
           ? 'no-candidates:obra-incompleta'
-          : (out.result.reason ?? out.result.outcome);
+          : out.result.outcome === 'completed' && spatial && !spatialSatisfied
+            ? 'criterio-espacial-no-cumplido'
+            : (out.result.reason ?? out.result.outcome);
         const goal = this.goals.get(activity.goalId);
+        // Cruzar es un objetivo, no una habilidad. Si la navegación no
+        // encuentra ruta y la propia referencia es una barrera rompible, abrir
+        // un hueco es una estrategia al servicio del mismo objetivo. El pedido
+        // solo se completa después, cuando la posición queda del lado opuesto.
+        if (
+          goal?.userRequest?.kind === 'spatial-relation' &&
+          goal.userRequest.relation === 'opposite-side' &&
+          (reason === 'camino-bloqueado' || reason === 'criterio-espacial-no-cumplido')
+        ) {
+          const targetKind = goal.userRequest.targetKind ?? 'unknown';
+          const barrier = perception.visibleEntities.find(
+            (entity) =>
+              entity.kind === targetKind &&
+              entity.solid === true &&
+              entity.hardness !== undefined &&
+              entity.held !== true,
+          );
+          const label = barrier ? `abrir-paso-espacial:${targetKind}` : null;
+          if (
+            barrier &&
+            label &&
+            this.strongestToolPower(perception) > 0 &&
+            !this.progress.isForbidden(goal.id, label)
+          ) {
+            this.reply(
+              `No encuentro un paso: voy a abrirme camino por ${kindWithArticle(targetKind)}.`,
+            );
+            this.startActivity(goal, label, breakThroughProgram(targetKind), perception, {
+              purpose: 'open-path',
+            });
+            this.lastSelectedGoalId = null;
+            return null;
+          }
+          this.goals.fail(goal.id);
+          this.emit('strategy.failed', {
+            goalId: goal.id,
+            strategy: 'petición-espacial',
+            outcome: out.result.outcome,
+            reason,
+          });
+          this.reply(
+            barrier && this.strongestToolPower(perception) === 0
+              ? `Entiendo adónde querés que vaya, pero no tengo con qué abrirme paso por ${kindWithArticle(targetKind)}.`
+              : `Entiendo adónde querés que vaya, pero no encuentro una ruta hasta el otro lado de ${kindWithArticle(targetKind)}.`,
+          );
+          this.lastSelectedGoalId = null;
+          return null;
+        }
         // "Muy duro" no es el final del pedido: es "me falta una herramienta más
         // fuerte". El objetivo sigue VIVO y el próximo tick intenta fabricarla —
         // o inventarla si su mundo no la sabe hacer (ADR 0036), ahora también
@@ -5571,7 +5654,8 @@ export class AnimaAgent {
           // No alcanza con `isForbidden`: eso cuenta FRACASOS, y cada apertura
           // salía bien. Lo que hay que limitar acá son los éxitos inútiles.
           const abiertas = this.pathOpenings.get(activity.goalId) ?? 0;
-          const blocker = abiertas >= MAX_PATH_OPENINGS ? undefined : this.frontierBlocker(perception);
+          const blocker =
+            abiertas >= MAX_PATH_OPENINGS ? undefined : this.frontierBlocker(perception);
           const label = blocker ? `abrir-paso:${blocker}` : null;
           if (blocker && label && !this.progress.isForbidden(activity.goalId, label)) {
             this.reply(
@@ -5692,9 +5776,7 @@ export class AnimaAgent {
             outcome: out.result.outcome,
             reason,
           });
-          this.reply(
-            `Todavía no se me ocurre cómo hacer eso. Le sigo dando vueltas.`,
-          );
+          this.reply(`Todavía no se me ocurre cómo hacer eso. Le sigo dando vueltas.`);
           this.lastSelectedGoalId = null;
           return null;
         }
@@ -5949,7 +6031,10 @@ export class AnimaAgent {
    * encimeras» no le sirve al cuidador: las encimeras no se consiguen, se
    * fabrican. «Me faltan 14 ramas» sí — eso puede traerlo.
    */
-  private missingBaseMaterials(goal: Goal, perception: Perception): { kind: string; count: number }[] {
+  private missingBaseMaterials(
+    goal: Goal,
+    perception: Perception,
+  ): { kind: string; count: number }[] {
     const base = new Map<string, number>();
     for (const need of this.neededCountsFor(goal, perception)) {
       const faltan = need.need - need.have;
@@ -6030,7 +6115,8 @@ export class AnimaAgent {
   private findableMaterialsFor(kinds: string[], perception: Perception): string[] {
     const found = new Set<string>();
     const walk = (kind: string, depth: number): void => {
-      const recipe = depth >= MAX_RECIPE_DEPTH ? undefined : recipeProducing(perception.recipes, kind);
+      const recipe =
+        depth >= MAX_RECIPE_DEPTH ? undefined : recipeProducing(perception.recipes, kind);
       if (!recipe) {
         found.add(kind);
         return;
@@ -6150,7 +6236,8 @@ export class AnimaAgent {
       // memoria de lugares en adorno — y la deja en una esquina esperando un
       // tronco que está a diez celdas, del otro lado del mapa.
       const remembered =
-        !arrived && stillMissing.some((kind) => this.places.recall({ kind }, perception).length > 0);
+        !arrived &&
+        stillMissing.some((kind) => this.places.recall({ kind }, perception).length > 0);
       // Y si ni lo ve ni lo recuerda, igual vuelve a INTENTARLO cada tanto. El
       // programa del encargo explora antes de darse por vencido, así que
       // reintentar no es repetir: es salir a buscar de nuevo, con el mapa que
@@ -6310,7 +6397,8 @@ export class AnimaAgent {
       return (
         `${capital} no se puede levantar con las manos, así que no puedo traértel${
           isFeminineKind(kind) ? 'a' : 'o'
-        } así. ` + `Si algo pudiera contenerl${isFeminineKind(kind) ? 'a' : 'o'}, sí: ` +
+        } así. ` +
+        `Si algo pudiera contenerl${isFeminineKind(kind) ? 'a' : 'o'}, sí: ` +
         `decime con qué la junto y lo intento.`
       );
     }

@@ -479,6 +479,7 @@ export type ModelResponse =
   | { kind: 'dialogue'; text: string };
 
 export type CommandDirection = 'up' | 'down' | 'left' | 'right';
+export type CommandSpatialRelation = 'opposite-side' | 'near' | 'far-from';
 
 /**
  * El modelo interpreta lenguaje, pero solo puede elegir este catálogo. El
@@ -496,6 +497,8 @@ export type CommandInterpretation =
   | { action: 'consume-item'; targetKind: string }
   | { action: 'wait-here' }
   | { action: 'move-direction'; directions: CommandDirection[] }
+  /** Alcanzar una relación espacial respecto de algo visible del mundo. */
+  | { action: 'spatial-relation'; relation: CommandSpatialRelation; targetKind: string }
   /** Ejecutar una habilidad ya aprendida, por su nombre. */
   | { action: 'run-skill'; skillName: string }
   /** Construir algo que su mundo admite, por el id de la receta. */

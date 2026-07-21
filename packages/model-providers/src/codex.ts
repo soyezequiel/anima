@@ -27,8 +27,7 @@ import { BaseModelProvider } from './types.js';
  * la consulta corre: un titular de razonamiento o el texto de la respuesta.
  */
 export type CodexThoughtEvent =
-  | { type: 'reasoning'; text: string }
-  | { type: 'answer'; text: string };
+  { type: 'reasoning'; text: string } | { type: 'answer'; text: string };
 
 export interface CodexTransportInput {
   /** Tipo de petición (informativo para telemetría e intercepción en pruebas). */
@@ -81,6 +80,8 @@ Operaciones permitidas (ninguna otra existe):
 - {"op":"findEntities","query":{"kind"?:string,"tool"?:boolean,"edible"?:boolean,"portable"?:boolean,"held"?:boolean,"warm"?:boolean},"store":string}
 - {"op":"selectTarget","from":string,"strategy":"nearest"|"strongestTool","store":string}
 - {"op":"moveToward","target":string,"maxSteps":number(1..50),"stopAtDistance"?:number(0..10)}
+- {"op":"moveTo","position":{"x":integer,"y":integer},"maxSteps":number(1..50),"stopAtDistance"?:number(0..10)}
+  — va a una celda fija del mundo, rodeando obstáculos conocidos.
 - {"op":"moveStep","dir":"up"|"down"|"left"|"right"}
 - {"op":"gpsTo","kind":string,"maxSteps":number(1..50),"stopAtDistance"?:number(0..10),"store"?:string}
   — el GPS hacia un recurso: si VE un "kind" va derecho rodeando obstáculos;
@@ -520,6 +521,7 @@ const COMMAND_ACTIONS = [
   'consume-item',
   'wait-here',
   'move-direction',
+  'spatial-relation',
   'run-skill',
   'craft-item',
   'place-item',
@@ -550,6 +552,10 @@ function commandFields(withSequence: boolean): Record<string, unknown> {
       items: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
       maxItems: 4,
     },
+    relation: {
+      type: 'string',
+      enum: ['', 'opposite-side', 'near', 'far-from'],
+    },
     skillName: { type: 'string' },
     recipeId: { type: 'string' },
     onKind: { type: 'string' },
@@ -564,6 +570,7 @@ const COMMAND_REQUIRED = [
   'verb',
   'amount',
   'directions',
+  'relation',
   'skillName',
   'recipeId',
   'onKind',
@@ -697,12 +704,22 @@ function summarizeCaseResults(
 ): string[] {
   const groups = new Map<
     string,
-    { scenario: string; verdict: 'passed' | 'failed' | 'inconclusive'; detail: string; seeds: number[] }
+    {
+      scenario: string;
+      verdict: 'passed' | 'failed' | 'inconclusive';
+      detail: string;
+      seeds: number[];
+    }
   >();
   for (const c of cases) {
     const detail = c.verdict === 'failed' ? c.observations.join('; ') || 'sin detalle' : '';
     const key = `${c.scenario}|${c.verdict}|${detail}`;
-    const group = groups.get(key) ?? { scenario: c.scenario, verdict: c.verdict, detail, seeds: [] };
+    const group = groups.get(key) ?? {
+      scenario: c.scenario,
+      verdict: c.verdict,
+      detail,
+      seeds: [],
+    };
     group.seeds.push(c.seed);
     groups.set(key, group);
   }
@@ -768,11 +785,27 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
     if (
       !Array.isArray(parsed.directions) ||
       parsed.directions.length === 0 ||
-      !parsed.directions.every((direction) => typeof direction === 'string' && allowed.has(direction))
+      !parsed.directions.every(
+        (direction) => typeof direction === 'string' && allowed.has(direction),
+      )
     ) {
       throw new Error('la orden interpretada no contiene direcciones válidas');
     }
     return { action, directions: parsed.directions as CommandDirection[] };
+  }
+  if (action === 'spatial-relation') {
+    const allowed = new Set(['opposite-side', 'near', 'far-from']);
+    if (typeof parsed.relation !== 'string' || !allowed.has(parsed.relation)) {
+      throw new Error('la orden espacial no contiene una relación válida');
+    }
+    if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
+      throw new Error('la orden espacial no contiene targetKind');
+    }
+    return {
+      action,
+      relation: parsed.relation as 'opposite-side' | 'near' | 'far-from',
+      targetKind: parsed.targetKind.trim().toLowerCase(),
+    };
   }
   if (action === 'wait-here' || action === 'not-command' || action === 'explanation') {
     return { action };
@@ -1469,6 +1502,12 @@ no afirmes haber actuado. Acciones ejecutables:
 - consume-item: comer un objeto; targetKind usa el nombre interno.
 - wait-here: esperar o quedarse quieta.
 - move-direction: moverse; directions usa up/down/left/right en el orden pedido.
+- spatial-relation: pide terminar en una relación geométrica respecto de un
+  objeto o conjunto visible. Usa relation="opposite-side" para cruzar/pasar al
+  otro lado de cualquier barrera (muro, río, cerco o fila), "near" para
+  acercarse y "far-from" para alejarse. targetKind es el nombre interno de la
+  referencia. Cruzar NO es learn-skill: navegar ya es una capacidad básica y
+  el agente decidirá si rodea, pasa por una abertura o abre camino.
 - run-skill: pide una conducta que YA figura en la lista de aprendidas;
   skillName es el nombre exacto de esa habilidad.
 - craft-item: pide CONSTRUIR o FABRICAR un objeto. Si figura en la lista de
@@ -1553,7 +1592,7 @@ Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
 Responde solo con JSON. Siempre incluye action, targetKind, verb, amount,
-directions, skillName, recipeId, onKind, summary, name y steps; usa "", [] o 0
+directions, relation, skillName, recipeId, onKind, summary, name y steps; usa "", [] o 0
 cuando no correspondan (steps va vacío salvo en sequence).`,
       };
     case 'skill.contract':
@@ -1712,9 +1751,7 @@ export class CodexModelProvider extends BaseModelProvider {
     // Una revisión no siempre corrige lo mismo: el motivo viaja con el
     // pensamiento para que la UI no lo cuente todo como "falló las pruebas".
     const head =
-      request.kind === 'skill.revise'
-        ? { seq, kind, detail: request.reason }
-        : { seq, kind };
+      request.kind === 'skill.revise' ? { seq, kind, detail: request.reason } : { seq, kind };
     this.hooks.onBusy?.(true);
     onThought?.({ ...head, event: 'start' });
     let failure: string | null = null;
@@ -1871,7 +1908,11 @@ export class CodexModelProvider extends BaseModelProvider {
               throw new Error('interactionJson no es JSON válido');
             }
           }
-          if (interaction === null || typeof interaction !== 'object' || Array.isArray(interaction)) {
+          if (
+            interaction === null ||
+            typeof interaction !== 'object' ||
+            Array.isArray(interaction)
+          ) {
             throw new Error('la respuesta no contiene una interacción');
           }
           // No se valida aquí: la interacción va cruda al mundo, que decide.
