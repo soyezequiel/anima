@@ -105,8 +105,6 @@ describe('prioridad de interpretación con modelo real', () => {
         urgency: 0.9,
         expectedValue: 1,
         preconditions: [],
-        successCriteria: [],
-        failureCriteria: [],
       },
       0,
     );
@@ -116,9 +114,9 @@ describe('prioridad de interpretación con modelo real', () => {
 
     // La lección no se agradece y se olvida: se guarda y se dice qué se guardó.
     expect(reply).toContain('consumir alimento recupera energía');
-    expect(
-      agent.memory.hypothesisList().map((hypothesis) => hypothesis.statement),
-    ).toContain('consumir alimento recupera energía');
+    expect(agent.memory.hypothesisList().map((hypothesis) => hypothesis.statement)).toContain(
+      'consumir alimento recupera energía',
+    );
     expect(agent.goals.get(goal.id)?.status).toBe('active');
     expect(agent.events.ofType('goal.reactivated')).toHaveLength(1);
   });

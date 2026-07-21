@@ -575,9 +575,11 @@ function commandFields(withSequence: boolean): Record<string, unknown> {
       type: 'string',
       enum: ['', 'opposite-side', 'near', 'far-from'],
     },
+    maintenance: { type: 'boolean' },
     skillName: { type: 'string' },
     recipeId: { type: 'string' },
     onKind: { type: 'string' },
+    placement: { type: 'string', enum: ['', 'at', 'near'] },
     summary: { type: 'string' },
     name: { type: 'string' },
   };
@@ -591,9 +593,11 @@ const COMMAND_REQUIRED = [
   'amount',
   'directions',
   'relation',
+  'maintenance',
   'skillName',
   'recipeId',
   'onKind',
+  'placement',
   'summary',
   'name',
 ];
@@ -831,6 +835,7 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
       action,
       relation: parsed.relation as 'opposite-side' | 'near' | 'far-from',
       targetKind: parsed.targetKind.trim().toLowerCase(),
+      ...(parsed.maintenance === true ? { maintenance: true } : {}),
     };
   }
   if (action === 'wait-here' || action === 'not-command' || action === 'explanation') {
@@ -861,6 +866,9 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
       action,
       targetKind,
       onKind: parsed.onKind.trim().toLowerCase(),
+      ...(parsed.placement === 'near' || parsed.placement === 'at'
+        ? { placement: parsed.placement }
+        : {}),
       ...(targetSelector ? { targetSelector } : {}),
     };
   }
@@ -1560,7 +1568,9 @@ no afirmes haber actuado. Acciones ejecutables:
   objeto o conjunto visible. Usa relation="opposite-side" para cruzar/pasar al
   otro lado de cualquier barrera (muro, río, cerco o fila), "near" para
   acercarse y "far-from" para alejarse. targetKind es el nombre interno de la
-  referencia. Cruzar NO es learn-skill: navegar ya es una capacidad básica y
+  referencia. maintenance=true solo si la relación debe seguir siendo cierta
+  ("mantenete lejos"); para alcanzarla una vez usa false. Cruzar NO es
+  learn-skill: navegar ya es una capacidad básica y
   el agente decidirá si rodea, pasa por una abertura o abre camino.
 - run-skill: pide una conducta que YA figura en la lista de aprendidas;
   skillName es el nombre exacto de esa habilidad.
@@ -1574,7 +1584,8 @@ no afirmes haber actuado. Acciones ejecutables:
   sobre el agua", "apoyá el ladrillo contra la roca", "dejá la balsa en el
   río"). targetKind es el objeto y onKind el nombre interno de lo que hay en el
   lugar. Colocar es algo que la mascota ya sabe hacer, no un verbo que haya que
-  inventar; tampoco es fetch-item, que solo trae.
+  inventar; tampoco es fetch-item, que solo trae. placement="near" significa
+  junto/cerca/al lado; placement="at" significa en/sobre la misma posición.
   NO uses place-item si lo que hay que poner no es un objeto que se pueda
   levantar y apoyar intacto: volcar, verter, regar, echar, untar, rociar,
   aplicar o vaciar algo SOBRE otra cosa son interact-entity (el verbo en
@@ -1655,7 +1666,7 @@ Para "un/cualquier tronco" usa {kind:"log", definiteness:"any",
 reference:"none", relation:"none", anchorKind:""}. En acciones sin objetivo
 usa el mismo selector vacio con kind:"".
 Responde solo con JSON. Siempre incluye action, targetKind, targetSelector, verb, amount,
-directions, relation, skillName, recipeId, onKind, summary, name y steps; usa "", [] o 0
+directions, relation, maintenance, skillName, recipeId, onKind, placement, summary, name y steps; usa "", [] o 0
 cuando no correspondan (steps va vacío salvo en sequence).`,
       };
     case 'skill.contract':

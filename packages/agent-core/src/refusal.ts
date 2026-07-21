@@ -22,6 +22,8 @@ export type UserRequest =
       kind: 'spatial-relation';
       relation: SpatialRelation;
       targetKind: string;
+      /** La relación debe seguir cierta; no es un logro terminal. */
+      maintenance?: boolean;
       /** Se completa al aceptar, antes de persistir el objetivo. */
       spatial?: SpatialGrounding;
       raw: string;
@@ -31,7 +33,13 @@ export type UserRequest =
   /** Construir algo según una receta que su mundo admite. */
   | { kind: 'craft-item'; recipeId: string; raw: string }
   /** Poner algo EN un lugar nombrado por lo que hay ahí (ADR 0078). */
-  | ({ kind: 'place-item'; targetKind: string; onKind: string; raw: string } & TargetReference)
+  | ({
+      kind: 'place-item';
+      targetKind: string;
+      onKind: string;
+      placement?: 'at' | 'near';
+      raw: string;
+    } & TargetReference)
   /**
    * Manipular un objeto de una forma que las primitivas no cubren (ADR 0027):
    * la mascota busca una interacción aprendida, o inventa una y el mundo (la
@@ -626,7 +634,15 @@ export function parseUserMessage(
     return { kind: 'spatial-relation', relation: 'near', targetKind: spatialTarget, raw: text };
   }
   if (/\b(aleja\w*|alejar\w*)\b/.test(lower)) {
-    return { kind: 'spatial-relation', relation: 'far-from', targetKind: spatialTarget, raw: text };
+    return {
+      kind: 'spatial-relation',
+      relation: 'far-from',
+      targetKind: spatialTarget,
+      ...(/\b(manten\w*|segui\w*|sigue\w*|permanece\w*)\b/.test(lower)
+        ? { maintenance: true }
+        : {}),
+      raw: text,
+    };
   }
   if (asksToMove) {
     const directionAliases: [pattern: RegExp, direction: Direction][] = [

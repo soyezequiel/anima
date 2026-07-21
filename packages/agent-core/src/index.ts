@@ -1,5 +1,6 @@
 export * from './events.js';
 export * from './goals.js';
+export * from './goal-conditions.js';
 export * from './invention.js';
 export * from './names.js';
 export * from './programs.js';

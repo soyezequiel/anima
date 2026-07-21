@@ -507,7 +507,12 @@ export type CommandInterpretation =
   | { action: 'wait-here' }
   | { action: 'move-direction'; directions: CommandDirection[] }
   /** Alcanzar una relación espacial respecto de algo visible del mundo. */
-  | { action: 'spatial-relation'; relation: CommandSpatialRelation; targetKind: string }
+  | {
+      action: 'spatial-relation';
+      relation: CommandSpatialRelation;
+      targetKind: string;
+      maintenance?: boolean;
+    }
   /** Ejecutar una habilidad ya aprendida, por su nombre. */
   | { action: 'run-skill'; skillName: string }
   /** Construir algo que su mundo admite, por el id de la receta. */
@@ -523,7 +528,12 @@ export type CommandInterpretation =
    * interacciones, que inventaba un sinsentido para un verbo que el mundo ya
    * sabía hacer.
    */
-  | ({ action: 'place-item'; targetKind: string; onKind: string } & WithTargetSelector)
+  | ({
+      action: 'place-item';
+      targetKind: string;
+      onKind: string;
+      placement?: 'at' | 'near';
+    } & WithTargetSelector)
   /** Conducta que no tiene pero que sus primitivas podrían componer. */
   | { action: 'learn-skill'; summary: string }
   /**

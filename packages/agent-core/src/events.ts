@@ -4,6 +4,8 @@ export type AgentEventType =
   | 'goal.created'
   | 'goal.selected'
   | 'goal.completed'
+  /** El programa se agotó pero la condición declarada sigue sin cumplirse. */
+  | 'goal.outcome.unmet'
   | 'goal.suspended'
   | 'goal.reactivated'
   /** Un paso (sub-objetivo) quedó cumplido por la cuenta del mundo (ADR 0053).

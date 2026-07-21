@@ -298,6 +298,13 @@ export function programForUserRequest(
       // debería significar.
       const work = perception.blueprints.find((b) => b.id === targetKind);
       if (work) return buildWork(work, perception, deps);
+      const placement: SkillOp[] =
+        request.placement === 'near'
+          ? [{ op: 'drop', target: 'block' }]
+          : [
+              { op: 'markTarget', from: 'spot', store: 'spotCell' },
+              { op: 'placeAt', kind: targetKind, target: 'spotCell' },
+            ];
       return [
         ...rememberedApproach,
         searchFor(targetQuery()),
@@ -322,8 +329,7 @@ export function programForUserRequest(
         // Al lado, no encima: para colocar hay que llegar con el brazo, y la
         // celda de destino puede ser justamente la que no se puede pisar.
         { op: 'moveToward', target: 'spot', maxSteps: 40, stopAtDistance: 1 },
-        { op: 'markTarget', from: 'spot', store: 'spotCell' },
-        { op: 'placeAt', kind: targetKind, target: 'spotCell' },
+        ...placement,
         {
           op: 'branch',
           if: { type: 'lastActionFailed' },
@@ -538,7 +544,9 @@ export function completionReply(request: GoalUserRequest): string {
     case 'destroy-entity':
       return `Listo, destruí ${target}.`;
     case 'place-item':
-      return `Listo, dejé ${request.targetKind ?? 'eso'} sobre ${request.onKind ?? 'ahí'}.`;
+      return request.placement === 'near'
+        ? `Listo, dejé ${request.targetKind ?? 'eso'} junto a ${request.onKind ?? 'ahí'}.`
+        : `Listo, dejé ${request.targetKind ?? 'eso'} sobre ${request.onKind ?? 'ahí'}.`;
 
     case 'interact-entity': {
       const verbPhrase = (request.verb ?? 'hacer eso').replace(/-/g, ' ');

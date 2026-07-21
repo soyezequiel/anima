@@ -19,9 +19,16 @@ percibe, pregunta, aplica al mundo y devuelve los eventos.
    explicación del usuario o experiencia guiada).
 3. Si hay habla pendiente, hablar (la conversación se intercala con la acción
    sin abandonar el objetivo).
-4. Si hay una actividad en curso (ejecución de un programa de la DSL),
+4. Evaluar condiciones declarativas de objetivos contra la percepción y los
+   hechos confirmados por el motor.
+5. Si hay una actividad en curso (ejecución de un programa de la DSL),
    continuarla localmente — sin consultar ningún modelo.
-5. Si no, seleccionar objetivo (mayor prioridad+urgencia) y elegir estrategia.
+6. Si no, seleccionar objetivo (mayor prioridad+urgencia) y elegir estrategia.
+
+Que la DSL se agote no completa un objetivo. Al terminar una actividad, su
+`outcome` se registra como resultado de ejecución y se evalúa por separado el
+árbol `successCondition`. Si sigue falso o desconocido, el agente diagnostica,
+replanifica desde la percepción fresca y mantiene el objetivo abierto.
 
 ## Jerarquía de estrategias (cuándo crear una skill)
 
@@ -49,12 +56,12 @@ crear-skill → pedir-ayuda → suspender es determinista y con límites
 
 ## Cuándo consulta al modelo (y cuándo no)
 
-| Momento | Petición |
-|---|---|
-| Señal nueva sin interpretación | `interpret.signal` |
-| Necesita una habilidad | `skill.propose` |
-| Informe de fallos de una versión | `skill.revise` |
-| Conversación significativa | `dialogue` |
+| Momento                          | Petición           |
+| -------------------------------- | ------------------ |
+| Señal nueva sin interpretación   | `interpret.signal` |
+| Necesita una habilidad           | `skill.propose`    |
+| Informe de fallos de una versión | `skill.revise`     |
+| Conversación significativa       | `dialogue`         |
 
 La física, el movimiento, las colisiones y las habilidades conocidas corren
 localmente. En la demo completa el "modelo" se consulta 3 veces en total; la

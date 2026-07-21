@@ -470,9 +470,11 @@ describe('CodexModelProvider', () => {
         'amount',
         'directions',
         'relation',
+        'maintenance',
         'skillName',
         'recipeId',
         'onKind',
+        'placement',
         'summary',
         'name',
         'steps',
@@ -511,6 +513,60 @@ describe('CodexModelProvider', () => {
     ).resolves.toEqual({
       kind: 'command.interpretation',
       command: { action: 'spatial-relation', relation: 'opposite-side', targetKind: 'wall' },
+    });
+  });
+
+  it('distingue mantener una relación y colocar junto a un referente', async () => {
+    const maintenance = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'spatial-relation',
+          relation: 'far-from',
+          targetKind: 'wolf',
+          maintenance: true,
+        }),
+      ),
+    );
+    await expect(
+      maintenance.complete({
+        kind: 'interpret.command',
+        text: 'mantenete lejos del lobo',
+        facts: ['posición visible de wolf: (5,5)'],
+      }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: {
+        action: 'spatial-relation',
+        relation: 'far-from',
+        targetKind: 'wolf',
+        maintenance: true,
+      },
+    });
+
+    const placement = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'place-item',
+          targetKind: 'hammer',
+          onKind: 'campfire',
+          placement: 'near',
+        }),
+      ),
+    );
+    await expect(
+      placement.complete({
+        kind: 'interpret.command',
+        text: 'dejá el martillo junto a la fogata',
+        facts: ['ahora veo: hammer, campfire'],
+      }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: {
+        action: 'place-item',
+        targetKind: 'hammer',
+        onKind: 'campfire',
+        placement: 'near',
+      },
     });
   });
 

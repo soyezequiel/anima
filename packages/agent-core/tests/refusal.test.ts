@@ -36,10 +36,9 @@ const idleGoal: Goal = {
   urgency: 0.8,
   expectedValue: 1,
   status: 'active',
+  mode: 'achievement',
   createdAtTick: 0,
   preconditions: [],
-  successCriteria: [],
-  failureCriteria: [],
 };
 
 describe('negativas y autonomía', () => {

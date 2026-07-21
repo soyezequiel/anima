@@ -1,5 +1,6 @@
 import type { Direction } from '@anima/sim-core';
 import type { EvaluationCriterion } from '@anima/skill-runtime';
+import type { GoalCondition } from './goal-conditions.js';
 
 export type GoalSource =
   | 'internal-signal'
@@ -12,6 +13,7 @@ export type GoalSource =
   | 'learning';
 
 export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
+export type GoalMode = 'achievement' | 'maintenance';
 
 /**
  * Una relación espacial pedida por el cuidador. El vocabulario es chico a
@@ -72,6 +74,8 @@ export interface GoalUserRequest {
   targetEntityId?: string;
   /** `place-item`: sobre qué hay que ponerlo. */
   onKind?: string;
+  /** Relación verificable con el lugar: misma celda o una celda vecina. */
+  placement?: 'at' | 'near';
   /** El verbo pedido (interact-entity): "juntar", "subirse-encima". */
   verb?: string;
   /** Cuántas unidades pidió (fetch-item): "conseguí los 2 troncos" son 2. */
@@ -83,6 +87,8 @@ export interface GoalUserRequest {
   relation?: SpatialRelation;
   spatial?: SpatialGrounding;
   raw: string;
+  /** Un estado que debe seguir siendo cierto, no un logro terminal. */
+  maintenance?: boolean;
 }
 
 /**
@@ -122,10 +128,18 @@ export interface Goal {
   urgency: number;
   expectedValue: number;
   status: GoalStatus;
+  /** `maintenance` nunca se cierra solo porque la condicion sea cierta ahora. */
+  mode: GoalMode;
   createdAtTick: number;
   preconditions: string[];
-  successCriteria: string[];
-  failureCriteria: string[];
+  successCondition?: GoalCondition;
+  failureCondition?: GoalCondition;
+  /** Variables ligadas por eventos reales (por ejemplo, el individuo recogido). */
+  bindings?: Record<string, string>;
+  /** Ausencias confirmadas y hechos producidos por el motor, acotados a la meta. */
+  absentEntityIds?: string[];
+  observedFacts?: string[];
+  counters?: Record<string, number>;
   /** De quién es paso este objetivo: lo vuelve hijo, fuera de la fila. */
   parentGoalId?: string;
   /** Qué paso del padre es, cuando es un hijo (ADR 0053). */
@@ -152,7 +166,9 @@ export interface Goal {
   learning?: LearningContract;
 }
 
-export type NewGoal = Omit<Goal, 'id' | 'status' | 'createdAtTick'>;
+export type NewGoal = Omit<Goal, 'id' | 'status' | 'createdAtTick' | 'mode'> & {
+  mode?: GoalMode;
+};
 
 export interface GoalManagerData {
   goals: Goal[];
@@ -169,7 +185,7 @@ export class GoalManager {
 
   loadFrom(data: GoalManagerData): void {
     const clone = structuredClone(data);
-    this.goals = clone.goals;
+    this.goals = clone.goals.map((goal) => ({ ...goal, mode: goal.mode ?? 'achievement' }));
     this.counter = clone.counter;
   }
 
@@ -179,6 +195,7 @@ export class GoalManager {
       ...input,
       id: `goal-${this.counter}`,
       status: 'active',
+      mode: input.mode ?? 'achievement',
       createdAtTick: tick,
     };
     this.goals.push(goal);
@@ -286,6 +303,30 @@ export class GoalManager {
       goal.status = 'active';
       delete goal.suspendedReason;
     }
+  }
+
+  bind(id: string, name: string, entityId: string): void {
+    const goal = this.get(id);
+    if (!goal) return;
+    goal.bindings = { ...goal.bindings, [name]: entityId };
+  }
+
+  confirmAbsent(id: string, entityId: string): void {
+    const goal = this.get(id);
+    if (!goal) return;
+    goal.absentEntityIds = [...new Set([...(goal.absentEntityIds ?? []), entityId])];
+  }
+
+  observeFact(id: string, fact: string): void {
+    const goal = this.get(id);
+    if (!goal) return;
+    goal.observedFacts = [...new Set([...(goal.observedFacts ?? []), fact])];
+  }
+
+  increment(id: string, counter: string, amount = 1): void {
+    const goal = this.get(id);
+    if (!goal) return;
+    goal.counters = { ...goal.counters, [counter]: (goal.counters?.[counter] ?? 0) + amount };
   }
 
   all(): Goal[] {

@@ -52,6 +52,12 @@ import {
 } from '@anima/skill-runtime';
 import type { EvaluationCaseHook, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
+import {
+  conditionForUserRequest,
+  evaluateGoalCondition,
+  type GoalCondition,
+  type GoalConditionEvaluation,
+} from './goal-conditions.js';
 import type {
   Goal,
   GoalManagerData,
@@ -107,7 +113,7 @@ import {
 } from './programs.js';
 import type { UserRequestProgramDeps } from './user-request-programs.js';
 import { completionReply, programForUserRequest } from './user-request-programs.js';
-import { groundSpatialRequest, spatialGoalSatisfied } from './spatial-goals.js';
+import { groundSpatialRequest } from './spatial-goals.js';
 
 const LOW_ENERGY_FRACTION = 0.35;
 const LOW_TEMPERATURE_FRACTION = 0.35;
@@ -834,8 +840,6 @@ export class AnimaAgent {
           urgency: goal.urgency,
           expectedValue: goal.expectedValue,
           preconditions: [],
-          successCriteria: [],
-          failureCriteria: [],
           parentGoalId: goal.id,
           step,
         },
@@ -907,6 +911,59 @@ export class AnimaAgent {
           description: child.description,
         });
       }
+    }
+  }
+
+  private evaluateGoal(goal: Goal, perception: Perception): GoalConditionEvaluation | undefined {
+    if (!goal.successCondition) return undefined;
+    return evaluateGoalCondition(goal.successCondition, {
+      perception,
+      ...(goal.bindings ? { bindings: goal.bindings } : {}),
+      absentEntityIds: new Set(goal.absentEntityIds ?? []),
+      facts: new Set(goal.observedFacts ?? []),
+      counters: goal.counters ?? {},
+      blueprintComplete: (blueprintId) => {
+        const blueprint = perception.blueprints.find((candidate) => candidate.id === blueprintId);
+        const anchor = this.structureSites.get(blueprintId);
+        if (!blueprint || !anchor) return undefined;
+        return this.pendingPlacements(blueprint, anchor, perception).length === 0;
+      },
+      stableSkillExists: (name) => this.config.library.findStable(name) !== undefined,
+    });
+  }
+
+  /** Cierra o falla metas solo con predicados verificables del mundo. */
+  private settleDeclarativeGoals(perception: Perception): void {
+    for (const goal of this.goals.all()) {
+      if (goal.status !== 'active' && goal.status !== 'suspended') continue;
+      // Los motivos del cuerpo y el aprendizaje ya tienen ciclos propios. La
+      // migración se aplica donde se confundía el fin de la DSL con cumplir un
+      // encargo físico.
+      if (goal.source !== 'user-request') continue;
+      // Una actividad en curso conserva el turno hasta que la DSL entregue su
+      // resultado; ahí se comparan explícitamente ambos ejes y se responde una
+      // sola vez. La condición igual se mide con la percepción fresca.
+      if (this.activity?.goalId === goal.id) continue;
+      if (goal.failureCondition) {
+        const failure = evaluateGoalCondition(goal.failureCondition, {
+          perception,
+          ...(goal.bindings ? { bindings: goal.bindings } : {}),
+          absentEntityIds: new Set(goal.absentEntityIds ?? []),
+          facts: new Set(goal.observedFacts ?? []),
+          counters: goal.counters ?? {},
+        });
+        if (failure.status === 'met') {
+          this.goals.fail(goal.id);
+          if (this.activity?.goalId === goal.id) this.activity = null;
+          continue;
+        }
+      }
+      const success = this.evaluateGoal(goal, perception);
+      if (goal.mode !== 'achievement' || success?.status !== 'met') continue;
+      this.goals.complete(goal.id);
+      if (this.activity?.goalId === goal.id) this.activity = null;
+      this.progress.resetGoal(goal.id);
+      this.emit('goal.completed', { goalId: goal.id, strategy: 'condición-del-mundo' });
     }
   }
 
@@ -2057,6 +2114,17 @@ export class AnimaAgent {
     // Cada percepción alimenta la memoria de lugares: dónde vio por última
     // vez lo que le importa. Es lo único que puede apuntar fuera de su vista.
     this.places.update(perception);
+    if (this.activity) {
+      const running = this.goals.get(this.activity.goalId);
+      if (running?.source === 'user-request') this.goals.increment(running.id, 'ticks');
+      if (running?.userRequest?.kind === 'run-skill') {
+        const visit = `visited:${perception.self.position.x},${perception.self.position.y}`;
+        if (!running.observedFacts?.includes(visit)) {
+          this.goals.observeFact(running.id, visit);
+          this.goals.increment(running.id, 'visited-cells');
+        }
+      }
+    }
 
     // Mantenimiento periódico de la memoria (ADR 0033): consolidar solo en
     // los éxitos de meta dejaba que una vida sin éxitos acumulara episodios
@@ -2084,6 +2152,10 @@ export class AnimaAgent {
     // después de revivir, para que un encargo recién despertado ya muestre
     // tachado lo que consiguió mientras esperaba.
     this.settleRequestSteps(perception);
+    // El cierre pertenece al estado del mundo, no al ciclo de la DSL. Esto
+    // también acredita cambios hechos por otro actor mientras la meta esperaba.
+    // Los mantenimientos se evalúan, pero nunca se cierran por estar ciertos.
+    this.settleDeclarativeGoals(perception);
 
     const speech = this.pendingSpeech.shift();
     if (speech !== undefined) return { type: 'speak', text: speech };
@@ -2310,6 +2382,94 @@ export class AnimaAgent {
   /** Retroalimentación del mundo tras aplicar la intención. */
   observe(events: SimEvent[]): void {
     this.activity?.exec.observe(events);
+    const activityGoal = this.activity ? this.goals.get(this.activity.goalId) : undefined;
+    const request = activityGoal?.userRequest;
+    if (activityGoal && request) {
+      for (const event of events) {
+        if (
+          request.kind === 'run-skill' &&
+          event.type === 'action.resolved' &&
+          event.data.actorId === this.petId
+        ) {
+          this.goals.increment(activityGoal.id, 'intents');
+          if (event.data.action === 'move' && event.data.success === true) {
+            this.goals.increment(activityGoal.id, 'moves');
+          }
+        }
+        if (
+          event.type === 'item.pickedUp' &&
+          event.data.actorId === this.petId &&
+          typeof event.data.itemId === 'string' &&
+          (request.kind === 'fetch-item' ||
+            request.kind === 'consume-item' ||
+            request.kind === 'place-item')
+        ) {
+          this.goals.bind(activityGoal.id, 'target', event.data.itemId);
+        }
+        if (
+          event.type === 'item.placed' &&
+          event.data.actorId === this.petId &&
+          typeof event.data.itemId === 'string' &&
+          request.kind === 'place-item'
+        ) {
+          this.goals.bind(activityGoal.id, 'target', event.data.itemId);
+        }
+        if (
+          event.type === 'item.crafted' &&
+          event.data.actorId === this.petId &&
+          typeof event.data.itemId === 'string'
+        ) {
+          if (request.kind === 'craft-item') {
+            this.goals.bind(activityGoal.id, 'product', event.data.itemId);
+          }
+          if (request.kind === 'run-skill') {
+            this.goals.observeFact(activityGoal.id, `crafted:${String(event.data.itemKind)}`);
+          }
+        }
+        if (
+          event.type === 'item.consumed' &&
+          event.data.actorId === this.petId &&
+          typeof event.data.itemId === 'string' &&
+          request.kind === 'consume-item'
+        ) {
+          this.goals.bind(activityGoal.id, 'target', event.data.itemId);
+          this.goals.confirmAbsent(activityGoal.id, event.data.itemId);
+        }
+        if (
+          event.type === 'item.consumed' &&
+          event.data.actorId === this.petId &&
+          request.kind === 'run-skill'
+        ) {
+          this.goals.observeFact(activityGoal.id, `consumed:${String(event.data.itemKind)}`);
+        }
+        if (
+          event.type === 'entity.damaged' &&
+          event.data.id === this.petId &&
+          request.kind === 'run-skill'
+        ) {
+          this.goals.observeFact(activityGoal.id, 'damage-taken');
+        }
+        if (
+          event.type === 'entity.destroyed' &&
+          event.data.byId === this.petId &&
+          typeof event.data.id === 'string' &&
+          request.kind === 'destroy-entity'
+        ) {
+          this.goals.bind(activityGoal.id, 'target', event.data.id);
+          this.goals.confirmAbsent(activityGoal.id, event.data.id);
+        }
+        if (
+          event.type === 'interaction.performed' &&
+          event.data.actorId === this.petId &&
+          request.kind === 'interact-entity'
+        ) {
+          this.goals.observeFact(
+            activityGoal.id,
+            `interaction:${request.verb ?? ''}:${request.targetKind ?? ''}`,
+          );
+        }
+      }
+    }
     for (const event of events) {
       if (event.data.actorId === this.petId) {
         const usedId =
@@ -2820,8 +2980,12 @@ export class AnimaAgent {
         urgency: Math.min(1, 1 - fraction),
         expectedValue: 1,
         preconditions: [],
-        successCriteria: ['ningún peligro conocido queda al alcance y la salud deja de bajar'],
-        failureCriteria: ['la salud llega a cero'],
+        failureCondition: {
+          type: 'self-stat',
+          stat: 'health',
+          comparison: 'at-most',
+          value: 0,
+        },
       },
       this.tick,
     );
@@ -2972,8 +3136,19 @@ export class AnimaAgent {
         urgency: Math.min(1, 1 - fraction),
         expectedValue: 1,
         preconditions: [],
-        successCriteria: ['el calor corporal sube por encima del nivel de alerta'],
-        failureCriteria: ['el calor corporal llega a cero'],
+        successCondition: {
+          type: 'self-stat',
+          stat: 'temperature',
+          comparison: 'at-least',
+          value: RECOVERED_NEED_FRACTION,
+          normalized: true,
+        },
+        failureCondition: {
+          type: 'self-stat',
+          stat: 'temperature',
+          comparison: 'at-most',
+          value: 0,
+        },
       },
       this.tick,
     );
@@ -3074,8 +3249,19 @@ export class AnimaAgent {
         urgency: Math.min(1, 1 - fraction),
         expectedValue: 1,
         preconditions: [],
-        successCriteria: ['la energía sube por encima del nivel de alerta'],
-        failureCriteria: ['la energía llega a cero'],
+        successCondition: {
+          type: 'self-stat',
+          stat: 'energy',
+          comparison: 'at-least',
+          value: RECOVERED_NEED_FRACTION,
+          normalized: true,
+        },
+        failureCondition: {
+          type: 'self-stat',
+          stat: 'energy',
+          comparison: 'at-most',
+          value: 0,
+        },
       },
       this.tick,
     );
@@ -3405,8 +3591,7 @@ export class AnimaAgent {
         urgency: 0.5,
         expectedValue: 0.8,
         preconditions: [],
-        successCriteria: [contract.expectedOutcome],
-        failureCriteria: [],
+        successCondition: { type: 'stable-skill-exists', name: contract.name },
         learning: contract,
       },
       this.tick,
@@ -3891,6 +4076,7 @@ export class AnimaAgent {
           kind: 'spatial-relation',
           relation: command.relation,
           targetKind: command.targetKind,
+          ...(command.maintenance ? { maintenance: true } : {}),
           raw,
         };
       case 'run-skill':
@@ -3903,6 +4089,7 @@ export class AnimaAgent {
           targetKind: command.targetKind,
           ...(command.targetSelector ? { targetSelector: command.targetSelector } : {}),
           onKind: command.onKind,
+          ...(command.placement ? { placement: command.placement } : {}),
           raw,
         };
       case 'interact-entity':
@@ -4220,6 +4407,29 @@ export class AnimaAgent {
         return { ...decision, goalId: open.id };
       }
       const weights = USER_REQUEST_WEIGHTS[request.kind];
+      const goalRequest: GoalUserRequest = {
+        kind: request.kind,
+        ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+        ...('targetSelector' in request && request.targetSelector
+          ? { targetSelector: request.targetSelector }
+          : {}),
+        ...('targetEntityId' in request && request.targetEntityId
+          ? { targetEntityId: request.targetEntityId }
+          : {}),
+        ...('onKind' in request ? { onKind: request.onKind } : {}),
+        ...('placement' in request && request.placement ? { placement: request.placement } : {}),
+        ...('verb' in request ? { verb: request.verb } : {}),
+        ...('amount' in request && request.amount !== undefined ? { amount: request.amount } : {}),
+        ...('directions' in request ? { directions: request.directions } : {}),
+        ...('skillName' in request ? { skillName: request.skillName } : {}),
+        ...('recipeId' in request ? { recipeId: request.recipeId } : {}),
+        ...('relation' in request ? { relation: request.relation } : {}),
+        ...('spatial' in request && request.spatial ? { spatial: request.spatial } : {}),
+        ...('maintenance' in request && request.maintenance
+          ? { maintenance: request.maintenance }
+          : {}),
+        raw: request.raw,
+      };
       const goal = this.goals.create(
         {
           description: `petición del usuario: ${request.raw}`,
@@ -4228,30 +4438,13 @@ export class AnimaAgent {
           urgency: weights.urgency,
           expectedValue: 0.6,
           preconditions: [],
-          successCriteria: ['la petición queda satisfecha'],
-          failureCriteria: [],
+          mode: goalRequest.maintenance ? 'maintenance' : 'achievement',
+          successCondition:
+            goalRequest.kind === 'run-skill' && goalRequest.skillName
+              ? this.conditionForSkillRun(goalRequest.skillName, perception)
+              : conditionForUserRequest(goalRequest, perception),
           ...(options.afterGoalId !== undefined ? { afterGoalId: options.afterGoalId } : {}),
-          userRequest: {
-            kind: request.kind,
-            ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
-            ...('targetSelector' in request && request.targetSelector
-              ? { targetSelector: request.targetSelector }
-              : {}),
-            ...('targetEntityId' in request && request.targetEntityId
-              ? { targetEntityId: request.targetEntityId }
-              : {}),
-            ...('onKind' in request ? { onKind: request.onKind } : {}),
-            ...('verb' in request ? { verb: request.verb } : {}),
-            ...('amount' in request && request.amount !== undefined
-              ? { amount: request.amount }
-              : {}),
-            ...('directions' in request ? { directions: request.directions } : {}),
-            ...('skillName' in request ? { skillName: request.skillName } : {}),
-            ...('recipeId' in request ? { recipeId: request.recipeId } : {}),
-            ...('relation' in request ? { relation: request.relation } : {}),
-            ...('spatial' in request && request.spatial ? { spatial: request.spatial } : {}),
-            raw: request.raw,
-          },
+          userRequest: goalRequest,
         },
         this.tick,
       );
@@ -4264,6 +4457,86 @@ export class AnimaAgent {
       return { ...decision, goalId: goal.id };
     }
     return decision;
+  }
+
+  /** Convierte la vara validada de una skill a predicados del mundo real. */
+  private conditionForSkillRun(skillName: string, perception: Perception): GoalCondition {
+    const skill = this.config.library.findStable(skillName);
+    if (!skill) {
+      return { type: 'constant', value: false, reason: `habilidad-no-estable:${skillName}` };
+    }
+    const start = { ...perception.self.position };
+    const conditions: GoalCondition[] = [{ type: 'world-fact', fact: 'skill-started' }];
+    for (const criterion of skill.successCriteria) {
+      switch (criterion.type) {
+        case 'energyIncreased':
+        case 'temperatureIncreased': {
+          const stat = criterion.type === 'energyIncreased' ? 'energy' : 'temperature';
+          conditions.push({
+            type: 'self-stat',
+            stat,
+            comparison: 'at-least',
+            value: (perception.self[stat]?.current ?? 0) + 0.0001,
+          });
+          break;
+        }
+        case 'craftedKind':
+          conditions.push({ type: 'world-fact', fact: `crafted:${criterion.kind ?? ''}` });
+          break;
+        case 'consumedKind':
+          conditions.push({ type: 'world-fact', fact: `consumed:${criterion.kind ?? ''}` });
+          break;
+        case 'reachedAdjacentKind':
+          conditions.push({
+            type: 'self-distance-to-entity',
+            entity: { kind: criterion.kind ?? '' },
+            metric: 'chebyshev',
+            comparison: 'at-most',
+            value: 1,
+          });
+          break;
+        case 'holdingKind':
+          conditions.push({ type: 'holding', entity: { kind: criterion.kind ?? '' } });
+          break;
+        case 'minMoves':
+        case 'visitedDistinctCells':
+          conditions.push({
+            type: 'counter',
+            counter: criterion.type === 'minMoves' ? 'moves' : 'visited-cells',
+            comparison: 'at-least',
+            value: criterion.value ?? 1,
+          });
+          break;
+        case 'returnedToStart':
+          conditions.push({ type: 'self-at', position: start });
+          break;
+        case 'netDisplacementAtLeast':
+          conditions.push({
+            type: 'self-distance-from',
+            position: start,
+            metric: 'manhattan',
+            comparison: 'at-least',
+            value: criterion.value ?? 1,
+          });
+          break;
+        case 'noDamageTaken':
+          conditions.push({
+            type: 'not',
+            condition: { type: 'world-fact', fact: 'damage-taken' },
+          });
+          break;
+        case 'maxTicks':
+        case 'maxIntents':
+          conditions.push({
+            type: 'counter',
+            counter: criterion.type === 'maxTicks' ? 'ticks' : 'intents',
+            comparison: 'at-most',
+            value: criterion.value ?? 1,
+          });
+          break;
+      }
+    }
+    return { type: 'all', conditions };
   }
 
   /**
@@ -4325,6 +4598,20 @@ export class AnimaAgent {
       return this.pursueLearning(goal, goal.learning, perception);
     }
     if (goal.source === 'user-request' && goal.userRequest) {
+      const condition = this.evaluateGoal(goal, perception);
+      // Un mantenimiento satisfecho permanece vigente y vuelve a actuar si el
+      // predicado deja de ser cierto; no se convierte en un éxito histórico.
+      if (goal.mode === 'maintenance' && condition?.status === 'met') return null;
+      if (this.progress.isForbidden(goal.id, 'petición-del-usuario')) {
+        this.goals.suspend(
+          goal.id,
+          `el estado pedido sigue sin alcanzarse: ${condition?.diagnostics.join(', ') || 'sin evidencia'}`,
+          'que cambie el mundo o el cuidador aporte nueva información',
+        );
+        this.emit('goal.suspended', { goalId: goal.id, reason: 'condición-no-alcanzada' });
+        this.lastSelectedGoalId = null;
+        return null;
+      }
       // Le pidieron construir algo que su mundo todavía no sabe hacer. Eso no
       // es un imposible: es una idea que no tuvo. Primero la propone y deja
       // que el mundo la juzgue; si entra, el próximo tick ya hay receta y
@@ -4365,6 +4652,26 @@ export class AnimaAgent {
             goalId: goal.id,
           });
           if (decomposition) return decomposition;
+        }
+      }
+      if (
+        goal.mode === 'maintenance' &&
+        goal.userRequest.kind === 'spatial-relation' &&
+        goal.userRequest.maintenance
+      ) {
+        const refreshed = groundSpatialRequest(
+          {
+            relation: goal.userRequest.relation ?? 'far-from',
+            targetKind: goal.userRequest.targetKind ?? 'unknown',
+          },
+          perception,
+        );
+        if (refreshed.ok) {
+          const originalMinimum = goal.userRequest.spatial?.minimumDistance;
+          goal.userRequest.spatial = {
+            ...refreshed.grounding,
+            ...(originalMinimum !== undefined ? { minimumDistance: originalMinimum } : {}),
+          };
         }
       }
       const program = programForUserRequest(
@@ -5344,11 +5651,11 @@ export class AnimaAgent {
       // Ya la sabe (la aprendió antes o la heredó): no hay nada que desarrollar.
       this.goals.complete(goal.id);
       this.emit('goal.completed', { goalId: goal.id, strategy: `ya-sabía:${contract.name}` });
-      this.queueSkillRun(contract.name, contract.raw);
+      this.queueSkillRun(contract.name, contract.raw, perception);
       return null;
     }
 
-    const resume: SkillDevResume = async (outcome) => {
+    const resume: SkillDevResume = async (outcome, fresh) => {
       if (outcome.stableSkill) {
         this.memory.recordEpisode({
           kind: 'skill-learned',
@@ -5362,7 +5669,7 @@ export class AnimaAgent {
           `¡Lo aprendí! "${contract.name}" (v${outcome.stableSkill.version}): ${contract.expectedOutcome}. ` +
             `Lo probé en mundos imaginados y pasó todas las pruebas. Ya puedo repetirlo cuando me lo pidas.`,
         );
-        this.queueSkillRun(contract.name, contract.raw);
+        this.queueSkillRun(contract.name, contract.raw, fresh);
         return null;
       }
 
@@ -5420,7 +5727,7 @@ export class AnimaAgent {
   }
 
   /** Deja pedido hacer la habilidad: el cuidador la pidió, no solo enseñarla. */
-  private queueSkillRun(skillName: string, raw: string): void {
+  private queueSkillRun(skillName: string, raw: string, perception: Perception): void {
     const weights = USER_REQUEST_WEIGHTS['run-skill'];
     const goal = this.goals.create(
       {
@@ -5430,8 +5737,7 @@ export class AnimaAgent {
         urgency: weights.urgency,
         expectedValue: 0.6,
         preconditions: [],
-        successCriteria: ['la petición queda satisfecha'],
-        failureCriteria: [],
+        successCondition: this.conditionForSkillRun(skillName, perception),
         userRequest: { kind: 'run-skill', skillName, raw },
       },
       this.tick,
@@ -5528,6 +5834,23 @@ export class AnimaAgent {
     // la cuenta de qué falta puede haber cambiado —una receta inventada en el
     // medio— así que cada reanudación repone los pasos que falten.
     this.ensureRequestSteps(goal, perception);
+    if (
+      goal.userRequest?.kind === 'wait-here' &&
+      !goal.observedFacts?.includes('activity-started')
+    ) {
+      // "Acá" se liga cuando de verdad empieza a esperar. Una urgencia del
+      // cuerpo puede haber postergado el encargo y movido a Ánima entretanto.
+      goal.successCondition = conditionForUserRequest(goal.userRequest, perception);
+      this.goals.observeFact(goal.id, 'activity-started');
+    }
+    if (goal.userRequest?.kind === 'run-skill') {
+      this.goals.observeFact(goal.id, 'skill-started');
+      const visit = `visited:${perception.self.position.x},${perception.self.position.y}`;
+      if (!goal.observedFacts?.includes(visit)) {
+        this.goals.observeFact(goal.id, visit);
+        this.goals.increment(goal.id, 'visited-cells');
+      }
+    }
     this.emit('strategy.selected', { goalId: goal.id, strategy: 'petición-del-usuario' });
     this.activity = {
       goalId: goal.id,
@@ -5618,12 +5941,18 @@ export class AnimaAgent {
         currentGoal?.userRequest?.kind === 'spatial-relation'
           ? currentGoal.userRequest.spatial
           : undefined;
-      const spatialSatisfied = spatial
-        ? spatialGoalSatisfied(spatial, perception.self.position)
-        : true;
+      const evaluation = currentGoal ? this.evaluateGoal(currentGoal, perception) : undefined;
+      const stateSatisfied = evaluation?.status === 'met';
       const unfinished =
         out.result.outcome === 'completed' && this.unfinishedStructure(activity.goalId, perception);
-      const success = out.result.outcome === 'completed' && !unfinished && spatialSatisfied;
+      // Ejecución y estado son ejes independientes. Incluso un programa
+      // abortado puede coincidir con un estado ya alcanzado por el mundo.
+      const success = !unfinished && stateSatisfied;
+      if (success && currentGoal?.mode === 'maintenance') {
+        this.progress.record(activity.goalId, activity.strategy, true);
+        this.lastSelectedGoalId = null;
+        return null;
+      }
       if (success) {
         this.goals.complete(activity.goalId);
         this.destroyToolFloor.delete(activity.goalId);
@@ -5642,10 +5971,38 @@ export class AnimaAgent {
         // fracasar y cerrar el encargo para siempre.
         const reason = unfinished
           ? 'no-candidates:obra-incompleta'
-          : out.result.outcome === 'completed' && spatial && !spatialSatisfied
+          : out.result.outcome === 'completed' && spatial && !stateSatisfied
             ? 'criterio-espacial-no-cumplido'
-            : (out.result.reason ?? out.result.outcome);
+            : out.result.outcome === 'completed'
+              ? `condición-no-cumplida:${evaluation?.diagnostics.join('|') || 'sin-evidencia'}`
+              : (out.result.reason ?? out.result.outcome);
         const goal = this.goals.get(activity.goalId);
+        // Llegar al final de la DSL sin alcanzar el predicado no mata el
+        // objetivo. Se diagnostica, se marca la estrategia y el siguiente
+        // think recompone un plan desde una percepción fresca.
+        if (out.result.outcome === 'completed' && !unfinished && !spatial) {
+          const record = this.progress.record(activity.goalId, activity.strategy, false, reason);
+          this.emit('goal.outcome.unmet', {
+            goalId: activity.goalId,
+            programOutcome: out.result.outcome,
+            conditionStatus: evaluation?.status ?? 'unknown',
+            diagnostics: evaluation?.diagnostics ?? [],
+          });
+          this.emit('strategy.failed', {
+            goalId: activity.goalId,
+            strategy: activity.strategy,
+            outcome: out.result.outcome,
+            reason,
+          });
+          if (record.forbidden) {
+            this.emit('strategy.forbidden', {
+              goalId: activity.goalId,
+              strategy: activity.strategy,
+            });
+          }
+          this.lastSelectedGoalId = null;
+          return null;
+        }
         // Cruzar es un objetivo, no una habilidad. Si la navegación no
         // encuentra ruta y la propia referencia es una barrera rompible, abrir
         // un hueco es una estrategia al servicio del mismo objetivo. El pedido
