@@ -20,6 +20,21 @@ export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
  */
 export type SpatialRelation = 'opposite-side' | 'near' | 'far-from';
 
+export type EntityReferenceHint =
+  'none' | 'last-mentioned' | 'last-used' | 'created-by-me' | 'other';
+
+export type EntityReferenceRelation = 'none' | 'left-of' | 'right-of' | 'near' | 'behind';
+
+/** Descripción semántica de un individuo; todavía no es una entidad elegida. */
+export interface EntitySelector {
+  kind: string;
+  definiteness: 'any' | 'specific';
+  reference: EntityReferenceHint;
+  relation: EntityReferenceRelation;
+  /** Tipo de la referencia espacial ("el tronco detrás de la roca"). */
+  anchorKind?: string;
+}
+
 /**
  * Geometría resuelta cuando se acepta el pedido. Se congela porque "el otro
  * lado" depende de dónde estaba la mascota al oírlo; recalcularlo mientras se
@@ -52,6 +67,9 @@ export interface GoalUserRequest {
     | 'spatial-relation'
     | 'interact-entity';
   targetKind?: string;
+  /** Selector interpretado y, si era específico, identidad resuelta. */
+  targetSelector?: EntitySelector;
+  targetEntityId?: string;
   /** `place-item`: sobre qué hay que ponerlo. */
   onKind?: string;
   /** El verbo pedido (interact-entity): "juntar", "subirse-encima". */

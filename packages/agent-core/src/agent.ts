@@ -64,6 +64,8 @@ import type { PersonalityTrait } from './personality.js';
 import { derivePersonality } from './personality.js';
 import type { PlaceMemoryData } from './place-memory.js';
 import { PlaceMemory } from './place-memory.js';
+import type { ReferenceMemoryData } from './reference-resolver.js';
+import { resolveEntityReference } from './reference-resolver.js';
 import type { ProgressData, StrategyRecord } from './progress.js';
 import { ProgressController } from './progress.js';
 import type { RequestDecision, UserRequest } from './refusal.js';
@@ -330,6 +332,8 @@ export interface AgentPersistentState {
   lastUserRequest?: UserRequest | null;
   /** Dónde vio por última vez lo que le importa. Falta en guardados viejos. */
   places?: PlaceMemoryData;
+  /** Identidades salientes del diálogo y de las acciones propias. */
+  references?: ReferenceMemoryData;
   /**
    * Dónde está plantada cada obra en curso (ADR 0049). Persiste porque el sitio
    * es del MUNDO, no del plan: si se recalculara al retomar, una obra a medias
@@ -510,6 +514,11 @@ export class AnimaAgent {
   private lastWorldRefusal: { reason: string; targetId?: string; tick: number } | null = null;
   private lastSelectedGoalId: string | null = null;
   private lastUserRequest: UserRequest | null = null;
+  private references: ReferenceMemoryData = {
+    lastMentioned: [],
+    lastUsed: [],
+    createdByMe: [],
+  };
   /** Su nombre actual. La identidad persiste fuera; esto alimenta su habla. */
   private petName: string;
   /** Comestibles visibles al suspender cada objetivo: reactivar exige uno NUEVO. */
@@ -644,6 +653,12 @@ export class AnimaAgent {
           ? this.walkStepsAvoidingHazards(perception, remembered.position, 1)
           : undefined;
       },
+      rememberedWalkForEntity: (entityId) => {
+        const remembered = this.places.all().find((place) => place.entityId === entityId);
+        return remembered
+          ? this.walkStepsAvoidingHazards(perception, remembered.position, 1)
+          : undefined;
+      },
       harvestSource: (kind) => this.harvestSourceFor(kind, perception),
       structureSite: (blueprint) => {
         const goalId = this.activeStructureGoalId(blueprint);
@@ -661,6 +676,11 @@ export class AnimaAgent {
         };
       },
     };
+  }
+
+  private rememberReference(bucket: keyof ReferenceMemoryData, entityId: string): void {
+    const previous = this.references[bucket];
+    this.references[bucket] = [entityId, ...previous.filter((id) => id !== entityId)].slice(0, 8);
   }
 
   /**
@@ -1601,6 +1621,7 @@ export class AnimaAgent {
       lastSelectedGoalId: this.lastSelectedGoalId,
       lastUserRequest: this.lastUserRequest,
       places: this.places.serialize(),
+      references: this.references,
       // La intención de dibujar también se guarda (ADR 0064). Era la única
       // cola que vivía solo en memoria: recargar la página la borraba, y los
       // tipos inventados antes de la recarga se quedaban sin cara para
@@ -1632,6 +1653,11 @@ export class AnimaAgent {
     // Un guardado anterior a la memoria de lugares llega sin el campo: se
     // restaura como lo que era, una mascota que aún no recordaba lugares.
     this.places.loadFrom(clone.places ?? { places: [] });
+    this.references = clone.references ?? {
+      lastMentioned: [],
+      lastUsed: [],
+      createdByMe: [],
+    };
     this.pendingGlyphs = clone.pendingGlyphs ?? [];
     this.pendingWorkGlyphs = clone.pendingWorkGlyphs ?? [];
     this.pathOpenings = new Map(
@@ -2284,6 +2310,37 @@ export class AnimaAgent {
   /** Retroalimentación del mundo tras aplicar la intención. */
   observe(events: SimEvent[]): void {
     this.activity?.exec.observe(events);
+    for (const event of events) {
+      if (event.data.actorId === this.petId) {
+        const usedId =
+          typeof event.data.itemId === 'string'
+            ? event.data.itemId
+            : typeof event.data.targetId === 'string'
+              ? event.data.targetId
+              : undefined;
+        if (
+          usedId &&
+          (event.type === 'item.pickedUp' ||
+            event.type === 'item.dropped' ||
+            event.type === 'item.placed' ||
+            event.type === 'item.consumed' ||
+            event.type === 'interaction.performed')
+        ) {
+          this.rememberReference('lastUsed', usedId);
+        }
+        if (event.type === 'item.crafted' && typeof event.data.itemId === 'string') {
+          this.rememberReference('createdByMe', event.data.itemId);
+          this.rememberReference('lastUsed', event.data.itemId);
+        }
+      }
+      if (
+        (event.type === 'entity.damaged' || event.type === 'entity.destroyed') &&
+        event.data.byId === this.petId &&
+        typeof event.data.id === 'string'
+      ) {
+        this.rememberReference('lastUsed', event.data.id);
+      }
+    }
     // Por qué el mundo dijo que no, y sobre qué. El programa de la DSL solo se
     // entera de que su intención falló ("no pude recogerlo"); el MOTIVO —que
     // eso no se puede levantar, que estaba fuera de alcance, que no le entra en
@@ -3571,6 +3628,16 @@ export class AnimaAgent {
 
   private dialogueFacts(perception: Perception): string[] {
     const facts = [`me llamo ${this.petName}`];
+    const kindOf = (entityId: string): string | undefined =>
+      perception.visibleEntities.find((entity) => entity.id === entityId)?.kind ??
+      perception.self.heldItems.find((entity) => entity.id === entityId)?.kind ??
+      this.places.all().find((place) => place.entityId === entityId)?.kind;
+    const lastMentioned = this.references.lastMentioned[0];
+    const lastUsed = this.references.lastUsed[0];
+    if (lastMentioned) {
+      facts.push(`el último objeto mencionado fue ${kindOf(lastMentioned) ?? 'algo'}`);
+    }
+    if (lastUsed) facts.push(`el último objeto que manipulé fue ${kindOf(lastUsed) ?? 'algo'}`);
     // Sus rasgos viajan como hechos derivados: el modelo puede ponerles voz
     // ("soy curiosa, ya me conocés"), pero nunca decidirlos (ADR 0021).
     const traits = this.personality();
@@ -3803,12 +3870,18 @@ export class AnimaAgent {
         return {
           kind: command.action,
           targetKind: command.targetKind,
+          ...(command.targetSelector ? { targetSelector: command.targetSelector } : {}),
           ...(command.amount !== undefined && command.amount > 1 ? { amount: command.amount } : {}),
           raw,
         };
       case 'destroy-entity':
       case 'consume-item':
-        return { kind: command.action, targetKind: command.targetKind, raw };
+        return {
+          kind: command.action,
+          targetKind: command.targetKind,
+          ...(command.targetSelector ? { targetSelector: command.targetSelector } : {}),
+          raw,
+        };
       case 'wait-here':
         return { kind: 'wait-here', raw };
       case 'move-direction':
@@ -3828,6 +3901,7 @@ export class AnimaAgent {
         return {
           kind: 'place-item',
           targetKind: command.targetKind,
+          ...(command.targetSelector ? { targetSelector: command.targetSelector } : {}),
           onKind: command.onKind,
           raw,
         };
@@ -3836,6 +3910,7 @@ export class AnimaAgent {
           kind: 'interact-entity',
           verb: normalizeSkillName(command.verb) || 'usar',
           targetKind: command.targetKind,
+          ...(command.targetSelector ? { targetSelector: command.targetSelector } : {}),
           raw,
         };
     }
@@ -3914,6 +3989,9 @@ export class AnimaAgent {
             return {
               ...parsed,
               targetKind: firstMissing.kind,
+              ...('targetSelector' in parsed && parsed.targetSelector
+                ? { targetSelector: { ...parsed.targetSelector, kind: firstMissing.kind } }
+                : {}),
               amount: firstMissing.need - firstMissing.have,
             };
           }
@@ -3926,7 +4004,13 @@ export class AnimaAgent {
         'targetKind' in previous &&
         previous.targetKind !== 'unknown'
       ) {
-        return { ...parsed, targetKind: previous.targetKind };
+        return {
+          ...parsed,
+          targetKind: previous.targetKind,
+          ...('targetSelector' in parsed && parsed.targetSelector
+            ? { targetSelector: { ...parsed.targetSelector, kind: previous.targetKind } }
+            : {}),
+        };
       }
       if (parsed.kind === 'consume-item') {
         const visibleFood = perception.visibleEntities.find((entity) => entity.edible);
@@ -4083,6 +4167,22 @@ export class AnimaAgent {
     perception: Perception,
     options: { afterGoalId?: string } = {},
   ): Promise<RequestDecision & { goalId?: string }> {
+    if ('targetSelector' in request && request.targetSelector) {
+      const selector = { ...request.targetSelector, kind: request.targetKind };
+      const resolution = resolveEntityReference(
+        selector,
+        perception,
+        this.places.all(),
+        this.references,
+      );
+      if (resolution.kind === 'missing' || resolution.kind === 'ambiguous') {
+        return { classification: 'needs_information', reason: resolution.reason };
+      }
+      if (resolution.kind === 'resolved') {
+        request = { ...request, targetSelector: selector, targetEntityId: resolution.entityId };
+        this.rememberReference('lastMentioned', resolution.entityId);
+      }
+    }
     let decision = evaluateUserRequest(
       request,
       perception,
@@ -4134,6 +4234,12 @@ export class AnimaAgent {
           userRequest: {
             kind: request.kind,
             ...('targetKind' in request ? { targetKind: request.targetKind } : {}),
+            ...('targetSelector' in request && request.targetSelector
+              ? { targetSelector: request.targetSelector }
+              : {}),
+            ...('targetEntityId' in request && request.targetEntityId
+              ? { targetEntityId: request.targetEntityId }
+              : {}),
             ...('onKind' in request ? { onKind: request.onKind } : {}),
             ...('verb' in request ? { verb: request.verb } : {}),
             ...('amount' in request && request.amount !== undefined

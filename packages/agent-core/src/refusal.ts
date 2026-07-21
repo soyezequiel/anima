@@ -2,7 +2,9 @@ import { countedKindLabel, isFeminineKind, kindLabel, kindWithArticle } from '@a
 import type { Direction, Perception } from '@anima/sim-core';
 import { isMadeFrom, missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
-import type { Goal, SpatialGrounding, SpatialRelation } from './goals.js';
+import type { EntitySelector, Goal, SpatialGrounding, SpatialRelation } from './goals.js';
+
+type TargetReference = { targetSelector?: EntitySelector; targetEntityId?: string };
 
 /**
  * Peticiones del usuario ya interpretadas a una forma estructurada.
@@ -10,10 +12,10 @@ import type { Goal, SpatialGrounding, SpatialRelation } from './goals.js';
  * o de un parser simple; la decisión de aceptar o negarse es del agente.)
  */
 export type UserRequest =
-  | { kind: 'destroy-entity'; targetKind: string; raw: string }
+  | ({ kind: 'destroy-entity'; targetKind: string; raw: string } & TargetReference)
   /** `amount`: cuántas unidades pidió ("conseguí los 2 troncos"). 1 si no dijo. */
-  | { kind: 'fetch-item'; targetKind: string; amount?: number; raw: string }
-  | { kind: 'consume-item'; targetKind: string; raw: string }
+  | ({ kind: 'fetch-item'; targetKind: string; amount?: number; raw: string } & TargetReference)
+  | ({ kind: 'consume-item'; targetKind: string; raw: string } & TargetReference)
   | { kind: 'wait-here'; raw: string }
   | { kind: 'move-direction'; directions: Direction[]; raw: string }
   | {
@@ -29,13 +31,13 @@ export type UserRequest =
   /** Construir algo según una receta que su mundo admite. */
   | { kind: 'craft-item'; recipeId: string; raw: string }
   /** Poner algo EN un lugar nombrado por lo que hay ahí (ADR 0078). */
-  | { kind: 'place-item'; targetKind: string; onKind: string; raw: string }
+  | ({ kind: 'place-item'; targetKind: string; onKind: string; raw: string } & TargetReference)
   /**
    * Manipular un objeto de una forma que las primitivas no cubren (ADR 0027):
    * la mascota busca una interacción aprendida, o inventa una y el mundo (la
    * puerta y la IA Dios) decide.
    */
-  | { kind: 'interact-entity'; verb: string; targetKind: string; raw: string }
+  | ({ kind: 'interact-entity'; verb: string; targetKind: string; raw: string } & TargetReference)
   | { kind: 'unknown'; raw: string };
 
 export type RequestClassification =
@@ -106,6 +108,13 @@ export function evaluateUserRequest(
   /** Habilidades estables disponibles: define qué puede aceptar de `run-skill`. */
   knownSkills: string[] = [],
 ): RequestDecision {
+  const matchesTarget = (entity: { id: string; kind: string }): boolean =>
+    'targetKind' in request &&
+    entity.kind === request.targetKind &&
+    (!('targetEntityId' in request) ||
+      request.targetEntityId === undefined ||
+      entity.id === request.targetEntityId);
+
   if (request.kind === 'unknown') {
     return {
       classification: 'needs_information',
@@ -300,7 +309,7 @@ export function evaluateUserRequest(
       // comprobación iba antes, "tala el árbol" devolvía "no quiero" sin haber
       // mirado nunca si lo veía o si tenía herramienta — y el juicio de valores
       // podía terminar autorizando lo imposible.
-      const visibleTarget = perception.visibleEntities.some((e) => e.kind === request.targetKind);
+      const visibleTarget = perception.visibleEntities.some(matchesTarget);
       if (!visibleTarget) {
         return {
           classification: 'needs_information',
@@ -353,8 +362,8 @@ export function evaluateUserRequest(
       }
       const targetName = displayKind(request.targetKind);
       const visibleTarget =
-        perception.visibleEntities.some((e) => e.kind === request.targetKind) ||
-        perception.self.heldItems.some((e) => e.kind === request.targetKind);
+        perception.visibleEntities.some(matchesTarget) ||
+        perception.self.heldItems.some(matchesTarget);
       if (!visibleTarget) {
         return {
           classification: 'needs_information',
@@ -409,8 +418,8 @@ export function evaluateUserRequest(
           alternative: 'Podés nombrar comida, una rama o un martillo.',
         };
       }
-      const visible = perception.visibleEntities.some((e) => e.kind === request.targetKind);
-      const held = perception.self.heldItems.some((e) => e.kind === request.targetKind);
+      const visible = perception.visibleEntities.some(matchesTarget);
+      const held = perception.self.heldItems.some(matchesTarget);
       if (!visible && !held) {
         // No verlo ya no es no saber: los programas de pedidos recorren el
         // mapa hasta ver lo que buscan (op `explore`). Aceptar anunciando la
@@ -535,6 +544,16 @@ export function parseUserMessage(
   const renameTo = parseRename(text);
   if (renameTo !== null) return { kind: 'rename-pet', name: renameTo, raw: text };
   const lower = normalizeMessage(text);
+  const referenceSelector = (kind: string): EntitySelector | undefined => {
+    const reference = /\b(otro|otra|otros|otras)\b/.test(lower)
+      ? 'other'
+      : /\b(que\s+(dejaste|soltaste|usaste|agarraste)|ultimo|ultima)\b/.test(lower)
+        ? 'last-used'
+        : /\b(ese|esa|eso|aquel|aquella)\b/.test(lower)
+          ? 'last-mentioned'
+          : undefined;
+    return reference ? { kind, definiteness: 'specific', reference, relation: 'none' } : undefined;
+  };
   const aliases: [word: string, kind: string][] = [
     ['comida', 'food'],
     ['alimento', 'food'],
@@ -628,7 +647,14 @@ export function parseUserMessage(
       lower,
     )
   ) {
-    return { kind: 'destroy-entity', targetKind: kindWord('destroy'), raw: text };
+    const targetKind = kindWord('destroy');
+    const targetSelector = referenceSelector(targetKind);
+    return {
+      kind: 'destroy-entity',
+      targetKind,
+      ...(targetSelector ? { targetSelector } : {}),
+      raw: text,
+    };
   }
   // Antes que "buscar"/"traer": "construí una fogata" no es traer una fogata.
   // El parser conoce las recetas del MVP a mano; con un modelo real, las
@@ -657,9 +683,12 @@ export function parseUserMessage(
     )
   ) {
     const amount = parseAmount(lower);
+    const targetKind = kindWord('other');
+    const targetSelector = referenceSelector(targetKind);
     return {
       kind: 'fetch-item',
-      targetKind: kindWord('other'),
+      targetKind,
+      ...(targetSelector ? { targetSelector } : {}),
       ...(amount !== undefined ? { amount } : {}),
       raw: text,
     };
@@ -668,7 +697,14 @@ export function parseUserMessage(
     return { kind: 'explanation', raw: text };
   }
   if (/\b(come|comer|comete|consume|consumir)\b/.test(lower)) {
-    return { kind: 'consume-item', targetKind: kindWord('consume'), raw: text };
+    const targetKind = kindWord('consume');
+    const targetSelector = referenceSelector(targetKind);
+    return {
+      kind: 'consume-item',
+      targetKind,
+      ...(targetSelector ? { targetSelector } : {}),
+      raw: text,
+    };
   }
   if (/\b(espera|esperar|quedate|para)\b/.test(lower)) {
     return { kind: 'wait-here', raw: text };

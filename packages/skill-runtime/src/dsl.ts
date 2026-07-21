@@ -17,6 +17,8 @@ export const MAX_CELL_OFFSET = 4;
 
 const entityQuerySchema = z
   .object({
+    /** Identidad exacta ya resuelta por el agente; nunca la inventa una skill. */
+    id: z.string().min(1).optional(),
     kind: z.string().min(1).optional(),
     tool: z.boolean().optional(),
     edible: z.boolean().optional(),

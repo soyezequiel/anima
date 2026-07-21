@@ -1,5 +1,6 @@
 import type {
   CommandDirection,
+  CommandEntitySelector,
   CommandInterpretation,
   ModelRequest,
   ModelResponse,
@@ -545,6 +546,24 @@ function commandFields(withSequence: boolean): Record<string, unknown> {
       enum: withSequence ? [...COMMAND_ACTIONS, 'sequence'] : [...COMMAND_ACTIONS],
     },
     targetKind: { type: 'string' },
+    targetSelector: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string' },
+        definiteness: { type: 'string', enum: ['any', 'specific'] },
+        reference: {
+          type: 'string',
+          enum: ['none', 'last-mentioned', 'last-used', 'created-by-me', 'other'],
+        },
+        relation: {
+          type: 'string',
+          enum: ['none', 'left-of', 'right-of', 'near', 'behind'],
+        },
+        anchorKind: { type: 'string' },
+      },
+      required: ['kind', 'definiteness', 'reference', 'relation', 'anchorKind'],
+      additionalProperties: false,
+    },
     verb: { type: 'string' },
     amount: { type: 'number' },
     directions: {
@@ -567,6 +586,7 @@ function commandFields(withSequence: boolean): Record<string, unknown> {
 const COMMAND_REQUIRED = [
   'action',
   'targetKind',
+  'targetSelector',
   'verb',
   'amount',
   'directions',
@@ -778,7 +798,13 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
       action === 'fetch-item' && typeof parsed.amount === 'number' && parsed.amount > 1
         ? Math.min(8, Math.round(parsed.amount))
         : undefined;
-    return { action, targetKind, ...(amount !== undefined ? { amount } : {}) };
+    const targetSelector = readTargetSelector(parsed.targetSelector, targetKind);
+    return {
+      action,
+      targetKind,
+      ...(targetSelector ? { targetSelector } : {}),
+      ...(amount !== undefined ? { amount } : {}),
+    };
   }
   if (action === 'move-direction') {
     const allowed = new Set(['up', 'down', 'left', 'right']);
@@ -829,10 +855,13 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
     if (typeof parsed.onKind !== 'string' || !parsed.onKind.trim()) {
       throw new Error('place-item no dice dónde hay que ponerlo');
     }
+    const targetKind = parsed.targetKind.trim().toLowerCase();
+    const targetSelector = readTargetSelector(parsed.targetSelector, targetKind);
     return {
       action,
-      targetKind: parsed.targetKind.trim().toLowerCase(),
+      targetKind,
       onKind: parsed.onKind.trim().toLowerCase(),
+      ...(targetSelector ? { targetSelector } : {}),
     };
   }
   if (action === 'rename-pet') {
@@ -848,10 +877,13 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
     if (typeof parsed.targetKind !== 'string' || !parsed.targetKind.trim()) {
       throw new Error('interact-entity no contiene targetKind');
     }
+    const targetKind = parsed.targetKind.trim().toLowerCase();
+    const targetSelector = readTargetSelector(parsed.targetSelector, targetKind);
     return {
       action,
       verb: parsed.verb.trim().toLowerCase(),
-      targetKind: parsed.targetKind.trim().toLowerCase(),
+      targetKind,
+      ...(targetSelector ? { targetSelector } : {}),
     };
   }
   if (action === 'describe-entity') {
@@ -868,6 +900,28 @@ function readCommand(parsed: Record<string, unknown>, fallbackText: string): Com
     return { action, summary: parsed.summary.trim() || 'esa acción' };
   }
   throw new Error(`acción interpretada desconocida: ${action}`);
+}
+
+function readTargetSelector(value: unknown, targetKind: string): CommandEntitySelector | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  const definiteness = raw.definiteness === 'specific' ? 'specific' : 'any';
+  const references = new Set(['none', 'last-mentioned', 'last-used', 'created-by-me', 'other']);
+  const relations = new Set(['none', 'left-of', 'right-of', 'near', 'behind']);
+  const reference =
+    typeof raw.reference === 'string' && references.has(raw.reference) ? raw.reference : 'none';
+  const relation =
+    typeof raw.relation === 'string' && relations.has(raw.relation) ? raw.relation : 'none';
+  if (definiteness === 'any' && reference === 'none' && relation === 'none') return undefined;
+  return {
+    kind: targetKind,
+    definiteness,
+    reference: reference as CommandEntitySelector['reference'],
+    relation: relation as CommandEntitySelector['relation'],
+    ...(typeof raw.anchorKind === 'string' && raw.anchorKind.trim()
+      ? { anchorKind: raw.anchorKind.trim().toLowerCase() }
+      : {}),
+  };
 }
 
 export function buildCodexPrompt(request: ModelRequest): {
@@ -1591,7 +1645,16 @@ siendo learn-skill (con lo que explicó incorporado al summary), no not-command.
 Resuelve sinónimos, conjugaciones, errores menores y referencias usando el
 contexto. No inventes un targetKind ausente de los hechos: si falta el objeto,
 usa una descripción breve normalizada que el agente pueda rechazar o aclarar.
-Responde solo con JSON. Siempre incluye action, targetKind, verb, amount,
+Para toda accion con targetKind, targetSelector describe si se refiere a un
+INDIVIDUO concreto. No elijas ni inventes IDs: el agente los resuelve contra su
+percepcion y memoria. Usa definiteness="specific" para "ese", "el otro", "el
+que dejaste" o una relacion como "el tronco a la derecha de la roca";
+reference es last-mentioned, last-used, created-by-me, other o none; relation
+es left-of, right-of, near, behind o none, con anchorKind cuando corresponda.
+Para "un/cualquier tronco" usa {kind:"log", definiteness:"any",
+reference:"none", relation:"none", anchorKind:""}. En acciones sin objetivo
+usa el mismo selector vacio con kind:"".
+Responde solo con JSON. Siempre incluye action, targetKind, targetSelector, verb, amount,
 directions, relation, skillName, recipeId, onKind, summary, name y steps; usa "", [] o 0
 cuando no correspondan (steps va vacío salvo en sequence).`,
       };

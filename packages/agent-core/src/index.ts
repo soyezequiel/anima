@@ -7,6 +7,7 @@ export * from './user-request-programs.js';
 export * from './personality.js';
 export * from './place-memory.js';
 export * from './progress.js';
+export * from './reference-resolver.js';
 export * from './spatial-goals.js';
 export * from './refusal.js';
 export * from './skill-dev.js';

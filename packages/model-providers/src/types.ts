@@ -480,6 +480,15 @@ export type ModelResponse =
 
 export type CommandDirection = 'up' | 'down' | 'left' | 'right';
 export type CommandSpatialRelation = 'opposite-side' | 'near' | 'far-from';
+export interface CommandEntitySelector {
+  kind: string;
+  definiteness: 'any' | 'specific';
+  reference: 'none' | 'last-mentioned' | 'last-used' | 'created-by-me' | 'other';
+  relation: 'none' | 'left-of' | 'right-of' | 'near' | 'behind';
+  anchorKind?: string;
+}
+
+type WithTargetSelector = { targetSelector?: CommandEntitySelector };
 
 /**
  * El modelo interpreta lenguaje, pero solo puede elegir este catálogo. El
@@ -491,10 +500,10 @@ export type CommandSpatialRelation = 'opposite-side' | 'near' | 'far-from';
  * enseñe muere en el momento en que lo dice.
  */
 export type CommandInterpretation =
-  | { action: 'destroy-entity'; targetKind: string }
+  | ({ action: 'destroy-entity'; targetKind: string } & WithTargetSelector)
   /** `amount`: cuántas unidades pidió ("los dos troncos" son 2). 1 si no dijo. */
-  | { action: 'fetch-item'; targetKind: string; amount?: number }
-  | { action: 'consume-item'; targetKind: string }
+  | ({ action: 'fetch-item'; targetKind: string; amount?: number } & WithTargetSelector)
+  | ({ action: 'consume-item'; targetKind: string } & WithTargetSelector)
   | { action: 'wait-here' }
   | { action: 'move-direction'; directions: CommandDirection[] }
   /** Alcanzar una relación espacial respecto de algo visible del mundo. */
@@ -514,7 +523,7 @@ export type CommandInterpretation =
    * interacciones, que inventaba un sinsentido para un verbo que el mundo ya
    * sabía hacer.
    */
-  | { action: 'place-item'; targetKind: string; onKind: string }
+  | ({ action: 'place-item'; targetKind: string; onKind: string } & WithTargetSelector)
   /** Conducta que no tiene pero que sus primitivas podrían componer. */
   | { action: 'learn-skill'; summary: string }
   /**
@@ -546,7 +555,7 @@ export type CommandInterpretation =
    * cubren (llenar, encender, tapar, subirse encima): la mascota buscará una
    * interacción aprendida o inventará una y la someterá a juicio (ADR 0027).
    */
-  | { action: 'interact-entity'; verb: string; targetKind: string }
+  | ({ action: 'interact-entity'; verb: string; targetKind: string } & WithTargetSelector)
   /** Orden física fuera del alcance de sus primitivas. */
   | { action: 'unsupported'; summary: string }
   | { action: 'not-command' };

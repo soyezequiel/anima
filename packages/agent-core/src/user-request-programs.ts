@@ -35,6 +35,8 @@ export interface UserRequestProgramDeps {
    * despejada) pero recordado: ir a donde lo vio evita el vagar a ciegas.
    */
   rememberedWalk(kind: string): Direction[] | undefined;
+  /** Pasos al último lugar recordado de una entidad cuya identidad ya se resolvió. */
+  rememberedWalkForEntity(entityId: string): Direction[] | undefined;
   /**
    * De qué tipo cosechar un material que ninguna receta produce ("log" sale de
    * romper un "tree"), o undefined si nada de lo que ve lo deja caer. Sin esto,
@@ -105,6 +107,17 @@ export function programForUserRequest(
   deps: UserRequestProgramDeps,
 ): SkillProgram {
   const targetKind = request.targetKind ?? 'unknown';
+  const targetQuery = (extra: Partial<EntityQuery> = {}): EntityQuery => ({
+    ...(request.targetEntityId ? { id: request.targetEntityId } : {}),
+    kind: targetKind,
+    ...extra,
+  });
+  const rememberedApproach = request.targetEntityId
+    ? (deps.rememberedWalkForEntity(request.targetEntityId) ?? []).map((dir): SkillOp => ({
+        op: 'moveStep',
+        dir,
+      }))
+    : [];
   switch (request.kind) {
     case 'wait-here':
       return [{ op: 'wait', ticks: 6 }];
@@ -172,13 +185,20 @@ export function programForUserRequest(
         : [{ op: 'abort', reason: 'relación-espacial-sin-ubicar' }];
 
     case 'fetch-item': {
+      if (
+        request.targetEntityId &&
+        perception.self.heldItems.some((item) => item.id === request.targetEntityId)
+      ) {
+        return [{ op: 'wait', ticks: 1 }];
+      }
       const fetchOne: SkillOp[] = [
-        searchFor({ kind: targetKind, held: false }),
+        ...rememberedApproach,
+        searchFor(targetQuery({ held: false })),
         // held:false: "traé un tronco" pide OTRO tronco. Sin el filtro, la
         // búsqueda devolvía el que ya llevaba (nearest lo ordena a distancia
         // 0) y el programa terminaba "cumplido" sin traer nada — pedir dos
         // ingredientes iguales era imposible.
-        { op: 'findEntities', query: { kind: targetKind, held: false }, store: 'requestedItems' },
+        { op: 'findEntities', query: targetQuery({ held: false }), store: 'requestedItems' },
         {
           op: 'selectTarget',
           from: 'requestedItems',
@@ -215,8 +235,9 @@ export function programForUserRequest(
         targetKind === 'food' ? deps.library.findStable(SKILL_REACH_BLOCKED_FOOD) : undefined;
       if (stable) return [{ op: 'runSkill', skillId: stable.id }];
       return [
-        searchFor({ kind: targetKind }),
-        { op: 'findEntities', query: { kind: targetKind }, store: 'requestedFoods' },
+        ...rememberedApproach,
+        searchFor(targetQuery()),
+        { op: 'findEntities', query: targetQuery(), store: 'requestedFoods' },
         {
           op: 'selectTarget',
           from: 'requestedFoods',
@@ -278,8 +299,9 @@ export function programForUserRequest(
       const work = perception.blueprints.find((b) => b.id === targetKind);
       if (work) return buildWork(work, perception, deps);
       return [
-        searchFor({ kind: targetKind }),
-        { op: 'findEntities', query: { kind: targetKind }, store: 'toPlace' },
+        ...rememberedApproach,
+        searchFor(targetQuery()),
+        { op: 'findEntities', query: targetQuery(), store: 'toPlace' },
         { op: 'selectTarget', from: 'toPlace', strategy: 'nearest', store: 'block' },
         {
           op: 'branch',
@@ -347,8 +369,9 @@ export function programForUserRequest(
         );
       }
       ops.push(
-        searchFor({ kind: targetKind }),
-        { op: 'findEntities', query: { kind: targetKind }, store: 'interactTargets' },
+        ...rememberedApproach,
+        searchFor(targetQuery()),
+        { op: 'findEntities', query: targetQuery(), store: 'interactTargets' },
         {
           op: 'selectTarget',
           from: 'interactTargets',
@@ -425,8 +448,9 @@ export function programForUserRequest(
             },
           ],
         },
-        searchFor({ kind: targetKind }),
-        { op: 'findEntities', query: { kind: targetKind }, store: 'requestedTargets' },
+        ...rememberedApproach,
+        searchFor(targetQuery()),
+        { op: 'findEntities', query: targetQuery(), store: 'requestedTargets' },
         {
           op: 'selectTarget',
           from: 'requestedTargets',

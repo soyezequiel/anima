@@ -225,6 +225,7 @@ function lineClear(from: Vec2, to: Vec2, occluders: ReadonlySet<string>): boolea
 
 /** true si la entidad percibida cumple la query (el mismo filtro de findEntities). */
 function matchesQuery(e: PerceivedEntity, query: EntityQuery): boolean {
+  if (query.id !== undefined && e.id !== query.id) return false;
   if (query.kind !== undefined && e.kind !== query.kind) return false;
   if (query.tool !== undefined && (e.toolPower !== undefined) !== query.tool) return false;
   if (query.edible !== undefined && (e.edible ?? false) !== query.edible) return false;

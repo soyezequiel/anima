@@ -11,6 +11,35 @@ function transportReturning(text: string, seen: CodexTransportInput[] = []) {
 }
 
 describe('CodexModelProvider', () => {
+  it('interpreta la referencia semántica sin inventar una identidad del mundo', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'fetch-item',
+          targetKind: 'log',
+          targetSelector: {
+            kind: 'log',
+            definiteness: 'specific',
+            reference: 'other',
+            relation: 'none',
+            anchorKind: '',
+          },
+        }),
+      ),
+    );
+
+    await expect(
+      provider.complete({ kind: 'interpret.command', text: 'traé el otro tronco', facts: [] }),
+    ).resolves.toMatchObject({
+      kind: 'command.interpretation',
+      command: {
+        action: 'fetch-item',
+        targetKind: 'log',
+        targetSelector: { definiteness: 'specific', reference: 'other' },
+      },
+    });
+  });
+
   it('construye prompts con el catálogo de la DSL y el problema', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(
@@ -436,6 +465,7 @@ describe('CodexModelProvider', () => {
       required: [
         'action',
         'targetKind',
+        'targetSelector',
         'verb',
         'amount',
         'directions',
