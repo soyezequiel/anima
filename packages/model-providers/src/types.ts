@@ -23,6 +23,18 @@ export interface SkillSummary {
   trust: 'probada' | 'a medio probar';
 }
 
+/** Vista de solo lectura del registro epistemologico para prompts. */
+export interface EpistemicContextItem {
+  id: string;
+  content: string;
+  state: 'observed' | 'learned' | 'inferred' | 'hypothetical' | 'refuted' | 'unknown' | 'stale';
+  confidence: number;
+  source: string;
+  evidence: string[];
+  scope: string;
+  missingData?: string[];
+}
+
 export type ModelRequest =
   | {
       kind: 'skill.propose';
@@ -113,6 +125,7 @@ export type ModelRequest =
       request: string;
       conversation: { from: 'user' | 'pet'; text: string }[];
       facts: string[];
+      knowledge?: EpistemicContextItem[];
     }
   | {
       /** Destila una afirmación didáctica del cuidador a un enunciado guardable. */
@@ -388,6 +401,8 @@ export type ModelRequest =
       kind: 'dialogue';
       topic: string;
       facts: string[];
+      /** Estados epistemicos estructurados; `facts` queda por compatibilidad. */
+      knowledge?: EpistemicContextItem[];
       /** Turnos anteriores, del más antiguo al más reciente. */
       history?: { from: 'user' | 'pet'; text: string }[];
     };

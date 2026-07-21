@@ -199,6 +199,33 @@ describe('CodexModelProvider', () => {
     expect(prompt).not.toContain('este canal solo');
   });
 
+  it('el dialogo recibe estados epistemologicos y obliga a reconocer huecos', async () => {
+    const seen: CodexTransportInput[] = [];
+    const provider = new CodexModelProvider(transportReturning('{"text":"no lo sé"}', seen));
+    await provider.complete({
+      kind: 'dialogue',
+      topic: '¿dónde está el agua?',
+      facts: [],
+      knowledge: [
+        {
+          id: 'know-1',
+          content: 'ubicación actual del agua',
+          state: 'unknown',
+          confidence: 1,
+          source: 'system: dato faltante',
+          evidence: [],
+          scope: 'tipo:water',
+          missingData: ['una observación actual del agua'],
+        },
+      ],
+    });
+
+    const prompt = seen[0]?.prompt ?? '';
+    expect(prompt).toContain('[know-1] unknown');
+    expect(prompt).toContain('No completes huecos por plausibilidad');
+    expect(prompt).toContain('refuted significa que la afirmación es falsa');
+  });
+
   it('el clasificador manda los pedidos implícitos a la acción, no a not-command', async () => {
     const seen: CodexTransportInput[] = [];
     const provider = new CodexModelProvider(

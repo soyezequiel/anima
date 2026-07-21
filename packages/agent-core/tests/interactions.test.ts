@@ -124,7 +124,11 @@ describe('interacciones inventadas, de punta a punta', () => {
     const { agent, provider } = makeAgent(petId, [
       INTERPRET_SCOOP,
       { kind: 'interaction', interaction: cheat, rationale: 'me la llevo y ya' },
-      { kind: 'judgement', willing: false, reason: 'el agua se escurre: necesitás algo que la contenga' },
+      {
+        kind: 'judgement',
+        willing: false,
+        reason: 'el agua se escurre: necesitás algo que la contenga',
+      },
       // Segundo pedido: solo la interpretación. Si intentara volver a proponer,
       // la cola vacía haría fallar la consulta y el test lo delataría.
       INTERPRET_SCOOP,
@@ -133,12 +137,15 @@ describe('interacciones inventadas, de punta a punta', () => {
     agent.receiveUserMessage('juntá agua con el balde');
     await run(world, petId, agent, 20);
 
-    // Nada entró al mundo, el motivo se dijo y quedó como conocimiento suyo.
+    // Nada entró al mundo, el motivo se dijo y quedó como hipótesis: el modelo
+    // no puede convertir su propio veto en un hecho.
     expect(world.interactions).toHaveLength(0);
     const judged = agent.events.ofType('interaction.judged');
     expect(judged.some((e) => e.data.willing === false)).toBe(true);
     expect(
-      agent.memory.factList().some((f) => f.statement.startsWith('mi mundo no permite juntar-water')),
+      agent.memory
+        .hypothesisList()
+        .some((h) => h.statement.startsWith('mi mundo no permite juntar-water')),
     ).toBe(true);
 
     // Pedirlo de nuevo no re-inventa lo vetado: ni una consulta más.

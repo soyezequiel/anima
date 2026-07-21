@@ -34,9 +34,14 @@ import {
   recipeProduct,
   validateRecipe,
 } from '@anima/sim-core';
-import type { MemoryData, MemoryStore } from '@anima/memory';
+import type { KnowledgeAssessment, MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
-import type { CommandInterpretation, ModelProvider, ModelRequest } from '@anima/model-providers';
+import type {
+  CommandInterpretation,
+  EpistemicContextItem,
+  ModelProvider,
+  ModelRequest,
+} from '@anima/model-providers';
 import type {
   EvaluationCriterion,
   GpsPlaces,
@@ -1966,6 +1971,10 @@ export class AnimaAgent {
         `según ${testimony.fromName}, ${advice}`,
         this.tick,
         0.65,
+        {
+          source: { kind: 'legacy', description: `testimonio de ${testimony.fromName}` },
+          evidence: advice,
+        },
       );
       this.emit('hypothesis.updated', {
         hypothesisId: hypothesis.id,
@@ -1980,6 +1989,10 @@ export class AnimaAgent {
         `según ${testimony.fromName}, ${entry.statement}`,
         this.tick,
         Math.min(0.65, entry.confidence),
+        {
+          source: { kind: 'legacy', description: `testimonio de ${testimony.fromName}` },
+          evidence: entry.statement,
+        },
       );
       if (entry.statement.includes('recupera energía')) {
         this.energyHypothesisId = hypothesis.id;
@@ -2054,6 +2067,55 @@ export class AnimaAgent {
     }
   }
 
+  /**
+   * Convierte la foto perceptiva en conocimiento con alcance y caducidad. La
+   * posicion de otro cuerpo dura mas que un frame, pero no para siempre; una
+   * nueva observacion del mismo topic conserva la revision anterior.
+   */
+  private recordPerceptionKnowledge(perception: Perception): void {
+    const source = { kind: 'perception' as const, description: 'percepcion directa' };
+    this.memory.recordKnowledge({
+      topic: 'position',
+      content: `${this.petName} esta en (${perception.self.position.x},${perception.self.position.y})`,
+      status: 'observed',
+      source,
+      confidence: 1,
+      acquiredAtTick: perception.tick,
+      expiresAtTick: perception.tick + 1,
+      scope: { kind: 'entity', entityId: this.petId },
+    });
+    for (const entity of perception.visibleEntities) {
+      if (entity.position) {
+        this.memory.recordKnowledge({
+          topic: 'position',
+          content: `${entity.kind} ${entity.id} esta en (${entity.position.x},${entity.position.y})`,
+          status: 'observed',
+          source,
+          confidence: 1,
+          acquiredAtTick: perception.tick,
+          expiresAtTick: perception.tick + 100,
+          scope: { kind: 'entity', entityId: entity.id },
+        });
+      }
+      if (entity.portable !== undefined) {
+        this.memory.recordKnowledge({
+          topic: 'portable',
+          content: `${entity.kind} ${entity.portable ? 'se puede' : 'no se puede'} llevar`,
+          status: 'observed',
+          source,
+          confidence: 1,
+          acquiredAtTick: perception.tick,
+          scope: { kind: 'type', typeId: entity.kind },
+        });
+      }
+    }
+  }
+
+  /** Frontera de diagnostico comun para UI, dialogo y planificacion. */
+  diagnoseKnowledge(content: string, atTick = this.tick): KnowledgeAssessment {
+    return this.memory.assessKnowledge({ content, atTick });
+  }
+
   private async drawWhatIsInSight(perception: Perception): Promise<ActionIntent | null> {
     if (this.pendingGlyphs.length === 0 || this.bodyInTheRed(perception)) return null;
     const atHand = (kind: string): boolean =>
@@ -2117,6 +2179,7 @@ export class AnimaAgent {
     // Cada percepción alimenta la memoria de lugares: dónde vio por última
     // vez lo que le importa. Es lo único que puede apuntar fuera de su vista.
     this.places.update(perception);
+    this.recordPerceptionKnowledge(perception);
     if (this.activity) {
       const running = this.goals.get(this.activity.goalId);
       if (running?.source === 'user-request') this.goals.increment(running.id, 'ticks');
@@ -2546,6 +2609,19 @@ export class AnimaAgent {
         typeof event.data.itemId === 'string'
       ) {
         this.places.forget(event.data.itemId);
+        this.memory.recordKnowledge({
+          topic: 'position',
+          content: `${String(event.data.itemKind ?? 'objeto')} ${event.data.itemId} sigue en su ultima posicion`,
+          status: 'refuted',
+          source: {
+            kind: 'world',
+            ref: event.type,
+            description: 'el mundo retiro el objeto de ese lugar',
+          },
+          confidence: 1,
+          acquiredAtTick: this.tick,
+          scope: { kind: 'entity', entityId: event.data.itemId },
+        });
       }
       if (
         event.type === 'entity.destroyed' &&
@@ -2553,6 +2629,15 @@ export class AnimaAgent {
         typeof event.data.id === 'string'
       ) {
         this.places.forget(event.data.id);
+        this.memory.recordKnowledge({
+          topic: 'position',
+          content: `${String(event.data.kind ?? 'entidad')} ${event.data.id} sigue en su ultima posicion`,
+          status: 'refuted',
+          source: { kind: 'world', ref: event.type, description: 'la entidad fue destruida' },
+          confidence: 1,
+          acquiredAtTick: this.tick,
+          scope: { kind: 'entity', entityId: event.data.id },
+        });
         // Recuerdo de acción propia (ADR 0033): "rompí un wall con hammer".
         // El summary es estable a propósito: repetir la acción no crea otro
         // recuerdo, incrementa el conteo del mismo.
@@ -2605,6 +2690,12 @@ export class AnimaAgent {
         const fact = this.memory.addFact(
           `${kindWithArticle(String(event.data.itemKind))} puede dañar ${kindWithArticle(String(event.data.targetKind))}`,
           this.tick,
+          0.9,
+          {
+            status: 'observed',
+            source: { kind: 'world', ref: event.type, description: 'daño confirmado por el mundo' },
+            evidence: `${String(event.data.damage)} de daño observado`,
+          },
         );
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
       }
@@ -2621,7 +2712,11 @@ export class AnimaAgent {
         this.lastPain = { sourceId: event.data.byId, sourceKind, tick: this.tick };
         const statement = hazardFact(sourceKind);
         if (!this.memory.factList().some((f) => f.statement === statement)) {
-          const fact = this.memory.addFact(statement, this.tick);
+          const fact = this.memory.addFact(statement, this.tick, 0.9, {
+            status: 'observed',
+            source: { kind: 'world', ref: event.type, description: 'daño recibido del mundo' },
+            evidence: `daño causado por ${sourceKind}`,
+          });
           this.emit('memory.created', { kind: 'fact', statement: fact.statement });
           this.memory.recordEpisode({
             kind: 'pain',
@@ -2670,6 +2765,17 @@ export class AnimaAgent {
         const fact = this.memory.addFact(
           `romper ${targetKind} deja ${drops.join(', ') || 'algo'}`,
           this.tick,
+          0.9,
+          {
+            status: 'learned',
+            source: {
+              kind: 'world',
+              ref: event.type,
+              description: 'regla aceptada y aplicada por el mundo',
+            },
+            evidence: `el mundo registro los restos: ${drops.join(', ') || 'algo'}`,
+            scope: { kind: 'type', typeId: targetKind },
+          },
         );
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
         this.emit('decomposition.learned', { targetKind, drops });
@@ -2708,7 +2814,14 @@ export class AnimaAgent {
       if (event.type === 'interaction.learned' && event.data.actorId === this.petId) {
         const interactionId = String(event.data.interactionId);
         const description = String(event.data.description ?? interactionId);
-        const fact = this.memory.addFact(`aprendí a ${description}`, this.tick);
+        const fact = this.memory.addFact(`aprendí a ${description}`, this.tick, 0.9, {
+          source: {
+            kind: 'world',
+            ref: event.type,
+            description: 'interaccion aceptada por el mundo',
+          },
+          evidence: description,
+        });
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
         this.emit('interaction.learned', { interactionId, description });
         this.memory.recordEpisode({
@@ -2725,7 +2838,11 @@ export class AnimaAgent {
       // muerte: la receta vive en el mundo, el saber que existe en su memoria.
       if (event.type === 'recipe.learned' && event.data.actorId === this.petId) {
         const outputKind = String(event.data.outputKind);
-        const fact = this.memory.addFact(`puedo construir ${outputKind}`, this.tick);
+        const fact = this.memory.addFact(`puedo construir ${outputKind}`, this.tick, 0.9, {
+          source: { kind: 'world', ref: event.type, description: 'receta aceptada por el mundo' },
+          evidence: `receta ${String(event.data.recipeId)} aprendida`,
+          scope: { kind: 'type', typeId: outputKind },
+        });
         this.emit('memory.created', { kind: 'fact', statement: fact.statement });
         this.emit('recipe.learned', {
           recipeId: event.data.recipeId,
@@ -2947,6 +3064,10 @@ export class AnimaAgent {
             interpretation.hypothesis,
             this.tick,
             interpretation.confidence,
+            {
+              source: { kind: 'model', description: 'interpretacion del modelo sobre una señal' },
+              evidence: 'el modelo propuso una explicacion; falta comprobarla',
+            },
           );
           this.emit('hypothesis.updated', {
             hypothesisId: hypothesis.id,
@@ -3106,6 +3227,10 @@ export class AnimaAgent {
             interpretation.hypothesis,
             this.tick,
             interpretation.confidence,
+            {
+              source: { kind: 'model', description: 'interpretacion del modelo sobre una señal' },
+              evidence: 'el modelo propuso una explicacion; falta comprobarla',
+            },
           );
           this.emit('hypothesis.updated', {
             hypothesisId: hypothesis.id,
@@ -3221,6 +3346,10 @@ export class AnimaAgent {
         interpretation.hypothesis,
         this.tick,
         interpretation.confidence,
+        {
+          source: { kind: 'model', description: 'interpretacion del modelo sobre una señal' },
+          evidence: 'el modelo propuso una explicacion; falta comprobarla',
+        },
       );
       this.energyHypothesisId = hypothesis.id;
       // La explicación del usuario o la demostración guiada es en sí misma
@@ -3494,7 +3623,13 @@ export class AnimaAgent {
       }
     }
 
-    const hypothesis = this.memory.addHypothesis(statement, this.tick, confidence);
+    const hypothesis = this.memory.addHypothesis(statement, this.tick, confidence, {
+      source: {
+        kind: 'caretaker',
+        description: 'enseñanza del cuidador interpretada por el modelo',
+      },
+      evidence: text,
+    });
     // Que el cuidador lo afirme es evidencia, pero solo si no contradice lo
     // que la mascota ya observó: en ese caso queda anotada y pendiente.
     if (confidence >= 0.5) this.memory.addEvidence(hypothesis.id, true, this.tick);
@@ -3624,6 +3759,7 @@ export class AnimaAgent {
       request: summary || raw,
       conversation: this.dialogueHistory(),
       facts: this.dialogueFacts(perception),
+      knowledge: this.dialogueKnowledge(),
     });
     if (response.kind !== 'skill.contract') {
       throw new Error(`respuesta inesperada del proveedor: ${response.kind}`);
@@ -3793,6 +3929,7 @@ export class AnimaAgent {
           kind: 'dialogue',
           topic: text,
           facts: this.dialogueFacts(perception),
+          knowledge: this.dialogueKnowledge(),
           history: this.dialogueHistory(),
         });
         if (response.kind !== 'dialogue') {
@@ -3902,6 +4039,40 @@ export class AnimaAgent {
       );
     }
     return facts;
+  }
+
+  private dialogueKnowledge(): EpistemicContextItem[] {
+    return this.memory
+      .knowledgeList({
+        includeRefuted: true,
+        includeUnknown: true,
+        includeStale: true,
+        atTick: this.tick,
+      })
+      .slice(-16)
+      .map((record) => {
+        const assessment = this.memory.assessKnowledge({
+          ...(record.topic !== undefined ? { topic: record.topic } : { content: record.content }),
+          scope: record.scope,
+          atTick: this.tick,
+        });
+        const scope =
+          record.scope.kind === 'entity'
+            ? `entidad:${record.scope.entityId}`
+            : record.scope.kind === 'type'
+              ? `tipo:${record.scope.typeId}`
+              : 'general';
+        return {
+          id: record.id,
+          content: record.content,
+          state: assessment.verdict === 'stale' ? 'stale' : record.status,
+          confidence: record.confidence,
+          source: `${record.source.kind}: ${record.source.description}`,
+          evidence: record.evidence.slice(-3).map((item) => item.description),
+          scope,
+          ...(record.missingData !== undefined ? { missingData: [...record.missingData] } : {}),
+        };
+      });
   }
 
   /**
@@ -5832,13 +6003,26 @@ export class AnimaAgent {
     completionReply: string,
     perception: Perception,
   ): void {
+    const rememberedEntities = this.places
+      .all()
+      .filter((place) => {
+        const assessment = this.memory.assessKnowledge({
+          topic: 'position',
+          scope: { kind: 'entity', entityId: place.entityId },
+          atTick: perception.tick,
+        });
+        // `unknown` conserva compatibilidad con lugares de guardados viejos;
+        // stale/refuted ya es una decision epistemica explicita.
+        return assessment.verdict !== 'stale' && assessment.verdict !== 'refuted';
+      })
+      .map((place) => ({
+        id: place.entityId,
+        kind: place.kind,
+        ...(place.portable !== undefined ? { portable: place.portable } : {}),
+      }));
     const causal = goal.userRequest
       ? planCausalRequest(goal.userRequest, perception, {
-          rememberedEntities: this.places.all().map((place) => ({
-            id: place.entityId,
-            kind: place.kind,
-            ...(place.portable !== undefined ? { portable: place.portable } : {}),
-          })),
+          rememberedEntities,
         })
       : undefined;
     if (causal?.supported) {
@@ -5855,6 +6039,24 @@ export class AnimaAgent {
           risk: causal.result.plan.totalRisk,
           steps,
         });
+        this.memory.recordKnowledge({
+          topic: `causal-plan:${goal.id}`,
+          content: `hay un plan causal para ${goal.description}`,
+          status: 'inferred',
+          source: { kind: 'system', description: 'planificador causal verificado' },
+          evidence: [
+            {
+              supports: true,
+              description: `pasos: ${steps.join(' -> ')}`,
+              source: { kind: 'system', description: 'busqueda causal' },
+              atTick: perception.tick,
+            },
+          ],
+          confidence: causal.result.plan.confidence === 'known' ? 0.95 : 0.65,
+          acquiredAtTick: perception.tick,
+          expiresAtTick: perception.tick + 1,
+          scope: { kind: 'entity', entityId: goal.id },
+        });
       } else {
         delete this.memory.working.planSummary;
         this.emit('causal.plan.rejected', {
@@ -5862,6 +6064,22 @@ export class AnimaAgent {
           reason: causal.result.reason,
           diagnostics: causal.result.diagnostics,
           expandedStates: causal.result.expandedStates,
+        });
+        this.memory.declareUnknown({
+          topic: `causal-plan:${goal.id}`,
+          content: `como completar ${goal.description}`,
+          atTick: perception.tick,
+          scope: { kind: 'entity', entityId: goal.id },
+          reason: 'el planificador no encontro una cadena causal demostrable',
+          missingData: causal.result.diagnostics,
+          resolutionOptions: [
+            { kind: 'observe', description: 'explorar para encontrar recursos o caminos' },
+            { kind: 'ask', description: 'preguntar al cuidador por el dato o recurso faltante' },
+            {
+              kind: 'experiment',
+              description: 'probar una accion contingente segura y observarla',
+            },
+          ],
         });
         // `no-plan` no demuestra imposibilidad en un mundo parcialmente visto:
         // conserva el diagnóstico, pero la ejecución contingente todavía puede

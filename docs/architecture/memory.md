@@ -2,11 +2,30 @@
 
 Capas implementadas en `@anima/memory` (`MemoryStore`):
 
+## Registro epistemológico común (ADR 0084)
+
+Toda afirmación reutilizable por planificación, diálogo o diagnóstico puede
+representarse como `KnowledgeRecord`: contenido, estado (`observed`, `learned`,
+`inferred`, `hypothetical`, `refuted`, `unknown`), fuente, evidencia, confianza,
+adquisición, caducidad y alcance por entidad/tipo/general.
+
+`assessKnowledge` devuelve `supported`, `refuted`, `hypothetical`, `unknown` o
+`stale`; `explainKnowledge` arma una explicación breve desde evidencia
+estructurada. Un registro desconocido enumera el dato faltante y cómo resolverlo
+(`ask`, `observe`, `experiment`). Una fuente `model` siempre se degrada a
+hipótesis: redactar una afirmación no la demuestra.
+
+El campo `knowledge` persiste dentro de `MemoryData`. Si falta en un guardado
+viejo, `loadFrom` lo reconstruye desde hechos e hipótesis sin rechazar la
+partida. Las APIs históricas continúan durante la migración.
+
 ## Memoria de trabajo
+
 Pequeña y acotada: objetivo actual, últimos resultados (≤8), conversación
 inmediata (≤12). Nunca crece sin límite.
 
 ## Episódica
+
 Eventos significativos con `kind`, resumen, importancia y ocurrencias. Los
 episodios repetidos (mismo kind+resumen) se fusionan incrementando
 `occurrences` — la mascota recuerda "choqué contra el muro (×3)", no tres
@@ -20,6 +39,7 @@ hace que el dedupe cuente: tres paredes rotas son un recuerdo con
 de destrucción y —vía `retrieve`— a las propuestas de recetas y habilidades.
 
 ## Hipótesis
+
 Creencias no confirmadas con confianza, evidencia positiva/negativa y estado
 (`pending | confirmed | discarded`). La confianza usa suavizado de Laplace:
 `(pos+1)/(pos+neg+2)` — ni la primera evidencia da certeza, ni un fallo la
@@ -35,11 +55,13 @@ enseñaron, para el cuidador sería indistinguible de no haberlo aprendido. Ver
 ADR 0016.
 
 ## Semántica
+
 Conocimiento consolidado ("consumir alimento recupera energía", "la rama no
 puede dañar el muro"). Los hechos contradichos repetidamente quedan
 invalidados.
 
 ## Consolidación (`consolidate(tick)`)
+
 - Hipótesis con confianza ≥0.8 y ≥2 evidencias ⇒ hecho semántico.
 - Hipótesis con confianza ≤0.2 y ≥2 contraevidencias ⇒ descartada.
 - Episodios viejos (>2000 ticks) y poco importantes (<0.3) ⇒ archivo.
@@ -47,6 +69,7 @@ invalidados.
 - Se ejecuta al completar metas y, desde el ADR 0033, cada 100 ticks.
 
 ## Compactación (`compact(tick)`, ADR 0033)
+
 Cuando los episodios activos superan 60, los viejos (>500 ticks) y poco
 importantes (<0.7) se fusionan en un episodio-resumen por kind cuyo
 `occurrences` es la suma agregada: el conteo degrada con gracia a totales.
@@ -56,12 +79,14 @@ del vínculo (`caretaker`, `teaching`, `promise-kept`, `caretaker-help`,
 propósito: el modelo nunca escribe memoria.
 
 ## Recuperación (`retrieve(query, limit)`)
+
 Coincidencia de términos con límite estricto: nunca se cargan todos los
 recuerdos en un contexto. Desde el ADR 0033 alimenta las propuestas: los deeds
 y fracasos afines al problema viajan como `priorExperience` en `recipe.propose`
 y como «experiencia previa» en el contexto de `skill.propose`.
 
 ## Separación de registros
+
 Los eventos técnicos (`agent.events`, eventos del mundo) son telemetría de
 depuración; la memoria narrativa de la mascota es este almacén. No se mezclan:
 la UI puede mostrar ambos, pero la mascota "recuerda" solo su memoria.

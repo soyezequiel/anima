@@ -326,8 +326,7 @@ export class InventionEngine {
       const blueprint = this.pendingBlueprint;
       this.pendingBlueprint = null;
       const id = (blueprint as { id?: unknown })?.id;
-      const known =
-        typeof id === 'string' && perception.blueprints.some((b) => b.id === id);
+      const known = typeof id === 'string' && perception.blueprints.some((b) => b.id === id);
       if (!known) return { type: 'proposeBlueprint', blueprint };
     }
     return null;
@@ -367,10 +366,18 @@ export class InventionEngine {
   private vetoFor(outputKind: string, partOfWork: boolean): string | undefined {
     const prefix = this.recipeVetoPrefix(outputKind, partOfWork);
     const legacy = `no tiene sentido construir ${outputKind}:`;
-    return this.deps.memory
+    const fact = this.deps.memory
       .factList()
       .find(
         (f) => f.statement.startsWith(prefix) || (!partOfWork && f.statement.startsWith(legacy)),
+      )?.statement;
+    if (fact) return fact;
+    return this.deps.memory
+      .hypothesisList()
+      .find(
+        (h) =>
+          h.resolved === 'pending' &&
+          (h.statement.startsWith(prefix) || (!partOfWork && h.statement.startsWith(legacy))),
       )?.statement;
   }
 
@@ -501,7 +508,8 @@ export class InventionEngine {
         // hecho de procesador y pantalla es honesto SI esas dos ya existen, y es
         // el mismo salto de siempre si no.
         knownRecipes: perception.recipes.map(
-          (r) => `${recipeProduct(r)?.kind ?? r.id} (${r.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
+          (r) =>
+            `${recipeProduct(r)?.kind ?? r.id} (${r.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + ')})`,
         ),
         // Cuánto árbol le queda por debajo. Sin esto el juez puede exigirle seis
         // pisos a un mundo que admite cuatro, que es mandarla contra una pared.
@@ -537,12 +545,17 @@ export class InventionEngine {
     // El veto persiste, como el de las interacciones: viaja en su memoria y en
     // el legado, y el motivo se dice en voz alta — que sepa POR QUÉ su idea no
     // tenía sentido es la mitad de lo que la hace inventar mejor la próxima.
-    const fact = this.deps.memory.addFact(
+    const hypothesis = this.deps.memory.addHypothesis(
       `${this.recipeVetoPrefix(outputKind, partOfWork)}: ${judgement.reason}`,
       this.deps.currentTick(),
+      0.6,
+      {
+        source: { kind: 'model', description: 'veredicto semantico de la IA Dios' },
+        evidence: judgement.reason,
+      },
     );
-    this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });
-    this.remember(this.recipeRejections, fact.statement);
+    this.deps.emit('memory.created', { kind: 'hypothesis', statement: hypothesis.statement });
+    this.remember(this.recipeRejections, hypothesis.statement);
     // Al cuidador, la primera frase (ADR 0073). El veredicto entero está escrito
     // PARA ELLA —«proponémela como obra: la receta del fogón, la de la mesada…»,
     // seiscientos caracteres de taller— y volcarlo tal cual al chat era mostrarle
@@ -630,7 +643,9 @@ export class InventionEngine {
     const past = this.deps.memory.retrieve(problem, 3);
     const priorExperience = past.episodes
       .filter((e) => e.kind === 'deed' || e.kind === 'failure')
-      .map((e) => (e.occurrences > 1 ? `antes: ${e.summary} (×${e.occurrences})` : `antes: ${e.summary}`));
+      .map((e) =>
+        e.occurrences > 1 ? `antes: ${e.summary} (×${e.occurrences})` : `antes: ${e.summary}`,
+      );
 
     const response = await this.consult({
       kind: 'recipe.propose',
@@ -698,10 +713,7 @@ export class InventionEngine {
   }
 
   /** El selector de la interacción, contra lo que ELLA percibe del objeto. */
-  private perceivedMatchesTarget(
-    entity: PerceivedEntity,
-    target: Interaction['target'],
-  ): boolean {
+  private perceivedMatchesTarget(entity: PerceivedEntity, target: Interaction['target']): boolean {
     if (target.kind !== undefined && entity.kind !== target.kind) return false;
     if (target.wet !== undefined && (entity.wet ?? false) !== target.wet) return false;
     if (target.solid !== undefined && (entity.solid ?? false) !== target.solid) return false;
@@ -779,12 +791,19 @@ export class InventionEngine {
     if (this.findInteractionFor(request.verb, request.targetKind, perception)) return null;
 
     const wantedId = this.interactionIdFor(request.verb, request.targetKind);
-    const veto = this.deps.memory
-      .factList()
-      .find((f) => f.statement.startsWith(`mi mundo no permite ${wantedId}`));
+    const veto =
+      this.deps.memory
+        .factList()
+        .find((f) => f.statement.startsWith(`mi mundo no permite ${wantedId}`)) ??
+      this.deps.memory
+        .hypothesisList()
+        .find(
+          (h) =>
+            h.resolved === 'pending' && h.statement.startsWith(`mi mundo no permite ${wantedId}`),
+        );
     if (veto) {
-      this.deps.reply(`Eso ya lo pensé una vez, y ${veto.statement}.`);
-      this.suspendVetoed(goal, 'la lógica del mundo ya rechazó esa interacción');
+      this.deps.reply(`Eso ya lo pensé una vez; por ahora creo que ${veto.statement}.`);
+      this.suspendVetoed(goal, 'una hipótesis pendiente ya desaconseja esa interacción');
       return null;
     }
 
@@ -870,11 +889,16 @@ export class InventionEngine {
     if (!judgement.willing) {
       // El veto es conocimiento y persiste (viaja en su memoria y en el
       // legado): lo vetado no se vuelve a inventar, y el motivo se dice.
-      const fact = this.deps.memory.addFact(
+      const hypothesis = this.deps.memory.addHypothesis(
         `mi mundo no permite ${wantedId}: ${judgement.reason}`,
         this.deps.currentTick(),
+        0.6,
+        {
+          source: { kind: 'model', description: 'veredicto semantico de la IA Dios' },
+          evidence: judgement.reason,
+        },
       );
-      this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });
+      this.deps.emit('memory.created', { kind: 'hypothesis', statement: hypothesis.statement });
       this.deps.reply(`Lo imaginé, pero la lógica de mi mundo lo rechaza: ${judgement.reason}`);
       this.suspendVetoed(goal, 'la lógica del mundo rechazó la interacción');
       return null;
@@ -915,9 +939,16 @@ export class InventionEngine {
       perception.self.heldItems.find((e) => e.kind === targetKind);
     if (sample?.leavesRemains) return null;
 
-    const veto = this.deps.memory
-      .factList()
-      .find((f) => f.statement.startsWith(`romper ${targetKind} no deja nada`));
+    const veto =
+      this.deps.memory
+        .factList()
+        .find((f) => f.statement.startsWith(`romper ${targetKind} no deja nada`)) ??
+      this.deps.memory
+        .hypothesisList()
+        .find(
+          (h) =>
+            h.resolved === 'pending' && h.statement.startsWith(`romper ${targetKind} no deja nada`),
+        );
     // Ya se pensó una vez y el Dios dijo que no queda nada: no se re-pregunta.
     if (veto) return null;
 
@@ -994,11 +1025,16 @@ export class InventionEngine {
     if (!judgement.willing) {
       // El veto es conocimiento y persiste: romper eso no deja nada, y no hay
       // que volver a imaginarlo. Pero el acto sigue en pie — se rompe igual.
-      const fact = this.deps.memory.addFact(
+      const hypothesis = this.deps.memory.addHypothesis(
         `romper ${targetKind} no deja nada: ${judgement.reason}`,
         this.deps.currentTick(),
+        0.6,
+        {
+          source: { kind: 'model', description: 'veredicto semantico de la IA Dios' },
+          evidence: judgement.reason,
+        },
       );
-      this.deps.emit('memory.created', { kind: 'fact', statement: fact.statement });
+      this.deps.emit('memory.created', { kind: 'hypothesis', statement: hypothesis.statement });
       return null;
     }
 
@@ -1076,9 +1112,7 @@ export class InventionEngine {
       blueprintId: blueprint.id,
       workLabel: kindLabel(blueprint.id),
       cells: blueprint.placements.map((p) => ({ offset: { ...p.offset }, kind: p.kind })),
-      ...(this.workGlyphRejections.length > 0
-        ? { rejections: [...this.workGlyphRejections] }
-        : {}),
+      ...(this.workGlyphRejections.length > 0 ? { rejections: [...this.workGlyphRejections] } : {}),
     });
     if (proposal === null) return null;
     if (proposal.kind !== 'work-glyphs') {

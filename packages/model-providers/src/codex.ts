@@ -932,6 +932,18 @@ function readTargetSelector(value: unknown, targetKind: string): CommandEntitySe
   };
 }
 
+function epistemicPrompt(
+  knowledge: Extract<ModelRequest, { kind: 'dialogue' | 'skill.contract' }>['knowledge'],
+): string {
+  if (!knowledge || knowledge.length === 0) return '- (sin registros epistemologicos)';
+  return knowledge
+    .map((item) => {
+      const missing = item.missingData?.length ? `; falta: ${item.missingData.join(', ')}` : '';
+      return `- [${item.id}] ${item.state} ${Math.round(item.confidence * 100)}%: ${item.content} (fuente: ${item.source}; alcance: ${item.scope}${missing})`;
+    })
+    .join('\n');
+}
+
 export function buildCodexPrompt(request: ModelRequest): {
   prompt: string;
   schema: Record<string, unknown>;
@@ -1689,6 +1701,9 @@ ${
 Hechos que conoces:
 ${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin hechos)'}
 
+Registro epistemológico (los estados no son intercambiables):
+${epistemicPrompt(request.knowledge)}
+
 ${PRIMITIVES_REFERENCE}
 
 ${CRITERIA_REFERENCE}
@@ -1755,9 +1770,21 @@ Mensaje de tu cuidador: ${request.topic}
 Cosas que sabés (no inventes otras):
 ${request.facts.map((f) => `- ${f}`).join('\n') || '- (todavía sabés muy poco)'}
 
+Registro epistemológico:
+${epistemicPrompt(request.knowledge)}
+
 Respondé directamente al mensaje con UNA frase corta, cálida y honesta. Si es un
 saludo, saludá; si es un elogio, agradecelo. No afirmes haber hecho cosas que no
 figuren en lo que sabés.
+
+Reglas epistemológicas obligatorias:
+- observed/learned son conocimiento; inferred/hypothetical son creencias y se
+  nombran como tales; refuted significa que la afirmación es falsa; unknown
+  significa que falta información; stale significa que pudo haber sido cierta
+  pero necesita una observación actual.
+- Si el registro no alcanza para responder una pregunta factual, decí "no lo
+  sé" y nombrá el dato faltante. No completes huecos por plausibilidad.
+- Una frase de un modelo o del cuidador sin comprobación nunca se vuelve hecho.
 
 Nunca hables de la interfaz, de "canales", de órdenes ni de cómo tiene que
 escribirte tu cuidador: dentro de tu mundo eso no existe, y pedirle que

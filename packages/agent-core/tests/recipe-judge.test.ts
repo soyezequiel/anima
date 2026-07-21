@@ -123,7 +123,8 @@ describe('la IA Dios juzga las recetas inventadas (ADR 0042)', () => {
       'recipe.judge': {
         kind: 'judgement',
         willing: false,
-        reason: 'te faltan el procesador, la memoria y la pantalla: eso no sale de atar una piedra a un palo',
+        reason:
+          'te faltan el procesador, la memoria y la pantalla: eso no sale de atar una piedra a un palo',
       },
     });
     const agent = makeAgent(petId, provider);
@@ -173,10 +174,11 @@ describe('la IA Dios juzga las recetas inventadas (ADR 0042)', () => {
 
     await run(world, petId, agent, 12);
 
-    // El motivo quedó como hecho: viaja en su memoria y en el legado.
+    // El motivo queda como hipótesis persistente: orienta el siguiente intento,
+    // pero la IA Dios no promociona su propia redacción a hecho.
     const veto = agent.memory
-      .factList()
-      .find((f) => f.statement.startsWith('no tiene sentido construir celular'));
+      .hypothesisList()
+      .find((h) => h.statement.startsWith('no tiene sentido construir celular'));
     expect(veto).toBeDefined();
     expect(veto!.statement).toContain('no hacen un aparato');
 
@@ -328,8 +330,6 @@ describe('la IA Dios juzga las recetas inventadas (ADR 0042)', () => {
 
     expect(world.recipes.some((r) => r.id === 'celular')).toBe(false);
     // Pero no se le cobra como idea mala: no hubo veredicto que aprender.
-    expect(
-      agent.memory.factList().some((f) => f.statement.includes('celular')),
-    ).toBe(false);
+    expect(agent.memory.factList().some((f) => f.statement.includes('celular'))).toBe(false);
   });
 });

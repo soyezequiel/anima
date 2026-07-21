@@ -3,6 +3,22 @@
  * archivo. No guarda razonamiento interno crudo: solo estructuras auditables.
  */
 
+import {
+  defaultResolutionOptions,
+  isKnowledgeStale,
+  normalizeKnowledgeContent,
+  sameKnowledgeScope,
+  type KnowledgeAssessment,
+  type KnowledgeEvidence,
+  type KnowledgeInput,
+  type KnowledgeQuery,
+  type KnowledgeRecord,
+  type KnowledgeScope,
+  type KnowledgeSource,
+  type KnowledgeStatus,
+  type UnknownKnowledgeInput,
+} from './epistemic.js';
+
 export interface EpisodicMemory {
   id: string;
   kind: string;
@@ -95,6 +111,8 @@ export interface MemoryData {
   episodes: EpisodicMemory[];
   facts: SemanticFact[];
   hypotheses: Hypothesis[];
+  /** Ausente en guardados anteriores a la metacognicion general. */
+  knowledge?: KnowledgeRecord[];
   counter: number;
   working: WorkingMemoryState;
 }
@@ -104,6 +122,7 @@ export class MemoryStore {
   private episodes: EpisodicMemory[] = [];
   private facts: SemanticFact[] = [];
   private hypotheses: Hypothesis[] = [];
+  private knowledge: KnowledgeRecord[] = [];
   private counter = 0;
 
   serialize(): MemoryData {
@@ -111,6 +130,7 @@ export class MemoryStore {
       episodes: this.episodes,
       facts: this.facts,
       hypotheses: this.hypotheses,
+      knowledge: this.knowledge,
       counter: this.counter,
       working: this.working,
     });
@@ -121,6 +141,7 @@ export class MemoryStore {
     this.episodes = clone.episodes;
     this.facts = clone.facts;
     this.hypotheses = clone.hypotheses;
+    this.knowledge = clone.knowledge ?? [];
     this.counter = clone.counter;
     this.working.recentResults = clone.working.recentResults;
     this.working.conversation = clone.working.conversation;
@@ -129,11 +150,284 @@ export class MemoryStore {
     } else {
       delete this.working.currentGoalId;
     }
+    if (clone.working.planSummary !== undefined) {
+      this.working.planSummary = clone.working.planSummary;
+    } else {
+      delete this.working.planSummary;
+    }
+
+    // Migracion perezosa y sin version destructiva: los arrays historicos
+    // siguen siendo legibles, pero desde la primera carga tambien tienen una
+    // representacion epistemologica explicita.
+    if (clone.knowledge === undefined) this.migrateLegacyKnowledge();
   }
 
   private nextId(prefix: string): string {
     this.counter += 1;
     return `${prefix}-${this.counter}`;
+  }
+
+  // ---- conocimiento epistemologico ---------------------------------------
+
+  private findKnowledge(query: KnowledgeQuery): KnowledgeRecord | undefined {
+    const scope = query.scope ?? { kind: 'general' as const };
+    const normalized = query.content ? normalizeKnowledgeContent(query.content) : undefined;
+    return [...this.knowledge]
+      .reverse()
+      .find(
+        (record) =>
+          sameKnowledgeScope(record.scope, scope) &&
+          (query.topic !== undefined
+            ? record.topic === query.topic
+            : normalized !== undefined
+              ? normalizeKnowledgeContent(record.content) === normalized
+              : false),
+      );
+  }
+
+  private evidenceId(): string {
+    return this.nextId('ev');
+  }
+
+  /**
+   * Registra o revisa una afirmacion. La politica central impide que una
+   * salida de modelo se autoproclame observacion, aprendizaje o hecho.
+   */
+  recordKnowledge(input: KnowledgeInput): KnowledgeRecord {
+    const scope = input.scope ?? { kind: 'general' as const };
+    const content = input.content.trim().replace(/\s+/g, ' ');
+    const requestedStatus = input.status;
+    const status: KnowledgeStatus =
+      input.source.kind === 'model' && requestedStatus !== 'unknown'
+        ? 'hypothetical'
+        : requestedStatus;
+    const query: KnowledgeQuery = {
+      ...(input.topic !== undefined ? { topic: input.topic } : { content }),
+      scope,
+    };
+    const existing = this.findKnowledge(query);
+    const suppliedEvidence = input.evidence ?? [
+      {
+        supports: requestedStatus !== 'refuted',
+        description: input.source.description,
+        source: input.source,
+        atTick: input.acquiredAtTick,
+        ...(input.acquiredAt !== undefined ? { at: input.acquiredAt } : {}),
+      },
+    ];
+    const evidence: KnowledgeEvidence[] = suppliedEvidence.map((item) => ({
+      ...structuredClone(item),
+      id: this.evidenceId(),
+    }));
+    const confidence = Math.max(0, Math.min(1, input.confidence));
+
+    if (!existing) {
+      const record: KnowledgeRecord = {
+        id: this.nextId('know'),
+        ...(input.topic !== undefined ? { topic: input.topic } : {}),
+        content,
+        status,
+        source: structuredClone(input.source),
+        evidence,
+        confidence,
+        acquiredAtTick: input.acquiredAtTick,
+        ...(input.acquiredAt !== undefined ? { acquiredAt: input.acquiredAt } : {}),
+        ...(input.expiresAtTick !== undefined ? { expiresAtTick: input.expiresAtTick } : {}),
+        ...(input.expiresAt !== undefined ? { expiresAt: input.expiresAt } : {}),
+        scope: structuredClone(scope),
+        revisions: [],
+        ...(input.missingData !== undefined ? { missingData: [...input.missingData] } : {}),
+        ...(input.resolutionOptions !== undefined
+          ? { resolutionOptions: structuredClone(input.resolutionOptions) }
+          : {}),
+      };
+      this.knowledge.push(record);
+      return record;
+    }
+
+    const contentChanged =
+      normalizeKnowledgeContent(existing.content) !== normalizeKnowledgeContent(content);
+    const statusChanged = existing.status !== status;
+    if (contentChanged || statusChanged) {
+      existing.revisions.push({
+        atTick: input.acquiredAtTick,
+        ...(input.acquiredAt !== undefined ? { at: input.acquiredAt } : {}),
+        previousContent: existing.content,
+        previousStatus: existing.status,
+        previousConfidence: existing.confidence,
+        reason: contentChanged
+          ? `nueva informacion sobre ${input.topic ?? existing.content}`
+          : `evidencia de ${input.source.description}`,
+      });
+    }
+
+    existing.evidence.push(...evidence);
+    // Mundo y percepcion corrigen cualquier creencia anterior. Una fuente
+    // debil solo puede convertir desconocimiento en hipotesis; no degradar una
+    // observacion directa ni reemplazarla por prosa plausible.
+    const authoritative = input.source.kind === 'world' || input.source.kind === 'perception';
+    const mayReplace =
+      authoritative ||
+      existing.status === 'unknown' ||
+      existing.status === 'hypothetical' ||
+      (status === 'learned' && existing.status === 'inferred');
+    if (mayReplace) {
+      existing.content = content;
+      existing.status = status;
+      existing.source = structuredClone(input.source);
+      existing.confidence = confidence;
+      existing.acquiredAtTick = input.acquiredAtTick;
+      if (input.acquiredAt !== undefined) existing.acquiredAt = input.acquiredAt;
+      else delete existing.acquiredAt;
+    } else if (requestedStatus === 'refuted') {
+      existing.confidence = Math.max(0, existing.confidence - confidence * 0.25);
+    } else {
+      existing.confidence = Math.max(existing.confidence, confidence);
+    }
+    if (input.expiresAtTick !== undefined) existing.expiresAtTick = input.expiresAtTick;
+    else if (authoritative) delete existing.expiresAtTick;
+    if (input.expiresAt !== undefined) existing.expiresAt = input.expiresAt;
+    else if (authoritative) delete existing.expiresAt;
+    if (input.missingData !== undefined) existing.missingData = [...input.missingData];
+    else if (status !== 'unknown') delete existing.missingData;
+    if (input.resolutionOptions !== undefined) {
+      existing.resolutionOptions = structuredClone(input.resolutionOptions);
+    } else if (status !== 'unknown') {
+      delete existing.resolutionOptions;
+    }
+    return existing;
+  }
+
+  declareUnknown(input: UnknownKnowledgeInput): KnowledgeRecord {
+    const existing = this.findKnowledge({
+      ...(input.topic !== undefined ? { topic: input.topic } : { content: input.content }),
+      scope: input.scope ?? { kind: 'general' },
+    });
+    if (existing && !isKnowledgeStale(existing, input.atTick, input.at)) return existing;
+    return this.recordKnowledge({
+      ...(input.topic !== undefined ? { topic: input.topic } : {}),
+      content: input.content,
+      status: 'unknown',
+      source: {
+        kind: 'system',
+        description: input.reason ?? 'se detecto una ausencia de informacion',
+      },
+      confidence: 1,
+      acquiredAtTick: input.atTick,
+      ...(input.at !== undefined ? { acquiredAt: input.at } : {}),
+      scope: input.scope ?? { kind: 'general' },
+      missingData: [...input.missingData],
+      resolutionOptions: input.resolutionOptions ?? defaultResolutionOptions(input.content),
+    });
+  }
+
+  assessKnowledge(query: KnowledgeQuery): KnowledgeAssessment {
+    const record = this.findKnowledge(query);
+    const content = query.content ?? query.topic ?? 'la afirmacion consultada';
+    if (!record) {
+      return {
+        verdict: 'unknown',
+        missingData: [content],
+        resolutionOptions: defaultResolutionOptions(content),
+        explanation: `No lo se: no tengo evidencia sobre ${content}.`,
+      };
+    }
+    const resolutionOptions = record.resolutionOptions ?? defaultResolutionOptions(record.content);
+    if (isKnowledgeStale(record, query.atTick, query.at)) {
+      return {
+        verdict: 'stale',
+        record: structuredClone(record),
+        missingData: record.missingData ?? [`una observacion actual de ${record.content}`],
+        resolutionOptions,
+        explanation: `La informacion sobre «${record.content}» quedo desactualizada; fue adquirida en t${record.acquiredAtTick}.`,
+      };
+    }
+    const verdict =
+      record.status === 'refuted'
+        ? 'refuted'
+        : record.status === 'unknown'
+          ? 'unknown'
+          : record.status === 'hypothetical' || record.status === 'inferred'
+            ? 'hypothetical'
+            : 'supported';
+    return {
+      verdict,
+      record: structuredClone(record),
+      missingData: record.missingData ?? [],
+      resolutionOptions,
+      explanation: this.explainKnowledge(record, query.atTick, query.at),
+    };
+  }
+
+  explainKnowledge(
+    recordOrQuery: KnowledgeRecord | KnowledgeQuery,
+    atTick?: number,
+    at?: number,
+  ): string {
+    const record = 'id' in recordOrQuery ? recordOrQuery : this.findKnowledge(recordOrQuery);
+    if (!record) return 'No lo se: no tengo evidencia suficiente.';
+    if (isKnowledgeStale(record, atTick, at)) {
+      return `«${record.content}» quedo desactualizado y necesita una observacion nueva.`;
+    }
+    const evidence = record.evidence
+      .slice(-3)
+      .map((item) => `${item.supports ? 'a favor' : 'en contra'}: ${item.description}`)
+      .join('; ');
+    const why = evidence || `fuente: ${record.source.description}`;
+    if (record.status === 'unknown') {
+      return `No lo se: falta ${record.missingData?.join(', ') || 'evidencia suficiente'}.`;
+    }
+    if (record.status === 'refuted') {
+      return `Se que «${record.content}» es falso (confianza ${Math.round(record.confidence * 100)}%): ${why}.`;
+    }
+    if (record.status === 'hypothetical' || record.status === 'inferred') {
+      return `Creo que «${record.content}» (confianza ${Math.round(record.confidence * 100)}%), pero la evidencia aun es insuficiente: ${why}.`;
+    }
+    return `Se que «${record.content}» (confianza ${Math.round(record.confidence * 100)}%): ${why}.`;
+  }
+
+  knowledgeList(
+    options: {
+      includeRefuted?: boolean;
+      includeUnknown?: boolean;
+      includeStale?: boolean;
+      atTick?: number;
+      at?: number;
+    } = {},
+  ): KnowledgeRecord[] {
+    return this.knowledge
+      .filter((record) => options.includeRefuted || record.status !== 'refuted')
+      .filter((record) => options.includeUnknown || record.status !== 'unknown')
+      .filter(
+        (record) => options.includeStale || !isKnowledgeStale(record, options.atTick, options.at),
+      )
+      .map((record) => structuredClone(record));
+  }
+
+  private migrateLegacyKnowledge(): void {
+    for (const fact of this.facts) {
+      this.recordKnowledge({
+        content: fact.statement,
+        status: fact.invalidated ? 'refuted' : 'learned',
+        source: { kind: 'system', description: 'hecho migrado de la memoria semantica' },
+        confidence: fact.confidence,
+        acquiredAtTick: fact.updatedAtTick,
+      });
+    }
+    for (const hypothesis of this.hypotheses) {
+      this.recordKnowledge({
+        content: hypothesis.statement,
+        status:
+          hypothesis.resolved === 'confirmed'
+            ? 'learned'
+            : hypothesis.resolved === 'discarded'
+              ? 'refuted'
+              : 'hypothetical',
+        source: { kind: 'system', description: 'hipotesis migrada de la memoria historica' },
+        confidence: hypothesis.confidence,
+        acquiredAtTick: hypothesis.updatedAtTick,
+      });
+    }
   }
 
   // ---- memoria de trabajo -------------------------------------------------
@@ -190,11 +484,57 @@ export class MemoryStore {
 
   // ---- hipótesis ----------------------------------------------------------
 
-  addHypothesis(statement: string, tick: number, initialConfidence = 0.5): Hypothesis {
+  addHypothesis(
+    statement: string,
+    tick: number,
+    initialConfidence = 0.5,
+    options: {
+      source?: KnowledgeSource;
+      scope?: KnowledgeScope;
+      topic?: string;
+      evidence?: string;
+      acquiredAt?: number;
+      expiresAtTick?: number;
+      expiresAt?: number;
+    } = {},
+  ): Hypothesis {
     const existing = this.hypotheses.find(
       (h) => h.statement === statement && h.resolved === 'pending',
     );
-    if (existing) return existing;
+    if (existing) {
+      this.recordKnowledge({
+        ...(options.topic !== undefined ? { topic: options.topic } : {}),
+        content: statement,
+        status: 'hypothetical',
+        source: options.source ?? {
+          kind: 'experience',
+          description: 'hipotesis de la experiencia',
+        },
+        confidence: existing.confidence,
+        acquiredAtTick: tick,
+        ...(options.acquiredAt !== undefined ? { acquiredAt: options.acquiredAt } : {}),
+        ...(options.expiresAtTick !== undefined ? { expiresAtTick: options.expiresAtTick } : {}),
+        ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
+        scope: options.scope ?? { kind: 'general' },
+        ...(options.evidence !== undefined
+          ? {
+              evidence: [
+                {
+                  supports: true,
+                  description: options.evidence,
+                  source: options.source ?? {
+                    kind: 'experience',
+                    description: 'hipotesis de la experiencia',
+                  },
+                  atTick: tick,
+                  ...(options.acquiredAt !== undefined ? { at: options.acquiredAt } : {}),
+                },
+              ],
+            }
+          : {}),
+      });
+      return existing;
+    }
     const hypothesis: Hypothesis = {
       id: this.nextId('hyp'),
       statement,
@@ -205,6 +545,34 @@ export class MemoryStore {
       resolved: 'pending',
     };
     this.hypotheses.push(hypothesis);
+    this.recordKnowledge({
+      ...(options.topic !== undefined ? { topic: options.topic } : {}),
+      content: statement,
+      status: 'hypothetical',
+      source: options.source ?? { kind: 'experience', description: 'hipotesis de la experiencia' },
+      confidence: initialConfidence,
+      acquiredAtTick: tick,
+      ...(options.acquiredAt !== undefined ? { acquiredAt: options.acquiredAt } : {}),
+      ...(options.expiresAtTick !== undefined ? { expiresAtTick: options.expiresAtTick } : {}),
+      ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
+      scope: options.scope ?? { kind: 'general' },
+      ...(options.evidence !== undefined
+        ? {
+            evidence: [
+              {
+                supports: true,
+                description: options.evidence,
+                source: options.source ?? {
+                  kind: 'experience',
+                  description: 'hipotesis de la experiencia',
+                },
+                atTick: tick,
+                ...(options.acquiredAt !== undefined ? { at: options.acquiredAt } : {}),
+              },
+            ],
+          }
+        : {}),
+    });
     return hypothesis;
   }
 
@@ -218,6 +586,26 @@ export class MemoryStore {
       hypothesis.negativeEvidence,
     );
     hypothesis.updatedAtTick = tick;
+    this.recordKnowledge({
+      content: hypothesis.statement,
+      status: hypothesis.resolved === 'discarded' ? 'refuted' : 'hypothetical',
+      source: {
+        kind: 'experience',
+        description: 'resultado observado al poner a prueba la hipotesis',
+      },
+      evidence: [
+        {
+          supports,
+          description: supports
+            ? 'la experiencia coincidio'
+            : 'la experiencia contradijo la hipotesis',
+          source: { kind: 'experience', description: 'prueba de la hipotesis' },
+          atTick: tick,
+        },
+      ],
+      confidence: hypothesis.confidence,
+      acquiredAtTick: tick,
+    });
     return hypothesis;
   }
 
@@ -227,12 +615,60 @@ export class MemoryStore {
 
   // ---- semántica ----------------------------------------------------------
 
-  addFact(statement: string, tick: number, confidence = 0.9): SemanticFact {
+  addFact(
+    statement: string,
+    tick: number,
+    confidence = 0.9,
+    options: {
+      status?: Extract<KnowledgeStatus, 'observed' | 'learned' | 'inferred'>;
+      source?: KnowledgeSource;
+      scope?: KnowledgeScope;
+      topic?: string;
+      evidence?: string;
+      acquiredAt?: number;
+      expiresAtTick?: number;
+      expiresAt?: number;
+    } = {},
+  ): SemanticFact {
     const existing = this.facts.find((f) => f.statement === statement && !f.invalidated);
     if (existing) {
       existing.positiveEvidence += 1;
-      existing.confidence = evidenceConfidence(existing.positiveEvidence, existing.negativeEvidence);
+      existing.confidence = evidenceConfidence(
+        existing.positiveEvidence,
+        existing.negativeEvidence,
+      );
       existing.updatedAtTick = tick;
+      this.recordKnowledge({
+        ...(options.topic !== undefined ? { topic: options.topic } : {}),
+        content: statement,
+        status: options.status ?? 'learned',
+        source: options.source ?? {
+          kind: 'system',
+          description: 'regla confirmada por el sistema',
+        },
+        confidence: existing.confidence,
+        acquiredAtTick: tick,
+        ...(options.acquiredAt !== undefined ? { acquiredAt: options.acquiredAt } : {}),
+        ...(options.expiresAtTick !== undefined ? { expiresAtTick: options.expiresAtTick } : {}),
+        ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
+        scope: options.scope ?? { kind: 'general' },
+        ...(options.evidence !== undefined
+          ? {
+              evidence: [
+                {
+                  supports: true,
+                  description: options.evidence,
+                  source: options.source ?? {
+                    kind: 'system',
+                    description: 'regla confirmada por el sistema',
+                  },
+                  atTick: tick,
+                  ...(options.acquiredAt !== undefined ? { at: options.acquiredAt } : {}),
+                },
+              ],
+            }
+          : {}),
+      });
       return existing;
     }
     const fact: SemanticFact = {
@@ -245,6 +681,34 @@ export class MemoryStore {
       invalidated: false,
     };
     this.facts.push(fact);
+    this.recordKnowledge({
+      ...(options.topic !== undefined ? { topic: options.topic } : {}),
+      content: statement,
+      status: options.status ?? 'learned',
+      source: options.source ?? { kind: 'system', description: 'regla confirmada por el sistema' },
+      confidence,
+      acquiredAtTick: tick,
+      ...(options.acquiredAt !== undefined ? { acquiredAt: options.acquiredAt } : {}),
+      ...(options.expiresAtTick !== undefined ? { expiresAtTick: options.expiresAtTick } : {}),
+      ...(options.expiresAt !== undefined ? { expiresAt: options.expiresAt } : {}),
+      scope: options.scope ?? { kind: 'general' },
+      ...(options.evidence !== undefined
+        ? {
+            evidence: [
+              {
+                supports: true,
+                description: options.evidence,
+                source: options.source ?? {
+                  kind: 'system',
+                  description: 'regla confirmada por el sistema',
+                },
+                atTick: tick,
+                ...(options.acquiredAt !== undefined ? { at: options.acquiredAt } : {}),
+              },
+            ],
+          }
+        : {}),
+    });
     return fact;
   }
 
@@ -254,7 +718,24 @@ export class MemoryStore {
     fact.negativeEvidence += 1;
     fact.confidence = evidenceConfidence(fact.positiveEvidence, fact.negativeEvidence);
     fact.updatedAtTick = tick;
-    if (fact.confidence < DISCARD_CONFIDENCE) fact.invalidated = true;
+    if (fact.confidence < DISCARD_CONFIDENCE) {
+      fact.invalidated = true;
+      this.recordKnowledge({
+        content: fact.statement,
+        status: 'refuted',
+        source: { kind: 'world', description: 'contraevidencia repetida del mundo' },
+        evidence: [
+          {
+            supports: false,
+            description: 'el mundo contradijo el hecho repetidamente',
+            source: { kind: 'world', description: 'resultado del mundo' },
+            atTick: tick,
+          },
+        ],
+        confidence: 1 - fact.confidence,
+        acquiredAtTick: tick,
+      });
+    }
     return fact;
   }
 
@@ -288,6 +769,13 @@ export class MemoryStore {
         hypothesis.negativeEvidence >= CONFIRM_MIN_EVIDENCE
       ) {
         hypothesis.resolved = 'discarded';
+        this.recordKnowledge({
+          content: hypothesis.statement,
+          status: 'refuted',
+          source: { kind: 'experience', description: 'pruebas repetidas refutaron la hipotesis' },
+          confidence: 1 - hypothesis.confidence,
+          acquiredAtTick: tick,
+        });
       }
     }
 
@@ -363,7 +851,8 @@ export class MemoryStore {
         (e) => !e.archived && e.kind === kind && e.data.compacted === true,
       );
       if (existing) {
-        const distinct = (typeof existing.data.distinct === 'number' ? existing.data.distinct : 0) + group.length;
+        const distinct =
+          (typeof existing.data.distinct === 'number' ? existing.data.distinct : 0) + group.length;
         existing.occurrences += totalOccurrences;
         existing.summary = `resumen de ${kind}: ${distinct} recuerdos distintos`;
         existing.lastTick = Math.max(existing.lastTick, ...group.map((e) => e.lastTick));
@@ -396,7 +885,10 @@ export class MemoryStore {
    * Devuelve como máximo `limit` resultados: nunca "toda la memoria".
    */
   retrieve(query: string, limit = 5): { episodes: EpisodicMemory[]; facts: SemanticFact[] } {
-    const terms = query.toLowerCase().split(/\s+/).filter((t) => t.length > 2);
+    const terms = query
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((t) => t.length > 2);
     const score = (text: string): number =>
       terms.reduce((sum, term) => (text.toLowerCase().includes(term) ? sum + 1 : sum), 0);
 
