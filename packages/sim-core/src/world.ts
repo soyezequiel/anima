@@ -1,5 +1,6 @@
 import type { RngState, Vec2 } from '@anima/shared';
 import { createRng } from '@anima/shared';
+import type { WorldClock } from './clock.js';
 import type { Components, Entity, EntityId, EntityKind } from './components.js';
 import type { Blueprint } from './blueprints.js';
 import type { Decomposition } from './decompositions.js';
@@ -119,6 +120,12 @@ export interface WorldState {
    * ve exactamente como antes de que esto existiera.
    */
   workGlyphs: WorkGlyphRegistry;
+  /**
+   * El ciclo de día y noche, contado en ticks (ver `clock.ts`). Opcional: un
+   * mundo sin reloj es de día siempre, y la hora se deriva de `tick` en vez de
+   * guardarse aparte, así que viaja en los snapshots sin ningún trato especial.
+   */
+  clock?: WorldClock;
 }
 
 export function createWorld(
@@ -130,6 +137,7 @@ export function createWorld(
     decompositions?: Decomposition[];
     glyphs?: GlyphRegistry;
     workGlyphs?: WorkGlyphRegistry;
+    clock?: WorldClock;
   } = {},
 ): WorldState {
   return {
@@ -144,6 +152,7 @@ export function createWorld(
     decompositions: options.decompositions ? structuredClone(options.decompositions) : [],
     glyphs: options.glyphs ? structuredClone(options.glyphs) : {},
     workGlyphs: options.workGlyphs ? structuredClone(options.workGlyphs) : {},
+    ...(options.clock ? { clock: structuredClone(options.clock) } : {}),
   };
 }
 

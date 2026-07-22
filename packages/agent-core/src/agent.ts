@@ -32,12 +32,15 @@ import {
   recipeProduces,
   recipeProducing,
   recipeProduct,
+  secondsToTicks,
   validateRecipe,
 } from '@anima/sim-core';
 import type { KnowledgeAssessment, MemoryData, MemoryStore } from '@anima/memory';
 import { MemoryStore as MemoryStoreImpl } from '@anima/memory';
 import type {
   CommandInterpretation,
+  CommandTemporal,
+  CommandTrigger,
   EpistemicContextItem,
   ModelProvider,
   ModelRequest,
@@ -59,10 +62,15 @@ import type { EvaluationCaseHook, NamedScenario, RegressionStore } from '@anima/
 import type { AgentEvent } from './events.js';
 import { planCausalRequest } from './causal-world-model.js';
 import {
+  compileTemporalGoal,
   conditionForUserRequest,
+  describeTrigger,
   evaluateGoalCondition,
   type GoalCondition,
+  type GoalConditionContext,
   type GoalConditionEvaluation,
+  type GoalTemporal,
+  type Trigger,
 } from './goal-conditions.js';
 import type {
   Goal,
@@ -71,7 +79,7 @@ import type {
   GoalUserRequest,
   LearningContract,
 } from './goals.js';
-import { GoalManager } from './goals.js';
+import { AWAIT_CONDITION_REASON, GoalManager } from './goals.js';
 import type { PersonalityTrait } from './personality.js';
 import { derivePersonality } from './personality.js';
 import type { PlaceMemoryData } from './place-memory.js';
@@ -262,6 +270,71 @@ const USER_REQUEST_WEIGHTS: Record<GoalUserRequest['kind'], { priority: number; 
     'destroy-entity': { priority: 0.6, urgency: 0.35 },
     'wait-here': { priority: 0.6, urgency: 0.35 },
   };
+
+/**
+ * Traduce un disparador interpretado por el modelo al disparador que el mundo
+ * verifica. Son la misma familia cerrada; esta función es solo la frontera que
+ * descarta lo mal formado (un `holding` sin qué tener, un `stat` sin umbral) en
+ * vez de dejar pasar un disparador que nunca se podría medir.
+ */
+function triggerFromCommand(trigger: CommandTrigger): Trigger | undefined {
+  switch (trigger.kind) {
+    case 'time-of-day':
+      return trigger.phase ? { kind: 'time-of-day', phase: trigger.phase } : undefined;
+    case 'entity-appears':
+      return trigger.entityKind
+        ? { kind: 'entity-appears', entityKind: trigger.entityKind }
+        : undefined;
+    case 'entity-gone':
+      return trigger.entityKind
+        ? { kind: 'entity-gone', entityKind: trigger.entityKind }
+        : undefined;
+    case 'holding':
+      return trigger.itemKind
+        ? { kind: 'holding', itemKind: trigger.itemKind, count: trigger.count ?? 1 }
+        : undefined;
+    case 'stat':
+      return trigger.stat && trigger.comparison && trigger.value !== undefined
+        ? {
+            kind: 'stat',
+            stat: trigger.stat,
+            comparison: trigger.comparison,
+            value: trigger.value,
+          }
+        : undefined;
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Traduce la envoltura temporal del modelo (en segundos) a la del mundo (en
+ * ticks). El reloj del mundo cuenta ticks, no milisegundos: convertir acá, en
+ * la frontera, deja que TODO el resto del sistema razone en la única unidad de
+ * tiempo que el mundo tiene.
+ */
+function temporalFromCommand(temporal: CommandTemporal | undefined): GoalTemporal | undefined {
+  if (!temporal) return undefined;
+  const startWhen = temporal.startWhen ? triggerFromCommand(temporal.startWhen) : undefined;
+  const until = temporal.until ? triggerFromCommand(temporal.until) : undefined;
+  const durationTicks =
+    temporal.durationSeconds !== undefined && temporal.durationSeconds > 0
+      ? secondsToTicks(temporal.durationSeconds)
+      : undefined;
+  const deadlineTicks =
+    temporal.deadlineSeconds !== undefined && temporal.deadlineSeconds > 0
+      ? secondsToTicks(temporal.deadlineSeconds)
+      : undefined;
+  if (!startWhen && !until && durationTicks === undefined && deadlineTicks === undefined) {
+    return undefined;
+  }
+  return {
+    ...(startWhen ? { startWhen } : {}),
+    ...(until ? { until } : {}),
+    ...(durationTicks !== undefined ? { durationTicks } : {}),
+    ...(deadlineTicks !== undefined ? { deadlineTicks } : {}),
+  };
+}
 
 /**
  * Mensaje del usuario ya clasificado. Además de una orden ejecutable o una
@@ -922,14 +995,21 @@ export class AnimaAgent {
     }
   }
 
-  private evaluateGoal(goal: Goal, perception: Perception): GoalConditionEvaluation | undefined {
-    if (!goal.successCondition) return undefined;
-    return evaluateGoalCondition(goal.successCondition, {
+  /**
+   * El contexto con el que se mide CUALQUIER condición de un objetivo. Reúne en
+   * un solo lugar lo acotado a la meta (bindings, ausencias, hechos, contadores,
+   * el ancla temporal) y lo del mundo (tick, hora del día, planos, biblioteca).
+   * Centralizarlo evita que una condición temporal se evalúe sin reloj según
+   * desde qué camino se la llame.
+   */
+  private conditionContext(goal: Goal, perception: Perception): GoalConditionContext {
+    return {
       perception,
       ...(goal.bindings ? { bindings: goal.bindings } : {}),
       absentEntityIds: new Set(goal.absentEntityIds ?? []),
       facts: new Set(goal.observedFacts ?? []),
       counters: goal.counters ?? {},
+      ...(goal.activatedAtTick !== undefined ? { activatedAtTick: goal.activatedAtTick } : {}),
       blueprintComplete: (blueprintId) => {
         const blueprint = perception.blueprints.find((candidate) => candidate.id === blueprintId);
         const anchor = this.structureSites.get(blueprintId);
@@ -937,7 +1017,37 @@ export class AnimaAgent {
         return this.pendingPlacements(blueprint, anchor, perception).length === 0;
       },
       stableSkillExists: (name) => this.config.library.findStable(name) !== undefined,
-    });
+    };
+  }
+
+  private evaluateGoal(goal: Goal, perception: Perception): GoalConditionEvaluation | undefined {
+    if (!goal.successCondition) return undefined;
+    return evaluateGoalCondition(goal.successCondition, this.conditionContext(goal, perception));
+  }
+
+  /**
+   * Despierta los objetivos que dormían esperando su condición de inicio. Es la
+   * contraparte de la suspensión: cada tick revisa los disparadores ("cuando
+   * tengas dos troncos", "si aparece un lobo", "después de comer") y, apenas el
+   * mundo cumple uno, activa el objetivo y fija el tick de arranque —el ancla
+   * desde la que se cuentan las duraciones. Determinista: solo un `met` real
+   * despierta; un disparador que no se puede observar todavía deja seguir
+   * durmiendo, y uno que nunca ocurre lo deja dormido para siempre (hasta que un
+   * plazo, si lo hay, lo haga fracasar).
+   */
+  private settleActivations(perception: Perception): void {
+    for (const goal of this.goals.all()) {
+      if (goal.status !== 'suspended' || goal.suspendedReason !== AWAIT_CONDITION_REASON) continue;
+      if (!goal.activation) continue;
+      const evaluation = evaluateGoalCondition(goal.activation, this.conditionContext(goal, perception));
+      if (evaluation.status !== 'met') continue;
+      this.goals.activate(goal.id, perception.tick);
+      this.progress.resetGoal(goal.id);
+      this.emit('goal.reactivated', {
+        goalId: goal.id,
+        reason: 'se cumplió la condición de inicio del pedido',
+      });
+    }
   }
 
   /** Cierra o falla metas solo con predicados verificables del mundo. */
@@ -953,16 +1063,17 @@ export class AnimaAgent {
       // sola vez. La condición igual se mide con la percepción fresca.
       if (this.activity?.goalId === goal.id) continue;
       if (goal.failureCondition) {
-        const failure = evaluateGoalCondition(goal.failureCondition, {
-          perception,
-          ...(goal.bindings ? { bindings: goal.bindings } : {}),
-          absentEntityIds: new Set(goal.absentEntityIds ?? []),
-          facts: new Set(goal.observedFacts ?? []),
-          counters: goal.counters ?? {},
-        });
+        const failure = evaluateGoalCondition(
+          goal.failureCondition,
+          this.conditionContext(goal, perception),
+        );
         if (failure.status === 'met') {
           this.goals.fail(goal.id);
           if (this.activity?.goalId === goal.id) this.activity = null;
+          this.emit('goal.failed', {
+            goalId: goal.id,
+            reason: failure.diagnostics[0] ?? 'venció el plazo del pedido',
+          });
           continue;
         }
       }
@@ -2214,6 +2325,11 @@ export class AnimaAgent {
     // (ADR 0046). Va después de las señales del cuerpo y antes de elegir
     // objetivo: hambre y frío siguen mandando sobre lo que le pidieron.
     this.reviveSuppliedRequests(perception);
+    // Un pedido que dormía esperando su condición de inicio ("cuando tengas dos
+    // troncos", "si aparece un lobo") despierta apenas el mundo la cumple. Va
+    // antes de marcar pasos y de cerrar metas para que un objetivo recién
+    // despertado ya juegue este mismo tick.
+    this.settleActivations(perception);
     // Los pasos cumplidos se marcan con la misma foto del mundo (ADR 0053):
     // después de revivir, para que un encargo recién despertado ya muestre
     // tachado lo que consiguió mientras esperaba.
@@ -4224,6 +4340,29 @@ export class AnimaAgent {
     >,
     raw: string,
   ): UserRequest {
+    // La envoltura temporal es ortogonal al verbo: se lee una vez y se adosa a
+    // cualquier pedido, sin que cada rama del switch tenga que acordarse de ella.
+    const request = this.userRequestFromInterpretationCore(command, raw);
+    const temporal = temporalFromCommand(command.temporal);
+    return temporal ? { ...request, temporal } : request;
+  }
+
+  private userRequestFromInterpretationCore(
+    command: Exclude<
+      CommandInterpretation,
+      {
+        action:
+          | 'unsupported'
+          | 'not-command'
+          | 'explanation'
+          | 'learn-skill'
+          | 'rename-pet'
+          | 'describe-entity'
+          | 'sequence';
+      }
+    >,
+    raw: string,
+  ): UserRequest {
     switch (command.action) {
       case 'fetch-item':
         return {
@@ -4602,8 +4741,23 @@ export class AnimaAgent {
         ...('maintenance' in request && request.maintenance
           ? { maintenance: request.maintenance }
           : {}),
+        ...('temporal' in request && request.temporal ? { temporal: request.temporal } : {}),
         raw: request.raw,
       };
+      // El estado meta "de fondo": lo que pediría el encargo sin ninguna
+      // envoltura temporal. La envoltura se compone encima (plazo, "hasta que",
+      // duración, condición de inicio) de forma determinista.
+      const baseSuccess =
+        goalRequest.kind === 'run-skill' && goalRequest.skillName
+          ? this.conditionForSkillRun(goalRequest.skillName, perception)
+          : conditionForUserRequest(goalRequest, perception);
+      const temporal = compileTemporalGoal({
+        kind: goalRequest.kind,
+        baseSuccess,
+        temporal: goalRequest.temporal,
+        perception,
+        acceptedAtTick: this.tick,
+      });
       const goal = this.goals.create(
         {
           description: `petición del usuario: ${request.raw}`,
@@ -4612,11 +4766,10 @@ export class AnimaAgent {
           urgency: weights.urgency,
           expectedValue: 0.6,
           preconditions: [],
-          mode: goalRequest.maintenance ? 'maintenance' : 'achievement',
-          successCondition:
-            goalRequest.kind === 'run-skill' && goalRequest.skillName
-              ? this.conditionForSkillRun(goalRequest.skillName, perception)
-              : conditionForUserRequest(goalRequest, perception),
+          mode: temporal.mode ?? (goalRequest.maintenance ? 'maintenance' : 'achievement'),
+          successCondition: temporal.successCondition,
+          ...(temporal.failureCondition ? { failureCondition: temporal.failureCondition } : {}),
+          ...(temporal.activation ? { activation: temporal.activation } : {}),
           ...(options.afterGoalId !== undefined ? { afterGoalId: options.afterGoalId } : {}),
           userRequest: goalRequest,
         },
@@ -4628,6 +4781,29 @@ export class AnimaAgent {
         source: goal.source,
         ...(goal.afterGoalId !== undefined ? { afterGoalId: goal.afterGoalId } : {}),
       });
+      // Arranque. Con condición de inicio ya cumplida (o sin ella), arranca ya y
+      // se ancla el tick para las duraciones. Si la condición todavía no se
+      // cumple, el objetivo duerme hasta que `settleActivations` la vea cumplida.
+      if (goal.activation) {
+        const startNow = evaluateGoalCondition(
+          goal.activation,
+          this.conditionContext(goal, perception),
+        );
+        if (startNow.status === 'met') {
+          this.goals.activate(goal.id, this.tick);
+        } else {
+          const reactivateWhen = goalRequest.temporal?.startWhen
+            ? describeTrigger(goalRequest.temporal.startWhen)
+            : 'su condición de inicio';
+          this.goals.suspendForCondition(goal.id, reactivateWhen);
+          this.emit('goal.suspended', {
+            goalId: goal.id,
+            reason: `espera a que ${reactivateWhen}`,
+          });
+        }
+      } else {
+        this.goals.activate(goal.id, this.tick);
+      }
       return { ...decision, goalId: goal.id };
     }
     return decision;
@@ -6100,7 +6276,16 @@ export class AnimaAgent {
     ) {
       // "Acá" se liga cuando de verdad empieza a esperar. Una urgencia del
       // cuerpo puede haber postergado el encargo y movido a Ánima entretanto.
-      goal.successCondition = conditionForUserRequest(goal.userRequest, perception);
+      // Se recompone la envoltura temporal para reanclar la posición sin perder
+      // el fin pedido ("hasta que amanezca", "durante diez segundos"): el plazo
+      // sigue anclado al tick de aceptación, y la duración a la activación.
+      goal.successCondition = compileTemporalGoal({
+        kind: goal.userRequest.kind,
+        baseSuccess: conditionForUserRequest(goal.userRequest, perception),
+        temporal: goal.userRequest.temporal,
+        perception,
+        acceptedAtTick: goal.createdAtTick,
+      }).successCondition;
       this.goals.observeFact(goal.id, 'activity-started');
     }
     if (goal.userRequest?.kind === 'run-skill') {

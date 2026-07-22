@@ -5,6 +5,8 @@ import type { Blueprint } from './blueprints.js';
 import type { Decomposition } from './decompositions.js';
 import type { Interaction } from './interactions.js';
 import type { Recipe } from './recipes.js';
+import type { TimeOfDay } from './clock.js';
+import { timeOfDay } from './clock.js';
 import type { WorldState } from './world.js';
 import { allEntities, getEntity, inBounds } from './world.js';
 
@@ -113,6 +115,13 @@ export function perceivedGround(entities: readonly PerceivedEntity[]): Perceived
 
 export interface Perception {
   tick: number;
+  /**
+   * Qué hora del día es en el mundo (día/noche). La mascota la percibe como
+   * percibe su propia energía: es un hecho verificable del mundo, no una
+   * interpretación, y es lo que permite que un pedido como "esperá hasta que
+   * amanezca" se cierre con el reloj y no con una corazonada.
+   */
+  timeOfDay: TimeOfDay;
   self: {
     id: EntityId;
     position: Vec2;
@@ -343,6 +352,7 @@ export function buildPerception(world: WorldState, agentId: EntityId): Perceptio
   }
   return {
     tick: world.tick,
+    timeOfDay: timeOfDay(world),
     self,
     visibleEntities,
     bounds: { width: world.config.width, height: world.config.height },

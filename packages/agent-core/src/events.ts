@@ -4,6 +4,13 @@ export type AgentEventType =
   | 'goal.created'
   | 'goal.selected'
   | 'goal.completed'
+  /**
+   * El objetivo fracasó por una condición del mundo, no por agotar su programa:
+   * hoy, sobre todo, un plazo temporal que venció ("traelo antes de que
+   * amanezca" y amaneció). Es su evento y no un `goal.outcome.unmet` porque no
+   * es que el intento saliera corto: es que ya no tiene sentido intentarlo.
+   */
+  | 'goal.failed'
   /** El programa se agotó pero la condición declarada sigue sin cumplirse. */
   | 'goal.outcome.unmet'
   | 'goal.suspended'

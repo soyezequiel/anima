@@ -82,6 +82,12 @@ navegación e interacciones cuenta además con un
 de percepción/memoria/catálogos validados, busca con costos y límites, y deja
 la validación física final en `sim-core`.
 
+Los pedidos también pueden venir envueltos en el tiempo o en una condición
+(«esperá hasta que amanezca», «cuando tengas dos troncos…», «si aparece un
+lobo…»): ver [tiempo-y-condiciones.md](tiempo-y-condiciones.md). El reloj se
+deriva del tick, la envoltura se compila a condiciones verificables y los
+objetivos duermen y despiertan con el mundo, todo determinista y persistente.
+
 ## model-providers (modelos intercambiables)
 
 Interfaz neutral `ModelProvider.complete(ModelRequest): ModelResponse` con

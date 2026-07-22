@@ -17,6 +17,7 @@ import {
 function perception(overrides: Partial<Perception> = {}): Perception {
   return {
     tick: 1,
+    timeOfDay: 'day',
     self: {
       id: 'anima',
       position: { x: 1, y: 1 },

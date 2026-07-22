@@ -10,6 +10,7 @@ function perceptionWith(
 ): Perception {
   return {
     tick: 10,
+    timeOfDay: 'day',
     self: {
       id: 'e1',
       position: { x: 1, y: 1 },

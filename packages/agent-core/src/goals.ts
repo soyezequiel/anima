@@ -1,6 +1,6 @@
 import type { Direction } from '@anima/sim-core';
 import type { EvaluationCriterion } from '@anima/skill-runtime';
-import type { GoalCondition } from './goal-conditions.js';
+import type { GoalCondition, GoalTemporal } from './goal-conditions.js';
 
 export type GoalSource =
   | 'internal-signal'
@@ -14,6 +14,14 @@ export type GoalSource =
 
 export type GoalStatus = 'active' | 'suspended' | 'completed' | 'failed';
 export type GoalMode = 'achievement' | 'maintenance';
+
+/**
+ * Motivo de suspensión de un objetivo que espera su condición de INICIO (no
+ * material, no el turno de otro). Es una etiqueta y no un texto suelto porque
+ * `settleActivations` la usa para saber a cuáles despertar cuando el mundo
+ * cumple su disparador, sin confundirlos con los que esperan otra cosa.
+ */
+export const AWAIT_CONDITION_REASON = 'esperando-condición-de-inicio';
 
 /**
  * Una relación espacial pedida por el cuidador. El vocabulario es chico a
@@ -89,6 +97,12 @@ export interface GoalUserRequest {
   raw: string;
   /** Un estado que debe seguir siendo cierto, no un logro terminal. */
   maintenance?: boolean;
+  /**
+   * Cuándo empieza, hasta cuándo dura, con qué plazo: la envoltura temporal y
+   * condicional del pedido (ver `goal-conditions.ts`). Viaja con la petición
+   * para que un objetivo temporal se pueda restaurar tal como se aceptó.
+   */
+  temporal?: GoalTemporal;
 }
 
 /**
@@ -134,6 +148,20 @@ export interface Goal {
   preconditions: string[];
   successCondition?: GoalCondition;
   failureCondition?: GoalCondition;
+  /**
+   * Condición de inicio. Mientras no se cumpla, el objetivo espera suspendido
+   * (con `suspendedReason` = motivo de espera de condición) y no compite por el
+   * turno; apenas se cumple, despierta. Es lo que hace que "cuando tengas dos
+   * troncos, construí la fogata" o "si aparece un lobo, alejate" queden
+   * dormidos sin gastar decisiones hasta que el mundo los habilite.
+   */
+  activation?: GoalCondition;
+  /**
+   * En qué tick se activó (arrancó de verdad). Se fija al crearse si no tenía
+   * condición de inicio, o al despertar si la tenía. Es el ancla desde la que
+   * se cuentan las duraciones (`elapsed`), y persiste con el objetivo.
+   */
+  activatedAtTick?: number;
   /** Variables ligadas por eventos reales (por ejemplo, el individuo recogido). */
   bindings?: Record<string, string>;
   /** Ausencias confirmadas y hechos producidos por el motor, acotados a la meta. */
@@ -303,6 +331,35 @@ export class GoalManager {
       goal.status = 'active';
       delete goal.suspendedReason;
     }
+  }
+
+  /**
+   * Suspende un objetivo a la espera de su condición de inicio. Distinto de
+   * `suspend`: aquí no espera material ni el turno de otro, espera que el mundo
+   * cumpla un disparador, y por eso lleva el motivo canónico que despierta.
+   */
+  suspendForCondition(id: string, reactivateWhen: string): void {
+    const goal = this.get(id);
+    if (!goal || (goal.status !== 'active' && goal.status !== 'suspended')) return;
+    goal.status = 'suspended';
+    goal.suspendedReason = AWAIT_CONDITION_REASON;
+    goal.reactivateWhen = reactivateWhen;
+  }
+
+  /**
+   * Marca el objetivo como arrancado: lo pone activo (si estaba esperando su
+   * condición de inicio) y fija el tick desde el que se cuentan sus duraciones.
+   * Para un objetivo ya activo sin condición de inicio, solo fija ese ancla.
+   */
+  activate(id: string, tick: number): void {
+    const goal = this.get(id);
+    if (!goal) return;
+    if (goal.status === 'suspended' && goal.suspendedReason === AWAIT_CONDITION_REASON) {
+      goal.status = 'active';
+      delete goal.suspendedReason;
+      delete goal.reactivateWhen;
+    }
+    goal.activatedAtTick = tick;
   }
 
   bind(id: string, name: string, entityId: string): void {

@@ -2,6 +2,8 @@ import type {
   CommandDirection,
   CommandEntitySelector,
   CommandInterpretation,
+  CommandTemporal,
+  CommandTrigger,
   ModelRequest,
   ModelResponse,
   SkillSummary,
@@ -536,6 +538,47 @@ const COMMAND_ACTIONS = [
 ] as const;
 
 /**
+ * El esquema de UN disparador temporal/condicional. Todos los campos existen
+ * siempre (los esquemas estructurados son más estables así); los que no
+ * aplican viajan vacíos o en 0, y `kind: ''` significa "sin disparador".
+ */
+const TRIGGER_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    kind: {
+      type: 'string',
+      enum: ['', 'time-of-day', 'entity-appears', 'entity-gone', 'holding', 'stat'],
+    },
+    phase: { type: 'string', enum: ['', 'day', 'night'] },
+    entityKind: { type: 'string' },
+    itemKind: { type: 'string' },
+    count: { type: 'number' },
+    stat: { type: 'string', enum: ['', 'energy', 'health', 'temperature'] },
+    comparison: { type: 'string', enum: ['', 'at-least', 'at-most'] },
+    value: { type: 'number' },
+  },
+  required: ['kind', 'phase', 'entityKind', 'itemKind', 'count', 'stat', 'comparison', 'value'],
+  additionalProperties: false,
+};
+
+/**
+ * El esquema de la envoltura temporal de una orden: cuándo empieza, hasta
+ * cuándo, cuánto dura, con qué plazo. Duraciones y plazos en segundos, como los
+ * dice el cuidador. Se comparte entre la orden de arriba y cada paso.
+ */
+const TEMPORAL_SCHEMA: Record<string, unknown> = {
+  type: 'object',
+  properties: {
+    startWhen: TRIGGER_SCHEMA,
+    until: TRIGGER_SCHEMA,
+    durationSeconds: { type: 'number' },
+    deadlineSeconds: { type: 'number' },
+  },
+  required: ['startWhen', 'until', 'durationSeconds', 'deadlineSeconds'],
+  additionalProperties: false,
+};
+
+/**
  * Los campos de UNA orden. Se arma con función porque la misma forma se usa
  * dos veces: la orden de arriba y cada paso de un encargo con partes.
  */
@@ -582,6 +625,7 @@ function commandFields(withSequence: boolean): Record<string, unknown> {
     placement: { type: 'string', enum: ['', 'at', 'near'] },
     summary: { type: 'string' },
     name: { type: 'string' },
+    temporal: TEMPORAL_SCHEMA,
   };
 }
 
@@ -600,6 +644,7 @@ const COMMAND_REQUIRED = [
   'placement',
   'summary',
   'name',
+  'temporal',
 ];
 
 const COMMAND_SCHEMA: Record<string, unknown> = {
@@ -759,6 +804,78 @@ function summarizeCaseResults(
 }
 
 /**
+ * Lee UNA orden interpretada del JSON del modelo y le adosa su envoltura
+ * temporal, si trae. La envoltura viaja aparte del verbo (ver `CommandTemporal`)
+ * y por eso se lee una sola vez acá, sobre cualquier acción. En un encargo con
+ * partes la envoltura va por paso: cada paso ya la lee en su propia llamada, así
+ * que la secuencia como tal no lleva envoltura propia.
+ */
+function readCommand(parsed: Record<string, unknown>, fallbackText: string): CommandInterpretation {
+  const command = readCommandCore(parsed, fallbackText);
+  if (command.action === 'sequence') return command;
+  const temporal = readTemporal(parsed.temporal);
+  return temporal ? { ...command, temporal } : command;
+}
+
+/** Un disparador leído del JSON del modelo, o `undefined` si no nombró ninguno. */
+function readTrigger(value: unknown): CommandTrigger | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  if (raw.kind === 'time-of-day') {
+    const phase = raw.phase === 'night' ? 'night' : raw.phase === 'day' ? 'day' : undefined;
+    return phase ? { kind: 'time-of-day', phase } : undefined;
+  }
+  if (raw.kind === 'entity-appears' || raw.kind === 'entity-gone') {
+    const entityKind =
+      typeof raw.entityKind === 'string' ? raw.entityKind.trim().toLowerCase() : '';
+    return entityKind ? { kind: raw.kind, entityKind } : undefined;
+  }
+  if (raw.kind === 'holding') {
+    const itemKind = typeof raw.itemKind === 'string' ? raw.itemKind.trim().toLowerCase() : '';
+    if (!itemKind) return undefined;
+    const count =
+      typeof raw.count === 'number' && raw.count > 0 ? Math.min(8, Math.round(raw.count)) : 1;
+    return { kind: 'holding', itemKind, count };
+  }
+  if (raw.kind === 'stat') {
+    const stat =
+      raw.stat === 'energy' || raw.stat === 'health' || raw.stat === 'temperature'
+        ? raw.stat
+        : undefined;
+    const comparison =
+      raw.comparison === 'at-least' || raw.comparison === 'at-most' ? raw.comparison : undefined;
+    if (!stat || !comparison || typeof raw.value !== 'number') return undefined;
+    return { kind: 'stat', stat, comparison, value: raw.value };
+  }
+  return undefined;
+}
+
+/** La envoltura temporal leída, o `undefined` si el modelo no puso ninguna. */
+function readTemporal(value: unknown): CommandTemporal | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const raw = value as Record<string, unknown>;
+  const startWhen = readTrigger(raw.startWhen);
+  const until = readTrigger(raw.until);
+  const durationSeconds =
+    typeof raw.durationSeconds === 'number' && raw.durationSeconds > 0
+      ? raw.durationSeconds
+      : undefined;
+  const deadlineSeconds =
+    typeof raw.deadlineSeconds === 'number' && raw.deadlineSeconds > 0
+      ? raw.deadlineSeconds
+      : undefined;
+  if (!startWhen && !until && durationSeconds === undefined && deadlineSeconds === undefined) {
+    return undefined;
+  }
+  return {
+    ...(startWhen ? { startWhen } : {}),
+    ...(until ? { until } : {}),
+    ...(durationSeconds !== undefined ? { durationSeconds } : {}),
+    ...(deadlineSeconds !== undefined ? { deadlineSeconds } : {}),
+  };
+}
+
+/**
  * Lee UNA orden interpretada del JSON del modelo. Se separó de la respuesta
  * para poder leer también cada paso de un encargo con partes: un paso tiene
  * exactamente la misma forma que una orden suelta, y duplicar estas
@@ -767,7 +884,10 @@ function summarizeCaseResults(
  * `fallbackText` es el mensaje original: sirve cuando el modelo clasifica una
  * descripción pero no la repite.
  */
-function readCommand(parsed: Record<string, unknown>, fallbackText: string): CommandInterpretation {
+function readCommandCore(
+  parsed: Record<string, unknown>,
+  fallbackText: string,
+): CommandInterpretation {
   const action = parsed.action;
   if (typeof action !== 'string') {
     throw new Error('la respuesta no contiene una acción interpretada');
@@ -1641,6 +1761,38 @@ sobre el agua y cruzá", "traé dos troncos y hacé una fogata"), usa:
   Colocar algo que se fabricó en un lugar (ponerlo sobre el agua, apoyarlo en
   el hueco) es place-item, no interact-entity.
 
+Una orden puede venir envuelta en el TIEMPO o en una CONDICIÓN. Eso NO cambia
+la acción: la acción sigue siendo una de las de arriba y la envoltura va aparte,
+en el objeto "temporal".
+
+IMPORTANTE — casi siempre que el mensaje diga CUÁNDO, DEBES completar "temporal";
+dejarlo todo vacío ahí es un error. Palabras que lo delatan y qué campo llenar:
+- "hasta que…", "hasta que sea de día/de noche", "hasta que se vaya" → until.
+- "cuando…", "si aparece/pasa…", "en cuanto…", "apenas…", "una vez que…" → startWhen.
+- "durante N segundos", "por N segundos", "quedate N segundos" → durationSeconds.
+- "antes de N segundos", "en menos de N segundos", "tenés N segundos" → deadlineSeconds.
+Un pedido de esperar ("esperá", "quedate quieta") casi nunca es a secas: mirá si
+dice hasta cuándo o cuánto y llená until o durationSeconds. "Esperá hasta que
+amanezca" es wait-here con until=time-of-day day, NO un wait-here pelado.
+
+Sus campos (todos presentes; "" o 0 si no aplican):
+- startWhen: la condición que debe cumplirse ANTES de empezar. La mascota
+  espera sin hacer nada hasta que ocurra ("cuando tengas dos troncos, construí
+  la fogata"; "si aparece un lobo, alejate"; "después de comer, traé el tronco").
+- until: la condición que da por TERMINADA la orden ("esperá hasta que amanezca";
+  "quedate lejos del lobo hasta que se aleje").
+- durationSeconds: cuántos segundos debe sostenerse ("quedate acá diez segundos").
+- deadlineSeconds: plazo tras el cual, si no se cumplió, se abandona.
+startWhen y until son disparadores: cada uno lleva su "kind" y solo los campos
+que ese kind use; kind="" si no hay disparador de esa clase.
+- time-of-day: phase="day" (que amanezca / sea de día) o "night" (que anochezca).
+- entity-appears / entity-gone: entityKind es el nombre interno ("aparece un
+  lobo" → entity-appears con entityKind del lobo).
+- holding: itemKind y count ("cuando tengas dos troncos" → holding, count=2).
+- stat: stat=energy/health/temperature, comparison=at-least/at-most y value.
+"Antes de X, hacé Y" NO es temporal: es una sequence en el orden [Y, X] — hacer
+Y primero y X después. El "antes/después" se resuelve ordenando los pasos.
+
 Además, dos clasificaciones que no son órdenes:
 - explanation: te ENSEÑA cómo funciona el mundo afirmando un hecho
   ("comer alimento te da energía", "las ramas no rompen muros"). Solo
@@ -1678,8 +1830,8 @@ Para "un/cualquier tronco" usa {kind:"log", definiteness:"any",
 reference:"none", relation:"none", anchorKind:""}. En acciones sin objetivo
 usa el mismo selector vacio con kind:"".
 Responde solo con JSON. Siempre incluye action, targetKind, targetSelector, verb, amount,
-directions, relation, maintenance, skillName, recipeId, onKind, placement, summary, name y steps; usa "", [] o 0
-cuando no correspondan (steps va vacío salvo en sequence).`,
+directions, relation, maintenance, skillName, recipeId, onKind, placement, summary, name, temporal y steps; usa "", [] o 0
+cuando no correspondan (steps va vacío salvo en sequence; en temporal, cada disparador va con kind="" si no aplica).`,
       };
     case 'skill.contract':
       return {

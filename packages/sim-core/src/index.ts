@@ -11,6 +11,7 @@ export * from './glyphs.js';
 export * from './glyph-validation.js';
 export * from './work-glyphs.js';
 export * from './work-glyph-validation.js';
+export * from './clock.js';
 export * from './world.js';
 export * from './pruning.js';
 export * from './actions.js';

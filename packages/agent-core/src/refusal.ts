@@ -2,16 +2,24 @@ import { countedKindLabel, isFeminineKind, kindLabel, kindWithArticle } from '@a
 import type { Direction, Perception } from '@anima/sim-core';
 import { isMadeFrom, missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
+import type { GoalTemporal } from './goal-conditions.js';
 import type { EntitySelector, Goal, SpatialGrounding, SpatialRelation } from './goals.js';
 
 type TargetReference = { targetSelector?: EntitySelector; targetEntityId?: string };
+
+/**
+ * La envoltura temporal/condicional que puede acompañar a CUALQUIER pedido, sin
+ * depender de cuál sea: es un eje ortogonal al verbo. Se acopla por
+ * intersección para no repetirla en cada variante.
+ */
+type WithTemporal = { temporal?: GoalTemporal };
 
 /**
  * Peticiones del usuario ya interpretadas a una forma estructurada.
  * (El parseo de lenguaje natural es responsabilidad del proveedor de modelo
  * o de un parser simple; la decisión de aceptar o negarse es del agente.)
  */
-export type UserRequest =
+export type UserRequest = WithTemporal & (
   | ({ kind: 'destroy-entity'; targetKind: string; raw: string } & TargetReference)
   /** `amount`: cuántas unidades pidió ("conseguí los 2 troncos"). 1 si no dijo. */
   | ({ kind: 'fetch-item'; targetKind: string; amount?: number; raw: string } & TargetReference)
@@ -46,7 +54,8 @@ export type UserRequest =
    * puerta y la IA Dios) decide.
    */
   | ({ kind: 'interact-entity'; verb: string; targetKind: string; raw: string } & TargetReference)
-  | { kind: 'unknown'; raw: string };
+  | { kind: 'unknown'; raw: string }
+);
 
 export type RequestClassification =
   'accepted' | 'cannot' | 'will_not' | 'not_now' | 'needs_information';

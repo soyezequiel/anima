@@ -139,6 +139,7 @@ describe('memoria de lugares', () => {
     const memory = new PlaceMemory();
     const fakePerception = (tick: number, entities: PerceivedEntity[]): Perception => ({
       tick,
+      timeOfDay: 'day',
       self: { id: 'e1', position: { x: 0, y: 0 }, heldItems: [], inventoryCapacity: 6 },
       drawnKinds: [],
       illustratedWorks: [],

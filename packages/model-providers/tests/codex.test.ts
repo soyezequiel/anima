@@ -504,6 +504,7 @@ describe('CodexModelProvider', () => {
         'placement',
         'summary',
         'name',
+        'temporal',
         'steps',
       ],
     });
@@ -540,6 +541,93 @@ describe('CodexModelProvider', () => {
     ).resolves.toEqual({
       kind: 'command.interpretation',
       command: { action: 'spatial-relation', relation: 'opposite-side', targetKind: 'wall' },
+    });
+  });
+
+  it('lee la envoltura temporal del modelo: un disparador de inicio (startWhen)', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'craft-item',
+          recipeId: 'campfire',
+          temporal: {
+            startWhen: {
+              kind: 'holding',
+              itemKind: 'log',
+              count: 2,
+              phase: '',
+              entityKind: '',
+              stat: '',
+              comparison: '',
+              value: 0,
+            },
+            until: { kind: '' },
+            durationSeconds: 0,
+            deadlineSeconds: 0,
+          },
+        }),
+      ),
+    );
+    await expect(
+      provider.complete({
+        kind: 'interpret.command',
+        text: 'cuando tengas dos troncos, construí una fogata',
+        facts: [],
+      }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: {
+        action: 'craft-item',
+        recipeId: 'campfire',
+        temporal: { startWhen: { kind: 'holding', itemKind: 'log', count: 2 } },
+      },
+    });
+  });
+
+  it('lee la envoltura temporal: fin por hora del día (until) y duración en segundos', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'wait-here',
+          temporal: {
+            startWhen: { kind: '' },
+            until: { kind: 'time-of-day', phase: 'day' },
+            durationSeconds: 10,
+            deadlineSeconds: 0,
+          },
+        }),
+      ),
+    );
+    await expect(
+      provider.complete({ kind: 'interpret.command', text: 'esperá hasta que amanezca', facts: [] }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: {
+        action: 'wait-here',
+        temporal: { until: { kind: 'time-of-day', phase: 'day' }, durationSeconds: 10 },
+      },
+    });
+  });
+
+  it('una envoltura temporal vacía (todos los disparadores en "") no ensucia la orden', async () => {
+    const provider = new CodexModelProvider(
+      transportReturning(
+        JSON.stringify({
+          action: 'wait-here',
+          temporal: {
+            startWhen: { kind: '' },
+            until: { kind: '' },
+            durationSeconds: 0,
+            deadlineSeconds: 0,
+          },
+        }),
+      ),
+    );
+    await expect(
+      provider.complete({ kind: 'interpret.command', text: 'esperá', facts: [] }),
+    ).resolves.toEqual({
+      kind: 'command.interpretation',
+      command: { action: 'wait-here' },
     });
   });
 

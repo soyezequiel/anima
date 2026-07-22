@@ -514,7 +514,43 @@ type WithTargetSelector = { targetSelector?: CommandEntitySelector };
  * ciclo para lo que todavía no sabe. Sin esas dos, todo lo que el cuidador
  * enseñe muere en el momento en que lo dice.
  */
-export type CommandInterpretation =
+/**
+ * Un disparador temporal/condicional interpretado: la misma familia cerrada que
+ * el agente sabe verificar (hora del día, aparición o ausencia de algo, tener
+ * cierta cantidad, un umbral del cuerpo). `kind: ''` significa "sin disparador".
+ * El modelo elige uno; el mundo lo comprueba.
+ */
+export interface CommandTrigger {
+  kind: '' | 'time-of-day' | 'entity-appears' | 'entity-gone' | 'holding' | 'stat';
+  phase?: 'day' | 'night';
+  entityKind?: string;
+  itemKind?: string;
+  count?: number;
+  stat?: 'energy' | 'health' | 'temperature';
+  comparison?: 'at-least' | 'at-most';
+  value?: number;
+}
+
+/**
+ * La envoltura temporal de un pedido, tal como la interpreta el modelo. Las
+ * duraciones y plazos viajan en SEGUNDOS (como los dice el cuidador); el agente
+ * los traduce a ticks del mundo con `TICKS_PER_SECOND`. Es un eje ortogonal al
+ * verbo: cualquier orden puede llevarla.
+ */
+export interface CommandTemporal {
+  /** "Cuando / si / después": el objetivo espera hasta que esto se cumpla. */
+  startWhen?: CommandTrigger;
+  /** "Hasta que": la condición que da por terminado el objetivo. */
+  until?: CommandTrigger;
+  /** "Durante N segundos": cuánto debe sostenerse desde que arranca. */
+  durationSeconds?: number;
+  /** "Antes de N segundos": plazo tras el cual el objetivo fracasa. */
+  deadlineSeconds?: number;
+}
+
+type WithTemporal = { temporal?: CommandTemporal };
+
+export type CommandInterpretation = WithTemporal & (
   | ({ action: 'destroy-entity'; targetKind: string } & WithTargetSelector)
   /** `amount`: cuántas unidades pidió ("los dos troncos" son 2). 1 si no dijo. */
   | ({ action: 'fetch-item'; targetKind: string; amount?: number } & WithTargetSelector)
@@ -583,7 +619,8 @@ export type CommandInterpretation =
   | ({ action: 'interact-entity'; verb: string; targetKind: string } & WithTargetSelector)
   /** Orden física fuera del alcance de sus primitivas. */
   | { action: 'unsupported'; summary: string }
-  | { action: 'not-command' };
+  | { action: 'not-command' }
+);
 
 export interface ModelProvider {
   readonly name: string;
