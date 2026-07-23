@@ -10,6 +10,11 @@ export const BASE_CELL = 64;
 /** Cuánto se levanta lo señalado. Aparecer tiene que terminar acá si ya está señalado. */
 const LIFTED_SCALE = 1.16;
 
+/** El azul de la noche y su opacidad máxima (plena noche). El tablero nunca se
+ *  vuelve negro del todo: se sigue viendo lo que pasa, solo que a oscuras. */
+const NIGHT_COLOR = 0x0a1533;
+const NIGHT_MAX_ALPHA = 0.55;
+
 /**
  * Un nombre corto y estable para un dibujo, con el que se lo cachea. Resume las
  * 256 casillas: dos dibujos iguales dan el mismo nombre —y comparten textura,
@@ -41,6 +46,8 @@ export class WorldScene extends Phaser.Scene {
   /** Balanceo del cuerpo mientras el modelo piensa; null cuando no piensa. */
   private thinkingSway: Phaser.Tweens.Tween | null = null;
   private grid: Phaser.GameObjects.Graphics | null = null;
+  /** El velo de la noche sobre el tablero; su opacidad sigue a la luz del mundo. */
+  private nightTint: Phaser.GameObjects.Rectangle | null = null;
   /** Las siluetas de lo que va a construir (ADR 0049); null si no hay obra. */
   private ghosts: Phaser.GameObjects.Container | null = null;
   /** Última forma dibujada: redibujar solo cuando el plan cambia de verdad. */
@@ -88,6 +95,27 @@ export class WorldScene extends Phaser.Scene {
     this.syncEntities(view);
     this.syncPet(view);
     this.syncThinkingPose(view);
+    this.syncNightTint(view);
+  }
+
+  /**
+   * El velo de la noche: un rectángulo azul oscuro sobre todo el tablero cuya
+   * opacidad sube al caer la noche y baja al amanecer, siguiendo la luz continua
+   * del mundo (`view.daylight`). De día es transparente. No intercepta el
+   * puntero —quién está debajo lo calcula la geometría, no el input de Phaser—
+   * así que oscurece sin estorbar. Va por encima de las cosas y la mascota para
+   * que la noche caiga sobre todo por igual.
+   */
+  private syncNightTint(view: GameView): void {
+    const alpha = (1 - Math.max(0, Math.min(1, view.daylight))) * NIGHT_MAX_ALPHA;
+    if (!this.nightTint) {
+      const { width, height } = view.worldSize;
+      this.nightTint = this.add
+        .rectangle(0, 0, width * this.cell, height * this.cell, NIGHT_COLOR)
+        .setOrigin(0, 0)
+        .setDepth(2.8);
+    }
+    this.nightTint.setFillStyle(NIGHT_COLOR, alpha);
   }
 
   /**
@@ -100,6 +128,10 @@ export class WorldScene extends Phaser.Scene {
     this.cell = cell;
     this.discard(this.grid);
     this.grid = null;
+    // El velo de la noche está dimensionado en píxeles del tablero: se rehace
+    // con la escala nueva, como la grilla.
+    this.discard(this.nightTint);
+    this.nightTint = null;
     // Las siluetas están dibujadas a la escala vieja: se rehacen como todo lo
     // demás. La firma se limpia para que el próximo view las vuelva a pintar.
     this.ghosts?.destroy();

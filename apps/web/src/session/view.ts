@@ -516,6 +516,8 @@ export interface GameView {
   tick: number;
   /** Hora del mundo (día/noche), derivada del reloj del mundo. */
   timeOfDay: TimeOfDay;
+  /** Luz continua para pintar el cielo: 1 pleno día, 0 plena noche. */
+  daylight: number;
   running: boolean;
   speed: number;
   petColor: string;
