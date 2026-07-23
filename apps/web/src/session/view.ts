@@ -1,4 +1,5 @@
 import type { LegacyReport } from '@anima/persistence';
+import type { TimeOfDay } from '@anima/sim-core';
 import type { SkillSubject } from './skill-subjects.js';
 
 /**
@@ -513,6 +514,8 @@ export interface GoalView {
 export interface GameView {
   seed: number;
   tick: number;
+  /** Hora del mundo (día/noche), derivada del reloj del mundo. */
+  timeOfDay: TimeOfDay;
   running: boolean;
   speed: number;
   petColor: string;

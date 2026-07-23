@@ -25,6 +25,7 @@ import {
   spawn,
   stepWorld,
   takeSnapshot,
+  timeOfDay,
   visibleCells,
   workGlyphFor,
 } from '@anima/sim-core';
@@ -100,6 +101,18 @@ import type { Lineage } from '../phaser/matter.js';
 import { materialFor } from '../phaser/matter.js';
 
 const BASE_TICKS_PER_SECOND = 4;
+
+/**
+ * El ciclo de día y noche del mundo principal, en ticks (ver `clock.ts` en
+ * sim-core). El día dura más que la noche, como en la percepción real. Es lo
+ * que hace que un pedido como "esperá hasta que amanezca" tenga un amanecer que
+ * esperar: sin reloj, el mundo es de día siempre. Los mapas de entrenamiento no
+ * llevan ciclo a propósito — son situaciones fijas, no el paso del tiempo.
+ */
+const MAIN_WORLD_CLOCK = {
+  dayTicks: BASE_TICKS_PER_SECOND * 150, // 150 s de día a velocidad 1
+  nightTicks: BASE_TICKS_PER_SECOND * 45, // 45 s de noche
+};
 /**
  * Presupuesto biológico de un pensamiento en vuelo (ADR 0040): cuántos ticks
  * puede costarle al cuerpo una consulta al modelo. Pasado el presupuesto, la
@@ -631,6 +644,9 @@ export class GameSession {
     // El mapa manda si esta partida es un mapa; si no, el mundo de siempre.
     const bundle = this.map ? this.map.build(seed) : foodBehindWall.build(seed);
     this.world = bundle.world;
+    // El mundo principal tiene día y noche; los mapas de entrenamiento no. Va
+    // sobre el mundo recién nacido (los guardados restauran su propio reloj).
+    if (!this.map && !this.world.clock) this.world.clock = { ...MAIN_WORLD_CLOCK };
     this.missionTracker = this.map
       ? new MissionTracker(this.map.mission, this.world, bundle.petId)
       : null;
@@ -2654,6 +2670,7 @@ export class GameSession {
     this.view = {
       seed: this.seed,
       tick: this.world.tick,
+      timeOfDay: timeOfDay(this.world),
       running: this.running,
       speed: this.speed,
       petColor: this.petColor,

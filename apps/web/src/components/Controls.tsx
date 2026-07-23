@@ -62,6 +62,14 @@ export function Controls({ session, view }: { session: GameSession; view: GameVi
           {label}
         </span>
       </div>
+      <span
+        className="daynight"
+        data-testid="daynight"
+        title={view.timeOfDay === 'day' ? 'Es de día en el mundo' : 'Es de noche en el mundo'}
+        aria-label={view.timeOfDay === 'day' ? 'de día' : 'de noche'}
+      >
+        {view.timeOfDay === 'day' ? '☀️' : '🌙'}
+      </span>
       {!view.running && (
         <button data-testid="step-button" onClick={() => void session.stepOnce()}>
           ⏭ 1 tick
