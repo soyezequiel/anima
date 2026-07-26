@@ -35,3 +35,26 @@ export function sampleSeeds(
   }
   return seeds;
 }
+
+/**
+ * La grilla, repartida en práctica y reserva.
+ *
+ * Es el mismo stream determinista de siempre, cortado en dos: los primeros
+ * mundos son los que el diseñador ve al corregir, y los últimos los que nunca
+ * ve. El corte es fijo y derivado de la semilla de la partida, así que un mundo
+ * reservado lo es para siempre en esa partida — barajarlo en cada evaluación
+ * dejaría que, versión tras versión, el diseñador terminara viendo todos.
+ *
+ * Una cuarta parte reservada: suficiente para que ajustar a la práctica se note
+ * (con 20 mundos son 5, y fallar 1 de 5 ya baja del umbral) sin quitarle al
+ * ciclo de corrección la información que necesita para corregir de verdad.
+ */
+export function splitSeeds(
+  worldSeed: number,
+  count: number = DEFAULT_EVALUATION_SEED_COUNT,
+  holdoutFraction = 0.25,
+): { practice: number[]; holdout: number[] } {
+  const all = sampleSeeds(worldSeed, count);
+  const reserved = Math.max(1, Math.round(count * holdoutFraction));
+  return { practice: all.slice(0, count - reserved), holdout: all.slice(count - reserved) };
+}

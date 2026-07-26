@@ -134,7 +134,23 @@ export type SelectStrategy = (typeof SELECT_STRATEGIES)[number];
 
 const directionSchema = z.enum(['up', 'down', 'left', 'right']);
 
-const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
+/**
+ * Construye el esquema de operaciones con un tope de offset dado.
+ *
+ * Hay dos topes porque hay dos clases de confianza, y tratarlas igual era un
+ * error de bulto. Un programa que escribe un MODELO es un artefacto no
+ * confiable: su alcance se acota al footprint que el mundo admite para un plano
+ * (ADR 0035), porque nada de lo que proponga puede pedir más. Un programa que
+ * compila NUESTRO generador a partir de argumentos ya validados es otra cosa:
+ * sus celdas salen de un plano que el mundo ya aceptó, y ahí el tope no protege
+ * de nada — solo prohibiría tender un puente largo, que es exactamente lo que
+ * un puente tiene que ser.
+ *
+ * El intérprete no tiene ninguno de los dos límites: camina hasta la celda y el
+ * mundo decide. Estos topes son política de entrada, no física.
+ */
+function buildOpSchema(maxCellOffset: number): z.ZodType<SkillOp> {
+  return z.lazy(() =>
   z.discriminatedUnion('op', [
     z
       .object({ op: z.literal('findEntities'), query: entityQuerySchema, store: z.string().min(1) })
@@ -212,8 +228,8 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       .object({
         op: z.literal('markCell'),
         from: z.string().min(1),
-        dx: z.number().int().min(-MAX_CELL_OFFSET).max(MAX_CELL_OFFSET),
-        dy: z.number().int().min(-MAX_CELL_OFFSET).max(MAX_CELL_OFFSET),
+        dx: z.number().int().min(-maxCellOffset).max(maxCellOffset),
+        dy: z.number().int().min(-maxCellOffset).max(maxCellOffset),
         store: z.string().min(1),
       })
       .strict(),
@@ -262,8 +278,8 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       .object({
         op: z.literal('branch'),
         if: conditionSchema,
-        then: z.array(opSchema).min(1),
-        else: z.array(opSchema).optional(),
+        then: z.array(buildOpSchema(maxCellOffset)).min(1),
+        else: z.array(buildOpSchema(maxCellOffset)).optional(),
       })
       .strict(),
     z
@@ -271,7 +287,7 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
         op: z.literal('repeatWithLimit'),
         max: z.number().int().min(1).max(MAX_REPEAT_LIMIT),
         until: conditionSchema.optional(),
-        body: z.array(opSchema).min(1),
+        body: z.array(buildOpSchema(maxCellOffset)).min(1),
       })
       .strict(),
     // Una de las dos formas, nunca ambas: por NOMBRE (lo que escribe el
@@ -288,7 +304,13 @@ const opSchema: z.ZodType<SkillOp> = z.lazy(() =>
       .strict(),
     z.object({ op: z.literal('abort'), reason: z.string().min(1).max(200) }).strict(),
   ]),
-) as z.ZodType<SkillOp>;
+  ) as z.ZodType<SkillOp>;
+}
+
+const opSchema = buildOpSchema(MAX_CELL_OFFSET);
+/** El alcance de una obra compuesta por nuestro propio generador. */
+export const MAX_TRUSTED_CELL_OFFSET = 32;
+const trustedOpSchema = buildOpSchema(MAX_TRUSTED_CELL_OFFSET);
 
 export type SkillOp =
   | { op: 'findEntities'; query: EntityQuery; store: string }
@@ -403,6 +425,7 @@ export type SkillOp =
   | { op: 'abort'; reason: string };
 
 export const skillProgramSchema = z.array(opSchema).min(1);
+const trustedProgramSchema = z.array(trustedOpSchema).min(1);
 export type SkillProgram = SkillOp[];
 
 function measure(ops: SkillOp[], depth: number): { count: number; maxDepth: number } {
@@ -459,18 +482,38 @@ export interface ComposeContext {
  * cuarenta mundos del evaluador — caro y con un mensaje que hablaba de un id
  * interno que el modelo nunca vio.
  */
-export function validateSkillProgram(raw: unknown, compose?: ComposeContext): Result<SkillProgram> {
-  const parsed = skillProgramSchema.safeParse(raw);
+export interface ValidateProgramOptions {
+  /**
+   * De dónde viene el programa. `untrusted` (por defecto) es lo que escribe un
+   * modelo: se le cobran los topes de tamaño, anidamiento y alcance. `trusted`
+   * es lo que compila nuestro generador desde argumentos ya validados: se le
+   * comprueba la FORMA —que cada operación exista y esté bien escrita— sin los
+   * topes de entrada, que ahí no protegen de nada.
+   *
+   * Ninguna de las dos se salta la forma. Lo que cambia es la política, no la
+   * validación: es la misma distinción que hace el resto del sistema entre una
+   * receta propuesta por un modelo y una que ya pasó la puerta del mundo.
+   */
+  origin?: 'untrusted' | 'trusted';
+}
+
+export function validateSkillProgram(
+  raw: unknown,
+  compose?: ComposeContext,
+  options: ValidateProgramOptions = {},
+): Result<SkillProgram> {
+  const trusted = options.origin === 'trusted';
+  const parsed = (trusted ? trustedProgramSchema : skillProgramSchema).safeParse(raw);
   if (!parsed.success) {
     return err(
       `Programa inválido: ${parsed.error.issues.map((i) => `${i.path.join('.')} ${i.message}`).join('; ')}`,
     );
   }
   const { count, maxDepth } = measure(parsed.data, 1);
-  if (count > MAX_PROGRAM_OPS) {
+  if (!trusted && count > MAX_PROGRAM_OPS) {
     return err(`Programa demasiado largo: ${count} operaciones (máximo ${MAX_PROGRAM_OPS})`);
   }
-  if (maxDepth > MAX_PROGRAM_DEPTH) {
+  if (!trusted && maxDepth > MAX_PROGRAM_DEPTH) {
     return err(`Programa demasiado anidado: profundidad ${maxDepth} (máximo ${MAX_PROGRAM_DEPTH})`);
   }
   const malformed = badRunSkill(parsed.data);

@@ -384,13 +384,13 @@ describe('juntar ingredientes pidiendo de a uno', () => {
   });
 });
 
-describe('lo que no está codeado intenta aprenderse, no se rechaza de plano', () => {
+describe('lo que no está codeado se dice con el catálogo en la mano', () => {
   const unsupported = (summary: string): ModelResponse => ({
     kind: 'command.interpretation',
     command: { action: 'unsupported', summary },
   });
 
-  it('una orden fuera del catálogo abre el ciclo de aprendizaje', async () => {
+  it('una orden fuera del catálogo NO abre por su cuenta el ciclo de aprendizaje', async () => {
     const { world, petId } = coldWorld();
     const provider = new FakeLanguageModel({
       'interpret.command': unsupported('saltar el muro'),
@@ -399,14 +399,52 @@ describe('lo que no está codeado intenta aprenderse, no se rechaza de plano', (
 
     const reply = await say(agent, perception(), 'saltá el muro');
 
-    // Intentó derivar un contrato de aprendizaje (el proveedor de prueba no
-    // sabe derivarlos, así que pide más detalle en vez de negarse en seco).
-    expect(provider.callCount('skill.contract')).toBe(1);
-    expect(reply).toContain('no consigo imaginar en qué se notaría');
+    // Aprender cuesta ocho versiones medidas en cuarenta mundos imaginados y
+    // deja un artefacto que sobrevive. Nada de eso puede pasar por omisión: si
+    // el cuidador no lo pidió, no se abre ningún ciclo.
+    expect(provider.callCount('skill.contract')).toBe(0);
+    // La respuesta honesta: qué no puede, qué sí, y el ofrecimiento.
+    expect(reply).toContain('saltar el muro');
+    expect(reply).toContain('Lo que sí puedo');
+    expect(reply).toContain('decime que sí');
+    // Lo que enumera sale del registro, no de una frase escrita a mano.
+    const missing = agent.events.events.find((event) => event.type === 'capability.missing');
+    expect(missing).toBeDefined();
+    expect(missing?.data.known).toEqual(agent.capabilities.ids());
     // Y lo pedido no se pierde: queda recordado como deseo no cumplido.
     expect(
       agent.memory.episodeList().some((episode) => episode.kind === 'unmet-request'),
     ).toBe(true);
+  });
+
+  it('el sí del cuidador es la enseñanza explícita, y recién ahí se aprende', async () => {
+    const { world, petId } = coldWorld();
+    const provider = new FakeLanguageModel({
+      'interpret.command': unsupported('saltar el muro'),
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+
+    await say(agent, perception(), 'saltá el muro');
+    const reply = await say(agent, perception(), 'sí');
+
+    // Ahora sí: el ciclo arranca y pide con qué vara se lo va a medir. El
+    // proveedor de prueba no sabe derivar contratos, así que pide más detalle.
+    expect(provider.callCount('skill.contract')).toBe(1);
+    expect(reply).toContain('no consigo imaginar en qué se notaría');
+  });
+
+  it('un "no" cierra la oferta sin gastar una sola consulta', async () => {
+    const { world, petId } = coldWorld();
+    const provider = new FakeLanguageModel({
+      'interpret.command': unsupported('volar hasta el árbol'),
+    });
+    const { agent, perception } = makeAgent(world, petId, provider);
+
+    await say(agent, perception(), 'volá hasta el árbol');
+    const reply = await say(agent, perception(), 'no');
+
+    expect(provider.callCount('skill.contract')).toBe(0);
+    expect(reply).toContain('lo dejo');
   });
 });
 

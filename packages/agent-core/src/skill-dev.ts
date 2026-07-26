@@ -13,10 +13,11 @@ import { calledSkillNames, describeCriterion, validateSkillProgram } from '@anim
 import type {
   EvaluationCaseHook,
   EvaluationReport,
+  EvaluatorPort,
   NamedScenario,
   RegressionStore,
 } from '@anima/skill-evaluator';
-import { applyEvaluation, evaluateSkill } from '@anima/skill-evaluator';
+import { applyEvaluation, evaluateSkill, inProcessEvaluator } from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
 
 /**
@@ -53,12 +54,28 @@ export interface SkillDevConfig {
   regressions: RegressionStore;
   scenarios: NamedScenario[];
   seeds: number[];
+  /**
+   * Los mundos que el diseñador NO ve. Se miden igual y cuentan para promover,
+   * pero sus observaciones no vuelven al ciclo de corrección: sin esa reserva,
+   * ocho revisiones de «arreglá lo que falló ahí» producen una habilidad
+   * ajustada a cuarenta mundos concretos en vez de una que funcione.
+   */
+  holdoutSeeds?: number[];
+  /** El mundo en el que de verdad vive, como un caso reservado más. */
+  currentWorld?: { snapshot: unknown; petId: string };
   maxTicksPerCase: number;
   /** Cuántas versiones puede intentar antes de rendirse (propuesta + revisiones). */
   maxVersions: number;
   now: () => string;
   /** Oyente de los mundos imaginados: la UI dibuja los "sueños" con esto. */
   onCase?: EvaluationCaseHook;
+  /**
+   * Dónde corre la medición. Sin esto se resuelve en el acto, que es lo
+   * correcto en Node y en las pruebas; en el navegador se inyecta un puerto que
+   * la atiende en un worker, para que cuarenta mundos imaginados no le cuesten
+   * al cuidador una pestaña congelada.
+   */
+  evaluator?: EvaluatorPort;
   /**
    * Corte por meseta (ADR 0051). Cada consulta al modelo cuesta ~un minuto de
    * reloj mientras el cuerpo sigue gastándose; si ya hay una versión que
@@ -90,12 +107,75 @@ export interface SkillDevOutcome {
  * biblioteca, emitiendo los eventos de prueba. Lo usan tanto el ciclo de
  * desarrollo como la adopción de habilidades heredadas de un legado.
  */
-export function evaluateAndApply(
+export type EvaluateAndApplyConfig = Pick<
+  SkillDevConfig,
+  | 'library'
+  | 'regressions'
+  | 'scenarios'
+  | 'seeds'
+  | 'holdoutSeeds'
+  | 'currentWorld'
+  | 'maxTicksPerCase'
+  | 'now'
+  | 'onCase'
+  | 'evaluator'
+>;
+
+export async function evaluateAndApply(
   skill: SkillDefinition,
-  config: Pick<
-    SkillDevConfig,
-    'library' | 'regressions' | 'scenarios' | 'seeds' | 'maxTicksPerCase' | 'now' | 'onCase'
-  >,
+  config: EvaluateAndApplyConfig,
+  events: EventLog<AgentEvent>,
+  tick: number,
+  baseline?: EvaluationReport,
+): Promise<{ report: EvaluationReport; promoted: boolean }> {
+  events.emit({
+    type: 'skill.test.started',
+    tick,
+    data: {
+      skillId: skill.id,
+      version: skill.version,
+      scenarios: config.scenarios.map((s) => s.name),
+      seeds: config.seeds,
+      regressions: config.regressions.forSkill(skill.name).length,
+    },
+  });
+  const evaluator =
+    config.evaluator ??
+    inProcessEvaluator(config.scenarios, {
+      library: config.library,
+      ...(config.onCase ? { onCase: config.onCase } : {}),
+    });
+  const report = await evaluator.evaluate({
+    skill,
+    scenarioNames: config.scenarios.map((scenario) => scenario.name),
+    seeds: config.seeds,
+    ...(config.holdoutSeeds ? { holdoutSeeds: config.holdoutSeeds } : {}),
+    regressions: config.regressions.forSkill(skill.name),
+    maxTicks: config.maxTicksPerCase,
+    ...(config.currentWorld
+      ? {
+          currentWorld: config.currentWorld as NonNullable<
+            Parameters<EvaluatorPort['evaluate']>[0]['currentWorld']
+          >,
+        }
+      : {}),
+  });
+  return applyReport(skill, report, config, events, tick, baseline);
+}
+
+/**
+ * La misma medición, resuelta en el acto.
+ *
+ * La usa la adopción de un legado: ocurre UNA vez, al nacer, con la pantalla de
+ * sucesión delante, y sobre un puñado de conductas heredadas. Sacarla a un
+ * worker obligaría a volver asíncrona toda la cadena pública de reinicio de
+ * partida —`reset`, `restartFresh`, la vuelta desde el catálogo— para comprar
+ * un bloqueo que el cuidador ya está esperando. El ciclo caro, el de las ocho
+ * versiones mientras ella vive, sí pasa por el puerto.
+ */
+export function evaluateAndApplyNow(
+  skill: SkillDefinition,
+  config: EvaluateAndApplyConfig,
   events: EventLog<AgentEvent>,
   tick: number,
   baseline?: EvaluationReport,
@@ -114,11 +194,24 @@ export function evaluateAndApply(
   const report = evaluateSkill(skill, {
     scenarios: config.scenarios,
     seeds: config.seeds,
+    ...(config.holdoutSeeds ? { holdoutSeeds: config.holdoutSeeds } : {}),
     regressions: config.regressions.forSkill(skill.name),
     maxTicks: config.maxTicksPerCase,
     library: config.library,
     ...(config.onCase ? { onCase: config.onCase } : {}),
   });
+  return applyReport(skill, report, config, events, tick, baseline);
+}
+
+/** El veredicto sobre la biblioteca, una vez que el informe existe. */
+function applyReport(
+  skill: SkillDefinition,
+  report: EvaluationReport,
+  config: EvaluateAndApplyConfig,
+  events: EventLog<AgentEvent>,
+  tick: number,
+  baseline?: EvaluationReport,
+): { report: EvaluationReport; promoted: boolean } {
   const decisionOptions: Parameters<typeof applyEvaluation>[4] = { now: config.now };
   if (baseline) decisionOptions.baseline = baseline;
   const decision = applyEvaluation(skill, report, config.library, config.regressions, decisionOptions);
@@ -517,7 +610,7 @@ export async function developSkill(
         data: { skillId: skill.id, name: skill.name, version: skill.version, rationale: candidate.rationale },
       });
 
-      const { report, promoted } = evaluateAndApply(
+      const { report, promoted } = await evaluateAndApply(
         skill,
         config,
         events,

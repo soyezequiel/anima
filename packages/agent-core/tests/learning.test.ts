@@ -232,13 +232,13 @@ describe('honestidad cuando no puede', () => {
     expect(regressions.forSkill('baile-basico').length).toBeGreaterThan(0);
   });
 
-  it('lo que su cuerpo no permite se intenta aprender, y si no hay cómo, queda recordado', async () => {
+  it('lo que su cuerpo no permite se dice con el catálogo, y queda recordado', async () => {
     const provider = new TeachableModel({
       'interpret.command': [
         { kind: 'command.interpretation', command: { action: 'unsupported', summary: 'saltar' } },
       ],
-      // Sin guion de skill.contract: el proveedor base no sabe derivarlo, que
-      // es el caso "de verdad no encuentro cómo aprender esto".
+      // Sin guion de skill.contract, y no hace falta: pedir algo que no está en
+      // el catálogo ya no abre ningún ciclo por su cuenta.
     });
     const { agent, bundle } = makeAgent(provider);
 
@@ -246,18 +246,19 @@ describe('honestidad cuando no puede', () => {
     const intent = await agent.think(buildPerception(bundle.world, bundle.petId));
 
     expect(intent?.type).toBe('speak');
-    // Ya no es una negativa de tabla: intentó abrir el ciclo de aprendizaje
-    // y pide los pasos que le faltan para poder acordar un contrato.
-    expect(intent && intent.type === 'speak' && intent.text).toContain(
-      'no consigo imaginar en qué se notaría',
-    );
+    const text = intent && intent.type === 'speak' ? intent.text : '';
+    // No es una negativa de tabla ni un ciclo de aprendizaje que nadie pidió:
+    // es qué no puede, qué sí, y el ofrecimiento de aprenderlo.
+    expect(text).toContain('saltar');
+    expect(text).toContain('Lo que sí puedo');
+    expect(text).toContain('decime que sí');
     // No se lo traga: es algo que su cuidador quiso y ella todavía no pudo.
     expect(
       agent.memory.episodeList().some((episode) => episode.kind === 'unmet-request'),
     ).toBe(true);
   });
 
-  it('«sentate en la silla»: lo no codeado se aprende en el momento y se ejecuta', async () => {
+  it('«sentate en la silla»: se ofrece, el cuidador acepta, y recién ahí se aprende', async () => {
     // Aproximación honesta con sus primitivas: ir hasta la silla y quedarse.
     const SIT: SkillProgram = [
       { op: 'findEntities', query: { kind: 'chair' }, store: 'chairs' },
@@ -266,8 +267,8 @@ describe('honestidad cuando no puede', () => {
       { op: 'wait', ticks: 4 },
     ];
     const provider = new TeachableModel({
-      // Incluso si el modelo lo clasifica como "unsupported", el agente lo
-      // convierte en un intento de aprendizaje en vez de una negativa.
+      // El modelo lo clasifica como "unsupported": el agente ofrece aprenderlo
+      // en vez de ponerse a hacerlo sin que nadie se lo haya pedido.
       'interpret.command': [
         {
           kind: 'command.interpretation',
@@ -292,8 +293,11 @@ describe('honestidad cuando no puede', () => {
     const { agent, library, bundle } = makeAgent(provider);
 
     const result = await runAgentInWorld(bundle.world, agent, {
+      // Dos «sí» y no uno, porque ahora hay dos puertas y las dos importan: la
+      // primera acepta APRENDER (sin ella no se gasta un solo mundo imaginado)
+      // y la segunda acepta la VARA con la que se lo va a medir (ADR 0030).
       maxTicks: 80,
-      userMessagesAt: { 0: 'sentate en la silla', 1: 'sí' },
+      userMessagesAt: { 0: 'sentate en la silla', 1: 'sí', 2: 'sí' },
     });
 
     // Se aprendió de verdad: el evaluador la midió en mundos con silla (la

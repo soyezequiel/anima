@@ -59,6 +59,19 @@ export function applyEvaluation(
       `tasa de éxito ${(report.successRate * 100).toFixed(0)}% (${conclusive} casos concluyentes) < umbral ${(policy.successThreshold * 100).toFixed(0)}%`,
     );
   }
+  // Y los mundos RESERVADOS, los que el diseñador nunca vio. Una habilidad
+  // ajustada a los de práctica luce perfecta arriba y se desploma acá: sin esta
+  // línea, ocho revisiones de «arreglá lo que falló ahí» podían promover algo
+  // que memorizó cuarenta mundos concretos en vez de haber aprendido nada.
+  if (
+    report.holdoutSuccessRate !== null &&
+    report.holdoutSuccessRate < policy.successThreshold
+  ) {
+    reasons.push(
+      `en los mundos reservados solo ${(report.holdoutSuccessRate * 100).toFixed(0)}% ` +
+        `(${report.holdoutConclusiveCases} casos): funciona donde la corrigieron, no donde no`,
+    );
+  }
   if (report.invariantViolations > 0) {
     reasons.push(`viola invariantes del mundo (${report.invariantViolations})`);
   }
@@ -117,7 +130,10 @@ export function applyEvaluation(
 
   library.markPromoted(skill.id);
   reasons.push(
-    `supera los ${conclusive} casos concluyentes, incluidas ${report.cases.filter((c) => c.fromRegression).length} regresiones` +
+    (report.holdoutConclusiveCases > 0
+      ? `supera también ${report.holdoutConclusiveCases} mundos reservados que nunca vio; `
+      : '') +
+      `supera los ${conclusive} casos concluyentes, incluidas ${report.cases.filter((c) => c.fromRegression).length} regresiones` +
       (report.inconclusiveCases > 0
         ? ` (${report.inconclusiveCases} sin veredicto: el mundo no dio)`
         : ''),

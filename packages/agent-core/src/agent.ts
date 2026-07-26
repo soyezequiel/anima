@@ -58,7 +58,12 @@ import {
   SpatialMemory,
   validateSuccessCriteria,
 } from '@anima/skill-runtime';
-import type { EvaluationCaseHook, NamedScenario, RegressionStore } from '@anima/skill-evaluator';
+import type {
+  EvaluationCaseHook,
+  EvaluatorPort,
+  NamedScenario,
+  RegressionStore,
+} from '@anima/skill-evaluator';
 import type { AgentEvent } from './events.js';
 import { planCausalRequest } from './causal-world-model.js';
 import {
@@ -98,7 +103,7 @@ import {
   parseUserMessage,
 } from './refusal.js';
 import type { SkillContract, SkillDevOutcome } from './skill-dev.js';
-import { developSkill, evaluateAndApply } from './skill-dev.js';
+import { developSkill, evaluateAndApplyNow } from './skill-dev.js';
 import { InventionEngine, inventionCreditKey } from './invention.js';
 import {
   GOAL_BE_SAFE,
@@ -113,7 +118,6 @@ import {
   buildFireProgram,
   countPlacements,
   DIRECT_APPROACH_PROGRAM,
-  gatherAndCraftProgram,
   heldCounts,
   rememberedFoodProgram,
   rememberedHeatProgram,
@@ -126,7 +130,14 @@ import {
   WARMTH_APPROACH_PROGRAM,
 } from './programs.js';
 import type { UserRequestProgramDeps } from './user-request-programs.js';
-import { completionReply, programForUserRequest } from './user-request-programs.js';
+import { completionReply } from './user-request-programs.js';
+import type { CapabilityRegistry } from './capabilities/registry.js';
+import { createCapabilityRegistry } from './capabilities/catalog.js';
+import type { Plan } from './capabilities/plan.js';
+import type { ActivityRunner, PlanExecutorEvent } from './capabilities/executor.js';
+import { PlanExecutor } from './capabilities/executor.js';
+import { createPlan } from './capabilities/plan.js';
+import { planForUserRequest } from './capabilities/planner.js';
 import { groundSpatialRequest } from './spatial-goals.js';
 
 const LOW_ENERGY_FRACTION = 0.35;
@@ -402,6 +413,16 @@ export interface AgentConfig {
    * captura y nada cambia.
    */
   onEvaluationCase?: EvaluationCaseHook;
+  /**
+   * Dónde corre la medición de las habilidades que desarrolla mientras vive.
+   *
+   * Sin esto se resuelve en el acto, que es lo correcto en Node y en las
+   * pruebas. El navegador inyecta un puerto que la atiende en un worker: son
+   * cuarenta mundos de doscientos ticks por versión, y corriéndolos en el hilo
+   * de la interfaz la pestaña se congela justo cuando ella acaba de decir que
+   * se pone a pensar.
+   */
+  evaluator?: EvaluatorPort;
 }
 
 /** Estado persistible del agente. La actividad en curso no se guarda: al
@@ -472,7 +493,21 @@ export interface LegacyTestimony {
 interface Activity {
   goalId: string;
   strategy: string;
-  exec: SkillExecution;
+  /**
+   * Quien ejecuta. Un encargo del cuidador corre un `PlanExecutor`: paso a
+   * paso, comparando cada efecto contra el mundo y replanificando si el mundo
+   * lo desmiente. Las urgencias del cuerpo (comer, abrigarse, apartarse) siguen
+   * corriendo un programa suelto — son reflejos con un plan de una sola pieza,
+   * y monitorizarlas no compraría nada.
+   */
+  exec: ActivityRunner;
+  /**
+   * El plan que esta actividad está ejecutando, cuando lo tiene. Es lo que
+   * permite mirar la ejecución paso a paso —qué prometió cada uno, qué dijo el
+   * mundo— en vez de saber solo que el programa entero terminó o abortó. Las
+   * actividades del cuerpo (comer, abrigarse) todavía corren programas sueltos.
+   */
+  plan?: Plan;
   /**
    * `open-path` (ADR 0066) es trabajo AL SERVICIO de un encargo, no el encargo:
    * abrirse paso no cumple nada por sí solo. Termine como termine, el objetivo
@@ -550,6 +585,12 @@ export class AnimaAgent {
    */
   readonly spatial = new SpatialMemory();
   readonly goals = new GoalManager();
+  /**
+   * El catálogo de lo que sabe hacer. Es del individuo y no del módulo: dos
+   * mascotas pueden diferir en lo que aprendieron, y compartir una instancia
+   * mutable entre partidas es justo el acoplamiento que el resto evita.
+   */
+  readonly capabilities: CapabilityRegistry = createCapabilityRegistry();
   readonly progress = new ProgressController();
   readonly events: EventLog<AgentEvent> = createEventLog<AgentEvent>();
 
@@ -592,6 +633,13 @@ export class AnimaAgent {
    * Efímero, como la vista previa de una receta: no persiste.
    */
   private pendingContract: LearningContract | null = null;
+  /**
+   * Algo que el cuidador pidió, que ninguna capacidad cubre, y que ella ofreció
+   * aprender. Espera un sí. Efímero a propósito: si la conversación sigue por
+   * otro lado, la oferta caduca — aprender no puede arrancar por un «sí» viejo
+   * dicho sobre otra cosa.
+   */
+  private pendingTeach: { summary: string; raw: string } | null = null;
   /** Qué la dañó en el último tick: dispara el reflejo de apartarse. */
   private lastPain: { sourceId: string; sourceKind: string; tick: number } | null = null;
   /**
@@ -1961,7 +2009,7 @@ export class AnimaAgent {
       });
 
       if (artifact.criterionSource === 'motive') {
-        const { promoted } = evaluateAndApply(
+        const { promoted } = evaluateAndApplyNow(
           candidate,
           {
             library: this.config.library,
@@ -3545,6 +3593,22 @@ export class AnimaAgent {
       }
     }
 
+    // Una oferta de aprender espera su sí. Que el cuidador diga que sí ES la
+    // enseñanza explícita: a partir de acá el ciclo corre con todas sus
+    // garantías (contrato, vista previa del criterio, evaluador independiente).
+    if (this.pendingTeach) {
+      const pending = this.pendingTeach;
+      this.pendingTeach = null;
+      if (isAffirmativeReply(text)) {
+        await this.startLearning(pending.summary, pending.raw, perception);
+        return;
+      }
+      if (isNegativeReply(text)) {
+        this.reply(`Listo, lo dejo. Si cambiás de idea, decímelo y lo intento.`);
+        return;
+      }
+    }
+
     // Un contrato de habilidad enseñada espera el mismo sí o no, y por la misma
     // razón (ADR 0030): el criterio de un pedido lo confirma el cuidador antes
     // de que se pruebe o se prometa nada. El "no" es información de primera —
@@ -3671,6 +3735,10 @@ export class AnimaAgent {
       request: parsed,
       classification: decision.classification,
       reason: decision.reason,
+      // De qué objetivo es: sin esto no se puede medir cuánto tarda un encargo
+      // en producir su primera acción, que es la métrica que dice si esto se
+      // siente vivo o muerto.
+      ...(decision.goalId !== undefined ? { goalId: decision.goalId } : {}),
     });
     this.reply(
       decision.alternative ? `${decision.reason} ${decision.alternative}` : decision.reason,
@@ -3684,6 +3752,48 @@ export class AnimaAgent {
    * descartará con su propia experiencia. Desde ahí queda disponible para el
    * diálogo, para decidir y para diseñar habilidades.
    */
+  /**
+   * Decir que no se sabe, decir qué sí, y ofrecer aprenderlo.
+   *
+   * Las tres cosas juntas, porque por separado ninguna sirve. «No puedo» a
+   * secas deja al cuidador adivinando dónde está el límite. La lista de lo que
+   * sí puede, sin el ofrecimiento, suena a que la puerta está cerrada. Y
+   * ponerse a aprender sin preguntar es lo que hacía antes: caro, lento y sin
+   * que nadie lo pidiera.
+   *
+   * Lo que enumera sale del REGISTRO, no de una frase escrita a mano. Si mañana
+   * nace una capacidad, aparece acá sola; si se borra, deja de prometerse el
+   * mismo día. Es la diferencia entre no inventar capacidades y no inventarlas
+   * casi nunca.
+   */
+  private offerToLearn(summary: string, raw: string): void {
+    this.pendingTeach = { summary, raw };
+    this.memory.recordEpisode({
+      kind: 'unmet-request',
+      summary: `mi cuidador pidió "${summary}" y no encontré ninguna capacidad mía que lo hiciera`,
+      tick: this.tick,
+      importance: 0.6,
+    });
+    this.emit('capability.missing', { summary, raw, known: this.capabilities.ids() });
+    this.reply(
+      `"${summary}" no lo sé hacer con lo que tengo. ${this.whatICanDo()} ` +
+        `Si te parece, decime que sí y busco la forma de aprenderlo.`,
+    );
+  }
+
+  /**
+   * Lo que sabe hacer, dicho como se habla. Sale del catálogo de capacidades,
+   * así que nunca puede prometer algo que no exista ni omitir algo que sí.
+   */
+  private whatICanDo(): string {
+    const summaries = this.capabilities
+      .all()
+      .map((capability) => capability.summary.split(':')[0]!.split(',')[0]!.trim())
+      .filter((summary) => summary.length > 0)
+      .slice(0, 6);
+    return summaries.length > 0 ? `Lo que sí puedo: ${summaries.join('; ')}.` : '';
+  }
+
   private async learnFromExplanation(text: string): Promise<void> {
     // Sigue sirviendo para interpretar la señal de energía si aún no la entiende.
     this.pendingExplanation = text;
@@ -3934,6 +4044,12 @@ export class AnimaAgent {
           id: recipe.id,
           ingredients: recipe.ingredients.map((i) => `${i.count}x ${i.kind}`).join(' + '),
         })),
+        // Y lo que sabe hacer, sacado del registro y no de una lista escrita a
+        // mano: es contra esto que el modelo tiene que decidir si lo pedido es
+        // ejecutable o no.
+        capabilities: this.capabilities
+          .all()
+          .map((capability) => `${capability.id}: ${capability.summary}`),
       });
       if (interpretation.kind !== 'command.interpretation') {
         throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
@@ -3987,8 +4103,13 @@ export class AnimaAgent {
         'sequence',
       ]);
       const requests: UserRequest[] = [];
+      /** Las partes que no son órdenes ejecutables, para no perderlas calladas. */
+      const dropped: string[] = [];
       for (const step of command.steps) {
-        if (notARequest.has(step.action)) continue;
+        if (notARequest.has(step.action)) {
+          if (step.action === 'unsupported') dropped.push(step.summary);
+          continue;
+        }
         const parsed = this.contextualizeUserMessage(
           this.userRequestFromInterpretation(
             step as Parameters<AnimaAgent['userRequestFromInterpretation']>[0],
@@ -4004,6 +4125,22 @@ export class AnimaAgent {
         ) {
           requests.push(parsed);
         }
+      }
+      // «Conseguí madera y hacé una fogata»: si la segunda mitad no se pudo
+      // clasificar, callarla es lo peor que se puede hacer. El cuidador se
+      // queda esperando algo que nadie va a intentar y sin saber por qué. Se
+      // dice cuál parte quedó afuera y se ofrece aprenderla.
+      if (dropped.length > 0) {
+        const first = dropped[0]!;
+        if (requests.length === 0) {
+          this.offerToLearn(first, text);
+          return null;
+        }
+        this.reply(
+          `De lo que me pediste, "${first}" no sé hacerlo con lo que tengo — sigo con el resto. ` +
+            `Si querés, decime que sí y busco la forma de aprenderlo.`,
+        );
+        this.pendingTeach = { summary: first, raw: text };
       }
       if (requests.length === 0) return null;
       if (requests.length === 1) return requests[0]!;
@@ -4028,13 +4165,22 @@ export class AnimaAgent {
     }
 
     if (command.action === 'unsupported') {
-      // Lo que no está codeado no se rechaza de antemano: se intenta APRENDER
-      // en el momento — contrato, práctica en mundos imaginados y veredicto
-      // del evaluador. "Sentarse en la silla" no existe como primitiva, pero
-      // ir hasta la silla y quedarse ahí sí se puede componer; y si de verdad
-      // es imposible (volar), lo dirán las pruebas, no una tabla.
-      const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 300);
-      return { kind: 'learn-skill', summary: summary || text, raw: text };
+      // Lo que no encaja en ninguna capacidad registrada NO abre por su cuenta
+      // un ciclo de aprendizaje.
+      //
+      // Antes sí, y era la puerta por la que se colaba todo: cualquier frase
+      // que la lista cerrada de acciones no cubriera —una orden rara, un verbo
+      // inesperado, un error de clasificación— disparaba ocho versiones de
+      // habilidad medidas en cuarenta mundos imaginados ANTES de que la mascota
+      // moviera un pie. Aprender es caro, es lento y deja un artefacto que
+      // sobrevive; nada de eso puede pasar por omisión.
+      //
+      // La respuesta honesta es decir qué no se puede y qué sí, con el catálogo
+      // en la mano, y OFRECER aprenderlo. Si el cuidador dice que sí, eso ya es
+      // enseñanza explícita y el ciclo se abre con todas sus garantías.
+      const summary = command.summary.replace(/\s+/g, ' ').trim().slice(0, 300) || text;
+      this.offerToLearn(summary, text);
+      return null;
     }
 
     if (command.action === 'explanation') return { kind: 'explanation', raw: text };
@@ -4647,7 +4793,12 @@ export class AnimaAgent {
       );
       this.emit(
         decision.classification === 'accepted' ? 'user.request.accepted' : 'user.request.refused',
-        { request, classification: decision.classification, reason: decision.reason },
+        {
+          request,
+          classification: decision.classification,
+          reason: decision.reason,
+          ...(decision.goalId !== undefined ? { goalId: decision.goalId } : {}),
+        },
       );
       answers.push(
         decision.alternative ? `${decision.reason} ${decision.alternative}` : decision.reason,
@@ -5024,12 +5175,8 @@ export class AnimaAgent {
           };
         }
       }
-      const program = programForUserRequest(
-        goal.userRequest,
-        perception,
-        this.userProgramDeps(perception),
-      );
-      this.startUserActivity(goal, program, completionReply(goal.userRequest), perception);
+      const plan = this.planFor(goal, perception);
+      this.startUserActivity(goal, plan, completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
     if (goal.description === GOAL_BE_SAFE) {
@@ -5339,9 +5486,8 @@ export class AnimaAgent {
       return undefined;
     }
 
-    const deps = this.userProgramDeps(perception);
     // ¿Su mundo ya sabe hacer una herramienta? Hacerla y volver al encargo en
-    // el mismo programa, igual que al escalar un golpe.
+    // el mismo plan, igual que al escalar un golpe.
     const toolRecipe = perception.recipes.find((r) => recipeProduces(r, 'tool'));
     if (toolRecipe && goal.userRequest) {
       this.harvestToolBlocked.delete(goal.id);
@@ -5349,19 +5495,11 @@ export class AnimaAgent {
         `No puedo sacar ${kindWithArticle(source)} con las manos. ` +
           `Primero me hago ${kindWithArticle(recipeProduct(toolRecipe)?.kind ?? 'una herramienta')}.`,
       );
-      const craft = gatherAndCraftProgram(toolRecipe, {
-        held: heldCounts(perception),
-        searchFirst: true,
-        recipes: perception.recipes,
-        rememberedWalk: deps.rememberedWalk,
-      });
-      const resume = programForUserRequest(goal.userRequest, perception, deps);
-      this.startUserActivity(
-        goal,
-        [...craft, ...resume],
-        completionReply(goal.userRequest),
-        perception,
-      );
+      // La herramienta primero y el encargo después, en un solo plan: el paso
+      // de fabricarla es una capacidad como cualquier otra, así que también se
+      // verifica contra el mundo en vez de darse por hecho.
+      const plan = this.planWithPrefix(goal, perception, toolRecipe.id);
+      this.startUserActivity(goal, plan, completionReply(goal.userRequest), perception);
       return this.continueActivity(perception);
     }
 
@@ -5400,7 +5538,6 @@ export class AnimaAgent {
     // ¿Ya tiene o ve algo más fuerte que lo que no hizo mella? A golpear con eso.
     if (this.strongestToolPower(perception) > floor) return undefined;
 
-    const deps = this.userProgramDeps(perception);
     // ¿Su mundo ya sabe hacer una herramienta más fuerte? Fabricarla y golpear
     // en un mismo programa: al terminar de craftear, el `strongestTool` del
     // programa de romper elige la recién hecha por ser la de más poder.
@@ -5408,19 +5545,11 @@ export class AnimaAgent {
       (r) => (recipeProduct(r)?.components.tool?.power ?? 0) > floor,
     );
     if (stronger) {
-      const craft = gatherAndCraftProgram(stronger, {
-        held: heldCounts(perception),
-        searchFirst: true,
-        recipes: perception.recipes,
-        rememberedWalk: deps.rememberedWalk,
-      });
-      const strike = programForUserRequest(goal.userRequest!, perception, deps);
-      this.startUserActivity(
-        goal,
-        [...craft, ...strike],
-        completionReply(goal.userRequest!),
-        perception,
-      );
+      // Fabricarla y golpear en un mismo plan: al terminar de craftear, el
+      // `strongestTool` del paso de romper elige la recién hecha por ser la de
+      // más poder.
+      const plan = this.planWithPrefix(goal, perception, stronger.id);
+      this.startUserActivity(goal, plan, completionReply(goal.userRequest!), perception);
       return this.continueActivity(perception);
     }
 
@@ -5871,6 +6000,13 @@ export class AnimaAgent {
     scenarios: NamedScenario[],
     resume: SkillDevResume,
   ): Promise<SkillDevOutcome | 'in-flight'> {
+    // Un cuarto de la grilla queda fuera del alcance de la corrección.
+    const reserved = Math.max(1, Math.round(this.config.evaluationSeeds.length * 0.25));
+    const practiceSeeds = this.config.evaluationSeeds.slice(
+      0,
+      Math.max(1, this.config.evaluationSeeds.length - reserved),
+    );
+    const holdoutSeeds = this.config.evaluationSeeds.slice(practiceSeeds.length);
     const promise = developSkill(
       contract,
       context,
@@ -5879,11 +6015,18 @@ export class AnimaAgent {
         library: this.config.library,
         regressions: this.config.regressions,
         scenarios,
-        seeds: this.config.evaluationSeeds,
+        // La grilla se reparte: la mayoría son mundos de práctica —los que el
+        // diseñador ve al corregir— y el último cuarto queda RESERVADO. Sin esa
+        // reserva, ocho revisiones de «arreglá lo que falló ahí» producen una
+        // habilidad ajustada a cuarenta mundos concretos, que luce perfecta y
+        // no sirve en ninguno más.
+        seeds: practiceSeeds,
+        ...(holdoutSeeds.length > 0 ? { holdoutSeeds } : {}),
         maxTicksPerCase: 200,
         maxVersions: this.config.maxVersionsPerDev,
         now: () => this.now(),
         ...(this.config.onEvaluationCase ? { onCase: this.config.onEvaluationCase } : {}),
+        ...(this.config.evaluator ? { evaluator: this.config.evaluator } : {}),
       },
       this.events,
       this.tick,
@@ -6173,13 +6316,13 @@ export class AnimaAgent {
     return resume(outcome, perception);
   }
 
-  private startUserActivity(
-    goal: Goal,
-    program: SkillProgram,
-    completionReply: string,
-    perception: Perception,
-  ): void {
-    const rememberedEntities = this.places
+  /**
+   * Los recuerdos espaciales que todavía valen como hipótesis. Un lugar que la
+   * memoria epistémica ya dio por viejo o refutado no entra: planificar sobre
+   * un recuerdo desmentido es planificar sobre nada.
+   */
+  private trustedPlaces(perception: Perception): { id: string; kind: string; portable?: boolean }[] {
+    return this.places
       .all()
       .filter((place) => {
         const assessment = this.memory.assessKnowledge({
@@ -6196,6 +6339,18 @@ export class AnimaAgent {
         kind: place.kind,
         ...(place.portable !== undefined ? { portable: place.portable } : {}),
       }));
+  }
+
+  /**
+   * El plan efímero para este objetivo, con percepción fresca.
+   *
+   * Se arma de nuevo en cada reanudación a propósito: un plan es de AHORA, y
+   * revivir uno hecho para un mundo que ya cambió es exactamente el error que
+   * la replanificación existe para evitar. Lo que sobrevive entre intentos es
+   * el objetivo, no el plan.
+   */
+  private planFor(goal: Goal, perception: Perception): Plan {
+    const rememberedEntities = this.trustedPlaces(perception);
     const causal = goal.userRequest
       ? planCausalRequest(goal.userRequest, perception, {
           rememberedEntities,
@@ -6265,6 +6420,101 @@ export class AnimaAgent {
         // ausencia.
       }
     }
+    const attempt = this.causalPlanAttempts.get(goal.id) ?? 0;
+    return goal.userRequest
+      ? planForUserRequest(goal.userRequest, perception, this.userProgramDeps(perception), this.capabilities, {
+          goalId: goal.id,
+          rememberedEntities,
+          tick: perception.tick,
+          revision: Math.max(1, attempt),
+        })
+      : createPlan({ goalId: goal.id, source: 'deterministic', steps: [], tick: perception.tick });
+  }
+
+  /**
+   * El plan del encargo, precedido por fabricar algo que le hace falta.
+   *
+   * Es lo que hace una escalada: no cambia el encargo, le antepone el paso que
+   * lo destraba. Si la receta no se puede armar con el mundo de ahora, el plan
+   * queda como estaba — antes que ejecutar media escalada, se sigue como se
+   * podía.
+   */
+  private planWithPrefix(goal: Goal, perception: Perception, recipeId: string): Plan {
+    const plan = this.planFor(goal, perception);
+    const prefix = this.capabilities.buildStep(
+      'craft.recipe',
+      { recipeId },
+      { perception, deps: this.userProgramDeps(perception) },
+      `prefix-${recipeId}`,
+    );
+    if (prefix.ok) plan.steps.unshift(prefix.value);
+    return plan;
+  }
+
+  /**
+   * Lo que la ejecución monitorizada va contando, traducido a eventos del
+   * agente. Es lo que le permite al cuidador ver progreso real —«esto lo hice»,
+   * «esto no salió y lo estoy rehaciendo»— en vez de un silencio de veinte
+   * ticks seguido de un veredicto.
+   */
+  private notePlanEvent(goalId: string, event: PlanExecutorEvent): void {
+    if (event.type === 'step.started') {
+      this.emit('plan.step.started', {
+        goalId,
+        stepId: event.step.id,
+        capability: event.step.capabilityId,
+        purpose: event.step.purpose,
+        attempt: event.step.attempts,
+      });
+      return;
+    }
+    if (event.type === 'step.skipped') {
+      this.emit('plan.step.skipped', {
+        goalId,
+        stepId: event.step.id,
+        capability: event.step.capabilityId,
+      });
+      return;
+    }
+    if (event.type === 'step.verified') {
+      this.emit('plan.step.verified', {
+        goalId,
+        stepId: event.step.id,
+        capability: event.step.capabilityId,
+        purpose: event.step.purpose,
+      });
+      return;
+    }
+    if (event.type === 'step.unverified') {
+      this.emit('plan.step.unverified', {
+        goalId,
+        stepId: event.step.id,
+        capability: event.step.capabilityId,
+        purpose: event.step.purpose,
+        diagnostics: event.diagnostics,
+      });
+      // Que el mundo desmienta un paso es EVIDENCIA, no ruido: queda en la
+      // memoria como lo que es —una expectativa que no se cumplió— para que
+      // un intento futuro no vuelva a darla por hecha.
+      this.memory.recordEpisode({
+        kind: 'plan-step-unverified',
+        summary: `${event.step.purpose}: el mundo no mostró el efecto (${event.diagnostics.slice(0, 3).join(', ')})`,
+        tick: this.tick,
+        importance: 0.5,
+      });
+      return;
+    }
+    if (event.type === 'plan.replanned') {
+      this.emit('plan.replanned', { goalId, reason: event.reason, revision: event.revision });
+    }
+  }
+
+  private startUserActivity(
+    goal: Goal,
+    plan: Plan,
+    completionReply: string,
+    perception: Perception,
+  ): void {
     // Al ponerse a trabajar el encargo, sus pasos se vuelven objetivos hijos
     // (ADR 0053). Acá y no al aceptar el pedido: recién ahora hay percepción, y
     // la cuenta de qué falta puede haber cambiado —una receta inventada en el
@@ -6300,10 +6550,28 @@ export class AnimaAgent {
     this.activity = {
       goalId: goal.id,
       strategy: 'petición-del-usuario',
-      exec: new SkillExecution(program, this.petId, {
+      plan,
+      exec: new PlanExecutor(plan, this.petId, {
         library: this.config.library,
         spatial: this.spatial,
         places: this.gpsPlaces(),
+        verifyContext: (fresh) => this.conditionContext(goal, fresh),
+        // Replanificar es volver a mirar: se arma un plan nuevo con la
+        // percepción de AHORA, no se remienda el viejo. Un plan es de su
+        // momento, y remendarlo arrastraría decisiones tomadas sobre un mundo
+        // que ya no está.
+        replan: (fresh) => {
+          const attempt = (this.causalPlanAttempts.get(goal.id) ?? 0) + 1;
+          this.causalPlanAttempts.set(goal.id, attempt);
+          const next = this.planFor(goal, fresh);
+          this.activity = this.activity ? { ...this.activity, plan: next } : this.activity;
+          return next;
+        },
+        onEvent: (event) => this.notePlanEvent(goal.id, event),
+        // Con el catálogo a mano, el executor puede preguntarle a la capacidad
+        // de cada paso si su fracaso se arregla mirando de nuevo.
+        registry: this.capabilities,
+        deps: this.userProgramDeps(perception),
       }),
       purpose: 'user-request',
       completionReply,

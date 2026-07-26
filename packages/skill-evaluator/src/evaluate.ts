@@ -1,5 +1,5 @@
 import { equalsVec2, isAdjacent, manhattan } from '@anima/shared';
-import type { EntityId, WorldState } from '@anima/sim-core';
+import type { EntityId, WorldSnapshot, WorldState } from '@anima/sim-core';
 import { findByKind, findRecipe, getEntity, restoreSnapshot } from '@anima/sim-core';
 import type {
   EvaluationCriterion,
@@ -33,6 +33,15 @@ export interface EvaluationCaseResult {
   scenario: string;
   seed: number;
   fromRegression: boolean;
+  /**
+   * Caso reservado: se mide igual, pero sus observaciones NO vuelven al
+   * diseñador. Sin esa reserva, el ciclo de corrección ve exactamente los
+   * mundos contra los que se lo va a juzgar, y ocho revisiones seguidas de
+   * «arreglá esto que falló ahí» producen una habilidad ajustada a cuarenta
+   * mundos concretos en vez de una que funcione. Es la diferencia entre
+   * aprender y memorizar el examen.
+   */
+  holdout?: boolean;
   verdict: CaseVerdict;
   runOutcome: SkillRunReport['outcome'];
   runReason?: string;
@@ -54,6 +63,17 @@ export interface EvaluationReport {
   cases: EvaluationCaseResult[];
   /** Sobre los casos concluyentes: lo inconcluyente no suma ni resta. */
   successRate: number;
+  /**
+   * La tasa sobre los mundos RESERVADOS, los que el diseñador nunca vio. Es la
+   * que dice si aprendió o si memorizó: una habilidad ajustada a los mundos de
+   * práctica luce perfecta en `successRate` y se desploma acá.
+   *
+   * `null` cuando no se reservó ninguno (compatibilidad con quien evalúa sin
+   * separar): ahí no hay nada que afirmar, y afirmarlo igual sería peor.
+   */
+  holdoutSuccessRate: number | null;
+  /** Cuántos mundos reservados dijeron algo. Contexto de la tasa de arriba. */
+  holdoutConclusiveCases: number;
   /** Cuántos casos quedaron a merced del mundo. Contexto de `successRate`. */
   inconclusiveCases: number;
   invariantViolations: number;
@@ -105,6 +125,18 @@ export type EvaluationCaseHook = (trace: EvaluationCaseTrace) => void;
 export interface EvaluateOptions {
   scenarios: NamedScenario[];
   seeds: number[];
+  /**
+   * Semillas RESERVADAS: se corren igual y cuentan para promover, pero sus
+   * observaciones no vuelven al diseñador. Ver `holdout` en el caso.
+   */
+  holdoutSeeds?: number[];
+  /**
+   * El mundo REAL, tal como está ahora. Una habilidad que funciona en cuarenta
+   * mundos generados y no en el que la mascota está viviendo no le sirve de
+   * nada; y ese mundo es justo el que ningún escenario sintético reproduce.
+   * Entra como un caso más, con su nombre propio.
+   */
+  currentWorld?: { snapshot: WorldSnapshot; petId: EntityId };
   /** Casos de regresión adicionales (fallos históricos que deben superarse). */
   regressions?: RegressionCase[];
   maxTicks?: number;
@@ -282,6 +314,7 @@ function runCase(
   seed: number,
   fromRegression: boolean,
   options: EvaluateOptions,
+  holdout = false,
 ): EvaluationCaseResult {
   // Mundo fresco y aislado: nada de lo que pase aquí toca el mundo real.
   const { world, petId } = scenario.build(seed);
@@ -355,6 +388,7 @@ function runCase(
     scenario: scenario.name,
     seed,
     fromRegression,
+    ...(holdout ? { holdout: true } : {}),
     verdict,
     runOutcome: report.outcome,
     ...(report.reason !== undefined ? { runReason: report.reason } : {}),
@@ -382,6 +416,27 @@ export function evaluateSkill(skill: SkillDefinition, options: EvaluateOptions):
       seen.add(`${scenario.name}:${seed}`);
       cases.push(runCase(skill, scenario, seed, false, options));
     }
+    for (const seed of options.holdoutSeeds ?? []) {
+      const key = `${scenario.name}:${seed}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      cases.push(runCase(skill, scenario, seed, false, options, true));
+    }
+  }
+  // El mundo en el que de verdad vive, como un caso más. Va reservado: es el
+  // que menos se puede permitir que el diseñador ajuste a mano.
+  if (options.currentWorld) {
+    const { snapshot, petId } = options.currentWorld;
+    cases.push(
+      runCase(
+        skill,
+        { name: 'mundo-actual', build: () => ({ world: restoreSnapshot(snapshot), petId }) },
+        0,
+        false,
+        options,
+        true,
+      ),
+    );
   }
   for (const regression of options.regressions ?? []) {
     const key = `${regression.scenarioName}:${regression.seed}`;
@@ -410,16 +465,29 @@ export function evaluateSkill(skill: SkillDefinition, options: EvaluateOptions):
   const conclusive = cases.filter((c) => c.verdict !== 'inconclusive');
   const passedCases = conclusive.filter((c) => c.verdict === 'passed');
   const successTicks = passedCases.map((c) => c.metrics.ticks);
+  const holdout = conclusive.filter((c) => c.holdout === true);
   return {
     skillId: skill.id,
     skillName: skill.name,
     version: skill.version,
     cases,
     successRate: conclusive.length === 0 ? 0 : passedCases.length / conclusive.length,
+    holdoutSuccessRate:
+      holdout.length === 0
+        ? null
+        : holdout.filter((c) => c.verdict === 'passed').length / holdout.length,
+    holdoutConclusiveCases: holdout.length,
     inconclusiveCases: cases.length - conclusive.length,
     invariantViolations: cases.reduce((sum, c) => sum + c.metrics.invariantViolations, 0),
+    // Lo reservado NO alimenta la corrección: ese es todo el punto de
+    // reservarlo. Si el diseñador viera en qué mundo falló, la revisión
+    // siguiente lo arreglaría ahí y el examen dejaría de medir nada.
     failureObservations: [
-      ...new Set(cases.filter((c) => c.verdict === 'failed').flatMap((c) => c.observations)),
+      ...new Set(
+        cases
+          .filter((c) => c.verdict === 'failed' && c.holdout !== true)
+          .flatMap((c) => c.observations),
+      ),
     ],
     avgTicksOnSuccess:
       successTicks.length === 0

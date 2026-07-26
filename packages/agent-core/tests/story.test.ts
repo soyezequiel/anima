@@ -215,10 +215,9 @@ describe('diálogo y órdenes del usuario', () => {
     expect(result.worldEvents.some((event) => event.type === 'item.consumed')).toBe(true);
   });
 
-  it('una acción aún no ejecutable dispara un intento de aprendizaje, no una negativa seca', async () => {
-    // Un solo guion: tras interpretar, el agente pedirá un contrato de
-    // aprendizaje y este proveedor ya no tendrá qué responder — el caso
-    // "quiero aprenderlo pero no encuentro cómo".
+  it('una acción aún no ejecutable se dice con honestidad y se ofrece aprender', async () => {
+    // Un solo guion: alcanza, porque interpretar es la ÚNICA consulta que esto
+    // cuesta ahora. Antes seguía con un contrato de aprendizaje que nadie pidió.
     const provider = new ScriptedModelProvider([
       {
         kind: 'command.interpretation',
@@ -234,14 +233,17 @@ describe('diálogo y órdenes del usuario', () => {
       userMessagesAt: { 0: 'armate un refugio usando ese palo' },
     });
 
-    expect(
-      result.worldEvents.some(
-        (event) =>
-          event.type === 'agent.spoke' &&
-          String(event.data.text).includes('no consigo imaginar en qué se notaría'),
-      ),
-    ).toBe(true);
+    const said = result.worldEvents
+      .filter((event) => event.type === 'agent.spoke')
+      .map((event) => String(event.data.text));
+    // Dice qué no puede, qué sí puede, y ofrece aprenderlo. Las tres cosas:
+    // por separado ninguna le sirve al cuidador.
+    expect(said.some((text) => text.includes('construir una casa con la rama'))).toBe(true);
+    expect(said.some((text) => text.includes('Lo que sí puedo'))).toBe(true);
+    expect(said.some((text) => text.includes('decime que sí'))).toBe(true);
     expect(agent.goals.all().some((goal) => goal.source === 'user-request')).toBe(false);
+    // Y no se puso a aprender nada por su cuenta.
+    expect(agent.goals.all().some((goal) => goal.source === 'learning')).toBe(false);
     // Lo pedido queda recordado como deseo no cumplido, no descartado.
     expect(
       agent.memory.episodeList().some((episode) => episode.kind === 'unmet-request'),

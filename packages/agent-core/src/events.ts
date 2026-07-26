@@ -25,6 +25,26 @@ export type AgentEventType =
   | 'causal.plan.revised'
   /** No existe una cadena causal válida dentro de los límites configurados. */
   | 'causal.plan.rejected'
+  /** Empezó a ejecutarse un paso del plan: la primera acción útil, y las que siguen. */
+  | 'plan.step.started'
+  /** El paso no hizo falta: su efecto ya era cierto al llegar. */
+  | 'plan.step.skipped'
+  /** El mundo confirmó el efecto que el paso prometía. */
+  | 'plan.step.verified'
+  /**
+   * El programa del paso terminó y el mundo NO muestra su efecto. Es el evento
+   * que hacía falta: antes esto era indistinguible de un éxito, y por eso un
+   * encargo podía anunciarse cumplido sin haber ocurrido.
+   */
+  | 'plan.step.unverified'
+  /** Se armó un plan nuevo con percepción fresca porque el viejo no se sostuvo. */
+  | 'plan.replanned'
+  /**
+   * El cuidador pidió algo que ninguna capacidad registrada cubre. Se emite con
+   * la lista de las que sí existen: es la traza de que la negativa se dio con
+   * el catálogo en la mano y no por omisión.
+   */
+  | 'capability.missing'
   | 'strategy.selected'
   | 'strategy.failed'
   | 'strategy.forbidden'

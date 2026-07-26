@@ -4,6 +4,7 @@ export * from './goal-conditions.js';
 export * from './causal-planner.js';
 export * from './causal-world-model.js';
 export * from './causal-program.js';
+export * from './capabilities/index.js';
 export * from './invention.js';
 export * from './names.js';
 export * from './programs.js';

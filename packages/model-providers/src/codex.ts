@@ -1685,6 +1685,14 @@ ${
     : '- (nada: este mundo no admite construir)'
 }
 
+Lo que la mascota SABE HACER (su catálogo real de capacidades; nada fuera de
+esta lista existe, por convincente que suene):
+${
+  request.capabilities && request.capabilities.length > 0
+    ? request.capabilities.map((capability) => `- ${capability}`).join('\n')
+    : '- (catálogo no informado)'
+}
+
 ${PRIMITIVES_REFERENCE}
 
 Tu única tarea es clasificar la intención; no decidas si conviene obedecer y

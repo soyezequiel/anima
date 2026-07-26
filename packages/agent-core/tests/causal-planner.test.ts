@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { buildPerception, createWorld, spawn, stepWorld } from '@anima/sim-core';
-import { SkillExecution } from '@anima/skill-runtime';
+import { SkillExecution, SkillLibrary } from '@anima/skill-runtime';
 import type { CausalAction, CausalFact } from '../src/index.js';
 import {
   causalFluent,
   causalPlanToSkillProgram,
+  createCapabilityRegistry,
   causalState,
   deriveCausalWorldModel,
   factValue,
@@ -97,7 +98,17 @@ describe('planificador causal general', () => {
       'pickup:log',
     ]);
 
-    const program = causalPlanToSkillProgram(result.plan);
+    const program = causalPlanToSkillProgram(result.plan, createCapabilityRegistry(), {
+      perception: buildPerception(world, pet.id),
+      deps: {
+        library: new SkillLibrary(),
+        findInteraction: () => undefined,
+        rememberedWalk: () => undefined,
+        rememberedWalkForEntity: () => undefined,
+        harvestSource: () => undefined,
+        structureSite: () => null,
+      },
+    });
     expect(program).not.toBeNull();
     const execution = new SkillExecution(program!, pet.id);
     for (let tick = 0; tick < 80; tick++) {

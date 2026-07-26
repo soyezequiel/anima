@@ -114,6 +114,15 @@ export type ModelRequest =
       skills?: { name: string; description: string }[];
       /** Lo que este mundo admite construir: sin esto, "craft-item" no existe. */
       recipes?: { id: string; ingredients: string }[];
+      /**
+       * Lo que la mascota SABE HACER de verdad, generado desde su registro de
+       * capacidades. Va al prompt para que el modelo clasifique contra el
+       * catálogo real y no contra lo que supone: sin esto, la lista de acciones
+       * del prompt era una constante escrita a mano que podía desincronizarse
+       * del código sin que nada fallara, y el modelo prometía cosas que después
+       * no existían.
+       */
+      capabilities?: string[];
     }
   | {
       /**

@@ -1,7 +1,8 @@
 import { z } from 'zod';
 import type { Result } from '@anima/shared';
 import { err, ok } from '@anima/shared';
-import type { SkillProgram } from './dsl.js';
+import type { SkillOp, SkillProgram } from './dsl.js';
+import { calledSkillNames } from './dsl.js';
 
 /**
  * `provisional` es "lo mejor que tengo mientras sigo puliendo" (ADR 0050).
@@ -370,11 +371,51 @@ export class SkillLibrary {
     skill.status = 'stable';
     // Sus hijas se promueven con ella (ADR 0055): una sub-habilidad no tiene
     // vara propia — su examen fue que la madre pasara los cuarenta mundos
-    // usándola. Aprobada la madre, quedan aprobadas.
-    for (const dependency of skill.dependencies) {
-      const child = this.skills.get(dependency.skillId);
+    // USÁNDOLA. Ahí está la letra chica que faltaba: solo cuenta la que de
+    // verdad se usó.
+    //
+    // `dependencies` une dos cosas que no coinciden: las piezas que NACIERON
+    // para esta habilidad y las que su programa LLAMA. El modelo puede pedir
+    // tres piezas y componer con dos, y la tercera quedaba estable sin que un
+    // solo mundo la hubiera ejecutado jamás — una habilidad "probada" que nadie
+    // probó, ofrecida al catálogo para futuras composiciones. Es exactamente la
+    // clase de credencial en falso que el evaluador independiente existe para
+    // impedir.
+    //
+    // La que no se usó no se promueve ni se pierde de vista: queda experimental
+    // y el archivado de huérfanas decide su suerte.
+    for (const dependency of this.coveredDependencies(skill)) {
+      const child = this.skills.get(dependency);
       if (child && child.status === 'experimental') this.markPromoted(child.id);
     }
+  }
+
+  /**
+   * Las piezas que el programa de esta habilidad EJECUTA de verdad, siguiendo
+   * las llamadas en profundidad. Es la cobertura real: lo que corrió en los
+   * mundos donde la madre se midió.
+   */
+  private coveredDependencies(skill: SkillDefinition, seen = new Set<string>()): string[] {
+    const covered: string[] = [];
+    const declared = new Map(skill.dependencies.map((d) => [d.skillId, d.skillId]));
+    for (const name of calledSkillNames(skill.program)) {
+      const called = this.findUsable(name) ?? this.findLatest(name);
+      if (!called || seen.has(called.id)) continue;
+      seen.add(called.id);
+      covered.push(called.id);
+      covered.push(...this.coveredDependencies(called, seen));
+    }
+    // Una llamada por id congelado (lo que emiten las rutas de TypeScript) no
+    // tiene nombre que resolver, pero sí aparece declarada: se busca ahí.
+    for (const id of frozenSkillIds(skill.program)) {
+      if (!declared.has(id) || seen.has(id)) continue;
+      const child = this.skills.get(id);
+      if (!child) continue;
+      seen.add(id);
+      covered.push(id);
+      covered.push(...this.coveredDependencies(child, seen));
+    }
+    return covered;
   }
 
   /**
@@ -492,4 +533,15 @@ export class SkillLibrary {
     if (success) skill.metrics.successfulRuns += 1;
     skill.lastUsedAt = at;
   }
+}
+
+/** Los ids congelados que un programa llama, en profundidad. */
+function frozenSkillIds(ops: SkillOp[]): string[] {
+  const ids: string[] = [];
+  for (const op of ops) {
+    if (op.op === 'runSkill' && op.skillId) ids.push(op.skillId);
+    else if (op.op === 'branch') ids.push(...frozenSkillIds(op.then), ...frozenSkillIds(op.else ?? []));
+    else if (op.op === 'repeatWithLimit') ids.push(...frozenSkillIds(op.body));
+  }
+  return ids;
 }

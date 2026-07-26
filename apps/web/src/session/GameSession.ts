@@ -33,11 +33,14 @@ import {
 import type { PrunePlan, PruneRef } from '@anima/sim-core';
 import type { WorldSnapshot } from '@anima/sim-core';
 import type { EvaluationCaseTrace } from '@anima/skill-evaluator';
+import type { EvaluatorPort } from '@anima/skill-evaluator';
 import { RegressionStore, sampleSeeds } from '@anima/skill-evaluator';
 import type { GameMap, MissionStatus } from '@anima/missions';
 import { MissionTracker } from '@anima/missions';
 import type { SkillOp, SkillRemovalPlan } from '@anima/skill-runtime';
 import { describeCriterion, SkillLibrary } from '@anima/skill-runtime';
+import { createBrowserEvaluator } from './eval-port.js';
+import { SessionMetrics } from './metrics.js';
 import { skillSubjects } from './skill-subjects.js';
 import { humanReason } from './failure-reasons.js';
 import {
@@ -448,6 +451,12 @@ export class GameSession {
   private devEvents: DevEventView[] = [];
   private devSeq = 0;
   private agentEventCursor = 0;
+  /**
+   * Las cuentas con las que se puede contestar «tarda» sin mirar: cuánto va de
+   * pedido a primera acción, en qué se va el tiempo, y cuánto se reusa de
+   * verdad lo que aprendió.
+   */
+  readonly metrics = new SessionMetrics();
   private lastSpeech: { text: string; tick: number } | null = null;
   private lastPickup: PickupView | null = null;
   /** Última interacción de postura (encima/debajo): mientras la mascota siga
@@ -680,6 +689,13 @@ export class GameSession {
       // los dibuja como "sueños" mientras ella piensa (son las evaluaciones
       // reales, no una animación inventada).
       onEvaluationCase: (trace) => this.noteDream(trace),
+      // Los cuarenta mundos de cada versión corren en un worker: la pestaña
+      // sigue viva mientras ella practica, que es justo cuando avisa que se
+      // pone a pensar y hasta hoy no se podía ni leer ese aviso.
+      evaluator: this.instrumentEvaluator(createBrowserEvaluator(
+        [...MVP_SCENARIOS, ...PRACTICE_SCENARIOS, ...COLD_SCENARIOS],
+        (trace) => this.noteDream(trace),
+      )),
     });
     this.devEvents = [];
     this.devSeq = 0;
@@ -734,6 +750,25 @@ export class GameSession {
    * Dev `ai.timing` con su tipo, duración y resultado. Es el dato que decide
    * qué optimizar — sin él, cualquier mejora de latencia es a ciegas.
    */
+  /**
+   * La evaluación, cronometrada aparte del proveedor. Son los dos costos que se
+   * confunden bajo «tarda» y no se arreglan igual: uno se resuelve cambiando de
+   * modelo, el otro sacando trabajo del hilo principal.
+   */
+  private instrumentEvaluator(port: EvaluatorPort): EvaluatorPort {
+    return {
+      evaluate: async (request) => {
+        const startedAt = performance.now();
+        try {
+          return await port.evaluate(request);
+        } finally {
+          this.metrics.noteDuration('evaluación', Math.round(performance.now() - startedAt));
+        }
+      },
+      ...(port.cancel ? { cancel: () => port.cancel!() } : {}),
+    };
+  }
+
   private instrumentProvider(provider: ModelProvider): ModelProvider {
     const record = (kind: string, startedAt: number, ok: boolean): void => {
       const ms = Math.round(performance.now() - startedAt);
@@ -742,6 +777,10 @@ export class GameSession {
         tick: this.world.tick,
         data: { kind, ms, ok },
       });
+      // Y la misma medición alimenta las cuentas de la sesión: separar
+      // interpretar de contratar de evaluar es lo que convierte un «tarda» en
+      // un diagnóstico. Las tres se arreglan de maneras distintas.
+      this.metrics.noteDuration(kind, ms);
       // Las duraciones que terminaron bien alimentan la estimación de "cuánto
       // suele tardar" que la UI muestra durante la espera.
       if (ok) {
@@ -1961,6 +2000,17 @@ export class GameSession {
     for (; this.agentEventCursor < events.length; this.agentEventCursor++) {
       const event = events[this.agentEventCursor]!;
       this.pushDev('agent', event);
+      this.metrics.ingest(event);
+      // El reloj de «cuánto tarda en arrancar» empieza al aceptar el encargo y
+      // se detiene con la primera acción que el mundo acepta para él. Es la
+      // métrica del producto: todo lo demás puede estar bien y si esto es alto,
+      // se siente muerta.
+      if (event.type === 'user.request.accepted' && typeof event.data.goalId === 'string') {
+        this.metrics.noteRequestAccepted(event.data.goalId, this.world.tick);
+      }
+      if (event.type === 'plan.step.started' && typeof event.data.goalId === 'string') {
+        this.metrics.noteUsefulAction(event.data.goalId, this.world.tick);
+      }
       // El agente leyó un mensaje encolado: se apaga su marca de "sin leer"
       // (el más viejo con ese texto, en el mismo orden FIFO en que la cola los
       // atiende) y pasa a ser historia normal por encima del próximo pensar.
