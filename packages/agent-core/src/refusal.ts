@@ -1,4 +1,12 @@
-import { countedKindLabel, isFeminineKind, kindLabel, kindWithArticle } from '@anima/shared';
+import {
+  countedKindLabel,
+  isFeminineKind,
+  kindAfterOf,
+  kindAfterTo,
+  kindLabel,
+  kindWithArticle,
+  kindWithDefiniteArticle,
+} from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
 import { isMadeFrom, missingIngredients, recipeProduct } from '@anima/sim-core';
 import type { MemoryStore } from '@anima/memory';
@@ -184,10 +192,10 @@ export function evaluateUserRequest(
       }
       const action =
         request.relation === 'opposite-side'
-          ? `cruzar al otro lado de ${displayKind(request.targetKind)}`
+          ? `cruzar al otro lado ${kindAfterOf(request.targetKind)}`
           : request.relation === 'near'
-            ? `acercarme a ${displayKind(request.targetKind)}`
-            : `alejarme de ${displayKind(request.targetKind)}`;
+            ? `acercarme ${kindAfterTo(request.targetKind)}`
+            : `alejarme ${kindAfterOf(request.targetKind)}`;
       return { classification: 'accepted', reason: `Entiendo: voy a ${action}.` };
     }
 
@@ -419,9 +427,18 @@ export function evaluateUserRequest(
           reason: 'Entiendo que querés que ponga algo en algún lado, pero no sé qué ni dónde.',
         };
       }
+      // Con artículos, y respetando dónde: «poner martillo sobre refugio» ni
+      // se lee como español ni era cierto —lo pedido era dejarlo AL LADO—.
       return {
         classification: 'accepted',
-        reason: `Voy a poner ${displayKind(request.targetKind)} sobre ${displayKind(request.onKind)}.`,
+        reason:
+          request.placement === 'near'
+            ? `Voy a dejar ${kindWithDefiniteArticle(request.targetKind)} junto ${kindAfterTo(
+                request.onKind,
+              )}.`
+            : `Voy a poner ${kindWithDefiniteArticle(request.targetKind)} sobre ${kindWithDefiniteArticle(
+                request.onKind,
+              )}.`,
       };
     }
 

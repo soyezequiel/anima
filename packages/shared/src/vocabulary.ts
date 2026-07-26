@@ -52,6 +52,40 @@ export function kindLabel(kind: string): string {
 }
 
 /**
+ * La tabla entera, para quien tenga que traducir en la dirección contraria:
+ * de la palabra que dijo el cuidador al identificador del motor.
+ *
+ * El caso que la hizo falta: «traeme tres piedras». El modelo que interpreta el
+ * chat solo veía identificadores en inglés (`stone`, `rock`) y una palabra en
+ * español, sin nada que los uniera; unas veces acertaba `stone` y otras elegía
+ * `rock` —que no se levanta con las manos— y el encargo moría en un «no puedo».
+ * Adivinar el nombre de las cosas no puede quedar librado a la suerte: el
+ * puente ya existía para mostrar, faltaba ofrecerlo también para entender.
+ */
+export function kindVocabulary(): { kind: string; label: string }[] {
+  return Object.entries(KIND_LABELS).map(([kind, label]) => ({ kind, label }));
+}
+
+/** "el muro", "la piedra": el nombre con su artículo determinado. */
+export function kindWithDefiniteArticle(kind: string): string {
+  return `${isFeminineKind(kind) ? 'la' : 'el'} ${kindLabel(kind)}`;
+}
+
+/**
+ * "del muro", "de la piedra". Existe porque el español contrae «de + el» y
+ * pegar el nombre pelado detrás de una preposición sonaba a telegrama: «crucé
+ * al otro lado de muro».
+ */
+export function kindAfterOf(kind: string): string {
+  return isFeminineKind(kind) ? `de la ${kindLabel(kind)}` : `del ${kindLabel(kind)}`;
+}
+
+/** "al muro", "a la piedra": la misma contracción, con «a». */
+export function kindAfterTo(kind: string): string {
+  return isFeminineKind(kind) ? `a la ${kindLabel(kind)}` : `al ${kindLabel(kind)}`;
+}
+
+/**
  * Género gramatical adivinado por la terminación del nombre humano. Es una
  * heurística (vale también para lo que Ánima inventa, que no está en la
  * tabla): "silla" → femenino, "tronco" → masculino.

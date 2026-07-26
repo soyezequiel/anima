@@ -1,5 +1,5 @@
 import type { Vec2 } from '@anima/shared';
-import { chebyshev, manhattan } from '@anima/shared';
+import { chebyshev, isFeminineKind, kindLabel, manhattan } from '@anima/shared';
 import type { PerceivedEntity, Perception } from '@anima/sim-core';
 import type { RememberedPlace } from './place-memory.js';
 import type { EntitySelector } from './goals.js';
@@ -142,9 +142,22 @@ export function resolveEntityReference(
       evidence.push('es el objeto visible señalado por el demostrativo');
     }
   } else if (selector.reference === 'last-used') {
+    // Mismo criterio que el demostrativo de arriba, y por el mismo motivo: el
+    // antecedente manda cuando existe, pero su ausencia no puede convertir un
+    // objeto que está ahí en uno que no está. «Dejá el martillo junto al
+    // refugio», con el martillo en la mano y sin haberlo usado todavía,
+    // respondía «no encuentro ningún martillo que coincida con esa
+    // referencia»: verdadero sobre el antecedente y falso sobre el mundo.
+    // Sin antecedente utilizable decide la saliencia —lo que se lleva encima
+    // pesa—, y si dos candidatos empatan se pregunta cuál, que es lo honesto.
     const allowed = new Set(memory.lastUsed);
-    matches = matches.filter((candidate) => allowed.has(candidate.id));
-    evidence.push('fue el último objeto manipulado');
+    const used = matches.filter((candidate) => allowed.has(candidate.id));
+    if (used.length > 0) {
+      matches = used;
+      evidence.push('fue el último objeto manipulado');
+    } else {
+      evidence.push('es el único que encaja con lo que nombró');
+    }
   } else if (selector.reference === 'created-by-me') {
     const allowed = new Set(memory.createdByMe);
     matches = matches.filter((candidate) => allowed.has(candidate.id));
@@ -160,9 +173,12 @@ export function resolveEntityReference(
   }
 
   if (matches.length === 0) {
+    // En voz humana: el cuidador pidió un martillo, no un `hammer`.
     return {
       kind: 'missing',
-      reason: `No encuentro ningún ${selector.kind} que coincida con esa referencia.`,
+      reason: `No encuentro ning${isFeminineKind(selector.kind) ? 'una' : 'ún'} ${kindLabel(
+        selector.kind,
+      )} que coincida con esa referencia.`,
     };
   }
   const ranked = matches
@@ -172,7 +188,9 @@ export function resolveEntityReference(
     return {
       kind: 'ambiguous',
       candidateIds: ranked.map((entry) => entry.candidate.id),
-      reason: `Veo más de un ${selector.kind} que coincide; necesito que me indiques cuál.`,
+      reason: `Veo más de un${isFeminineKind(selector.kind) ? 'a' : ''} ${kindLabel(
+        selector.kind,
+      )} que coincide; necesito que me indiques cuál.`,
     };
   }
   return { kind: 'resolved', entityId: ranked[0]!.candidate.id, evidence };

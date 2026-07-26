@@ -1,4 +1,11 @@
-import { countedKindLabel, kindLabel, kindWithArticle } from '@anima/shared';
+import {
+  countedKindLabel,
+  kindAfterOf,
+  kindAfterTo,
+  kindLabel,
+  kindWithArticle,
+  kindWithDefiniteArticle,
+} from '@anima/shared';
 import type { CapabilityDeps } from './capabilities/deps.js';
 import type { GoalUserRequest } from './goals.js';
 
@@ -48,11 +55,12 @@ export function completionReply(request: GoalUserRequest): string {
       return `Listo, me moví ${destination}.`;
     }
     case 'spatial-relation':
+      // Con artículo: «crucé al otro lado de muro» se leía como un telegrama.
       return request.relation === 'opposite-side'
-        ? `Listo, crucé al otro lado de ${name}.`
+        ? `Listo, crucé al otro lado ${kindAfterOf(request.targetKind ?? '')}.`
         : request.relation === 'near'
-          ? `Listo, me acerqué a ${name}.`
-          : `Listo, me alejé de ${name}.`;
+          ? `Listo, me acerqué ${kindAfterTo(request.targetKind ?? '')}.`
+          : `Listo, me alejé ${kindAfterOf(request.targetKind ?? '')}.`;
     case 'fetch-item': {
       const amount = request.amount ?? 1;
       return amount > 1 && request.targetKind
@@ -63,10 +71,16 @@ export function completionReply(request: GoalUserRequest): string {
       return `Listo, comí ${target}.`;
     case 'destroy-entity':
       return `Listo, destruí ${target}.`;
-    case 'place-item':
+    case 'place-item': {
+      // Iba el identificador crudo: «dejé hammer junto a shelter». El nombre
+      // sale del vocabulario, igual que en todas las demás frases de acá.
+      const placed = request.targetKind ? kindWithDefiniteArticle(request.targetKind) : 'eso';
       return request.placement === 'near'
-        ? `Listo, dejé ${request.targetKind ?? 'eso'} junto a ${request.onKind ?? 'ahí'}.`
-        : `Listo, dejé ${request.targetKind ?? 'eso'} sobre ${request.onKind ?? 'ahí'}.`;
+        ? `Listo, dejé ${placed} junto ${request.onKind ? kindAfterTo(request.onKind) : 'ahí'}.`
+        : `Listo, dejé ${placed} sobre ${
+            request.onKind ? kindWithDefiniteArticle(request.onKind) : 'ahí'
+          }.`;
+    }
 
     case 'interact-entity': {
       const verbPhrase = (request.verb ?? 'hacer eso').replace(/-/g, ' ');

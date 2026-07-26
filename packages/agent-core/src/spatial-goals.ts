@@ -1,5 +1,5 @@
 import type { Vec2 } from '@anima/shared';
-import { chebyshev, manhattan } from '@anima/shared';
+import { chebyshev, kindAfterOf, manhattan } from '@anima/shared';
 import { groundKey, perceivedGround, type PerceivedEntity, type Perception } from '@anima/sim-core';
 import type { SkillProgram } from '@anima/skill-runtime';
 import type { SpatialGrounding, SpatialRelation } from './goals.js';
@@ -191,7 +191,11 @@ export function groundSpatialRequest(
         ok: true,
         grounding: { ...common, destination, axis, origin, startingSide },
       }
-    : { ok: false, reason: `No encuentro suelo libre del otro lado de ${request.targetKind}.` };
+    : {
+        ok: false,
+        // El identificador del motor no es un nombre: iba `wall`, va «del muro».
+        reason: `No encuentro suelo libre del otro lado ${kindAfterOf(request.targetKind)}.`,
+      };
 }
 
 /** El mundo, no el programa, decide si el pedido espacial terminó. */

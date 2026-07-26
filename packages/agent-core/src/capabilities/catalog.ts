@@ -1,5 +1,13 @@
 import type { Result } from '@anima/shared';
-import { countedKindLabel, err, kindLabel, kindWithArticle, ok } from '@anima/shared';
+import {
+  countedKindLabel,
+  err,
+  kindAfterOf,
+  kindAfterTo,
+  kindLabel,
+  kindWithArticle,
+  ok,
+} from '@anima/shared';
 import type { Direction, Perception } from '@anima/sim-core';
 import { recipeProductKinds } from '@anima/sim-core';
 import type { EntityQuery, SkillOp, SkillProgram } from '@anima/skill-runtime';
@@ -926,9 +934,11 @@ const spatialRelate: Capability<SpatialArgs> = {
   compile: (args) => compiled(spatialRequestProgram(args.grounding)),
   verify: (args): GoalCondition => ({ type: 'self-spatial', grounding: args.grounding }),
   describe(args) {
-    const name = kindLabel(args.grounding.referenceKind);
-    if (args.grounding.relation === 'opposite-side') return `cruzo al otro lado de ${name}`;
-    return args.grounding.relation === 'near' ? `me acerco a ${name}` : `me alejo de ${name}`;
+    const of = kindAfterOf(args.grounding.referenceKind);
+    if (args.grounding.relation === 'opposite-side') return `cruzo al otro lado ${of}`;
+    return args.grounding.relation === 'near'
+      ? `me acerco ${kindAfterTo(args.grounding.referenceKind)}`
+      : `me alejo ${of}`;
   },
 };
 

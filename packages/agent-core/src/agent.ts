@@ -5,7 +5,10 @@ import {
   createEventLog,
   displayKindList,
   isFeminineKind,
+  kindAfterOf,
+  kindAfterTo,
   kindLabel,
+  kindVocabulary,
   kindWithArticle,
   manhattan,
 } from '@anima/shared';
@@ -4050,6 +4053,12 @@ export class AnimaAgent {
         capabilities: this.capabilities
           .all()
           .map((capability) => `${capability.id}: ${capability.summary}`),
+        // El puente entre la palabra que dice el cuidador y el identificador
+        // del motor. Va la tabla ENTERA, no solo lo que ve: si mandara lo
+        // visible, «traeme una piedra» con una sola roca a la vista volvería a
+        // resolverse como `rock` —lo más parecido que hubiera— en vez de decir
+        // honestamente que piedra no ve ninguna.
+        glossary: this.commandGlossary(perception),
       });
       if (interpretation.kind !== 'command.interpretation') {
         throw new Error(`respuesta inesperada del proveedor: ${interpretation.kind}`);
@@ -4211,6 +4220,29 @@ export class AnimaAgent {
       text,
       perception,
     );
+  }
+
+  /**
+   * La tabla de nombres que acompaña a cada interpretación del chat: el
+   * vocabulario compartido más lo que este mundo tenga y la tabla no conozca
+   * —lo que Ánima inventó, sobre todo—, que se nombra solo con sus guiones
+   * vueltos espacios.
+   */
+  private commandGlossary(perception: Perception): { kind: string; label: string }[] {
+    const entries = new Map(kindVocabulary().map((entry) => [entry.kind, entry.label]));
+    const seen = [
+      ...perception.visibleEntities.map((entity) => entity.kind),
+      ...perception.self.heldItems.map((item) => item.kind),
+      ...this.places.all().map((place) => place.kind),
+      ...perception.recipes.flatMap((recipe) => [
+        ...recipe.outcomes.flatMap((outcome) => (outcome.output ? [outcome.output.kind] : [])),
+        ...recipe.ingredients.map((ingredient) => ingredient.kind),
+      ]),
+    ];
+    for (const kind of seen) {
+      if (!entries.has(kind)) entries.set(kind, kindLabel(kind));
+    }
+    return [...entries].map(([kind, label]) => ({ kind, label }));
   }
 
   private dialogueFacts(perception: Perception): string[] {
@@ -4951,6 +4983,15 @@ export class AnimaAgent {
             goalId: goal.id,
             reason: `espera a que ${reactivateWhen}`,
           });
+          // El acuse de recibo lo escribe `evaluateUserRequest`, que mira el
+          // verbo y no la envoltura: contestaba «voy a buscar una resina» a un
+          // «cuando sea de noche, traé una resina» y se quedaba quieta. Decir
+          // que va y no ir es peor que no contestar; se dice también la espera.
+          return {
+            ...decision,
+            reason: `${decision.reason} Eso sí: recién cuando ${reactivateWhen}.`,
+            goalId: goal.id,
+          };
         }
       } else {
         this.goals.activate(goal.id, this.tick);

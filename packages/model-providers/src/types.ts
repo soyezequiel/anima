@@ -123,6 +123,13 @@ export type ModelRequest =
        * no existían.
        */
       capabilities?: string[];
+      /**
+       * Cómo se llama cada tipo en la lengua del cuidador. Los hechos hablan en
+       * identificadores (`stone`, `rock`) y el cuidador en español: sin esta
+       * tabla el modelo tenía que adivinar cuál de los dos era «piedra», y
+       * adivinaba distinto cada vez.
+       */
+      glossary?: { kind: string; label: string }[];
     }
   | {
       /**

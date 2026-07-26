@@ -1671,6 +1671,19 @@ Mensaje actual: ${JSON.stringify(request.text)}
 Hechos observables y nombres internos disponibles:
 ${request.facts.map((fact) => `- ${fact}`).join('\n') || '- (sin hechos)'}
 
+Cómo se llama cada cosa (palabra del cuidador = nombre interno). Esta tabla
+manda sobre cualquier parecido entre palabras: "piedra" es stone y "roca" es
+rock, aunque se parezcan. Si el cuidador nombra algo de esta tabla, el
+targetKind es el de la tabla AUNQUE no figure en los hechos —que no lo esté
+viendo ahora no lo convierte en otra cosa—; la mascota ya sabrá decir que no lo
+encuentra. Solo para lo que NO esté acá vale describirlo con una palabra
+normalizada.
+${
+  request.glossary && request.glossary.length > 0
+    ? request.glossary.map((entry) => `- ${entry.label} = ${entry.kind}`).join('\n')
+    : '- (sin tabla de nombres)'
+}
+
 Habilidades que la mascota YA aprendió y puede ejecutar por nombre:
 ${
   request.skills && request.skills.length > 0
