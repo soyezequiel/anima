@@ -31,8 +31,8 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ## Estado
 
-**El Hito 0 está a mitad de camino y su criterio de corte se pasó.** Todavía no
-hay motor, y a propósito: lo que hay es lo que se puede medir sin él.
+**Hito 0 casi cerrado, Hito 1 construido. Hay un criterio de corte incumplido
+esperando una decisión.**
 
 | | |
 |---|---|
@@ -40,13 +40,34 @@ hay motor, y a propósito: lo que hay es lo que se puede medir sin él.
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 3 pases: 112 → 71 → **64** errores · 5 → 6 → **10** expresables |
 | [Decisiones](docs/decisions/) | 4 ADRs propios (II-0001 a II-0004) |
-| [Hito 0 · banco de latencia](docs/hito-0-banco-de-latencia.md) | typecheck en frío **240 ms** contra un corte de 3000 ✔ |
 
-Lo que falta del Hito 0, y necesita código que no existe: el costo del
-transformer de combustible, el arranque de página con el toolchain adentro del
-navegador, y el barrido térmico de diez sustancias.
+### Hito 0 — el banco
 
-Después de eso, el Hito 1: `@anima/physics`.
+| Pieza | Criterio | Medido | |
+|---|---|---|---|
+| [typecheck](docs/hito-0-banco-de-latencia.md) | < 3000 ms en frío | 240 ms | ✔ |
+| [barrido térmico](docs/hito-0-barrido-termico.md) | ventana para 10 sustancias | 12/12 | ✔ |
+| [combustible](docs/hito-0-combustible.md) | ≤ 15% de overhead | **22–52%** | ✘ **decisión pendiente** |
+| arranque de página en el navegador | — | — | pendiente |
+
+### Hito 1 — `@anima/physics`
+
+Existe y está verde: **353 tests**, typecheck limpio. Punto fijo determinista,
+29 cualidades más 4 de celda, 30 sustancias semilla, cuerpos compuestos, los
+cuatro procesos aplicables, las doce leyes y `admit()`.
+
+Los tres ejemplos del usuario pasan **sin que aparezcan las palabras «carbón»,
+«asar» ni «pescar»**, y el test de emergencia no menciona ninguna sustancia
+semilla por nombre.
+
+**Y tiene 34 huecos abiertos en la puerta**, marcados como `it.fails()` en
+`tests/ataque-*.test.ts`. No están disimulados: son el resultado de tres
+adversarios que tiraron 62 procesos contra `admit()`. Se agrupan en seis causas,
+y la más profunda es que la regla de conservación compara el **número** de una
+cualidad y no el **producto por masa** — así que mover «9 de nutrición» de un
+trocito de 0.1 a un tronco de 100 multiplica la comida por 57.
+
+**Cerrar esos 34 es el próximo trabajo, y va antes del Hito 2.**
 
 ## Comandos
 
