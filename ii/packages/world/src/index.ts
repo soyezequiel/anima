@@ -38,5 +38,11 @@ export * from './hash.js'
 export * from './journal.js'
 export * from './snapshot.js'
 
+// ─── La costura con el dios ─────────────────────────────────────────────────
+//
+// Va antes del puente porque `mundo.ts` y `step.ts` la usan. Es la ÚNICA puerta
+// del paquete hacia `@anima/oracle`: el resto del mundo no importa el dios.
+export * from './dios.js'
+
 // ─── El puente entre el paso del mundo y la crónica ─────────────────────────
 export * from './mundo.js'

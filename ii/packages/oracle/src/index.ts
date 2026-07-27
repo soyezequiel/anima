@@ -56,6 +56,10 @@ export * from './compromiso.js'
 // paquete donde se tira el dado del MUNDO.
 export * from './resolubilidad.js'
 export * from './extraccion.js'
+// Y la ley que faltaba entera: `agua → Stock`. Va acá porque necesita la tabla de
+// biomas y el dado de la pregunta, y porque es lo que `resolverAlPescar` venía
+// pidiendo por parámetro sin que existiera nadie que se lo pudiera dar.
+export * from './pesca.js'
 
 // ─── La costura: decretar un chunk y dejarlo jugable ────────────────────────
 //

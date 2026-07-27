@@ -212,11 +212,64 @@ export function mulberry32(semilla: number): DiosRng {
   let a = semilla | 0
   const f = (): number => {
     a = (a + 0x6d2b79f5) | 0
-    let t = Math.imul(a ^ (a >>> 15), 1 | a)
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+    return valorMulberry(a)
   }
   return f as DiosRng
+}
+
+/**
+ * La mezcla de mulberry32 sobre un estado ya avanzado.
+ *
+ * Está separada por una sola razón: **el dado del dios y el del mundo tienen que
+ * ser el MISMO generador**, y la única forma de que no se separen es que la
+ * cuenta esté escrita una vez. Copiada dos veces, cambiarle una constante a uno
+ * y no al otro no rompe ningún test —los dos siguen dando números— y el día que
+ * se note es cuando un guardado viejo no reproduce.
+ */
+function valorMulberry(a: number): number {
+  let t = Math.imul(a ^ (a >>> 15), 1 | a)
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+}
+
+/**
+ * EL DADO DEL MUNDO, con su estado a la vista.
+ *
+ * `WorldRng` existía como tipo desde el Hito 3 y **no tenía fábrica**: la única
+ * forma de conseguir uno era un `as WorldRng`, que hoy sólo aparece en tests. Un
+ * tipo nominal sin constructor es una promesa que nadie puede cumplir sin hacer
+ * trampa, así que la puerta es ésta.
+ *
+ * ─── Por qué el estado sale por una función y no es el objeto ───────────────
+ *
+ * Porque el estado del dado **tiene que poder vivir adentro del `WorldState`**, y
+ * ahí no entra una clausura: `hashWorld` LANZA con una función, y un guardado
+ * tiene que sobrevivir a `JSON.stringify`. Lo que viaja es el entero; la
+ * clausura se arma al empezar el tick y se tira al terminarlo, y `estado()` es
+ * lo que se guarda.
+ *
+ * Si el estado viviera afuera del mundo, el replay divergiría en la primera
+ * tirada: el journal reconstruiría las intenciones pero no la suerte.
+ */
+export interface DadoDelMundo {
+  /** La tirada. Es `WorldRng`, o sea que `tsc` no la deja pasar por dado del dios. */
+  readonly tirar: WorldRng
+  /** El estado actual, para guardarlo. Cambia con cada tirada. */
+  estado(): number
+}
+
+/**
+ * Un dado del mundo arrancado en `estado`. Misma aritmética que `mulberry32`
+ * —no una segunda implementación: dos generadores que dicen ser el mismo
+ * divergen— y por eso comparte el paso con él a través de `pasoMulberry`.
+ */
+export function dadoDelMundo(estado: number): DadoDelMundo {
+  let a = estado | 0
+  const tirar = (): number => {
+    a = (a + 0x6d2b79f5) | 0
+    return valorMulberry(a)
+  }
+  return { tirar: tirar as WorldRng, estado: () => a }
 }
 
 /**

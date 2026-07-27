@@ -56,9 +56,28 @@ import {
   seg,
   sumarPaso,
   T_AMBIENTE,
+  unfx,
   unir,
 } from '@anima/physics'
 import type { Celda, Dt, Duracion, Entorno, Fuente, Montaje } from '@anima/physics'
+// EL DIOS ENTRA A LA PARTIDA. Es la única importación de `@anima/oracle` del
+// paso, y va por `dios.ts` —la costura— y no directo: acá adentro no se decreta
+// nada ni se traduce nada, sólo se consulta y se cobra. Ver el encabezado de
+// `dios.ts` por qué la flecha va del mundo al dios y no al revés.
+import type { DadoDelMundo, LibroCalorico, Stock } from '@anima/oracle'
+import { draw, population } from '@anima/oracle'
+import type { EstadoDelDios } from './dios.js'
+import {
+  celdaDecretada,
+  cuerpoDePozo,
+  dadoDe,
+  decretoDe,
+  entornoDecretado,
+  idDePozo,
+  libroDe,
+  ordenarPozos,
+} from './dios.js'
+import { segundosDe } from './reloj.js'
 import type { ActorId, BodyId, Intent, IntentKind, Placement, RoleBinding } from './intent.js'
 import {
   chebyshev,
@@ -72,7 +91,7 @@ import {
 // terreno de la grilla, así que `cellFromKey` funciona sobre las dos y un mundo
 // no puede terminar con dos numeraciones de sus propias celdas.
 import type { CellKey } from './cell.js'
-import { keyOfCell } from './cell.js'
+import { chunkCoord, chunkKey, keyOfCell } from './cell.js'
 
 // ─── El estado ───────────────────────────────────────────────────────────────
 
@@ -232,9 +251,34 @@ export interface WorldState {
   readonly phys: Physics
   readonly bodies: ReadonlyMap<BodyId, WorldBody>
   readonly actors: ReadonlyMap<ActorId, Actor>
+  /**
+   * Lo que el mundo ESCRIBIÓ sobre el terreno. No es el terreno entero: lo que
+   * no está acá lo contesta el decreto del dios (`celdaDecretada`), y si no hay
+   * dios, `CELDA_POR_OMISION`.
+   *
+   * Que sea un delta y no una copia es lo que hace que **pisar un chunk no cambie
+   * el mundo**: el río está donde el dios dice sin que nadie lo escriba, así que
+   * dos partidas gemelas exploradas en distinto orden tienen las mismas celdas.
+   * Ver el punto 3 del encabezado de `dios.ts`.
+   */
   readonly cells: ReadonlyMap<CellKey, CellState>
   /** El contador de ids. No hay azar en el mundo: los nombres también se cuentan. */
   readonly nextId: number
+  /**
+   * EL DIOS DE ESTA PARTIDA: la semilla, el dado del mundo, los pozos que ya se
+   * tocaron y el diario del libro calórico.
+   *
+   * **Opcional**, y no por comodidad de los tests: un mundo sin dios es un mundo
+   * sin terreno decretado y sin pozos, y eso es una configuración legítima —el
+   * banco de rendimiento, un test de una ley, el mundito de las habilidades— que
+   * no tiene por qué pagar el costo de decretar chunks. Lo que NO pasa es que un
+   * mundo sin dios pueda sacar comida gratis: sin stock, `drawFromStock` rechaza
+   * con `sin-pozo`. La ausencia se nota, no se disimula.
+   *
+   * Entra al hash y al snapshot (ver `mundo.ts`), y tiene que entrar: dos mundos
+   * gemelos que tiraron el dado distinta cantidad de veces no son el mismo mundo.
+   */
+  readonly dios?: EstadoDelDios
 }
 
 // ─── Los eventos ─────────────────────────────────────────────────────────────
@@ -260,6 +304,22 @@ export type Motivo =
   | 'compuerta-cerrada'
   | 'nada-que-comer'
   | 'no-implementado'
+  // ─── Los cuatro finales de una extracción que no dio nada ──────────────────
+  //
+  // Son cuatro y no un «no salió» porque las cuatro piden decisiones OPUESTAS, y
+  // ésa es la misma razón por la que `RazonDeExtraccion` tiene cuatro valores en
+  // el oráculo: «este cuerpo no es un pozo» se arregla apuntando a otro lado,
+  // «no picó» se arregla insistiendo, «el pozo está vacío» se arregla caminando,
+  // y «el lugar ya dio todo» no se arregla nunca más y hay que mudarse. Una
+  // criatura que no las pueda distinguir insiste para siempre en un río muerto.
+  /** No hay stock detrás de ese cuerpo: no es un pozo, o el mundo no tiene dios. */
+  | 'sin-pozo'
+  /** Se tiró el dado del mundo y esta vez no picó. */
+  | 'no-pico'
+  /** El pozo está agotado. Se repone: volver más tarde tiene sentido. */
+  | 'pozo-vacio'
+  /** El chunk llegó a su techo calórico. No se repone jamás: hay que mudarse. */
+  | 'sin-presupuesto'
 
 /**
  * La FIRMA de una respuesta: a qué intención le está contestando.
@@ -573,7 +633,28 @@ export const STAMINA_POR_CALORIA = 1
 /** Qué fracción de la masa se lleva una hebra al deshilachar. */
 export const FRACCION_DE_HEBRA = 0.1
 
-/** Cuánta masa saca del stock una extracción lograda. */
+/**
+ * **YA NO LA USA NADIE, y está acá para que se lea por qué.**
+ *
+ * Era «cuánta masa saca del stock una extracción lograda», medio kilo fijo, y era
+ * la mitad del agujero más caro del Hito 4: con una masa fija, **un anzuelo de
+ * pedernal rendía exactamente igual que una caña pelada** —el rol `gear` pedía
+ * `catch > 0` y después el `catch` no entraba en ninguna cuenta—. Una conducta
+ * que no paga no la aprende nadie ni la puede distinguir un juez, y el criterio
+ * de emergencia del Hito 5 es un juez.
+ *
+ * Desde el tramo B, lo que sale del pozo pesa `Stock.masaPorUnidad` —lo que el
+ * dios decretó que pesa una pieza de ese lugar— y si sale o no lo decide el dado
+ * del mundo contra `probabilidadDePicar`, que sí lee el `catch`. Medido con las
+ * dos cañas sobre el mismo pozo y la misma semilla: 3,29× a favor del anzuelo.
+ *
+ * Se conserva EXPORTADA a propósito. Borrarla dejaría el número sin historia, y
+ * el número tiene historia: alguien que vuelva a escribir «saca una fracción fija»
+ * tiene que toparse con esto antes.
+ *
+ * @deprecated la extracción de la partida pasa por `draw` del oráculo. Ver
+ * `sacarDelPozo`.
+ */
 export const MASA_POR_EXTRACCION = 0.5
 
 // ─── Utilidades de estado ────────────────────────────────────────────────────
@@ -629,6 +710,44 @@ interface Borrador {
    * PEREZOSO igual que el otro. Ver `conRelaciones` y `olvidar`.
    */
   conRelacion: Set<BodyId> | undefined
+  // ─── El dios del tick ──────────────────────────────────────────────────────
+  //
+  // Las tres piezas del dios son PEREZOSAS y por la misma razón que los dos
+  // índices de arriba: un tick en el que nadie pesca no tiene por qué armar un
+  // dado, reconstruir un libro de cobros ni copiar un mapa de stocks. Medido en
+  // la aritmética: el libro cuesta O(cobros) y hay del orden de un cobro cada
+  // treinta ticks aunque la criatura no haga otra cosa que pescar.
+  //
+  // Que sean `undefined` es además lo que le dice a `cerrar` si el estado del
+  // dios cambió: si las tres siguen vacías, el `EstadoDelDios` sale POR
+  // IDENTIDAD, o sea que la ranura del snapshot no genera delta.
+  /** La semilla, el dado, los pozos tocados y el diario. `undefined` sin dios. */
+  dios: EstadoDelDios | undefined
+  /** El dado del mundo de este tick. Se arma en la primera tirada. */
+  dado: DadoDelMundo | undefined
+  /** El libro calórico de este tick, reconstruido del diario en el primer cobro. */
+  libro: LibroCalorico | undefined
+  /**
+   * EL ÍNDICE DE POZOS del tick, por id de banco. PEREZOSO, como los otros dos.
+   *
+   * En el estado los pozos viven en un ARREGLO —una ranura tiene que sobrevivir a
+   * JSON y un `Map` no— y acá adentro hacen falta por clave: `materializarPozos`
+   * pregunta hasta nueve veces por actor y por tick. Es el mismo trato que
+   * `indiceDeCeldas`: la forma canónica afuera, el índice adentro, y el índice
+   * muere con el borrador así que no puede quedar viejo entre ticks.
+   *
+   * Copia al escribir, igual que todo lo demás del borrador: `retirarUno` MUTA el
+   * stock que le pasan, así que lo que se le pasa es siempre un clon. Sin el clon,
+   * `stepWorld` estaría escribiendo adentro del `WorldState` que le dieron y el
+   * replay dejaría de reproducir.
+   */
+  stocks: Map<BodyId, Stock> | undefined
+  /** Si alguno de los pozos CAMBIÓ. Aparte del índice porque el índice se arma
+   *  también para leer, y leer no genera delta. */
+  pozosTocados: boolean
+  /** El segundo de mundo de este tick. `tick / hz`, con la cuenta exacta de
+   *  `segundosDe`. Lo piden `population`, `retirarUno` y `Cobro.at`. */
+  segundos: Duracion
 }
 
 function abrir(s: WorldState): Borrador {
@@ -653,11 +772,56 @@ function abrir(s: WorldState): Borrador {
     // escritura, y la mira `tests/el-indice-mal-invalidado.test.ts`.
     celdas: undefined,
     conRelacion: undefined,
+    dios: s.dios,
+    dado: undefined,
+    libro: undefined,
+    stocks: undefined,
+    pozosTocados: false,
+    segundos: segundosDe(s),
+  }
+}
+
+/** El índice de pozos, armado a demanda del arreglo canónico del estado. */
+function indiceDePozos(d: Borrador): Map<BodyId, Stock> {
+  let i = d.stocks
+  if (i === undefined) {
+    i = new Map()
+    for (const p of d.dios?.stocks ?? []) i.set(p.banco, p.stock)
+    d.stocks = i
+  }
+  return i
+}
+
+/**
+ * El estado del dios de salida.
+ *
+ * Sale POR IDENTIDAD cuando nadie lo tocó, y eso no es una optimización de
+ * asignaciones: `worldSlots` entrega las ranuras SIN COPIAR y el snapshot por
+ * delta compara identidades. Un `{...d.dios}` por tick metería la ranura del dios
+ * en todos los deltas de la partida, para no decir nada nuevo.
+ */
+function diosDeSalida(d: Borrador): EstadoDelDios | undefined {
+  const previo = d.dios
+  if (previo === undefined) return undefined
+  if (d.dado === undefined && !d.pozosTocados && d.libro === undefined) return previo
+  return {
+    semilla: previo.semilla,
+    dado: d.dado === undefined ? previo.dado : d.dado.estado(),
+    stocks: d.pozosTocados
+      ? ordenarPozos([...indiceDePozos(d)].map(([banco, stock]) => ({ banco, stock })))
+      : previo.stocks,
+    // El diario se COPIA al salir: `LibroCalorico` devuelve el suyo por
+    // referencia y le hace `push` al cobrar, así que dejarlo entrar tal cual
+    // pondría un arreglo vivo adentro de un estado que se dice inmutable — y el
+    // snapshot promete que «una ranura que entró a un delta no se muta nunca
+    // más».
+    cobros: d.libro === undefined ? previo.cobros : [...d.libro.cobros()],
   }
 }
 
 function cerrar(d: Borrador): StepOutcome {
   const bodies = d.reordenar ? mapaDeCuerpos([...d.bodies.values()]) : d.bodies
+  const dios = diosDeSalida(d)
   return {
     state: {
       tick: d.tick + 1,
@@ -667,6 +831,7 @@ function cerrar(d: Borrador): StepOutcome {
       actors: d.actors,
       cells: d.cells,
       nextId: d.nextId,
+      ...(dios === undefined ? {} : { dios }),
     },
     // LA ÚNICA ASEVERACIÓN DE TIPO DEL ARCHIVO, y hay que decir por qué se
     // sostiene: adentro del tick los eventos son `SimEventSinFirmar`, o sea que a
@@ -1058,10 +1223,41 @@ const CELDA_LIBRE: Celda = {
 }
 const ENTORNO_LIBRE: Entorno = { celda: CELDA_LIBRE }
 
+/**
+ * La celda que rige en `at`, en TRES capas y en este orden:
+ *
+ *   1. lo que el mundo ESCRIBIÓ (`d.cells`) — una fogata que secó el suelo;
+ *   2. lo que el dios DECRETÓ (`celdaDecretada`) — el río, el pantano, el frío
+ *      del bosque cerrado;
+ *   3. el aire libre (`CELDA_POR_OMISION`) — cuando no hay dios.
+ *
+ * Sin la capa 2, el mundo nacía entero en ambiente y **el río no existía**: el
+ * dios decretaba `wet = 1` en las celdas de agua y no lo leía nadie. Con ella, el
+ * agua está donde el dios dice, cruza los bordes de chunk sin costura y no se
+ * puede secar, porque no está guardada en ningún lado que alguien pueda secar.
+ *
+ * El atajo del aire libre se conserva para el mundo SIN dios, que es el caso del
+ * banco de 5000 cuerpos: ahí `CELDA_LIBRE` compartido evitaba dos asignaciones
+ * por cuerpo y por tick, medido como la mitad del costo que el mundo le agrega a
+ * la física. Con dios, el que evita las asignaciones es el decreto memoizado, que
+ * devuelve el MISMO objeto para la misma celda.
+ */
 function celdaDe(d: Borrador, at: Placement, ocl: ReadonlyMap<CellKey, number>): Celda {
   const k = keyOfCell(at)
   const propia = d.cells.get(k)
   const s = ocl.get(k) ?? 0
+  if (propia === undefined && d.dios !== undefined) {
+    // El camino caliente con dios: el decreto ya tiene la `Celda` armada y
+    // compartida, así que leerla no asigna nada. Sólo se sale de acá si hay
+    // oclusión, que es lo raro.
+    if (s === 0) return entornoDecretado(d.dios, d.phys, at.x, at.y)
+    const dec = celdaDecretada(d.dios, d.phys, at.x, at.y)
+    return {
+      oxygen: dec.oxygen * (1 - s * OCLUSION_CORTA_OXIGENO),
+      wet: dec.wet * (1 - s),
+      ambiente: T_AMBIENTE + s * (dec.temperature - T_AMBIENTE),
+    }
+  }
   if (propia === undefined && s === 0) return CELDA_LIBRE
   const base = propia ?? CELDA_POR_OMISION
   if (s === 0) return { oxygen: base.oxygen, wet: base.wet, ambiente: base.temperature }
@@ -1961,26 +2157,9 @@ function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): voi
       d.events.push({ k: 'nacio', by: a.id, id: hijo.parte.id, por: 'rendimiento' })
       return
     }
-    case 'drawFromStock': {
-      const c = cuerpoDeRol(ligs, y.of)
-      if (c === undefined) return
-      const actual = d.bodies.get(c.body.id)
-      if (actual === undefined) return
-      const masa = masaDe(actual.body, d.phys)
-      const saca = masa < MASA_POR_EXTRACCION ? masa : MASA_POR_EXTRACCION
-      if (saca <= 0) return
-      const cuna = d.bodies.get(a.body)?.at ?? actual.at
-      const donde = destinoDeUnNacido(d, a, cuna)
-      if (donde === undefined) {
-        d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'celda-ocupada' })
-        return
-      }
-      const sacado: Body = { ...escalarMasa(actual.body, saca / masa), id: nuevoId(d), joints: [] }
-      ponerCuerpo(d, { ...actual, body: escalarMasa(actual.body, (masa - saca) / masa) })
-      guardar(d, a, sacado, donde)
-      d.events.push({ k: 'nacio', by: a.id, id: sacado.id, por: 'rendimiento' })
+    case 'drawFromStock':
+      sacarDelPozo(d, a, y.of, ligs)
       return
-    }
     case 'transmute':
       // La transmutación de la ley 4 la hace `paso()` sola, cuando el carbonizado
       // pasa su umbral; ningún proceso semilla la rinde. Un `transmute` escrito
@@ -1989,6 +2168,163 @@ function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): voi
       d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'no-implementado' })
       return
   }
+}
+
+// ─── Sacar del pozo ──────────────────────────────────────────────────────────
+
+/**
+ * EL APAREJO: el cuerpo ligado que más engancha, sin nombrar ningún rol.
+ *
+ * `Yield.drawFromStock` nombra el rol del que se saca (`of`) y **no nombra el del
+ * aparejo**, así que había dos caminos: escribir `'gear'` acá adentro —el nombre
+ * que usa `EXTRACCION`, o sea meter el catálogo semilla adentro del motor— o
+ * preguntarle a la física cuál de los cuerpos ligados engancha. Es lo segundo, y
+ * no por elegancia: el día que el modelo escriba un proceso que saque de un stock
+ * con un rol llamado `red` o `arpon`, con la primera opción el aparejo sería
+ * `undefined` y **la extracción rendiría igual, con probabilidad cero, para
+ * siempre**. Un motor que sólo funciona con los nombres de la semilla no es un
+ * motor.
+ *
+ * El empate lo rompe el id, que es la misma regla de `entornoDe` con dos fogatas
+ * iguales: quedarse con «el primero que apareció» haría que el resultado
+ * dependiera del orden de las ligaduras.
+ */
+function aparejoDe(d: Borrador, ligs: readonly Ligadura[], salvo: string): WorldBody | undefined {
+  let mejor: WorldBody | undefined
+  let mejorCatch = 0
+  for (const l of ligs) {
+    if (l.cuerpo === undefined) continue
+    if (baseRoleName(l.role.name) === baseRoleName(salvo)) continue
+    const engancha = qualityOf(l.cuerpo.body, 'catch', d.phys)
+    if (engancha <= 0) continue
+    if (
+      mejor === undefined ||
+      engancha > mejorCatch ||
+      (engancha === mejorCatch && compararTexto(l.cuerpo.body.id, mejor.body.id) < 0)
+    ) {
+      mejor = l.cuerpo
+      mejorCatch = engancha
+    }
+  }
+  return mejor
+}
+
+/** El stock de este banco: el que el tick ya tocó, el que el mundo guardó, o el
+ *  que decreta el dios. En ese orden, que es de lo más nuevo a lo más viejo. */
+function stockDe(d: Borrador, banco: WorldBody): Stock | undefined {
+  if (d.dios === undefined) return undefined
+  const tocado = indiceDePozos(d).get(banco.body.id)
+  if (tocado !== undefined) return tocado
+  const cx = chunkCoord(banco.at.x)
+  const cy = chunkCoord(banco.at.y)
+  // Sólo cuenta si el banco ES el del chunk donde está: si no, cualquier cuerpo
+  // parado sobre un pozo sería un pozo.
+  if (banco.body.id !== idDePozo(cx, cy)) return undefined
+  return decretoDe(d.dios, d.phys, cx, cy).pozo?.stock
+}
+
+/**
+ * SACAR UNA PIEZA DEL POZO. La costura entera, en una función.
+ *
+ * Antes de esto había **dos extracciones y sólo una cobraba**: este camino
+ * escalaba la masa del cuerpo por un `MASA_POR_EXTRACCION` fijo de 0,5 y no tocaba
+ * ni el stock, ni la población, ni el libro calórico; el otro —`draw`, del
+ * oráculo— hacía las tres cosas y en la partida no lo recorría nadie. Las
+ * consecuencias eran dos, y las dos matan el Hito 5:
+ *
+ *   - **el techo calórico era código muerto**. Medido al 100,00% sobre 314 chunks
+ *     en el arnés del dios, y cobrado en un camino que la partida no pisaba.
+ *   - **`catch` no rendía**. El rol `gear` pedía `catch > 0` y después salían 0,5
+ *     kg fijos, así que **un anzuelo de pedernal rendía exactamente igual que una
+ *     caña pelada**. Una conducta que no paga no la aprende nadie ni la puede
+ *     distinguir un juez, y el criterio de emergencia del Hito 5 es justamente un
+ *     juez que tiene que poder distinguirla.
+ *
+ * Ahora hay una sola extracción y es la del dios. Lo que aporta este lado es lo
+ * que el dios no puede hacer: encontrar el pozo, tener el dado, y meter la pieza
+ * en una mano.
+ *
+ * ─── Los cuatro finales, todos narrados ─────────────────────────────────────
+ *
+ * `draw` distingue cuatro razones y las cuatro salen como `rechazada` con motivo
+ * propio. Que el `apply` salga «completo» y ADEMÁS haya un rechazo no es una
+ * contradicción: el proceso se completó —la criatura tiró la caña los 1,5
+ * segundos— y el rendimiento no dio nada. Es exactamente el caso que `rendir`
+ * documenta y que `tests/correlacion.test.ts` clava.
+ */
+function sacarDelPozo(d: Borrador, a: Actor, rol: string, ligs: readonly Ligadura[]): void {
+  const c = cuerpoDeRol(ligs, rol)
+  if (c === undefined) return
+  const banco = d.bodies.get(c.body.id)
+  if (banco === undefined) return
+  const stock = stockDe(d, banco)
+  if (stock === undefined || d.dios === undefined) {
+    d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'sin-pozo' })
+    return
+  }
+  const aparejo = aparejoDe(d, ligs, rol)
+  if (aparejo === undefined) {
+    // Sin nada que enganche la probabilidad es cero por definición, y `draw`
+    // tiraría el dado igual para descubrirlo. Cortar acá es lo mismo que dice el
+    // encabezado de `draw` sobre el pozo vacío: no hay resultado posible que
+    // valga una tirada, y una tirada de más corre la partida entera.
+    d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'no-pico' })
+    return
+  }
+
+  // El clon es obligatorio: `retirarUno` MUTA el stock. Sin él, `stepWorld`
+  // estaría escribiendo adentro del `WorldState` de entrada y el replay dejaría
+  // de reproducir — la garantía que sostiene todo el paquete.
+  const mio: Stock = { ...stock }
+  if (d.dado === undefined) d.dado = dadoDe(d.dios)
+  if (d.libro === undefined) d.libro = libroDe(d.dios)
+  const r = draw({ phys: d.phys, rng: d.dado.tirar, calorias: d.libro }, mio, aparejo.body, d.segundos)
+
+  if (r.yields === null) {
+    // El stock se guarda igual cuando NO salió nada, y no es un descuido:
+    // `retirarUno` no lo tocó, así que `mio` es idéntico a `stock` y guardarlo es
+    // gratis; lo que no es gratis es haber TIRADO el dado, y eso ya quedó en
+    // `d.dado`, que `cerrar` lee. Lo que sí importa: la marca de reposición no se
+    // re-ancla en un intento fallido, o el río se repondría más lento cuanto más
+    // lo intentaran (ver `draw`).
+    d.events.push({
+      k: 'rechazada',
+      by: a.id,
+      que: 'apply',
+      por: r.razon === 'vacio' ? 'pozo-vacio' : r.razon === 'sin-presupuesto' ? 'sin-presupuesto' : 'no-pico',
+    })
+    return
+  }
+
+  const cuna = d.bodies.get(a.body)?.at ?? banco.at
+  const donde = destinoDeUnNacido(d, a, cuna)
+  if (donde === undefined) {
+    // No hay dónde ponerla. El stock YA bajó y el chunk YA pagó, y eso es lo
+    // correcto aunque duela: la pieza salió del agua. Se la deja caer al agua de
+    // vuelta sería inventar una devolución que el dios no tiene —`retirarUno` no
+    // se puede deshacer sin re-anclar la marca, o sea sin regalar reposición— así
+    // que lo que se pierde es la pieza, no la contabilidad.
+    indiceDePozos(d).set(banco.body.id, mio)
+    d.pozosTocados = true
+    d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'celda-ocupada' })
+    return
+  }
+  const sacado: Body = {
+    id: nuevoId(d),
+    form: 'bloque',
+    parts: [{ substance: r.yields, mass: unfx(r.masa), q: {} }],
+    joints: [],
+    state: {},
+  }
+  indiceDePozos(d).set(banco.body.id, mio)
+  d.pozosTocados = true
+  // Y el banco encoge con su población: `process.ts` ya lo había escrito —«un
+  // banco de peces es un cuerpo con masa, y cuando se lo vaciaron la masa es
+  // cero»— y es lo que hace que un pozo agotado deje de cumplir el rol `source`
+  // sin que nadie escriba una regla de «pozo vacío».
+  ponerCuerpo(d, { ...banco, body: cuerpoDePozo(banco.body.id, mio, population(mio, d.segundos)) })
+  guardar(d, a, sacado, donde)
+  d.events.push({ k: 'nacio', by: a.id, id: sacado.id, por: 'rendimiento' })
 }
 
 /**
@@ -2300,6 +2636,87 @@ function morirDeHambre(d: Borrador, a: Actor): void {
   if (mio !== undefined) d.events.push({ k: 'murio', id: mio.body.id, por: 'hambre' })
 }
 
+// ─── Materializar lo que el dios decretó ─────────────────────────────────────
+
+/** Los nueve chunks alrededor del actor: el suyo y los ocho vecinos. Nueve y no
+ *  uno porque **la orilla es casi siempre del chunk de al lado**: medido en el
+ *  Hito 3, el 88,8% de los chunks de `agua-dulce` está enteramente inundado, así
+ *  que quien pesca está parado en el chunk seco y el pozo está en el mojado. */
+const NUEVE: readonly (readonly [number, number])[] = [
+  [-1, -1],
+  [0, -1],
+  [1, -1],
+  [-1, 0],
+  [0, 0],
+  [1, 0],
+  [-1, 1],
+  [0, 1],
+  [1, 1],
+]
+
+/**
+ * EL BANCO DE PECES ENTRA AL MUNDO, y se pone al día con su pozo.
+ *
+ * ─── Por qué corre ANTES de las intenciones y no es un sistema ──────────────
+ *
+ * Los `SISTEMAS` corren al final del tick, y esto tiene que correr al principio
+ * por dos razones distintas:
+ *
+ *   1. **el banco tiene que existir cuando la intención lo nombra**. Una criatura
+ *      que llega a la orilla y tira la caña en el mismo tick nombraría un cuerpo
+ *      que no existe todavía, y el rechazo sería `cuerpo-desconocido` — o sea que
+ *      pescar dependería de haber llegado un tick antes;
+ *   2. **la masa tiene que estar al día cuando `cumpleRol` la juzga**. El rol
+ *      `source` pide `mass > 0` y la masa del banco es `población × masa por
+ *      pieza`. Si se resincronizara al final, un pozo que se repuso recién
+ *      calificaría un tick tarde, y uno que se vació seguiría calificando un tick
+ *      de más — y ese tick de más es una pieza que sale de un pozo vacío.
+ *
+ * ─── Por qué materializar acá NO rompe el determinismo ──────────────────────
+ *
+ * Los ids salen del LUGAR (`idDePozo`) y no del contador `nextId`, así que dos
+ * partidas gemelas que exploraron el mismo mundo en distinto orden le ponen el
+ * mismo nombre al mismo pozo. Lo que sí depende del camino es CUÁNTOS bancos hay
+ * materializados, y eso es correcto y es la diferencia con el criterio del Hito 3:
+ * allá lo que no puede cambiar el mundo es LEER el terreno —y no lo cambia, porque
+ * el terreno no se copia a ningún lado—; acá lo que entra al mundo es un cuerpo, y
+ * un mundo donde alguien ya llegó al río no es el mismo que uno donde no.
+ */
+function materializarPozos(d: Borrador): void {
+  const dios = d.dios
+  if (dios === undefined) return
+  // El conjunto de chunks ya mirados en ESTE tick, con clave NUMÉRICA. Con clave
+  // de texto la pasada armaba nueve cadenas por actor y por tick —45 000 cadenas
+  // con 5000 criaturas, todas basura— y eso era la mitad de lo que costaba. Es la
+  // misma `chunkKey` que usa la grilla: una sola forma de nombrar un chunk.
+  const vistos = new Set<number>()
+  for (const a of d.actors.values()) {
+    const mio = d.bodies.get(a.body)
+    if (mio === undefined) continue
+    const acx = chunkCoord(mio.at.x)
+    const acy = chunkCoord(mio.at.y)
+    for (const [dx, dy] of NUEVE) {
+      const cx = acx + dx
+      const cy = acy + dy
+      const clave = chunkKey(cx, cy)
+      if (vistos.has(clave)) continue
+      vistos.add(clave)
+      const pozo = decretoDe(dios, d.phys, cx, cy).pozo
+      if (pozo === undefined) continue
+      const id = idDePozo(cx, cy)
+      const stock = indiceDePozos(d).get(id) ?? pozo.stock
+      const cuerpo = cuerpoDePozo(id, stock, population(stock, d.segundos))
+      const habia = d.bodies.get(id)
+      // Se reemplaza sólo si la masa se movió. Sin esta comparación, cada tick
+      // reescribiría los bancos con un cuerpo nuevo y equivalente, y el snapshot
+      // por delta —que compara IDENTIDADES— metería una ranura por banco en todos
+      // los deltas de la partida para no decir nada.
+      if (habia !== undefined && masaDe(habia.body, d.phys) === masaDe(cuerpo, d.phys)) continue
+      ponerCuerpo(d, habia === undefined ? { body: cuerpo, at: pozo.at } : { ...habia, body: cuerpo })
+    }
+  }
+}
+
 /**
  * El registro de sistemas. Es una lista y no un `Set` ni un mapa por nombre: lo
  * único que importa de un sistema es CUÁNDO corre, y un contenedor sin orden
@@ -2332,6 +2749,10 @@ export const SISTEMAS: readonly { readonly nombre: string; readonly correr: (d: 
  */
 export function stepWorld(state: WorldState, intents: readonly Intent[]): StepOutcome {
   const d = abrir(state)
+  // Lo que el dios decretó y todavía no estaba, ANTES de que nadie actúe. Ver
+  // `materializarPozos`: sin esto, pescar dependería de haber llegado un tick
+  // antes, y un pozo repuesto calificaría un tick tarde.
+  materializarPozos(d)
   const ordenadas = ordenarIntenciones(intents)
 
   // ─── Los empates, marcados ANTES de despachar nada ────────────────────────

@@ -555,7 +555,11 @@ describe('ataque 6 · una reposición que dependa del reloj de pared', () => {
       for (const { patron, que } of PROHIBIDAS) if (patron.test(codigo)) sucios.push(`${nombre}: ${que}`)
     }
     expect(sucios).toEqual([])
-    expect(fuentes.length).toBe(10)
+    // Subió de 10 a 11 con `src/pesca.ts`, la ley `agua → Stock` que faltaba
+    // entera. La cuenta es exacta y no una cota inferior a propósito: el guardián
+    // lee el directorio, así que un archivo nuevo entra solo, y lo que este número
+    // ataja es BORRAR uno sin que nadie se entere.
+    expect(fuentes.length).toBe(11)
     console.log(`ataque 6 · ${String(fuentes.length)} fuentes del paquete barridas, 0 infracciones a la regla 2`)
   })
 

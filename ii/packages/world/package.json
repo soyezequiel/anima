@@ -14,7 +14,8 @@
     "tick": "vitest run banco-el-tick"
   },
   "dependencies": {
-    "@anima/physics": "workspace:*"
+    "@anima/physics": "workspace:*",
+    "@anima/oracle": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

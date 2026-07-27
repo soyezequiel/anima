@@ -41,6 +41,10 @@
 
 import type { Physics, Process, QualitySpec, Substance } from '@anima/physics'
 import { buildSeedPhysics, esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES } from '@anima/physics'
+import { crearStock } from '@anima/oracle'
+
+import type { EstadoDelDios, PozoTocado } from './dios.js'
+import { ordenarPozos } from './dios.js'
 
 import type { CellKey } from './cell.js'
 import { hashWorld } from './hash.js'
@@ -102,6 +106,16 @@ export function hashWorldState(s: WorldState): WorldHash {
     bodies: s.bodies,
     actors: s.actors,
     cells: s.cells,
+    // EL DIOS ENTRA AL HASH, y tiene que entrar: el estado del dado, lo que queda
+    // en cada pozo y lo que cada chunk ya entregó son estado del mundo, no de una
+    // caché. Dos mundos gemelos que tiraron el dado distinta cantidad de veces no
+    // son el mismo mundo, y el que no lo vea es un juez que no sirve.
+    //
+    // `hashWorld` saltea las claves AUSENTES, así que el hash de un mundo sin
+    // dios no se mueve ni un bit respecto de antes de que este campo existiera —y
+    // eso no es un detalle de compatibilidad: es lo que hace que los guardados y
+    // las huellas de las partidas sin dios sigan valiendo.
+    dios: s.dios,
   })
 }
 
@@ -132,6 +146,18 @@ export const PREFIJO_ACTOR = 'actor:'
 export const PREFIJO_CELDA = 'celda:'
 export const RANURA_MUNDO = 'mundo'
 export const RANURA_CUALIDADES = 'cualidades'
+/**
+ * El dios: la semilla, el dado, los pozos tocados y el diario del libro calórico.
+ *
+ * Es UNA ranura y no una por pozo, y la razón es la misma que junta el reloj y el
+ * contador de ids en `RANURA_MUNDO`: **el dado cambia cada vez que alguien pesca,
+ * y cuando el dado cambia también cambió el pozo del que se pescó**. Separarlos
+ * daría dos deltas donde hay un solo hecho. La ranura es chica —cuatro campos, y
+ * los pozos son un puñado— salvo por el diario, que crece con la partida; el día
+ * que eso duela, lo que hay que partir es el diario, y ese día se sabrá porque el
+ * delta lo va a decir.
+ */
+export const RANURA_DIOS = 'dios'
 
 /** La cabecera: lo que el mundo tiene y no es ni un cuerpo ni una celda. */
 export interface CabeceraDeMundo {
@@ -160,6 +186,11 @@ export function worldSlots(s: WorldState): Slots<unknown> {
   }
   out.set(RANURA_MUNDO, cabecera)
   out.set(RANURA_CUALIDADES, s.phys.qualities)
+  // Un mundo sin dios no escribe la ranura, en vez de escribirla vacía. Es lo
+  // mismo que hace un chunk impecable en `grid.ts`: lo que no existe no ocupa
+  // lugar en el guardado, y así un mundo sin dios se guarda exactamente igual que
+  // antes de que este campo existiera.
+  if (s.dios !== undefined) out.set(RANURA_DIOS, s.dios)
   for (const [id, p] of s.phys.processes) out.set(PREFIJO_PROCESO + id, p)
   for (const [id, sub] of s.phys.substances) out.set(PREFIJO_SUSTANCIA + id, sub)
   for (const [id, c] of s.bodies) out.set(PREFIJO_CUERPO + id, c)
@@ -218,6 +249,7 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
   // que es la historia y no el estado.
   for (const k of [...slots.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))) {
     const v = slots.get(k)
+    if (k === RANURA_DIOS) continue
     if (k.startsWith(PREFIJO_SUSTANCIA)) substances.push(v as Substance)
     else if (k.startsWith(PREFIJO_PROCESO)) processes.push(v as Process)
     else if (k.startsWith(PREFIJO_CUERPO)) bodies.push(v as WorldBody)
@@ -232,6 +264,12 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
   const cells = new Map<CellKey, CellState>()
   for (const [clave, c] of celdas.sort((a, b) => a[0] - b[0])) cells.set(clave, c)
 
+  // El dios vuelve por su propia puerta y con los `Map` REARMADOS: un guardado
+  // que pasó por JSON trae los stocks como objeto plano y no como `Map`, y un
+  // `Map` vacío que debería tener tres pozos es una partida que se olvidó de lo
+  // que ya pescó. `restaurarDios` es quien sabe eso; acá sólo se lo llama.
+  const dios = slots.has(RANURA_DIOS) ? restaurarDios(slots.get(RANURA_DIOS)) : undefined
+
   return {
     tick: cabecera.tick,
     hz: cabecera.hz,
@@ -240,6 +278,58 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores(actors),
     cells,
+    ...(dios === undefined ? {} : { dios }),
+  }
+}
+
+/**
+ * El estado del dios de vuelta de un guardado.
+ *
+ * Acepta el `Map` vivo (una cadena de deltas en memoria) y también el objeto
+ * plano o el arreglo de pares que deja `JSON.stringify` — un `Map` no sobrevive a
+ * JSON, y `chunk.ts` ya se comió esa lección: «un snapshot que no aguanta el
+ * viaje por JSON no sirve para el journal ni para IndexedDB, y eso se descubre
+ * tarde».
+ *
+ * Los pozos vuelven ORDENADOS por id, por lo mismo que los cuerpos y las celdas:
+ * un estado restaurado tiene que ser indistinguible del original, y el orden de
+ * iteración de un `Map` se ve desde afuera —`hashWorld` lo ordena, pero
+ * `worldSlots` y cualquier recorrido no—.
+ */
+export function restaurarDios(v: unknown): EstadoDelDios {
+  const o = v as {
+    semilla?: unknown
+    dado?: unknown
+    stocks?: unknown
+    cobros?: unknown
+  }
+  if (typeof o.semilla !== 'string' || typeof o.dado !== 'number') {
+    throw new RangeError('la ranura del dios no tiene semilla ni dado')
+  }
+  if (o.stocks !== undefined && !Array.isArray(o.stocks)) {
+    // Lanzar y no arreglar en silencio. Un guardado en el que los pozos vinieron
+    // como objeto es un guardado escrito por una versión que los llevaba en un
+    // `Map`, y un `Map` sale de `JSON.stringify` como `{}`: aceptarlo sería
+    // devolverle a cada río su población entera sin decir una palabra. Es
+    // literalmente el bug que este arreglo cerró.
+    throw new RangeError('los pozos del guardado no son un arreglo: ¿un `Map` que no sobrevivió a JSON?')
+  }
+  const crudos = (o.stocks ?? []) as readonly PozoTocado[]
+  const stocks = ordenarPozos(
+    crudos.map((p) => ({
+      banco: p.banco,
+      // Pasa por `crearStock`: un stock que vino de un disco es dato de afuera, y
+      // con `capacity` roto la probabilidad de picar sale `NaN` y —ver `clamp01`—
+      // la extracción tendría éxito SIEMPRE. El mundo es el árbitro, no un lector
+      // confiado.
+      stock: crearStock(p.stock),
+    })),
+  )
+  return {
+    semilla: o.semilla,
+    dado: o.dado | 0,
+    stocks,
+    cobros: Array.isArray(o.cobros) ? (o.cobros as EstadoDelDios['cobros']) : [],
   }
 }
 

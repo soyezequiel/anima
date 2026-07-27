@@ -20,13 +20,17 @@ import { ACTOR, Mundito } from './mundito.js'
  *
  * ─── LOS SEIS QUE SE COLABAN, Y CÓMO QUEDARON ───────────────────────────────
  *
- * De los seis `it.fails` con los que este archivo nació, CUATRO están cerrados y
- * pasaron a ser regresiones; los dos que quedan siguen en rojo con su porqué
- * adentro, que es la única forma honesta de dejarlos:
+ * De los seis `it.fails` con los que este archivo nació, CINCO están cerrados y
+ * pasaron a ser regresiones; el que queda sigue en rojo con su porqué adentro,
+ * que es la única forma honesta de dejarlo:
  *
  *   1. `(function(){}).constructor` sale al alcance global   ABIERTO, declarado
- *   2. mutar `at` mueve al cuerpo sin emitir intención        ABIERTO, es de
- *                                                            `@anima/perceive`
+ *   2. mutar `at` mueve al cuerpo sin emitir intención        cerrado en
+ *                                                            `@anima/perceive`:
+ *                                                            la vista SELLA el
+ *                                                            `Placement` del
+ *                                                            mundo con
+ *                                                            `Object.freeze`
  *   3. el estado de MÓDULO sobrevive a la corrida             cerrado en la
  *                                                            puerta 1
  *   4. `abort()` mentía sobre si el generador cerró           cerrado
@@ -206,7 +210,25 @@ describe('una habilidad que intenta alcanzar lo que no existe adentro', () => {
 // ─── 2. MUTAR EN VEZ DE DEVOLVER ────────────────────────────────────────────
 
 describe('una habilidad que muta el objeto que recibe en vez de devolver uno nuevo', () => {
-  /** El `Ctx` del mundito sin `memory`/`phase`, con los getters intactos. */
+  /**
+   * El `Ctx` del mundito sin `memory`/`phase`, con los getters intactos y con las
+   * celdas SELLADAS.
+   *
+   * ─── Por qué el sellado se agrega acá ───────────────────────────────────
+   *
+   * La reparación del agujero 2 vive en `@anima/perceive` (`src/vista.ts`,
+   * función `sellar`): la capa de percepción congela el `Placement` del mundo con
+   * `Object.freeze` en vez de clonarlo, y en `"use strict"` —que es como corre el
+   * sandbox— asignarle algo LANZA. Está medida ahí, con su banco: cero
+   * asignaciones contra las 5000 por tick que costaría clonar.
+   *
+   * `@anima/skills` **no puede importar `@anima/perceive`**: la flecha va al revés
+   * (perceive depende de skills) y cerrarla sería un ciclo de paquetes. Así que
+   * acá se aplica la MISMA regla sobre el mundito, que es el único productor de
+   * vistas que este paquete tiene. Sin esto, el test de abajo mediría el juguete y
+   * no el invariante — y el invariante es lo que se quiere clavar: **mutar `at` no
+   * mueve nada**.
+   */
   function worldCtx(m: Mundito): WorldCtx {
     const base = m.ctx() as unknown as Record<string, unknown>
     const out: Record<string, unknown> = {}
@@ -215,6 +237,18 @@ describe('una habilidad que muta el objeto que recibe en vez de devolver uno nue
       const d = Object.getOwnPropertyDescriptor(base, k)
       if (d) Object.defineProperty(out, k, { ...d, configurable: true, enumerable: true })
     }
+    const sellar = <T extends { readonly at: unknown }>(v: T): T => {
+      if (!Object.isFrozen(v.at)) Object.freeze(v.at)
+      return v
+    }
+    const ver = out['see'] as (w: unknown) => { readonly at: unknown }[]
+    out['see'] = (w: unknown) => ver(w).map(sellar)
+    const self = Object.getOwnPropertyDescriptor(out, 'self')?.get as () => { readonly at: unknown }
+    Object.defineProperty(out, 'self', {
+      get: () => sellar(self()),
+      enumerable: true,
+      configurable: true,
+    })
     return out as unknown as WorldCtx
   }
 
@@ -284,43 +318,53 @@ export function* f(ctx: Ctx): Generator<Intent, Outcome, StepResult> {
     if (p.k === 'intent') expect((p.intent as unknown as { out: string }).out).toBe('rebotó')
   })
 
-  it.fails('SE CUELA EN TIEMPO DE EJECUCIÓN: mutar `at` MUEVE al cuerpo y a la criatura', () => {
-    // POR QUÉ SIGUE ABIERTO: la reparación no vive en este paquete. Quien
-    // comparte la referencia de la celda con el mundo es la capa de PERCEPCIÓN, y
-    // `@anima/perceive` no existe todavía; congelar las vistas o devolver la
-    // celda como dos números es una decisión de esa capa y hay que medirla ahí,
-    // no acá. Cerrarlo desde el ejecutor sería clonar en el lugar equivocado.
+  it('CERRADO EN LA PERCEPCIÓN: mutar `at` NO mueve al cuerpo ni a la criatura', () => {
+    // CÓMO SE CERRÓ, y dónde vive ahora la defensa. El `it.fails` de este test
+    // decía que la reparación no era de este paquete: «quien comparte la
+    // referencia de la celda con el mundo es la capa de PERCEPCIÓN, y
+    // `@anima/perceive` no existe todavía». Ya existe.
     //
-    // El typecheck lo rebota (test de arriba). El SANDBOX no: la vista de
-    // percepción comparte la referencia de la celda con el mundo, así que
-    // `b.at.x = 999` teletransporta un cuerpo y `ctx.self.at.y = 777` mueve a la
-    // criatura, sin emitir ninguna intención y sin pasar por `stepWorld`.
+    // La reparación es `Object.freeze` sobre el propio `Placement` del mundo
+    // (`perceive/src/vista.ts`, función `sellar`), y no es ninguna de las dos
+    // salidas obvias:
     //
-    // Medido acá contra el mundito, que copia la forma del mundo de verdad:
-    // `BodyView.at` sale de `Body.at` sin clonar, porque clonar una celda por
-    // cuerpo y por tick es exactamente el gasto que el Hito 2 se pasó cuatro
-    // semanas sacando.
+    //   - **clonar la celda** por cuerpo y por tick es el gasto que el Hito 2 se
+    //     pasó cuatro semanas sacando, y encima deja el fallo SILENCIOSO: contra
+    //     una copia, `b.at.x = 999` anda y la habilidad se queda creyendo que
+    //     movió el cuerpo;
+    //   - **confiar en el `readonly`** de `Cell`, que el test de arriba mide y que
+    //     es una defensa con horario: no cubre lo que se carga de un guardado, ni
+    //     una innata parcheada, ni JS sin tipos.
     //
-    // POR QUÉ IMPORTA IGUAL AUNQUE EL COMPILADOR LO ATAJE: la puerta 2 la
-    // atraviesa TODO lo que el modelo escribe, pero no lo que se carga de un
-    // guardado, ni una innata que alguien parchee, ni un camino futuro en JS sin
-    // tipos. Una defensa que vive en una sola puerta es una defensa con horario.
+    // Congelar cuesta CERO asignaciones y es idempotente —`stepWorld` crea un
+    // `at` nuevo sólo cuando el cuerpo se muda—, y en `"use strict"`, que es como
+    // corre el sandbox, la asignación LANZA. El banco está en
+    // `perceive/tests/banco-la-vista.test.ts`, con el número que NO dio lo
+    // esperado dicho ahí adentro: sellar no es más barato en CPU que clonar; es
+    // más barato en asignaciones, y es el único de los dos que hace visible la
+    // mutación.
     //
-    // REPARACIÓN, si algún día se decide pagarla: congelar las vistas con
-    // `Object.freeze` al construirlas (cuesta, y hay que medirlo), o devolver la
-    // celda como dos números y no como objeto.
+    // Acá se corre contra el mundito con la misma regla aplicada en `worldCtx`,
+    // porque `@anima/skills` no puede importar `@anima/perceive` sin cerrar un
+    // ciclo de paquetes. La regresión de producción, contra `stepWorld` de
+    // verdad, está en `perceive/tests/la-vista.test.ts`.
     const mundo = new Mundito({ cuerpos: [{ id: 'p', at: { x: 3, y: 0 }, name: 'piedra', q: { mass: 5 } }] })
     const m = montar(`export function* habilidad(ctx) {
+      let out = 'PISADA'
       const b = ctx.see([{ q: 'mass', op: '>=', v: 1 }])[0]
-      b.at.x = 999
-      ctx.self.at.y = 777
-      yield { k: 'wait' }
+      try { b.at.x = 999 } catch (e) { out = 'rebotó' }
+      try { ctx.self.at.y = 777 } catch (e) { out = 'rebotó' }
+      yield { k: 'wait', out }
       return { ok: true }
     }`)
     const run = new SkillRun(m.exports['habilidad'] as never, worldCtx(mundo), undefined as never, { by: ACTOR, cell: m.cell })
-    run.step()
+    const p = run.step()
     expect(mundo.cuerpo('p')?.at.x, 'el cuerpo se movió sin intención').toBe(3)
     expect(mundo.posicion.y, 'la criatura se movió sin intención').toBe(0)
+    // Y la habilidad SE ENTERA, que es la otra mitad: un fallo silencioso deja a
+    // la mente operando sobre un mundo que no existe.
+    expect(p.k).toBe('intent')
+    if (p.k === 'intent') expect((p.intent as unknown as { out: string }).out).toBe('rebotó')
   })
 })
 

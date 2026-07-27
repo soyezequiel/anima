@@ -108,6 +108,26 @@ export interface ChunkDecretado extends ChunkFacts {
    *  ninguna: un chunk sin agua cerca (nada que garantizar) o un chunk
    *  enteramente inundado (nada donde pararse; la garantía es del vecino). */
   readonly orilla: number | null
+  /**
+   * LA CELDA DEL POZO: el agua desde la cual se saca, en índice local. `null`
+   * cuando el chunk no tiene una sola gota.
+   *
+   * Es el reflejo exacto de `orilla` y hacen falta las DOS, porque la pesca pasa
+   * entre dos celdas distintas: la criatura se para en la seca y el banco de
+   * peces está en la mojada. Con una sola, el mundo tendría que buscar la otra
+   * por su cuenta —o sea escribir de nuevo esta misma vecindad de 4— y dos
+   * implementaciones de la misma cuenta divergen.
+   *
+   * Y **un chunk enteramente inundado sí tiene pozo aunque no tenga orilla**: ahí
+   * es donde vive el pescado, y quien lo saca está parado en el chunk seco de al
+   * lado. Medido en el Hito 3: el 88,8% de los chunks de `agua-dulce` está
+   * enteramente bajo el agua, así que si el pozo dependiera de la orilla, casi
+   * ningún lago tendría peces.
+   */
+  readonly pozo: number | null
+  /** Cuántas celdas de agua franca tiene el chunk. Es el TAMAÑO del pozo, y de
+   *  ahí sale la capacidad del stock (`stockDeAgua`). Cero cuando no hay agua. */
+  readonly celdasDeAgua: number
   /** Lo que la garantía agregó. Vacío es el caso bueno: el ruido ya alcanzaba.
    *  Es para la crónica —«el dios puso una liana acá porque si no, no había con
    *  qué»— y para que un test pueda preguntar cuánto hizo falta. */
@@ -189,6 +209,61 @@ export function orillaLocal(seed: Seed, cx: number, cy: number, t: Terreno): num
   return null
 }
 
+/**
+ * EL POZO: dónde está el agua de la que se saca, y cuánta hay.
+ *
+ * Devuelve la celda mojada que da a tierra —la primera, en orden por filas, con
+ * al menos un vecino seco— y el total de celdas mojadas del chunk. Si el chunk
+ * está enteramente inundado no hay ninguna que dé a tierra y entonces vale la
+ * primera mojada a secas: adentro de un lago se pesca desde la orilla del chunk
+ * vecino, y `extraccion` alcanza a radio 1, así que lo que importa es que el
+ * banco esté en el agua y no en cuál de sus celdas.
+ *
+ * «Da a tierra» se mira con la MISMA `mojada` que usa `orillaLocal`, o sea que
+ * también ve del otro lado del borde del chunk. Sin eso, el pozo de un chunk
+ * inundado con orilla justo afuera quedaría marcado como interior.
+ *
+ * Un solo barrido de 256 celdas: cuenta el agua y se queda con la primera
+ * candidata. Contar y elegir por separado serían dos barridos que tienen que
+ * estar de acuerdo.
+ */
+export function pozoLocal(
+  seed: Seed,
+  cx: number,
+  cy: number,
+  t: Terreno,
+): { readonly pozo: number | null; readonly celdas: number } {
+  const niveles = new Map<number, number>()
+  const nivelVecino = (dcx: number, dcy: number): number => {
+    const k = (dcx + 1) * 3 + (dcy + 1)
+    let v = niveles.get(k)
+    if (v === undefined) {
+      v = nivelDeAguaDeChunk(seed, cx + dcx, cy + dcy)
+      niveles.set(k, v)
+    }
+    return v
+  }
+  let celdas = 0
+  let daATierra: number | null = null
+  let primeraMojada: number | null = null
+  for (let ly = 0; ly < CELDAS_DE_LADO; ly++) {
+    for (let lx = 0; lx < CELDAS_DE_LADO; lx++) {
+      const i = indiceLocal(lx, ly)
+      if (!tieneAgua(t, i)) continue
+      celdas++
+      if (primeraMojada === null) primeraMojada = i
+      if (daATierra !== null) continue
+      for (const [dx, dy] of VECINOS) {
+        if (!mojada(seed, cx, cy, t, lx + dx, ly + dy, nivelVecino)) {
+          daATierra = i
+          break
+        }
+      }
+    }
+  }
+  return { pozo: daATierra ?? primeraMojada, celdas }
+}
+
 // ─── Dónde cae lo que la garantía siembra ───────────────────────────────────
 
 /**
@@ -261,9 +336,14 @@ export function decretarChunk(
 ): ChunkDecretado {
   const base = resolveChunk(seed, cx, cy)
   const orilla = orillaLocal(seed, cx, cy, base.terreno)
+  const agua = pozoLocal(seed, cx, cy, base.terreno)
   // Sin orilla no hay desde dónde pescar, y una garantía ahí sería una caña
   // tirada en el medio del lago. Ver el encabezado: la condición NO es el bioma.
-  if (orilla === null) return { ...base, orilla: null, sembradas: [] }
+  // El POZO sí sale igual: un chunk inundado no tiene dónde pararse pero sí tiene
+  // el pescado, y quien lo saca está parado en el vecino.
+  if (orilla === null) {
+    return { ...base, orilla: null, pozo: agua.pozo, celdasDeAgua: agua.celdas, sembradas: [] }
+  }
 
   const origen: Punto = { x: cx * CELDAS_DE_LADO, y: cy * CELDAS_DE_LADO }
   const ancla: Punto = {
@@ -294,7 +374,9 @@ export function decretarChunk(
     rngFor({ k: 'chunk', cx, cy }, seed ^ SAL_RESOLUBILIDAD),
     phys,
   )
-  if (nuevas.length === 0) return { ...base, orilla, sembradas: [] }
+  if (nuevas.length === 0) {
+    return { ...base, orilla, pozo: agua.pozo, celdasDeAgua: agua.celdas, sembradas: [] }
+  }
 
   const sembradas: Suelta[] = nuevas.map((s) => ({
     substance: s.substance,
@@ -303,5 +385,12 @@ export function decretarChunk(
     // de `Fixed` es 1000 y las dos son múltiplos de una milésima.
     masa: fx(s.mass),
   }))
-  return { ...base, orilla, sembradas, sueltas: [...base.sueltas, ...sembradas] }
+  return {
+    ...base,
+    orilla,
+    pozo: agua.pozo,
+    celdasDeAgua: agua.celdas,
+    sembradas,
+    sueltas: [...base.sueltas, ...sembradas],
+  }
 }

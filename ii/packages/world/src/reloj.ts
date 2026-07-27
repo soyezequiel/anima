@@ -34,7 +34,7 @@
 // si las dos formas dejan de ser la misma. El día que exista ese tramo, `tsc` deja
 // de creerle a este comentario y pasa a verificarlo.
 
-import { esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES } from '@anima/physics'
+import { esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES, seg, type Duracion } from '@anima/physics'
 
 /**
  * Cuántos SEGUNDOS DE MUNDO dura un día entero, luz más noche. Mitad y mitad, y
@@ -94,6 +94,34 @@ export interface Clock {
 export interface ConReloj {
   readonly tick: number
   readonly hz: number
+}
+
+/**
+ * CUÁNTOS SEGUNDOS DE MUNDO llevan corridos. El otro derivado del par
+ * `(tick, hz)`, y el que le hacía falta al dios.
+ *
+ * Existe porque **todo lo del oráculo se mide en segundos** (ADR II-0008): la
+ * reposición de un pozo (`population(s, t)`), la marca de un stock, la fecha de
+ * un cobro. Sin esta función, cada llamador escribiría `tick / hz` a mano, que es
+ * la clase exacta de falso verde que este frente vino a cerrar: `tick / hz` es un
+ * `number` y `Duracion` es un `number` marcado, así que pasarle ticks a algo que
+ * espera segundos compila con CERO errores y el río se repone veinte veces más
+ * lento sin que nada falle.
+ *
+ * La cuenta va por MICROSEGUNDOS ENTEROS y no `tick / hz` directo: a 20 Hz,
+ * `1 / 20` es 0,05 y 0,05 no es representable en binario, así que la suma de
+ * veinte de ellos no da 1 exacto. `tick · 10⁶` es exacto hasta el tick 9 × 10⁹ —
+ * cuatro órdenes de magnitud más que el horizonte del dios (`SEGUNDOS_MAXIMOS`)—
+ * y la división por `hz` es exacta porque las frecuencias admisibles dividen 10⁶.
+ * Es la misma disciplina de `sumarPaso`, que acumula en micros y divide una vez.
+ */
+export function segundosDe(s: ConReloj): Duracion {
+  if (!esFrecuenciaAdmisible(s.hz)) {
+    throw new RangeError(
+      `frecuencia inadmisible: ${String(s.hz)} Hz no da segundos exactos. Admisibles: ${FRECUENCIAS_ADMISIBLES.join(', ')}`,
+    )
+  }
+  return seg((s.tick * 1_000_000) / s.hz / 1_000_000)
 }
 
 /**
