@@ -7,41 +7,45 @@
 //
 // CÓMO SE LEE
 //
-//   · `it(...)` normal        → la puerta RECHAZÓ el intento. El test afirma el
+//   · `it(...)` normal        → la puerta RECHAZA el intento. El test afirma el
 //                               rechazo y queda como regresión: si mañana alguien
 //                               afloja esa regla, esto se pone rojo.
-//   · `it.fails(...)`         → HUECO ABIERTO. El cuerpo del test afirma lo que
-//     con «HUECO ABIERTO»       la puerta DEBERÍA contestar, y hoy no contesta.
-//     en el nombre              Vitest lo cuenta como esperado-que-falle: el día
-//                               que se tape el hueco, el test se pone rojo con
-//                               «expected to fail but passed» y hay que sacarle
-//                               el `.fails`. Ninguno de estos afirma la conducta
-//                               rota como si fuera correcta.
+//   · `it.fails(...)`         → HUECO QUE SIGUE ABIERTO. El cuerpo del test afirma
+//     con «SIGUE ABIERTO»       lo que la puerta DEBERÍA contestar y todavía no
+//     en el nombre              contesta. Vitest lo cuenta como esperado-que-falle.
+//                               Ninguno de estos afirma la conducta rota como si
+//                               fuera correcta, y cada uno trae escrito POR QUÉ
+//                               sigue abierto.
 //
-// Los huecos encontrados, en orden de gravedad:
+// Los huecos encontrados, en orden de gravedad, y en qué terminaron:
 //
-//   1. `transfer` no tiene control de CANTIDAD. Un `drain` que gasta más de lo
-//      que el rol garantiza cobra el reparo `costo-mayor-que-la-garantia`; un
-//      `transfer` que mueve mil veces más de lo que el origen garantiza no cobra
-//      nada. Con eso se llena de nutrición un tronco desde una hoja.
-//   2. `nutrition` es INTENSIVA (por unidad de masa) y la regla 1 nunca compara
-//      el producto `q · mass`. `quality.ts` lo dice con todas las letras —«la
-//      regla 1 de admit() tiene que comparar el producto»— y no está hecho.
-//   3. `respalda()` devuelve `true` para `mass` SIEMPRE. Un `transfer` de masa
-//      no lo mira ningún número: se puede mover masa desde un guijarro.
-//   4. Un proceso puede empujar una cualidad DERIVADA. El código tiene el motivo
-//      («no se guarda») y hasta el código de rechazo `cualidad-derivada`, pero lo
-//      usa solo en `admitSubstance`. Con un `drive` de `catch` una piedra pesca.
-//   5. El costo del `poweredBy` se mide en las unidades de la cualidad EMPUJADA.
-//      Subir 385 °C cuesta 1100 de stamina; subir `digestibility` de 0 a 1 cuesta
-//      1. O sea: cocinar sin fuego, gratis.
-//   6. La envolvente por tag es la UNIÓN de los tags. Agregarle `organico` a una
-//      piedra le sube el techo de `nutrition` de 0 a 33.
-//   7. La no-dominancia exige que los dos procesos tengan los MISMOS nombres de
-//      rol y no mira `completion.at`. Pescar sin caña, o pescar en un tick en vez
-//      de treinta, no domina a nadie.
-//   8. El punto fijo redondea las mitades ALEJÁNDOSE del cero, y nada le pone
-//      piso de masa a un `split`: partir en dos algo de masa 0.001 da 0.002.
+//   1. CERRADO · `transfer` no tenía control de CANTIDAD. Un `drain` que gasta
+//      más de lo que el rol garantiza cobra el reparo
+//      `costo-mayor-que-la-garantia`; un `transfer` que movía mil veces más no
+//      cobraba nada. Con eso se llenaba de nutrición un tronco desde una hoja.
+//   2. CERRADO EN LA PUERTA · `nutrition` es INTENSIVA (por unidad de masa) y la
+//      regla 1 nunca comparaba el producto `q · mass`. `quality.ts` lo dice con
+//      todas las letras. Ahora lo compara, y cuando la masa del rol no está
+//      acotada rechaza por indecidible. Lo que la puerta NO puede hacer es
+//      cambiar lo que dos cuerpos ya pesan: ver el hueco de más abajo.
+//   3. CERRADO · `respalda()` devuelve `true` para `mass` SIEMPRE, y sigue siendo
+//      cierto que todo cuerpo tiene masa. Lo que se agregó es CUÁNTA: la cota del
+//      rol. Mover 10 000 desde un guijarro que no promete un gramo se rechaza.
+//   4. CERRADO · un proceso podía empujar una cualidad DERIVADA. El código tenía
+//      el motivo («no se guarda») y hasta el código `cualidad-derivada`, pero lo
+//      usaba solo en `admitSubstance`. Con un `drive` de `catch` una piedra
+//      pescaba.
+//   5. ABIERTO · el costo del `poweredBy` se mide en las unidades de la cualidad
+//      EMPUJADA. Subir 385 °C cuesta 1100 de stamina; subir `digestibility` de 0
+//      a 1 cuesta 1. La puerta no tiene con qué convertir una en otra.
+//   6. ABIERTO · la envolvente por tag es la UNIÓN de los tags. Agregarle
+//      `organico` a una piedra le sube el techo de `nutrition` de 0 a 33.
+//   7. CERRADO · la no-dominancia exigía que los dos procesos tuvieran los MISMOS
+//      nombres de rol y no miraba `completion.at`. Pescar sin caña, o pescar en un
+//      tick en vez de treinta, no dominaba a nadie.
+//   8. ABIERTO · el punto fijo redondea las mitades ALEJÁNDOSE del cero, y nada
+//      le pone piso de masa a un `split`: partir en dos algo de masa 0.001 da
+//      0.002. Eso es aritmética de `fixed.ts`, no una regla de la puerta.
 
 import { describe, expect, it } from 'vitest'
 import { admit, admitSubstance, consumedRoles, saldoDeclarado, tieneCodigo, tieneReparo, type Verdict } from '../src/admit.js'
@@ -172,17 +176,18 @@ describe('los caminos directos a la comida gratis están cerrados', () => {
   })
 })
 
-// ═══ HUECO 1 · el `transfer` no tiene control de cantidad ═══════════════════
+// ═══ HUECO 1 · el `transfer` no tenía control de cantidad ══════════════════
 
-describe('HUECO · transferir más de lo que el origen tiene', () => {
+describe('CERRADO · transferir más de lo que el origen tiene', () => {
   /**
    * Una hoja (nutrition 2) pegada a un tronco, y 90 de nutrición por tick
    * durante 60 ticks: 5400 unidades salidas de un rol que solo garantiza
    * «más que cero».
    *
-   * La regla 1 mira si el origen RESPALDA la cualidad —sí, todas las candidatas
-   * traen nutrition > 0— y no mira nunca CUÁNTA. La regla 2 sí tiene ese control
-   * (`costo-mayor-que-la-garantia`) pero solo lo corre sobre `drive` y `drain`.
+   * La regla 1 miraba si el origen RESPALDA la cualidad —sí, todas las
+   * candidatas traen nutrition > 0— y no miraba nunca CUÁNTA. La regla 2 sí tenía
+   * ese control (`costo-mayor-que-la-garantia`) pero solo lo corría sobre `drive`
+   * y `drain`.
    */
   const ENGORDAR: Process = proc('engordar-el-tronco', {
     roles: [
@@ -194,41 +199,61 @@ describe('HUECO · transferir más de lo que el origen tiene', () => {
     establishes: ['nutrition>=90'],
   })
 
-  it.fails('HUECO ABIERTO — mover 90 de nutrition desde un rol que garantiza «> 0» debería rechazarse', () => {
+  it('CERRADO — mover 90 de nutrition desde un rol que garantiza «> 0» se rechaza', () => {
     const v = admit(ENGORDAR, phys)
-    // Lo que hoy pasa, para que quede escrito: entra sin una sola razón.
-    expect(codigos(v)).toEqual([])
-    expect(v.ok).toBe(true)
-    // Y ni siquiera un reparo sobre la cantidad, que es lo que un `drain` sí cobra.
-    expect(tieneReparo(v, 'costo-mayor-que-la-garantia')).toBe(false)
-
-    // ── LO QUE DEBERÍA PASAR, y es lo que hace fallar este test ──
     expect(v.ok).toBe(false)
+
+    // Y con los dos números, que es lo que la fragua puede corregir: mueve 90 y
+    // el rol garantiza cero, porque «mayor que cero» garantiza cero.
+    const r = v.razones.find((x) => x.codigo === 'conservacion-transfer')!
+    expect(r.regla).toBe(1)
+    expect(r.q).toBe('nutrition')
+    expect(r.encontrado).toBe(90)
+    expect(r.cota).toBe(0)
   })
 
-  it.fails('HUECO ABIERTO — y no consume NADA: la hoja donante queda entera, tick tras tick', () => {
+  it('CERRADO — y no consume NADA: por eso hace falta que TERMINE alguna vez', () => {
     // `consumedRoles` se deriva de los rendimientos, y este proceso no tiene
-    // ninguno: nada se gasta. El efecto corre mientras el arreglo se sostenga.
+    // ninguno: nada se gasta. Sin `completion`, el efecto corre mientras el
+    // arreglo se sostenga, o sea `perTick × ∞`. Un proceso sin completion que
+    // solo GASTA es legítimo (`friccion` es exactamente eso); uno que ACREDITA
+    // una cuenta conservada sin consumir nada, no.
     expect(consumedRoles(ENGORDAR)).toEqual([])
-    expect(admit(ENGORDAR, phys).ok).toBe(true)
-
-    // ── DEBERÍA: un proceso que mueve una conservada sin consumir su fuente
-    //    tendría que declarar de dónde sale, o al menos cobrar reparo.
-    expect(admit(ENGORDAR, phys).ok).toBe(false)
+    const v = admit(ENGORDAR, phys)
+    expect(v.ok).toBe(false)
+    expect(v.razones.some((r) => r.mensaje.includes('completion'))).toBe(true)
   })
 
-  it.fails('HUECO ABIERTO — el ciclo consigo mismo da saldo 0 porque el transfer se ASUME conservativo', () => {
+  it('CERRADO — y el saldo del lazo consigo mismo dejó de dar 0: el transfer ya no se ASUME conservativo', () => {
     // El proceso promete `nutrition>=90` y su propio rol `donante` pide
     // `nutrition > 0`: se habilita a sí mismo y la regla 5 encuentra el lazo.
-    // Y lo deja pasar, porque `saldoDeclarado` le cree al `transfer`: suma el
-    // crédito y resta el débito por el mismo número.
-    expect(saldoDeclarado(ENGORDAR, 'nutrition', phys)).toBe(0)
-
-    // ── DEBERÍA: el débito no puede valer más que lo que el rol garantiza.
-    expect(saldoDeclarado(ENGORDAR, 'nutrition', phys)).toBeLessThan(0)
+    // Antes lo dejaba pasar, porque `saldoDeclarado` le creía al `transfer`:
+    // sumaba el crédito y restaba el débito por el mismo número. Ahora el débito
+    // está topado por lo que el rol garantiza, que son cero.
+    //
+    // OJO, Y HAY QUE DECIRLO: el adversario había escrito acá
+    // `toBeLessThan(0)` —esperaba que el saldo se volviera NEGATIVO— y ése es el
+    // signo equivocado. Un proceso que acredita 90 donde el origen respalda 0 no
+    // gasta: CREA 90, y el saldo tiene que dar +90. El signo importa porque es el
+    // que hace que la regla 5 vea el lazo: con saldo negativo el ciclo suma
+    // negativo y pasa limpio, que era exactamente el ataque. La afirmación se
+    // corrigió al signo correcto, y el test de al lado
+    // (`ciclo-rentable`) es la prueba de que ese signo es el que sirve.
+    expect(saldoDeclarado(ENGORDAR, 'nutrition', phys)).toBe(90)
+    expect(tieneCodigo(admit(ENGORDAR, phys), 'ciclo-rentable')).toBe(true)
   })
 
-  it.fails('HUECO ABIERTO — nutrition es INTENSIVA: los mismos «9» en un tronco de 100 son 57 veces más comida', () => {
+  it.fails('SIGUE ABIERTO — nutrition es INTENSIVA: los mismos «9» en un tronco de 100 son 57 veces más comida', () => {
+    // POR QUÉ SIGUE ABIERTO: este test no es sobre la puerta. Las tres primeras
+    // afirmaciones miden dos CUERPOS con `qualityOf`, y la última pide que 18 sea
+    // menor o igual que 0.315. Ninguna regla de `admit()` puede cambiar lo que
+    // pesan dos cuerpos que ya existen: eso es `body.ts`.
+    //
+    // Lo que la puerta SÍ hace ahora es no dejar entrar el proceso que movería
+    // esos 9 —`magnitud-intensiva`, y el test de acá arriba lo comprueba—, que es
+    // todo lo que una puerta puede hacer. El día que se quiera que un `transfer`
+    // de intensiva reescale el número por la razón de masas, eso es una ley del
+    // mundo y va en `leyes.ts`, no acá.
     // Éste es el hueco 1 llevado hasta donde duele. `quality.ts` avisa:
     // «La regla 1 de admit() tiene que comparar el producto; comparar el
     // intensivo dejaría pasar una bomba de materia». No compara el producto:
@@ -257,9 +282,9 @@ describe('HUECO · transferir más de lo que el origen tiene', () => {
   })
 })
 
-// ═══ HUECO 2 · la masa se mueve sin que nadie la cuente ════════════════════
+// ═══ HUECO 2 · la masa se movía sin que nadie la contara ═══════════════════
 
-describe('HUECO · transferir masa desde un guijarro', () => {
+describe('CERRADO · transferir masa desde un guijarro', () => {
   const TRASVASE: Process = proc('trasvasar-la-masa', {
     roles: [
       { name: 'chico', where: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
@@ -271,33 +296,38 @@ describe('HUECO · transferir masa desde un guijarro', () => {
     establishes: ['mass>=500'],
   })
 
-  it.fails('HUECO ABIERTO — 10 000 de masa desde un rol que no promete ni un gramo', () => {
-    // `respalda()` corta en seco: `if (q === 'mass') return true`. El comentario
-    // dice «la masa la tiene todo cuerpo por definición», y es cierto — pero de
-    // ahí no se sigue que tenga DIEZ MIL. Es exactamente el agujero que la
-    // piedra-batería tiene tapado para `stamina` y abierto para `mass`.
+  it('CERRADO — 10 000 de masa desde un rol que no promete ni un gramo', () => {
+    // `respalda()` sigue cortando en seco con `if (q === 'mass') return true`, y
+    // sigue siendo cierto: la masa la tiene todo cuerpo por definición. Lo que no
+    // se seguía de ahí es que tenga DIEZ MIL. La respuesta no era sacarle el
+    // atajo a `respalda` —un cuerpo de masa cero no es un cuerpo— sino separar
+    // las dos preguntas: `respalda` contesta «de dónde» y la cota del rol
+    // contesta «cuánto».
     const v = admit(TRASVASE, phys)
-    expect(codigos(v)).toEqual([])
-    expect(v.ok).toBe(true)
-    expect(saldoDeclarado(TRASVASE, 'mass', phys)).toBe(0)
-
-    // ── DEBERÍA: sacar 10 000 de masa de un guijarro es materia de la nada.
     expect(v.ok).toBe(false)
+    const r = v.razones.find((x) => x.codigo === 'conservacion-transfer')!
+    expect(r.q).toBe('mass')
+    expect(r.encontrado).toBe(10000)
+    expect(r.cota).toBe(0)
+  })
+
+  it('CERRADO — y el saldo lo dice: crea 10 000 de masa por corrida', () => {
+    expect(saldoDeclarado(TRASVASE, 'mass', phys)).toBe(10000)
   })
 })
 
 // ═══ HUECO 3 · empujar una cualidad DERIVADA ═══════════════════════════════
 
-describe('HUECO · un drive sobre una cualidad que no se guarda', () => {
+describe('CERRADO · un drive sobre una cualidad que no se guarda', () => {
   /**
    * `catch` es derivada: sale de `freeStrandEnds · (0.15 + sharpness·0.5)`, o
    * sea de la GEOMETRÍA del ensamble. Es lo único que separa una piedra de una
    * caña, y por lo tanto lo único que separa a la criatura de la comida.
    *
-   * `admitSubstance` rechaza que una sustancia declare una derivada, con el
-   * código `cualidad-derivada` y el motivo escrito. `reglaCierreYCotas` mira si
-   * la cualidad está en el catálogo —y una derivada lo está— y no mira si es
-   * derivada. Un `drive` de `catch` entra.
+   * `admitSubstance` rechazaba que una sustancia declare una derivada, con el
+   * código `cualidad-derivada` y el motivo escrito. `reglaCierreYCotas` miraba si
+   * la cualidad está en el catálogo —y una derivada lo está— y no miraba si es
+   * derivada. Un `drive` de `catch` entraba.
    */
   const AGARRE_MAGICO: Process = proc('darle-agarre-a-la-piedra', {
     roles: [
@@ -325,24 +355,26 @@ describe('HUECO · un drive sobre una cualidad que no se guarda', () => {
     establishes: ['catch>=8', 'reach>=16'],
   })
 
-  it.fails('HUECO ABIERTO — una piedra con `catch` 8 y `reach` 16 califica para `extraccion` sin atar nada', () => {
+  it('CERRADO — una piedra con `catch` 8 y `reach` 16 ya no califica para `extraccion` sin atar nada', () => {
     const v = admit(AGARRE_MAGICO, phys)
-    expect(codigos(v)).toEqual([])
-    expect(v.ok).toBe(true)
+    expect(v.ok).toBe(false)
 
-    // Y lo que habilita es literalmente pescar: `extraccion` pide reach ≥ 2 y
-    // catch > 0 sobre el aparejo, que es todo lo que este proceso regala.
+    // Lo que habilitaba es literalmente pescar: `extraccion` pide reach ≥ 2 y
+    // catch > 0 sobre el aparejo, que es todo lo que este proceso regalaba.
     expect(EXTRACCION.roles.find((r) => r.name === 'gear')?.where).toEqual([
       { q: 'reach', op: '>=', v: 2 },
       { q: 'catch', op: '>', v: 0 },
     ])
 
-    // ── DEBERÍA: `cualidad-derivada` existe como código de rechazo y esto tendría
-    //    que llevárselo. Una derivada no se escribe: se calcula.
+    // `cualidad-derivada` existía como código de rechazo y ahora se lo lleva.
+    // Una derivada no se escribe: se calcula.
     expect(tieneCodigo(v, 'cualidad-derivada')).toBe(true)
+    // Y por partida doble, porque también PROMETE lo que no puede hacer: `reach`
+    // es geometría pura y solo la cambia un rendimiento.
+    expect(tieneCodigo(v, 'promesa-derivada')).toBe(true)
   })
 
-  it.fails('HUECO ABIERTO — y también se puede empujar `calories`, que ES la comida', () => {
+  it('CERRADO — y tampoco se puede empujar `calories`, que ES la comida', () => {
     const p = proc('inventar-calorias', {
       roles: [
         { name: 'plato', where: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
@@ -361,13 +393,10 @@ describe('HUECO · un drive sobre una cualidad que no se guarda', () => {
       establishes: ['calories>=100000'],
     })
     const v = admit(p, phys)
-    expect(codigos(v)).toEqual([])
-    expect(v.ok).toBe(true)
-
-    // ── DEBERÍA: `calories = nutrition · mass · digestibility` y nutrition es
-    //    conservada. Empujar el resultado es saltearse la conservación por la
-    //    puerta de atrás.
+    // `calories = nutrition · mass · digestibility` y nutrition es conservada.
+    // Empujar el resultado era saltearse la conservación por la puerta de atrás.
     expect(v.ok).toBe(false)
+    expect(tieneCodigo(v, 'cualidad-derivada')).toBe(true)
   })
 })
 
@@ -402,7 +431,24 @@ describe('HUECO · cocinar sin fuego por un suspiro de stamina', () => {
     establishes: ['digestibility>=1'],
   })
 
-  it.fails('HUECO ABIERTO — llevar digestibility a 1 sale 1 de stamina y no lo frena nadie', () => {
+  it.fails('SIGUE ABIERTO — llevar digestibility a 1 sale 1 de stamina y no lo frena nadie', () => {
+    // POR QUÉ SIGUE ABIERTO, y es una decisión, no un olvido: la puerta no tiene
+    // ninguna tabla que diga cuánta stamina vale un punto de `digestibility`. Ese
+    // número es CALIBRACIÓN —lo mismo que `EMISSION_PER_FUEL` o la eficiencia
+    // 0.35 de `friccion`—, y la puerta no calibra: juzga contra lo que ya está
+    // calibrado. Las dos salidas que se probaron y se descartaron:
+    //
+    //   · pedir cierre dimensional entre la cualidad empujada y la cuenta que
+    //     paga (como hace el `couple`). Mata a `friccion`: `temperature` es
+    //     intensiva y `stamina` extensiva, y ésa es la técnica del primer fuego.
+    //   · normalizar el trabajo por el rango de la cualidad. Es inventar una
+    //     constante de conversión adentro del juez, que es exactamente el número
+    //     libre que este paquete no quiere tener.
+    //
+    // Lo que sí se cerró de este agujero es la mitad que sí era de la puerta: el
+    // costo ahora escala con la MASA que se empuja (`masaQuePaga`), así que
+    // ablandar un tronco cuesta más que ablandar un bocado. La conversión entre
+    // cualidades sigue sin existir, y hasta que exista esto entra.
     const v = admit(MASTICAR_BIEN, phys)
     expect(codigos(v)).toEqual([])
     expect(v.ok).toBe(true)
@@ -421,7 +467,18 @@ describe('HUECO · cocinar sin fuego por un suspiro de stamina', () => {
     expect(v.ok).toBe(false)
   })
 
-  it.fails('HUECO ABIERTO — y bajar toxicity a cero es gratis del todo: «bajar es libre»', () => {
+  it.fails('SIGUE ABIERTO — y bajar toxicity a cero es gratis del todo: «bajar es libre»', () => {
+    // POR QUÉ SIGUE ABIERTO: «bajar es libre» está escrito y defendido en
+    // `admit.ts`, y tiene su propio test verde (`bajar es libre: enfriar no
+    // necesita declarar de dónde saca nada`). Sacarlo obligaría a que enfriar
+    // pague, y enfriarse es lo que hace el mundo solo cada tick.
+    //
+    // El adversario ya lo anota como discutible abajo. Lo que la reparación SÍ
+    // tocó de esta familia es el caso en que «bajar» era mentira: un `drive`
+    // hacia el umbral del propio rol cuando el proceso se lleva la cualidad por
+    // abajo (ver `pisoEfectivo` y el agujero 5 de `ataque-energia`). Acá no hay
+    // nada de eso: el proceso baja la toxicidad y punto. Que eso sea la mitad del
+    // premio de cocinar es una decisión de calibración, y va con su ADR.
     const p = proc('lavar-el-hongo', {
       roles: [{ name: 'comida', where: [{ q: 'toxicity', op: '>', v: 0 }] }],
       effects: [{ k: 'drive', q: 'toxicity', on: 'comida', toward: 0, perTick: 0.1 }],
@@ -443,8 +500,21 @@ describe('HUECO · cocinar sin fuego por un suspiro de stamina', () => {
 
 // ═══ HUECO 5 · la envolvente por tag se compra con un tag ═══════════════════
 
-describe('HUECO · el oráculo inventa comida agregando un tag', () => {
-  it.fails('HUECO ABIERTO — la misma piedra de pan entra si además se declara `organico`', () => {
+describe('SIGUE ABIERTO · el oráculo inventa comida agregando un tag', () => {
+  it.fails('SIGUE ABIERTO — la misma piedra de pan entra si además se declara `organico`', () => {
+    // POR QUÉ SIGUE ABIERTO: esto no es la puerta de los PROCESOS, es
+    // `admitSubstance`, y la unión de envolventes es una decisión de la regla 3
+    // con su motivo escrito y su propio test verde. Cambiarla por la
+    // intersección (el mínimo de los techos de sus tags) cerraría este ataque
+    // —el techo mineral de `nutrition` es exactamente 0— y NO puede rechazar
+    // ninguna sustancia que ya esté en el catálogo, porque cada envolvente se
+    // calcula incluyéndola. Pero rompe el test `algo organico no puede tener el
+    // poder calorífico del plutonio`, que fija la cota en 45 (el techo orgánico)
+    // y con intersección sería 31.5 (el vegetal). Ese 45 es una calibración
+    // declarada, y moverla es un ADR, no una reparación de la puerta.
+    //
+    // Queda medido y anotado: la reparación de las seis causas no lo tocaba.
+    //
     // La envolvente de un conjunto de tags es la UNIÓN, «porque los tags no son
     // excluyentes: el hueso es organico y mineral a la vez». Cierto. Y por eso
     // el techo de `nutrition` de cualquier cosa que se declare `organico` es el
@@ -463,7 +533,15 @@ describe('HUECO · el oráculo inventa comida agregando un tag', () => {
     expect(v.ok).toBe(false)
   })
 
-  it.fails('HUECO ABIERTO — y madera que alimenta, sin salirse de la envolvente vegetal', () => {
+  it.fails('SIGUE ABIERTO — y madera que alimenta, sin salirse de la envolvente vegetal', () => {
+    // POR QUÉ SIGUE ABIERTO, y éste es más profundo que el de arriba: la
+    // envolvente es POR CUALIDAD, y este ataque no se sale de ninguna. Sus
+    // números son todos plausibles por separado; lo implausible es la
+    // COMBINACIÓN —nutrición de grano con rigidez y fibra de tronco—, y para
+    // rechazar eso hace falta una envolvente conjunta (una correlación entre
+    // pares de cualidades derivada del catálogo), que es una regla 3 nueva y no
+    // una reparación de las seis causas. Queda medido.
+    //
     // El grano es `organico+vegetal` con nutrition 13, así que el techo vegetal
     // es 19.5. Una sustancia leñosa —fibrosa, rígida, con el fuelEnergy de la
     // madera— con nutrition 13 y digestibility 0.6 entra sin una razón en contra.
@@ -488,10 +566,10 @@ describe('HUECO · el oráculo inventa comida agregando un tag', () => {
   })
 })
 
-// ═══ HUECO 6 · la no-dominancia no cubre pescar más barato ══════════════════
+// ═══ HUECO 6 · la no-dominancia no cubría pescar más barato ════════════════
 
-describe('HUECO · pescar sin caña y pescar treinta veces más rápido', () => {
-  it.fails('HUECO ABIERTO — sacar del stock con la mano: mismo rendimiento, sin aparejo', () => {
+describe('CERRADO · pescar sin caña y pescar treinta veces más rápido', () => {
+  it('CERRADO — sacar del stock con la mano: mismo rendimiento, sin aparejo', () => {
     const p = proc('manotazo', {
       roles: [{ name: 'source', where: [{ q: 'mass', op: '>', v: 0 }] }],
       arrangement: { k: 'within', radius: 1 },
@@ -499,38 +577,55 @@ describe('HUECO · pescar sin caña y pescar treinta veces más rápido', () => 
       establishes: ['holding(tag:carnoso)'],
     })
     const v = admit(p, phys)
-    expect(codigos(v)).toEqual([])
-    expect(v.ok).toBe(true)
+    expect(v.ok).toBe(false)
 
-    // ── DEBERÍA: promete lo mismo que `extraccion` y no pide el aparejo. La
-    //    no-dominancia no lo ve porque `exigeMenosOIgual` arranca comparando la
-    //    CANTIDAD de roles, y sacarle un rol al proceso lo vuelve incomparable.
+    // Promete lo mismo que `extraccion` y no pide el aparejo. La no-dominancia no
+    // lo veía porque `exigeMenosOIgual` arrancaba comparando la CANTIDAD de
+    // roles, y sacarle un rol al proceso lo volvía incomparable — cuando sacarle
+    // un rol es la forma más pura de exigir menos.
     expect(tieneCodigo(v, 'dominancia')).toBe(true)
   })
 
-  it.fails('HUECO ABIERTO — o el clon exacto de `extraccion` que termina en 1 tick en vez de 30', () => {
+  it('CERRADO — o el clon exacto de `extraccion` que termina en 1 tick en vez de 30', () => {
     const p: Process = { ...EXTRACCION, id: 'extraccion-rapida', completion: { at: 1, yields: EXTRACCION.completion!.yields } }
     const v = admit(p, phys)
-    expect(codigos(v)).toEqual([])
-    expect(v.ok).toBe(true)
+    expect(v.ok).toBe(false)
 
-    // La no-dominancia compara SALDOS de cuentas conservadas, y los dos valen 0
-    // en las cuatro: sin efectos que cuesten, «más barato» es invisible.
+    // La no-dominancia compara SALDOS de cuentas conservadas, y los dos siguen
+    // valiendo 0 en las cuatro: sin efectos que cuesten, «más barato» en materia
+    // es invisible. Lo que cambió es que el TIEMPO también es precio.
     for (const q of ['mass', 'nutrition', 'stamina', 'fuelEnergy'] as const) {
       expect([q, saldoDeclarado(p, q, phys), saldoDeclarado(EXTRACCION, q, phys)]).toEqual([q, 0, 0])
     }
 
-    // ── DEBERÍA: treinta veces más pescado por tick es la misma técnica con el
-    //    precio bajado a mano, que es justo lo que la regla de dominancia dice
-    //    que existe para atajar. `completion.at` no entra en la comparación.
-    expect(tieneCodigo(v, 'dominancia')).toBe(true)
+    // Treinta veces más pescado por tick es la misma técnica con el precio bajado
+    // a mano, que es justo lo que la regla de dominancia existe para atajar.
+    const r = v.razones.find((x) => x.codigo === 'dominancia')!
+    expect(r.proceso).toBe('extraccion')
+    expect(r.encontrado).toBe(1)
+    expect(r.cota).toBe(30)
   })
 })
 
 // ═══ HUECO 7 · el redondeo del punto fijo, una milésima por vuelta ═════════
 
-describe('HUECO · partir en dos y quedarse con más', () => {
-  it.fails('HUECO ABIERTO — la mitad de 0.001 es 0.001, y `split` no tiene piso de masa', () => {
+describe('SIGUE ABIERTO · partir en dos y quedarse con más', () => {
+  it.fails('SIGUE ABIERTO — la mitad de 0.001 es 0.001, y `split` no tiene piso de masa', () => {
+    // POR QUÉ SIGUE ABIERTO: la afirmación final de este test es sobre
+    // `fixed.ts`, no sobre la puerta. Pide que `fdiv(fx(0.001), fx(2))` sumado
+    // consigo mismo dé 0.001, o sea que el punto fijo redondee las mitades HACIA
+    // el cero — y redondea alejándose por una razón defendida y con su propio
+    // test verde: la simetría de signo, para que enfriarse sea calentarse con el
+    // signo cambiado. `admit()` no puede cambiar eso.
+    //
+    // Las dos salidas reales están fuera de esta reparación: o `split` exige masa
+    // mínima (una regla nueva con un número de calibración adentro), o la
+    // aritmética de partir trunca hacia cero (un cambio en `fixed.ts` que toca la
+    // simetría). Las dos merecen ADR.
+    //
+    // Lo que sí cambió: `desmenuzar` ya no entra. No por la masa, sino porque es
+    // un clon barato de `deshilachar` —mismo `split at grain`, sin actor, sin
+    // stamina y en 2 ticks en vez de 40— y la no-dominancia reparada lo ve.
     // `fixed.ts` redondea las mitades ALEJÁNDOSE del cero, y lo hace por una
     // buena razón (la simetría de signo, para que enfriarse sea calentarse con
     // el signo cambiado). El precio es este: cerca del piso de resolución,
@@ -543,14 +638,15 @@ describe('HUECO · partir en dos y quedarse con más', () => {
     const mitad = fdiv(fx(0.001), fx(2))
     expect(unfx(mitad + mitad)).toBeCloseTo(0.002, 9)
 
-    // Y la puerta no tiene nada que decir: ninguna regla le pone masa mínima al
-    // rol de un `split`, y no existe código de rechazo para eso.
+    // Y sobre la MASA la puerta sigue sin tener nada que decir: ninguna regla le
+    // pone masa mínima al rol de un `split`, y no existe código de rechazo para
+    // eso. (Este proceso igual no entra, pero por dominancia: ver arriba.)
     const p = proc('desmenuzar', {
       roles: [{ name: 'source', where: [{ q: 'tensile', op: '>=', v: 0.3 }] }],
       completion: { at: 2, yields: [{ k: 'split', role: 'source', at: 'grain' }] },
       establishes: ['flexibility>=0.8'],
     })
-    expect(admit(p, phys).ok).toBe(true)
+    expect(codigos(admit(p, phys)).includes('dominancia')).toBe(true)
 
     // ── DEBERÍA: o el `split` exige masa suficiente para que partir no gane
     //    materia, o la aritmética de partir trunca hacia cero. Hoy no hace ninguna.

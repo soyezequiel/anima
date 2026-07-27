@@ -10,16 +10,15 @@
 //   RECHAZOS CONFIRMADOS — ataques que la puerta paró. Quedan como regresión:
 //   si mañana alguien toca `admit.ts` y uno de éstos se cuela, el test grita.
 //
-//   HUECOS ABIERTOS — ataques que PASARON. Cada uno tiene dos tests:
-//     · uno que documenta la realidad de hoy (`HUECO ABIERTO`), que se pone rojo
-//       el día que alguien tape el agujero, que es cuando hay que venir a
-//       actualizar este archivo;
-//     · uno `it.fails` (`PENDIENTE`) con lo que la puerta DEBERÍA contestar. Hoy
-//       falla a propósito. El día que la puerta lo rechace, `it.fails` grita
-//       «expected test to fail» y obliga a borrar la marca de pendiente.
+//   LOS ONCE QUE SE COLABAN — ataques que PASARON cuando este archivo se
+//   escribió, y que la reparación de las seis causas cerró. Cada uno conserva su
+//   `porque` original —la evidencia de por qué producía conducta absurda— y ahora
+//   afirma el CÓDIGO con el que la puerta lo rechaza. Los dos tests de antes (uno
+//   documentando la realidad rota, uno `it.fails` con lo que debería pasar) son
+//   ahora un `it` normal por caso.
 //
-//   NADA DE ESTE ARCHIVO ARREGLA `admit.ts`. Encontrar y reparar en el mismo
-//   commit es la forma más limpia de que nadie sepa nunca qué estaba roto.
+//   NADA DE ESTE ARCHIVO ARREGLA `admit.ts`: los ataques se escribieron primero,
+//   se midió qué se colaba, y recién después se reparó la puerta.
 
 import { describe, expect, it } from 'vitest'
 import { admit, tieneCodigo, type Codigo, type Verdict } from '../src/admit.js'
@@ -241,20 +240,23 @@ describe('RECHAZOS CONFIRMADOS · materia', () => {
 })
 
 // ═══════════════════════════════════════════════════════════════════════════
-// SEGUNDA MITAD — LOS HUECOS. Todo lo de acá abajo PASÓ la puerta.
+// SEGUNDA MITAD — LOS ONCE QUE SE COLABAN, Y CON QUÉ SE LOS PARA AHORA.
 // ═══════════════════════════════════════════════════════════════════════════
 
 interface Hueco {
-  /** Qué se coló, en una línea. */
+  /** Qué se colaba, en una línea. */
   nombre: string
   /** Por qué produciría conducta absurda en el mundo. */
   porque: string
   proceso: Process
+  /** El código con el que la puerta lo rechaza desde la reparación. */
+  codigo: Codigo
 }
 
 const HUECOS: readonly Hueco[] = [
   {
     nombre: 'un `couple` sube una cualidad sin poweredBy: la regla 2 solo mira los `drive`',
+    codigo: 'sube-gratis',
     porque:
       'la temperatura de «a» pasa a seguir el punto de pirólisis de «b» y el cuerpo se prende ' +
       'solo, gratis, sin drenar ninguna cuenta conservada. Es «frotar produce calor infinito» ' +
@@ -270,6 +272,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'un `couple` con `inverse` es una bomba de calor: nadie mira ese campo',
+    codigo: 'sube-gratis',
     porque:
       '«me caliento tanto como frío esté el otro» es un refrigerador que produce trabajo. ' +
       '`inverse` no aparece ni una vez en `admit.ts`: se declara y nadie lo lee.',
@@ -285,6 +288,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'un `drive` escribe sobre una cualidad DERIVADA',
+    codigo: 'cualidad-derivada',
     porque:
       '`reach` no se guarda: es `longestAxis` de la geometría del ensamble. Empujarla es ' +
       'escribirle a un campo calculado. O el mundo la ignora —y la criatura gasta aliento ' +
@@ -310,6 +314,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'la piedra-batería, que el comentario de `admit.ts` dice cerrar, con pedirle stamina al rol',
+    codigo: 'fuente-sin-respaldo',
     porque:
       '`respalda()` acepta como garantía que el ROL PIDA la cualidad. `stamina` no la declara ' +
       'ninguna sustancia, así que `candidatasDeRol` no la mira y la realizabilidad tampoco: ' +
@@ -341,6 +346,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'pescar con la mano en un tick: `drawFromStock` sin pedir nada',
+    codigo: 'dominancia',
     porque:
       '`extraccion` cuesta 30 ticks y exige `reach >= 2` y `catch > 0` —o sea, haber ' +
       'aprendido a atar una caña—. Este clon saca del mismo stock en UN tick, sin gear, sin ' +
@@ -355,6 +361,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'la no-dominancia se esquiva declarando un rol de más que no hace nada',
+    codigo: 'dominancia',
     porque:
       '`exigeMenosOIgual` arranca comparando la CANTIDAD de roles y se rinde si difiere. Un ' +
       'rol «testigo» con `where: []` —que no pide nada, no se usa en ningún efecto y no se ' +
@@ -378,6 +385,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: '`establishes` miente y nadie lo cruza contra los efectos',
+    codigo: 'promesa-derivada',
     porque:
       'el proceso no tiene efectos ni rendimientos: no hace literalmente nada. Y promete filo, ' +
       'alcance y 1999 °C. `establishes` es lo que la fragua lee para PLANIFICAR, y además es lo ' +
@@ -390,6 +398,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'un `arrangement` imposible: radio negativo, infinito o NaN',
+    codigo: 'numero-no-finito',
     porque:
       '`numerosDe()` recorre la compuerta, los roles, los efectos y el completion, y NO mira ' +
       '`arrangement.radius`. Es el único número del proceso que se escapa del control de ' +
@@ -402,6 +411,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'una compuerta contradictoria: la puerta revisa los roles pero no el `gate`',
+    codigo: 'compuerta-contradictoria',
     porque:
       'a los roles se les busca la contradicción interna (`rol-contradictorio`) y la ' +
       'realizabilidad contra el catálogo. Al `gate` solo se le miran los rangos. Este proceso ' +
@@ -416,6 +426,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'un proceso sin id y sin nombre entra: `sin-nombre` existe pero nunca se aplica',
+    codigo: 'sin-nombre',
     porque:
       '`admitSubstance` rechaza una sustancia sin id y sin nombre. `admit` no hace ninguna de ' +
       'las dos cosas, con el mismo código de razón ya escrito y sin usar. Un proceso con ' +
@@ -425,6 +436,7 @@ const HUECOS: readonly Hueco[] = [
   },
   {
     nombre: 'el modelo se autocertifica: `trust: "estable"` con `provenance.by: "modelo"`',
+    codigo: 'confianza-autodeclarada',
     porque:
       'la confianza es lo que separa un borrador de una ley del mundo, y quien propone se la ' +
       'pone solo. Nada en la puerta cruza `provenance` con `trust`. Es el juez que la criatura ' +
@@ -433,19 +445,19 @@ const HUECOS: readonly Hueco[] = [
   },
 ]
 
-describe('HUECOS ABIERTOS · lo que se coló por la puerta', () => {
+describe('LOS ONCE QUE SE COLABAN · ahora la puerta los para', () => {
   for (const h of HUECOS) {
-    it(`HUECO ABIERTO — ${h.nombre}`, () => {
-      // Este test afirma la realidad de HOY, no lo que está bien. Si se pone
-      // rojo es porque alguien tapó el agujero: hay que venir acá, borrar el
-      // caso de `HUECOS` y moverlo a los rechazos confirmados de arriba.
-      const v = admit(h.proceso, phys)
-      expect([h.nombre, codigos(v)]).toEqual([h.nombre, []])
-      expect(v.ok).toBe(true)
+    it(`la puerta rechaza: ${h.nombre}`, () => {
+      expect(admit(h.proceso, phys).ok).toBe(false)
     })
 
-    it.fails(`PENDIENTE — la puerta debería rechazar: ${h.nombre}`, () => {
-      expect(admit(h.proceso, phys).ok).toBe(false)
+    it(`y lo dice con «${h.codigo}»: ${h.nombre}`, () => {
+      // El código importa tanto como el rechazo: la fragua lee ESTO para
+      // corregir. Un «no» sin motivo la manda a adivinar, y adivinar contra una
+      // puerta es N viajes al modelo por un error que ya se conocía.
+      const v = admit(h.proceso, phys)
+      expect([h.nombre, tieneCodigo(v, h.codigo)]).toEqual([h.nombre, true])
+      expect(codigos(v).length).toBeGreaterThan(0)
     })
   }
 })

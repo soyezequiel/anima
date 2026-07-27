@@ -37,7 +37,7 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ## Estado
 
-**Hito 0 CERRADO, Hito 1 construido, y el Hito 4 desbloqueado.**
+**Hito 0 CERRADO, Hito 1 construido con la puerta cerrada, y el Hito 4 desbloqueado.**
 
 | | |
 |---|---|
@@ -57,7 +57,7 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ### Hito 1 — `@anima/physics`
 
-Existe y está verde: **353 tests**, typecheck limpio. Punto fijo determinista,
+Existe y está verde: **498 tests**, typecheck limpio. Punto fijo determinista,
 29 cualidades más 4 de celda, 30 sustancias semilla, cuerpos compuestos, los
 cuatro procesos aplicables, las doce leyes y `admit()`.
 
@@ -65,14 +65,45 @@ Los tres ejemplos del usuario pasan **sin que aparezcan las palabras «carbón»
 «asar» ni «pescar»**, y el test de emergencia no menciona ninguna sustancia
 semilla por nombre.
 
-**Y tiene 34 huecos abiertos en la puerta**, marcados como `it.fails()` en
-`tests/ataque-*.test.ts`. No están disimulados: son el resultado de tres
-adversarios que tiraron 62 procesos contra `admit()`. Se agrupan en seis causas,
-y la más profunda es que la regla de conservación compara el **número** de una
-cualidad y no el **producto por masa** — así que mover «9 de nutrición» de un
-trocito de 0.1 a un tronco de 100 multiplica la comida por 57.
+### La puerta, cerrada · [`docs/la-puerta.md`](docs/la-puerta.md)
 
-**Cerrar esos 34 es el próximo trabajo, y va antes del Hito 2.**
+Siete adversarios tiraron **132 procesos** contra `admit()` en dos vueltas y
+dejaron **72 huecos** marcados con `it.fails()` en `tests/ataque*.test.ts`.
+**Están cerrados 62**; los 10 que quedan llevan escrito, cada uno al lado de su
+prueba, qué haría falta para cerrarlos.
+
+| | huecos | cerrados | abiertos |
+|---|---:|---:|---:|
+| 1ª vuelta · 3 adversarios, 62 procesos | 39 | 33 | 6 |
+| 2ª vuelta · 4 adversarios, 70 procesos | 33 | 29 | 4 |
+
+La segunda vuelta trajo un adversario nuevo, con el lente al revés: en vez de
+buscar lo que la puerta deja pasar, buscó procesos **honestos que la puerta
+rebota**. Encontró seis, y el peor era que **`comer` no se podía escribir** —o
+sea que la criatura pescaba y no comía—, porque `nutrition` y `stamina` son las
+dos conservadas y la regla 1 solo sabía sumar la misma cuenta.
+
+Las causas raíz, y en negrita las dos más profundas:
+
+| Causa | Reparación |
+|---|---|
+| la regla 2 solo miraba `drive` | `couple` y `transfer` pasan por la regla 2 |
+| `transfer` miraba presencia, no cantidad | la cota del rol es el techo de lo que se mueve |
+| **intensiva contra extensiva** | se compara `q · masa`; sin cota de masa, se rechaza por indecidible |
+| se podía escribir una cualidad derivada | `cualidad-derivada` también sobre procesos |
+| se acreditaba sin consumir ni terminar | un `transfer` sin `completion` corre `perTick × ∞` |
+| los metadatos no se miraban | id, nombre, radio, compuerta, `trust`, y promesas |
+| toda cuenta era por efecto y nunca en total | presupuesto **acumulado**: lo que entra una vez no paga N veces |
+| las cotas del rol se tomaban por invariantes | `techoEfectivo` y `pisoParaDireccion` |
+| lo que escribe quien propone decidía si la regla miraba | nombres de rol, espacios, unicode, `provenance` y `establishes` dejaron de ser la llave |
+| `inverse` no se leía | el techo de un acople inverso es el **espejo** del piso de lo seguido |
+| **no había conversión entre dos cuentas conservadas** | un `poweredBy` sobre otra conservada es una conversión, y `comer` entra |
+
+**Y los cuatro procesos semilla siguen entrando sin una sola razón en contra**,
+que es la otra mitad del trabajo: una puerta que rechaza todo es trivialmente
+segura y completamente inútil. Las dos formas de equivocarse no son simétricas —
+dejar pasar de más se endurece después; no dejar construir mata el juego, y lo
+mata en silencio.
 
 ## Comandos
 

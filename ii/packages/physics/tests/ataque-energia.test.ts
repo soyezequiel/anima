@@ -14,33 +14,39 @@
 //                    código con el que lo rechaza. Es una regresión: si mañana
 //                    alguien afloja la regla, esto se pone rojo.
 //
-//   `it.fails(...)`  EL ATAQUE SE CUELA. El cuerpo del test afirma lo que la
-//                    puerta DEBERÍA hacer —rechazar— y hoy no hace, así que el
-//                    test falla, y `it.fails` es la marca de «falla conocida».
-//                    No está en verde fingiendo que anda: está en verde diciendo
-//                    que está roto. Cuando el agujero se tape, el test va a pasar
-//                    y `it.fails` lo va a reportar como ROJO — que es la señal de
-//                    «sacame el `.fails`», no de «rompiste algo».
+//   `it.fails(...)`  EL ATAQUE SE CUELA TODAVÍA. El cuerpo afirma lo que la
+//                    puerta DEBERÍA hacer y hoy no hace, así que el test falla, y
+//                    `it.fails` es la marca de «falla conocida». No está en verde
+//                    fingiendo que anda: está en verde diciendo que está roto.
+//                    Cada uno que queda trae escrito POR QUÉ queda.
 //
-// Los ocho agujeros abiertos, en una línea cada uno:
+// Los ocho agujeros que este archivo encontró, y en qué terminaron. Los ocho se
+// midieron ANTES de tocar `admit.ts`; los siete primeros los cerró la reparación
+// de las seis causas raíz.
 //
-//   1. `couple` no pasa por la regla 2. Copiar temperatura de un cuerpo a otro
-//      no drena nada de nadie y no declara `poweredBy`. El espejo térmico.
-//   2. …y como el `couple` acepta cualquier par de cualidades conmensurables,
-//      `temperature ← ignitionPoint` enciende cualquier cosa por decreto.
-//   3. …y como nadie prohíbe escribir una cualidad DERIVADA en un proceso,
-//      `emitsPower ← mass` hace que una piedra irradie por pesar.
-//   4. `transfer` tampoco pasa por la regla 2, y no distingue intensivas de
-//      extensivas: mover 50 °C de una brasa a un lago crea el calor del lago.
-//   5. Un `drive` cuyo `toward` es exactamente el piso que el rol exige se lee
-//      como «bajar» y las reglas 1 y 2 lo saltean las dos. Sobre `stamina`, eso
-//      es un recargador de aliento invisible.
-//   6. Agregarle `stamina > 0` al rol de la piedra-batería la vuelve admisible
-//      —y de paso apaga la regla 5, porque el saldo del ciclo pasa a dar cero.
-//   7. `respalda()` es binario: un rol que garantiza `nutrition > 0` habilita un
-//      `transfer` de 500 de nutrición desde una miga, sin razón ni reparo.
-//   8. `poweredBy` no tiene cierre dimensional: frotar una montaña cuesta lo
-//      mismo que frotar un guijarro, y la ley 1 después divide por la masa.
+//   1. CERRADO · `couple` no pasaba por la regla 2. Copiar temperatura de un
+//      cuerpo a otro no drena nada de nadie. El espejo térmico. Ahora la regla 2
+//      mira los `couple`, y como `Effect.couple` no tiene `poweredBy`, un acople
+//      que puede subir no tiene con qué pagarse: se rechaza.
+//   2. CERRADO · lo mismo para `temperature ← ignitionPoint`, que encendía
+//      cualquier cosa por decreto.
+//   3. CERRADO · escribir una cualidad DERIVADA en un proceso. `emitsPower ←
+//      mass` hacía que una piedra irradiara por pesar. Ahora `cualidad-derivada`
+//      también se emite sobre procesos, no solo sobre sustancias.
+//   4. CERRADO · `transfer` tampoco pasaba por la regla 2 y no distinguía
+//      intensivas de extensivas: mover 50 °C de una brasa a una olla cien veces
+//      más pesada crea el calor de la olla. Ahora se compara `q · masa`.
+//   5. CERRADO · un `drive` cuyo `toward` es el piso que el rol exige se leía
+//      como «bajar». No baja: el rol es una condición de entrada y el propio
+//      proceso se lleva la cualidad por abajo. Ver `pisoEfectivo`.
+//   6. CERRADO · `stamina > 0` en el rol de la piedra-batería la volvía
+//      admisible. Ahora el débito de un `transfer` está topado por lo que el rol
+//      GARANTIZA, y «mayor que cero» garantiza cero.
+//   7. CERRADO · `respalda()` decía «de dónde» y nunca «cuánto». Ahora la
+//      cantidad se compara contra la cota del rol, con razón y con reparo.
+//   8. CERRADO · `poweredBy` no tenía cierre dimensional: frotar una montaña
+//      costaba lo mismo que frotar un guijarro. Ahora el trabajo se multiplica
+//      por la masa que el rol garantiza. Ver `masaQuePaga`.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -222,20 +228,28 @@ const ESPEJO_TERMICO = proceso('espejo-termico', {
 })
 
 describe('agujero 1 · el couple no pasa por la regla 2', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(ESPEJO_TERMICO, phys))).toEqual([])
-  })
-
-  it.fails('PENDIENTE — copiar temperatura de un cuerpo a otro sin drenar nada se cuela', () => {
-    // Hoy: `ok === true`, cero razones. Debería pedir `poweredBy` como cualquier
-    // otra cosa que suba `temperature`, o estar prohibido de plano.
+  it('CERRADO — copiar temperatura de un cuerpo a otro sin drenar nada se rechaza', () => {
+    // Cerrado por la causa 1: la regla 2 dejó de mirar solo los `drive`. Un
+    // `couple` no mueve nada del mundo, CREA — y no se puede pagar, porque
+    // `Effect.couple` no tiene `poweredBy`. El día que haga falta un acople que
+    // suba, el campo se le agrega al tipo; no se deja la puerta abierta.
     expect(admit(ESPEJO_TERMICO, phys).ok).toBe(false)
   })
 
-  it('y el saldo declarado del espejo es cero: para la regla 5 no existe', () => {
-    // La consecuencia de arrastre, y por eso el agujero 1 es peor de lo que
-    // parece: `saldoDeclarado` solo cuenta `couple` sobre conservadas, así que
-    // un ciclo que pase por acá suma cero y la regla 5 no lo puede ver tampoco.
+  it('y el rechazo lo dice con «sube-gratis», citando el rol y el techo', () => {
+    const v = admit(ESPEJO_TERMICO, phys)
+    expect(tieneCodigo(v, 'sube-gratis')).toBe(true)
+    const r = v.razones.find((x) => x.codigo === 'sube-gratis')!
+    expect(r.regla).toBe(2)
+    expect(r.q).toBe('temperature')
+    expect(r.rol).toBe('fria')
+  })
+
+  it('y el saldo declarado del espejo sigue siendo cero: la regla 5 nunca lo iba a ver', () => {
+    // Queda como evidencia de POR QUÉ el agujero 1 tenía que cerrarse en la regla
+    // 2 y no en la 5: `saldoDeclarado` solo cuenta `couple` sobre conservadas, así
+    // que un ciclo que pasara por acá sumaría cero y la regla 5 no lo vería jamás.
+    // Un ataque que ninguna regla ve no se arregla en la regla equivocada.
     for (const q of ['mass', 'nutrition', 'stamina', 'fuelEnergy'] as const) {
       expect([q, saldoDeclarado(ESPEJO_TERMICO, q, phys)]).toEqual([q, 0])
     }
@@ -261,12 +275,18 @@ const ENCENDER_POR_DECRETO = proceso('encender-por-decreto', {
 })
 
 describe('agujero 2 · el couple acopla cualquier par conmensurable', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(ENCENDER_POR_DECRETO, phys))).toEqual([])
+  it('CERRADO — «tu temperatura sigue a tu punto de ignición» se rechaza', () => {
+    expect(admit(ENCENDER_POR_DECRETO, phys).ok).toBe(false)
   })
 
-  it.fails('PENDIENTE — «tu temperatura sigue a tu punto de ignición» se cuela', () => {
-    expect(admit(ENCENDER_POR_DECRETO, phys).ok).toBe(false)
+  it('y el cierre dimensional sigue sin ser el que lo ataja: los rangos SÍ encajan', () => {
+    // Importa que quede escrito: `ignitionPoint ∈ [0, 2000]` entra en
+    // `temperature ∈ [−100, 2000]` y las dos son intensivas, así que
+    // `acople-inconmensurable` no dice nada acá. Lo que lo para es la regla 2:
+    // el acople puede SUBIR y no tiene con qué pagarlo.
+    const v = admit(ENCENDER_POR_DECRETO, phys)
+    expect(tieneCodigo(v, 'acople-inconmensurable')).toBe(false)
+    expect(tieneCodigo(v, 'sube-gratis')).toBe(true)
   })
 })
 
@@ -289,17 +309,15 @@ const PIEDRA_QUE_IRRADIA = proceso('piedra-que-irradia', {
 })
 
 describe('agujero 3 · un proceso puede escribir una cualidad derivada', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(PIEDRA_QUE_IRRADIA, phys))).toEqual([])
-  })
-
-  it.fails('PENDIENTE — «emitís potencia igual a tu masa» se cuela', () => {
+  it('CERRADO — «emitís potencia igual a tu masa» se rechaza', () => {
     expect(admit(PIEDRA_QUE_IRRADIA, phys).ok).toBe(false)
   })
 
-  it.fails('PENDIENTE — y ni siquiera hay un código para decirlo sobre un proceso', () => {
-    // `cualidad-derivada` existe como `Codigo` pero solo lo emite
-    // `revisarValorDeSustancia`. Sobre procesos no lo emite nadie.
+  it('CERRADO — y ahora sí hay un código para decirlo sobre un proceso', () => {
+    // `cualidad-derivada` existía como `Codigo` y solo lo emitía
+    // `revisarValorDeSustancia`. Ahora lo emite también `reglaCierreYCotas` sobre
+    // TODO efecto que escriba una derivada, sea `drive`, `couple`, `transfer` o
+    // `drain`: una derivada no se escribe, se deriva.
     expect(tieneCodigo(admit(PIEDRA_QUE_IRRADIA, phys), 'cualidad-derivada')).toBe(true)
   })
 })
@@ -331,20 +349,28 @@ const BOMBA_DE_CALOR = proceso('bomba-de-calor', {
 })
 
 describe('agujero 4 · transfer de una cualidad intensiva', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(BOMBA_DE_CALOR, phys))).toEqual([])
-  })
-
-  it.fails('PENDIENTE — mover 50 °C de una brasa a un lago se cuela', () => {
+  it('CERRADO — mover 50 °C de una brasa a un lago se rechaza', () => {
     expect(admit(BOMBA_DE_CALOR, phys).ok).toBe(false)
   })
 
-  it.fails('PENDIENTE — ni un reparo sobre la cualidad que se está moviendo', () => {
-    // El único reparo que hoy levanta este proceso es
+  it('CERRADO — y ahora sí hay un reparo sobre la cualidad que se está moviendo', () => {
+    // Antes, el único reparo que levantaba este proceso era
     // `completion-sin-rendimientos`, que habla del completion y no del
-    // `transfer`. Sobre la temperatura que se duplica, silencio.
+    // `transfer`. Sobre la temperatura que se duplicaba, silencio. Ahora el
+    // `transfer` cobra el mismo reparo de cantidad que el `drain`: mueve 2000 de
+    // temperatura en 40 ticks y el rol «brasa» solo garantiza 400.
     const v = admit(BOMBA_DE_CALOR, phys)
     expect(v.advertencias.some((r) => r.q === 'temperature')).toBe(true)
+  })
+
+  it('y el rechazo nombra la magnitud intensiva, que es de lo que se trata', () => {
+    // `temperature` es intensiva: la energía es `masa · calor específico · ΔT`.
+    // El rol «olla» pide `mass >= 100` y no acota por arriba, así que no hay
+    // ningún número con el que comparar — y lo que no se puede juzgar no entra.
+    const r = admit(BOMBA_DE_CALOR, phys).razones.find((x) => x.codigo === 'magnitud-intensiva')!
+    expect(r.q).toBe('temperature')
+    expect(r.rol).toBe('olla')
+    expect(r.mensaje).toContain('masa')
   })
 })
 
@@ -376,20 +402,24 @@ const RECARGADOR = proceso('recargar-el-aliento', {
 })
 
 describe('agujero 5 · un drive hacia el piso del propio rol', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(RECARGADOR, phys))).toEqual([])
-  })
-
-  it.fails('PENDIENTE — recargar stamina hasta el umbral de entrada se cuela', () => {
+  it('CERRADO — recargar stamina hasta el umbral de entrada se rechaza', () => {
     expect(admit(RECARGADOR, phys).ok).toBe(false)
   })
 
-  it('y el agujero abre una puerta de atrás: el poweredBy deja de revisarse ENTERO', () => {
-    // La regla 1 saltea por `toward <= lo`; la regla 2 saltea por
-    // `esConservada(e.q)`. Entre las dos, este `drive` no lo mira NADIE, así que
-    // se le puede colgar un `poweredBy` con eficiencia 99 —«sale noventa y nueve
-    // veces lo que entra»— desde una cualidad que ni siquiera es una cuenta
-    // conservada, y el veredicto sale limpio igual.
+  it('y lo rechaza la regla 1, que es la que corresponde: sube una conservada', () => {
+    // `pisoEfectivo` es la reparación: el umbral del rol solo vale como piso
+    // mientras el proceso no se lleve la cualidad por abajo él mismo. Éste tiene
+    // un `drain` de stamina sobre el MISMO rol, así que el piso real es el del
+    // catálogo (cero) y el `drive` hacia 50 sube, no baja.
+    expect(tieneCodigo(admit(RECARGADOR, phys), 'conservacion-drive')).toBe(true)
+  })
+
+  it('y la puerta de atrás que abría —el poweredBy sin revisar— ya no lleva a ningún lado', () => {
+    // El `poweredBy` de un `drive` sobre una cuenta conservada sigue sin
+    // revisarse (la regla 2 abre con `if (esConservada(e.q)) continue`), y está
+    // bien que sea así: la regla 1 lo mata antes, con mejor mensaje. Lo que
+    // cambió es que ahora la regla 1 efectivamente lo mata. Eficiencia 99 desde
+    // una cualidad que ni es conservada, y el veredicto ya no sale limpio.
     const descarado = proceso('recargar-con-eficiencia-99', {
       ...RECARGADOR,
       id: 'recargar-con-eficiencia-99',
@@ -406,9 +436,8 @@ describe('agujero 5 · un drive hacia el piso del propio rol', () => {
       ],
     })
     const v = admit(descarado, phys)
-    expect(codigos(v)).toEqual([])
-    expect(tieneCodigo(v, 'eficiencia')).toBe(false)
-    expect(tieneCodigo(v, 'fuente-no-conservada')).toBe(false)
+    expect(v.ok).toBe(false)
+    expect(tieneCodigo(v, 'conservacion-drive')).toBe(true)
   })
 
   it('y el filo es exactamente el `<=`: un decimal más arriba y lo agarra', () => {
@@ -426,11 +455,13 @@ describe('agujero 5 · un drive hacia el piso del propio rol', () => {
     expect(tieneCodigo(admit(unPeloMas, phys), 'conservacion-drive')).toBe(true)
   })
 
-  it('y el saldo declarado MIENTE al revés: dice que cuesta 10 cuando rinde 90', () => {
-    // `trabajoDe` devuelve 0 porque `recorrido = toward − lo = 0`. O sea que el
-    // recargador entra en la contabilidad de la regla 5 como un proceso que solo
-    // gasta. Un ciclo que pase por acá va a dar saldo negativo y pasar limpio.
-    expect(saldoDeclarado(RECARGADOR, 'stamina', phys)).toBe(-10)
+  it('y el saldo declarado dejó de mentir al revés: da POSITIVO, que es lo que el proceso hace', () => {
+    // Antes `trabajoDe` devolvía 0 porque `recorrido = toward − lo = 0`, y el
+    // recargador entraba en la contabilidad de la regla 5 como un proceso que
+    // solo gasta: −10. Con el piso efectivo, el recorrido son los 50 enteros, así
+    // que el saldo es +50 de recarga menos los 10 del drain. Un ciclo que pase por
+    // acá ahora suma positivo y la regla 5 lo puede ver.
+    expect(saldoDeclarado(RECARGADOR, 'stamina', phys)).toBe(40)
   })
 })
 
@@ -482,12 +513,20 @@ const FROTAR_PARA_LA_BATERIA = proceso('frotar-para-la-bateria', {
 })
 
 describe('agujero 6 · pedir una cualidad es garantizarla', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(PIEDRA_BATERIA_V2, phys))).toEqual([])
+  it('CERRADO — la piedra-batería con `stamina > 0` en el rol se rechaza', () => {
+    expect(admit(PIEDRA_BATERIA_V2, phys).ok).toBe(false)
   })
 
-  it.fails('PENDIENTE — la piedra-batería con `stamina > 0` en el rol se cuela', () => {
-    expect(admit(PIEDRA_BATERIA_V2, phys).ok).toBe(false)
+  it('y el rechazo es por CANTIDAD: «mayor que cero» garantiza cero', () => {
+    // La reparación de la causa 2. `respalda()` sigue diciendo que sí —el rol
+    // pide la cualidad— pero eso ya no alcanza: mover 100 de stamina desde un rol
+    // que garantiza 0 es sacar 100 de la nada, y ahora se dice con los dos
+    // números. `respalda` contesta «de dónde»; la cota del rol contesta «cuánto».
+    const r = admit(PIEDRA_BATERIA_V2, phys).razones.find((x) => x.codigo === 'conservacion-transfer')!
+    expect(r.regla).toBe(1)
+    expect(r.q).toBe('stamina')
+    expect(r.encontrado).toBe(100)
+    expect(r.cota).toBe(0)
   })
 
   it('el ciclo existe y la regla 5 lo enumera', () => {
@@ -498,12 +537,16 @@ describe('agujero 6 · pedir una cualidad es garantizarla', () => {
     expect(rutas).toContain('frotar-para-la-bateria → piedra-bateria-v2 → frotar-para-la-bateria')
   })
 
-  it.fails('PENDIENTE — pero el saldo del ciclo da negativo y la regla 5 lo deja pasar', () => {
+  it('CERRADO — y el saldo del ciclo vuelve a dar positivo, así que la regla 5 lo rechaza', () => {
     const con = buildSeedPhysics({ processes: [...SEED_PROCESSES, PIEDRA_BATERIA_V2] })
     expect(tieneCodigo(admit(FROTAR_PARA_LA_BATERIA, con), 'ciclo-rentable')).toBe(true)
   })
 
-  it.fails('PENDIENTE — y el transfer que crea 100 de aliento declara costo cero', () => {
+  it('CERRADO — y el transfer que crea 100 de aliento ya no declara costo cero', () => {
+    // El daño colateral era peor que el directo: como `respalda` decía que sí, el
+    // débito valía lo mismo que el crédito y el `transfer` pasaba a valer CERO —
+    // con lo cual el ciclo frotar → batería → frotar dejaba de dar positivo y la
+    // regla 5 se apagaba sola. Ahora el débito está topado por la garantía.
     expect(saldoDeclarado(PIEDRA_BATERIA_V2, 'stamina', phys)).toBeGreaterThan(0)
   })
 })
@@ -536,17 +579,22 @@ const TRASVASE = proceso('trasvasar-la-nutricion', {
 })
 
 describe('agujero 7 · respalda() dice «de dónde», nunca «cuánto»', () => {
-  it('HUECO ABIERTO — hoy entra sin una sola razón', () => {
-    expect(codigos(admit(TRASVASE, phys))).toEqual([])
-  })
-
-  it.fails('PENDIENTE — 500 de nutrición desde un rol que garantiza «más que cero» se cuela', () => {
+  it('CERRADO — 500 de nutrición desde un rol que garantiza «más que cero» se rechaza', () => {
     expect(admit(TRASVASE, phys).ok).toBe(false)
   })
 
-  it.fails('PENDIENTE — y el transfer no tiene el reparo que el drain sí tiene', () => {
+  it('CERRADO — y ahora el transfer tiene el mismo reparo que el drain', () => {
     const v = admit(TRASVASE, phys)
     expect(v.advertencias.some((r) => r.codigo === 'costo-mayor-que-la-garantia')).toBe(true)
+  })
+
+  it('y la bomba que el comentario de `quality.ts` mandaba atajar también se nombra', () => {
+    // `nutrition` es INTENSIVA: el número es por unidad de masa. Transferirlo de
+    // una miga a un peñasco multiplica el total por la razón de masas, que es
+    // exactamente lo que `quality.ts` avisó desde el primer día. El rol
+    // «peniasco» pide `mass >= 100` y no acota por arriba: indecidible, y lo
+    // indecidible no entra.
+    expect(tieneCodigo(admit(TRASVASE, phys), 'magnitud-intensiva')).toBe(true)
   })
 })
 
@@ -591,11 +639,21 @@ describe('agujero 8 · poweredBy no tiene cierre dimensional', () => {
     expect(codigos(admit(FROTAR_LA_MONTANIA, phys))).toEqual([])
   })
 
-  it.fails('PENDIENTE — calentar 5000 de masa cuesta exactamente lo mismo que calentar una', () => {
+  it('CERRADO — calentar 5000 de masa ya no cuesta lo mismo que calentar una', () => {
     const montania = saldoDeclarado(FROTAR_LA_MONTANIA, 'stamina', phys)
     const guijarro = saldoDeclarado(FRICCION, 'stamina', phys)
-    // Debería costar MÁS (saldo más negativo). Hoy son idénticos.
+    // Cuesta MÁS (saldo más negativo). Antes eran idénticos.
     expect(montania).toBeLessThan(guijarro)
+  })
+
+  it('y cuesta exactamente 5000 veces más, que es la masa que el rol garantiza', () => {
+    // `masaQuePaga` es la reparación, y es una subestimación DECLARADA: sin cota
+    // de masa se cobra por UNA unidad. Cobrar por el máximo del rango —diez mil—
+    // mataría a `friccion`, que es el primer fuego de la partida, y una puerta
+    // que rechaza todo es trivialmente segura y completamente inútil.
+    const montania = saldoDeclarado(FROTAR_LA_MONTANIA, 'stamina', phys)
+    const guijarro = saldoDeclarado(FRICCION, 'stamina', phys)
+    expect(montania / guijarro).toBeCloseTo(5000, 6)
   })
 })
 
@@ -604,17 +662,21 @@ describe('agujero 8 · poweredBy no tiene cierre dimensional', () => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 /**
- * El grafo de la regla 5 se arma con `habilita()`, que se arma con `promesasDe()`,
- * que lee `establishes` — un array de strings que escribe quien propone el
- * proceso. Un proceso con `establishes: []` no tiene ninguna arista de salida, y
- * por lo tanto no está en ningún ciclo, y por lo tanto la regla 5 no lo mira.
+ * El grafo de la regla 5 se armaba con `habilita()`, que se armaba con
+ * `promesasDe()`, que lee `establishes` — un array de strings que escribe quien
+ * propone el proceso. Un proceso con `establishes: []` no tenía ninguna arista de
+ * salida, y por lo tanto no estaba en ningún ciclo, y por lo tanto la regla 5 no
+ * lo miraba.
  *
- * Nada obliga a que `establishes` diga la verdad sobre los efectos. El proceso de
- * abajo es idéntico al que `admit.test.ts` rechaza citando «82.857 de stamina por
- * vuelta»; lo único que cambia es que no promete nada por escrito. En el mundo
+ * Nada obligaba a que `establishes` dijera la verdad sobre los efectos. El proceso
+ * de abajo es idéntico al que `admit.test.ts` rechaza citando «82.857 de stamina
+ * por vuelta»; lo único que cambia es que no promete nada por escrito. En el mundo
  * hace exactamente lo mismo: sube la piedra a 400 °C, y la criatura después le
- * saca el aliento con la piedra-batería. El lazo sigue estando; lo que se fue es
- * la única regla que lo podía ver.
+ * saca el aliento con la piedra-batería.
+ *
+ * CERRADO por `promesasEfectivas`: el grafo se arma con lo que el proceso HACE
+ * —los `drive` y su `toward`— además de con lo que dice. Borrar un string ya no
+ * borra una arista.
  */
 describe('la regla 5 corre sobre lo que el proceso DICE, no sobre lo que hace', () => {
   const PIEDRA_BATERIA_VIEJA = proceso('piedra-bateria-vieja', {
@@ -642,12 +704,15 @@ describe('la regla 5 corre sobre lo que el proceso DICE, no sobre lo que hace', 
     establishes: [], // ← el ataque entero
   })
 
-  it('HUECO ABIERTO — el MISMO proceso sin `establishes` entra limpio', () => {
-    expect(codigos(admit(CALLADO, conVieja))).toEqual([])
-    expect(ciclosPor(CALLADO, conVieja).ciclos).toEqual([])
+  it('CERRADO — el ciclo sigue estando en el mundo, y ahora la puerta lo ve igual', () => {
+    expect(admit(CALLADO, conVieja).ok).toBe(false)
+    expect(tieneCodigo(admit(CALLADO, conVieja), 'ciclo-rentable')).toBe(true)
   })
 
-  it.fails('PENDIENTE — el ciclo sigue estando en el mundo y la puerta ya no lo ve', () => {
-    expect(admit(CALLADO, conVieja).ok).toBe(false)
+  it('CERRADO — el MISMO proceso sin `establishes` ya no se queda sin aristas', () => {
+    // La arista sale del `drive` hacia 400, que es lo que el proceso hace y no
+    // depende de que nadie lo escriba. La ruta es la misma que con `establishes`.
+    const rutas = ciclosPor(CALLADO, conVieja).ciclos.map((c) => c.procesos.join(' → '))
+    expect(rutas).toContain('frotar-callado → piedra-bateria-vieja → frotar-callado')
   })
 })

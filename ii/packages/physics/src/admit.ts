@@ -21,6 +21,70 @@
 //   5. CICLOS RENTABLES. Ver la sección de la regla 5: acá hay un hallazgo, y
 //      cambia lo que esta regla puede honestamente prometer.
 //
+// ─── Lo que siete adversarios encontraron, y qué se hizo ─────────────────────
+//
+// PRIMERA VUELTA. 62 procesos tirados contra esta puerta dejaron 39 huecos,
+// agrupados en seis causas raíz. Están reparadas, y cada regla nueva lleva escrito
+// ARRIBA el ataque que la motivó, porque dentro de seis meses alguien la va a
+// querer sacar por molesta y va a necesitar saber qué entra si la saca.
+//
+// SEGUNDA VUELTA. Otros 70 procesos contra la puerta YA reparada dejaron 33 huecos,
+// y esta vez uno de los adversarios buscó lo contrario que los demás: procesos
+// HONESTOS que la puerta rebota. Ese lente encontró seis, y el peor de todos era que
+// `comer` no se podía escribir — o sea que la criatura pescaba y no comía. De los
+// 33, 30 están cerrados. Los tres que quedan van con su `it.fails` y con el ADR que
+// haría falta anotado al lado; ver `ii/docs/la-puerta.md`.
+//
+// LAS DOS FORMAS DE EQUIVOCARSE NO SON SIMÉTRICAS, y toda esta segunda vuelta lo
+// confirma: una puerta que deja pasar de más se endurece después, y una que no deja
+// construir mata el juego. Por eso, cuando una reparación honesta no se podía hacer
+// sin rechazar algo legítimo, se dejó el hueco anotado en vez de tapado. El ejemplo
+// vivo es el calor específico: cobrarlo con el peor caso de cada lado cerraba el
+// ataque Y rechazaba `asar`, así que se cobra solo cuando se puede AFIRMAR.
+//
+//   1. La regla 2 abría con `if (e.k !== 'drive') continue`: miraba un tercio de
+//      los efectos. Un `couple` o un `transfer` subían lo que quisieran gratis.
+//      → `reglaAcoplesYTransferencias`.
+//   2. `transfer` miraba PRESENCIA y nunca CANTIDAD: al origen le alcanzaba con
+//      garantizar «mayor que cero» para que le sacaran quinientos.
+//      → la cota del rol es el techo. Ver `disponibleEn`.
+//   3. INTENSIVA CONTRA EXTENSIVA, la más profunda, y `quality.ts` la tenía
+//      escrita desde el primer día. → ver el bloque de intensivas más abajo.
+//   4. Se podía escribir una cualidad DERIVADA. Una derivada no se escribe: se
+//      deriva. → `esDerivada` y el bloque de `cualidad-derivada`.
+//   5. Se acreditaba una conservada sin consumir nada y sin terminar nunca.
+//      OJO: un proceso sin `completion` que solo GASTA es legítimo —`friccion` es
+//      exactamente eso—, así que la regla es sobre lo que ACREDITA, no sobre
+//      tener o no tener rendimientos.
+//   6. Los metadatos no se miraban: id, nombre, radio del arreglo, compuerta
+//      contradictoria, `trust` contra `provenance`, promesas que mienten, y un
+//      rol de adorno que esquivaba la no-dominancia.
+//
+// Y las cinco causas de la segunda vuelta, cada una con su función:
+//
+//   7. TODA CUENTA SE HACÍA POR EFECTO Y NUNCA EN TOTAL. Lo que entra una vez
+//      pagaba N veces con solo escribir N efectos, y ningún efecto mentía por su
+//      cuenta. → el presupuesto acumulado de `reglaConservacion`.
+//   8. LAS COTAS DEL ROL SE TOMABAN COMO INVARIANTES. `Role.where` se comprueba al
+//      ENTRAR: el techo de masa se engordaba con un transfer, y el piso se usaba
+//      para decidir dirección como si nadie lo tocara. → `techoEfectivo` y
+//      `pisoParaDireccion`.
+//   9. LO QUE ESCRIBE QUIEN PROPONE DECIDÍA SI LA REGLA MIRABA. Nombres de rol,
+//      espacios en `establishes`, un operador unicode, `provenance`, un `establishes`
+//      vacío: cinco evasiones de un carácter. → los roles se cruzan por lo que
+//      piden, las promesas por lo que parsean, la confianza contra lo que la física
+//      ya tiene sellado, y el grafo con lo que el proceso HACE.
+//  10. `inverse` NO SE LEÍA. Cuatro líneas y toda la economía de herramientas se
+//      cortocircuitaba. → `techoQueEscribeElAcople`.
+//  11. NO HABÍA CONVERSIÓN ENTRE DOS CUENTAS CONSERVADAS, y sin ella el bucle
+//      central del juego no se podía escribir. → `esConversionAdmisible`.
+//
+// LA REGLA DE ORO DE ESA REPARACIÓN, y es la que hay que respetar al tocar algo
+// de acá: una puerta que rechaza todo es trivialmente segura y completamente
+// inútil. Los cuatro procesos semilla —`friccion`, `union`, `deshilachar`,
+// `extraccion`— tienen que seguir entrando sin una sola razón en contra. Si
+// alguno deja de entrar, la regla nueva está mal, no el proceso.
+//
 // ─── Dos decisiones de forma que valen la pena decir ─────────────────────────
 //
 // NO CORTA EN EL PRIMER NO. El documento escribe `return no(...)` en cada regla.
@@ -38,10 +102,12 @@
 // especifica bit a bit. Todo recorrido es sobre arrays o sobre `Map` en orden de
 // inserción, nunca sobre `Object.keys` de un vector de cualidades.
 
+import { fx } from './fixed.js'
 import type { Physics } from './physics.js'
 import { conservedIn, specIn } from './physics.js'
-import type { QualityId, QualitySpec } from './quality.js'
-import type { Effect, Process, ProcessId, QualityTest, Role } from './process.js'
+import type { QualityExpr, QualityId, QualitySpec } from './quality.js'
+import { DERIVED_FROM_SUBSTANCE } from './quality.js'
+import type { Effect, Process, ProcessId, QualityTest, Role, Yield } from './process.js'
 import { baseRoleName, unknownRoleRefs } from './process.js'
 import type { Substance, SubstanceId, Tag } from './substance.js'
 
@@ -102,6 +168,7 @@ export type Codigo =
   | 'conservacion-transfer'
   | 'materia-sin-origen'
   | 'tasa-negativa'
+  | 'magnitud-intensiva'
   // regla 2 — nada sube gratis
   | 'sube-gratis'
   | 'fuente-no-conservada'
@@ -130,6 +197,10 @@ export type Codigo =
   | 'sin-tags'
   | 'sin-nombre'
   | 'calor-especifico'
+  | 'compuerta-contradictoria'
+  | 'confianza-autodeclarada'
+  | 'promesa-derivada'
+  | 'transferencia-eterna'
   // regla 5 — ciclos
   | 'ciclo-rentable'
   | 'ciclo-con-aporte'
@@ -138,6 +209,7 @@ export type Codigo =
   | 'costo-mayor-que-la-garantia'
   | 'tasa-mayor-que-el-rango'
   | 'drenaje-sin-respaldo'
+  | 'promesa-sin-respaldo'
 
 /** Lo que hay que poder citar para que el rechazo sea corregible. */
 export interface Cita {
@@ -238,6 +310,50 @@ export function cotasDeRol(r: Role | undefined, q: QualityId, phys: Physics): Co
   return { lo, hi }
 }
 
+/**
+ * Las mismas cotas, pero SIN colapsar `>` en `>=` ni `<` en `<=`.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «compuerta-estricta». `cotasDeRol` mete los cuatro
+ * operadores en dos cotas cerradas, así que `q >= 400 && q < 400` daba
+ * `lo === hi === 400` y la única prueba que existía —`lo > hi`— contestaba que no
+ * había contradicción. El proceso queda en el índice y no se dispara JAMÁS, que es
+ * exactamente el fallo silencioso que `rol-contradictorio` existe para evitar. Y
+ * sobre `stamina` —que ninguna sustancia declara, y que es la cualidad del rol
+ * `actor` de todo proceso que la criatura ejecuta— no hay ninguna red abajo.
+ */
+interface CotasEstrictas extends Cotas {
+  /** El piso vino de un `>`: el valor exacto NO lo cumple. */
+  loAbierto: boolean
+  hiAbierto: boolean
+}
+
+function cotasEstrictasDeRol(r: Role | undefined, q: QualityId, phys: Physics): CotasEstrictas {
+  const s = spec(phys, q)
+  let lo = s === undefined ? Number.NEGATIVE_INFINITY : s.range[0]
+  let hi = s === undefined ? Number.POSITIVE_INFINITY : s.range[1]
+  let loAbierto = false
+  let hiAbierto = false
+  if (r === undefined) return { lo, hi, loAbierto, hiAbierto }
+  for (const t of r.where) {
+    if (t.q !== q) continue
+    if (t.op === '>=' || t.op === '>') {
+      if (t.v > lo) {
+        lo = t.v
+        loAbierto = t.op === '>'
+      } else if (t.v === lo && t.op === '>') loAbierto = true
+    } else if (t.v < hi) {
+      hi = t.v
+      hiAbierto = t.op === '<'
+    } else if (t.v === hi && t.op === '<') hiAbierto = true
+  }
+  return { lo, hi, loAbierto, hiAbierto }
+}
+
+/** No existe ningún número que cumpla estas cotas. */
+function cotasVacias(c: CotasEstrictas): boolean {
+  return c.lo > c.hi || (c.lo === c.hi && (c.loAbierto || c.hiAbierto))
+}
+
 /** El rol promete que esta cualidad es estrictamente positiva en quien lo llene. */
 function garantizaPositivo(r: Role | undefined, q: QualityId): boolean {
   if (r === undefined) return false
@@ -247,6 +363,219 @@ function garantizaPositivo(r: Role | undefined, q: QualityId): boolean {
     if (t.op === '>=' && t.v > 0) return true
   }
   return false
+}
+
+// ─── Intensiva contra extensiva · el producto por masa ───────────────────────
+//
+// LA CAUSA MÁS PROFUNDA, y `quality.ts` la tenía escrita desde el primer día con
+// todas las letras: «la regla 1 de admit() tiene que comparar el producto;
+// comparar el intensivo dejaría pasar una bomba de materia». Nadie la leyó.
+//
+// `nutrition` y `fuelEnergy` viven en `Substance.perUnitMass`: el número es POR
+// UNIDAD DE MASA. Conservar el número NO conserva el total. Medido con el propio
+// `qualityOf` del paquete: mover 9 de `nutrition` de un trocito de masa 0.1 a un
+// tronco de masa 100 va de 0.315 calorías a 18. Multiplica por 57.
+//
+// Entonces toda comparación de conservación se hace sobre la magnitud EXTENSIVA,
+// que para una intensiva es `q · masa`. Y cuando la masa del rol no está acotada
+// por ninguna cota, la respuesta correcta es RECHAZAR por indecidible: un proceso
+// que no se puede juzgar no entra.
+
+function esIntensiva(phys: Physics, q: QualityId): boolean {
+  return spec(phys, q)?.extent === 'intensive'
+}
+
+/**
+ * ¿Esta cualidad se CALCULA en vez de guardarse?
+ *
+ * Se pregunta acá y no con `spec.derived !== undefined` porque `heatCapacity` es
+ * derivada y no tiene expresión (sale de `Substance.specificHeat`, que no es un
+ * `QualityId`). Preguntar por el campo la dejaría escribible.
+ */
+function esDerivada(phys: Physics, q: QualityId): boolean {
+  const s = spec(phys, q)
+  if (s === undefined) return false
+  return s.derived !== undefined || DERIVED_FROM_SUBSTANCE.has(q)
+}
+
+/**
+ * La masa que el rol GARANTIZA. Es la cota honesta por abajo: sin un `mass >= x`
+ * en el rol no se puede contar con ningún gramo. Se usa para lo que ENTRA y para
+ * lo que un origen puede dar.
+ */
+function masaGarantizada(r: Role | undefined, phys: Physics): number {
+  const c = cotasDeRol(r, 'mass', phys)
+  return Number.isFinite(c.lo) && c.lo > 0 ? c.lo : 0
+}
+
+/**
+ * La masa MÁXIMA que el rol admite, o `undefined` si nadie la acota.
+ *
+ * El rango del catálogo —`mass ∈ [0, 10000]`— NO cuenta como cota: es el límite
+ * del mundo, no algo que el proceso declare. Multiplicar por diez mil daría un
+ * rechazo con un número inventado; decir «acá no se puede saber cuánto es» es la
+ * verdad, y además es corregible: la fragua le agrega `mass <= x` al rol.
+ */
+function masaMaxima(r: Role | undefined): number | undefined {
+  if (r === undefined) return undefined
+  let hi: number | undefined
+  for (const t of r.where) {
+    if (t.q !== 'mass') continue
+    if (t.op !== '<=' && t.op !== '<') continue
+    if (hi === undefined || t.v < hi) hi = t.v
+  }
+  return hi
+}
+
+/**
+ * Por cuánta masa hay que multiplicar el trabajo hecho sobre una cualidad para
+ * que el costo esté en la misma moneda que la cuenta conservada que lo paga.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «frotar la montaña». La energía de subir un grado es
+ * `masa · calor específico · ΔT`, así que calentar un peñasco de masa 5000 cuesta
+ * cinco mil veces lo que calentar un guijarro — y las dos cosas costaban 17.14 de
+ * stamina, porque el trabajo se medía en grados y los grados no saben de masa.
+ *
+ * SEGUNDO ATAQUE: «frotar-la-montania-v2». La primera versión cobraba por la masa
+ * GARANTIZADA (`mass >= x`), y nadie escribe eso en el rol que quiere calentar: con
+ * `mass <= 10000` —el rango entero del mundo— el rol admitía peñascos y pagaba por
+ * una unidad. La cota que el juez usaba para cobrar era justo la que el proponente
+ * elige no escribir. Para COBRAR, la cota honesta es la del PEOR caso: el TECHO,
+ * el mismo que `revisarIntensiva` usa para lo que se escribe.
+ *
+ * Sin ninguna cota de masa se cobra por UNA unidad. Es una subestimación DECLARADA,
+ * no un olvido: cobrar por el máximo del RANGO mataría a `friccion` —cuyo rol no
+ * acota nada—, que es el primer fuego de la partida.
+ */
+function masaQuePaga(r: Role | undefined, q: QualityId, phys: Physics): number {
+  if (!esIntensiva(phys, q)) return 1
+  const techo = masaMaxima(r)
+  const piso = masaGarantizada(r, phys)
+  const m = techo === undefined ? piso : Math.max(techo, piso)
+  return m > 1 ? m : 1
+}
+
+/**
+ * El techo REAL de la masa de un rol mientras el proceso corre.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «el-techo-no-es-invariante». `Role.where` es una condición
+ * de ENTRADA —la puerta ya lo aprendió del otro lado, con `pisoEfectivo`— y el
+ * techo de masa no tenía su gemelo: se declaraba `mass <= 1` para que la cuenta de
+ * la intensiva cerrara clavada, y por la puerta de al lado se le transferían 100 de
+ * masa al mismo cuerpo. Termina pesando 101 con la nutrición de un cuerpo de 1.
+ */
+function techoEfectivo(p: Process, rol: string, phys: Physics): number | undefined {
+  const base = masaMaxima(rolDe(p, rol))
+  if (base === undefined) return undefined
+  let extra = 0
+  for (const e of p.effects) {
+    if (e.k === 'transfer' && e.q === 'mass' && e.to === rol) extra += movidoPor(p, e)
+    if (e.k === 'drive' && e.q === 'mass' && e.on === rol) {
+      const t = trabajoDe(p, e, phys)
+      if (t > 0) extra += t
+    }
+  }
+  return base + extra
+}
+
+/**
+ * El piso REAL de una cualidad en un rol mientras el proceso corre.
+ *
+ * ATAQUE QUE LA MOTIVÓ: el recargador de aliento invisible. `Role.where` es una
+ * condición de ENTRADA, no un invariante: se comprueba al empezar y nadie la
+ * sostiene después. Un rol que pide `stamina >= 50`, un `drain` de 1 por tick y
+ * un `drive` hacia 50 gasta 1 y recupera 10 — y las reglas 1 y 2 lo saltearon las
+ * dos, por la misma línea escrita dos veces (`if (e.toward <= lo) continue`),
+ * leyendo como «esto baja» lo que en el mundo sube.
+ *
+ * Así que el umbral del rol solo vale como piso si el proceso no se lo lleva por
+ * abajo él mismo. Si se lo lleva, el piso es el del catálogo.
+ */
+function pisoEfectivo(p: Process, q: QualityId, rol: string, phys: Physics): number {
+  for (const e of p.effects) {
+    const seLoLleva =
+      (e.k === 'drain' && e.q === q && e.on === rol) ||
+      (e.k === 'transfer' && e.q === q && e.from === rol)
+    if (seLoLleva) {
+      const s = spec(phys, q)
+      return s === undefined ? Number.NEGATIVE_INFINITY : s.range[0]
+    }
+  }
+  return cotasDeRol(rolDe(p, rol), q, phys).lo
+}
+
+/**
+ * El piso que se usa para decidir SI ESTO SUBE O BAJA, que no es el mismo que se
+ * usa para medir CUÁNTO.
+ *
+ * ATAQUE QUE LA MOTIVÓ, y es del lente opuesto —un falso rechazo—: «apagar la
+ * brasa». `pisoEfectivo` tira el umbral del rol entero y vuelve al piso del
+ * catálogo apenas el proceso se lleve la cualidad. Apagar una brasa en el agua hace
+ * las dos cosas a la vez: le mueve el calor al agua Y la deja a 20 °C. Con el piso
+ * del catálogo en −100, `toward: 20` se leía como una SUBIDA de 120 grados y la
+ * puerta pedía un `poweredBy` para enfriar. Enfriarse es lo que hace el mundo solo
+ * cada tick.
+ *
+ * La cota honesta no es «tirar el piso», es BAJARLO por lo que el proceso se lleva:
+ * el rol garantiza 300 y el proceso saca 200, así que abajo de 100 no puede estar.
+ * El recargador de aliento —el ataque que escribió `pisoEfectivo`— sigue cayendo:
+ * pide `stamina >= 50`, drena 10 en la corrida y empuja hacia 50, o sea por encima
+ * de los 40 que le quedan garantizados.
+ *
+ * Sin `completion` el efecto que se la lleva corre para siempre: ahí sí, el piso es
+ * el del catálogo.
+ */
+function pisoParaDireccion(p: Process, q: QualityId, rol: string, phys: Physics): number {
+  const s = spec(phys, q)
+  const suelo = s === undefined ? Number.NEGATIVE_INFINITY : s.range[0]
+  const declarado = cotasDeRol(rolDe(p, rol), q, phys).lo
+  const ticks = p.completion?.at
+  let seLleva = 0
+  for (const e of p.effects) {
+    const quita =
+      (e.k === 'drain' && e.q === q && e.on === rol) ||
+      (e.k === 'transfer' && e.q === q && e.from === rol)
+    if (!quita) continue
+    if (ticks === undefined) return suelo
+    seLleva += (e.k === 'drain' || e.k === 'transfer' ? e.perTick : 0) * ticks
+  }
+  if (seLleva <= 0) return declarado
+  const piso = declarado - seLleva
+  return piso < suelo ? suelo : piso
+}
+
+/**
+ * Las cualidades GUARDADAS de las que se calcula una derivada, y si además
+ * depende de la geometría. Sirve para saber qué puede establecer honestamente un
+ * proceso: `reach` es geometría pura y solo la mueve un rendimiento; `solid` sale
+ * de `rigidity`, así que un `drive` de rigidez sí la establece.
+ */
+function entradasDeDerivada(e: QualityExpr | undefined): {
+  qualities: ReadonlySet<QualityId>
+  geometrica: boolean
+} {
+  const qualities = new Set<QualityId>()
+  let geometrica = false
+  const caminar = (x: QualityExpr): void => {
+    switch (x.k) {
+      case 'const':
+        return
+      case 'own':
+      case 'sumParts':
+      case 'maxParts':
+        qualities.add(x.q)
+        return
+      case 'geom':
+        geometrica = true
+        return
+      case 'op':
+        caminar(x.a)
+        caminar(x.b)
+        return
+    }
+  }
+  if (e !== undefined) caminar(e)
+  return { qualities, geometrica }
 }
 
 // ─── Qué sustancia puede llenar qué rol ──────────────────────────────────────
@@ -329,14 +658,44 @@ function cumple(v: number, t: QualityTest): boolean {
   }
 }
 
+/**
+ * ¿Este rol dice de qué está HECHO el cuerpo que lo llena?
+ *
+ * Un rol que pide `rigidity >= 0.5` está pidiendo una piedra, una vara o un
+ * hueso: pin­cha la materia. Uno que solo pide `stamina >= 1` no dice nada del
+ * material, y por eso lo puede llenar la criatura.
+ */
+function pinaLaMateria(r: Role, phys: Physics): boolean {
+  const idx = indiceDe(phys)
+  for (const t of r.where) {
+    const sp = spec(phys, t.q)
+    if (sp === undefined || sp.derived !== undefined) continue
+    if (idx.deSustancia.has(t.q)) return true
+  }
+  return false
+}
+
 /** ¿De este rol se puede SACAR esta cualidad conservada, o sería sacarla de la nada? */
 function respalda(r: Role | undefined, q: QualityId, phys: Physics): boolean {
   // La masa la tiene todo cuerpo por definición: un cuerpo de masa cero no es un
-  // cuerpo. No hace falta que ningún rol la prometa.
+  // cuerpo. No hace falta que ningún rol la prometa. (CUÁNTA masa es otra
+  // pregunta, y la contesta la cota del rol: ver `conservacion-transfer`.)
   if (q === 'mass') return true
-  if (garantizaPositivo(r, q)) return true
   if (r === undefined) return false
   const idx = indiceDe(phys)
+  if (garantizaPositivo(r, q)) {
+    if (idx.deSustancia.has(q)) return true
+    // ATAQUE QUE LA MOTIVÓ: la piedra-batería con una línea más. `stamina` no la
+    // declara ninguna sustancia —es la criatura, no el material—, así que el
+    // único respaldo posible es que el rol la pida. Y entonces alcanzaba con
+    // escribirle `stamina >= 100` al rol de una PIEDRA para que el trabajo
+    // saliera «pagado»: el calor gratis con la declaración puesta, que es
+    // textualmente lo que `fuente-sin-respaldo` promete impedir.
+    //
+    // Un rol que además dice de qué está hecho el cuerpo ya eligió: una piedra no
+    // tiene aliento por mucho que el rol se lo escriba.
+    return !pinaLaMateria(r, phys)
+  }
   if (!idx.deSustancia.has(q)) return false
   const cands = candidatasDeRol(r, phys)
   if (cands.length === 0) return false
@@ -630,12 +989,78 @@ export function consumedRoles(p: Process): readonly string[] {
   return out
 }
 
-/** Lo que el proceso puede garantizar que ENTRA de una cualidad conservada. */
-function entraDe(p: Process, q: QualityId, phys: Physics): number {
+/**
+ * Los roles cuyo contenido el proceso puede PONER SOBRE LA MESA como insumo.
+ *
+ * Son los consumidos, MENOS los de `drawFromStock`. ATAQUE QUE LO MOTIVÓ: «el río
+ * paga dos veces». De un stock del dios ya sale un cuerpo entero por el
+ * rendimiento; contar además su `nutrition · masa` como presupuesto para un `drive`
+ * sobre un tercer cuerpo es cobrar el mismo aporte dos veces adentro de un solo
+ * proceso. Que el stock sea un agujero de la conservación no lo vuelve una fuente
+ * ilimitada: lo que da, lo da UNA vez, y ya está dado.
+ */
+function rolesQueAportan(p: Process): readonly string[] {
+  const sacados: string[] = []
+  for (const y of p.completion?.yields ?? []) if (y.k === 'drawFromStock') sacados.push(baseRoleName(y.of))
+  const out: string[] = []
+  for (const name of consumedRoles(p)) if (!sacados.includes(baseRoleName(name))) out.push(name)
+  return out
+}
+
+function excluido(name: string, salvo: readonly string[]): boolean {
+  for (const s of salvo) if (baseRoleName(name) === baseRoleName(s)) return true
+  return false
+}
+
+/**
+ * Lo que el proceso puede garantizar que ENTRA de una cualidad conservada.
+ *
+ * `salvo` son los roles que están RECIBIENDO el efecto, y excluirlos no es un
+ * detalle: un cuerpo no se puede alimentar de sí mismo. Sin eso, un proceso que
+ * consume al actor y le sube la `stamina` al mismo actor cerraba la cuenta con su
+ * propia entrada — el recargador de aliento gastaba 10 y se acreditaba 50 contra
+ * los 50 que él mismo declaraba consumir.
+ *
+ * Y el rol tiene que RESPALDAR la cualidad. ATAQUE QUE LO MOTIVÓ: la piedra-batería
+ * por el camino del consumo. `respalda()` y `pinaLaMateria()` existen exactamente
+ * para negar que una piedra tenga aliento por mucho que el rol se lo escriba, y no
+ * se llamaban en este camino: alcanzaba con escribirle `stamina > 100` al rol de
+ * una piedra y consumirla con un `transmute` para que el trabajo saliera pagado.
+ */
+function entraDe(p: Process, q: QualityId, phys: Physics, salvo: readonly string[] = []): number {
   let total = 0
-  for (const name of consumedRoles(p)) {
-    const lo = cotasDeRol(rolDe(p, name), q, phys).lo
+  for (const name of rolesQueAportan(p)) {
+    if (excluido(name, salvo)) continue
+    const r = rolDe(p, name)
+    if (!respalda(r, q, phys)) continue
+    const lo = cotasDeRol(r, q, phys).lo
     if (Number.isFinite(lo) && lo > 0) total += lo
+  }
+  return total
+}
+
+/**
+ * Lo mismo, pero en magnitud EXTENSIVA: para una intensiva, `q · masa`.
+ *
+ * Sin `mass >= x` en el rol consumido no entra NADA, y eso es la verdad: de un
+ * cuerpo del que solo se sabe que tiene «nutrición mayor que cero» no se puede
+ * contar con ninguna caloría. Ver el bloque de intensivas de más arriba.
+ */
+function entraExtensivoDe(
+  p: Process,
+  q: QualityId,
+  phys: Physics,
+  salvo: readonly string[] = [],
+): number {
+  const intensiva = esIntensiva(phys, q)
+  let total = 0
+  for (const name of rolesQueAportan(p)) {
+    if (excluido(name, salvo)) continue
+    const r = rolDe(p, name)
+    if (!respalda(r, q, phys)) continue
+    const lo = cotasDeRol(r, q, phys).lo
+    if (!Number.isFinite(lo) || lo <= 0) continue
+    total += intensiva ? lo * masaGarantizada(r, phys) : lo
   }
   return total
 }
@@ -643,7 +1068,9 @@ function entraDe(p: Process, q: QualityId, phys: Physics): number {
 /** Cuánto empuja realmente un `drive`, acotado por el objetivo y por la corrida. */
 function trabajoDe(p: Process, e: Extract<Effect, { k: 'drive' }>, phys: Physics): number {
   const ticks = p.completion?.at ?? 1
-  const lo = cotasDeRol(rolDe(p, e.on), e.q, phys).lo
+  // El piso EFECTIVO y no el del rol: si el mismo proceso baja la cualidad, el
+  // umbral de entrada no es un piso y el recorrido real arranca más abajo.
+  const lo = pisoEfectivo(p, e.q, e.on, phys)
   const recorrido = Number.isFinite(lo) ? e.toward - lo : e.toward
   const porTasa = e.perTick * ticks
   if (recorrido <= 0 || porTasa <= 0) return 0
@@ -651,34 +1078,71 @@ function trabajoDe(p: Process, e: Extract<Effect, { k: 'drive' }>, phys: Physics
 }
 
 /**
+ * Lo que un `transfer` mueve por corrida, y lo que el ORIGEN garantiza tener.
+ *
+ * ATAQUE QUE LA MOTIVÓ: `transfer` no miraba CANTIDAD, solo presencia. Al origen
+ * le alcanzaba con garantizar la cualidad mayor que cero para que se le pudieran
+ * sacar 500 por tick. Un `drain` que gasta de más cobra reparo desde el primer
+ * día; un `transfer` que mueve mil veces más no cobraba nada.
+ */
+function movidoPor(p: Process, e: Extract<Effect, { k: 'transfer' }>): number {
+  return e.perTick * (p.completion?.at ?? 1)
+}
+
+function disponibleEn(p: Process, q: QualityId, rol: string, phys: Physics): number {
+  const lo = cotasDeRol(rolDe(p, rol), q, phys).lo
+  return Number.isFinite(lo) && lo > 0 ? lo : 0
+}
+
+/**
  * El saldo DECLARADO del proceso sobre una cuenta conservada, por corrida.
  * Negativo = cuesta. Es la cuenta que suma la regla 5 a lo largo de un ciclo.
  *
  * Un `transfer` cuenta el crédito en el destino SIEMPRE y el débito en el origen
- * SOLO si el origen respalda la cualidad. Ésa es la asimetría que hace visible
- * la piedra-batería: transferir `stamina` desde una piedra no le saca nada a
- * nadie y sin embargo se la pone a alguien.
+ * SOLO hasta lo que el origen GARANTIZA. Ésa es la asimetría que hace visible la
+ * piedra-batería: transferir `stamina` desde una piedra no le saca nada a nadie y
+ * sin embargo se la pone a alguien.
+ *
+ * Que el tope sea la garantía y no la presencia es lo que cerró el ataque de la
+ * piedra-batería «con una línea más»: agregarle `stamina > 0` al rol hacía que
+ * `respalda()` dijera que sí, el débito pasaba a valer lo mismo que el crédito y
+ * el saldo daba CERO — con lo cual el ciclo frotar → batería → frotar dejaba de
+ * dar positivo y la regla 5 se apagaba sola. `stamina > 0` garantiza cero.
  */
 export function saldoDeclarado(p: Process, q: QualityId, phys: Physics): number {
   const ticks = p.completion?.at ?? 1
+  const conservada = esConservada(phys, q)
+  const destinos: string[] = []
   let saldo = 0
   for (const e of p.effects) {
     switch (e.k) {
       case 'drain':
-        if (e.q === q) saldo -= e.perTick * ticks
+        // Un drenaje sobre un rol que NO garantiza la cualidad puede valer cero, y
+        // la puerta ya lo dice como reparo (`drenaje-sin-respaldo`). Contarlo como
+        // costo era el escudo de «frotar-con-peaje»: una milmillonésima de nutrición
+        // sobre un actor que no la tiene garantizada volvía «peor en alguna» a un
+        // clon tres veces más barato, y la regla 4 se apagaba sola.
+        if (e.q === q && respalda(rolDe(p, e.on), q, phys)) saldo -= e.perTick * ticks
         break
       case 'transfer':
         if (e.q === q) {
-          saldo += e.perTick * ticks
-          if (respalda(rolDe(p, e.from), q, phys)) saldo -= e.perTick * ticks
+          const movido = e.perTick * ticks
+          saldo += movido
+          const tope = respalda(rolDe(p, e.from), q, phys) ? disponibleEn(p, q, e.from, phys) : 0
+          saldo -= Math.min(movido, tope)
         }
         break
       case 'drive': {
-        if (e.q === q) saldo += trabajoDe(p, e, phys)
+        if (e.q === q) {
+          saldo += trabajoDe(p, e, phys)
+          if (conservada && !destinos.includes(e.on)) destinos.push(e.on)
+        }
         const pb = e.poweredBy
         if (pb !== undefined && pb.q === q) {
           const eff = pb.efficiency > 0 ? pb.efficiency : 1
-          saldo -= trabajoDe(p, e, phys) / eff
+          // El trabajo, llevado a la masa que se está empujando: subirle un grado
+          // a una montaña no puede costar lo mismo que subírselo a un guijarro.
+          saldo -= (trabajoDe(p, e, phys) * masaQuePaga(rolDe(p, e.on), e.q, phys)) / eff
         }
         break
       }
@@ -689,6 +1153,13 @@ export function saldoDeclarado(p: Process, q: QualityId, phys: Physics): number 
         break
     }
   }
+  // Lo que se acredita MENOS lo que se consume para acreditarlo, UNA sola vez: el
+  // presupuesto no se gasta de nuevo con cada efecto. Sin esta resta, un proceso que
+  // se come 2000 de nutrición·masa para escribir 1500 declaraba un saldo POSITIVO y
+  // la regla 5 lo rechazaba por «ciclo rentable» —el ataque «panificar»—, prometiendo
+  // que el ciclo rinde de verdad en algún estado del mundo cuando no rinde en
+  // ninguno. `entraDe` ya sabía la cuenta: la usa la regla 1, y la dejaba pasar.
+  if (destinos.length > 0) saldo -= entraDe(p, q, phys, destinos)
   return saldo
 }
 
@@ -715,21 +1186,55 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
 
   for (const q of conservadas) {
     const entra = entraDe(p, q, phys)
+
+    // ── los `drive`, con PRESUPUESTO ACUMULADO ──────────────────────────────
+    //
+    // ATAQUE QUE LO MOTIVÓ, y lo encontraron dos adversarios por separado: «dos
+    // bocas comen la misma miga» y «el doble gasto». La cuenta se hacía POR EFECTO
+    // y nunca en total, así que `entraAqui` era el presupuesto ENTERO cada vez.
+    // Ningún efecto mentía por su cuenta —cada uno, mirado solo, cerraba clavado—;
+    // lo que no cerraba era la SUMA, y la suma no la miraba nadie. Con dos cuerpos
+    // de destino salían el doble; con tres, el triple.
+    const destinos: string[] = []
+    for (const e of p.effects) {
+      if (e.k !== 'drive' || e.q !== q || e.perTick < 0) continue
+      if (e.toward <= pisoEfectivo(p, q, e.on, phys)) continue
+      if (!destinos.includes(e.on)) destinos.push(e.on)
+    }
+    // Lo que entra SIN contar los cuerpos que reciben: nadie se alimenta de sí.
+    const entraAqui = entraDe(p, q, phys, destinos)
+    const entraExt = entraExtensivoDe(p, q, phys, destinos)
+    let saleAcumulado = 0
+    let saleExtAcumulado = 0
+    const movidoPorOrigen = new Map<string, number>()
+
     for (const e of p.effects) {
       // Con la tasa en negativo el efecto está dado vuelta y ya lo dijo
       // `tasa-negativa`; volver a contarlo acá daría un «sale −10» ilegible.
       if (e.k === 'drive' && e.q === q && e.perTick >= 0) {
-        const lo = cotasDeRol(rolDe(p, e.on), q, phys).lo
+        const lo = pisoEfectivo(p, q, e.on, phys)
         if (e.toward <= lo) continue
+        // La CONVERSIÓN: ver `esConversionAdmisible`. La paga la regla 2, que sabe
+        // mirar un `poweredBy` entero; acá no hay nada que sumar.
+        if (esConversionAdmisible(p, e, q, phys)) continue
         const sale = trabajoDe(p, e, phys)
-        razones.push(
-          razon(
-            1,
-            'conservacion-drive',
-            `${q} es conservada y «${p.id}» la sube en el rol «${e.on}» hacia ${num(e.toward)}: sale ${num(sale)}, entra ${num(entra)}`,
-            { proceso: p.id, q, rol: e.on, encontrado: sale, cota: entra },
-          ),
-        )
+        saleAcumulado += sale
+        if (saleAcumulado > entraAqui) {
+          razones.push(
+            razon(
+              1,
+              'conservacion-drive',
+              `${q} es conservada y «${p.id}» la sube en el rol «${e.on}» hacia ${num(e.toward)}: sale ${num(saleAcumulado)}, entra ${num(entraAqui)}`,
+              { proceso: p.id, q, rol: e.on, encontrado: saleAcumulado, cota: entraAqui },
+            ),
+          )
+          continue
+        }
+        // La cuenta cruda cerró. Falta la de verdad: para una intensiva lo que se
+        // conserva es `q · masa`, y los mismos «9» en un cuerpo grande son mucha
+        // más comida que en uno chico.
+        const escrito = revisarIntensiva(p, phys, 1, q, sale, e.on, saleExtAcumulado, entraExt, razones)
+        saleExtAcumulado += escrito
       }
       if (e.k === 'couple' && e.q === q) {
         razones.push(
@@ -743,16 +1248,55 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
       }
       if (e.k === 'transfer' && e.q === q && e.perTick >= 0) {
         const origen = rolDe(p, e.from)
-        if (respalda(origen, q, phys)) continue
-        const sale = e.perTick * (p.completion?.at ?? 1)
-        razones.push(
-          razon(
-            1,
-            'conservacion-transfer',
-            `«${p.id}» mueve ${q} desde «${e.from}», que no la tiene garantizada: sale ${num(sale)}, entra ${num(entra)}`,
-            { proceso: p.id, q, rol: e.from, encontrado: sale, cota: entra },
-          ),
-        )
+        // ACUMULADO POR ORIGEN. ATAQUE: «dos caños vacían la misma cantera». Cada
+        // caño se llevaba exactamente lo que la cantera garantiza, y salían dos
+        // veces: la comparación era por efecto y la cantera es una sola.
+        const sale = (movidoPorOrigen.get(e.from) ?? 0) + movidoPor(p, e)
+        movidoPorOrigen.set(e.from, sale)
+        if (!respalda(origen, q, phys)) {
+          razones.push(
+            razon(
+              1,
+              'conservacion-transfer',
+              `«${p.id}» mueve ${q} desde «${e.from}», que no la tiene garantizada: sale ${num(sale)}, entra ${num(entra)}`,
+              { proceso: p.id, q, rol: e.from, encontrado: sale, cota: entra },
+            ),
+          )
+          continue
+        }
+        // CANTIDAD, y no solo presencia. Que el origen tenga «más que cero» no
+        // autoriza a sacarle quinientos: el rol garantiza un número y ése es el
+        // techo. Es el mismo control que el `drain` cobra desde el primer día.
+        //
+        // De acá para abajo NO se corta: las tres razones son distintas —cuánto
+        // se mueve, por cuánto tiempo, y en qué cuerpo aterriza— y la fragua las
+        // quiere todas juntas o hace tres viajes al modelo por el mismo proceso.
+        const disponible = disponibleEn(p, q, e.from, phys)
+        if (sale > disponible) {
+          razones.push(
+            razon(
+              1,
+              'conservacion-transfer',
+              `«${p.id}» mueve ${num(sale)} de ${q} desde «${e.from}», y el rol solo garantiza ${num(disponible)}: la diferencia sale de la nada`,
+              { proceso: p.id, q, rol: e.from, encontrado: sale, cota: disponible },
+            ),
+          )
+        }
+        // Sin `completion` el efecto corre tick tras tick mientras el arreglo se
+        // sostenga: `perTick × ∞`. Un proceso que ACREDITA una cuenta conservada
+        // tiene que terminar alguna vez, o no hay cantidad que acotar. (Un
+        // proceso sin `completion` que solo GASTA es legítimo: `friccion` es eso.)
+        if (p.completion === undefined) {
+          razones.push(
+            razon(
+              1,
+              'conservacion-transfer',
+              `«${p.id}» acredita ${q} en «${e.to}» sin declarar completion: el efecto corre para siempre y nada lo consume`,
+              { proceso: p.id, q, rol: e.to, encontrado: e.perTick, cota: disponible },
+            ),
+          )
+        }
+        revisarIntensivaTransfer(p, phys, 1, q, sale, e, disponible, razones)
       }
     }
   }
@@ -777,6 +1321,151 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
   }
 }
 
+/**
+ * El producto por masa, para lo que un efecto ESCRIBE en un rol.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «engordar el tronco». Mover el número de una cualidad
+ * intensiva a un cuerpo más grande multiplica el total sin que ninguna cuenta
+ * cruda se entere. Y cuando el rol de destino no acota su masa, no hay ningún
+ * número con el que comparar: eso NO se deja pasar, se rechaza por indecidible.
+ */
+function revisarIntensiva(
+  p: Process,
+  phys: Physics,
+  regla: Regla,
+  q: QualityId,
+  cantidad: number,
+  rolDestino: string,
+  yaEscrito: number,
+  entraExt: number,
+  razones: Razon[],
+): number {
+  if (!esIntensiva(phys, q) || cantidad <= 0) return 0
+  // El techo EFECTIVO y no el del rol: si el mismo proceso le mete masa al cuerpo
+  // de destino, el `mass <= x` del rol es lo que pesaba al entrar y nada más.
+  const hi = techoEfectivo(p, rolDestino, phys)
+  if (hi === undefined) {
+    razones.push(
+      razon(
+        regla,
+        'magnitud-intensiva',
+        `${q} es intensiva —el número es por unidad de masa— y «${p.id}» la escribe en «${rolDestino}», que no acota su masa: lo que se conserva es ${q}·masa y acá no se puede acotar. Poné un mass <= x en el rol`,
+        { proceso: p.id, q, rol: rolDestino, encontrado: cantidad, cota: entraExt },
+      ),
+    )
+    return 0
+  }
+  const sale = yaEscrito + cantidad * hi
+  if (sale > entraExt) {
+    razones.push(
+      razon(
+        regla,
+        'magnitud-intensiva',
+        `${q} es intensiva: «${p.id}» escribe ${num(cantidad)} en «${rolDestino}», que pesa hasta ${num(hi)}, o sea ${num(sale)} de ${q}·masa, y entra ${num(entraExt)}`,
+        { proceso: p.id, q, rol: rolDestino, encontrado: sale, cota: entraExt },
+      ),
+    )
+  }
+  return cantidad * hi
+}
+
+/**
+ * El calor específico de lo que puede llenar un rol, o `undefined` si el rol no
+ * dice de qué está hecho el cuerpo.
+ *
+ * Es lo que convierte grados en energía, y vive en cada `Substance` del catálogo:
+ * la puerta lo usaba para armar envolventes y no para conservar.
+ */
+function calorEspecificoDe(
+  r: Role | undefined,
+  phys: Physics,
+): { min: number; max: number } | undefined {
+  if (r === undefined || !pinaLaMateria(r, phys)) return undefined
+  const cands = candidatasDeRol(r, phys)
+  if (cands.length === 0) return undefined
+  let min = Number.POSITIVE_INFINITY
+  let max = Number.NEGATIVE_INFINITY
+  for (const s of cands) {
+    if (!Number.isFinite(s.specificHeat)) continue
+    min = Math.min(min, s.specificHeat)
+    max = Math.max(max, s.specificHeat)
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) return undefined
+  return { min, max }
+}
+
+/**
+ * Lo mismo para un `transfer`, donde el origen es lo que hay y el destino es lo
+ * que aparece. Mover 50 °C de una brasa de masa 0.1 a una olla de masa 100 no
+ * conserva nada: la energía es `masa · calor específico · ΔT`, así que del lado
+ * del destino aparece mil veces la que se fue. Es la bomba de calor sin motor.
+ */
+function revisarIntensivaTransfer(
+  p: Process,
+  phys: Physics,
+  regla: Regla,
+  q: QualityId,
+  movido: number,
+  e: Extract<Effect, { k: 'transfer' }>,
+  disponible: number,
+  razones: Razon[],
+): void {
+  if (!esIntensiva(phys, q) || movido <= 0) return
+  const hi = techoEfectivo(p, e.to, phys)
+  if (hi === undefined) {
+    razones.push(
+      razon(
+        regla,
+        'magnitud-intensiva',
+        `${q} es intensiva y «${p.id}» la mueve a «${e.to}», que no acota su masa: mover el número a un cuerpo más grande MULTIPLICA el total. Poné un mass <= x en el rol de destino`,
+        { proceso: p.id, q, rol: e.to, encontrado: movido },
+      ),
+    )
+    return
+  }
+  const lo = masaGarantizada(rolDe(p, e.from), phys)
+  // EL CALOR ESPECÍFICO. ATAQUE QUE LO MOTIVÓ: «mojar la brasa». La energía de un
+  // cuerpo es `masa · calor específico · ΔT`, y la cuenta comparaba `ΔT · masa`
+  // nada más: origen pinchado a mineral (cp ∈ [0.75, 0.8]) y destino pinchado a
+  // líquido (cp ∈ [3.9, 4.2]), las dos masas clavadas en 1, y mover 200 grados
+  // sacaba 160 de energía y metía 780.
+  //
+  // Y SOLO SE COBRA CUANDO SE PUEDE AFIRMAR, que es la diferencia entre esto y
+  // rechazar todo. Hace falta que los dos roles digan de qué están hechos Y que los
+  // dos conjuntos de candidatas estén SEPARADOS: que lo más liviano térmicamente
+  // que puede llenar el destino siga siendo más pesado que lo más pesado que puede
+  // llenar el origen. Si se solapan, existe un mundo donde no hay diferencia que
+  // cobrar y cobrarla sería inventar un número. Medido contra el catálogo: `asar`
+  // —el fuego (cp ∈ [0.9, 2.8]) contra la comida (cp ∈ [1.9, 3.9])— se solapa y
+  // pasa, que es lo que tiene que pasar; la brasa mineral contra el agua, no.
+  let cpDestino = 1
+  let cpOrigen = 1
+  if (q === 'temperature') {
+    const cd = calorEspecificoDe(rolDe(p, e.to), phys)
+    const co = calorEspecificoDe(rolDe(p, e.from), phys)
+    if (cd !== undefined && co !== undefined && cd.min > co.max) {
+      cpDestino = cd.min
+      cpOrigen = co.max
+    }
+  }
+  const aparece = movido * hi * cpDestino
+  const desaparece = disponible * lo * cpOrigen
+  if (aparece > desaparece) {
+    const conCalor =
+      cpDestino === cpOrigen
+        ? ''
+        : ` (calor específico ${num(cpOrigen)} contra ${num(cpDestino)})`
+    razones.push(
+      razon(
+        regla,
+        'magnitud-intensiva',
+        `${q} es intensiva: «${p.id}» pone ${num(movido)} en «${e.to}» (hasta ${num(hi)} de masa) y saca de «${e.from}» (${num(lo)} de masa garantizada)${conCalor}: aparecen ${num(aparece)} de ${q}·masa y desaparecen ${num(desaparece)}`,
+        { proceso: p.id, q, rol: e.to, encontrado: aparece, cota: desaparece },
+      ),
+    )
+  }
+}
+
 function tasaDe(e: Effect): number | undefined {
   switch (e.k) {
     case 'drain':
@@ -790,27 +1479,96 @@ function tasaDe(e: Effect): number | undefined {
 
 // ─── Regla 2 · nada sube gratis ──────────────────────────────────────────────
 
+/**
+ * LA CONVERSIÓN. Un `drive` que sube una cuenta conservada pagándola con OTRA.
+ *
+ * FALSO RECHAZO QUE LA MOTIVÓ, y es el más caro de todos los que encontró el lente
+ * opuesto: `comer` no se podía escribir. Convertir la nutrición de un bocado en
+ * aliento es el bucle central del juego y ninguna ley lo hace —`leyes.ts` no toca
+ * `stamina`—, así que tiene que ser un `Process`. Pero `nutrition` y `stamina` son
+ * las dos conservadas, y la regla 1 solo sabía sumar la MISMA cuenta: «sale 20,
+ * entra 0», porque un pescado no garantiza aliento. Sin esto la criatura pesca y no
+ * come.
+ *
+ * Y `poweredBy` YA ES una conversión: `friccion` convierte aliento en calor. Lo
+ * único que pasaba es que ahí el destino no era conservado, y cuando el destino
+ * TAMBIÉN lo es, la regla 1 pisaba a la regla 2 y no quedaba camino.
+ *
+ * LO QUE SE EXIGE, y es lo que impide que esto sea la puerta de atrás de todas las
+ * demás:
+ *
+ *   · lo que se sube NO es materia. `stamina` es la única cuenta conservada que
+ *     ninguna sustancia declara: es la criatura, no el material. Convertir comida
+ *     en aliento es lo que hace un cuerpo vivo; convertir aliento en MASA, en
+ *     nutrición o en combustible sería una bomba de materia con otro nombre.
+ *   · lo que paga es otra cuenta conservada, con eficiencia en (0, 1].
+ *   · el cuerpo que paga está RESPALDADO y el proceso lo CONSUME. No se convierte
+ *     lo que no se destruye: el bocado se transmuta, y por eso no se lo puede comer
+ *     dos veces.
+ *
+ * LO QUE NO SE PUEDE EXIGIR, y hay que decirlo en voz alta: la CANTIDAD. No existe
+ * ninguna constante en la física que diga cuánto aliento vale una caloría —eso es
+ * calibración, y la puerta juzga contra lo calibrado, no calibra—, así que el
+ * desbalance se cobra como el reparo `costo-mayor-que-la-garantia`, exactamente
+ * igual que para `friccion`. Es el mismo agujero que la regla 2 tiene desde el
+ * primer día para todo `poweredBy`, ni más ni menos.
+ */
+function esConversionAdmisible(
+  p: Process,
+  e: Extract<Effect, { k: 'drive' }>,
+  q: QualityId,
+  phys: Physics,
+): boolean {
+  const pb = e.poweredBy
+  if (pb === undefined) return false
+  if (pb.q === q) return false // la misma cuenta no se paga a sí misma
+  if (!esConservada(phys, pb.q)) return false
+  if (!(pb.efficiency > 0) || pb.efficiency > MAX_EFFICIENCY) return false
+  // La masa la tiene todo cuerpo por definición, y lo que alguna sustancia declara
+  // es materia. Ni una ni otra salen de una conversión.
+  if (q === 'mass' || indiceDe(phys).deSustancia.has(q)) return false
+  const fuente = rolDe(p, pb.from)
+  if (!respalda(fuente, pb.q, phys)) return false
+  for (const name of consumedRoles(p)) {
+    if (baseRoleName(name) === baseRoleName(pb.from)) return true
+  }
+  return false
+}
+
 function reglaNadaSubeGratis(
   p: Process,
   phys: Physics,
   razones: Razon[],
   advertencias: Razon[],
 ): void {
+  reglaAcoplesYTransferencias(p, phys, razones, advertencias)
+  const idx = indiceDe(phys)
+
   for (const e of p.effects) {
     if (e.k !== 'drive') continue
-    // Una conservada que sube ya la rechazó la regla 1, con mejor mensaje.
-    if (esConservada(phys, e.q)) continue
+    // Una conservada que sube ya la rechazó la regla 1, con mejor mensaje. La
+    // excepción es la CONVERSIÓN, que la regla 1 le pasa a ésta justamente porque
+    // acá está el único lugar que sabe mirar un `poweredBy` entero.
+    if (esConservada(phys, e.q) && !esConversionAdmisible(p, e, e.q, phys)) continue
 
-    const lo = cotasDeRol(rolDe(p, e.on), e.q, phys).lo
+    // El piso para DIRECCIÓN, que no es el mismo que el piso para medir: ver
+    // `pisoParaDireccion`. Un `drive` hacia el propio umbral de entrada de un rol
+    // al que el mismo proceso le drena la cualidad NO baja, sube — y ésa era la
+    // puerta de atrás por la que el `poweredBy` dejaba de revisarse entero.
+    const lo = pisoParaDireccion(p, e.q, e.on, phys)
     if (e.toward <= lo) continue // baja: libre, y tiene que serlo
 
     const pb = e.poweredBy
     if (pb === undefined) {
+      const declara = cotasDeRol(rolDe(p, e.on), e.q, phys).lo > (spec(phys, e.q)?.range[0] ?? 0)
+      const comoSeCorrige = declara
+        ? ''
+        : `. Si el proceso BAJA ${e.q}, el rol tiene que declarar de dónde baja: poné un ${e.q} >= x`
       razones.push(
         razon(
           2,
           'sube-gratis',
-          `«${p.id}» sube ${e.q} hacia ${num(e.toward)} en «${e.on}» sin declarar poweredBy: de qué cuenta conservada drena`,
+          `«${p.id}» sube ${e.q} hacia ${num(e.toward)} en «${e.on}» sin declarar poweredBy: de qué cuenta conservada drena${comoSeCorrige}`,
           { proceso: p.id, q: e.q, rol: e.on, encontrado: e.toward, cota: lo },
         ),
       )
@@ -846,6 +1604,16 @@ function reglaNadaSubeGratis(
         ),
       )
     }
+    // ATAQUE QUE LO MOTIVÓ (el segundo): «piedra-bateria-sin-pin». `pinaLaMateria`
+    // cierra la piedra-batería, pero solo se dispara si el rol DICE de qué está
+    // hecho el cuerpo; borrando el `rigidity >= 0.5` el mismo proceso entraba, con
+    // un rol que acepta un SUPERCONJUNTO de los cuerpos de antes. La mitad que sí
+    // se puede cerrar sin inventar un campo nuevo: un cuerpo que paga SU PROPIO
+    // cambio tiene que tener el combustible adentro, y adentro de la materia solo
+    // está lo que alguna sustancia declara. `fermentar` se paga con su propia
+    // `nutrition` y pasa; calentarse con el propio aliento, no.
+    const mismoCuerpo = baseRoleName(pb.from) === baseRoleName(e.on)
+    const laMateriaLaTiene = pb.q === 'mass' || idx.deSustancia.has(pb.q)
     if (!respalda(rolDe(p, pb.from), pb.q, phys)) {
       // Drenar `stamina` de una piedra no le saca `stamina` a nadie: el calor
       // sale gratis igual, con la declaración puesta y todo. La declaración
@@ -858,11 +1626,26 @@ function reglaNadaSubeGratis(
           { proceso: p.id, q: pb.q, rol: pb.from },
         ),
       )
+    } else if (mismoCuerpo && !laMateriaLaTiene) {
+      razones.push(
+        razon(
+          2,
+          'fuente-sin-respaldo',
+          `«${p.id}» empuja ${e.q} en «${e.on}» y lo paga con la ${pb.q} del MISMO cuerpo, y ${pb.q} no la declara ninguna sustancia: un cuerpo solo puede pagar su propio cambio con lo que la materia trae adentro`,
+          { proceso: p.id, q: pb.q, rol: pb.from },
+        ),
+      )
     }
 
-    const ticks = p.completion?.at
-    if (ticks !== undefined && pb.efficiency > 0) {
-      const costo = trabajoDe(p, e, phys) / pb.efficiency
+    if (pb.efficiency > 0) {
+      // El trabajo llevado a la masa que se empuja: ver `masaQuePaga`. Frotar una
+      // montaña no puede costar lo mismo que frotar un guijarro.
+      //
+      // Sin `completion` este reparo NO se cobraba, y el ataque «frotar-la-montania-v2»
+      // vive justo ahí: un proceso que no declara cuándo termina se quedaba sin la
+      // única línea que dice cuánto cuesta. `trabajoDe` ya sabe qué hacer sin
+      // corrida —un tick, acotado por el objetivo—, así que la cuenta existe igual.
+      const costo = (trabajoDe(p, e, phys) * masaQuePaga(rolDe(p, e.on), e.q, phys)) / pb.efficiency
       const disponible = cotasDeRol(rolDe(p, pb.from), pb.q, phys).lo
       if (Number.isFinite(disponible) && costo > disponible) {
         advertencias.push(
@@ -906,6 +1689,125 @@ function reglaNadaSubeGratis(
           'costo-mayor-que-la-garantia',
           `«${p.id}» gasta ${num(costo)} de ${e.q} en ${num(ticks)} ticks y el rol «${e.on}» solo garantiza ${num(disponible)}: quien empiece justo no llega a terminar`,
           { proceso: p.id, q: e.q, rol: e.on, encontrado: costo, cota: disponible },
+        ),
+      )
+    }
+  }
+}
+
+/**
+ * La regla 2 sobre `couple` y `transfer`, que hasta ahora no la pisaban.
+ *
+ * ATAQUE QUE LA MOTIVÓ: `reglaNadaSubeGratis` abría con `if (e.k !== 'drive')
+ * continue`. O sea que la regla que impide sacar trabajo de la nada miraba UN
+ * tercio de los efectos. De ahí salieron el espejo térmico, encender por decreto,
+ * la piedra que irradia, la bomba de calor y prender por acople: cinco máquinas
+ * de movimiento perpetuo escritas con otro `k`.
+ *
+ * Y las dos formas pagan distinto, porque hacen cosas distintas:
+ *
+ *   COUPLE — no mueve nada del mundo: CREA. «Tu temperatura sigue la de aquél»
+ *   deja a aquél igual de caliente y calienta a éste. Es una copia, y una copia
+ *   de una cualidad es materia o energía de la nada. Y no se puede pagar: el tipo
+ *   `Effect.couple` NO TIENE `poweredBy`, así que no existe manera de declarar de
+ *   qué cuenta drena. Entonces el único acople admisible es el que provablemente
+ *   nunca sube: lo seguido tiene que entrar entero por debajo del piso de lo que
+ *   sigue. El día que haga falta un acople que suba, el campo se le agrega al
+ *   tipo — no se deja la puerta abierta.
+ *
+ *   TRANSFER — sí mueve, pero solo hasta lo que hay. Para una extensiva mover
+ *   conserva por definición y no hay nada que pagar. Para una INTENSIVA no: el
+ *   número es por unidad de masa, así que mover «50 grados» de una brasa a una
+ *   olla cien veces más pesada crea cien veces la energía que se fue.
+ */
+/**
+ * Lo más alto que un `couple` puede llegar a ESCRIBIR en el rol que sigue.
+ *
+ * ATAQUE QUE LA MOTIVÓ: `inverse` no aparecía ni una vez en las 2333 líneas de este
+ * archivo, y el control nuevo lee «el techo de lo seguido entra por debajo del piso
+ * de lo que sigue» como «esto solo baja». Con `inverse` eso significa exactamente lo
+ * contrario: si lo seguido está clavado en su MÍNIMO, el invertido está clavado en
+ * su MÁXIMO, así que CUMPLIR el control era la condición de subir al tope. Un rol
+ * que pide `temperature <= -100` prendía el mundo, y uno que pide `toxicity <= 0`
+ * —piedra, pedernal y agua— regalaba filo 1 para siempre.
+ *
+ * Con `inverse`, entonces, lo que se escribe es el ESPEJO de lo seguido dentro de su
+ * rango, y la cota honesta es el espejo de su PISO. Un acople inverso sigue siendo
+ * admisible: hace falta que el rol seguido garantice estar arriba.
+ */
+function techoQueEscribeElAcople(
+  p: Process,
+  e: Extract<Effect, { k: 'couple' }>,
+  phys: Physics,
+): number {
+  const c = cotasDeRol(rolDe(p, e.follows.of), e.follows.q, phys)
+  if (e.follows.inverse !== true) return c.hi
+  const s = spec(phys, e.follows.q)
+  if (s === undefined || !Number.isFinite(c.lo)) return Number.POSITIVE_INFINITY
+  return s.range[0] + s.range[1] - c.lo
+}
+
+function reglaAcoplesYTransferencias(
+  p: Process,
+  phys: Physics,
+  razones: Razon[],
+  advertencias: Razon[],
+): void {
+  for (const e of p.effects) {
+    if (e.k === 'couple') {
+      // Sobre una conservada ya lo rechazó la regla 1, con mejor mensaje.
+      if (esConservada(phys, e.q)) continue
+      const piso = pisoParaDireccion(p, e.q, e.on, phys)
+      const techoSeguido = techoQueEscribeElAcople(p, e, phys)
+      if (Number.isFinite(techoSeguido) && techoSeguido <= piso) continue // solo baja
+      const alReves = e.follows.inverse === true ? ' al revés' : ''
+      razones.push(
+        razon(
+          2,
+          'sube-gratis',
+          `«${p.id}» hace que ${e.q} de «${e.on}» siga${alReves} a ${e.follows.q} de «${e.follows.of}»: eso puede subir hasta ${num(techoSeguido)} sin drenar nada, y un couple no tiene poweredBy con el que pagarlo`,
+          { proceso: p.id, q: e.q, rol: e.on, encontrado: techoSeguido, cota: piso },
+        ),
+      )
+      continue
+    }
+    if (e.k !== 'transfer') continue
+    // Sin `completion` el efecto corre mientras el arreglo se sostenga: `perTick ×
+    // ∞`, y la puerta compara CANTIDADES POR CORRIDA. Para una conservada ya lo
+    // dice la regla 1; para la temperatura no lo decía nadie, y la temperatura es
+    // energía igual. ATAQUE: «el sifón de calor» — y de yapa la ley 1 relaja la
+    // brasa hacia el ambiente cada tick, o sea que la fuente se REPONE sola y el
+    // sifón mueve mucho más que los grados que el rol garantiza una sola vez.
+    if (p.completion === undefined && !esConservada(phys, e.q)) {
+      razones.push(
+        razon(
+          2,
+          'transferencia-eterna',
+          `«${p.id}» mueve ${e.q} de «${e.from}» a «${e.to}» a ${num(e.perTick)} por tick y no declara completion: el efecto corre mientras el arreglo se sostenga, y la puerta juzga cantidades por corrida`,
+          { proceso: p.id, q: e.q, rol: e.to, encontrado: e.perTick },
+        ),
+      )
+    }
+    const movido = movidoPor(p, e)
+    // Sobre una conservada el producto por masa ya lo miró la regla 1, que tiene
+    // el mejor mensaje porque además sabe cuánto ENTRA.
+    if (!esConservada(phys, e.q) && movido > 0) {
+      revisarIntensivaTransfer(p, phys, 2, e.q, movido, e, disponibleEn(p, e.q, e.from, phys), razones)
+    }
+    // Y el mismo reparo de cantidad que el `drain` cobra desde el primer día: si
+    // el origen garantiza menos de lo que el efecto se lleva, quien empiece justo
+    // no llega a terminar. Sobre el `transfer` no había ni razón ni reparo.
+    const ticks = p.completion?.at
+    if (ticks === undefined) continue
+    if (!respalda(rolDe(p, e.from), e.q, phys)) continue
+    const disponible = cotasDeRol(rolDe(p, e.from), e.q, phys).lo
+    if (Number.isFinite(disponible) && movido > disponible) {
+      advertencias.push(
+        razon(
+          2,
+          'costo-mayor-que-la-garantia',
+          `«${p.id}» mueve ${num(movido)} de ${e.q} en ${num(ticks)} ticks y el rol «${e.from}» solo garantiza ${num(disponible)}: quien empiece justo no llega a terminar`,
+          { proceso: p.id, q: e.q, rol: e.from, encontrado: movido, cota: disponible },
         ),
       )
     }
@@ -968,6 +1870,110 @@ function reglaCierreYCotas(p: Process, phys: Physics, razones: Razon[], adverten
     if (Number.isFinite(n.v)) continue
     const cita: Cita = n.q === undefined ? { proceso: p.id } : { proceso: p.id, q: n.q }
     razones.push(razon(4, 'numero-no-finito', `«${p.id}»: ${n.donde} vale ${String(n.v)}`, cita))
+  }
+
+  // — una derivada no se escribe: se deriva —
+  //
+  // ATAQUE QUE LA MOTIVÓ: `admitSubstance` rechaza que una SUSTANCIA declare una
+  // cualidad derivada, con el código ya escrito y el motivo puesto. Sobre un
+  // PROCESO no lo emitía nadie. Con un `drive` de `catch` una piedra pesca; con
+  // uno de `reach` la criatura estira el brazo; con un `couple` de `emitsPower`
+  // una piedra irradia por pesar; y `calories` —que ES la comida— se puede
+  // empujar directo, salteando la conservación de `nutrition` por la puerta de
+  // atrás. Escribirlas es peor que inútil: o el mundo las ignora y la criatura
+  // gasta aliento sin que pase nada, o las guarda y quedan viejas para siempre.
+  for (const e of p.effects) {
+    if (!esDerivada(phys, e.q)) continue
+    razones.push(
+      razon(
+        4,
+        'cualidad-derivada',
+        `«${p.id}» escribe ${e.q} con un ${e.k}, y ${e.q} no se guarda: se calcula de la geometría y de las partes cada vez que se lee`,
+        { proceso: p.id, q: e.q, rol: e.k === 'transfer' ? e.to : e.on },
+      ),
+    )
+  }
+
+  // — el radio del arreglo —
+  //
+  // Era el único número del proceso que se escapaba del control de finitud, y
+  // justo el que decide a qué distancia pasan las cosas: `radius: Infinity` es
+  // acción a distancia, `NaN` hace que toda comparación dé falso y el proceso no
+  // se dispare jamás, y cero o menos es un arreglo que no se puede armar.
+  //
+  // ATAQUE QUE AFINÓ LA COTA: `radius: Number.MIN_VALUE` (5e-324) pasaba el `<= 0`.
+  // El umbral honesto no es un número elegido a dedo: es el del punto fijo con el
+  // que el mundo mide, `FIXED_SCALE = 1000`. Un radio que redondea a cero en la
+  // representación en la que se van a hacer las comparaciones ES cero, y decirlo de
+  // otra manera sería decir que existe una distancia que el mundo no puede medir.
+  if (p.arrangement.k === 'within' && Number.isFinite(p.arrangement.radius) && fx(p.arrangement.radius) <= 0) {
+    razones.push(
+      razon(4, 'fuera-de-rango', `«${p.id}»: el arreglo pide un radio de ${num(p.arrangement.radius)}, que no encierra nada`, {
+        proceso: p.id,
+        encontrado: p.arrangement.radius,
+        cota: 0,
+      }),
+    )
+  }
+
+  // — la compuerta contradictoria —
+  //
+  // A los roles se les busca la contradicción interna desde el primer día; al
+  // `gate` solo se le miraban los rangos. Una compuerta que pide `temperature`
+  // ≥ 1500 y ≤ 0 a la vez no se cumple NUNCA: el proceso es código muerto que
+  // ensucia el índice y la búsqueda de todos los demás. Es el mismo fallo
+  // silencioso que `rol-irrealizable` existe para evitar.
+  const compuerta: Role = { name: 'la compuerta', where: p.gate }
+  const qsGate: QualityId[] = []
+  for (const t of p.gate) if (!qsGate.includes(t.q)) qsGate.push(t.q)
+  for (const q of qsGate) {
+    const c = cotasEstrictasDeRol(compuerta, q, phys)
+    if (cotasVacias(c)) {
+      razones.push(
+        razon(
+          4,
+          'compuerta-contradictoria',
+          `«${p.id}»: la compuerta pide ${q} ${c.loAbierto ? '>' : '≥'} ${num(c.lo)} y ${c.hiAbierto ? '<' : '≤'} ${num(c.hi)} a la vez, así que el proceso no se dispara nunca`,
+          { proceso: p.id, q, encontrado: c.lo, cota: c.hi },
+        ),
+      )
+    }
+  }
+
+  // — el id y el nombre —
+  //
+  // `admitSubstance` rechaza una sustancia sin id y sin nombre con este mismo
+  // código; sobre un proceso no lo aplicaba nadie. Un id vacío es una entrada de
+  // mapa que nadie puede citar ni volver a admitir, y el lexema es lo que la
+  // criatura tendría que decir para nombrar lo que hace.
+  if (p.id.length === 0) razones.push(razon(4, 'sin-nombre', 'el proceso no tiene id'))
+  if (p.lexeme.nombre.length === 0) {
+    razones.push(razon(4, 'sin-nombre', `el proceso «${p.id}» no tiene nombre: la criatura no lo puede decir`, { proceso: p.id }))
+  }
+
+  // — la confianza no se la pone quien propone —
+  //
+  // `trust` es lo que separa un borrador de una ley del mundo. Que el modelo se
+  // firme «estable» a sí mismo es el juez que la criatura no escribió firmando lo
+  // que la criatura escribió. Sube por uso y por tiempo, o no sube.
+  //
+  // ATAQUE QUE LA REESCRIBIÓ: «me-declaro-semilla». La versión vieja cruzaba `trust`
+  // (autodeclarado) contra `provenance.by` (autodeclarado), los dos campos del mismo
+  // objeto y del mismo lado, así que se esquivaba escribiendo `by: 'semilla'`. La
+  // única procedencia que vale es la que sabe quién LLAMÓ a `admit`, y `admit` no la
+  // recibe: no hay parámetro por el que pueda entrar. Lo que SÍ sabe la puerta es
+  // qué procesos la física ya tiene sellados —el `Map` no lo escribe quien propone—,
+  // así que «estable» solo lo puede llevar un proceso que ya está adentro y se está
+  // revalidando. Todo lo demás entra como borrador y sube por uso.
+  if (p.trust === 'estable' && phys.processes.get(p.id) !== p) {
+    razones.push(
+      razon(
+        4,
+        'confianza-autodeclarada',
+        `«${p.id}» se declara trust «estable» y la física no lo tiene sellado: la confianza no se la pone quien propone, sube por uso`,
+        { proceso: p.id },
+      ),
+    )
   }
 
   // — cotas de rango sobre todo número que nombre un valor de cualidad —
@@ -1104,17 +2110,35 @@ function reglaRealizabilidad(p: Process, phys: Physics, razones: Razon[], advert
     const qs: QualityId[] = []
     for (const t of r.where) if (!qs.includes(t.q)) qs.push(t.q)
     for (const q of qs) {
-      const c = cotasDeRol(r, q, phys)
-      if (c.lo > c.hi) {
+      const c = cotasEstrictasDeRol(r, q, phys)
+      if (cotasVacias(c)) {
         razones.push(
           razon(
             4,
             'rol-contradictorio',
-            `«${p.id}»: el rol «${r.name}» pide ${q} ≥ ${num(c.lo)} y ≤ ${num(c.hi)} a la vez`,
+            `«${p.id}»: el rol «${r.name}» pide ${q} ${c.loAbierto ? '>' : '≥'} ${num(c.lo)} y ${c.hiAbierto ? '<' : '≤'} ${num(c.hi)} a la vez`,
             { proceso: p.id, rol: r.name, q, encontrado: c.lo, cota: c.hi },
           ),
         )
       }
+    }
+
+    // Un cuerpo de masa cero no es un cuerpo, y `respalda` lo dice con todas las
+    // letras desde el primer día. ATAQUE QUE LO MOTIVÓ: «pan-de-masa-cero» — con
+    // `mass <= 0` en el rol de destino, `revisarIntensiva` comparaba `cantidad · 0`
+    // contra lo que entra, y `0 > 0` es falso: un techo de masa igual a cero no
+    // vuelve imposible pasar el control de la causa 3, lo APAGA. Y `mass <= 0` cae
+    // adentro del rango del catálogo, así que ni `fuera-de-rango` ni la
+    // realizabilidad contra el catálogo lo tocaban.
+    if (masaMaxima(r) !== undefined && (masaMaxima(r) ?? 0) <= 0) {
+      razones.push(
+        razon(
+          4,
+          'rol-irrealizable',
+          `«${p.id}»: el rol «${r.name}» pide mass <= ${num(masaMaxima(r) ?? 0)}, y un cuerpo de masa cero no es un cuerpo`,
+          { proceso: p.id, rol: r.name, q: 'mass', encontrado: masaMaxima(r) ?? 0, cota: 0 },
+        ),
+      )
     }
 
     // Realizabilidad contra el catálogo de sustancias. Éste es el fallo
@@ -1188,7 +2212,80 @@ function numerosDe(p: Process): readonly { v: number; donde: string; q?: Quality
     }
   }
   if (p.completion !== undefined) out.push({ v: p.completion.at, donde: 'el completion.at' })
+  // El radio del arreglo. Estaba afuera, y es el número que decide a qué
+  // distancia pasan las cosas: `Infinity` es acción a distancia y `NaN` hace que
+  // el proceso no se dispare jamás sin que nadie diga nada.
+  if (p.arrangement.k === 'within') out.push({ v: p.arrangement.radius, donde: 'el radio del arreglo' })
   return out
+}
+
+// ─── Regla 4 · lo que el proceso PROMETE contra lo que hace ──────────────────
+
+/**
+ * `establishes` es lo que la fragua lee para PLANIFICAR y lo que arma las aristas
+ * del grafo de la regla 5. Nadie lo cruzaba contra los efectos.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «el charlatán» — un proceso sin efectos y sin
+ * rendimientos que promete filo, alcance y 1999 °C. La criatura ejecuta un no-op
+ * para conseguir algo que nunca va a tener, y de paso le ensucia la búsqueda de
+ * ciclos a todos los demás.
+ *
+ * Lo que se puede afirmar sin adivinar, y por eso el rechazo es solo éste: una
+ * cualidad DERIVADA no la escribe ningún efecto (ver `cualidad-derivada`), así que
+ * solo se establece moviendo sus insumos o cambiando la geometría — y la
+ * geometría solo la cambia un rendimiento. `union` promete `reach>=2` y tiene un
+ * `join`: pasa. El charlatán promete `reach>=16` y no hace nada: no pasa.
+ */
+function reglaPromesas(p: Process, phys: Physics, razones: Razon[], advertencias: Razon[]): void {
+  const promesas = promesasDe(p, phys)
+  if (promesas.length === 0) return
+  const rendimientos = p.completion?.yields ?? []
+  const hayRendimientos = rendimientos.length > 0
+
+  for (const pr of promesas) {
+    if (pr.op !== '>=' && pr.op !== '>') continue // prometer que algo BAJA no crea nada
+    if (!esDerivada(phys, pr.q)) continue
+    if (hayRendimientos) continue
+    const insumos = entradasDeDerivada(spec(phys, pr.q)?.derived)
+    if (p.effects.some((e) => insumos.qualities.has(e.q))) continue
+    // FALSO RECHAZO QUE ABRIÓ ESTA PUERTA: «empuñar una vara». Cinco líneas más
+    // abajo está escrito que un proceso puede establecer algo «por el mero hecho de
+    // sostener un arreglo (tener algo en la mano ya es un estado del mundo), y
+    // rechazarlo cerraría esa puerta sin haberla mirado» — y esta regla la cerraba
+    // justo para `reach`, que es LA cualidad de tener algo largo en la mano.
+    //
+    // Una derivada PURAMENTE GEOMÉTRICA no la escribe ningún efecto y no puede: sale
+    // del eje más largo del ensamble, y la puerta no lee geometría. Lo único que sí
+    // puede exigir es que haya un cuerpo concreto en el arreglo: un rol que diga de
+    // qué está hecho. `empuñar` pincha una vara (rígida y con tracción) y pasa; el
+    // charlatán —que promete alcance 16 con un rol que no pide nada— no.
+    if (insumos.qualities.size === 0 && insumos.geometrica) {
+      if (p.roles.some((r) => pinaLaMateria(r, phys))) continue
+    }
+    razones.push(
+      razon(
+        4,
+        'promesa-derivada',
+        `«${p.id}» promete ${pr.q} ${pr.op} ${num(pr.v)}, y ${pr.q} es derivada: no la escribe ningún efecto. Sin un rendimiento que cambie el cuerpo, ni con un efecto sobre ${[...insumos.qualities].join(', ') || 'su geometría'}, esa promesa es falsa`,
+        { proceso: p.id, q: pr.q, encontrado: pr.v },
+      ),
+    )
+  }
+
+  if (p.effects.length === 0 && !hayRendimientos) {
+    // Reparo y no rechazo: un proceso puede establecer algo por el mero hecho de
+    // sostener un arreglo (tener algo en la mano ya es un estado del mundo), y
+    // rechazarlo cerraría esa puerta sin haberla mirado. Pero tiene que estar
+    // dicho, porque un no-op que promete mueve a la criatura igual.
+    advertencias.push(
+      razon(
+        4,
+        'promesa-sin-respaldo',
+        `«${p.id}» promete ${promesas.length === 1 ? 'algo' : `${num(promesas.length)} cosas`} y no tiene ni efectos ni rendimientos: no hace nada`,
+        { proceso: p.id },
+      ),
+    )
+  }
 }
 
 // ─── Regla 4 · no-dominancia ─────────────────────────────────────────────────
@@ -1208,8 +2305,9 @@ function reglaNoDominancia(p: Process, phys: Physics, razones: Razon[]): void {
   for (const viejo of phys.processes.values()) {
     if (viejo.id === p.id) continue
     if (viejo.arrangement.k !== p.arrangement.k) continue
-    if (!contieneTodo(p.establishes, viejo.establishes)) continue
-    if (!exigeMenosOIgual(p, viejo, phys)) continue
+    if (!prometeLoMismo(p, viejo, phys)) continue
+    const exigencia = comparaExigencias(p, viejo, phys)
+    if (exigencia === 'incomparable') continue
 
     let peorEnAlguna = false
     let mejorEn: { q: QualityId; nuevo: number; viejo: number } | undefined
@@ -1224,17 +2322,82 @@ function reglaNoDominancia(p: Process, phys: Physics, razones: Razon[]): void {
         mejorEn = { q, nuevo: costoNuevo, viejo: costoViejo }
       }
     }
-    if (peorEnAlguna || mejorEn === undefined) continue
+    if (peorEnAlguna) continue
+
+    // El TIEMPO también es precio, y era el que faltaba. Pescar treinta veces más
+    // rápido es la misma técnica con el costo bajado a mano, exactamente igual que
+    // bajarle la eficiencia al `poweredBy` — y `completion.at` no entraba en la
+    // comparación. Un proceso sin `completion` no termina nunca: cuesta infinito.
+    const ticksNuevo = ticksDe(p)
+    const ticksViejo = ticksDe(viejo)
+    if (ticksNuevo > ticksViejo) continue
+    const masRapido = ticksNuevo < ticksViejo
+
+    // LA COPIA EXACTA. ATAQUE QUE LA MOTIVÓ: `{...FRICCION, id: 'friccion​'}` con un
+    // espacio de ancho cero pegado al id — carácter por carácter el mismo proceso.
+    // No es `id-repetido` (el id difiere) y no era `dominancia` (no es más barato:
+    // es idéntico), así que la puerta admitía copias ilimitadas de cualquier
+    // proceso, cada una con su nodo propio en el grafo de la regla 5 —cuyo
+    // presupuesto es exponencial— y todas leyéndose «friccion» en el log.
+    //
+    // Un proceso que promete lo mismo, pide lo mismo, cuesta lo mismo y tarda lo
+    // mismo no agrega NADA al mundo: es el caso degenerado de la dominancia, no una
+    // excepción a ella.
+    const esCopia = mejorEn === undefined && !masRapido && exigencia === 'igual'
+
+    const porQueEs =
+      mejorEn !== undefined
+        ? `cuesta ${num(mejorEn.nuevo)} de ${mejorEn.q} contra ${num(mejorEn.viejo)}`
+        : masRapido
+          ? `termina en ${num(ticksNuevo)} ticks contra ${num(ticksViejo)}`
+          : esCopia
+            ? 'no se distingue de él en nada que la puerta pueda medir'
+            : 'le pide menos a sus entradas'
+    const cita: Cita =
+      mejorEn !== undefined
+        ? { proceso: viejo.id, q: mejorEn.q, encontrado: mejorEn.nuevo, cota: mejorEn.viejo }
+        : { proceso: viejo.id, encontrado: ticksNuevo, cota: ticksViejo }
 
     razones.push(
       razon(
         4,
         'dominancia',
-        `«${p.id}» domina a «${viejo.id}»: promete lo mismo, no pide más, y cuesta ${num(mejorEn.nuevo)} de ${mejorEn.q} contra ${num(mejorEn.viejo)}. Abaratar una técnica es recalibrar la física, no proponer un clon`,
-        { proceso: viejo.id, q: mejorEn.q, encontrado: mejorEn.nuevo, cota: mejorEn.viejo },
+        `«${p.id}» domina a «${viejo.id}»: promete lo mismo, no pide más, y ${porQueEs}. Abaratar una técnica es recalibrar la física, no proponer un clon`,
+        cita,
       ),
     )
   }
+}
+
+/** Sin `completion` el proceso no termina nunca, y eso no es «más rápido». */
+function ticksDe(p: Process): number {
+  return p.completion === undefined ? Number.POSITIVE_INFINITY : p.completion.at
+}
+
+/**
+ * ¿El nuevo promete al menos lo mismo que el viejo?
+ *
+ * Por `establishes`, que es lo declarado, o por los RENDIMIENTOS, que es lo
+ * hecho. Lo segundo hacía falta: «pescar con la mano» saca del mismo stock que
+ * `extraccion`, en un tick y sin aparejo, y se volvía incomparable con solo no
+ * escribir la promesa. Lo que dos procesos hacen no depende de lo que digan.
+ */
+function prometeLoMismo(nuevo: Process, viejo: Process, phys: Physics): boolean {
+  if (contieneTodo(promesasCanonicas(nuevo, phys), promesasCanonicas(viejo, phys))) return true
+  const yv = viejo.completion?.yields ?? []
+  if (yv.length === 0) return false
+  const yn = nuevo.completion?.yields ?? []
+  for (const y of yv) if (!yn.some((z) => mismoRendimiento(z, y))) return false
+  return true
+}
+
+/** Dos rendimientos hacen lo mismo. `at` e `into` cuentan: partir por el grano no
+ *  es partir por la juntura, y sacar a la mano no es sacar al suelo. */
+function mismoRendimiento(a: Yield, b: Yield): boolean {
+  if (a.k !== b.k) return false
+  if (a.k === 'split' && b.k === 'split') return a.at === b.at
+  if (a.k === 'drawFromStock' && b.k === 'drawFromStock') return a.into === b.into
+  return true
 }
 
 function contieneTodo(grande: readonly string[], chico: readonly string[]): boolean {
@@ -1243,26 +2406,181 @@ function contieneTodo(grande: readonly string[], chico: readonly string[]): bool
   return true
 }
 
-/** El nuevo no le pide a sus entradas nada que el viejo no les pidiera ya. */
-function exigeMenosOIgual(nuevo: Process, viejo: Process, phys: Physics): boolean {
-  const nombresNuevo = nuevo.roles.map((r) => baseRoleName(r.name))
-  const nombresViejo = viejo.roles.map((r) => baseRoleName(r.name))
-  if (nombresNuevo.length !== nombresViejo.length) return false
-  for (const n of nombresViejo) if (!nombresNuevo.includes(n)) return false
+/**
+ * Qué le pide el nuevo a sus entradas comparado con el viejo: `'menos'` cuando le
+ * pide estrictamente menos, `'igual'`, o `'incomparable'` cuando le pide más en
+ * algo (y entonces no lo domina: es otra técnica, más cara de conseguir).
+ *
+ * ATAQUE QUE LA MOTIVÓ: la vieja versión arrancaba comparando la CANTIDAD de
+ * roles y se rendía si difería. Con eso, un rol «testigo» con `where: []` que no
+ * pide nada, no se usa en ningún efecto y no se consume volvía incomparable al
+ * clon barato de `friccion` — la última puerta del almuerzo gratis se abría con
+ * una línea. Y al revés: un proceso con MENOS roles que el viejo (pescar sin
+ * aparejo) exige menos, que es la forma más pura de dominar, y también se
+ * escapaba.
+ *
+ * Un rol de más solo cuenta como exigencia si pide algo o si el proceso lo usa.
+ * Decoración no es exigencia.
+ */
+function comparaRoles(
+  rn: Role,
+  rv: Role,
+  phys: Physics,
+): 'menos' | 'igual' | 'incomparable' {
+  const qs: QualityId[] = []
+  for (const t of rv.where) if (!qs.includes(t.q)) qs.push(t.q)
+  for (const t of rn.where) if (!qs.includes(t.q)) qs.push(t.q)
+  let menos = false
+  for (const q of qs) {
+    const cn = cotasDeRol(rn, q, phys)
+    const cv = cotasDeRol(rv, q, phys)
+    if (cn.lo > cv.lo || cn.hi < cv.hi) return 'incomparable'
+    if (cn.lo < cv.lo || cn.hi > cv.hi) menos = true
+  }
+  return menos ? 'menos' : 'igual'
+}
 
+/** Tope del emparejamiento por estructura. Los procesos reales tienen 2 a 4 roles. */
+const MAX_ROLES_EMPAREJABLES = 6
+
+/**
+ * Empareja roles del viejo con roles del nuevo POR LO QUE PIDEN, cuando los nombres
+ * no coinciden. Devuelve, para cada viejo, el índice del nuevo que le corresponde,
+ * o −1.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «frotar-renombrado» y «pescar-a-mano». `comparaExigencias`
+ * cruzaba los roles por NOMBRE, y los nombres los elige quien propone y no los
+ * verifica nada del mundo: renombrar el rol «a» a «primero» apagaba la última puerta
+ * del almuerzo gratis, y llamarle «stock» al «source» de `extraccion` devolvía
+ * pescar-con-la-mano en un tick y sin aparejo.
+ *
+ * Busca el emparejamiento con MÁS pares —sacar un rol de la comparación es lo que el
+ * ataque quiere—, recorriendo en orden de declaración para que sea reproducible.
+ */
+function emparejarPorEstructura(
+  viejos: readonly Role[],
+  nuevos: readonly Role[],
+  phys: Physics,
+): readonly number[] {
+  const asignacion: number[] = viejos.map(() => -1)
+  if (viejos.length === 0 || nuevos.length === 0) return asignacion
+  if (viejos.length > MAX_ROLES_EMPAREJABLES || nuevos.length > MAX_ROLES_EMPAREJABLES) {
+    return asignacion
+  }
+  const actual: number[] = viejos.map(() => -1)
+  let mejor = -1
+  const buscar = (i: number, usados: ReadonlySet<number>, pares: number): void => {
+    if (i === viejos.length) {
+      if (pares > mejor) {
+        mejor = pares
+        for (let k = 0; k < actual.length; k += 1) asignacion[k] = actual[k]!
+      }
+      return
+    }
+    for (let j = 0; j < nuevos.length; j += 1) {
+      if (usados.has(j)) continue
+      if (comparaRoles(nuevos[j]!, viejos[i]!, phys) === 'incomparable') continue
+      actual[i] = j
+      buscar(i + 1, new Set([...usados, j]), pares + 1)
+    }
+    actual[i] = -1
+    buscar(i + 1, usados, pares)
+  }
+  buscar(0, new Set<number>(), 0)
+  return asignacion
+}
+
+function comparaExigencias(
+  nuevo: Process,
+  viejo: Process,
+  phys: Physics,
+): 'menos' | 'igual' | 'incomparable' {
+  let menos = false
+  const emparejados = new Set<string>()
+  const viejosSinPar: Role[] = []
+
+  // Primero por nombre: si dos roles se llaman igual, hablan de lo mismo y la
+  // comparación es directa (y si ahí el nuevo pide más, ya no lo domina).
   for (const rv of viejo.roles) {
     const rn = nuevo.roles.find((r) => baseRoleName(r.name) === baseRoleName(rv.name))
-    if (rn === undefined) return false
-    const qs: QualityId[] = []
-    for (const t of rv.where) if (!qs.includes(t.q)) qs.push(t.q)
-    for (const t of rn.where) if (!qs.includes(t.q)) qs.push(t.q)
-    for (const q of qs) {
-      const cn = cotasDeRol(rn, q, phys)
-      const cv = cotasDeRol(rv, q, phys)
-      if (cn.lo > cv.lo || cn.hi < cv.hi) return false
+    if (rn === undefined) {
+      viejosSinPar.push(rv)
+      continue
+    }
+    const c = comparaRoles(rn, rv, phys)
+    if (c === 'incomparable') return 'incomparable'
+    if (c === 'menos') menos = true
+    emparejados.add(baseRoleName(rn.name))
+  }
+
+  // Y después por estructura, para los que quedaron sueltos de los dos lados.
+  const nuevosSinPar = nuevo.roles.filter((r) => !emparejados.has(baseRoleName(r.name)))
+  const asignacion = emparejarPorEstructura(viejosSinPar, nuevosSinPar, phys)
+  const nuevosTomados = new Set<number>()
+  for (let i = 0; i < viejosSinPar.length; i += 1) {
+    const j = asignacion[i] ?? -1
+    if (j < 0) {
+      // No pedir el rol es no pedir nada de él: exige menos.
+      menos = true
+      continue
+    }
+    nuevosTomados.add(j)
+    if (comparaRoles(nuevosSinPar[j]!, viejosSinPar[i]!, phys) === 'menos') menos = true
+  }
+
+  const usados = new Set<string>(rolesUsados(nuevo))
+  for (let j = 0; j < nuevosSinPar.length; j += 1) {
+    if (nuevosTomados.has(j)) continue
+    const rn = nuevosSinPar[j]!
+    // Un rol de más solo cuenta como exigencia si pide algo o si el proceso lo usa.
+    // Decoración no es exigencia.
+    if (rn.where.length > 0 || usados.has(rn.name)) return 'incomparable'
+  }
+  return menos ? 'menos' : 'igual'
+}
+
+/** Los roles que algún efecto o algún rendimiento nombra. Los demás son adorno. */
+function rolesUsados(p: Process): readonly string[] {
+  const out: string[] = []
+  const push = (n: string | undefined): void => {
+    if (n !== undefined && !out.includes(n)) out.push(n)
+  }
+  for (const e of p.effects) {
+    switch (e.k) {
+      case 'drain':
+        push(e.on)
+        break
+      case 'drive':
+        push(e.on)
+        push(e.poweredBy?.from)
+        break
+      case 'transfer':
+        push(e.from)
+        push(e.to)
+        break
+      case 'couple':
+        push(e.on)
+        push(e.follows.of)
+        break
     }
   }
-  return true
+  for (const y of p.completion?.yields ?? []) {
+    switch (y.k) {
+      case 'transmute':
+      case 'split':
+        push(y.role)
+        break
+      case 'join':
+        push(y.a)
+        push(y.b)
+        push(y.via)
+        break
+      case 'drawFromStock':
+        push(y.of)
+        break
+    }
+  }
+  return out
 }
 
 // ─── Regla 5 · ciclos ────────────────────────────────────────────────────────
@@ -1313,21 +2631,128 @@ export interface Promesa {
   v: number
 }
 
+/**
+ * Los operadores que el parser reconoce, del más largo al más corto para que `>=`
+ * gane antes que `>`.
+ *
+ * ATAQUE QUE AGREGÓ LOS DOS ÚLTIMOS: «charlatán-unicode». El parser buscaba `'>='`
+ * y lo que no parsea «no promete nada», así que un `establishes` escrito con el
+ * signo `≥` se llevaba puestos LOS DOS controles de golpe —el rechazo
+ * `promesa-derivada` y el reparo `promesa-sin-respaldo`— y un proceso sin efectos
+ * ni rendimientos que promete alcance 16 volvía a entrar sin que la puerta dijera
+ * absolutamente nada.
+ */
+const OPERADORES: readonly { texto: string; op: QualityTest['op'] }[] = [
+  { texto: '>=', op: '>=' },
+  { texto: '<=', op: '<=' },
+  { texto: '≥', op: '>=' },
+  { texto: '≤', op: '<=' },
+  { texto: '>', op: '>' },
+  { texto: '<', op: '<' },
+]
+
 /** `'temperature>=400'` → una promesa. Lo que no parsea no promete nada. */
-export function promesasDe(p: Process, phys: Physics): readonly Promesa[] {
-  const out: Promesa[] = []
+function parsePromesa(s: string, phys: Physics): Promesa | undefined {
+  for (const { texto, op } of OPERADORES) {
+    const i = s.indexOf(texto)
+    if (i < 0) continue
+    const q = s.slice(0, i).trim() as QualityId
+    const v = Number(s.slice(i + texto.length).trim())
+    if (!Number.isFinite(v)) return undefined
+    if (spec(phys, q) === undefined) return undefined
+    return { q, op, v }
+  }
+  return undefined
+}
+
+/** Los trozos de `establishes`, ya separados por `&` y sin espacios de sobra. */
+function trozosDe(p: Process): readonly string[] {
+  const out: string[] = []
   for (const bruto of p.establishes) {
     for (const trozo of bruto.split('&')) {
       const s = trozo.trim()
-      if (s.length === 0) continue
-      const op = s.includes('>=') ? '>=' : s.includes('<=') ? '<=' : s.includes('>') ? '>' : s.includes('<') ? '<' : undefined
-      if (op === undefined) continue
-      const i = s.indexOf(op)
-      const q = s.slice(0, i).trim() as QualityId
-      const v = Number(s.slice(i + op.length).trim())
-      if (!Number.isFinite(v)) continue
-      if (spec(phys, q) === undefined) continue
-      out.push({ q, op, v })
+      if (s.length > 0) out.push(s)
+    }
+  }
+  return out
+}
+
+export function promesasDe(p: Process, phys: Physics): readonly Promesa[] {
+  const out: Promesa[] = []
+  for (const s of trozosDe(p)) {
+    const pr = parsePromesa(s, phys)
+    if (pr !== undefined) out.push(pr)
+  }
+  return out
+}
+
+/**
+ * Lo que el proceso promete, en forma CANÓNICA: lo que parsea se reescribe igual
+ * siempre, y lo que no parsea queda tal cual.
+ *
+ * ATAQUE QUE LA MOTIVÓ: «frotar-espaciado». La no-dominancia comparaba los strings
+ * crudos de `establishes` con `Array.includes`, así que escribir
+ * `'temperature >= 400'` en vez de `'temperature>=400'` volvía incomparable al clon
+ * barato de `friccion`. Era una contradicción interna medible: la puerta TIENE un
+ * parser de promesas, lo usa para la regla 5 y para `promesa-derivada`, y no lo
+ * usaba para la regla 4.
+ */
+function promesasCanonicas(p: Process, phys: Physics): readonly string[] {
+  const out: string[] = []
+  for (const s of trozosDe(p)) {
+    const pr = parsePromesa(s, phys)
+    out.push(pr === undefined ? s : `${pr.q}${pr.op}${String(pr.v)}`)
+  }
+  return out
+}
+
+/**
+ * Las promesas que el proceso HACE, no las que dice: las de `establishes` más las
+ * que se leen de los propios `drive`.
+ *
+ * ATAQUE QUE LA MOTIVÓ, y es de una línea: la regla 5 arma su grafo con
+ * `establishes`, que es un array de strings que escribe quien propone. Borrarlo
+ * deja al proceso sin aristas de salida, o sea fuera de todo ciclo, o sea
+ * invisible para la única regla que puede ver el lazo. El MISMO proceso que se
+ * rechaza citando «82.857 de stamina por vuelta» entra limpio si no promete nada
+ * por escrito, y en el mundo hace exactamente lo mismo.
+ *
+ * Un `drive` hacia arriba promete el `toward` y no hay nada que declarar: está en
+ * el efecto. Un `drive` hacia abajo promete el techo.
+ */
+function promesasEfectivas(p: Process, phys: Physics): readonly Promesa[] {
+  const out: Promesa[] = [...promesasDe(p, phys)]
+  const agregar = (pr: Promesa): void => {
+    if (!Number.isFinite(pr.v)) return
+    if (!out.some((x) => x.q === pr.q && x.op === pr.op && x.v === pr.v)) out.push(pr)
+  }
+  for (const e of p.effects) {
+    if (spec(phys, e.q) === undefined) continue
+    if (e.k === 'drive') {
+      if (!Number.isFinite(e.toward)) continue
+      const sube = e.toward > pisoEfectivo(p, e.q, e.on, phys)
+      agregar({ q: e.q, op: sube ? '>=' : '<=', v: e.toward })
+      continue
+    }
+    // ATAQUE QUE AGREGÓ LAS OTRAS DOS FORMAS: «el lazo invisible». La reparación
+    // anterior cerró esto para los `drive` —«borrar un string ya no borra una
+    // arista»— y lo dejó abierto para `transfer` y `couple`: un proceso que solo
+    // transfiere no tenía ninguna arista de salida, o sea que quedaba fuera de todo
+    // ciclo, o sea invisible para la ÚNICA regla que puede ver un lazo. Quien
+    // propone elegía si su proceso se dejaba mirar.
+    //
+    // Un `transfer` lleva la cualidad del origen al destino: lo que el origen
+    // garantiza puede aparecer del otro lado. Un `couple` escribe lo que dice
+    // `techoQueEscribeElAcople`. Las dos son sobre-aproximaciones, y para el grafo
+    // de la regla 5 eso es el lado barato: más aristas, más ciclos, más avisos.
+    if (e.k === 'transfer') {
+      const lo = cotasDeRol(rolDe(p, e.from), e.q, phys).lo
+      if (Number.isFinite(lo)) agregar({ q: e.q, op: '>=', v: lo })
+      continue
+    }
+    if (e.k === 'couple') {
+      const techo = techoQueEscribeElAcople(p, e, phys)
+      if (Number.isFinite(techo)) agregar({ q: e.q, op: '>=', v: techo })
     }
   }
   return out
@@ -1357,10 +2782,32 @@ function promesaSatisface(pr: Promesa, t: QualityTest): boolean {
  * un `QualityId`— y un grafo sin aristas no encuentra ningún ciclo, que es la
  * peor forma de pasar la regla 5.
  */
+/**
+ * Un test que TODO cuerpo cumple. `stamina >= 0` no lo habilita nadie: ya está.
+ *
+ * FALSO RECHAZO QUE LO MOTIVÓ: `comer` pide un actor con `stamina >= 0` —que es lo
+ * honesto: se come con hambre— y promete `stamina>=50`, así que se habilitaba A SÍ
+ * MISMO y la regla 5 le encontraba un ciclo de largo 1. Una arista tiene que
+ * significar que un proceso deja el mundo listo para otro; un test que se cumple
+ * siempre no lo deja listo, ya lo estaba.
+ */
+function testTrivial(t: QualityTest, phys: Physics): boolean {
+  const s = spec(phys, t.q)
+  if (s === undefined) return false
+  if (t.op === '>=' && t.v <= s.range[0]) return true
+  if (t.op === '<=' && t.v >= s.range[1]) return true
+  return false
+}
+
 function habilita(a: Process, b: Process, phys: Physics): boolean {
-  const promesas = promesasDe(a, phys)
+  const promesas = promesasEfectivas(a, phys)
   if (promesas.length === 0) return false
-  for (const r of b.roles) for (const t of r.where) for (const pr of promesas) if (promesaSatisface(pr, t)) return true
+  for (const r of b.roles) {
+    for (const t of r.where) {
+      if (testTrivial(t, phys)) continue
+      for (const pr of promesas) if (promesaSatisface(pr, t)) return true
+    }
+  }
   return false
 }
 
@@ -1531,6 +2978,7 @@ export function admit(p: Process, phys: Physics): Verdict {
   reglaEnvolventes(p, phys, razones)
   reglaCierreYCotas(p, phys, razones, advertencias)
   reglaRealizabilidad(p, phys, razones, advertencias)
+  reglaPromesas(p, phys, razones, advertencias)
   reglaNoDominancia(p, phys, razones)
   reglaCiclos(p, phys, razones, advertencias)
 
