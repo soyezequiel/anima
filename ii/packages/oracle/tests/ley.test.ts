@@ -67,6 +67,9 @@ describe('resolveChunk — la regla madre', () => {
     const s = crearStock({
       id: 'río-de-prueba',
       yields: 'pescado',
+      cx: 0,
+      cy: 0,
+      masaPorUnidad: fx(1),
       capacity: 20,
       perMillePorSegundo: 300,
       depth: fx(1.5),
@@ -210,6 +213,9 @@ describe('los stocks, con integración perezosa', () => {
     return crearStock({
       id: 'arroyo-1',
       yields: 'pescado',
+      cx: 0,
+      cy: 0,
+      masaPorUnidad: fx(1),
       capacity: 12,
       perMillePorSegundo: perMille,
       depth: fx(2),
@@ -293,6 +299,9 @@ describe('los stocks, con integración perezosa', () => {
     const s = crearStock({
       id: 'mar',
       yields: 'pescado',
+      cx: 0,
+      cy: 0,
+      masaPorUnidad: fx(1),
       capacity: CAPACIDAD_MAXIMA,
       perMillePorSegundo: PER_MILLE_MAXIMO,
       depth: fx(4),
@@ -304,7 +313,7 @@ describe('los stocks, con integración perezosa', () => {
   })
 
   it('`crearStock` rechaza lo que rompería la exactitud', () => {
-    const base = { id: 'x', yields: 'pescado', depth: fx(1), atSecond: seg(0) }
+    const base = { id: 'x', yields: 'pescado', cx: 0, cy: 0, masaPorUnidad: fx(1), depth: fx(1), atSecond: seg(0) }
     expect(() => crearStock({ ...base, capacity: -1, perMillePorSegundo: 1, amount: 0 })).toThrow(/capacidad/)
     expect(() => crearStock({ ...base, capacity: CAPACIDAD_MAXIMA + 1, perMillePorSegundo: 1, amount: 0 })).toThrow(/capacidad/)
     expect(() => crearStock({ ...base, capacity: 5, perMillePorSegundo: 1, amount: 6 })).toThrow(/cantidad/)

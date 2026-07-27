@@ -69,8 +69,10 @@
 
 import { fx, type Physics, type Process } from '@anima/physics'
 
+import { CANTERA_DEL_MUNDO } from './bioma.js'
 import {
   alturaDeAgua,
+  canteraDeChunk,
   CELDAS_DE_LADO,
   hayAguaFranca,
   indiceLocal,
@@ -277,6 +279,14 @@ export function decretarChunk(
     acuatico: true,
     ancla,
     sueltas: sembrablesDelChunk(base.sueltas, CELDAS_DE_LADO, origen, phys),
+    // De dónde puede sacar el dios lo que siembre: lo que ALGÚN bioma deja
+    // tirado, y no el catálogo entero. Sin este límite la garantía dejaba hebras
+    // de agua y plumas en la orilla — ver `CANTERA_DEL_MUNDO`.
+    cantera: CANTERA_DEL_MUNDO,
+    // Y lo de acá desempata entre las candidatas que valen lo mismo. Se calcula
+    // recién ahora, después de saber que hay orilla: son nueve climas más nueve
+    // tablas, y en un chunk sin orilla no se usarían para nada.
+    canteraLocal: canteraDeChunk(seed, cx, cy),
   }
   const nuevas: readonly SueltaSembrable[] = ensureSolvable(
     sembrable,

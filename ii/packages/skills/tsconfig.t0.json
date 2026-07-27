@@ -1,0 +1,16 @@
+{
+  // TANDA 0 — el ejemplo canónico del documento de arquitectura, que vive suelto
+  // en `borradores/` y no en una tanda.
+  //
+  // Existe desde el Hito 4 porque hasta entonces NADIE lo compilaba: las tandas
+  // t1..t4 incluían `borradores/tN` y el arnés preguntaba
+  // `conError.has('00-pescar-con-aparejo.ts')` sobre un archivo que ningún tsc
+  // había mirado. El assert «el ejemplo canónico compila» estaba trivialmente
+  // verde, que es la peor clase de verde: el que se pone cuando no se mide nada.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["borradores/*.ts"]
+}

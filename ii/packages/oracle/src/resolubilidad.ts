@@ -179,6 +179,36 @@ export interface ChunkSembrable {
   readonly ancla: Punto
   /** Lo que hay tirado. `ensureSolvable` agrega acá lo que falte. */
   readonly sueltas: SueltaSembrable[]
+  /**
+   * DE DÓNDE PUEDE SACAR EL DIOS lo que siembra. Todo lo que no esté acá no cae
+   * del cielo, por más que llenara el rol.
+   *
+   * Antes esto no existía y la garantía buscaba en el catálogo ENTERO. Medido en
+   * 1681 chunks, dejaba en la orilla `agua/hebra`, `savia/hebra`, `pluma/hebra`,
+   * `piel/hebra` y `tendon/hebra`: un hilo de agua atado a una vara, plumas sin
+   * pájaro, tendones sin animal. No rompía ningún invariante —rompía la
+   * coherencia que el propio paquete ya verifica para `scatter`: **lo que está
+   * tirado tiene que ser de lo que el lugar está hecho**—, y el mundo se volvía
+   * una escenografía a la que le podés encontrar cualquier cosa si mirás bien.
+   *
+   * Quien decreta pasa acá `CANTERA_DEL_MUNDO`: lo que ALGÚN bioma deja tirado.
+   * No es una lista escrita a mano ni un tag prohibido; es la tabla de biomas
+   * mirada desde otro lado, y crece sola cuando la tabla crece.
+   */
+  readonly cantera: readonly SubstanceId[]
+  /**
+   * Y lo de ACÁ, que no restringe: DESEMPATA.
+   *
+   * Entre las candidatas que empatan en cuánto mejoran el rol, si alguna es de lo
+   * que este lugar y los de al lado dan, el dado elige sólo entre ésas. Es la
+   * frase «con la materia prima que hay en el lugar» aplicada donde no cuesta
+   * nada: no puede hacer que la garantía falle —si ninguna es de acá, se elige
+   * entre todas las empatadas igual— y hace que una orilla de pantano tienda a
+   * tener junco y no una raíz dura de estepa.
+   *
+   * Vacío es legítimo y quiere decir «no desempates».
+   */
+  readonly canteraLocal: readonly SubstanceId[]
 }
 
 /** Un rol de un proceso núcleo que hoy nadie puede llenar con lo que hay cerca. */
@@ -445,7 +475,7 @@ function paraArmar(cerca: readonly SueltaSembrable[], sembradas: readonly Suelta
 }
 
 /**
- * Las sustancias del catálogo, en el orden del catálogo.
+ * Las sustancias que este lugar puede recibir, en el orden del CATÁLOGO.
  *
  * El orden de un `Map` de JS es el de alta, o sea que es el mismo en dos
  * partidas que llegaron al mismo catálogo por el mismo camino. Para las que
@@ -453,9 +483,16 @@ function paraArmar(cerca: readonly SueltaSembrable[], sembradas: readonly Suelta
  * mismo, y por eso la elección entre candidatas se hace con el dado y no con
  * «la primera»: con «la primera», dos partidas con el mismo chunk y distinta
  * historia de altas sembrarían cosas distintas.
+ *
+ * Recorrer el catálogo y filtrar por la cantera —y no recorrer la cantera— es lo
+ * que conserva ese argumento intacto: el orden en que se ofrecen las candidatas
+ * sigue siendo el del catálogo, y la cantera entra sólo como pertenencia. Una
+ * sustancia de la cantera que el catálogo no conoce simplemente no aparece: eso
+ * pasa si alguna vez la tabla de biomas nombra algo que la física no tiene, y
+ * `bioma.ts` ya lo rechaza al cargar.
  */
-function catalogo(phys: Physics): readonly SubstanceId[] {
-  return [...phys.substances.keys()]
+function candidatasDelLugar(phys: Physics, cantera: ReadonlySet<SubstanceId>): readonly SubstanceId[] {
+  return [...phys.substances.keys()].filter((s) => cantera.has(s))
 }
 
 /**
@@ -463,7 +500,8 @@ function catalogo(phys: Physics): readonly SubstanceId[] {
  *
  * Devuelve las candidatas que MÁS lo mejoran: las que lo cierran si alguna lo
  * cierra, y si ninguna, las que suben el puntaje parcial. Empatadas, todas, para
- * que el dado elija entre iguales y el mundo tenga variedad sin tener sesgo.
+ * que el dado elija entre iguales y el mundo tenga variedad sin tener sesgo —
+ * salvo que alguna sea de acá, y entonces gana lo de acá (ver `canteraLocal`).
  */
 function candidatasPara(
   r: Role,
@@ -471,10 +509,12 @@ function candidatasPara(
   sembradas: readonly SueltaSembrable[],
   ancla: Punto,
   phys: Physics,
+  cantera: ReadonlySet<SubstanceId>,
+  local: ReadonlySet<SubstanceId>,
 ): { readonly puntaje: number; readonly opciones: readonly Candidata[] } {
   let mejor = puntajeDeRol(armables(paraArmar(cerca, sembradas), phys), r, phys)
   let opciones: Candidata[] = []
-  for (const substance of catalogo(phys)) {
+  for (const substance of candidatasDelLugar(phys, cantera)) {
     for (const f of FORMAS_SEMBRABLES) {
       // La tentativa se prueba EN LA ORILLA y se siembra en algún punto a radio
       // 2 de ella. Que eso no cambie el juicio es justamente lo que significa
@@ -493,7 +533,11 @@ function candidatasPara(
       }
     }
   }
-  return { puntaje: mejor, opciones }
+  // El desempate por el lugar. Filtra sobre las EMPATADAS, así que no puede
+  // cambiar el puntaje ni hacer que la garantía deje de cerrar: en el peor caso
+  // no hay ninguna de acá y quedan todas, que es exactamente lo de antes.
+  const deAca = opciones.filter((o) => local.has(o.substance))
+  return { puntaje: mejor, opciones: deAca.length > 0 ? deAca : opciones }
 }
 
 /** Un punto a mano de la orilla. Dos tiradas del dado, en este orden: x, y. */
@@ -540,6 +584,8 @@ export function ensureSolvable(
   // el lugar no tiene.
   if (!chunk.acuatico) return []
 
+  const cantera = new Set(chunk.cantera)
+  const local = new Set(chunk.canteraLocal)
   const sembradas: SueltaSembrable[] = []
   for (let vuelta = 0; ; vuelta++) {
     const faltan = faltantesParaResolver(chunk, core, phys)
@@ -555,10 +601,10 @@ export function ensureSolvable(
 
     const cerca = sueltasEnRadio(chunk)
     const antes = puntajeDeRol(armables(paraArmar(cerca, sembradas), phys), rol, phys)
-    const { puntaje, opciones } = candidatasPara(rol, cerca, sembradas, chunk.ancla, phys)
+    const { puntaje, opciones } = candidatasPara(rol, cerca, sembradas, chunk.ancla, phys, cantera, local)
     if (opciones.length === 0 || puntaje <= antes) {
       throw new Error(
-        `en el catálogo no hay con qué llenar ${objetivo.process}.${objetivo.role} en el chunk ${String(chunk.cx)},${String(chunk.cy)}: ninguna sustancia mejora lo que ya hay`,
+        `en la cantera (${String(cantera.size)} sustancias) no hay con qué llenar ${objetivo.process}.${objetivo.role} en el chunk ${String(chunk.cx)},${String(chunk.cy)}: ninguna mejora lo que ya hay`,
       )
     }
     const elegida = opciones[diosEntero(rng, 0, opciones.length - 1)]!

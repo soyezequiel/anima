@@ -23,6 +23,7 @@ import type { Stock } from '../src/ley.js'
 import { crearStock, population } from '../src/ley.js'
 import type { WorldRng } from '../src/pregunta.js'
 import { mulberry32 } from '../src/pregunta.js'
+import { LibroCalorico } from '../src/presupuesto.js'
 
 const PHYS = buildSeedPhysics()
 
@@ -41,6 +42,20 @@ const CANA = unir(VARA, undefined, HEBRA, PHYS, 'cana')!
  * mundo tenga el suyo, el molde es éste, y el `as` vive ahí y en ningún otro
  * lado.
  */
+/**
+ * La semilla de los libros calóricos de este archivo. El chunk (0,0) de esta
+ * semilla tiene un techo de 1776 calorías —584 pescados de un kilo—, o sea que
+ * ningún test de acá se topa con el techo por accidente: los que lo prueban se
+ * lo buscan a propósito y están en `presupuesto.test.ts`.
+ */
+const SEMILLA = 20260727n
+
+/** Un libro calórico limpio. Uno por mundo: el presupuesto es estado, y
+ *  compartirlo entre dos tests los haría depender del orden. */
+function libro(): LibroCalorico {
+  return new LibroCalorico(SEMILLA)
+}
+
 function mundo(valores: readonly number[]): { w: MundoConDado; tiradas: () => number } {
   let i = 0
   const f = ((): number => {
@@ -48,13 +63,16 @@ function mundo(valores: readonly number[]): { w: MundoConDado; tiradas: () => nu
     i += 1
     return v
   }) as WorldRng
-  return { w: { phys: PHYS, rng: f }, tiradas: () => i }
+  return { w: { phys: PHYS, rng: f, calorias: libro() }, tiradas: () => i }
 }
 
 function stock(p: Partial<Stock> = {}): Stock {
   return crearStock({
     id: 'pozo',
     yields: 'pescado',
+    cx: 0,
+    cy: 0,
+    masaPorUnidad: fx(1),
     capacity: 10,
     perMillePorSegundo: 0,
     depth: fx(2),
@@ -88,7 +106,7 @@ describe('el dado es del mundo, y pensar no lo toca', () => {
   it('dos mundos gemelos sacan lo mismo', () => {
     const secuencia = (semilla: number): (string | null)[] => {
       const base = mulberry32(semilla)
-      const w: MundoConDado = { phys: PHYS, rng: (() => base()) as WorldRng }
+      const w: MundoConDado = { phys: PHYS, rng: (() => base()) as WorldRng, calorias: libro() }
       const s = stock({ amount: 10, perMillePorSegundo: 100 })
       const salidas: (string | null)[] = []
       for (let t = 0; t < 50; t++) salidas.push(draw(w, s, CANA, seg(t)).yields)

@@ -56,7 +56,7 @@ import {
   type Bioma,
   type Clima,
 } from './bioma.js'
-import { diosElegir, diosEntero, rngFor, type DiosRng, type Seed, type StockId } from './pregunta.js'
+import { diosElegir, diosEntero, keyOf, rngFor, type DiosRng, type Seed, type StockId } from './pregunta.js'
 
 // ─── La geometría del chunk ─────────────────────────────────────────────────
 
@@ -401,6 +401,52 @@ export function resolveChunk(seed: Seed, cx: number, cy: number): ChunkFacts {
   }
 }
 
+/**
+ * EL TECHO DE UN CHUNK SIN DECRETAR EL CHUNK.
+ *
+ * Es el mismo número que `resolveChunk(...).presupuestoCalorico` —la misma
+ * llamada a `caloricBudget`, no una segunda cuenta— por el camino barato: tres
+ * llamadas a ruido y una tabla, sin las 256 celdas de terreno ni lo suelto.
+ *
+ * Existe porque el `LibroCalorico` tiene que preguntar el techo de cualquier
+ * chunk que alguien toque, y decretar el chunk entero para leer un entero sería
+ * pagar mil veces por una tabla. Que las dos formas coinciden **no es un
+ * comentario**: hay un barrido que las compara chunk por chunk, y si algún día
+ * `resolveChunk` empezara a mover el techo con algo que no sea el clima, falla.
+ */
+export function presupuestoCaloricoDeChunk(seed: Seed, cx: number, cy: number): number {
+  const clima = climaDe(seed, cx, cy)
+  return caloricBudget(biomaPorClima(clima), clima.fertilidad)
+}
+
+/**
+ * DE QUÉ ESTÁ HECHO ESTE LUGAR Y LOS DE AL LADO: lo que este chunk y sus ocho
+ * vecinos dejan tirado, sin repetir.
+ *
+ * No es una restricción sino una PREFERENCIA, y por eso vive acá y no en la
+ * tabla: cuando la garantía de resolubilidad tiene que sembrar algo y hay varias
+ * candidatas empatadas, el dado elige entre las de acá si hay alguna. La
+ * restricción dura —qué puede caer del cielo en cualquier lado— es
+ * `CANTERA_DEL_MUNDO`, y es de la tabla de biomas.
+ *
+ * Se miran los NUEVE chunks y no sólo éste porque la orilla es casi siempre una
+ * frontera: el 88,8% de los chunks de `agua-dulce` está enteramente inundado, o
+ * sea que quien pesca está parado en el chunk seco de al lado. «El lugar» es la
+ * orilla, y la orilla es de los dos.
+ *
+ * El orden es el del barrido —fijo—, pero además da igual: quien elige recorre
+ * el catálogo de la física y usa esto sólo como pertenencia.
+ */
+export function canteraDeChunk(seed: Seed, cx: number, cy: number): readonly SubstanceId[] {
+  const vistas = new Set<SubstanceId>()
+  for (let dy = -1; dy <= 1; dy++) {
+    for (let dx = -1; dx <= 1; dx++) {
+      for (const s of biomaPorClima(climaDe(seed, cx + dx, cy + dy)).siembra) vistas.add(s.substance)
+    }
+  }
+  return [...vistas]
+}
+
 // ─── Los stocks, con integración perezosa ───────────────────────────────────
 
 /** Techo de una población. Con la cota, `capacidad · 10⁹` sigue siendo exacto en
@@ -418,16 +464,48 @@ export const PER_MILLE_MAXIMO = 1_000_000
 export const SEGUNDOS_MAXIMOS = 1_000_000_000
 
 /**
+ * Cuánto puede pesar UNA pieza de lo que sale de un stock, como `Fixed`. Una
+ * tonelada: absurdo para un pescado y suficiente como cota. Existe porque de esta
+ * masa sale la cuenta de calorías que se le cobra al chunk, y una masa sin cota
+ * es un techo calórico que se puede saltar escribiendo un número grande.
+ */
+export const MASA_MAXIMA_DE_UNA_PIEZA: Fixed = fx(1000)
+
+/**
  * Una población extraíble.
  *
  * `amount` y `atSecond` son mutables y van juntos: son UNA marca —«tenía tanto en
  * tal momento»— y moverlos por separado es corromper el stock. Todo lo demás es
  * `readonly` porque es decreto: la capacidad y la tasa las fijó el dios cuando
  * decretó el cuerpo de agua, y no se negocian después.
+ *
+ * ─── Por qué un stock sabe de qué chunk es, y cuánto pesa lo que da ─────────
+ *
+ * Porque sin esas dos cosas **el techo calórico del chunk no se puede cobrar**, y
+ * un techo que no se cobra es un comentario. Estaba escrito así:
+ *
+ *   «`Stock` no sabe de qué chunk es y `draw` devuelve un `SubstanceId` sin
+ *    masa, así que hoy ni siquiera se puede calcular cuántas calorías entregó
+ *    un chunk.»
+ *
+ * `cx`/`cy` dicen **quién paga**. Un cuerpo de agua puede cruzar varios chunks;
+ * el que paga es UNO solo —el del ancla del cuerpo, que es el que quien decreta
+ * el stock elige y escribe acá— y no se reparte. Repartir sería una cuenta más
+ * para equivocarse y además falsa: la co-presencia de comida es del lugar donde
+ * se pesca, no del promedio de un lago.
+ *
+ * `masaPorUnidad` dice **cuánto pesa lo que sale**, y de ahí salen las calorías
+ * por la cualidad derivada de la física (`nutrition · mass · digestibility`), sin
+ * una segunda fórmula en este paquete.
  */
 export interface Stock {
   readonly id: StockId
   readonly yields: SubstanceId
+  /** El chunk que paga las calorías de lo que salga de acá. */
+  readonly cx: number
+  readonly cy: number
+  /** La masa de UNA pieza, en kilos como `Fixed`. */
+  readonly masaPorUnidad: Fixed
   readonly capacity: number
   /** Milésimas de individuo por SEGUNDO de mundo (ADR II-0008). Por segundo y no
    *  por tick: con la tasa por tick, bajar la frecuencia para que el juego
@@ -440,8 +518,8 @@ export interface Stock {
 }
 
 /** La única puerta para fabricar un stock: valida los rangos de los que depende
- *  la exactitud de `population`. Sin ella, cada llamador se inventaría su propio
- *  objeto y las cotas serían un comentario. */
+ *  la exactitud de `population` y la cobrabilidad del techo calórico. Sin ella,
+ *  cada llamador se inventaría su propio objeto y las cotas serían un comentario. */
 export function crearStock(s: Stock): Stock {
   if (!Number.isInteger(s.capacity) || s.capacity < 0 || s.capacity > CAPACIDAD_MAXIMA) {
     throw new RangeError(`capacidad inválida: ${String(s.capacity)}`)
@@ -451,6 +529,15 @@ export function crearStock(s: Stock): Stock {
   }
   if (!Number.isInteger(s.perMillePorSegundo) || s.perMillePorSegundo < 0 || s.perMillePorSegundo > PER_MILLE_MAXIMO) {
     throw new RangeError(`tasa de reposición inválida: ${String(s.perMillePorSegundo)}`)
+  }
+  // La cota de las coordenadas es la de la clave del dios, y se verifica
+  // llamándola: dos cotas para lo mismo divergen, y un stock cuyo chunk no se
+  // puede nombrar es un stock que no le puede pagar a nadie.
+  keyOf({ k: 'chunk', cx: s.cx, cy: s.cy })
+  if (!Number.isInteger(s.masaPorUnidad) || s.masaPorUnidad <= 0 || s.masaPorUnidad > MASA_MAXIMA_DE_UNA_PIEZA) {
+    throw new RangeError(
+      `masa por unidad inválida: ${String(s.masaPorUnidad)} (un Fixed en (0, ${String(MASA_MAXIMA_DE_UNA_PIEZA)}])`,
+    )
   }
   microsDe(s.atSecond)
   return s
@@ -509,6 +596,13 @@ export function population(s: Stock, t: Duracion): number {
  * Devuelve `null` si no había nada. Y la marca se re-ancla en `t` SIEMPRE que se
  * saque algo: sin re-anclar, la reposición se seguiría contando desde la marca
  * vieja y el río daría más de lo que puede.
+ *
+ * **Y no le cobra al chunk.** El techo calórico se cobra en `draw`, que es la
+ * única puerta por la que la materia sale del mundo hacia las manos de alguien:
+ * acá no hay `Physics` con la que calcular calorías ni libro al que cobrarle, y
+ * meterlos sería mover la economía a la contabilidad. Queda anotado como la
+ * costura que hay que respetar: **quien llame a `retirarUno` sin pasar por
+ * `draw` está sacando comida sin pagarla**, y no hay tipo que lo impida.
  */
 export function retirarUno(s: Stock, t: Duracion): SubstanceId | null {
   const pob = population(s, t)

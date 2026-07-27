@@ -124,6 +124,10 @@ export type Contradiction =
   | { readonly k: 'estado-fuera-del-log'; readonly key: string; readonly por: string }
   | { readonly k: 'sin-forma-canonica'; readonly que: string }
   | { readonly k: 'testigo-borrado'; readonly key: string }
+  // El techo calórico del chunk, pasado. Vive en esta unión y no en un error
+  // propio porque ES la misma clase de falla: el dios prometió que un lugar no
+  // podía dar más de tanto, y dio más. Lo lleva `LibroCalorico`.
+  | { readonly k: 'techo-calorico'; readonly chunk: string; readonly techo: number; readonly aportado: number }
 
 function describe(c: Contradiction): string {
   switch (c.k) {
@@ -145,6 +149,8 @@ function describe(c: Contradiction): string {
       return `una respuesta sin forma canónica: ${c.que}`
     case 'testigo-borrado':
       return `se quiso borrar «${c.key}», que tiene testigo`
+    case 'techo-calorico':
+      return `«${c.chunk}» entregó ${String(c.aportado)} milicalorías y su techo son ${String(c.techo)}`
   }
 }
 

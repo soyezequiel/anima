@@ -38,13 +38,13 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 ## Estado
 
 **Hito 0 CERRADO, Hito 1 construido con la puerta cerrada, Hito 2 con tres de
-sus cuatro criterios, Hito 3 con sus SEIS, y el Hito 4 desbloqueado.**
+sus cuatro criterios, Hito 3 con sus SEIS, y el Hito 4 con sus SEIS.**
 
 | | |
 |---|---|
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
-| [Huecos medidos](docs/huecos-medidos.md) | 3 pases: 112 → 71 → **64** errores · 5 → 6 → **10** expresables |
+| [Huecos medidos](docs/huecos-medidos.md) | 4 pases: 112 → 71 → 64 (a mano) → **84** (emitido) |
 | [Decisiones](docs/decisions/) | 8 ADRs propios (II-0001 a II-0008) |
 
 ### Hito 0 — el banco · las cuatro piezas medidas, ninguna mató el plan
@@ -159,8 +159,8 @@ pnpm --filter @anima/world banco   # los números de rendimiento, medidos
 
 ### Hito 3 — `@anima/oracle` · [`docs/hito-3-el-dios.md`](docs/hito-3-el-dios.md)
 
-El dios perezoso: **210 tests verdes**, typecheck limpio, y `pnpm ii:test` entero
-en **1072**. Los **seis** criterios pasan, medidos.
+El dios perezoso: **239 tests verdes**, typecheck limpio, y `pnpm ii:test` entero
+en **1101**. Los **seis** criterios pasan, medidos.
 
 | Criterio | | Medido |
 |---|---|---|
@@ -185,14 +185,120 @@ la corona seca alrededor de cada lago, que es donde se pesca. Ahora **la dispara
 el agua y no el bioma**, y mira del otro lado del borde del chunk: de las 788
 orillas medidas, **547 (69%) no son de bioma acuático**.
 
-Quedan **3 `it.fails`** con su porqué al lado, y el primero es el que importa:
-**el techo calórico del chunk no lo lee nadie** — un pozo entrega 3,1× el
-presupuesto en una hora de mundo, y hoy ni siquiera se puede calcular cuánto
-entregó un chunk porque `Stock` no sabe de qué chunk es y `draw` devuelve una
-sustancia sin masa.
-
 ```bash
 pnpm --filter @anima/oracle test tests/ataque-al-dios.test.ts
+```
+
+#### El riesgo 4, cerrado: **el techo calórico se cobra** · [`presupuesto.ts`](packages/oracle/src/presupuesto.ts)
+
+`caloricBudget` era una función pura de la semilla que **no leía nadie**: el
+riesgo 4 del documento («el dios es el agujero de la conservación») hecho código
+muerto. Faltaban tres piezas y están las tres — el stock nombra su chunk, lo que
+sale tiene masa, y hay un acumulado por chunk contra el que `draw` compara antes
+de entregar. `MundoConDado.calorias` es **obligatorio**, así que la puerta la
+cierra `tsc`: no se puede escribir una extracción sin decir contra qué
+presupuesto se cobra.
+
+| | antes | ahora |
+|---|---|---|
+| un pozo, una hora de mundo, chunk de techo 1776 cal | 5490 cal · **3,1× el techo** | 1775,36 cal · **1,00×** |
+| lo que siembra la garantía en 1681 chunks | `agua`, `savia`, `pluma`, `piel`, `tendon`… | sólo lo que **algún bioma deja tirado** |
+
+La garantía dejaba hebras de agua atadas a una vara. No hizo falta una lista de
+tags prohibidos: la lista de qué puede haber tirado **ya existía** y es la tabla
+de biomas (`CANTERA_DEL_MUNDO` = la unión de las `siembra`). El agua no está ahí
+por la misma razón por la que `scatter` nunca la deja tirada. Y lo de cada lugar
+**desempata** entre las candidatas empatadas, sin restringir. Las 788 orillas
+siguen cerrando.
+
+Quedan **2 `it.fails`**, cada uno con su porqué al lado:
+
+- **`MISMA CLAVE, DOS TIPOS`** — `ask<T>` castea el camino cacheado; cerrarlo ata
+  el ledger a las formas de respuesta de los otros módulos. Decisión consciente
+  del autor del ledger, anotada con el caso adelante.
+- **la energía neta sin trabajo** — ver abajo.
+
+#### El test económico · 100 partidas × 20.000 ticks · **corre, y el criterio NO pasa**
+
+El documento pide «100 partidas de 20.000 ticks donde la energía neta acumulada
+de la criatura tiene que ser **negativa sin trabajo**». Corre a esa escala (1000 s
+de mundo por partida a 20 Hz, dos variantes de las cien, 4,5 s de reloj) y **da
+positiva en las doscientas**.
+
+| por partida | ingreso | costo | neto |
+|---|---:|---:|---:|
+| **afortunada** (dado perfecto, el pozo máximo que el paquete deja escribir) | 4042,3 | 243,6 | **+3798,7** |
+| **común** (dado de verdad, el arroyo de los demás tests) | 594,1 | 200,0 | **+394,1** |
+
+**Y lo que falla no es el techo**: en las 200 partidas ningún chunk pasó su
+presupuesto —314 chunks cobrados, el más exprimido al **100,00%** de su techo— y
+el techo se recalcula desde la semilla para juzgarlo, no se le pregunta al libro.
+Lo que falla es la calibración, y se ve en una división: un chunk acuático da del
+orden de 1800 calorías y vivir los 1000 segundos cuesta 200, o sea que **un solo
+chunk paga nueve vidas**. El punto de equilibrio está medido: `COSTO_VIVIR`
+tendría que ser **3,8× más caro** para la criatura común y **20,2×** para la
+afortunada. Es una perilla de diseño y pide un ADR; elegir el número adentro de
+un test sería calibrar el mundo desde el arnés.
+
+```bash
+pnpm --filter @anima/oracle test tests/presupuesto.test.ts
+```
+
+### Hito 4 — `@anima/skills` · [`docs/hito-4-el-sandbox.md`](docs/hito-4-el-sandbox.md)
+
+El sandbox: **186 tests verdes**, typecheck limpio, y los **seis** criterios
+medidos. Superficie emitida, transformer de combustible, aislamiento con sombras
+y escáner, ejecutor de generadores, y quince habilidades innatas escritas a mano
+en el mismo TypeScript que va a escribir el modelo.
+
+**El momento que este hito existía para tener: `skill-api.d.ts` dejó de
+escribirse a mano.** Ahora lo emite `tsc --declaration` del código real, que
+importa `@anima/physics`, `@anima/world` y `@anima/oracle`. Los 28 borradores
+vueltos a correr contra esa superficie miden **cuánto se había separado de la
+realidad un contrato de tipos mantenido a mano**:
+
+| | errores | archivos con error | compilan limpio |
+|---|---:|---:|---:|
+| `.d.ts` **a mano** | 64 | 18 | 10 |
+| `.d.ts` **emitido** | **84** | **25** | **3** |
+
+**+20, y ninguno es una capacidad perdida**: 9 sitios donde `'wet'` buscaba un
+CUERPO por una cualidad de CELDA, 4 de un `hunger` que la física no tiene, 3 de
+`recall()` filtrando lugares por la masa de un lugar, 2 de `'stock'`, 2 de contar
+ticks donde el mundo cuenta segundos. Cada uno es una mentira que la superficie a
+mano sostenía. Y el **ejemplo canónico del documento de arquitectura no compila**:
+busca agua con `see()`. Se deja rojo — lo que hay que corregir es el documento.
+
+| Criterio | | Medido |
+|---|---|---|
+| las quince corren dentro del presupuesto | ✔ | peor paso **0,35 ms = 0,70%** del tick · margen 14× |
+| un `while(true)` plantado se corta sin caer un frame | ✔ | **0,65 ms = 1,3%** del cuadro |
+| una recursión infinita también | ✔ | **1,2 ms**, con su fase · y con un número nuevo |
+| corrida dos veces, el mismo hash | ✔ | `6534ed50d8ef3c4c`, y otro si cambia |
+| interrumpida por un guardado, converge | ✔ | llega, y gasta **5 de 8** reintentos en vez de 8 |
+| mal tipada, rechazada en <250 ms sin viaje | ✔ | peor de seis: **19,6 ms** · margen 13× |
+
+Dos hallazgos que sólo aparecen corriendo:
+
+- **Once de las quince morían por combustible** en la primera llamada a un
+  ayudante: el contador vive en el alcance de cada `mount()`, así que **cada
+  módulo tiene su tanque** y el ejecutor recarga uno solo. Desde afuera se ve
+  como «se pasó del presupuesto», que manda a optimizar código que no gastó nada.
+  Reparado con `unirCeldas`.
+- **Con el tanque de producción, la recursión infinita la mata la PILA y no el
+  combustible**: V8 aguanta ~10.350 marcos instrumentados y el tanque son 200.000
+  unidades, o sea 19×. El corte no se pierde nunca; lo que se perdía era el
+  diagnóstico, y ahora el ejecutor lo nombra.
+
+El [ataque al sandbox](docs/hito-4-el-sandbox.md#3-el-ataque-al-aislamiento) son
+**27 tests**, y **seis se cuelan** —cada uno con `it.fails` y su reparación—. El
+peor: una habilidad puede firmar una intención con el `by` de otro actor, porque
+el ejecutor no estampa autoría. Es la puerta de atrás de la cuarentena y hay que
+cerrarla antes del Hito 5.
+
+```bash
+pnpm --filter @anima/skills test tests/hito-4-el-criterio.test.ts
+pnpm --filter @anima/skills test tests/ataque-al-sandbox.test.ts
 ```
 
 ### La puerta, cerrada · [`docs/la-puerta.md`](docs/la-puerta.md)

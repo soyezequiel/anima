@@ -10,7 +10,13 @@
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "banco": "node banco/typecheck.mjs",
-    "combustible": "node banco/combustible.mjs"
+    "combustible": "node banco/combustible.mjs",
+    "emitir-api": "node banco/emitir-skill-api.mjs"
+  },
+  "dependencies": {
+    "@anima/oracle": "workspace:*",
+    "@anima/physics": "workspace:*",
+    "@anima/world": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

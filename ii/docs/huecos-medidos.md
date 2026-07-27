@@ -5,32 +5,58 @@ escribieron los agentes al intentar expresar 20 capacidades contra la superficie
 declarada en
 [`../packages/skills/src/skill-api.d.ts`](../packages/skills/src/skill-api.d.ts).
 
+Desde el Hito 4 ese archivo **se emite** de `src/tipos.ts` + `src/ctx.ts` con
+`tsc --declaration`, así que ya no se puede quedar viejo: si la física suma una
+cualidad, la superficie la tiene sin que nadie la copie.
+
 Reproducible desde la raíz del repo:
 
 ```bash
-node node_modules/typescript/bin/tsc -p ii/packages/skills/tsconfig.t1.json
+node node_modules/typescript/bin/tsc -p ii/packages/skills/tsconfig.t0.json
 ```
 
-(y lo mismo para `t2`, `t3`, `t4`.)
+(y lo mismo para `t1`, `t2`, `t3`, `t4`. La `t0` es el ejemplo canónico del
+documento de arquitectura.) O de una vez, con el trinquete y el reporte al día:
+
+```bash
+pnpm --filter @anima/skills test tests/arnes.test.ts
+```
 
 Evidencia cruda: [`huecos-medidos-pase1.json`](huecos-medidos-pase1.json) y
 [`huecos-medidos-pase2.json`](huecos-medidos-pase2.json).
 
 ---
 
-## Las tres pasadas
+## Las cuatro pasadas
 
-| | Pase 1 | Pase 2 | Pase 3 |
-|---|---|---|---|
-| Errores de tipos | **112** | **71** | **64** |
-| Borradores que fallan | 23 / 28 | 22 / 28 | **18 / 28** |
-| Compilan limpio | 5 | 6 | **10** |
+| | Pase 1 | Pase 2 | Pase 3 | **Pase 4 — Hito 4** |
+|---|---|---|---|---|
+| | a mano | a mano | a mano | **EMITIDO del código real** |
+| Errores de tipos | **112** | **71** | **64** | **84** |
+| Borradores que fallan | 23 / 28 | 22 / 28 | **18 / 28** | 25 / 28 |
+| Compilan limpio | 5 | 6 | **10** | 3 |
 
 El pase 3 es el interesante: bajó siete errores netos, pero **quince de los 64
 que quedan son nuevos** — existen solo porque los roles tipados (`RolesOf<P>`)
 empezaron a rechazar llamadas malformadas que antes pasaban. Descontando eso,
 el pase 3 eliminó 22 errores reales y **cuadruplicó** los borradores expresables
 respecto del pase 1.
+
+**El pase 4 es de otra especie, y por eso la columna dice de dónde sale cada
+número.** Los tres primeros comparan una superficie escrita a mano contra sí
+misma; el cuarto la reemplaza por la que **emite `tsc --declaration` del código
+real** — el que importa `@anima/physics`, `@anima/world` y `@anima/oracle`. Sube
+20 y pierde 7 borradores expresables, y **ninguno de los 20 es una capacidad
+perdida**: son sitios donde la superficie a mano dejaba escribir algo que el
+mundo no puede hacer. El desglose completo, con las seis causas y los dos bugs
+que el propio arnés tenía, está en
+[`hito-4-el-sandbox.md`](hito-4-el-sandbox.md#1-el-momento-los-28-borradores-contra-la-superficie-emitida-del-código-real)
+y el porqué de cada uno viaja con el trinquete, en
+[`tests/linea-base.json`](../packages/skills/tests/linea-base.json).
+
+Desde el pase 4 el corpus se compila con **cinco** tandas y no cuatro: la `t0` es
+el ejemplo canónico del documento de arquitectura, que vive suelto en
+`borradores/` y que hasta entonces **no compilaba nadie**.
 
 ### La evidencia de que el árbitro estaba apagado
 

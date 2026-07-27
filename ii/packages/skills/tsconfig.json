@@ -1,12 +1,20 @@
 {
+  // El typecheck DEL PAQUETE: lo que tiene que estar verde siempre.
+  //
+  // `borradores/` NO está acá, y eso es una corrección del Hito 4 y no una
+  // comodidad. Los 28 borradores son el CORPUS DE UNA MEDICIÓN: sus errores de
+  // compilación SON el resultado, y el que los cuenta es el arnés
+  // (`tests/arnes.test.ts`, con `tsconfig.t0..t4.json` y su trinquete). Tenerlos
+  // acá adentro mezclaba las dos cosas: el paquete no podía estar verde nunca, y
+  // peor, el número medido dependía de en qué carpeta hubiera quedado cada
+  // borrador — `borradores/*.ts` entraba y `borradores/tN/*.ts` no. Ese accidente
+  // es el que hacía que `00-pescar-con-aparejo.ts`, el ejemplo canónico del
+  // documento de arquitectura, jamás lo compilara el arnés y su test estuviera
+  // trivialmente verde.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": [
-    "src",
-    "borradores/*.ts",
-    "tests"
-  ]
+  "include": ["src", "tests"]
 }

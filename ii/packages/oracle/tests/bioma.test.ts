@@ -6,6 +6,7 @@ import {
   biomaDe,
   biomaPorClima,
   caloricBudget,
+  CANTERA_DEL_MUNDO,
   FLEXIBILIDAD_DE_ATADURA,
   OCTAVAS_CLIMA,
   OCTAVAS_TERRENO,
@@ -199,5 +200,48 @@ describe('la temperatura del bioma', () => {
   it('sale del ambiente de la física más el apartamiento del bioma', () => {
     for (const b of BIOMAS) expect(temperaturaDelBioma(b)).toBe(T_AMBIENTE + b.deltaTemperatura)
     expect(temperaturaDelBioma(biomaDe('arenal'))).toBeGreaterThan(temperaturaDelBioma(biomaDe('bosque-humedo')))
+  })
+})
+
+// ─── La cantera del mundo ───────────────────────────────────────────────────
+
+describe('la cantera del mundo: lo que se puede encontrar tirado en algún lado', () => {
+  it('es exactamente la unión de las siembras, sin repetir', () => {
+    // Se recalcula acá desde la tabla y se compara: si `CANTERA_DEL_MUNDO`
+    // empezara a agregar cosas por su cuenta, esto lo dice.
+    const esperada = new Set<string>()
+    for (const b of BIOMAS) for (const s of b.siembra) esperada.add(s.substance)
+    expect(new Set(CANTERA_DEL_MUNDO)).toEqual(esperada)
+    expect(CANTERA_DEL_MUNDO.length).toBe(esperada.size)
+    expect(CANTERA_DEL_MUNDO.length).toBe(17)
+  })
+
+  it('no tiene ni un líquido ni nada que no salga de la tabla', () => {
+    // El agua está entre las `sustancias` de los biomas acuáticos —el lugar ES
+    // de agua— y NO entre lo que sueltan, porque nadie encuentra un charco
+    // tirado en el piso. Ésa es toda la diferencia, y es la que hacía falta.
+    for (const s of CANTERA_DEL_MUNDO) {
+      const sub = SUSTANCIAS_POR_ID.get(s)
+      expect(sub, `la cantera nombra «${s}», que el catálogo no tiene`).toBeDefined()
+      expect(sub?.tags).not.toContain('liquido')
+    }
+    expect(CANTERA_DEL_MUNDO).not.toContain('agua')
+    expect(CANTERA_DEL_MUNDO).not.toContain('savia')
+    // Y tampoco lo que es parte de un animal vivo: nadie deja plumas ni tendones
+    // tirados. No hace falta prohibirlos: ningún bioma los siembra.
+    for (const s of ['pluma', 'tendon', 'piel', 'huevo', 'carne', 'pescado']) {
+      expect(CANTERA_DEL_MUNDO).not.toContain(s)
+      expect(SUSTANCIAS_POR_ID.has(s), `«${s}» tiene que existir para que este test signifique algo`).toBe(true)
+    }
+  })
+
+  it('siempre alcanza para un aparejo: hay atadura y hay vara', () => {
+    // Es el chequeo que corre al CARGAR el módulo, repetido acá para que se lea
+    // como criterio y no como efecto secundario de un import. Si la cantera se
+    // quedara sin atadura, la garantía de resolubilidad no podría cerrar en
+    // ningún chunk de ninguna semilla.
+    const q = (id: string, k: 'rigidity' | 'flexibility'): number => SUSTANCIAS_POR_ID.get(id)?.perUnitMass[k] ?? 0
+    expect(CANTERA_DEL_MUNDO.filter((s) => q(s, 'flexibility') >= FLEXIBILIDAD_DE_ATADURA).length).toBeGreaterThan(0)
+    expect(CANTERA_DEL_MUNDO.filter((s) => q(s, 'rigidity') >= RIGIDEZ_DE_VARA).length).toBeGreaterThan(0)
   })
 })

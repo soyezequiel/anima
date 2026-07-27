@@ -1,0 +1,17 @@
+{
+  // La emisión del `skill-api.d.ts`. Se separa del `tsconfig.json` del paquete
+  // porque aquél TYPECHEQUEA (tests y borradores incluidos, y los borradores
+  // tienen errores a propósito: el error de compilación ES el resultado del
+  // arnés) y éste EMITE. Un solo config no puede hacer las dos cosas: emitir con
+  // los borradores adentro escribiría declaraciones de los borradores.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "emitDeclarationOnly": true,
+    // Directorio temporal: el emisor lo cose en `src/skill-api.d.ts` y lo borra.
+    // No queda en el árbol, así que tampoco hace falta ignorarlo en git.
+    "declarationDir": ".emit"
+  },
+  "include": ["src/tipos.ts", "src/ctx.ts"]
+}

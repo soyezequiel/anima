@@ -34,6 +34,14 @@ export * from './pregunta.js'
 export * from './bioma.js'
 export * from './ley.js'
 
+// ─── El techo calórico, cobrado ─────────────────────────────────────────────
+//
+// `caloricBudget` daba el techo y no lo leía nadie: el riesgo 4 del documento
+// («el dios es el agujero de la conservación») hecho código muerto. `LibroCalorico`
+// es el otro lado —lo aportado por chunk, acumulado y comparado— y `draw` no
+// entrega lo que no pudo cobrar.
+export * from './presupuesto.js'
+
 // ─── El libro: lo que se dijo una vez se sostiene ───────────────────────────
 //
 // El ledger con sus dos granos, y la granularidad del compromiso —el agua en

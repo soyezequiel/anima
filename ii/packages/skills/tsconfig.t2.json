@@ -1,11 +1,17 @@
 {
+  // TANDA 2 del corpus. Compila SOLO los borradores contra la superficie: la
+  // superficie entra por resolución de `../src/skill-api.js` y nada más.
+  //
+  // `src` salió del include en el Hito 4. Con el .d.ts a mano `src/` era ese
+  // único archivo y no aportaba errores; ahora tiene el ejecutor, el combustible,
+  // el aislamiento y las quince innatas, y dejarlo adentro haría que el número
+  // del trinquete —que mide CUÁNTO DEL MUNDO SE PUEDE EXPRESAR— se moviera
+  // porque alguien rompió un archivo de runtime. Dos cosas distintas contadas en
+  // el mismo número no son medibles ninguna de las dos.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": [
-    "src",
-    "borradores/t2"
-  ]
+  "include": ["borradores/t2"]
 }

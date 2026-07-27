@@ -32,6 +32,7 @@ import {
   crearStock,
   decretarChunk,
   draw,
+  LibroCalorico,
   formaDeLoSuelto,
   InvariantError,
   Ledger,
@@ -86,7 +87,7 @@ function dadoDelMundo(valores: readonly number[]): { w: MundoConDado; tiros: () 
     i += 1
     return v
   }) as WorldRng
-  return { w: { phys: PHYS, rng: f }, tiros: () => i }
+  return { w: { phys: PHYS, rng: f, calorias: new LibroCalorico(SEMILLA) }, tiros: () => i }
 }
 
 /** Las celdas mojadas de un chunk, en coordenadas absolutas. */
@@ -127,6 +128,9 @@ describe('(a) el mismo mundo en dos órdenes y con dos historias distintas', () 
     const stockA = crearStock({
       id: 'a',
       yields: 'pescado',
+      cx: 0,
+      cy: 0,
+      masaPorUnidad: fx(1),
       capacity: 40,
       perMillePorSegundo: 1000,
       depth: fx(1),
@@ -486,6 +490,9 @@ describe('(e) el río se agota y se repone', () => {
     return crearStock({
       id: 'rio',
       yields: 'pescado',
+      cx: 0,
+      cy: 0,
+      masaPorUnidad: fx(1),
       capacity: 12,
       // 500 milésimas por segundo: medio pez por segundo, 24 s para llenarlo.
       perMillePorSegundo: 500,

@@ -30,12 +30,16 @@ import {
   CELDAS_DE_LADO,
   CELDAS_POR_CHUNK,
   caloricBudget,
+  CANTERA_DEL_MUNDO,
   climaDe,
   crearStock,
   decretarChunk,
   draw,
   keyOf,
   Ledger,
+  LibroCalorico,
+  MILICALORIAS_POR_CALORIA,
+  milicaloriasDe,
   mulberry32,
   population,
   probabilidadDePicar,
@@ -73,13 +77,16 @@ function dadoDelMundo(valores: readonly number[]): { w: MundoConDado; tiros: () 
     i += 1
     return v
   }) as WorldRng
-  return { w: { phys: PHYS, rng: f }, tiros: () => i }
+  return { w: { phys: PHYS, rng: f, calorias: new LibroCalorico(SEMILLA) }, tiros: () => i }
 }
 
 function rio(): Stock {
   return crearStock({
     id: 'rio',
     yields: 'pescado',
+    cx: 0,
+    cy: 0,
+    masaPorUnidad: fx(1),
     capacity: 12,
     perMillePorSegundo: 500,
     depth: fx(2),
@@ -454,7 +461,14 @@ describe('ataque 5 · que un dado se filtre en el otro', () => {
     const s = rio()
     // @ts-expect-error el dado del DIOS no entra donde va el del MUNDO: si
     // entrara, decretar el mapa correría la partida.
-    draw({ phys: PHYS, rng: delDios }, s, CAÑA, seg(0))
+    draw({ phys: PHYS, rng: delDios, calorias: new LibroCalorico(SEMILLA) }, s, CAÑA, seg(0))
+    // Y la tercera pieza del mundo tampoco es opcional: sin libro calórico no se
+    // puede escribir una extracción. Es la misma defensa —`tsc` y no vitest—
+    // aplicada al agujero del techo, que es el que se cerró en este archivo.
+    // @ts-expect-error falta `calorias`: sacar sin decir contra qué presupuesto
+    // se cobra es exactamente el agujero que el ataque 7 medía.
+    const sinLibro: MundoConDado = { phys: PHYS, rng: delMundo }
+    expect(() => draw(sinLibro, s, CAÑA, seg(0))).toThrow()
     // @ts-expect-error y al revés tampoco: el dado del mundo no siembra chunks.
     const _x: DiosRng = delMundo
     void _x
@@ -541,7 +555,7 @@ describe('ataque 6 · una reposición que dependa del reloj de pared', () => {
       for (const { patron, que } of PROHIBIDAS) if (patron.test(codigo)) sucios.push(`${nombre}: ${que}`)
     }
     expect(sucios).toEqual([])
-    expect(fuentes.length).toBe(9)
+    expect(fuentes.length).toBe(10)
     console.log(`ataque 6 · ${String(fuentes.length)} fuentes del paquete barridas, 0 infracciones a la regla 2`)
   })
 
@@ -588,62 +602,62 @@ describe('ataque 7 · pedir más de lo que el chunk puede dar', () => {
     expect(previo).toBe(c.bioma.caloriasBase + c.bioma.caloriasPorFertilidad)
   })
 
-  it.fails('NADIE COMPARA EL STOCK CONTRA EL TECHO: un pozo puede entregar 100 veces el presupuesto del chunk', () => {
-    // ─── El agujero, con los números ───────────────────────────────────────
+  it('EL STOCK SE COMPARA CONTRA EL TECHO: el mismo pozo que daba 3,1× ahora se corta en 1×', () => {
+    // ─── El agujero, CERRADO. Éste era el `it.fails` ───────────────────────
     //
-    // `presupuestoCalorico` se calcula, se guarda en el `ChunkFacts`... y no lo
-    // lee nadie. El documento pide `aportadoEsteTick ≤ min(loQuePidióElOráculo,
-    // presupuestoCalóricoDelChunk)`, y hoy no hay una sola función del paquete
-    // que compare las dos cosas.
+    // Estaba escrito así: «`presupuestoCalorico` se calcula, se guarda en el
+    // `ChunkFacts`... y no lo lee nadie», y medido acá mismo: una hora de mundo
+    // entregaba 1806 peces ≈ 5490 calorías contra un techo de 1776, o sea 3,1
+    // veces el techo, sin que nada se quejara.
     //
-    // Medido acá abajo: un chunk de bioma acuático tiene un techo de ~2400
-    // calorías; un stock de capacidad 12 que se repone medio pez por segundo
-    // entrega, en una hora de MUNDO, 1812 peces. Un pescado de 1 kg son
-    // 8 × 1 × 0.38 = 3.04 calorías, así que son ~5500 calorías: más del doble
-    // del techo, en una hora, sin que nada se queje.
-    //
-    // Y falta una pieza para poder cerrarlo, que es lo que lo hace un hueco de
-    // diseño y no un olvido: **`Stock` no sabe de qué chunk es** y `draw`
-    // devuelve un `SubstanceId` sin masa, así que hoy ni siquiera se puede
-    // calcular cuántas calorías entregó un chunk. Para cerrarlo hacen falta tres
-    // cosas: que el stock nombre su chunk, que lo que sale tenga masa, y un
-    // acumulado por chunk en el ledger contra el que `draw` compare.
+    // Faltaban tres piezas y ahora están las tres: **el stock nombra su chunk**
+    // (`Stock.cx/cy`), **lo que sale tiene masa** (`Stock.masaPorUnidad` y
+    // `ResultadoDeExtraccion.masa`) y hay **un acumulado por chunk contra el que
+    // `draw` compara** (`LibroCalorico`). Es exactamente el mismo bucle de
+    // antes: 3601 intentos con un dado que pica siempre, sobre el mismo pozo y
+    // el mismo chunk.
     const c = decretar(SEMILLA, 0, 0)
     const techo = c.presupuestoCalorico
     const s = rio()
     const { w } = dadoDelMundo([0]) // pica siempre
     let peces = 0
+    let cortados = 0
     for (let t = 0; t <= 3600; t++) {
       const r = draw(w, s, CAÑA, seg(t))
       if (r.yields !== null) peces++
+      if (r.razon === 'sin-presupuesto') cortados++
     }
-    const calorias = peces * 8 * 1 * 0.38
+    // Lo cobrado, leído del libro y no recalculado acá: si el test hiciera su
+    // propia cuenta de calorías, estaría de acuerdo consigo mismo y con nadie.
+    const cobrado = w.calorias.aportado(0, 0) / MILICALORIAS_POR_CALORIA
+    w.calorias.verificar()
     console.log(
-      `ataque 7 · techo del chunk ${String(techo)} cal · una hora de mundo entregó ${String(peces)} peces ≈ ${calorias.toFixed(0)} cal (${(calorias / techo).toFixed(1)}× el techo)`,
+      `ataque 7 · techo del chunk ${String(techo)} cal · una hora de mundo entregó ${String(peces)} peces = ${cobrado.toFixed(2)} cal ` +
+        `(${(cobrado / techo).toFixed(2)}× el techo) · ${String(cortados)} intentos cortados por presupuesto`,
     )
-    expect(calorias).toBeLessThanOrEqual(techo)
+    expect(cobrado).toBeLessThanOrEqual(techo)
+    // Y que el corte fue por el TECHO y no porque el pozo se quedó sin peces: el
+    // río se repone, así que sin techo habría seguido dando para siempre.
+    expect(cortados).toBeGreaterThan(0)
+    expect(peces).toBeGreaterThan(0)
+    // El chunk queda exprimido: le sobra menos de lo que cuesta un pescado.
+    expect(w.calorias.disponible(0, 0)).toBeLessThan(milicaloriasDe('pescado', fx(1), PHYS))
   })
 
-  it.fails('LA GARANTÍA SIEMBRA CUALQUIER SUSTANCIA DEL CATÁLOGO: hasta una hebra de agua en la orilla', () => {
-    // ─── El agujero ────────────────────────────────────────────────────────
+  it('LA GARANTÍA SIEMBRA DE LA CANTERA: nada que el mundo no deje tirado en algún lado', () => {
+    // ─── El agujero, CERRADO. Éste era el otro `it.fails` ──────────────────
     //
-    // `ensureSolvable` busca en el catálogo ENTERO —que es lo correcto: si
-    // buscara solo entre las sustancias del bioma, un chunk de pradera al lado
-    // de un lago no tendría con qué y la garantía lanzaría—, pero no filtra
-    // nada. Como `agua` tiene `flexibility: 1`, `formaDeLoSuelto` la llama
-    // `hebra`, y una hebra de agua tiene `catch > 0`: el dios puede dejar un
-    // hilo de agua tirado en la orilla para que se ate a una vara.
+    // Estaba medido así: en un barrido de 1681 chunks la garantía sembraba
+    // `agua/hebra`, `savia/hebra`, `pluma/hebra`, `piel/hebra` y `tendon/hebra`
+    // —un hilo de agua atado a una vara, plumas sin pájaro—, porque buscaba en
+    // el catálogo ENTERO. No rompía ningún invariante: rompía la coherencia que
+    // el propio paquete verifica al cargar para `scatter` («lo que está tirado
+    // tiene que ser de lo que el lugar está hecho»).
     //
-    // Medido: en un barrido de 1681 chunks aparecen sembradas `agua/hebra`,
-    // `pluma/hebra` y `tendon/hebra` —cosas que no son materia tirada de ese
-    // lugar—. No rompe ningún invariante: rompe la coherencia que el propio
-    // paquete verifica al cargar para `scatter` («lo que está tirado tiene que
-    // ser de lo que el lugar está hecho»).
-    //
-    // Para cerrarlo hace falta decidir QUÉ puede caer del cielo: lo más barato
-    // es excluir por tag (`liquido`, y lo que sea parte de un animal vivo) y
-    // dejar que la garantía elija entre lo demás. Hay que verificar que con esa
-    // exclusión la garantía sigue cerrando en los 721 chunks con orilla.
+    // La reparación no es una lista de tags prohibidos: es que la lista de qué
+    // puede haber tirado YA EXISTÍA y es la tabla de biomas. `CANTERA_DEL_MUNDO`
+    // es la unión de las `siembra` de los nueve biomas, y el agua no está ahí
+    // por la misma razón por la que `scatter` nunca la deja tirada.
     const sembradas = new Set<string>()
     for (let cx = -20; cx <= 20; cx++) {
       for (let cy = -20; cy <= 20; cy++) {
@@ -651,6 +665,13 @@ describe('ataque 7 · pedir más de lo que el chunk puede dar', () => {
       }
     }
     console.log(`ataque 7 · la garantía sembró: ${[...sembradas].sort().join(', ')}`)
+    // El criterio original del hueco: ni una gota.
     expect([...sembradas].filter((s) => PHYS.substances.get(s)?.tags.includes('liquido'))).toEqual([])
+    // Y el criterio fuerte, que es el que importa: todo lo sembrado es materia
+    // que algún bioma deja tirada. Se juzga contra la TABLA, no contra una lista
+    // escrita en este test.
+    const cantera = new Set(CANTERA_DEL_MUNDO)
+    expect([...sembradas].filter((s) => !cantera.has(s))).toEqual([])
+    expect(sembradas.size).toBeGreaterThan(0)
   })
 })

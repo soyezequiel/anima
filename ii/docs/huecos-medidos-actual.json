@@ -1,23 +1,32 @@
 {
- "totalErrores": 64,
+ "totalErrores": 84,
  "borradores": 28,
- "conErrores": 18,
+ "conErrores": 25,
  "limpios": [
-  "00-pescar-con-aparejo.ts",
-  "01-comer-ahora-o-esperar.ts",
   "05-tapar-la-fogata.ts",
-  "21-guarecerse-antes-de-tener-frio.ts",
   "23-guardar-donde-menos-se-pudre.ts",
-  "24-jubilar-la-herramienta-gastada.ts",
-  "26-lo-que-si-compila.ts",
-  "99-lo-que-si-compila.ts",
-  "sacarlo-antes-de-que-se-queme.ts",
-  "volver-en-vez-de-re-explorar.ts"
+  "sacarlo-antes-de-que-se-queme.ts"
  ],
  "filas": [
   {
+   "falta": "cualidad: wet",
+   "archivos": 6
+  },
+  {
+   "falta": "SelfView.hunger",
+   "archivos": 3
+  },
+  {
    "falta": "cualidad: sheltered",
    "archivos": 3
+  },
+  {
+   "falta": "Clock.ticksToNightfall",
+   "archivos": 2
+  },
+  {
+   "falta": "QualityId: stock",
+   "archivos": 2
   },
   {
    "falta": "Ctx.heard",
@@ -28,7 +37,7 @@
    "archivos": 2
   },
   {
-   "falta": "proceso: afilar",
+   "falta": "SeedProcessId: afilar",
    "archivos": 2
   },
   {
@@ -44,7 +53,7 @@
    "archivos": 2
   },
   {
-   "falta": "Argument of type '\"covers\"' is not assignable to parameter of type 'QualityId'.",
+   "falta": "QualityId: covers",
    "archivos": 2
   },
   {
@@ -52,7 +61,7 @@
    "archivos": 2
   },
   {
-   "falta": "proceso: cavar",
+   "falta": "SeedProcessId: cavar",
    "archivos": 2
   },
   {
@@ -64,7 +73,7 @@
    "archivos": 2
   },
   {
-   "falta": "proceso: combustion",
+   "falta": "SeedProcessId: combustion",
    "archivos": 1
   },
   {
@@ -104,11 +113,19 @@
    "archivos": 1
   },
   {
+   "falta": "cualidad de celda: mass",
+   "archivos": 1
+  },
+  {
    "falta": "Object literal may only specify known properties, and 'target' does not exist in type '{ a: BodyView; b: BodyView; actor: BodyView; }'.",
    "archivos": 1
   },
   {
    "falta": "Ctx.mark",
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad de celda: charred",
    "archivos": 1
   },
   {
@@ -152,7 +169,7 @@
    "archivos": 1
   },
   {
-   "falta": "proceso: cubrir",
+   "falta": "SeedProcessId: cubrir",
    "archivos": 1
   },
   {
@@ -180,11 +197,11 @@
    "archivos": 1
   },
   {
-   "falta": "Argument of type '\"smoke\"' is not assignable to parameter of type 'QualityId'.",
+   "falta": "QualityId: smoke",
    "archivos": 1
   },
   {
-   "falta": "proceso: ahumar",
+   "falta": "SeedProcessId: ahumar",
    "archivos": 1
   },
   {
@@ -192,7 +209,7 @@
    "archivos": 1
   },
   {
-   "falta": "proceso: arrastrar",
+   "falta": "SeedProcessId: arrastrar",
    "archivos": 1
   },
   {
@@ -200,11 +217,15 @@
    "archivos": 1
   },
   {
-   "falta": "Argument of type '\"buoyancy\"' is not assignable to parameter of type 'QualityId'.",
+   "falta": "QualityId: buoyancy",
    "archivos": 1
   },
   {
    "falta": "cualidad: flow",
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad de celda: fuelEnergy",
    "archivos": 1
   }
  ]

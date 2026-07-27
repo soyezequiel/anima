@@ -546,6 +546,60 @@ for (const b of BIOMAS) {
   }
 }
 
+// ─── La cantera: lo que el mundo deja tirado ────────────────────────────────
+
+/**
+ * TODO LO QUE EL MUNDO DEJA TIRADO EN ALGÚN LADO: la unión de las `siembra` de
+ * los nueve biomas, sin repetir y en el orden de la tabla.
+ *
+ * ─── Para qué existe, que es lo importante ──────────────────────────────────
+ *
+ * La garantía de resolubilidad (`ensureSolvable`) siembra materia cuando un
+ * lugar donde se pesca no tiene con qué armar un aparejo. Buscaba entre el
+ * catálogo ENTERO, y eso está mal por una razón que este mismo archivo ya
+ * verifica para `scatter`: **lo que está tirado tiene que ser de lo que el
+ * mundo está hecho**. Medido en 1681 chunks, la garantía dejaba en la orilla
+ * `agua/hebra`, `savia/hebra`, `pluma/hebra`, `piel/hebra` y `tendon/hebra`: un
+ * hilo de agua atado a una vara, plumas sin pájaro y tendones sin animal.
+ *
+ * No hace falta una lista nueva ni un tag prohibido para arreglarlo. La lista de
+ * qué puede haber tirado ya existe y es ésta: **lo que algún bioma siembra**. Un
+ * líquido no está acá porque ningún bioma deja líquidos tirados —el agua está
+ * entre las `sustancias` de los biomas acuáticos, no entre lo que sueltan—, y
+ * una pluma no está porque ningún bioma la suelta. El día que un bioma siembre
+ * plumas, la garantía va a poder sembrarlas, y va a estar bien.
+ *
+ * Es una CANTERA y no una receta: no dice qué armar ni con qué, sólo de dónde se
+ * puede sacar. Qué llena cada rol lo sigue contestando `cumpleRol` de la física.
+ */
+export const CANTERA_DEL_MUNDO: readonly SubstanceId[] = (() => {
+  const vistas = new Set<SubstanceId>()
+  for (const b of BIOMAS) for (const s of b.siembra) vistas.add(s.substance)
+  return [...vistas]
+})()
+
+/**
+ * Y la verificación de que la cantera alcanza, al CARGAR el módulo.
+ *
+ * Es la misma defensa que el chequeo por bioma acuático de más arriba, un
+ * escalón más arriba: aquél impide que un bioma acuático nazca sin con qué;
+ * éste impide que el MUNDO se quede sin con qué. Si mañana alguien restringe la
+ * cantera —o le saca la liana y el junco a todos los biomas— la garantía de
+ * resolubilidad no podría cerrar en ningún chunk de ninguna semilla, y el
+ * síntoma sería una excepción al decretar un chunk cualquiera, lejos de la
+ * causa. Acá el mundo no arranca.
+ */
+{
+  const hayAtadura = CANTERA_DEL_MUNDO.some((s) => cualidadBase(s, 'flexibility') >= FLEXIBILIDAD_DE_ATADURA)
+  const hayVara = CANTERA_DEL_MUNDO.some((s) => cualidadBase(s, 'rigidity') >= RIGIDEZ_DE_VARA)
+  if (!hayAtadura || !hayVara) {
+    throw new RangeError(
+      `la cantera del mundo no tiene con qué armar un aparejo en ningún lado: ` +
+        `atadura=${String(hayAtadura)}, vara=${String(hayVara)}`,
+    )
+  }
+}
+
 // ─── La clasificación ───────────────────────────────────────────────────────
 
 /**

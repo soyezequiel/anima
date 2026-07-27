@@ -28,11 +28,24 @@ import {
 } from '../src/resolubilidad.js'
 import type { DiosRng } from '../src/pregunta.js'
 import { mulberry32 } from '../src/pregunta.js'
+import { CANTERA_DEL_MUNDO } from '../src/bioma.js'
 
 const PHYS = buildSeedPhysics()
 
-function chunkAcuatico(sueltas: SueltaSembrable[] = []): ChunkSembrable {
-  return { cx: 3, cy: -7, acuatico: true, ancla: { x: 10, y: 10 }, sueltas }
+/** La cantera con la que decreta el mundo de verdad. Los tests de acá la usan
+ *  tal cual: una cantera de test sería una garantía de test. */
+const CANTERA = CANTERA_DEL_MUNDO
+
+function chunkAcuatico(sueltas: SueltaSembrable[] = [], canteraLocal: readonly string[] = []): ChunkSembrable {
+  return {
+    cx: 3,
+    cy: -7,
+    acuatico: true,
+    ancla: { x: 10, y: 10 },
+    sueltas,
+    cantera: CANTERA,
+    canteraLocal,
+  }
 }
 
 /** Un dado del dios que además cuenta las tiradas. La cuenta es dato: que no se
@@ -169,7 +182,15 @@ describe('el dado del dios y la regla madre', () => {
 
 describe('qué mira la garantía y qué no', () => {
   it('un chunk seco no se toca: la garantía es del bioma acuático', () => {
-    const seco: ChunkSembrable = { cx: 0, cy: 0, acuatico: false, ancla: { x: 0, y: 0 }, sueltas: [] }
+    const seco: ChunkSembrable = {
+      cx: 0,
+      cy: 0,
+      acuatico: false,
+      ancla: { x: 0, y: 0 },
+      sueltas: [],
+      cantera: CANTERA,
+      canteraLocal: [],
+    }
     const dado = dadoContado(3)
     expect(ensureSolvable(seco, SEED_PROCESSES, dado.rng, PHYS)).toEqual([])
     expect(seco.sueltas).toEqual([])
@@ -338,10 +359,103 @@ describe('la costura con lo que decreta el chunk', () => {
       { x: 0, y: 0 },
       PHYS,
     )
-    const chunk: ChunkSembrable = { cx: 1, cy: 1, acuatico: true, ancla: { x: 10, y: 10 }, sueltas: decretadas }
+    const chunk: ChunkSembrable = {
+      cx: 1,
+      cy: 1,
+      acuatico: true,
+      ancla: { x: 10, y: 10 },
+      sueltas: decretadas,
+      cantera: CANTERA,
+      canteraLocal: [],
+    }
     const dado = dadoContado(1)
     expect(ensureSolvable(chunk, SEED_PROCESSES, dado.rng, PHYS)).toEqual([])
     expect(dado.tiradas()).toBe(0)
     expect(hayAparejo(chunk.sueltas, PHYS)).toBe(true)
+  })
+})
+
+// ─── La cantera: qué puede caer del cielo y qué no ──────────────────────────
+//
+// El agujero que esto cierra estaba medido en `ataque-al-dios.test.ts`: la
+// garantía buscaba en el catálogo ENTERO y dejaba en la orilla `agua/hebra`,
+// `savia/hebra`, `pluma/hebra`, `piel/hebra` y `tendon/hebra`. Un hilo de agua
+// atado a una vara llena el rol `gear` perfectamente —`agua` tiene
+// `flexibility: 1`, así que `formaDeLoSuelto` la hace hebra y la hebra tiene
+// `catch`—, y ése es justamente el punto: **llenar el rol no alcanza**. Lo que
+// el dios deja tirado tiene que ser algo que ese mundo deje tirado.
+
+describe('la cantera: la garantía siembra de lo que el mundo deja tirado', () => {
+  it('lo que no está en la cantera NO cae, aunque llenaría el rol solo', () => {
+    // La prueba es sobre `agua` a propósito, que es la que aparecía medida: una
+    // cantera de dos sustancias, y el agua afuera.
+    const chunk = chunkAcuatico([], [])
+    const conDos: ChunkSembrable = { ...chunk, cantera: ['liana', 'madera'] }
+    const sembradas = ensureSolvable(conDos, SEED_PROCESSES, dadoContado(11).rng, PHYS)
+    expect(sembradas.length).toBeGreaterThan(0)
+    expect(sembradas.every((s) => s.substance === 'liana' || s.substance === 'madera')).toBe(true)
+    expect(hayAparejo(conDos.sueltas, PHYS)).toBe(true)
+
+    // Y con el agua ADENTRO de la cantera sí caería: si no, este test estaría
+    // pasando porque el agua no sirve y no porque la cantera la deja afuera.
+    const conAgua: ChunkSembrable = { ...chunkAcuatico([], []), cantera: ['agua'] }
+    const conElAgua = ensureSolvable(conAgua, SEED_PROCESSES, dadoContado(11).rng, PHYS)
+    expect(conElAgua.length).toBeGreaterThan(0)
+    expect(conElAgua.every((s) => s.substance === 'agua')).toBe(true)
+  })
+
+  it('una cantera con la que no se puede armar nada LANZA, y dice cuántas miró', () => {
+    // La piedra no da `catch` de ninguna forma: ni como hebra (le falta
+    // flexibilidad para tener puntas sueltas) ni como vara ni atada a sí misma.
+    // La garantía no puede rendirse en silencio, que es todo el punto del
+    // archivo: un chunk injugable tiene que doler al decretarlo.
+    const soloPiedra: ChunkSembrable = { ...chunkAcuatico([], []), cantera: ['piedra'] }
+    expect(() => ensureSolvable(soloPiedra, SEED_PROCESSES, dadoContado(4).rng, PHYS)).toThrow(/cantera/)
+  })
+
+  it('la cantera del lugar DESEMPATA y no restringe', () => {
+    // Mismo chunk, mismo dado, misma cantera: lo único que cambia es qué da este
+    // lugar. Con `junco` preferido sale junco; con `liana`, liana.
+    function conPreferencia(local: readonly string[]): readonly string[] {
+      const chunk = chunkAcuatico([], local)
+      return ensureSolvable(chunk, SEED_PROCESSES, dadoContado(5).rng, PHYS).map((s) => s.substance)
+    }
+    const conJunco = conPreferencia(['junco', 'madera'])
+    const conLiana = conPreferencia(['liana', 'madera'])
+    expect(conJunco).toContain('junco')
+    expect(conJunco).not.toContain('liana')
+    expect(conLiana).toContain('liana')
+    expect(conLiana).not.toContain('junco')
+
+    // Y NO restringe: una preferencia por algo que no sirve para nada no puede
+    // hacer que la garantía deje de cerrar. Si restringiera, esto lanzaría.
+    const inutil = chunkAcuatico([], ['piedra'])
+    expect(ensureSolvable(inutil, SEED_PROCESSES, dadoContado(5).rng, PHYS).length).toBeGreaterThan(0)
+    expect(hayAparejo(inutil.sueltas, PHYS)).toBe(true)
+
+    // Ni una preferencia vacía, que es el caso de siempre.
+    const sinPreferencia = chunkAcuatico([], [])
+    expect(ensureSolvable(sinPreferencia, SEED_PROCESSES, dadoContado(5).rng, PHYS).length).toBeGreaterThan(0)
+    expect(hayAparejo(sinPreferencia.sueltas, PHYS)).toBe(true)
+  })
+
+  it('lo sembrado SIRVE: sin ello el rol no se llena, y con ello sí', () => {
+    // «Que de verdad sirva para el rol que dice cubrir», medido: se le saca a un
+    // chunk lo que la garantía puso y el aparejo desaparece. Si lo sembrado
+    // fuera decorativo, el aparejo estaría igual sin ello.
+    const chunk = chunkAcuatico([], [])
+    const sembradas = ensureSolvable(chunk, SEED_PROCESSES, dadoContado(9).rng, PHYS)
+    expect(sembradas.length).toBeGreaterThan(0)
+    const puestas = new Set(sembradas)
+    const sinLoSembrado = chunk.sueltas.filter((s) => !puestas.has(s))
+    expect(hayAparejo(sinLoSembrado, PHYS)).toBe(false)
+    expect(hayAparejo(chunk.sueltas, PHYS)).toBe(true)
+    // Y no siembra de más: lo que puso es lo mínimo que hizo falta, o sea que
+    // sacándole cualquiera de las piezas el aparejo se cae.
+    for (const s of sembradas) {
+      const menosUna = chunk.sueltas.filter((x) => x !== s)
+      expect(hayAparejo(menosUna, PHYS)).toBe(false)
+    }
+    expect(faltantesParaResolver(chunk, SEED_PROCESSES, PHYS)).toEqual([])
   })
 })

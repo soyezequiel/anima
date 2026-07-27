@@ -214,6 +214,19 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
+  ii/packages/oracle:
+    dependencies:
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
   ii/packages/physics:
     devDependencies:
       typescript:
@@ -224,6 +237,29 @@ importers:
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
   ii/packages/skills:
+    dependencies:
+      '@anima/oracle':
+        specifier: workspace:*
+        version: link:../oracle
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
+      '@anima/world':
+        specifier: workspace:*
+        version: link:../world
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
+  ii/packages/world:
+    dependencies:
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
     devDependencies:
       typescript:
         specifier: ^5.6.0

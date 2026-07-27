@@ -49,13 +49,15 @@
 // `localeCompare` ni `Math` trascendente. Solo `* /` y `Math.min`, que están
 // especificados bit a bit en ECMAScript.
 
-import type { Body, Duracion, Physics, SubstanceId } from '@anima/physics'
-import { qualityOf, unfx } from '@anima/physics'
+import type { Body, Duracion, Fixed, Physics, SubstanceId } from '@anima/physics'
+import { fx, qualityOf, unfx } from '@anima/physics'
 
 import type { WaterBody } from './compromiso.js'
+import { InvariantError } from './ledger.js'
 import type { Stock } from './ley.js'
 import { crearStock, population, retirarUno } from './ley.js'
-import type { WorldRng } from './pregunta.js'
+import { keyOf, type WorldRng } from './pregunta.js'
+import { milicaloriasDe, type LibroCalorico } from './presupuesto.js'
 
 // ─── Lo que la extracción necesita del mundo ────────────────────────────────
 
@@ -79,6 +81,21 @@ export interface MundoConDado {
    * llamarlo es un acto y no una consulta.
    */
   readonly rng: WorldRng
+  /**
+   * EL LIBRO CALÓRICO, y es OBLIGATORIO a propósito.
+   *
+   * El agujero que este campo cierra —el riesgo 4 del documento— no era que la
+   * cuenta estuviera mal: era que **no había cuenta**. `presupuestoCalorico` se
+   * calculaba, se guardaba en el `ChunkFacts` y no lo leía nadie. Un campo
+   * opcional lo habría dejado abierto exactamente igual, porque el llamador que
+   * se olvida es el mismo que se olvidó la primera vez.
+   *
+   * Siendo obligatorio, la puerta la cierra `tsc`: **no se puede escribir una
+   * extracción sin decir contra qué presupuesto se cobra**. Es el mismo recurso
+   * con el que este paquete separa el dado del dios del dado del mundo — barato
+   * de prevenir, carísimo de descubrir seis meses después.
+   */
+  readonly calorias: LibroCalorico
 }
 
 // ─── La probabilidad, que es pensar y no cuesta nada ────────────────────────
@@ -134,16 +151,39 @@ export function probabilidadDePicar(s: Stock, gear: Body, phys: Physics, t: Dura
 
 // ─── Sacar, que es un acto ──────────────────────────────────────────────────
 
+/**
+ * Por qué salió lo que salió. Cuatro y no un booleano porque las cuatro son
+ * historias distintas y la criatura tiene que poder contarlas: «no hay»,
+ * «no picó» y «este lugar ya dio todo lo que tenía» piden decisiones opuestas.
+ */
+export type RazonDeExtraccion = 'saco' | 'vacio' | 'no-pico' | 'sin-presupuesto'
+
 /** Lo que dejó un intento de extracción. */
 export interface ResultadoDeExtraccion {
   /** Qué salió, o `null` si esta vez no picó. */
   readonly yields: SubstanceId | null
+  /**
+   * La masa de lo que salió, en `Fixed`. Cero cuando no salió nada.
+   *
+   * Sin este campo **no se puede saber cuántas calorías entregó un chunk**, y
+   * eso era literalmente la mitad del agujero del techo calórico: `draw`
+   * devolvía un `SubstanceId` pelado y una sustancia sin masa no tiene calorías.
+   */
+  readonly masa: Fixed
+  /** Lo que esto le costó al presupuesto del chunk, en milicalorías enteras. */
+  readonly milicalorias: number
   /**
    * Si se tiró el dado del mundo. Lo necesita la crónica y lo necesitan los
    * tests: **cuántas veces se tiró el dado es parte de la identidad de la
    * partida**, así que tiene que ser observable y no una cuenta interna.
    */
   readonly tiro: boolean
+  readonly razon: RazonDeExtraccion
+}
+
+/** Lo que se devuelve cuando no salió nada. La masa cero está escrita una vez. */
+function nada(razon: RazonDeExtraccion, tiro: boolean): ResultadoDeExtraccion {
+  return { yields: null, masa: fx(0), milicalorias: 0, tiro, razon }
 }
 
 /**
@@ -166,19 +206,54 @@ export interface ResultadoDeExtraccion {
  * el río se repusiera más lento cuanto más lo intentaran. Nadie encontraría eso
  * mirando el código de la reposición. Por eso el único camino que escribe es el
  * que salió bien, y lo escribe `retirarUno`, que es de quien lleva la cuenta.
+ *
+ * ─── Y CUANDO EL CHUNK YA DIO TODO, TAMPOCO SE TIRA ─────────────────────────
+ *
+ * Es el mismo argumento que el del pozo vacío, con el techo en vez de la
+ * población: si el lugar no puede entregar ni las calorías de UNA pieza, no hay
+ * resultado posible que valga una tirada del dado del mundo. Y se chequea ANTES
+ * de tirar y no después, que es lo que hace que la cuenta no se pueda saltar:
+ * tirar primero y arrepentirse después dejaría el dado corrido igual, y con él
+ * la partida.
+ *
+ * Que tirar o no dependa del presupuesto no rompe la regla madre —«pensar no le
+ * corre el dado a la partida»— porque el presupuesto es ESTADO determinista del
+ * mundo, no una consecuencia de cuántas veces alguien pensó: `probabilidadDePicar`
+ * sigue sin tocar nada y sigue sin cobrar nada.
  */
 export function draw(w: MundoConDado, s: Stock, gear: Body, t: Duracion): ResultadoDeExtraccion {
   const pob = population(s, t)
-  if (pob <= 0) return { yields: null, tiro: false }
+  if (pob <= 0) return nada('vacio', false)
+
+  // Lo que costaría una pieza de este stock. Se calcula con la cualidad derivada
+  // `calories` de la física, o sea con la misma cuenta con la que la criatura va
+  // a ganar al comérselo.
+  const costo = milicaloriasDe(s.yields, s.masaPorUnidad, w.phys)
+  if (!w.calorias.alcanza(s.cx, s.cy, costo)) return nada('sin-presupuesto', false)
 
   const p = probabilidadDePicar(s, gear, w.phys, t)
   // Una sola tirada, acá, y ninguna en ningún otro camino de esta función.
-  if (w.rng() >= p) return { yields: null, tiro: true }
+  if (w.rng() >= p) return nada('no-pico', true)
 
   // La contabilidad es del dios: `retirarUno` baja el stock y re-ancla la
   // reposición. No tira ningún dado, y por eso se lo puede llamar desde acá sin
   // que el dios le corra la suerte a nadie.
-  return { yields: retirarUno(s, t), tiro: true }
+  const yields = retirarUno(s, t)
+  if (yields === null) return nada('vacio', true)
+
+  // Y recién acá se cobra: lo que salió del mundo lo paga el chunk. `cobrar`
+  // ya no puede devolver `false` —`alcanza` se preguntó doce líneas arriba y
+  // nada tocó el libro entre medio—, y si alguna vez lo devolviera sería una
+  // corrupción y no un caso: el bocado ya está afuera y el stock ya bajó.
+  if (!w.calorias.cobrar({ cx: s.cx, cy: s.cy, substance: yields, masa: s.masaPorUnidad, milicalorias: costo, at: t })) {
+    throw new InvariantError({
+      k: 'techo-calorico',
+      chunk: keyOf({ k: 'chunk', cx: s.cx, cy: s.cy }),
+      techo: w.calorias.techo(s.cx, s.cy),
+      aportado: w.calorias.aportado(s.cx, s.cy) + costo,
+    })
+  }
+  return { yields, masa: s.masaPorUnidad, milicalorias: costo, tiro: true, razon: 'saco' }
 }
 
 // ─── Ver agua no es ver el pescado ──────────────────────────────────────────
