@@ -298,6 +298,21 @@ export type Yield =
 
 **Once, no ocho.** Las propuestas estimaban ocho o nueve y las críticas mostraron que los tres ejemplos del usuario ya exigen soporte, humedad e ignición. Cada ley nueva multiplica la superficie de calibración: esto es la parte cara del proyecto y son semanas de perilla, no días.
 
+> **DOCE, NO ONCE.** El [ADR II-0002](../../ii/docs/decisions/II-0002-la-ley-de-la-oclusion.md)
+> agrega la **ley 12, `oclusion`**: un cuerpo colocado sobre una celda reduce el
+> intercambio de esa celda con el ambiente, en proporción a cuánto la cubre y a
+> qué tan permeable es.
+>
+> No es física nueva: **es la ley que la ley 4 ya invocaba sin declarar.** La
+> transmutación lee `w.oxygenAt(b.at)` y nadie escribía qué bajaba ese número, así
+> que tapar la fogata no tenía efecto en ninguna parte y la técnica emblema de
+> toda esta arquitectura —hacer carbón— era imposible.
+>
+> Una ley, tres capacidades: **carbón** (baja el oxígeno de la celda), **reparo**
+> (baja el acoplamiento térmico con el ambiente) y **techo** (baja el aporte de
+> humedad). Y le da función real a la malla y al tejido vía `permeability`, que
+> hasta ahora eran formas sin consecuencia.
+
 ## La puerta: `admit()`
 
 ```ts
@@ -412,6 +427,20 @@ carne: { tags: ['organico','carnoso'], specificHeat: 3.5,
 T_eq = T_ambiente + (emitsPower × formFactor(d, soporte)) / h
 ```
 
+> **CORREGIDO EN EL HITO 0** — ver
+> [`ii/docs/hito-0-barrido-termico.md`](../../ii/docs/hito-0-barrido-termico.md).
+> La tabla de abajo **no es una tabla**: las cuatro filas son la misma función
+> evaluada en cuatro puntos, y reproduce los cuatro números exactos.
+>
+> ```
+> formFactor(d, montaje) = exposicion(montaje) / (1 + d²)
+> exposicion:  piso 0.06  ·  parrilla 0.25  ·  contacto 0.60
+> ```
+>
+> `exposicion` es una enumeración **cerrada** de relaciones espaciales, no una
+> fila por situación. La auditoría acusaba a esta tabla de ser «la tabla de
+> recetas disfrazada, pero en la ley 1»; era falso, y queda corregido acá.
+
 | Situación | formFactor | T_eq | Resultado |
 |---|---|---|---|
 | en el piso a 2 celdas | `0.06/(1+4) = 0.012` | 15 + 7 = **22 °C** | no cocina (< 63) |
@@ -437,7 +466,17 @@ export const DESNATURALIZACION: TagRule = {
     drive(b, 'digestibility', /*hacia*/ 0.95, /*tasa*/ 0.010 * k / (0.2 + dur));
     decay(b, 'toxicity', 0.030 * k);
     decay(b, 'decay',    0.008 * k);
-    const evap = Math.min(q(b, 'moisture'), 0.0006 * k);
+    // CORREGIDO EN EL HITO 0: el exponente 2 no es un tipeo. Con `0.0006 * k`,
+    // el agua perdida por unidad de progreso de cocción es evap/r =
+    // 0.06·(0.2+toughness), que NO depende de la temperatura — así que más
+    // caliente es SIEMPRE estrictamente mejor y cocinar deja de ser una técnica
+    // para volverse «hacé el fuego más grande que puedas». Es una degeneración
+    // matemática de estas dos fórmulas, y no se ve leyendo: se ve dividiendo una
+    // por otra. Desnaturalizar una proteína y evaporar agua son dos procesos con
+    // energías de activación distintas; la evaporación escala más rápido.
+    // Con k², aparece la tensión «comer antes o comer mejor».
+    // Ver ii/docs/hito-0-barrido-termico.md.
+    const evap = Math.min(q(b, 'moisture'), 0.0006 * k * k);
     sub(b, 'moisture', evap); scale(b, 'mass', 1 - evap);   // se va agua, NO nutrientes
   },
 };
@@ -1293,6 +1332,34 @@ Estimaciones honestas para una persona trabajando con Claude, a tiempo completo.
 Arnés que mide, sobre un mundo falso: p50/p99 de tick con 5000 cuerpos, costo del transformer de combustible, `ts.createProgram` **en frío y tibio**, arranque de página completo, y time-to-complete-program de una consulta real.
 
 **Criterio de corte escrito de antemano:** si el transformer de combustible cuesta más del 15% de overhead, o si `ts.createProgram` en frío pasa de 3 s, el plan del sandbox cambia **acá** y no después de construirle encima.
+
+> **HITO 0 CERRADO.** Las cuatro piezas se midieron. Ninguna mató el plan; una lo
+> obligó a cambiar de regla y otra encontró una degeneración en la física.
+>
+> | Pieza | Criterio | Medido | |
+> |---|---|---|---|
+> | [typecheck](../../ii/docs/hito-0-banco-de-latencia.md) | < 3000 ms en frío | **240 ms** | ✔ |
+> | [barrido térmico](../../ii/docs/hito-0-barrido-termico.md) | ventana para 10 sustancias | **12/12** | ✔ |
+> | [combustible](../../ii/docs/hito-0-combustible.md) | ≤ 15% de overhead | **22–52%** | ✘ → regla cambiada |
+> | [arranque en el navegador](../../ii/docs/hito-0-arranque-navegador.md) | typecheck tibio ≤ 250 ms | **6 ms** | ✔ |
+>
+> El criterio del combustible **se pasó**, y el
+> [ADR II-0005](../../ii/docs/decisions/II-0005-el-presupuesto-se-mide-contra-el-tick.md)
+> lo reemplazó por decisión del usuario: el presupuesto se mide **contra el
+> tick** y no contra sí mismo. Una razón sobre un número chico no describe
+> ningún problema del producto — 22% de 0.25 ms son 0.13 ms en un cuadro de 33.
+> Los umbrales nuevos son absolutos: ≤ 2% del tick para instrumentar (medido
+> 0.40%) y ≤ 10% del tick para el cómputo de la habilidad (medido 1.15%).
+>
+> Dos hallazgos del banco quedaron como **requisitos**: la inyección de
+> combustible va **en línea** y no como llamada (1.5× gratis), y se instrumentan
+> **también** las entradas de función (sacarlas no ahorra nada medible y hace que
+> la recursión infinita muera por `RangeError` en vez de por combustible).
+>
+> Y del banco de typecheck salió una regla para el Hito 8: **el `tsconfig` de la
+> fragua se declara explícito, con `lib` mínimo y `types: []`**. Sin fijarlos,
+> TypeScript carga `lib.dom` y los 132 archivos de `@types/node`, y eso cuesta
+> **5.6×** — más que cualquier optimización que uno se ponga a hacer después.
 
 **Se puede mostrar:** nada. Es el hito que evita construir sobre fe. Los tres documentos anteriores tenían números clave inventados y falsables con aritmética de servilleta.
 
