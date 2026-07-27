@@ -20,6 +20,22 @@
  * Fuente: docs/architecture/remake-anima-ii.md, «La API que ve el código
  * generado (firmas reales)». Nada acá se inventó: lo que el documento no
  * define está marcado como HUECO y NO se completó a ojo.
+ *
+ * ─── PASE 2 ─────────────────────────────────────────────────────────────────
+ * Cinco reparaciones, y SOLO cinco, para que la diferencia contra los 112
+ * errores del pase 1 sea atribuible. Salen de `ii/docs/huecos-medidos.md`,
+ * que las ordena por cuántos borradores distintos las piden:
+ *
+ *   1. `SelfView extends BodyView`  — 7 borradores, 9 sitios
+ *   2. `SelfView.stamina` / `.hunger` — 8 borradores
+ *   3. `Ctx.qAt` + `CellQuality`    — 6 borradores, 8 sitios
+ *   4. `Ctx.eat`                    — 3 borradores, 8 sitios
+ *   5. `Ctx.wait`                   — 5 borradores
+ *
+ * Deliberadamente NO se tocó nada más. `clock`, `place`, `drop`,
+ * `PlaceMemory.atTick`, los roles tipados por proceso y las cualidades que
+ * exigen leyes nuevas quedan afuera: cada uno se mide por separado o no se
+ * mide. Un pase 2 que arregla todo no prueba nada.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
@@ -76,6 +92,25 @@ export type DerivedQuality =
 export type UndeclaredQuality = 'wet' | 'stock' | 'fibrous'
 
 export type QualityId = ConservedQuality | LawfulQuality | DerivedQuality | UndeclaredQuality
+
+/**
+ * REPARACIÓN 3 (pase 2) — «Ctx.qAt» (6 borradores, 8 sitios). El hallazgo
+ * estructural del ejercicio: CUATRO DE LAS ONCE LEYES ACTÚAN SOBRE CELDAS
+ * —la 1 relaja hacia `ambient`, la 3 se modula por el `oxygen` de la celda,
+ * la 4 lee `w.oxygenAt(b.at)`, la 11 vive en `wet`— y la superficie tenía
+ * CERO lecturas de celda: `ctx.q()` exige un `BodyView` y `Cell` no tiene id.
+ *
+ * Por eso `tapar-la-fogata-para-hacer-carbon` —la técnica emblema de toda la
+ * arquitectura— compilaba entera y producía ceniza siempre:
+ * `ctx.q(fogata, 'oxygen')` typechequea y contesta el oxígeno DEL CUERPO,
+ * mientras la ley 4 lee el DE LA CELDA.
+ *
+ * Solo entran las tres que las once leyes ya ponen en la celda. `sheltered`
+ * NO entra: eso es la ley 12 (`oclusion`), que no está escrita. Agregarlo acá
+ * sería tapar un hueco de FÍSICA con superficie, que es exactamente lo que
+ * este ejercicio existe para no hacer.
+ */
+export type CellQuality = 'wet' | 'oxygen' | 'temperature'
 
 // ─── Predicados sobre cualidades ────────────────────────────────────────────
 
@@ -145,10 +180,25 @@ export interface BodyView {
   readonly name: string
 }
 
-/** HUECO 5 — el documento no declara los campos de `SelfView`. */
-export interface SelfView {
-  readonly at: Placement
+/**
+ * REPARACIÓN 1 y 2 (pase 2) — «SelfView no es BodyView» (7 borradores,
+ * 9 sitios) y «SelfView.stamina» (8 borradores).
+ *
+ * La criatura ES un cuerpo. Que `SelfView` no fuera asignable a `BodyView`
+ * significaba que no podía pasarse a sí misma como rol de un proceso: no podía
+ * frotar dos palos declarándose como el cuerpo que paga la stamina, que es el
+ * paso 1 del ejemplo (a) del documento — cómo enciende el primer fuego de la
+ * partida.
+ *
+ * `stamina` y `nutrition` no son campos nuevos: son cualidades que ya existen
+ * en el catálogo y que ahora se leen con el mismo verbo que las de cualquier
+ * otro cuerpo, `ctx.q(ctx.me, 'stamina')`. Se dejan además como atajos porque
+ * ocho borradores los pidieron por nombre.
+ */
+export interface SelfView extends BodyView {
   readonly holding: readonly BodyView[]
+  readonly stamina: number
+  readonly hunger: number
 }
 
 /** HUECO 6 — el documento no declara los campos de `PlaceMemory`. */
@@ -225,10 +275,16 @@ export interface Ctx {
   readonly tick: number
   readonly self: SelfView
 
+  /** REPARACIÓN 1 — la criatura como cuerpo, para poder pasarse como rol. */
+  readonly me: BodyView
+
   /** Cómputo puro sobre la percepción congelada del tick. No cruza nada. */
   see(w: Where): BodyView[]
   recall(w: Where): PlaceMemory[]
   q(b: BodyView, q: QualityId): number
+
+  /** REPARACIÓN 3 — leer la celda, no el cuerpo. Ver `CellQuality`. */
+  qAt(at: Placement, q: CellQuality): number
 
   /** ¿Puedo? Verifica roles y arrangement contra el mundo. No ejecuta. */
   can(p: ProcessId, roles: Record<string, BodyView>): Verdict
@@ -239,6 +295,23 @@ export interface Ctx {
   put(b: BodyView, at: Cell, o?: { onTopOf?: BodyView }): Intent
   apply(p: ProcessId, roles: Record<string, BodyView>): Intent
   explore(o: { until: (v: PerceptionView) => boolean; maxTicks: number }): Intent
+
+  /**
+   * REPARACIÓN 4 — «Ctx.eat» (3 borradores, 8 sitios). Era el HUECO 8: el
+   * documento dice que «`eat` SIEMPRE está permitido» y lista «comer» entre
+   * las quince habilidades innatas del Hito 4, y no había forma de comer.
+   * Comer no es un permiso: siempre se puede, y lo que varía es cuánto rinde
+   * (`nutrition × mass × digestibility`) y cuánto enferma (`toxicity`).
+   */
+  eat(b: BodyView): Intent
+
+  /**
+   * REPARACIÓN 5 — «Ctx.wait» (5 borradores). «Esperar» está en las quince
+   * innatas del Hito 4. Sin esto, la única forma de dejar pasar el tiempo era
+   * `yield ctx.goTo(ctx.self.at)` —caminar hasta donde ya estoy—, la
+   * deformidad que sostenía la secuencia estrella del Hito 5.
+   */
+  wait(ticks: number): Intent
 
   /** Canal de habla. No cuesta turno del cuerpo. */
   say(text: string): void
@@ -255,13 +328,7 @@ export interface Ctx {
 }
 
 /**
- * HUECO 8 — no hay forma de comer.
- *
- * El documento dice que «`eat` SIEMPRE está permitido» y que
- * `energía += calories(b)`, y el Hito 4 lista «comer» entre las quince
- * habilidades innatas. Pero `Ctx` no tiene `eat`, y 'metabolismo' es ley
- * ambiente, no proceso aplicable. Con esta superficie, la criatura no puede
- * comer. Es el hueco más grande y no se tapó a propósito.
+ * HUECO 8 — CERRADO en el pase 2. Ver `eat()` arriba.
  *
  * HUECO 9 — no hay forma de soltar. Hay `take`, hay `put(b, at)`. Si `put`
  * cubre soltar en el piso, no está dicho.
