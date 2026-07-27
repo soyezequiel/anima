@@ -46,7 +46,16 @@ import { buildSeedPhysics } from '../src/physics.js'
 import { EXTRACCION, UNION } from '../src/process.js'
 import type { QualityId } from '../src/quality.js'
 import type { Substance } from '../src/substance.js'
+import { HZ_DE_REFERENCIA, dtDeFrecuencia } from '../src/fixed.js'
 import { SUSTANCIAS_SEMILLA } from '../src/data/sustancias.js'
+
+/**
+ * El paso de tiempo de los tests de este archivo: la frecuencia de referencia
+ * del ADR II-0007. Las leyes son por segundo y `dt` dice con qué finura se las
+ * muestrea; a otra frecuencia estos mismos tests miden otra trayectoria, y eso
+ * es correcto (ADR II-0008).
+ */
+const DT = dtDeFrecuencia(HZ_DE_REFERENCIA)
 
 // ─── Lo que el dios trajo ayer ───────────────────────────────────────────────
 //
@@ -140,7 +149,7 @@ describe('se quema', () => {
       SIN_FILA.perUnitMass.pyrolysisAt!,
     )
 
-    const fin = correr(cosa, sobreLasBrasas, phys, 200)
+    const fin = correr(cosa, sobreLasBrasas, phys, DT, 10)
 
     expect(fin.leyes).toContain('combustion')
     expect(fin.leyes).toContain('transmutacion')
@@ -171,8 +180,8 @@ describe('se quema', () => {
     // La técnica no depende de qué es la cosa: depende del oxígeno de la celda.
     const cosa = trozo('cosa', 'filete', MASA)
     const fuente = { potencia: HOGUERA, distancia: 0, montaje: 'contacto' } as const
-    const tapada = correr(cosa, { celda: CELDA_TAPADA, fuente }, phys, 200)
-    const alAire = correr(cosa, { celda: CELDA_AL_AIRE, fuente }, phys, 200)
+    const tapada = correr(cosa, { celda: CELDA_TAPADA, fuente }, phys, DT, 10)
+    const alAire = correr(cosa, { celda: CELDA_AL_AIRE, fuente }, phys, DT, 10)
     expect(qualityOf(tapada.body, 'mass', tapada.phys)).toBeGreaterThan(
       qualityOf(alAire.body, 'mass', alAire.phys) * 4,
     )
@@ -188,7 +197,8 @@ describe('se quema', () => {
       cosa,
       { celda: CELDA_AL_AIRE, fuente: { potencia: FOGATA, distancia: 2, montaje: 'piso' } },
       phys,
-      500,
+      DT,
+      25,
     )
     expect(fin.leyes).not.toContain('transmutacion')
     expect(qualityOf(fin.body, 'charred', fin.phys)).toBe(0)
@@ -219,7 +229,7 @@ describe('se cocina', () => {
     const caloriasAntes = qualityOf(cosa, 'calories', phys)
     expect(crudo).toBe(SIN_FILA.perUnitMass.digestibility)
 
-    const fin = correr(cosa, enLaParrilla, phys, 500)
+    const fin = correr(cosa, enLaParrilla, phys, DT, 25)
 
     expect(fin.leyes).toContain('desnaturalizacion')
     expect(qualityOf(fin.body, 'digestibility', fin.phys)).toBeGreaterThan(0.85)
@@ -237,7 +247,8 @@ describe('se cocina', () => {
       cosa,
       { celda: CELDA_AL_AIRE, fuente: { potencia: FOGATA, distancia: 1, montaje: 'parrilla' } },
       phys,
-      500,
+      DT,
+      25,
     )
     expect(totalConservado(fin.body, 'nutrition', fin.phys)).toBeLessThanOrEqual(antes)
     // El número por unidad de masa no lo toca la ley 5: lo que se fue es humedad.
@@ -251,7 +262,8 @@ describe('se cocina', () => {
       cosa,
       { celda: CELDA_AL_AIRE, fuente: { potencia: FOGATA, distancia: 2, montaje: 'piso' } },
       phys,
-      500,
+      DT,
+      25,
     )
     expect(fin.leyes).not.toContain('desnaturalizacion')
     expect(qualityOf(fin.body, 'digestibility', fin.phys)).toBe(SIN_FILA.perUnitMass.digestibility)

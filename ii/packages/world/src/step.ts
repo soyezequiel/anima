@@ -48,13 +48,17 @@ import {
   clampToRange,
   conSustancia,
   cumpleRol,
+  dtDeFrecuencia,
   isOptionalRole,
   paso,
+  porPaso,
   qualityOf,
+  seg,
+  sumarPaso,
   T_AMBIENTE,
   unir,
 } from '@anima/physics'
-import type { Celda, Entorno, Fuente, Montaje } from '@anima/physics'
+import type { Celda, Dt, Duracion, Entorno, Fuente, Montaje } from '@anima/physics'
 import type { ActorId, BodyId, Intent, IntentKind, Placement, RoleBinding } from './intent.js'
 import {
   chebyshev,
@@ -114,8 +118,17 @@ export interface WorldBody {
 export interface Activity {
   readonly process: ProcessId
   readonly roles: readonly RoleBinding[]
-  /** Cuántos ticks lleva. `completion.at` dice cuántos hacen falta. */
-  readonly ticks: number
+  /**
+   * Cuántos SEGUNDOS DE MUNDO lleva, no cuántos ticks (ADR II-0008).
+   * `completion.at` dice cuántos hacen falta, y también está en segundos: atar
+   * tarda un segundo a 20 Hz y a 100 Hz, y lo único que cambia es en cuántas
+   * muestras se parte.
+   *
+   * Se acumula con `sumarPaso` y no con `+= dt`, porque veinte veces 0,05 da
+   * 0,9999999999999999 y atar pasaría a tardar un tick de más, siempre, sin que
+   * ningún test dijera por qué.
+   */
+  readonly segundos: Duracion
 }
 
 export interface Actor {
@@ -147,6 +160,21 @@ export interface Actor {
  */
 export interface WorldState {
   readonly tick: number
+  /**
+   * La FRECUENCIA del mundo, en Hz. Gobierna el RENDIMIENTO —cuánto tiempo de CPU
+   * hay por paso— y nada más: el ritmo lo gobiernan las tasas de las leyes, que
+   * son por segundo (ADR II-0007 y II-0008).
+   *
+   * Está en el estado y no en un parámetro de `stepWorld` porque es parte de la
+   * IDENTIDAD de la partida: dos mundos con la misma semilla y distinta
+   * frecuencia muestrean la misma física con distinta finura y no producen la
+   * misma traza. Eso es correcto y esperado, y por eso la frecuencia va en el
+   * journal y cargar un guardado con otra es un error explícito.
+   *
+   * Solo son admisibles las que dan un `dt = 1/Hz` exacto en la escala de las
+   * tasas: ver `esFrecuenciaAdmisible`. `crearMundo` las rechaza.
+   */
+  readonly hz: number
   readonly phys: Physics
   readonly bodies: ReadonlyMap<BodyId, WorldBody>
   readonly actors: ReadonlyMap<ActorId, Actor>
@@ -200,7 +228,7 @@ export type SimEvent =
       readonly gastado: number
       readonly acreditado: number
     }
-  | { readonly k: 'proceso'; readonly by: ActorId; readonly process: ProcessId; readonly ticks: number; readonly completo: boolean }
+  | { readonly k: 'proceso'; readonly by: ActorId; readonly process: ProcessId; readonly segundos: Duracion; readonly completo: boolean }
   | { readonly k: 'nacio'; readonly id: BodyId; readonly por: 'rendimiento' }
   | { readonly k: 'murio'; readonly id: BodyId; readonly por: 'comido' | 'consumido' }
   | { readonly k: 'sustancia'; readonly id: string }
@@ -283,6 +311,10 @@ export function mapaDeActores(actores: readonly Actor[]): ReadonlyMap<ActorId, A
  */
 interface Borrador {
   tick: number
+  /** La frecuencia del mundo. Viaja del estado de entrada al de salida sin tocarse. */
+  hz: number
+  /** El paso de tiempo de este tick, en segundos. Sale de `state.hz`. */
+  dt: Dt
   phys: Physics
   bodies: Map<BodyId, WorldBody>
   actors: Map<ActorId, Actor>
@@ -296,6 +328,11 @@ interface Borrador {
 function abrir(s: WorldState): Borrador {
   return {
     tick: s.tick,
+    hz: s.hz,
+    // Acá, y no en cada ley: `dtDeFrecuencia` LANZA si la frecuencia no es
+    // admisible, y el único momento honesto para enterarse es antes de que el
+    // paso escriba nada.
+    dt: dtDeFrecuencia(s.hz),
     phys: s.phys,
     bodies: new Map(s.bodies),
     actors: new Map(s.actors),
@@ -311,6 +348,7 @@ function cerrar(d: Borrador): StepOutcome {
   return {
     state: {
       tick: d.tick + 1,
+      hz: d.hz,
       phys: d.phys,
       bodies,
       actors: d.actors,
@@ -1136,20 +1174,20 @@ function intencionAplicar(d: Borrador, a: Actor, i: Intent & { k: 'apply' }): vo
   // que ser: el calor acumulado está en el palo, no en la voluntad.
   const sigue =
     a.doing !== undefined && a.doing.process === i.process && mismosRoles(a.doing.roles, i.roles)
-  const ticks = (sigue && a.doing !== undefined ? a.doing.ticks : 0) + 1
+  const segundos = sumarPaso(sigue && a.doing !== undefined ? a.doing.segundos : seg(0), d.dt)
 
   aplicarEfectos(d, p, ligs)
 
   const at = p.completion?.at
-  const completo = at !== undefined && ticks >= at
+  const completo = at !== undefined && segundos >= at
   if (completo) {
     for (const y of p.completion?.yields ?? []) rendir(d, a, y, ligs)
     d.actors.set(a.id, quitarActividad(d.actors.get(a.id) ?? a))
   } else {
     const actual = d.actors.get(a.id) ?? a
-    d.actors.set(a.id, { ...actual, doing: { process: i.process, roles: i.roles, ticks } })
+    d.actors.set(a.id, { ...actual, doing: { process: i.process, roles: i.roles, segundos } })
   }
-  d.events.push({ k: 'proceso', by: a.id, process: i.process, ticks, completo })
+  d.events.push({ k: 'proceso', by: a.id, process: i.process, segundos, completo })
 }
 
 function quitarActividad(a: Actor): Actor {
@@ -1163,7 +1201,13 @@ function cuerpoDeRol(ligs: readonly Ligadura[], nombre: string): WorldBody | und
 }
 
 /**
- * Los cuatro efectos, por tick.
+ * Los cuatro efectos, en UN PASO.
+ *
+ * Las tasas del proceso son POR SEGUNDO (ADR II-0008) y `porPaso` las lleva al
+ * paso. A la frecuencia de referencia da exactamente lo que daba la tasa por
+ * tick de antes: `friccion` empuja 120 grados por segundo, o sea 6 por paso a
+ * 20 Hz, que es el número con el que se calibró.
+ *
  *
  * `drive` con `poweredBy` es la única forma de que algo suba sin que sea gratis, y
  * la cuenta está escrita para que no pueda ser una máquina de movimiento
@@ -1182,7 +1226,10 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
         const actual = d.bodies.get(c.body.id)
         if (actual === undefined) break
         const v = qualityOf(actual.body, e.q, d.phys)
-        ponerCuerpo(d, { ...actual, body: conCualidad(actual.body, e.q, v - e.perTick) })
+        ponerCuerpo(d, {
+          ...actual,
+          body: conCualidad(actual.body, e.q, v - porPaso(e.porSegundo, d.dt)),
+        })
         break
       }
       case 'drive': {
@@ -1193,7 +1240,8 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
         const v = qualityOf(actual.body, e.q, d.phys)
         const rumbo = e.toward > v ? 1 : -1
         const falta = rumbo > 0 ? e.toward - v : v - e.toward
-        let delta = falta < e.perTick ? falta : e.perTick
+        const empuje = porPaso(e.porSegundo, d.dt)
+        let delta = falta < empuje ? falta : empuje
         if (delta <= 0) break
         if (e.poweredBy !== undefined) {
           const fuente = cuerpoDeRol(ligs, e.poweredBy.from)
@@ -1224,7 +1272,8 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
         const ca = d.bodies.get(a.body.id)
         if (cd === undefined || ca === undefined) break
         const hay = qualityOf(cd.body, e.q, d.phys)
-        const mueve = hay < e.perTick ? hay : e.perTick
+        const mover = porPaso(e.porSegundo, d.dt)
+        const mueve = hay < mover ? hay : mover
         if (mueve <= 0) break
         ponerCuerpo(d, { ...cd, body: conCualidad(cd.body, e.q, hay - mueve) })
         const cb = d.bodies.get(ca.body.id) ?? ca
@@ -1479,7 +1528,7 @@ function sistemaLeyes(d: Borrador): void {
   // arreglo serían 5000 punteros más por tick, y el tick tiene cuatro
   // milisegundos.
   for (const c of d.bodies.values()) {
-    const r = paso(c.body, entornoDe(d, c, fs, ocl), d.phys)
+    const r = paso(c.body, entornoDe(d, c, fs, ocl), d.phys, d.dt)
     if (r.body !== c.body) d.bodies.set(c.body.id, { ...c, body: r.body })
     if (r.nueva !== undefined) nuevas.push(r.nueva)
   }

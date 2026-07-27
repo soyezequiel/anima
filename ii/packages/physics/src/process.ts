@@ -14,6 +14,8 @@
 // de proceso, no acá: mezclar el catálogo con su juez hace que el juez no se
 // pueda correr sobre catálogos que todavía no existen.
 
+import type { Duracion } from './fixed.js'
+import { seg } from './fixed.js'
 import type { QualityId } from './quality.js'
 
 // ─── Versión de la física ────────────────────────────────────────────────────
@@ -38,17 +40,27 @@ export interface Role {
   where: readonly QualityTest[]
 }
 
+/**
+ * Un efecto de proceso. `porSegundo` es una tasa POR SEGUNDO DE MUNDO, no por
+ * tick (ADR II-0008).
+ *
+ * El tick no aparece en ningún lado de este archivo, y ésa es toda la decisión:
+ * mientras las tasas fueran por tick, mover la frecuencia movía el ritmo del
+ * juego —de 30 a 20 Hz, cocinar el cuero pasaba de 40 a 60 segundos de reloj— y
+ * las dos perillas del ADR II-0007 eran una sola con dos nombres. Quien aplica el
+ * efecto sabe su `dt` y hace la conversión en un solo lugar (`porPaso`).
+ */
 export type Effect =
-  | { k: 'drain'; q: QualityId; on: string; perTick: number }
+  | { k: 'drain'; q: QualityId; on: string; porSegundo: number }
   | {
       k: 'drive'
       q: QualityId
       on: string
       toward: number
-      perTick: number
+      porSegundo: number
       poweredBy?: { from: string; q: QualityId; efficiency: number }
     }
-  | { k: 'transfer'; q: QualityId; from: string; to: string; perTick: number }
+  | { k: 'transfer'; q: QualityId; from: string; to: string; porSegundo: number }
   | {
       k: 'couple'
       q: QualityId
@@ -74,7 +86,12 @@ export interface Process {
     | { k: 'inside' }
   gate: readonly QualityTest[]
   effects: readonly Effect[]
-  completion?: { at: number; yields: readonly Yield[] }
+  /**
+   * `at` es una DURACIÓN EN SEGUNDOS de mundo, no un conteo de ticks
+   * (ADR II-0008). Atar tarda un segundo a 20 Hz, a 25 Hz y a 100 Hz; lo único
+   * que cambia con la frecuencia es en cuántas muestras se parte ese segundo.
+   */
+  completion?: { at: Duracion; yields: readonly Yield[] }
   establishes: readonly string[]
   commitment: Commitment
   trust: 'borrador' | 'provisional' | 'estable'
@@ -167,9 +184,11 @@ export function unknownRoleRefs(p: Process): readonly string[] {
  * Ley 2 — la única fuente primordial de calor del mundo.
  *
  * Sin esto el primer fuego de la partida es imposible, porque un mundo decretado
- * por ruido no tiene nada caliente. Y cuesta: 60 ticks llevan la madera de 15 a
- * 375 °C y se comen 48 de `stamina`. Con hambre y poca energía, no puede. Ésa es
- * la distancia entre querer y poder, hecha aritmética.
+ * por ruido no tiene nada caliente. Y cuesta: TRES SEGUNDOS llevan la madera de
+ * 15 a 375 °C —120 grados por segundo— y se comen 48 de `stamina`. Con hambre y
+ * poca energía, no puede. Ésa es la distancia entre querer y poder, hecha
+ * aritmética. Los tres segundos son tres segundos a cualquier frecuencia; antes
+ * eran «60 ticks», que son 2 s a 30 Hz y 3 s a 20 Hz.
  *
  * La eficiencia 0.35 es lo que hace que no sea una máquina de movimiento
  * perpetuo: sale menos calor del que entra en trabajo.
@@ -190,7 +209,7 @@ export const FRICCION: Process = {
       q: 'temperature',
       on: 'a',
       toward: 400,
-      perTick: 6,
+      porSegundo: 120,
       poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 },
     },
   ],
@@ -234,7 +253,7 @@ export const UNION: Process = {
   arrangement: { k: 'held' },
   gate: [],
   effects: [],
-  completion: { at: 20, yields: [{ k: 'join', a: 'a', b: 'b?', via: 'binder' }] },
+  completion: { at: seg(1), yields: [{ k: 'join', a: 'a', b: 'b?', via: 'binder' }] },
   establishes: ['freeStrandEnds>=1', 'reach>=2'],
   commitment: 'reversible',
   trust: 'estable',
@@ -260,8 +279,8 @@ export const DESHILACHAR: Process = {
   ],
   arrangement: { k: 'held' },
   gate: [],
-  effects: [{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.1 }],
-  completion: { at: 40, yields: [{ k: 'split', role: 'source', at: 'grain' }] },
+  effects: [{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 2 }],
+  completion: { at: seg(2), yields: [{ k: 'split', role: 'source', at: 'grain' }] },
   establishes: ['flexibility>=0.8', 'tensile>=0.3'],
   commitment: 'costly',
   trust: 'estable',
@@ -298,7 +317,7 @@ export const EXTRACCION: Process = {
   arrangement: { k: 'within', radius: 1 },
   gate: [],
   effects: [],
-  completion: { at: 30, yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
+  completion: { at: seg(1.5), yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
   establishes: ['holding(tag:carnoso)'],
   commitment: 'costly',
   trust: 'estable',

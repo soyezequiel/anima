@@ -40,6 +40,8 @@
 // «no aumenta» es exacto y no «no aumenta salvo 1e-16», que es la clase de
 // promesa que no se puede testear de verdad.
 
+import type { Dt } from './fixed.js'
+import { HZ_DE_REFERENCIA, porPaso } from './fixed.js'
 import type { Body, Joint, Part } from './body.js'
 import { esDerivadaEn, MAX_JOINTS, MAX_PARTS, qualityOf, violationsOf } from './body.js'
 import type { Physics } from './physics.js'
@@ -77,8 +79,33 @@ export const EXPOSICION: Readonly<Record<Montaje, number>> = {
 /** Temperatura del mundo cuando no hay nada que la mueva. */
 export const T_AMBIENTE = 15
 
-/** Acoplamiento DESNUDO del cuerpo con el ambiente. La ley lo divide por `heatCapacity`. */
+/**
+ * Acoplamiento DESNUDO del cuerpo con el ambiente, en las MISMAS unidades de
+ * potencia en las que está calibrada `emitsPower`. La ley 1 en régimen lo usa
+ * como divisor: `T_eq = ambiente + potencia · formFactor / h`, y ahí lo único
+ * que importa es el COCIENTE `potencia / h`, que no tiene unidades de tiempo.
+ * Por eso este número no se toca: `T_eq` es una temperatura, no una tasa.
+ */
 export const H_PERDIDA = 0.5
+
+/**
+ * El MISMO acoplamiento, por SEGUNDO de mundo. Es lo que la ley 1 INTEGRA: cuánto
+ * del hueco al equilibrio se cierra por unidad de tiempo y de `heatCapacity`.
+ *
+ * ─── LA DEUDA DECLARADA DEL ADR II-0008, y es una sola ──────────────────────
+ *
+ * Esta multiplicación es el ÚNICO lugar de `@anima/physics` donde queda escrita
+ * la frecuencia de referencia, y está acá porque `emitsPower` —la otra mitad del
+ * cociente— sigue calibrada en potencia por tick: el Hito 0 midió la fogata del
+ * documento en 300 contra una ventana de cocción que se resolvió tick a tick.
+ * Moverla a vatios obliga a multiplicar `EMISSION_PER_FUEL` y el rango de
+ * `emitsPower`, o sea a rehacer el barrido térmico de las doce sustancias.
+ *
+ * Se deriva y no se escribe dos veces a propósito: dos constantes para el mismo
+ * acoplamiento divergen el día que alguien recalibre una, y la ley 1 pasaría a
+ * relajar hacia un equilibrio distinto del que ella misma calcula.
+ */
+export const H_PERDIDA_POR_SEGUNDO = H_PERDIDA * HZ_DE_REFERENCIA
 
 /** `exposicion(montaje) / (1 + d²)`. Las cuatro filas del documento, exactas. */
 export function formFactor(distancia: number, montaje: Montaje): number {
@@ -136,23 +163,36 @@ export const AL_AIRE: Entorno = { celda: CELDA_AL_AIRE }
  */
 export const DIGESTIBILIDAD_TECHO = 0.95
 
-/** Ley 5, tasa de cocción: `r = 0.010·k/(0.2 + toughness)`. */
-const COCCION_BASE = 0.01
+/** Ley 5, tasa de cocción POR SEGUNDO: `r = 0.2·k/(0.2 + toughness)`. */
+const COCCION_BASE = 0.2
+/** Adimensional: es un piso de dureza, no una tasa. No lo toca el `dt`. */
 const COCCION_DUREZA_PISO = 0.2
 
-/** Ley 5, lo que baja la toxicidad y la putrefacción por unidad de `k`. */
-const COCCION_DESTOXIFICA = 0.03
-const COCCION_DESPUDRE = 0.008
+/** Ley 5, lo que baja la toxicidad y la putrefacción por unidad de `k` y por segundo. */
+const COCCION_DESTOXIFICA = 0.6
+const COCCION_DESPUDRE = 0.16
 
 /**
- * Ley 5, evaporación: `0.0006 · k²`. **EL EXPONENTE 2 ES UN HALLAZGO, NO UN
- * TIPEO** (`ii/docs/hito-0-barrido-termico.md`, hallazgo 2). Con `evap ∝ k`, el
- * agua perdida por unidad de cocción no depende de la temperatura, más caliente
- * es siempre mejor, y cocinar deja de ser una técnica para ser una receta. Con
- * `k²` aparece la tensión «comer antes o comer mejor», que es lo que hay que
- * aprender. Tocar esto obliga a volver a correr `pnpm ii:barrido`.
+ * Ley 5, evaporación: `0.012 · k²` POR SEGUNDO. **EL EXPONENTE 2 ES UN HALLAZGO,
+ * NO UN TIPEO** (`ii/docs/hito-0-barrido-termico.md`, hallazgo 2). Con
+ * `evap ∝ k`, el agua perdida por unidad de cocción no depende de la
+ * temperatura, más caliente es siempre mejor, y cocinar deja de ser una técnica
+ * para ser una receta. Con `k²` aparece la tensión «comer antes o comer mejor»,
+ * que es lo que hay que aprender. Tocar esto obliga a volver a correr
+ * `pnpm ii:barrido`.
+ *
+ * EL LITERAL DICE `0.011999999999999999` Y NO `0.012`, y el ulp de diferencia es
+ * a propósito: es el double que dividido por la frecuencia devuelve EXACTAMENTE
+ * la tasa por paso con la que el barrido calibró la ventana de cocción de las
+ * doce sustancias. Con `0.012` la tasa a 20 Hz sale `0.0006000000000000001` en
+ * vez de `0.0006`, y la huella de conducta de `paso()` —que mezcla los bits de
+ * cada double que las leyes escriben— se mueve: una migración que no cambió
+ * ninguna conducta quedaría indistinguible de una que sí. De las diez tasas de
+ * este archivo es la única que lo necesita; el día que se rehaga el barrido, se
+ * escribe redonda.
  */
-const EVAPORACION_BASE = 0.0006
+const EVAPORACION_BASE = 0.011999999999999999
+/** Adimensional: es la forma de la curva, no una tasa. No lo toca el `dt`. */
 const EVAPORACION_EXPONENTE = 2
 
 /**
@@ -172,23 +212,23 @@ const OXIGENO_MINIMO = 0.05
  */
 export const OXIGENO_QUE_HACE_CENIZA = 0.35
 
-/** Ley 3: cuánto carboniza por tick lo que superó su punto de pirólisis. */
-const TASA_CARBONIZACION = 0.01
+/** Ley 3: cuánto carboniza por SEGUNDO lo que superó su punto de pirólisis. */
+const TASA_CARBONIZACION = 0.2
 
-/** Ley 3: cuánto combustible por unidad de masa se lleva la llama por tick. */
-const TASA_COMBUSTION = 0.05
+/** Ley 3: cuánto combustible por unidad de masa se lleva la llama por SEGUNDO. */
+const TASA_COMBUSTION = 1
 
 /** Ley 4: dónde deja de haber materia orgánica y empieza el residuo. */
 export const CARBONIZADO_QUE_TRANSMUTA = 0.8
 
-/** Ley 6: cuánto se pudre por tick, con humedad 1 y a temperatura de trabajo. */
-const TASA_DESCOMPOSICION = 0.0004
+/** Ley 6: cuánto se pudre por SEGUNDO, con humedad 1 y a temperatura de trabajo. */
+const TASA_DESCOMPOSICION = 0.008
 
-/** Ley 11: cuánto seca un grado por encima del ambiente, por tick. */
-const SECADO_POR_GRADO = 0.00002
+/** Ley 11: cuánto seca un grado por encima del ambiente, por SEGUNDO. */
+const SECADO_POR_GRADO = 0.0004
 
-/** Ley 11: cuánto se acerca la humedad del cuerpo a la de la celda por tick. */
-const TASA_MOJADO = 0.01
+/** Ley 11: cuánto se acerca la humedad del cuerpo a la de la celda por SEGUNDO. */
+const TASA_MOJADO = 0.2
 
 // ─── Ley 4 · el residuo, derivado del tag y no de una fila ───────────────────
 
@@ -725,7 +765,7 @@ export function capacidadTermica(b: Body, phys: Physics): number {
   return total
 }
 
-function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura): Body {
+function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura, dt: Dt): Body {
   const objetivo =
     e.fuente === undefined
       ? e.celda.ambiente
@@ -737,8 +777,10 @@ function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura): Body {
         )
   const cap = capacidadTermica(b, phys)
   // Sin masa no hay inercia térmica: el cuerpo ES el ambiente. Y el acople no
-  // puede superar 1, o el cuerpo pasaría de largo el equilibrio y oscilaría.
-  const acople = cap > 0 ? Math.min(1, H_PERDIDA / cap) : 1
+  // puede superar 1, o el cuerpo pasaría de largo el equilibrio y oscilaría —
+  // que es exactamente lo que pasa si `dt` se agranda demasiado, y por eso el
+  // `min` es también el techo de estabilidad de la integración.
+  const acople = cap > 0 ? Math.min(1, porPaso(H_PERDIDA_POR_SEGUNDO, dt) / cap) : 1
   const t = l.temperature + (objetivo - l.temperature) * acople
   // `conCualidad` y no `conEstado`: esto corre para TODO cuerpo en TODO tick, y
   // `conEstado` obliga a armar un objeto de cambios de una sola entrada para
@@ -782,19 +824,27 @@ function ventanaDeCoccion(l: Lectura, tags: readonly Tag[]): boolean {
  * el barrido entero pierde sentido. El documento y el barrido dicen lo mismo;
  * la intuición de la olla, no.
  */
-function leyDesnaturalizacion(b: Body, l: Lectura): Body {
+function leyDesnaturalizacion(b: Body, l: Lectura, dt: Dt): Body {
   const k = (l.temperature - (l.denaturesAt ?? 0)) / 100
   if (k <= 0) return b
-  const r = (COCCION_BASE * k) / (COCCION_DUREZA_PISO + l.toughness)
-  const evap = Math.min(l.moisture, EVAPORACION_BASE * potenciaEntera(k, EVAPORACION_EXPONENTE))
+  // Las cuatro tasas se llevan al paso ANTES de entrar en la cuenta, y no
+  // después: `(a·k/b)·dt` y `(a·dt)·k/b` son la misma cuenta en el álgebra y no
+  // en IEEE-754. Convertir la constante es lo que deja la aritmética idéntica a
+  // la que calibró el barrido térmico.
+  const coccion = porPaso(COCCION_BASE, dt)
+  const destoxifica = porPaso(COCCION_DESTOXIFICA, dt)
+  const despudre = porPaso(COCCION_DESPUDRE, dt)
+  const evaporacion = porPaso(EVAPORACION_BASE, dt)
+  const r = (coccion * k) / (COCCION_DUREZA_PISO + l.toughness)
+  const evap = Math.min(l.moisture, evaporacion * potenciaEntera(k, EVAPORACION_EXPONENTE))
 
   const out = conEstado(b, {
     digestibility: clampToRange(
       'digestibility',
       l.digestibility + r * (DIGESTIBILIDAD_TECHO - l.digestibility),
     ),
-    toxicity: clampToRange('toxicity', l.toxicity * (1 - Math.min(1, COCCION_DESTOXIFICA * k))),
-    decay: clampToRange('decay', l.decay * (1 - Math.min(1, COCCION_DESPUDRE * k))),
+    toxicity: clampToRange('toxicity', l.toxicity * (1 - Math.min(1, destoxifica * k))),
+    decay: clampToRange('decay', l.decay * (1 - Math.min(1, despudre * k))),
     moisture: clampToRange('moisture', l.moisture - evap),
   })
   return evap > 0 ? escalarMasa(out, 1 - evap) : out
@@ -824,9 +874,9 @@ function potenciaEntera(x: number, n: number): number {
  * decisión «comer antes o comer mejor». Fuera de la ventana de cocción, secarse
  * es un cambio de estado, no de materia.
  */
-function leyHumedad(b: Body, e: Entorno, l: Lectura): Body {
-  const haciaLaCelda = (e.celda.wet - l.moisture) * TASA_MOJADO
-  const secado = Math.max(0, l.temperature - e.celda.ambiente) * SECADO_POR_GRADO
+function leyHumedad(b: Body, e: Entorno, l: Lectura, dt: Dt): Body {
+  const haciaLaCelda = (e.celda.wet - l.moisture) * porPaso(TASA_MOJADO, dt)
+  const secado = Math.max(0, l.temperature - e.celda.ambiente) * porPaso(SECADO_POR_GRADO, dt)
   const m = l.moisture + haciaLaCelda - secado
   // Misma razón que en la ley 1: una sola cualidad, y esto corre por cuerpo y
   // por tick.
@@ -845,19 +895,19 @@ function leyHumedad(b: Body, e: Entorno, l: Lectura): Body {
  * Pirolizar no necesita aire. Arder sí. De esa única diferencia sale que tapar
  * el fuego dé una cosa y no taparlo dé otra, sin ningún caso especial.
  */
-function leyCombustion(b: Body, e: Entorno, l: Lectura): Body {
+function leyCombustion(b: Body, e: Entorno, l: Lectura, dt: Dt): Body {
   const seca = l.moisture < HUMEDAD_QUE_APAGA
   const piroliza = seca && l.temperature >= l.pyrolysisAt
   const arde = seca && l.temperature >= l.ignitionPoint && e.celda.oxygen > OXIGENO_MINIMO
   if (!piroliza && !arde) return b
 
-  const charred = piroliza ? Math.min(1, l.charred + TASA_CARBONIZACION) : l.charred
+  const charred = piroliza ? Math.min(1, l.charred + porPaso(TASA_CARBONIZACION, dt)) : l.charred
   const cambios: QualityVector = { charred: clampToRange('charred', charred) }
 
   if (arde) {
     cambios.fuelEnergy = clampToRange(
       'fuelEnergy',
-      Math.max(0, l.fuelEnergy - TASA_COMBUSTION * e.celda.oxygen),
+      Math.max(0, l.fuelEnergy - porPaso(TASA_COMBUSTION, dt) * e.celda.oxygen),
     )
   }
   // Lo que se carboniza deja de ser comida, y no porque una lista lo prohíba:
@@ -878,11 +928,14 @@ function leyCombustion(b: Body, e: Entorno, l: Lectura): Body {
  * hay cocción— y por eso guardar comida cocida tiene sentido sin que nadie
  * escriba «la comida cocida dura más».
  */
-function leyDescomposicion(b: Body, l: Lectura): Body {
+function leyDescomposicion(b: Body, l: Lectura, dt: Dt): Body {
   if (l.nutrition <= 0) return b
   if (l.charred > 0) return b
   if (l.denaturesAt !== undefined && l.temperature >= l.denaturesAt) return b
-  const r = TASA_DESCOMPOSICION * l.moisture * (1 + Math.max(0, l.temperature - T_AMBIENTE) / 100)
+  const r =
+    porPaso(TASA_DESCOMPOSICION, dt) *
+    l.moisture *
+    (1 + Math.max(0, l.temperature - T_AMBIENTE) / 100)
   if (r <= 0) return b
   return conEstado(b, {
     decay: clampToRange('decay', l.decay + r * (1 - l.decay)),
@@ -987,15 +1040,26 @@ export function residuoDe(madre: Substance, clase: ClaseDeResiduo, fuelEnergy: n
 // ─── El tick ─────────────────────────────────────────────────────────────────
 
 /**
- * Un tick de mundo sobre un cuerpo. Puro: mismo cuerpo y mismo entorno, mismo
- * resultado, en cualquier máquina y en cualquier orden.
+ * UN PASO de mundo sobre un cuerpo. Puro: mismo cuerpo, mismo entorno y mismo
+ * `dt`, mismo resultado, en cualquier máquina y en cualquier orden.
  *
  * El orden de las leyes está fijo y es parte del contrato: primero se decide la
  * temperatura, después lo que la temperatura hace, y al final lo que queda. Un
  * orden que dependiera de un mapa o de un `Object.keys` haría divergir el
  * replay, que es la razón por la que este paquete existe.
+ *
+ * ─── `dt` es un parámetro y no una constante (ADR II-0008) ──────────────────
+ *
+ * Las diez tasas de este archivo son POR SEGUNDO de mundo, y `dt` dice cuánto
+ * mundo pasa en este paso. Bajar la frecuencia no hace que las cosas tarden más:
+ * hace que el mismo segundo se muestree en menos pasos, cada uno más grande.
+ *
+ * Lo que SÍ cambia con la frecuencia es la trayectoria, y tiene que cambiar: las
+ * leyes no son lineales, así que dos muestreos distintos del mismo mundo dan dos
+ * trazas distintas. Por eso `dt` es parte de la identidad de una partida y va en
+ * el journal.
  */
-export function paso(entrada: Body, e: Entorno, phys: Physics): Paso {
+export function paso(entrada: Body, e: Entorno, phys: Physics, dt: Dt): Paso {
   const leyes: LeyId[] = []
   // La masa se reconcilia ANTES de que corra ninguna ley: media docena de leyes
   // reconstruyen las partes, y si el cuerpo trae una masa escrita que no coincide
@@ -1003,7 +1067,7 @@ export function paso(entrada: Body, e: Entorno, phys: Physics): Paso {
   const b0 = normalizarMasa(entrada)
   const tags = tagsDe(b0, phys)
 
-  let b = leyTermica(b0, e, phys, leer(b0, phys))
+  let b = leyTermica(b0, e, phys, leer(b0, phys), dt)
   leyes.push('termica')
 
   // Una lectura NUEVA solo cuando el cuerpo cambió.
@@ -1017,7 +1081,7 @@ export function paso(entrada: Body, e: Entorno, phys: Physics): Paso {
   let l = leer(b, phys)
 
   if (ventanaDeCoccion(l, tags)) {
-    const cocido = leyDesnaturalizacion(b, l)
+    const cocido = leyDesnaturalizacion(b, l, dt)
     leyes.push('desnaturalizacion')
     if (cocido !== b) {
       b = cocido
@@ -1026,7 +1090,7 @@ export function paso(entrada: Body, e: Entorno, phys: Physics): Paso {
   } else {
     // Fuera de la ventana la humedad la mueve la ley 11; adentro, la 5. Nunca
     // las dos, o el agua se contaría dos veces.
-    const secado = leyHumedad(b, e, l)
+    const secado = leyHumedad(b, e, l, dt)
     leyes.push('humedad')
     if (secado !== b) {
       b = secado
@@ -1034,14 +1098,14 @@ export function paso(entrada: Body, e: Entorno, phys: Physics): Paso {
     }
   }
 
-  const ardido = leyCombustion(b, e, l)
+  const ardido = leyCombustion(b, e, l, dt)
   if (ardido !== b) {
     b = ardido
     leyes.push('combustion')
     l = leer(b, phys)
   }
 
-  const podrido = leyDescomposicion(b, l)
+  const podrido = leyDescomposicion(b, l, dt)
   if (podrido !== b) {
     b = podrido
     leyes.push('descomposicion')
@@ -1085,14 +1149,30 @@ export interface Corrida {
   leyes: readonly LeyId[]
 }
 
-/** `ticks` pasos seguidos. El entorno no cambia: quien lo quiera mover, que llame a `paso`. */
-export function correr(b: Body, e: Entorno, phys: Physics, ticks: number): Corrida {
+/**
+ * `segundos` de mundo seguidos, muestreados de a `dt`. El entorno no cambia:
+ * quien lo quiera mover, que llame a `paso`.
+ *
+ * La duración va en SEGUNDOS y no en pasos (ADR II-0008): «cuarenta pasos»
+ * quiere decir dos segundos a 20 Hz y cuatro a 10 Hz, así que un test escrito en
+ * pasos mediría cosas distintas según la frecuencia. Cuántas muestras entran en
+ * esos segundos lo decide `dt`, y si no entra un número entero se redondea a la
+ * más cercana — el resto es menos de medio paso.
+ */
+export function correr(
+  b: Body,
+  e: Entorno,
+  phys: Physics,
+  dt: Dt,
+  segundos: number,
+): Corrida {
   let body = b
   let actual = phys
   const nuevas: Substance[] = []
   const leyes: LeyId[] = []
-  for (let i = 0; i < ticks; i++) {
-    const r = paso(body, e, actual)
+  const pasos = Math.round(segundos / dt)
+  for (let i = 0; i < pasos; i++) {
+    const r = paso(body, e, actual, dt)
     body = r.body
     if (r.nueva !== undefined) {
       actual = conSustancia(actual, r.nueva)

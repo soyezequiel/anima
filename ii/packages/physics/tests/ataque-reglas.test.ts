@@ -24,6 +24,7 @@ import { describe, expect, it } from 'vitest'
 import { admit, tieneCodigo, type Codigo, type Verdict } from '../src/admit.js'
 import { buildSeedPhysics } from '../src/physics.js'
 import { FRICCION, PHYSICS_VERSION, type Process } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -53,7 +54,7 @@ describe('RECHAZOS CONFIRMADOS · roles que no existen', () => {
   it('un efecto sobre un rol no declarado no entra', () => {
     const v = admit(
       p('efecto-fantasma', {
-        effects: [{ k: 'drain', q: 'stamina', on: 'nadie', perTick: 1 }],
+        effects: [{ k: 'drain', q: 'stamina', on: 'nadie', porSegundo: 20 }],
       }),
       phys,
     )
@@ -69,7 +70,7 @@ describe('RECHAZOS CONFIRMADOS · roles que no existen', () => {
             q: 'temperature',
             on: 'a',
             toward: 400,
-            perTick: 6,
+            porSegundo: 120,
             poweredBy: { from: 'el-viento', q: 'stamina', efficiency: 0.5 },
           },
         ],
@@ -82,7 +83,7 @@ describe('RECHAZOS CONFIRMADOS · roles que no existen', () => {
   it('un yield que reparte un rol inventado no entra', () => {
     const v = admit(
       p('parte-fantasma', {
-        completion: { at: 10, yields: [{ k: 'split', role: 'el-otro', at: 'grain' }] },
+        completion: { at: seg(0.5), yields: [{ k: 'split', role: 'el-otro', at: 'grain' }] },
       }),
       phys,
     )
@@ -97,7 +98,7 @@ describe('RECHAZOS CONFIRMADOS · roles que no existen', () => {
           { name: 'b?', where: [] },
           { name: 'binder', where: [] },
         ],
-        completion: { at: 5, yields: [{ k: 'join', a: 'a', b: 'b', via: 'binder' }] },
+        completion: { at: seg(0.25), yields: [{ k: 'join', a: 'a', b: 'b', via: 'binder' }] },
       }),
       phys,
     )
@@ -129,7 +130,7 @@ describe('RECHAZOS CONFIRMADOS · cualidades y números', () => {
             q: 'temperature',
             on: 'a',
             toward: 5000,
-            perTick: 6,
+            porSegundo: 120,
             poweredBy: { from: 'a', q: 'stamina', efficiency: 0.5 },
           },
         ],
@@ -141,7 +142,7 @@ describe('RECHAZOS CONFIRMADOS · cualidades y números', () => {
 
   it('un NaN en una tasa no entra', () => {
     const v = admit(
-      p('tasa-nan', { effects: [{ k: 'drain', q: 'stamina', on: 'a', perTick: Number.NaN }] }),
+      p('tasa-nan', { effects: [{ k: 'drain', q: 'stamina', on: 'a', porSegundo: Number.NaN }] }),
       phys,
     )
     expect(tieneCodigo(v, 'numero-no-finito')).toBe(true)
@@ -149,15 +150,22 @@ describe('RECHAZOS CONFIRMADOS · cualidades y números', () => {
 
   it('una tasa negativa —un drain que en realidad es un drive— no entra', () => {
     const v = admit(
-      p('drain-al-reves', { effects: [{ k: 'drain', q: 'stamina', on: 'a', perTick: -5 }] }),
+      p('drain-al-reves', { effects: [{ k: 'drain', q: 'stamina', on: 'a', porSegundo: -100 }] }),
       phys,
     )
     expect(tieneCodigo(v, 'tasa-negativa')).toBe(true)
   })
 
-  it('un completion de 2.5 ticks no entra', () => {
-    const v = admit(p('medio-tick', { completion: { at: 2.5, yields: [] } }), phys)
+  it('un completion más corto que el micro-segundo no entra', () => {
+    // En ticks esto era «2,5 ticks no entra», porque medio tick no existía. En
+    // segundos medio segundo sí existe —`extraccion` tarda 1,5— y lo que no
+    // existe es una duración por debajo de la resolución del reloj del mundo.
+    const v = admit(p('medio-micro', { completion: { at: seg(5e-7), yields: [] } }), phys)
     expect(tieneCodigo(v, 'completion-invalida')).toBe(true)
+    // Y el control por el otro lado: 2,5 SEGUNDOS es una duración perfectamente
+    // legal, y en ticks habría sido «2,5 ticks» y habría rebotado.
+    const bien = admit(p('dos-y-medio', { completion: { at: seg(2.5), yields: [] } }), phys)
+    expect(tieneCodigo(bien, 'completion-invalida')).toBe(false)
   })
 })
 
@@ -171,7 +179,7 @@ describe('RECHAZOS CONFIRMADOS · materia', () => {
             q: 'nutrition',
             on: 'a',
             toward: 100,
-            perTick: 5,
+            porSegundo: 100,
             poweredBy: { from: 'a', q: 'stamina', efficiency: 0.5 },
           },
         ],
@@ -199,7 +207,7 @@ describe('RECHAZOS CONFIRMADOS · materia', () => {
     const v = admit(
       p('rio-de-la-nada', {
         roles: [{ name: 'source', where: [] }],
-        completion: { at: 30, yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
+        completion: { at: seg(1.5), yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
       }),
       phys,
     )
@@ -213,7 +221,7 @@ describe('RECHAZOS CONFIRMADOS · materia', () => {
           { name: 'piedra', where: [{ q: 'rigidity', op: '>=', v: 0.9 }] },
           { name: 'b', where: [] },
         ],
-        effects: [{ k: 'transfer', q: 'nutrition', from: 'piedra', to: 'b', perTick: 3 }],
+        effects: [{ k: 'transfer', q: 'nutrition', from: 'piedra', to: 'b', porSegundo: 60 }],
       }),
       phys,
     )
@@ -306,7 +314,7 @@ const HUECOS: readonly Hueco[] = [
           q: 'reach',
           on: 'gear',
           toward: 16,
-          perTick: 0.5,
+          porSegundo: 10,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.5 },
         },
       ],
@@ -337,7 +345,7 @@ const HUECOS: readonly Hueco[] = [
           q: 'temperature',
           on: 'a',
           toward: 400,
-          perTick: 6,
+          porSegundo: 120,
           poweredBy: { from: 'a', q: 'stamina', efficiency: 1 },
         },
       ],
@@ -356,7 +364,7 @@ const HUECOS: readonly Hueco[] = [
     proceso: p('pescar-con-la-mano', {
       roles: [{ name: 'source', where: [{ q: 'mass', op: '>', v: 0 }] }],
       arrangement: { k: 'within', radius: 1 },
-      completion: { at: 1, yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
+      completion: { at: seg(0.05), yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
     }),
   },
   {
@@ -376,7 +384,7 @@ const HUECOS: readonly Hueco[] = [
           q: 'temperature',
           on: 'a',
           toward: 400,
-          perTick: 6,
+          porSegundo: 120,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.99 },
         },
       ],
@@ -472,7 +480,7 @@ describe('el control del hueco de la no-dominancia', () => {
           q: 'temperature',
           on: 'a',
           toward: 400,
-          perTick: 6,
+          porSegundo: 120,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.99 },
         },
       ],

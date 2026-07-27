@@ -5,7 +5,7 @@
 // que salta con todo tampoco sirve para nada.
 
 import { describe, expect, it } from 'vitest'
-import { CONSERVED, qualityOf } from '@anima/physics'
+import { CONSERVED, dtDeFrecuencia, qualityOf } from '@anima/physics'
 import { apply, eat, goTo, take } from '../src/intent.js'
 import type { WorldState } from '../src/step.js'
 import { mapaDeCuerpos, stepWorld } from '../src/step.js'
@@ -293,7 +293,7 @@ describe('el arnés puesto sobre una partida entera', () => {
     expect(vistos.has('nacio')).toBe(false)
   })
 
-  it('armar una caña, con el arnés puesto en cada uno de los veinte ticks', () => {
+  it('armar una caña, con el arnés puesto en cada uno de los pasos del segundo que dura', () => {
     // El camino más caro del mundo: `join` consume tres cuerpos, crea uno, y lo
     // tiene que meter en una mano que acaba de quedar libre. Es donde más fácil
     // se inventa o se pierde materia.
@@ -305,10 +305,13 @@ describe('el arnés puesto sobre una partida entera', () => {
       ],
       actors: [actor('ana', { holding: ['vara', 'hebra'], capacity: 3 })],
     })
-    const at = s.phys.processes.get('union')!.completion!.at
+    // `completion.at` es una DURACIÓN EN SEGUNDOS (ADR II-0008), así que cuántos
+    // pasos hacen falta lo decide la frecuencia: a 20 Hz, el segundo que dura
+    // `union` son los mismos veinte ticks de antes; a 10 Hz serían diez.
+    const pasos = Math.round(s.phys.processes.get('union')!.completion!.at / dtDeFrecuencia(s.hz))
     let w = s
     let nacio: string | undefined
-    for (let t = 0; t < at; t++) {
+    for (let t = 0; t < pasos; t++) {
       const i = apply({ by: 'ana', seq: t }, w.phys, 'union', [
         { name: 'a', body: 'vara' },
         { name: 'binder', body: 'hebra' },

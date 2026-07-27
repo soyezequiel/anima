@@ -40,7 +40,7 @@
 // `localeCompare` ni `Math` trascendente.
 
 import type { Physics, Process, QualitySpec, Substance } from '@anima/physics'
-import { buildSeedPhysics } from '@anima/physics'
+import { buildSeedPhysics, esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES } from '@anima/physics'
 
 import type { CellKey } from './cell.js'
 import { hashWorld } from './hash.js'
@@ -91,6 +91,12 @@ export function hashPhysics(phys: Physics): WorldHash {
 export function hashWorldState(s: WorldState): WorldHash {
   return hashWorld({
     tick: s.tick,
+    // LA FRECUENCIA ENTRA EN EL HASH (ADR II-0008). Dos mundos con la misma
+    // semilla y distinta frecuencia muestrean la misma física con distinta
+    // finura y NO producen la misma traza; que eso sea así es correcto, y que el
+    // hash lo vea es lo que convierte una divergencia silenciosa en un número
+    // distinto desde el tick 0.
+    hz: s.hz,
     nextId: s.nextId,
     fisica: hashPhysics(s.phys),
     bodies: s.bodies,
@@ -130,6 +136,8 @@ export const RANURA_CUALIDADES = 'cualidades'
 /** La cabecera: lo que el mundo tiene y no es ni un cuerpo ni una celda. */
 export interface CabeceraDeMundo {
   readonly tick: number
+  /** La frecuencia con la que se corrió la partida. Ver `restoreWorld`. */
+  readonly hz: number
   readonly nextId: number
   readonly version: number
 }
@@ -144,7 +152,12 @@ export interface CabeceraDeMundo {
  */
 export function worldSlots(s: WorldState): Slots<unknown> {
   const out = new Map<string, unknown>()
-  const cabecera: CabeceraDeMundo = { tick: s.tick, nextId: s.nextId, version: s.phys.version }
+  const cabecera: CabeceraDeMundo = {
+    tick: s.tick,
+    hz: s.hz,
+    nextId: s.nextId,
+    version: s.phys.version,
+  }
   out.set(RANURA_MUNDO, cabecera)
   out.set(RANURA_CUALIDADES, s.phys.qualities)
   for (const [id, p] of s.phys.processes) out.set(PREFIJO_PROCESO + id, p)
@@ -173,9 +186,22 @@ function exigir<T>(v: T | undefined, que: string): T {
  * celdas por clave numérica— y no en el orden en que vinieron las ranuras: un
  * estado restaurado tiene que ser indistinguible del original, y el orden de
  * iteración de un `Map` es parte de lo que se ve desde afuera.
+ *
+ * ─── Y la frecuencia se revisa acá (ADR II-0008) ────────────────────────────
+ *
+ * Un guardado hecho a una frecuencia inadmisible no se puede reproducir: `dt` no
+ * sería exacto y el error se acumularía paso a paso. Lanzar al abrirlo es la
+ * única forma honesta de decirlo — la alternativa es un mundo que corre y
+ * diverge sin causa visible, que es exactamente lo que este paquete existe para
+ * que no pase.
  */
 export function restoreWorld(slots: Slots<unknown>): WorldState {
   const cabecera = exigir(slots.get(RANURA_MUNDO), `la ranura «${RANURA_MUNDO}»`) as CabeceraDeMundo
+  if (!esFrecuenciaAdmisible(cabecera.hz)) {
+    throw new RangeError(
+      `el mundo guardado dice ${String(cabecera.hz)} Hz, y a esa frecuencia dt = 1/${String(cabecera.hz)} no es exacto: la partida no se puede reproducir. Admisibles: ${FRECUENCIAS_ADMISIBLES.join(', ')}`,
+    )
+  }
   const qualities = exigir(
     slots.get(RANURA_CUALIDADES),
     `la ranura «${RANURA_CUALIDADES}»`,
@@ -208,6 +234,7 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
 
   return {
     tick: cabecera.tick,
+    hz: cabecera.hz,
     nextId: cabecera.nextId,
     phys: buildSeedPhysics({ qualities, substances, processes, version: cabecera.version }),
     bodies: mapaDeCuerpos(bodies),
@@ -239,4 +266,24 @@ export function pasoDelMundo(
     throw new RangeError(`el replay va por el tick ${tick} y el mundo por el ${state.tick}`)
   }
   return stepWorld(state, intents).state
+}
+
+/**
+ * El paso del mundo atado a la frecuencia con la que se escribió el journal.
+ *
+ * ES LA MITAD DEL VALOR DE ESTA FUNCIÓN, igual que la verificación del tick en
+ * `pasoDelMundo`. Reproducir a otra frecuencia no da un error: da un mundo
+ * COHERENTE y distinto —la misma física muestreada más fina o más gruesa— y una
+ * divergencia de hash sin causa visible. Restaurar un guardado en una máquina
+ * que corre a otra frecuencia es exactamente cómo pasa.
+ */
+export function pasoDelMundoA(hz: number): typeof pasoDelMundo {
+  return (state, intents, tick) => {
+    if (state.hz !== hz) {
+      throw new RangeError(
+        `la crónica se escribió a ${String(hz)} Hz y el mundo corre a ${String(state.hz)} Hz: son dos muestreos distintos y no reproducen la misma traza`,
+      )
+    }
+    return pasoDelMundo(state, intents, tick)
+  }
 }

@@ -62,7 +62,7 @@
 // verificación se corren aparte en vez de aflojarle el umbral a otro.
 
 import { describe, expect, it } from 'vitest'
-import { AL_AIRE, buildSeedPhysics, paso } from '@anima/physics'
+import { AL_AIRE, buildSeedPhysics, dtDeFrecuencia, HZ_DE_REFERENCIA, paso } from '@anima/physics'
 import type { Body, Entorno, FormId, Physics, QualityVector } from '@anima/physics'
 
 import { stepWorld } from '../src/step.js'
@@ -211,6 +211,7 @@ function mundoDe(cuerpos: readonly Body[], phys?: Physics): WorldState {
   }
   return {
     tick: 0,
+    hz: HZ_DE_REFERENCIA,
     phys: phys ?? buildSeedPhysics(),
     bodies,
     actors: new Map(),
@@ -234,7 +235,8 @@ function mundoVariado(n: number, semilla: number): WorldState {
 
 /** `paso()` sobre todos los cuerpos del estado, sin nada del mundo alrededor. */
 function soloLeyes(s: WorldState, e: Entorno = AL_AIRE): void {
-  for (const c of s.bodies.values()) paso(c.body, e, s.phys)
+  const dt = dtDeFrecuencia(s.hz)
+  for (const c of s.bodies.values()) paso(c.body, e, s.phys, dt)
 }
 
 // ─── La medición ─────────────────────────────────────────────────────────────

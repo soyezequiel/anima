@@ -481,8 +481,8 @@ describe('6. dos intenciones del mismo tick resueltas en distinto orden', () => 
 
     // El del paquete contesta una sola cosa, y es la unidad de código: 0x00E4
     // contra 0x007A. No depende de nada de afuera.
-    const ä: Intent = { k: 'wait', by: 'ä', seq: 0, commitment: 'reversible', ticks: 1 }
-    const z: Intent = { k: 'wait', by: 'z', seq: 0, commitment: 'reversible', ticks: 1 }
+    const ä: Intent = { k: 'wait', by: 'ä', seq: 0, commitment: 'reversible', segundos: 1 }
+    const z: Intent = { k: 'wait', by: 'z', seq: 0, commitment: 'reversible', segundos: 1 }
     expect(compararIntenciones(ä, z)).toBeGreaterThan(0)
     expect(compararIntenciones(z, ä)).toBeLessThan(0)
   })

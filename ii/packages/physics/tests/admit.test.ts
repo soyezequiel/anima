@@ -30,6 +30,7 @@ import {
   UNION,
   type Process,
 } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 import type { Substance } from '../src/substance.js'
 
 const phys = buildSeedPhysics()
@@ -108,7 +109,7 @@ describe('frotar produce calor infinito', () => {
   it('sin poweredBy no entra, y el rechazo dice la cualidad y el nombre del campo', () => {
     const infinito = plantilla('frotar-infinito', {
       roles: FRICCION.roles,
-      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: 400, perTick: 6 }],
+      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: 400, porSegundo: 120 }],
       establishes: FRICCION.establishes,
     })
     const v = admit(infinito, phys)
@@ -164,7 +165,7 @@ describe('frotar produce calor infinito', () => {
   it('bajar es libre: enfriar no necesita declarar de dónde saca nada', () => {
     const enfriar = plantilla('enfriar', {
       arrangement: { k: 'contact' },
-      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: -100, perTick: 1 }],
+      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: -100, porSegundo: 20 }],
       establishes: ['temperature<=0'],
     })
     const v = admit(enfriar, phys)
@@ -183,7 +184,7 @@ describe('atar dos palos produce un pescado', () => {
     const pescado = plantilla('atar-nutritivo', {
       roles: UNION.roles,
       completion: ATADURA,
-      effects: [{ k: 'drive', q: 'nutrition', on: 'a', toward: 9, perTick: 0.5 }],
+      effects: [{ k: 'drive', q: 'nutrition', on: 'a', toward: 9, porSegundo: 10 }],
       establishes: UNION.establishes,
     })
     const v = admit(pescado, phys)
@@ -205,7 +206,7 @@ describe('atar dos palos produce un pescado', () => {
     const trasvase = plantilla('atar-trasvase', {
       roles: UNION.roles,
       completion: ATADURA,
-      effects: [{ k: 'transfer', q: 'nutrition', from: 'binder', to: 'a', perTick: 0.5 }],
+      effects: [{ k: 'transfer', q: 'nutrition', from: 'binder', to: 'a', porSegundo: 10 }],
       establishes: UNION.establishes,
     })
     const r = razonPorCodigo(admit(trasvase, phys), 'conservacion-transfer')
@@ -219,12 +220,12 @@ describe('atar dos palos produce un pescado', () => {
     const alReves = plantilla('atar-al-reves', {
       roles: UNION.roles,
       completion: ATADURA,
-      effects: [{ k: 'drain', q: 'nutrition', on: 'a', perTick: -0.5 }],
+      effects: [{ k: 'drain', q: 'nutrition', on: 'a', porSegundo: -10 }],
       establishes: UNION.establishes,
     })
     const r = razonPorCodigo(admit(alReves, phys), 'tasa-negativa')
     expect(r.regla).toBe(1)
-    expect(r.encontrado).toBe(-0.5)
+    expect(r.encontrado).toBe(-10)
   })
 
   it('un couple sobre una conservada la escribe sin cota', () => {
@@ -242,7 +243,7 @@ describe('atar dos palos produce un pescado', () => {
   it('sacar de un stock sin exigirle masa es materia de la nada', () => {
     const magia = plantilla('atar-y-pescar', {
       roles: UNION.roles,
-      completion: { at: 20, yields: [{ k: 'drawFromStock', of: 'a', into: 'hands' }] },
+      completion: { at: seg(1), yields: [{ k: 'drawFromStock', of: 'a', into: 'hands' }] },
       establishes: UNION.establishes,
     })
     const r = razonPorCodigo(admit(magia, phys), 'materia-sin-origen')
@@ -364,7 +365,7 @@ describe('envolventes por tag, derivadas y no escritas a mano', () => {
           q: 'ignitionPoint',
           on: 'a',
           toward: 1800,
-          perTick: 1,
+          porSegundo: 20,
           poweredBy: { from: 'a', q: 'stamina', efficiency: 0.5 },
         },
       ],
@@ -393,7 +394,7 @@ describe('cierre dimensional y cotas de rango', () => {
   it('un NaN en una constante física se rechaza antes de envenenar el tick 400', () => {
     const p = plantilla('frotar-nan', {
       roles: FRICCION.roles,
-      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: Number.NaN, perTick: 6, poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 } }],
+      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: Number.NaN, porSegundo: 120, poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 } }],
     })
     expect(tieneCodigo(admit(p, phys), 'numero-no-finito')).toBe(true)
   })
@@ -469,14 +470,14 @@ describe('realizabilidad: el fallo silencioso', () => {
 
   it('un efecto sobre un rol que no existe no falla en el mundo: no hace nada', () => {
     const p = plantilla('frotar-el-aire', {
-      effects: [{ k: 'drain', q: 'stamina', on: 'fantasma', perTick: 0.1 }],
+      effects: [{ k: 'drain', q: 'stamina', on: 'fantasma', porSegundo: 2 }],
     })
     expect(tieneCodigo(admit(p, phys), 'rol-desconocido')).toBe(true)
   })
 
   it('completar en cero ticks no es completar', () => {
     const p = plantilla('instantaneo', {
-      completion: { at: 0, yields: [{ k: 'split', role: 'a', at: 'grain' }] },
+      completion: { at: seg(0), yields: [{ k: 'split', role: 'a', at: 'grain' }] },
     })
     expect(tieneCodigo(admit(p, phys), 'completion-invalida')).toBe(true)
   })
@@ -537,7 +538,7 @@ describe('los reparos: cosas raras que no cierran la puerta', () => {
 
   it('drenar una cualidad que el rol no tiene garantizada se avisa', () => {
     const p = plantilla('frotar-el-aliento-de-un-palo', {
-      effects: [{ k: 'drain', q: 'stamina', on: 'a', perTick: 0.1 }],
+      effects: [{ k: 'drain', q: 'stamina', on: 'a', porSegundo: 2 }],
     })
     const v = admit(p, phys)
     expect(v.ok).toBe(true)
@@ -546,15 +547,15 @@ describe('los reparos: cosas raras que no cierran la puerta', () => {
 
   it('una tasa más grande que el rango entero hace el efecto instantáneo', () => {
     const p = plantilla('secar-de-golpe', {
-      effects: [{ k: 'drain', q: 'moisture', on: 'a', perTick: 5 }],
+      effects: [{ k: 'drain', q: 'moisture', on: 'a', porSegundo: 100 }],
     })
     const r = admit(p, phys).advertencias.find((x) => x.codigo === 'tasa-mayor-que-el-rango')!
-    expect(r.encontrado).toBe(5)
+    expect(r.encontrado).toBe(100)
     expect(r.cota).toBe(1)
   })
 
   it('una completion sin rendimientos no hace nada al terminar', () => {
-    const p = plantilla('esperar', { completion: { at: 10, yields: [] } })
+    const p = plantilla('esperar', { completion: { at: seg(0.5), yields: [] } })
     expect(tieneReparo(admit(p, phys), 'completion-sin-rendimientos')).toBe(true)
   })
 })
@@ -607,7 +608,7 @@ const COSECHA: Process = {
   arrangement: { k: 'within', radius: 1 },
   gate: [],
   effects: [],
-  completion: { at: 10, yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
+  completion: { at: seg(0.5), yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
   establishes: ['tensile>=0.5'],
   commitment: 'costly',
   trust: 'borrador',
@@ -630,7 +631,7 @@ const AFILAR: Process = {
       q: 'sharpness',
       on: 'hoja',
       toward: 0.4,
-      perTick: 0.01,
+      porSegundo: 0.2,
       poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.5 },
     },
   ],
@@ -651,8 +652,8 @@ const PIEDRA_BATERIA: Process = {
   ],
   arrangement: { k: 'held' },
   gate: [],
-  effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', perTick: 10 }],
-  completion: { at: 10, yields: [] },
+  effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', porSegundo: 200 }],
+  completion: { at: seg(0.5), yields: [] },
   establishes: ['stamina>=100'],
   commitment: 'reversible',
   trust: 'borrador',
@@ -675,7 +676,7 @@ const FROTAR_PARA_LA_BATERIA: Process = {
       q: 'temperature',
       on: 'a',
       toward: 400,
-      perTick: 6,
+      porSegundo: 120,
       poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 },
     },
   ],
@@ -779,8 +780,8 @@ describe('un rechazo que no se explica es inútil para la fragua', () => {
     const desastre = plantilla('todo-mal', {
       roles: [{ name: 'a', where: [{ q: 'rigidity', op: '>=', v: 5 }] }],
       effects: [
-        { k: 'drive', q: 'temperature', on: 'a', toward: 400, perTick: 6 },
-        { k: 'drive', q: 'nutrition', on: 'a', toward: 50, perTick: 1 },
+        { k: 'drive', q: 'temperature', on: 'a', toward: 400, porSegundo: 120 },
+        { k: 'drive', q: 'nutrition', on: 'a', toward: 50, porSegundo: 20 },
       ],
       physicsVersion: 42,
     })
@@ -794,7 +795,7 @@ describe('un rechazo que no se explica es inútil para la fragua', () => {
   it('el texto trae la cualidad y los dos números', () => {
     const infinito = plantilla('frotar-infinito-2', {
       roles: FRICCION.roles,
-      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: 400, perTick: 6 }],
+      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: 400, porSegundo: 120 }],
       establishes: FRICCION.establishes,
     })
     const texto = porQue(admit(infinito, phys))

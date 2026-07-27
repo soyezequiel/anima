@@ -40,6 +40,7 @@ import {
   UNION,
   type Process,
 } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -116,11 +117,11 @@ describe('procesos honestos que la puerta deja pasar', () => {
         q: 'digestibility',
         on: 'comida',
         toward: 0.9,
-        perTick: 0.02,
+        porSegundo: 0.4,
         poweredBy: { from: 'fuego', q: 'fuelEnergy', efficiency: 0.3 },
       },
     ],
-    completion: { at: 40, yields: [{ k: 'transmute', role: 'comida' }] },
+    completion: { at: seg(2), yields: [{ k: 'transmute', role: 'comida' }] },
     establishes: ['digestibility>=0.9'],
     commitment: 'irreversible',
   })
@@ -143,8 +144,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
     ],
     arrangement: { k: 'supported' },
-    effects: [{ k: 'drive', q: 'moisture', on: 'mojado', toward: 0.05, perTick: 0.005 }],
-    completion: { at: 120, yields: [] },
+    effects: [{ k: 'drive', q: 'moisture', on: 'mojado', toward: 0.05, porSegundo: 0.1 }],
+    completion: { at: seg(6), yields: [] },
     establishes: ['moisture<=0.05'],
     commitment: 'reversible',
   })
@@ -173,12 +174,12 @@ describe('procesos honestos que la puerta deja pasar', () => {
         q: 'sharpness',
         on: 'filo',
         toward: 0.85,
-        perTick: 0.02,
+        porSegundo: 0.4,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.2 },
       },
-      { k: 'drain', q: 'stamina', on: 'actor', perTick: 0.05 },
+      { k: 'drain', q: 'stamina', on: 'actor', porSegundo: 1 },
     ],
-    completion: { at: 30, yields: [] },
+    completion: { at: seg(1.5), yields: [] },
     establishes: ['sharpness>=0.85'],
   })
   it('afilar el pedernal: sube el filo y lo paga con aliento', () => {
@@ -215,8 +216,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
       { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 8 }] },
     ],
-    effects: [{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.1 }],
-    completion: { at: 60, yields: [{ k: 'join', a: 'urdimbre', b: 'trama', via: 'atadura' }] },
+    effects: [{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 2 }],
+    completion: { at: seg(3), yields: [{ k: 'join', a: 'urdimbre', b: 'trama', via: 'atadura' }] },
     establishes: ['permeability<=0.4'],
   })
   it('tejer: un join que no es un clon de union', () => {
@@ -238,8 +239,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 10 }] },
     ],
     arrangement: { k: 'within', radius: 1 },
-    effects: [{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.3 }],
-    completion: { at: 25, yields: [{ k: 'drawFromStock', of: 'veta', into: 'ground-adjacent' }] },
+    effects: [{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 6 }],
+    completion: { at: seg(1.25), yields: [{ k: 'drawFromStock', of: 'veta', into: 'ground-adjacent' }] },
     establishes: ['holding(tag:mineral)'],
   })
   it('cavar: saca del stock declarando de qué cuerpo sale, y no domina a extraccion', () => {
@@ -266,8 +267,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
       { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 4 }] },
     ],
-    effects: [{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.2 }],
-    completion: { at: 12, yields: [{ k: 'split', role: 'pieza', at: 'joint' }] },
+    effects: [{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 4 }],
+    completion: { at: seg(0.6), yields: [{ k: 'split', role: 'pieza', at: 'joint' }] },
     commitment: 'irreversible',
   })
   it('machacar el hueso: parte por la juntura, y no es deshilachar barato', () => {
@@ -293,17 +294,17 @@ describe('procesos honestos que la puerta deja pasar', () => {
       { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 8 }] },
     ],
     effects: [
-      { k: 'drain', q: 'stamina', on: 'actor', perTick: 0.12 },
+      { k: 'drain', q: 'stamina', on: 'actor', porSegundo: 2.4 },
       {
         k: 'drive',
         q: 'digestibility',
         on: 'grano',
         toward: 0.5,
-        perTick: 0.02,
+        porSegundo: 0.4,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.25 },
       },
     ],
-    completion: { at: 50, yields: [{ k: 'split', role: 'grano', at: 'grain' }] },
+    completion: { at: seg(2.5), yields: [{ k: 'split', role: 'grano', at: 'grain' }] },
     establishes: ['digestibility>=0.5'],
     commitment: 'irreversible',
   })
@@ -333,10 +334,10 @@ describe('procesos honestos que la puerta deja pasar', () => {
     ],
     arrangement: { k: 'within', radius: 1 },
     effects: [
-      { k: 'drive', q: 'moisture', on: 'presa', toward: 0.15, perTick: 0.004 },
-      { k: 'drive', q: 'decay', on: 'presa', toward: 0.01, perTick: 0.001 },
+      { k: 'drive', q: 'moisture', on: 'presa', toward: 0.15, porSegundo: 0.08 },
+      { k: 'drive', q: 'decay', on: 'presa', toward: 0.01, porSegundo: 0.02 },
     ],
-    completion: { at: 150, yields: [{ k: 'transmute', role: 'presa' }] },
+    completion: { at: seg(7.5), yields: [{ k: 'transmute', role: 'presa' }] },
     establishes: ['decay<=0.01', 'moisture<=0.15'],
     commitment: 'irreversible',
   })
@@ -368,18 +369,18 @@ describe('procesos honestos que la puerta deja pasar', () => {
     ],
     arrangement: { k: 'contact' },
     effects: [
-      { k: 'drain', q: 'stamina', on: 'actor', perTick: 0.05 },
+      { k: 'drain', q: 'stamina', on: 'actor', porSegundo: 1 },
       {
         k: 'drive',
         q: 'toughness',
         on: 'piel',
         toward: 0.95,
-        perTick: 0.005,
+        porSegundo: 0.1,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.3 },
       },
-      { k: 'drive', q: 'decay', on: 'piel', toward: 0.01, perTick: 0.001 },
+      { k: 'drive', q: 'decay', on: 'piel', toward: 0.01, porSegundo: 0.02 },
     ],
-    completion: { at: 80, yields: [{ k: 'transmute', role: 'piel' }] },
+    completion: { at: seg(4), yields: [{ k: 'transmute', role: 'piel' }] },
     establishes: ['decay<=0.01', 'toughness>=0.95'],
     commitment: 'irreversible',
   })
@@ -410,11 +411,11 @@ describe('procesos honestos que la puerta deja pasar', () => {
         q: 'digestibility',
         on: 'masa',
         toward: 0.7,
-        perTick: 0.002,
+        porSegundo: 0.04,
         poweredBy: { from: 'masa', q: 'nutrition', efficiency: 0.5 },
       },
     ],
-    completion: { at: 200, yields: [{ k: 'transmute', role: 'masa' }] },
+    completion: { at: seg(10), yields: [{ k: 'transmute', role: 'masa' }] },
     establishes: ['digestibility>=0.7'],
     commitment: 'irreversible',
   })
@@ -452,7 +453,7 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
     ],
     arrangement: { k: 'supported' },
-    completion: { at: 15, yields: [{ k: 'join', a: 'base', b: 'encima', via: 'mortero' }] },
+    completion: { at: seg(0.75), yields: [{ k: 'join', a: 'base', b: 'encima', via: 'mortero' }] },
     establishes: ['footing>=0.5'],
     commitment: 'reversible',
   })
@@ -482,8 +483,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
     ],
     arrangement: { k: 'contact' },
-    effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'agua', perTick: 10 }],
-    completion: { at: 20, yields: [] },
+    effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'agua', porSegundo: 200 }],
+    completion: { at: seg(1), yields: [] },
     establishes: ['temperature<=100'],
   })
   it('templar: mover calor de un cuerpo grande a uno chico, con las dos masas acotadas', () => {
@@ -537,8 +538,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
     ],
     arrangement: { k: 'contact' },
-    effects: [{ k: 'transfer', q: 'nutrition', from: 'sebo', to: 'cuenco', perTick: 1 }],
-    completion: { at: 5, yields: [] },
+    effects: [{ k: 'transfer', q: 'nutrition', from: 'sebo', to: 'cuenco', porSegundo: 20 }],
+    completion: { at: seg(0.25), yields: [] },
     establishes: ['nutrition>=5'],
   })
   it('escurrir la grasa: mover una conservada intensiva cerrando el producto q·masa', () => {
@@ -565,11 +566,11 @@ describe('procesos honestos que la puerta deja pasar', () => {
         q: 'moisture',
         on: 'cosa',
         toward: 0.9,
-        perTick: 0.05,
+        porSegundo: 1,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.5 },
       },
     ],
-    completion: { at: 20, yields: [] },
+    completion: { at: seg(1), yields: [] },
     establishes: ['moisture>=0.9'],
     commitment: 'reversible',
   })
@@ -598,8 +599,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
         ],
       },
     ],
-    effects: [{ k: 'transfer', q: 'mass', from: 'odre', to: 'cuenco', perTick: 0.2 }],
-    completion: { at: 10, yields: [] },
+    effects: [{ k: 'transfer', q: 'mass', from: 'odre', to: 'cuenco', porSegundo: 4 }],
+    completion: { at: seg(0.5), yields: [] },
     establishes: ['mass>=2'],
     commitment: 'reversible',
   })
@@ -630,7 +631,7 @@ describe('procesos honestos que la puerta deja pasar', () => {
         q: 'oxygen',
         on: 'fuego',
         toward: 0.9,
-        perTick: 0.05,
+        porSegundo: 1,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.4 },
       },
     ],
@@ -667,17 +668,17 @@ describe('procesos honestos que la puerta deja pasar', () => {
     ],
     arrangement: { k: 'within', radius: 1 },
     effects: [
-      { k: 'drive', q: 'moisture', on: 'punta', toward: 0.05, perTick: 0.004 },
+      { k: 'drive', q: 'moisture', on: 'punta', toward: 0.05, porSegundo: 0.08 },
       {
         k: 'drive',
         q: 'rigidity',
         on: 'punta',
         toward: 0.9,
-        perTick: 0.005,
+        porSegundo: 0.1,
         poweredBy: { from: 'fuego', q: 'fuelEnergy', efficiency: 0.4 },
       },
     ],
-    completion: { at: 60, yields: [{ k: 'transmute', role: 'punta' }] },
+    completion: { at: seg(3), yields: [{ k: 'transmute', role: 'punta' }] },
     establishes: ['solid>=1', 'rigidity>=0.9'],
     commitment: 'irreversible',
   })
@@ -709,8 +710,8 @@ describe('procesos honestos que la puerta deja pasar', () => {
       },
     ],
     arrangement: { k: 'within', radius: 1 },
-    effects: [{ k: 'transfer', q: 'temperature', from: 'fuego', to: 'comida', perTick: 2 }],
-    completion: { at: 40, yields: [{ k: 'transmute', role: 'comida' }] },
+    effects: [{ k: 'transfer', q: 'temperature', from: 'fuego', to: 'comida', porSegundo: 40 }],
+    completion: { at: seg(2), yields: [{ k: 'transmute', role: 'comida' }] },
     establishes: ['temperature>=200'],
     commitment: 'irreversible',
   })
@@ -768,11 +769,11 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
         q: 'stamina',
         on: 'actor',
         toward: 100,
-        perTick: 2,
+        porSegundo: 40,
         poweredBy: { from: 'bocado', q: 'nutrition', efficiency: 0.5 },
       },
     ],
-    completion: { at: 10, yields: [{ k: 'transmute', role: 'bocado' }] },
+    completion: { at: seg(0.5), yields: [{ k: 'transmute', role: 'bocado' }] },
     establishes: ['stamina>=50'],
     commitment: 'irreversible',
   })
@@ -816,11 +817,11 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
           q: 'nutrition',
           on: 'bocado',
           toward: 50,
-          perTick: 2,
+          porSegundo: 40,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.5 },
         },
       ],
-      completion: { at: 10, yields: [{ k: 'transmute', role: 'actor' }] },
+      completion: { at: seg(0.5), yields: [{ k: 'transmute', role: 'actor' }] },
       establishes: ['nutrition>=50'],
     }
     expect(tieneCodigo(admit(ALQUIMIA, phys), 'conservacion-drive')).toBe(true)
@@ -848,8 +849,8 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
         ],
       },
     ],
-    effects: [{ k: 'transfer', q: 'nutrition', from: 'bocado', to: 'actor', perTick: 0.5 }],
-    completion: { at: 10, yields: [{ k: 'transmute', role: 'bocado' }] },
+    effects: [{ k: 'transfer', q: 'nutrition', from: 'bocado', to: 'actor', porSegundo: 10 }],
+    completion: { at: seg(0.5), yields: [{ k: 'transmute', role: 'bocado' }] },
     establishes: ['nutrition>=5'],
     commitment: 'irreversible',
   })
@@ -886,8 +887,8 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
     lexeme: { nombre: 'secar' },
     roles: [{ name: 'mojado', where: [{ q: 'permeability', op: '>=', v: 0.1 }] }],
     arrangement: { k: 'supported' },
-    effects: [{ k: 'drive', q: 'moisture', on: 'mojado', toward: 0.05, perTick: 0.005 }],
-    completion: { at: 120, yields: [] },
+    effects: [{ k: 'drive', q: 'moisture', on: 'mojado', toward: 0.05, porSegundo: 0.1 }],
+    completion: { at: seg(6), yields: [] },
     establishes: ['moisture<=0.05'],
     commitment: 'reversible',
   })
@@ -943,10 +944,10 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
     ],
     arrangement: { k: 'contact' },
     effects: [
-      { k: 'transfer', q: 'temperature', from: 'brasa', to: 'agua', perTick: 10 },
-      { k: 'drive', q: 'temperature', on: 'brasa', toward: 20, perTick: 15 },
+      { k: 'transfer', q: 'temperature', from: 'brasa', to: 'agua', porSegundo: 200 },
+      { k: 'drive', q: 'temperature', on: 'brasa', toward: 20, porSegundo: 300 },
     ],
-    completion: { at: 20, yields: [] },
+    completion: { at: seg(1), yields: [] },
     establishes: ['temperature<=20'],
     commitment: 'irreversible',
   })
@@ -964,8 +965,8 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
       ...APAGAR,
       id: 'apagar-vaciando',
       effects: [
-        { k: 'transfer', q: 'temperature', from: 'brasa', to: 'agua', perTick: 30 },
-        { k: 'drive', q: 'temperature', on: 'brasa', toward: 20, perTick: 15 },
+        { k: 'transfer', q: 'temperature', from: 'brasa', to: 'agua', porSegundo: 600 },
+        { k: 'drive', q: 'temperature', on: 'brasa', toward: 20, porSegundo: 300 },
       ],
     }
     expect(tieneCodigo(admit(VACIA, phys), 'sube-gratis')).toBe(true)
@@ -1083,11 +1084,11 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
         q: 'sharpness',
         on: 'punta',
         toward: 0.6,
-        perTick: 0.02,
+        porSegundo: 0.4,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.2 },
       },
     ],
-    completion: { at: 30, yields: [] },
+    completion: { at: seg(1.5), yields: [] },
     establishes: ['sharpness>=0.6'],
   })
 
@@ -1144,8 +1145,8 @@ describe('FALSOS RECHAZOS · procesos honestos que la puerta rebota', () => {
       },
       { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 2 }] },
     ],
-    effects: [{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.05 }],
-    completion: { at: 10, yields: [{ k: 'split', role: 'asado', at: 'grain' }] },
+    effects: [{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 1 }],
+    completion: { at: seg(0.5), yields: [{ k: 'split', role: 'asado', at: 'grain' }] },
     commitment: 'irreversible',
   })
 

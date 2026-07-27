@@ -50,8 +50,51 @@
 // trascendente. El tick lo pone quien llama; el reloj del mundo es el contador
 // de ticks y nada más.
 
+import { esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES, HZ_DE_REFERENCIA } from '@anima/physics'
+
 import { HASH_VACIO, hashWorld, worldHashFromHex } from './hash.js'
 import type { WorldHash } from './hash.js'
+
+// ─── La cabecera: con qué se corrió esta partida ─────────────────────────────
+//
+// Una crónica de intenciones no reproduce nada por sí sola: reproduce lo que la
+// misma física, la misma semilla y el mismo MUESTREO vuelvan a calcular. La
+// semilla ya estaba implícita —el mundo inicial la trae—; la frecuencia no
+// estaba en ningún lado, y sin ella dos motores corriendo la misma crónica a
+// 20 y a 25 Hz dan dos mundos coherentes y distintos, sin ninguna causa visible
+// (ADR II-0008).
+
+/** Con qué se corrió la partida. Va en el archivo, junto a las intenciones. */
+export interface CronicaDe {
+  /**
+   * La frecuencia del mundo, en Hz. Tiene que ser admisible: a una frecuencia
+   * cuyo `dt` no es exacto la partida no se puede reproducir ni siquiera contra
+   * sí misma.
+   */
+  readonly hz: number
+  /**
+   * La semilla del dios perezoso. Va acá y no en el mundo inicial porque es lo
+   * OTRO que hay que volver a tener para llegar al mismo lado, y las dos cosas
+   * que hay que reproducir tienen que vivir juntas o alguien va a guardar una y
+   * olvidarse de la otra.
+   */
+  readonly semilla: number
+}
+
+/** Lo que una crónica supone cuando no dice nada: la frecuencia de referencia. */
+export const CRONICA_POR_OMISION: CronicaDe = { hz: HZ_DE_REFERENCIA, semilla: 0 }
+
+function exigirCronica(c: CronicaDe): CronicaDe {
+  if (!esFrecuenciaAdmisible(c.hz)) {
+    throw new RangeError(
+      `frecuencia inadmisible en la crónica: ${String(c.hz)} Hz. Admisibles: ${FRECUENCIAS_ADMISIBLES.join(', ')}`,
+    )
+  }
+  if (!Number.isInteger(c.semilla)) {
+    throw new RangeError(`semilla inválida en la crónica: ${String(c.semilla)}`)
+  }
+  return { hz: c.hz, semilla: c.semilla }
+}
 
 /** Una intención escrita en la crónica. */
 export interface JournalEntry<I> {
@@ -72,12 +115,16 @@ export interface JournalEntry<I> {
 /** El journal como dato plano, que es como se guarda y como viaja. */
 export interface JournalData<I> {
   readonly version: 1
+  /** Con qué se corrió: frecuencia y semilla. Ver `CronicaDe`. */
+  readonly de: CronicaDe
   readonly entries: readonly JournalEntry<I>[]
   /** El último eslabón de la cadena de hashes. */
   readonly chain: string
 }
 
 export interface Journal<I> {
+  /** Con qué se corrió esta partida. No cambia nunca: es de la crónica entera. */
+  readonly de: CronicaDe
   /**
    * Escribe una intención. Devuelve la entrada que quedó escrita.
    *
@@ -123,7 +170,11 @@ function lowerBound<I>(entries: readonly JournalEntry<I>[], t: number): number {
   return lo
 }
 
-function crear<I>(inicial: readonly JournalEntry<I>[], chainInicial: WorldHash): Journal<I> {
+function crear<I>(
+  inicial: readonly JournalEntry<I>[],
+  chainInicial: WorldHash,
+  de: CronicaDe,
+): Journal<I> {
   // El arreglo vive en el cierre y NUNCA se devuelve: `entries()` devuelve una
   // vista de solo lectura del mismo arreglo. Es de solo lectura por tipo, no por
   // congelamiento: `Object.freeze` por entrada costaría en el camino caliente y
@@ -138,6 +189,7 @@ function crear<I>(inicial: readonly JournalEntry<I>[], chainInicial: WorldHash):
   }
 
   return {
+    de,
     append(tick: number, intent: I): JournalEntry<I> {
       if (!Number.isInteger(tick) || tick < 0) {
         throw new RangeError(`tick inválido en el journal: ${String(tick)}`)
@@ -177,13 +229,13 @@ function crear<I>(inicial: readonly JournalEntry<I>[], chainInicial: WorldHash):
       return entries.slice(lowerBound(entries, tick))
     },
     toData(): JournalData<I> {
-      return { version: 1, entries: [...entries], chain }
+      return { version: 1, de, entries: [...entries], chain }
     },
   }
 }
 
-export function createJournal<I>(): Journal<I> {
-  return crear<I>([], HASH_VACIO)
+export function createJournal<I>(de: CronicaDe = CRONICA_POR_OMISION): Journal<I> {
+  return crear<I>([], HASH_VACIO, exigirCronica(de))
 }
 
 /**
@@ -195,8 +247,25 @@ export function createJournal<I>(): Journal<I> {
  * Además valida el orden de los ticks y de los `seq`, que es lo que `append`
  * garantiza en vivo y un archivo puede no cumplir.
  */
-export function journalFromData<I>(data: JournalData<I>): Journal<I> {
+export function journalFromData<I>(data: JournalData<I>, esperada?: CronicaDe): Journal<I> {
   if (data.version !== 1) throw new RangeError(`journal de versión desconocida: ${String(data.version)}`)
+  const de = exigirCronica(data.de ?? CRONICA_POR_OMISION)
+  // CARGAR CON OTRA FRECUENCIA ES UN ERROR EXPLÍCITO (ADR II-0008), y no una
+  // divergencia silenciosa: la misma crónica muestreada más fina da otro mundo,
+  // coherente y distinto, y el síntoma sería un hash que no cierra mil ticks
+  // después. Lo mismo vale para la semilla.
+  if (esperada !== undefined) {
+    if (esperada.hz !== de.hz) {
+      throw new Error(
+        `la crónica se escribió a ${String(de.hz)} Hz y se está cargando a ${String(esperada.hz)}: son dos muestreos distintos del mismo mundo y no dan la misma traza`,
+      )
+    }
+    if (esperada.semilla !== de.semilla) {
+      throw new Error(
+        `la crónica se escribió con semilla ${String(de.semilla)} y se está cargando con ${String(esperada.semilla)}`,
+      )
+    }
+  }
 
   let chain = HASH_VACIO
   let tickAnterior = -1
@@ -220,7 +289,7 @@ export function journalFromData<I>(data: JournalData<I>): Journal<I> {
   if (chain !== esperado) {
     throw new Error(`journal corrupto: la cadena da ${chain} y el archivo dice ${esperado}`)
   }
-  return crear(data.entries, chain)
+  return crear(data.entries, chain, de)
 }
 
 // ─── replay ──────────────────────────────────────────────────────────────────

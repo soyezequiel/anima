@@ -20,7 +20,7 @@
 // mano a ningún comentario: se vuelven a correr.
 
 import { describe, expect, it } from 'vitest'
-import { AL_AIRE, paso, qualityOf } from '@anima/physics'
+import { AL_AIRE, dtDeFrecuencia, paso, qualityOf } from '@anima/physics'
 import type { QualityId } from '@anima/physics'
 
 import {
@@ -99,8 +99,9 @@ function msPorTick(s: WorldState): number {
 /** El mismo trabajo llamando a `paso()` directo, sin nada del mundo alrededor. */
 function msSoloLeyes(s: WorldState): number {
   const cuerpos = [...s.bodies.values()].map((c) => c.body)
+  const dt = dtDeFrecuencia(s.hz)
   return minMs(() => {
-    for (const b of cuerpos) paso(b, AL_AIRE, s.phys)
+    for (const b of cuerpos) paso(b, AL_AIRE, s.phys, dt)
   })
 }
 

@@ -59,6 +59,7 @@ import {
 } from '../src/admit.js'
 import { buildSeedPhysics } from '../src/physics.js'
 import { FRICCION, PHYSICS_VERSION, SEED_PROCESSES, type Process } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -99,7 +100,7 @@ describe('la puerta ataja el móvil perpetuo cuando viene por la puerta principa
         { name: 'a', where: [{ q: 'rigidity', op: '>=', v: 0.9 }] },
         { name: 'b', where: [{ q: 'rigidity', op: '>=', v: 0.9 }] },
       ],
-      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: 900, perTick: 20 }],
+      effects: [{ k: 'drive', q: 'temperature', on: 'a', toward: 900, porSegundo: 400 }],
     })
     expect(tieneCodigo(admit(p, phys), 'sube-gratis')).toBe(true)
   })
@@ -141,7 +142,7 @@ describe('la puerta ataja el móvil perpetuo cuando viene por la puerta principa
           q: 'stamina',
           on: 'actor',
           toward: 1000,
-          perTick: 10,
+          porSegundo: 200,
           poweredBy: { from: 'a', q: 'temperature', efficiency: 0.5 },
         },
       ],
@@ -166,7 +167,7 @@ describe('la puerta ataja el móvil perpetuo cuando viene por la puerta principa
           q: 'stamina',
           on: 'actor',
           toward: 1000,
-          perTick: 10,
+          porSegundo: 200,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: 1 },
         },
       ],
@@ -195,8 +196,8 @@ describe('la puerta ataja el móvil perpetuo cuando viene por la puerta principa
         { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 1 }] },
       ],
       arrangement: { k: 'held' },
-      effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', perTick: 10 }],
-      completion: { at: 10, yields: [] },
+      effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', porSegundo: 200 }],
+      completion: { at: seg(0.5), yields: [] },
       establishes: ['stamina>=100'],
     })
     expect(tieneCodigo(admit(p, phys), 'conservacion-transfer')).toBe(true)
@@ -344,8 +345,8 @@ const BOMBA_DE_CALOR = proceso('bomba-de-calor', {
     { name: 'brasa', where: [{ q: 'temperature', op: '>=', v: 400 }] },
     { name: 'olla', where: [{ q: 'mass', op: '>=', v: 100 }] },
   ],
-  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', perTick: 50 }],
-  completion: { at: 40, yields: [] },
+  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', porSegundo: 1000 }],
+  completion: { at: seg(2), yields: [] },
 })
 
 describe('agujero 4 · transfer de una cualidad intensiva', () => {
@@ -395,10 +396,10 @@ describe('agujero 4 · transfer de una cualidad intensiva', () => {
 const RECARGADOR = proceso('recargar-el-aliento', {
   roles: [{ name: 'actor', where: [{ q: 'stamina', op: '>=', v: 50 }] }],
   effects: [
-    { k: 'drain', q: 'stamina', on: 'actor', perTick: 1 },
-    { k: 'drive', q: 'stamina', on: 'actor', toward: 50, perTick: 10 },
+    { k: 'drain', q: 'stamina', on: 'actor', porSegundo: 20 },
+    { k: 'drive', q: 'stamina', on: 'actor', toward: 50, porSegundo: 200 },
   ],
-  completion: { at: 10, yields: [{ k: 'split', role: 'actor', at: 'grain' }] },
+  completion: { at: seg(0.5), yields: [{ k: 'split', role: 'actor', at: 'grain' }] },
 })
 
 describe('agujero 5 · un drive hacia el piso del propio rol', () => {
@@ -424,13 +425,13 @@ describe('agujero 5 · un drive hacia el piso del propio rol', () => {
       ...RECARGADOR,
       id: 'recargar-con-eficiencia-99',
       effects: [
-        { k: 'drain', q: 'stamina', on: 'actor', perTick: 1 },
+        { k: 'drain', q: 'stamina', on: 'actor', porSegundo: 20 },
         {
           k: 'drive',
           q: 'stamina',
           on: 'actor',
           toward: 50,
-          perTick: 10,
+          porSegundo: 200,
           poweredBy: { from: 'actor', q: 'moisture', efficiency: 99 },
         },
       ],
@@ -448,8 +449,8 @@ describe('agujero 5 · un drive hacia el piso del propio rol', () => {
       ...RECARGADOR,
       id: 'recargar-un-pelo-mas',
       effects: [
-        { k: 'drain', q: 'stamina', on: 'actor', perTick: 1 },
-        { k: 'drive', q: 'stamina', on: 'actor', toward: 50.0001, perTick: 10 },
+        { k: 'drain', q: 'stamina', on: 'actor', porSegundo: 20 },
+        { k: 'drive', q: 'stamina', on: 'actor', toward: 50.0001, porSegundo: 200 },
       ],
     })
     expect(tieneCodigo(admit(unPeloMas, phys), 'conservacion-drive')).toBe(true)
@@ -497,8 +498,8 @@ const PIEDRA_BATERIA_V2 = proceso('piedra-bateria-v2', {
     { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 1 }] },
   ],
   arrangement: { k: 'held' },
-  effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', perTick: 10 }],
-  completion: { at: 10, yields: [] },
+  effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', porSegundo: 200 }],
+  completion: { at: seg(0.5), yields: [] },
   establishes: ['stamina>=100'],
 })
 
@@ -574,8 +575,8 @@ const TRASVASE = proceso('trasvasar-la-nutricion', {
     { name: 'miga', where: [{ q: 'nutrition', op: '>', v: 0 }] },
     { name: 'peniasco', where: [{ q: 'mass', op: '>=', v: 100 }] },
   ],
-  effects: [{ k: 'transfer', q: 'nutrition', from: 'miga', to: 'peniasco', perTick: 5 }],
-  completion: { at: 100, yields: [] },
+  effects: [{ k: 'transfer', q: 'nutrition', from: 'miga', to: 'peniasco', porSegundo: 100 }],
+  completion: { at: seg(5), yields: [] },
 })
 
 describe('agujero 7 · respalda() dice «de dónde», nunca «cuánto»', () => {
@@ -685,8 +686,8 @@ describe('la regla 5 corre sobre lo que el proceso DICE, no sobre lo que hace', 
       { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 1 }] },
     ],
     arrangement: { k: 'held' },
-    effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', perTick: 10 }],
-    completion: { at: 10, yields: [] },
+    effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', porSegundo: 200 }],
+    completion: { at: seg(0.5), yields: [] },
     establishes: ['stamina>=100'],
   })
 

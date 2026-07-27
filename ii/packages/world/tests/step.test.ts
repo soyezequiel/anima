@@ -4,7 +4,7 @@
 // escribió la habilidad.
 
 import { describe, expect, it } from 'vitest'
-import { OXIGENO_QUE_HACE_CENIZA, qualityOf } from '@anima/physics'
+import { dtDeFrecuencia, OXIGENO_QUE_HACE_CENIZA, qualityOf } from '@anima/physics'
 import type { Intent } from '../src/intent.js'
 import { apply, drop, eat, goTo, put, take, wait } from '../src/intent.js'
 import { keyOfCell } from '../src/cell.js'
@@ -357,12 +357,14 @@ describe('aplicar un proceso', () => {
       ])!
     let w = s
     for (let i = 0; i < 3; i++) w = stepWorld(w, [conC1(i)]).state
-    expect(w.actors.get('ana')?.doing?.ticks).toBe(3)
+    // Tres pasos a 20 Hz son 0,15 s de mundo. La actividad acumula SEGUNDOS
+    // (ADR II-0008), no ticks: a 10 Hz los mismos tres pasos serían 0,3.
+    expect(w.actors.get('ana')?.doing?.segundos).toBe(0.15)
     const otro = apply({ by: 'ana', seq: 9 }, s.phys, 'deshilachar', [
       { name: 'actor', body: 'ana-cuerpo' },
       { name: 'source', body: 'c3' },
     ])!
-    expect(stepWorld(w, [otro]).state.actors.get('ana')?.doing?.ticks).toBe(1)
+    expect(stepWorld(w, [otro]).state.actors.get('ana')?.doing?.segundos).toBe(0.05)
   })
 
   it('la actividad se pierde si el actor no actúa', () => {
@@ -378,7 +380,7 @@ describe('aplicar un proceso', () => {
       { name: 'source', body: 'c1' },
     ])!
     const w = stepWorld(s, [i]).state
-    expect(w.actors.get('ana')?.doing?.ticks).toBe(1)
+    expect(w.actors.get('ana')?.doing?.segundos).toBe(0.05)
     expect(stepWorld(w, []).state.actors.get('ana')?.doing).toBeUndefined()
   })
 
@@ -421,10 +423,14 @@ describe('aplicar un proceso', () => {
       ],
       actors: [actor('ana', { holding: ['c1'] })],
     })
-    const at = s.phys.processes.get('deshilachar')!.completion!.at
+    // Los dos segundos que dura `deshilachar`, muestreados a la frecuencia del
+    // mundo: cuarenta pasos a 20 Hz (ADR II-0008).
+    const pasos = Math.round(
+      s.phys.processes.get('deshilachar')!.completion!.at / dtDeFrecuencia(s.hz),
+    )
     let w = s
     let nacio: string | undefined
-    for (let i = 0; i < at; i++) {
+    for (let i = 0; i < pasos; i++) {
       const r = stepWorld(
         w,
         [

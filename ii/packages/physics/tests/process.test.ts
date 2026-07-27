@@ -64,7 +64,10 @@ describe('nada sube gratis', () => {
     if (drive?.k !== 'drive') throw new Error('imposible')
     expect(drive.q).toBe('temperature')
     expect(drive.toward).toBe(400)
-    expect(drive.perTick).toBe(6)
+    // 120 grados POR SEGUNDO (ADR II-0008), que a la frecuencia de referencia
+    // son los 6 por tick con los que el documento la calibró. Ahora frotar sube
+    // la madera de 15 a 375 °C en tres segundos a cualquier frecuencia.
+    expect(drive.porSegundo).toBe(120)
     expect(drive.poweredBy).toEqual({ from: 'actor', q: 'stamina', efficiency: 0.35 })
   })
 
@@ -108,17 +111,21 @@ describe('union: el rol b es opcional, y ahí está la caña', () => {
     expect(UNION.roles.find((r) => r.name === 'a')?.where).toEqual([])
   })
 
-  it('completa en 20 ticks y es reversible', () => {
-    expect(UNION.completion?.at).toBe(20)
+  it('completa en un segundo y es reversible', () => {
+    // En segundos y no en ticks (ADR II-0008): eran 20 ticks, que a 20 Hz son
+    // exactamente este segundo y a 10 Hz habrían sido dos.
+    expect(UNION.completion?.at).toBe(1)
     expect(UNION.commitment).toBe('reversible')
   })
 })
 
 describe('deshilachar y extraccion', () => {
   it('deshilachar corta contra el grano y cuesta stamina', () => {
-    expect(DESHILACHAR.completion?.at).toBe(40)
+    // Dos segundos y 2 de stamina por segundo: eran 40 ticks a 0,1 por tick, o
+    // sea el mismo gasto total en el mismo tiempo de reloj (ADR II-0008).
+    expect(DESHILACHAR.completion?.at).toBe(2)
     expect(DESHILACHAR.completion?.yields).toEqual([{ k: 'split', role: 'source', at: 'grain' }])
-    expect(DESHILACHAR.effects).toEqual([{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.1 }])
+    expect(DESHILACHAR.effects).toEqual([{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 2 }])
     expect(DESHILACHAR.commitment).toBe('costly')
   })
 
@@ -136,7 +143,9 @@ describe('deshilachar y extraccion', () => {
       { q: 'catch', op: '>', v: 0 },
     ])
     expect(EXTRACCION.arrangement).toEqual({ k: 'within', radius: 1 })
-    expect(EXTRACCION.completion?.at).toBe(30)
+    // Segundo y medio: eran 30 ticks. Y medio segundo es una duración legal,
+    // mientras que medio tick no lo era.
+    expect(EXTRACCION.completion?.at).toBe(1.5)
     expect(EXTRACCION.completion?.yields).toEqual([{ k: 'drawFromStock', of: 'source', into: 'hands' }])
   })
 })

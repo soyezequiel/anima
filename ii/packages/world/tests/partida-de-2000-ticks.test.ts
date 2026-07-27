@@ -18,7 +18,7 @@
 // movió ninguna conducta. Si no, el `it` de abajo lo dice con los dos números.
 
 import { describe, expect, it } from 'vitest'
-import { buildSeedPhysics } from '@anima/physics'
+import { buildSeedPhysics, HZ_DE_REFERENCIA } from '@anima/physics'
 import type { Body, QualityVector } from '@anima/physics'
 
 import { mapaDeActores, mapaDeCuerpos, stepWorld } from '../src/step.js'
@@ -118,6 +118,7 @@ function partida(): WorldState {
   // hash dependiendo de en qué orden se dieron de alta las cosas.
   return {
     tick: 0,
+    hz: HZ_DE_REFERENCIA,
     phys: buildSeedPhysics(),
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores(actores),
@@ -135,7 +136,7 @@ function intenciones(r: Rng, seqBase: number, cuantas: number): Intent[] {
     const que = `c${r.n(20)}`
     switch (r.n(8)) {
       case 0:
-        out.push({ k: 'wait', by, seq, commitment: 'reversible', ticks: 1 })
+        out.push({ k: 'wait', by, seq, commitment: 'reversible', segundos: 1 })
         break
       case 1:
         out.push({
@@ -276,12 +277,26 @@ describe('una partida de 2000 ticks', () => {
     // silencio.
     expect(r.violaciones.filter((v) => !v.includes('solidos-solapados'))).toEqual([])
 
-    // EL NÚMERO. Es el mismo que da esta partida con las fuentes anteriores a la
-    // optimización del tick, verificado corriendo este archivo contra las tres
-    // fuentes de `@anima/physics` de 11b49ae (`body.ts`, `leyes.ts`, `quality.ts`).
-    expect(r.hashFinal).toBe('61d4b9588a81717d')
+    // EL NÚMERO. Se movió UNA vez, con el ADR II-0008, y por tres cosas que son
+    // de FORMA y no de conducta:
+    //
+    //   1. la FRECUENCIA entra en el hash. Dos mundos con la misma semilla y
+    //      distinta frecuencia no producen la misma traza, así que el hash tiene
+    //      que verlo desde el tick 0 y no mil ticks después;
+    //   2. la actividad en curso acumula SEGUNDOS y ya no ticks;
+    //   3. el catálogo cambió de forma: `Effect.porSegundo`, `completion.at` en
+    //      segundos y `relaxesTo.porSegundo`.
+    //
+    // Que la TRAYECTORIA no se movió está verificado, y no de palabra: mapeando
+    // esas tres formas de vuelta a como eran —la actividad a ticks, las tasas a
+    // por tick, las duraciones a ticks, y sacando `hz` del hash— esta misma
+    // partida vuelve a dar `61d4b9588a81717d` con sus once checkpoints EXACTOS.
+    // El mundo simula lo mismo a 20 Hz; lo único que cambió es cómo se lo nombra.
+    //
+    // El número anterior, para quien venga a bisecar: 61d4b9588a81717d.
+    expect(r.hashFinal).toBe('4d431de7cdd1fe94')
     expect(r.checkpoints.join(' ')).toBe(
-      '983e8cc3041387d6 2325bb7f2980c65c 65e5af5df3d1b412 ecf0b49b2e357f2a fb90249f3d5e5682 1ff8adb430ee53f3 38a64ee031c67e2b c1a887653dcc3aae a2eb00e96725e15c 71bfb8b64dfa2a71 61d4b9588a81717d',
+      '799d7fb6cb46e1f5 1335c65ca19993c1 2062b2924eae1257 4ae325044434988f 3ff267aeaa7bca89 e02e6ff187c49030 9edea01bdc7142de 64e61ef2f9823ab3 743fb2a48282ae77 f7aa75e12ac7f370 4d431de7cdd1fe94',
     )
     expect(r.eventos).toBe(8004)
     expect(r.sustancias).toBe(30)

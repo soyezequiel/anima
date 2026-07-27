@@ -40,6 +40,7 @@ import { describe, expect, it } from 'vitest'
 import { admit, porQue, tieneCodigo, type Verdict } from '../src/admit.js'
 import { buildSeedPhysics } from '../src/physics.js'
 import { SEED_PROCESSES, PHYSICS_VERSION, type Process } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -93,10 +94,10 @@ describe('la conservación se juzga por efecto y nunca en total', () => {
         { name: 'pan2', where: [{ q: 'mass', op: '<=', v: 1 }] },
       ],
       effects: [
-        { k: 'drive', q: 'nutrition', on: 'pan1', toward: 9, perTick: 1 },
-        { k: 'drive', q: 'nutrition', on: 'pan2', toward: 9, perTick: 1 },
+        { k: 'drive', q: 'nutrition', on: 'pan1', toward: 9, porSegundo: 20 },
+        { k: 'drive', q: 'nutrition', on: 'pan2', toward: 9, porSegundo: 20 },
       ],
-      completion: { at: 9, yields: [{ k: 'transmute', role: 'miga' }] },
+      completion: { at: seg(0.45), yields: [{ k: 'transmute', role: 'miga' }] },
     })
     const v = mostrar('dos-bocas-una-miga', admit(p, phys))
     // Entra 9 de nutrición·masa y salen 18. Tendría que rechazar.
@@ -114,10 +115,10 @@ describe('la conservación se juzga por efecto y nunca en total', () => {
         { name: 'balde2', where: [] },
       ],
       effects: [
-        { k: 'transfer', q: 'mass', from: 'cantera', to: 'balde1', perTick: 10 },
-        { k: 'transfer', q: 'mass', from: 'cantera', to: 'balde2', perTick: 10 },
+        { k: 'transfer', q: 'mass', from: 'cantera', to: 'balde1', porSegundo: 200 },
+        { k: 'transfer', q: 'mass', from: 'cantera', to: 'balde2', porSegundo: 200 },
       ],
-      completion: { at: 10, yields: [] },
+      completion: { at: seg(0.5), yields: [] },
     })
     const v = mostrar('dos-canios-una-cantera', admit(p, phys))
     expect(v.ok).toBe(false)
@@ -152,10 +153,10 @@ describe('el mass <= x del rol no sobrevive al propio proceso', () => {
         { name: 'masa', where: [{ q: 'mass', op: '<=', v: 1 }] },
       ],
       effects: [
-        { k: 'drive', q: 'nutrition', on: 'masa', toward: 9, perTick: 1 },
-        { k: 'transfer', q: 'mass', from: 'cantera', to: 'masa', perTick: 10 },
+        { k: 'drive', q: 'nutrition', on: 'masa', toward: 9, porSegundo: 20 },
+        { k: 'transfer', q: 'mass', from: 'cantera', to: 'masa', porSegundo: 200 },
       ],
-      completion: { at: 10, yields: [{ k: 'transmute', role: 'miga' }] },
+      completion: { at: seg(0.5), yields: [{ k: 'transmute', role: 'miga' }] },
     })
     const v = mostrar('el-techo-no-es-invariante', admit(p, phys))
     // La masa entra por la puerta de al lado: el cuerpo termina pesando 101 con
@@ -178,10 +179,10 @@ describe('el mass <= x del rol no sobrevive al propio proceso', () => {
         { name: 'masa', where: [{ q: 'mass', op: '<=', v: 0 }] },
       ],
       effects: [
-        { k: 'drive', q: 'nutrition', on: 'masa', toward: 9, perTick: 1 },
-        { k: 'transfer', q: 'mass', from: 'cantera', to: 'masa', perTick: 10 },
+        { k: 'drive', q: 'nutrition', on: 'masa', toward: 9, porSegundo: 20 },
+        { k: 'transfer', q: 'mass', from: 'cantera', to: 'masa', porSegundo: 200 },
       ],
-      completion: { at: 10, yields: [{ k: 'transmute', role: 'miga' }] },
+      completion: { at: seg(0.5), yields: [{ k: 'transmute', role: 'miga' }] },
     })
     const v = mostrar('la-miga-que-no-pesa', admit(p, phys))
     expect(v.ok).toBe(false)
@@ -212,8 +213,8 @@ describe('drawFromStock paga el pescado y además paga un drive', () => {
         },
         { name: 'plato', where: [{ q: 'mass', op: '<=', v: 100 }] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'plato', toward: 8, perTick: 1 }],
-      completion: { at: 8, yields: [{ k: 'drawFromStock', of: 'banco', into: 'hands' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'plato', toward: 8, porSegundo: 20 }],
+      completion: { at: seg(0.4), yields: [{ k: 'drawFromStock', of: 'banco', into: 'hands' }] },
     })
     const v = mostrar('el-rio-paga-dos-veces', admit(p, phys))
     expect(v.ok).toBe(false)
@@ -239,8 +240,8 @@ describe('los bordes de la causa 3 que la reparación sí cerró', () => {
         },
         { name: 'pan', where: [] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 9, perTick: 1 }],
-      completion: { at: 9, yields: [{ k: 'transmute', role: 'miga' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 9, porSegundo: 20 }],
+      completion: { at: seg(0.45), yields: [{ k: 'transmute', role: 'miga' }] },
     })
     expect(tieneCodigo(admit(p, phys), 'magnitud-intensiva')).toBe(true)
   })
@@ -253,8 +254,8 @@ describe('los bordes de la causa 3 que la reparación sí cerró', () => {
         { name: 'miga', where: [{ q: 'nutrition', op: '>', v: 9 }] },
         { name: 'pan', where: [{ q: 'mass', op: '<=', v: 1 }] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 9, perTick: 1 }],
-      completion: { at: 9, yields: [{ k: 'transmute', role: 'miga' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 9, porSegundo: 20 }],
+      completion: { at: seg(0.45), yields: [{ k: 'transmute', role: 'miga' }] },
     })
     expect(tieneCodigo(admit(p, phys), 'magnitud-intensiva')).toBe(true)
   })
@@ -271,8 +272,8 @@ describe('los bordes de la causa 3 que la reparación sí cerró', () => {
         },
         { name: 'destino', where: [] },
       ],
-      effects: [{ k: 'transfer', q: 'nutrition', from: 'origen', to: 'destino', perTick: 1 }],
-      completion: { at: 9, yields: [] },
+      effects: [{ k: 'transfer', q: 'nutrition', from: 'origen', to: 'destino', porSegundo: 20 }],
+      completion: { at: seg(0.45), yields: [] },
     })
     expect(tieneCodigo(admit(p, phys), 'magnitud-intensiva')).toBe(true)
   })
@@ -283,8 +284,8 @@ describe('los bordes de la causa 3 que la reparación sí cerró', () => {
         { name: 'cantera', where: [{ q: 'mass', op: '>=', v: 100 }] },
         { name: 'balde', where: [] },
       ],
-      effects: [{ k: 'transfer', q: 'mass', from: 'cantera', to: 'balde', perTick: 20 }],
-      completion: { at: 10, yields: [] },
+      effects: [{ k: 'transfer', q: 'mass', from: 'cantera', to: 'balde', porSegundo: 400 }],
+      completion: { at: seg(0.5), yields: [] },
     })
     expect(tieneCodigo(admit(p, phys), 'conservacion-transfer')).toBe(true)
   })
@@ -318,8 +319,8 @@ describe('la puerta sigue dejando pasar lo que tiene que pasar', () => {
         },
         { name: 'porcion', where: [{ q: 'mass', op: '<=', v: 2 }] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'porcion', toward: 9, perTick: 1 }],
-      completion: { at: 9, yields: [{ k: 'transmute', role: 'fuente' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'porcion', toward: 9, porSegundo: 20 }],
+      completion: { at: seg(0.45), yields: [{ k: 'transmute', role: 'fuente' }] },
     })
     const v = mostrar('repartir-la-medula', admit(p, phys))
     expect(v.razones.map((r) => r.codigo)).toEqual([])

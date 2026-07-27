@@ -53,7 +53,7 @@ import { buildSeedPhysics } from '../src/physics.js'
 import { EXTRACCION, PHYSICS_VERSION, type Process } from '../src/process.js'
 import type { Substance } from '../src/substance.js'
 import { qualityOf, type Body } from '../src/body.js'
-import { fadd, fdiv, fx, unfx } from '../src/fixed.js'
+import { fadd, fdiv, fx, seg, unfx } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -104,7 +104,7 @@ describe('los caminos directos a la comida gratis están cerrados', () => {
           q: 'nutrition',
           on: 'palo',
           toward: 20,
-          perTick: 0.5,
+          porSegundo: 10,
           // Con poweredBy y todo: la regla 1 no negocia con la declaración.
           poweredBy: { from: 'palo', q: 'stamina', efficiency: 0.1 },
         },
@@ -130,7 +130,7 @@ describe('los caminos directos a la comida gratis están cerrados', () => {
   it('la misma subida escrita como un drain de tasa negativa: rechazado', () => {
     const p = proc('madera-al-reves', {
       roles: [{ name: 'palo', where: [{ q: 'rigidity', op: '>=', v: 0.6 }] }],
-      effects: [{ k: 'drain', q: 'nutrition', on: 'palo', perTick: -2 }],
+      effects: [{ k: 'drain', q: 'nutrition', on: 'palo', porSegundo: -40 }],
     })
     expect(tieneCodigo(admit(p, phys), 'tasa-negativa')).toBe(true)
   })
@@ -138,8 +138,8 @@ describe('los caminos directos a la comida gratis están cerrados', () => {
   it('duplicar masa con un drive: rechazado', () => {
     const p = proc('duplicar-masa', {
       roles: [{ name: 'a', where: [{ q: 'rigidity', op: '>=', v: 0.5 }] }],
-      effects: [{ k: 'drive', q: 'mass', on: 'a', toward: 500, perTick: 10 }],
-      completion: { at: 10, yields: [{ k: 'split', role: 'a', at: 'grain' }] },
+      effects: [{ k: 'drive', q: 'mass', on: 'a', toward: 500, porSegundo: 200 }],
+      completion: { at: seg(0.5), yields: [{ k: 'split', role: 'a', at: 'grain' }] },
       establishes: ['mass>=500'],
     })
     expect(tieneCodigo(admit(p, phys), 'conservacion-drive')).toBe(true)
@@ -149,7 +149,7 @@ describe('los caminos directos a la comida gratis están cerrados', () => {
     const p = proc('pescar-del-aire', {
       roles: [{ name: 'lugar', where: [{ q: 'moisture', op: '>=', v: 0.5 }] }],
       arrangement: { k: 'within', radius: 1 },
-      completion: { at: 5, yields: [{ k: 'drawFromStock', of: 'lugar', into: 'hands' }] },
+      completion: { at: seg(0.25), yields: [{ k: 'drawFromStock', of: 'lugar', into: 'hands' }] },
       establishes: ['holding(tag:carnoso)'],
     })
     expect(tieneCodigo(admit(p, phys), 'materia-sin-origen')).toBe(true)
@@ -164,8 +164,8 @@ describe('los caminos directos a la comida gratis están cerrados', () => {
         { name: 'boca', where: [] },
       ],
       arrangement: { k: 'contact' },
-      effects: [{ k: 'transfer', q: 'nutrition', from: 'fibra', to: 'boca', perTick: 5 }],
-      completion: { at: 10, yields: [] },
+      effects: [{ k: 'transfer', q: 'nutrition', from: 'fibra', to: 'boca', porSegundo: 100 }],
+      completion: { at: seg(0.5), yields: [] },
     })
     expect(tieneCodigo(admit(p, phys), 'conservacion-transfer')).toBe(true)
   })
@@ -195,7 +195,7 @@ describe('CERRADO · transferir más de lo que el origen tiene', () => {
       { name: 'receptor', where: [{ q: 'nutrition', op: '<=', v: 0 }] },
     ],
     arrangement: { k: 'contact' },
-    effects: [{ k: 'transfer', q: 'nutrition', from: 'donante', to: 'receptor', perTick: 90 }],
+    effects: [{ k: 'transfer', q: 'nutrition', from: 'donante', to: 'receptor', porSegundo: 1800 }],
     establishes: ['nutrition>=90'],
   })
 
@@ -215,7 +215,7 @@ describe('CERRADO · transferir más de lo que el origen tiene', () => {
   it('CERRADO — y no consume NADA: por eso hace falta que TERMINE alguna vez', () => {
     // `consumedRoles` se deriva de los rendimientos, y este proceso no tiene
     // ninguno: nada se gasta. Sin `completion`, el efecto corre mientras el
-    // arreglo se sostenga, o sea `perTick × ∞`. Un proceso sin completion que
+    // arreglo se sostenga, o sea `porSegundo × ∞`. Un proceso sin completion que
     // solo GASTA es legítimo (`friccion` es exactamente eso); uno que ACREDITA
     // una cuenta conservada sin consumir nada, no.
     expect(consumedRoles(ENGORDAR)).toEqual([])
@@ -291,8 +291,8 @@ describe('CERRADO · transferir masa desde un guijarro', () => {
       { name: 'grande', where: [] },
     ],
     arrangement: { k: 'contact' },
-    effects: [{ k: 'transfer', q: 'mass', from: 'chico', to: 'grande', perTick: 500 }],
-    completion: { at: 20, yields: [] },
+    effects: [{ k: 'transfer', q: 'mass', from: 'chico', to: 'grande', porSegundo: 10000 }],
+    completion: { at: seg(1), yields: [] },
     establishes: ['mass>=500'],
   })
 
@@ -340,7 +340,7 @@ describe('CERRADO · un drive sobre una cualidad que no se guarda', () => {
         q: 'catch',
         on: 'gear',
         toward: 8,
-        perTick: 0.5,
+        porSegundo: 10,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 1 },
       },
       {
@@ -348,7 +348,7 @@ describe('CERRADO · un drive sobre una cualidad que no se guarda', () => {
         q: 'reach',
         on: 'gear',
         toward: 16,
-        perTick: 1,
+        porSegundo: 20,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 1 },
       },
     ],
@@ -386,7 +386,7 @@ describe('CERRADO · un drive sobre una cualidad que no se guarda', () => {
           q: 'calories',
           on: 'plato',
           toward: 100000,
-          perTick: 1,
+          porSegundo: 20,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: 1 },
         },
       ],
@@ -423,11 +423,11 @@ describe('HUECO · cocinar sin fuego por un suspiro de stamina', () => {
         q: 'digestibility',
         on: 'comida',
         toward: 1,
-        perTick: 0.05,
+        porSegundo: 1,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 1 },
       },
     ],
-    completion: { at: 20, yields: [] },
+    completion: { at: seg(1), yields: [] },
     establishes: ['digestibility>=1'],
   })
 
@@ -481,8 +481,8 @@ describe('HUECO · cocinar sin fuego por un suspiro de stamina', () => {
     // premio de cocinar es una decisión de calibración, y va con su ADR.
     const p = proc('lavar-el-hongo', {
       roles: [{ name: 'comida', where: [{ q: 'toxicity', op: '>', v: 0 }] }],
-      effects: [{ k: 'drive', q: 'toxicity', on: 'comida', toward: 0, perTick: 0.1 }],
-      completion: { at: 10, yields: [] },
+      effects: [{ k: 'drive', q: 'toxicity', on: 'comida', toward: 0, porSegundo: 2 }],
+      completion: { at: seg(0.5), yields: [] },
       establishes: ['toxicity<=0'],
     })
     const v = admit(p, phys)
@@ -573,7 +573,7 @@ describe('CERRADO · pescar sin caña y pescar treinta veces más rápido', () =
     const p = proc('manotazo', {
       roles: [{ name: 'source', where: [{ q: 'mass', op: '>', v: 0 }] }],
       arrangement: { k: 'within', radius: 1 },
-      completion: { at: 1, yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
+      completion: { at: seg(0.05), yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
       establishes: ['holding(tag:carnoso)'],
     })
     const v = admit(p, phys)
@@ -586,8 +586,8 @@ describe('CERRADO · pescar sin caña y pescar treinta veces más rápido', () =
     expect(tieneCodigo(v, 'dominancia')).toBe(true)
   })
 
-  it('CERRADO — o el clon exacto de `extraccion` que termina en 1 tick en vez de 30', () => {
-    const p: Process = { ...EXTRACCION, id: 'extraccion-rapida', completion: { at: 1, yields: EXTRACCION.completion!.yields } }
+  it('CERRADO — o el clon exacto de `extraccion` que termina en 0,05 s en vez de 1,5', () => {
+    const p: Process = { ...EXTRACCION, id: 'extraccion-rapida', completion: { at: seg(0.05), yields: EXTRACCION.completion!.yields } }
     const v = admit(p, phys)
     expect(v.ok).toBe(false)
 
@@ -598,12 +598,13 @@ describe('CERRADO · pescar sin caña y pescar treinta veces más rápido', () =
       expect([q, saldoDeclarado(p, q, phys), saldoDeclarado(EXTRACCION, q, phys)]).toEqual([q, 0, 0])
     }
 
-    // Treinta veces más pescado por tick es la misma técnica con el precio bajado
-    // a mano, que es justo lo que la regla de dominancia existe para atajar.
+    // Treinta veces más pescado por segundo es la misma técnica con el precio
+    // bajado a mano, que es justo lo que la regla de dominancia existe para
+    // atajar.
     const r = v.razones.find((x) => x.codigo === 'dominancia')!
     expect(r.proceso).toBe('extraccion')
-    expect(r.encontrado).toBe(1)
-    expect(r.cota).toBe(30)
+    expect(r.encontrado).toBe(0.05)
+    expect(r.cota).toBe(1.5)
   })
 })
 
@@ -643,7 +644,7 @@ describe('SIGUE ABIERTO · partir en dos y quedarse con más', () => {
     // eso. (Este proceso igual no entra, pero por dominancia: ver arriba.)
     const p = proc('desmenuzar', {
       roles: [{ name: 'source', where: [{ q: 'tensile', op: '>=', v: 0.3 }] }],
-      completion: { at: 2, yields: [{ k: 'split', role: 'source', at: 'grain' }] },
+      completion: { at: seg(0.1), yields: [{ k: 'split', role: 'source', at: 'grain' }] },
       establishes: ['flexibility>=0.8'],
     })
     expect(codigos(admit(p, phys)).includes('dominancia')).toBe(true)

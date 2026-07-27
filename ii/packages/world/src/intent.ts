@@ -132,7 +132,14 @@ interface IntentBase {
 }
 
 export type Intent =
-  | (IntentBase & { readonly k: 'wait'; readonly ticks: number })
+  /**
+   * Esperar es un concepto de RITMO y no de muestreo, así que va en segundos y
+   * no en ticks (ADR II-0008): `wait(2)` son dos segundos de mundo a cualquier
+   * frecuencia. `explore.maxTicks` sigue en ticks a propósito — es un
+   * presupuesto de CÓMPUTO, o sea cuántas veces se llama a la mente, y eso sí es
+   * muestreo.
+   */
+  | (IntentBase & { readonly k: 'wait'; readonly segundos: number })
   | (IntentBase & { readonly k: 'goTo'; readonly to: Placement; readonly within: number })
   | (IntentBase & { readonly k: 'explore'; readonly maxTicks: number })
   | (IntentBase & { readonly k: 'take'; readonly what: BodyId })
@@ -287,8 +294,8 @@ interface Quien {
   readonly seq: number
 }
 
-export function wait(w: Quien, ticks: number): Intent {
-  return { k: 'wait', by: w.by, seq: w.seq, commitment: COMMITMENT_OF.wait, ticks }
+export function wait(w: Quien, segundos: number): Intent {
+  return { k: 'wait', by: w.by, seq: w.seq, commitment: COMMITMENT_OF.wait, segundos }
 }
 
 export function goTo(w: Quien, to: Placement, within = 0): Intent {

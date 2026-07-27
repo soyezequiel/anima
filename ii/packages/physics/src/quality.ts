@@ -109,7 +109,12 @@ export interface QualitySpec {
    */
   extent: 'intensive' | 'extensive'
   conserved: boolean
-  relaxesTo?: { target: 'ambient' | number; perTick: number }
+  /**
+   * A qué relaja sola la cualidad, y a qué tasa POR SEGUNDO de mundo
+   * (ADR II-0008). No es «por tick»: si lo fuera, subir la frecuencia haría que
+   * todo relajara más rápido en reloj de pared.
+   */
+  relaxesTo?: { target: 'ambient' | number; porSegundo: number }
   /** Si está, la cualidad NO se guarda: se calcula cada vez que se lee. */
   derived?: QualityExpr
 }
@@ -198,14 +203,15 @@ export const QUALITIES: readonly QualitySpec[] = [
 
   // ── Las 17 con ley ────────────────────────────────────────────────────────
   {
-    // Ley 1. `perTick` es el acoplamiento DESNUDO con el ambiente: la ley lo
+    // Ley 1. `porSegundo` es el acoplamiento DESNUDO con el ambiente: la ley lo
     // divide por `heatCapacity`, y por eso una piedra grande se enfría lento y
-    // una hoja se enfría en dos ticks sin que nadie escriba ninguna de las dos.
+    // una hoja se enfría en una décima de segundo sin que nadie escriba ninguna
+    // de las dos.
     id: 'temperature',
     range: [-100, 2000],
     extent: 'intensive',
     conserved: false,
-    relaxesTo: { target: 'ambient', perTick: 0.02 },
+    relaxesTo: { target: 'ambient', porSegundo: 0.4 },
   },
   {
     // Constante de material, pero está «con ley» y no es un error: la ley 11 la
@@ -224,7 +230,7 @@ export const QUALITIES: readonly QualitySpec[] = [
     range: [0, 1],
     extent: 'intensive',
     conserved: false,
-    relaxesTo: { target: 'ambient', perTick: 0.001 },
+    relaxesTo: { target: 'ambient', porSegundo: 0.02 },
   },
   {
     // La fuente de verdad del oxígeno es la CELDA (ADR II-0002); en el cuerpo es
@@ -234,7 +240,7 @@ export const QUALITIES: readonly QualitySpec[] = [
     range: [0, 1],
     extent: 'intensive',
     conserved: false,
-    relaxesTo: { target: 'ambient', perTick: 0.05 },
+    relaxesTo: { target: 'ambient', porSegundo: 1 },
   },
   {
     // Ley 3 y ley 4. No relaja: quemarse no se deshace. Es la cualidad que hace
@@ -246,8 +252,9 @@ export const QUALITIES: readonly QualitySpec[] = [
   },
   { id: 'rigidity', range: [0, 1], extent: 'intensive', conserved: false },
   {
-    // Gobierna el tiempo de cocción de la ley 5: `r = 0.010·k/(0.2 + toughness)`.
-    // El barrido térmico lo dejó escrito: es lo que separa el hongo del cuero.
+    // Gobierna el tiempo de cocción de la ley 5: `r = 0.2·k/(0.2 + toughness)`
+    // por segundo. El barrido térmico lo dejó escrito: es lo que separa el hongo
+    // del cuero.
     id: 'toughness',
     range: [0, 1],
     extent: 'intensive',
@@ -585,7 +592,7 @@ export interface CellQualitySpec {
   range: readonly [number, number]
   /** `sheltered` no se guarda: es la oclusión acumulada, y se calcula al leerla. */
   derived: boolean
-  relaxesTo?: { target: 'ambient' | number; perTick: number }
+  relaxesTo?: { target: 'ambient' | number; porSegundo: number }
 }
 
 export const CELL_QUALITIES: readonly CellQualitySpec[] = [
@@ -595,7 +602,7 @@ export const CELL_QUALITIES: readonly CellQualitySpec[] = [
     id: 'wet',
     range: [0, 1],
     derived: false,
-    relaxesTo: { target: 'ambient', perTick: 0.01 },
+    relaxesTo: { target: 'ambient', porSegundo: 0.2 },
   },
   {
     // Lo que la ley 3 consume y la ley 4 lee para decidir carbón o ceniza. Que
@@ -604,13 +611,13 @@ export const CELL_QUALITIES: readonly CellQualitySpec[] = [
     id: 'oxygen',
     range: [0, 1],
     derived: false,
-    relaxesTo: { target: 'ambient', perTick: 0.05 },
+    relaxesTo: { target: 'ambient', porSegundo: 1 },
   },
   {
     id: 'temperature',
     range: [-100, 2000],
     derived: false,
-    relaxesTo: { target: 'ambient', perTick: 0.05 },
+    relaxesTo: { target: 'ambient', porSegundo: 1 },
   },
   {
     // Derivada, y ahí está toda la decisión del ADR II-0002: guardarla la

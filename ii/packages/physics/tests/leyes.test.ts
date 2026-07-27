@@ -25,7 +25,16 @@ import {
   totalConservado,
   type Entorno,
 } from '../src/leyes.js'
+import { HZ_DE_REFERENCIA, dtDeFrecuencia } from '../src/fixed.js'
 import { buildSeedPhysics } from '../src/physics.js'
+
+/**
+ * El paso de tiempo de los tests de este archivo: la frecuencia de referencia
+ * del ADR II-0007. Las leyes son por segundo y `dt` dice con qué finura se las
+ * muestrea; a otra frecuencia estos mismos tests miden otra trayectoria, y eso
+ * es correcto (ADR II-0008).
+ */
+const DT = dtDeFrecuencia(HZ_DE_REFERENCIA)
 
 const phys = buildSeedPhysics()
 
@@ -49,14 +58,14 @@ describe('un tick es puro', () => {
     // hasta que alguien intenta cargar una partida vieja.
     const antes = cosa('carne', 0.4)
     const foto = JSON.stringify(antes)
-    paso(antes, SOBRE_LA_PARRILLA, phys)
+    paso(antes, SOBRE_LA_PARRILLA, phys, DT)
     expect(JSON.stringify(antes)).toBe(foto)
   })
 
   it('dos veces la misma entrada da exactamente el mismo cuerpo', () => {
     const b = cosa('carne', 0.4, { temperature: 90 })
-    const uno = paso(b, SOBRE_LA_PARRILLA, phys)
-    const dos = paso(b, SOBRE_LA_PARRILLA, phys)
+    const uno = paso(b, SOBRE_LA_PARRILLA, phys, DT)
+    const dos = paso(b, SOBRE_LA_PARRILLA, phys, DT)
     expect(uno.body).toEqual(dos.body)
     expect(uno.leyes).toEqual(dos.leyes)
   })
@@ -66,8 +75,8 @@ describe('un tick es puro', () => {
     // escondido en algún lado y el mundo dejaría de poder pausarse.
     const b = cosa('carne', 0.4)
     let unoPorUno = b
-    for (let i = 0; i < 200; i++) unoPorUno = paso(unoPorUno, SOBRE_LA_PARRILLA, phys).body
-    const deCorrido = correr(b, SOBRE_LA_PARRILLA, phys, 200)
+    for (let i = 0; i < 200; i++) unoPorUno = paso(unoPorUno, SOBRE_LA_PARRILLA, phys, DT).body
+    const deCorrido = correr(b, SOBRE_LA_PARRILLA, phys, DT, 10)
     expect(unoPorUno).toEqual(deCorrido.body)
   })
 })
@@ -76,25 +85,25 @@ describe('el orden de las leyes está fijo', () => {
   it('lo que está en su ventana de cocción no pasa por la ley de la humedad', () => {
     // Las dos mueven `moisture`. Si corrieran las dos, el agua se contaría dos
     // veces y la evaporación calibrada del Hito 0 dejaría de ser la que se midió.
-    const enVentana = paso(cosa('carne', 0.4, { temperature: 90 }), SOBRE_LA_PARRILLA, phys)
+    const enVentana = paso(cosa('carne', 0.4, { temperature: 90 }), SOBRE_LA_PARRILLA, phys, DT)
     expect(enVentana.leyes).toEqual(['termica', 'desnaturalizacion'])
 
-    const frio = paso(cosa('carne', 0.4, { temperature: 20 }), SOBRE_LA_PARRILLA, phys)
+    const frio = paso(cosa('carne', 0.4, { temperature: 20 }), SOBRE_LA_PARRILLA, phys, DT)
     expect(frio.leyes).toContain('humedad')
     expect(frio.leyes).not.toContain('desnaturalizacion')
   })
 
   it('la ley térmica corre siempre y corre primero', () => {
-    const quieto = paso(cosa('piedra', 3), { celda: CELDA_AL_AIRE }, phys)
+    const quieto = paso(cosa('piedra', 3), { celda: CELDA_AL_AIRE }, phys, DT)
     expect(quieto.leyes[0]).toBe('termica')
   })
 
   it('lo que no se cocina no se pudre por estar caliente, pero lo crudo sí', () => {
     // La ley 6 se corta arriba del punto de cocción. Ésa es toda la razón por la
     // que guardar comida cocida tiene sentido, y no hay ninguna regla que lo diga.
-    const templado = paso(cosa('carne', 0.4, { temperature: 20 }), { celda: CELDA_AL_AIRE }, phys)
+    const templado = paso(cosa('carne', 0.4, { temperature: 20 }), { celda: CELDA_AL_AIRE }, phys, DT)
     expect(templado.leyes).toContain('descomposicion')
-    const caliente = paso(cosa('carne', 0.4, { temperature: 90 }), SOBRE_LA_PARRILLA, phys)
+    const caliente = paso(cosa('carne', 0.4, { temperature: 90 }), SOBRE_LA_PARRILLA, phys, DT)
     expect(caliente.leyes).not.toContain('descomposicion')
   })
 })
@@ -113,7 +122,7 @@ describe('la ley 1 es una función, no una tabla', () => {
   })
 
   it('sin fuente, el cuerpo vuelve al ambiente y se queda ahí', () => {
-    const fin = correr(cosa('piedra', 1, { temperature: 400 }), { celda: CELDA_AL_AIRE }, phys, 500)
+    const fin = correr(cosa('piedra', 1, { temperature: 400 }), { celda: CELDA_AL_AIRE }, phys, DT, 25)
     expect(qualityOf(fin.body, 'temperature', fin.phys)).toBeCloseTo(T_AMBIENTE, 6)
   })
 
@@ -127,12 +136,12 @@ describe('la ley 1 es una función, no una tabla', () => {
       celda: CELDA_AL_AIRE,
       fuente: { potencia: 300, distancia: 0, montaje: 'contacto' },
     }
-    const tChico = qualityOf(correr(chico, sitio, phys, 10).body, 'temperature', phys)
-    const tGrande = qualityOf(correr(grande, sitio, phys, 10).body, 'temperature', phys)
+    const tChico = qualityOf(correr(chico, sitio, phys, DT, 0.5).body, 'temperature', phys)
+    const tGrande = qualityOf(correr(grande, sitio, phys, DT, 0.5).body, 'temperature', phys)
     expect(tChico).toBeGreaterThan(tGrande)
     // Y los dos van al MISMO equilibrio: lo que cambia es cuánto tardan.
-    const largo = 20000
-    expect(qualityOf(correr(grande, sitio, phys, largo).body, 'temperature', phys)).toBeCloseTo(
+    const largo = 1000
+    expect(qualityOf(correr(grande, sitio, phys, DT, largo).body, 'temperature', phys)).toBeCloseTo(
       temperaturaDeEquilibrio(300, 0, 'contacto'),
       3,
     )
@@ -213,7 +222,7 @@ describe('la masa vive en un solo lugar', () => {
   it('y un tick sobre ese cuerpo tampoco lo aprovecha', () => {
     const raro = cosa('carne', 10, { mass: 2, temperature: 90 })
     const antes = totalConservado(raro, 'nutrition', phys)
-    const fin = correr(raro, SOBRE_LA_PARRILLA, phys, 300)
+    const fin = correr(raro, SOBRE_LA_PARRILLA, phys, DT, 15)
     expect(qualityOf(fin.body, 'mass', fin.phys)).toBeLessThanOrEqual(2)
     expect(totalConservado(fin.body, 'nutrition', fin.phys)).toBeLessThanOrEqual(antes)
   })
@@ -325,13 +334,15 @@ describe('ADR II-0001: encender no es una acción, es una consecuencia', () => {
       rama,
       { celda: CELDA_AL_AIRE, fuente: { potencia: 300, distancia: 2, montaje: 'piso' } },
       phys,
-      300,
+      DT,
+      15,
     )
     const encima = correr(
       rama,
       { celda: CELDA_AL_AIRE, fuente: { potencia: 300, distancia: 0, montaje: 'contacto' } },
       phys,
-      300,
+      DT,
+      15,
     )
     expect(lejos.leyes).not.toContain('combustion')
     expect(encima.leyes).toContain('combustion')

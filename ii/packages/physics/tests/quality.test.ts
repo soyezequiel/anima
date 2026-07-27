@@ -300,7 +300,7 @@ describe('las cualidades de celda (ADR II-0002)', () => {
   })
 
   it('el oxígeno de la celda vuelve solo, y por eso taparse no asfixia sin aviso', () => {
-    expect(cellSpecOf('oxygen').relaxesTo!.perTick).toBeGreaterThan(0)
+    expect(cellSpecOf('oxygen').relaxesTo!.porSegundo).toBeGreaterThan(0)
   })
 
   it('cellSpecOf lanza con una cualidad que no existe', () => {
@@ -316,24 +316,25 @@ describe('puente al punto fijo', () => {
 
   it('las tasas que el catálogo declara caben en `Rate`, y no todas en `Fixed`', () => {
     // ADR II-0006 medido contra el catálogo mismo, no contra tres literales
-    // copiados a mano. Un `relaxesTo.perTick` es la definición literal de una
-    // tasa: cuánto cambia una magnitud en un tick.
+    // copiados a mano. Un `relaxesTo.porSegundo` es la definición literal de una
+    // tasa: cuánto cambia una magnitud en un SEGUNDO de mundo (ADR II-0008).
     const tasas: number[] = []
-    for (const s of QUALITIES) if (s.relaxesTo !== undefined) tasas.push(s.relaxesTo.perTick)
-    for (const s of CELL_QUALITIES) if (s.relaxesTo !== undefined) tasas.push(s.relaxesTo.perTick)
+    for (const s of QUALITIES) if (s.relaxesTo !== undefined) tasas.push(s.relaxesTo.porSegundo)
+    for (const s of CELL_QUALITIES) if (s.relaxesTo !== undefined) tasas.push(s.relaxesTo.porSegundo)
     expect(tasas.length).toBeGreaterThan(0)
     for (const t of tasas) {
       expect(rate(t), `${t} no es representable como tasa`).toBeGreaterThan(0)
       expect(rate(t), `${t} satura el techo de las tasas`).toBeLessThan(RATE_MAX)
     }
 
-    // Y la más lenta del catálogo está EN EL PISO de la escala de las
-    // magnitudes: 0.001 es exactamente un ulp de `Fixed`. Cualquier ley que
-    // quiera relajar más lento que eso es CERO ahí — y las hay: el secado de la
-    // ley 11 corre a 2e-5 por grado y la descomposición a 4e-4 por tick. Ésa es
-    // la razón entera de que las tasas tengan escala propia.
-    expect(fx(specOf('moisture').relaxesTo!.perTick)).toBe(1)
-    expect(fx(0.00002)).toBe(0)
-    expect(rate(0.00002)).toBe(20)
+    // Y la más lenta del catálogo sigue pegada al PISO de la escala de las
+    // magnitudes, aunque el paso a segundos le haya dado veinte veces más aire:
+    // 0.001 es exactamente un ulp de `Fixed`. Cualquier tasa por debajo de eso
+    // es CERO ahí — y las hay, aun por segundo: el secado de la ley 11 corre a
+    // 4e-4 por grado y por segundo. Ésa es la razón entera de que las tasas
+    // tengan escala propia, y el ADR II-0008 la afloja sin sacarla.
+    expect(fx(specOf('moisture').relaxesTo!.porSegundo)).toBe(20)
+    expect(fx(0.0004)).toBe(0)
+    expect(rate(0.0004)).toBe(400)
   })
 })

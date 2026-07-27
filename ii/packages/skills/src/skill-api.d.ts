@@ -457,8 +457,12 @@ export interface Ctx {
    * innatas del Hito 4. Sin esto, la única forma de dejar pasar el tiempo era
    * `yield ctx.goTo(ctx.self.at)` —caminar hasta donde ya estoy—, la
    * deformidad que sostenía la secuencia estrella del Hito 5.
+   *
+   * EN SEGUNDOS DE MUNDO, no en ticks (ADR II-0008): esperar es ritmo, no
+   * muestreo. `ctx.tick` sigue siendo el contador de pasos, porque una habilidad
+   * necesita saber cuántas veces la llamaron; cuánto TIEMPO pasó es otra cosa.
    */
-  wait(ticks: number): Intent
+  wait(segundos: number): Intent
 
   /** Canal de habla. No cuesta turno del cuerpo. */
   say(text: string): void

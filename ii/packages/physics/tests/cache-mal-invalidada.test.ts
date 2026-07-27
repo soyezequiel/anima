@@ -33,7 +33,16 @@ import {
   T_AMBIENTE,
   tagsDe,
 } from '../src/index.js'
+import { HZ_DE_REFERENCIA, dtDeFrecuencia } from '../src/fixed.js'
 import type { Body, Entorno, Part, Physics, QualityVector, Substance } from '../src/index.js'
+
+/**
+ * El paso de tiempo de los tests de este archivo: la frecuencia de referencia
+ * del ADR II-0007. Las leyes son por segundo y `dt` dice con qué finura se las
+ * muestrea; a otra frecuencia estos mismos tests miden otra trayectoria, y eso
+ * es correcto (ADR II-0008).
+ */
+const DT = dtDeFrecuencia(HZ_DE_REFERENCIA)
 
 const PHYS = buildSeedPhysics()
 const AIRE: Entorno = { celda: { oxygen: 1, wet: 0, ambiente: T_AMBIENTE } }
@@ -89,7 +98,7 @@ describe('un cuerpo que cambia de masa', () => {
     // conservación tiene que leer la masa NUEVA para comparar el total. Si el
     // candado leyera la vieja, dejaría pasar nutrición inventada.
     const crudo = cuerpo('p1', 'pescado', 2, { moisture: 0.9 })
-    const r = paso(crudo, HORNO, PHYS)
+    const r = paso(crudo, HORNO, PHYS, DT)
     const mAntes = qualityOf(crudo, 'mass', PHYS)
     const mDespues = qualityOf(r.body, 'mass', PHYS)
     expect(mDespues).toBeLessThan(mAntes)
@@ -104,7 +113,7 @@ describe('un cuerpo que cambia de masa', () => {
     let masa = qualityOf(b, 'mass', PHYS)
     let total = qualityOf(b, 'nutrition', PHYS) * masa
     for (let i = 0; i < 50; i++) {
-      b = paso(b, HORNO, PHYS).body
+      b = paso(b, HORNO, PHYS, DT).body
       const m = qualityOf(b, 'mass', PHYS)
       const t = qualityOf(b, 'nutrition', PHYS) * m
       expect(m).toBeLessThanOrEqual(masa)
@@ -167,7 +176,7 @@ describe('una parte que se agrega', () => {
     }
     const copias = antes.map((b) => texto(b))
     for (const e of [AIRE, HORNO, { celda: CELDA_TAPADA }]) {
-      for (const b of antes) paso(b, e, PHYS)
+      for (const b of antes) paso(b, e, PHYS, DT)
     }
     for (let i = 0; i < antes.length; i++) expect(texto(antes[i]!)).toBe(copias[i])
   })
@@ -194,8 +203,8 @@ describe('dos cuerpos distintos con el mismo id', () => {
   it('un paso sobre cada uno da resultados distintos, en cualquier orden', () => {
     const a = cuerpo('gemelo', 'pescado', 2, { temperature: 10 })
     const b = cuerpo('gemelo', 'piedra', 9, { temperature: 800 })
-    const ab = [texto(paso(a, HORNO, PHYS).body), texto(paso(b, HORNO, PHYS).body)]
-    const ba = [texto(paso(b, HORNO, PHYS).body), texto(paso(a, HORNO, PHYS).body)]
+    const ab = [texto(paso(a, HORNO, PHYS, DT).body), texto(paso(b, HORNO, PHYS, DT).body)]
+    const ba = [texto(paso(b, HORNO, PHYS, DT).body), texto(paso(a, HORNO, PHYS, DT).body)]
     expect(ab[0]).toBe(ba[1])
     expect(ab[1]).toBe(ba[0])
     expect(ab[0]).not.toBe(ab[1])
@@ -222,12 +231,12 @@ describe('un cuerpo mutado después de leerlo', () => {
     // —guardada en un mapa, por ejemplo— esto es lo que lo agarraría.
     const state: QualityVector = { temperature: 300, moisture: 0.1 }
     const b: Body = { id: 'mut2', form: 'vara', parts: [{ substance: 'madera', mass: 1, q: {} }], joints: [], state }
-    const r1 = texto(paso(b, AIRE, PHYS).body)
+    const r1 = texto(paso(b, AIRE, PHYS, DT).body)
     state.temperature = 300
-    const r2 = texto(paso(b, AIRE, PHYS).body)
+    const r2 = texto(paso(b, AIRE, PHYS, DT).body)
     expect(r2).toBe(r1)
     state.temperature = 900
-    expect(texto(paso(b, AIRE, PHYS).body)).not.toBe(r1)
+    expect(texto(paso(b, AIRE, PHYS, DT).body)).not.toBe(r1)
   })
 })
 
@@ -277,11 +286,11 @@ describe('dos Physics con las mismas sustancias y distintos números', () => {
 
   it('un paso con cada catálogo da cuerpos distintos, en cualquier orden', () => {
     const b = cuerpo('leña', 'madera', 1, { temperature: 700 })
-    const a1 = texto(paso(b, AIRE, p18).body)
-    const b1 = texto(paso(b, AIRE, p2).body)
+    const a1 = texto(paso(b, AIRE, p18, DT).body)
+    const b1 = texto(paso(b, AIRE, p2, DT).body)
     // Al revés, y desde una memo cargada con el otro catálogo.
-    const b2 = texto(paso(b, AIRE, p2).body)
-    const a2 = texto(paso(b, AIRE, p18).body)
+    const b2 = texto(paso(b, AIRE, p2, DT).body)
+    const a2 = texto(paso(b, AIRE, p18, DT).body)
     expect(a2).toBe(a1)
     expect(b2).toBe(b1)
     expect(a1).not.toBe(b1)
@@ -333,15 +342,15 @@ describe('el resultado no depende de qué cuerpo se leyó justo antes', () => {
     // prueba directa de que no se filtra.
     const cs = corpus()
     const derecho = new Map<string, string>()
-    for (const b of cs) derecho.set(b.id, texto(paso(b, HORNO, PHYS).body))
+    for (const b of cs) derecho.set(b.id, texto(paso(b, HORNO, PHYS, DT).body))
 
     for (let i = cs.length - 1; i >= 0; i--) {
       const b = cs[i]!
-      expect(texto(paso(b, HORNO, PHYS).body)).toBe(derecho.get(b.id))
+      expect(texto(paso(b, HORNO, PHYS, DT).body)).toBe(derecho.get(b.id))
     }
     for (let i = 0; i < cs.length; i++) {
       const b = cs[(i * 97) % cs.length]!
-      expect(texto(paso(b, HORNO, PHYS).body)).toBe(derecho.get(b.id))
+      expect(texto(paso(b, HORNO, PHYS, DT).body)).toBe(derecho.get(b.id))
     }
   })
 
@@ -372,7 +381,7 @@ describe('el resultado no depende de qué cuerpo se leyó justo antes', () => {
 
     let phys = PHYS
     for (let i = 0; i < 20; i++) {
-      const r = paso(i === 0 ? brasa : cuerpo(`b${i}`, 'madera', 1, { temperature: 700, charred: 0.95 }), { celda: CELDA_TAPADA }, phys)
+      const r = paso(i === 0 ? brasa : cuerpo(`b${i}`, 'madera', 1, { temperature: 700, charred: 0.95 }), { celda: CELDA_TAPADA }, phys, DT)
       if (r.nueva !== undefined) phys = conSustancia(phys, r.nueva)
       // El testigo no participa de nada de esto y tiene que leerse igual siempre.
       expect(foto(testigo, PHYS).join(',')).toBe(esperado)
@@ -419,7 +428,7 @@ describe('`recortar` mira antes de construir, y eso no cambió nada', () => {
       joints: [],
       state: conClaveVacia({ temperature: 15 }, 'decay'),
     }
-    const salida = paso(b, AIRE, PHYS).body
+    const salida = paso(b, AIRE, PHYS, DT).body
     expect(Object.keys(salida.state).sort()).toContain('decay')
     expect(salida.state.decay).toBeUndefined()
     expect(qualityOf(salida, 'decay', PHYS)).toBe(qualityOf(b, 'decay', PHYS))
@@ -442,7 +451,7 @@ describe('`recortar` mira antes de construir, y eso no cambió nada', () => {
       joints: [],
       state: conClaveVacia({ temperature: 15, decay: 5 }, 'toxicity'),
     }
-    const salida = paso(b, AIRE, PHYS).body
+    const salida = paso(b, AIRE, PHYS, DT).body
     expect(salida.state.decay).toBe(1)
     expect(Object.keys(salida.state)).not.toContain('toxicity')
   })
@@ -455,7 +464,7 @@ describe('`recortar` mira antes de construir, y eso no cambió nada', () => {
       joints: [],
       state: { temperature: 15, moisture: 9, decay: Number.NaN },
     }
-    const salida = paso(b, AIRE, PHYS).body
+    const salida = paso(b, AIRE, PHYS, DT).body
     expect(salida.state.moisture).toBeLessThanOrEqual(1)
     expect(salida.state.decay).toBe(0)
   })
@@ -497,7 +506,7 @@ describe('el atajo del candado, con una `Physics` donde una conservada ES deriva
     let b = cuerpo('d1', 'pescado', 2, { moisture: 1, temperature: 300 })
     let techo = qualityOf(b, 'nutrition', conNutricionDerivada) * qualityOf(b, 'mass', conNutricionDerivada)
     for (let i = 0; i < 40; i++) {
-      b = paso(b, HORNO, conNutricionDerivada).body
+      b = paso(b, HORNO, conNutricionDerivada, DT).body
       const t =
         qualityOf(b, 'nutrition', conNutricionDerivada) *
         qualityOf(b, 'mass', conNutricionDerivada)
@@ -508,11 +517,11 @@ describe('el atajo del candado, con una `Physics` donde una conservada ES deriva
 
   it('y alternando con el catálogo cerrado, cada uno da lo suyo', () => {
     const b = cuerpo('d2', 'pescado', 2, { moisture: 1, temperature: 300 })
-    const a1 = texto(paso(b, HORNO, PHYS).body)
-    const c1 = texto(paso(b, HORNO, conNutricionDerivada).body)
+    const a1 = texto(paso(b, HORNO, PHYS, DT).body)
+    const c1 = texto(paso(b, HORNO, conNutricionDerivada, DT).body)
     for (let i = 0; i < 50; i++) {
-      expect(texto(paso(b, HORNO, PHYS).body)).toBe(a1)
-      expect(texto(paso(b, HORNO, conNutricionDerivada).body)).toBe(c1)
+      expect(texto(paso(b, HORNO, PHYS, DT).body)).toBe(a1)
+      expect(texto(paso(b, HORNO, conNutricionDerivada, DT).body)).toBe(c1)
     }
   })
 })

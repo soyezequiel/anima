@@ -28,10 +28,11 @@
  * empuja hacia 400 °C, una hoguera pasa los 600, y cualquier producto
  * intermedio de dos temperaturas satura a 1e6. Van en escala 1000.
  *
- * Las TASAS por tick necesitan RESOLUCIÓN: la evaporación de la ley 5 es
- * `0.0006·k²`, y para k = 0.27 —el pescado sobre la parrilla— eso vale
- * 4.4 × 10⁻⁵. En escala 1000 redondea a CERO, o sea que el pescado no pierde
- * agua nunca y cocinar deja de ser una técnica. Van en escala 1 000 000.
+ * Las TASAS por segundo necesitan RESOLUCIÓN: la evaporación de la ley 5 es
+ * `0.012·k²` por segundo, o sea `0.0006·k²` por paso a 20 Hz, y para k = 0.27
+ * —el pescado sobre la parrilla— eso vale 4.4 × 10⁻⁵. En escala 1000 redondea a
+ * CERO, o sea que el pescado no pierde agua nunca y cocinar deja de ser una
+ * técnica. Van en escala 1 000 000.
  *
  * `Fixed` y `Rate` son **tipos nominales distintos**, así que sumar una tasa a
  * una magnitud NO COMPILA. Ésa es la mitad del valor de la decisión: el error
@@ -39,10 +40,10 @@
  * ese error es silencioso. Hay un test con `@ts-expect-error` que lo prueba, y
  * lo verifica `tsc`, no `vitest`.
  *
- * Y el techo de ±2147 POR TICK no aprieta a nadie: ninguna de las doce leyes
- * mueve una cualidad más de unas pocas unidades por tick. Una tasa de 2147 por
- * tick llevaría cualquier cualidad de punta a punta de su rango en un solo paso,
- * que es precisamente lo que el mundo no debería poder hacer.
+ * Y el techo de ±2147 POR SEGUNDO no aprieta a nadie: la más rápida de las doce
+ * leyes empuja la temperatura 120 grados por segundo. Una tasa de 2147 por
+ * segundo llevaría cualquier cualidad de punta a punta de su rango en menos de
+ * un segundo, que es precisamente lo que el mundo no debería poder hacer.
  *
  * La conversión vive en UN SOLO LUGAR y es explícita: `aplicar()`.
  *
@@ -83,12 +84,15 @@
  *                 cada multiplicación intermedia aporta hasta media ulp y hay n.
  *                 Exponente fraccionario: |err| ≤ max(1 ulp, |v|·1e-4).
  *   rscale        correctamente redondeada: usa el mismo `mulAt` que `fmul`.
- *   aplicar       un solo redondeo para los `ticks` enteros. Ver su comentario:
- *                 aplicar N veces por 1 tick NO es aplicar una vez por N, y eso
+ *   aplicar       un solo redondeo para los `pasos` enteros. Ver su comentario:
+ *                 aplicar N veces por 1 paso NO es aplicar una vez por N, y eso
  *                 es una consecuencia de la decisión, no un descuido.
+ *   porPaso       correctamente redondeada: divide por la frecuencia (un entero
+ *                 exacto) en vez de multiplicar por `dt` (que no lo es). Ver su
+ *                 comentario: `0.2 × 0.05` da un ulp de más y `0.2 ÷ 20` no.
  *
  * `fpow` con n = 2 importa más de lo que parece: la ley 5 evapora con
- * `0.0006 · k²` y ese exponente es el hallazgo 2 del barrido térmico
+ * `0.012 · k²` por segundo y ese exponente es el hallazgo 2 del barrido térmico
  * (`ii/docs/hito-0-barrido-termico.md`). Con `evap ∝ k` cocinar deja de ser una
  * técnica; el cuadrado es lo que hace existir la decisión «comer antes o comer
  * mejor». Si `fpow(k, 2)` se corriera un 5%, la tabla de óptimos del barrido
@@ -105,13 +109,42 @@
 export type Fixed = number & { readonly __fixed: unique symbol }
 
 /**
- * Una TASA por tick: cuánto cambia una magnitud en un tick. Necesita RESOLUCIÓN.
+ * Una TASA POR SEGUNDO de mundo: cuánto cambia una magnitud en un segundo.
+ * Necesita RESOLUCIÓN.
  *
- * Entero i32 que representa `real · RATE_SCALE`. Techo ±2147.483647 por tick,
- * que es de sobra: ninguna de las doce leyes mueve una cualidad más de unas
- * pocas unidades por tick.
+ * **No sabe que existe el tick** (ADR II-0008). Antes esto era «por tick», y
+ * mientras lo fuera la frecuencia del tick gobernaba a la vez el rendimiento y
+ * el ritmo del juego: bajar de 30 a 20 Hz hacía que cocinar el cuero pasara de
+ * 40 a 60 segundos de reloj. Ahora la frecuencia decide con qué FINURA se
+ * muestrea, y el ritmo lo deciden estas tasas y nada más.
+ *
+ * Entero i32 que representa `real · RATE_SCALE`. Techo ±2147.483647 por segundo.
  */
 export type Rate = number & { readonly __rate: unique symbol }
+
+/**
+ * Una DURACIÓN en segundos de mundo (ADR II-0008).
+ *
+ * Es lo que declara `completion.at`: cuánto tiempo hay que sostener un proceso
+ * para que rinda. En segundos y no en ticks, porque «cuarenta ticks» quiere
+ * decir dos segundos a 20 Hz y cuatro a 10 Hz, y entonces el tiempo de atar
+ * dependía de la máquina en la que corriera el juego.
+ *
+ * No lleva escala: es un real. Las duraciones son de orden 1 a 100 segundos y no
+ * entran en ninguna cuenta que necesite el punto fijo; lo que sí lo necesita es
+ * el `Dt`, y por eso ése tiene su propia regla de admisión.
+ */
+export type Duracion = number & { readonly __duracion: unique symbol }
+
+/**
+ * El PASO DE TIEMPO de un tick, en segundos. Lo fija el mundo, no la física.
+ *
+ * `dt = 1/Hz`. Se multiplica en cada aplicación de cada ley, así que si no es
+ * exactamente representable el error se acumula tick a tick y el replay diverge:
+ * ver `FRECUENCIAS_ADMISIBLES`.
+ */
+export type Dt = number & { readonly __dt: unique symbol }
+
 
 /** Hasta ±2 147 483.647, resolución 10⁻³. */
 export const FIXED_SCALE = 1000
@@ -138,7 +171,7 @@ export const FIXED_MAX: Fixed = 2147483647 as Fixed
  */
 export const FIXED_MIN: Fixed = -2147483647 as Fixed
 
-/** «Una unidad por tick». Una tasa así vacía cualquier cualidad de 0 a 1 en un tick. */
+/** «Una unidad por segundo». Una tasa así vacía cualquier cualidad de 0 a 1 en un segundo. */
 export const RATE_ONE: Rate = RATE_SCALE as Rate
 
 export const RATE_MAX: Rate = 2147483647 as Rate
@@ -321,7 +354,7 @@ export function fabs(v: Fixed): Fixed {
 
 // ─── Tasas: la otra escala ──────────────────────────────────────────────────
 
-/** Convierte un real de autoría (la tasa por tick de una ley) a `Rate`. */
+/** Convierte un real de autoría (la tasa por segundo de una ley) a `Rate`. */
 export function rate(real: number): Rate {
   return clampRate(scaleReal(real, RATE_SCALE))
 }
@@ -379,14 +412,154 @@ export function rdiv(a: Rate, b: Rate): Fixed {
   return clampFixed(divRoundSigned(a * FIXED_SCALE, b))
 }
 
-// ─── La única puerta entre las dos escalas ──────────────────────────────────
-
-/** `ticks · r` desborda el double exacto (2^53) a partir de acá. */
-const TICKS_SEGUROS = Math.floor(9007199254740991 / 2147483647)
+// ─── El tiempo del mundo ────────────────────────────────────────────────────
+//
+// ¿POR QUÉ ACÁ Y NO EN `@anima/world`? Porque la regla que decide qué frecuencia
+// es admisible sale de la ESCALA DE LAS TASAS, y esa escala vive en este archivo.
+// Una copia de la regla en el mundo sería un segundo lugar donde decir lo mismo,
+// que es exactamente el bug de `DSL_REFERENCE` de Ánima I.
 
 /**
- * Aplica una tasa durante `ticks` a una magnitud. **LA ÚNICA PUERTA ENTRE
- * ESCALAS.**
+ * Micro-segundos por segundo. Es `RATE_SCALE` mirado como tiempo, y no es una
+ * coincidencia: el `dt` se multiplica por tasas de esta escala, así que la
+ * resolución con la que el tiempo puede ser exacto es la misma con la que las
+ * tasas lo son.
+ */
+export const MICROS_POR_SEGUNDO = RATE_SCALE
+
+/**
+ * Las frecuencias que dan un `dt` EXACTO, o sea las que dividen 10⁶ sin resto.
+ *
+ * | Hz | `dt` | en escala 10⁶ | |
+ * |---|---|---|---|
+ * | 10 | 0,1 | 100000 | **exacta** |
+ * | 15 | 0,0666… | 66666,67 | periódica |
+ * | **20** | **0,05** | **50000** | **exacta** |
+ * | 24 | 0,04166… | 41666,67 | periódica |
+ * | 25 | 0,04 | 40000 | **exacta** |
+ * | **30** | **0,0333…** | **33333,33** | **periódica** |
+ * | 50 | 0,02 | 20000 | **exacta** |
+ * | 60 | 0,01666… | 16666,67 | periódica |
+ *
+ * Los 30 Hz que el documento de arquitectura declaraba «fijos» NO dan un `dt`
+ * exacto: la frecuencia que la auditoría marcó como decretada sin argumento
+ * habría roto el determinismo el día que el tiempo se hiciera explícito. Los
+ * 20 Hz del ADR II-0007 sí lo dan, y ésa es una justificación que no teníamos
+ * cuando se eligieron.
+ *
+ * Esto NO es una lista escrita a mano: `esFrecuenciaAdmisible` calcula la
+ * condición, y esta constante existe para poder ENUMERAR las razonables en un
+ * mensaje de error y en un test. La verdad es la función.
+ */
+export const FRECUENCIAS_ADMISIBLES: readonly number[] = [10, 20, 25, 50, 100]
+
+/**
+ * La frecuencia de referencia: la que el ADR II-0007 eligió y contra la que está
+ * medida la huella de conducta de `paso()`.
+ *
+ * No es «la» frecuencia del mundo —eso es un parámetro y se puede mover— y
+ * ninguna ley la lee. Está para que un test pueda decir «a la frecuencia de
+ * referencia esto vale exactamente esto» sin escribir un 20 suelto.
+ */
+export const HZ_DE_REFERENCIA = 20
+
+/**
+ * Una frecuencia es admisible si `1/Hz` cae exacto en la escala de las tasas.
+ *
+ * Que RECHACE y no que redondee en silencio: un `dt` redondeado se multiplica en
+ * cada aplicación de cada ley y el error se acumula tick a tick, así que el
+ * síntoma no sería un número raro sino dos motores que divergen en el tick 400
+ * sin ninguna causa visible.
+ */
+export function esFrecuenciaAdmisible(hz: number): boolean {
+  if (!Number.isInteger(hz) || hz <= 0) return false
+  return MICROS_POR_SEGUNDO % hz === 0
+}
+
+/**
+ * El `dt` de una frecuencia. **Lanza** si la frecuencia no es admisible.
+ *
+ * Lanzar y no saturar, al revés que `fdiv`: esto NO corre adentro del tick. Corre
+ * una vez, al armar el mundo, y ahí un error es una configuración mal escrita que
+ * hay que arreglar antes de que la partida exista — no un borde numérico que hay
+ * que sobrevivir.
+ */
+export function dtDeFrecuencia(hz: number): Dt {
+  if (!esFrecuenciaAdmisible(hz)) {
+    throw new RangeError(
+      `frecuencia inadmisible: ${String(hz)} Hz da dt = 1/${String(hz)}, que no es exacto en la escala de las tasas (10⁻⁶). Admisibles: las que dividen ${String(MICROS_POR_SEGUNDO)} — por ejemplo ${FRECUENCIAS_ADMISIBLES.join(', ')}`,
+    )
+  }
+  return (1 / hz) as Dt
+}
+
+/**
+ * La frecuencia de un `dt`. Entero exacto por construcción: `dtDeFrecuencia` es
+ * la única forma de fabricar un `Dt`, y solo la fabrica para frecuencias enteras
+ * que dividen 10⁶.
+ */
+export function frecuenciaDe(dt: Dt): number {
+  return Math.round(1 / dt)
+}
+
+/**
+ * Una tasa POR SEGUNDO, aplicada durante UN paso. **La única conversión entre el
+ * ritmo del mundo y el muestreo del tick**, y por eso vive en una sola función.
+ *
+ * ─── Por qué DIVIDE por la frecuencia en vez de multiplicar por `dt` ─────────
+ *
+ * Son la misma cuenta en el álgebra y no en IEEE-754, y la diferencia se mide:
+ *
+ *   0.2 × 0.05  = 0.010000000000000002   ← un ulp de más
+ *   0.2 ÷ 20    = 0.01                   ← exacto
+ *
+ * `dt` es `1/Hz` REDONDEADO —0,05 no es representable en binario—, así que
+ * multiplicar por él arrastra ese redondeo a toda tasa que toque. Dividir por la
+ * frecuencia no: `Hz` es un entero exacto (lo garantiza `dtDeFrecuencia`) y la
+ * división de IEEE-754 es correctamente redondeada, así que el resultado es el
+ * double más cercano a la tasa por paso de verdad.
+ *
+ * Y no es una sutileza de bits sin consecuencia: la huella de conducta de
+ * `paso()` mezcla los BITS de cada double que las leyes escriben, sobre 2880
+ * pasos. Con el `× dt`, tres de las diez constantes de calibración vuelven un
+ * ulp corridas y la huella se mueve — o sea que una migración que no cambió
+ * ninguna conducta sería indistinguible de una que sí.
+ */
+export function porPaso(tasaPorSegundo: number, dt: Dt): number {
+  return tasaPorSegundo / frecuenciaDe(dt)
+}
+
+/**
+ * Suma un paso al tiempo transcurrido de un proceso en curso, SIN DERIVA.
+ *
+ * La suma ingenua no sirve, y falla en el caso más común de todos: veinte veces
+ * 0,05 da 0,9999999999999999, que NO llega al segundo que `union` pide, y atar
+ * pasaría a tardar veintiún ticks en vez de veinte. El error no sería un número
+ * raro: sería un proceso que tarda un tick más, siempre, y nadie sabría por qué.
+ *
+ * Se suma en MICRO-SEGUNDOS ENTEROS, que es donde `dt` es exacto por
+ * construcción, y se vuelve a segundos con una sola división. Dos tiempos que son
+ * múltiplos de 10⁻⁶ se comparan entonces exactamente contra cualquier
+ * `completion.at` que también lo sea.
+ */
+export function sumarPaso(transcurrido: Duracion, dt: Dt): Duracion {
+  const micros = Math.round(transcurrido * MICROS_POR_SEGUNDO) + Math.round(dt * MICROS_POR_SEGUNDO)
+  return (micros / MICROS_POR_SEGUNDO) as Duracion
+}
+
+/** Una duración en segundos, escrita como real de autoría. */
+export function seg(segundos: number): Duracion {
+  return segundos as Duracion
+}
+
+// ─── La única puerta entre las dos escalas ──────────────────────────────────
+
+/** `pasos · r` desborda el double exacto (2^53) a partir de acá. */
+const PASOS_SEGUROS = Math.floor(9007199254740991 / 2147483647)
+
+/**
+ * Aplica una tasa durante `pasos` aplicaciones a una magnitud. **LA ÚNICA PUERTA
+ * ENTRE ESCALAS.**
  *
  * Es la única función del módulo que CONVIERTE, y conviene ser preciso con qué
  * quiere decir eso, porque hay otras dos que tocan las dos escalas:
@@ -408,26 +581,28 @@ const TICKS_SEGUROS = Math.floor(9007199254740991 / 2147483647)
  * `aplicar(m, r, 23)` NO es lo mismo que llamar 23 veces a `aplicar(m, r, 1)`, y
  * la diferencia es toda la decisión: con `r` = 4.4e-5, veintitrés pasos de a uno
  * redondean a cero veintitrés veces y la magnitud no se mueve NUNCA; un solo
- * paso de 23 ticks da 0.001 y el pescado pierde agua.
+ * paso de 23 aplicaciones da 0.001 y el pescado pierde agua.
  *
- * O sea: quien integre tick a tick tiene que llevar la cuenta fina EN `Rate`
- * —acumulando con `radd`— y cruzar una sola vez. Cruzar todos los ticks es tirar
+ * O sea: quien integre paso a paso tiene que llevar la cuenta fina EN `Rate`
+ * —acumulando con `radd`— y cruzar una sola vez. Cruzar en cada paso es tirar
  * exactamente lo que la escala de 10⁻⁶ vino a comprar.
  *
- * `ticks` es un `number` pelado y no un `Fixed` porque es un CONTEO, no una
- * magnitud: no tiene escala, no tiene fracción y no se le pueden sumar grados.
- * Se trunca a entero, y un `ticks` que no sea finito no mueve nada.
+ * `pasos` es un `number` pelado y no un `Fixed` porque es un CONTEO de
+ * aplicaciones, no una magnitud ni una duración: no tiene escala, no tiene
+ * fracción y no se le pueden sumar grados. La duración que representa es
+ * `pasos · dt` y la sabe quien llama, no esta función. Se trunca a entero, y un
+ * `pasos` que no sea finito no mueve nada.
  */
-export function aplicar(m: Fixed, r: Rate, ticks: number): Fixed {
-  if (!Number.isFinite(ticks)) return m
-  const n = Math.trunc(ticks)
+export function aplicar(m: Fixed, r: Rate, pasos: number): Fixed {
+  if (!Number.isFinite(pasos)) return m
+  const n = Math.trunc(pasos)
   if (n === 0 || r === 0) return m
-  // Con más ticks que esto, `r · n` sale del entero exacto del double y el
+  // Con más pasos que esto, `r · n` sale del entero exacto del double y el
   // redondeo pasaría a depender de la magnitud de los operandos. Saturar es
   // honesto: una tasa sostenida ese tiempo ya se comió el rango entero. El signo
   // sale del producto y no solo de `r`: aplicar hacia atrás una tasa positiva
   // baja, no sube.
-  if (n > TICKS_SEGUROS || n < -TICKS_SEGUROS) return r > 0 === n > 0 ? FIXED_MAX : FIXED_MIN
+  if (n > PASOS_SEGUROS || n < -PASOS_SEGUROS) return r > 0 === n > 0 ? FIXED_MAX : FIXED_MIN
   return clampFixed(m + divRound(r * n, RATE_PER_FIXED))
 }
 

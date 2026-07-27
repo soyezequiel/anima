@@ -42,6 +42,15 @@ import {
 } from '../src/leyes.js'
 import { buildSeedPhysics } from '../src/physics.js'
 import { EXTRACCION, UNION } from '../src/process.js'
+import { HZ_DE_REFERENCIA, dtDeFrecuencia } from '../src/fixed.js'
+
+/**
+ * El paso de tiempo de los tests de este archivo: la frecuencia de referencia
+ * del ADR II-0007. Las leyes son por segundo y `dt` dice con qué finura se las
+ * muestrea; a otra frecuencia estos mismos tests miden otra trayectoria, y eso
+ * es correcto (ADR II-0008).
+ */
+const DT = dtDeFrecuencia(HZ_DE_REFERENCIA)
 
 const phys = buildSeedPhysics()
 
@@ -76,7 +85,7 @@ describe('(a) una rama junto al fuego', () => {
     }
     expect(temperaturaDeEquilibrio(FOGATA, 0, 'contacto')).toBe(375)
 
-    const fin = correr(rama, tapado, phys, 200)
+    const fin = correr(rama, tapado, phys, DT, 10)
 
     // 1. Cambió de materia, y la materia nueva no existía en el catálogo.
     expect(fin.nuevas).toHaveLength(1)
@@ -120,8 +129,8 @@ describe('(a) una rama junto al fuego', () => {
       celda: CELDA_TAPADA,
       fuente: { potencia: FOGATA, distancia: 0, montaje: 'contacto' },
     }
-    const corto = correr(rama, tapado, phys, 200)
-    const largo = correr(rama, tapado, phys, 2000)
+    const corto = correr(rama, tapado, phys, DT, 10)
+    const largo = correr(rama, tapado, phys, DT, 100)
     expect(qualityOf(largo.body, 'mass', largo.phys)).toBe(
       qualityOf(corto.body, 'mass', corto.phys),
     )
@@ -135,8 +144,8 @@ describe('(a) una rama junto al fuego', () => {
     const rama = cosa('rama', 'vara', 'madera', MASA)
     const fuente = { potencia: FOGATA, distancia: 0, montaje: 'contacto' } as const
 
-    const tapado = correr(rama, { celda: CELDA_TAPADA, fuente }, phys, 200)
-    const alAire = correr(rama, { celda: CELDA_AL_AIRE, fuente }, phys, 200)
+    const tapado = correr(rama, { celda: CELDA_TAPADA, fuente }, phys, DT, 10)
+    const alAire = correr(rama, { celda: CELDA_AL_AIRE, fuente }, phys, DT, 10)
 
     expect(tapado.nuevas[0]!.tags).toEqual([TAG_RESIDUO_SIN_AIRE])
     expect(alAire.nuevas[0]!.tags).toEqual([TAG_RESIDUO_CON_AIRE])
@@ -161,7 +170,8 @@ describe('(a) una rama junto al fuego', () => {
       canto,
       { celda: CELDA_TAPADA, fuente: { potencia: HOGUERA, distancia: 0, montaje: 'contacto' } },
       phys,
-      2000,
+      DT,
+      100,
     )
     expect(fin.nuevas).toHaveLength(0)
     expect(qualityOf(fin.body, 'mass', fin.phys)).toBe(MASA)
@@ -203,7 +213,8 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
       filete,
       { celda: CELDA_AL_AIRE, fuente: { potencia: FOGATA, distancia: 1, montaje: 'parrilla' } },
       phys,
-      400,
+      DT,
+      20,
     )
 
     expect(qualityOf(fin.body, 'digestibility', fin.phys)).toBeGreaterThan(0.85)
@@ -242,7 +253,8 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
       yaCaliente,
       { celda: CELDA_AL_AIRE, fuente: { potencia: FOGATA, distancia: 1, montaje: 'parrilla' } },
       phys,
-      400,
+      DT,
+      20,
     )
     expect(fin.leyes).toEqual(['termica', 'desnaturalizacion'])
     expect(qualityOf(fin.body, 'nutrition', fin.phys)).toBe(9)
@@ -267,22 +279,26 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
     }
     const meta = 0.86
 
-    const ticksHasta = (e: Entorno): number => {
-      for (let t = 1; t <= 2000; t++) {
-        const r = correr(filete, e, phys, t)
-        if (qualityOf(r.body, 'digestibility', r.phys) >= meta) return t
+    // En SEGUNDOS y no en ticks (ADR II-0008): «cuánto tarda en cocinarse» es
+    // ritmo, y el ritmo no depende de la frecuencia. Se busca de a un paso
+    // porque un paso es la resolución con la que el mundo puede contestar.
+    const segundosHasta = (e: Entorno): number => {
+      for (let n = 1; n <= 2000; n++) {
+        const segundos = n * DT
+        const r = correr(filete, e, phys, DT, segundos)
+        if (qualityOf(r.body, 'digestibility', r.phys) >= meta) return segundos
       }
       return -1
     }
-    const tLento = ticksHasta(parrilla)
-    const tRapido = ticksHasta(masCaliente)
+    const tLento = segundosHasta(parrilla)
+    const tRapido = segundosHasta(masCaliente)
     expect(tRapido).toBeGreaterThan(0)
     expect(tRapido).toBeLessThan(tLento)
 
     // Más rápido, sí. Pero con menos comida adentro: el agua se va más rápido de
     // lo que la carne se ablanda, y eso es el `k²` de la ley 5.
-    const lento = correr(filete, parrilla, phys, tLento)
-    const rapido = correr(filete, masCaliente, phys, tRapido)
+    const lento = correr(filete, parrilla, phys, DT, tLento)
+    const rapido = correr(filete, masCaliente, phys, DT, tRapido)
     expect(qualityOf(rapido.body, 'calories', rapido.phys)).toBeLessThan(
       qualityOf(lento.body, 'calories', lento.phys),
     )
@@ -298,7 +314,7 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
     expect(temperaturaDeEquilibrio(HOGUERA, 0, 'contacto')).toBe(735)
     expect(735).toBeGreaterThan(phys.substances.get('carne')!.perUnitMass.pyrolysisAt!)
 
-    const olvidado = correr(filete, brasas, phys, 200)
+    const olvidado = correr(filete, brasas, phys, DT, 10)
     expect(qualityOf(olvidado.body, 'charred', olvidado.phys)).toBeGreaterThan(0.9)
     expect(qualityOf(olvidado.body, 'nutrition', olvidado.phys)).toBe(0)
     expect(qualityOf(olvidado.body, 'calories', olvidado.phys)).toBe(0)
@@ -315,7 +331,8 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
       filete,
       { celda: CELDA_AL_AIRE, fuente: { potencia: FOGATA, distancia: 2, montaje: 'piso' } },
       phys,
-      400,
+      DT,
+      20,
     )
     expect(lejos.leyes).not.toContain('desnaturalizacion')
     expect(qualityOf(lejos.body, 'digestibility', lejos.phys)).toBe(0.35)

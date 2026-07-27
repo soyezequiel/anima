@@ -38,14 +38,14 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 ## Estado
 
 **Hito 0 CERRADO, Hito 1 construido con la puerta cerrada, Hito 2 con tres de
-sus cuatro criterios, y el Hito 4 desbloqueado.**
+sus cuatro criterios, Hito 3 con sus SEIS, y el Hito 4 desbloqueado.**
 
 | | |
 |---|---|
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 3 pases: 112 → 71 → **64** errores · 5 → 6 → **10** expresables |
-| [Decisiones](docs/decisions/) | 6 ADRs propios (II-0001 a II-0006) |
+| [Decisiones](docs/decisions/) | 8 ADRs propios (II-0001 a II-0008) |
 
 ### Hito 0 — el banco · las cuatro piezas medidas, ninguna mató el plan
 
@@ -56,9 +56,40 @@ sus cuatro criterios, y el Hito 4 desbloqueado.**
 | [combustible](docs/hito-0-combustible.md) | ≤ 2% del tick (ADR II-0005) | **0.39%** | ✔ margen 5.1× |
 | [arranque en el navegador](docs/hito-0-arranque-navegador.md) | typecheck tibio ≤ 250 ms | **6 ms** | ✔ margen 30× |
 
+### El tiempo del mundo se mide en segundos · [ADR II-0008](docs/decisions/II-0008-el-tiempo-del-mundo-se-mide-en-segundos.md)
+
+Las **dos perillas** del ADR II-0007 dejaron de ser una promesa. `Effect.porSegundo`,
+`completion.at` en segundos, `QualitySpec.relaxesTo.porSegundo`, `paso(b, e, phys, dt)`
+y un proceso en curso que acumula **segundos** y no ticks.
+
+| | 10 Hz | 20 Hz | 25 Hz | 50 Hz | 100 Hz |
+|---|---|---|---|---|---|
+| la madera llega a 375 °C | 1,40 s | 1,40 s | 1,40 s | 1,38 s | 1,38 s |
+| cocinar el pescado | 10,30 s | 10,40 s | 10,44 s | 10,46 s | 10,48 s |
+| cocinar la carne | 18,10 s | 18,15 s | 18,20 s | 18,24 s | 18,25 s |
+| **cocinar el cuero** | **41,00 s** | **41,10 s** | **41,12 s** | **41,16 s** | **41,19 s** |
+| carbonizar del todo | 8,00 s | 8,00 s | 8,00 s | 8,00 s | 8,00 s |
+
+Peor desvío contra la frecuencia de referencia: **1,43%**, y es error de
+integración, no de calibración. El rango soportado son esas cinco: las que dan un
+`dt = 1/Hz` exacto en la escala de las tasas. **Los 30 Hz que el documento
+declaraba «fijos» no lo dan**, y el mundo los RECHAZA en vez de redondearlos.
+
+La frecuencia entra en el hash del mundo y en la crónica junto a la semilla:
+cargar un guardado con otra es un error explícito y no una divergencia
+silenciosa. Y la conducta a 20 Hz **no se movió ni un bit**: la huella de
+`paso()` sigue en `3705094564`, y la partida de 2000 ticks reproduce su hash
+viejo exacto en cuanto se le mapea de vuelta la FORMA (`hz`, la actividad en
+segundos y las tasas del catálogo).
+
+```bash
+pnpm --filter @anima/physics test tests/el-tiempo-en-segundos.test.ts
+pnpm --filter @anima/world   test tests/la-frecuencia.test.ts
+```
+
 ### Hito 1 — `@anima/physics`
 
-Existe y está verde: **548 tests**, typecheck limpio. Punto fijo determinista,
+Existe y está verde: **560 tests**, typecheck limpio. Punto fijo determinista,
 29 cualidades más 4 de celda, 30 sustancias semilla, cuerpos compuestos, los
 cuatro procesos aplicables, las doce leyes y `admit()`.
 
@@ -76,7 +107,7 @@ cualquier otra derivada y queda **una sola forma de preguntar si algo se guarda*
 
 ### Hito 2 — `@anima/world` · [`docs/hito-2-el-mundo.md`](docs/hito-2-el-mundo.md)
 
-Existe y está verde: **258 tests** más 5 de verificación que corren aparte
+Existe y está verde: **276 tests** más 5 de verificación que corren aparte
 (`pnpm --filter @anima/world verificacion`), typecheck limpio. Grilla en chunks con índice
 O(1) por celda, `stepWorld` puro, invariantes por tick, journal append-only,
 snapshot por delta y `hashWorld`.
@@ -98,7 +129,11 @@ por llamada: de **77 lecturas de cualidad por cuerpo y por tick quedan 13,6**.
 Que no se haya movido ninguna conducta **está verificado desde afuera**: la huella
 de `paso()` (3705094564) y el hash de una partida de 2000 ticks
 (`61d4b9588a81717d`, con sus once checkpoints) dan **exactamente lo mismo con las
-fuentes de física anteriores a la optimización**. La caza de la caché mal
+fuentes de física anteriores a la optimización**. El hash de la partida pasó
+después a `4d431de7cdd1fe94` con el ADR II-0008 —la frecuencia entró en el
+estado y la actividad pasó a contarse en segundos— y que eso fue un cambio de
+FORMA y no de conducta está verificado mapeando las tres formas de vuelta: la
+partida vuelve a dar `61d4b9588a81717d` con sus once checkpoints exactos. La caza de la caché mal
 invalidada —23 tests contra las cinco memoizaciones nuevas— encontró **una sola**
 diferencia: `tagsDe` se queda con los tags viejos si alguien muta el array de
 partes en su lugar, cosa que hoy nadie hace y que ahora tiene barrido propio.
@@ -120,6 +155,44 @@ invariante.
 
 ```bash
 pnpm --filter @anima/world banco   # los números de rendimiento, medidos
+```
+
+### Hito 3 — `@anima/oracle` · [`docs/hito-3-el-dios.md`](docs/hito-3-el-dios.md)
+
+El dios perezoso: **210 tests verdes**, typecheck limpio, y `pnpm ii:test` entero
+en **1072**. Los **seis** criterios pasan, medidos.
+
+| Criterio | | Medido |
+|---|---|---|
+| dos órdenes y dos historias distintas → el mismo hash | ✔ | 686 decretos en 14 órdenes · **0 diferencias** |
+| otra respuesta para una clave existente lanza | ✔ | 200 intentos, **200 `InvariantError`** |
+| enmendado antes de interactuar cambia, después no | ✔ | 100 arroyos: **50 cambian, 50 no** |
+| la fusión de dos lagos con testigo no contradice a ninguno | ✔ | **2 cuerpos lógicos, 1 región**, 0 descartes |
+| el río se agota y se repone | ✔ | 12 peces en **12 tiradas**; 0 → 12 en 24 s de mundo |
+| ningún chunk acuático sin insumos en radio 2 | ✔ | **788 orillas, 0 sin aparejo** |
+
+El pase de integración escribió `index.ts` —sin él el paquete no se podía
+importar— y **`decreto.ts`, la costura que faltaba**: `resolveChunk` decía qué
+hay, `ensureSolvable` decía qué falta, y ninguno llamaba al otro, así que el
+criterio (f) estaba verificado sobre un chunk de test y no sobre el mundo.
+
+Llamarla destapó dos agujeros que sólo aparecen sobre el mundo decretado: el
+**88,8% de los chunks de `agua-dulce` está enteramente inundado** —el nivel de
+agua acuático tiene mediana 846 en un campo donde el 1,4% de los valores pasa de
+800— y la garantía, disparada por `bioma.acuatico`, se activaba justo ahí (donde
+no hay dónde pararse) y **no** en los chunks de pradera y bosque con orilla ni en
+la corona seca alrededor de cada lago, que es donde se pesca. Ahora **la dispara
+el agua y no el bioma**, y mira del otro lado del borde del chunk: de las 788
+orillas medidas, **547 (69%) no son de bioma acuático**.
+
+Quedan **3 `it.fails`** con su porqué al lado, y el primero es el que importa:
+**el techo calórico del chunk no lo lee nadie** — un pozo entrega 3,1× el
+presupuesto en una hora de mundo, y hoy ni siquiera se puede calcular cuánto
+entregó un chunk porque `Stock` no sabe de qué chunk es y `draw` devuelve una
+sustancia sin masa.
+
+```bash
+pnpm --filter @anima/oracle test tests/ataque-al-dios.test.ts
 ```
 
 ### La puerta, cerrada · [`docs/la-puerta.md`](docs/la-puerta.md)
@@ -174,7 +247,7 @@ snapshot por delta y `hashWorld` estable.
 | dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld` | ✔ |
 | restaurar un snapshot a mitad reproduce el final exacto | ✔ |
 | el replay del journal reconstruye el estado exacto | ✔ |
-| `stepWorld` ≤ 25% del tick, 5000 cuerpos ([II-0007](docs/decisions/II-0007-el-tick-es-un-parametro-y-el-presupuesto-una-fraccion.md)) | ✔ **17,2%** |
+| `stepWorld` ≤ 25% del tick, 5000 cuerpos ([II-0007](docs/decisions/II-0007-el-tick-es-un-parametro-y-el-presupuesto-una-fraccion.md)) | ✔ **17,6%** |
 | el mismo hash en dos motores de JS | pendiente |
 
 El tick bajo de **39,66 a 8,48 ms** (4,6x) sin mover la huella de conducta, y
@@ -187,7 +260,8 @@ invalidada se romperia. Hash final identico.
 reemplazo por una fraccion del tick y bajo la frecuencia a 20 Hz. Lo que vale
 de esa decision son **dos perillas y no una**: la frecuencia gobierna el
 rendimiento, las tasas de las leyes gobiernan el ritmo. Nunca se arregla uno
-moviendo el otro.
+moviendo el otro. El ADR II-0008 lo construyó: ver arriba, con los números
+medidos a las cinco frecuencias admisibles.
 
 ## Comandos
 

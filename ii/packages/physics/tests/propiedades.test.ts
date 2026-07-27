@@ -50,6 +50,7 @@ import {
   FIXED_MIN,
 } from '../src/fixed.js'
 import type { Fixed } from '../src/fixed.js'
+import { HZ_DE_REFERENCIA, dtDeFrecuencia } from '../src/fixed.js'
 import {
   conSustancia,
   correr,
@@ -66,6 +67,14 @@ import { CONSERVED, QUALITIES, QUALITY_IDS, specOf } from '../src/quality.js'
 import type { QualityId, QualityVector } from '../src/quality.js'
 import type { Substance, Tag } from '../src/substance.js'
 import { SUSTANCIAS_SEMILLA } from '../src/data/sustancias.js'
+
+/**
+ * El paso de tiempo de los tests de este archivo: la frecuencia de referencia
+ * del ADR II-0007. Las leyes son por segundo y `dt` dice con qué finura se las
+ * muestrea; a otra frecuencia estos mismos tests miden otra trayectoria, y eso
+ * es correcto (ADR II-0008).
+ */
+const DT = dtDeFrecuencia(HZ_DE_REFERENCIA)
 
 // ─── El generador ────────────────────────────────────────────────────────────
 
@@ -288,7 +297,7 @@ function barrer(casos: number, semilla: number): Reporte {
   for (let i = 0; i < casos; i++) {
     const antes = cuerpoAzaroso(r, i)
     const entorno = entornoAzaroso(r)
-    const paso1 = paso(antes, entorno, PHYS)
+    const paso1 = paso(antes, entorno, PHYS, DT)
     // Si la ley 4 transmutó, la sustancia nueva TIENE que entrar a la física
     // antes de medir: leer el cuerpo nuevo contra el catálogo viejo daría cero
     // en todo y la conservación pasaría por la peor de las razones.
@@ -428,7 +437,7 @@ describe('mil ticks seguidos tampoco crean nada', () => {
       const e = entornoAzaroso(r)
       const antes = new Map<QualityId, number>()
       for (const q of CONSERVED) antes.set(q, totalConservado(b0, q, PHYS))
-      const fin = correr(b0, e, PHYS, 1000)
+      const fin = correr(b0, e, PHYS, DT, 50)
       for (const q of CONSERVED) {
         const t1 = totalConservado(fin.body, q, fin.phys)
         const t0 = antes.get(q) ?? 0

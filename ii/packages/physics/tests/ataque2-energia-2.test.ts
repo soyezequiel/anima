@@ -30,7 +30,7 @@
 //   D → el calor específico entra en la cuenta del `transfer` de temperatura, y solo
 //       cuando se puede AFIRMAR: los dos roles pinchados y los dos conjuntos de
 //       candidatas separados. Si se solapan no se cobra, y por eso `asar` pasa.
-//   E → `transferencia-eterna`: un `transfer` sin `completion` corre `perTick × ∞` y
+//   E → `transferencia-eterna`: un `transfer` sin `completion` corre `porSegundo × ∞` y
 //       la puerta juzga cantidades por corrida. Vale para toda cualidad, no solo
 //       para las conservadas.
 //   F → `promesasEfectivas` lee también `transfer` y `couple`: quien propone ya no
@@ -66,7 +66,7 @@
 //   E. EL TRANSFER SIN COMPLETION QUE NO ES CONSERVADO. La reparación 5 obliga a
 //      declarar `completion` al `transfer` que acredita una CONSERVADA. La
 //      temperatura no es conservada y es energía igual: sin `completion` el
-//      efecto corre `perTick × ∞` y la puerta lo juzgó por un tick.
+//      efecto corre `porSegundo × ∞` y la puerta lo juzgó por un tick.
 //
 //   F. EL LAZO INVISIBLE. La regla 5 arma su grafo con `promesasEfectivas`, que
 //      lee `establishes` y los `drive`. Un `transfer` y un `couple` no prometen
@@ -95,6 +95,7 @@ import {
   type Process,
   type Role,
 } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 import { SUSTANCIAS_SEMILLA } from '../src/data/sustancias.js'
 
 const phys = buildSeedPhysics()
@@ -159,8 +160,8 @@ const PIEDRA_CON_ALIENTO: Role = {
 const COMER_PIEDRA = proceso('comer-la-piedra', {
   roles: [PIEDRA_CON_ALIENTO, { name: 'actor', where: [] }],
   arrangement: { k: 'held' },
-  effects: [{ k: 'drive', q: 'stamina', on: 'actor', toward: 100, perTick: 100 }],
-  completion: { at: 1, yields: [{ k: 'transmute', role: 'piedra' }] },
+  effects: [{ k: 'drive', q: 'stamina', on: 'actor', toward: 100, porSegundo: 2000 }],
+  completion: { at: seg(0.05), yields: [{ k: 'transmute', role: 'piedra' }] },
 })
 
 describe('agujero A · la piedra-batería vuelve por el camino del consumo', () => {
@@ -170,8 +171,8 @@ describe('agujero A · la piedra-batería vuelve por el camino del consumo', () 
     const conTransfer = proceso('trasvasar-el-aliento-de-la-piedra', {
       roles: [PIEDRA_CON_ALIENTO, { name: 'actor', where: [] }],
       arrangement: { k: 'held' },
-      effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', perTick: 100 }],
-      completion: { at: 1, yields: [] },
+      effects: [{ k: 'transfer', q: 'stamina', from: 'piedra', to: 'actor', porSegundo: 2000 }],
+      completion: { at: seg(0.05), yields: [] },
     })
     expect(tieneCodigo(admit(conTransfer, phys), 'conservacion-transfer')).toBe(true)
   })
@@ -180,7 +181,7 @@ describe('agujero A · la piedra-batería vuelve por el camino del consumo', () 
     const sinConsumir = proceso('aliento-de-la-nada', {
       roles: [PIEDRA_CON_ALIENTO, { name: 'actor', where: [] }],
       arrangement: { k: 'held' },
-      effects: [{ k: 'drive', q: 'stamina', on: 'actor', toward: 100, perTick: 100 }],
+      effects: [{ k: 'drive', q: 'stamina', on: 'actor', toward: 100, porSegundo: 2000 }],
     })
     expect(tieneCodigo(admit(sinConsumir, phys), 'conservacion-drive')).toBe(true)
   })
@@ -219,10 +220,10 @@ const DOBLE_GASTO = proceso('repartir-el-mismo-aliento-dos-veces', {
   ],
   arrangement: { k: 'held' },
   effects: [
-    { k: 'drive', q: 'stamina', on: 'a', toward: 100, perTick: 100 },
-    { k: 'drive', q: 'stamina', on: 'b', toward: 100, perTick: 100 },
+    { k: 'drive', q: 'stamina', on: 'a', toward: 100, porSegundo: 2000 },
+    { k: 'drive', q: 'stamina', on: 'b', toward: 100, porSegundo: 2000 },
   ],
-  completion: { at: 1, yields: [{ k: 'transmute', role: 'donante' }] },
+  completion: { at: seg(0.05), yields: [{ k: 'transmute', role: 'donante' }] },
 })
 
 describe('agujero B · la regla 1 mira efecto por efecto y nunca la suma', () => {
@@ -230,7 +231,7 @@ describe('agujero B · la regla 1 mira efecto por efecto y nunca la suma', () =>
     const unoSolo = proceso('pasarse-por-uno', {
       ...DOBLE_GASTO,
       id: 'pasarse-por-uno',
-      effects: [{ k: 'drive', q: 'stamina', on: 'a', toward: 101, perTick: 101 }],
+      effects: [{ k: 'drive', q: 'stamina', on: 'a', toward: 101, porSegundo: 2020 }],
     })
     expect(tieneCodigo(admit(unoSolo, phys), 'conservacion-drive')).toBe(true)
   })
@@ -372,8 +373,8 @@ const DESTINO_LIQUIDO: Role = {
 const BOMBA_DE_CALOR_ESPECIFICO = proceso('mojar-la-brasa', {
   roles: [ORIGEN_MINERAL, DESTINO_LIQUIDO],
   arrangement: { k: 'contact' },
-  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', perTick: 10 }],
-  completion: { at: 20, yields: [] },
+  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', porSegundo: 200 }],
+  completion: { at: seg(1), yields: [] },
 })
 
 describe('agujero D · la cuenta del transfer intensivo no sabe de calor específico', () => {
@@ -457,8 +458,8 @@ describe('agujero D · la cuenta del transfer intensivo no sabe de calor especí
         },
       ],
       arrangement: { k: 'within', radius: 1 },
-      effects: [{ k: 'transfer', q: 'temperature', from: 'fuego', to: 'comida', perTick: 2 }],
-      completion: { at: 40, yields: [{ k: 'transmute', role: 'comida' }] },
+      effects: [{ k: 'transfer', q: 'temperature', from: 'fuego', to: 'comida', porSegundo: 40 }],
+      completion: { at: seg(2), yields: [{ k: 'transmute', role: 'comida' }] },
     })
     expect(porQueEntro(admit(asar, phys))).toBe('')
   })
@@ -472,7 +473,7 @@ const CHUPAR_CALOR_PARA_SIEMPRE = proceso('el-sifon-de-calor', {
   roles: [ORIGEN_MINERAL, DESTINO_LIQUIDO],
   arrangement: { k: 'contact' },
   // Sin `completion`: mientras el arreglo se sostenga, esto corre.
-  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', perTick: 10 }],
+  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', porSegundo: 200 }],
 })
 
 describe('agujero E · el `completion` obligatorio solo alcanza a las conservadas', () => {
@@ -496,7 +497,7 @@ describe('agujero E · el `completion` obligatorio solo alcanza a las conservada
         },
       ],
       arrangement: { k: 'contact' },
-      effects: [{ k: 'transfer', q: 'nutrition', from: 'brasa', to: 'olla', perTick: 1 }],
+      effects: [{ k: 'transfer', q: 'nutrition', from: 'brasa', to: 'olla', porSegundo: 20 }],
     })
     expect(tieneCodigo(admit(conservada, phys), 'conservacion-transfer')).toBe(true)
   })
@@ -510,7 +511,7 @@ describe('agujero E · el `completion` obligatorio solo alcanza a las conservada
   // ║ el rol garantiza una sola vez. La puerta no tiene forma de verlo porque    ║
   // ║ compara cantidades por corrida y acá no hay corrida.                       ║
   // ╚═══════════════════════════════════════════════════════════════════════════╝
-  it('CERRADO · un transfer de temperatura sin completion corre perTick × ∞', () => {
+  it('CERRADO · un transfer de temperatura sin completion corre porSegundo × ∞', () => {
     expect(admit(CHUPAR_CALOR_PARA_SIEMPRE, phys).ok).toBe(false)
   })
 
@@ -518,14 +519,14 @@ describe('agujero E · el `completion` obligatorio solo alcanza a las conservada
     const r = admit(CHUPAR_CALOR_PARA_SIEMPRE, phys).razones.find(
       (x) => x.codigo === 'transferencia-eterna',
     )
-    expect(r?.encontrado).toBe(10)
+    expect(r?.encontrado).toBe(200)
     expect(r?.mensaje).toContain('no declara completion')
   })
 
   it('MEDIDO · y el MISMO sifón con `completion` puesto vuelve a juzgarse por cantidad', () => {
     // No es «rechazar todo transfer»: es pedir que haya una corrida que acotar. Con
-    // 20 ticks declarados, lo que decide es la cuenta de la magnitud intensiva.
-    const acotado = { ...CHUPAR_CALOR_PARA_SIEMPRE, completion: { at: 20, yields: [] } }
+    // un segundo declarado, lo que decide es la cuenta de la magnitud intensiva.
+    const acotado = { ...CHUPAR_CALOR_PARA_SIEMPRE, completion: { at: seg(1), yields: [] } }
     expect(tieneCodigo(admit(acotado, phys), 'transferencia-eterna')).toBe(false)
   })
 })
@@ -540,8 +541,8 @@ describe('agujero E · el `completion` obligatorio solo alcanza a las conservada
 const IDA = proceso('calor-al-agua', {
   roles: [ORIGEN_MINERAL, DESTINO_LIQUIDO],
   arrangement: { k: 'contact' },
-  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', perTick: 10 }],
-  completion: { at: 20, yields: [] },
+  effects: [{ k: 'transfer', q: 'temperature', from: 'brasa', to: 'olla', porSegundo: 200 }],
+  completion: { at: seg(1), yields: [] },
 })
 
 /** Pierna de vuelta: los mismos grados vuelven al mineral. El lazo está cerrado. */
@@ -567,9 +568,9 @@ const VUELTA = proceso('calor-a-la-piedra', {
   ],
   arrangement: { k: 'contact' },
   effects: [
-    { k: 'transfer', q: 'temperature', from: 'agua-caliente', to: 'piedra-fria', perTick: 10 },
+    { k: 'transfer', q: 'temperature', from: 'agua-caliente', to: 'piedra-fria', porSegundo: 200 },
   ],
-  completion: { at: 20, yields: [] },
+  completion: { at: seg(1), yields: [] },
 })
 
 const conLasDosPiernas = buildSeedPhysics({ processes: [...SEED_PROCESSES, IDA, VUELTA] })
@@ -637,7 +638,7 @@ const FROTAR_LA_MONTANIA = proceso('frotar-el-penasco', {
       q: 'temperature',
       on: 'penasco',
       toward: 400,
-      perTick: 6,
+      porSegundo: 120,
       poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 },
     },
   ],

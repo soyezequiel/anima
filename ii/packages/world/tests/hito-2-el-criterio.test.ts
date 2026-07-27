@@ -311,7 +311,7 @@ describe('(d) el replay del journal reconstruye el estado exacto', () => {
       soloEventos.append(
         e.tick,
         e.tick === 3
-          ? { k: 'wait', by: e.intent.by, seq: e.intent.seq, commitment: 'reversible', ticks: 1 }
+          ? { k: 'wait', by: e.intent.by, seq: e.intent.seq, commitment: 'reversible', segundos: 1 }
           : e.intent,
       )
     }
@@ -375,11 +375,11 @@ describe('el mismo hash en dos motores de JavaScript — PENDIENTE, y qué falta
     // aparece recién al final es un bug de la aritmética de las leyes. Poder
     // distinguir los dos casos vale más que un solo número.
     const s = partida()
-    expect(hashWorldState(s)).toMatchInlineSnapshot(`"c775fabd42005fde"`)
-    expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"5e6ba12da428a86e"`)
+    expect(hashWorldState(s)).toMatchInlineSnapshot(`"be714c54e109f8c5"`)
+    expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"37e26e82459ff975"`)
     const tras10 = correr(partida(), 9, 10, 4, 1000)
-    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"984e73d0bac5b4a5"`)
-    expect(tras10.journal.chain).toMatchInlineSnapshot(`"40e60682532871d9"`)
+    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"ac45c6b97f3cc082"`)
+    expect(tras10.journal.chain).toMatchInlineSnapshot(`"63fbe8efeeee7f54"`)
   })
 })
 

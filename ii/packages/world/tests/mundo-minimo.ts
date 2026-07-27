@@ -8,7 +8,7 @@
 // que dos mundos gemelos se separaron.
 
 import type { Body, Physics, QualityVector, Substance } from '@anima/physics'
-import { buildSeedPhysics, SUSTANCIAS_SEMILLA } from '@anima/physics'
+import { buildSeedPhysics, HZ_DE_REFERENCIA, SUSTANCIAS_SEMILLA } from '@anima/physics'
 import type { Intent, Placement } from '../src/intent.js'
 import type { Actor, CellState, WorldBody, WorldState } from '../src/step.js'
 import { mapaDeActores, mapaDeCuerpos } from '../src/step.js'
@@ -91,6 +91,8 @@ export interface MundoInput {
   phys?: Physics
   tick?: number
   nextId?: number
+  /** La frecuencia del mundo. Por omisión, la de referencia (ADR II-0007). */
+  hz?: number
 }
 
 export function mundo(i: MundoInput = {}): WorldState {
@@ -98,6 +100,9 @@ export function mundo(i: MundoInput = {}): WorldState {
   for (const [at, c] of i.cells ?? []) cells.set(keyOfCell(at), c)
   return {
     tick: i.tick ?? 0,
+    // La frecuencia de referencia del ADR II-0007. Todos los tests del mundo
+    // corren acá salvo los que miden A PROPÓSITO qué cambia al moverla.
+    hz: i.hz ?? HZ_DE_REFERENCIA,
     phys: i.phys ?? buildSeedPhysics(),
     bodies: mapaDeCuerpos(i.bodies ?? []),
     actors: mapaDeActores(i.actors ?? []),
@@ -156,7 +161,7 @@ export function huella(s: WorldState): number {
     for (const h of a.holding) t.s(h)
     if (a.doing !== undefined) {
       t.s(a.doing.process)
-      t.n(a.doing.ticks)
+      t.n(a.doing.segundos)
       for (const r of a.doing.roles) {
         t.s(r.name)
         t.s(r.body)
@@ -215,7 +220,7 @@ export function intencionesAlAzar(r: Rng, actores: readonly string[], cuantas: n
     const seq = i
     switch (r.entero(9)) {
       case 0:
-        out.push({ k: 'wait', by, seq, commitment: 'reversible', ticks: 1 })
+        out.push({ k: 'wait', by, seq, commitment: 'reversible', segundos: 1 })
         break
       case 1:
         out.push({

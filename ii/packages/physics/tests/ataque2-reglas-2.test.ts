@@ -73,6 +73,7 @@ import {
   UNION,
   type Process,
 } from '../src/process.js'
+import { seg } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -230,7 +231,7 @@ const efectoBarato = (rolCalentado: string) =>
     q: 'temperature',
     on: rolCalentado,
     toward: 400,
-    perTick: 6,
+    porSegundo: 120,
     poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.99 },
   }) as const
 
@@ -297,7 +298,7 @@ describe('★ AGUJERO · la no-dominancia mira nombres de rol, y los nombres los
       // Una milmillonésima de nutrición por tick. En el mundo no se nota; en la
       // regla 4 alcanza para que `costoNuevo > costoViejo` en `nutrition` y el
       // bucle corte con `peorEnAlguna` antes de mirar la stamina.
-      { k: 'drain', q: 'nutrition', on: 'actor', perTick: 1e-9 },
+      { k: 'drain', q: 'nutrition', on: 'actor', porSegundo: 1e-9 },
     ],
     establishes: [...FRICCION.establishes],
   })
@@ -332,14 +333,14 @@ describe('★ AGUJERO · pescar con la mano, en un tick, renombrando un rol', ()
   const A_MANO = p('pescar-a-mano', {
     roles: [{ name: 'stock', where: [{ q: 'mass', op: '>', v: 0 }] }],
     arrangement: { k: 'within', radius: 1 },
-    completion: { at: 1, yields: [{ k: 'drawFromStock', of: 'stock', into: 'hands' }] },
+    completion: { at: seg(0.05), yields: [{ k: 'drawFromStock', of: 'stock', into: 'hands' }] },
   })
 
   it('el control: con el rol llamado «source», la puerta lo para con «dominancia»', () => {
     const conElNombreDeExtraccion = p('pescar-con-la-mano-2', {
       roles: [{ name: 'source', where: [{ q: 'mass', op: '>', v: 0 }] }],
       arrangement: { k: 'within', radius: 1 },
-      completion: { at: 1, yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
+      completion: { at: seg(0.05), yields: [{ k: 'drawFromStock', of: 'source', into: 'hands' }] },
     })
     expect(tieneCodigo(admit(conElNombreDeExtraccion, phys), 'dominancia')).toBe(true)
   })
@@ -411,7 +412,7 @@ describe('★ AGUJERO · `>=` y `<` sobre el mismo número no cuentan como contr
         ],
       },
     ],
-    effects: [{ k: 'drain', q: 'stamina', on: 'actor', perTick: 0.1 }],
+    effects: [{ k: 'drain', q: 'stamina', on: 'actor', porSegundo: 2 }],
   })
 
   it('MEDIDO · y el control por el otro lado: `catch > 0` NO es contradictorio', () => {
@@ -510,8 +511,8 @@ describe('★ AGUJERO · el borde exacto de `masaMaxima`: cero apaga la comparac
         { name: 'fuente', where: [{ q: 'nutrition', op: '>=', v: 20 }] },
         { name: 'pan', where: [{ q: 'mass', op: '<=', v: techo }] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, perTick: 40 }],
-      completion: { at: 1, yields: [{ k: 'transmute', role: 'fuente' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, porSegundo: 800 }],
+      completion: { at: seg(0.05), yields: [{ k: 'transmute', role: 'fuente' }] },
     })
 
   it('el control, un milímetro más arriba: con `mass <= 0.001` la puerta lo para', () => {
@@ -578,8 +579,8 @@ describe('★ AGUJERO · la regla 5 rechaza un proceso que conserva de sobra', (
         ],
       },
     ],
-    effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, perTick: 40 }],
-    completion: { at: 1, yields: [{ k: 'transmute', role: 'fuente' }] },
+    effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, porSegundo: 800 }],
+    completion: { at: seg(0.05), yields: [{ k: 'transmute', role: 'fuente' }] },
   })
 
   it('la regla 1 —la que sabe la aritmética— lo deja pasar sin decir nada', () => {
@@ -616,8 +617,8 @@ describe('★ AGUJERO · la regla 5 rechaza un proceso que conserva de sobra', (
         },
         { name: 'pan', where: [{ q: 'mass', op: '<=', v: 100 }] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, perTick: 40 }],
-      completion: { at: 1, yields: [{ k: 'transmute', role: 'fuente' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, porSegundo: 800 }],
+      completion: { at: seg(0.05), yields: [{ k: 'transmute', role: 'fuente' }] },
     })
     expect(admit(sinArista, phys).ok).toBe(true)
   })
@@ -730,7 +731,7 @@ describe('★ AGUJERO · el costo por masa se apaga con no declarar el piso de m
         q: 'temperature',
         on: 'a',
         toward: 400,
-        perTick: 6,
+        porSegundo: 120,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 },
       },
     ],
@@ -751,7 +752,7 @@ describe('★ AGUJERO · el costo por masa se apaga con no declarar el piso de m
         q: 'temperature',
         on: 'a',
         toward: 400,
-        perTick: 6,
+        porSegundo: 120,
         poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 },
       },
     ],
@@ -822,7 +823,7 @@ describe('★ AGUJERO · `pinaLaMateria` se apaga sacándole el pin al rol', () 
         q: 'temperature',
         on: 'a',
         toward: 400,
-        perTick: 6,
+        porSegundo: 120,
         poweredBy: { from: 'a', q: 'stamina', efficiency: 1 },
       },
     ],
@@ -839,7 +840,7 @@ describe('★ AGUJERO · `pinaLaMateria` se apaga sacándole el pin al rol', () 
         q: 'temperature',
         on: 'a',
         toward: 400,
-        perTick: 6,
+        porSegundo: 120,
         poweredBy: { from: 'a', q: 'stamina', efficiency: 1 },
       },
     ],
@@ -878,7 +879,7 @@ describe('★ AGUJERO · `pinaLaMateria` se apaga sacándole el pin al rol', () 
           q: 'temperature',
           on: 'a',
           toward: 400,
-          perTick: 6,
+          porSegundo: 120,
           poweredBy: { from: 'bateria', q: 'stamina', efficiency: 1 },
         },
       ],
@@ -914,7 +915,7 @@ describe('la puerta acierta · bordes exactos de las cotas nuevas', () => {
           q: 'temperature',
           on: 'a',
           toward: 400,
-          perTick: 6,
+          porSegundo: 120,
           poweredBy: { from: 'actor', q: 'stamina', efficiency: eff },
         },
       ],
@@ -936,21 +937,21 @@ describe('la puerta acierta · bordes exactos de las cotas nuevas', () => {
 
   it('`completion.at` de 0, de −1 y de 1e-9 se paran; el 1 exacto pasa', () => {
     for (const at of [0, -1, 1e-9]) {
-      const v = admit(p(`at-${String(at)}`, { completion: { at, yields: [] } }), phys)
+      const v = admit(p(`at-${String(at)}`, { completion: { at: seg(at), yields: [] } }), phys)
       expect([at, tieneCodigo(v, 'completion-invalida')]).toEqual([at, true])
     }
-    const uno = admit(p('at-1', { completion: { at: 1, yields: [] } }), phys)
+    const uno = admit(p('at-1', { completion: { at: seg(0.05), yields: [] } }), phys)
     expect(tieneCodigo(uno, 'completion-invalida')).toBe(false)
   })
 
-  it('un `transfer` de conservada sin `completion` se para: perTick × infinito', () => {
+  it('un `transfer` de conservada sin `completion` se para: porSegundo × infinito', () => {
     const v = admit(
       p('cano-eterno', {
         roles: [
           { name: 'de', where: [{ q: 'mass', op: '>=', v: 100 }] },
           { name: 'a', where: [] },
         ],
-        effects: [{ k: 'transfer', q: 'mass', from: 'de', to: 'a', perTick: 1 }],
+        effects: [{ k: 'transfer', q: 'mass', from: 'de', to: 'a', porSegundo: 20 }],
       }),
       phys,
     )
@@ -970,7 +971,7 @@ describe('la puerta acierta · bordes exactos de las cotas nuevas', () => {
             q: 'heatCapacity',
             on: 'a',
             toward: 100,
-            perTick: 1,
+            porSegundo: 20,
             poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.5 },
           },
         ],
@@ -994,8 +995,8 @@ describe('la puerta acierta · bordes exactos de las cotas nuevas', () => {
         },
         { name: 'pan', where: [{ q: 'mass', op: '<=', v: 100 }] },
       ],
-      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, perTick: 40 }],
-      completion: { at: 1, yields: [{ k: 'transmute', role: 'fuente' }] },
+      effects: [{ k: 'drive', q: 'nutrition', on: 'pan', toward: 15, porSegundo: 800 }],
+      completion: { at: seg(0.05), yields: [{ k: 'transmute', role: 'fuente' }] },
     })
     expect(admit(honesto, phys).ok).toBe(true)
   })

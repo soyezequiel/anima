@@ -40,7 +40,16 @@ import {
   SUSTANCIAS_SEMILLA,
   T_AMBIENTE,
 } from '../src/index.js'
+import { HZ_DE_REFERENCIA, dtDeFrecuencia } from '../src/fixed.js'
 import type { Body, Entorno, FormId, Montaje, Physics, QualityVector } from '../src/index.js'
+
+/**
+ * El paso de tiempo de los tests de este archivo: la frecuencia de referencia
+ * del ADR II-0007. Las leyes son por segundo y `dt` dice con qué finura se las
+ * muestrea; a otra frecuencia estos mismos tests miden otra trayectoria, y eso
+ * es correcto (ADR II-0008).
+ */
+const DT = dtDeFrecuencia(HZ_DE_REFERENCIA)
 
 const FORMAS: readonly FormId[] = ['vara', 'hebra', 'filete', 'malla', 'bloque', 'grano']
 const MONTAJES_T: readonly Montaje[] = ['piso', 'parrilla', 'contacto']
@@ -173,7 +182,7 @@ function huellaDeConducta(): { huella: number; pasos: number; leyes: number; nue
     let b = cs[i] as Body
     let phys: Physics = base
     for (let t = 0; t < 12; t++) {
-      const r = paso(b, e, phys)
+      const r = paso(b, e, phys, DT)
       pasos++
       h.cuerpo(r.body)
       for (const id of r.leyes) {

@@ -102,7 +102,7 @@
 // especifica bit a bit. Todo recorrido es sobre arrays o sobre `Map` en orden de
 // inserción, nunca sobre `Object.keys` de un vector de cualidades.
 
-import { fx } from './fixed.js'
+import { fx, HZ_DE_REFERENCIA, MICROS_POR_SEGUNDO } from './fixed.js'
 import type { Physics } from './physics.js'
 import { conservedIn, specIn } from './physics.js'
 import type { QualityExpr, QualityId, QualitySpec } from './quality.js'
@@ -137,6 +137,41 @@ export const ENVELOPE_SLACK = 0.5
  * rechazar contra una anécdota es escribir la tabla a mano con otro nombre.
  */
 export const MIN_ENVELOPE_SAMPLES = 2
+
+/**
+ * La UNIDAD DE CUENTA de la puerta: la ventana con la que juzga un proceso que
+ * NO declara `completion`. Vale 0,05 s, que es un tick de la frecuencia de
+ * referencia.
+ *
+ * Un proceso sin final no tiene corrida —corre mientras el arreglo se sostenga—
+ * y la puerta compara CANTIDADES POR CORRIDA, así que sin una ventana declarada
+ * no hay nada que comparar. `friccion` es exactamente ese caso: frotar no
+ * termina, termina la criatura.
+ *
+ * ─── Por qué VALE ESO Y NO «un segundo», que es lo que uno escribiría ───────
+ *
+ * Porque es la ventana con la que se cerraron los 62 huecos, y este número
+ * decide veredictos. Toda la aritmética de esta puerta es `tasa × duración`; el
+ * ADR II-0008 multiplicó las tasas por la frecuencia de referencia y dividió las
+ * duraciones por ella, así que el producto NO SE MUEVE para ningún proceso que
+ * declare `completion`. Para los que no la declaran, el producto lo fija ESTA
+ * ventana, y solo un tick de referencia lo deja donde estaba.
+ *
+ * MEDIDO, y en las dos direcciones: con la ventana en un segundo, `friccion`
+ * pasa a juzgarse por 120 grados en vez de 6, el ciclo
+ * `frotar → piedra-batería → frotar` deja de dar positivo y la regla 5 se apaga
+ * sola — tres huecos cerrados que se reabren. Con la ventana en un tick pero sin
+ * reescalar los procesos de los adversarios, se abren otros cinco por el lado
+ * contrario. Las dos mitades van juntas o no van.
+ *
+ * ─── Y esto es lo ÚNICO de la puerta que mira la frecuencia ─────────────────
+ *
+ * No es física: es la unidad en la que el juez cuenta. La física de este paquete
+ * no tiene ticks. Subir esta ventana endurece la puerta y bajarla la afloja, y
+ * las dos cosas hay que MEDIRLAS contra los 132 procesos de los siete
+ * adversarios antes de tocarla — no razonarlas.
+ */
+export const VENTANA_SIN_FINAL = 1 / HZ_DE_REFERENCIA
 
 /** Tope de ciclos enumerados por llamada. El grafo es chico; esto es un cinturón. */
 const MAX_CYCLES = 64
@@ -529,15 +564,15 @@ function pisoParaDireccion(p: Process, q: QualityId, rol: string, phys: Physics)
   const s = spec(phys, q)
   const suelo = s === undefined ? Number.NEGATIVE_INFINITY : s.range[0]
   const declarado = cotasDeRol(rolDe(p, rol), q, phys).lo
-  const ticks = p.completion?.at
+  const duracion = p.completion?.at
   let seLleva = 0
   for (const e of p.effects) {
     const quita =
       (e.k === 'drain' && e.q === q && e.on === rol) ||
       (e.k === 'transfer' && e.q === q && e.from === rol)
     if (!quita) continue
-    if (ticks === undefined) return suelo
-    seLleva += (e.k === 'drain' || e.k === 'transfer' ? e.perTick : 0) * ticks
+    if (duracion === undefined) return suelo
+    seLleva += (e.k === 'drain' || e.k === 'transfer' ? e.porSegundo : 0) * duracion
   }
   if (seLleva <= 0) return declarado
   const piso = declarado - seLleva
@@ -1077,12 +1112,12 @@ function entraExtensivoDe(
 
 /** Cuánto empuja realmente un `drive`, acotado por el objetivo y por la corrida. */
 function trabajoDe(p: Process, e: Extract<Effect, { k: 'drive' }>, phys: Physics): number {
-  const ticks = p.completion?.at ?? 1
+  const duracion = p.completion?.at ?? VENTANA_SIN_FINAL
   // El piso EFECTIVO y no el del rol: si el mismo proceso baja la cualidad, el
   // umbral de entrada no es un piso y el recorrido real arranca más abajo.
   const lo = pisoEfectivo(p, e.q, e.on, phys)
   const recorrido = Number.isFinite(lo) ? e.toward - lo : e.toward
-  const porTasa = e.perTick * ticks
+  const porTasa = e.porSegundo * duracion
   if (recorrido <= 0 || porTasa <= 0) return 0
   return Math.min(porTasa, recorrido)
 }
@@ -1096,7 +1131,7 @@ function trabajoDe(p: Process, e: Extract<Effect, { k: 'drive' }>, phys: Physics
  * día; un `transfer` que mueve mil veces más no cobraba nada.
  */
 function movidoPor(p: Process, e: Extract<Effect, { k: 'transfer' }>): number {
-  return e.perTick * (p.completion?.at ?? 1)
+  return e.porSegundo * (p.completion?.at ?? VENTANA_SIN_FINAL)
 }
 
 function disponibleEn(p: Process, q: QualityId, rol: string, phys: Physics): number {
@@ -1120,7 +1155,7 @@ function disponibleEn(p: Process, q: QualityId, rol: string, phys: Physics): num
  * dar positivo y la regla 5 se apagaba sola. `stamina > 0` garantiza cero.
  */
 export function saldoDeclarado(p: Process, q: QualityId, phys: Physics): number {
-  const ticks = p.completion?.at ?? 1
+  const duracion = p.completion?.at ?? VENTANA_SIN_FINAL
   const conservada = esConservada(phys, q)
   const destinos: string[] = []
   let saldo = 0
@@ -1132,11 +1167,11 @@ export function saldoDeclarado(p: Process, q: QualityId, phys: Physics): number 
         // costo era el escudo de «frotar-con-peaje»: una milmillonésima de nutrición
         // sobre un actor que no la tiene garantizada volvía «peor en alguna» a un
         // clon tres veces más barato, y la regla 4 se apagaba sola.
-        if (e.q === q && respalda(rolDe(p, e.on), q, phys)) saldo -= e.perTick * ticks
+        if (e.q === q && respalda(rolDe(p, e.on), q, phys)) saldo -= e.porSegundo * duracion
         break
       case 'transfer':
         if (e.q === q) {
-          const movido = e.perTick * ticks
+          const movido = e.porSegundo * duracion
           saldo += movido
           const tope = respalda(rolDe(p, e.from), q, phys) ? disponibleEn(p, q, e.from, phys) : 0
           saldo -= Math.min(movido, tope)
@@ -1187,7 +1222,7 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
         razon(
           conservada ? 1 : 2,
           'tasa-negativa',
-          `${p.id}: ${e.k} de ${e.q} con perTick ${num(tasa)}; una tasa negativa invierte el efecto`,
+          `${p.id}: ${e.k} de ${e.q} con porSegundo ${num(tasa)}; una tasa negativa invierte el efecto`,
           { proceso: p.id, q: e.q, encontrado: tasa, cota: 0 },
         ),
       )
@@ -1207,7 +1242,7 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
     // de destino salían el doble; con tres, el triple.
     const destinos: string[] = []
     for (const e of p.effects) {
-      if (e.k !== 'drive' || e.q !== q || e.perTick < 0) continue
+      if (e.k !== 'drive' || e.q !== q || e.porSegundo < 0) continue
       if (e.toward <= pisoEfectivo(p, q, e.on, phys)) continue
       if (!destinos.includes(e.on)) destinos.push(e.on)
     }
@@ -1221,7 +1256,7 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
     for (const e of p.effects) {
       // Con la tasa en negativo el efecto está dado vuelta y ya lo dijo
       // `tasa-negativa`; volver a contarlo acá daría un «sale −10» ilegible.
-      if (e.k === 'drive' && e.q === q && e.perTick >= 0) {
+      if (e.k === 'drive' && e.q === q && e.porSegundo >= 0) {
         const lo = pisoEfectivo(p, q, e.on, phys)
         if (e.toward <= lo) continue
         // La CONVERSIÓN: ver `esConversionAdmisible`. La paga la regla 2, que sabe
@@ -1256,7 +1291,7 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
           ),
         )
       }
-      if (e.k === 'transfer' && e.q === q && e.perTick >= 0) {
+      if (e.k === 'transfer' && e.q === q && e.porSegundo >= 0) {
         const origen = rolDe(p, e.from)
         // ACUMULADO POR ORIGEN. ATAQUE: «dos caños vacían la misma cantera». Cada
         // caño se llevaba exactamente lo que la cantera garantiza, y salían dos
@@ -1293,7 +1328,7 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
           )
         }
         // Sin `completion` el efecto corre tick tras tick mientras el arreglo se
-        // sostenga: `perTick × ∞`. Un proceso que ACREDITA una cuenta conservada
+        // sostenga: `porSegundo × ∞`. Un proceso que ACREDITA una cuenta conservada
         // tiene que terminar alguna vez, o no hay cantidad que acotar. (Un
         // proceso sin `completion` que solo GASTA es legítimo: `friccion` es eso.)
         if (p.completion === undefined) {
@@ -1302,7 +1337,7 @@ function reglaConservacion(p: Process, phys: Physics, razones: Razon[]): void {
               1,
               'conservacion-transfer',
               `«${p.id}» acredita ${q} en «${e.to}» sin declarar completion: el efecto corre para siempre y nada lo consume`,
-              { proceso: p.id, q, rol: e.to, encontrado: e.perTick, cota: disponible },
+              { proceso: p.id, q, rol: e.to, encontrado: e.porSegundo, cota: disponible },
             ),
           )
         }
@@ -1481,7 +1516,7 @@ function tasaDe(e: Effect): number | undefined {
     case 'drain':
     case 'drive':
     case 'transfer':
-      return e.perTick
+      return e.porSegundo
     case 'couple':
       return undefined
   }
@@ -1683,9 +1718,9 @@ function reglaNadaSubeGratis(
       )
       continue
     }
-    const ticks = p.completion?.at
-    if (ticks === undefined) continue
-    const costo = e.perTick * ticks
+    const duracion = p.completion?.at
+    if (duracion === undefined) continue
+    const costo = e.porSegundo * duracion
     const disponible = cotasDeRol(rolDe(p, e.on), e.q, phys).lo
     if (Number.isFinite(disponible) && costo > disponible) {
       // Reparo y no rechazo: que quien empiece con lo justo se quede sin
@@ -1697,7 +1732,7 @@ function reglaNadaSubeGratis(
         razon(
           2,
           'costo-mayor-que-la-garantia',
-          `«${p.id}» gasta ${num(costo)} de ${e.q} en ${num(ticks)} ticks y el rol «${e.on}» solo garantiza ${num(disponible)}: quien empiece justo no llega a terminar`,
+          `«${p.id}» gasta ${num(costo)} de ${e.q} en ${num(duracion)} s y el rol «${e.on}» solo garantiza ${num(disponible)}: quien empiece justo no llega a terminar`,
           { proceso: p.id, q: e.q, rol: e.on, encontrado: costo, cota: disponible },
         ),
       )
@@ -1782,8 +1817,9 @@ function reglaAcoplesYTransferencias(
       continue
     }
     if (e.k !== 'transfer') continue
-    // Sin `completion` el efecto corre mientras el arreglo se sostenga: `perTick ×
-    // ∞`, y la puerta compara CANTIDADES POR CORRIDA. Para una conservada ya lo
+    // Sin `completion` el efecto corre mientras el arreglo se sostenga:
+    // `porSegundo × ∞`, y la puerta compara CANTIDADES POR CORRIDA. Para una
+    // conservada ya lo
     // dice la regla 1; para la temperatura no lo decía nadie, y la temperatura es
     // energía igual. ATAQUE: «el sifón de calor» — y de yapa la ley 1 relaja la
     // brasa hacia el ambiente cada tick, o sea que la fuente se REPONE sola y el
@@ -1793,8 +1829,8 @@ function reglaAcoplesYTransferencias(
         razon(
           2,
           'transferencia-eterna',
-          `«${p.id}» mueve ${e.q} de «${e.from}» a «${e.to}» a ${num(e.perTick)} por tick y no declara completion: el efecto corre mientras el arreglo se sostenga, y la puerta juzga cantidades por corrida`,
-          { proceso: p.id, q: e.q, rol: e.to, encontrado: e.perTick },
+          `«${p.id}» mueve ${e.q} de «${e.from}» a «${e.to}» a ${num(e.porSegundo)} por segundo y no declara completion: el efecto corre mientras el arreglo se sostenga, y la puerta juzga cantidades por corrida`,
+          { proceso: p.id, q: e.q, rol: e.to, encontrado: e.porSegundo },
         ),
       )
     }
@@ -1807,8 +1843,8 @@ function reglaAcoplesYTransferencias(
     // Y el mismo reparo de cantidad que el `drain` cobra desde el primer día: si
     // el origen garantiza menos de lo que el efecto se lleva, quien empiece justo
     // no llega a terminar. Sobre el `transfer` no había ni razón ni reparo.
-    const ticks = p.completion?.at
-    if (ticks === undefined) continue
+    const duracion = p.completion?.at
+    if (duracion === undefined) continue
     if (!respalda(rolDe(p, e.from), e.q, phys)) continue
     const disponible = cotasDeRol(rolDe(p, e.from), e.q, phys).lo
     if (Number.isFinite(disponible) && movido > disponible) {
@@ -1816,7 +1852,7 @@ function reglaAcoplesYTransferencias(
         razon(
           2,
           'costo-mayor-que-la-garantia',
-          `«${p.id}» mueve ${num(movido)} de ${e.q} en ${num(ticks)} ticks y el rol «${e.from}» solo garantiza ${num(disponible)}: quien empiece justo no llega a terminar`,
+          `«${p.id}» mueve ${num(movido)} de ${e.q} en ${num(duracion)} s y el rol «${e.from}» solo garantiza ${num(disponible)}: quien empiece justo no llega a terminar`,
           { proceso: p.id, q: e.q, rol: e.from, encontrado: movido, cota: disponible },
         ),
       )
@@ -2175,14 +2211,27 @@ function reglaRealizabilidad(p: Process, phys: Physics, razones: Razon[], advert
   }
 
   const c = p.completion
+  // ─── La duración tiene que ser exacta en la escala del tiempo (ADR II-0008) ──
+  //
+  // Antes esto pedía UN ENTERO ≥ 1, porque `at` contaba ticks y medio tick no
+  // existe. Ahora cuenta SEGUNDOS, y ahí medio segundo sí existe: `extraccion`
+  // tarda 1,5 s y `union` 1 s exacto. Lo que no puede existir es una duración
+  // que el reloj del mundo no puede medir: el tiempo es exacto hasta el
+  // micro-segundo (ver `MICROS_POR_SEGUNDO`) y por debajo de eso una duración
+  // no es corta, es inexpresable. Los tres casos que la versión en ticks paraba
+  // —0, −1 y 1e-9— siguen parados por esto, y por la misma razón de fondo: una
+  // duración que el reloj no alcanza es un proceso que termina cuando le toca y
+  // no cuando dice.
+  const MICRO = 1 / MICROS_POR_SEGUNDO
   if (c !== undefined) {
-    if (!Number.isFinite(c.at) || c.at < 1 || Math.round(c.at) !== c.at) {
+    if (!Number.isFinite(c.at) || c.at < MICRO) {
       razones.push(
-        razon(4, 'completion-invalida', `«${p.id}» completa en ${num(c.at)} ticks: tiene que ser un entero ≥ 1`, {
-          proceso: p.id,
-          encontrado: c.at,
-          cota: 1,
-        }),
+        razon(
+          4,
+          'completion-invalida',
+          `«${p.id}» completa en ${num(c.at)} s: tiene que ser una duración positiva y exacta en la escala del tiempo del mundo (10⁻⁶ s)`,
+          { proceso: p.id, encontrado: c.at, cota: MICRO },
+        ),
       )
     }
     if (c.yields.length === 0) {
@@ -2216,7 +2265,7 @@ function numerosDe(p: Process): readonly { v: number; donde: string; q?: Quality
     for (const t of r.where) out.push({ v: t.v, donde: `el rol «${r.name}» sobre ${t.q}`, q: t.q })
   for (const e of p.effects) {
     const tasa = tasaDe(e)
-    if (tasa !== undefined) out.push({ v: tasa, donde: `el perTick de ${e.q}`, q: e.q })
+    if (tasa !== undefined) out.push({ v: tasa, donde: `el porSegundo de ${e.q}`, q: e.q })
     if (e.k === 'drive') {
       out.push({ v: e.toward, donde: `el toward de ${e.q}`, q: e.q })
       if (e.poweredBy !== undefined)
@@ -2627,7 +2676,7 @@ function rolesUsados(p: Process): readonly string[] {
 // ciclos, más advertencias. Para una puerta, equivocarse de más es el lado
 // barato.
 //
-// Y la otra mitad del aviso también es cierta: los efectos son `perTick` sobre
+// Y la otra mitad del aviso también es cierta: los efectos son `porSegundo` sobre
 // cantidades que dependen del estado, así que el saldo de A→B→A depende de la
 // temperatura ambiente y no solo del proceso. `saldoDeclarado` lo resuelve
 // tomando el trabajo MÁXIMO que cada efecto puede hacer (acotado por el objetivo
