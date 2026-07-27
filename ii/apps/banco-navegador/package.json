@@ -1,0 +1,18 @@
+{
+  "name": "@anima/banco-navegador",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm prepararLibs && vite --port 5180",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --passWithNoTests",
+    "prepararLibs": "node preparar-libs.mjs",
+    "build": "pnpm prepararLibs && vite build"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vite": "^7.3.6",
+    "vitest": "^3.0.0"
+  }
+}

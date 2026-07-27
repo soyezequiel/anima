@@ -1,0 +1,5 @@
+# Generados por `preparar-libs.mjs` desde node_modules. No van al repo: son
+# copias de las declaraciones de TypeScript, y se rehacen en cada `dev`.
+public/lib/
+public/skill-api.d.ts
+dist/

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <title>Banco de arranque — Ánima II · Hito 0</title>
+    <style>
+      :root { color-scheme: dark; }
+      body {
+        margin: 0;
+        padding: 2rem;
+        background: #14110f;
+        color: #e8e2d9;
+        font: 14px/1.6 ui-monospace, 'Cascadia Code', Consolas, monospace;
+      }
+      h1 { font-size: 1.1rem; font-weight: 600; margin: 0 0 0.25rem; }
+      .sub { color: #8a8178; margin: 0 0 1.5rem; font-size: 0.85rem; }
+      table { border-collapse: collapse; margin: 0 0 1.5rem; min-width: 34rem; }
+      th, td { text-align: left; padding: 0.35rem 1.25rem 0.35rem 0; border-bottom: 1px solid #2a2521; }
+      th { color: #8a8178; font-weight: 400; font-size: 0.8rem; }
+      td.n { text-align: right; font-variant-numeric: tabular-nums; }
+      .ok { color: #7fbf6a; }
+      .mal { color: #d1706a; }
+      .esperando { color: #8a8178; font-style: italic; }
+      .caja { border: 1px solid #2a2521; padding: 1rem 1.25rem; margin: 0 0 1.25rem; }
+      .veredicto { font-size: 1rem; padding: 0.9rem 1.25rem; border-left: 3px solid; }
+      .veredicto.ok { border-color: #7fbf6a; background: #7fbf6a11; }
+      .veredicto.mal { border-color: #d1706a; background: #d1706a11; }
+      code { color: #c9a227; }
+    </style>
+  </head>
+  <body>
+    <h1>Banco de arranque en el navegador</h1>
+    <p class="sub">
+      Ánima II · Hito 0 — la última pieza. Mide qué cuesta tener el toolchain de
+      TypeScript adentro de la página, que es donde el documento pone la fragua.
+    </p>
+
+    <div class="caja">
+      <table id="tabla">
+        <thead>
+          <tr><th>Etapa</th><th>Qué es</th><th style="text-align:right">ms</th></tr>
+        </thead>
+        <tbody id="filas">
+          <tr><td colspan="3" class="esperando">midiendo…</td></tr>
+        </tbody>
+      </table>
+      <div id="peso" class="sub"></div>
+    </div>
+
+    <div id="veredicto" class="veredicto esperando">midiendo…</div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
