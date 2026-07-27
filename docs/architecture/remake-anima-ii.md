@@ -1385,6 +1385,46 @@ Arnés que mide, sobre un mundo falso: p50/p99 de tick con 5000 cuerpos, costo d
 
 **Verificable:** dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld`; restaurar a mitad reproduce el final exacto; 5000 cuerpos a menos de 4 ms por tick; **el mismo hash en Chrome y en Firefox**.
 
+> **HITO 2 CONSTRUIDO.** Ver [`ii/docs/hito-2-el-mundo.md`](../../ii/docs/hito-2-el-mundo.md).
+> `@anima/world` existe y está verde: 263 tests, más 548 de la física.
+>
+> | Criterio | |
+> |---|---|
+> | dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld` | ✔ |
+> | restaurar un snapshot a mitad reproduce el final exacto | ✔ |
+> | el replay del journal reconstruye el estado exacto | ✔ |
+> | 5000 cuerpos a menos de 4 ms por tick | ✘ **8,48 ms** → criterio reemplazado |
+> | el mismo hash en Chrome y en Firefox | pendiente: pide un arnés de navegador |
+>
+> El de rendimiento se midió en 39,66 ms y se optimizó a **8,48 ms** —4,6×,
+> verificado de forma independiente, sin mover la huella de conducta— y aun así
+> quedaba 2,1× arriba. Lo que faltaba no era otra micro-optimización: el perfil
+> quedó plano y el piso está en la representación.
+>
+> El [ADR II-0007](../../ii/docs/decisions/II-0007-el-tick-es-un-parametro-y-el-presupuesto-una-fraccion.md)
+> lo reemplazó por decisión del usuario. **«30 Hz fijos» deja de ser una
+> constante**: el tick es un parámetro, su valor por omisión pasa a **20 Hz**, y
+> el presupuesto deja de ser milisegundos para ser una **fracción**:
+>
+> ```
+> stepWorld ≤ 25% del presupuesto de tick     ·     medido: 17,2%
+> ```
+>
+> Y lo que de verdad vale de esa decisión: **son dos perillas y no una.** La
+> frecuencia del tick gobierna el rendimiento; las tasas `perTick` de las leyes
+> gobiernan el ritmo del juego. Que estuvieran mezcladas es la razón por la que
+> «30 Hz» nunca tuvo argumento — no había forma de justificarlo sin decidir a la
+> vez cuánto tarda en cocinarse un pescado. **Nunca se arregla el ritmo moviendo
+> la frecuencia, ni el rendimiento moviendo las tasas.**
+>
+> Consecuencia que se acepta y queda escrita: a 20 Hz todo dura 1,5× más en reloj
+> de pared. Cocinar carne pasa de 25 a 37 s, y el cuero de 40 a **60 s**. Si al
+> jugarlo se siente lento, la reparación son las tasas, no la frecuencia.
+>
+> Y el camino del mensaje se alarga: el tick pasa de 33 a 50 ms, y el p95 de
+> mensaje-a-movimiento de ~77 a **~94 ms**. Sigue holgado bajo el objetivo de
+> producto de 150 ms.
+
 **Se puede mostrar:** un mundo corriendo a 30 Hz con física, sin nadie adentro.
 
 ---

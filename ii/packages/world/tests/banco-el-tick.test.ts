@@ -163,7 +163,22 @@ describe('(c) 5000 cuerpos a menos de 4 ms por tick', () => {
    */
   const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
 
+  /** El techo VIEJO, absoluto. Ya no gobierna; se conserva como vara de progreso. */
   const TECHO = 4
+
+  /**
+   * El criterio VIGENTE, del ADR II-0007: el tick es un parámetro y su
+   * presupuesto es una FRACCIÓN.
+   *
+   * La frecuencia bajó de 30 a 20 Hz. No es una constante de la física —el mundo
+   * es agnóstico, «30 Hz» solo vivía en dos comentarios— y separarla de las
+   * tasas de las leyes es lo que de verdad vale de esa decisión: la frecuencia
+   * gobierna el RENDIMIENTO y las tasas gobiernan el RITMO. Nunca se arregla uno
+   * moviendo el otro.
+   */
+  const TICK_HZ = 20
+  const TICK_MS = 1000 / TICK_HZ
+  const FRACCION = 0.25
 
   /**
    * TODAVÍA NO SE CUMPLE — 8,2 ms contra un techo de 4 —, pero por una razón
@@ -206,8 +221,42 @@ describe('(c) 5000 cuerpos a menos de 4 ms por tick', () => {
    *
    * Mientras tanto entran ~2400 cuerpos en 4 ms, contra ~500 antes.
    */
-  it.fails('el criterio del documento, tal cual está escrito', () => {
+  /**
+   * EL CRITERIO VIEJO, que se conserva midiendo aunque ya no gobierna.
+   *
+   * «5000 cuerpos a menos de 4 ms» era un número absoluto contra un presupuesto
+   * de tick que había que acordarse. El ADR II-0007 lo reemplazó por una
+   * FRACCIÓN —`stepWorld` ≤ 25% del tick— y bajó la frecuencia a 20 Hz, que es
+   * lo que el usuario autorizó cuando dijo que un tick más largo estaba bien.
+   *
+   * Se deja en `it.fails` en vez de borrarlo porque el número sigue siendo la
+   * mejor vara de progreso que tiene este banco: el día que alguien pague el
+   * cambio de representación, esto se cae solo por «test esperado fallido que
+   * pasó» y hay que borrarlo. Un criterio superado no se tapa: se celebra.
+   */
+  it.fails('el criterio VIEJO (4 ms absolutos), como vara de progreso', () => {
     expect(msPorTick(mundoGrande(N))).toBeLessThan(TECHO)
+  }, 300_000)
+
+  /**
+   * EL CRITERIO VIGENTE — ADR II-0007.
+   *
+   *   stepWorld ≤ 25% del presupuesto de tick
+   *
+   * Una fracción sobrevive a que cambie la frecuencia; un número en milisegundos
+   * solo significa algo contra un presupuesto que hay que recordar. Y el 25%
+   * deja tres cuartos del cuadro para percepción, mente, deltas de render y
+   * chat: si `stepWorld` se los empieza a comer, esto salta.
+   */
+  it('el criterio VIGENTE: stepWorld entra en el 25% del tick', () => {
+    const ms = msPorTick(mundoGrande(N))
+    // Se imprime siempre, se afirma solo midiendo en serio: ver MIDIENDO_EN_SERIO.
+    console.log(
+      `\n  criterio II-0007 · ${N} cuerpos: ${num(ms)} ms de ${num(TICK_MS)} ` +
+        `(${num((ms / TICK_MS) * 100, 1)}% del tick, techo ${num(FRACCION * 100, 0)}%)\n`,
+    )
+    if (!MIDIENDO_EN_SERIO) return
+    expect(ms).toBeLessThan(TICK_MS * FRACCION)
   }, 300_000)
 
   it('el desglose, con los números de esta máquina', () => {

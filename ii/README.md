@@ -162,6 +162,33 @@ segura y completamente inútil. Las dos formas de equivocarse no son simétricas
 dejar pasar de más se endurece después; no dejar construir mata el juego, y lo
 mata en silencio.
 
+
+### Hito 2 — `@anima/world`  ·  [`docs/hito-2-el-mundo.md`](docs/hito-2-el-mundo.md)
+
+Grilla en chunks con terreno en `TypedArray`, indice O(1) por celda mantenido
+incrementalmente, `stepWorld` puro, invariantes por tick, journal append-only,
+snapshot por delta y `hashWorld` estable.
+
+| Criterio | |
+|---|---|
+| dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld` | ✔ |
+| restaurar un snapshot a mitad reproduce el final exacto | ✔ |
+| el replay del journal reconstruye el estado exacto | ✔ |
+| `stepWorld` ≤ 25% del tick, 5000 cuerpos ([II-0007](docs/decisions/II-0007-el-tick-es-un-parametro-y-el-presupuesto-una-fraccion.md)) | ✔ **17,2%** |
+| el mismo hash en dos motores de JS | pendiente |
+
+El tick bajo de **39,66 a 8,48 ms** (4,6x) sin mover la huella de conducta, y
+lo verifico un agente independiente que re-midio con codigo propio, midio
+tambien el codigo viejo, y corrio una partida de 2000 ticks con la ley 4 dando
+de alta sustancias a mitad de camino — que es donde una memoizacion mal
+invalidada se romperia. Hash final identico.
+
+**El criterio viejo eran 4 ms absolutos y no se alcanzo.** El ADR II-0007 lo
+reemplazo por una fraccion del tick y bajo la frecuencia a 20 Hz. Lo que vale
+de esa decision son **dos perillas y no una**: la frecuencia gobierna el
+rendimiento, las tasas de las leyes gobiernan el ritmo. Nunca se arregla uno
+moviendo el otro.
+
 ## Comandos
 
 ```bash
