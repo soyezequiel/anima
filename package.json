@@ -20,7 +20,8 @@
     "mission": "pnpm --filter @anima/missions-runner start",
     "ii:test": "pnpm --filter \"./ii/**\" run test",
     "ii:typecheck": "pnpm --filter \"./ii/**\" run typecheck",
-    "ii:banco": "pnpm --filter @anima/skills banco"
+    "ii:banco": "pnpm --filter @anima/skills banco",
+    "ii:barrido": "pnpm --filter @anima/physics barrido"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
