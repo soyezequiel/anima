@@ -202,6 +202,18 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
+  ii/apps/banco-navegador:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vite:
+        specifier: ^7.3.6
+        version: 7.3.6(@types/node@24.13.3)(tsx@4.23.1)
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
   ii/packages/physics:
     devDependencies:
       typescript:
@@ -3440,7 +3452,7 @@ snapshots:
       debug: 4.4.3
       es-module-lexer: 1.7.0
       pathe: 2.0.3
-      vite: 6.4.3(@types/node@24.13.3)(tsx@4.23.1)
+      vite: 7.3.6(@types/node@24.13.3)(tsx@4.23.1)
     transitivePeerDependencies:
       - '@types/node'
       - jiti

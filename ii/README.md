@@ -84,9 +84,26 @@ pnpm ii:typecheck
 pnpm ii:test
 ```
 
+Y los cuatro bancos del Hito 0, que se pueden volver a correr cuando se quiera —
+todos salen 0 si el plan sigue en pie:
+
 ```bash
 pnpm ii:banco
 ```
+
+```bash
+pnpm ii:combustible
+```
+
+```bash
+pnpm ii:barrido
+```
+
+```bash
+pnpm ii:navegador
+```
+
+El último levanta una página en <http://localhost:5180> y mide ahí mismo.
 
 `ii:test` corre el **arnés de compilación**: los 28 borradores contra
 `skill-api.d.ts` en cada build, con trinquete. La línea base solo puede bajar
