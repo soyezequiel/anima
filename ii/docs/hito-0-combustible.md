@@ -1,6 +1,21 @@
-# Hito 0 — Combustible: el criterio de corte se pasó
+# Hito 0 — Combustible: el criterio se pasó, y el criterio estaba mal
 
-El plan de construcción declara, escrito de antemano:
+> **RESUELTO.** El usuario decidió cambiar la regla, y quedó registrada en el
+> [ADR II-0005](decisions/II-0005-el-presupuesto-se-mide-contra-el-tick.md): el
+> presupuesto se mide **contra el tick**, no contra sí mismo.
+>
+> | | Viejo | Nuevo | Medido |
+> |---|---|---|---|
+> | Costo de instrumentar | ≤ 15% de overhead | **≤ 2% del tick** (0.66 ms) | **0.39%** ✔ margen 5.1× |
+> | Cómputo de habilidad | — | **≤ 10% del tick** (3.3 ms) | **1.15%** ✔ margen 8.7× |
+>
+> El banco ahora sale 0. **El Hito 4 está desbloqueado.** El resto de este
+> documento es cómo se llegó ahí, y se conserva entero porque el número viejo
+> explica por qué el nuevo es el correcto.
+
+---
+
+El plan de construcción declaraba, escrito de antemano:
 
 > si el transformer de combustible cuesta más del 15% de overhead, el plan del
 > sandbox cambia **acá** y no después de construirle encima.
@@ -9,7 +24,7 @@ El plan de construcción declara, escrito de antemano:
 node ii/packages/skills/banco/combustible.mjs
 ```
 
-**Sale 1. El criterio se pasó, en las dos cargas y en todas las variantes.**
+**Se pasó, en las dos cargas y en todas las variantes.**
 
 ---
 
@@ -59,30 +74,42 @@ intercaladas en cada ronda, el número se estabilizó. Queda anotado porque es e
 modo de falla típico de este tipo de banco, y porque una medición que dice lo
 que uno quiere oír merece más desconfianza, no menos.
 
-## La decisión, que no es mía
+## La decisión, que no fue mía
 
-El criterio está incumplido y eso es un hecho. Pero hay una lectura que hay que
-poner sobre la mesa antes de tirar el diseño:
+El criterio estaba incumplido y eso es un hecho. Pero había una lectura que
+había que poner sobre la mesa antes de tirar el diseño:
 
-**el 15% está medido sobre el código de la habilidad, no sobre el tick.**
+**el 15% estaba medido sobre el código de la habilidad, no sobre el tick.**
 
 En la carga realista, la habilidad computa 0.254 ms y con combustible pasa a
 0.388 ms: **+0.13 ms**. El presupuesto del tick a 30 Hz es de 33 ms, y el
-documento le da 1.5 ms a `stepWorld`. Un tercio de milisegundo de overhead no se
-ve en ningún lado.
+documento le da 1.5 ms a `stepWorld`. Un séptimo de milisegundo de overhead no
+se ve en ningún lado.
 
-Entonces hay tres salidas, y **elegir es tuyo**:
+Se presentaron tres salidas:
 
 | Salida | Qué implica |
 |---|---|
-| **Aceptar el costo** | El overhead relativo es alto pero el absoluto es 0.13 ms. Se cambia el criterio a «overhead sobre el presupuesto del tick, ≤ 2%» y se sigue. Requiere admitir que el criterio original medía lo que no importaba. |
-| **Bajar el costo** | Contar de a bloques en vez de por iteración: desenrollar el bucle y descontar N cada N vueltas. Baja la frecuencia de la comprobación a costa de precisión en el corte, que no importa porque el presupuesto es un tope y no una factura. No está medido: es la próxima cosa a probar. |
+| **Aceptar el costo** | El overhead relativo es alto pero el absoluto es 0.13 ms. Se cambia el criterio a un presupuesto contra el tick y se sigue. Requiere admitir que el criterio original medía lo que no importaba. |
+| **Bajar el costo** | Contar de a bloques en vez de por iteración: descontar N cada N vueltas. Baja la frecuencia de la comprobación a costa de precisión en el corte, que no importa porque el presupuesto es un tope y no una factura. Nunca se midió. |
 | **Cambiar el diseño** | Volver a evaluar el sandbox, que es lo que el criterio pedía literalmente. |
 
-Lo que **no** hago es mover el poste yo. El criterio se escribió antes
+**El usuario eligió la primera.** Queda en el
+[ADR II-0005](decisions/II-0005-el-presupuesto-se-mide-contra-el-tick.md), con
+dos umbrales absolutos en vez de una razón, y con los dos hallazgos del banco
+convertidos en requisitos: la inyección va **en línea** (1.5× gratis) y se
+instrumentan **también las entradas de función** (sacarlas no ahorra nada y
+rompe el corte de la recursión).
+
+Lo que **no** hice fue mover el poste yo. El criterio se escribió antes
 justamente para que no se pudiera negociar después, y negociarlo por mi cuenta
-sería exactamente el vicio que la arquitectura le reprocha a un modelo que se
-convence solo.
+habría sido exactamente el vicio que la arquitectura le reprocha a un modelo que
+se convence solo: el que propone decidiendo si su propuesta pasa. La medición y
+el análisis son míos; la decisión no.
+
+**Y queda dicho para la próxima:** éste se cambió porque medía la magnitud
+equivocada y se demostró con números. No es licencia para ablandar el siguiente
+criterio que moleste. Si mide lo correcto y no se cumple, se cumple el criterio.
 
 ## Lo que falta del Hito 0
 

@@ -1,8 +1,17 @@
 /**
  * BANCO DE COMBUSTIBLE — el segundo criterio de corte del Hito 0.
  *
+ * El criterio original del plan de construcción decía:
+ *
  *   «si el transformer de combustible cuesta más del 15% de overhead, el plan
  *    del sandbox cambia ACÁ y no después de construirle encima.»
+ *
+ * Se midió, se pasó (22–52%), y el ADR II-0005 lo REEMPLAZÓ: el presupuesto se
+ * mide contra el tick y no contra sí mismo. Una razón sobre un número chico no
+ * describe ningún problema del producto — 22% de 0.25 ms son 0.13 ms en un
+ * cuadro de 33. Los umbrales de hoy son absolutos y están abajo.
+ *
+ * La razón vieja se sigue reportando porque es informativa; ya no manda.
  *
  * Mide tres cosas, y las tres importan:
  *   1. el overhead en tiempo de ejecución del código instrumentado
@@ -274,9 +283,27 @@ console.log(`  sin instrumentar   ${ms(tYCrudo)}`)
 console.log(`  bucles + funciones ${ms(tYLinea)}   overhead ${overheadYield.toFixed(1)}%`)
 console.log(`  solo bucles        ${ms(tYBucles)}   overhead ${overheadBucles.toFixed(1)}%`)
 console.log('')
-const mejorOverhead = Math.min(overheadYield, overheadBucles, overheadLinea)
+
+// ─── EL CRITERIO, SEGÚN EL ADR II-0005 ──────────────────────────────────────
+// Dejó de ser una razón y pasó a ser un presupuesto absoluto contra el tick.
+// La razón se sigue reportando arriba porque es informativa, pero ya no manda:
+// un porcentaje sobre un número chico no describe ningún problema del producto.
+const TICK_MS = 1000 / 30
+const TOPE_OVERHEAD = TICK_MS * 0.02 // 0.66 ms — lo que puede costar instrumentar
+const TOPE_COMPUTO = TICK_MS * 0.1 // 3.30 ms — lo que puede computar la habilidad
+
+const costoAbsoluto = tYLinea - tYCrudo
+const pctOverhead = (costoAbsoluto / TICK_MS) * 100
+const pctComputo = (tYLinea / TICK_MS) * 100
+
+console.log('┌─────────────────────────────────────────────────────────────────┐')
+console.log('│ CRITERIO DE CORTE (ADR II-0005) — contra el tick de 33.3 ms      │')
+console.log('└─────────────────────────────────────────────────────────────────┘')
 console.log(
-  `  CRITERIO DE CORTE  15%     ${mejorOverhead <= 15 ? '✔ dentro' : `✘ EXCEDIDO — el mejor caso medido es ${mejorOverhead.toFixed(1)}%`}`,
+  `  costo de instrumentar   ${ms(costoAbsoluto)}  = ${pctOverhead.toFixed(2)}% del tick   tope 2%    ${costoAbsoluto <= TOPE_OVERHEAD ? `✔ margen ${(TOPE_OVERHEAD / costoAbsoluto).toFixed(1)}×` : '✘ EXCEDIDO'}`,
+)
+console.log(
+  `  computo de habilidad    ${ms(tYLinea)}  = ${pctComputo.toFixed(2)}% del tick   tope 10%   ${tYLinea <= TOPE_COMPUTO ? `✔ margen ${(TOPE_COMPUTO / tYLinea).toFixed(1)}×` : '✘ EXCEDIDO'}`,
 )
 console.log('')
 console.log('┌─────────────────────────────────────────────────────────────────┐')
@@ -285,11 +312,11 @@ console.log('└─────────────────────�
 console.log(`  while(true) con 50k de combustible   ${corto ? `✔ cortó en ${ms(tCorte)}` : '✘ NO CORTÓ'}`)
 console.log(`  recursión infinita con 2k            ${cortoRec ? '✔ cortó por combustible' : '✘ murió por ' + recError}`)
 
-const ok = mejorOverhead <= 15 && corto && cortoRec
+const ok = costoAbsoluto <= TOPE_OVERHEAD && tYLinea <= TOPE_COMPUTO && corto && cortoRec
 console.log(
   `\n${ok ? '✔' : '✘'} ${
     ok
-      ? 'El transformer de combustible es viable: barato y efectivo.'
+      ? 'El transformer de combustible es viable: cuesta 0.4% del tick y corta lo que tiene que cortar.'
       : 'Revisar el plan del sandbox ANTES de construirle encima.'
   }\n`,
 )

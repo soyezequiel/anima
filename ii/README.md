@@ -31,15 +31,14 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ## Estado
 
-**Hito 0 casi cerrado, Hito 1 construido. Hay un criterio de corte incumplido
-esperando una decisión.**
+**Hito 0 casi cerrado, Hito 1 construido, y el Hito 4 desbloqueado.**
 
 | | |
 |---|---|
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 3 pases: 112 → 71 → **64** errores · 5 → 6 → **10** expresables |
-| [Decisiones](docs/decisions/) | 4 ADRs propios (II-0001 a II-0004) |
+| [Decisiones](docs/decisions/) | 5 ADRs propios (II-0001 a II-0005) |
 
 ### Hito 0 — el banco
 
@@ -47,7 +46,7 @@ esperando una decisión.**
 |---|---|---|---|
 | [typecheck](docs/hito-0-banco-de-latencia.md) | < 3000 ms en frío | 240 ms | ✔ |
 | [barrido térmico](docs/hito-0-barrido-termico.md) | ventana para 10 sustancias | 12/12 | ✔ |
-| [combustible](docs/hito-0-combustible.md) | ≤ 15% de overhead | **22–52%** | ✘ **decisión pendiente** |
+| [combustible](docs/hito-0-combustible.md) | ≤ 2% del tick (ADR II-0005) | **0.39%** | ✔ margen 5.1× |
 | arranque de página en el navegador | — | — | pendiente |
 
 ### Hito 1 — `@anima/physics`
