@@ -1,0 +1,478 @@
+// ─── @anima/physics/body.ts ──────────────────────────────────────────────────
+//
+// Un cuerpo NO tiene `kind`. Tiene forma, partes y juntas — y todo lo demás se
+// calcula. Ésa es la diferencia entera con la tabla de recetas: si «caña» fuera
+// un tipo, alguien tendría que escribir la fila «caña»; como es un cuerpo con
+// dos partes y una junta, la caña la descubre quien ata una hebra a una vara.
+//
+// Determinismo: acá no hay `Math.exp`, `Math.pow`, `Math.log`, `**`, `Math.random`
+// ni `Date`. Solo +, −, ×, ÷ y comparaciones, que ECMAScript sí especifica bit a
+// bit (IEEE-754). El recorrido de partes y juntas es por índice creciente, nunca
+// por orden de iteración de un objeto.
+
+import type { Physics } from './physics.js'
+import type { QualityExpr, QualityId, QualitySpec, QualityVector } from './quality.js'
+import type { Substance, SubstanceId } from './substance.js'
+
+// ─── Cotas duras ─────────────────────────────────────────────────────────────
+//
+// Están decididas acá y no son «mitigación de riesgo»: son lo que hace que el
+// cálculo exacto de la geometría del ensamble (camino más largo del grafo de
+// juntas, que en general es NP-difícil) sea trivialmente barato y no una
+// heurística que cambie de resultado entre versiones.
+
+export const MAX_PARTS = 6
+export const MAX_JOINTS = 8
+
+/**
+ * Tres, y no dos.
+ *
+ * Con dos no hay parrilla-sobre-trípode: el trípode ya gasta una junta (vara
+ * atada a vara), la parrilla otra (travesaño atado al trípode) y el ensamble
+ * completo necesita una tercera para cerrar. Con la cota en 2 esa obra
+ * simplemente no existe, y —peor— la auditoría marcó que la violación **no
+ * producía error**: el ensamble se construía igual y la cota era decorativa.
+ * Por eso además de subirla hay `violationsOf` / `assertWithinCaps`.
+ */
+export const MAX_ASSEMBLY_DEPTH = 3
+
+export type FormId = 'vara' | 'hebra' | 'filete' | 'malla' | 'bloque' | 'grano'
+
+export interface Part {
+  substance: SubstanceId
+  mass: number
+  q: QualityVector
+}
+
+/**
+ * `via` es una SUSTANCIA, no una parte: cuando se ata `a` con `b`, el atador se
+ * gasta en la atadura y deja de ser un cuerpo aparte. Cuando se ata `a` **sin**
+ * `b`, en cambio, el atador sobrevive como parte y le queda una punta suelta —
+ * que es exactamente de dónde sale el `catch` de la caña.
+ */
+export interface Joint {
+  a: number
+  b: number
+  via: SubstanceId
+  strength: number
+}
+
+export interface Body {
+  id: string
+  form: FormId
+  parts: readonly Part[]
+  joints: readonly Joint[]
+  state: QualityVector
+  madeBy?: string
+}
+
+// ─── Verificación de las cotas ───────────────────────────────────────────────
+
+export type CapViolation =
+  | { k: 'parts'; found: number; max: number }
+  | { k: 'joints'; found: number; max: number }
+  | { k: 'depth'; found: number; max: number }
+  | { k: 'joint-out-of-range'; joint: number }
+  | { k: 'joint-self'; joint: number }
+
+/**
+ * Todo lo que este cuerpo tiene de ilegal, en orden fijo. Devuelve una lista y
+ * no un booleano porque quien la llama —la puerta del mundo— tiene que poder
+ * decir QUÉ está mal, no solo que algo lo está.
+ */
+export function violationsOf(b: Body): readonly CapViolation[] {
+  const malas: CapViolation[] = []
+  if (b.parts.length > MAX_PARTS) malas.push({ k: 'parts', found: b.parts.length, max: MAX_PARTS })
+  if (b.joints.length > MAX_JOINTS) malas.push({ k: 'joints', found: b.joints.length, max: MAX_JOINTS })
+  for (let i = 0; i < b.joints.length; i++) {
+    const j = b.joints[i]!
+    if (!inRange(j, b.parts.length)) malas.push({ k: 'joint-out-of-range', joint: i })
+    else if (j.a === j.b) malas.push({ k: 'joint-self', joint: i })
+  }
+  const d = assemblyDepthOf(b)
+  if (d > MAX_ASSEMBLY_DEPTH) malas.push({ k: 'depth', found: d, max: MAX_ASSEMBLY_DEPTH })
+  return malas
+}
+
+/** La misma verificación, pero que se hace notar. Tira si el cuerpo no es legal. */
+export function assertWithinCaps(b: Body): void {
+  const malas = violationsOf(b)
+  if (malas.length === 0) return
+  const detalle = malas.map(describeViolation).join('; ')
+  throw new Error(`cuerpo ${b.id} fuera de cotas: ${detalle}`)
+}
+
+function describeViolation(v: CapViolation): string {
+  switch (v.k) {
+    case 'parts':
+      return `${v.found} partes > ${v.max}`
+    case 'joints':
+      return `${v.found} juntas > ${v.max}`
+    case 'depth':
+      return `profundidad de ensamble ${v.found} > ${v.max}`
+    case 'joint-out-of-range':
+      return `la junta ${v.joint} apunta a una parte que no existe`
+    case 'joint-self':
+      return `la junta ${v.joint} ata una parte consigo misma`
+  }
+}
+
+/**
+ * Profundidad del ensamble: cuántas juntas tiene la cadena más larga de partes.
+ *
+ * Una vara suelta es 0. La caña (vara + hebra) es 1. El trípode es 2. La
+ * parrilla apoyada y atada sobre el trípode es 3 — de ahí sale la cota.
+ */
+export function assemblyDepthOf(b: Body): number {
+  if (b.parts.length === 0) return 0
+  return longestChain(b, () => 1) - 1
+}
+
+// ─── Cualidades ──────────────────────────────────────────────────────────────
+
+/**
+ * El valor de `q` en este cuerpo, ahora.
+ *
+ * Tres fuentes, en este orden y por esta razón:
+ *   1. si la cualidad es DERIVADA, no se guarda: se calcula. Que esté primero
+ *      impide que una ley escriba a mano un `reach` que la geometría contradice.
+ *   2. si el cuerpo tiene el valor en `state`, manda: eso es lo que las leyes
+ *      escribieron este tick (la ley 5 escribe `mass` a nivel cuerpo cuando
+ *      evapora agua, y esa masa es más nueva que la de las partes).
+ *   3. si no, se agrega desde las partes, extensiva o intensivamente.
+ */
+export function qualityOf(b: Body, q: QualityId, phys: Physics): number {
+  return clampToRange(evalQuality(b, q, phys, new Set<QualityId>()), specFor(phys, q))
+}
+
+function evalQuality(b: Body, q: QualityId, phys: Physics, inFlight: Set<QualityId>): number {
+  const spec = specFor(phys, q)
+  if (spec?.derived) {
+    // Una derivada que se pide a sí misma es un catálogo mal escrito, y colgarse
+    // es la peor forma de enterarse: en el mundo eso es un tick que no termina.
+    if (inFlight.has(q)) throw new Error(`cualidad derivada circular: ${q}`)
+    inFlight.add(q)
+    const v = evalExpr(b, spec.derived, phys, inFlight)
+    inFlight.delete(q)
+    return v
+  }
+  const stored = b.state[q]
+  if (stored !== undefined) return stored
+  return aggregateFromParts(b, q, phys, spec)
+}
+
+function aggregateFromParts(
+  b: Body,
+  q: QualityId,
+  phys: Physics,
+  spec: QualitySpec | undefined,
+): number {
+  if (b.parts.length === 0) return 0
+  const extensive = spec?.extent === 'extensive'
+  if (extensive) {
+    let total = 0
+    for (let i = 0; i < b.parts.length; i++) total += partQuality(b.parts[i]!, q, phys, true)
+    return total
+  }
+  // Intensiva de una sola parte: el valor, sin dividir. No es una optimización:
+  // `q·m/m` NO es `q` en punto flotante —0.35 de una parte de masa 0.4 vuelve
+  // como 0.3499999999999999— y ese milésimo de milésimo se propaga a toda
+  // comparación con un umbral. Con una parte no hay promedio que calcular.
+  if (b.parts.length === 1) return partQuality(b.parts[0]!, q, phys, false)
+  // Intensiva: promedio pesado por masa. La temperatura de un cuerpo de dos
+  // partes no es la suma de las dos temperaturas, y la parte pesada pesa más.
+  let num = 0
+  let den = 0
+  for (let i = 0; i < b.parts.length; i++) {
+    const p = b.parts[i]!
+    const m = massOf(p)
+    num += partQuality(p, q, phys, false) * m
+    den += m
+  }
+  if (den > 0) return num / den
+  // Sin masa no hay con qué pesar: promedio plano, que es el límite razonable.
+  let plano = 0
+  for (let i = 0; i < b.parts.length; i++) plano += partQuality(b.parts[i]!, q, phys, false)
+  return plano / b.parts.length
+}
+
+function partQuality(p: Part, q: QualityId, phys: Physics, extensive: boolean): number {
+  if (q === 'mass') return massOf(p)
+  const own = p.q[q]
+  if (own !== undefined) return own
+  const s: Substance | undefined = phys.substances.get(p.substance)
+  const base = s?.perUnitMass[q]
+  if (base === undefined) return 0
+  // `perUnitMass` es por unidad de masa para las extensivas (nutrición,
+  // fuelEnergy) y es el valor liso para las intensivas (rigidez, humedad):
+  // «por unidad de masa» de una intensiva es la intensiva.
+  return extensive ? base * massOf(p) : base
+}
+
+function massOf(p: Part): number {
+  return p.q.mass ?? p.mass
+}
+
+function clampToRange(v: number, spec: QualitySpec | undefined): number {
+  if (!spec) return v
+  const [lo, hi] = spec.range
+  if (v < lo) return lo
+  if (v > hi) return hi
+  return v
+}
+
+// ─── Evaluación de QualityExpr ───────────────────────────────────────────────
+
+function evalExpr(b: Body, e: QualityExpr, phys: Physics, inFlight: Set<QualityId>): number {
+  switch (e.k) {
+    case 'const':
+      return e.v
+    case 'own':
+      return evalQuality(b, e.q, phys, inFlight)
+    case 'sumParts': {
+      const extensive = specFor(phys, e.q)?.extent === 'extensive'
+      let total = 0
+      for (let i = 0; i < b.parts.length; i++) total += partQuality(b.parts[i]!, e.q, phys, extensive)
+      return total
+    }
+    case 'maxParts': {
+      if (b.parts.length === 0) return 0
+      const extensive = specFor(phys, e.q)?.extent === 'extensive'
+      let mejor = partQuality(b.parts[0]!, e.q, phys, extensive)
+      for (let i = 1; i < b.parts.length; i++) {
+        const v = partQuality(b.parts[i]!, e.q, phys, extensive)
+        if (v > mejor) mejor = v
+      }
+      return mejor
+    }
+    case 'geom':
+      return geomOf(b, e.f, phys)
+    case 'op': {
+      const a = evalExpr(b, e.a, phys, inFlight)
+      const c = evalExpr(b, e.b, phys, inFlight)
+      switch (e.f) {
+        case '+':
+          return a + c
+        case '-':
+          return a - c
+        case '*':
+          return a * c
+        case '/':
+          // Dividir por cero da 0 y no ±Infinity a propósito: un NaN o un
+          // Infinity metido en una cualidad envenena todas las comparaciones
+          // río abajo y aparece cuarenta ticks después, lejos de la causa.
+          return c === 0 ? 0 : a / c
+        case 'min':
+          return a < c ? a : c
+        case 'max':
+          return a > c ? a : c
+        case 'step':
+          return a >= c ? 1 : 0
+      }
+    }
+  }
+}
+
+// ─── Geometría del ensamble ──────────────────────────────────────────────────
+
+/**
+ * Cuánto «largo» aporta una unidad de masa según la forma. Es una enumeración
+ * CERRADA de formas, igual que la exposición de montaje de la ley 1 —no una
+ * fila por objeto—: una vara es larga y flaca, un bloque es corto y gordo, y de
+ * ahí sale que la vara tenga alcance y el bloque no.
+ */
+const SLENDERNESS: Record<FormId, number> = {
+  vara: 4,
+  hebra: 6,
+  filete: 1,
+  malla: 1,
+  bloque: 0.6,
+  grano: 0.3,
+}
+
+/** Por encima de esto una parte es una hebra: cuelga, no sostiene. */
+const STRAND_FLEXIBILITY = 0.8
+
+function geomOf(b: Body, f: 'longestAxis' | 'freeStrandEnds' | 'jointCount', phys: Physics): number {
+  switch (f) {
+    case 'jointCount':
+      return b.joints.length
+    case 'longestAxis': {
+      const largo = SLENDERNESS[b.form]
+      return longestChain(b, (i) => largo * massOf(b.parts[i]!))
+    }
+    case 'freeStrandEnds': {
+      // Cada hebra tiene dos puntas. Una punta deja de estar libre cuando algo
+      // la ANCLA, y anclar es cuestión de masa: lo que pesa igual o más que la
+      // hebra la sujeta, lo que pesa menos le cuelga.
+      //
+      // Esa única regla —sin nombrar ningún objeto— da las tres respuestas que
+      // hacen falta: la hebra atada de un solo lado a la vara deja una punta
+      // libre (la caña); la misma hebra con una espina liviana en esa punta
+      // sigue teniendo la punta libre, y encima le sube el `sharpness` (el
+      // anzuelo); y una hebra tirante entre dos varas no tiene ninguna punta
+      // libre, porque una cuerda tensa no engancha nada.
+      let sueltas = 0
+      for (let i = 0; i < b.parts.length; i++) {
+        const p = b.parts[i]!
+        if (partQuality(p, 'flexibility', phys, false) < STRAND_FLEXIBILITY) continue
+        let libres = 2
+        for (let k = 0; k < b.joints.length; k++) {
+          const j = b.joints[k]!
+          if (!inRange(j, b.parts.length) || j.a === j.b) continue
+          if (j.a !== i && j.b !== i) continue
+          const otro = b.parts[j.a === i ? j.b : j.a]!
+          if (massOf(otro) >= massOf(p)) libres -= 1
+        }
+        if (libres > 0) sueltas += libres
+      }
+      return sueltas
+    }
+  }
+}
+
+function inRange(j: Joint, n: number): boolean {
+  return Number.isInteger(j.a) && Number.isInteger(j.b) && j.a >= 0 && j.a < n && j.b >= 0 && j.b < n
+}
+
+/**
+ * Peso máximo de un camino simple sobre el grafo de juntas.
+ *
+ * En general esto es NP-difícil; acá no importa, y ésa es la razón de que
+ * MAX_PARTS sea 6: 6 nodos y 8 aristas se recorren enteros en microsegundos y
+ * el resultado es EXACTO, así que no cambia si mañana alguien mejora la
+ * heurística. Una heurística acá haría divergir el replay.
+ */
+function longestChain(b: Body, weight: (i: number) => number): number {
+  const n = b.parts.length
+  if (n === 0) return 0
+  const incident: number[][] = []
+  for (let i = 0; i < n; i++) incident.push([])
+  for (let i = 0; i < b.joints.length; i++) {
+    const j = b.joints[i]!
+    if (!inRange(j, n) || j.a === j.b) continue
+    incident[j.a]!.push(i)
+    incident[j.b]!.push(i)
+  }
+  const seen = new Array<boolean>(n).fill(false)
+  let best = 0
+  const walk = (node: number, acc: number): void => {
+    if (acc > best) best = acc
+    for (const idx of incident[node]!) {
+      const j = b.joints[idx]!
+      const other = j.a === node ? j.b : j.a
+      if (seen[other]) continue
+      seen[other] = true
+      walk(other, acc + weight(other))
+      seen[other] = false
+    }
+  }
+  for (let i = 0; i < n; i++) {
+    seen.fill(false)
+    seen[i] = true
+    walk(i, weight(i))
+  }
+  return best
+}
+
+// ─── Nombrar es una vista ────────────────────────────────────────────────────
+
+/**
+ * 'pescado crudo' y 'pescado asado' son el MISMO cuerpo con distinta cocción.
+ * Nombrar es una vista, no un tipo: no hay `kind: 'pescado-asado'` en ningún
+ * lado, y por eso el mundo no tiene que autorizar la transición ni el oráculo
+ * tiene que inventar la fila.
+ *
+ * El nombre no se guarda nunca. Si se guardara, quedaría viejo al tick
+ * siguiente, que es el mismo error que el ADR II-0002 evitó con `sheltered`.
+ */
+export function nameOf(b: Body, phys: Physics): string {
+  if (b.parts.length === 0) return b.id
+  const core = dominantPart(b)
+  const s = phys.substances.get(core.substance)
+  const noun = s?.lexeme.nombre ?? core.substance
+  const gender = s?.lexeme.genero ?? 'm'
+  const partner = otherSubstanceName(b, core.substance, phys)
+  const head = partner === undefined ? noun : `${noun} con ${partner}`
+  const adjs = adjectivesOf(b, phys, gender)
+  return adjs.length === 0 ? head : `${head} ${adjs.join(' ')}`
+}
+
+function dominantPart(b: Body): Part {
+  let best = b.parts[0]!
+  let bestMass = massOf(best)
+  for (let i = 1; i < b.parts.length; i++) {
+    const p = b.parts[i]!
+    const m = massOf(p)
+    // Estrictamente mayor: con empate gana el índice más chico, que es estable
+    // y no depende del orden en que el mundo agregó las partes.
+    if (m > bestMass) {
+      best = p
+      bestMass = m
+    }
+  }
+  return best
+}
+
+function otherSubstanceName(b: Body, core: SubstanceId, phys: Physics): string | undefined {
+  let best: Part | undefined
+  for (let i = 0; i < b.parts.length; i++) {
+    const p = b.parts[i]!
+    if (p.substance === core) continue
+    if (best === undefined || massOf(p) > massOf(best)) best = p
+  }
+  if (best === undefined) return undefined
+  return phys.substances.get(best.substance)?.lexeme.nombre ?? best.substance
+}
+
+/**
+ * Como mucho dos adjetivos: uno de fuego-o-cocción y uno de estado. Un nombre
+ * de seis adjetivos no lo lee nadie, y el nombre existe para que la criatura y
+ * el cuidador hablen de la misma cosa.
+ */
+function adjectivesOf(b: Body, phys: Physics, gender: 'm' | 'f'): string[] {
+  const out: string[] = []
+  const temperature = qualityOf(b, 'temperature', phys)
+  const ignition = qualityOf(b, 'ignitionPoint', phys)
+  const charred = qualityOf(b, 'charred', phys)
+  const nutrition = qualityOf(b, 'nutrition', phys)
+
+  if (ignition > 0 && temperature >= ignition) out.push('ardiendo')
+  else if (charred >= 0.8) out.push(agree('quemado', gender))
+  else if (charred >= 0.25) out.push(agree('chamuscado', gender))
+  else if (nutrition > 0) {
+    // Solo lo que alimenta se dice crudo o asado. La madera no está cruda, y no
+    // hace falta ningún tag ni ninguna lista de comestibles para saberlo: le
+    // basta con tener `nutrition` en cero, que es una cualidad conservada y
+    // ninguna ley la puede subir.
+    const dig = qualityOf(b, 'digestibility', phys)
+    if (dig >= 0.85) out.push(agree('asado', gender))
+    else if (dig <= 0.45) out.push(agree('crudo', gender))
+    else out.push('a medio cocinar')
+  } else if (qualityOf(b, 'moisture', phys) >= 0.6) out.push(agree('mojado', gender))
+
+  if (qualityOf(b, 'decay', phys) >= 0.5) out.push(agree('podrido', gender))
+  return out
+}
+
+function agree(adj: string, gender: 'm' | 'f'): string {
+  return gender === 'f' && adj.endsWith('o') ? `${adj.slice(0, -1)}a` : adj
+}
+
+// ─── Caché de specs ──────────────────────────────────────────────────────────
+//
+// `qualityOf` se llama miles de veces por tick y `Physics.qualities` es un
+// array. La caché es por objeto Physics, así que al recalibrar (Physics nuevo)
+// se tira sola y no queda una spec vieja contestando.
+
+const SPEC_CACHE = new WeakMap<Physics, Map<QualityId, QualitySpec>>()
+
+function specFor(phys: Physics, q: QualityId): QualitySpec | undefined {
+  let index = SPEC_CACHE.get(phys)
+  if (index === undefined) {
+    index = new Map<QualityId, QualitySpec>()
+    for (const s of phys.qualities) if (!index.has(s.id)) index.set(s.id, s)
+    SPEC_CACHE.set(phys, index)
+  }
+  return index.get(q)
+}
