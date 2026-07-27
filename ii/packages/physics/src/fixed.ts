@@ -14,11 +14,43 @@
  * `+ - * /` sobre doubles IEEE-754, y `Math.floor`, `Math.trunc`, `Math.abs`,
  * `Math.min`, `Math.max`. Todo lo demás se construye acá, con enteros.
  *
+ * ─── DOS ESCALAS, y el compilador de por medio (ADR II-0006) ────────────────
+ *
+ * Una sola escala no puede servir a las dos cosas que el mundo necesita, y con
+ * i32 no hay margen para las dos a la vez:
+ *
+ *   | escala | máximo representable | resolución |
+ *   |--------|---------------------|------------|
+ *   | 1e3    | 2 147 483.647       | 10⁻³       |
+ *   | 1e6    | 2 147.483647        | 10⁻⁶       |
+ *
+ * Las MAGNITUDES —temperatura, masa, nutrición— necesitan RANGO: la fricción
+ * empuja hacia 400 °C, una hoguera pasa los 600, y cualquier producto
+ * intermedio de dos temperaturas satura a 1e6. Van en escala 1000.
+ *
+ * Las TASAS por tick necesitan RESOLUCIÓN: la evaporación de la ley 5 es
+ * `0.0006·k²`, y para k = 0.27 —el pescado sobre la parrilla— eso vale
+ * 4.4 × 10⁻⁵. En escala 1000 redondea a CERO, o sea que el pescado no pierde
+ * agua nunca y cocinar deja de ser una técnica. Van en escala 1 000 000.
+ *
+ * `Fixed` y `Rate` son **tipos nominales distintos**, así que sumar una tasa a
+ * una magnitud NO COMPILA. Ésa es la mitad del valor de la decisión: el error
+ * que esto previene no es de precisión, es de confundir una cosa con la otra, y
+ * ese error es silencioso. Hay un test con `@ts-expect-error` que lo prueba, y
+ * lo verifica `tsc`, no `vitest`.
+ *
+ * Y el techo de ±2147 POR TICK no aprieta a nadie: ninguna de las doce leyes
+ * mueve una cualidad más de unas pocas unidades por tick. Una tasa de 2147 por
+ * tick llevaría cualquier cualidad de punta a punta de su rango en un solo paso,
+ * que es precisamente lo que el mundo no debería poder hacer.
+ *
+ * La conversión vive en UN SOLO LUGAR y es explícita: `aplicar()`.
+ *
  * ─── La representación ──────────────────────────────────────────────────────
  *
- * Un `Fixed` es SIEMPRE un entero: el número real por `FIXED_SCALE` (1000).
- * Resolución 0.001, rango real ±2 147 483.647. Nunca hay fracción viva en un
- * `Fixed`: si alguna operación dejara una, el invariante se rompe y con él la
+ * Un `Fixed` es SIEMPRE un entero: el número real por `FIXED_SCALE`. Un `Rate`
+ * también: el real por `RATE_SCALE`. Nunca hay fracción viva en ninguno de los
+ * dos: si alguna operación dejara una, el invariante se rompe y con él la
  * promesa de que dos máquinas calculan lo mismo.
  *
  * ─── Redondeo: mitades ALEJÁNDOSE del cero ──────────────────────────────────
@@ -50,16 +82,10 @@
  *                 algoritmo. Para n ≤ 8: |err| ≤ max(n ulp, |v|·n·3e-4), porque
  *                 cada multiplicación intermedia aporta hasta media ulp y hay n.
  *                 Exponente fraccionario: |err| ≤ max(1 ulp, |v|·1e-4).
- *
- * ─── El piso de resolución, que es una limitación real ──────────────────────
- *
- * Con escala 1000 hay tasas de las doce leyes que NO SE PUEDEN ESCRIBIR: la
- * evaporación de la ley 5 es `0.0006·k²`, y para k = 0.27 eso vale 4.4e-5, o sea
- * cero en esta escala. Las leyes tienen que llevar sus tasas reescaladas (×1000,
- * y dividir en el acumulador) o acumular en una cuenta más fina. No es un bug de
- * este módulo —`FIXED_SCALE` viene dado por el contrato— pero sí es una trampa
- * para quien escriba las leyes, y por eso queda escrita acá y hay un test que la
- * muestra en `tests/fixed.test.ts`.
+ *   rscale        correctamente redondeada: usa el mismo `mulAt` que `fmul`.
+ *   aplicar       un solo redondeo para los `ticks` enteros. Ver su comentario:
+ *                 aplicar N veces por 1 tick NO es aplicar una vez por N, y eso
+ *                 es una consecuencia de la decisión, no un descuido.
  *
  * `fpow` con n = 2 importa más de lo que parece: la ley 5 evapora con
  * `0.0006 · k²` y ese exponente es el hallazgo 2 del barrido térmico
@@ -69,22 +95,56 @@
  * cambiaría de sustancia y el mundo dejaría de ser el que se calibró.
  */
 
-/** Un entero i32 que representa `real · FIXED_SCALE`. Nunca lleva fracción. */
-export type Fixed = number
+/**
+ * Una MAGNITUD: temperatura, masa, nutrición. Necesita RANGO.
+ *
+ * Es un entero i32 que representa `real · FIXED_SCALE`. Nunca lleva fracción.
+ * La marca `__fixed` no existe en tiempo de ejecución —un `Fixed` ES un número—:
+ * está para que el compilador pueda distinguirlo de un `Rate`.
+ */
+export type Fixed = number & { readonly __fixed: unique symbol }
 
+/**
+ * Una TASA por tick: cuánto cambia una magnitud en un tick. Necesita RESOLUCIÓN.
+ *
+ * Entero i32 que representa `real · RATE_SCALE`. Techo ±2147.483647 por tick,
+ * que es de sobra: ninguna de las doce leyes mueve una cualidad más de unas
+ * pocas unidades por tick.
+ */
+export type Rate = number & { readonly __rate: unique symbol }
+
+/** Hasta ±2 147 483.647, resolución 10⁻³. */
 export const FIXED_SCALE = 1000
 
-/** El uno. Se escribe así y no `1000` cuando lo que se quiere decir es «uno». */
-export const FIXED_ONE: Fixed = FIXED_SCALE
+/** Hasta ±2147.483647, resolución 10⁻⁶. */
+export const RATE_SCALE = 1_000_000
 
-export const FIXED_MAX: Fixed = 2147483647
+/**
+ * Cuántas unidades de `Rate` entran en una de `Fixed`. La única constante que
+ * relaciona las dos escalas, y por eso vive acá arriba con nombre: si aparece un
+ * `1000` suelto en una conversión, es este número y hay que decirlo.
+ */
+export const RATE_PER_FIXED = RATE_SCALE / FIXED_SCALE
+
+/** El uno. Se escribe así y no `1000` cuando lo que se quiere decir es «uno». */
+export const FIXED_ONE: Fixed = FIXED_SCALE as Fixed
+
+export const FIXED_MAX: Fixed = 2147483647 as Fixed
 
 /**
  * Deliberadamente −2147483647 y no −2147483648: con el mínimo real de i32,
  * `-FIXED_MIN` no es representable y la simetría de signo —que es un invariante
  * de todo el módulo— se rompería justo en el borde.
  */
-export const FIXED_MIN: Fixed = -2147483647
+export const FIXED_MIN: Fixed = -2147483647 as Fixed
+
+/** «Una unidad por tick». Una tasa así vacía cualquier cualidad de 0 a 1 en un tick. */
+export const RATE_ONE: Rate = RATE_SCALE as Rate
+
+export const RATE_MAX: Rate = 2147483647 as Rate
+
+/** Mismo argumento de simetría que `FIXED_MIN`. */
+export const RATE_MIN: Rate = -2147483647 as Rate
 
 // ─── Potencias de dos ───────────────────────────────────────────────────────
 //
@@ -105,6 +165,10 @@ function pow2(k: number): number {
 }
 
 // ─── Núcleo entero ──────────────────────────────────────────────────────────
+//
+// Todo lo de esta sección trabaja sobre `number` PELADO y no sobre `Fixed` ni
+// `Rate`: acá adentro no hay magnitudes ni tasas, hay enteros escalados. Las
+// marcas se ponen en la superficie pública, que es donde sirven.
 
 /**
  * `round(num / den)` con mitades alejándose del cero. `den` debe ser positivo.
@@ -160,26 +224,44 @@ function mulAt(a: number, b: number, scale: number): number {
   return q * b + divRound(r * b, scale)
 }
 
-function clampFixed(v: number): Fixed {
+/**
+ * El rango es el MISMO para las dos escalas —las dos son i32— y por eso hay un
+ * solo saturador. Lo que cambia entre `Fixed` y `Rate` es qué real representa
+ * ese entero, no cuántos enteros hay.
+ */
+function clampRaw(v: number): number {
   // Un NaN acá envenenaría todo lo que toque y el replay moriría en silencio
   // muchos ticks después. Nunca debería entrar; si entra, cero y que el test lo
   // cace.
   if (Number.isNaN(v)) return 0
-  if (v > FIXED_MAX) return FIXED_MAX
-  if (v < FIXED_MIN) return FIXED_MIN
+  if (v > 2147483647) return 2147483647
+  if (v < -2147483647) return -2147483647
   return v
 }
 
-// ─── La superficie pública básica ───────────────────────────────────────────
+function clampFixed(v: number): Fixed {
+  return clampRaw(v) as Fixed
+}
 
-/** Convierte un real de autoría (una constante de calibración) a `Fixed`. */
-export function fx(real: number): Fixed {
-  const v = real * FIXED_SCALE
+function clampRate(v: number): Rate {
+  return clampRaw(v) as Rate
+}
+
+/** `round(real · scale)` con mitades alejándose del cero. La conversión de autoría. */
+function scaleReal(real: number, scale: number): number {
+  const v = real * scale
   const neg = v < 0
   const a = neg ? -v : v
   const f = Math.floor(a)
   const out = a - f >= 0.5 ? f + 1 : f
-  return clampFixed(neg ? -out : out)
+  return neg ? -out : out
+}
+
+// ─── Magnitudes: la superficie pública ──────────────────────────────────────
+
+/** Convierte un real de autoría (una constante de calibración) a `Fixed`. */
+export function fx(real: number): Fixed {
+  return clampFixed(scaleReal(real, FIXED_SCALE))
 }
 
 /**
@@ -189,6 +271,27 @@ export function fx(real: number): Fixed {
  */
 export function unfx(f: Fixed): number {
   return f / FIXED_SCALE
+}
+
+/**
+ * Un entero YA ESCALADO tomado como magnitud. No convierte: reinterpreta.
+ *
+ * Existe porque el mundo va a leer sus magnitudes de un `Int32Array` y de un
+ * journal, y ahí llegan como `number` pelado. Es la única puerta de entrada
+ * desde afuera, y trunca y satura para que el invariante «un `Fixed` es siempre
+ * un entero en rango» valga también para lo que viene de otro lado.
+ */
+export function fixedFromRaw(n: number): Fixed {
+  return clampFixed(Math.trunc(n))
+}
+
+/** Suma de dos magnitudes. Existe porque `a + b` devuelve `number` y pierde la marca. */
+export function fadd(a: Fixed, b: Fixed): Fixed {
+  return clampFixed(a + b)
+}
+
+export function fsub(a: Fixed, b: Fixed): Fixed {
+  return clampFixed(a - b)
 }
 
 export function fmul(a: Fixed, b: Fixed): Fixed {
@@ -204,7 +307,7 @@ export function fmul(a: Fixed, b: Fixed): Fixed {
  * acotado, y el efecto se ve en el mundo en vez de esconderse en un stack trace.
  */
 export function fdiv(a: Fixed, b: Fixed): Fixed {
-  if (b === 0) return a === 0 ? 0 : a > 0 ? FIXED_MAX : FIXED_MIN
+  if (b === 0) return a === 0 ? (0 as Fixed) : a > 0 ? FIXED_MAX : FIXED_MIN
   return clampFixed(divRoundSigned(a * FIXED_SCALE, b))
 }
 
@@ -213,7 +316,119 @@ export function fclamp(v: Fixed, lo: Fixed, hi: Fixed): Fixed {
 }
 
 export function fabs(v: Fixed): Fixed {
-  return v < 0 ? -v : v
+  return (v < 0 ? -v : v) as Fixed
+}
+
+// ─── Tasas: la otra escala ──────────────────────────────────────────────────
+
+/** Convierte un real de autoría (la tasa por tick de una ley) a `Rate`. */
+export function rate(real: number): Rate {
+  return clampRate(scaleReal(real, RATE_SCALE))
+}
+
+/** Vuelve al real. Solo para mostrar, medir y testear, igual que `unfx`. */
+export function unrate(r: Rate): number {
+  return r / RATE_SCALE
+}
+
+/** Un entero ya escalado tomado como tasa. El espejo de `fixedFromRaw`. */
+export function rateFromRaw(n: number): Rate {
+  return clampRate(Math.trunc(n))
+}
+
+/**
+ * Dos tasas sobre la misma cualidad se suman.
+ *
+ * Y sirve además para lo que la decisión de las dos escalas hace posible:
+ * ACUMULAR en la escala fina. Una tasa de 4.4e-5 no se ve en una magnitud de
+ * resolución 10⁻³, pero sumada consigo misma 23 veces sí. Ver `aplicar`.
+ */
+export function radd(a: Rate, b: Rate): Rate {
+  return clampRate(a + b)
+}
+
+/**
+ * Una tasa por un factor ADIMENSIONAL sigue siendo una tasa.
+ *
+ * Es la operación de la ley 5: `evaporación = 0.0006 · k²`, donde `0.0006` es la
+ * tasa por tick y `k²` es un factor sin unidades que sale de la temperatura.
+ * `rscale(rate(0.0006), fpow(fx(0.27), fx(2)))` vale 44, o sea 4.4e-5 — el
+ * número que en escala 1000 era cero y que el ADR II-0006 existe para recuperar.
+ *
+ * El factor es un `Fixed` porque los factores adimensionales son magnitudes: van
+ * de 0 a unos pocos miles y no necesitan resolución de 10⁻⁶.
+ */
+export function rscale(r: Rate, k: Fixed): Rate {
+  return clampRate(mulAt(r, k, FIXED_SCALE))
+}
+
+/**
+ * Una tasa dividida por otra tasa es ADIMENSIONAL, o sea una magnitud.
+ *
+ * Es la cuenta del hallazgo 2 del barrido térmico: «cuánta agua se pierde por
+ * unidad de progreso de cocción» es `evaporación / cocción`, dos tasas por tick
+ * cuyo cociente no tiene unidades y es lo que decide «comer antes o comer
+ * mejor». Las escalas se cancelan solas porque son la misma, así que esto es
+ * `fdiv` sobre los enteros crudos — pero el TIPO de salida es `Fixed`, y eso es
+ * lo que impide seguir tratando el resultado como una tasa.
+ *
+ * Divisor cero satura, por la misma razón que `fdiv`.
+ */
+export function rdiv(a: Rate, b: Rate): Fixed {
+  if (b === 0) return a === 0 ? (0 as Fixed) : a > 0 ? FIXED_MAX : FIXED_MIN
+  return clampFixed(divRoundSigned(a * FIXED_SCALE, b))
+}
+
+// ─── La única puerta entre las dos escalas ──────────────────────────────────
+
+/** `ticks · r` desborda el double exacto (2^53) a partir de acá. */
+const TICKS_SEGUROS = Math.floor(9007199254740991 / 2147483647)
+
+/**
+ * Aplica una tasa durante `ticks` a una magnitud. **LA ÚNICA PUERTA ENTRE
+ * ESCALAS.**
+ *
+ * Es la única función del módulo que CONVIERTE, y conviene ser preciso con qué
+ * quiere decir eso, porque hay otras dos que tocan las dos escalas:
+ *
+ *   `rscale(Rate, Fixed): Rate`  multiplica por un factor ADIMENSIONAL. No hay
+ *                                conversión: entra una tasa y sale una tasa.
+ *   `rdiv(Rate, Rate): Fixed`    las dos escalas se cancelan entre sí porque son
+ *                                la misma. Tampoco hay conversión.
+ *   `aplicar(Fixed, Rate, n)`    ACÁ, y solo acá, un número de la escala de las
+ *                                tasas se vuelve un cambio en la escala de las
+ *                                magnitudes.
+ *
+ * Si eso estuviera repartido, la pregunta «¿esto es por tick o es el total?»
+ * habría que contestarla en cada sitio, y el error de contestarla mal es
+ * silencioso.
+ *
+ * ─── Un solo redondeo, y por qué importa ────────────────────────────────────
+ *
+ * `aplicar(m, r, 23)` NO es lo mismo que llamar 23 veces a `aplicar(m, r, 1)`, y
+ * la diferencia es toda la decisión: con `r` = 4.4e-5, veintitrés pasos de a uno
+ * redondean a cero veintitrés veces y la magnitud no se mueve NUNCA; un solo
+ * paso de 23 ticks da 0.001 y el pescado pierde agua.
+ *
+ * O sea: quien integre tick a tick tiene que llevar la cuenta fina EN `Rate`
+ * —acumulando con `radd`— y cruzar una sola vez. Cruzar todos los ticks es tirar
+ * exactamente lo que la escala de 10⁻⁶ vino a comprar.
+ *
+ * `ticks` es un `number` pelado y no un `Fixed` porque es un CONTEO, no una
+ * magnitud: no tiene escala, no tiene fracción y no se le pueden sumar grados.
+ * Se trunca a entero, y un `ticks` que no sea finito no mueve nada.
+ */
+export function aplicar(m: Fixed, r: Rate, ticks: number): Fixed {
+  if (!Number.isFinite(ticks)) return m
+  const n = Math.trunc(ticks)
+  if (n === 0 || r === 0) return m
+  // Con más ticks que esto, `r · n` sale del entero exacto del double y el
+  // redondeo pasaría a depender de la magnitud de los operandos. Saturar es
+  // honesto: una tasa sostenida ese tiempo ya se comió el rango entero. El signo
+  // sale del producto y no solo de `r`: aplicar hacia atrás una tasa positiva
+  // baja, no sube.
+  if (n > TICKS_SEGUROS || n < -TICKS_SEGUROS) return r > 0 === n > 0 ? FIXED_MAX : FIXED_MIN
+  return clampFixed(m + divRound(r * n, RATE_PER_FIXED))
 }
 
 // ─── Escala interna ─────────────────────────────────────────────────────────
@@ -238,7 +453,7 @@ const S = 16777216 // 2^24
 /** round(ln2 · 2^24). El valor exacto es 11629080.498…, error −4.2e-8. */
 const LN2_S = 11629080
 
-function toS(x: Fixed): number {
+function toS(x: number): number {
   return mulAt(x, S, FIXED_SCALE)
 }
 
@@ -308,8 +523,8 @@ function lnS(xs: number): number {
 // medio milésimo desde x = ln(0.0005) = −7.6. Fuera de esos dos bordes no hay
 // nada que calcular, y acotar acá es lo que garantiza que los índices de `pow2`
 // se queden en tabla.
-const EXP_ARG_MAX: Fixed = 14580
-const EXP_ARG_MIN: Fixed = -7700
+const EXP_ARG_MAX = 14580
+const EXP_ARG_MIN = -7700
 const EXP_ARG_MAX_S = toS(EXP_ARG_MAX)
 const EXP_ARG_MIN_S = toS(EXP_ARG_MIN)
 
@@ -324,7 +539,7 @@ function expSClamped(xs: number): number {
 /** `e^x`. Satura en `FIXED_MAX` desde x ≥ 14.58 y en 0 desde x ≤ −7.7. */
 export function fexp(x: Fixed): Fixed {
   if (x >= EXP_ARG_MAX) return FIXED_MAX
-  if (x <= EXP_ARG_MIN) return 0
+  if (x <= EXP_ARG_MIN) return 0 as Fixed
   return fromS(expS(toS(x)))
 }
 
@@ -361,7 +576,7 @@ export function fpow(base: Fixed, exp: Fixed): Fixed {
     const negExp = n < 0
     let k = negExp ? -n : n
     const negBase = base < 0
-    let cur = negBase ? -base : base
+    let cur: Fixed = (negBase ? -base : base) as Fixed
     let acc: Fixed = FIXED_ONE
     while (k > 0) {
       if (k % 2 === 1) acc = fmul(acc, cur)
@@ -370,11 +585,11 @@ export function fpow(base: Fixed, exp: Fixed): Fixed {
     }
     // El signo sale de la paridad, no de la aritmética: así `(−2)^2` da 4 exacto
     // sin depender de cómo redondeen los pasos intermedios.
-    const signed = negBase && n % 2 !== 0 ? -acc : acc
+    const signed: Fixed = (negBase && n % 2 !== 0 ? -acc : acc) as Fixed
     return negExp ? fdiv(FIXED_ONE, signed) : signed
   }
 
-  if (base <= 0) return 0
+  if (base <= 0) return 0 as Fixed
   return fromS(expSClamped(mulS(toS(exp), lnS(toS(base)))))
 }
 
@@ -384,6 +599,11 @@ export function fpow(base: Fixed, exp: Fixed): Fixed {
 // doce leyes las pide todavía y una tabla sin usuario se calibra mal; la tercera
 // porque el azar no vive acá: vive en el dios perezoso, derivado de la semilla y
 // de la pregunta, nunca del reloj.
+//
+// Tampoco hay `rexp`, `rln` ni `rpow`. Una tasa no se eleva ni se logaritma: se
+// escala por un factor adimensional (`rscale`), se suma con otra tasa (`radd`) y
+// se aplica (`aplicar`). Toda la curvatura vive en el factor, que es un `Fixed`,
+// y ahí ya están las trascendentes.
 //
 // Tampoco hay acumuladores ni estado. Todo lo de este archivo es puro: misma
 // entrada, misma salida, en cualquier máquina y en cualquier orden. Ése es el

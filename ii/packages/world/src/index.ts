@@ -1,0 +1,39 @@
+// ─── @anima/world ────────────────────────────────────────────────────────────
+//
+// EL MUNDO DETERMINISTA. El árbitro: dice qué es posible y no negocia.
+//
+// El paquete lo escribieron tres agentes en paralelo y esto es la puerta que los
+// junta. `export *` y no una lista curada a mano, por la misma razón que
+// `CELL_FIELDS` sale del catálogo en vez de estar escrita: una lista de
+// re-exportaciones mantenida a mano diverge de los módulos y nadie se entera
+// hasta que algo que existe «no se puede importar».
+//
+// Y `export *` tiene una virtud que acá vale más que la comodidad: **si dos
+// módulos exportan el mismo nombre, `tsc` lo dice**. Cuando este archivo se
+// escribió había una colisión real —`cellKey` estaba en `cell.ts` con orden por
+// filas y en `intent.ts` con orden por columnas, las dos sobre el mismo mundo de
+// ±2²⁰— o sea DOS formas canónicas de la misma cosa en el mismo paquete, que es
+// la semilla exacta de una divergencia de hash. Sin este archivo la colisión era
+// invisible; con él, no compilaba. Quedó la de `cell.ts`.
+//
+// El orden de abajo es el de las capas, de la geometría hacia arriba: una celda
+// no sabe qué es un chunk, un chunk no sabe qué es la grilla, la grilla no sabe
+// qué es una intención, y el hash no sabe qué es un mundo.
+
+// ─── La geometría y el terreno ──────────────────────────────────────────────
+export * from './cell.js'
+export * from './chunk.js'
+export * from './grid.js'
+
+// ─── Lo que entra al mundo desde afuera, y el paso ──────────────────────────
+export * from './intent.js'
+export * from './step.js'
+export * from './invariants.js'
+
+// ─── La crónica: el hash, el journal y el snapshot por delta ────────────────
+export * from './hash.js'
+export * from './journal.js'
+export * from './snapshot.js'
+
+// ─── El puente entre el paso del mundo y la crónica ─────────────────────────
+export * from './mundo.js'

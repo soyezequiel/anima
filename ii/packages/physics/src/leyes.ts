@@ -491,6 +491,22 @@ function recortar(b: Body): Body {
  * `heatCapacity = Σ partes (masa · calor específico)`. Por eso una piedra grande
  * se enfría lento y una hoja se enfría en dos ticks, sin que nadie escriba
  * «piedra» ni «hoja».
+ *
+ * ─── Por qué esto NO llama a `qualityOf(b, 'heatCapacity', phys)` ───────────
+ *
+ * Desde el ADR II-0006 la fórmula está declarada en el catálogo —`mass ×
+ * substance('specificHeat')`— y ésa es la única DECLARACIÓN. Esto de acá es el
+ * camino caliente de la ley 1, que corre una vez por cuerpo y por tick, y la
+ * delegación se probó y se midió: **1.55 ms contra 0.41 ms para 5000 cuerpos,
+ * 3.8×**. El criterio del Hito 2 es 4 ms por tick para 5000 cuerpos: delegar
+ * gastaba el 39% del presupuesto entero en UNA de las doce leyes.
+ *
+ * Dos implementaciones de una fórmula divergen, y por eso hay un test que las
+ * clava juntas (`leyes.test.ts`, «la declaración del catálogo y el camino
+ * caliente dicen lo mismo»). Coinciden a 1 ulp relativo —medido sobre 200 000
+ * cuerpos al azar: peor desvío 2.2e-16— y la diferencia es de redondeo, no de
+ * fórmula: la derivada calcula `M · (Σ mᵢshᵢ / M)` y esto calcula `Σ mᵢshᵢ`
+ * directo.
  */
 export function capacidadTermica(b: Body, phys: Physics): number {
   let total = 0

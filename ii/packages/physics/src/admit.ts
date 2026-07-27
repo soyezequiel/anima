@@ -106,7 +106,6 @@ import { fx } from './fixed.js'
 import type { Physics } from './physics.js'
 import { conservedIn, specIn } from './physics.js'
 import type { QualityExpr, QualityId, QualitySpec } from './quality.js'
-import { DERIVED_FROM_SUBSTANCE } from './quality.js'
 import type { Effect, Process, ProcessId, QualityTest, Role, Yield } from './process.js'
 import { baseRoleName, unknownRoleRefs } from './process.js'
 import type { Substance, SubstanceId, Tag } from './substance.js'
@@ -388,14 +387,15 @@ function esIntensiva(phys: Physics, q: QualityId): boolean {
 /**
  * ¿Esta cualidad se CALCULA en vez de guardarse?
  *
- * Se pregunta acá y no con `spec.derived !== undefined` porque `heatCapacity` es
- * derivada y no tiene expresión (sale de `Substance.specificHeat`, que no es un
- * `QualityId`). Preguntar por el campo la dejaría escribible.
+ * UNA SOLA PREGUNTA para toda la puerta (ADR II-0006). Antes había dos —ésta y
+ * `spec.derived !== undefined`— porque `heatCapacity` era derivada sin
+ * expresión, y quien preguntara por el campo la dejaba escribible. Desde que la
+ * gramática tiene el nodo `substance`, las ocho derivadas llevan expresión y las
+ * dos preguntas son la misma. Sigue siendo una función y no el campo pelado para
+ * que haya UN lugar donde cambiarla si alguna vez vuelve a haber una excepción.
  */
 function esDerivada(phys: Physics, q: QualityId): boolean {
-  const s = spec(phys, q)
-  if (s === undefined) return false
-  return s.derived !== undefined || DERIVED_FROM_SUBSTANCE.has(q)
+  return spec(phys, q)?.derived !== undefined
 }
 
 /**
@@ -549,6 +549,12 @@ function pisoParaDireccion(p: Process, q: QualityId, rol: string, phys: Physics)
  * depende de la geometría. Sirve para saber qué puede establecer honestamente un
  * proceso: `reach` es geometría pura y solo la mueve un rendimiento; `solid` sale
  * de `rigidity`, así que un `drive` de rigidez sí la establece.
+ *
+ * El nodo `substance` (ADR II-0006) no aporta ninguna de las dos cosas: leer el
+ * calor específico de la materia no es leer una cualidad guardada ni es
+ * geometría. Un proceso que promete más `heatCapacity` la establece moviendo la
+ * MASA —que sí es una entrada— o cambiando de qué está hecho el cuerpo, y eso
+ * último solo lo hace un rendimiento.
  */
 function entradasDeDerivada(e: QualityExpr | undefined): {
   qualities: ReadonlySet<QualityId>
@@ -559,6 +565,7 @@ function entradasDeDerivada(e: QualityExpr | undefined): {
   const caminar = (x: QualityExpr): void => {
     switch (x.k) {
       case 'const':
+      case 'substance':
         return
       case 'own':
       case 'sumParts':
@@ -631,8 +638,7 @@ export function candidatasDeRol(r: Role, phys: Physics): readonly Substance[] {
   for (const s of idx.sustancias) {
     let sirve = true
     for (const t of r.where) {
-      const sp = spec(phys, t.q)
-      if (sp === undefined || sp.derived !== undefined) continue
+      if (spec(phys, t.q) === undefined || esDerivada(phys, t.q)) continue
       if (!idx.deSustancia.has(t.q)) continue
       const v = s.perUnitMass[t.q] ?? 0
       if (!cumple(v, t)) {
@@ -668,8 +674,7 @@ function cumple(v: number, t: QualityTest): boolean {
 function pinaLaMateria(r: Role, phys: Physics): boolean {
   const idx = indiceDe(phys)
   for (const t of r.where) {
-    const sp = spec(phys, t.q)
-    if (sp === undefined || sp.derived !== undefined) continue
+    if (spec(phys, t.q) === undefined || esDerivada(phys, t.q)) continue
     if (idx.deSustancia.has(t.q)) return true
   }
   return false
@@ -722,7 +727,12 @@ function construirEnvolventes(
   sustancias: readonly Substance[],
 ): ReadonlyMap<Tag, ReadonlyMap<EnvelopeKey, Envelope>> {
   const claves: EnvelopeKey[] = []
-  for (const qs of phys.qualities) if (qs.derived === undefined) claves.push(qs.id)
+  for (const qs of phys.qualities) if (!esDerivada(phys, qs.id)) claves.push(qs.id)
+  // `specificHeat` es campo de la sustancia y no una cualidad, así que no sale
+  // del recorrido de arriba — pero SÍ tiene envolvente por tag, porque el oráculo
+  // puede inventar una sustancia con un calor específico absurdo y la ley 1
+  // divide por él. Desde el ADR II-0006 hay además un nodo de `QualityExpr` que
+  // lo lee; la envolvente es lo que impide que ese nodo devuelva cualquier cosa.
   claves.push('specificHeat')
 
   const porTag = new Map<Tag, Map<EnvelopeKey, Envelope>>()
@@ -886,7 +896,7 @@ function revisarValorDeSustancia(
     )
     return
   }
-  if (sp.derived !== undefined) {
+  if (esDerivada(phys, q)) {
     razones.push(
       razon(4, 'cualidad-derivada', `${s.id} declara ${q}, que es derivada y no se guarda`, {
         sustancia: s.id,
@@ -2144,10 +2154,12 @@ function reglaRealizabilidad(p: Process, phys: Physics, razones: Razon[], advert
     // Realizabilidad contra el catálogo de sustancias. Éste es el fallo
     // SILENCIOSO que el documento marca: `admit` pasa, el proceso nunca
     // encuentra entradas, y Ánima queda tanteando sin que nadie sepa por qué.
-    const pideMateria = r.where.some((t) => {
-      const sp = spec(phys, t.q)
-      return sp !== undefined && sp.derived === undefined && indiceDe(phys).deSustancia.has(t.q)
-    })
+    const pideMateria = r.where.some(
+      (t) =>
+        spec(phys, t.q) !== undefined &&
+        !esDerivada(phys, t.q) &&
+        indiceDe(phys).deSustancia.has(t.q),
+    )
     if (!pideMateria) continue
     if (candidatasDeRol(r, phys).length === 0) {
       const pedido = r.where.map((t) => `${t.q} ${t.op} ${num(t.v)}`).join(' y ')

@@ -15,10 +15,43 @@ tocaron**, porque el contrato decía otra cosa. Es el momento de corregirlas.
 La ley 5 evapora a `0.0006 · k²`. Para `k = 0.27`, que es el caso del pescado
 sobre la parrilla, eso vale **4.4 × 10⁻⁵**. En escala 1000, redondea a **cero**.
 
-O sea: con el contrato como estaba, **el pescado no pierde agua nunca**, la
-tensión «comer antes o comer mejor» que encontró el barrido térmico desaparece,
-y cocinar vuelve a ser una receta. Hay un test en `fixed.test.ts` que lo muestra:
+Hay un test en `fixed.test.ts` que lo muestra:
 `fmul(fx(0.0006), fpow(fx(0.27), fx(2))) === 0`.
+
+> ### ⚠ Corrección — este ADR exageraba, y hay que decirlo
+>
+> La versión original de este párrafo decía que **«el pescado no pierde agua
+> nunca»**. **Es falso.** El agente que ejecutó la migración lo verificó y me
+> corrigió: `leyes.ts` **nunca importó `fixed.ts`** y calcula la humedad en
+> punto flotante, así que `0.0006 × 0.0729 = 4.374e-5` funciona perfecto y la
+> ley 5 evapora hoy sin ningún problema.
+>
+> **El bug es LATENTE, no vivo.** Muerde el día que el motor de las doce leyes
+> cruce a punto fijo, que es lo que el determinismo entre navegadores va a
+> exigir tarde o temprano. La decisión de este ADR sigue siendo correcta —dos
+> escalas, dos tipos— pero la urgencia que le atribuí no era real.
+>
+> Y hay algo peor que sí es concreto, que la migración encontró y yo no:
+> **cuando el motor cruce a punto fijo, tres constantes de `leyes.ts` se rompen
+> en escala 1000.**
+>
+> | Constante | Valor | En escala 1000 |
+> |---|---|---|
+> | `EVAPORACION_BASE` | 0.0006 | **1**, o sea 0.001 — un **67% de más** |
+> | `SECADO_POR_GRADO` | 0.00002 | **0** |
+> | `TASA_DESCOMPOSICION` | 0.0004 | **0** |
+>
+> Y el `relaxesTo` de `moisture` (0.001) queda **exactamente sobre el piso**: un
+> ulp. El catálogo tiene un test que lo vigila (`quality.test.ts`, «las tasas que
+> el catálogo declara caben en `Rate`»), pero **esas tres constantes son privadas
+> de `leyes.ts` y ese test no las alcanza**. Es deuda anotada, con nombre y
+> número.
+>
+> La ironía queda registrada: este mismo ADR termina diciendo que «un contrato de
+> tipos escrito de un saque, sin código que lo ejercite, es una hipótesis». El
+> ADR también lo era, y el código que lo ejercitó devolvió la corrección. Que el
+> mecanismo funcione dos veces seguidas contra su propio autor es exactamente lo
+> que se le pide.
 
 **Y subir la escala a 1e6 no es la respuesta**, que era lo obvio:
 

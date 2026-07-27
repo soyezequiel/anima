@@ -3,14 +3,12 @@ import { describe, expect, it } from 'vitest'
 import {
   CELL_QUALITIES,
   CONSERVED,
-  DERIVED_FROM_SUBSTANCE,
   QUALITIES,
   QUALITY_IDS,
   cellSpecOf,
   clampToRange,
   derivedValue,
   evalQuality,
-  heatCapacityOf,
   isConserved,
   isDerived,
   rangeFixed,
@@ -20,8 +18,9 @@ import {
   type QualityExpr,
   type QualityId,
   type QualityVector,
+  type SubstanceFn,
 } from '../src/quality.js'
-import { fx } from '../src/fixed.js'
+import { fx, rate, RATE_MAX } from '../src/fixed.js'
 
 /**
  * Los tests del catálogo. Lo que se prueba acá NO es que los números estén bien
@@ -35,6 +34,7 @@ function ctxOf(o: {
   own?: QualityVector
   parts?: readonly QualityVector[]
   geom?: Partial<Record<GeomFn, number>>
+  substance?: Partial<Record<SubstanceFn, number>>
 }): ExprContext {
   const parts = o.parts ?? []
   return {
@@ -42,6 +42,7 @@ function ctxOf(o: {
     sumParts: (q) => parts.reduce((acc, p) => acc + (p[q] ?? 0), 0),
     maxParts: (q) => parts.reduce((acc, p) => Math.max(acc, p[q] ?? 0), 0),
     geom: (f) => o.geom?.[f] ?? 0,
+    substance: (f) => o.substance?.[f] ?? 0,
   }
 }
 
@@ -117,13 +118,24 @@ describe('las reglas que el catálogo no puede violar', () => {
     }
   })
 
-  it('heatCapacity es la única que se deriva de la sustancia', () => {
-    // `specificHeat` es un campo de `Substance`, no un `QualityId`, y la gramática
-    // de `QualityExpr` no tiene ningún nodo que llegue hasta ahí.
-    expect([...DERIVED_FROM_SUBSTANCE]).toEqual(['heatCapacity'])
-    expect(specOf('heatCapacity').derived).toBeUndefined()
+  it('hay UNA sola forma de preguntar si algo es derivado (ADR II-0006)', () => {
+    // Antes había dos —`isDerived(q)` y `spec.derived !== undefined`— y no
+    // coincidían: `heatCapacity` era derivada sin expresión, así que quien
+    // preguntara por el campo la dejaba escribible, se guardaba y quedaba vieja
+    // apenas el cuerpo perdiera masa evaporando. Con el nodo `substance` en la
+    // gramática las dos preguntas son la misma, y este test lo prueba para las
+    // 29, no solo para la que dio problema.
+    for (const q of QUALITY_IDS) expect(isDerived(q)).toBe(specOf(q).derived !== undefined)
+    expect(specOf('heatCapacity').derived).toBeDefined()
     expect(isDerived('heatCapacity')).toBe(true)
-    expect(derivedValue('heatCapacity', ctxOf({}))).toBeUndefined()
+  })
+
+  it('heatCapacity se declara como cualquier otra derivada', () => {
+    // `mass × specificHeat`, y `specificHeat` sale del nodo nuevo. Ya no hay
+    // función aparte ni lista aparte: `derivedValue` la contesta como a las otras
+    // siete.
+    expect(derivedValue('heatCapacity', ctxOf({ own: { mass: 2 }, substance: { specificHeat: 3.5 } })))
+      .toBeCloseTo(7, 10)
   })
 })
 
@@ -263,17 +275,15 @@ describe('las otras afordancias', () => {
   })
 
   it('heatCapacity: una hoja se enfría antes que una piedra, y nadie escribió ninguna', () => {
-    const hoja = heatCapacityOf([{ mass: 0.02, specificHeat: 1.7 }])
-    const piedra = heatCapacityOf([{ mass: 8, specificHeat: 0.9 }])
-    expect(hoja).toBeLessThan(piedra)
-    // Un ensamble suma las partes: la parrilla de tres varas pesa lo que pesan.
-    expect(
-      heatCapacityOf([
-        { mass: 1, specificHeat: 1.7 },
-        { mass: 1, specificHeat: 1.7 },
-        { mass: 1, specificHeat: 1.7 },
-      ]),
-    ).toBeCloseTo(5.1, 10)
+    // Los mismos números de antes del ADR II-0006, ahora por la gramática y no
+    // por `heatCapacityOf()`. `substance('specificHeat')` es el calor específico
+    // pesado por masa, así que sobre un ensamble el producto con la masa total
+    // da `Σ (masa · calor específico)` — la parrilla de tres varas de masa 1 y
+    // calor específico 1.7 sigue dando 5.1.
+    const hc = (mass: number, specificHeat: number): number =>
+      derivedValue('heatCapacity', ctxOf({ own: { mass }, substance: { specificHeat } }))!
+    expect(hc(0.02, 1.7)).toBeLessThan(hc(8, 0.9))
+    expect(hc(3, 1.7)).toBeCloseTo(5.1, 10)
   })
 })
 
@@ -302,5 +312,28 @@ describe('puente al punto fijo', () => {
   it('los rangos se convierten una sola vez, en un solo lugar', () => {
     expect(rangeFixed('digestibility')).toEqual([0, fx(1)])
     expect(rangeFixed('temperature')).toEqual([fx(-100), fx(2000)])
+  })
+
+  it('las tasas que el catálogo declara caben en `Rate`, y no todas en `Fixed`', () => {
+    // ADR II-0006 medido contra el catálogo mismo, no contra tres literales
+    // copiados a mano. Un `relaxesTo.perTick` es la definición literal de una
+    // tasa: cuánto cambia una magnitud en un tick.
+    const tasas: number[] = []
+    for (const s of QUALITIES) if (s.relaxesTo !== undefined) tasas.push(s.relaxesTo.perTick)
+    for (const s of CELL_QUALITIES) if (s.relaxesTo !== undefined) tasas.push(s.relaxesTo.perTick)
+    expect(tasas.length).toBeGreaterThan(0)
+    for (const t of tasas) {
+      expect(rate(t), `${t} no es representable como tasa`).toBeGreaterThan(0)
+      expect(rate(t), `${t} satura el techo de las tasas`).toBeLessThan(RATE_MAX)
+    }
+
+    // Y la más lenta del catálogo está EN EL PISO de la escala de las
+    // magnitudes: 0.001 es exactamente un ulp de `Fixed`. Cualquier ley que
+    // quiera relajar más lento que eso es CERO ahí — y las hay: el secado de la
+    // ley 11 corre a 2e-5 por grado y la descomposición a 4e-4 por tick. Ésa es
+    // la razón entera de que las tasas tengan escala propia.
+    expect(fx(specOf('moisture').relaxesTo!.perTick)).toBe(1)
+    expect(fx(0.00002)).toBe(0)
+    expect(rate(0.00002)).toBe(20)
   })
 })

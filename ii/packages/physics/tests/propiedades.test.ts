@@ -36,7 +36,19 @@ import { describe, expect, it } from 'vitest'
 import type { Body, FormId, Joint, Part } from '../src/body.js'
 import { qualityOf } from '../src/body.js'
 import { admitSubstance, tieneCodigo } from '../src/admit.js'
-import { fabs, fdiv, fexp, fln, fmul, fpow, fx, unfx, FIXED_MAX, FIXED_MIN } from '../src/fixed.js'
+import {
+  fabs,
+  fdiv,
+  fexp,
+  fixedFromRaw,
+  fln,
+  fmul,
+  fpow,
+  fx,
+  unfx,
+  FIXED_MAX,
+  FIXED_MIN,
+} from '../src/fixed.js'
 import type { Fixed } from '../src/fixed.js'
 import {
   conSustancia,
@@ -583,15 +595,20 @@ function barridoDeFixed(): number[] {
     s = (Math.imul(s, 1103515245) + 12345) >>> 0
     return s
   }
+  // El LCG devuelve enteros YA ESCALADOS, que es lo que `fixedFromRaw` existe
+  // para aceptar: la marca de `Fixed` no cambia ni un bit del valor, así que la
+  // huella de este barrido es la misma que antes del ADR II-0006. Que siga
+  // siendo la misma es medio test.
+  const F = (n: number): Fixed => fixedFromRaw(n)
   for (let i = 0; i < 4000; i++) {
-    const a = (sig() % 4294968) - 2147484
-    const b = (sig() % 4294968) - 2147484
+    const a = F((sig() % 4294968) - 2147484)
+    const b = F((sig() % 4294968) - 2147484)
     out.push(fmul(a, b))
     out.push(fdiv(a, b))
-    out.push(fexp(a % 15000))
+    out.push(fexp(F(a % 15000)))
     out.push(fln(fabs(a)))
-    out.push(fpow(b % 4000, 2000))
-    out.push(fpow(fabs(b % 4000) + 1, 1500))
+    out.push(fpow(F(b % 4000), fx(2)))
+    out.push(fpow(F(fabs(F(b % 4000)) + 1), fx(1.5)))
     out.push(fx(unfx(a)))
   }
   return out
@@ -633,13 +650,15 @@ describe('`fixed.ts` es determinista bit a bit', () => {
     // Pureza: sin acumuladores, sin caché, sin estado. Calcular al derecho y al
     // revés tiene que dar exactamente lo mismo para cada entrada.
     const entradas: Fixed[] = []
-    for (let i = -2000; i <= 2000; i += 7) entradas.push(i * 1013)
-    const alDerecho = entradas.map((x) => [fexp(x % 14000), fln(fabs(x)), fpow(x % 3000, 2000)])
+    for (let i = -2000; i <= 2000; i += 7) entradas.push(fixedFromRaw(i * 1013))
+    const tres = (x: Fixed): number[] => [
+      fexp(fixedFromRaw(x % 14000)),
+      fln(fabs(x)),
+      fpow(fixedFromRaw(x % 3000), fx(2)),
+    ]
+    const alDerecho = entradas.map(tres)
     const alReves: number[][] = []
-    for (let i = entradas.length - 1; i >= 0; i--) {
-      const x = entradas[i]!
-      alReves[i] = [fexp(x % 14000), fln(fabs(x)), fpow(x % 3000, 2000)]
-    }
+    for (let i = entradas.length - 1; i >= 0; i--) alReves[i] = tres(entradas[i]!)
     for (let i = 0; i < entradas.length; i++) {
       for (let k = 0; k < 3; k++) {
         expect(Object.is(alDerecho[i]![k], alReves[i]![k]), `entrada ${entradas[i]!}`).toBe(true)
@@ -655,8 +674,8 @@ describe('`fixed.ts` es determinista bit a bit', () => {
     expect(fmul(FIXED_MIN, FIXED_MAX)).toBe(FIXED_MIN)
     expect(fexp(FIXED_MAX)).toBe(FIXED_MAX)
     expect(fexp(FIXED_MIN)).toBe(0)
-    expect(fln(0)).toBe(FIXED_MIN)
-    expect(fdiv(1, 0)).toBe(FIXED_MAX)
+    expect(fln(fx(0))).toBe(FIXED_MIN)
+    expect(fdiv(fixedFromRaw(1), fx(0))).toBe(FIXED_MAX)
   })
 
   it('un cero con signo se puede escapar de `fdiv`, y queda anotado acá', () => {
@@ -670,7 +689,7 @@ describe('`fixed.ts` es determinista bit a bit', () => {
     // `fdiv(0,−b)` daría `0` y `−fdiv(0,b)` daría `−0`— y esa simetría es un
     // invariante más caro que éste. Si alguna vez el mundo divide por un `Fixed`
     // que puede ser cero, hay que volver acá.
-    expect(Object.is(fdiv(0, -5), -0)).toBe(true)
-    expect(fdiv(0, -5) === 0).toBe(true)
+    expect(Object.is(fdiv(fx(0), fx(-0.005)), -0)).toBe(true)
+    expect(fdiv(fx(0), fx(-0.005)) === 0).toBe(true)
   })
 })

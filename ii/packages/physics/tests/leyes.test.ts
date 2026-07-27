@@ -142,6 +142,58 @@ describe('la ley 1 es una función, no una tabla', () => {
     expect(H_PERDIDA).toBe(0.5)
     expect(temperaturaDeEquilibrio(0, 0, 'contacto')).toBe(T_AMBIENTE)
   })
+
+  it('la declaración del catálogo y el camino caliente dicen lo mismo', () => {
+    // ADR II-0006. `heatCapacity` está DECLARADA en el catálogo como
+    // `mass × substance('specificHeat')`, y `capacidadTermica` es el camino
+    // caliente de la ley 1 —una vez por cuerpo y por tick—. Se probó delegar y se
+    // midió: 1.55 ms contra 0.41 ms para 5000 cuerpos, o sea el 39% del
+    // presupuesto de 4 ms del Hito 2 gastado en UNA de las doce leyes. Se quedan
+    // las dos, y este test es lo que impide que se separen.
+    //
+    // No es `toBe`: la derivada calcula `M · (Σ mᵢshᵢ / M)` y el bucle calcula
+    // `Σ mᵢshᵢ` directo, así que difieren en el último bit para los ensambles.
+    // Medido sobre 200 000 cuerpos al azar: peor desvío relativo 2.2e-16, o sea
+    // un ulp. Es redondeo, no fórmula.
+    const ids = [...phys.substances.keys()]
+    let s = 0xc0ffee >>> 0
+    const r = (): number => {
+      s = (Math.imul(s, 1664525) + 1013904223) >>> 0
+      return s / 4294967296
+    }
+    let peor = 0
+    for (let i = 0; i < 20000; i++) {
+      const parts = []
+      for (let k = 0, n = 1 + Math.floor(r() * 6); k < n; k++) {
+        parts.push({ substance: ids[Math.floor(r() * ids.length)]!, mass: r() * 40, q: {} })
+      }
+      const b: Body = { id: `b${i}`, form: 'bloque', parts, joints: [], state: {} }
+      const declarada = qualityOf(b, 'heatCapacity', phys)
+      const caliente = capacidadTermica(b, phys)
+      const rel = caliente === 0 ? 0 : Math.abs(declarada - caliente) / Math.abs(caliente)
+      if (rel > peor) peor = rel
+    }
+    expect(peor).toBeLessThan(1e-15)
+  })
+
+  it('el default de una sustancia desconocida es el mismo en los dos caminos', () => {
+    // La otra forma en que dos implementaciones de una fórmula se separan: los
+    // bordes. Un cuerpo hecho de algo que el mundo no conoce vale 1 de calor
+    // específico en los dos lados —devolver 0 sería una división por cero en la
+    // ley 1— y un cuerpo sin partes vale 0 en los dos.
+    const huerfano: Body = {
+      id: 'h',
+      form: 'bloque',
+      parts: [{ substance: 'no-existe', mass: 3, q: {} }],
+      joints: [],
+      state: {},
+    }
+    expect(capacidadTermica(huerfano, phys)).toBe(3)
+    expect(qualityOf(huerfano, 'heatCapacity', phys)).toBe(3)
+    const vacio: Body = { id: 'v', form: 'bloque', parts: [], joints: [], state: {} }
+    expect(capacidadTermica(vacio, phys)).toBe(0)
+    expect(qualityOf(vacio, 'heatCapacity', phys)).toBe(0)
+  })
 })
 
 describe('la masa vive en un solo lugar', () => {

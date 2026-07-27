@@ -53,7 +53,7 @@ import { buildSeedPhysics } from '../src/physics.js'
 import { EXTRACCION, PHYSICS_VERSION, type Process } from '../src/process.js'
 import type { Substance } from '../src/substance.js'
 import { qualityOf, type Body } from '../src/body.js'
-import { fdiv, fx, unfx } from '../src/fixed.js'
+import { fadd, fdiv, fx, unfx } from '../src/fixed.js'
 
 const phys = buildSeedPhysics()
 
@@ -636,7 +636,7 @@ describe('SIGUE ABIERTO · partir en dos y quedarse con más', () => {
     // Dos mitades de un cuerpo de masa 0.001 pesan 0.002: la masa se DUPLICA
     // por vuelta, y `deshilachar` es exactamente un `split` que se puede repetir.
     const mitad = fdiv(fx(0.001), fx(2))
-    expect(unfx(mitad + mitad)).toBeCloseTo(0.002, 9)
+    expect(unfx(fadd(mitad, mitad))).toBeCloseTo(0.002, 9)
 
     // Y sobre la MASA la puerta sigue sin tener nada que decir: ninguna regla le
     // pone masa mínima al rol de un `split`, y no existe código de rechazo para
@@ -650,6 +650,6 @@ describe('SIGUE ABIERTO · partir en dos y quedarse con más', () => {
 
     // ── DEBERÍA: o el `split` exige masa suficiente para que partir no gane
     //    materia, o la aritmética de partir trunca hacia cero. Hoy no hace ninguna.
-    expect(unfx(mitad + mitad)).toBeCloseTo(0.001, 9)
+    expect(unfx(fadd(mitad, mitad))).toBeCloseTo(0.001, 9)
   })
 })

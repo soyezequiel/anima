@@ -213,6 +213,47 @@ function massOf(p: Part): number {
   return p.q.mass ?? p.mass
 }
 
+/**
+ * Un campo de la SUSTANCIA, agregado como cualquier intensiva: pesado por masa
+ * (ADR II-0006).
+ *
+ * Que sea el promedio pesado y no la suma es lo que hace que
+ * `mass × specificHeat` dé exactamente `Σ (masa · calor específico)` sobre un
+ * ensamble: la masa total multiplica al promedio y los denominadores se cancelan.
+ * Con la suma pelada, una parrilla de tres varas tendría el triple de capacidad
+ * térmica de la que tiene.
+ *
+ * El default de 1 para una sustancia que el mundo no conoce es el mismo que
+ * tenía la ley 1 antes de esta migración: un cuerpo sin materia conocida se
+ * comporta como si su calor específico fuera el de referencia. Devolver 0 sería
+ * peor —capacidad térmica cero es una división por cero en la ley 1— y lanzar
+ * mataría el tick por una parte huérfana.
+ */
+function substanceFieldOf(b: Body, f: 'specificHeat', phys: Physics): number {
+  if (b.parts.length === 0) return 0
+  // Una sola parte: el valor, sin dividir. Misma razón que en
+  // `aggregateFromParts`: `q·m/m` no es `q` en punto flotante.
+  if (b.parts.length === 1) return fieldOfPart(b.parts[0]!, f, phys)
+  let num = 0
+  let den = 0
+  for (let i = 0; i < b.parts.length; i++) {
+    const p = b.parts[i]!
+    const m = massOf(p)
+    num += fieldOfPart(p, f, phys) * m
+    den += m
+  }
+  if (den > 0) return num / den
+  let plano = 0
+  for (let i = 0; i < b.parts.length; i++) plano += fieldOfPart(b.parts[i]!, f, phys)
+  return plano / b.parts.length
+}
+
+function fieldOfPart(p: Part, f: 'specificHeat', phys: Physics): number {
+  const s: Substance | undefined = phys.substances.get(p.substance)
+  const v = s?.[f]
+  return v === undefined || !Number.isFinite(v) ? 1 : v
+}
+
 function clampToRange(v: number, spec: QualitySpec | undefined): number {
   if (!spec) return v
   const [lo, hi] = spec.range
@@ -245,6 +286,8 @@ function evalExpr(b: Body, e: QualityExpr, phys: Physics, inFlight: Set<QualityI
       }
       return mejor
     }
+    case 'substance':
+      return substanceFieldOf(b, e.f, phys)
     case 'geom':
       return geomOf(b, e.f, phys)
     case 'op': {

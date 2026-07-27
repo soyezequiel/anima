@@ -79,12 +79,24 @@ export type CellQuality = 'wet' | 'oxygen' | 'temperature' | 'sheltered'
 export type GeomFn = 'longestAxis' | 'freeStrandEnds' | 'jointCount'
 export type ExprOp = '+' | '-' | '*' | '/' | 'min' | 'max' | 'step'
 
+/**
+ * Los campos de `Substance` que una expresión derivada puede leer (ADR II-0006).
+ *
+ * Es UNO solo y está cerrado a propósito. `specificHeat` es campo propio de la
+ * sustancia —y no una entrada más de `perUnitMass`— porque la ley 1 lo necesita
+ * para toda sustancia sin excepción; sin este nodo, `heatCapacity` no era
+ * expresable y quedaba derivada por una lista aparte, con dos formas de
+ * preguntar si algo se guarda.
+ */
+export type SubstanceFn = 'specificHeat'
+
 export type QualityExpr =
   | { k: 'const'; v: number }
   | { k: 'own'; q: QualityId }
   | { k: 'sumParts'; q: QualityId }
   | { k: 'maxParts'; q: QualityId }
   | { k: 'geom'; f: GeomFn }
+  | { k: 'substance'; f: SubstanceFn }
   | { k: 'op'; f: ExprOp; a: QualityExpr; b: QualityExpr }
 
 export interface QualitySpec {
@@ -406,19 +418,29 @@ export const QUALITIES: readonly QualitySpec[] = [
     },
   },
   {
-    // `heatCapacity = mass · specificHeat` y NO LLEVA `derived`. No es un olvido:
-    // `specificHeat` es un campo de `Substance`, no un `QualityId`, y la gramática
-    // de `QualityExpr` no tiene ningún nodo que llegue hasta ahí. Se podía forzar
-    // de dos maneras feas —clavar un calor específico constante, o inventar un
-    // `QualityId` que no está en el catálogo cerrado— y las dos mienten.
+    // `heatCapacity = mass · specificHeat`, declarada como cualquier otra
+    // derivada (ADR II-0006). Antes no se podía: `specificHeat` es campo de
+    // `Substance` y la gramática no tenía ningún nodo que llegara hasta ahí, así
+    // que vivía en una lista aparte (`DERIVED_FROM_SUBSTANCE`) con una función
+    // aparte (`heatCapacityOf`) y con dos formas de preguntar si algo se guarda.
+    // El nodo `substance` borró las tres cosas.
     //
-    // Queda declarada como derivada por `DERIVED_FROM_SUBSTANCE` y se calcula con
-    // `heatCapacityOf()`. Ver el reporte del Hito 1: o `QualityExpr` gana un nodo
-    // `{ k: 'substance'; f: 'specificHeat' }`, o `specificHeat` entra al catálogo.
+    // Sobre el `substance('specificHeat')` de un ensamble: es el calor específico
+    // PESADO POR MASA de las partes, así que el producto con la masa total da
+    // `Σ (masa · calor específico)`, que es lo que la ley 1 divide. Los
+    // denominadores se cancelan en el álgebra pero no en IEEE-754: contra la suma
+    // directa hay hasta un ulp de diferencia (medido: 2.2e-16 relativo sobre
+    // 200 000 cuerpos), y hay un test que clava las dos cuentas juntas.
     id: 'heatCapacity',
     range: [0, 100000],
     extent: 'extensive',
     conserved: false,
+    derived: {
+      k: 'op',
+      f: '*',
+      a: { k: 'own', q: 'mass' },
+      b: { k: 'substance', f: 'specificHeat' },
+    },
   },
 ]
 
@@ -443,18 +465,17 @@ export function specOf(q: QualityId): QualitySpec {
 export const CONSERVED: readonly QualityId[] = QUALITIES.filter((s) => s.conserved).map((s) => s.id)
 
 /**
- * La única cualidad que se deriva de la sustancia y no del vector de estado.
- * Ver el comentario de `heatCapacity`.
- */
-export const DERIVED_FROM_SUBSTANCE: ReadonlySet<QualityId> = new Set<QualityId>(['heatCapacity'])
-
-/**
- * Verdadero si la cualidad NO SE GUARDA. `body.ts` tiene que preguntar esto y no
- * `spec.derived !== undefined`: si no, `heatCapacity` se guardaría y quedaría
- * vieja apenas el cuerpo pierda masa evaporando.
+ * Verdadero si la cualidad NO SE GUARDA: se calcula cada vez que se lee.
+ *
+ * UNA SOLA PREGUNTA, y ahora es la misma que `spec.derived !== undefined`
+ * (ADR II-0006). Antes había dos —esta función y el campo— porque
+ * `heatCapacity` era derivada sin expresión, y quien preguntara por el campo la
+ * dejaba escribible: se guardaba y quedaba vieja apenas el cuerpo perdiera masa
+ * evaporando. Con el nodo `substance` en la gramática, las dos preguntas
+ * colapsaron en una.
  */
 export function isDerived(q: QualityId): boolean {
-  return specOf(q).derived !== undefined || DERIVED_FROM_SUBSTANCE.has(q)
+  return specOf(q).derived !== undefined
 }
 
 export function isConserved(q: QualityId): boolean {
@@ -465,18 +486,6 @@ export function isConserved(q: QualityId): boolean {
 export function clampToRange(q: QualityId, v: number): number {
   const [lo, hi] = specOf(q).range
   return v < lo ? lo : v > hi ? hi : v
-}
-
-/**
- * `heatCapacity = Σ partes (masa · calor específico)`. Es una función y no una
- * `QualityExpr` porque el calor específico vive en la sustancia. La ley 1 divide
- * el acoplamiento por esto, y por eso una hoja se enfría antes que una piedra sin
- * que nadie escriba «hoja» ni «piedra».
- */
-export function heatCapacityOf(parts: readonly { mass: number; specificHeat: number }[]): number {
-  let total = 0
-  for (const p of parts) total += p.mass * p.specificHeat
-  return total
 }
 
 // ─── El evaluador ───────────────────────────────────────────────────────────
@@ -492,6 +501,12 @@ export interface ExprContext {
   sumParts(q: QualityId): number
   maxParts(q: QualityId): number
   geom(f: GeomFn): number
+  /**
+   * Un campo de la SUSTANCIA de la que está hecho el cuerpo, agregado igual que
+   * una cualidad intensiva: pesado por masa. Es lo que hace expresable a
+   * `heatCapacity` (ADR II-0006).
+   */
+  substance(f: SubstanceFn): number
 }
 
 /**
@@ -516,6 +531,8 @@ export function evalQuality(e: QualityExpr, ctx: ExprContext): number {
       return ctx.maxParts(e.q)
     case 'geom':
       return ctx.geom(e.f)
+    case 'substance':
+      return ctx.substance(e.f)
     case 'op': {
       const a = evalQuality(e.a, ctx)
       const b = evalQuality(e.b, ctx)
@@ -543,9 +560,9 @@ export function evalQuality(e: QualityExpr, ctx: ExprContext): number {
 }
 
 /**
- * Calcula una cualidad derivada, o `undefined` si esa cualidad se guarda.
- * `heatCapacity` devuelve `undefined` acá a propósito: no se puede calcular sin
- * la sustancia, y para eso está `heatCapacityOf`.
+ * Calcula una cualidad derivada, o `undefined` si esa cualidad se guarda. Desde
+ * el ADR II-0006 no hay excepciones: las ocho derivadas pasan por acá,
+ * `heatCapacity` incluida.
  */
 export function derivedValue(q: QualityId, ctx: ExprContext): number | undefined {
   const e = specOf(q).derived

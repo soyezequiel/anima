@@ -37,14 +37,15 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ## Estado
 
-**Hito 0 CERRADO, Hito 1 construido con la puerta cerrada, y el Hito 4 desbloqueado.**
+**Hito 0 CERRADO, Hito 1 construido con la puerta cerrada, Hito 2 con tres de
+sus cuatro criterios, y el Hito 4 desbloqueado.**
 
 | | |
 |---|---|
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 3 pases: 112 → 71 → **64** errores · 5 → 6 → **10** expresables |
-| [Decisiones](docs/decisions/) | 5 ADRs propios (II-0001 a II-0005) |
+| [Decisiones](docs/decisions/) | 6 ADRs propios (II-0001 a II-0006) |
 
 ### Hito 0 — el banco · las cuatro piezas medidas, ninguna mató el plan
 
@@ -57,13 +58,53 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ### Hito 1 — `@anima/physics`
 
-Existe y está verde: **498 tests**, typecheck limpio. Punto fijo determinista,
+Existe y está verde: **523 tests**, typecheck limpio. Punto fijo determinista,
 29 cualidades más 4 de celda, 30 sustancias semilla, cuerpos compuestos, los
 cuatro procesos aplicables, las doce leyes y `admit()`.
 
 Los tres ejemplos del usuario pasan **sin que aparezcan las palabras «carbón»,
 «asar» ni «pescar»**, y el test de emergencia no menciona ninguna sustancia
 semilla por nombre.
+
+El Hito 1 devolvió dos correcciones al contrato de tipos, y las dos están
+aplicadas ([ADR II-0006](docs/decisions/II-0006-dos-escalas-magnitudes-y-tasas.md)):
+**`Fixed` a escala 1000 para las magnitudes y `Rate` a escala 1e6 para las
+tasas**, tipos nominales distintos —sumar una tasa a una magnitud no compila, y
+eso lo verifica `tsc`— con `aplicar()` como única puerta entre las dos; y el nodo
+`{ k: 'substance' }` en `QualityExpr`, con el que `heatCapacity` se declara como
+cualquier otra derivada y queda **una sola forma de preguntar si algo se guarda**.
+
+### Hito 2 — `@anima/world` · [`docs/hito-2-el-mundo.md`](docs/hito-2-el-mundo.md)
+
+Existe y está verde: **258 tests**, typecheck limpio. Grilla en chunks con índice
+O(1) por celda, `stepWorld` puro, invariantes por tick, journal append-only,
+snapshot por delta y `hashWorld`.
+
+| Criterio | | Medido |
+|---|---|---|
+| dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld` | ✔ | 100 000 intenciones, 11 checkpoints |
+| restaurar a mitad reproduce el final exacto | ✔ | desde la cadena de deltas, no de memoria |
+| 5000 cuerpos a menos de 4 ms por tick | ✘ | **37,98 ms** · el 100% es `paso()` de física |
+| el mismo hash en Chrome y en Firefox | ⏳ | falta la página; la precondición está verificada |
+
+El de rendimiento **no se cumple y la causa no está en el mundo**: una sola
+lectura de cuerpo (12 `qualityOf`) sobre 5000 cuerpos cuesta 6,43 ms, o sea 1,6×
+el techo del tick entero, y `paso()` la hace cinco veces. El techo es inalcanzable
+aunque `@anima/world` costara cero; lo que el mundo agrega está por debajo del
+ruido de medición. Hoy entran **~527 cuerpos en 4 ms**, que alcanza de sobra para
+el Hito 3 y para la demo del Hito 5.
+
+El ataque al propio determinismo encontró **un agujero real**: los empates de
+`seq` se detectaban al vuelo, así que la primera del par ya había actuado cuando
+aparecía la segunda — el mundo dependía del orden de llegada. Reparado. Y el
+arnés de invariantes con diez actores encontró tres bugs de bookkeeping espacial
+más un invariante mal escrito: pedía apoyo **entre pares** en vez de **una pila
+por celda**, o sea que la parrilla del ADR II-0002 no habría pasado su propio
+invariante.
+
+```bash
+pnpm --filter @anima/world banco   # los números de rendimiento, medidos
+```
 
 ### La puerta, cerrada · [`docs/la-puerta.md`](docs/la-puerta.md)
 
