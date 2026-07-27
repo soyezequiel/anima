@@ -39,8 +39,15 @@ function mundoFalso(campos: Record<string, unknown> = {}): WorldCtx {
   return { tick: 0, ...campos } as unknown as WorldCtx
 }
 
+/**
+ * De quién es la corrida. Ahora es obligatorio y no tiene valor por omisión: el
+ * ejecutor firma cada intención con esto, y sin saber de quién es la corrida no
+ * puede firmar. Ver `RunOptions.by`.
+ */
+const ELLA = 'criatura'
+
 const intento = (k: 'goTo' | 'apply' | 'wait', seq: number): Intent =>
-  ({ k, by: 'criatura', seq, commitment: 'reversible', to: { x: 1, y: 1 }, within: 1 }) as unknown as Intent
+  ({ k, by: ELLA, seq, commitment: 'reversible', to: { x: 1, y: 1 }, within: 1 }) as unknown as Intent
 
 const resultado = (status: StepResult['status'], got = 0): StepResult => ({
   status,
@@ -89,7 +96,7 @@ function correrHasta(
 
 describe('la máquina de estados', () => {
   it('cede intenciones, recibe resultados y termina', () => {
-    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 })
+    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, { by: ELLA })
     const p1 = run.step()
     expect(p1.k).toBe('intent')
     expect(run.status).toBe('esperando')
@@ -108,18 +115,18 @@ describe('la máquina de estados', () => {
     // Inventarle un resultado a una intención que el mundo todavía no resolvió
     // es cómo una habilidad termina creyendo que llegó a un lugar donde nunca
     // estuvo, y eso se descubre dos mil ticks después o no se descubre.
-    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 })
+    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, { by: ELLA })
     run.step()
     expect(() => run.step()).toThrow(/esperando al mundo/)
   })
 
   it('no deja contestarle a una habilidad que no pidió nada', () => {
-    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 })
+    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, { by: ELLA })
     expect(() => run.step(resultado('arrived'))).toThrow(/no cedió ninguna intención/)
   })
 
   it('una habilidad terminada no se avanza más', () => {
-    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 1 })
+    const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 1 }, { by: ELLA })
     correrHasta(run, () => resultado('arrived', 1))
     expect(() => run.step()).toThrow(/terminada/)
   })
@@ -129,7 +136,7 @@ describe('la máquina de estados', () => {
       ctx.phase('buscar-agua')
       throw new Error('el paisaje no tiene agua')
     }
-    const run = new SkillRun(rompe as Skill<undefined>, mundoFalso(), undefined)
+    const run = new SkillRun(rompe as Skill<undefined>, mundoFalso(), undefined, { by: ELLA })
     const paso = run.step()
     expect(paso.k).toBe('rota')
     if (paso.k === 'rota') {
@@ -148,7 +155,7 @@ describe('la máquina de estados', () => {
         limpio = true
       }
     }
-    const run = new SkillRun(conFinally as Skill<undefined>, mundoFalso(), undefined)
+    const run = new SkillRun(conFinally as Skill<undefined>, mundoFalso(), undefined, { by: ELLA })
     run.step()
     const paso = run.abort('la revocaron')
     expect(limpio).toBe(true)
@@ -198,7 +205,7 @@ describe('ctx.memory: la única sede de estado que sobrevive', () => {
 describe('el criterio del Hito 4: corrida dos veces, el mismo hash', () => {
   const correrDosVeces = (tiradas: number, picaEn: number): string[] =>
     [0, 1].map((_) => {
-      const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas })
+      const run = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas }, { by: ELLA })
       correrHasta(run, (n) => (n === 1 ? resultado('arrived') : resultado('done', n === picaEn ? 1 : 0)))
       return run.hash()
     })
@@ -240,12 +247,12 @@ describe('continuidad: una habilidad interrumpida por un guardado converge', () 
     const mundo = (n: number): StepResult =>
       n === 1 ? resultado('arrived') : resultado('done', n === PICA_EN ? 1 : 0)
 
-    const sinCortar = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 })
+    const sinCortar = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, { by: ELLA })
     const entero = correrHasta(sinCortar, mundo)
     expect(entero.outcome?.ok).toBe(true)
 
     // Ahora, con un guardado a mitad de camino.
-    const antes = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 })
+    const antes = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, { by: ELLA })
     antes.step()
     antes.step(resultado('arrived'))
     for (let i = 0; i < 10; i++) antes.step(resultado('done', 0))
@@ -255,6 +262,7 @@ describe('continuidad: una habilidad interrumpida por un guardado converge', () 
 
     // …y la partida se carga: habilidad NUEVA, generador NUEVO, memoria vieja.
     const despues = new SkillRun(pescar as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, {
+      by: ELLA,
       saved: guardado,
     })
     let tiradasTrasCargar = 0
@@ -281,7 +289,7 @@ describe('continuidad: una habilidad interrumpida por un guardado converge', () 
       }
       return fail('no picó')
     }
-    const run = new SkillRun(pescarSinMemoria as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 })
+    const run = new SkillRun(pescarSinMemoria as Skill<{ tiradas: number }>, mundoFalso(), { tiradas: 40 }, { by: ELLA })
     for (let i = 0; i < 10; i++) run.step(i === 0 ? undefined : resultado('done', 0))
     const guardado = run.save()
     expect(guardado.memory).toEqual({})
@@ -298,7 +306,7 @@ describe('el combustible visto desde el ejecutor', () => {
 
   it('un `while (true)` plantado suspende en vez de colgar el cuadro', () => {
     const { skill, cell } = montarHabilidad('export function* habilidad(ctx) { while (true) { ctx.tick } }')
-    const run = new SkillRun(skill, mundoFalso(), undefined, { cell, fuelPerStep: 500, maxStalls: 3 })
+    const run = new SkillRun(skill, mundoFalso(), undefined, { by: ELLA, cell, fuelPerStep: 500, maxStalls: 3 })
     const p = run.step()
     expect(p.k).toBe('suspendida')
     if (p.k === 'suspendida') expect(p.spent).toBeGreaterThan(0)
@@ -311,7 +319,7 @@ describe('el combustible visto desde el ejecutor', () => {
     // muere y nunca hace nada. Desde afuera se ve igual que colgarse, pero sin
     // caer un cuadro; el que lo mata es este tope.
     const { skill, cell } = montarHabilidad('export function* habilidad(ctx) { while (true) { ctx.tick } }')
-    const run = new SkillRun(skill, mundoFalso(), undefined, { cell, fuelPerStep: 500, maxStalls: 3 })
+    const run = new SkillRun(skill, mundoFalso(), undefined, { by: ELLA, cell, fuelPerStep: 500, maxStalls: 3 })
     let paso = run.step()
     let vueltas = 0
     while (paso.k === 'suspendida' && vueltas++ < 20) paso = run.step()
@@ -329,7 +337,7 @@ describe('el combustible visto desde el ejecutor', () => {
         yield 1
       }
     `)
-    const run = new SkillRun(skill, mundoFalso(), undefined, { cell, fuelPerStep: 2_000 })
+    const run = new SkillRun(skill, mundoFalso(), undefined, { by: ELLA, cell, fuelPerStep: 2_000 })
     const paso = run.step()
     expect(paso.k).toBe('rota')
     if (paso.k === 'rota') {
@@ -341,15 +349,22 @@ describe('el combustible visto desde el ejecutor', () => {
   it('una habilidad que computa mucho pero cede termina igual', () => {
     // Suspender no puede cambiar el RESULTADO, solo cuántos pasos lleva. Si lo
     // cambiara, el juez estaría midiendo el presupuesto y no la habilidad.
+    //
+    // OJO CON EL `yield`, que acá decía `yield 1`: se cambió porque cerrar el
+    // agujero 5 del ataque al sandbox —lo cedido tiene que TENER FORMA de
+    // intención— lo puso en rojo, y el que estaba mal era el andamio del test.
+    // Es el hallazgo que la reparación vino a comprar: un `yield` de algo que no
+    // es una intención pasaba desapercibido hasta acá, y en producción habría
+    // llegado al mundo y salido en el informe como «el mundo rechazó».
     const { skill, cell } = montarHabilidad(`
       export function* habilidad(ctx) {
         let s = 0
         for (let i = 0; i < 5000; i++) s += i
-        yield 1
+        yield { k: 'wait', segundos: 1, commitment: 'reversible' }
         return { ok: true, got: s }
       }
     `)
-    const run = new SkillRun(skill, mundoFalso(), undefined, { cell, fuelPerStep: 600, maxStalls: 100 })
+    const run = new SkillRun(skill, mundoFalso(), undefined, { by: ELLA, cell, fuelPerStep: 600, maxStalls: 100 })
     let paso = run.step()
     let suspensiones = 0
     while (paso.k === 'suspendida') {

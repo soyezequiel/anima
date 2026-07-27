@@ -18,7 +18,7 @@ import {
 import * as API from '../src/ctx.js'
 import { SkillRun, type Step, type WorldCtx } from '../src/ejecutor.js'
 import type { Cell, Intent, Outcome, StepResult } from '../src/ctx.js'
-import { Mundito } from './mundito.js'
+import { ACTOR, Mundito } from './mundito.js'
 
 /**
  * EL CRITERIO DEL HITO 4, LOS SEIS, EN UN SOLO LUGAR.
@@ -172,7 +172,7 @@ function correrConPresupuesto(
   tope = 400,
 ): Corrida {
   const { skill, cell } = innata(modulo, fn)
-  const run = new SkillRun(skill as never, worldCtx(m), args as never, { cell, maxStalls: 40 })
+  const run = new SkillRun(skill as never, worldCtx(m), args as never, { by: ACTOR, cell, maxStalls: 40 })
   let peorPaso = 0
   let peorTanque = 0
   let total = 0
@@ -461,7 +461,7 @@ describe('(b) y (c) el corte, medido con reloj contra el cuadro', () => {
         while (true) { n++ }
       }
     `)
-    const r1 = new SkillRun(cede as never, mundoMudo(), undefined as never, { cell: c1, maxStalls: 3 })
+    const r1 = new SkillRun(cede as never, mundoMudo(), undefined as never, { by: ACTOR, cell: c1, maxStalls: 3 })
     const t1 = performance.now()
     const p1 = r1.step()
     const ms1 = performance.now() - t1
@@ -470,7 +470,7 @@ describe('(b) y (c) el corte, medido con reloj contra el cuadro', () => {
       function girar() { let n = 0; while (true) { n++ } }
       export function* habilidad(ctx) { ctx.phase('girar'); girar() }
     `)
-    const r2 = new SkillRun(lanza as never, mundoMudo(), undefined as never, { cell: c2 })
+    const r2 = new SkillRun(lanza as never, mundoMudo(), undefined as never, { by: ACTOR, cell: c2 })
     const t2 = performance.now()
     const p2 = r2.step()
     const ms2 = performance.now() - t2
@@ -494,7 +494,7 @@ describe('(b) y (c) el corte, medido con reloj contra el cuadro', () => {
   it('(c) una recursión infinita también se corta, con su fase y en menos de un cuadro', () => {
     // Con el tanque DE PRODUCCIÓN, que es el que va a estar puesto.
     const { skill, cell } = montarCrudo(RECURSIVA)
-    const run = new SkillRun(skill as never, mundoMudo(), undefined as never, { cell })
+    const run = new SkillRun(skill as never, mundoMudo(), undefined as never, { by: ACTOR, cell })
     const t = performance.now()
     const paso = run.step()
     const ms = performance.now() - t
@@ -565,7 +565,7 @@ describe('el hallazgo que salió de montar las quince de verdad: un tanque por M
     )
     const skill = principal.exports['habilidad'] as Generadora
 
-    const sinUnir = new SkillRun(skill as never, mundoMudo(), undefined as never, { cell: principal.cell })
+    const sinUnir = new SkillRun(skill as never, mundoMudo(), undefined as never, { by: ACTOR, cell: principal.cell })
     const roto = sinUnir.step()
     expect(roto.k).toBe('rota')
     if (roto.k === 'rota') {
@@ -575,6 +575,7 @@ describe('el hallazgo que salió de montar las quince de verdad: un tanque por M
     console.log(`\n  sin unirCeldas: ${roto.k} · gastado del tanque que sí se recarga: ${principal.cell.spent}`)
 
     const conUnir = new SkillRun(skill as never, mundoMudo(), undefined as never, {
+      by: ACTOR,
       cell: unirCeldas([principal.cell, ayudante.cell]),
     })
     const bien = conUnir.step()
@@ -598,7 +599,7 @@ describe('(d) y (e) el hash y la continuidad, sobre una innata de verdad', () =>
   function correrJuntar(cuantos: number, saved?: { phase: string; memory: Readonly<Record<string, unknown>> }) {
     const m = mundoDeJuntar()
     const { skill, cell } = innata('juntar', 'juntar')
-    const o = saved === undefined ? { cell } : { cell, saved }
+    const o = saved === undefined ? { by: ACTOR, cell } : { by: ACTOR, cell, saved }
     const run = new SkillRun(skill as never, worldCtx(m), { que: [{ q: 'rigidity', op: '>=', v: 0.5 }], cuantos } as never, o)
     let resultado: StepResult | undefined
     let paso: Step
@@ -644,7 +645,7 @@ describe('(d) y (e) el hash y la continuidad, sobre una innata de verdad', () =>
 
     // ── Antes del guardado: tres reintentos quemados contra el obstáculo ────
     const m1 = conObstaculo()
-    const primera = new SkillRun(skill as never, worldCtx(m1), { a: vista(m1, 'p'), within: 1, reintentos: 8 } as never, {})
+    const primera = new SkillRun(skill as never, worldCtx(m1), { a: vista(m1, 'p'), within: 1, reintentos: 8 } as never, { by: ACTOR })
     let res: StepResult | undefined
     for (let i = 0; i < 3; i++) {
       const p = primera.step(res)
@@ -661,6 +662,7 @@ describe('(d) y (e) el hash y la continuidad, sobre una innata de verdad', () =>
       yo: { at: { x: 5, y: 2 } },
     })
     const segunda = new SkillRun(skill as never, worldCtx(m2), { a: vista(m2, 'p'), within: 1, reintentos: 8 } as never, {
+      by: ACTOR,
       saved: guardado,
     })
     let paso: Step
@@ -689,7 +691,7 @@ describe('(d) y (e) el hash y la continuidad, sobre una innata de verdad', () =>
     // vuelven a pagar, que es lo que «no repite» significa acá.
     const gastar = (saved?: typeof guardado): number => {
       const m = conObstaculo()
-      const o = saved === undefined ? {} : { saved }
+      const o = saved === undefined ? { by: ACTOR } : { by: ACTOR, saved }
       const r = new SkillRun(skill as never, worldCtx(m), { a: vista(m, 'p'), within: 1, reintentos: 8 } as never, o)
       let x: StepResult | undefined
       for (let i = 0; i < 40; i++) {
@@ -744,9 +746,9 @@ describe('(d) y (e) el hash y la continuidad, sobre una innata de verdad', () =>
     // `--__fuelLeft < 0` cede la suspensión antes de la primera línea. Una
     // habilidad montada y corrida sin su celda no falla: se queda suspendida
     // para siempre, y a las N suspensiones el ejecutor la declara trabada.
-    const a = new SkillRun(conMemoria.skill as never, mundoMudo(), undefined as never, { cell: conMemoria.cell })
+    const a = new SkillRun(conMemoria.skill as never, mundoMudo(), undefined as never, { by: ACTOR, cell: conMemoria.cell })
     avanzar(a, 11)
-    const b = new SkillRun(conLocal.skill as never, mundoMudo(), undefined as never, { cell: conLocal.cell })
+    const b = new SkillRun(conLocal.skill as never, mundoMudo(), undefined as never, { by: ACTOR, cell: conLocal.cell })
     avanzar(b, 11)
     console.log(
       `\n  guardado con la cuenta en ctx.memory: ${JSON.stringify(a.save().memory)}` +

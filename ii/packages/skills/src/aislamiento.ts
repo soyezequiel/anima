@@ -23,7 +23,9 @@
 //   2. POR ESCÁNER (`scanDeterminism`). Hay cosas que el alcance no puede tapar:
 //      `x ** 2` es un OPERADOR, y `(1.5).toLocaleString()` y `a.localeCompare(b)`
 //      son métodos de un prototipo, no nombres globales. Se detectan sobre el
-//      AST, antes de compilar, y cuestan una fracción de milisegundo.
+//      AST, antes de compilar, y cuestan una fracción de milisegundo. Y hay una
+//      que no es un nombre sino una FORMA —un `let` de nivel superior, que hace
+//      que la habilidad se acuerde de la corrida anterior—: ver `estadoDeModulo`.
 //
 // El escáner corre ANTES que el typecheck en el orden del juez, porque es diez
 // veces más barato y porque su mensaje es más útil: «`Date` no existe adentro
@@ -268,6 +270,78 @@ const METODOS_DE_LOCALE: Readonly<Record<string, string>> = Object.freeze({
 })
 
 /**
+ * Las fronteras de función. Adentro de una de éstas, una variable mutable es una
+ * LOCAL —nace y muere con la llamada— y está perfecta. Afuera es estado de
+ * módulo, que es otra cosa completamente. Ver `estadoDeModulo`.
+ */
+function esFronteraDeFuncion(ts: ApiTS, n: TS.Node): boolean {
+  return (
+    ts.isFunctionDeclaration(n) ||
+    ts.isFunctionExpression(n) ||
+    ts.isArrowFunction(n) ||
+    ts.isMethodDeclaration(n) ||
+    ts.isGetAccessorDeclaration(n) ||
+    ts.isSetAccessorDeclaration(n) ||
+    ts.isConstructorDeclaration(n) ||
+    ts.isClassStaticBlockDeclaration(n)
+  )
+}
+
+/**
+ * EL ESTADO DE MÓDULO: toda declaración mutable de nivel superior.
+ *
+ * Es el agujero 3 del ataque al sandbox, cerrado en la puerta más barata. El
+ * documento promete que «la ÚNICA sede de estado que sobrevive a un guardado es
+ * `ctx.memory`», y es verdad para las variables LOCALES de una habilidad —una
+ * corutina suspendida no se serializa— y FALSA para las de nivel superior:
+ * `mount()` evalúa el módulo una vez y sus `let` viven mientras viva el montaje,
+ * o sea entre corridas y entre criaturas.
+ *
+ * Es la peor forma de esta clase de bug: ese estado NO viaja en `save()` —así
+ * que se pierde al cargar la partida— y SÍ sobrevive dentro de una sesión —así
+ * que la habilidad anda distinto la segunda vez—. Las dos mitades de lo
+ * contrario de lo que hace falta. Una habilidad que memorice así el pozo de agua
+ * «funciona» toda la partida y aparece rota recién después de cargar, que es
+ * cuando ya nadie relaciona las dos cosas.
+ *
+ * POR QUÉ VIVE EN UN ESCÁNER QUE SE LLAMA «determinismo», que no es un abuso del
+ * nombre: una habilidad que se acuerda de la corrida anterior es exactamente una
+ * habilidad no determinista. El criterio (d) del Hito 4 —«corrida dos veces da
+ * el mismo hash»— se cae con un solo `let` de nivel superior, y el juez del Hito
+ * 7 compara dos versiones por ese hash. Es el mismo daño que `Math.random`, por
+ * un camino más largo.
+ *
+ * LO QUE ESTA REGLA NO ATAJA, dicho para que nadie lea «cerrado» de más: un
+ * `const` que apunta a un objeto o a un arreglo y se muta por adentro
+ * (`const visto = []` … `visto.push(x)`) es estado de módulo igual y pasa. No se
+ * prohíbe el `const` de objeto porque las tablas de constantes —que son la razón
+ * por la que existe el nivel superior de un módulo— se escriben así, y una regla
+ * que las rompa la va a apagar alguien. Cerrar ese resto pide mirar las
+ * mutaciones, no las declaraciones, y eso ya es análisis de flujo.
+ */
+function estadoDeModulo(
+  ts: ApiTS,
+  sf: TS.SourceFile,
+  anotar: (nodo: TS.Node, what: string, why: string) => void,
+): void {
+  const POR_QUE =
+    'el estado de nivel superior sobrevive a la corrida y `save()` no lo ve: ' +
+    'lo que tenga que sobrevivir va en `ctx.memory`, y lo que no, adentro de la habilidad'
+  const ver = (nodo: TS.Node): void => {
+    // Adentro de una función ya es una local: se para acá y no se mira más.
+    if (esFronteraDeFuncion(ts, nodo)) return
+    if (ts.isVariableDeclarationList(nodo) && (nodo.flags & ts.NodeFlags.Const) === 0) {
+      const palabra = (nodo.flags & ts.NodeFlags.Let) === 0 ? 'var' : 'let'
+      for (const d of nodo.declarations) {
+        anotar(d, `${palabra} ${d.name.getText(sf)}`, POR_QUE)
+      }
+    }
+    ts.forEachChild(nodo, ver)
+  }
+  ts.forEachChild(sf, ver)
+}
+
+/**
  * Revisa un fuente ANTES de compilarlo. No sustituye al typecheck ni al
  * `admit()`: es la puerta más barata de las tres y la única que puede hablar de
  * determinismo, que es algo que los tipos no ven.
@@ -369,5 +443,6 @@ export function scanDeterminism(ts: ApiTS, code: string, fileName = 'habilidad.t
     ts.forEachChild(nodo, ver)
   }
   ts.forEachChild(sf, ver)
+  estadoDeModulo(ts, sf, anotar)
   return hallazgos
 }

@@ -60,7 +60,16 @@ import {
 // Importar del archivo emitido haría que el paquete dependa de su propio
 // artefacto de build, y que un `tsc --declaration` a medio correr rompiera el
 // ejecutor.
-import { fail, type Ctx, type Intent, type Outcome, type Skill, type SkillMemory, type StepResult } from './ctx.js'
+import {
+  fail,
+  type ActorId,
+  type Ctx,
+  type Intent,
+  type Outcome,
+  type Skill,
+  type SkillMemory,
+  type StepResult,
+} from './ctx.js'
 
 /**
  * ¿Es un desborde de pila?
@@ -77,6 +86,30 @@ function esDesbordeDePila(e: unknown): boolean {
   if (!(e instanceof RangeError)) return false
   const m = e.message.toLowerCase()
   return m.includes('call stack') || m.includes('too much recursion') || m.includes('stack overflow')
+}
+
+/**
+ * ¿Lo que cedió TIENE FORMA de intención?
+ *
+ * Se mira la FORMA y no el contenido, y la línea entre las dos cosas es la misma
+ * que separa a este paquete del mundo: que `k` sea `'goTo'` o `'volar'`, que el
+ * cuerpo exista, que el compromiso esté bien declarado —todo eso lo juzga
+ * `stepWorld`, y tiene que seguir juzgándolo—. Acá se ataja lo que ni siquiera
+ * llega a ser una intención: `yield 42`, `yield 'hola'`, `yield {}`.
+ *
+ * Sin esto un número viaja al mundo, que lo rechaza igual —`i.k` es `undefined`
+ * y no hay rama para eso— pero el rechazo NOMBRA AL MUNDO y no a la habilidad, y
+ * el informe del juez lo cuenta como «el mundo rechazó»: el diagnóstico
+ * equivocado en el archivo equivocado. El modo de falla honesto que esto ataja
+ * es `yield goTo(...)` escrito sin el `ctx.`, con un ayudante local que devuelve
+ * cualquier otra cosa.
+ *
+ * `null` entra por acá y no por una comprobación aparte porque `typeof null` es
+ * `'object'`, que es justo la trampa que hace que este chequeo se escriba mal.
+ */
+function tieneFormaDeIntencion(v: unknown): v is Intent {
+  if (v === null || typeof v !== 'object') return false
+  return typeof (v as { readonly k?: unknown }).k === 'string'
 }
 
 // ─── La memoria ─────────────────────────────────────────────────────────────
@@ -229,6 +262,25 @@ export type Step =
   | { readonly k: 'rota'; readonly why: string; readonly phase: string; readonly error?: unknown }
 
 export interface RunOptions {
+  /**
+   * EL DUEÑO DE LA CORRIDA. Con quién se firma cada intención que salga de acá.
+   *
+   * No es opcional y no tiene valor por omisión, y eso es la reparación entera
+   * del agujero 6 del ataque al sandbox: mientras el ejecutor devolvía lo cedido
+   * verbatim, una habilidad podía emitir `{ k: 'eat', by: 'el-cuidador', … }` y
+   * `stepWorld` la atendía —busca `d.actors.get(i.by)` y si ese actor existe,
+   * actúa—. El mundo no lo puede notar: le llega un arreglo plano de intenciones
+   * y no sabe de qué corrida salió cada una.
+   *
+   * Y no es solo suplantación: los permisos se comparan contra EL ACTOR QUE
+   * FIRMA, así que firmando con otro `by` se saltean juntos el ADR II-0003 y el
+   * portón de confirmación —una habilidad `provisional`, que entra con
+   * `permits: 'reversible'`, firma como alguien con permiso irreversible y quema
+   * la casa—. Un valor por omisión acá sería ese mismo agujero con otro nombre:
+   * el ejecutor es el ÚNICO que sabe de quién es la corrida, y si no lo sabe no
+   * puede firmar.
+   */
+  readonly by: ActorId
   /** El tanque que se recarga en cada reanudación. */
   readonly fuelPerStep?: number
   /**
@@ -264,6 +316,12 @@ export interface TraceEntry {
 }
 
 /**
+ * Cuántas veces se le insiste a un `finally` que se comió el corte antes de
+ * sacarlo con una excepción. Ver `#cortar`.
+ */
+const INTENTOS_DE_CIERRE = 4
+
+/**
  * Una habilidad en vuelo.
  *
  * El nombre no es «Executor» a propósito: no ejecuta muchas, ejecuta UNA, y su
@@ -279,11 +337,40 @@ export class SkillRun<A> {
   readonly #fuelPerStep: number
   readonly #maxStalls: number
   readonly #trace: TraceEntry[] = []
+  readonly #by: ActorId
 
   #status: SkillStatus = 'fresca'
   #stalls = 0
   #outcome: Outcome | undefined
   #steps = 0
+  /**
+   * EL NÚMERO DE EMISIÓN, y de dónde sale es la decisión que hace que estampar
+   * la autoría no sea un renglón.
+   *
+   * Sale de ESTA CORRIDA: arranca en cero y sube de a uno por intención emitida.
+   * No de un contador global, no de un contador del actor, no del reloj.
+   *
+   * POR QUÉ: el criterio (d) del Hito 4 es «una habilidad corrida dos veces da
+   * el mismo hash», y el hash se toma sobre el `Intent` ENTERO —`canonico()` no
+   * saltea ninguna clave, así que `by` y `seq` entran—. Con un contador
+   * compartido, dos corridas idénticas de la misma habilidad sobre el mismo
+   * mundo darían hashes distintos según qué OTRA habilidad emitió antes, y el
+   * juez del Hito 7 compara dos versiones por su hash: uno que depende de los
+   * vecinos no compara nada. El `seq` tiene que ser función de la corrida, como
+   * lo es todo lo demás que entra en la traza.
+   *
+   * LO QUE SE PAGA, dicho entero: dos corridas DEL MISMO ACTOR vivas en el mismo
+   * tick emiten las dos `seq: 0`, y `stepWorld` rechaza a LAS DOS con
+   * `orden-duplicado` en vez de despachar una y rechazar la otra con `ya-actuo`.
+   * No es un empeoramiento escondido: el mundo le da UN turno por tick a cada
+   * cuerpo (`yaActuo` en `world/src/step.ts`), así que la segunda se perdía
+   * igual; lo que cambia es que ahora se pierden las dos, con un rechazo ruidoso
+   * y reproducible en vez de uno que depende del orden de llegada. El día que un
+   * actor tenga que poder tener DOS habilidades en vuelo, el `seq` pasa a salir
+   * de él —y ahí el hash hay que tomarlo sobre la intención SIN firmar, o el
+   * criterio (d) se cae—.
+   */
+  #seq = 0
 
   /**
    * OJO con el orden: el estado se crea ANTES que el generador porque
@@ -292,10 +379,11 @@ export class SkillRun<A> {
    * no corre hasta el primer `next()`— pero el `ctx` que se le pasa ya tiene que
    * estar completo.
    */
-  constructor(skill: Skill<A>, base: WorldCtx, args: A, o: RunOptions = {}) {
+  constructor(skill: Skill<A>, base: WorldCtx, args: A, o: RunOptions) {
     this.#state = createSkillState(o.saved, (name) => {
       this.#trace.push({ k: 'phase', v: name })
     })
+    this.#by = o.by
     this.#cell = o.cell
     this.#fuelPerStep = o.fuelPerStep ?? FUEL_POR_PASO
     this.#maxStalls = o.maxStalls ?? 20
@@ -388,14 +476,31 @@ export class SkillRun<A> {
         return { k: 'suspendida', spent: this.#cell?.spent ?? 0, stalls: this.#stalls }
       }
 
-      if (cedido === null || cedido === undefined) {
+      if (!tieneFormaDeIntencion(cedido)) {
         return this.#romper('cedió algo que no es una intención', undefined)
       }
 
+      // ─── LA FIRMA DE LA CASA ────────────────────────────────────────────
+      //
+      // Se estampan `by` y `seq`, y NADA MÁS. En particular NO se toca
+      // `commitment`: lo declara quien emite y `stepWorld` lo recalcula y
+      // castiga la mentira (`revisarCompromiso`, `world/src/intent.ts`).
+      // Estampar la autoría no puede convertirse en «el ejecutor arregla la
+      // intención», porque el día que el ejecutor corrija algo que el mundo
+      // juzga, el mundo deja de ser el árbitro: es exactamente el argumento del
+      // test de al lado sobre declarar `reversible` un `eat`. El ejecutor
+      // responde por lo que SABE —de quién es esta corrida y en qué orden emite—
+      // y de nada más.
+      //
+      // El spread va PRIMERO y las dos claves de la casa después, para que ganen
+      // siempre. Al revés —`{ by, seq, ...cedido }`— la habilidad se seguiría
+      // firmando sola y esto sería un adorno.
+      const intent: Intent = { ...cedido, by: this.#by, seq: this.#seq++ }
+
       this.#stalls = 0
       this.#status = 'esperando'
-      this.#trace.push({ k: 'intent', v: cedido })
-      return { k: 'intent', intent: cedido }
+      this.#trace.push({ k: 'intent', v: intent })
+      return { k: 'intent', intent }
     } catch (e) {
       if (e instanceof OutOfFuel) {
         return this.#romper(
@@ -427,18 +532,75 @@ export class SkillRun<A> {
    * Cortar la habilidad desde afuera: la revocaron, la partida se cierra, el
    * objetivo cambió. Usa `gen.return()` y no un `throw` para que corran los
    * `finally` que la habilidad haya escrito.
+   *
+   * Y MIRA EL `done`, que es lo que le faltaba: un `yield` adentro de un
+   * `finally` SECUESTRA el `return` —la especificación dice que el generador se
+   * reanuda ahí y `return()` devuelve `{ done: false }`—, y como la inyección de
+   * combustible ES un `yield`, cualquier `finally` con un bucle suficientemente
+   * largo lo consigue sin proponérselo. Sin mirar el `done`, esto reportaba
+   * `terminada` sobre una corutina viva: no se perdía nada del mundo —el
+   * ejecutor no la vuelve a avanzar— pero se perdía la garantía que `abort()`
+   * estaba comprando, que era «los `finally` corrieron». Un informe que miente
+   * es peor que uno que falla, y el juez del Hito 7 arma su grilla con esto.
    */
   abort(why: string): Step {
     if (this.#status === 'terminada' || this.#status === 'rota') return this.#ultimo()
-    try {
-      this.#gen.return(fail(why))
-    } catch {
-      // Un `finally` que lanza no cambia lo que pasó: la habilidad se corta igual.
-    }
+    const outcome = fail(why)
+    const resistio = this.#cortar(outcome)
+    if (resistio !== undefined) return this.#romper(`se la cortó por "${why}" y ${resistio}`, undefined)
     this.#status = 'terminada'
-    this.#outcome = fail(why)
+    this.#outcome = outcome
     this.#trace.push({ k: 'end', v: false })
-    return { k: 'terminada', outcome: this.#outcome }
+    return { k: 'terminada', outcome }
+  }
+
+  /**
+   * Cierra el generador de verdad. Devuelve `undefined` si cerró solo —o sea si
+   * sus `finally` corrieron enteros— y el porqué si hubo que sacarlo.
+   *
+   * Los reintentos son con `next()` y NO con otro `return()`, y la diferencia es
+   * todo lo que este método vino a comprar: un segundo `return()` reanuda el
+   * `finally` con una completación abrupta, o sea que lo ABORTA a mitad de
+   * camino y el `finally` que soltaba lo que tenía en la mano nunca termina —que
+   * es el mismo bug con otra cara—. `next()` lo deja seguir; lo único que hace
+   * falta es darle tanque, porque quedó suspendido justo por no tener.
+   *
+   * El tope es CUATRO y es un tope, no una estimación: un `finally` honesto
+   * suelta lo que tiene y cierra en el primero, y cuatro tanques son cuatro
+   * veces el presupuesto de cómputo de un paso —0,56 ms cada uno, medido en
+   * `presupuesto.test.ts`— o sea que el peor corte sigue entrando cómodo en un
+   * cuadro de 50 ms. Un `finally` que necesita más que eso no está limpiando,
+   * está trabajando, y para ése está el `throw`.
+   *
+   * Lo que se descarta a sabiendas: si el `finally` cede una intención de verdad
+   * durante el corte, se pierde. Está bien que se pierda — al mundo se le dijo
+   * que esta habilidad se terminó, y una intención que sale después de eso es de
+   * nadie.
+   */
+  #cortar(outcome: Outcome): string | undefined {
+    try {
+      let r = this.#gen.return(outcome)
+      for (let i = 0; !r.done && i < INTENTOS_DE_CIERRE; i++) {
+        this.#cell?.refill(this.#fuelPerStep)
+        r = this.#gen.next(undefined as unknown as StepResult)
+      }
+      if (r.done === true) return undefined
+    } catch {
+      // Un `finally` que LANZA no cambia lo que pasó: la habilidad se corta
+      // igual, y de paso el generador queda completado por la propia excepción.
+      return undefined
+    }
+    // No cerró por las buenas. Se lo saca con una excepción, que atraviesa el
+    // `finally` en vez de esperarlo.
+    try {
+      const r = this.#gen.throw(new Error(`la habilidad no cerró en ${INTENTOS_DE_CIERRE} intentos`))
+      if (r.done !== true) return 'el generador sobrevivió hasta a la excepción: algún `catch` se comió el corte'
+      return 'hubo que sacarlo con una excepción: sus `finally` no corrieron enteros'
+    } catch {
+      // La excepción salió por acá, que es lo normal: el generador quedó
+      // completado. Cerró, pero no por las buenas, y eso se dice.
+      return 'hubo que sacarlo con una excepción: sus `finally` no corrieron enteros'
+    }
   }
 
   #ultimo(): Step {

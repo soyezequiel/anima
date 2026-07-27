@@ -63,7 +63,13 @@ export interface Guion {
   rechaza?: Partial<Record<Intent['k'], Motivo>>
 }
 
-const ACTOR = 'ella'
+/**
+ * Quién es ella. Se exporta porque desde el Hito 4bis el ejecutor FIRMA cada
+ * intención con el dueño de la corrida, y quien arma una corrida contra este
+ * mundito tiene que decirle el mismo nombre que el mundito usa para sí misma —o
+ * `stepWorld` (y el `heldBy` de acá) la verían como otra criatura—.
+ */
+export const ACTOR = 'ella'
 const clave = (c: Cell): string => `${c.x},${c.y}`
 const cheby = (a: Cell, b: Cell): number => Math.max(Math.abs(a.x - b.x), Math.abs(a.y - b.y))
 
