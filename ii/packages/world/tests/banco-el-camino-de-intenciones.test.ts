@@ -138,6 +138,35 @@ import { bodiesAt, createGrid, placeBody } from '../src/grid.js'
 /** «p99 de tick < 5 ms con 5000 cuerpos». El techo del Hito 5, en milisegundos. */
 const TECHO_P99_MS = 5
 
+/**
+ * EL TECHO ACEPTADO, y no es lo mismo que el del criterio.
+ *
+ * Se midió que el criterio del Hito 5 no se cumple —el p99 con 5000 cuerpos y
+ * 5000 criaturas da entre 24 y 38 ms según la corrida, o sea 5 a 7 veces el
+ * techo— y **el usuario lo aceptó explícitamente**, con la tabla del encabezado
+ * adelante y sabiendo que la mitad de lo que falta no está en este paquete.
+ *
+ * Hay precedente exacto y se sigue igual: el ADR II-0007 hizo esto mismo con el
+ * criterio de 4 ms absolutos del Hito 2, que sigue `it.fails` en
+ * `banco-el-tick.test.ts` como vara de progreso mientras el criterio vigente
+ * corre en verde al lado. Dos tests y no uno, porque hacen dos trabajos
+ * distintos:
+ *
+ *   - el de 5 ms queda ROJO. Es la aspiración y no se toca: bajarlo para dar
+ *     verde sería mover el criterio, que es lo único que este arnés existe para
+ *     no hacer. El día que se cumpla, vitest avisa solo («test esperado fallido
+ *     que pasó») y hay que borrarle el `.fails`.
+ *   - el de 45 ms queda VERDE. Es la GUARDA DE REGRESIÓN de lo aceptado: sin
+ *     él, «aceptado» se convierte en «sin medir», y el número puede triplicarse
+ *     sin que nada se ponga rojo. Aceptar un número no es dejar de vigilarlo.
+ *
+ * Los 45 son el peor medido (38) más margen para el ruido de la máquina, que en
+ * este banco es real: el mismo barrido dio 30,9 y 37,6 en dos corridas. Un techo
+ * pegado al peor medido sería un test intermitente, y un test intermitente se
+ * termina borrando.
+ */
+const TECHO_ACEPTADO_MS = 45
+
 /** Los 5000 cuerpos del criterio. Constante a lo largo de todo el barrido. */
 const CUERPOS = 5000
 
@@ -380,6 +409,26 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
   it.fails(`p99 < ${TECHO_P99_MS} ms con ${CUERPOS} cuerpos y ${CUERPOS} criaturas`, () => {
     const { s, ids } = mundoDeCriaturas(CUERPOS)
     expect(perfilar(s, ids, caminatas).p99).toBeLessThan(TECHO_P99_MS)
+  }, 900_000)
+
+  /**
+   * La otra mitad de la decisión: lo aceptado también se vigila.
+   *
+   * Ver el porqué entero en `TECHO_ACEPTADO_MS`. En una frase: el test de arriba
+   * guarda la aspiración y éste guarda lo que hay, porque un número que se acepta
+   * y deja de medirse se triplica sin que nadie se entere.
+   */
+  it(`y lo ACEPTADO se sigue vigilando: p99 < ${TECHO_ACEPTADO_MS} ms (5 a 7× el criterio)`, () => {
+    const { s, ids } = mundoDeCriaturas(CUERPOS)
+    const p = perfilar(s, ids, caminatas)
+    /* eslint-disable no-console */
+    console.log(
+      `\n  p99 con ${CUERPOS} cuerpos y ${CUERPOS} criaturas: ${num(p.p99)} ms` +
+        `  ·  criterio ${TECHO_P99_MS} ms (${num(p.p99 / TECHO_P99_MS, 1)}×, ACEPTADO)` +
+        `  ·  guarda ${TECHO_ACEPTADO_MS} ms\n`,
+    )
+    /* eslint-enable no-console */
+    expect(p.p99).toBeLessThan(TECHO_ACEPTADO_MS)
   }, 900_000)
 
   /**
