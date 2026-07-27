@@ -27,6 +27,36 @@
 //      reloj del sistema en todo el paquete: sin reloj —el caso por omisión, y el
 //      de todo test determinista— este contador no se puede mover, y es correcto,
 //      porque sin reloj de pared no hay ninguna ventana que vencer.
+//
+//      ─── CÓMO SE LLEVA LA CUENTA, y por qué NO es un vencimiento que marcha ──
+//
+//      La primera versión llevaba un instante de vencimiento y le sumaba UNA
+//      ventana por tick pase lo que pase, sin volver a anclarlo cuando el tick
+//      terminaba antes. O sea que un bucle que corre más rápido que el tiempo real
+//      —que es todo bucle sin `sleep`, o sea todos los de este repositorio—
+//      **acumulaba crédito sin tope**: a 20 Hz, cada tick que tarda 1 ms en vez de
+//      50 guardaba 49 ms de holgura, y sobre los 2000 ticks del criterio del Hito
+//      5 eso eran 98 SEGUNDOS de colchón. El adversario del tramo lo midió con el
+//      MISMO tick de 1000 ms puesto en dos lugares de la misma corrida: 20 al
+//      principio y 0 en el tick 101. **Un contador cuyo valor depende de lo bien
+//      que veníamos no mide nada**, y el `ticksPerdidos === 0` del criterio no
+//      distinguía «llegamos a horario» de «nunca llegamos a estar en deuda».
+//
+//      Lo que hay ahora es el acumulador de un motor de paso fijo, con la única
+//      línea que lo hace honesto: **el atraso se satura en cero**. Cada tick suma
+//      `(cuánto pasó de reloj) − (una ventana)` y si el resultado es negativo se
+//      lo lleva a cero, porque adelantarse no es un crédito que se pueda gastar
+//      después: el mundo no puede correr dos ticks de física en un cuadro. Cada
+//      ventana entera de atraso acumulada es un tick perdido y se descuenta.
+//
+//      Las dos consecuencias, dichas:
+//
+//        · **el mismo tick lento cuenta lo mismo esté donde esté**, que es lo que
+//          el contador tenía que cumplir para significar algo;
+//        · lo que se mide es de un `fin` al `fin` anterior —no `fin − arranque`—
+//          o sea que el tiempo que el llamador pasa ENTRE ticks también cuenta. Es
+//          correcto por la definición de arriba: la ventana pasa igual, la esté
+//          gastando el tick o quien lo llama.
 //   2. **`porFalla`** — se pidió avanzar un tick y el mundo no avanzó: `stepWorld`
 //      lanzó. Es determinista y no necesita ningún reloj.
 //
@@ -50,8 +80,8 @@
 // el directorio de `src/` y por lo tanto se entera solo de los archivos nuevos —
 // un paquete nuevo nace SIN guardián, y éste nació con el suyo.
 
-import type { ActorId, Intent, SimEvent, WorldState } from '@anima/world'
-import { stepWorld } from '@anima/world'
+import type { ActorId, Intent, SimEvent, WorldBody, WorldState } from '@anima/world'
+import { dadoDe, mapaDeCuerpos, PREFIJO_POZO, stepWorld } from '@anima/world'
 import type { Skill } from '@anima/skills'
 import type { WorldRng } from '@anima/oracle'
 import { dadoDelMundo, type DadoDelMundo } from '@anima/oracle'
@@ -73,7 +103,14 @@ import { Vuelo, type VueloOptions } from './vuelo.js'
 export type RelojDePared = () => number
 
 export interface PartidaOptions {
-  /** El estado del dado DEL MUNDO. Ver `dado` abajo por qué vive acá y no en `WorldState`. */
+  /**
+   * El estado del dado de la mente **para los mundos SIN dios**, y nada más.
+   *
+   * Con dios, el dado que la habilidad ve es el del mundo (`state.dios.dado`) y
+   * esta opción se ignora: ver `Partida.dado`. Se ignora en silencio a propósito
+   * —lanzar rompería a todo el que arma una `Partida` con semilla por costumbre—
+   * pero queda dicho acá porque es la clase de opción que uno cree que manda.
+   */
   readonly semilla?: number
   readonly reloj?: RelojDePared
 }
@@ -88,6 +125,83 @@ export interface Informe {
   readonly fallas: readonly { readonly tick: number; readonly why: string }[]
 }
 
+/**
+ * EL MUNDO DEL TICK 0, CON LO QUE EL DIOS PONE YA PUESTO.
+ *
+ * ─── El agujero, dicho entero ───────────────────────────────────────────────
+ *
+ * Quien materializa lo que el dios decretó —los bancos de peces— es
+ * `materializarPozos`, y corre ADENTRO de `stepWorld`. La `Partida` construía su
+ * proyección en el constructor, sobre el `WorldState` crudo del tick 0, donde el
+ * banco todavía NO EXISTE; y `Vuelo.intencionDelTick()` avanza el generador ANTES
+ * del primer `stepWorld`, que es el orden correcto para todo lo demás («la
+ * criatura actúa sobre el mundo que vio»). Resultado medido sobre la orilla de la
+ * semilla 20260727n:
+ *
+ *   paso 1 de la habilidad veía: ana-cuerpo, cana
+ *   paso 2 veía:                 ana-cuerpo, cana, pozo:-6:-6
+ *
+ * DOCE de las quince innatas arrancan con un `see()` —o con un `goTo` derivado de
+ * un `see()`— en la primera línea del generador. Una criatura que abría los ojos
+ * en la orilla no veía el banco de peces y se rendía con «no veo el pozo» sin que
+ * nada fallara: el criterio del Hito 5 dependía de que la habilidad tuviera un
+ * `yield` de más al principio.
+ *
+ * ─── Por qué se materializa con `stepWorld` y no con `decretoDe` ────────────
+ *
+ * Reconstruir el banco acá —`decretoDe` + `population` + `cuerpoDePozo`, que están
+ * los tres exportados— sería copiar una ley del mundo a la capa de percepción, que
+ * es exactamente lo que este repositorio castiga (`DSL_REFERENCE` de Ánima I): la
+ * copia se llevaría el anillo de nueve chunks alrededor de cada actor, y el día
+ * que el mundo cambie a dónde llega el dios, la vista y el mundo dirían cosas
+ * distintas sin que nada se ponga rojo.
+ *
+ * Así que se le pregunta AL MUNDO: se da un paso **en sombra** —`stepWorld` con
+ * cero intenciones, sobre una copia que se tira— y se le sacan ÚNICAMENTE los
+ * cuerpos del dios que no estaban. No se copia ninguna ley, y lo que se ve es por
+ * construcción lo que el mundo va a materializar un instante después.
+ *
+ * Lo incómodo, y hay que decirlo:
+ *
+ *   · **cuesta un `stepWorld` entero**, una vez por partida y sólo si hay dios. Un
+ *     mundo sin dios —el banco de 5000 cuerpos, el mundito, los ocho archivos de
+ *     test del paquete— sale por la primera línea sin pagar nada;
+ *   · los cuerpos que se traen pasaron por las leyes de ese paso de sombra, o sea
+ *     que sus cualidades son las del tick 1 y no las del 0. Para un banco de peces
+ *     quieto en el agua eso no mueve la masa, que es lo único que `see()` filtra y
+ *     lo único que el rol `source` de `extraccion` mira. Lo que NO cambia es el
+ *     mundo de verdad: `#state` sigue siendo el que entró, el paso de sombra se
+ *     tira, y el `stepWorld` del primer tick vuelve a materializar el banco desde
+ *     el decreto como si nada hubiera pasado.
+ *
+ * La alternativa limpia es que el mundo separe «materializar» de «dar un paso»
+ * —una `materializarWorld(state)` exportada por `world/src/step.ts`— y entonces
+ * esto son dos líneas sin paso de sombra. Queda anotado como hueco.
+ */
+function conLoQueElDiosPone(state: WorldState): WorldState {
+  if (state.dios === undefined) return state
+  let sombra: WorldState
+  try {
+    sombra = stepWorld(state, []).state
+  } catch {
+    // Un mundo que no puede dar un paso tampoco puede materializar nada, y el
+    // tick 1 lo va a contar como `porFalla`. Que la proyección explote acá sería
+    // cambiarle el modo de falla a la partida entera.
+    return state
+  }
+  let nuevos: WorldBody[] | undefined
+  for (const [id, c] of sombra.bodies) {
+    if (!id.startsWith(PREFIJO_POZO)) continue
+    if (state.bodies.has(id)) continue
+    if (nuevos === undefined) nuevos = [...state.bodies.values()]
+    nuevos.push(c)
+  }
+  if (nuevos === undefined) return state
+  // Por `mapaDeCuerpos` y no por `new Map`: el orden del mapa de cuerpos es
+  // canónico y `see()` promete el mismo orden en dos corridas gemelas.
+  return { ...state, bodies: mapaDeCuerpos(nuevos) }
+}
+
 export class Partida {
   #state: WorldState
   #anterior: WorldState | undefined
@@ -96,27 +210,82 @@ export class Partida {
   readonly lugares = new LibroDeLugares()
   readonly #reloj: RelojDePared | undefined
   /**
-   * EL DADO DEL MUNDO, y vive acá porque no tiene dónde más vivir hoy:
-   * `@anima/world` no importa `@anima/oracle` en ninguna línea, así que
-   * `WorldState` no tiene el estado del dado. La consecuencia hay que decirla
-   * entera y está clavada con su `it.fails` en `tests/el-bucle.test.ts`:
-   * **`hashWorldState` no cubre la suerte**, o sea que restaurar un snapshot del
-   * mundo sin restaurar este entero reproduce las intenciones y no las tiradas.
-   * La reparación es un campo en `WorldState`, y eso es un ADR.
+   * EL DADO QUE VE LA HABILIDAD POR `ctx.rng`, y **es el del mundo cuando hay
+   * dios**.
+   *
+   * ─── Eran DOS, y era un agujero de guardado ────────────────────────────────
+   *
+   * La versión anterior construía uno propio (`dadoDelMundo(o.semilla ?? 0)`) que
+   * no vivía en ningún lado del estado. El mundo tiene el suyo adentro de
+   * `WorldState.dios`, y ése sí entra en `hashWorldState` y sí sobrevive a
+   * `JSON.stringify` (medido en `tests/ataque-a-la-costura.test.ts`, bloque 4).
+   * Medido después de pescar: dado del mundo `1831565813`, dado de la `Partida`
+   * todavía en el `7` que le pasaron. Consecuencia: **guardar y cargar a mitad de
+   * partida le reiniciaba la suerte a la mente**. Hoy no se nota porque ninguna de
+   * las quince innatas usa `ctx.rng`; se nota el día que una elija a dónde caminar
+   * tirando el dado, que es la primera cosa que va a hacer una mente sin LLM.
+   *
+   * Así que hay UNA ranura y no dos: `#tirar` lee `state.dios.dado`, lo hace
+   * avanzar y lo escribe de vuelta en el estado, que es la ranura que el snapshot
+   * ya guarda. La mente y el mundo comparten la sucesión — el orden es el del
+   * tick, primero las mentes (fase 1) y después `stepWorld`— y la consecuencia hay
+   * que decirla: **una habilidad que tira el dado le corre la suerte al mundo**.
+   * Es lo correcto: son la misma partida y el mismo azar, y lo contrario es
+   * exactamente el estado paralelo que se acaba de sacar.
+   *
+   * Y el hueco que queda: **un mundo SIN dios no tiene dónde guardar el entero**,
+   * así que ahí se cae al dado propio de `o.semilla` y el agujero sigue abierto tal
+   * cual — con su `it.fails` en `tests/el-bucle.test.ts`, medido sobre un mundo sin
+   * dios que es justo el caso donde el hash del mundo no puede distinguirlos.
    */
   readonly dado: DadoDelMundo
+  /** El dado de los mundos sin dios. Ver `dado`: ahí no hay ranura donde guardarlo. */
+  readonly #propio: DadoDelMundo
   #ticks = 0
   #porTiempo = 0
   #porFalla = 0
   readonly #fallas: { tick: number; why: string }[] = []
-  /** El instante en que vencía la ventana del último tick. Sólo con reloj de pared. */
-  #vence: number | undefined
+  /** El instante en que terminó el tick anterior. Sólo con reloj de pared. */
+  #ultimoFin: number | undefined
+  /** Cuánto tiempo de pared se debe, en milisegundos. Saturado en cero: ver el encabezado. */
+  #atraso = 0
 
   constructor(state: WorldState, o: PartidaOptions = {}) {
     this.#state = state
-    this.#proy = new Proyeccion(new IndiceDelTick(state))
-    this.dado = dadoDelMundo(o.semilla ?? 0)
+    // La proyección del tick 0 se arma sobre el mundo CON lo que el dios pone, y
+    // `#state` sigue crudo: ver `conLoQueElDiosPone`.
+    this.#proy = new Proyeccion(new IndiceDelTick(conLoQueElDiosPone(state)))
+    this.#propio = dadoDelMundo(o.semilla ?? 0)
+    // Un objeto estable con dos clausuras: `volar` le entrega `tirar` a la
+    // habilidad UNA vez, en el constructor del `Contexto`, así que la función no
+    // puede cambiar de identidad cuando el estado se reemplaza tick a tick.
+    this.dado = {
+      tirar: (() => this.#tirar()) as WorldRng,
+      estado: () => this.#estadoDelDado(),
+    }
     this.#reloj = o.reloj
+  }
+
+  #estadoDelDado(): number {
+    const d = this.#state.dios
+    return d === undefined ? this.#propio.estado() : d.dado
+  }
+
+  /**
+   * Una tirada, con el estado escrito de vuelta EN EL MUNDO.
+   *
+   * Se reemplaza `#state` en el acto y no al final del tick: la fase 1 del tick
+   * pasa por acá antes de `stepWorld`, y si la escritura esperara, el paso del
+   * mundo arrancaría desde el dado viejo y las dos sucesiones se pisarían.
+   */
+  #tirar(): number {
+    const s = this.#state
+    const dios = s.dios
+    if (dios === undefined) return this.#propio.tirar()
+    const d = dadoDe(dios)
+    const v = d.tirar()
+    this.#state = { ...s, dios: { ...dios, dado: d.estado() } }
+    return v
   }
 
   get state(): WorldState {
@@ -168,7 +337,7 @@ export class Partida {
     }
     const ctx = new Contexto(this.#proy, {
       actor: a,
-      rng: this.dado.tirar as WorldRng,
+      rng: this.dado.tirar,
       lugares: this.lugares,
     })
     const v = new Vuelo(skill, ctx, args, { by: a, ...o })
@@ -258,18 +427,24 @@ export class Partida {
       const arranque = reloj()
       // La primera ventana se abre cuando arranca el primer tick: antes de eso no
       // había nada que llegara tarde.
-      if (this.#vence === undefined) this.#vence = arranque
+      if (this.#ultimoFin === undefined) this.#ultimoFin = arranque
       this.tick()
       const fin = reloj()
       const ventana = 1000 / this.#state.hz
-      this.#vence += ventana
-      if (fin > this.#vence) {
-        // Cuántas ventanas ENTERAS pasaron de largo. `floor` y no `ceil`: la
-        // ventana en la que terminamos todavía es nuestra, y la que se pierde es
-        // la siguiente que ya venció cuando fuimos a empezarla.
-        const vencidas = Math.floor((fin - this.#vence) / ventana) + 1
+      // Lo que pasó de reloj desde que terminó el tick anterior, menos lo que
+      // teníamos presupuestado. Ver el encabezado: la SATURACIÓN EN CERO es la
+      // línea entera de la reparación —adelantarse no es crédito— y sin ella el
+      // contador dependía de lo bien que veníamos en vez de lo tarde que llegamos.
+      this.#atraso += fin - this.#ultimoFin - ventana
+      this.#ultimoFin = fin
+      if (this.#atraso < 0) this.#atraso = 0
+      // Cada ventana ENTERA de atraso es un tick que nadie va a correr. Lo que
+      // sobra queda debiéndose: dos ticks de media ventana tarde son uno perdido,
+      // que es lo mismo que dice la definición de arriba.
+      const vencidas = Math.floor(this.#atraso / ventana)
+      if (vencidas > 0) {
         this.#porTiempo += vencidas
-        this.#vence += vencidas * ventana
+        this.#atraso -= vencidas * ventana
       }
     }
     return this.informe

@@ -254,17 +254,25 @@ export class Contexto {
     return this.#muerta
   }
 
-  readonly #muerta: SelfView = {
+  /**
+   * Congelada entera, y no sólo su `at`: es la MISMA vista para todos los pasos
+   * de todas las habilidades de este contexto —se construye una vez y se devuelve
+   * por identidad— así que sin congelarla, una habilidad que le escribiera un
+   * campo se lo dejaría escrito a todas las demás lecturas. Es el mismo argumento
+   * de la DECISIÓN 4 de `vista.ts`, agravado porque acá el objeto no muere ni con
+   * el tick.
+   */
+  readonly #muerta: SelfView = Object.freeze({
     id: '',
     at: Object.freeze({ x: 0, y: 0 }),
     name: '',
     madeByMe: false,
-    joints: [],
-    holding: [],
+    joints: Object.freeze([]) as readonly [],
+    holding: Object.freeze([]) as readonly [],
     capacity: 0,
     stamina: 0,
-    permits: 'reversible',
-  }
+    permits: 'reversible' as const,
+  })
 
   #see(w: Where): BodyView[] {
     const self = this.#self()

@@ -228,6 +228,29 @@ describe('una habilidad que muta el objeto que recibe en vez de devolver uno nue
    * vistas que este paquete tiene. Sin esto, el test de abajo mediría el juguete y
    * no el invariante — y el invariante es lo que se quiere clavar: **mutar `at` no
    * mueve nada**.
+   *
+   * ─── LO QUE ESTE TEST NO PUEDE DETECTAR, dicho con todas las letras ──────
+   *
+   * **Éste es un ESPEJO, no la cobertura.** El sellado que se aplica acá es una
+   * COPIA de la regla, escrita en este helper; el original vive en
+   * `perceive/src/vista.ts` (función `sellar`, DECISIÓN 2). Si mañana alguien saca
+   * ese `Object.freeze` del original, **este test sigue verde** — mide su propia
+   * copia. Es la misma clase de trampa que un espejo de una ley de la física sin
+   * su test de espejo, y acá no se puede cerrar del modo habitual (comparar contra
+   * el original) porque el import está prohibido por el ciclo.
+   *
+   * La cobertura de verdad —contra la `Proyeccion` de producción y contra
+   * `stepWorld`— vive de aquel lado y está escrita como tal:
+   *
+   *   · `perceive/tests/ataque-a-la-costura.test.ts`, «LA COBERTURA REAL DEL
+   *     AGUJERO 2 VIVE ACÁ, y no en `@anima/skills`»;
+   *   · `perceive/tests/la-vista.test.ts`, bloque «(c) mutar `at` no mueve el
+   *     cuerpo».
+   *
+   * Lo que este test SÍ mide, y por eso se queda: que una habilidad **adentro del
+   * sandbox** —código montado con `new Function`, en `"use strict"`— se entera de
+   * la mutación en vez de escribirla en silencio. Eso no se puede probar del otro
+   * lado, porque allá no hay sandbox.
    */
   function worldCtx(m: Mundito): WorldCtx {
     const base = m.ctx() as unknown as Record<string, unknown>
@@ -344,10 +367,16 @@ export function* f(ctx: Ctx): Generator<Intent, Outcome, StepResult> {
     // más barato en asignaciones, y es el único de los dos que hace visible la
     // mutación.
     //
-    // Acá se corre contra el mundito con la misma regla aplicada en `worldCtx`,
-    // porque `@anima/skills` no puede importar `@anima/perceive` sin cerrar un
-    // ciclo de paquetes. La regresión de producción, contra `stepWorld` de
-    // verdad, está en `perceive/tests/la-vista.test.ts`.
+    // OJO CON LO QUE ESTE TEST MIDE: corre contra el mundito con la regla
+    // COPIADA en `worldCtx` —ver el porqué entero ahí arriba—, así que **no
+    // detecta que le saquen el `sellar` al original**. Lo que clava acá es la otra
+    // mitad, la que sólo existe de este lado: que una habilidad ADENTRO del
+    // sandbox se entere de la mutación en vez de escribirla en silencio.
+    //
+    // La cobertura del invariante está en `@anima/perceive`, escrita como tal:
+    // `tests/ataque-a-la-costura.test.ts` («LA COBERTURA REAL DEL AGUJERO 2 VIVE
+    // ACÁ») y `tests/la-vista.test.ts`, bloque «(c) mutar `at` no mueve el
+    // cuerpo».
     const mundo = new Mundito({ cuerpos: [{ id: 'p', at: { x: 3, y: 0 }, name: 'piedra', q: { mass: 5 } }] })
     const m = montar(`export function* habilidad(ctx) {
       let out = 'PISADA'

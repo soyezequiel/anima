@@ -185,10 +185,25 @@ export function unknownRoleRefs(p: Process): readonly string[] {
  *
  * Sin esto el primer fuego de la partida es imposible, porque un mundo decretado
  * por ruido no tiene nada caliente. Y cuesta: TRES SEGUNDOS llevan la madera de
- * 15 a 375 °C —120 grados por segundo— y se comen 48 de `stamina`. Con hambre y
- * poca energía, no puede. Ésa es la distancia entre querer y poder, hecha
- * aritmética. Los tres segundos son tres segundos a cualquier frecuencia; antes
- * eran «60 ticks», que son 2 s a 30 Hz y 3 s a 20 Hz.
+ * 15 a 375 °C —120 grados por segundo—. Los tres segundos son tres segundos a
+ * cualquier frecuencia; antes eran «60 ticks», que son 2 s a 30 Hz y 3 s a 20 Hz.
+ *
+ * ─── LO QUE CUESTA, Y ES POR MASA (ADR II-0010) ─────────────────────────────
+ *
+ * Este comentario decía «y se comen 48 de `stamina`», y ese número no es
+ * reproducible: el precio es `heatCapacity × ΔT / 0,35` y `heatCapacity` es
+ * EXTENSIVA, así que 48 alcanzan para 27,5 gramos de madera. Los tres segundos
+ * cuestan **352,71** para una vara de 0,2 kg, **964,71** para una de 0,55 y
+ * **1748,57** para una de 1 kg — y `stamina` topa en 1000, o sea que la de 1 kg
+ * no se puede encender. Con hambre y poca energía, no puede: ésa es la distancia
+ * entre querer y poder, hecha aritmética. Y de ahí sale, sin que nadie lo
+ * escriba, que **se enciende con yesca y no con leños**. Medido en
+ * `world/tests/el-fuego.test.ts`.
+ *
+ * Los tres segundos, además, no eran ciertos hasta el ADR II-0010: la ley 1
+ * relajaba la temperatura en el mismo tick y las dos se estancaban en 29,4 °C
+ * para esta misma vara. Mientras un `drive` está activo, ninguna ley que relaje
+ * esa cualidad la mueve en contra.
  *
  * La eficiencia 0.35 es lo que hace que no sea una máquina de movimiento
  * perpetuo: sale menos calor del que entra en trabajo.

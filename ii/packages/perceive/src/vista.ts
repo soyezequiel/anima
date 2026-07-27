@@ -57,6 +57,36 @@
 // demuestra `tests/la-vista.test.ts` («la vista se refresca en su lugar»), que
 // guarda la referencia al `ctx` de antes del tick y la lee treinta ticks después
 // — y su contrapositivo al lado: un spread del `ctx` la congela.
+//
+// ─── DECISIÓN 4: la vista entera se congela, y no sólo su `at` ──────────────
+//
+// Sellar el `Placement` cerró la vía por la que una mutación llegaba AL MUNDO.
+// No cerró la otra mitad, y el adversario de este tramo la midió: como la vista
+// se MEMOIZA por `(actor, cuerpo)` y se devuelve por identidad, `b.name = 'PIEDRA
+// FALSA'` sobrevivía al resto del tick — el `see()` siguiente devolvía el mismo
+// objeto mentido mientras `q()` y `can()` seguían contestando la verdad, leyendo
+// `state.bodies`. **La vista y el juez diciendo cosas distintas** es la peor de
+// las combinaciones posibles: es un verde falso que dura toda la partida.
+//
+// Medido antes de la reparación: `at` rebota · `joints` MUTA · `name` MUTA ·
+// `holding` MUTA.
+//
+// La reparación es `Object.freeze` sobre la `BodyView` al salir de la fábrica, y
+// sobre los dos arreglos que cuelgan de ella (`joints` y, en la `SelfView`,
+// `holding`). Por qué se puede pagar, y son las mismas tres razones que sostienen
+// el sellado del `at`:
+//
+//   1. **se paga una vez por cuerpo y por tick**, no por mirada: la caché ya
+//      existía y devuelve el mismo objeto a las diez `see()` del tick. Lo que se
+//      congela es lo que se MIRA —71 cuerpos de 5000 con radio 12— y no el mundo;
+//   2. **no asigna nada**: son los objetos que la vista ya construía;
+//   3. **en `"use strict"` la mutación LANZA**, así que la habilidad se entera.
+//      Contra el `readonly` del tipo —que es lo único que había— no se enteraba
+//      nadie: `readonly` no existe en tiempo de ejecución y no cubre lo que se
+//      carga de un guardado, ni una innata parcheada, ni JS sin tipos.
+//
+// El costo está medido en `tests/banco-la-vista.test.ts` («(c) congelar la vista
+// entera»), contra el banco de 5000 cuerpos y contra los 50 ms del tick a 20 Hz.
 
 import type { Physics } from '@anima/physics'
 import { nameOf, qualityOf } from '@anima/physics'
@@ -154,7 +184,11 @@ export class Proyeccion {
       const memo = cache.get(c.body.id)
       if (memo !== undefined) return memo
     }
-    const joints: JointView[] = c.body.joints.map((j) => ({ a: j.a, b: j.b, strength: j.strength }))
+    // Congelado ACÁ y no al final: es el arreglo que la vista publica, y un
+    // `push` sobre él le inventaba juntas a un cuerpo que no las tiene.
+    const joints: readonly JointView[] = Object.freeze(
+      c.body.joints.map((j) => Object.freeze({ a: j.a, b: j.b, strength: j.strength })),
+    )
     const v: {
       -readonly [K in keyof BodyView]: BodyView[K]
     } = {
@@ -180,7 +214,11 @@ export class Proyeccion {
         if (t !== undefined) v.coveredBy = this.vista(t, quien, hondo + 1)
       }
     }
-    const vista = v as BodyView
+    // DECISIÓN 4: se congela al SALIR de la fábrica, con todos los campos ya
+    // puestos. Las vistas de `supportedBy`/`covering`/`coveredBy` vienen
+    // congeladas de su propia llamada, así que la cadena entera queda cerrada sin
+    // ningún recorrido extra.
+    const vista = Object.freeze(v) as BodyView
     if (hondo === 0) cache.set(c.body.id, vista)
     return vista
   }
@@ -207,13 +245,16 @@ export class Proyeccion {
       const h = this.state.bodies.get(id)
       if (h !== undefined) holding.push(this.vista(h, a.id, 0))
     }
-    return {
+    // El spread de `base` copia campo por campo, así que el congelado de `base` no
+    // viaja: hay que volver a congelar. Y `holding` aparte, por la misma razón que
+    // `joints` — un `push` le ponía cosas en la mano que el mundo no le dio.
+    return Object.freeze({
       ...base,
-      holding,
+      holding: Object.freeze(holding) as readonly BodyView[],
       capacity: a.capacity,
       stamina: qualityOf(c.body, 'stamina', this.phys),
       permits: a.permits,
-    }
+    })
   }
 
   /** Los cuerpos a la vista de esta criatura, en orden canónico de id. */

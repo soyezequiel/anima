@@ -139,9 +139,43 @@ export interface Celda {
   ambiente: number
 }
 
+/**
+ * UN EMPUJE SOSTENIDO sobre este cuerpo, en este paso (ADR II-0010).
+ *
+ * Es un `drive` de un proceso que ALGUIEN está corriendo ahora mismo: `q` es la
+ * cualidad que empuja y `rumbo` para dónde. No dice cuánto —eso ya lo aplicó
+ * quien corre el proceso, antes de llamar acá— y no dice quién: a las leyes no
+ * les importa de qué mano viene.
+ *
+ * ─── Para qué existe ────────────────────────────────────────────────────────
+ *
+ * `friccion` empuja `temperature` a 120 °C por segundo y la ley 1 la relaja
+ * proporcional al hueco al ambiente, así que las dos juntas se estancan en un
+ * punto fijo: 49,8 °C para una madera de 2 kg, contra 300 de ignición. El
+ * comentario de `FRICCION` prometía «tres segundos de 15 a 375 °C» y la cuenta
+ * era exacta —15 + 120×3 = 375— pero suponía que nada lo relajaba. Dos piezas
+ * escritas por separado que nadie compuso. Ver el ADR II-0010.
+ */
+export interface Empuje {
+  readonly q: QualityId
+  readonly rumbo: 1 | -1
+}
+
 export interface Entorno {
   celda: Celda
   fuente?: Fuente
+  /**
+   * Los empujes que un proceso sostiene sobre ESTE cuerpo en ESTE paso. Ausente
+   * es lo normal: sólo lo trae el cuerpo que alguien está frotando (o mojando, o
+   * lo que el modelo escriba mañana).
+   *
+   * Va en el entorno y no en el cuerpo a propósito. Una mano que frota es algo
+   * que le pasa al cuerpo DESDE AFUERA y dura un paso, igual que la celda y la
+   * fuente; guardarlo en `Body.state` lo metería en el hash del mundo y en el
+   * snapshot, y habría que acordarse de borrarlo — que es la mitad de los modos
+   * de falla de una caché.
+   */
+  empujes?: readonly Empuje[]
 }
 
 export const CELDA_AL_AIRE: Celda = { oxygen: 1, wet: 0, ambiente: T_AMBIENTE }
@@ -733,6 +767,54 @@ function recortar(b: Body): Body {
   return { ...b, state }
 }
 
+// ─── La regla de los empujes: una ley no relaja contra una mano ──────────────
+//
+// ADR II-0010, y es una REGLA y no un caso de la ley 1: mientras un `drive` está
+// activo sobre una cualidad de un cuerpo, ninguna ley que RELAJE esa cualidad la
+// mueve en contra del empuje. Vale igual para `temperature` (ley 1) y para
+// `moisture` (ley 11), y va a valer para la que el modelo escriba mañana.
+//
+// ─── Qué NO suspende, y es la mitad de la decisión ──────────────────────────
+//
+// Suspende la RELAJACIÓN —el tirón del mundo hacia donde las cosas quedan cuando
+// nadie hace nada, que es justamente lo que deja de ser cierto mientras alguien
+// frota— y nada más. Las leyes que TRANSFORMAN la materia siguen enteras: la 3
+// piroliza y quema, la 4 transmuta, la 5 cocina, la 6 pudre. Por eso la vara que
+// se frota SÍ prende cuando pasa su punto de ignición, que es todo el punto.
+//
+// Y es EN CONTRA y no «a secas»: si el entorno empuja para el MISMO lado que la
+// mano —un cuerpo que alguien frota adentro del fuego—, la ley 1 sigue
+// calentándolo. Suspender la ley entera haría que frotar algo en la fogata lo
+// dejara frío, que es absurdo, y el signo es lo único que hace falta para
+// distinguir los dos casos.
+
+/**
+ * ¿Hay un empuje sostenido sobre `q` que va al revés que este `delta`?
+ *
+ * Es un PREDICADO y no una función que devuelve el `delta` recortado, y la
+ * diferencia costó una huella de conducta. La versión que devolvía el número
+ * obligaba a escribir la ley 11 como `moisture + f(haciaLaCelda − secado)`, y eso
+ * NO es la misma cuenta que `moisture + haciaLaCelda − secado`: en IEEE-754 la
+ * asociatividad no vale, y la huella de `paso()` —que mezcla los bits de cada
+ * double que las leyes escriben— se movió 3705094564 → 139010573 sin que ninguna
+ * conducta hubiera cambiado. Con un predicado, la rama que no suspende conserva
+ * la expresión LETRA POR LETRA.
+ *
+ * El camino sin empujes —todos los cuerpos del mundo salvo el que alguien está
+ * frotando— sale en la primera línea, así que `paso()` sobre un `Entorno` sin
+ * `empujes` es bit a bit el de antes de este ADR: por eso ni la huella de
+ * conducta de `@anima/physics` ni el barrido térmico se mueven.
+ */
+function pelea(e: Entorno, q: QualityId, delta: number): boolean {
+  const empujes = e.empujes
+  if (empujes === undefined) return false
+  for (const x of empujes) {
+    if (x.q !== q) continue
+    if (x.rumbo > 0 ? delta < 0 : delta > 0) return true
+  }
+  return false
+}
+
 // ─── Ley 1 ───────────────────────────────────────────────────────────────────
 
 /**
@@ -781,7 +863,12 @@ function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura, dt: Dt): Bod
   // que es exactamente lo que pasa si `dt` se agranda demasiado, y por eso el
   // `min` es también el techo de estabilidad de la integración.
   const acople = cap > 0 ? Math.min(1, porPaso(H_PERDIDA_POR_SEGUNDO, dt) / cap) : 1
-  const t = l.temperature + (objetivo - l.temperature) * acople
+  // El `pelea` es el ADR II-0010: si alguien está frotando este cuerpo, la
+  // relajación no le come el empuje. Sigue calentándolo si el objetivo está
+  // ARRIBA —un cuerpo frotado adentro del fuego se calienta igual—; lo único que
+  // se suspende es el tirón hacia abajo.
+  const relaja = (objetivo - l.temperature) * acople
+  const t = pelea(e, 'temperature', relaja) ? l.temperature : l.temperature + relaja
   // `conCualidad` y no `conEstado`: esto corre para TODO cuerpo en TODO tick, y
   // `conEstado` obliga a armar un objeto de cambios de una sola entrada para
   // desarmarlo enseguida. El estado resultante es el mismo, clave por clave.
@@ -877,7 +964,17 @@ function potenciaEntera(x: number, n: number): number {
 function leyHumedad(b: Body, e: Entorno, l: Lectura, dt: Dt): Body {
   const haciaLaCelda = (e.celda.wet - l.moisture) * porPaso(TASA_MOJADO, dt)
   const secado = Math.max(0, l.temperature - e.celda.ambiente) * porPaso(SECADO_POR_GRADO, dt)
-  const m = l.moisture + haciaLaCelda - secado
+  // Los dos términos se juzgan JUNTOS (ADR II-0010) y no por separado: los dos
+  // son la misma relajación —hacia la humedad de la celda y hacia lo que el calor
+  // deja—, y lo que la regla mira es para dónde se mueve la cualidad al final del
+  // paso, no cuántos sumandos la movieron.
+  //
+  // La rama que NO suspende es la expresión original letra por letra. Ver `pelea`:
+  // `x + f(a − b)` no es `x + a − b` en IEEE-754, y esa diferencia sola movió la
+  // huella de conducta.
+  const m = pelea(e, 'moisture', haciaLaCelda - secado)
+    ? l.moisture
+    : l.moisture + haciaLaCelda - secado
   // Misma razón que en la ley 1: una sola cualidad, y esto corre por cuerpo y
   // por tick.
   return conCualidad(b, 'moisture', clampToRange('moisture', m))

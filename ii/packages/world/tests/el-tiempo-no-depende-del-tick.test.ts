@@ -25,22 +25,27 @@
 //
 // ─── EL VEREDICTO, EN UNA LÍNEA ─────────────────────────────────────────────
 //
-// La promesa SE CUMPLE para los cinco hechos que el criterio pide y que llegan a
-// ocurrir —cocinar el filete, carbonizar la rama, deshilachar, atar y sacar—: el
-// peor desvío sobre las cuatro frecuencias es 1,33%, y es CUANTIZACIÓN DEL TICK
-// y no error de integración. Descontada la cuantización, el peor error de
-// integración medido es 0,48%.
+// La promesa SE CUMPLE para los SEIS hechos que el criterio pide —cocinar el
+// filete, carbonizar la rama, deshilachar, atar, sacar y llevar la vara a
+// 375 °C—: el peor desvío sobre las cuatro frecuencias es CUANTIZACIÓN DEL TICK
+// y no error de integración.
 //
-// Y NO se cumple en dos lugares, los dos medidos abajo con su número:
+// Y NO se cumple en un lugar, medido abajo con su número: **caminar se cuenta en
+// ticks**: diez celdas cuestan 10/hz segundos, o sea que a 50 Hz la criatura
+// camina cinco veces más rápido que a 10. Es perilla de rendimiento moviendo el
+// ritmo del juego, que es exactamente lo que el ADR II-0007 prohíbe. Y no es de
+// la física: vive en `@anima/world`, que es la mitad que la migración del
+// ADR II-0008 no tocó.
 //
-//   1. `friccion` no llega a 375 °C a ninguna frecuencia —no llega a 34— y la
-//      meseta a la que sí llega se corre un 40% entre 10 y 50 Hz;
-//   2. **caminar se cuenta en ticks**: diez celdas cuestan 10/hz segundos, o sea
-//      que a 50 Hz la criatura camina cinco veces más rápido que a 10.
+// ─── EL HUECO 1 SE CERRÓ, Y SU HISTORIA QUEDA ACÁ ───────────────────────────
 //
-// El segundo es perilla de rendimiento moviendo el ritmo del juego, que es
-// exactamente lo que el ADR II-0007 prohíbe. Y no es de la física: vive en
-// `@anima/world`, que es la mitad que la migración del ADR II-0008 no tocó.
+// Había otro —**`friccion` no llegaba a 375 °C a ninguna frecuencia**, no
+// llegaba a 34, y la meseta a la que sí llegaba se corría un 41% entre 10 y
+// 50 Hz— y lo cerró el ADR II-0010: mientras un `drive` empuja una cualidad,
+// ninguna ley la relaja en contra, así que la ley 1 dejó de comerse los 120 °C
+// por segundo que la fricción entrega. No se tocó ninguna constante. Su bloque
+// sigue abajo, con el `it.fails` convertido en `it` y los números de antes al
+// lado de los de ahora.
 //
 // ─── EL HUECO 3 SE CERRÓ, Y SU HISTORIA QUEDA ACÁ ───────────────────────────
 //
@@ -144,9 +149,22 @@ function elMundo(hz: number): WorldState {
     enElPiso(criatura('cira', 500), EN(-20, 4)),
     enLaMano(cana('cana'), EN(-20, 4), 'cira'),
     enElPiso(cuerpo('banco', 'pescado', 5), EN(-19, 4)),
+    // ─── LA VARA DE DINA PESA 0,2 kg Y NO 1, DESDE EL ADR II-0010 ───────────
+    //
+    // No es aflojar el banco: es que el banco pueda expresar lo que mide. El
+    // precio de calentar es `heatCapacity × ΔT / 0,35` y `heatCapacity` es
+    // EXTENSIVA, así que llevar una vara de 1 kg de 15 a 375 °C cuesta 1748,57 de
+    // `stamina` y el catálogo topa `stamina` en 1000: con la vara vieja, «llega a
+    // 375» era imposible por falta de FUERZAS, no por la ley 1, y el hueco 1
+    // quedaría medio cerrado y medio confundido. Con 0,2 kg cuesta 352,71 y lo
+    // que se mide es la TASA, que es lo que el ADR II-0008 promete. El número de
+    // la vara de 1 kg queda medido igual, abajo, en su propio test.
+    //
+    // Y arrancan a AMBIENTE: un cuerpo sin `temperature` escrita nace en 0 °C y el
+    // primer tick se le va en llegar a los 15, lo que corre el hito 0,1 s a 10 Hz.
     enElPiso(criatura('dina', 1000), EN(-20, 6)),
-    enLaMano(cuerpo('va', 'madera', 1), EN(-20, 6), 'dina'),
-    enLaMano(cuerpo('vb', 'madera', 1), EN(-20, 6), 'dina'),
+    enLaMano(cuerpo('va', 'madera', 0.2, { temperature: T_AMBIENTE }), EN(-20, 6), 'dina'),
+    enLaMano(cuerpo('vb', 'madera', 0.2, { temperature: T_AMBIENTE }), EN(-20, 6), 'dina'),
   ]
   return mundo({
     hz,
@@ -355,8 +373,13 @@ function margen(hz: number, referencia: number): number {
   return dtDeFrecuencia(hz) + dtDeFrecuencia(HZ_DE_REFERENCIA) + TOLERANCIA_DE_INTEGRACION * referencia
 }
 
-/** Los cinco hechos que SÍ ocurren. `vara375` no ocurre nunca: ver su bloque. */
-const OCURREN: readonly Hecho[] = ['filete', 'rama', 'deshilachar', 'atar', 'sacar']
+/**
+ * Los SEIS hechos, todos los que el criterio pide. `vara375` entró con el ADR
+ * II-0010: hasta entonces no ocurría a ninguna frecuencia y el banco lo medía
+ * aparte, en un bloque de hueco abierto. Ahora ocurre y se compara igual que los
+ * otros cinco, que es donde tiene que estar.
+ */
+const OCURREN: readonly Hecho[] = ['filete', 'rama', 'deshilachar', 'atar', 'sacar', 'vara375']
 
 const log = (lineas: readonly string[]): void => {
   console.log(['', ...lineas, ''].join('\n'))
@@ -497,41 +520,53 @@ describe('el error de integración, medido y no estimado', () => {
     expect(ultima).toBeLessThan(0.01)
   })
 
-  it('documentado · la meseta de frotar se corre EXACTAMENTE un paso del drive', () => {
-    // Éste es el error de integración en su forma más limpia, y no se disimula:
-    // el tick aplica primero la intención y después las leyes, o sea que es un
-    // método de PARTICIÓN de operadores, y su error es de primer orden en `dt`.
+  it('YA NO HAY MESETA · frotar llega al techo del drive a las cuatro frecuencias', () => {
+    // ─── LO QUE ESTE BLOQUE DECÍA CUANDO EL HUECO 1 ESTABA ABIERTO ──────────
     //
-    // La cuenta cerrada, para la vara de madera de 1 kg (`heatCapacity` = 1,7):
+    // Se llamaba «documentado · la meseta de frotar se corre EXACTAMENTE un paso
+    // del drive», y medía el error de partición de operadores en su forma más
+    // limpia: el tick aplica primero la intención y después las leyes, así que
+    // sobre la vara de 1 kg de entonces (`heatCapacity` = 1,7) la cuenta cerrada
+    // daba
     //
-    //   por paso   la fricción empuja  120/hz  grados
-    //   por paso   la ley 1 devuelve   a·(T − ambiente),  a = (10/hz)/heatCapacity
-    //   punto fijo T* = ambiente + 12·heatCapacity − 120/hz
+    //   punto fijo   T* = ambiente + 12·heatCapacity − 120/hz
     //
-    // El término que sobra —`120/hz`— es EXACTAMENTE un paso del drive: lo que la
-    // fricción empuja al principio del tick y la ley 1 se lleva al final. Por eso
-    // la diferencia entre dos mesetas no depende del ambiente, ni de la masa, ni
-    // de la calibración: es la diferencia de los dos pasos, y nada más.
+    // y las cuatro mesetas medidas eran 23,40 / 29,40 / 30,60 / 33,00 °C a 10, 20,
+    // 25 y 50 Hz — un 41% de corrimiento entre la primera y la última, y el
+    // término que sobraba, `120/hz`, era EXACTAMENTE un paso del drive: lo que la
+    // fricción empujaba al principio del tick y la ley 1 se llevaba al final.
+    //
+    // ─── Y POR QUÉ YA NO ────────────────────────────────────────────────────
+    //
+    // El ADR II-0010: mientras el `drive` está activo, la ley 1 no relaja esa
+    // cualidad EN CONTRA del empuje. El término que sobraba era justamente ése, y
+    // con él se fue la meseta entera. Ahora la vara sube 120 °C por segundo hasta
+    // el `toward` del proceso, 400, a cualquier frecuencia.
+    //
+    // El bloque se conserva —convertido, con el número viejo escrito arriba—
+    // porque un hueco que se cierra sin dejar rastro se puede volver a abrir sin
+    // que nadie lo note. Es la misma decisión que tomó el ADR II-0009 con el
+    // hueco 3.
+    const drive = FISICA.processes.get('friccion')?.effects[0]
+    if (drive === undefined || drive.k !== 'drive') throw new Error('friccion cambió de forma')
     const filas: string[] = []
-    for (let i = 1; i < HZ.length; i++) {
-      const bajo = HZ[i - 1] as number
-      const alto = HZ[i] as number
-      const medido = corridaDe(alto).mesetaDeLaVara - corridaDe(bajo).mesetaDeLaVara
-      const esperado = 120 / bajo - 120 / alto
-      filas.push(
-        `  de ${String(bajo).padStart(3)} a ${String(alto).padStart(3)} Hz:  ` +
-          `medido ${medido.toFixed(4)} °C   ·   un paso del drive ${esperado.toFixed(4)} °C`,
-      )
-      expect(medido).toBeCloseTo(esperado, 2)
+    for (const hz of HZ) {
+      const pico = corridaDe(hz).mesetaDeLaVara
+      // Llega al techo del `drive` y no a un punto fijo entre el empuje y la ley.
+      expect([hz, pico]).toEqual([hz, drive.toward])
+      filas.push(`  ${String(hz).padStart(3)} Hz → ${pico.toFixed(2)} °C`)
     }
+    // Las cuatro coinciden EXACTAMENTE, y antes se corrían un 41%.
+    const mesetas = HZ.map((hz) => corridaDe(hz).mesetaDeLaVara)
+    expect(new Set(mesetas).size).toBe(1)
     log([
-      '══ LA MESETA DE FROTAR ═════════════════════════════════════════════════',
-      `  ${HZ.map((hz) => `${String(hz)} Hz → ${corridaDe(hz).mesetaDeLaVara.toFixed(2)} °C`).join('   ')}`,
+      '══ LA MESETA DE FROTAR · CERRADA (ADR II-0010) ═════════════════════════',
       ...filas,
-      '  (y ninguna llega a 375: ver el hueco de abajo)',
+      '  (antes: 23,40 / 29,40 / 30,60 / 33,00 °C — un 41% de corrimiento y ninguna llegaba a 375)',
     ])
-    // El acoplamiento de la ley 1 es lo que pone el techo, y está acá con nombre
-    // para que se vea de dónde sale el 12: `12 = 120 / H_PERDIDA_POR_SEGUNDO`.
+    // El acoplamiento de la ley 1 sigue siendo el que era, y está acá con nombre
+    // para que se vea que la reparación NO tocó ninguna constante: lo que cambió
+    // es cuándo se aplica, no cuánto vale.
     expect(H_PERDIDA_POR_SEGUNDO).toBe(10)
     expect(T_AMBIENTE).toBe(15)
   })
@@ -541,65 +576,64 @@ describe('el error de integración, medido y no estimado', () => {
 
 describe('lo que NO cumple la promesa, medido', () => {
   // ──────────────────────────────────────────────────────────────────────────
-  // HUECO 1 — `friccion` no llega a 375 °C, y no es culpa de la migración.
+  // HUECO 1 — `friccion` NO LLEGABA A 375 °C. CERRADO POR EL ADR II-0010.
   //
-  // El comentario de `FRICCION` en `physics/src/process.ts` dice: «TRES SEGUNDOS
-  // llevan la madera de 15 a 375 °C —120 grados por segundo— y se comen 48 de
-  // `stamina`». Las tres partes son falsas en el mundo, y las tres por la misma
-  // razón: esa cuenta mira el drive solo, y en el mundo la ley 1 corre en el
-  // mismo tick.
+  // Lo que decía este bloque cuando estaba abierto: «El comentario de `FRICCION`
+  // en `physics/src/process.ts` dice: *TRES SEGUNDOS llevan la madera de 15 a
+  // 375 °C —120 grados por segundo— y se comen 48 de `stamina`*. Las tres partes
+  // son falsas en el mundo, y las tres por la misma razón: esa cuenta mira el
+  // drive solo, y en el mundo la ley 1 corre en el mismo tick», con
   //
-  //   · el techo:   T* = 15 + 12·heatCapacity − 120/hz. Para llegar a 375 hace
-  //                 falta `heatCapacity` ≥ 30, o sea una vara de madera de 17,6 kg.
-  //   · el precio:  el drive cobra `heatCapacity · ΔT / 0,35` de `stamina`, o sea
-  //                 342,86 · heatCapacity por segundo. Con `heatCapacity` = 30
-  //                 son 10.285 por segundo, y `stamina` tiene techo 1000 en el
-  //                 catálogo: alcanza para 0,097 s de frotar, o sea 11,7 grados.
-  //   · los 48:     una vara de 1 kg gasta los 1000 de `stamina` en 1,7 s.
+  //   · el techo:   T* = 15 + 12·heatCapacity − 120/hz. Para llegar a 375 hacía
+  //                 falta `heatCapacity` ≥ 30, o sea una vara de madera de 17,6 kg
+  //                 — que además NO ES PORTABLE, porque `portable` topa en 8 kg.
+  //                 No es que la aritmética no cerrara por poco: no había ningún
+  //                 cuerpo del mundo con el que cerrara.
+  //   · las cuatro mesetas medidas: 23,40 / 29,40 / 30,60 / 33,00 °C.
   //
-  // Y hay un tercer candado, que cierra la puerta desde afuera: `friccion` pide
-  // `arrangement: held`, y la vara de 17,6 kg que haría falta NO ES PORTABLE —el
-  // catálogo topa `portable` en 8 kg—, así que la criatura no puede ni levantarla.
-  // No es que la aritmética no cierre por poco: no hay ningún cuerpo del mundo con
-  // el que cierre.
+  // Ahora **la vara llega a 375 °C en 3,00 s a las cinco frecuencias
+  // admisibles**, que es exactamente lo que el comentario promete. Y no se tocó
+  // ninguna constante de calibración: `H_PERDIDA_POR_SEGUNDO` sigue valiendo 10 y
+  // `porSegundo` sigue valiendo 120. Lo que cambió es CUÁNDO se aplica la ley 1 —
+  // mientras un `drive` empuja una cualidad, ninguna ley la relaja en contra.
   //
-  // O sea que **la única fuente primordial de calor del mundo no puede encender
-  // nada**, y eso es anterior al ADR II-0008: con las tasas por tick, el mismo
-  // punto fijo era 15 + 12·heatCapacity − 6 a cualquier frecuencia. Lo que la
-  // migración agregó no es el techo, es que el techo dependa de la frecuencia.
+  // Lo que NO cerró el ADR II-0010, y hay que decirlo acá porque este archivo es
+  // donde se buscaría: **el precio**. Encender cuesta `heatCapacity × ΔT / 0,35`
+  // y `heatCapacity` es extensiva, así que la vara de 1 kg que este banco usaba
+  // cuesta 1748,57 de `stamina` contra un techo de catálogo de 1000. Por eso el
+  // banco pasó a una vara de 0,2 kg: se enciende con yesca, no con leños. La tabla
+  // entera está en `tests/el-fuego.test.ts`.
   //
-  // QUÉ HARÍA FALTA PARA CERRARLO: una decisión de calibración escrita —bajar
-  // `H_PERDIDA_POR_SEGUNDO`, subir la eficiencia del `poweredBy`, o que frotar
-  // caliente una zona de contacto y no el cuerpo entero— y volver a correr el
-  // barrido térmico. Es un ADR, no un parche.
-  it('documentado · lo lejos que llega frotar, y lo que cuesta', () => {
+  // Y los «48 de stamina» del comentario NO son reproducibles con ninguna vara
+  // levantable: corresponden a 27,5 gramos de madera. Medido en `el-fuego`.
+  it('documentado · lo que frotar cuesta ahora, y lo que costaba la vara vieja', () => {
     for (const hz of HZ) {
       const c = corridaDe(hz)
-      expect([hz, Number.isNaN(c.segundos.vara375)]).toEqual([hz, true])
-      // La meseta cae donde dice la cuenta cerrada, con el ambiente real del
-      // banco (15 °C más los 0,33 que aportan las brasas a 22 celdas).
-      expect([hz, c.mesetaDeLaVara > 20 && c.mesetaDeLaVara < 40]).toEqual([hz, true])
+      // LLEGA, y en el segundo que la cuenta predice. El margen es un tick.
+      expect([hz, Number.isNaN(c.segundos.vara375)]).toEqual([hz, false])
+      expect([hz, Math.abs(c.pasos.vara375 - 3 * hz) <= 1]).toEqual([hz, true])
     }
-    // Y la vara con la que la cuenta cerraría no se puede ni agarrar: `friccion`
-    // pide tenerla en la mano y `portable` topa en 8 kg. El techo de 375 no está
-    // lejos, está afuera.
+    // La vara de 1 kg que este banco usaba: el techo de `stamina` no le alcanza.
+    // Es el motivo por el que el banco pesa 0,2 kg y no un aflojamiento.
+    const deUnKilo = qualityOf(cuerpo('vieja', 'madera', 1), 'heatCapacity', FISICA)
+    const costoDeUnKilo = (deUnKilo * (375 - T_AMBIENTE)) / 0.35
+    expect(Number(costoDeUnKilo.toFixed(2))).toBe(1748.57)
+    expect(costoDeUnKilo).toBeGreaterThan(1000)
+    // Y la vara que la cuenta VIEJA necesitaba sigue sin poderse agarrar: queda
+    // acá porque es el número que explicaba por qué el hueco no era de calibración.
     const masaQueHaríaFalta = 30 / 1.7
     expect(masaQueHaríaFalta).toBeGreaterThan(8)
-    const varona = cuerpo('varona', 'madera', masaQueHaríaFalta)
-    expect(qualityOf(varona, 'portable', FISICA)).toBe(0)
-    // Y el orden es el que la cuenta predice: más fino muestrea, más alto llega.
-    expect(corridaDe(10).mesetaDeLaVara).toBeLessThan(corridaDe(50).mesetaDeLaVara)
-    const salto =
-      (corridaDe(50).mesetaDeLaVara - corridaDe(10).mesetaDeLaVara) / corridaDe(10).mesetaDeLaVara
-    expect(salto).toBeGreaterThan(0.35)
+    expect(qualityOf(cuerpo('varona', 'madera', masaQueHaríaFalta), 'portable', FISICA)).toBe(0)
     log([
-      '══ EL HUECO 1 ═════════════════════════════════════════════════════════',
-      `  frotar no llega a 375 °C a ninguna frecuencia. La meseta se corre un ${(salto * 100).toFixed(1)}%`,
-      `  entre 10 y 50 Hz: ${corridaDe(10).mesetaDeLaVara.toFixed(2)} °C contra ${corridaDe(50).mesetaDeLaVara.toFixed(2)} °C.`,
+      '══ EL HUECO 1 · CERRADO (ADR II-0010) ═════════════════════════════════',
+      `  ${HZ.map((hz) => `${String(hz)} Hz → ${corridaDe(hz).segundos.vara375.toFixed(3)} s`).join('   ')}`,
+      '  (antes: no llegaba a ninguna frecuencia, y la meseta se corría un 41% entre 10 y 50 Hz)',
+      `  lo que queda abierto es el PRECIO: la vara de 1 kg de este banco costaría ${costoDeUnKilo.toFixed(2)}`,
+      '  de stamina y el catálogo topa en 1000. Se enciende con yesca, no con leños.',
     ])
   })
 
-  it.fails('SIGUE ABIERTO · frotar tendría que llevar la vara de 15 a 375 °C, y no llega', () => {
+  it('CERRADO · frotar lleva la vara de 15 a 375 °C, a las cuatro frecuencias', () => {
     for (const hz of HZ) expect(Number.isNaN(corridaDe(hz).segundos.vara375)).toBe(false)
   })
 
@@ -790,27 +824,52 @@ describe('el borde de abajo: por qué el rango soportado no es «cualquiera»', 
     //   a 50 Hz  ≤ 0,2   (madera ≤ 0,12 kg)
     //
     // O sea que bajar la frecuencia no muestrea el mismo mundo más grueso: mete
-    // más cuerpos adentro de un régimen distinto. Y no es teórico — abajo está
-    // medido con la única fuente de calor que la criatura tiene.
+    // más cuerpos adentro de un régimen distinto.
+    //
+    // ─── CÓMO SE MEDÍA ESTO ANTES DEL ADR II-0010, Y POR QUÉ YA NO ─────────
+    //
+    // Se medía FROTANDO: media vara de madera no se calentaba nada a 10 Hz
+    // —quedaba clavada en 15 °C, porque la ley 1 le devolvía al final del tick
+    // exactamente lo que la fricción le había puesto al principio— y sí se
+    // calentaba a 20, 25 y 50. Ese síntoma se fue con el ADR II-0010: mientras la
+    // mano empuja, la ley no relaja en contra, así que ahora la vara llega al
+    // `toward` del proceso a las cuatro frecuencias.
+    //
+    // La saturación NO se fue: se fue el síntoma que la mostraba. Ahora se mide
+    // donde sigue mandando, que es la RELAJACIÓN —el cuerpo caliente que nadie
+    // sostiene—, y es exactamente el caso que decide si un fuego dura: una brasa
+    // con `heatCapacity` ≤ 10/hz **cae al ambiente en un solo tick**.
     for (const hz of HZ) expect(H_PERDIDA_POR_SEGUNDO / hz).toBe(10 / hz)
     const filas: string[] = []
     for (const masa of [0.5, 1]) {
-      const medidas = HZ.map((hz) => frotarUnaVaraDe(masa, hz))
+      const cap = masa * 1.7
+      const medidas = HZ.map((hz) => unTickDeEnfriamiento(masa, hz))
       filas.push(
-        `  vara de madera de ${masa.toFixed(1)} kg (heatCapacity ${(masa * 1.7).toFixed(2)}):  ` +
+        `  brasa de madera de ${masa.toFixed(1)} kg (heatCapacity ${cap.toFixed(2)}) a 400 °C, un tick:  ` +
           HZ.map((hz, i) => `${String(hz)} Hz → ${(medidas[i] as number).toFixed(2)} °C`).join('   '),
       )
       if (masa === 0.5) {
-        // LA MEDIDA QUE DECIDE EL RANGO: media vara de madera NO SE CALIENTA NADA
-        // a 10 Hz —queda clavada en el ambiente— y sí se calienta a 20, 25 y 50.
-        // No es un desvío del 1%: es que a 10 Hz frotar no hace nada.
+        // LA MEDIDA QUE DECIDE EL RANGO: media vara de madera (`heatCapacity`
+        // 0,85 ≤ 1) cae al ambiente EN UN TICK a 10 Hz, y a las otras tres no.
+        // No es un desvío del 1%: es otro régimen.
+        expect(cap).toBeLessThanOrEqual(H_PERDIDA_POR_SEGUNDO / 10)
         expect(medidas[0]).toBe(T_AMBIENTE)
         for (let i = 1; i < HZ.length; i++) expect(medidas[i]).toBeGreaterThan(T_AMBIENTE)
       }
+      if (masa === 1) {
+        // Y con `heatCapacity` 1,7 > 1 ya no satura a ninguna de las cuatro.
+        for (const m of medidas) expect(m).toBeGreaterThan(T_AMBIENTE)
+      }
     }
+    // Y la contracara, que es lo que el ADR II-0010 agregó: frotando, la vara
+    // llega al mismo techo a las cuatro frecuencias, satura o no satura.
+    const frotadas = HZ.map((hz) => frotarUnaVaraDe(0.5, hz))
+    expect(new Set(frotadas).size).toBe(1)
     log([
       '══ EL BORDE DE ABAJO ══════════════════════════════════════════════════',
       ...filas,
+      `  (frotando, en cambio, la de 0,5 kg llega a ${(frotadas[0] as number).toFixed(2)} °C a las cuatro:`,
+      '   ésa es la mitad que el ADR II-0010 sacó del régimen)',
       '  RECOMENDACIÓN: el rango soportado son 20–50 Hz. 10 Hz sigue siendo',
       '  admisible —su `dt` es exacto— pero mete en régimen saturado a cuerpos de',
       '  masa corriente, y ahí la frecuencia deja de ser una perilla de',
@@ -833,6 +892,22 @@ describe('el borde de abajo: por qué el rango soportado no es «cualquiera»', 
     expect(H_PERDIDA_POR_SEGUNDO / heatCapacityDeUnaHebra).toBeGreaterThan(50)
   })
 })
+
+/**
+ * A cuánto queda, DESPUÉS DE UN SOLO TICK, una brasa de esa masa a 400 °C que
+ * nadie sostiene. Es la saturación del acople de la ley 1 puesta a la vista: si
+ * `heatCapacity ≤ 10/hz`, el acople vale 1 y el cuerpo no se acerca al ambiente,
+ * se PONE en el ambiente.
+ */
+function unTickDeEnfriamiento(masa: number, hz: number): number {
+  const w = mundo({
+    hz,
+    bodies: [enElPiso(cuerpo('brasa', 'madera', masa, { temperature: 400 }), EN(0, 0))],
+  })
+  const c = stepWorld(w, []).state.bodies.get('brasa')
+  if (c === undefined) throw new Error('la brasa desapareció')
+  return qualityOf(c.body, 'temperature', w.phys)
+}
 
 /** La temperatura más alta a la que llega una vara frotada cinco segundos. */
 function frotarUnaVaraDe(masa: number, hz: number): number {

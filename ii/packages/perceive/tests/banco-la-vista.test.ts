@@ -257,6 +257,85 @@ describe('(b) sellar la celda contra clonarla', () => {
   })
 })
 
+describe('(c) congelar la vista entera, y no sólo su `at`', () => {
+  it('lo que agrega el congelado, medido contra el sellado que ya estaba', () => {
+    // La DECISIÓN 4 de `src/vista.ts`: la vista se memoiza y se devuelve por
+    // identidad, así que `b.name = 'PIEDRA FALSA'` sobrevivía al tick entero
+    // mientras `q()` y `can()` seguían contestando la verdad. La reparación es
+    // `Object.freeze` sobre la `BodyView` y sobre `joints`/`holding`, y lo que se
+    // mide acá es lo ÚNICO discutible: cuánto cuesta.
+    //
+    // Se mide el MARGINAL —el congelado y nada más— restándole a la pasada
+    // completa el costo de armar los mismos objetos sin congelarlos. Medir sólo la
+    // pasada completa mezclaría el congelado con la asignación, que es lo que la
+    // vista paga igual.
+    const w = mundoGrande()
+    const proy = new Proyeccion(new IndiceDelTick(w))
+    const vistos = proy.aLaVista({ x: 0, y: 0 }, 'ella')
+
+    // Objetos equivalentes a los que la fábrica arma, frescos en cada pasada: no
+    // se puede medir congelar dos veces lo mismo, que es gratis.
+    const frescas = (): { joints: unknown[] }[] =>
+      vistos.map((v) => ({ id: v.id, at: v.at, name: v.name, madeByMe: v.madeByMe, joints: [] }))
+
+    frescas()
+    const msSolaAsignacion = mejorDe(5, () => {
+      for (let t = 0; t < TICKS; t++) frescas()
+    })
+    const msConCongelado = mejorDe(5, () => {
+      for (let t = 0; t < TICKS; t++) {
+        for (const o of frescas()) {
+          Object.freeze(o.joints)
+          Object.freeze(o)
+        }
+      }
+    })
+    const marginal = (msConCongelado - msSolaAsignacion) / TICKS
+
+    console.log(
+      [
+        '',
+        '─── (c) congelar la vista entera ───',
+        `armar las ${String(vistos.length)} vistas del tick, sin congelar     ${(msSolaAsignacion / TICKS).toFixed(3)} ms/tick`,
+        `las mismas, congelándolas (vista + juntas)         ${(msConCongelado / TICKS).toFixed(3)} ms/tick`,
+        `                            LO QUE AGREGA          ${marginal.toFixed(3)} ms/tick  (${((marginal / 50) * 100).toFixed(3)}% del tick a 20 Hz)`,
+        '',
+        'contra lo que ya estaba medido en este mismo banco, en corridas sucesivas:',
+        '  clonar la celda por cuerpo y por tick (5000)     0,075–0,157 ms/tick',
+        '  sellar el `at` (5000 ya congeladas)              0,147–0,206 ms/tick',
+        '  el tick entero de la percepción (5000 cuerpos)   0,67–0,72 ms/tick',
+        '',
+      ].join('\n'),
+    )
+
+    // ─── LO QUE SE AFIRMA, Y POR QUÉ ES ESTA COTA ─────────────────────────
+    //
+    // El congelado se paga sobre lo que se MIRA —71 cuerpos de 5000 con radio 12—
+    // y UNA vez por tick y por cuerpo, porque la caché de vistas ya devolvía el
+    // mismo objeto a las diez `see()` del tick. O sea que la escala de esta
+    // medición es la real y no la del mundo entero, que es la diferencia con el
+    // sellado del `at` (que se mide sobre 5000 a propósito, porque ahí la
+    // pregunta era otra).
+    //
+    // La cota absoluta va floja —1% del tick— por la misma razón que la del bloque
+    // (a): el proceso es compartido con los otros ocho archivos y una pausa del
+    // recolector cae donde cae. El número fino se lee del `console.log`.
+    expect(marginal).toBeLessThan(0.5)
+  })
+
+  it('y se congela lo que se MIRA, una vez por tick: la caché no se rompió', () => {
+    // La mitad del argumento de costo. Si el congelado se pagara por MIRADA en vez
+    // de por tick, la cuenta de arriba habría que multiplicarla por diez.
+    const w = mundoGrande()
+    const proy = new Proyeccion(new IndiceDelTick(w))
+    const a = proy.aLaVista({ x: 0, y: 0 }, 'ella')
+    const b = proy.aLaVista({ x: 0, y: 0 }, 'ella')
+    expect(a.length).toBe(b.length)
+    for (let i = 0; i < a.length; i++) expect(a[i]).toBe(b[i])
+    expect(Object.isFrozen(a[0])).toBe(true)
+  })
+})
+
 describe('el tick entero de la costura', () => {
   it('mundo + proyección + una habilidad, medido', () => {
     // El número que importa para el criterio (b) del tramo: cuánto le agrega esta

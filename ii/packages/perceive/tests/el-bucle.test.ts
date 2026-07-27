@@ -195,24 +195,29 @@ describe('lo que este tramo NO cerró', () => {
     // DEL MUNDO sí entra al hash y sí sobrevive a `JSON.stringify`** — medido en
     // `tests/ataque-a-la-costura.test.ts`, bloque 4.
     //
-    // POR QUÉ SIGUE ABIERTO IGUAL, con el hueco corregido: son DOS dados. El del
-    // mundo vive en `WorldState.dios.dado` y lo tira `sacarDelPozo`; el que la
-    // habilidad recibe por `ctx.rng` lo construye `Partida` (`dadoDelMundo(o.semilla
-    // ?? 0)`) y **ése no está en ningún lado del estado**. O sea que dos partidas
-    // con el mismo hash de mundo pueden tener suertes distintas del lado de la
-    // mente, y restaurar un snapshot le reinicia el dado a la habilidad. Este test
-    // lo mide sobre un mundo SIN dios, que es el caso donde el hash del mundo es
-    // idéntico y la única diferencia posible es la de la `Partida`.
+    // POR QUÉ SIGUE ABIERTO: **por los mundos SIN dios, que son éste y los ocho
+    // archivos de test del paquete.** La mitad grande se cerró — `Partida.#tirar`
+    // ya no construye un dado propio: lee `state.dios.dado`, lo hace avanzar con
+    // `dadoDe` y lo escribe de vuelta en el estado, que es la ranura que el
+    // snapshot guarda. Medido en `tests/ataque-a-la-costura.test.ts`, bloque 4:
+    // con dios, `restoreWorld` reanuda la partida con la suerte que la mente
+    // estaba usando, y una tirada de la mente le cambia el hash al mundo.
+    //
+    // Lo que queda es que **un `WorldState` sin `dios` no tiene ninguna ranura
+    // donde poner el entero**, así que ahí se cae al dado propio de `o.semilla` y
+    // el agujero es el mismo de antes: dos partidas con suertes distintas y un
+    // solo hash. Este test lo mide justo sobre ese caso, que es donde el hash del
+    // mundo no puede distinguirlas.
     //
     // Hoy no se nota porque ninguna de las quince innatas usa `ctx.rng`; se nota
     // el día que una elija a dónde caminar tirando el dado.
     //
-    // QUÉ HARÍA FALTA: que `Partida` le pase a `Contexto` el dado del mundo
-    // (`dadoDe(state.dios)`, que ya existe en `world/src/dios.ts`) en vez de uno
-    // propio, o —si la mente tiene que tener su propio azar para no correrle el
-    // dado al mundo— que ese entero viva en una ranura del snapshot. Archivos:
-    // `perceive/src/bucle.ts` (`Partida.dado`) y `perceive/src/contexto.ts`
-    // (`ContextoOptions.rng`).
+    // QUÉ HARÍA FALTA: una ranura para el azar en `WorldState` que no dependa de
+    // que haya dios —hoy `dado` vive adentro de `EstadoDelDios`, o sea que un
+    // mundo sin dios no tiene suerte que guardar—. Es un campo en
+    // `world/src/step.ts:WorldState` y su ranura en `worldSlots`, y eso le cambia
+    // el hash a todo mundo sin dios: es un ADR, no un parche. Archivos:
+    // `world/src/step.ts` y `world/src/snapshot.ts`.
     const a = new Partida(conElla([]), { semilla: 1 })
     const b = new Partida(conElla([]), { semilla: 999 })
     a.avanzar(5)

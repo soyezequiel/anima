@@ -59,7 +59,7 @@ import {
   unfx,
   unir,
 } from '@anima/physics'
-import type { Celda, Dt, Duracion, Entorno, Fuente, Montaje } from '@anima/physics'
+import type { Celda, Dt, Duracion, Empuje, Entorno, Fuente, Montaje } from '@anima/physics'
 // EL DIOS ENTRA A LA PARTIDA. Es la única importación de `@anima/oracle` del
 // paso, y va por `dios.ts` —la costura— y no directo: acá adentro no se decreta
 // nada ni se traduce nada, sólo se consulta y se cobra. Ver el encabezado de
@@ -710,6 +710,25 @@ interface Borrador {
    * PEREZOSO igual que el otro. Ver `conRelaciones` y `olvidar`.
    */
   conRelacion: Set<BodyId> | undefined
+  /**
+   * QUÉ MANO ESTÁ EMPUJANDO QUÉ, en este tick (ADR II-0010).
+   *
+   * Lo escribe `aplicarEfectos` cuando un `drive` mueve de verdad una cualidad, y
+   * lo lee `entornoDe` una fase después, para pasárselo a `paso()` adentro de
+   * `Entorno.empujes`. Es el canal entero entre las dos mitades del tick, y es
+   * de UNA sola dirección: las intenciones escriben, los sistemas leen.
+   *
+   * PEREZOSO como los dos índices de arriba, y por una razón más fuerte: en un
+   * tick corriente nadie frota nada, y un `Map` por tick para no guardar nada es
+   * una asignación por tick que el presupuesto de 4 ms no tiene por qué pagar.
+   * Cuando está en `undefined`, `entornoDe` devuelve exactamente los mismos
+   * objetos compartidos que devolvía antes de este ADR.
+   *
+   * Muere con el borrador, así que no puede quedar viejo entre ticks: un empuje
+   * dura UN paso, que es lo que dura la mano en el palo. El que se distrae pierde
+   * la actividad (`stepWorld` se la saca a quien no actuó) y con ella el empuje.
+   */
+  empujes: Map<BodyId, Empuje[]> | undefined
   // ─── El dios del tick ──────────────────────────────────────────────────────
   //
   // Las tres piezas del dios son PEREZOSAS y por la misma razón que los dos
@@ -772,6 +791,7 @@ function abrir(s: WorldState): Borrador {
     // escritura, y la mira `tests/el-indice-mal-invalidado.test.ts`.
     celdas: undefined,
     conRelacion: undefined,
+    empujes: undefined,
     dios: s.dios,
     dado: undefined,
     libro: undefined,
@@ -1364,8 +1384,15 @@ function entornoDe(
   fs: readonly FuenteEnMundo[],
   ocl: ReadonlyMap<CellKey, number>,
 ): Entorno {
+  // Lo que alguien está empujando sobre este cuerpo en este tick (ADR II-0010).
+  // Se pregunta primero porque decide si se puede devolver un entorno COMPARTIDO:
+  // sin empujes, los caminos rápidos de abajo salen tal cual estaban.
+  const empujes = d.empujes?.get(c.body.id)
   const celda = celdaDe(d, c.at, ocl)
-  if (fs.length === 0) return celda === CELDA_LIBRE ? ENTORNO_LIBRE : { celda }
+  if (fs.length === 0) {
+    if (empujes !== undefined) return { celda, empujes }
+    return celda === CELDA_LIBRE ? ENTORNO_LIBRE : { celda }
+  }
   let mejor: Fuente | undefined
   let mejorId = ''
   for (const f of fs) {
@@ -1379,6 +1406,9 @@ function entornoDe(
       mejor = cand
       mejorId = f.id
     }
+  }
+  if (empujes !== undefined) {
+    return mejor === undefined ? { celda, empujes } : { celda, fuente: mejor, empujes }
   }
   return mejor === undefined ? { celda } : { celda, fuente: mejor }
 }
@@ -2014,6 +2044,12 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
         }
         const despues = d.bodies.get(actual.body.id) ?? actual
         ponerCuerpo(d, { ...despues, body: conCualidad(despues.body, e.q, v + rumbo * delta) })
+        // EL EMPUJE QUEDA ANOTADO PARA LAS LEYES (ADR II-0010). Va acá abajo y no
+        // arriba del `if` a propósito: se anota lo que se MOVIÓ, no lo que se
+        // quiso mover. Un `drive` que no encontró con qué pagar —`delta <= 0`, o
+        // `hay <= 0`— ya salió por un `break` y no anota nada, así que la ley 1
+        // relaja normal: la mano que no puede no suspende nada.
+        anotarEmpuje(d, despues.body.id, e.q, rumbo)
         break
       }
       case 'transfer': {
@@ -2049,6 +2085,32 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
       }
     }
   }
+}
+
+/**
+ * Anota que alguien está empujando esta cualidad de este cuerpo, en este tick.
+ *
+ * Idempotente por par `(cuerpo, cualidad, rumbo)`: dos actores frotando el mismo
+ * palo anotan un solo empuje, y tienen que anotar uno solo — la regla del ADR
+ * II-0010 no es «cuánto», es «para dónde», y dos manos que empujan al mismo lado
+ * no suspenden más que una. Si empujaran en sentidos OPUESTOS quedan las dos
+ * anotadas y la ley 1 no se mueve para ninguno de los dos lados, que es la
+ * lectura literal de la regla y también la única que no depende del orden.
+ */
+function anotarEmpuje(d: Borrador, id: BodyId, q: QualityId, rumbo: number): void {
+  let m = d.empujes
+  if (m === undefined) {
+    m = new Map()
+    d.empujes = m
+  }
+  const r: 1 | -1 = rumbo > 0 ? 1 : -1
+  const lista = m.get(id)
+  if (lista === undefined) {
+    m.set(id, [{ q, rumbo: r }])
+    return
+  }
+  for (const x of lista) if (x.q === q && x.rumbo === r) return
+  lista.push({ q, rumbo: r })
 }
 
 function espejo(q: QualityId, v: number): number {
