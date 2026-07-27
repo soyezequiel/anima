@@ -316,9 +316,14 @@ ADR II-0008.
   partidas comunes y neto cocinado positivo en las 100. Un test que afirmara
   `COSTO_VIVIR_POR_SEGUNDO === 1` mediría su propia copia.
 - **La otra mitad del riesgo 4 sigue abierta, y este ADR no la declara cerrada.**
-  La afortunada termina en **+3037 en la peor de sus cien partidas** aun a 1,0
-  por segundo — el ingreso menos la caminata le da entre 4036,9 y 4043,2 contra
-  un costo de 1000, o sea que ni la más flaca se acerca a cero. El `it.fails` de
+  La afortunada termina en **+2787,5 en la peor de sus cien partidas** aun a 1,0
+  por segundo, y en +3037,6 en la mejor: ni la más flaca se acerca a cero.
+  *(Corregido contra la medición. La primera versión decía «+3037 en la peor», y
+  ese número es el de la MEJOR: el rango 4036,9–4043,2 que citaba es el del
+  ingreso crudo a secas, no el del ingreso menos la caminata, así que al restarle
+  sólo el costo de vivir las celdas quedaban contadas cero veces — y la partida
+  que más camina paga 249,6 de stamina que ese rango no ve. La conclusión no
+  cambia y el número medido queda anotado adentro del `it.fails`.)* El `it.fails` de
   `presupuesto.test.ts:610` se parte en dos: la común cierra, la afortunada sigue
   abierta con su «POR QUÉ SIGUE ABIERTO» reescrito, porque lo que le falta **no
   es la perilla del metabolismo**. Es que en ese modelo **viajar no cuesta
