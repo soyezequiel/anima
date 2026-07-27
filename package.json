@@ -21,7 +21,8 @@
     "ii:test": "pnpm --filter \"./ii/**\" run test",
     "ii:typecheck": "pnpm --filter \"./ii/**\" run typecheck",
     "ii:banco": "pnpm --filter @anima/skills banco",
-    "ii:barrido": "pnpm --filter @anima/physics barrido"
+    "ii:barrido": "pnpm --filter @anima/physics barrido",
+    "ii:combustible": "pnpm --filter @anima/skills combustible"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
