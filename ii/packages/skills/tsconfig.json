@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // Los borradores son ejercicios contra la superficie declarada: importan
+    // tipos que no tienen implementacion. `noUnusedLocals` sobra acá.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  // Solo los borradores de la raíz. Cada tanda de la escalera de capacidades
+  // tiene su propio carril (`tsconfig.tN.json`) para que un borrador que no
+  // compila —que es un RESULTADO válido del ejercicio— no ponga en rojo al
+  // paquete entero ni a los demás carriles.
+  "include": ["src", "borradores/*.ts"]
+}

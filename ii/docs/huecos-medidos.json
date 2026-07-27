@@ -1,0 +1,267 @@
+{
+ "totalErrores": 112,
+ "borradores": 28,
+ "conErrores": 23,
+ "filas": [
+  {
+   "falta": "SelfView.stamina",
+   "sitios": 8,
+   "archivos": 8
+  },
+  {
+   "falta": "SelfView no es BodyView",
+   "sitios": 9,
+   "archivos": 7
+  },
+  {
+   "falta": "Ctx.qAt",
+   "sitios": 8,
+   "archivos": 6
+  },
+  {
+   "falta": "Ctx.wait",
+   "sitios": 5,
+   "archivos": 5
+  },
+  {
+   "falta": "Ctx.eat",
+   "sitios": 8,
+   "archivos": 3
+  },
+  {
+   "falta": "SelfView.hunger",
+   "sitios": 4,
+   "archivos": 3
+  },
+  {
+   "falta": "cualidad: sheltered",
+   "sitios": 3,
+   "archivos": 3
+  },
+  {
+   "falta": "Ctx.clock",
+   "sitios": 4,
+   "archivos": 2
+  },
+  {
+   "falta": "PlaceMemory.atTick",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "SelfView.capacity",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.drop",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "PlaceMemory.what",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.heard",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "put(): opción covering",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: threat",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: afilar",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.velocityOf",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.behind",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: raining",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: covers",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.place",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: cavar",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "PlaceMemory.q",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.qualifies",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.self",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: cubrir",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: smoke",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: combustion",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: denaturesAt",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.mine",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "BodyView.joints",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.mark",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PlaceMemory.tag",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PlaceMemory.tick",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.estimate",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.cost",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Parameter 'u' implicitly has an 'any' type.",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.need",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.wetAt",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.abort",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.project",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "BodyView.coveredBy",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: presence",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.give",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.needs",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.isNight",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: ahumar",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.perceptionRadius",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: arrastrar",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.drag",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: buoyancy",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: flow",
+   "sitios": 1,
+   "archivos": 1
+  }
+ ]
+}
