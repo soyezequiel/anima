@@ -41,7 +41,7 @@
 // promesa que no se puede testear de verdad.
 
 import type { Body, Joint, Part } from './body.js'
-import { MAX_JOINTS, MAX_PARTS, qualityOf, violationsOf } from './body.js'
+import { esDerivadaEn, MAX_JOINTS, MAX_PARTS, qualityOf, violationsOf } from './body.js'
 import type { Physics } from './physics.js'
 import { buildSeedPhysics } from './physics.js'
 import type { QualityId, QualityVector } from './quality.js'
@@ -251,39 +251,137 @@ export interface Paso {
  * partes) y ya recorta al rango. Se escribe SIEMPRE en `state`, salvo la masa,
  * que vive en las partes y no se duplica: dos lugares para la masa es un lugar
  * donde puede quedar vieja.
+ *
+ * ─── PEREZOSA, y por qué ────────────────────────────────────────────────────
+ *
+ * Esto era un objeto con trece campos calculados de golpe. Cada ley usa dos o
+ * tres, y `paso()` armaba la lectura cinco veces por cuerpo: sesenta y cinco
+ * `qualityOf` por cuerpo y por tick para usar, con suerte, veinte. Medido, ERA
+ * EL TICK ENTERO — 39,66 ms para 5000 cuerpos contra un techo de 4.
+ *
+ * Ahora cada campo se calcula la primera vez que alguien lo pide y se recuerda.
+ * La conducta es idéntica porque `qualityOf` es pura y porque **una `Lectura`
+ * está atada a UN cuerpo**: los cuerpos no se mutan nunca —toda ley devuelve uno
+ * nuevo—, así que un valor memoizado no puede quedar viejo mientras su lectura
+ * viva. Quien cambia el cuerpo pide una lectura nueva, y eso lo hace `paso()`.
+ *
+ * No es una caché con invalidación: es un valor que se termina de construir
+ * solo. La diferencia importa — una caché hay que acordarse de invalidarla, y
+ * ésta se muere con el cuerpo que la explica.
  */
 interface Lectura {
-  temperature: number
-  moisture: number
-  charred: number
-  digestibility: number
-  toxicity: number
-  decay: number
-  nutrition: number
-  fuelEnergy: number
-  ignitionPoint: number
-  pyrolysisAt: number
-  denaturesAt: number | undefined
-  toughness: number
-  mass: number
+  readonly temperature: number
+  readonly moisture: number
+  readonly charred: number
+  readonly digestibility: number
+  readonly toxicity: number
+  readonly decay: number
+  readonly nutrition: number
+  readonly fuelEnergy: number
+  readonly ignitionPoint: number
+  readonly pyrolysisAt: number
+  readonly denaturesAt: number | undefined
+  readonly toughness: number
+  readonly mass: number
+}
+
+/**
+ * La lectura perezosa. Campos planos y no `#privados` a propósito: esto es el
+ * camino más caliente del motor y los campos privados de verdad se pagan en cada
+ * acceso.
+ *
+ * `undefined` es el «todavía no» de los doce campos numéricos, y no puede
+ * confundirse con un valor porque `qualityOf` devuelve siempre un número.
+ * `denaturesAt` SÍ puede valer `undefined` legítimamente —es lo que distingue lo
+ * que no se cocina de lo que se cocina a 0 °C—, así que lleva su propia bandera
+ * de «ya se preguntó» y esa diferencia no se pierde.
+ */
+class LecturaPerezosa implements Lectura {
+  private readonly b: Body
+  private readonly phys: Physics
+  private _temperature: number | undefined
+  private _moisture: number | undefined
+  private _charred: number | undefined
+  private _digestibility: number | undefined
+  private _toxicity: number | undefined
+  private _decay: number | undefined
+  private _nutrition: number | undefined
+  private _fuelEnergy: number | undefined
+  private _ignitionPoint: number | undefined
+  private _pyrolysisAt: number | undefined
+  private _toughness: number | undefined
+  private _mass: number | undefined
+  private _denaturesAt: number | undefined
+  private _denaturesAtLeido = false
+
+  constructor(b: Body, phys: Physics) {
+    this.b = b
+    this.phys = phys
+  }
+
+  get temperature(): number {
+    const v = this._temperature
+    return v !== undefined ? v : (this._temperature = qualityOf(this.b, 'temperature', this.phys))
+  }
+  get moisture(): number {
+    const v = this._moisture
+    return v !== undefined ? v : (this._moisture = qualityOf(this.b, 'moisture', this.phys))
+  }
+  get charred(): number {
+    const v = this._charred
+    return v !== undefined ? v : (this._charred = qualityOf(this.b, 'charred', this.phys))
+  }
+  get digestibility(): number {
+    const v = this._digestibility
+    return v !== undefined
+      ? v
+      : (this._digestibility = qualityOf(this.b, 'digestibility', this.phys))
+  }
+  get toxicity(): number {
+    const v = this._toxicity
+    return v !== undefined ? v : (this._toxicity = qualityOf(this.b, 'toxicity', this.phys))
+  }
+  get decay(): number {
+    const v = this._decay
+    return v !== undefined ? v : (this._decay = qualityOf(this.b, 'decay', this.phys))
+  }
+  get nutrition(): number {
+    const v = this._nutrition
+    return v !== undefined ? v : (this._nutrition = qualityOf(this.b, 'nutrition', this.phys))
+  }
+  get fuelEnergy(): number {
+    const v = this._fuelEnergy
+    return v !== undefined ? v : (this._fuelEnergy = qualityOf(this.b, 'fuelEnergy', this.phys))
+  }
+  get ignitionPoint(): number {
+    const v = this._ignitionPoint
+    return v !== undefined
+      ? v
+      : (this._ignitionPoint = qualityOf(this.b, 'ignitionPoint', this.phys))
+  }
+  get pyrolysisAt(): number {
+    const v = this._pyrolysisAt
+    return v !== undefined ? v : (this._pyrolysisAt = qualityOf(this.b, 'pyrolysisAt', this.phys))
+  }
+  get toughness(): number {
+    const v = this._toughness
+    return v !== undefined ? v : (this._toughness = qualityOf(this.b, 'toughness', this.phys))
+  }
+  get mass(): number {
+    const v = this._mass
+    return v !== undefined ? v : (this._mass = qualityOf(this.b, 'mass', this.phys))
+  }
+  get denaturesAt(): number | undefined {
+    if (!this._denaturesAtLeido) {
+      this._denaturesAt = puntoDeCoccion(this.b, this.phys)
+      this._denaturesAtLeido = true
+    }
+    return this._denaturesAt
+  }
 }
 
 function leer(b: Body, phys: Physics): Lectura {
-  return {
-    temperature: qualityOf(b, 'temperature', phys),
-    moisture: qualityOf(b, 'moisture', phys),
-    charred: qualityOf(b, 'charred', phys),
-    digestibility: qualityOf(b, 'digestibility', phys),
-    toxicity: qualityOf(b, 'toxicity', phys),
-    decay: qualityOf(b, 'decay', phys),
-    nutrition: qualityOf(b, 'nutrition', phys),
-    fuelEnergy: qualityOf(b, 'fuelEnergy', phys),
-    ignitionPoint: qualityOf(b, 'ignitionPoint', phys),
-    pyrolysisAt: qualityOf(b, 'pyrolysisAt', phys),
-    denaturesAt: puntoDeCoccion(b, phys),
-    toughness: qualityOf(b, 'toughness', phys),
-    mass: qualityOf(b, 'mass', phys),
-  }
+  return new LecturaPerezosa(b, phys)
 }
 
 /**
@@ -303,14 +401,37 @@ function puntoDeCoccion(b: Body, phys: Physics): number | undefined {
   return undefined
 }
 
-/** Los tags de la materia de este cuerpo, unidos. Una sola parte orgánica lo hace orgánico. */
+/**
+ * Los tags de la materia de este cuerpo, unidos. Una sola parte orgánica lo hace
+ * orgánico.
+ *
+ * ─── Por qué se puede recordar por el array de partes ───────────────────────
+ *
+ * Esto no mira el estado: mira de qué está hecho el cuerpo, y eso son las partes
+ * y nada más. Y las partes NO SE MUTAN NUNCA — toda operación que las toca
+ * (`escalarMasa`, la ley 4, `unir`) construye partes nuevas y un array nuevo,
+ * mientras que las leyes que solo escriben estado conservan el mismo array. Así
+ * que el array de partes identifica exactamente lo que esta función calcula: dos
+ * cuerpos que lo comparten tienen los mismos tags, y un cuerpo cuyas partes
+ * cambiaron trae un array nuevo y una entrada nueva.
+ *
+ * No es una caché con invalidación —no hay nada que acordarse de invalidar—: es
+ * un valor guardado junto a la única cosa de la que depende. Si algún día alguien
+ * mutara un `Part` en su lugar, esto quedaría viejo; pero eso rompería antes el
+ * determinismo del replay, que es el motivo por el que los cuerpos son inmutables.
+ */
+const TAGS_POR_PARTES = new WeakMap<readonly Part[], { phys: Physics; tags: readonly Tag[] }>()
+
 export function tagsDe(b: Body, phys: Physics): readonly Tag[] {
+  const visto = TAGS_POR_PARTES.get(b.parts)
+  if (visto !== undefined && visto.phys === phys) return visto.tags
   const out: Tag[] = []
   for (const p of b.parts) {
     const s = phys.substances.get(p.substance)
     if (s === undefined) continue
     for (const t of s.tags) if (!out.includes(t)) out.push(t)
   }
+  TAGS_POR_PARTES.set(b.parts, { phys, tags: out })
   return out
 }
 
@@ -407,36 +528,103 @@ export function totalConservado(b: Body, q: QualityId, phys: Physics): number {
 }
 
 /**
+ * ¿Las cuatro cuentas conservadas se GUARDAN en esta física?
+ *
+ * Es la primera mitad de lo que habilita leer una vez en vez de dos, y no depende
+ * de los cuerpos sino solo del catálogo: se pregunta una vez por `Physics` en vez
+ * de cuatro veces por cuerpo. En el catálogo cerrado la respuesta es siempre sí
+ * —ninguna conservada es derivada—, pero un test puede armar una `Physics` con
+ * otro catálogo, y una DERIVADA no sirve para este razonamiento: puede mirar las
+ * juntas, la forma o cualquier otra cualidad, así que compartir partes y estado
+ * no alcanzaría para decidir nada.
+ */
+const CONSERVADAS_SE_GUARDAN = new WeakMap<Physics, boolean>()
+
+function conservadasSeGuardan(phys: Physics): boolean {
+  const visto = CONSERVADAS_SE_GUARDAN.get(phys)
+  if (visto !== undefined) return visto
+  let todas = true
+  for (const q of CONSERVED) if (esDerivadaEn(phys, q)) todas = false
+  CONSERVADAS_SE_GUARDAN.set(phys, todas)
+  return todas
+}
+
+/**
  * Después de un tick, ninguna cuenta conservada vale más que antes. Punto.
  *
  * Baja el intensivo hasta que el producto entre; el bucle está acotado porque
  * cada vuelta baja un ulp relativo y con una o dos alcanza para cualquier
  * redondeo de IEEE-754. Si en cinco vueltas no entró, se pone en cero:
  * preferimos perder materia a inventarla, y eso es una decisión, no un descuido.
+ *
+ * ─── Ocho lecturas de cualidad, y antes eran doce ───────────────────────────
+ *
+ * Una cualidad GUARDADA mira exactamente dos cosas: lo que el cuerpo escribió en
+ * `state[q]` y, si no escribió nada, sus partes. Los dos cuerpos que se comparan
+ * acá comparten el array de partes siempre que ninguna ley las haya reconstruido
+ * —el caso corriente, porque `conEstado` y `conCualidad` conservan `parts`—, así
+ * que para las cuentas que ninguna ley tocó las dos lecturas son el mismo número
+ * bit a bit y alcanza con hacer una.
+ *
+ * OJO CON LO QUE ESTO NO HACE: no saltea ninguna comparación ni ninguna
+ * corrección. Si la lectura diera `NaN` —una parte con `NaN` escrito—, el candado
+ * sigue entrando por donde entraba, porque `NaN <= NaN` sigue siendo falso. La
+ * versión que se saltea el bucle entero cuando «nada cambió» NO es equivalente
+ * por exactamente ese caso, y por eso no está escrita acá.
  */
 function conservar(antes: Body, despues: Body, phys: Physics): Body {
   let out = despues
+  // Las partes se comparan UNA vez: no cambian mientras el bucle no reescriba
+  // `out`, y las cuatro vueltas preguntaban lo mismo cuatro veces. Cuando el
+  // bucle SÍ reescribe `out` se vuelve a mirar, porque bajar la masa reconstruye
+  // las partes.
+  const guardadas = conservadasSeGuardan(phys)
+  let mismaMateria = guardadas && antes.parts === out.parts
+
+  // La masa se lee UNA vez por lado y no tres. `totalConservado` la vuelve a
+  // pedir para cada cuenta intensiva —son dos, `nutrition` y `fuelEnergy`— y son
+  // siempre las mismas partes: seis lecturas de masa por cuerpo y por tick para
+  // obtener dos números. Era el renglón más caro que quedaba en el tick.
+  const masaAntes = qualityOf(antes, 'mass', phys)
+  let masaOut =
+    mismaMateria && antes.state.mass === out.state.mass
+      ? masaAntes
+      : qualityOf(out, 'mass', phys)
+
   for (const q of CONSERVED) {
-    const techo = totalConservado(antes, q, phys)
-    if (totalConservado(out, q, phys) <= techo) continue
-    if (specOf(q).extent === 'extensive') {
+    const extensiva = specOf(q).extent === 'extensive'
+    const vAntes = q === 'mass' ? masaAntes : qualityOf(antes, q, phys)
+    const vOut =
+      q === 'mass'
+        ? masaOut
+        : mismaMateria && antes.state[q] === out.state[q]
+          ? vAntes
+          : qualityOf(out, q, phys)
+    const techo = extensiva ? vAntes : vAntes * masaAntes
+    if ((extensiva ? vOut : vOut * masaOut) <= techo) continue
+
+    if (extensiva) {
       if (q === 'mass') {
-        const ahora = qualityOf(out, 'mass', phys)
-        if (ahora > 0) out = bajarMasaHasta(out, techo, ahora, phys)
+        if (vOut > 0) out = bajarMasaHasta(out, techo, vOut, phys)
       } else {
         out = conCualidad(out, q, clampToRange(q, techo))
       }
+      mismaMateria = guardadas && antes.parts === out.parts
+      masaOut = qualityOf(out, 'mass', phys)
       continue
     }
-    const masa = qualityOf(out, 'mass', phys)
-    if (masa <= 0) {
+    if (masaOut <= 0) {
       out = conCualidad(out, q, 0)
+      mismaMateria = guardadas && antes.parts === out.parts
+      masaOut = qualityOf(out, 'mass', phys)
       continue
     }
-    let v = techo / masa
-    for (let i = 0; i < 5 && v * masa > techo; i++) v = v * (1 - Number.EPSILON)
-    if (v * masa > techo) v = 0
+    let v = techo / masaOut
+    for (let i = 0; i < 5 && v * masaOut > techo; i++) v = v * (1 - Number.EPSILON)
+    if (v * masaOut > techo) v = 0
     out = conCualidad(out, q, clampToRange(q, v))
+    mismaMateria = guardadas && antes.parts === out.parts
+    masaOut = qualityOf(out, 'mass', phys)
   }
   return out
 }
@@ -468,9 +656,31 @@ const EN_EL_CATALOGO: ReadonlySet<string> = new Set<string>(QUALITY_IDS)
  * orden se escribieron.
  */
 function recortar(b: Body): Body {
-  const state: QualityVector = {}
+  // Primero MIRAR, y recién construir si hace falta.
+  //
+  // Lo corriente es que nada esté fuera de rango —las leyes ya recortan lo que
+  // escriben—, y la versión de un solo paso armaba igual un `state` nuevo para
+  // tirarlo enseguida: una asignación por cuerpo y por tick que casi nunca se
+  // usaba. El recorrido de comprobación es el mismo y decide lo mismo; lo único
+  // que cambia es cuándo se paga el objeto.
+  const claves = Object.keys(b.state)
   let cambio = false
-  for (const k of Object.keys(b.state)) {
+  for (let i = 0; i < claves.length; i++) {
+    const k = claves[i] as string
+    if (!EN_EL_CATALOGO.has(k)) continue
+    const q = k as QualityId
+    const v = b.state[q]
+    if (v === undefined) continue
+    if ((Number.isFinite(v) ? clampToRange(q, v) : 0) !== v) {
+      cambio = true
+      break
+    }
+  }
+  if (!cambio) return b
+
+  const state: QualityVector = {}
+  for (let i = 0; i < claves.length; i++) {
+    const k = claves[i] as string
     const q = k as QualityId
     const v = b.state[q]
     if (v === undefined) continue
@@ -478,11 +688,9 @@ function recortar(b: Body): Body {
       state[q] = v
       continue
     }
-    const r = Number.isFinite(v) ? clampToRange(q, v) : 0
-    state[q] = r
-    if (r !== v) cambio = true
+    state[q] = Number.isFinite(v) ? clampToRange(q, v) : 0
   }
-  return cambio ? { ...b, state } : b
+  return { ...b, state }
 }
 
 // ─── Ley 1 ───────────────────────────────────────────────────────────────────
@@ -532,7 +740,10 @@ function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura): Body {
   // puede superar 1, o el cuerpo pasaría de largo el equilibrio y oscilaría.
   const acople = cap > 0 ? Math.min(1, H_PERDIDA / cap) : 1
   const t = l.temperature + (objetivo - l.temperature) * acople
-  return conEstado(b, { temperature: clampToRange('temperature', t) })
+  // `conCualidad` y no `conEstado`: esto corre para TODO cuerpo en TODO tick, y
+  // `conEstado` obliga a armar un objeto de cambios de una sola entrada para
+  // desarmarlo enseguida. El estado resultante es el mismo, clave por clave.
+  return conCualidad(b, 'temperature', clampToRange('temperature', t))
 }
 
 // ─── Ley 5 · desnaturalización ───────────────────────────────────────────────
@@ -617,7 +828,9 @@ function leyHumedad(b: Body, e: Entorno, l: Lectura): Body {
   const haciaLaCelda = (e.celda.wet - l.moisture) * TASA_MOJADO
   const secado = Math.max(0, l.temperature - e.celda.ambiente) * SECADO_POR_GRADO
   const m = l.moisture + haciaLaCelda - secado
-  return conEstado(b, { moisture: clampToRange('moisture', m) })
+  // Misma razón que en la ley 1: una sola cualidad, y esto corre por cuerpo y
+  // por tick.
+  return conCualidad(b, 'moisture', clampToRange('moisture', m))
 }
 
 // ─── Ley 3 · combustión ──────────────────────────────────────────────────────
@@ -793,32 +1006,48 @@ export function paso(entrada: Body, e: Entorno, phys: Physics): Paso {
   let b = leyTermica(b0, e, phys, leer(b0, phys))
   leyes.push('termica')
 
+  // Una lectura NUEVA solo cuando el cuerpo cambió.
+  //
+  // Antes se releía después de cada ley, sin preguntar. Pero varias leyes
+  // devuelven el mismo cuerpo sin tocarlo —no todo arde, no todo se pudre, casi
+  // nada transmuta—, y para un cuerpo que no cambió la lectura vieja dice
+  // exactamente lo mismo que diría una nueva: `leer` es puro y los cuerpos son
+  // inmutables. Releer ahí era recalcular trece cualidades para obtener los trece
+  // números que ya estaban.
   let l = leer(b, phys)
+
   if (ventanaDeCoccion(l, tags)) {
-    b = leyDesnaturalizacion(b, l)
+    const cocido = leyDesnaturalizacion(b, l)
     leyes.push('desnaturalizacion')
+    if (cocido !== b) {
+      b = cocido
+      l = leer(b, phys)
+    }
   } else {
     // Fuera de la ventana la humedad la mueve la ley 11; adentro, la 5. Nunca
     // las dos, o el agua se contaría dos veces.
-    b = leyHumedad(b, e, l)
+    const secado = leyHumedad(b, e, l)
     leyes.push('humedad')
+    if (secado !== b) {
+      b = secado
+      l = leer(b, phys)
+    }
   }
 
-  l = leer(b, phys)
   const ardido = leyCombustion(b, e, l)
   if (ardido !== b) {
     b = ardido
     leyes.push('combustion')
+    l = leer(b, phys)
   }
 
-  l = leer(b, phys)
   const podrido = leyDescomposicion(b, l)
   if (podrido !== b) {
     b = podrido
     leyes.push('descomposicion')
+    l = leer(b, phys)
   }
 
-  l = leer(b, phys)
   const mutado = leyTransmutacion(b, e, phys, l)
   let nueva: Substance | undefined
   if (mutado !== undefined) {

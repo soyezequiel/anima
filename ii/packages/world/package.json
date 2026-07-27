@@ -7,9 +7,11 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run --passWithNoTests",
+    "test": "vitest run --passWithNoTests --exclude \"**/node_modules/**\" --exclude \"**/zz-*.test.ts\"",
     "typecheck": "tsc --noEmit",
-    "banco": "vitest run tests/banco-el-tick.test.ts"
+    "banco": "vitest run tests/banco-el-tick.test.ts",
+    "verificacion": "vitest run tests/zz-remedicion.test.ts tests/zz-partida-2000.test.ts",
+    "tick": "vitest run banco-el-tick"
   },
   "dependencies": {
     "@anima/physics": "workspace:*"

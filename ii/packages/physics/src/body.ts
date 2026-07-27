@@ -142,18 +142,49 @@ export function assemblyDepthOf(b: Body): number {
  *   3. si no, se agrega desde las partes, extensiva o intensivamente.
  */
 export function qualityOf(b: Body, q: QualityId, phys: Physics): number {
-  return clampToRange(evalQuality(b, q, phys, new Set<QualityId>()), specFor(phys, q))
+  // La spec se busca UNA vez y se pasa hacia abajo. Antes se buscaba dos —una
+  // para evaluar y otra para recortar— y esta función se llama cientos de miles
+  // de veces por tick: la segunda búsqueda era el 10% del tick entero.
+  const spec = specFor(phys, q)
+  // Las dos fuentes de una cualidad GUARDADA, escritas acá y no delegadas a
+  // `evalQuality`. No es duplicación por gusto: `evalQuality` es recursiva —una
+  // derivada puede pedir otra— y una función recursiva no se puede incrustar, así
+  // que el camino de las veintiuna cualidades que se guardan pagaba una llamada
+  // que nunca necesitó. La rama derivada sigue siendo la de abajo, una sola.
+  if (spec === undefined || spec.derived === undefined) {
+    const stored = b.state[q]
+    return clampToRange(
+      stored !== undefined ? stored : aggregateFromParts(b, q, phys, spec),
+      spec,
+    )
+  }
+  return clampToRange(evalQuality(b, q, phys, spec, undefined), spec)
 }
 
-function evalQuality(b: Body, q: QualityId, phys: Physics, inFlight: Set<QualityId>): number {
-  const spec = specFor(phys, q)
-  if (spec?.derived) {
+/**
+ * `inFlight` entra en `undefined` y se crea SOLO si aparece una derivada.
+ *
+ * Es la misma detección de ciclos de antes —una derivada que se pide a sí misma
+ * sigue tirando—, pero sin pagarla cuando no hay ninguna derivada en juego. Las
+ * trece cualidades que leen las leyes se guardan todas, así que el `Set` se
+ * construía cientos de miles de veces por tick para no usarse nunca.
+ */
+function evalQuality(
+  b: Body,
+  q: QualityId,
+  phys: Physics,
+  spec: QualitySpec | undefined,
+  inFlight: Set<QualityId> | undefined,
+): number {
+  const derived = spec?.derived
+  if (derived !== undefined) {
     // Una derivada que se pide a sí misma es un catálogo mal escrito, y colgarse
     // es la peor forma de enterarse: en el mundo eso es un tick que no termina.
-    if (inFlight.has(q)) throw new Error(`cualidad derivada circular: ${q}`)
-    inFlight.add(q)
-    const v = evalExpr(b, spec.derived, phys, inFlight)
-    inFlight.delete(q)
+    const enVuelo = inFlight ?? new Set<QualityId>()
+    if (enVuelo.has(q)) throw new Error(`cualidad derivada circular: ${q}`)
+    enVuelo.add(q)
+    const v = evalExpr(b, derived, phys, enVuelo)
+    enVuelo.delete(q)
     return v
   }
   const stored = b.state[q]
@@ -196,11 +227,31 @@ function aggregateFromParts(
   return plano / b.parts.length
 }
 
+// La MISMA sustancia, muchas veces seguidas.
+//
+// Una lectura de cuerpo pregunta ocho o diez cualidades de las mismas partes, y
+// cada una volvía a buscar la sustancia en el mapa con la misma clave. Recordar
+// la última la reduce a comparar dos punteros. Memoización pura: la misma
+// `Physics` y el mismo id dan la misma sustancia, y cualquier otra combinación
+// entra por el mapa y reemplaza lo recordado.
+let ultimaSustPhys: Physics | undefined
+let ultimaSustId: SubstanceId | undefined
+let ultimaSust: Substance | undefined
+
+function sustanciaDe(phys: Physics, id: SubstanceId): Substance | undefined {
+  if (phys === ultimaSustPhys && id === ultimaSustId) return ultimaSust
+  const s = phys.substances.get(id)
+  ultimaSustPhys = phys
+  ultimaSustId = id
+  ultimaSust = s
+  return s
+}
+
 function partQuality(p: Part, q: QualityId, phys: Physics, extensive: boolean): number {
   if (q === 'mass') return massOf(p)
   const own = p.q[q]
   if (own !== undefined) return own
-  const s: Substance | undefined = phys.substances.get(p.substance)
+  const s: Substance | undefined = sustanciaDe(phys, p.substance)
   const base = s?.perUnitMass[q]
   if (base === undefined) return 0
   // `perUnitMass` es por unidad de masa para las extensivas (nutrición,
@@ -249,15 +300,19 @@ function substanceFieldOf(b: Body, f: 'specificHeat', phys: Physics): number {
 }
 
 function fieldOfPart(p: Part, f: 'specificHeat', phys: Physics): number {
-  const s: Substance | undefined = phys.substances.get(p.substance)
+  const s: Substance | undefined = sustanciaDe(phys, p.substance)
   const v = s?.[f]
   return v === undefined || !Number.isFinite(v) ? 1 : v
 }
 
+// Por índice y no por desestructuración: `const [lo, hi] = spec.range` levanta el
+// protocolo de iteración del array, y esto corre una vez por cada lectura de
+// cualidad. Los dos números son los mismos.
 function clampToRange(v: number, spec: QualitySpec | undefined): number {
   if (!spec) return v
-  const [lo, hi] = spec.range
+  const lo = spec.range[0]
   if (v < lo) return lo
+  const hi = spec.range[1]
   if (v > hi) return hi
   return v
 }
@@ -269,7 +324,7 @@ function evalExpr(b: Body, e: QualityExpr, phys: Physics, inFlight: Set<QualityI
     case 'const':
       return e.v
     case 'own':
-      return evalQuality(b, e.q, phys, inFlight)
+      return evalQuality(b, e.q, phys, specFor(phys, e.q), inFlight)
     case 'sumParts': {
       const extensive = specFor(phys, e.q)?.extent === 'extensive'
       let total = 0
@@ -510,12 +565,41 @@ function agree(adj: string, gender: 'm' | 'f'): string {
 
 const SPEC_CACHE = new WeakMap<Physics, Map<QualityId, QualitySpec>>()
 
-function specFor(phys: Physics, q: QualityId): QualitySpec | undefined {
+// El tick entero corre con UNA `Physics`, así que la búsqueda en el `WeakMap` da
+// siempre lo mismo cientos de miles de veces seguidas. Recordar la última la
+// reduce a comparar dos punteros. Es una memoización pura: la misma `Physics`
+// tiene el mismo índice, y una `Physics` nueva —recalibrar, transmutar— entra
+// por el camino largo y lo reemplaza.
+let ultimaPhys: Physics | undefined
+let ultimoIndice: Map<QualityId, QualitySpec> | undefined
+
+function indiceDe(phys: Physics): Map<QualityId, QualitySpec> {
+  if (phys === ultimaPhys && ultimoIndice !== undefined) return ultimoIndice
   let index = SPEC_CACHE.get(phys)
   if (index === undefined) {
     index = new Map<QualityId, QualitySpec>()
     for (const s of phys.qualities) if (!index.has(s.id)) index.set(s.id, s)
     SPEC_CACHE.set(phys, index)
   }
-  return index.get(q)
+  ultimaPhys = phys
+  ultimoIndice = index
+  return index
+}
+
+function specFor(phys: Physics, q: QualityId): QualitySpec | undefined {
+  return indiceDe(phys).get(q)
+}
+
+/**
+ * ¿`q` se calcula en ESTA física, o se guarda?
+ *
+ * `isDerived` de `quality.ts` contesta lo mismo para el catálogo cerrado; esto
+ * contesta para la física que se está corriendo, que un test puede haber armado
+ * con otro catálogo. La diferencia importa para quien quiera razonar sobre de
+ * qué depende una lectura: una cualidad guardada mira `state[q]` y las partes, y
+ * nada más; una derivada puede mirar las juntas, la forma o cualquier otra
+ * cualidad, y entonces no se puede decidir nada sin evaluarla.
+ */
+export function esDerivadaEn(phys: Physics, q: QualityId): boolean {
+  return specFor(phys, q)?.derived !== undefined
 }

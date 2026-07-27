@@ -58,7 +58,7 @@ sus cuatro criterios, y el Hito 4 desbloqueado.**
 
 ### Hito 1 — `@anima/physics`
 
-Existe y está verde: **523 tests**, typecheck limpio. Punto fijo determinista,
+Existe y está verde: **548 tests**, typecheck limpio. Punto fijo determinista,
 29 cualidades más 4 de celda, 30 sustancias semilla, cuerpos compuestos, los
 cuatro procesos aplicables, las doce leyes y `admit()`.
 
@@ -76,7 +76,8 @@ cualquier otra derivada y queda **una sola forma de preguntar si algo se guarda*
 
 ### Hito 2 — `@anima/world` · [`docs/hito-2-el-mundo.md`](docs/hito-2-el-mundo.md)
 
-Existe y está verde: **258 tests**, typecheck limpio. Grilla en chunks con índice
+Existe y está verde: **258 tests** más 5 de verificación que corren aparte
+(`pnpm --filter @anima/world verificacion`), typecheck limpio. Grilla en chunks con índice
 O(1) por celda, `stepWorld` puro, invariantes por tick, journal append-only,
 snapshot por delta y `hashWorld`.
 
@@ -84,15 +85,30 @@ snapshot por delta y `hashWorld`.
 |---|---|---|
 | dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld` | ✔ | 100 000 intenciones, 11 checkpoints |
 | restaurar a mitad reproduce el final exacto | ✔ | desde la cadena de deltas, no de memoria |
-| 5000 cuerpos a menos de 4 ms por tick | ✘ | **37,98 ms** · el 100% es `paso()` de física |
+| 5000 cuerpos a menos de 4 ms por tick | ✘ | **8,65 ms** · era 39,8 · el 90% es `paso()` de física |
 | el mismo hash en Chrome y en Firefox | ⏳ | falta la página; la precondición está verificada |
 
-El de rendimiento **no se cumple y la causa no está en el mundo**: una sola
-lectura de cuerpo (12 `qualityOf`) sobre 5000 cuerpos cuesta 6,43 ms, o sea 1,6×
-el techo del tick entero, y `paso()` la hace cinco veces. El techo es inalcanzable
-aunque `@anima/world` costara cero; lo que el mundo agrega está por debajo del
-ruido de medición. Hoy entran **~527 cuerpos en 4 ms**, que alcanza de sobra para
-el Hito 3 y para la demo del Hito 5.
+El de rendimiento **todavía no se cumple, pero bajó 4,6 veces**: de 39,8 ms a
+8,65. El diagnóstico anterior era correcto y está reparado — `leer()` armaba trece
+cualidades de golpe y `paso()` lo hacía cinco veces por cuerpo, para que cada ley
+usara dos o tres. La lectura es ahora **perezosa y memoizada**, `paso()` no relee
+cuando la ley devolvió el mismo cuerpo, y `qualityOf` dejó de construir un `Set`
+por llamada: de **77 lecturas de cualidad por cuerpo y por tick quedan 13,6**.
+
+Que no se haya movido ninguna conducta **está verificado desde afuera**: la huella
+de `paso()` (3705094564) y el hash de una partida de 2000 ticks
+(`61d4b9588a81717d`, con sus once checkpoints) dan **exactamente lo mismo con las
+fuentes de física anteriores a la optimización**. La caza de la caché mal
+invalidada —23 tests contra las cinco memoizaciones nuevas— encontró **una sola**
+diferencia: `tagsDe` se queda con los tags viejos si alguien muta el array de
+partes en su lugar, cosa que hoy nadie hace y que ahora tiene barrido propio.
+
+Lo que falta son **2,2×**, y son dos frentes distintos: para el corpus del banco,
+la representación del cuerpo (y eso pide su propio ADR); para un mundo
+**heterogéneo** —que hoy cuesta ~20 ms y no 8,65— lo que manda es que
+`conSustancia` reconstruye la `Physics` entera cada vez que la ley 4 transmuta.
+Hoy entran **~2100 cuerpos en 4 ms** (eran ~485), de sobra para el Hito 3 y para
+la demo del Hito 5.
 
 El ataque al propio determinismo encontró **un agujero real**: los empates de
 `seq` se detectaban al vuelo, así que la primera del par ya había actuado cuando

@@ -7,11 +7,17 @@
 > |---|---|---|
 > | dos mundos gemelos con 10⁵ intenciones → mismo `hashWorld` | ✔ | 100 000 intenciones exactas, 11 checkpoints coincidentes |
 > | restaurar a mitad reproduce el final exacto | ✔ | corte en el tick 500, restaurado desde la cadena de deltas |
-> | 5000 cuerpos a menos de 4 ms por tick | ✘ | **37,98 ms** · 9,5× el techo · el 100% es `@anima/physics` |
+> | 5000 cuerpos a menos de 4 ms por tick | ✘ | **8,65 ms** · 2,2× el techo · era 39,8 · el 90% es `@anima/physics` |
 > | el mismo hash en Chrome y en Firefox | ⏳ | no se puede correr desde Node; falta el arnés, y está descrito abajo |
 >
 > `@anima/world`: **258 tests verdes**, typecheck limpio, `pnpm ii:test` entero
-> en verde (523 de física + 258 de mundo + 5 de habilidades).
+> en verde: **811 tests** (548 de física + 258 de mundo + 5 de habilidades).
+>
+> El criterio (c) **NO se cumple**, y el número está verificado dos veces con dos
+> arneses independientes. Lo que sí está verificado es que la optimización que lo
+> bajó de 39,8 a 8,65 **no movió ninguna conducta**, y eso se probó corriendo la
+> misma huella y la misma partida contra las fuentes anteriores. Ver
+> [la verificación independiente](#la-verificación-independiente-de-c).
 
 ```bash
 pnpm --filter @anima/world typecheck && pnpm --filter @anima/world test
@@ -120,66 +126,102 @@ Y el delta cobra por lo que cambió: veinte ticks después de la base, el eslab�
 tiene menos de la mitad de las ranuras de la base. Es la promesa entera del
 snapshot por delta contra el `structuredClone` que crece con la partida.
 
-### (c) 5000 cuerpos a menos de 4 ms por tick ✘ — **37,98 ms**
+### (c) 5000 cuerpos a menos de 4 ms por tick ✘ — **8,65 ms** (era 39,8)
 
 `pnpm --filter @anima/world banco`. Los números son de esta máquina y se vuelven
 a correr; no se copian a mano a ningún comentario.
 
 ```
-── EL TICK, con 5000 cuerpos ─────────────────────  techo del criterio: 4 ms
-  stepWorld, tick completo .............. 37.98 ms   NO PASA (9.5× el techo)
-  paso() de @anima/physics, solo ........ 38.65 ms   100.0% del tick
-  lo que agrega @anima/world ............ por debajo del ruido (< 0.5 ms)
+── EL TICK, con 5000 cuerpos ─────────────────  techo del criterio: 4 ms
+  stepWorld, tick completo .............. 8.65 ms   NO PASA (2.2× el techo)
+  paso() de @anima/physics, solo ........ 7.79 ms   90.0% del tick
+  lo que agrega @anima/world ............ 0.86 ms
 
-── DE DÓNDE SALE, adentro de paso() ───────────────────────────────
-  UNA lectura de cuerpo (12 qualityOf) .. 6.43 ms   ya son 1.6× el techo, SOLA
-  paso() la hace CINCO veces por cuerpo → ~32.13 ms de las 38.65 de las leyes
-
-── FUERA DEL TICK (checkpoints y guardado, en el worker de fondo) ──
-  hashWorldState sobre 5000 cuerpos ..... 6.56 ms
-  snapshot.take sobre las ranuras ....... 19.65 ms
-
-── EL ÍNDICE ESPACIAL DE grid.ts ──────────────────────────────────
-  5000 mudanzas (el peor caso: se mueven todos) ... 2.11 ms  (421 ns c/u)
-  5000 consultas bodiesAt ......................... 0.34 ms  ( 67 ns c/u)
-
-── LA ESCALA A LA QUE EL MUNDO YA CORRE ───────────────────────────
-  500 cuerpos ........................... 3.76 ms   PASA
-  cuerpos que entran hoy en 4 ms ....... ~527
+── LA ESCALA A LA QUE EL MUNDO YA CORRE ───────────────────
+  500 cuerpos ........................... 0.86 ms   PASA
+  cuerpos que entran hoy en 4 ms ....... ~2311   (extrapolado; medido son ~2100)
 ```
 
-**La conclusión no es una sospecha, es una cuenta.** Una sola lectura de cuerpo
-—las doce `qualityOf` que `leer()` arma— sobre los 5000 cuesta 6,43 ms, o sea
-**1,6 veces el techo del tick entero, ella sola**. Y `paso()` la hace cinco veces
-por cuerpo (`leyes.ts`, líneas 793, 796, 807, 814 y 821). Por lo tanto:
+> **El «cuerpos que entran» del banco es una extrapolación lineal**
+> (`Math.round((4 / tick) × 5000)`), y el tick no es del todo lineal en la
+> cantidad de cuerpos. Medido punto por punto —500, 1000, 2000, 3000, 4000,
+> 5000— e interpolado entre los dos que rodean al techo, los que entran son
+> **~2100**, no ~2311. La diferencia es del 10% y siempre para el mismo lado: la
+> extrapolación da de más.
 
-> **el techo de 4 ms es inalcanzable aunque `@anima/world` costara cero.**
+**El diagnóstico anterior era correcto y está reparado.** Decía que una sola
+lectura de cuerpo costaba 6,43 ms —más que el tick entero permitido— y que
+`paso()` la hacía cinco veces. Eso ya no es así:
 
-Está clavado con un test —`expect(lectura).toBeGreaterThan(TECHO)`— para que el
-día que deje de valer, el test se caiga y alguien vuelva a medir el tick entero:
-puede que para entonces el criterio ya se cumpla.
+| | antes | ahora |
+|---|---:|---:|
+| el tick completo, 5000 cuerpos | 39,66 ms | **8,65 ms** |
+| `paso()` de `@anima/physics`, solo | 39,79 ms | **7,79 ms** |
+| lecturas de cualidad por cuerpo y por tick | 77 | **13,6** |
 
-El criterio se deja marcado con `it.fails` y **no con el umbral relajado a 50
-ms**. Un criterio que se mueve para dar verde no es un criterio, es una
-decoración; es además el idioma con el que la física dejó marcados los diez
-huecos abiertos de `admit()`.
+Lo que se hizo, todo sin mover una conducta:
 
-**Lo que este paquete sí controla, lo controla:** el mundo agrega menos de medio
-milisegundo sobre la física, por debajo de la resolución del banco, contra un
-presupuesto propio de 2 ms que es la mitad del techo entero.
+1. **la `Lectura` es perezosa y memoizada.** Armaba trece cualidades de golpe para
+   que cada ley usara dos o tres. Ahora cada campo se calcula la primera vez que
+   se lo pide y se recuerda. Está atada a UN cuerpo, y como los cuerpos son
+   inmutables un valor memoizado no puede quedar viejo mientras su lectura viva;
+2. **`paso()` no relee cuando la ley devolvió el mismo cuerpo.** No todo arde, no
+   todo se pudre, casi nada transmuta: releía trece cualidades para obtener los
+   trece números que ya tenía;
+3. **`qualityOf` dejó de construir un `Set`** de detección de ciclos en cada
+   llamada. Las veintiuna cualidades que se guardan no tienen ninguna derivada en
+   juego y el `Set` se armaba cientos de miles de veces por tick para no usarse;
+4. **el candado de conservación leía la masa seis veces** por cuerpo para obtener
+   dos números. Ahora una por lado, y las cuentas que ninguna ley tocó se leen una
+   vez en lugar de dos;
+5. y un puñado de cosas chicas: la spec se busca una vez y no dos, `recortar` mira
+   antes de construir, `tagsDe` se guarda junto al array de partes del que depende.
 
-**La reparación, y es de física:**
+Que esto haya sido una **optimización y no una reescritura** no es una promesa del
+que la hizo: hay una huella de conducta nueva
+(`physics/tests/huella-de-conducta.test.ts`) que mezcla, sobre 240 cuerpos contra
+28 entornos y doce ticks cada uno, el cuerpo resultante bit a bit, las leyes que
+corrieron y las sustancias que la ley 4 dio de alta. **Vale 3705094564.**
 
-1. pasar **una** `Lectura` a través de las doce leyes en vez de recalcularla cinco
-   veces. Sola, baja el tick de ~38 ms a ~13;
-2. abaratar `qualityOf`, que es lo que decide el resto.
+Y esa huella la escribió el mismo que optimizó, o sea que por sí sola solo dice
+«esto no se movió desde que la escribí». Lo que la convierte en prueba está en
+[la verificación independiente](#la-verificación-independiente-de-c): **el mismo
+número sale con las fuentes de física de 11b49ae**, anteriores a la primera línea
+de la optimización.
 
-**Y hay un número accionable mientras tanto: hoy entran ~527 cuerpos en 4 ms.**
-El mundo ya corre a 30 Hz a esa escala, que es de sobra para el Hito 3 y para la
-demo del Hito 5 —una criatura, un río, un matorral—. Los 5000 son el techo de la
-arquitectura, no el requisito de la próxima demo. Hay que decidir si la
-reparación de física entra ahora o después del Hito 3, pero **no bloquea nada de
-lo que sigue**.
+**El banco tenía un error de medición, y salió a la luz al bajar la física.**
+`msPorTick` avanzaba el mundo (`w = stepWorld(w).state`) mientras `msSoloLeyes`
+corría siempre sobre los cuerpos del estado inicial, así que la resta le cobraba
+al mundo la diferencia entre dos poblaciones de cuerpos. Mientras la física se
+llevaba el 100% del tick la diferencia quedaba tapada por el ruido; con la física
+cinco veces más barata, decía que el mundo costaba 2,1 ms. **Medido sobre el mismo
+estado, el mundo cuesta 0,76 ms**, dentro de su presupuesto propio de 2 ms. El
+banco ahora mide las dos cosas sobre un estado fijo.
+
+**Lo que falta son 2,1×, y no es otra micro-optimización.** El perfil quedó
+PLANO: ningún renglón pasa del 13%, y los grandes son irreducibles sin cambiar la
+representación —las 13,6 lecturas de cualidad, los ~6 objetos nuevos por cuerpo y
+por tick (los cuerpos son inmutables y cada ley devuelve uno nuevo), y una
+búsqueda de sustancia en un `Map` por cada cualidad que no está en `state`.
+
+> Mientras una cualidad se resuelva preguntando a `state`, después a las partes y
+> después a la sustancia, el piso son ~1,2 µs por cuerpo.
+
+Un cuerpo con sus 29 cualidades ya resueltas en un vector numérico —recalculado
+solo cuando las partes cambian— borraría las tres cosas de una vez. Eso es un
+cambio de representación y pide su propio ADR; no entra en «optimizar sin cambiar
+una conducta».
+
+El criterio se sigue dejando marcado con `it.fails` y **no con el umbral
+relajado**. Un criterio que se mueve para dar verde no es un criterio, es una
+decoración; es además el idioma con el que la física dejó marcados los diez huecos
+abiertos de `admit()`.
+
+**Y el número accionable se multiplicó por 4,3: hoy entran ~2100 cuerpos en 4 ms**,
+contra ~485 antes. El mundo ya corre a 30 Hz a esa escala, que es de sobra para el
+Hito 3 y para la demo del Hito 5 —una criatura, un río, un matorral—. Los 5000 son
+el techo de la arquitectura, no el requisito de la próxima demo, y **no bloquean
+nada de lo que sigue**.
 
 ### (d) El replay del journal reconstruye el estado exacto ✔
 
@@ -242,6 +284,136 @@ y si difieren, bisecar con los checkpoints que ya existen. El banco del Hito 0
 infraestructura existe, falta la página.** Estimado: medio día.
 
 ---
+
+## La verificación independiente de (c)
+
+Un número de rendimiento que solo sabe producir el banco que lo diagnosticó no
+está verificado: es la misma medición dos veces. Y una huella de conducta escrita
+por el que optimizó solo dice «no se movió desde que la escribí».
+
+Las dos cosas se rehicieron desde afuera, con código que no comparte una línea
+con el banco: `world/tests/zz-remedicion.test.ts` (el tick) y
+`world/tests/zz-partida-2000.test.ts` (la conducta a lo largo de una partida). Se
+corren aparte, con `pnpm --filter @anima/world verificacion`, y por qué aparte
+está más abajo.
+
+### El número: confirmado, y el cambio de arnés no maquilló nada
+
+El optimizador cambió el banco de medir un mundo que avanza a medir un estado
+fijo. Eso podía ser una reparación honesta o una manera de elegir el número más
+lindo, así que se midieron **las dos** con el mismo arnés independiente:
+
+| | antes (11b49ae) | ahora | |
+|---|---:|---:|---:|
+| 5000 cuerpos, **estado fijo** (lo que el banco mide) | 42,16 ms | **8,62 ms** | 4,9× |
+| 5000 cuerpos, **mundo que avanza** (lo que la partida hace) | 39,75 ms | **8,67 ms** | 4,6× |
+| `paso()` solo | 39,14 ms | **7,63 ms** | 5,1× |
+| lo que agrega `@anima/world` | 3,02 ms | **0,99 ms** | |
+
+Las dos maneras coinciden dentro del 1%. **El cambio de arnés no movió el número:
+lo hizo comparable.** El reporte del optimizador (39,66 → 8,5) es exacto.
+
+### Lo que el corpus del banco no dice: un mundo heterogéneo cuesta ~20 ms
+
+El banco mide 5000 varas de UNA parte, todas frías y todas iguales, que es el
+camino más barato de `paso()`. Con un corpus de una a tres partes y temperaturas
+a lo ancho de todo el rango útil —frío, ventana de cocción, pirólisis, ignición—:
+
+| | antes | ahora | |
+|---|---:|---:|---:|
+| corpus variado, 5000 cuerpos, mundo que avanza | 55,87 ms | **19,93 ms** | 2,8× |
+
+**Baja 2,8× y no 4,6×, y se queda en 20 ms.** La razón es que en ese corpus el
+renglón que manda es otro y nadie lo tocó: cuando la ley 4 transmuta,
+`conSustancia` **reconstruye la `Physics` entera** con `buildSeedPhysics`, una vez
+por cuerpo que transmuta y por tick. La optimización trabajó sobre la lectura de
+cualidades, que es lo que dominaba el corpus plano.
+
+> «5000 cuerpos en 8,65 ms» es cierto para el corpus del banco. Para un mundo
+> heterogéneo hoy son ~20 ms, y ahí el trabajo que falta no es la representación
+> del cuerpo sino `conSustancia`.
+
+### La conducta: no se movió, y eso está probado contra las fuentes viejas
+
+Tres pruebas, las tres corriendo **el mismo archivo de test contra `body.ts`,
+`leyes.ts` y `quality.ts` de 11b49ae** y contra los de ahora:
+
+| | antes | ahora |
+|---|---|---|
+| huella de conducta de `paso()` (2880 pasos) | 3705094564 | **3705094564** |
+| partida de 2000 ticks, hash final | `61d4b9588a81717d` | **`61d4b9588a81717d`** |
+| los once checkpoints de esa partida | iguales | **iguales** |
+| eventos / sustancias dadas de alta | 8004 / 30 | **8004 / 30** |
+| huella del barrido de `fixed.ts` | 3391390248 | **3391390248** |
+
+La partida no es un mundo quieto: ocho criaturas, dieciséis cosas, **cuatro
+fogatas con algo apoyado encima**, celdas mojadas y celdas sin aire, y cuatro
+intenciones por tick de las que la mitad son basura a propósito. La ley 4
+transmuta y da de alta **cuatro sustancias** en el camino, o sea que la `Physics`
+del mundo cambia a mitad de la partida — que es exactamente donde una memoización
+por identidad de `Physics` se rompería. Los invariantes se revisan en **todos** los
+ticks y no hay ni una violación de conservación.
+
+### La caza de la caché mal invalidada
+
+`physics/tests/zz-cache-mal-invalidada.test.ts`, 23 tests contra las cinco
+memoizaciones que la optimización introdujo. Encontró **una sola diferencia de
+conducta** en todo el trabajo:
+
+> **`tagsDe` se quedó con los tags viejos si alguien muta el array de partes en
+> su lugar.** Antes se recalculaban en cada llamada. Ahora se guardan en un
+> `WeakMap` indexado por el array, así que agregarle una parte de carne a un
+> cuerpo de piedra **por mutación** deja al cuerpo diciendo que no es orgánico.
+
+No es alcanzable hoy y hay un barrido que lo sostiene: ninguna función del
+paquete muta un array de partes que le dieron —toda operación construye uno
+nuevo— y el test lo verifica corriendo las leyes sobre sesenta cuerpos contra tres
+entornos y comparando la entrada bit a bit. Pero **convierte la inmutabilidad de
+las partes de costumbre en invariante**: el día que alguien haga `parts.push` para
+ahorrarse una copia, el cuerpo va a mentir sobre de qué está hecho y ningún test
+de conservación lo va a ver.
+
+Lo que **no** apareció, habiéndolo buscado:
+
+| se buscó | resultado |
+|---|---|
+| un cuerpo que cambia de masa y se vuelve a leer | la lectura sigue a la masa nueva; 50 ticks de evaporación sin inventar nutrición |
+| dos cuerpos distintos con el mismo id | nada se indexa por id |
+| un cuerpo mutado después de leerlo | `qualityOf` no memoiza por cuerpo; `LecturaPerezosa` no sobrevive a su `paso()` |
+| dos `Physics` con las mismas sustancias y distintos números | alternando mil veces, cada catálogo da lo suyo |
+| **el resultado depende de qué cuerpo se leyó antes** | 200 cuerpos al derecho, al revés y salteado dan lo mismo cuerpo por cuerpo |
+| el atajo del candado con una conservada DERIVADA | el guardia `conservadasSeGuardan` entra y el candado sigue cerrando |
+
+El quinto es el que hacía falta y ningún test del árbol lo miraba: `sustanciaDe`
+e `indiceDe` son memos de **una entrada en variables de módulo**, o sea estado
+global mutable adentro del paquete que promete determinismo. Son puras, y «pura»
+acá quiere decir exactamente eso: leer un cuerpo no puede depender de cuál se leyó
+justo antes.
+
+Y una sospecha que se cayó: `recortar` ahora mira antes de construir, y podía
+haber cambiado qué pasa con una clave de estado presente-pero-`undefined`. No
+cambia —las dos versiones la borran cuando el recorte dispara y las dos la
+conservan cuando no— y además `exactOptionalPropertyTypes` hace que ese estado
+**no se pueda escribir** en código tipado.
+
+### Por qué los archivos de verificación corren aparte
+
+`banco-el-tick.test.ts` afirma `expect(mundoSolo).toBeLessThan(2)` en
+**milisegundos absolutos**, adentro de la corrida compartida de `pnpm ii:test`, y
+su margen es de dos veces: con el árbol como estaba mide 0,74–1,10 ms contra un
+presupuesto de 2. Agregarle a la corrida **un** archivo con trabajo de verdad lo
+lleva a 3,3; agregarle los dos, a 6,8.
+
+O sea que el banco se cae por que la máquina esté ocupada y no por que el mundo
+haya engordado. **Es previo a esta verificación y previo a la optimización** —la
+afirmación está igual en 11b49ae— y no se tocó: aflojarle el umbral a otro no es
+trabajo del que verifica. Los dos archivos nuevos se corren con su propio comando
+y `pnpm ii:test` queda como estaba.
+
+Es la misma razón que el encabezado del banco ya daba para sí mismo, y vale la
+pena volverla accionable: **un presupuesto de tiempo en milisegundos absolutos no
+puede vivir adentro de una corrida paralela.** O el banco sale de `ii:test`, o esa
+afirmación pasa a ser una fracción del tick.
 
 ## El ataque al propio determinismo
 
@@ -336,7 +508,29 @@ violaciones.**
 ## Lo que queda abierto
 
 **1. El rendimiento, y es de `@anima/physics`.** Está arriba con los números y la
-reparación. No bloquea el Hito 3.
+reparación. **El criterio (c) NO se cumple: 8,65 ms contra un techo de 4, faltan
+2,2×.** No bloquea el Hito 3. Y hay dos frentes distintos, no uno:
+
+- para el corpus plano, lo que queda es la **representación del cuerpo** —una
+  cualidad se resuelve preguntando a `state`, después a las partes y después a la
+  sustancia, y ese piso son ~1,2 µs por cuerpo. Pide su propio ADR;
+- para un mundo **heterogéneo**, que hoy cuesta ~20 ms y no 8,65, lo que manda es
+  otra cosa: **`conSustancia` reconstruye la `Physics` entera** cada vez que la
+  ley 4 transmuta. Eso no es un cambio de representación, es una función que
+  copia un catálogo de 30 sustancias para agregarle una. Es más barato de
+  arreglar y nadie lo había visto porque el banco no lo ejercita.
+
+**1-bis. `tagsDe` volvió obligatoria la inmutabilidad de las partes.** Está
+memoizada en un `WeakMap` indexado por el array de partes, así que mutar ese array
+en su lugar deja los tags viejos y el cuerpo miente sobre de qué está hecho. Hoy
+nadie lo hace y hay un barrido que lo verifica, pero era una costumbre y ahora es
+un invariante del que depende la corrección.
+
+**1-ter. El banco no puede vivir adentro de `pnpm ii:test`.** Afirma un
+presupuesto en milisegundos absolutos con margen de 2× dentro de una corrida
+paralela, así que se cae cuando la máquina está ocupada. Hay que elegir: o el
+banco sale de la corrida compartida, o esa afirmación pasa a ser una fracción del
+tick. Es previo a la optimización.
 
 **2. El segundo motor.** Falta la página; la infraestructura del Hito 0 ya está.
 
@@ -491,3 +685,23 @@ Los tres últimos verifican el criterio contra piezas **independientes** del
 de treinta líneas— y por eso se conservan enteros: si el criterio se verificara
 solo con `hashWorld`, un bug en el hash haría pasar todo por la peor razón
 posible, que es dos mundos distintos hasheando igual.
+
+### Y los que corren aparte
+
+```bash
+pnpm --filter @anima/world verificacion
+```
+
+| Archivo | | |
+|---|---:|---|
+| `zz-remedicion.test.ts` | 3 | el tick re-medido desde afuera, con dos arneses y dos corpus |
+| `zz-partida-2000.test.ts` | 2 | 2000 ticks hasheados, con los invariantes en todos los ticks |
+
+No están en `pnpm test` por lo que dice [la verificación
+independiente](#por-qué-los-archivos-de-verificación-corren-aparte): el
+presupuesto en milisegundos absolutos del banco no sobrevive a que la corrida
+compartida crezca.
+
+En `@anima/physics`, `zz-cache-mal-invalidada.test.ts` (23 tests) sí corre con los
+demás, y por eso la física pasó de 525 a **548**. El total de `pnpm ii:test` es de
+**811 tests** — 548 de física, 258 de mundo y 5 de habilidades.

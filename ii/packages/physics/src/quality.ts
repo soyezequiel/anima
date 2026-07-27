@@ -482,9 +482,18 @@ export function isConserved(q: QualityId): boolean {
   return specOf(q).conserved
 }
 
-/** Recorta al rango declarado. Ningún estado guardado debería salir de acá sin pasar por esto. */
+/**
+ * Recorta al rango declarado. Ningún estado guardado debería salir de acá sin
+ * pasar por esto.
+ *
+ * Por índice y no por desestructuración: `const [lo, hi] = ...` levanta el
+ * protocolo de iteración del array, y toda ley que escribe pasa por acá miles de
+ * veces por tick. Los dos números son los mismos.
+ */
 export function clampToRange(q: QualityId, v: number): number {
-  const [lo, hi] = specOf(q).range
+  const range = specOf(q).range
+  const lo = range[0]
+  const hi = range[1]
   return v < lo ? lo : v > hi ? hi : v
 }
 

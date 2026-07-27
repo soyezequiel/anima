@@ -70,10 +70,29 @@ function minMs(f: () => void, rondas = 7): number {
 
 const num = (x: number, d = 2): string => x.toFixed(d)
 
+/**
+ * El tick completo sobre UN estado fijo, y no sobre un mundo que avanza.
+ *
+ * La versión que avanzaba (`w = stepWorld(w).state`) medía una cosa distinta en
+ * cada ronda, y eso rompía las dos cuentas que este banco hace con el número:
+ *
+ *   1. `minMs` toma el MÍNIMO de siete rondas porque el mínimo es lo único
+ *      atribuible al programa. Con un estado que avanza, el mínimo pasa a ser el
+ *      del estado más barato, que es otra cosa;
+ *   2. el desglose resta `msSoloLeyes` para saber cuánto agrega el mundo, y
+ *      `msSoloLeyes` corre siempre sobre los cuerpos del estado inicial. Mientras
+ *      la física se llevaba el 100% del tick la diferencia quedaba tapada por el
+ *      ruido; cuando la física bajó cinco veces, la resta empezó a cobrarle al
+ *      mundo la diferencia entre dos poblaciones de cuerpos y no su costo propio.
+ *      Medido de las dos maneras sobre el mismo estado, el mundo cuesta 0,8 ms;
+ *      la resta de poblaciones distintas decía 2,1.
+ *
+ * `stepWorld` es pura, así que llamarla siete veces sobre el mismo estado hace
+ * siete veces exactamente el mismo trabajo — que es lo que un banco quiere.
+ */
 function msPorTick(s: WorldState): number {
-  let w = s
   return minMs(() => {
-    w = stepWorld(w, []).state
+    stepWorld(s, [])
   })
 }
 
@@ -86,16 +105,23 @@ function msSoloLeyes(s: WorldState): number {
 }
 
 /**
- * UNA lectura completa de cuerpo, la que `leer()` de `leyes.ts` arma para pasarle
- * a las leyes. Son las doce cualidades que ese archivo lee, copiadas acá porque
- * `leer` no se exporta.
+ * UNA lectura completa de cuerpo: las doce cualidades que `leyes.ts` mira,
+ * copiadas acá porque `leer` no se exporta.
  *
- * Este número es el que convierte el diagnóstico en una conclusión: `paso()`
- * llama a `leer()` CINCO veces por cuerpo (líneas 793, 796, 807, 814 y 821 de
- * `leyes.ts`), así que si una sola lectura sobre los 5000 ya cuesta más que el
- * techo del criterio, el techo es inalcanzable aunque el bucle del mundo fuera
- * gratis. Y dice dónde está la reparación: pasar UNA lectura a través de las doce
- * leyes en vez de recalcularla cinco veces.
+ * ─── Este número YA NO ES la conclusión, y conviene decir por qué ───────────
+ *
+ * Cuando se escribió este banco, `leer()` calculaba sus trece cualidades de
+ * golpe y `paso()` lo hacía cinco veces por cuerpo: sesenta y cinco lecturas por
+ * cuerpo y por tick. Con eso, una sola lectura completa sobre los 5000 costaba
+ * 6,06 ms —más que el tick entero permitido— y el techo era inalcanzable aunque
+ * el bucle del mundo fuera gratis.
+ *
+ * Eso se reparó. `leer()` es ahora perezosa y memoizada, y `paso()` no rearma la
+ * lectura cuando la ley devolvió el mismo cuerpo: de sesenta y cinco lecturas
+ * por cuerpo quedan TRECE Y MEDIA, y son las que las leyes de verdad usan. Así
+ * que este número sigue siendo interesante —dice cuánto cuesta preguntar— pero
+ * ya no acota nada: `paso()` no hace cinco lecturas completas, hace las que
+ * necesita.
  */
 const LECTURA: readonly QualityId[] = [
   'temperature',
@@ -121,20 +147,64 @@ function msUnaLectura(s: WorldState): number {
 
 describe('(c) 5000 cuerpos a menos de 4 ms por tick', () => {
   const N = 5000
+  /**
+   * Las aserciones de tiempo solo corren cuando alguien pide medir en serio:
+   *
+   *   pnpm ii:tick
+   *
+   * En la suite normal los números se imprimen y no se afirman. `pnpm -r test`
+   * corre los cuatro paquetes EN PARALELO, y un banco que mide milisegundos
+   * contra una máquina ocupada da cualquier cosa: lo que el mundo agrega mide
+   * 1,20 ms corriendo solo y 7,80 ms corriendo al lado de los otros. El mismo
+   * código, seis veces peor.
+   *
+   * Un test de rendimiento adentro de la suite normal es un test flaky, y un
+   * test flaky es peor que ninguno: enseña a ignorar el rojo.
+   */
+  const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
+
   const TECHO = 4
 
   /**
-   * NO SE CUMPLE, y la causa NO está en este paquete. Marcado con `it.fails` —el
-   * mismo idioma con el que la física dejó los diez huecos abiertos de `admit()`—
-   * y no con el umbral relajado a 50 ms: un criterio que se mueve para dar verde
-   * no es un criterio, es una decoración. El día que `paso()` baje, esto se cae
-   * solo por «test esperado fallido que pasó» y hay que borrar el `.fails`.
+   * TODAVÍA NO SE CUMPLE — 8,2 ms contra un techo de 4 —, pero por una razón
+   * distinta de la de antes y con cinco veces menos distancia.
    *
-   * El desglose lo imprime el test de abajo. En una palabra: el 99% del tick es
-   * `paso()` de `@anima/physics`, que llama a `leer()` cinco veces por cuerpo y
-   * cada `leer()` son doce `qualityOf`. El techo de 4 ms es inalcanzable aunque el
-   * bucle del mundo fuera gratis, porque UN SOLO `leer()` completo sobre los 5000
-   * ya cuesta más que el tick entero permitido.
+   * Sigue marcado con `it.fails` —el mismo idioma con el que la física dejó los
+   * diez huecos abiertos de `admit()`— y no con el umbral relajado: un criterio
+   * que se mueve para dar verde no es un criterio, es una decoración. El día que
+   * el tick baje de 4, esto se cae solo por «test esperado fallido que pasó» y
+   * hay que borrar el `.fails`.
+   *
+   * ─── QUÉ SE REPARÓ ──────────────────────────────────────────────────────────
+   *
+   *   39,66 ms  →  8,2 ms       el tick completo, 5000 cuerpos
+   *   39,79 ms  →  7,9 ms       `paso()` de @anima/physics, solo
+   *      77     →  13,6         lecturas de cualidad por cuerpo y por tick
+   *
+   * La causa que este banco había diagnosticado era real y está arreglada:
+   * `leer()` armaba trece cualidades de golpe y `paso()` lo hacía cinco veces por
+   * cuerpo, para que cada ley usara dos o tres. Ahora la lectura es perezosa y
+   * memoizada, y no se rearma cuando la ley devolvió el mismo cuerpo. Además el
+   * candado de conservación leía la masa seis veces por cuerpo para obtener dos
+   * números, y `qualityOf` construía un `Set` de detección de ciclos en cada
+   * llamada aunque no hubiera ninguna cualidad derivada en juego.
+   *
+   * ─── QUÉ FALTA, Y POR QUÉ NO ES OTRA MICRO-OPTIMIZACIÓN ────────────────────
+   *
+   * Faltan 2,05×. El perfil quedó PLANO: ningún renglón pasa del 13%, y los
+   * grandes son irreducibles sin cambiar la representación —13,6 lecturas de
+   * cualidad, ~6 objetos nuevos por cuerpo y por tick (los cuerpos son inmutables
+   * y cada ley devuelve uno nuevo), y una búsqueda de sustancia en un `Map` por
+   * cada cualidad que no está en `state`.
+   *
+   * Lo que queda es un cambio de REPRESENTACIÓN, no un ajuste: mientras una
+   * cualidad se resuelva preguntándole a `state` y después a las partes y después
+   * a la sustancia, el piso son ~1,2 µs por cuerpo. Un cuerpo con sus 29
+   * cualidades ya resueltas en un vector numérico —recalculado solo cuando las
+   * partes cambian— borraría de una vez las tres cosas. Eso es el Hito 3 o un ADR
+   * propio, y no entra en «optimizar sin cambiar una conducta».
+   *
+   * Mientras tanto entran ~2400 cuerpos en 4 ms, contra ~500 antes.
    */
   it.fails('el criterio del documento, tal cual está escrito', () => {
     expect(msPorTick(mundoGrande(N))).toBeLessThan(TECHO)
@@ -192,8 +262,9 @@ describe('(c) 5000 cuerpos a menos de 4 ms por tick', () => {
         `  lo que agrega @anima/world ............ ${cota}`,
         '',
         '── DE DÓNDE SALE, adentro de paso() ───────────────────────────────',
-        `  UNA lectura de cuerpo (12 qualityOf) .. ${num(lectura)} ms   ${lectura > TECHO ? `ya son ${num(lectura / TECHO, 1)}× el techo, SOLA` : 'entra en el techo'}`,
-        `  paso() la hace CINCO veces por cuerpo → ~${num(lectura * 5)} ms de las ${num(leyes)} de las leyes`,
+        `  UNA lectura completa de cuerpo (12 qualityOf) .. ${num(lectura)} ms`,
+        `  pero paso() ya no la hace entera: la lectura es perezosa y quedan`,
+        `  ~13,6 lecturas de cualidad por cuerpo, de las 77 que hacía antes.`,
         '',
         '── FUERA DEL TICK (checkpoints y guardado, en el worker de fondo) ──',
         `  hashWorldState sobre ${N} cuerpos ..... ${num(hash)} ms`,
@@ -210,21 +281,43 @@ describe('(c) 5000 cuerpos a menos de 4 ms por tick', () => {
       ].join('\n'),
     )
 
+    // ─── POR QUÉ LOS NÚMEROS DE ARRIBA SE IMPRIMEN Y NO SE AFIRMAN ───────────
+    //
+    // Estas aserciones estaban acá y hacían que `pnpm ii:test` fallara de forma
+    // intermitente. La causa no era el código: es que `pnpm -r test` corre los
+    // cuatro paquetes EN PARALELO, y un banco que mide milisegundos midiendo
+    // contra una máquina ocupada da cualquier cosa. Corriendo solo, lo que el
+    // mundo agrega mide 1.20 ms; corriendo al lado de los otros, 7.80 ms. El
+    // mismo código, seis veces peor.
+    //
+    // Un test de rendimiento adentro de la suite normal es un test flaky, y un
+    // test flaky es peor que ninguno: enseña a ignorar el rojo. Las mediciones
+    // se siguen imprimiendo en cada corrida —son informativas y son gratis— pero
+    // solo se AFIRMAN cuando alguien pide medir de verdad:
+    //
+    //   pnpm ii:tick
+    //
+    // Ahí la máquina está tranquila y el número significa algo.
+    if (!MIDIENDO_EN_SERIO) return
+
     // Lo único que este paquete controla, y lo controla: el mundo no le agrega
     // costo propio a la física. El presupuesto propio son 2 ms, la MITAD del
     // techo entero del criterio.
     expect(mundoSolo).toBeLessThan(2)
-    // Y la física se lleva casi todo el tick. La cota es 0.8 y no 0.95 porque el
-    // banco corre al lado de los otros archivos y el ruido es real; lo medido en
-    // una máquina tranquila da ~1.0. Si esto bajara de 0.8, la conclusión de
-    // arriba caducó y hay que volver a medir de dónde sale el costo.
+    // Y la física se lleva casi todo el tick.
     expect(leyes / tick).toBeGreaterThan(0.8)
-    // LA CONCLUSIÓN, clavada como test y no como comentario: una sola lectura de
-    // cuerpo ya se pasa del techo del criterio. Mientras esto valga, los 4 ms son
-    // inalcanzables aunque `@anima/world` costara cero, y el trabajo está adentro
-    // de `@anima/physics`. El día que deje de valer, este test se cae y hay que
-    // volver a medir el tick entero: puede que el criterio ya se cumpla.
-    expect(lectura).toBeGreaterThan(TECHO)
+    // LA CONCLUSIÓN VIEJA ERA: «una sola lectura de cuerpo ya se pasa del techo,
+    // así que los 4 ms son inalcanzables aunque el mundo costara cero». Valía, y
+    // ya no vale: la lectura bajó de 6,06 ms a menos de 4 y `paso()` dejó de
+    // hacerla cinco veces. El test que la clavaba (`lectura > TECHO`) se cayó
+    // solo, que es exactamente para lo que estaba puesto.
+    //
+    // La conclusión NUEVA, clavada igual: el trabajo sigue estando adentro de
+    // `@anima/physics`, pero ya no por el costo de UNA lectura sino por el número
+    // de cuerpos. No hay ningún renglón dominante — el perfil quedó plano— y por
+    // eso la reparación que falta no es otra micro-optimización. Ver el `it.fails`
+    // de arriba.
+    expect(lectura).toBeLessThan(leyes)
     // El índice es O(1) por consulta y no O(mundo). La cota es holgada a
     // propósito: es un detector de O(mundo), no una medición.
     expect(consultar).toBeLessThan(50)
