@@ -31,18 +31,26 @@
 // y no error de integración. Descontada la cuantización, el peor error de
 // integración medido es 0,48%.
 //
-// Y NO se cumple en tres lugares, los tres medidos abajo con su número:
+// Y NO se cumple en dos lugares, los dos medidos abajo con su número:
 //
 //   1. `friccion` no llega a 375 °C a ninguna frecuencia —no llega a 34— y la
 //      meseta a la que sí llega se corre un 40% entre 10 y 50 Hz;
 //   2. **caminar se cuenta en ticks**: diez celdas cuestan 10/hz segundos, o sea
-//      que a 50 Hz la criatura camina cinco veces más rápido que a 10;
-//   3. **vivir se cuenta en ticks**: `COSTO_VIVIR` se cobra por tick, así que el
-//      hambre —el motor de toda la historia— llega cinco veces antes a 50 Hz.
+//      que a 50 Hz la criatura camina cinco veces más rápido que a 10.
 //
-// Los dos últimos son perilla de rendimiento moviendo el ritmo del juego, que es
-// exactamente lo que el ADR II-0007 prohíbe. Y no son de la física: viven en
+// El segundo es perilla de rendimiento moviendo el ritmo del juego, que es
+// exactamente lo que el ADR II-0007 prohíbe. Y no es de la física: vive en
 // `@anima/world`, que es la mitad que la migración del ADR II-0008 no tocó.
+//
+// ─── EL HUECO 3 SE CERRÓ, Y SU HISTORIA QUEDA ACÁ ───────────────────────────
+//
+// Había un tercero —**vivir se cuenta en ticks**: `COSTO_VIVIR` se cobraba por
+// tick, así que el hambre, que es el motor de toda la historia, llegaba cinco
+// veces antes a 50 Hz que a 10— y lo cerró el ADR II-0009: la constante pasó a ser
+// `COSTO_VIVIR_POR_SEGUNDO` y se aplica con `porPaso(…, d.dt)`, como todas las
+// demás. Su bloque sigue abajo, con el `it.fails` convertido en `it` y el número
+// de antes escrito al lado del de ahora, porque un hueco que se cierra sin dejar
+// rastro es un hueco que se puede volver a abrir sin que nadie lo note.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -59,7 +67,7 @@ import {
 } from '@anima/physics'
 import type { Body, ProcessId } from '@anima/physics'
 
-import { COSTO_PASO, COSTO_VIVIR, stepWorld } from '../src/step.js'
+import { COSTO_POR_CELDA, COSTO_VIVIR_POR_SEGUNDO, stepWorld } from '../src/step.js'
 import type { WorldBody, WorldState } from '../src/step.js'
 import { apply, goTo, wait } from '../src/intent.js'
 import type { Intent } from '../src/intent.js'
@@ -617,13 +625,16 @@ describe('lo que NO cumple la promesa, medido', () => {
       // EXACTO, no aproximado: diez celdas son diez ticks, siempre.
       expect([hz, medido.segundos]).toEqual([hz, 10 / hz])
       expect([hz, medido.pasos]).toEqual([hz, 10])
-      // Y la `stamina` que cuesta no cambia, porque también se cobra por tick:
-      // el mismo viaje sale lo mismo y tarda cinco veces menos.
-      // Los dos lados se redondean: `10 × 0,06` da 0,6000000000000001 en
-      // IEEE-754 y lo que se afirma acá es la CUENTA, no el último bit.
+      // Y lo que cuesta el viaje son diez veces el precio POR CELDA —que no
+      // depende de la frecuencia y no tiene por qué (ADR II-0009)— más lo que
+      // cuesta estar vivo los `10/hz` segundos que el viaje dura. O sea que el
+      // mismo viaje sale MÁS BARATO a 50 Hz que a 10, y no porque caminar valga
+      // menos: porque tarda menos. Ése es el hueco, dicho con la cuenta.
+      // Los dos lados se redondean: lo que se afirma es la CUENTA, no el último
+      // bit de IEEE-754.
       expect([hz, Number(medido.stamina.toFixed(6))]).toEqual([
         hz,
-        Number((10 * (COSTO_PASO + COSTO_VIVIR)).toFixed(6)),
+        Number((10 * COSTO_POR_CELDA + (10 / hz) * COSTO_VIVIR_POR_SEGUNDO).toFixed(6)),
       ])
       filas.push(
         `  ${String(hz).padStart(3)} Hz → ${medido.segundos.toFixed(3)} s de mundo   (${String(medido.pasos)} ticks, ${medido.stamina.toFixed(2)} de stamina)`,
@@ -641,43 +652,49 @@ describe('lo que NO cumple la promesa, medido', () => {
   })
 
   // ──────────────────────────────────────────────────────────────────────────
-  // HUECO 3 — VIVIR SE MIDE EN TICKS.
+  // HUECO 3 — VIVIR SE MEDÍA EN TICKS. CERRADO POR EL ADR II-0009.
   //
-  // `sistemaMetabolismo` cobra `COSTO_VIVIR` por TICK. «Lo que cuesta estar vivo
-  // un tick, hambre incluida. El motor de la historia», dice su comentario — y
-  // el motor de la historia corre cinco veces más rápido a 50 Hz que a 10. Una
-  // criatura con 500 de `stamina` aguanta 50.000 segundos de mundo a 10 Hz y
-  // 10.000 a 50: la misma partida, el mismo mundo, y el hambre llega cinco veces
-  // antes por haber subido la frecuencia para que el render fuera más suave.
+  // Lo que decía este bloque cuando estaba abierto: «`sistemaMetabolismo` cobra
+  // `COSTO_VIVIR` por TICK, y el motor de la historia corre cinco veces más
+  // rápido a 50 Hz que a 10. La misma partida, el mismo mundo, y el hambre llega
+  // cinco veces antes por haber subido la frecuencia para que el render fuera más
+  // suave.» Medido entonces, con `COSTO_VIVIR = 0,01` por tick:
   //
-  // Es el más barato de los tres de cerrar y el más caro de dejar abierto: el
-  // hambre es lo que hace que la criatura tenga que decidir algo.
+  //   |                            | 10 Hz | 20 Hz | 50 Hz |
+  //   | stamina por diez segundos  |  1,0  |  2,0  |  5,0  |
   //
-  // QUÉ HARÍA FALTA PARA CERRARLO: `COSTO_VIVIR` pasa a ser por segundo y se
-  // aplica con `porPaso(COSTO_VIVIR_POR_SEGUNDO, dt)`, que es la misma
-  // conversión que ya hace `aplicarEfectos` tres líneas más arriba en el mismo
-  // archivo. Cuidado con el orden de magnitud: a 20 Hz, `COSTO_VIVIR` = 0,01 por
-  // tick son 0,2 por segundo, y ése es el número que hay que escribir para que
-  // la conducta a la frecuencia de referencia no se mueva.
-  it('documentado · vivir diez segundos cuesta 0,01 × hz × 10 de stamina', () => {
+  // Ahora la constante es `COSTO_VIVIR_POR_SEGUNDO` y se aplica con
+  // `porPaso(…, d.dt)`, la misma conversión que `aplicarEfectos` hace veinte
+  // líneas más arriba en el mismo archivo, y las tres columnas dan 10,0.
+  //
+  // OJO CON LEER ESTO COMO UNA MIGRACIÓN DE FORMA: no lo es. El ADR II-0009 no
+  // eligió 0,2 por segundo —el número que habría dejado la conducta quieta a
+  // 20 Hz— sino 1,0, o sea 5× más caro, y con un motivo medido sobre cien
+  // partidas. La huella de conducta del mundo SE TENÍA QUE MOVER, y se movió por
+  // eso y sólo por eso.
+  it('documentado · vivir diez segundos cuesta 10,0 de stamina, se muestree como se muestree', () => {
     const filas: string[] = []
     for (const hz of HZ) {
       const gastado = vivirDiezSegundos(hz)
-      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, Number((COSTO_VIVIR * hz * 10).toFixed(6))])
+      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, 10 * COSTO_VIVIR_POR_SEGUNDO])
       filas.push(
-        `  ${String(hz).padStart(3)} Hz → ${gastado.toFixed(3)} de stamina en diez segundos de mundo`,
+        `  ${String(hz).padStart(3)} Hz → ${gastado.toFixed(3)} de stamina en diez segundos de mundo` +
+          `   (antes: ${(0.01 * hz * 10).toFixed(3)})`,
       )
     }
-    log(['══ EL HUECO 3 · VIVIR ═════════════════════════════════════════════════', ...filas])
+    log(['══ EL HUECO 3 · VIVIR · CERRADO ═══════════════════════════════════════', ...filas])
   })
 
-  it.fails('SIGUE ABIERTO · diez segundos de mundo tendrían que costar la misma stamina a cualquier frecuencia', () => {
+  it('CERRADO · diez segundos de mundo cuestan la misma stamina a cualquier frecuencia', () => {
     const referencia = vivirDiezSegundos(HZ_DE_REFERENCIA)
     for (const hz of HZ) {
       expect(Math.abs(vivirDiezSegundos(hz) - referencia) / referencia).toBeLessThanOrEqual(
         TOLERANCIA_RELATIVA,
       )
     }
+    // Y con el control negativo puesto: si la resta hubiera vuelto a contarse por
+    // tick, esto daría 5× entre 10 y 50 Hz. Da 1×.
+    expect(Number((vivirDiezSegundos(50) / vivirDiezSegundos(10)).toFixed(6))).toBe(1)
   })
 })
 

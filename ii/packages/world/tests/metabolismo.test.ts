@@ -1,0 +1,392 @@
+// ─── EL HAMBRE SE MIDE EN SEGUNDOS, Y MATA ───────────────────────────────────
+//
+// El criterio verificable del ADR II-0009, decisiones 1, 2 y 3, escrito antes que
+// el código. Tres preguntas:
+//
+//   (b) **una criatura quieta y sin comer tarda LO MISMO en quedarse sin
+//       `stamina` a 10, 20, 25, 50 y 100 Hz.** Antes tardaba cinco veces menos a
+//       100 Hz que a 20 —`COSTO_VIVIR` se cobraba por TICK— y ése es el bug que
+//       este archivo cierra. Se miden las dos, la de antes y la de ahora, y la
+//       tabla sale por consola: sin el número, «se arregló» es una palabra;
+//   (c) **el punto de equilibrio, en números**: cuántos segundos de mundo aguanta
+//       sin comer, y cuántos pescados tiene que sacarle al mundo para llegar viva
+//       a los 20.000 ticks del criterio del Hito 5;
+//   (3) **llegar a cero mata**: el actor sale de `actors`, el cuerpo se queda en
+//       su celda como carne comestible, lo que tenía en la mano cae, y sale un
+//       `murio` con `por: 'hambre'`. Con los invariantes puestos, porque ésta es
+//       la primera vez que el mundo ve irse a un actor.
+//
+// LO QUE ESTE ARCHIVO NO PRUEBA: que 1,0 por segundo sea el número correcto. Eso
+// se mide sobre cien partidas en `oracle/tests/presupuesto.test.ts`, y se afirma
+// como VENTANA —crudo negativo, cocinado positivo— y no como constante. Un test
+// que dijera `COSTO_VIVIR_POR_SEGUNDO === 1` estaría midiendo su propia copia.
+
+import { describe, expect, it } from 'vitest'
+import {
+  buildSeedPhysics,
+  dtDeFrecuencia,
+  FRECUENCIAS_ADMISIBLES,
+  HZ_DE_REFERENCIA,
+  qualityOf,
+} from '@anima/physics'
+
+import { COSTO_POR_CELDA, COSTO_VIVIR_POR_SEGUNDO, stepWorld } from '../src/step.js'
+import type { SimEvent, WorldState } from '../src/step.js'
+import { revisarInvariantes } from '../src/invariants.js'
+import { eat, goTo, take } from '../src/intent.js'
+import { actor, criatura, cuerpo, enElPiso, enLaMano, mundo } from './mundo-minimo.js'
+
+const EN = (x: number, y: number) => ({ x, y })
+
+const FISICA = buildSeedPhysics()
+
+const log = (lineas: readonly string[]): void => {
+  console.log(['', ...lineas, ''].join('\n'))
+}
+
+/** Con cuánta `stamina` llega la criatura: la mitad del techo del catálogo. */
+const TANQUE = 500
+
+/** El criterio del Hito 5, en ticks y a la frecuencia de referencia. */
+const TICKS_DEL_CRITERIO = 20_000
+
+function staminaDe(w: WorldState, id: string): number {
+  const c = w.bodies.get(`${id}-cuerpo`)
+  return c === undefined ? Number.NaN : qualityOf(c.body, 'stamina', w.phys)
+}
+
+interface Ayuno {
+  readonly ticks: number
+  readonly segundos: number
+  readonly murio: boolean
+}
+
+/**
+ * Una criatura quieta, sin comer, hasta que se muere. Mundo aparte y mínimo: un
+ * solo cuerpo, ninguna intención, ningún proceso. Lo único que le pasa es el
+ * tiempo.
+ */
+function ayunar(hz: number): Ayuno {
+  let w = mundo({ hz, bodies: [enElPiso(criatura('ana', TANQUE), EN(0, 0))], actors: [actor('ana')] })
+  const dt = dtDeFrecuencia(hz)
+  const techo = Math.round(600 / dt)
+  for (let n = 1; n <= techo; n++) {
+    const paso = stepWorld(w, [])
+    w = paso.state
+    const seFue = paso.events.some((e) => e.k === 'murio' && e.por === 'hambre')
+    if (seFue) return { ticks: n, segundos: n * dt, murio: !w.actors.has('ana') }
+  }
+  return { ticks: -1, segundos: Number.NaN, murio: false }
+}
+
+/**
+ * EL MODELO VIEJO, en tres líneas: `COSTO_VIVIR = 0.01` restado por TICK, sin
+ * pasar por `porPaso`. No se importa de ningún lado porque ya no existe —el ADR
+ * II-0009 lo borró sin dejar alias— y está acá para que la tabla tenga con qué
+ * comparar. Fijate que el número de TICKS no depende de `hz`: ése es el bug.
+ */
+function ayunarComoAntes(hz: number): Ayuno {
+  const COSTO_VIVIR_POR_TICK = 0.01
+  let s = TANQUE
+  let n = 0
+  while (s > 0) {
+    s = s - COSTO_VIVIR_POR_TICK
+    n++
+  }
+  return { ticks: n, segundos: n / hz, murio: false }
+}
+
+// ─── (b) EL CRITERIO: el ayuno dura lo mismo a las cinco frecuencias ────────
+
+describe('una criatura quieta y sin comer tarda lo mismo a 10, 20, 25, 50 y 100 Hz', () => {
+  it('la tabla: lo que duraba antes y lo que dura ahora', () => {
+    const antes = FRECUENCIAS_ADMISIBLES.map((hz) => ayunarComoAntes(hz))
+    const ahora = FRECUENCIAS_ADMISIBLES.map((hz) => ayunar(hz))
+
+    // AHORA: los mismos segundos a las cinco. La tolerancia es de MEDIO TICK del
+    // muestreo más grueso más el residuo de punto flotante de restar diez mil
+    // veces un número que no es exacto en binario, y no un «epsilon por las
+    // dudas»: la dispersión medida es de 4·10⁻⁵ s.
+    const referencia = ahora[FRECUENCIAS_ADMISIBLES.indexOf(HZ_DE_REFERENCIA)] as Ayuno
+    let peor = 0
+    for (let i = 0; i < ahora.length; i++) {
+      const a = ahora[i] as Ayuno
+      expect([FRECUENCIAS_ADMISIBLES[i], a.murio]).toEqual([FRECUENCIAS_ADMISIBLES[i], true])
+      const desvio = Math.abs(a.segundos - referencia.segundos)
+      if (desvio > peor) peor = desvio
+      expect(
+        [FRECUENCIAS_ADMISIBLES[i], desvio <= 0.1],
+        `a ${String(FRECUENCIAS_ADMISIBLES[i])} Hz aguanta ${a.segundos.toFixed(2)} s contra ${referencia.segundos.toFixed(2)} s a ${String(HZ_DE_REFERENCIA)} Hz`,
+      ).toEqual([FRECUENCIAS_ADMISIBLES[i], true])
+    }
+
+    // ANTES: el control negativo, y es el bug entero en una línea. El mismo mundo
+    // aguantaba CINCO VECES MENOS a 100 Hz que a 20, porque el costo se contaba en
+    // muestras y no en segundos.
+    // Y el bug entero cabe en una afirmación: los TICKS que aguantaba eran los
+    // mismos a las cinco frecuencias, así que los SEGUNDOS no podían serlo.
+    expect(antes.map((a) => a.ticks)).toEqual(FRECUENCIAS_ADMISIBLES.map(() => antes[0]?.ticks))
+    const antes20 = (antes[FRECUENCIAS_ADMISIBLES.indexOf(20)] as Ayuno).segundos
+    const antes100 = (antes[FRECUENCIAS_ADMISIBLES.indexOf(100)] as Ayuno).segundos
+    const antes10 = (antes[FRECUENCIAS_ADMISIBLES.indexOf(10)] as Ayuno).segundos
+    expect(Number((antes20 / antes100).toFixed(9))).toBe(5)
+    expect(Number((antes10 / antes100).toFixed(9))).toBe(10)
+
+    log([
+      '══ LO QUE AGUANTA SIN COMER, EN SEGUNDOS DE MUNDO ═══════════════════════',
+      `  ${''.padEnd(26)}${FRECUENCIAS_ADMISIBLES.map((h) => `${String(h)} Hz`.padStart(12)).join('')}`,
+      `  ANTES (0,01 por TICK)     ${antes.map((a) => `${a.segundos.toFixed(2)} s`.padStart(12)).join('')}`,
+      `  AHORA (1,0 por SEGUNDO)   ${ahora.map((a) => `${a.segundos.toFixed(2)} s`.padStart(12)).join('')}`,
+      '',
+      `  ANTES, en ticks           ${antes.map((a) => String(a.ticks).padStart(12)).join('')}`,
+      `  AHORA, en ticks           ${ahora.map((a) => String(a.ticks).padStart(12)).join('')}`,
+      '',
+      `  antes: los TICKS no dependían de la frecuencia, así que los SEGUNDOS sí.`,
+      `  ahora: al revés, que es lo que el ADR II-0007 pide. Peor desvío: ${peor.toFixed(5)} s.`,
+    ])
+  }, 120_000)
+
+  it('documentado · aguanta 500 s, o sea la MITAD EXACTA del criterio del Hito 5', () => {
+    // El número que le da contenido a «sobrevive 20.000 ticks sola». Con el tanque
+    // de arranque la criatura llega hasta el tick 10.000 de los 20.000 sin hacer
+    // nada; de ahí en adelante o resuelve su hambre o se muere. Antes de esto el
+    // criterio lo cumplía una piedra.
+    const a = ayunar(HZ_DE_REFERENCIA)
+    expect(a.ticks).toBe(TICKS_DEL_CRITERIO / 2)
+    expect(a.segundos).toBe(TANQUE / COSTO_VIVIR_POR_SEGUNDO)
+    // Y `stamina` se lee como lo que ahora es: SEGUNDOS DE VIDA. Mil de `stamina`
+    // son mil segundos de mundo, y por eso el tanque de 500 son 500 s.
+    expect(TANQUE / COSTO_VIVIR_POR_SEGUNDO).toBe(500)
+  }, 60_000)
+
+  it('documentado · el tick exacto de la muerte a cada frecuencia', () => {
+    // Los ticks no son `500 × hz` clavados: restar diez mil veces un número que no
+    // es exacto en binario deja un residuo, y a 50 y 100 Hz sobrevive un tick más.
+    // Se clava lo medido —no lo redondo— para que un cambio en `porPaso` se vea.
+    const medidos = FRECUENCIAS_ADMISIBLES.map((hz) => ayunar(hz).ticks)
+    for (let i = 0; i < medidos.length; i++) {
+      const hz = FRECUENCIAS_ADMISIBLES[i] as number
+      const exacto = (TANQUE / COSTO_VIVIR_POR_SEGUNDO) * hz
+      expect([hz, Math.abs((medidos[i] as number) - exacto) <= 2]).toEqual([hz, true])
+    }
+    log([`══ EL TICK DE LA MUERTE ══  ${FRECUENCIAS_ADMISIBLES.map((h, i) => `${String(h)} Hz: ${String(medidos[i])}`).join('   ')}`])
+  }, 120_000)
+
+  it('vivir diez segundos de mundo cuesta 10,0 de stamina a cualquier frecuencia', () => {
+    // El mismo hecho mirado desde el otro lado y sin esperar a la muerte: es el
+    // `it.fails` que `el-tiempo-no-depende-del-tick.test.ts` tenía abierto.
+    for (const hz of FRECUENCIAS_ADMISIBLES) {
+      let w = mundo({ hz, bodies: [enElPiso(criatura('ana', TANQUE), EN(0, 0))], actors: [actor('ana')] })
+      const pasos = Math.round(10 / dtDeFrecuencia(hz))
+      for (let n = 0; n < pasos; n++) w = stepWorld(w, []).state
+      const gastado = TANQUE - staminaDe(w, 'ana')
+      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, 10])
+    }
+  })
+})
+
+// ─── (c) EL PUNTO DE EQUILIBRIO, EN NÚMEROS ─────────────────────────────────
+
+describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () => {
+  /** Lo que rinde en `stamina` un pescado de 2 kg, crudo y cocinado. */
+  const pescado = (digestibility?: number): number =>
+    qualityOf(
+      cuerpo('pez', 'pescado', 2, digestibility === undefined ? {} : { digestibility }),
+      'calories',
+      FISICA,
+    )
+
+  it('los números, sin prosa', () => {
+    const segundosDeLaCorrida = TICKS_DEL_CRITERIO / HZ_DE_REFERENCIA
+    const costo = segundosDeLaCorrida * COSTO_VIVIR_POR_SEGUNDO
+    // Lo que tiene que sacarle al mundo: el costo menos lo que trae puesto.
+    const conTanque = costo - TANQUE
+    // Y sin contar el tanque, que es lo que pide el riesgo 4: que el balance no
+    // dependa de con cuánto arrancó.
+    const sinTanque = costo
+
+    const crudo = pescado()
+    const cocinado = pescado(0.95)
+
+    expect(segundosDeLaCorrida).toBe(1000)
+    expect(costo).toBe(1000)
+    expect(conTanque).toBe(500)
+
+    // `calories = nutrition × mass × digestibility`, y los tres salen del
+    // catálogo: pescado nutrition 8, crudo 0,38 y cocinado al techo 0,95. Nadie
+    // escribió «cocinar rinde más»: rinde 2,5× porque la digestibilidad sube.
+    expect(Number(crudo.toFixed(4))).toBe(6.08)
+    expect(Number(cocinado.toFixed(4))).toBe(15.2)
+    expect(Number((cocinado / crudo).toFixed(4))).toBe(2.5)
+
+    const piezas = (falta: number, rinde: number): number => Math.ceil(falta / rinde)
+    expect(piezas(conTanque, crudo)).toBe(83)
+    expect(piezas(conTanque, cocinado)).toBe(33)
+    expect(piezas(sinTanque, crudo)).toBe(165)
+    expect(piezas(sinTanque, cocinado)).toBe(66)
+
+    log([
+      `══ EL PRESUPUESTO DE UNA PARTIDA DE ${String(TICKS_DEL_CRITERIO)} TICKS A ${String(HZ_DE_REFERENCIA)} Hz ══`,
+      `  dura ......................... ${segundosDeLaCorrida.toFixed(0)} s de mundo (cinco días)`,
+      `  vivir cuesta ................. ${costo.toFixed(0)} de stamina`,
+      `  llega con .................... ${String(TANQUE)}`,
+      `  tiene que sacarle al mundo ... ${conTanque.toFixed(0)}   (o ${sinTanque.toFixed(0)} si el tanque no cuenta)`,
+      '',
+      `  un pescado de 2 kg CRUDO ..... ${crudo.toFixed(2)} de stamina  →  ${String(piezas(conTanque, crudo))} piezas  (${String(piezas(sinTanque, crudo))} sin tanque)`,
+      `  el mismo COCINADO ............ ${cocinado.toFixed(2)} de stamina  →  ${String(piezas(conTanque, cocinado))} piezas  (${String(piezas(sinTanque, cocinado))} sin tanque)`,
+      '',
+      `  cocinar rinde ${(cocinado / crudo).toFixed(2)}× y nadie lo escribió: sale de \`digestibility\`.`,
+    ])
+  })
+
+  it('a la frecuencia de referencia, caminar sin parar cuesta lo mismo que vivir', () => {
+    // El número que hace que el 1,0 no parezca decretado: `intencionCaminar` avanza
+    // una celda por tick, o sea 20 celdas por segundo a 20 Hz, y cada celda cuesta
+    // 0,05. Andar duplica el gasto y los 500 del arranque se van en 250 segundos y
+    // 5000 celdas. Ninguna de las dos constantes se eligió mirando a la otra.
+    expect(COSTO_POR_CELDA * HZ_DE_REFERENCIA).toBe(COSTO_VIVIR_POR_SEGUNDO)
+    expect(TANQUE / (COSTO_VIVIR_POR_SEGUNDO * 2)).toBe(250)
+    expect(TANQUE / COSTO_POR_CELDA).toBe(10_000)
+  })
+})
+
+// ─── LA MUERTE ──────────────────────────────────────────────────────────────
+
+/** Una criatura a la que le queda un solo tick de vida a la frecuencia de referencia. */
+function alBorde(stamina = 0.01): WorldState {
+  return mundo({
+    bodies: [enElPiso(criatura('ana', stamina), EN(0, 0))],
+    actors: [actor('ana')],
+  })
+}
+
+function murioDeHambre(events: readonly SimEvent[]): SimEvent | undefined {
+  return events.find((e) => e.k === 'murio' && e.por === 'hambre')
+}
+
+describe('con la stamina en cero, la criatura se muere', () => {
+  it('el actor se va, el cuerpo se queda en su celda, y sale el evento', () => {
+    const s = alBorde()
+    const r = stepWorld(s, [])
+    // El actor se fue.
+    expect(r.state.actors.has('ana')).toBe(false)
+    // El cuerpo NO: la materia no se destruye, y encima es comida.
+    const cadaver = r.state.bodies.get('ana-cuerpo')
+    expect(cadaver).toBeDefined()
+    expect(cadaver?.at).toEqual(EN(0, 0))
+    expect(qualityOf(cadaver!.body, 'stamina', r.state.phys)).toBe(0)
+    // Y el evento, con su motivo y sin `by` ni `seq`: a este `murio` no lo causó
+    // ninguna intención, así que no hay a qué correlacionarlo.
+    const e = murioDeHambre(r.events)
+    expect(e).toEqual({ k: 'murio', id: 'ana-cuerpo', por: 'hambre' })
+  })
+
+  it('y los invariantes siguen en pie, en el tick de la muerte y en los siguientes', () => {
+    // Es la primera vez que el mundo ve irse a un actor. `referencia-colgada` ya
+    // existía para esto —`invariants.ts:258` mira que ningún `heldBy` nombre a un
+    // actor que no está— así que el detector es más viejo que la muerte.
+    let s = alBorde()
+    for (let t = 0; t < 5; t++) {
+      const r = stepWorld(s, [])
+      expect([t, revisarInvariantes(s, r.state, r.events)]).toEqual([t, []])
+      s = r.state
+    }
+    // Y el mundo sigue andando sin actores: los sistemas no se cuelgan con la
+    // lista vacía.
+    expect(s.tick).toBe(5)
+    expect(s.actors.size).toBe(0)
+  })
+
+  it('lo que tenía en la mano CAE, y cae en una celda libre y sin dueño', () => {
+    const s = mundo({
+      bodies: [
+        enElPiso(criatura('ana', 0.01), EN(0, 0)),
+        enLaMano(cuerpo('cana', 'madera', 1), EN(0, 0), 'ana'),
+        enLaMano(cuerpo('piedra', 'piedra', 1), EN(0, 0), 'ana'),
+      ],
+      actors: [actor('ana', { holding: ['cana', 'piedra'], capacity: 2 })],
+    })
+    const r = stepWorld(s, [])
+    expect(revisarInvariantes(s, r.state, r.events)).toEqual([])
+    for (const id of ['cana', 'piedra']) {
+      const c = r.state.bodies.get(id)
+      expect([id, c === undefined]).toEqual([id, false])
+      // Sin dueño: un `heldBy` que nombre al muerto es `referencia-colgada`.
+      expect([id, c?.heldBy]).toEqual([id, undefined])
+      // Y a los pies, no en el otro extremo del mapa.
+      expect([id, Math.abs(c!.at.x) <= 1 && Math.abs(c!.at.y) <= 1]).toEqual([id, true])
+    }
+    // Y no en la celda del cadáver, que la ocupa el cadáver: dos sólidos sueltos
+    // en la misma celda son un `solidos-solapados`.
+    expect(r.state.bodies.get('cana')?.at).not.toEqual(EN(0, 0))
+  })
+
+  it('el cadáver es comida: la que viene se come a la que no llegó', () => {
+    // El bucle cierra solo. Nadie escribió «canibalismo»: el cuerpo de la criatura
+    // es carne con `nutrition`, y comer no pregunta de quién era.
+    const s = mundo({
+      bodies: [
+        enElPiso(criatura('ana', 0.01), EN(0, 0)),
+        enElPiso(criatura('beto', 500), EN(1, 0)),
+      ],
+      actors: [actor('ana'), actor('beto')],
+    })
+    const muerte = stepWorld(s, [])
+    expect(muerte.state.actors.has('ana')).toBe(false)
+    const cadaver = muerte.state.bodies.get('ana-cuerpo')!
+    expect(qualityOf(cadaver.body, 'calories', muerte.state.phys)).toBeGreaterThan(0)
+
+    const antes = staminaDe(muerte.state, 'beto')
+    const comio = stepWorld(muerte.state, [eat({ by: 'beto', seq: 0 }, 'ana-cuerpo')])
+    expect(comio.events.some((e) => e.k === 'comio')).toBe(true)
+    expect(staminaDe(comio.state, 'beto')).toBeGreaterThan(antes)
+    expect(comio.state.bodies.has('ana-cuerpo')).toBe(false)
+    // Y la conversión queda declarada, así que el invariante de conservación la
+    // acepta: comer un cadáver no es distinto de comer un pescado.
+    expect(revisarInvariantes(muerte.state, comio.state, comio.events)).toEqual([])
+  })
+
+  it('las intenciones del muerto se rechazan con un motivo que ya existía', () => {
+    const muerte = stepWorld(alBorde(), [])
+    const despues = stepWorld(muerte.state, [
+      goTo({ by: 'ana', seq: 0 }, EN(3, 3)),
+      take({ by: 'ana', seq: 1 }, 'lo-que-sea'),
+    ])
+    expect(despues.events.filter((e) => e.k === 'rechazada').map((e) => e.por)).toEqual([
+      'actor-desconocido',
+      'actor-desconocido',
+    ])
+    // El journal no necesitó nada nuevo para la muerte.
+  })
+
+  it('gastar el último aliento caminando mata en el MISMO tick', () => {
+    // Los sistemas corren DESPUÉS de las intenciones, así que el paso se da, se
+    // cobra hasta exactamente cero, y el metabolismo cierra la puerta al final del
+    // mismo tick. Es el orden del contrato de `stepWorld` mirado desde el hambre.
+    const s = mundo({
+      bodies: [enElPiso(criatura('ana', COSTO_POR_CELDA), EN(0, 0))],
+      actors: [actor('ana')],
+    })
+    const r = stepWorld(s, [goTo({ by: 'ana', seq: 0 }, EN(5, 0))])
+    expect(r.events.some((e) => e.k === 'movio')).toBe(true)
+    expect(murioDeHambre(r.events)).toBeDefined()
+    expect(r.state.actors.has('ana')).toBe(false)
+    // Dio el paso: el cadáver quedó una celda más allá de donde arrancó.
+    expect(r.state.bodies.get('ana-cuerpo')?.at).toEqual(EN(1, 0))
+  })
+
+  it('no se muere quien todavía tiene con qué', () => {
+    // El control negativo de todo el bloque: si la muerte se disparara sola, todos
+    // los tests de arriba darían verde midiendo nada.
+    let w = mundo({ bodies: [enElPiso(criatura('ana', 1), EN(0, 0))], actors: [actor('ana')] })
+    for (let t = 0; t < 19; t++) {
+      const r = stepWorld(w, [])
+      expect([t, murioDeHambre(r.events)]).toEqual([t, undefined])
+      w = r.state
+    }
+    expect(w.actors.has('ana')).toBe(true)
+    // Un segundo de vida son veinte ticks a 20 Hz, y el vigésimo es el último.
+    const ultimo = stepWorld(w, [])
+    expect(murioDeHambre(ultimo.events)).toBeDefined()
+  })
+})

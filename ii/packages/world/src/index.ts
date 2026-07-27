@@ -29,6 +29,9 @@ export * from './grid.js'
 export * from './intent.js'
 export * from './step.js'
 export * from './invariants.js'
+// El día y la noche. Va después del paso porque se DERIVA de él: `relojDe` no
+// lee más que el `tick` y el `hz` que `step.ts` declara (ADR II-0009).
+export * from './reloj.js'
 
 // ─── La crónica: el hash, el journal y el snapshot por delta ────────────────
 export * from './hash.js'

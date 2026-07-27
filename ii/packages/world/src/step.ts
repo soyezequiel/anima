@@ -114,7 +114,7 @@ export interface WorldBody {
   readonly covering?: BodyId
 }
 
-/** Un proceso en curso. Es lo único que un actor arrastra de un tick al otro. */
+/** Un proceso en curso. Es una de las dos cosas que un actor arrastra de un tick al otro. */
 export interface Activity {
   readonly process: ProcessId
   readonly roles: readonly RoleBinding[]
@@ -131,6 +131,58 @@ export interface Activity {
   readonly segundos: Duracion
 }
 
+/**
+ * Una espera en curso. La OTRA cosa que un actor arrastra de un tick al otro.
+ *
+ * ─── Por qué un campo aparte y no un caso de `Activity` ─────────────────────
+ *
+ * Las dos acumulan segundos con `sumarPaso` y ahí se termina el parecido. Son
+ * tres diferencias y ninguna es de estilo:
+ *
+ *   1. **`Activity.process` es un `ProcessId` del catálogo.** `intencionAplicar`
+ *      lo busca ahí y `cumpleRol` juzga contra los roles que declara. Meter la
+ *      espera en ese campo obligaría a inventar un proceso `wait` que nadie
+ *      escribió, y a que el día que el modelo escriba uno con ese id el mundo
+ *      confunda una cosa con la otra.
+ *   2. **Duran al revés.** Una actividad se pierde en cuanto el actor no la
+ *      sostiene —`stepWorld` se la saca a todo el que no actuó, porque frotar es
+ *      frotar todos los ticks— y una espera es exactamente lo contrario: el que
+ *      espera NO emite nada, y si perderla dependiera de no emitir, esperar sería
+ *      imposible. Un solo campo con dos reglas de vida es un campo mintiendo.
+ *   3. **Continúan al revés.** Una actividad sigue si se repite igual (mismo
+ *      proceso, mismos cuerpos); una espera sigue sola y se corta cuando el actor
+ *      hace otra cosa.
+ *
+ * ─── Y por qué es opcional ──────────────────────────────────────────────────
+ *
+ * Va en `Actor`, o sea que entra en `hashWorldState` y en la ranura `actor:<id>`
+ * del snapshot. Es dato plano y finito —tres números y nada más, ninguna función
+ * ni clase, que es lo que `hashWorld` LANZA— y es OPCIONAL: `hashWorld` saltea las
+ * claves ausentes, así que el hash de un mundo donde nadie espera no se mueve ni
+ * un bit. El que sí se mueve es el de un mundo con alguien esperando, y eso es
+ * correcto: dos mundos idénticos salvo que en uno hay una criatura a mitad de una
+ * espera de treinta segundos NO son el mismo mundo.
+ */
+export interface Espera {
+  /**
+   * Cuántos SEGUNDOS DE MUNDO pidió esperar. Es el `segundos` de la intención
+   * `wait`, y como toda duración va en segundos y no en ticks (ADR II-0008):
+   * `wait(2)` son dos segundos a 20 Hz y a 100 Hz.
+   */
+  readonly pedido: Duracion
+  /** Cuántos lleva. Se acumula con `sumarPaso`, por lo mismo que `Activity`. */
+  readonly segundos: Duracion
+  /**
+   * El `seq` de la intención que la abrió.
+   *
+   * Es lo que hace que la espera se pueda correlacionar: la intención se emite
+   * UNA vez y la respuesta llega ticks después, cuando ya no hay ninguna intención
+   * en la mesa de la cual sacar el número. Sin esto, el evento que dice «tu espera
+   * terminó» no tendría a quién decírselo.
+   */
+  readonly seq: number
+}
+
 export interface Actor {
   readonly id: ActorId
   /** La criatura ES un cuerpo: `SelfView extends BodyView`. Su posición es la de él. */
@@ -145,6 +197,8 @@ export interface Actor {
    */
   readonly permits: Commitment
   readonly doing?: Activity
+  /** La espera en curso, si está esperando. Ver `Espera` y `avanzarEsperas`. */
+  readonly esperando?: Espera
 }
 
 /**
@@ -207,13 +261,39 @@ export type Motivo =
   | 'nada-que-comer'
   | 'no-implementado'
 
-export type SimEvent =
-  | { readonly k: 'rechazada'; readonly by: ActorId; readonly seq: number; readonly que: IntentKind; readonly por: Motivo }
-  | { readonly k: 'movio'; readonly by: ActorId; readonly de: Placement; readonly a: Placement }
-  | { readonly k: 'tomo'; readonly by: ActorId; readonly what: BodyId }
-  | { readonly k: 'solto'; readonly by: ActorId; readonly what: BodyId; readonly at: Placement }
-  | { readonly k: 'puso'; readonly by: ActorId; readonly what: BodyId; readonly at: Placement }
-  | { readonly k: 'comio'; readonly by: ActorId; readonly what: BodyId; readonly calorias: number }
+/**
+ * La FIRMA de una respuesta: a qué intención le está contestando.
+ *
+ * `by` estuvo siempre; `seq` es lo que faltaba, y sin él la correlación entre lo
+ * que se pidió y lo que pasó era un ACCIDENTE: funcionaba sólo porque cada actor
+ * despacha una sola intención por tick (`yaActuo`), o sea que alcanzaba con mirar
+ * `by`. El día que eso cambie —o hoy mismo, con los rechazos que nacen adentro de
+ * `rendir` mientras el mismo `apply` sale «completo»— mirar `by` deja de alcanzar.
+ *
+ * Sumarlo salió gratis: `hashWorldState` hashea `tick, hz, nextId, hashPhysics,
+ * bodies, actors, cells` y **los eventos no entran al hash**. Agregarle campos a
+ * un `SimEvent` no mueve la identidad de ninguna partida.
+ */
+export interface Firma {
+  readonly by: ActorId
+  readonly seq: number
+}
+
+/**
+ * Los eventos que CONTESTAN una intención. Todos llevan firma.
+ *
+ * Se declaran sin ella y `SimEvent` se la agrega de una sola vez, porque quien los
+ * empuja —cada `intencionX`, `rendir`, `avanzarEsperas`— no siempre tiene la
+ * intención a mano, y la firma la pone el bucle (ver `firmar`). Escribirla doce
+ * veces a mano sería doce lugares donde olvidarse.
+ */
+export type Respuesta =
+  | { readonly k: 'rechazada'; readonly que: IntentKind; readonly por: Motivo }
+  | { readonly k: 'movio'; readonly de: Placement; readonly a: Placement }
+  | { readonly k: 'tomo'; readonly what: BodyId }
+  | { readonly k: 'solto'; readonly what: BodyId; readonly at: Placement }
+  | { readonly k: 'puso'; readonly what: BodyId; readonly at: Placement }
+  | { readonly k: 'comio'; readonly what: BodyId; readonly calorias: number }
   /**
    * Una cuenta conservada que se convirtió en otra. Es el ÚNICO permiso para que
    * un total conservado suba, y por eso es un evento y no un detalle interno: el
@@ -222,33 +302,248 @@ export type SimEvent =
    */
   | {
       readonly k: 'convierte'
-      readonly by: ActorId
       readonly de: QualityId
       readonly a: QualityId
       readonly gastado: number
       readonly acreditado: number
     }
-  | { readonly k: 'proceso'; readonly by: ActorId; readonly process: ProcessId; readonly segundos: Duracion; readonly completo: boolean }
+  | { readonly k: 'proceso'; readonly process: ProcessId; readonly segundos: Duracion; readonly completo: boolean }
+  /**
+   * Un cuerpo nuevo. Es el ÚNICO de los tres eventos de materia que lleva firma, y
+   * la asimetría no es un descuido:
+   *
+   *   - `nacio` es la única forma que tiene quien pidió el proceso de enterarse de
+   *     QUÉ consiguió — nada más nombra el cuerpo nuevo, y `StepResult.got` de
+   *     `@anima/skills` es justamente esa lista;
+   *   - `murio` ya tiene quien lo cuente: el que come recibe un `comio` con el
+   *     `what`, así que el `murio` no le agrega información y puede ser lo que es,
+   *     un hecho del mundo (y el de hambre no tiene ninguna intención detrás);
+   *   - `sustancia` no nace de ninguna intención: la da de alta la ley 4.
+   *
+   * O sea que la regla es «lleva firma lo que le contesta a alguien», y no «lleva
+   * firma lo que pasó mientras alguien actuaba».
+   */
   | { readonly k: 'nacio'; readonly id: BodyId; readonly por: 'rendimiento' }
-  | { readonly k: 'murio'; readonly id: BodyId; readonly por: 'comido' | 'consumido' }
+  /**
+   * El turno pasó sin novedad, y ESO ES LA RESPUESTA. Lo emiten el `goTo` de quien
+   * ya estaba donde quería, el `explore` sin presupuesto, y —desde que esperar
+   * dura— el último tick de una espera: `espero` en pasado quiere decir terminada.
+   */
+  | { readonly k: 'espero' }
+  /**
+   * Todavía no. Lo emite `avanzarEsperas` en cada tick de una espera abierta; el
+   * tick que la cierra emite `espero`.
+   *
+   * `segundos` es cuántos LLEVA esperados, no cuántos faltan, y es exactamente el
+   * mismo campo que `proceso`: los dos son un avance acumulado con `sumarPaso`,
+   * los dos son múltiplos exactos de 10⁻⁶ y ninguno de los dos se calcula
+   * restando. Cuánto falta lo sabe quien preguntó, que tiene la intención con el
+   * pedido; el mundo no le va a devolver una resta con ruido de punto flotante
+   * —`2 − 1,95` da 0,050000000000000044— para ahorrarle una cuenta.
+   *
+   * Es un evento por tick y por actor que espera, y eso es a propósito: la
+   * ALTERNATIVA —callar hasta el final— hace que el silencio signifique dos cosas
+   * distintas, «seguí esperando» y «tu espera ya no existe», y la segunda pasa de
+   * verdad (el que se muere de hambre a mitad de una espera se lleva la espera
+   * puesta). Un runtime que tiene que adivinar cuál de las dos es no es un runtime.
+   */
+  | { readonly k: 'esperando'; readonly segundos: Duracion }
+
+/**
+ * Lo que el mundo NARRA por su cuenta. Nadie lo pidió, así que no lleva firma:
+ * ponerle una obligaría a inventar un culpable, y un culpable inventado es peor
+ * que ninguno.
+ */
+export type Narracion =
+  /**
+   * Un cuerpo que dejó de existir, o un actor que dejó de ser uno.
+   *
+   * `'hambre'` es el de la criatura que se quedó sin `stamina` (ADR II-0009), y
+   * es el único que NO lleva `by`: no lo causa ninguna intención, lo causa el
+   * paso del tiempo. Su `id` es el del CUERPO, que sigue en el mundo tirado en su
+   * celda: lo que se fue es el actor, no la materia.
+   *
+   * Sumarlo salió gratis porque `hashWorldState` hashea `tick, hz, nextId,
+   * hashPhysics, bodies, actors, cells` y los eventos no entran.
+   *
+   * `'consumido'` sigue declarado y sin emisor —lo estaba antes de esto—, y queda
+   * anotado para que la unión no se llene de valores que nadie manda.
+   */
+  | { readonly k: 'murio'; readonly id: BodyId; readonly por: 'comido' | 'consumido' | 'hambre' }
   | { readonly k: 'sustancia'; readonly id: string }
-  | { readonly k: 'espero'; readonly by: ActorId }
+
+/**
+ * LA NARRACIÓN DEL TICK. Lo que salió a la salida de `stepWorld`, ya firmado.
+ *
+ * La distinción entre las dos mitades es lo único nuevo: todo lo que contesta una
+ * intención lleva `by` y `seq`, y quien quiera saber qué pasó con la suya no tiene
+ * que adivinarlo — se lo dice `desenlaceDe`.
+ */
+export type SimEvent = (Respuesta & Firma) | Narracion
+
+/**
+ * Lo mismo, ANTES de que el bucle firme. Es lo que los despachos empujan.
+ *
+ * `seq` es opcional acá y sólo acá: `rechazo` sí lo tiene a mano —recibe la
+ * intención entera— y por eso lo escribe, y `avanzarEsperas` lo saca de la
+ * `Espera`; los demás no lo conocen y se lo pone `firmar`. Que el tipo público
+ * NO lo tenga opcional es la mitad del punto: a la salida de `stepWorld` ya no hay
+ * evento de respuesta sin firmar, y eso el compilador lo sabe.
+ */
+export type SimEventSinFirmar =
+  | (Respuesta & { readonly by: ActorId; readonly seq?: number })
+  | Narracion
 
 export interface StepOutcome {
   readonly state: WorldState
   readonly events: readonly SimEvent[]
 }
 
+// ─── La correlación: qué le pasó a MI intención ──────────────────────────────
+
+/**
+ * Qué le pasó a una intención, según los eventos de un tick.
+ *
+ * **Es una forma del MUNDO y no el `StepResult` de `@anima/skills`**, y no por
+ * prolijidad: `@anima/skills` depende de `@anima/world` y no al revés, así que el
+ * mundo no puede importar ese tipo ni aunque quisiera. Pero además no debería: los
+ * seis estados de `StepResult` —`arrived`, `found`, `done`, `blocked`, `rejected`,
+ * `timeout`— son categorías de la MENTE, que sabe qué estaba buscando y cuánto
+ * presupuesto le quedaba. El mundo sabe tres cosas y ninguna más: si lo que pidió
+ * pasó, si se lo rechazó, o si todavía está pasando. **El traductor de `Desenlace`
+ * a `StepResult` es del tramo de runtime**, y va a necesitar la memoria de la
+ * habilidad para escribir los otros tres.
+ */
+export interface Desenlace {
+  /**
+   * - `logrado` — pasó algo y nada fue rechazado;
+   * - `rechazado` — el mundo dijo que no. `por` dice por qué;
+   * - `en-curso` — sigue pasando: una espera abierta o un proceso incompleto. La
+   *   mente que espera un `yield` tiene que volver a preguntar el tick que viene;
+   * - `sin-respuesta` — el mundo no dijo NADA sobre esta intención. Con
+   *   `stepWorld` no puede pasar —hasta una intención de un actor inventado sale
+   *   rechazada— así que si aparece, o la intención no era de este tick o alguien
+   *   perdió eventos por el camino. Vale la pena poder nombrarlo.
+   */
+  readonly k: 'logrado' | 'rechazado' | 'en-curso' | 'sin-respuesta'
+  /** Todo lo que esta intención causó, en el orden en que el mundo lo narró. */
+  readonly events: readonly SimEvent[]
+  /** El motivo del PRIMER rechazo. Sólo cuando `k === 'rechazado'`. */
+  readonly por?: Motivo
+  /** Los cuerpos que nacieron por esta intención. Es lo que `StepResult.got` quiere. */
+  readonly nacidos: readonly BodyId[]
+}
+
+/**
+ * ¿Este evento le contesta a alguien?
+ *
+ * Se pregunta por los DOS que no, y no por los diez que sí: la lista corta es la
+ * que no se olvida de crecer. Un evento nuevo nace firmado salvo que quien lo
+ * escriba diga lo contrario acá, que es el default correcto — el otro default
+ * deja eventos sin dueño a la espera de que alguien note que faltan.
+ */
+export function esRespuesta(e: SimEvent): e is Respuesta & Firma {
+  return e.k !== 'murio' && e.k !== 'sustancia'
+}
+
+/**
+ * QUÉ LE PASÓ A ESTA INTENCIÓN. La función que el runtime va a llamar una vez por
+ * `yield`.
+ *
+ * La clave es el par `(by, seq)` y no `by` solo, que es lo que se venía usando de
+ * hecho. El segundo argumento es un `{ by, seq }` y no un `Intent` a propósito:
+ * una `Intent` lo satisface estructuralmente, y el runtime que preguntó ticks
+ * después por una espera abierta ya no tiene la intención entera — tiene el par.
+ *
+ * ─── Qué gana el par sobre `by` solo, con nombres ───────────────────────────
+ *
+ *   - un `apply` que COMPLETA y cuyo rendimiento no encuentra dónde poner la
+ *     hebra saca dos eventos: `proceso` completo y `rechazada` por
+ *     `celda-ocupada`. Con `by` solo, los dos son «de ana» y el segundo se lee
+ *     como si contestara otra cosa; el rechazo tenía además un `seq: -1` que no
+ *     era de nadie;
+ *   - la segunda intención de un actor en el mismo tick sale `ya-actuo`, y con
+ *     `by` solo no hay forma de decir cuál de las dos se despachó;
+ *   - una espera contesta ticks DESPUÉS de que se la pidió, cuando ya no hay
+ *     ninguna intención en la mesa.
+ *
+ * El orden de las tres preguntas importa y es éste: **un rechazo gana sobre todo
+ * lo demás**. `apply` puede completar el proceso y no rendir nada, y quien
+ * preguntó tiene que enterarse de lo que NO consiguió, no de lo que sí.
+ */
+export function desenlaceDe(
+  events: readonly SimEvent[],
+  de: { readonly by: ActorId; readonly seq: number },
+): Desenlace {
+  const mios: SimEvent[] = []
+  const nacidos: BodyId[] = []
+  let por: Motivo | undefined
+  let enCurso = false
+  for (const e of events) {
+    if (!esRespuesta(e) || e.by !== de.by || e.seq !== de.seq) continue
+    mios.push(e)
+    if (e.k === 'nacio') nacidos.push(e.id)
+    if (e.k === 'rechazada' && por === undefined) por = e.por
+    if (e.k === 'esperando') enCurso = true
+    if (e.k === 'proceso' && !e.completo) enCurso = true
+  }
+  if (mios.length === 0) return { k: 'sin-respuesta', events: [], nacidos: [] }
+  if (por !== undefined) return { k: 'rechazado', events: mios, por, nacidos }
+  return { k: enCurso ? 'en-curso' : 'logrado', events: mios, nacidos }
+}
+
 // ─── Calibración, con nombre y con porqué ────────────────────────────────────
 
 /**
- * Cuánta `stamina` cuesta un paso. Es la razón por la que caminar hasta el río
- * tiene precio y por la que explorar sin comer termina mal.
+ * Cuánta `stamina` cuesta entrar en UNA CELDA. Es la razón por la que caminar
+ * hasta el río tiene precio y por la que explorar sin comer termina mal.
+ *
+ * **NO es una tasa, y por eso no pasa por `porPaso`** (ADR II-0009). Sus unidades
+ * son stamina POR CELDA, no stamina por segundo, y ya son independientes de la
+ * frecuencia: está medido que diez celdas cuestan exactamente
+ * `10 × (COSTO_POR_CELDA + COSTO_VIVIR_POR_SEGUNDO/hz)` a las cinco frecuencias
+ * admisibles. Dividirla por la frecuencia haría que el mismo viaje de diez celdas
+ * saliera 5× más barato a 100 Hz que a 20, que es el mismo bug al revés.
+ *
+ * Lo que sí se mide en muestras es la VELOCIDAD —`intencionCaminar` avanza una
+ * celda por tick, así que la criatura camina a 20 celdas por segundo a 20 Hz y a
+ * 100 a 100 Hz—, y eso es locomoción y no metabolismo: cerrarlo pide una
+ * velocidad en celdas por segundo con un resto sub-celda acumulado en `Actor`, o
+ * sea un campo nuevo y un hash nuevo. Merece su propio ADR. El hueco está abierto
+ * y medido en `tests/el-tiempo-no-depende-del-tick.test.ts` (hueco 2).
  */
-export const COSTO_PASO = 0.05
+export const COSTO_POR_CELDA = 0.05
 
-/** Lo que cuesta estar vivo un tick, hambre incluida. El motor de la historia. */
-export const COSTO_VIVIR = 0.01
+/**
+ * Lo que cuesta estar vivo UN SEGUNDO DE MUNDO, hambre incluida. El motor de la
+ * historia, y desde el ADR II-0009 una tasa POR SEGUNDO como todas las demás:
+ * `sistemaMetabolismo` la aplica con `porPaso(…, d.dt)`, que es la única
+ * conversión entre el ritmo del mundo y el muestreo del tick.
+ *
+ * ─── Por qué 1,0 y no otro ──────────────────────────────────────────────────
+ *
+ * Es 5× lo que se cobraba antes (0,01 por tick × 20 Hz = 0,20 por segundo), y el
+ * número cae adentro de una ventana MEDIDA sobre cien partidas en
+ * `oracle/tests/presupuesto.test.ts`:
+ *
+ *   0,766 por segundo ... lo que rinde comiendo CRUDO la partida que más comió
+ *   1,000 ............... esto
+ *   1,155 por segundo ... lo que rinde COCINANDO la partida que menos comió
+ *
+ * Adentro de esa ventana —y sólo adentro— pasan las dos cosas a la vez en las cien
+ * partidas: comer crudo da neto negativo y cocinar da neto positivo. O sea que la
+ * diferencia entre vivir y morirse es COCINAR, y nadie lo escribió: sale de que
+ * `digestibility` sube de 0,38 a 0,95. La ventana mide 1,51× de ancho, así que el
+ * número no tiene lugar para pasearse — si alguien recalibra `digestibility`, la
+ * masa de una pieza o el pozo, hay que volver a medirla.
+ *
+ * Con esto **`stamina` se mide en segundos de vida**: mil de `stamina` son mil
+ * segundos de mundo, un pescado crudo de 2 kg compra 6 y el mismo pescado
+ * cocinado compra 15. Y a la frecuencia de referencia caminar cuesta lo mismo que
+ * vivir —20 celdas por segundo × 0,05 = 1,0 por segundo— sin que ninguna de las
+ * dos constantes se haya elegido mirando a la otra.
+ */
+export const COSTO_VIVIR_POR_SEGUNDO = 1.0
 
 /**
  * La oclusión de un cuerpo que TAPA, en función de su permeabilidad, y lo que la
@@ -322,7 +617,18 @@ interface Borrador {
   nextId: number
   /** Si cambió el juego de ids, el mapa hay que volver a ordenarlo al salir. */
   reordenar: boolean
-  events: SimEvent[]
+  /** Adentro del tick los eventos están SIN FIRMAR: la firma la pone `firmar`. */
+  events: SimEventSinFirmar[]
+  /**
+   * El índice de cuerpos por celda. PEREZOSO: `undefined` hasta que la primera
+   * intención pregunta qué hay en una celda. Ver `indiceDeCeldas` y `estorbo`.
+   */
+  celdas: IndiceDeCeldas | undefined
+  /**
+   * Los cuerpos que tienen alguna relación espacial —`supportedBy` o `covering`—.
+   * PEREZOSO igual que el otro. Ver `conRelaciones` y `olvidar`.
+   */
+  conRelacion: Set<BodyId> | undefined
 }
 
 function abrir(s: WorldState): Borrador {
@@ -340,6 +646,13 @@ function abrir(s: WorldState): Borrador {
     nextId: s.nextId,
     reordenar: false,
     events: [],
+    // Los dos índices nacen VACÍOS y mueren con el borrador. Un índice que no
+    // sobrevive al tick no puede quedar viejo entre ticks, que es la mitad de los
+    // modos de falla de una caché; la otra mitad —quedar vieja ADENTRO del tick—
+    // la cierra que `ponerCuerpo` y `sacarCuerpo` sean el único camino de
+    // escritura, y la mira `tests/el-indice-mal-invalidado.test.ts`.
+    celdas: undefined,
+    conRelacion: undefined,
   }
 }
 
@@ -355,7 +668,21 @@ function cerrar(d: Borrador): StepOutcome {
       cells: d.cells,
       nextId: d.nextId,
     },
-    events: d.events,
+    // LA ÚNICA ASEVERACIÓN DE TIPO DEL ARCHIVO, y hay que decir por qué se
+    // sostiene: adentro del tick los eventos son `SimEventSinFirmar`, o sea que a
+    // los de respuesta les puede faltar el `seq`. A la salida no le falta a
+    // ninguno, y son tres caminos y no más:
+    //
+    //   - lo que empuja un despacho lo firma `firmar`, que corre INMEDIATAMENTE
+    //     después de `despachar` sobre exactamente lo que ese despacho agregó;
+    //   - lo que empuja `avanzarEsperas` sale firmado con el `seq` de la `Espera`;
+    //   - lo que empujan los sistemas es `Narracion` —`sustancia` de la ley 4 y
+    //     `murio` de hambre—, y la narración no lleva firma.
+    //
+    // El compilador no puede ver eso, así que lo mira un test: la partida al azar
+    // de `tests/correlacion.test.ts` recorre TODOS los eventos de 300 ticks y
+    // exige que cada respuesta traiga un `seq` entero y de alguien.
+    events: d.events as readonly SimEvent[],
   }
 }
 
@@ -368,17 +695,180 @@ function nuevoId(d: Borrador): BodyId {
   return `w${String(n).padStart(9, '0')}`
 }
 
+/**
+ * **El único camino por el que un cuerpo entra o se muda dentro del tick**, y por
+ * eso es donde se mantienen los dos índices del borrador.
+ *
+ * Que sea el único no es una convención: los tres `d.bodies.set` sueltos que
+ * quedan en el archivo —`olvidar`, `sistemaLeyes`, `sistemaMetabolismo`— cambian
+ * el CUERPO y no su lugar ni sus relaciones, que es lo único que los índices
+ * miran. `tests/el-indice-mal-invalidado.test.ts` lo verifica corriendo partidas
+ * enteras contra el índice reconstruido desde cero.
+ */
 function ponerCuerpo(d: Borrador, c: WorldBody): void {
-  if (!d.bodies.has(c.body.id)) d.reordenar = true
+  const antes = d.bodies.get(c.body.id)
+  if (antes === undefined) d.reordenar = true
   d.bodies.set(c.body.id, c)
+  anotar(d, antes, c)
 }
 
 function sacarCuerpo(d: Borrador, id: BodyId): void {
   // Sobre qué se apoyaba, LEÍDO ANTES DE BORRARLO: es lo que hereda la pila.
-  const abajo = d.bodies.get(id)?.supportedBy
+  const habia = d.bodies.get(id)
+  const abajo = habia?.supportedBy
   if (d.bodies.delete(id)) d.reordenar = true
+  desanotar(d, habia)
   olvidar(d, id, abajo)
   desenmanar(d, id)
+}
+
+// ─── Los dos índices del borrador ────────────────────────────────────────────
+
+/**
+ * De celda a los cuerpos que hay ahí, para que `estorbo` deje de recorrer el
+ * mundo entero.
+ *
+ * MEDIDO, y es la razón de existir de todo esto: con 5000 cuerpos y 5000
+ * criaturas caminando, el p99 del tick era 668 ms — 133 veces el techo del Hito 5
+ * — porque `estorbo` y `olvidar` son O(cuerpos) y corren UNA VEZ POR ACTOR. El
+ * banco está en `tests/banco-el-camino-de-intenciones.test.ts` con la tabla del
+ * antes y la del después.
+ *
+ * ─── Por qué `orden` ────────────────────────────────────────────────────────
+ *
+ * `estorbo` devuelve **el primero** que estorba, y «primero» quiere decir el
+ * primero que aparecería recorriendo `d.bodies`. Cuando dos sólidos comparten
+ * celda —pasa: el arnés de la partida de 2000 ticks cuenta 97 solapamientos— cuál
+ * de los dos vuelve NO es indiferente: `intencionCaminar` se apoya en él
+ * (`supportedBy: choque.body.id`) y eso entra al hash. Así que las cubetas se
+ * mantienen ordenadas por el lugar que cada cuerpo ocupa en el recorrido, y no por
+ * orden de llegada a la cubeta. Sin esto, un cuerpo que se muda a una celda que ya
+ * tenía otro quedaría último aunque en `d.bodies` fuera primero, y la partida
+ * divergiría en el primer choque.
+ *
+ * ─── Por qué NO se usa la `Grid` de `grid.ts` ───────────────────────────────
+ *
+ * `grid.ts` tiene un índice espacial O(1) —`placeBody`, `bodiesAt`— y no sirve
+ * acá, por dos razones que están medidas en el banco:
+ *
+ *   - `placeBody` MATERIALIZA el chunk, o sea que indexar un cuerpo asigna los
+ *     arreglos de terreno de 1024 celdas de ese chunk. El propio encabezado de
+ *     `grid.ts` dice que leer no materializa, justamente porque materializar es lo
+ *     que hace que dos partidas exploradas en distinto orden difieran;
+ *   - `WorldState` no tiene una `Grid`, así que habría que armar una por tick
+ *     —1,50 ms contra 0,80 del `Map`, medido— o meterla en el estado, que le
+ *     cambia el hash al mundo entero y es un ADR, no una optimización.
+ */
+interface IndiceDeCeldas {
+  /** De clave de celda a los ids que hay ahí, en orden de recorrido de `bodies`. */
+  readonly porCelda: Map<CellKey, BodyId[]>
+  /** El lugar de cada cuerpo en el recorrido de `bodies`. */
+  readonly orden: Map<BodyId, number>
+  /** El próximo lugar a repartir: los cuerpos que nacen van al final, como en el `Map`. */
+  proximo: number
+}
+
+/**
+ * El índice, armado la primera vez que alguien pregunta y no antes.
+ *
+ * PEREZOSO y no armado en `abrir`, porque un tick sin intenciones no pregunta por
+ * ninguna celda y no tiene por qué pagar la pasada: el banco viejo
+ * —`stepWorld(s, [])` sobre 5000 cuerpos— mide exactamente lo mismo que antes.
+ */
+function indiceDeCeldas(d: Borrador): IndiceDeCeldas {
+  const hay = d.celdas
+  if (hay !== undefined) return hay
+  const porCelda = new Map<CellKey, BodyId[]>()
+  const orden = new Map<BodyId, number>()
+  let n = 0
+  for (const c of d.bodies.values()) {
+    orden.set(c.body.id, n++)
+    // Se recorre `d.bodies` en su orden, así que las cubetas salen ya ordenadas
+    // por `orden` y acá alcanza con empujar al final.
+    const k = keyOfCell(c.at)
+    const cubeta = porCelda.get(k)
+    if (cubeta === undefined) porCelda.set(k, [c.body.id])
+    else cubeta.push(c.body.id)
+  }
+  const i: IndiceDeCeldas = { porCelda, orden, proximo: n }
+  d.celdas = i
+  return i
+}
+
+/**
+ * Los cuerpos con `supportedBy` o `covering`, armado la primera vez que se
+ * pregunta. Es todo lo que `olvidar` necesita mirar, y en cualquier mundo real son
+ * un puñado contra los cinco mil que recorría.
+ */
+function conRelaciones(d: Borrador): Set<BodyId> {
+  const hay = d.conRelacion
+  if (hay !== undefined) return hay
+  const s = new Set<BodyId>()
+  for (const c of d.bodies.values()) {
+    if (c.supportedBy !== undefined || c.covering !== undefined) s.add(c.body.id)
+  }
+  d.conRelacion = s
+  return s
+}
+
+/** Un cuerpo que entra o que se mudó. Sin índices armados no cuesta nada. */
+function anotar(d: Borrador, antes: WorldBody | undefined, ahora: WorldBody): void {
+  const i = d.celdas
+  if (i !== undefined) {
+    const id = ahora.body.id
+    if (antes === undefined) {
+      // Nace: va al final del recorrido, que es donde el `Map` lo pone.
+      i.orden.set(id, i.proximo)
+      i.proximo += 1
+      enCubeta(i, keyOfCell(ahora.at), id)
+    } else if (antes.at.x !== ahora.at.x || antes.at.y !== ahora.at.y) {
+      // Se mudó. Comparar las coordenadas y no las claves ahorra dos `keyOfCell`
+      // en el camino más transitado: `cobrarStamina` y las leyes reescriben el
+      // cuerpo sin moverlo, y ése es el caso normal.
+      deCubeta(i, keyOfCell(antes.at), id)
+      enCubeta(i, keyOfCell(ahora.at), id)
+    }
+  }
+  const r = d.conRelacion
+  if (r !== undefined) {
+    if (ahora.supportedBy !== undefined || ahora.covering !== undefined) r.add(ahora.body.id)
+    else r.delete(ahora.body.id)
+  }
+}
+
+/** Un cuerpo que se fue del mundo. */
+function desanotar(d: Borrador, habia: WorldBody | undefined): void {
+  if (habia === undefined) return
+  const i = d.celdas
+  if (i !== undefined) {
+    deCubeta(i, keyOfCell(habia.at), habia.body.id)
+    i.orden.delete(habia.body.id)
+  }
+  if (d.conRelacion !== undefined) d.conRelacion.delete(habia.body.id)
+}
+
+/** Mete el id en la cubeta EN SU LUGAR del recorrido. Ver `IndiceDeCeldas`. */
+function enCubeta(i: IndiceDeCeldas, k: CellKey, id: BodyId): void {
+  const cubeta = i.porCelda.get(k)
+  if (cubeta === undefined) {
+    i.porCelda.set(k, [id])
+    return
+  }
+  const n = i.orden.get(id) ?? 0
+  // Búsqueda lineal desde el final y no binaria: una celda tiene uno o dos
+  // cuerpos, y en la pila más alta que el arnés produjo tenía tres.
+  let p = cubeta.length
+  while (p > 0 && (i.orden.get(cubeta[p - 1] as BodyId) ?? 0) > n) p -= 1
+  cubeta.splice(p, 0, id)
+}
+
+/** Saca el id de la cubeta, y la cubeta si quedó vacía: una celda sin cuerpos no se indexa. */
+function deCubeta(i: IndiceDeCeldas, k: CellKey, id: BodyId): void {
+  const cubeta = i.porCelda.get(k)
+  if (cubeta === undefined) return
+  const p = cubeta.indexOf(id)
+  if (p >= 0) cubeta.splice(p, 1)
+  if (cubeta.length === 0) i.porCelda.delete(k)
 }
 
 /**
@@ -429,8 +919,32 @@ function desenmanar(d: Borrador, id: BodyId): void {
  * no tapa nada nuevo — la losa sobre la fogata no pasa a tapar la piedra que
  * había debajo de la fogata.
  */
+/*
+ * ─── Y por qué NO recorre el mundo ──────────────────────────────────────────
+ *
+ * Recorría `[...d.bodies.values()]`: O(cuerpos) Y una copia del arreglo entero,
+ * por cada mudanza de actor, por cada `take` y por cada `sacarCuerpo`. Con 5000
+ * cuerpos y 5000 criaturas caminando eso son veinticinco millones de
+ * comparaciones y cinco mil copias de cinco mil punteros POR TICK, y fue —junto
+ * con `estorbo`— lo que ponía el p99 del tick en 668 ms contra un techo de 5.
+ *
+ * Ahora mira `conRelaciones(d)`, que es el juego de cuerpos que TIENEN una
+ * relación espacial. Es el mismo conjunto de candidatos —ninguno que no tenga
+ * `supportedBy` ni `covering` puede apuntar a nadie— y en cualquier mundo real son
+ * un puñado.
+ *
+ * Se copia el conjunto a un arreglo antes de recorrerlo por la misma razón que
+ * antes se copiaba el mapa: el cuerpo, al limpiarse, sale del conjunto, y borrar
+ * de un `Set` que se está recorriendo es la clase de cosa que funciona hasta que
+ * deja de funcionar. El ORDEN del recorrido no importa —cada cuerpo se reescribe a
+ * partir de sí mismo, y lo único que `soporteQueHereda` lee de otro cuerpo son su
+ * celda y su mano, que `olvidar` no toca— pero la copia es barata y la garantía
+ * no.
+ */
 function olvidar(d: Borrador, id: BodyId, abajo?: BodyId): void {
-  for (const c of [...d.bodies.values()]) {
+  for (const otro of [...conRelaciones(d)]) {
+    const c = d.bodies.get(otro)
+    if (c === undefined) continue
     if (c.supportedBy !== id && c.covering !== id) continue
     const { supportedBy: _s, covering: _c, ...resto } = c
     const heredado = c.supportedBy === id ? soporteQueHereda(d, abajo, c) : c.supportedBy
@@ -439,7 +953,10 @@ function olvidar(d: Borrador, id: BodyId, abajo?: BodyId): void {
     const limpio = c.covering !== undefined && c.covering !== id
       ? { ...conApoyo, covering: c.covering }
       : conApoyo
-    d.bodies.set(c.body.id, limpio)
+    // Por `ponerCuerpo` y no por `d.bodies.set`: es lo que saca del conjunto a los
+    // que quedaron sin relación. La clave ya existe, así que `reordenar` no se
+    // mueve y el resultado es idéntico.
+    ponerCuerpo(d, limpio)
   }
 }
 
@@ -722,13 +1239,33 @@ function aMano(d: Borrador, a: Actor, c: WorldBody): boolean {
  * relación explícita, no un accidente de coordenadas. Y por eso la criatura puede
  * caminar sobre algo que tenga `footing`, que sale de rigidez y cohesión y no de
  * ninguna lista de superficies caminables.
+ *
+ * ─── Y por qué NO recorre el mundo ──────────────────────────────────────────
+ *
+ * Recorría `d.bodies.values()` entero para contestar por UNA celda, y lo llaman
+ * `goTo`, `explore`, `put` y `celdaLibreCerca` —hasta nueve veces por `drop`—, o
+ * sea una vez por actor y por tick como mínimo. Eso es O(actores × cuerpos), y
+ * medido con 5000 de cada uno daba un p99 de tick de 668 ms contra un techo de 5.
+ *
+ * Ahora le pregunta a la cubeta de la celda. La lista de filtros de abajo es la
+ * MISMA y en el mismo orden, menos la comparación de celda —que es lo que la
+ * cubeta ya garantiza— y devuelve el mismo cuerpo: el índice mantiene cada cubeta
+ * en el orden del recorrido de `d.bodies`, que es de lo que este `return c`
+ * dependía. Ver `IndiceDeCeldas`.
  */
 function estorbo(d: Borrador, at: Placement, quien: BodyId, phys: Physics): WorldBody | undefined {
-  const k = keyOfCell(at)
-  for (const c of d.bodies.values()) {
-    if (c.body.id === quien) continue
+  const cubeta = indiceDeCeldas(d).porCelda.get(keyOfCell(at))
+  if (cubeta === undefined) return undefined
+  for (const id of cubeta) {
+    if (id === quien) continue
+    const c = d.bodies.get(id)
+    // Un id indexado sin cuerpo detrás sería un índice roto, no un dato faltante.
+    // Se saltea en vez de lanzar porque `estorbo` corre adentro del tick y tirar
+    // la partida entera es peor que contestar de más; lo que caza el fantasma es
+    // `tests/el-indice-mal-invalidado.test.ts`, que compara contra el índice
+    // reconstruido desde cero en cada tick.
+    if (c === undefined) continue
     if (c.heldBy !== undefined) continue
-    if (keyOfCell(c.at) !== k) continue
     if (c.supportedBy === quien || c.covering === quien) continue
     if (qualityOf(c.body, 'solid', phys) <= 0) continue
     return c
@@ -748,6 +1285,11 @@ function estorbo(d: Borrador, at: Placement, quien: BodyId, phys: Physics): Worl
  *
  * El orden de los rumbos es fijo y no depende de nada del mundo: dos partidas
  * gemelas sueltan en la misma celda.
+ *
+ * Son hasta NUEVE `estorbo` para una sola intención, y por eso es donde más se
+ * nota que `estorbo` haya dejado de recorrer el mundo: eran nueve pasadas de 5000
+ * cuerpos por cada `drop`, y ahora son nueve búsquedas en un `Map`. La función no
+ * cambió una línea; cambió lo que cuesta cada una de las nueve.
  */
 function celdaLibreCerca(d: Borrador, desde: Placement, quien: BodyId): Placement | undefined {
   if (enRango(desde) && estorbo(d, desde, quien, d.phys) === undefined) return desde
@@ -785,6 +1327,20 @@ function moverActor(d: Borrador, a: Actor, destino: Placement): void {
   }
 }
 
+/**
+ * Cobrar un precio FIJO de `stamina`, o no cobrar nada.
+ *
+ * No pasa por `porPaso` a propósito: lo que se cobra acá son precios por acto
+ * —una celda, un intento— y no tasas por segundo (ADR II-0009). Ver
+ * `COSTO_POR_CELDA`.
+ *
+ * Y no cobra a medias: si no alcanza, devuelve `false` y el acto se rechaza con
+ * `'sin-fuerza'` en vez de dejar a la criatura media celda adentro de la celda
+ * siguiente. Gastar hasta EXACTAMENTE cero sí está permitido, y desde el ADR
+ * II-0009 tiene consecuencia: `sistemaMetabolismo` corre después de las
+ * intenciones, así que quien llegó a cero dando el último paso se muere de hambre
+ * en el mismo tick que lo dio.
+ */
 function cobrarStamina(d: Borrador, a: Actor, cuanto: number): boolean {
   const mio = cuerpoDe(d, a)
   if (mio === undefined) return false
@@ -815,7 +1371,7 @@ function intencionCaminar(d: Borrador, a: Actor, i: Intent & { k: 'goTo' }): voi
     rechazo(d, i, 'celda-ocupada')
     return
   }
-  if (!cobrarStamina(d, a, COSTO_PASO)) {
+  if (!cobrarStamina(d, a, COSTO_POR_CELDA)) {
     rechazo(d, i, 'sin-fuerza')
     return
   }
@@ -889,7 +1445,7 @@ function intencionExplorar(d: Borrador, a: Actor, i: Intent & { k: 'explore' }):
     rechazo(d, i, 'celda-ocupada')
     return
   }
-  if (!cobrarStamina(d, a, COSTO_PASO)) {
+  if (!cobrarStamina(d, a, COSTO_POR_CELDA)) {
     rechazo(d, i, 'sin-fuerza')
     return
   }
@@ -1343,7 +1899,17 @@ function guardar(
   ponerCuerpo(d, { body, at: donde.at })
 }
 
-/** Los rendimientos del `completion`. Ninguno inventa masa: todos la mueven. */
+/**
+ * Los rendimientos del `completion`. Ninguno inventa masa: todos la mueven.
+ *
+ * NO recibe la intención, y no hace falta que la reciba: los cuatro eventos que
+ * empuja salen SIN `seq` y `firmar` les pone el de la intención que está en curso,
+ * que es la única que puede haber llegado hasta acá. Antes escribían `seq: -1`
+ * —un número mágico que decía contestarle a una intención que nadie emitió— y el
+ * rechazo del rendimiento se perdía: el `apply` salía «completo», el emisor no se
+ * enteraba de que la hebra no había tenido dónde caer, y el −1 no le correspondía
+ * a nada. Está clavado en `tests/correlacion.test.ts`.
+ */
 function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): void {
   switch (y.k) {
     case 'join': {
@@ -1373,7 +1939,7 @@ function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): voi
         : ({ mano: false, at: ca.at } as const)
       if (donde === undefined) return
       guardar(d, a, { ...nuevo, madeBy: a.id }, donde)
-      d.events.push({ k: 'nacio', id, por: 'rendimiento' })
+      d.events.push({ k: 'nacio', by: a.id, id, por: 'rendimiento' })
       return
     }
     case 'split': {
@@ -1385,14 +1951,14 @@ function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): voi
       // Partir primero y no saber dónde poner el pedazo sería materia sin celda.
       const donde = destinoDeUnNacido(d, a, actual.at)
       if (donde === undefined) {
-        d.events.push({ k: 'rechazada', by: a.id, seq: -1, que: 'apply', por: 'celda-ocupada' })
+        d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'celda-ocupada' })
         return
       }
       const hijo = partir(d, actual.body, y.at)
       if (hijo === undefined) return
       ponerCuerpo(d, { ...actual, body: hijo.resto })
       guardar(d, a, { ...hijo.parte, madeBy: a.id }, donde)
-      d.events.push({ k: 'nacio', id: hijo.parte.id, por: 'rendimiento' })
+      d.events.push({ k: 'nacio', by: a.id, id: hijo.parte.id, por: 'rendimiento' })
       return
     }
     case 'drawFromStock': {
@@ -1406,13 +1972,13 @@ function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): voi
       const cuna = d.bodies.get(a.body)?.at ?? actual.at
       const donde = destinoDeUnNacido(d, a, cuna)
       if (donde === undefined) {
-        d.events.push({ k: 'rechazada', by: a.id, seq: -1, que: 'apply', por: 'celda-ocupada' })
+        d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'celda-ocupada' })
         return
       }
       const sacado: Body = { ...escalarMasa(actual.body, saca / masa), id: nuevoId(d), joints: [] }
       ponerCuerpo(d, { ...actual, body: escalarMasa(actual.body, (masa - saca) / masa) })
       guardar(d, a, sacado, donde)
-      d.events.push({ k: 'nacio', id: sacado.id, por: 'rendimiento' })
+      d.events.push({ k: 'nacio', by: a.id, id: sacado.id, por: 'rendimiento' })
       return
     }
     case 'transmute':
@@ -1420,7 +1986,7 @@ function rendir(d: Borrador, a: Actor, y: Yield, ligs: readonly Ligadura[]): voi
       // pasa su umbral; ningún proceso semilla la rinde. Un `transmute` escrito
       // por el modelo entraría por acá, y no está: rendir algo a medias sería
       // peor que decir que no está hecho.
-      d.events.push({ k: 'rechazada', by: a.id, seq: -1, que: 'apply', por: 'no-implementado' })
+      d.events.push({ k: 'rechazada', by: a.id, que: 'apply', por: 'no-implementado' })
       return
   }
 }
@@ -1461,12 +2027,119 @@ function partir(
   return { resto, parte }
 }
 
+// ─── La espera, que dura ─────────────────────────────────────────────────────
+//
+// `wait.segundos` no significaba nada: el despacho empujaba un `espero` y se
+// terminaba ahí, así que `wait(30)` y `wait(0.05)` hacían exactamente lo mismo —un
+// tick— y esperar media hora de mundo era imposible de escribir. Esperar es un
+// concepto de RITMO (ADR II-0008): dos segundos son dos segundos a 20 Hz y a
+// 100 Hz, y lo único que cambia es en cuántas muestras se parten.
+
+/**
+ * Abre la espera, o continúa la que ya estaba.
+ *
+ * ─── Continuar en vez de reiniciar ──────────────────────────────────────────
+ *
+ * Una habilidad puede emitir `wait(2)` UNA vez y callarse —es el uso previsto—, o
+ * reemitirlo todos los ticks, que es lo que hace quien no sabe que el mundo se
+ * acuerda. Si reemitir reiniciara la cuenta, lo segundo no terminaría NUNCA: la
+ * espera se reiniciaría veinte veces por segundo. Así que un `wait` con el mismo
+ * pedido que la espera abierta la CONTINÚA, que es la misma regla que ya usa
+ * `intencionAplicar` para la actividad («es la misma: mismo proceso y mismos
+ * cuerpos»). Lo que sí se actualiza es el `seq`: quien acaba de preguntar es quien
+ * quiere la respuesta.
+ *
+ * Un `wait` con OTRO pedido abre una espera nueva desde cero, y eso también es lo
+ * que hay que hacer: cambiar de «esperá dos segundos» a «esperá treinta» es una
+ * decisión nueva, no la continuación de la anterior.
+ *
+ * ─── Un pedido que no es un número ──────────────────────────────────────────
+ *
+ * `wait(NaN)` y `wait(Infinity)` no se rechazan: se tratan como `wait(0)`, o sea
+ * un tick, que es lo que hacía el mundo con CUALQUIER `wait` hasta hoy. Guardar un
+ * `NaN` en la `Espera` sería peor que un tick de menos — el `NaN` entra al `Actor`,
+ * el `Actor` entra en `hashWorldState`, y `hashWorld` LANZA ante un número no
+ * finito: una habilidad hostil podría dejar el mundo sin hash con una línea.
+ */
+function esperar(d: Borrador, a: Actor, i: Intent & { k: 'wait' }): void {
+  const pedido = seg(Number.isFinite(i.segundos) && i.segundos > 0 ? i.segundos : 0)
+  const actual = d.actors.get(a.id) ?? a
+  const previa = actual.esperando
+  const abierta: Espera =
+    previa !== undefined && previa.pedido === pedido
+      ? { ...previa, seq: i.seq }
+      : { pedido, segundos: seg(0), seq: i.seq }
+  d.actors.set(a.id, { ...actual, esperando: abierta })
+}
+
+/**
+ * Un paso de todas las esperas abiertas. Corre UNA vez por tick, después de las
+ * intenciones.
+ *
+ * ─── Por qué no está en `SISTEMAS` ──────────────────────────────────────────
+ *
+ * Porque no es una ley de la materia: es la segunda mitad de la fase de las
+ * intenciones. Lo que emite son RESPUESTAS —firmadas, con el `seq` de un `wait`
+ * que se emitió ticks atrás—, y los sistemas narran hechos del mundo que no le
+ * contestan a nadie. Corre antes que las leyes por la misma razón que las
+ * intenciones corren antes que las leyes: la criatura actúa sobre el mundo que
+ * vio, no sobre el que quedó después de que la física se moviera.
+ *
+ * ─── Un solo lugar donde se cuenta el tiempo ────────────────────────────────
+ *
+ * El `sumarPaso` está acá y en ningún otro lado, ni siquiera en el tick en que la
+ * espera se abre. Contarlo también en el despacho haría que la espera pedida en el
+ * mismo tick en que se la reemite avanzara el doble, y el error sería de un tick
+ * por reemisión: invisible en un test de cuarenta ticks y de medio segundo en uno
+ * de veinte mil.
+ */
+function avanzarEsperas(d: Borrador): void {
+  for (const a of d.actors.values()) {
+    const e = a.esperando
+    if (e === undefined) continue
+    const segundos = sumarPaso(e.segundos, d.dt)
+    // La misma comparación que `intencionAplicar` hace contra `completion.at`, y
+    // por la misma razón: los dos lados son múltiplos exactos de 10⁻⁶ —`sumarPaso`
+    // acumula en micros enteros— así que `>=` es exacto y no hay que restar nada.
+    // Restar sí traería ruido: `2 − 1,95` en doubles da 0,050000000000000044.
+    if (segundos >= e.pedido) {
+      // Se cierra ANTES de narrar: el que preguntó recibe `espero` y en el estado
+      // que sale ya no está esperando, así que el tick que viene puede pedir otra
+      // cosa sin que nada se le cancele por su cuenta.
+      d.actors.set(a.id, sinEspera(a))
+      d.events.push({ k: 'espero', by: a.id, seq: e.seq })
+      continue
+    }
+    d.actors.set(a.id, { ...a, esperando: { ...e, segundos } })
+    d.events.push({ k: 'esperando', by: a.id, seq: e.seq, segundos })
+  }
+}
+
+/** Sin la espera. Destructurando, como `quitarActividad`: con
+ *  `exactOptionalPropertyTypes` un `esperando: undefined` no es lo mismo que no
+ *  tener la clave, y la clave presente viajaría hasta la ranura del snapshot. */
+function sinEspera(a: Actor): Actor {
+  const { esperando: _descartada, ...resto } = a
+  return resto
+}
+
 // ─── El despacho de una intención ────────────────────────────────────────────
 
 function despachar(d: Borrador, a: Actor, i: Intent): void {
+  // CUALQUIER otra cosa corta la espera. Es la contracara de que esperar sobreviva
+  // al silencio: la espera se pierde cuando el actor gasta su turno en otra cosa,
+  // y no cuando no hace nada. Va acá y no en cada `intencionX` porque vale hasta
+  // para las que terminan rechazadas: el que intentó agarrar algo y no llegó ya
+  // dejó de esperar, decidió otra cosa. Las que se rechazan en el portón —mal
+  // declarado, sin permiso, actor desconocido— ni siquiera llegan hasta acá, y
+  // está bien: ésas no son actos.
+  if (i.k !== 'wait') {
+    const actual = d.actors.get(i.by)
+    if (actual?.esperando !== undefined) d.actors.set(i.by, sinEspera(actual))
+  }
   switch (i.k) {
     case 'wait':
-      d.events.push({ k: 'espero', by: a.id })
+      esperar(d, a, i)
       return
     case 'goTo':
       intencionCaminar(d, a, i)
@@ -1539,18 +2212,92 @@ function sistemaLeyes(d: Borrador): void {
 }
 
 /**
- * Estar vivo cuesta. `stamina` es conservada y no relaja: lo que se gasta no
- * vuelve solo, y por eso el hambre duele. Si volviera, el motor de toda la
- * historia se apagaría en el tick 300.
+ * Estar vivo cuesta, y cuando no queda con qué pagar, se muere.
+ *
+ * `stamina` es conservada y no relaja: lo que se gasta no vuelve solo, y por eso
+ * el hambre duele. Si volviera, el motor de toda la historia se apagaría en el
+ * tick 300.
+ *
+ * ─── El costo va por SEGUNDO, no por tick (ADR II-0009) ─────────────────────
+ *
+ * `porPaso` es la misma y única conversión que `aplicarEfectos` hace veinte
+ * líneas más arriba para las tasas de los procesos. Antes esta resta era la única
+ * del mundo que se había quedado contando en ticks, y la consecuencia era que **la
+ * frecuencia calibraba el hambre**: subir el muestreo de 20 a 100 Hz porque el
+ * render se veía entrecortado dejaba a la criatura sin fuerzas cinco veces antes.
+ * Es exactamente lo que el ADR II-0007 prohíbe con todas las letras.
+ *
+ * ─── Y llegar a cero MATA (ADR II-0009) ─────────────────────────────────────
+ *
+ * Antes acá había un `if (s <= 0) continue` y la criatura se quedaba congelada
+ * para siempre: no podía caminar —`cobrarStamina` devolvía `false`— ni hacer nada
+ * más, pero seguía en `actors`, seguía costando su vuelta del tick y se quedaba
+ * con la caña en la mano hasta el final de los tiempos. Un mundo viejo se llenaba
+ * de estatuas sosteniendo herramientas que nadie podía volver a usar. Y peor:
+ * «sobrevive 20.000 ticks sola», el criterio del Hito 5, era trivialmente
+ * verdadero — lo cumple una piedra.
  */
 function sistemaMetabolismo(d: Borrador): void {
+  const muertos: Actor[] = []
   for (const a of d.actors.values()) {
     const c = d.bodies.get(a.body)
     if (c === undefined) continue
     const s = qualityOf(c.body, 'stamina', d.phys)
-    if (s <= 0) continue
-    d.bodies.set(c.body.id, { ...c, body: conCualidad(c.body, 'stamina', s - COSTO_VIVIR) })
+    const queda = s - porPaso(COSTO_VIVIR_POR_SEGUNDO, d.dt)
+    // `conCualidad` topa contra el rango declarado —`stamina` es `[0, 1000]` y
+    // conservada—, así que lo que se guarda es 0 y no una deuda. La deuda se
+    // descartó a propósito: lo negativo no es representable y hacerlo
+    // representable cambiaría el contrato de una cualidad que leen otras diez
+    // cosas, para modelar una idea que la muerte ya modela mejor.
+    d.bodies.set(c.body.id, { ...c, body: conCualidad(c.body, 'stamina', queda) })
+    if (queda <= 0) muertos.push(a)
   }
+  // La lista se junta adentro del recorrido y se ejecuta afuera: `morirDeHambre`
+  // borra del mismo `Map` que se está iterando y además mueve cuerpos que otro
+  // actor de este mismo bucle podría estar sosteniendo. `muertos` sale en el orden
+  // canónico de `actors`, así que quién suelta primero no lo decide nada del
+  // motor.
+  for (const a of muertos) morirDeHambre(d, a)
+}
+
+/**
+ * La primera muerte del mundo (ADR II-0009, decisión 3).
+ *
+ * El actor se va de `actors` y **el cuerpo se queda donde cayó**: la materia no
+ * se destruye, y el cadáver de una criatura es carne con `nutrition`, o sea que la
+ * que viene puede comerse a la que no llegó. Borrar el cuerpo habría sido tirar
+ * comida además de tirar materia.
+ *
+ * Soltar lo que tenía en la mano NO es opcional: `invariants.ts:258` emite
+ * `referencia-colgada` en cuanto un `heldBy` nombra a un actor que ya no está en
+ * el mapa. El detector estaba escrito antes de que existiera la muerte.
+ *
+ * Y el journal no necesita nada nuevo: las intenciones posteriores del muerto se
+ * rechazan con `'actor-desconocido'`, que es un motivo que ya existía.
+ */
+function morirDeHambre(d: Borrador, a: Actor): void {
+  const mio = d.bodies.get(a.body)
+  for (const id of a.holding) {
+    const c = d.bodies.get(id)
+    if (c === undefined) continue
+    const { heldBy: _mano, ...suelto } = c
+    // Cae donde caería si lo soltara viva: la primera celda libre a partir de la
+    // suya, que es la que ya usa `intencionSoltar`. La propia no es libre —ahí
+    // queda el cadáver, que es sólido— y dos sólidos sueltos en la misma celda son
+    // un `solidos-solapados`.
+    const desde = mio?.at ?? c.at
+    const donde = celdaLibreCerca(d, desde, id)
+    // Y si no hay ni una celda libre alrededor, queda APOYADO sobre el cadáver, que
+    // es la única forma que el mundo tiene de poner dos sólidos en un lugar sin
+    // mentir: una pila declarada, no un accidente de coordenadas.
+    if (donde !== undefined) ponerCuerpo(d, { ...suelto, at: donde })
+    else ponerCuerpo(d, { ...suelto, at: desde, supportedBy: a.body })
+  }
+  d.actors.delete(a.id)
+  // El `id` es el del CUERPO y no el del actor, como en el `murio` de comer: lo
+  // que el evento nombra es la cosa que quedó en el mundo. Y no lleva `by` ni
+  // `seq` porque no lo causó ninguna intención.
+  if (mio !== undefined) d.events.push({ k: 'murio', id: mio.body.id, por: 'hambre' })
 }
 
 /**
@@ -1574,8 +2321,10 @@ export const SISTEMAS: readonly { readonly nombre: string; readonly correr: (d: 
  *
  *   1. ordena las intenciones por id de actor y número de emisión — orden TOTAL;
  *   2. rechaza las que mienten sobre su compromiso o no tienen permiso;
- *   3. deja actuar a lo sumo una vez a cada actor;
- *   4. corre los sistemas registrados.
+ *   3. deja actuar a lo sumo una vez a cada actor, y FIRMA lo que cada una narró;
+ *   4. avanza las esperas abiertas, que son intenciones de ticks anteriores que
+ *      todavía están contestando;
+ *   5. corre los sistemas registrados.
  *
  * El portón del punto 2 es lo que hace que dejar que un LLM escriba conducta sea
  * seguro: nada de lo que devuelve el modelo se ejecuta, el modelo PROPONE y el
@@ -1644,17 +2393,55 @@ export function stepWorld(state: WorldState, intents: readonly Intent[]): StepOu
       continue
     }
     yaActuo.add(i.by)
+    // El corchete de la firma: todo lo que este despacho narre queda entre las dos
+    // líneas, así que no hay que confiar en que cada `intencionX` se acuerde de
+    // pasar el `seq` — y son ocho, más los cuatro rendimientos, más los que
+    // vengan. Un contrato que depende de que doce lugares no se olviden no es un
+    // contrato.
+    const desde = d.events.length
     despachar(d, a, i)
+    firmar(d, i, desde)
   }
 
   // Quien no actuó pierde la actividad en curso. Frotar es frotar todos los
   // ticks: si se distrae, el palo se enfría solo por la ley 1 y hay que empezar
   // de nuevo. Sin esto, una actividad quedaría acumulando ticks sin que nadie la
   // esté haciendo.
+  //
+  // LA ESPERA NO ENTRA ACÁ, y es la diferencia entera entre las dos: el que espera
+  // no emite nada, así que si la espera se perdiera por no actuar, esperar sería
+  // imposible. Se pierde de la otra forma, en `despachar`: cuando el actor gasta
+  // el turno en otra cosa.
   for (const a of d.actors.values()) {
     if (a.doing !== undefined && !yaActuo.has(a.id)) d.actors.set(a.id, quitarActividad(a))
   }
 
+  // La segunda mitad de la fase de las intenciones: las respuestas que salen sin
+  // que nadie haya preguntado en ESTE tick. Ver `avanzarEsperas` para por qué no
+  // es un sistema.
+  avanzarEsperas(d)
+
   for (const s of SISTEMAS) s.correr(d)
   return cerrar(d)
+}
+
+/**
+ * Le pone a cada evento del despacho la firma de la intención que lo causó.
+ *
+ * Firma lo que se agregó entre `desde` y el final, y nada más: los eventos de los
+ * despachos anteriores ya están firmados y los de los sistemas todavía no
+ * existen. Sobrescribe `by` además de poner `seq`, y eso no cambia nada —todo
+ * despacho narra con el `a.id` del actor de la intención— pero deja una sola
+ * verdad sobre quién firmó qué.
+ *
+ * La `Narracion` se saltea entera: `murio` y `sustancia` no le contestan a nadie
+ * ni cuando ocurren en medio de un despacho. Comer mata un cuerpo, y el que comió
+ * ya se entera por su `comio`, que dice cuál.
+ */
+function firmar(d: Borrador, i: Intent, desde: number): void {
+  for (let n = desde; n < d.events.length; n++) {
+    const e = d.events[n] as SimEventSinFirmar
+    if (e.k === 'murio' || e.k === 'sustancia') continue
+    d.events[n] = { ...e, by: i.by, seq: i.seq }
+  }
 }

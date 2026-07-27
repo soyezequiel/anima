@@ -167,6 +167,18 @@ export function huella(s: WorldState): number {
         t.s(r.body)
       }
     }
+    // La espera abierta. Estaba faltando desde que `Actor.esperando` existe, y no
+    // era cosmético: `intencionesAlAzar` emite `wait`, así que los gemelos de
+    // `tests/paso-determinista.test.ts` venían comparando mundos donde había
+    // esperas abiertas con una huella que no las miraba — una divergencia que
+    // viviera SÓLO en la espera se le escapaba entera. Medido antes de agregarlo:
+    // dos mundos que difieren únicamente en un `wait(30)` abierto daban la misma
+    // huella (2933914144) y hashes distintos.
+    if (a.esperando !== undefined) {
+      t.n(a.esperando.pedido)
+      t.n(a.esperando.segundos)
+      t.n(a.esperando.seq)
+    }
   }
   for (const [k, c] of s.cells) {
     t.n(k)

@@ -18,7 +18,7 @@
 // movió ninguna conducta. Si no, el `it` de abajo lo dice con los dos números.
 
 import { describe, expect, it } from 'vitest'
-import { buildSeedPhysics, HZ_DE_REFERENCIA } from '@anima/physics'
+import { buildSeedPhysics, HZ_DE_REFERENCIA, qualityOf } from '@anima/physics'
 import type { Body, QualityVector } from '@anima/physics'
 
 import { mapaDeActores, mapaDeCuerpos, stepWorld } from '../src/step.js'
@@ -205,6 +205,12 @@ interface Resultado {
   readonly cuerpos: number
   readonly eventos: number
   readonly violaciones: readonly string[]
+  /** Cuántas criaturas se murieron de hambre (ADR II-0009). Tiene que ser cero. */
+  readonly muertosDeHambre: number
+  /** Cuántas veces algo se rechazó por falta de aliento. Tiene que ser cero. */
+  readonly sinFuerza: number
+  /** La `stamina` de las ocho al final, en orden canónico. */
+  readonly stamina: readonly number[]
 }
 
 function correr(ticks: number, semilla: number): Resultado {
@@ -212,12 +218,18 @@ function correr(ticks: number, semilla: number): Resultado {
   let w = partida()
   const checkpoints: string[] = []
   let eventos = 0
+  let muertosDeHambre = 0
+  let sinFuerza = 0
   const violaciones: string[] = []
   for (let t = 0; t < ticks; t++) {
     const antes = w
     const paso = stepWorld(w, intenciones(r, t * 10, 4))
     w = paso.state
     eventos += paso.events.length
+    for (const e of paso.events) {
+      if (e.k === 'murio' && e.por === 'hambre') muertosDeHambre++
+      if (e.k === 'rechazada' && e.por === 'sin-fuerza') sinFuerza++
+    }
     // Los invariantes en TODOS los ticks, y con `antes` y `despues`: una caché
     // mal invalidada que invente materia rompe la conservación antes de mover el
     // hash de una manera que se pueda leer.
@@ -234,6 +246,11 @@ function correr(ticks: number, semilla: number): Resultado {
     cuerpos: w.bodies.size,
     eventos,
     violaciones,
+    muertosDeHambre,
+    sinFuerza,
+    stamina: NOMBRES.map((n) =>
+      qualityOf((w.bodies.get(`${n}-cuerpo`) as WorldBody).body, 'stamina', w.phys),
+    ),
   }
 }
 
@@ -250,6 +267,8 @@ describe('una partida de 2000 ticks', () => {
         `  sustancias al final  ${r.sustancias}   (26 semilla + las que dio de alta la ley 4)`,
         `  cuerpos al final ... ${r.cuerpos}`,
         `  eventos ............ ${r.eventos}`,
+        `  stamina al final ... ${r.stamina.map((s) => s.toFixed(2)).join(' ')}`,
+        `  muertos de hambre .. ${r.muertosDeHambre}   ·   rechazos sin-fuerza: ${r.sinFuerza}`,
         `  violaciones ........ ${r.violaciones.length}`,
         ...r.violaciones.slice(0, 5).map((v) => `      ${v}`),
         '',
@@ -277,8 +296,67 @@ describe('una partida de 2000 ticks', () => {
     // silencio.
     expect(r.violaciones.filter((v) => !v.includes('solidos-solapados'))).toEqual([])
 
-    // EL NÚMERO. Se movió UNA vez, con el ADR II-0008, y por tres cosas que son
-    // de FORMA y no de conducta:
+    // ─── DOS FRENTES MOVIERON ESTA PARTIDA, Y ACÁ ESTÁ LA DEMOSTRACIÓN ─────
+    //
+    // CORREGIDO POR EL ADVERSARIO: este bloque decía «el ADR II-0009 movió esta
+    // partida» y nombraba un solo frente. Son dos, y están medidos en
+    // `tests/ataque-al-mundo-que-falta.test.ts` §1:
+    //
+    //   1. EL ADR II-0009. El hambre pasó a cobrarse por SEGUNDO y a 1,0 en vez de
+    //      a 0,01 por tick, o sea 5× más caro. Mueve la `stamina` de las ocho y
+    //      NADA MÁS, que es lo que las cuatro afirmaciones de abajo acotan.
+    //   2. LA ESPERA QUE DURA. `wait` dejó de ser un no-op y ahora ESCRIBE
+    //      `Actor.esperando`, que entra en `hashWorldState`. En esta partida hay
+    //      alguien esperando en NUEVE de los once checkpoints, el último incluido,
+    //      y 2019 de los 9187 eventos son `esperando` —un evento que antes no
+    //      existía—. Sacarle el campo al estado final devuelve `9a75fd6929ae0d7e`.
+    //
+    // Que son dos y no uno se demuestra solo: si el único cambio fuera el del
+    // hambre, y `muertosDeHambre` y `sinFuerza` son CERO, la cuenta de eventos no
+    // podría haberse movido ni en uno — y se movió en 1183.
+    //
+    // **La huella se tenía que mover**, y al revés que con el ADR II-0008 no hay
+    // forma vieja que mapear de vuelta: 1,0 por segundo no es 0,01 por tick a
+    // ninguna frecuencia. Lo que sí se puede demostrar —y es lo que estas cuatro
+    // afirmaciones demuestran— es que la parte del HAMBRE se movió **por el motivo
+    // declarado y por ninguno más**:
+    //
+    //   1. NADIE SE MURIÓ. La partida de 2000 ticks sigue siendo la misma partida
+    //      y no una más corta con ocho cadáveres adentro: las ocho arrancan con la
+    //      `stamina` al techo del catálogo (1000, porque `conCualidad` topa los
+    //      4000 del armado en el primer tick) y 2000 ticks a 20 Hz son 100
+    //      segundos de mundo, o sea 100 de los 1000.
+    //   2. NADIE SE QUEDÓ SIN FUERZA. Cero rechazos `'sin-fuerza'`, así que
+    //      ninguna decisión del chorro de intenciones cambió de resultado por el
+    //      precio nuevo: la TRAYECTORIA es la misma y lo único distinto son los
+    //      números de `stamina`.
+    //   3. Y esos números son exactamente los que el ADR predice: 100 de gasto
+    //      por criatura en vez de 20, más lo que se llevaron los pasos y los
+    //      procesos, que no cambiaron.
+    //
+    // Ojo con las cuentas conservadas: al arrancar TOPADAS en 1000, comer clampea,
+    // y clampea distinto según cuánto se gastó. Es una consecuencia del mismo
+    // cambio y no una segunda causa.
+    expect(r.muertosDeHambre).toBe(0)
+    expect(r.sinFuerza).toBe(0)
+    for (const s of r.stamina) {
+      // Arrancan topadas en 1000 y vivir 100 segundos cuesta 100: la banda cae
+      // alrededor de 900. Lo que la corre para abajo son los pasos (0,05 la
+      // celda) y lo que `deshilachar` le saca al que deshilacha; lo que la corre
+      // para arriba es haber comido —una termina en 900,19— y el techo de 1000
+      // que `conCualidad` no deja pasar. Medido: entre 894,10 y 900,19.
+      //
+      // ESTA ES LA AFIRMACIÓN QUE PINCHA EL GLOBO: con el costo viejo, 2000 ticks
+      // a 0,01 gastaban 20 y la banda caería alrededor de 980. Si alguien vuelve a
+      // contar el hambre en muestras, esto se pone rojo antes que el hash, y con
+      // un número que se entiende.
+      expect(s).toBeGreaterThan(880)
+      expect(s).toBeLessThan(920)
+    }
+
+    // EL NÚMERO. Se movió con el ADR II-0008 —tres cosas de FORMA y no de
+    // conducta—, con el ADR II-0009, que sí es de conducta, y una tercera vez con
+    // la espera que dura. El ADR II-0008 aportó:
     //
     //   1. la FRECUENCIA entra en el hash. Dos mundos con la misma semilla y
     //      distinta frecuencia no producen la misma traza, así que el hash tiene
@@ -287,18 +365,27 @@ describe('una partida de 2000 ticks', () => {
     //   3. el catálogo cambió de forma: `Effect.porSegundo`, `completion.at` en
     //      segundos y `relaxesTo.porSegundo`.
     //
-    // Que la TRAYECTORIA no se movió está verificado, y no de palabra: mapeando
-    // esas tres formas de vuelta a como eran —la actividad a ticks, las tasas a
-    // por tick, las duraciones a ticks, y sacando `hz` del hash— esta misma
-    // partida vuelve a dar `61d4b9588a81717d` con sus once checkpoints EXACTOS.
-    // El mundo simula lo mismo a 20 Hz; lo único que cambió es cómo se lo nombra.
+    // Que la TRAYECTORIA no se movió con el II-0008 está verificado, y no de
+    // palabra: mapeando esas tres formas de vuelta a como eran —la actividad a
+    // ticks, las tasas a por tick, las duraciones a ticks, y sacando `hz` del
+    // hash— esta misma partida volvía a dar `61d4b9588a81717d` con sus once
+    // checkpoints EXACTOS.
     //
-    // El número anterior, para quien venga a bisecar: 61d4b9588a81717d.
-    expect(r.hashFinal).toBe('4d431de7cdd1fe94')
+    // Y con el II-0009 la trayectoria SÍ se movió, a propósito, en lo que las
+    // cuatro afirmaciones de arriba acotan: la `stamina` de las ocho, y nada más.
+    //
+    // LOS NÚMEROS ANTERIORES, PARA QUIEN VENGA A BISECAR. La cadena tiene TRES
+    // eslabones y no dos, y el del medio es el que faltaba —lo midió el adversario
+    // sacándole `Actor.esperando` al estado final—:
+    //   61d4b9588a81717d  (antes del ADR II-0008)
+    //   4d431de7cdd1fe94  (antes del ADR II-0009, con 8004 eventos)
+    //   9a75fd6929ae0d7e  (con el II-0009 y ANTES de que la espera durara)
+    //   adea782a5cd4274d  (con las dos, y con 9187 eventos: 2019 son `esperando`)
+    expect(r.hashFinal).toBe('adea782a5cd4274d')
     expect(r.checkpoints.join(' ')).toBe(
-      '799d7fb6cb46e1f5 1335c65ca19993c1 2062b2924eae1257 4ae325044434988f 3ff267aeaa7bca89 e02e6ff187c49030 9edea01bdc7142de 64e61ef2f9823ab3 743fb2a48282ae77 f7aa75e12ac7f370 4d431de7cdd1fe94',
+      '9351f5f0182f1ca3 be96d3906bc72ca9 9b95a52f3975b8da d92525827bb89549 be8487a75351df88 32e6ab57bed1d9ce a9bfab38661e2f7d 6f90b573db9910da 9f77b9d74d57fb10 4efb09c4f8b145ad adea782a5cd4274d',
     )
-    expect(r.eventos).toBe(8004)
+    expect(r.eventos).toBe(9187)
     expect(r.sustancias).toBe(30)
     expect(r.violaciones.length).toBe(97)
   }, 300_000)

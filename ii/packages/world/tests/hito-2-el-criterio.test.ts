@@ -303,15 +303,31 @@ describe('(d) el replay del journal reconstruye el estado exacto', () => {
     // intenciones— y se sigue notando doscientos ticks después.
     expect(seNota).toEqual(cuando)
 
-    // Y la otra mitad, medida: el mismo tick 3 cambiado por ESPERAS no mueve el
-    // estado ni un bit, porque esas seis intenciones ya venían rechazadas. El
-    // hash es del mundo, no de la crónica.
+    // Y la otra mitad, medida: el mismo tick 3 cambiado por OTRAS INTENCIONES QUE
+    // TAMBIÉN SE RECHAZAN no mueve el estado ni un bit, porque esas seis ya venían
+    // rechazadas —`no-esta-a-mano`, `rol-no-cumple`, `no-lo-tiene`, `ya-actuo`—.
+    // El hash es del mundo, no de la crónica.
+    //
+    // Acá había una espera —`wait(1)`— y dejó de servir el día que esperar pasó a
+    // durar: un `wait` ahora ESCRIBE en el `Actor` (`Actor.esperando`, ADR II-0009
+    // y `tests/espera.test.ts`), así que mueve el estado con todo derecho y no es
+    // más el no-op que este control necesita. Se cambió por un `take` de un cuerpo
+    // que no existe, y las dos condiciones que hay que respetar son las que hacen
+    // que el reemplazo sea equivalente y no sólo parecido:
+    //
+    //   - lo emite EL MISMO actor, así que gasta el mismo turno (`yaActuo`) y la
+    //     sexta sigue saliendo `ya-actuo` como salía;
+    //   - se DESPACHA y recién ahí se rechaza, igual que las seis originales. Uno
+    //     rechazado en el portón —un actor que no existe— no sería lo mismo: en el
+    //     tick 3 hay dos criaturas con una espera abierta, y una espera se corta
+    //     cuando el actor gasta el turno en otra cosa. La original la cortaba; una
+    //     que no llega a despacharse, no.
     const soloEventos = createJournal<Intent>()
     for (const e of original.journal.entries()) {
       soloEventos.append(
         e.tick,
         e.tick === 3
-          ? { k: 'wait', by: e.intent.by, seq: e.intent.seq, commitment: 'reversible', segundos: 1 }
+          ? { k: 'take', by: e.intent.by, seq: e.intent.seq, commitment: 'reversible', what: 'no-existe' }
           : e.intent,
       )
     }
@@ -374,11 +390,24 @@ describe('el mismo hash en dos motores de JavaScript — PENDIENTE, y qué falta
     // desacuerdo en el tick 0 es un bug de la forma canónica o del hash; uno que
     // aparece recién al final es un bug de la aritmética de las leyes. Poder
     // distinguir los dos casos vale más que un solo número.
+    //
+    // ─── CUÁL DE LOS CUATRO SE MOVIÓ CON EL ADR II-0009, Y POR QUÉ ──────────
+    //
+    // Sólo el TERCERO, y tenía que moverse. El tick 0 no lo toca nadie —el mundo
+    // inicial se arma igual— y `hashPhysics` tampoco, porque el hambre es una
+    // constante de `@anima/world` y no del catálogo. La cadena del journal
+    // tampoco: guarda INTENCIONES, y las intenciones son las mismas. El único que
+    // se mueve es el estado tras diez ticks, porque en esos diez ticks las
+    // criaturas gastaron `1,0 × 10/20` = 0,5 de `stamina` cada una en vez de
+    // `0,01 × 10` = 0,1. Que los otros tres NO se muevan es la mitad de la prueba:
+    // si se hubieran movido, el cambio no sería el que se declaró.
+    //
+    //   el tercero, antes del ADR II-0009: ac45c6b97f3cc082
     const s = partida()
     expect(hashWorldState(s)).toMatchInlineSnapshot(`"be714c54e109f8c5"`)
     expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"37e26e82459ff975"`)
     const tras10 = correr(partida(), 9, 10, 4, 1000)
-    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"ac45c6b97f3cc082"`)
+    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"74e1a1910bbf5042"`)
     expect(tras10.journal.chain).toMatchInlineSnapshot(`"63fbe8efeeee7f54"`)
   })
 })

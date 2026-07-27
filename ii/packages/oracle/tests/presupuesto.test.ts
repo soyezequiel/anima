@@ -27,10 +27,18 @@
 // recalibra un proceso semilla, este test recalcula y dice otra cosa. Un test
 // económico con las constantes copiadas mide su propia copia.
 //
-// La única excepción está marcada como tal y es `COSTO_DE_VIVIR_POR_SEGUNDO`:
-// **la física semilla no tiene metabolismo** —la criatura no existe hasta el
-// Hito 5— así que cuánto cuesta estar vivo es una perilla, y está declarada como
-// perilla, con de dónde se sacó su valor y qué la va a reemplazar.
+// La única excepción está marcada como tal y es `MASA_DE_UNA_PIEZA`: **la física
+// semilla no dice cuánto pesa un pescado** —los pozos los escribe el dios— así
+// que ese número es una perilla de acá, y está declarada como perilla.
+//
+// Los tres de la economía viven en `@anima/world`, están copiados abajo y hay un
+// guardián que compara la copia contra el archivo. Y hay un lazo que conviene
+// decir en voz alta antes de que alguien lo descubra solo: desde el ADR II-0009
+// `COSTO_VIVIR_POR_SEGUNDO` vale 1,0 porque ese número se eligió adentro de una
+// **ventana medida en este archivo**. Por eso el criterio de más abajo afirma la
+// VENTANA —comer crudo da negativo y cocinar da positivo en las cien partidas
+// comunes— y no el número: un test que dijera `COSTO_VIVIR_POR_SEGUNDO === 1`
+// estaría midiendo su propia copia y no diría nada.
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -342,13 +350,18 @@ describe('`draw` cobra, y no entrega lo que no puede pagar', () => {
 // ─── De dónde sale cada número del modelo, que es la mitad del test ─────────
 //
 // Ninguno se inventa. Los del proceso salen de `@anima/physics` leídos en tiempo
-// de ejecución; los tres de la economía —cuánto cuesta estar vivo, cuánto cuesta
-// un paso y cuánto rinde una caloría— viven en `@anima/world`, y **este paquete
-// no puede importarlos**: la flecha va del mundo al dios y en los dos sentidos
-// sería un ciclo de paquetes (es la misma razón por la que `CELDAS_DE_LADO` está
-// escrito dos veces). Están copiados acá con su ruta y su valor, y **hay un test
-// que compara la copia contra el archivo**: una constante copiada sin un test
-// que la vigile es exactamente cómo divergió `DSL_REFERENCE` en Ánima I.
+// de ejecución; los tres de la economía —cuánto cuesta estar vivo UN SEGUNDO,
+// cuánto cuesta entrar en UNA CELDA y cuánto rinde una caloría— viven en
+// `@anima/world`, y **este paquete no puede importarlos**: la flecha va del mundo
+// al dios y en los dos sentidos sería un ciclo de paquetes (es la misma razón por
+// la que `CELDAS_DE_LADO` está escrito dos veces). Están copiados acá con su
+// ruta, su valor **y su unidad**, y **hay un test que compara la copia contra el
+// archivo**: una constante copiada sin un test que la vigile es exactamente cómo
+// divergió `DSL_REFERENCE` en Ánima I.
+//
+// Las mayúsculas de «UN SEGUNDO» y «UNA CELDA» no son énfasis: son las dos
+// unidades distintas del ADR II-0009, y confundirlas es un error de un factor de
+// `hz` que ningún número delata solo.
 
 const PARTIDAS = 100
 const TICKS = 20_000
@@ -369,11 +382,37 @@ const SEGUNDOS_POR_INTENTO = ((): number => {
 const TICKS_POR_INTENTO = Math.round(SEGUNDOS_POR_INTENTO * HZ)
 
 // ─── Las tres constantes copiadas de `@anima/world/src/step.ts` ─────────────
+//
+// Y no son tres números: son tres números **con unidad**, y la unidad es la mitad
+// de lo que hay que copiar bien. El ADR II-0009 renombró dos justamente para que
+// la unidad viaje en el nombre, y el guardián del final las verifica de las dos
+// maneras: el valor, y el LUGAR del que el mundo las cobra —una pasa por
+// `porPaso` y la otra no puede pasar nunca—.
 
-/** `COSTO_VIVIR`: lo que cuesta estar vivo UN TICK. «El motor de la historia». */
-const COSTO_VIVIR_POR_TICK = 0.01
-/** `COSTO_PASO`: lo que cuesta caminar una celda. */
-const COSTO_PASO = 0.05
+/**
+ * `COSTO_VIVIR_POR_SEGUNDO`: lo que cuesta estar vivo UN SEGUNDO DE MUNDO. «El
+ * motor de la historia».
+ *
+ * **Es una TASA POR SEGUNDO**, y por eso el mundo la aplica con
+ * `porPaso(…, d.dt)` (ADR II-0009). Acá se multiplica por los SEGUNDOS de la
+ * partida y no por sus ticks, que es la diferencia entera: antes esto era
+ * `COSTO_VIVIR = 0,01` por tick, los 1000 segundos costaban 200 a 20 Hz y 1000 a
+ * 100 Hz, y «energía neta» sólo quería decir algo a una frecuencia fija. Ahora
+ * cuesta 1000 a las cinco.
+ */
+const COSTO_VIVIR_POR_SEGUNDO = 1.0
+
+/**
+ * `COSTO_POR_CELDA`: lo que cuesta entrar en UNA CELDA.
+ *
+ * **NO es una tasa**, y por eso no se divide ni se multiplica por ningún tiempo:
+ * sus unidades son stamina POR CELDA. El valor no se movió con el ADR II-0009
+ * —sigue siendo el mismo 0,05 de siempre—; lo que se movió es el nombre, para que
+ * nadie lo trate como las otras. Dividirlo por la frecuencia haría que el mismo
+ * viaje de diez celdas saliera 5× más barato a 100 Hz que a 20.
+ */
+const COSTO_POR_CELDA = 0.05
+
 /**
  * `STAMINA_POR_CALORIA`: cuánto rinde una caloría comida.
  *
@@ -383,18 +422,6 @@ const COSTO_PASO = 0.05
  * acá la eficiencia 0,35 del `poweredBy` de `friccion` sería cobrarla dos veces.
  */
 const STAMINA_POR_CALORIA = 1
-
-/**
- * Vivir un segundo, a la frecuencia de referencia.
- *
- * **Y acá hay un hueco abierto que no es de este archivo**: `COSTO_VIVIR` es por
- * TICK y no por segundo, así que el hambre llega cinco veces antes a 50 Hz que a
- * 10. Está medido y anotado como `it.fails` en
- * `@anima/world/tests/el-tiempo-no-depende-del-tick.test.ts`. Mientras siga
- * abierto, «energía neta» sólo quiere decir algo a una frecuencia fija, y por
- * eso todo este bloque se juega a 20 Hz y lo dice.
- */
-const COSTO_VIVIR_POR_SEGUNDO = COSTO_VIVIR_POR_TICK * HZ
 
 /**
  * **La perilla que sí es de acá**: cuánto pesa una pieza.
@@ -438,6 +465,10 @@ interface Partida {
   readonly ingresoCocinado: number
   readonly costo: number
   readonly netoCrudo: number
+  /** El mismo bicho, la misma materia, la otra economía: lo único que cambia es
+   *  `digestibility`. Que este número exista al lado del de arriba es lo que hace
+   *  que el criterio del ADR II-0009 sea una VENTANA y no un número. */
+  readonly netoCocinado: number
   readonly libro: LibroCalorico
 }
 
@@ -527,7 +558,11 @@ function jugar(seed: bigint, v: Variante): Partida {
   }
 
   libro.verificar()
-  const costo = COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA + caminadas * COSTO_PASO
+  // Las dos unidades, una al lado de la otra, que es donde se ve que son
+  // distintas: vivir se cobra por SEGUNDO DE MUNDO —de ahí el `× 1000` y no el
+  // `× 20.000`— y caminar se cobra POR CELDA, sin que el tiempo entre en la
+  // cuenta. Ése es el modelo económico entero del archivo (ADR II-0009).
+  const costo = COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA + caminadas * COSTO_POR_CELDA
   let techoDeLoVisitado = 0
   for (const c of visitados) techoDeLoVisitado += c.presupuestoCalorico
   let cobrado = 0
@@ -545,8 +580,52 @@ function jugar(seed: bigint, v: Variante): Partida {
     ingresoCocinado: cocinado * STAMINA_POR_CALORIA,
     costo,
     netoCrudo: crudo * STAMINA_POR_CALORIA - costo,
+    netoCocinado: cocinado * STAMINA_POR_CALORIA - costo,
     libro,
   }
+}
+
+// ─── Las cien, y no el promedio ─────────────────────────────────────────────
+//
+// El criterio del ADR II-0009 pregunta si **las cien** caen del mismo lado, así
+// que el promedio no sirve para contestarlo: una mediana cómoda con una cola que
+// cruza el cero es exactamente el caso que el criterio quiere cazar. De acá en
+// adelante todo se reporta con mínimo, mediana y máximo.
+
+interface Extremos {
+  readonly min: number
+  readonly mediana: number
+  readonly max: number
+}
+
+function extremos(ns: readonly number[]): Extremos {
+  const o = [...ns].sort((a, b) => a - b)
+  const n = o.length
+  if (n === 0) throw new Error('no hay partidas que resumir')
+  const mediana = n % 2 === 1 ? (o[(n - 1) / 2] as number) : ((o[n / 2 - 1] as number) + (o[n / 2] as number)) / 2
+  return { min: o[0] as number, mediana, max: o[n - 1] as number }
+}
+
+/** La tabla de una variante: cinco columnas del modelo económico, cada una con
+ *  sus tres números. Sale por consola porque un criterio sin el número medido
+ *  adelante es una palabra. */
+function tabla(nombre: string, ps: readonly Partida[]): string {
+  const fila = (etiqueta: string, f: (p: Partida) => number): string => {
+    const e = extremos(ps.map(f))
+    return (
+      `económico ·   ${etiqueta.padEnd(20)}` +
+      `${e.min.toFixed(1).padStart(11)}${e.mediana.toFixed(1).padStart(11)}${e.max.toFixed(1).padStart(11)}`
+    )
+  }
+  return [
+    `económico · ${nombre}: las cien partidas, no el promedio`,
+    `económico ·   ${''.padEnd(20)}${'mínimo'.padStart(11)}${'mediana'.padStart(11)}${'máximo'.padStart(11)}`,
+    fila('ingreso crudo', (p) => p.ingresoCrudo),
+    fila('ingreso cocinado', (p) => p.ingresoCocinado),
+    fila('costo', (p) => p.costo),
+    fila('NETO crudo', (p) => p.netoCrudo),
+    fila('NETO cocinado', (p) => p.netoCocinado),
+  ].join('\n')
 }
 
 interface Resumen {
@@ -558,8 +637,10 @@ interface Resumen {
   readonly cal: number
   readonly techo: number
   readonly ingreso: number
+  readonly ingresoCocinado: number
   readonly costo: number
   readonly neto: number
+  readonly netoCocinado: number
 }
 
 function resumir(ps: readonly Partida[]): Resumen {
@@ -573,10 +654,25 @@ function resumir(ps: readonly Partida[]): Resumen {
       cal: a.cal + p.caloriasCobradas,
       techo: a.techo + p.techoDeLoVisitado,
       ingreso: a.ingreso + p.ingresoCrudo,
+      ingresoCocinado: a.ingresoCocinado + p.ingresoCocinado,
       costo: a.costo + p.costo,
       neto: a.neto + p.netoCrudo,
+      netoCocinado: a.netoCocinado + p.netoCocinado,
     }),
-    { piezas: 0, intentos: 0, visitados: 0, exprimidos: 0, caminadas: 0, cal: 0, techo: 0, ingreso: 0, costo: 0, neto: 0 },
+    {
+      piezas: 0,
+      intentos: 0,
+      visitados: 0,
+      exprimidos: 0,
+      caminadas: 0,
+      cal: 0,
+      techo: 0,
+      ingreso: 0,
+      ingresoCocinado: 0,
+      costo: 0,
+      neto: 0,
+      netoCocinado: 0,
+    },
   )
 }
 
@@ -600,67 +696,175 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
         `económico · ${String(PARTIDAS)} partidas × ${String(TICKS)} ticks a ${String(HZ)} Hz = ${String(SEGUNDOS_DE_PARTIDA)} s de mundo · criatura ${nombre}\n` +
           `económico ·   ${String(r.intentos)} intentos → ${String(r.piezas)} piezas · ${String(r.visitados)} chunks pisados (${String(r.exprimidos)} exprimidos) · ${String(r.caminadas)} celdas caminadas\n` +
           `económico ·   ${r.cal.toFixed(0)} cal salieron del mundo contra ${String(r.techo)} de techo en lo pisado (${((r.cal / r.techo) * 100).toFixed(1)}%)\n` +
-          `económico ·   por partida: ingreso ${(r.ingreso / PARTIDAS).toFixed(1)} · costo ${(r.costo / PARTIDAS).toFixed(1)} · NETO ${(r.neto / PARTIDAS).toFixed(1)} de stamina`,
+          `económico ·   por partida: ingreso ${(r.ingreso / PARTIDAS).toFixed(1)} crudo / ${(r.ingresoCocinado / PARTIDAS).toFixed(1)} cocinado · ` +
+          `costo ${(r.costo / PARTIDAS).toFixed(1)} · NETO ${(r.neto / PARTIDAS).toFixed(1)} crudo / ${(r.netoCocinado / PARTIDAS).toFixed(1)} cocinado\n` +
+          tabla(nombre, ps),
       )
       expect(r.intentos).toBe(PARTIDAS * Math.floor(TICKS / TICKS_POR_INTENTO))
       expect(r.piezas).toBeGreaterThan(0)
     }
   })
 
-  it.fails('SIGUE ABIERTO · la energía neta acumulada tendría que ser NEGATIVA sin trabajo', () => {
-    // ─── El criterio del documento, medido, y NO se cumple ─────────────────
+  it('LA COMÚN: la energía neta acumulada es NEGATIVA sin trabajo, en las cien', () => {
+    // ─── La mitad del riesgo 4 que el ADR II-0009 cierra, medida ───────────
     //
     //   «un test económico de 100 partidas de 20.000 ticks donde la energía neta
     //    acumulada de la criatura tiene que ser **negativa sin trabajo**»
     //
-    // Corre a la escala pedida y el resultado es que **da positiva, y por mucho**,
-    // en las dos variantes: una criatura que no hace más que sacar y comer crudo
-    // termina las cien partidas con energía de sobra.
+    // Corre a la escala pedida y ahora da negativa **en las cien**, no en la
+    // mediana: una criatura que no hace más que sacar y comer crudo termina los
+    // 1000 segundos debiendo. Antes daba +394 por partida, y la única cosa que se
+    // movió para que dé −406 es la perilla del metabolismo: `COSTO_VIVIR`
+    // 0,01 por tick (o sea 0,20 por segundo a 20 Hz) pasó a
+    // `COSTO_VIVIR_POR_SEGUNDO` 1,0 por segundo, que es 5×.
     //
-    // ─── Y el techo NO es lo que falla ─────────────────────────────────────
+    // ─── Y el techo NO era lo que fallaba ──────────────────────────────────
     //
-    // Esto es lo importante para quien lea el número. El techo calórico existe,
-    // se cobra y se respeta: en las doscientas partidas ningún chunk pasó su
-    // presupuesto (test de más abajo) y las afortunadas lo tocan al 100%. Lo que
-    // falla es la CALIBRACIÓN, y se ve en una división:
+    // Vale la pena que quede escrito porque es lo que hizo falta entender para
+    // arreglarlo. El techo calórico existía, se cobraba y se respetaba: en las
+    // doscientas partidas ningún chunk pasó su presupuesto (test de más abajo) y
+    // las afortunadas lo tocan al 100%. Lo que fallaba era la CALIBRACIÓN, y se
+    // veía en una división: un chunk acuático da del orden de 1800 calorías y
+    // vivir la partida entera costaba 200, así que **un solo chunk pagaba nueve
+    // vidas**. Ninguna cota sobre cuánto da un lugar puede hacer negativo un
+    // balance donde un lugar da nueve veces lo que cuesta vivir.
     //
-    //   · un chunk de bioma acuático da del orden de 1800 calorías, y a
-    //     `STAMINA_POR_CALORIA = 1` son 1800 de stamina;
-    //   · vivir los 1000 segundos de la partida cuesta
-    //     `COSTO_VIVIR (0,01/tick) × 20 Hz × 1000 s` = **200 de stamina**.
-    //
-    // O sea que **un solo chunk paga nueve vidas enteras**. Ninguna cota sobre
-    // cuánto da un lugar puede hacer negativo un balance donde un lugar da nueve
-    // veces lo que cuesta vivir; lo que hay que mover es la perilla, y el número
-    // exacto está en el test de abajo.
-    //
-    // QUÉ HARÍA FALTA PARA CERRARLO: subir `COSTO_VIVIR` (o bajar lo que rinde
-    // una pieza) hasta el punto de equilibrio medido, y volver a correr esto. Es
-    // una decisión de diseño con un ADR, no un arreglo: el documento ya lo dice
-    // como residual honesto del riesgo 4 —«el balance de la regeneración es una
-    // perilla de diseño, no una consecuencia física»—, y elegir ese número acá
-    // adentro sería calibrar el mundo desde un test.
-    for (const p of [...AFORTUNADAS, ...COMUNES]) expect(p.netoCrudo).toBeLessThan(0)
+    // Lo que NO afirma este test es que 1,0 sea el número correcto: eso es la
+    // ventana del test de acá abajo, y afirmarlo acá sería afirmar la copia.
+    for (const p of COMUNES) expect(p.netoCrudo).toBeLessThan(0)
+    // Y el margen medido, para que «negativo» no sea «negativo por un pelo»: la
+    // partida que MÁS comió de las cien todavía termina bien abajo del cero.
+    const peor = extremos(COMUNES.map((p) => p.netoCrudo)).max
+    console.log(`económico · la común: la que MÁS comió termina en ${peor.toFixed(1)} de stamina, y es la más cerca del cero de las cien`)
   })
 
-  it('el punto de equilibrio, medido: cuánto tendría que costar vivir para que el hambre duela', () => {
-    // El número accionable. Por variante: el costo de vivir por segundo que
-    // dejaría en cero a la partida que MÁS comió, o sea el que haría negativas a
-    // las cien.
-    for (const [nombre, ps] of VARIANTES) {
+  it.fails('SIGUE ABIERTO · la AFORTUNADA sigue terminando en positivo, y no es la perilla del metabolismo', () => {
+    // POR QUÉ SIGUE ABIERTO: porque lo que le falta a esta variante **no es
+    // cuánto cuesta vivir**. Es que en este modelo **viajar no cuesta tiempo**.
+    //
+    // La afortunada es un dado cargado —`SUERTE_PERFECTA`, pica siempre— sobre el
+    // pozo más generoso que el paquete deja escribir, y cuando exprime un chunk
+    // camina hasta el siguiente. `jugar` le cobra esas celdas con
+    // `COSTO_POR_CELDA`, que es correcto, pero **no le adelanta el reloj**: `t`
+    // sale de `sumarPaso(t, DT)` una vez por tick y caminar no consume ticks. O
+    // sea que se muda gratis en tiempo y sigue pescando el resto de la partida
+    // como si nunca se hubiera ido. A 20 Hz esas celdas son un cuarto de su tiempo
+    // de pesca, más su propio costo de vivir, y ninguno de los dos se le cobra.
+    //
+    // Subir `COSTO_VIVIR_POR_SEGUNDO` hasta hundirla tampoco es la salida, y está
+    // medido en el ADR II-0009: haría falta 4,04 por segundo, y a ese precio la
+    // criatura COMÚN se muere en el tick ~5.800 comiendo crudo y en el ~7.800
+    // cocinando. El criterio del Hito 5 pasaría de trivialmente cierto a
+    // imposible, que es el mismo error con el signo cambiado. Calibrar contra la
+    // afortunada es calibrar contra un adversario y no contra un jugador.
+    //
+    // QUÉ HARÍA FALTA PARA CERRARLO: que caminar consuma TICKS en este modelo, o
+    // sea que el bucle de `jugar` gaste tiempo de partida por celda recorrida en
+    // vez de teletransportarse. Y para que ese número sea el del mundo y no una
+    // invención de acá, primero hay que cerrar el hueco 2 de
+    // `@anima/world/tests/el-tiempo-no-depende-del-tick.test.ts`: hoy la velocidad
+    // se mide en muestras —`intencionCaminar` avanza una celda por TICK— así que
+    // «cuántos segundos tarda un viaje» depende de la frecuencia. Eso es
+    // locomoción y no metabolismo, pide una velocidad en celdas por segundo con
+    // un resto sub-celda en `Actor`, y merece su propio ADR (II-0009,
+    // «a tener en cuenta»).
+    //
+    // ─── Y UN NÚMERO DEL ADR QUE NO DA, medido acá ─────────────────────────
+    //
+    // El ADR II-0009 dice: «La afortunada termina en **+3037 en la peor de sus
+    // cien partidas** — el ingreso menos la caminata le da entre 4036,9 y 4043,2
+    // contra un costo de 1000». Medido, **la peor no es +3037**: es la de acá
+    // abajo, y +3037,6 resulta ser la MEJOR. El error se ve en la frase misma: el
+    // rango «4036,9 y 4043,2» es el del ingreso CRUDO a secas —medido, 4037,1 a
+    // 4043,2— y no el del ingreso MENOS la caminata, que es lo que la frase dice.
+    // Después se le resta sólo el costo de vivir, así que las celdas quedan
+    // contadas cero veces: la partida que más camina paga 249,6 que ese rango no
+    // ve, y son 4992 celdas de las que ni el tiempo ni la stamina aparecen.
+    //
+    // No cambia ninguna conclusión —las cien siguen dando positivo por más de dos
+    // mil— y por eso el hueco sigue abierto por el mismo motivo. Queda escrito con
+    // el número medido adelante porque un número mal reportado sobrevive a quien
+    // lo escribió, y éste ya venía copiado de una tabla vieja.
+    const neto = extremos(AFORTUNADAS.map((p) => p.netoCrudo))
+    const limpio = extremos(AFORTUNADAS.map((p) => p.ingresoCrudo - p.celdasCaminadas * COSTO_POR_CELDA))
+    const celdas = extremos(AFORTUNADAS.map((p) => p.celdasCaminadas))
+    console.log(
+      `económico · la AFORTUNADA, medida: NETO crudo entre ${neto.min.toFixed(1)} y ${neto.max.toFixed(1)} (mediana ${neto.mediana.toFixed(1)})\n` +
+        `económico ·   ingreso menos caminata entre ${limpio.min.toFixed(1)} y ${limpio.max.toFixed(1)} contra un costo de vivir de ${(COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA).toFixed(0)}\n` +
+        `económico ·   camina entre ${String(celdas.min)} y ${String(celdas.max)} celdas entre orillas, y NINGUNA de esas celdas le cuesta un segundo de partida\n` +
+        `económico ·   ⚠ el ADR II-0009 dice «+3037 en la peor»: medido, +${neto.max.toFixed(1)} es la MEJOR y la peor es +${neto.min.toFixed(1)}`,
+    )
+    for (const p of AFORTUNADAS) expect(p.netoCrudo).toBeLessThan(0)
+  })
+
+  it('EL CRITERIO DEL ADR II-0009: la VENTANA, y no el número', () => {
+    // El criterio verificable que acompaña al ADR, con sus palabras: «afirma la
+    // ventana y no el número: neto crudo negativo en las 100 partidas comunes y
+    // neto cocinado positivo en las 100. Un test que afirmara
+    // `COSTO_VIVIR_POR_SEGUNDO === 1` mediría su propia copia».
+    //
+    // Es la afirmación que sostiene el 1,0, y es más fuerte que el 1,0: dice que
+    // **la diferencia entre vivir y morirse es cocinar**, y eso no está escrito en
+    // ningún archivo del proyecto. Sale de que `digestibility` sube de 0,38 a 0,95
+    // sobre la MISMA materia, sin crear un gramo de nada.
+    //
+    // Se afirma sobre la COMÚN y no sobre la afortunada a propósito: la afortunada
+    // es un dado cargado, y calibrar contra un adversario da el número equivocado
+    // con el otro signo (ver el `it.fails` de acá arriba).
+    for (const p of COMUNES) {
+      expect(p.netoCrudo).toBeLessThan(0)
+      expect(p.netoCocinado).toBeGreaterThan(0)
+    }
+
+    // Y los dos bordes, medidos, que son lo mismo dicho como tasa por segundo: si
+    // alguien recalibra `digestibility`, la masa de una pieza o el pozo, la
+    // ventana se mueve y estos dos números lo dicen antes que nadie.
+    const porSegundo = (p: Partida, ingreso: number): number =>
+      (ingreso - p.celdasCaminadas * COSTO_POR_CELDA) / SEGUNDOS_DE_PARTIDA
+    const abajo = extremos(COMUNES.map((p) => porSegundo(p, p.ingresoCrudo))).max
+    const arriba = extremos(COMUNES.map((p) => porSegundo(p, p.ingresoCocinado))).min
+    expect(abajo).toBeLessThan(COSTO_VIVIR_POR_SEGUNDO)
+    expect(COSTO_VIVIR_POR_SEGUNDO).toBeLessThan(arriba)
+    console.log(
+      `económico · LA VENTANA, medida sobre las cien comunes:\n` +
+        `económico ·   ${abajo.toFixed(3)}/s ← lo que rinde comiendo CRUDO la partida que MÁS comió\n` +
+        `económico ·   ${COSTO_VIVIR_POR_SEGUNDO.toFixed(3)}/s ← COSTO_VIVIR_POR_SEGUNDO, el número elegido\n` +
+        `económico ·   ${arriba.toFixed(3)}/s ← lo que rinde COCINANDO la partida que MENOS comió\n` +
+        `económico ·   ancho: ${(arriba / abajo).toFixed(2)}× · el número está a ${(COSTO_VIVIR_POR_SEGUNDO / abajo).toFixed(2)}× del borde de abajo y a ${(arriba / COSTO_VIVIR_POR_SEGUNDO).toFixed(2)}× del de arriba`,
+    )
+  })
+
+  it('el punto de equilibrio, medido: de qué lado de la perilla quedó cada variante', () => {
+    // El número accionable, y ahora dice dos cosas distintas según la variante:
+    // el costo de vivir por segundo que dejaría en cero a la partida que MÁS
+    // comió, o sea el que haría negativas a las cien de esa variante.
+    //
+    //   · la COMÚN quedó por DEBAJO de lo que hoy cuesta vivir → las cien dan
+    //     negativo, y ésa es la mitad del riesgo 4 que el ADR II-0009 cierra;
+    //   · la AFORTUNADA sigue por ENCIMA → las cien dan positivo, y ése es el
+    //     `it.fails` de acá arriba, con su porqué adentro.
+    //
+    // Que las dos afirmaciones tengan distinto sentido no es una concesión: es
+    // exactamente lo que se midió, y afirmar el mismo sentido para las dos sería
+    // pedirle al mundo que se calibre contra un adversario.
+    const equilibrioDe = (ps: readonly Partida[]): number => {
       let equilibrio = 0
       for (const p of ps) {
         // ingreso = costoPorSegundo × 1000 + caminata  ⟹  el corte
-        const corte = (p.ingresoCrudo - p.celdasCaminadas * COSTO_PASO) / SEGUNDOS_DE_PARTIDA
+        const corte = (p.ingresoCrudo - p.celdasCaminadas * COSTO_POR_CELDA) / SEGUNDOS_DE_PARTIDA
         if (corte > equilibrio) equilibrio = corte
       }
-      console.log(
-        `económico · criatura ${nombre}: hoy vivir cuesta ${COSTO_VIVIR_POR_SEGUNDO.toFixed(2)}/s (COSTO_VIVIR ${String(COSTO_VIVIR_POR_TICK)} × ${String(HZ)} Hz). ` +
-          `Para que las cien den negativo haría falta ${equilibrio.toFixed(2)}/s: ${(equilibrio / COSTO_VIVIR_POR_SEGUNDO).toFixed(1)}× más ` +
-          `(COSTO_VIVIR ≈ ${(equilibrio / HZ).toFixed(3)} por tick a ${String(HZ)} Hz)`,
-      )
-      expect(equilibrio).toBeGreaterThan(COSTO_VIVIR_POR_SEGUNDO)
+      return equilibrio
     }
+    for (const [nombre, ps] of VARIANTES) {
+      const equilibrio = equilibrioDe(ps)
+      console.log(
+        `económico · criatura ${nombre}: vivir cuesta ${COSTO_VIVIR_POR_SEGUNDO.toFixed(2)}/s y el equilibrio de la que más comió está en ${equilibrio.toFixed(3)}/s ` +
+          `(${(equilibrio / COSTO_VIVIR_POR_SEGUNDO).toFixed(2)}× lo que cuesta) → las cien dan ${equilibrio < COSTO_VIVIR_POR_SEGUNDO ? 'NEGATIVO' : 'POSITIVO'}`,
+      )
+    }
+    expect(equilibrioDe(COMUNES)).toBeLessThan(COSTO_VIVIR_POR_SEGUNDO)
+    expect(equilibrioDe(AFORTUNADAS)).toBeGreaterThan(COSTO_VIVIR_POR_SEGUNDO)
     // Y la otra mitad de la perilla, que es la que el documento prefiere: cocinar
     // multiplica lo que rinde el mismo bicho, sin crear ni un gramo de materia.
     const crudo = resumir(AFORTUNADAS).ingreso
@@ -740,12 +944,21 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     expect(sinTecho / techos).toBeGreaterThan(1)
   })
 
-  it('las tres constantes copiadas de `@anima/world` siguen diciendo lo que dicen acá', () => {
+  it('las tres constantes copiadas de `@anima/world` siguen diciendo lo que dicen acá, Y con la misma unidad', () => {
     // El guardián de la copia. `@anima/oracle` no puede importar `@anima/world`
     // —sería el ciclo de paquetes que toda la arquitectura evita—, así que estos
     // tres números están copiados; y una constante copiada sin un test que la
     // vigile es exactamente cómo divergió `DSL_REFERENCE` en Ánima I. Se lee el
     // ARCHIVO, que no es un import y no crea ninguna dependencia de build.
+    //
+    // ─── Este guardián YA FUNCIONÓ una vez, y conviene contarlo ─────────────
+    //
+    // El ADR II-0009 renombró `COSTO_VIVIR` → `COSTO_VIVIR_POR_SEGUNDO` y
+    // `COSTO_PASO` → `COSTO_POR_CELDA`, sin dejar alias, y esto saltó con
+    // «`COSTO_VIVIR` ya no está: el modelo económico de este test quedó viejo».
+    // No fue un daño colateral: fue el guardián haciendo exactamente su trabajo, y
+    // es el motivo por el que no se dejó un alias. Un alias habría dejado este
+    // archivo midiendo 0,20 por segundo mientras el mundo cobraba 1,0.
     const step = fileURLToPath(new URL('../../world/src/step.ts', import.meta.url))
     const fuente = readFileSync(step, 'utf8')
     const valorDe = (nombre: string): number => {
@@ -755,8 +968,37 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
       }
       return Number(m[1])
     }
-    expect(valorDe('COSTO_VIVIR')).toBe(COSTO_VIVIR_POR_TICK)
-    expect(valorDe('COSTO_PASO')).toBe(COSTO_PASO)
+    expect(valorDe('COSTO_VIVIR_POR_SEGUNDO')).toBe(COSTO_VIVIR_POR_SEGUNDO)
+    expect(valorDe('COSTO_POR_CELDA')).toBe(COSTO_POR_CELDA)
     expect(valorDe('STAMINA_POR_CALORIA')).toBe(STAMINA_POR_CALORIA)
+
+    // ─── Y LA UNIDAD, que es la otra mitad de la copia ─────────────────────
+    //
+    // Copiar bien el número y mal la unidad da un modelo económico que se
+    // equivoca por un factor de `hz` y no se queja: es literalmente el bug que el
+    // ADR II-0009 arregló del otro lado. Así que el guardián no mira sólo el
+    // valor: mira DÓNDE lo cobra el mundo, que es donde vive la unidad.
+    //
+    //   · vivir es una TASA POR SEGUNDO ⟹ pasa por `porPaso(…, d.dt)`, y por eso
+    //     acá se multiplica por los 1000 SEGUNDOS de la partida y no por sus
+    //     20.000 ticks;
+    //   · la celda NO es una tasa ⟹ se cobra tal cual con `cobrarStamina`, y no
+    //     puede pasar por `porPaso` nunca: dividirla por la frecuencia haría que
+    //     el mismo viaje saliera 5× más barato a 100 Hz que a 20.
+    const dice = (patron: RegExp): boolean => patron.test(fuente)
+    expect(['vivir pasa por porPaso', dice(/porPaso\(COSTO_VIVIR_POR_SEGUNDO,/)]).toEqual(['vivir pasa por porPaso', true])
+    expect(['la celda NO pasa por porPaso', dice(/porPaso\(\s*COSTO_POR_CELDA/)]).toEqual(['la celda NO pasa por porPaso', false])
+    expect(['la celda se cobra entera', dice(/cobrarStamina\(d, a, COSTO_POR_CELDA\)/)]).toEqual(['la celda se cobra entera', true])
+
+    // ─── Y los nombres viejos no volvieron por la puerta de atrás ──────────
+    //
+    // Un alias reintroducido —`export const COSTO_VIVIR = …` al lado del nuevo—
+    // dejaría este archivo verde y equivocado, porque las afirmaciones de arriba
+    // seguirían pasando. `\b` no matchea adentro de `COSTO_VIVIR_POR_SEGUNDO`
+    // porque el `_` es carácter de palabra, así que esto caza el alias y no el
+    // nombre nuevo.
+    for (const viejo of ['COSTO_VIVIR', 'COSTO_PASO']) {
+      expect([viejo, dice(new RegExp(`export const ${viejo}\\b`))]).toEqual([viejo, false])
+    }
   })
 })

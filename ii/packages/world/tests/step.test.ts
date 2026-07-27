@@ -9,7 +9,7 @@ import type { Intent } from '../src/intent.js'
 import { apply, drop, eat, goTo, put, take, wait } from '../src/intent.js'
 import { keyOfCell } from '../src/cell.js'
 import type { SimEvent, WorldState } from '../src/step.js'
-import { COSTO_PASO, OCLUSION_CORTA_OXIGENO, shelteredDe, stepWorld } from '../src/step.js'
+import { COSTO_POR_CELDA, OCLUSION_CORTA_OXIGENO, shelteredDe, stepWorld } from '../src/step.js'
 import { revisarInvariantes } from '../src/invariants.js'
 import { actor, criatura, cuerpo, enElPiso, enLaMano, huella, mundo } from './mundo-minimo.js'
 
@@ -141,7 +141,7 @@ describe('moverse', () => {
     const antes = qualityOf(s.bodies.get('ana-cuerpo')!.body, 'stamina', s.phys)
     const r = stepWorld(s, [goTo({ by: 'ana', seq: 0 }, EN(3, 0))])
     const despues = qualityOf(r.state.bodies.get('ana-cuerpo')!.body, 'stamina', r.state.phys)
-    expect(antes - despues).toBeGreaterThanOrEqual(COSTO_PASO)
+    expect(antes - despues).toBeGreaterThanOrEqual(COSTO_POR_CELDA)
   })
 
   it('sin fuerza no se camina', () => {

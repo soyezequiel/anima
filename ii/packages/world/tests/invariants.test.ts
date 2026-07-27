@@ -210,7 +210,9 @@ describe('ninguna cuenta conservada sube', () => {
   it('una conversión con eficiencia mayor que 1 se rechaza aunque esté declarada', () => {
     const antes = mundo({ bodies: [enElPiso(criatura('ana'), EN(0, 0))] })
     const v = revisarInvariantes(antes, { ...antes, tick: 1 }, [
-      { k: 'convierte', by: 'ana', de: 'nutrition', a: 'stamina', gastado: 1, acreditado: 5 },
+      // El `seq` es obligatorio en todo evento que le conteste a una intención:
+      // un evento fabricado a mano también tiene que decir a cuál.
+      { k: 'convierte', by: 'ana', seq: 0, de: 'nutrition', a: 'stamina', gastado: 1, acreditado: 5 },
     ])
     expect(v.map((x) => x.k)).toContain('conversion-sin-respaldo')
   })

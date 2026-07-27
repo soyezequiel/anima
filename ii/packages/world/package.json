@@ -7,10 +7,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "vitest run --passWithNoTests --exclude \"**/node_modules/**\" --exclude \"**/zz-*.test.ts\"",
+    "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit",
     "banco": "vitest run tests/banco-el-tick.test.ts",
-    "verificacion": "vitest run tests/zz-remedicion.test.ts tests/zz-partida-2000.test.ts",
+    "verificacion": "vitest run tests/el-tick-remedido.test.ts tests/partida-de-2000-ticks.test.ts tests/banco-el-camino-de-intenciones.test.ts",
     "tick": "vitest run banco-el-tick"
   },
   "dependencies": {
