@@ -1,0 +1,16 @@
+{
+  "errores": 64,
+  "limpiosMinimo": [
+    "00-pescar-con-aparejo.ts",
+    "01-comer-ahora-o-esperar.ts",
+    "05-tapar-la-fogata.ts",
+    "21-guarecerse-antes-de-tener-frio.ts",
+    "23-guardar-donde-menos-se-pudre.ts",
+    "24-jubilar-la-herramienta-gastada.ts",
+    "26-lo-que-si-compila.ts",
+    "99-lo-que-si-compila.ts",
+    "sacarlo-antes-de-que-se-queme.ts",
+    "volver-en-vez-de-re-explorar.ts"
+  ],
+  "nota": "Pase 3. Subio de 71 a 64 errores totales pero 15 de los 64 son NUEVOS y existen solo porque los roles tipados (RolesOf) empezaron a rechazar llamadas malformadas que antes pasaban. Para subir este numero hay que editarlo a mano y decir por que."
+}

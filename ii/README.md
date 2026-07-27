@@ -31,11 +31,22 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 
 ## Estado
 
-Esqueleto. No hay nada construido todavía.
+**El Hito 0 está a mitad de camino y su criterio de corte se pasó.** Todavía no
+hay motor, y a propósito: lo que hay es lo que se puede medir sin él.
 
-El orden es: **inventario de ADRs** (que no está terminado: 27 de 86 filas
-triadas) → **Hito 0**, el banco de latencia, que existe para no construir sobre
-fe. Recién después empieza el Hito 1.
+| | |
+|---|---|
+| [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
+| [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
+| [Huecos medidos](docs/huecos-medidos.md) | 3 pases: 112 → 71 → **64** errores · 5 → 6 → **10** expresables |
+| [Decisiones](docs/decisions/) | 4 ADRs propios (II-0001 a II-0004) |
+| [Hito 0 · banco de latencia](docs/hito-0-banco-de-latencia.md) | typecheck en frío **240 ms** contra un corte de 3000 ✔ |
+
+Lo que falta del Hito 0, y necesita código que no existe: el costo del
+transformer de combustible, el arranque de página con el toolchain adentro del
+navegador, y el barrido térmico de diez sustancias.
+
+Después de eso, el Hito 1: `@anima/physics`.
 
 ## Comandos
 
@@ -46,6 +57,17 @@ pnpm ii:typecheck
 ```bash
 pnpm ii:test
 ```
+
+```bash
+pnpm ii:banco
+```
+
+`ii:test` corre el **arnés de compilación**: los 28 borradores contra
+`skill-api.d.ts` en cada build, con trinquete. La línea base solo puede bajar
+sola; para que suba hay que editar `tests/linea-base.json` a mano y decir por
+qué. Sin eso, el número deriva en silencio — que es exactamente el bug de
+`DSL_REFERENCE` en Ánima I, una referencia mantenida a mano que divergió del
+código y nadie se enteró hasta que el modelo no pudo colocar un bloque.
 
 El Ánima I sigue funcionando igual que siempre: `pnpm dev`, `pnpm test`,
 `pnpm demo`. Los dos árboles conviven hasta el Hito 5.

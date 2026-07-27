@@ -1,0 +1,211 @@
+{
+ "totalErrores": 64,
+ "borradores": 28,
+ "conErrores": 18,
+ "limpios": [
+  "00-pescar-con-aparejo.ts",
+  "01-comer-ahora-o-esperar.ts",
+  "05-tapar-la-fogata.ts",
+  "21-guarecerse-antes-de-tener-frio.ts",
+  "23-guardar-donde-menos-se-pudre.ts",
+  "24-jubilar-la-herramienta-gastada.ts",
+  "26-lo-que-si-compila.ts",
+  "99-lo-que-si-compila.ts",
+  "sacarlo-antes-de-que-se-queme.ts",
+  "volver-en-vez-de-re-explorar.ts"
+ ],
+ "filas": [
+  {
+   "falta": "cualidad: sheltered",
+   "archivos": 3
+  },
+  {
+   "falta": "Ctx.heard",
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: threat",
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: afilar",
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.velocityOf",
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.behind",
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: raining",
+   "archivos": 2
+  },
+  {
+   "falta": "Argument of type '\"covers\"' is not assignable to parameter of type 'QualityId'.",
+   "archivos": 2
+  },
+  {
+   "falta": "Object literal may only specify known properties, and 'blueprint' does not exist in type 'Blueprint'.",
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: cavar",
+   "archivos": 2
+  },
+  {
+   "falta": "Object literal may only specify known properties, and 'techo' does not exist in type '{ binder: BodyView; a: BodyView; b?: BodyView; }'.",
+   "archivos": 2
+  },
+  {
+   "falta": "Object literal may only specify known properties, and 'stone' does not exist in type '{ a: BodyView; b: BodyView; actor: BodyView; }'.",
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: combustion",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '{}' is not assignable to parameter of type '{ a: BodyView; b: BodyView; actor: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Object literal may only specify known properties, and 'rolQueNoExiste' does not exist in type '{ a: BodyView; b: BodyView; actor: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '{ a: BodyView; b: BodyView; }' is not assignable to parameter of type '{ a: BodyView; b: BodyView; actor: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '{}' is not assignable to parameter of type '{ binder: BodyView; a: BodyView; b?: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.mine",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.qualifies",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '{ binder: BodyView; }' is not assignable to parameter of type '{ binder: BodyView; a: BodyView; b?: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '{ gear: BodyView; }' is not assignable to parameter of type '{ gear: BodyView; source: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Object literal may only specify known properties, and 'gera' does not exist in type '{ gear: BodyView; source: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Object literal may only specify known properties, and 'target' does not exist in type '{ a: BodyView; b: BodyView; actor: BodyView; }'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.mark",
+   "archivos": 1
+  },
+  {
+   "falta": "PlaceMemory.tag",
+   "archivos": 1
+  },
+  {
+   "falta": "PlaceMemory.tick",
+   "archivos": 1
+  },
+  {
+   "falta": "Type 'readonly string[]' is missing the following properties from type 'BodyView': id, name, madeByMe, joints",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.estimate",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.cost",
+   "archivos": 1
+  },
+  {
+   "falta": "Parameter 'u' implicitly has an 'any' type.",
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.need",
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.wetAt",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.abort",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.project",
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: cubrir",
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: presence",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.give",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type 'BodyView | undefined' is not assignable to parameter of type 'BodyView'.",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.needs",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.isNight",
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: smoke",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '\"smoke\"' is not assignable to parameter of type 'QualityId'.",
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: ahumar",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.perceptionRadius",
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: arrastrar",
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.drag",
+   "archivos": 1
+  },
+  {
+   "falta": "Argument of type '\"buoyancy\"' is not assignable to parameter of type 'QualityId'.",
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: flow",
+   "archivos": 1
+  }
+ ]
+}

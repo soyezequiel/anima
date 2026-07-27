@@ -36,11 +36,48 @@
  * `PlaceMemory.atTick`, los roles tipados por proceso y las cualidades que
  * exigen leyes nuevas quedan afuera: cada uno se mide por separado o no se
  * mide. Un pase 2 que arregla todo no prueba nada.
+ *
+ * ─── PASE 3 ─────────────────────────────────────────────────────────────────
+ * El pase 2 dejó siete borradores a UNA sola cosa de compilar, y esas siete
+ * cosas ya no eran firmas que faltaban: eran decisiones sin tomar. Se tomaron,
+ * en `ii/docs/decisions/`, y acá están sus consecuencias:
+ *
+ *   II-0001  encender no es una acción → `combustion` NO entra a ProcessId,
+ *            y no se agrega nada. La decisión fue no agregar.
+ *   II-0002  la ley 12, `oclusion` → `put(covering:)`, `sheltered` como
+ *            cualidad de celda, `coveredBy` en BodyView.
+ *   II-0003  autoría y no propiedad → `BodyView.madeByMe`, no `ctx.mine`.
+ *   II-0004  la habilidad lee el presente, el planificador razona el futuro
+ *            → `rateOf()`, no `project()`.
+ *
+ * Más los faltantes mecánicos con ADR de Ánima I que los respalda: `clock`
+ * (0085), `place` (0032), `capacity` (0070), `drop`, y los campos de
+ * `PlaceMemory` sin los cuales recordar un lugar no dice nada de él.
+ *
+ * Y `RolesOf<P>`, que es la reparación del ÁRBITRO y no de la superficie: hoy
+ * `apply(p, roles: Record<string, BodyView>)` acepta cualquier objeto, así que
+ * de veinte llamadas malformadas `tsc` rechaza CERO. Se espera que este cambio
+ * SUBA el número de errores. Un pase que sube los errores porque el árbitro
+ * empezó a funcionar vale más que uno que los baja.
+ *
+ * SIGUEN AFUERA, y a propósito: `raining`, `covers`, `smoke`, `threat`,
+ * `buoyancy`, `flow`, y los procesos `cubrir`, `cavar`, `afilar`, `ahumar`,
+ * `arrastrar`. Son huecos de FÍSICA. La superficie solo puede declarar lo que
+ * alguna ley pone en el mundo.
  * ────────────────────────────────────────────────────────────────────────────
  */
 
 // ─── Cualidades ─────────────────────────────────────────────────────────────
 // El único vocabulario cerrado del sistema, y es física, no objetos.
+
+/**
+ * REPARACIÓN (pase 3) — `denaturesAt` y `pyrolysisAt`, los dos bordes de la
+ * ventana de cocción. El documento los usa (`s.denaturesAt` en la ley 5) como
+ * propiedad de la sustancia, y por eso no eran legibles desde una habilidad.
+ * Pero `sacarlo-antes-de-que-se-queme` trata **exactamente** de conocer esos
+ * bordes: sin ellos, la única forma de escribirla es cablear 63 y 280 adentro,
+ * que es el hardcodeo que el ejercicio existe para no permitir.
+ */
 
 /** Conservadas (4): su suma total no puede aumentar salvo aporte del dios. */
 export type ConservedQuality = 'mass' | 'nutrition' | 'stamina' | 'fuelEnergy'
@@ -61,6 +98,9 @@ export type LawfulQuality =
   | 'digestibility'
   | 'toxicity'
   | 'decay'
+  | 'denaturesAt' // pase 3 — borde inferior de la ventana de cocción
+  | 'pyrolysisAt' // pase 3 — borde superior; pasado esto se quema
+  | 'permeability' // pase 3 — cuánto deja pasar cuando ocluye (ADR II-0002)
 
 /** Derivadas (8): no se guardan, se calculan. */
 export type DerivedQuality =
@@ -110,7 +150,10 @@ export type QualityId = ConservedQuality | LawfulQuality | DerivedQuality | Unde
  * sería tapar un hueco de FÍSICA con superficie, que es exactamente lo que
  * este ejercicio existe para no hacer.
  */
-export type CellQuality = 'wet' | 'oxygen' | 'temperature'
+export type CellQuality = 'wet' | 'oxygen' | 'temperature' | 'sheltered'
+// `sheltered` entra en el pase 3, y solo porque el ADR II-0002 escribió la ley
+// 12 (`oclusion`) que lo produce. Antes habría sido un número que typechequea y
+// vale 0 para siempre, que es peor que un error de compilación.
 
 // ─── Predicados sobre cualidades ────────────────────────────────────────────
 
@@ -129,6 +172,35 @@ export type Where = readonly QualityTest[]
  * Son los cuatro que el documento define con roles, arrangement y effects.
  */
 export type ProcessId = 'friccion' | 'union' | 'deshilachar' | 'extraccion'
+
+/**
+ * REPARACIÓN DEL ÁRBITRO (pase 3) — roles tipados por proceso.
+ *
+ * Con `roles: Record<string, BodyView>`, un corpus de veinte llamadas
+ * malformadas —roles faltantes, de más, mal escritos, proceso equivocado con
+ * roles correctos— era rechazado CERO veces. El compilador como juez estaba
+ * apagado justo donde más se lo necesita.
+ *
+ * Los roles son los que declara cada proceso en el documento de arquitectura.
+ * Cuando exista `@anima/process`, esto se EMITE del catálogo; hasta entonces
+ * está a mano y es deuda anotada.
+ *
+ * ARIDAD DE `union`, que el documento se contradecía: su criterio verificable
+ * del Hito 1 dice `union(vara, hebra)` —dos cuerpos— contra un `Process` de
+ * tres roles. Se resuelve con `b` opcional: atar `a` con `binder` a un segundo
+ * cuerpo, o atarle `binder` a `a` y nada más. La caña es el segundo caso, y por
+ * eso le queda una punta de hebra libre — que es de donde sale `catch`
+ * (`freeStrandEnds`). Con `b` obligatorio, la caña no existe.
+ */
+export type RolesOf<P extends ProcessId> = P extends 'friccion'
+  ? { a: BodyView; b: BodyView; actor: BodyView }
+  : P extends 'union'
+    ? { binder: BodyView; a: BodyView; b?: BodyView }
+    : P extends 'deshilachar'
+      ? { source: BodyView; actor: BodyView }
+      : P extends 'extraccion'
+        ? { gear: BodyView; source: BodyView }
+        : never
 
 /**
  * Leyes AMBIENTE: corren solas por tick sobre lo que califique. La criatura
@@ -178,6 +250,19 @@ export interface BodyView {
   readonly id: string
   readonly at: Placement
   readonly name: string
+  /** ADR II-0003 — autoría, no propiedad. Sale de `Provenance`, no se mantiene. */
+  readonly madeByMe: boolean
+  /** ADR II-0002 — qué la está tapando, si algo. El dual de `put(covering:)`. */
+  readonly coveredBy?: BodyView
+  /** Pase 3 — profundidad de percepción (HUECO 4). Sin esto no se puede saber
+   *  que una atadura se aflojó, que es de lo que trata jubilar una herramienta. */
+  readonly joints: readonly JointView[]
+}
+
+export interface JointView {
+  readonly a: BodyView
+  readonly b: BodyView
+  readonly strength: number
 }
 
 /**
@@ -199,11 +284,42 @@ export interface SelfView extends BodyView {
   readonly holding: readonly BodyView[]
   readonly stamina: number
   readonly hunger: number
+  /** Pase 3 — cuántas cosas le entran en las manos. El tamaño lo fija el
+   *  cuidador (ADR 0070 de Ánima I), no la habilidad. */
+  readonly capacity: number
 }
 
-/** HUECO 6 — el documento no declara los campos de `PlaceMemory`. */
+/** Pase 3 — ADR 0085 de Ánima I portado. El día y la noche existen. */
+export interface Clock {
+  readonly phase: 'dia' | 'noche'
+  readonly ticksToNightfall: number
+  readonly dayLength: number
+}
+
+/** Pase 3 — ADR 0032 de Ánima I: lo grande es una obra, no un bloque. */
+export interface Blueprint {
+  readonly id: string
+  readonly at: Cell
+}
+
+/**
+ * Pase 3 — HUECO 6 cerrado. Con solo `at`, recordar un lugar no decía NADA de
+ * él: se podía ordenar por cercanía y por nada más. Guardar comida donde menos
+ * se pudre es exactamente comparar sitios, y sin estos tres campos la capacidad
+ * no se puede ni escribir.
+ *
+ * `atTick` además es lo que separa «no había» de «hace mucho que no vengo», que
+ * es la distinción que el análisis marcó como pendiente y que el Beta solo no
+ * puede hacer.
+ */
 export interface PlaceMemory {
   readonly at: Placement
+  /** Cuándo lo vio por última vez. Un recuerdo viejo es una hipótesis. */
+  readonly atTick: number
+  /** Qué había. Vacío si vino y no había nada: eso también es información. */
+  readonly what: readonly string[]
+  /** Cualidad de celda recordada. Puede estar vieja; por eso está `atTick`. */
+  q(q: CellQuality): number
 }
 
 /**
@@ -214,6 +330,9 @@ export interface PlaceMemory {
 export interface PerceptionView {
   see(w: Where): BodyView[]
   readonly features: readonly PerceivedFeature[]
+  /** Pase 3 — el predicado de corte de `explore` solo podía hablar del paisaje.
+   *  Sin esto, no se puede dejar de buscar porque a una se le acabó la fuerza. */
+  readonly self: SelfView
 }
 
 /** HUECO 7 — `features` aparece en `opportunities()` con `.ctx` y `.name`, y no se declara. */
@@ -286,14 +405,42 @@ export interface Ctx {
   /** REPARACIÓN 3 — leer la celda, no el cuerpo. Ver `CellQuality`. */
   qAt(at: Placement, q: CellQuality): number
 
+  /**
+   * ADR II-0004 — la tasa instantánea con la que las leyes están moviendo esa
+   * cualidad, ahora. NO simula: lee lo que el motor ya calculó este tick. Cero
+   * si ninguna ley la está tocando.
+   *
+   * Con esto, «¿me conviene esperar?» se contesta con una división y sin
+   * proyectar el mundo: `(objetivo - actual) / rateOf(...)`. El supuesto «si
+   * nada cambia» queda a la vista de quien lo escribe, que es donde el juez lo
+   * puede castigar.
+   */
+  rateOf(b: BodyView, q: QualityId): number
+
+  /** Pase 3 — el día y la noche existen (ADR 0085 de Ánima I). */
+  readonly clock: Clock
+
   /** ¿Puedo? Verifica roles y arrangement contra el mundo. No ejecuta. */
-  can(p: ProcessId, roles: Record<string, BodyView>): Verdict
+  can<P extends ProcessId>(p: P, roles: RolesOf<P>): Verdict
 
   /** Constructores puros de Intent. `yield` los entrega al mundo. */
   goTo(t: BodyView | Cell, o?: { within?: number }): Intent
   take(b: BodyView): Intent
-  put(b: BodyView, at: Cell, o?: { onTopOf?: BodyView }): Intent
-  apply(p: ProcessId, roles: Record<string, BodyView>): Intent
+  /**
+   * ADR II-0002 — `onTopOf` APOYA (ley 8: sostiene peso); `covering` TAPA
+   * (ley 12: ocluye intercambio con el ambiente). No son lo mismo: la parrilla
+   * apoya sin tapar, la losa tapa sin sostener. Confundirlos haría que cocinar
+   * sobre la parrilla ahogue el fuego.
+   */
+  put(b: BodyView, at: Cell, o?: { onTopOf?: BodyView; covering?: BodyView }): Intent
+
+  /** Pase 3 — HUECO 9. Soltar es soltar; `put` es elegir dónde. */
+  drop(b: BodyView): Intent
+
+  /** Pase 3 — ADR 0032 de Ánima I: lo grande es una obra, no un bloque. */
+  place(bp: Blueprint): Intent
+
+  apply<P extends ProcessId>(p: P, roles: RolesOf<P>): Intent
   explore(o: { until: (v: PerceptionView) => boolean; maxTicks: number }): Intent
 
   /**

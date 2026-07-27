@@ -19,7 +19,8 @@
     "typecheck": "pnpm -r run typecheck",
     "mission": "pnpm --filter @anima/missions-runner start",
     "ii:test": "pnpm --filter \"./ii/**\" run test",
-    "ii:typecheck": "pnpm --filter \"./ii/**\" run typecheck"
+    "ii:typecheck": "pnpm --filter \"./ii/**\" run typecheck",
+    "ii:banco": "pnpm --filter @anima/skills banco"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

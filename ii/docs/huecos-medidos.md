@@ -18,13 +18,46 @@ Evidencia cruda: [`huecos-medidos-pase1.json`](huecos-medidos-pase1.json) y
 
 ---
 
-## Las dos pasadas
+## Las tres pasadas
 
-| | Pase 1 | Pase 2 | Δ |
+| | Pase 1 | Pase 2 | Pase 3 |
 |---|---|---|---|
-| Errores de tipos | **112** | **71** | **−41 (−37%)** |
-| Borradores que fallan | 23 / 28 | 22 / 28 | **−1** |
-| Compilan limpio | 5 | 6 | +1 |
+| Errores de tipos | **112** | **71** | **64** |
+| Borradores que fallan | 23 / 28 | 22 / 28 | **18 / 28** |
+| Compilan limpio | 5 | 6 | **10** |
+
+El pase 3 es el interesante: bajó siete errores netos, pero **quince de los 64
+que quedan son nuevos** — existen solo porque los roles tipados (`RolesOf<P>`)
+empezaron a rechazar llamadas malformadas que antes pasaban. Descontando eso,
+el pase 3 eliminó 22 errores reales y **cuadruplicó** los borradores expresables
+respecto del pase 1.
+
+### La evidencia de que el árbitro estaba apagado
+
+Un agente había escrito `t4/escritor-lo-que-si-compila.ts` con el propósito
+explícito de demostrar qué subconjunto **sí** compila. Compilaba limpio. Con
+`RolesOf<P>`:
+
+```
+escritor-lo-que-si-compila.ts(36,41): error TS2353: 'techo' does not exist in
+  type '{ binder: BodyView; a: BodyView; b?: BodyView; }'.
+escritor-lo-que-si-compila.ts(49,43): error TS2353: 'stone' does not exist in
+  type '{ a: BodyView; b: BodyView; actor: BodyView; }'.
+```
+
+El archivo escrito para probar que algo funciona estaba pasando **roles
+inventados** a procesos reales, y el compilador lo bendecía. Con
+`roles: Record<string, BodyView>`, de veinte llamadas malformadas se rechazaban
+cero.
+
+Ésa es la razón por la que un pase que **sube** los errores puede valer más que
+uno que los baja.
+
+---
+
+## Lo que hizo cada pase
+
+### Pase 2 — cinco reparaciones mecánicas
 
 El pase 2 agregó **cinco reparaciones y nada más**, elegidas por cuántos
 borradores distintos las pedían:
@@ -82,12 +115,39 @@ entre dos hitos. **Ninguno se arregla agregando una firma.**
 O sea que el techo del requisito 1 no estaba en el tamaño de `Ctx`, como parecía
 después del pase 1. Estaba una capa más abajo.
 
+### Pase 3 — las decisiones, tomadas
+
+Los siete bloqueos se resolvieron **decidiendo**, no agregando firmas. Cada uno
+tiene su ADR en [`decisions/`](decisions/):
+
+| Bloqueo | Decisión | Resultado |
+|---|---|---|
+| `apply('combustion')` | [II-0001](decisions/II-0001-encender-no-es-una-accion.md) — encender es una consecuencia, no una acción | **no se agregó nada**; la habilidad ya podía leer las tres cualidades y decidir |
+| `put(covering:)` | [II-0002](decisions/II-0002-la-ley-de-la-oclusion.md) — se escribe la ley 12, `oclusion` | `covering`, `sheltered`, `coveredBy`, `permeability` |
+| `ctx.mine` | [II-0003](decisions/II-0003-no-es-lo-mio-es-lo-que-hice.md) — autoría, no propiedad | `BodyView.madeByMe` |
+| `ctx.project` | [II-0004](decisions/II-0004-una-habilidad-no-simula-el-futuro.md) — la habilidad lee el presente | `rateOf()`, que no simula |
+
+Más los mecánicos con ADR de Ánima I detrás: `clock` (0085), `place` (0032),
+`capacity` (0070), `drop`, los campos de `PlaceMemory`, `denaturesAt` y
+`pyrolysisAt`, y `PerceptionView.self`.
+
+Y de yapa, una contradicción del documento resuelta: la **aridad de `union`**.
+Su criterio verificable del Hito 1 dice `union(vara, hebra)` —dos cuerpos—
+contra un `Process` de tres roles. Se resolvió con `b` opcional: atar `a` con
+`binder` a un segundo cuerpo, o atarle `binder` a `a` y nada más. **La caña es
+el segundo caso**, y por eso le queda una punta de hebra libre — que es de donde
+sale `catch` vía `freeStrandEnds`. Con `b` obligatorio, la caña no existe.
+
 ---
 
 ## Lo que falta hoy, ordenado por cuántos borradores distintos lo piden
 
-Estado tras el pase 2. «Archivos» es la señal fuerte: algo que piden varios
-borradores distintos es estructural; «sitios» es cuántas veces aparece en total.
+Estado tras el **pase 2**, conservado como referencia de la progresión. El estado
+actual, regenerado en cada corrida del arnés, vive en
+[`huecos-medidos-actual.json`](huecos-medidos-actual.json).
+
+«Archivos» es la señal fuerte: algo que piden varios borradores distintos es
+estructural; «sitios» es cuántas veces aparece en total.
 
 | # | Qué falta | Archivos | Sitios |
 |---|---|---|---|

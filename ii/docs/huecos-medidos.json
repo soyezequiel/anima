@@ -1,0 +1,237 @@
+{
+ "totalErrores": 64,
+ "borradores": 28,
+ "conErrores": 18,
+ "filas": [
+  {
+   "falta": "cualidad: sheltered",
+   "sitios": 3,
+   "archivos": 3
+  },
+  {
+   "falta": "Ctx.heard",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: threat",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: afilar",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.velocityOf",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "Ctx.behind",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: raining",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "cualidad: covers",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "otro: Object literal may only specify known properties, and 'bluep",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "proceso: cavar",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "otro: Object literal may only specify known properties, and 'techo",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "otro: Object literal may only specify known properties, and 'stone",
+   "sitios": 2,
+   "archivos": 2
+  },
+  {
+   "falta": "otro: Argument of type '{}' is not assignable to parameter of type",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.qualifies",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Object literal may only specify known properties, and 'targe",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: cubrir",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: smoke",
+   "sitios": 2,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: combustion",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Object literal may only specify known properties, and 'rolQu",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Argument of type '{ a: BodyView; b: BodyView; }' is not assi",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.mine",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Argument of type '{ binder: BodyView; }' is not assignable t",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Argument of type '{ gear: BodyView; }' is not assignable to ",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Object literal may only specify known properties, and 'gera'",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.mark",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PlaceMemory.tag",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PlaceMemory.tick",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Type 'readonly string[]' is missing the following properties",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.estimate",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.cost",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Parameter 'u' implicitly has an 'any' type.",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.need",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "PerceptionView.wetAt",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.abort",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.project",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: presence",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.give",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "otro: Argument of type 'BodyView | undefined' is not assignable to",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.needs",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.isNight",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: ahumar",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.perceptionRadius",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "proceso: arrastrar",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "Ctx.drag",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: buoyancy",
+   "sitios": 1,
+   "archivos": 1
+  },
+  {
+   "falta": "cualidad: flow",
+   "sitios": 1,
+   "archivos": 1
+  }
+ ]
+}
