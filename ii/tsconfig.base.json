@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // Ánima II arranca más estricta que Ánima I, porque acá el compilador es
+    // parte del arnés: el código que escribe el modelo se typechequea antes de
+    // que el mundo lo vea, y un `any` silencioso es un agujero en esa puerta.
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noImplicitReturns": true,
+    "noPropertyAccessFromIndexSignature": true,
+    // Sin DOM. Los paquetes deterministas corren en el worker del mundo y en
+    // Node (tests, juez); si alguno necesita DOM, lo declara él y se justifica.
+    "lib": ["ES2022"]
+  }
+}

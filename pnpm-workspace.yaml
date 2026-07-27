@@ -1,6 +1,9 @@
 packages:
   - "apps/*"
   - "packages/*"
+  # Ánima II — el remake. Convive con Ánima I hasta el Hito 5. Ver ii/README.md.
+  - "ii/packages/*"
+  - "ii/apps/*"
 
 # Dependencias git que necesitan ejecutar su script "prepare" (build) al instalar.
 onlyBuiltDependencies:
