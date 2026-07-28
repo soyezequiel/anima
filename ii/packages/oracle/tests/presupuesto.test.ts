@@ -48,6 +48,7 @@ import { describe, expect, it } from 'vitest'
 import type { Body, Duracion, Fixed, Physics, SubstanceId } from '@anima/physics'
 import {
   buildSeedPhysics,
+  CARBONIZADO_QUE_TRANSMUTA,
   DIGESTIBILIDAD_TECHO,
   dtDeFrecuencia,
   EXTRACCION,
@@ -66,8 +67,10 @@ import {
 
 import type { ChunkDecretado, MundoConDado, Stock, WorldRng } from '../src/index.js'
 import {
+  BIOMAS,
   CAPACIDAD_MAXIMA,
   caloricBudget,
+  CELDAS_DE_LADO,
   crearStock,
   decretarChunk,
   draw,
@@ -1247,7 +1250,21 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     for (const x of conFuego) expect(x).toBeGreaterThan(0)
   })
 
-  it.fails('SIGUE ABIERTO · la VENTANA del ADR II-0009 NO CIERRA con el precio del fuego adentro', () => {
+  it('SIGUE ABIERTO (el número viejo, intacto) · la VENTANA con el fuego de leña gratis', () => {
+    // ─── ESTE `it` ERA UN `it.fails` Y AHORA PASA, sin que cambie un número ──
+    //
+    // No se cerró ningún hueco: se **partió en dos**. La afirmación de abajo es la
+    // misma que tenía adentro —«con el precio del fuego adentro, la mitad de arriba
+    // de la ventana se cae»— y lo único que cambió es el sentido del `expect`: lo
+    // que antes se escribía como «esto DEBERÍA dar positivo y no da» ahora se
+    // escribe como «esto da negativo, y son 91 de 100». El hueco sigue abierto y
+    // vive en el `it.fails` del bloque 6, que es el que hace la cuenta HONESTA —con
+    // la leña cobrada— y el que dice cuánto falta.
+    //
+    // Se deja acá y con el número viejo intacto porque el bloque 6 lo usa de
+    // control: si mañana el neto cocinado sin fuego se mueve, los dos se mueven
+    // juntos y la diferencia entre los dos sigue siendo el precio del fuego.
+    //
     // POR QUÉ SIGUE ABIERTO: el criterio del ADR II-0009 —«neto crudo negativo en
     // las 100 partidas comunes y neto cocinado positivo en las 100»— se eligió con
     // un modelo en el que **cocinar era gratis**. Con el precio del fuego adentro,
@@ -1328,6 +1345,518 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // perfecto entra en la holgura.
     expect(eficienciaQueHaríaFalta).toBeGreaterThan(1)
     expect(conMotorPerfecto).toBeGreaterThan(holgura)
-    for (const x of conFuego) expect(x).toBeGreaterThan(0)
+    // Y las 91, contadas. Éste es el `expect` que antes decía
+    // `toBeGreaterThan(0)` sobre las cien y por eso el `it` era un `it.fails`.
+    expect(negativas).toBe(91)
+    expect(Number(e.min.toFixed(1))).toBe(-504.7)
+  })
+})
+
+// ═══ 6. LA MISMA CUENTA, CON LA LEÑA COBRADA ════════════════════════════════
+//
+// El bloque 5 hizo la cuenta con un supuesto que dice en voz alta: «un fuego
+// sostenido 1000 s con leña que este modelo no cobra». Cuando se escribió, ese
+// supuesto era **falso**: `TASA_CARBONIZACION` era intensiva y se cancelaba con
+// `COMBUSTIBLE_POR_SEGUNDO`, así que ningún cuerpo ardía más de 50 s viniera de un
+// leño de un kilo o de uno de cincuenta. Un fuego de 1000 segundos no existía.
+//
+// Ahora existe: carbonizar cuesta proporcional a la materia, y son **50 s por
+// kilo**. La pregunta que este bloque contesta es la que quedaba abierta: **¿el
+// problema económico y el bug de las constantes eran el mismo problema?**
+//
+// Se contesta con cuatro números medidos y no con un argumento:
+//
+//   1. cuánto cuesta encender el primer fuego (el del bloque 5, verificado);
+//   2. cuánta leña hay que juntar para sostenerlo, y **cuánto pesa lo que el
+//      mundo deja tirado de verdad** — la tabla de biomas, no un leño inventado;
+//   3. qué cuesta juntarla: las celdas y el TIEMPO, que es donde la cuenta se
+//      maquilla sola;
+//   4. cuántas piezas cocina ese fuego en su vida.
+//
+// ─── LA TRAMPA DE ESTA CUENTA, dicha antes de hacerla ───────────────────────
+//
+// Vivir se cobra UNA sola vez. `p.costo` ya cobra `COSTO_VIVIR_POR_SEGUNDO × 1000`
+// por la partida ENTERA, y el acarreo pasa ADENTRO de esos mil segundos: sumarle
+// al acarreo su propio costo de vivir sería cobrar el mismo segundo dos veces, y
+// haría que juntar leña pareciera más caro de lo que es. Lo que el tiempo del
+// acarreo cuesta de verdad es **lo que no se pescó mientras tanto**, y eso se
+// cobra como una fracción del ingreso y no como stamina.
+//
+// El mismo error está en el bloque 5 y queda medido abajo: `PRECIO_DEL_FUEGO`
+// incluye 2,40 de vivir los 2,4 segundos de frotar, y esos 2,4 segundos también
+// están adentro de los mil que `p.costo` ya cobró.
+
+// ─── Las dos constantes de la ley 3, copiadas con su guardián ───────────────
+//
+// Mismo trato que las tres de `@anima/world`, y por el mismo motivo: no están
+// exportadas —son `const` de módulo en `physics/src/leyes.ts`— y este archivo no
+// puede leerlas de otra manera. Copiadas con su ruta, su valor y su unidad, y con
+// un test que compara la copia contra el archivo.
+
+/** `TASA_CARBONIZACION`: cuánto carboniza el calor por segundo **y por kilo**. */
+const TASA_CARBONIZACION = 0.016
+
+/** `COMBUSTIBLE_POR_SEGUNDO`: cuánto se lleva la llama por segundo, sobre el
+ *  producto `fuelEnergy · masa` y no sobre el intensivo. */
+const COMBUSTIBLE_POR_SEGUNDO = 0.3
+
+/**
+ * CUÁNTOS SEGUNDOS DE FUEGO HAY EN UN KILO DE UNA SUSTANCIA.
+ *
+ * Las dos ramas de la ley 4 (`avanceDeCarbon`), que se toman por el máximo, así
+ * que el cuerpo se apaga con **la que llega primero**:
+ *
+ *   · el CALOR carboniza `TASA_CARBONIZACION / masa` por segundo, o sea que
+ *     `charred` cruza `CARBONIZADO_QUE_TRANSMUTA` a los `0,8 · masa / 0,016` =
+ *     **50 s por kilo**, igual para todo lo que arde;
+ *   · la LLAMA se lleva `fuelEnergy · masa` de combustible a razón de
+ *     `COMBUSTIBLE_POR_SEGUNDO`, o sea `fuelEnergy / 0,3` segundos por kilo.
+ *
+ * Manda la más chica. Para la madera (18) son 60 contra 50 y gana el calor; para
+ * el grano (7) son 23,3 contra 50 y gana la llama. Medido contra `stepWorld` en
+ * `perceive/tests/ataque-a-la-costura.test.ts`, bloque 8, y las dos cuentas
+ * coinciden dentro del tick.
+ */
+function segundosDeFuegoPorKilo(substance: SubstanceId): number {
+  const kilo: Body = { id: 'k', form: 'bloque', parts: [{ substance, mass: 1, q: {} }], joints: [], state: {} }
+  const fuel = qualityOf(kilo, 'fuelEnergy', PHYS)
+  if (!(fuel > 0)) return 0
+  const porLaLlama = fuel / COMBUSTIBLE_POR_SEGUNDO
+  const porElCalor = CARBONIZADO_QUE_TRANSMUTA / TASA_CARBONIZACION
+  return porLaLlama < porElCalor ? porLaLlama : porElCalor
+}
+
+/** Un pedazo de leña tirado en el mundo, con su lugar y lo que da. */
+interface Lena {
+  readonly x: number
+  readonly y: number
+  readonly substance: SubstanceId
+  readonly kg: number
+  readonly segundos: number
+}
+
+/** Todo lo que arde en el anillo `r` de chunks alrededor de uno, en coordenadas
+ *  de CELDA del mundo. Anillo y no disco: la criatura barre lo cercano primero. */
+function lenaDelAnillo(seed: bigint, cx: number, cy: number, r: number): Lena[] {
+  const out: Lena[] = []
+  for (let dx = -r; dx <= r; dx++) {
+    for (let dy = -r; dy <= r; dy++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue
+      for (const s of resolveChunk(seed, cx + dx, cy + dy).sueltas) {
+        const kg = unfx(s.masa)
+        const segundos = kg * segundosDeFuegoPorKilo(s.substance)
+        if (segundos <= 0) continue
+        out.push({
+          x: (cx + dx) * CELDAS_DE_LADO + (s.i % CELDAS_DE_LADO),
+          y: (cy + dy) * CELDAS_DE_LADO + Math.floor(s.i / CELDAS_DE_LADO),
+          substance: s.substance,
+          kg,
+          segundos,
+        })
+      }
+    }
+  }
+  return out
+}
+
+/** La distancia del mundo: `intencionCaminar` avanza una celda por tick y admite
+ *  la diagonal, así que es Chebyshev y no Manhattan. Es la misma que usa
+ *  `celdasEntre` de más arriba, dicha para una celda en vez de para un chunk. */
+function celdasDeCamino(a: { x: number; y: number }, b: { x: number; y: number }): number {
+  const dx = Math.abs(a.x - b.x)
+  const dy = Math.abs(a.y - b.y)
+  return dx > dy ? dx : dy
+}
+
+/**
+ * Cuántos cuerpos le entran en las manos. Es `Actor.capacity` del mundo, y acá es
+ * una perilla declarada: `@anima/oracle` no puede importar `@anima/world` y el
+ * mundo no fija un número, lo fija cada partida. 6 es el del campamento de
+ * `perceive/tests/ataque-a-la-costura.test.ts`, o sea el más generoso que se usó
+ * en algún lado. Con menos, el acarreo hace más viajes y sale MÁS caro.
+ */
+const CUÁNTO_LLEVA_EN_LAS_MANOS = 6
+
+interface Acarreo {
+  readonly celdasCaminadas: number
+  readonly piezas: number
+  readonly kg: number
+  readonly segundosDeFuego: number
+  readonly anillos: number
+  readonly alcanzo: boolean
+}
+
+/**
+ * EL ACARREO: juntar leña hasta tener `segundosQuePide` de fuego, y traerla.
+ *
+ * Vecino más cercano desde donde está parada, y con las manos llenas vuelve al
+ * hogar. No es el camino óptimo —eso es un viajante de comercio— y es a propósito:
+ * el óptimo sería una criatura que sabe dónde está todo antes de mirar, y lo que
+ * este número tiene que acotar es lo que le cuesta a una que camina hacia lo más
+ * cercano que ve. Es igual OPTIMISTA en dos cosas que conviene decir: **ve todo el
+ * anillo de una** y **nunca se equivoca de pieza**.
+ */
+function acarrear(seed: bigint, base: ChunkDecretado, segundosQuePide: number): Acarreo {
+  const orilla = base.orilla as number
+  const hogar = {
+    x: base.cx * CELDAS_DE_LADO + (orilla % CELDAS_DE_LADO),
+    y: base.cy * CELDAS_DE_LADO + Math.floor(orilla / CELDAS_DE_LADO),
+  }
+  let pool: Lena[] = []
+  let anillo = 0
+  let caminadas = 0
+  let piezas = 0
+  let kg = 0
+  let segundosDeFuego = 0
+  let pos = hogar
+  let enMano = 0
+  while (segundosDeFuego < segundosQuePide && anillo <= 8) {
+    if (pool.length === 0) {
+      pool = lenaDelAnillo(seed, base.cx, base.cy, anillo)
+      anillo++
+      continue
+    }
+    let mejor = 0
+    let d = Number.POSITIVE_INFINITY
+    for (let k = 0; k < pool.length; k++) {
+      const dd = celdasDeCamino(pos, pool[k] as Lena)
+      if (dd < d) {
+        d = dd
+        mejor = k
+      }
+    }
+    const p = pool.splice(mejor, 1)[0] as Lena
+    caminadas += d
+    pos = { x: p.x, y: p.y }
+    piezas++
+    kg += p.kg
+    segundosDeFuego += p.segundos
+    enMano++
+    if (enMano >= CUÁNTO_LLEVA_EN_LAS_MANOS || segundosDeFuego >= segundosQuePide) {
+      caminadas += celdasDeCamino(pos, hogar)
+      pos = hogar
+      enMano = 0
+    }
+  }
+  if (enMano > 0) caminadas += celdasDeCamino(pos, hogar)
+  return {
+    celdasCaminadas: caminadas,
+    piezas,
+    kg,
+    segundosDeFuego,
+    anillos: anillo,
+    alcanzo: segundosDeFuego >= segundosQuePide,
+  }
+}
+
+/**
+ * Los SEGUNDOS que un fuego tiene que durar para que la técnica sirva, en las dos
+ * lecturas que el mundo permite. No son dos calibraciones: son dos estrategias, y
+ * la diferencia entre ellas es todo el hallazgo de este bloque.
+ *
+ *   · **sostenido** — el fuego prendido los 1000 segundos de la partida, cocinando
+ *     cada pieza a medida que sale del agua. Es el supuesto que el bloque 5 escribe
+ *     como «leña gratis», y ahora se puede comprar: pide 20 kg de madera.
+ *   · **hornada** — un solo fuego, al final, con todo lo del día encima. Pide que
+ *     el fuego dure lo que tarda UNA cocción, y **cocinar no es rival**: 200
+ *     pescados sobre una parrilla salen los 200 cocidos, medido en
+ *     `perceive/tests/ataque-a-la-costura.test.ts`. Los 4,70 s son los que ese
+ *     mismo archivo mide para que el pescado pase de 0,380 a 0,85.
+ */
+const SEGUNDOS_DE_UNA_COCCIÓN = 4.7
+
+const ESTRATEGIAS = [
+  ['sostenido', SEGUNDOS_DE_PARTIDA],
+  ['hornada', SEGUNDOS_DE_UNA_COCCIÓN],
+] as const
+
+/** La orilla de cada partida común, la MISMA que jugó `jugar`: sin esto el
+ *  acarreo mediría otro mundo que el de la tabla económica. */
+const ORILLAS: ChunkDecretado[] = COMUNES.map((p) => {
+  const c = siguienteOrilla(p.seed, 0)
+  if (c === null) throw new Error(`la semilla ${String(p.seed)} perdió su orilla`)
+  return c
+})
+
+/** El neto cocinado de una partida con el fuego ENTERO adentro: el precio de
+ *  encender, la leña que hay que ir a buscar, y los segundos que eso se lleva. */
+function netoConElFuegoEntero(p: Partida, o: ChunkDecretado, segundosDeFuego: number): number {
+  const a = acarrear(p.seed, o, segundosDeFuego)
+  // Los segundos que NO se pescaron: los del acarreo más los de frotar. Se cobran
+  // como ingreso perdido y no como stamina, que es la trampa del encabezado. La
+  // común usa el 23,6% del techo calórico de lo que pisa (bloque 4), o sea que lo
+  // que la limita es el dado y no el lugar: las piezas son proporcionales al
+  // tiempo que estuvo tirando.
+  const perdidos = (a.celdasCaminadas + a.piezas) * DT + PRECIO_DEL_FUEGO.segundos
+  const fraccion = (SEGUNDOS_DE_PARTIDA - perdidos) / SEGUNDOS_DE_PARTIDA
+  return p.ingresoCocinado * fraccion - p.costo - PRECIO_DEL_FUEGO.termico - a.celdasCaminadas * COSTO_POR_CELDA
+}
+
+describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () => {
+  it('LA LEÑA: cuántos segundos de fuego hay en un kilo, y por qué son 50 y no 60', () => {
+    // El número que el commit «la masa decide cuánto arde» dejó adentro, despejado
+    // de las dos ramas de la ley 4 y no copiado de un informe. Y las dos ramas
+    // importan: si mañana alguien vuelve a hacer intensiva la carbonización, la
+    // segunda columna se despega de la tercera y esta tabla lo dice.
+    const filas: string[] = []
+    for (const s of ['madera', 'madera-dura', 'corteza', 'hoja-seca', 'junco', 'liana', 'raiz', 'grano', 'hoja'] as const) {
+      const kilo: Body = { id: 'k', form: 'bloque', parts: [{ substance: s, mass: 1, q: {} }], joints: [], state: {} }
+      const fuel = qualityOf(kilo, 'fuelEnergy', PHYS)
+      filas.push(
+        `económico ·   ${s.padEnd(12)} fuelEnergy ${fuel.toFixed(0).padStart(3)} · la llama lo apaga a los ${(fuel / COMBUSTIBLE_POR_SEGUNDO).toFixed(1).padStart(5)} s/kg · ` +
+          `el calor a los ${(CARBONIZADO_QUE_TRANSMUTA / TASA_CARBONIZACION).toFixed(1)} · MANDA ${segundosDeFuegoPorKilo(s).toFixed(1)}`,
+      )
+    }
+    console.log(`económico · SEGUNDOS DE FUEGO POR KILO:\n${filas.join('\n')}`)
+
+    // La madera: 50 s por kilo, que es el número del tramo. Y NO 60: el calor llega
+    // primero, y por eso el leño se hace tizón con el 17% del tanque adentro. Los
+    // dos números tienen que estar acá porque el que se recuerda mal es el 60.
+    expect(segundosDeFuegoPorKilo('madera')).toBe(50)
+    expect(18 / COMBUSTIBLE_POR_SEGUNDO).toBe(60)
+    // Y lo que arde poco sí lo apaga la llama: el grano se acaba a los 23,3.
+    expect(Number(segundosDeFuegoPorKilo('grano').toFixed(4))).toBe(23.3333)
+    // LA CUENTA DEL TRAMO, dicha en kilos: sostener un fuego los 1000 segundos de
+    // la partida pide 20 kg de madera. Ése es el número que el bug de las
+    // constantes hacía imposible —antes, 20 kg ardían los mismos 50 s que 1 kg— y
+    // es el que este bloque va a cobrar.
+    expect(SEGUNDOS_DE_PARTIDA / segundosDeFuegoPorKilo('madera')).toBe(20)
+  })
+
+  it('Y LO QUE EL MUNDO DEJA TIRADO NO LLEGA A ESO NI DE LEJOS: la tabla de biomas', () => {
+    // «NO inventes un leño de 20 kg si el mundo no los tiene.» No los tiene: la
+    // pieza más pesada que ALGÚN bioma siembra es de 5 kg y es una piedra, que no
+    // arde. La leña más gorda del mundo es una `madera-dura` de 4 kg en el bosque,
+    // o sea 200 s de fuego; y en la orilla —que es donde se pesca— la más grande es
+    // una `madera` de 2,5 kg.
+    const filas: string[] = []
+    let laMasGorda = 0
+    let deQuien = ''
+    for (const b of BIOMAS) {
+      const arde = b.siembra.filter((s) => segundosDeFuegoPorKilo(s.substance) > 0)
+      if (arde.length === 0) continue
+      const top = arde.reduce((a, s) =>
+        unfx(s.masaMaxima) * segundosDeFuegoPorKilo(s.substance) > unfx(a.masaMaxima) * segundosDeFuegoPorKilo(a.substance)
+          ? s
+          : a,
+      )
+      const segs = unfx(top.masaMaxima) * segundosDeFuegoPorKilo(top.substance)
+      if (segs > laMasGorda) {
+        laMasGorda = segs
+        deQuien = `${top.substance} de ${unfx(top.masaMaxima).toFixed(2)} kg en ${b.id}`
+      }
+      filas.push(
+        `económico ·   ${b.id.padEnd(14)} lo más gordo que arde: ${top.substance.padEnd(12)} de hasta ${unfx(top.masaMaxima).toFixed(2)} kg = ${segs.toFixed(0).padStart(3)} s de fuego`,
+      )
+    }
+    console.log(
+      `económico · LA LEÑA QUE EL MUNDO DEJA, bioma por bioma (el techo del rango, o sea el mejor caso):\n${filas.join('\n')}\n` +
+        `económico ·   la más gorda del mundo entero: ${deQuien} → ${laMasGorda.toFixed(0)} s, contra los ${String(SEGUNDOS_DE_PARTIDA)} que dura la partida\n` +
+        `económico ·   o sea que el fuego sostenido pide juntar ${String(Math.ceil(SEGUNDOS_DE_PARTIDA / laMasGorda))} de las más grandes que existen, y eso EN EL BIOMA QUE LAS TIENE`,
+    )
+    // El leño de 20 kg no existe, y no por poco: hace falta un orden de magnitud.
+    expect(laMasGorda).toBeLessThan(SEGUNDOS_DE_PARTIDA / 4)
+    // Y en la orilla, que es el único lugar donde se pesca, lo más gordo es todavía
+    // más chico. `agua-dulce` siembra `madera` de hasta 2,5 kg: 125 s.
+    const agua = BIOMAS.find((b) => b.id === 'agua-dulce') as (typeof BIOMAS)[number]
+    const mejorDeLaOrilla = agua.siembra
+      .map((s) => unfx(s.masaMaxima) * segundosDeFuegoPorKilo(s.substance))
+      .reduce((a, x) => (x > a ? x : a), 0)
+    expect(Number(mejorDeLaOrilla.toFixed(1))).toBe(125)
+  })
+
+  it('EL ACARREO: lo que cuesta juntar esa leña, con las celdas Y el tiempo', () => {
+    // La parte que se maquilla sola, hecha explícita. Se camina sobre el mundo
+    // DECRETADO —las mismas cien orillas que juega la tabla económica— y no sobre
+    // una densidad promedio inventada.
+    for (const [nombre, pide] of ESTRATEGIAS) {
+      const rs = ORILLAS.map((o, i) => acarrear((COMUNES[i] as Partida).seed, o, pide))
+      expect(rs.every((r) => r.alcanzo)).toBe(true)
+      const c = extremos(rs.map((r) => r.celdasCaminadas))
+      const pz = extremos(rs.map((r) => r.piezas))
+      const kg = extremos(rs.map((r) => r.kg))
+      const stam = extremos(rs.map((r) => r.celdasCaminadas * COSTO_POR_CELDA))
+      const tiempo = extremos(rs.map((r) => (r.celdasCaminadas + r.piezas) * DT))
+      console.log(
+        `económico · EL ACARREO para un fuego «${nombre}» de ${pide.toFixed(2)} s:\n` +
+          `económico ·   kg de leña ....... mínimo ${kg.min.toFixed(2)} · mediana ${kg.mediana.toFixed(2)} · máximo ${kg.max.toFixed(2)}\n` +
+          `económico ·   piezas ........... mínimo ${String(pz.min)} · mediana ${String(pz.mediana)} · máximo ${String(pz.max)}\n` +
+          `económico ·   celdas caminadas . mínimo ${String(c.min)} · mediana ${String(c.mediana)} · máximo ${String(c.max)}\n` +
+          `económico ·   STAMINA (celdas × ${COSTO_POR_CELDA.toFixed(2)}, y NADA de vivir: esos segundos ya los cobra la partida) ` +
+          `mínimo ${stam.min.toFixed(1)} · mediana ${stam.mediana.toFixed(1)} · máximo ${stam.max.toFixed(1)}\n` +
+          `económico ·   SEGUNDOS que no se pescan: mínimo ${tiempo.min.toFixed(1)} · mediana ${tiempo.mediana.toFixed(1)} · máximo ${tiempo.max.toFixed(1)}`,
+      )
+    }
+    // Lo que decide todo lo de abajo: el acarreo del fuego sostenido es CARO EN
+    // CELDAS y BARATO EN STAMINA, porque caminar cuesta 0,05 y encender 659,86. Un
+    // orden de magnitud de diferencia no es un detalle de calibración.
+    const sostenido = ORILLAS.map((o, i) => acarrear((COMUNES[i] as Partida).seed, o, SEGUNDOS_DE_PARTIDA))
+    const peor = extremos(sostenido.map((r) => r.celdasCaminadas * COSTO_POR_CELDA)).max
+    expect(peor).toBeLessThan(PRECIO_DEL_FUEGO.precio)
+  })
+
+  it('CUÁNTAS PIEZAS COCINA ESE FUEGO EN SU VIDA: todas, y ésa es la respuesta', () => {
+    // La pregunta tiene una respuesta que no depende de la leña, y por eso está acá
+    // y no adentro de la cuenta: **cocinar no es rival**. La exposición de la ley 5
+    // se calcula por cuerpo contra la fuente que más lo calienta y nada la reparte,
+    // así que un fuego cocina todo lo que se le apile encima al mismo precio — 200
+    // pescados de 2 kg medidos en `perceive/tests/ataque-a-la-costura.test.ts`.
+    //
+    // Lo que acota cuántas piezas cocina un fuego NO es el fuego: es cuántas saca la
+    // criatura. Y de ahí sale el hallazgo que da vuelta el supuesto del bloque 5:
+    // **el fuego no tiene por qué durar los 1000 segundos**. Tiene que durar UNA
+    // cocción.
+    const piezas = extremos(COMUNES.map((p) => p.piezas))
+    const porFuego = Math.ceil(PRECIO_DEL_FUEGO.precio / LO_QUE_PAGA_UNA_PIEZA)
+    console.log(
+      `económico · PIEZAS POR FUEGO:\n` +
+        `económico ·   el fuego no pone tope: cocinar no es rival y 200 piezas salen cocidas a la vez\n` +
+        `económico ·   la común saca entre ${String(piezas.min)} y ${String(piezas.max)} piezas (mediana ${String(piezas.mediana)}), y el fuego se paga con ${String(porFuego)}\n` +
+        `económico ·   el fuego SOSTENIDO dura ${String(SEGUNDOS_DE_PARTIDA)} s y pide 20 kg de madera; la HORNADA dura ${SEGUNDOS_DE_UNA_COCCIÓN.toFixed(2)} s y pide ${(SEGUNDOS_DE_UNA_COCCIÓN / segundosDeFuegoPorKilo('madera')).toFixed(3)} kg\n` +
+        `económico ·   o sea que la estrategia barata pide ${(SEGUNDOS_DE_PARTIDA / SEGUNDOS_DE_UNA_COCCIÓN).toFixed(0)}× menos leña, y cocina LAS MISMAS piezas`,
+    )
+    expect(piezas.min).toBeGreaterThanOrEqual(porFuego)
+    // Un leño solo de un kilo —de los que la orilla tiene de sobra— dura diez veces
+    // lo que una cocción. La hornada no necesita que nadie junte nada.
+    expect(segundosDeFuegoPorKilo('madera')).toBeGreaterThan(10 * SEGUNDOS_DE_UNA_COCCIÓN)
+  })
+
+  it.fails('SIGUE ABIERTO · con la leña cobrada la ventana TAMPOCO cierra, y el bug de las constantes NO era el problema económico', () => {
+    // POR QUÉ SIGUE ABIERTO: porque la hipótesis del tramo —«el problema económico y
+    // el bug de las constantes eran el mismo problema»— se puede medir, y la
+    // medición dice que NO. El bug hacía imposible el supuesto del bloque 5 («un
+    // fuego sostenido 1000 s»); arreglarlo lo hizo posible, y comprarlo resulta ser
+    // **barato**: la leña de los mil segundos sale en stamina mucho menos de lo que
+    // falta. El agujero no estaba en la leña.
+    //
+    // Y HAY UNA SEGUNDA MITAD, que es la que da vuelta la pregunta: **el fuego no
+    // tiene por qué durar 1000 segundos**. Cocinar no es rival, así que una sola
+    // hornada al final del día cocina todo lo del día, y esa hornada pide un fuego
+    // de 4,70 s, o sea 0,094 kg de madera. La estrategia barata deja el acarreo en
+    // menos de un punto de stamina. O sea que el supuesto «leña gratis» del bloque 5
+    // no era optimista: era **casi exacto**.
+    //
+    // Lo único que la cuenta honesta le corrige al bloque 5 va en la dirección BUENA
+    // y es chico: `PRECIO_DEL_FUEGO` cobra 2,40 de vivir los 2,4 s de frotar, y esos
+    // segundos ya están adentro de los mil que `p.costo` cobra. Descontarlo deja el
+    // fuego en 657,46.
+    //
+    // QUÉ HARÍA FALTA PARA CERRARLO, con los números de hoy y por los tres caminos
+    // que el bloque 5 nombra. Ninguno se elige acá:
+    //
+    //   1. QUE EL POZO RINDA MÁS. El factor está medido abajo. Es
+    //      `STAMINA_POR_CALORIA` o el `nutrition` del catálogo, y mueve el hambre
+    //      entera: la ventana del ADR II-0009 se corre con él.
+    //   2. QUE VIVIR CUESTE MENOS. **Y ÉSTE TAMBIÉN ESTÁ CERRADO**, que es el
+    //      hallazgo que este bloque agrega y que el 5 no podía ver. El número que
+    //      haría falta está medido abajo, y hay que compararlo contra el OTRO borde
+    //      de la ventana del ADR II-0009: el precio de vivir al que la criatura
+    //      sobrevive comiendo CRUDO. Si el precio que salva a la que cocina está
+    //      por DEBAJO del que salva a la que no, no existe ningún valor de
+    //      `COSTO_VIVIR_POR_SEGUNDO` que cumpla la ventana entera — bajarlo hasta
+    //      que cocinar alcance hace que comer crudo también alcance, y ahí el motor
+    //      de la historia se apaga. Los dos bordes se cruzaron, y ésa es la
+    //      diferencia entre «hay que barrer una perilla» y «esta perilla no tiene
+    //      una posición que sirva».
+    //   3. QUE EL FUEGO SE AMORTICE MÁS. Este camino ya se gastó y ahora se sabe por
+    //      qué: cocinar no es rival, un fuego cocina todo lo que salga del agua en
+    //      la partida, y ni así alcanza.
+    //
+    // La salida 2 del bloque 5 —«que encender salga más barato»— sigue cerrada por
+    // arriba y por el mismo motivo aritmético, que la leña no toca: pediría
+    // eficiencia 1,51 en el `poweredBy` de `friccion`.
+    const filas: string[] = []
+    const netos = new Map<string, number[]>()
+    for (const [nombre, pide] of ESTRATEGIAS) {
+      const neto = COMUNES.map((p, i) => netoConElFuegoEntero(p, ORILLAS[i] as ChunkDecretado, pide))
+      netos.set(nombre, neto)
+      const e = extremos(neto)
+      filas.push(
+        `económico ·   fuego «${nombre}» ${''.padEnd(10 - nombre.length)}... mínimo ${e.min.toFixed(1)} · mediana ${e.mediana.toFixed(1)} · máximo ${e.max.toFixed(1)} · ` +
+          `${String(neto.filter((x) => x <= 0).length)} de ${String(PARTIDAS)} debiendo`,
+      )
+    }
+    const viejo = extremos(COMUNES.map((p) => p.netoCocinado - PRECIO_DEL_FUEGO.precio))
+    const hornada = netos.get('hornada') as number[]
+    const eHornada = extremos(hornada)
+    const eSostenido = extremos(netos.get('sostenido') as number[])
+
+    // CUÁNTO FALTA, y por los dos caminos que siguen abiertos. Se despeja sobre la
+    // estrategia BARATA, que es la que menos pide: si no cierra la barata, no
+    // cierra ninguna.
+    const conAcarreo = COMUNES.map((p, i) => {
+      const a = acarrear(p.seed, ORILLAS[i] as ChunkDecretado, SEGUNDOS_DE_UNA_COCCIÓN)
+      const perdidos = (a.celdasCaminadas + a.piezas) * DT + PRECIO_DEL_FUEGO.segundos
+      return {
+        ingreso: p.ingresoCocinado * ((SEGUNDOS_DE_PARTIDA - perdidos) / SEGUNDOS_DE_PARTIDA),
+        fijo: PRECIO_DEL_FUEGO.termico + a.celdasCaminadas * COSTO_POR_CELDA + p.celdasCaminadas * COSTO_POR_CELDA,
+      }
+    })
+    const falta = -eHornada.min
+    const factorDelPozo = extremos(
+      conAcarreo.map((x) => (COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA + x.fijo) / x.ingreso),
+    ).max
+    // Vivir entra en un solo lugar de esta cuenta —los 1000 segundos— porque los 2,4
+    // de frotar ya se cobraron ahí adentro. De ahí se despeja limpio.
+    const vivirQueHaríaFalta = extremos(conAcarreo.map((x) => (x.ingreso - x.fijo) / SEGUNDOS_DE_PARTIDA)).min
+    // Y EL OTRO BORDE, medido acá y no copiado del test de la ventana: el precio de
+    // vivir por encima del cual la que come CRUDO se muere. Es el mismo `abajo` de
+    // «EL CRITERIO DEL ADR II-0009», y se recalcula porque de la comparación entre
+    // los dos sale la conclusión.
+    const bordeDelCrudo = extremos(
+      COMUNES.map((p) => (p.ingresoCrudo - p.celdasCaminadas * COSTO_POR_CELDA) / SEGUNDOS_DE_PARTIDA),
+    ).max
+    console.log(
+      `económico · LA VENTANA CON LA LEÑA COBRADA:\n` +
+        `económico ·   el número VIEJO (bloque 5, leña gratis) . mínimo ${viejo.min.toFixed(1)} · mediana ${viejo.mediana.toFixed(1)} · máximo ${viejo.max.toFixed(1)}\n` +
+        `${filas.join('\n')}\n` +
+        `económico ·   → la leña mueve el mínimo en ${(eHornada.min - viejo.min).toFixed(1)} con la hornada y en ${(eSostenido.min - viejo.min).toFixed(1)} con el fuego sostenido\n` +
+        `económico ·   FALTAN ${falta.toFixed(1)} de stamina en la partida más flaca de las cien\n` +
+        `económico ·   camino 1 · el pozo tendría que rendir ${factorDelPozo.toFixed(2)}× lo que rinde\n` +
+        `económico ·   camino 2 · CERRADO: vivir tendría que costar ${vivirQueHaríaFalta.toFixed(3)}/s para que cocinar alcance, ` +
+        `y a ${bordeDelCrudo.toFixed(3)}/s ya alcanza comer CRUDO. Los dos bordes se cruzaron: no hay valor que cumpla la ventana entera\n` +
+        `económico ·   camino 3 · gastado: cocinar no es rival y el fuego ya cocina todo lo que sale del agua`,
+    )
+    // LOS DOS BORDES CRUZADOS. Es la afirmación más fuerte del bloque y no depende
+    // de ninguna copia: los dos números salen de las mismas cien partidas.
+    expect(vivirQueHaríaFalta).toBeLessThan(bordeDelCrudo)
+    // La leña no mueve la conclusión, y eso es lo que este bloque tiene que
+    // afirmar: entre la cuenta con leña gratis y la cuenta con la leña cobrada de
+    // verdad hay menos de tres puntos de stamina en la estrategia barata.
+    expect(Math.abs(eHornada.min - viejo.min)).toBeLessThan(3)
+    // Y lo que sigue sin cerrar. Éste es el `expect` que lo mantiene abierto.
+    for (const x of hornada) expect(x).toBeGreaterThan(0)
+  })
+
+  it('las DOS constantes de la ley 3 copiadas de `@anima/physics` siguen diciendo lo que dicen acá', () => {
+    // El mismo guardián que las tres de `@anima/world`, y hace más falta que aquél:
+    // estas dos NO están exportadas —son `const` de módulo— así que ni siquiera un
+    // import las traería, y son exactamente las dos que este tramo tocó. Una copia
+    // de una constante que acaba de cambiar es la que más se va a quedar vieja.
+    const leyes = fileURLToPath(new URL('../../physics/src/leyes.ts', import.meta.url))
+    const fuente = readFileSync(leyes, 'utf8')
+    const valorDe = (nombre: string): number => {
+      const m = new RegExp(`const ${nombre} = ([0-9.]+)`).exec(fuente)
+      if (m === null) throw new Error(`«${nombre}» ya no está en ${leyes}: el modelo de leña de este test quedó viejo`)
+      return Number(m[1])
+    }
+    expect(valorDe('TASA_CARBONIZACION')).toBe(TASA_CARBONIZACION)
+    expect(valorDe('COMBUSTIBLE_POR_SEGUNDO')).toBe(COMBUSTIBLE_POR_SEGUNDO)
+
+    // Y LA FORMA, que es lo que el tramo arregló y lo que se puede desarreglar sin
+    // tocar ningún valor: la carbonización se DIVIDE por la masa —eso es lo que la
+    // hace extensiva— y el combustible se compara contra `fuelEnergy · mass`. Si
+    // alguien saca una de las dos, los números de arriba siguen siendo 0,016 y 0,3
+    // y este archivo estaría midiendo un mundo que ya no existe. Es exactamente el
+    // bug que este tramo encontró, escrito como guardián para que no vuelva.
+    const dice = (p: RegExp): boolean => p.test(fuente)
+    expect(['carbonizar es POR KILO', dice(/porPaso\(TASA_CARBONIZACION, dt\) \/ masa/)]).toEqual([
+      'carbonizar es POR KILO',
+      true,
+    ])
+    expect(['el combustible es EXTENSIVO', dice(/l\.fuelEnergy \* l\.mass/)]).toEqual([
+      'el combustible es EXTENSIVO',
+      true,
+    ])
   })
 })

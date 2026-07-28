@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { buildSeedPhysics, qualityOf, unir, type Body, type Physics } from '@anima/physics'
+import { buildSeedPhysics, qualityOf, unir, type Body, type Physics, type SubstanceId } from '@anima/physics'
 import {
   celdaDecretada,
   crearDios,
@@ -983,15 +983,21 @@ const ROLES_DE_FROTAR = [
  * la criatura: es la única geometría legal, y que sea la única es información.
  *
  * El pescado NO se pone acá: lo saca la criatura del pozo y lo apoya ella.
+ *
+ * La YESCA es un parámetro desde el bloque 8: el campamento nació con una
+ * `hoja-seca` de 1 kg, y ese cuerpo **el mundo no lo deja tirado en ningún lado**
+ * —los tres biomas que siembran hoja seca la sueltan de 0,01 a 0,08 kg, y ninguno
+ * de ellos es una orilla—. Qué pasa con la yesca que el mundo sí deja está medido
+ * en ese bloque.
  */
-function elCampamento(masaDeLaVara = VARA_QUE_COCINA): WorldState {
+function elCampamento(masaDeLaVara = VARA_QUE_COCINA, yesca: SubstanceId = 'hoja-seca', masaDeLaYesca = 1): WorldState {
   const p = ORILLA.parada
   const bodies: readonly WorldBody[] = [
     { body: criatura('ana', 1000), at: p },
     { body: cana(), at: p, heldBy: 'ana' },
     { body: cuerpo('va', 'madera', masaDeLaVara, { temperature: 15 }), at: p, heldBy: 'ana' },
     { body: cuerpo('vb', 'madera-dura', masaDeLaVara, { temperature: 15 }), at: p, heldBy: 'ana' },
-    { body: cuerpo('yesca', 'hoja-seca', 1), at: p, supportedBy: 'ana-cuerpo', covering: 'va' },
+    { body: cuerpo('yesca', yesca, masaDeLaYesca), at: p, supportedBy: 'ana-cuerpo', covering: 'va' },
     { body: cuerpo('leno', 'madera', 1), at: p, supportedBy: 'yesca' },
     { body: cuerpo('parrilla', 'piedra', 0.5), at: p, supportedBy: 'leno' },
   ]
@@ -1008,8 +1014,13 @@ function elCampamento(masaDeLaVara = VARA_QUE_COCINA): WorldState {
 }
 
 /** El campamento con `cuantos` pescados de 2 kg ya apoyados sobre la parrilla. */
-function conPescadosEnLaParrilla(masaDeLaVara: number, cuantos: number): WorldState {
-  const w = elCampamento(masaDeLaVara)
+function conPescadosEnLaParrilla(
+  masaDeLaVara: number,
+  cuantos: number,
+  yesca: SubstanceId = 'hoja-seca',
+  masaDeLaYesca = 1,
+): WorldState {
+  const w = elCampamento(masaDeLaVara, yesca, masaDeLaYesca)
   const peces: WorldBody[] = []
   for (let k = 0; k < cuantos; k++) {
     peces.push({
@@ -1405,4 +1416,241 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     )
     expect(conservacion, 'el dios crea materia que ningún evento respalda').toEqual([])
   })
+})
+
+// ═══ 8. LA LEÑA: LO QUE `@anima/oracle` CITA Y NO PUEDE MEDIR ════════════════
+//
+// El bloque 6 de `oracle/tests/presupuesto.test.ts` hace la economía con el precio
+// de la leña adentro, y para eso necesita tres números que sólo se pueden sacar
+// corriendo `stepWorld`. Están acá, medidos, y allá se los cita por nombre:
+//
+//   · cuántos SEGUNDOS de fuego hay en un kilo, contra la fórmula que aquel
+//     archivo despeja de las dos ramas de la ley 4;
+//   · cuál es la vara MÁS BARATA que enciende un fuego que cocina, con el barrido
+//     fino y no con cuatro puntos sueltos;
+//   · con qué YESCA, que es la pregunta que nadie había hecho y que tiene una
+//     respuesta incómoda.
+//
+// Todo esto es del ADR II-0011 y del commit «la masa decide cuánto arde». Que se
+// remida acá no es redundancia: `@anima/oracle` no importa `@anima/world`, así que
+// del otro lado la fórmula es una CUENTA y acá es el mundo corriendo. Que las dos
+// den lo mismo es la única forma de saber que el modelo económico modela algo.
+
+/** Un cuerpo solo, ya encendido, ardiendo al aire libre hasta que se apaga. */
+function cuantoArde(substance: SubstanceId, masa: number): { segundos: number; queda: string } {
+  let w = mundo({ bodies: [{ body: cuerpo('leno', substance, masa, { temperature: 700 }), at: { x: 0, y: 0 } }] })
+  let queda = substance as string
+  for (let n = 1; n <= 40_000; n++) {
+    w = stepWorld(w, []).state
+    const b = w.bodies.get('leno')
+    if (b === undefined) return { segundos: n / 20, queda: 'nada' }
+    queda = b.body.parts.map((x) => x.substance).join('+')
+    // Por debajo del punto de ignición de la madera ya no prende nada ni cocina
+    // nada: ése es el criterio de «se apagó» y es el mismo con el que la cadena
+    // del bloque 7 decide que hay fuego.
+    if (qualityOf(b.body, 'temperature', PHYS) < 300) return { segundos: n / 20, queda }
+  }
+  return { segundos: Number.POSITIVE_INFINITY, queda }
+}
+
+describe('8. la leña, medida contra `stepWorld`', () => {
+  it('LOS SEGUNDOS DE FUEGO POR KILO: 50 para la madera, y la masa manda en todo el rango', () => {
+    // ─── EL NÚMERO QUE `oracle` NECESITA Y NO PUEDE MEDIR ─────────────────
+    //
+    // La fórmula de allá es `min(fuelEnergy / 0,3 ; 0,8 / 0,016)` por kilo, o sea
+    // la primera de las dos ramas de la ley 4 que llegue. Acá se corre el mundo y
+    // se mira cuándo el cuerpo deja de estar encendido. Los dos tienen que dar lo
+    // mismo dentro del tick, y si un día no dan, el modelo económico de allá está
+    // midiendo una física que ya no existe.
+    const filas: string[] = []
+    const medido = new Map<string, number>()
+    for (const [s, masas] of [
+      ['madera', [0.2, 0.5, 1, 2, 5, 20]],
+      ['madera-dura', [1]],
+      ['hoja-seca', [1]],
+      ['junco', [1]],
+      ['corteza', [1]],
+      ['liana', [1]],
+      ['raiz', [1]],
+      ['grano', [1]],
+    ] as const) {
+      for (const m of masas) {
+        const r = cuantoArde(s, m)
+        medido.set(`${s}:${String(m)}`, r.segundos)
+        filas.push(
+          `  ${s.padEnd(12)} ${String(m).padStart(4)} kg → ${r.segundos.toFixed(2).padStart(7)} s ` +
+            `(${(r.segundos / m).toFixed(2)} s/kg) · queda «${r.queda}»`,
+        )
+      }
+    }
+    console.log(`\n─── CUÁNTO ARDE UN CUERPO, CONTRA \`stepWorld\` ───\n${filas.join('\n')}\n`)
+
+    // LA MASA DECIDE, EN TODO EL RANGO. Antes del commit «la masa decide cuánto
+    // arde» esta columna era 49,95 desde 1 kg hasta 50: las dos constantes se
+    // cancelaban. Cien veces más masa, cien veces más fuego.
+    const seg = (k: string): number => medido.get(k) as number
+    expect(seg('madera:0.2')).toBeCloseTo(10.05, 6)
+    expect(seg('madera:1')).toBeCloseTo(50.05, 6)
+    expect(seg('madera:5')).toBeCloseTo(250.05, 6)
+    // 1000,10 y no 1000,05: el leño de 20 kg se apaga UN TICK más tarde que lo que
+    // da la regla de tres, y el tick de más es el redondeo del paso —`charred`
+    // avanza de a `porPaso(0,016 / masa)` y el cruce de 0,8 cae adentro de un
+    // paso—. Queda escrito con el número medido y no con el esperado, porque el
+    // esperado era 1000,05 y la diferencia es exactamente el tipo de cosa que se
+    // ajusta sin querer para que el número quede lindo.
+    expect(seg('madera:20')).toBeCloseTo(1000.1, 6)
+    // Y ESE ES EL NÚMERO DE LA PARTIDA: 20 kg de madera son los 1000 segundos que
+    // dura una partida del test económico. El de allá lo despeja de las constantes
+    // y acá está corrido.
+    expect(seg('madera:20')).toBeGreaterThanOrEqual(1000)
+
+    // La FÓRMULA de `oracle`, verificada sustancia por sustancia. `0,8 / 0,016` son
+    // los 50 s por kilo del calor; `fuelEnergy / 0,3` es la llama. Lo que se apaga
+    // primero manda, y para la liana, la raíz y el grano manda la llama.
+    const porKilo = (s: SubstanceId): number => {
+      const kilo: Body = { id: 'k', form: 'bloque', parts: [{ substance: s, mass: 1, q: {} }], joints: [], state: {} }
+      const f = qualityOf(kilo, 'fuelEnergy', PHYS)
+      return Math.min(f / 0.3, 0.8 / 0.016)
+    }
+    for (const s of ['madera', 'madera-dura', 'hoja-seca', 'junco', 'corteza', 'liana', 'raiz', 'grano'] as const) {
+      // Dentro de un tick de 0,05 s: la fórmula es continua y el mundo avanza a
+      // pasos, así que exigir igualdad exacta sería exigirle al mundo que no tenga
+      // ticks. Medio tick de tolerancia para cada lado.
+      expect([s, Math.abs(seg(`${s}:1`) - porKilo(s)) <= 0.25]).toEqual([s, true])
+    }
+
+    // Y LA LEÑA FALSA NO VOLVIÓ, que es la otra mitad del commit: todo termina en
+    // residuo mineral, incluso lo que pesa menos de un kilo y lo que la llama apaga
+    // antes de que el calor lo carbonice.
+    for (const [s, m] of [
+      ['madera', 0.2],
+      ['liana', 1],
+      ['grano', 1],
+    ] as const) {
+      expect([`${s}:${String(m)}`, cuantoArde(s, m).queda]).toEqual([
+        `${s}:${String(m)}`,
+        `residuo-mineral-de-${s}`,
+      ])
+    }
+  })
+
+  it('EL BARRIDO FINO DE LA VARA: 0,47 kg es el umbral, y no es una elección', () => {
+    // El bloque 7 mide cuatro puntos —0,20, 0,46, 0,47 y 0,50— y de ahí sale la
+    // perilla `MASA_DE_LA_VARA_QUE_ENCIENDE` de `oracle`. Cuatro puntos no dicen si
+    // el umbral está en 0,47 o si hay un hueco antes: esto barre de a 0,01 y lo
+    // deja clavado, que es lo que «verificar el número» quiere decir.
+    const filas: string[] = []
+    let primeraQueCocina = Number.NaN
+    let precioDeLaPrimera = Number.NaN
+    for (let m = 20; m <= 50; m++) {
+      const masa = m / 100
+      const { w, costo } = encenderYMirar(conPescadosEnLaParrilla(masa, 1), 80)
+      const pez = w.bodies.get('pez0')
+      const d = pez === undefined ? Number.NaN : qualityOf(pez.body, 'digestibility', PHYS)
+      if (d >= 0.85 && Number.isNaN(primeraQueCocina)) {
+        primeraQueCocina = masa
+        precioDeLaPrimera = costo
+      }
+      filas.push(`  ${masa.toFixed(2)} kg → ${costo.toFixed(4).padStart(9)} · pescado ${d.toFixed(4)}${d >= 0.85 ? '  ← COCINA' : ''}`)
+    }
+    console.log(`\n─── LA VARA MÁS BARATA QUE COCINA, DE A UN CENTÉSIMO ───\n${filas.join('\n')}\n`)
+    // 0,47 kg y 659,8629, verificados y no citados. Y el salto es una PARED: en
+    // 0,46 el pescado se queda en 0,7461 y en 0,47 llega a 0,95 — no hay pendiente
+    // suave que permita negociar el precio.
+    expect(primeraQueCocina).toBe(0.47)
+    expect(Number(precioDeLaPrimera.toFixed(4))).toBe(659.8629)
+  }, 30_000)
+
+  it.fails('SIGUE ABIERTO · LA YESCA DEL CAMPAMENTO ES UN CUERPO QUE EL MUNDO NO DEJA TIRADO', () => {
+    // POR QUÉ SIGUE ABIERTO: el campamento del bloque 7 —y con él los 659,8629 que
+    // el modelo económico de `@anima/oracle` usa de perilla— enciende con una yesca
+    // de **`hoja-seca` de 1 kg**, y ese cuerpo no existe en ningún lado del mundo.
+    // La tabla de biomas (`oracle/src/bioma.ts`) siembra `hoja-seca` en tres biomas
+    // —bosque, matorral y estepa— y en los tres el rango de masa es **0,01 a 0,08
+    // kg**: doce veces menos que la yesca del banco. Y ninguno de esos tres es una
+    // orilla, o sea que en el lugar donde se pesca no hay una sola hoja seca.
+    //
+    // MEDIDO acá abajo, y el resultado no es «un poco peor»: es que el fuego del
+    // banco **es un punto aislado**. Con la misma vara de 0,47 kg,
+    //
+    //   yesca                            el pescado termina en
+    //   hoja-seca 0,01 kg                0,8451  ← NO cocina
+    //   hoja-seca 0,08 kg (lo más gordo
+    //     que el mundo deja de verdad)   0,8161  ← NO cocina
+    //   hoja-seca 0,50 kg                0,7768  ← NO cocina
+    //   hoja-seca 1,00 kg (el banco)     0,9500  ← cocina
+    //
+    // O sea que la masa de la yesca no es una pendiente: hay una ventana angosta y
+    // el banco cayó adentro sin que nadie lo eligiera. Un test que enciende un fuego
+    // con un cuerpo que el mundo no produce está midiendo una técnica que la
+    // criatura no puede ejecutar, y la economía que se apoya en ese número está
+    // comprando algo que no está a la venta.
+    //
+    // LA BUENA NOTICIA, que se mide igual porque es la salida: **el junco sí**. La
+    // orilla siembra `junco` de 0,05 a 0,4 kg con el peso más alto de su tabla, y
+    // con junco de CUALQUIER masa del rango el pescado llega a 0,8619. O sea que la
+    // técnica existe en el mundo, con la yesca que la orilla deja tirada de verdad
+    // y con la misma vara. Y el precio, barrido acá abajo, **no se mueve**: con
+    // junco de 0,05 kg la más barata que cocina sigue siendo la de 0,47 kg y sigue
+    // saliendo 659,8629. O sea que la perilla de `oracle/tests/presupuesto.test.ts`
+    // está bien aunque la yesca con la que se midió no exista, y eso hay que
+    // decirlo: el número económico NO cuelga de este hueco.
+    //
+    // QUÉ HARÍA FALTA PARA CERRARLO: que el campamento del bloque 7 encienda con lo
+    // que la orilla deja tirado, o sea junco, y que `MASA_DE_LA_VARA_QUE_ENCIENDE`
+    // de `oracle/tests/presupuesto.test.ts` se remida contra ESE fuego. No es un
+    // cambio de arnés: mueve el precio del fuego, que es el número del que cuelga la
+    // ventana entera del ADR II-0009, y por eso no se hace de costado en este
+    // tramo. Y hay una pregunta de física atrás que ningún ADR contestó: **por qué
+    // la ventana de la yesca es angosta y no monótona**, que es lo que hace que este
+    // hueco sea un hallazgo y no un ajuste.
+    const filas: string[] = []
+    const cocina = new Map<string, boolean>()
+    for (const [y, masas] of [
+      ['hoja-seca', [0.01, 0.08, 0.5, 1]],
+      ['junco', [0.05, 0.2, 0.4]],
+      ['corteza', [0.05, 0.5]],
+      ['liana', [0.05, 0.6]],
+      ['madera', [0.3, 2.5]],
+    ] as const) {
+      for (const my of masas) {
+        const { w } = encenderYMirar(conPescadosEnLaParrilla(VARA_QUE_COCINA, 1, y, my), 80)
+        const pez = w.bodies.get('pez0')
+        const d = pez === undefined ? Number.NaN : qualityOf(pez.body, 'digestibility', PHYS)
+        cocina.set(`${y}:${String(my)}`, d >= 0.85)
+        filas.push(`  yesca ${y.padEnd(10)} ${String(my).padStart(5)} kg → pescado ${d.toFixed(4)}${d >= 0.85 ? '  ← COCINA' : ''}`)
+      }
+    }
+    // Y CUÁNTO SALE EL FUEGO CON LA YESCA DEL MUNDO, que es la perilla que
+    // `oracle/tests/presupuesto.test.ts` tendría que usar el día que esto se cierre.
+    const conJunco: string[] = []
+    let masBarataConJunco = Number.NaN
+    let precioConJunco = Number.NaN
+    for (let m = 44; m <= 48; m++) {
+      const masa = m / 100
+      const { w, costo } = encenderYMirar(conPescadosEnLaParrilla(masa, 1, 'junco', 0.05), 80)
+      const pez = w.bodies.get('pez0')
+      const d = pez === undefined ? Number.NaN : qualityOf(pez.body, 'digestibility', PHYS)
+      if (d >= 0.85 && Number.isNaN(masBarataConJunco)) {
+        masBarataConJunco = masa
+        precioConJunco = costo
+      }
+      conJunco.push(`  vara ${masa.toFixed(2)} kg + junco 0,05 → ${costo.toFixed(4)} · pescado ${d.toFixed(4)}${d >= 0.85 ? '  ← COCINA' : ''}`)
+    }
+    console.log(
+      `\n─── CON QUÉ YESCA PRENDE, CON LA VARA DE ${String(VARA_QUE_COCINA)} kg ───\n${filas.join('\n')}\n` +
+        `\n─── Y EL PRECIO CON LA YESCA QUE LA ORILLA SÍ DEJA ───\n${conJunco.join('\n')}\n` +
+        `la más barata que cocina con junco: ${masBarataConJunco.toFixed(2)} kg → ${precioConJunco.toFixed(4)} ` +
+        `(la perilla de \`oracle\` es 659,8629: NO se mueve, aunque la yesca con la que se midió no exista)\n`,
+    )
+
+    // Lo que sí se puede afirmar hoy, y queda como regresión adentro del hueco: el
+    // junco es la salida y anda en todo su rango.
+    expect(cocina.get('junco:0.05')).toBe(true)
+    expect(cocina.get('junco:0.4')).toBe(true)
+    expect(masBarataConJunco).toBeLessThanOrEqual(VARA_QUE_COCINA)
+    // Y el hueco: la hoja seca del banco cocina, y la que el mundo deja NO.
+    expect(cocina.get('hoja-seca:1')).toBe(true)
+    expect(cocina.get('hoja-seca:0.08'), 'la yesca del campamento no existe en el mundo').toBe(true)
+  }, 30_000)
 })

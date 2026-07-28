@@ -164,6 +164,30 @@ const TECHO_P99_MS = 5
  * este banco es real: el mismo barrido dio 30,9 y 37,6 en dos corridas. Un techo
  * pegado al peor medido sería un test intermitente, y un test intermitente se
  * termina borrando.
+ *
+ * ─── Y ESE MARGEN NO ALCANZÓ, que es el hallazgo ────────────────────────────
+ *
+ * La primera versión de esta guarda AFIRMABA siempre, adentro de la suite
+ * normal, y se puso roja al día siguiente: **55,7 ms** contra los 45. Medido
+ * después: corriendo este archivo SOLO da 42,09 ms, y da 55–57 cuando
+ * `el-tick-remedido.test.ts` le compite el CPU en la misma corrida de
+ * `pnpm ii:test`. O sea que no midió una regresión del código: midió la carga de
+ * la máquina.
+ *
+ * La reparación no es subir el número —eso sería mover el criterio hasta que dé
+ * verde, que es lo único que este arnés existe para no hacer— sino la que el
+ * paquete ya había decidido y está escrita en `banco-el-tick.test.ts:161`:
+ *
+ *   «Un test de rendimiento adentro de la suite normal es un test flaky, y un
+ *    test flaky es peor que ninguno: enseña a ignorar el rojo.»
+ *
+ * Así que se imprime siempre y se afirma sólo con `ANIMA_BANCO=1`, igual que el
+ * criterio vigente del ADR II-0007. El número queda a la vista en cada corrida;
+ * lo que deja de estar es el rojo que no significa nada.
+ *
+ * (La perilla —`MIDIENDO_EN_SERIO`— ya estaba declarada más abajo en este mismo
+ * archivo, para los otros bancos. Esta guarda era la única que afirmaba sin
+ * mirarla.)
  */
 const TECHO_ACEPTADO_MS = 45
 
@@ -428,6 +452,9 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
         `  ·  guarda ${TECHO_ACEPTADO_MS} ms\n`,
     )
     /* eslint-enable no-console */
+    // Se imprime SIEMPRE y se afirma sólo midiendo en serio, igual que el
+    // criterio vigente de `banco-el-tick.test.ts:259`. Ver `MIDIENDO_EN_SERIO`.
+    if (!MIDIENDO_EN_SERIO) return
     expect(p.p99).toBeLessThan(TECHO_ACEPTADO_MS)
   }, 900_000)
 
