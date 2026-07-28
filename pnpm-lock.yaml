@@ -258,6 +258,28 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
+  ii/packages/plan:
+    dependencies:
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
+      '@anima/skills':
+        specifier: workspace:*
+        version: link:../skills
+    devDependencies:
+      '@anima/oracle':
+        specifier: workspace:*
+        version: link:../oracle
+      '@anima/world':
+        specifier: workspace:*
+        version: link:../world
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
   ii/packages/skills:
     dependencies:
       '@anima/oracle':

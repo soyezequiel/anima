@@ -1,0 +1,52 @@
+// ─── @anima/plan ─────────────────────────────────────────────────────────────
+//
+// DE OBJETIVO A SUB-OBJETIVOS. El requisito 6, que ninguna de las tres
+// propuestas del corpus tenía y que el repo de Ánima I sí tiene (ADR 0053, 0082,
+// 0083, 0085): tirarlo sin reemplazo era una regresión, así que acá está.
+//
+// Cinco módulos:
+//
+//   predicado    parsear e interpretar un `establishes`, y decidir si el mundo lo
+//                cumple. Llama a `evalQuality`/`qualityOf` del motor en vez de
+//                transcribir la fórmula, que es la regla que dejó el adversario
+//                de las secuencias de emergencia.
+//   referencias  resolver un `Ref` contra la vista de HOY. Vive acá y no en la
+//                mente porque el planificador también necesita saber si lo que
+//                pide existe («veo un matorral fibroso a 2 celdas ✓»), y dos
+//                implementaciones de la misma resolución divergen.
+//   esquemas     `SCHEMA_INDEX`: qué proceso establece qué, escrito a mano porque
+//                no se puede derivar, y VERIFICADO contra el mundo real porque un
+//                esquema sin verificar es una tabla de recetas con pasos de más.
+//   objetivos    `goalGraph()`: descomposición conjuntiva, orden parcial y
+//                ligaduras diferidas.
+//   regresion    `plan()` anytime: encadenado hacia atrás sobre el índice, con
+//                frontera guardada entre ticks y `gap` cuando no hay camino.
+//
+// Regla 1 de `ii/`: nada de acá importa de `packages/` ni de `apps/`.
+
+export type {
+  Comparador,
+  ConstructionSchema,
+  Frontera,
+  GoalId,
+  GoalNode,
+  MarcoDePlan,
+  NodoAbierto,
+  OpcionesDePlan,
+  PedidoDeRol,
+  PlanResult,
+  Predicado,
+  PredicateSignature,
+  RamaMuerta,
+  Ref,
+  RoleName,
+  Step,
+  VistaDelPlan,
+} from './tipos.js'
+export { EXPANSIONES_POR_TICK, PROFUNDIDAD_MAXIMA } from './tipos.js'
+
+export { firmaDe, implica, interpretar, cumple, cumpleCuerpo, textoDe } from './predicado.js'
+export { resolver, resolverCuerpo, resolverTodos, type Resuelto, type Rindes } from './referencias.js'
+export { AGUA_FRANCA, SCHEMA_INDEX, ESQUEMAS, esquemasPara, procesoDe } from './esquemas.js'
+export { goalGraph, orden, type Lectura } from './objetivos.js'
+export { plan } from './regresion.js'

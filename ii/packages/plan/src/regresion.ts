@@ -1,0 +1,1571 @@
+// ─── @anima/plan/regresion.ts ────────────────────────────────────────────────
+//
+// LA CAÑA LA ARMA LA ARITMÉTICA, Y NADIE ESCRIBIÓ «CAÑA».
+//
+// Encadenado hacia atrás: se arranca del predicado que se quiere («tener algo
+// carnoso en la mano»), se busca qué proceso lo establece, se mira qué le pide
+// ese proceso a cada rol, y lo que NO se tiene se vuelve a preguntar. La pesca
+// entera del documento de arquitectura sale de tres vueltas de eso y de ninguna
+// rama cableada: no hay `if (hambre) pescar`, no hay una receta «caña», no hay
+// una lista de objetos. Hay una tabla de qué establece qué y una búsqueda.
+//
+// ─── LO QUE NO ES, Y HAY QUE DECIRLO ANTES ──────────────────────────────────
+//
+// No es un planificador clásico sobre un espacio de ESTADOS. No hay simulación
+// del futuro, no hay «aplicar el efecto y ver cómo queda el mundo»: el ADR
+// II-0004 se lo prohíbe a las habilidades y acá no hace falta, porque la tabla
+// de esquemas ya dice qué queda establecido. La consecuencia buena es que una
+// expansión cuesta lecturas de la vista y nada más; la consecuencia incómoda es
+// que **el plan es una hipótesis**, no una promesa. `can()` del mundo tiene la
+// última palabra y va a rebotar cosas que acá salieron verdes. Eso está bien y
+// es el reparto de trabajo: el planificador propone barato y el mundo dispone.
+//
+// ─── LAS NUEVE DECISIONES ───────────────────────────────────────────────────
+//
+// 1. SE REGRESA SOBRE LA TABLA, NO SOBRE EL ÍNDICE, Y POR IMPLICACIÓN Y NO POR
+//    TEXTO. `SCHEMA_INDEX` está indexado por firma EXACTA, y lo que la regresión
+//    necesita es otra pregunta: «los esquemas cuyas promesas ENTRAN TODAS en esta
+//    conjunción». Dos cosas se apilan ahí. Una, que entra es SUBCONJUNTO:
+//    `extraccion` le pide al `gear` `catch>0 ∧ reach>=2` —dos cláusulas— y ningún
+//    esquema establece las dos; hay uno para cada una, los dos por `union`, y la
+//    regresión los junta en UNA aplicación. El documento de arquitectura escribe
+//    `SCHEMA_INDEX['catch>0 & reach>=2']` como si la llave conjuntiva existiera;
+//    no existe, y no es un olvido del tramo de esquemas: cada trozo de
+//    `Process.establishes` es UNA cláusula, así que una tabla derivada del
+//    catálogo no puede tener llaves conjuntivas. Dos, que «entra» se pregunta con
+//    `implica` y no con `includes`: `temperature>=400` GARANTIZA
+//    `temperature>=399`, y mientras esto se comparó por texto el mismo plan de
+//    cuatro pasos servía para los dos objetivos y el planificador sólo lo
+//    encontraba para uno.
+//
+// 2. UN NODO ES UNA PILA DE APLICACIONES A MEDIO ARMAR. La pesca no es una
+//    cadena: `extraccion` necesita `gear` Y `source`, y ninguno de los dos es
+//    subobjetivo del otro. Con un `falta` por nodo —lo que el andamio daba— eso
+//    no entra. La pila de `MarcoDePlan` es el nodo AND, y `falta` sigue siendo
+//    uno solo porque es el rol del tope que toca ahora.
+//
+// 3. LO QUE YA SE CUMPLE NO SE PLANIFICA, Y VALE PARA LOS ROLES TAMBIÉN. Si un
+//    cuerpo a la vista cumple el pedido, se liga y se sigue; no se abre además
+//    la rama de fabricarlo. Es la regla 6 del encargo llevada hacia adentro, y
+//    tiene su precio dicho: no hay vuelta atrás. Si el cuerpo elegido resulta
+//    inservible tres pasos después, el plan se cae y la mente replanifica —que
+//    es más barato que expandir las dos ramas 5000 veces por tick—.
+//
+// 4. EL COSTO SON LOS SEGUNDOS DE LOS PROCESOS Y NADA MÁS. La caminata NO entra,
+//    y no porque no importe: importa mucho. Entra el día que la vista diga a qué
+//    velocidad camina la criatura. Meter hoy un número inventado ahí ordenaría la
+//    búsqueda por una ficción, y una búsqueda ordenada por una ficción elige mal
+//    con cara de elegir bien. La consecuencia se ve en la pesca: los pasos salen
+//    en orden de ROL y no de cercanía, así que el plan camina de más. Está
+//    medido en el test y anotado como hueco.
+//
+// 5. LOS EMPATES SE ROMPEN POR CONTENIDO, NUNCA POR ORDEN DE LLEGADA. La cola se
+//    ordena por costo y después por una clave de texto armada con TODO lo que el
+//    nodo es (profundidad, pedido, pila, camino, manos). Desempatar por orden de
+//    inserción sería desempatar por el orden de `ESQUEMAS`, y entonces barajar la
+//    tabla —que no cambia lo que la física puede hacer— cambiaría el plan.
+//
+// 6. LA FRONTERA ES EL ESTADO ENTERO, INCLUIDOS LOS MUERTOS. `plan()` es anytime
+//    de verdad: cortar en 1, 7 o 64 expansiones y seguir tiene que dar EL MISMO
+//    resultado que una corrida sola. Eso obliga a que en la frontera viaje todo
+//    lo que la búsqueda mira, y lo que se olvida siempre es lo mismo: las ramas
+//    que ya murieron. Sin ellas el `gap` de una búsqueda cortada sería otro.
+//
+// 7. LOS CICLOS SE CORTAN CON EL LINAJE DEL NODO Y CON LA PROFUNDIDAD, LOS DOS.
+//    El linaje es la propia pila de marcos: si lo que ahora falta GARANTIZA lo
+//    que un marco de más abajo venía a establecer, conseguirlo pide tenerlo y la
+//    rama muere. La profundidad alcanza para que una cadena infinita sin repetir
+//    firma tampoco cuelgue, y ninguna de las dos sobra: un residuo intensivo que
+//    viaja al rol material puede fabricar firmas nuevas para siempre sin repetir
+//    ninguna. Acá hubo una lista de firmas COMPARTIDA POR TODA LA BÚSQUEDA y
+//    cortaba de más: mataba ramas HERMANAS —sacarle dos hebras al mismo matorral
+//    es legal, `split` no consume la fuente— con un mensaje que decía «más
+//    arriba» sobre algo que estaba al lado.
+//
+// 8. EL PEDIDO DE UN ROL TIENE DOS MITADES, Y SÓLO UNA SE REGRESA. La firma es lo
+//    que un proceso podría dejar establecido; el FILTRO es lo que ningún
+//    `establishes` promete ni va a prometer y por lo tanto sólo se puede
+//    encontrar: `portable > 0` cuando el `arrangement` es `held` (en la mano no
+//    entra un tronco de 20 kg) y la condición de celda del esquema (un pozo está
+//    en el agua). Mezclarlas hacía que el `gap` le pidiera a la fragua del Hito 8
+//    un proceso para volver liviano un leño.
+//
+// 9. LO QUE EL MUNDO VA A REBOTAR NO SE EMITE. `capacity`, `portable` y la celda
+//    del `source` son tres cosas que la vista contesta y que este módulo no
+//    miraba, y las tres terminaban en un `Motivo` del mundo —`manos-llenas`,
+//    `no-portable`, `sin-pozo`— después de haber mandado a caminar. Se pierden
+//    planes que quizás habrían salido; es el error barato, el mismo que elige
+//    `cumpleCuerpo`.
+//
+// Regla 2: no hay reloj, ni azar, ni `Math` trascendente, ni `await`. El
+// presupuesto se mide en EXPANSIONES (ADR II-0012) y no en milisegundos, que es
+// lo que hace que dos máquinas planifiquen igual.
+
+import type { Effect, Process, ProcessId, QualityId, QualityTest, Yield } from '@anima/physics'
+import { baseRoleName, isOptionalRole, specOf } from '@anima/physics'
+import type { BodyId, BodyView, Cell, Where, WhereCell } from '@anima/skills'
+import { distancia } from '@anima/skills/innatas'
+
+import { ESQUEMAS, procesoDe } from './esquemas.js'
+import { cumple, cumpleCuerpo, firmaDe, implica, interpretar, textoDe } from './predicado.js'
+import type {
+  ConstructionSchema,
+  Frontera,
+  GoalId,
+  GoalNode,
+  MarcoDePlan,
+  NodoAbierto,
+  OpcionesDePlan,
+  PedidoDeRol,
+  PlanResult,
+  Predicado,
+  PredicateSignature,
+  RamaMuerta,
+  Ref,
+  RoleName,
+  Step,
+  VistaDelPlan,
+} from './tipos.js'
+import { PROFUNDIDAD_MAXIMA } from './tipos.js'
+
+// ─── Preguntarle al catálogo en vez de escribir una tabla ───────────────────
+//
+// Todo lo que este bloque contesta se podría escribir como cuatro filas: «de
+// `union` sale un cuerpo nuevo», «`deshilachar` cobra al rol `actor`», «`friccion`
+// calienta el rol `a`». Cuatro filas que hoy serían ciertas y que el día que el
+// modelo escriba el quinto proceso quedarían mudas sobre él —que es el día para
+// el que se hizo todo esto—. Así que se leen del `Process`, que es el mismo dato
+// que el mundo va a ejecutar.
+
+/**
+ * ¿De aplicar esto sale un cuerpo NUEVO, o lo que promete queda sobre un cuerpo
+ * que ya existía?
+ *
+ * La diferencia decide cómo lo nombra el paso de arriba. `union` consume la vara
+ * y la liana y crea la caña con un id que no existía (`world/src/step.ts`, caso
+ * `'join'`): el `extraccion` que la va a usar de `gear` sólo la puede nombrar
+ * como `{k:'rinde'}`. `friccion` no tiene `completion`, no rinde nada, y los 400
+ * grados quedan sobre el cuerpo que ya se le pasó como rol `a`: ahí el `Ref` del
+ * rendimiento ES el `Ref` del rol.
+ *
+ * `transmute` cuenta como «no rinde cuerpo» y no es un descuido: transforma la
+ * materia del rol en el lugar, sin id nuevo. Hoy el mundo lo rechaza con
+ * `no-implementado`, así que ningún esquema puede apoyarse en él igual.
+ */
+function rindeCuerpoNuevo(p: Process): boolean {
+  for (const y of p.completion?.yields ?? []) {
+    if (y.k === 'join' || y.k === 'split' || y.k === 'drawFromStock') return true
+  }
+  return false
+}
+
+/**
+ * EL ROL MATERIAL: de cuál de los roles sale lo que se obtiene.
+ *
+ * Sirve para dos cosas y las dos son estructurales. Una: cuando el proceso no
+ * rinde cuerpo nuevo, el rendimiento ES ese rol. Dos: es el único rol al que
+ * tiene sentido pasarle un residuo —una cláusula que la conjunción pedía y que
+ * ningún esquema del proceso establece—, porque es el que aporta la materia y
+ * por lo tanto sus cualidades intensivas.
+ *
+ * Sale del `Yield` y no de una tabla: `split` parte al `role`, `join` se queda
+ * con la forma y las partes de `a` (`unir` en `physics/src/leyes.ts`:
+ * `form: a.form`), `transmute` transforma al `role`. `drawFromStock` no tiene
+ * ninguno —lo que sale del pozo lo decreta el dios, no lo aporta ningún rol— y
+ * por eso devuelve `undefined`: pasarle un residuo a la caña con la que se pesca
+ * sería pedirle a la caña que tenga las cualidades del pescado.
+ *
+ * Sin `completion` se mira el `drive`: `friccion` empuja la temperatura del rol
+ * `on`, o sea `a`, y ése es el cuerpo que queda caliente.
+ */
+function rolMaterialDe(p: Process): RoleName | undefined {
+  for (const y of p.completion?.yields ?? []) {
+    const r = rolDeRendimiento(y)
+    if (r !== undefined) return r
+  }
+  for (const e of p.effects) {
+    if (e.k === 'drive') return baseRoleName(e.on)
+  }
+  return undefined
+}
+
+function rolDeRendimiento(y: Yield): RoleName | undefined {
+  switch (y.k) {
+    case 'split':
+      return baseRoleName(y.role)
+    case 'join':
+      return baseRoleName(y.a)
+    case 'transmute':
+      return baseRoleName(y.role)
+    case 'drawFromStock':
+      return undefined
+  }
+}
+
+/**
+ * EL ROL QUE PAGA, que es siempre la criatura y nunca se planifica.
+ *
+ * La tentación es mirar si el rol se llama `'actor'`. No se hace, por lo mismo de
+ * siempre: un proceso que escriba el modelo puede llamarlo `quien` y la regla se
+ * quedaría muda. Lo que se mira es de dónde sale la `stamina` —el `poweredBy` de
+ * un `drive` o el `drain` de un `drain`—, porque `stamina` es la cualidad
+ * conservada que sólo tienen las criaturas.
+ *
+ * Y una vez encontrado, sus condiciones se verifican CONTRA LA CRIATURA. Ése es
+ * medio hueco menos de los que el tramo de esquemas dejó anotados: `friccion`
+ * pide `stamina >= 1` y `deshilachar` `stamina >= 3`, y una criatura vacía deja
+ * de planificar un fuego que no le va a salir. El otro medio sigue abierto y hay
+ * que decirlo: el techo de `heatCapacity` del esquema es el de un tanque LLENO,
+ * y eso no se verifica acá porque el esquema no dice a cuánta stamina se calculó.
+ */
+function rolQuePaga(p: Process): RoleName | undefined {
+  for (const e of p.effects) {
+    const r = rolPagadorDe(e)
+    if (r !== undefined) return r
+  }
+  return undefined
+}
+
+function rolPagadorDe(e: Effect): RoleName | undefined {
+  if (e.k === 'drive' && e.poweredBy?.q === 'stamina') return baseRoleName(e.poweredBy.from)
+  if (e.k === 'drain' && e.q === 'stamina') return baseRoleName(e.on)
+  return undefined
+}
+
+/**
+ * ¿Hay que tenerlo en la mano, o alcanza con estar cerca?
+ *
+ * `arrangement: {k:'held'}` son los tres procesos de taller —atar, deshilachar,
+ * frotar— y ahí el paso `sostener` no es una cortesía: sin él, `can()` rebota. El
+ * pozo de peces es `{k:'within', radius:1}` y no se levanta: se pesca desde la
+ * orilla. Se lee del catálogo porque la superficie no lo dice —lo dice `can()`
+ * cuando ya es tarde—, que es exactamente lo que anota el contrato de `unir`.
+ */
+function hayQueTenerloEnLaMano(p: Process): boolean {
+  return p.arrangement.k === 'held'
+}
+
+/** A qué distancia hay que llegar. `within` trae la suya; el resto, pegado. */
+function alcanceDe(p: Process): number {
+  return p.arrangement.k === 'within' ? p.arrangement.radius : 1
+}
+
+/** Qué cuerpos deja de haber después de aplicar esto. */
+function consumidosPor(p: Process, roles: Readonly<Record<RoleName, Ref>>): readonly BodyId[] {
+  const out: BodyId[] = []
+  const anotar = (rol: string | undefined): void => {
+    if (rol === undefined) return
+    const ref = roles[baseRoleName(rol)]
+    if (ref !== undefined && ref.k === 'id' && !out.includes(ref.id)) out.push(ref.id)
+  }
+  for (const y of p.completion?.yields ?? []) {
+    switch (y.k) {
+      case 'join':
+        // Las tres piezas se van: `sacarCuerpo` las saca del mundo y de las manos.
+        anotar(y.a)
+        anotar(y.b)
+        anotar(y.via)
+        break
+      case 'transmute':
+        anotar(y.role)
+        break
+      // `split` NO consume: el `resto` vuelve al mundo con el mismo id, que es lo
+      // que hace posible deshilachar el leño y después frotar contra el leño.
+      case 'split':
+      case 'drawFromStock':
+        break
+    }
+  }
+  return out
+}
+
+/** Lo que el proceso ya le exige a un rol. Lanza si el esquema nombra un rol que no existe. */
+function whereDelProceso(p: Process, rol: RoleName): Where | undefined {
+  for (const r of p.roles) if (baseRoleName(r.name) === rol) return r.where
+  return undefined
+}
+
+/**
+ * Los roles SIN los que el proceso no corre, leídos del sufijo `?` del nombre.
+ *
+ * `Role` no tiene campo `optional` y la opcionalidad viaja en el nombre —`'b?'`—
+ * a propósito, así que la pregunta se le hace a `isOptionalRole` del catálogo y
+ * no a una lista de acá. Un proceso que el modelo escriba mañana declara su rol
+ * opcional y esta función lo entiende sin que nadie la toque.
+ */
+function rolesObligatorios(p: Process): readonly RoleName[] {
+  const out: RoleName[] = []
+  for (const r of p.roles) if (!isOptionalRole(r.name)) out.push(baseRoleName(r.name))
+  return out
+}
+
+/**
+ * EL PEDIDO QUE EL `arrangement` AGREGA Y NINGÚN ESQUEMA ESCRIBE: `portable > 0`.
+ *
+ * `arrangement: {k:'held'}` quiere decir que el mundo va a exigir los cuerpos EN
+ * LA MANO al mismo tiempo (`arregloOk`), y en la mano no entra cualquier cosa:
+ * `portable` es `step(PORTABLE_MAX_MASS, mass)`, o sea cero en cuanto la masa
+ * pasa de 8 kg, y `take` rebota con `no-portable`. Medido: el rol `b` de
+ * `friccion` sólo pide `rigidity >= 0.5`, así que un tronco de 20 kg calificaba,
+ * y como estaba más cerca que la ramita, GANABA — el plan salía verde y el mundo
+ * contestaba `no-portable`.
+ *
+ * Sale del `arrangement` y no de las ocho filas por la misma razón que
+ * `segundos` sale de `completion`: escribirlo en cada fila sería la segunda copia
+ * de una regla que el `Process` ya dice, y quedaría muda sobre el proceso que
+ * escriba el modelo. Un proceso nuevo que pida `held` hereda esta exigencia sola.
+ */
+const PORTABLE: QualityTest = { q: 'portable', op: '>', v: 0 }
+
+// ─── Firmas y cláusulas ─────────────────────────────────────────────────────
+
+/**
+ * Una firma conjuntiva de vuelta en cláusulas. `undefined` si alguna no se
+ * entiende, y eso NO se saltea: una conjunción de la que se descarta un trozo es
+ * una conjunción más floja, o sea una promesa más grande que la que se puede
+ * cumplir. Es el pecado de `parsePromesa` visto desde el otro lado.
+ *
+ * ─── LA FIRMA VACÍA ES CERO CLÁUSULAS, NO UNA CLÁUSULA ILEGIBLE ─────────────
+ *
+ * Y la diferencia no es filosófica: costó un bug. `union` declara su rol `a` con
+ * `where: []` y el esquema de `catch>0` lo pide con `a: []`, así que hay un rol
+ * REAL de la tabla semilla cuya exigencia es la conjunción vacía —«cualquier
+ * cosa sirve»—. Devolviendo `undefined` ahí, `armarMarco` rechazaba `union`
+ * entera con el motivo «el pedido del rol no se entiende», y la única razón de
+ * que la pesca funcionara igual es que ese rol se pide JUNTO con `reach>=2`, que
+ * sí trae cláusula. El día que alguien pidiera `catch>0` solo, no había caña.
+ *
+ * Se descubrió por mutación —el desempate de la cola no se podía probar porque
+ * la rama que debía empatar moría antes— y está pinado por su propio test.
+ */
+function clausulasDe(firma: PredicateSignature): readonly Predicado[] | undefined {
+  const out: Predicado[] = []
+  for (const trozo of firma.split('&')) {
+    if (trozo.length === 0) continue
+    const p = interpretar(trozo)
+    if (p === undefined) return undefined
+    out.push(p)
+  }
+  return out
+}
+
+/** Un puñado de tests de cualidad de vuelta en firma, normalizada por `firmaDe`. */
+function firmaDeTests(tests: readonly QualityTest[]): PredicateSignature {
+  const textos: string[] = []
+  for (const t of tests) textos.push(textoDe({ k: 'cualidad', test: t }))
+  return firmaDe(textos.join('&'))
+}
+
+/** Los tests de cualidad de una conjunción, para pedírselos al índice del mundo. */
+function testsDe(clausulas: readonly Predicado[]): QualityTest[] {
+  const out: QualityTest[] = []
+  for (const p of clausulas) if (p.k === 'cualidad') out.push(p.test)
+  return out
+}
+
+/**
+ * Hasta qué temperatura hay que frotar, leído del predicado que se persigue.
+ *
+ * Sin esto, `frotar` cae en su valor por defecto —`ignitionPoint` del cuerpo— y
+ * eso es OTRA cosa: el objetivo `temperature>=400` de `friccion` no es el punto
+ * de ignición de nadie, es el techo al que empuja el proceso. Dejar que se
+ * confundan hace que la criatura frote de menos o de más según qué agarró.
+ */
+function hastaDe(clausulas: readonly Predicado[]): number | undefined {
+  for (const p of clausulas) {
+    if (p.k !== 'cualidad') continue
+    if (p.test.q !== 'temperature') continue
+    if (p.test.op !== '>=' && p.test.op !== '>') continue
+    return p.test.v
+  }
+  return undefined
+}
+
+/** Las claves de un registro, en orden total. `<` y no `localeCompare`: regla 2. */
+function nombresOrdenados(r: Readonly<Record<string, unknown>>): readonly string[] {
+  return Object.keys(r).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+}
+
+// ─── Elegir un cuerpo de los que se ven ─────────────────────────────────────
+
+/**
+ * El cuerpo que cumple TODA la conjunción, o `undefined`.
+ *
+ * El orden de preferencia tiene dos escalones y los dos son totales:
+ *
+ *   1. LO QUE YA ESTÁ EN LA MANO GANA. No es cariño por lo propio: un cuerpo en
+ *      la mano no cuesta ni caminata ni `sostener`, y encima viaja con la
+ *      criatura, así que ningún paso posterior lo puede perder de vista. Cuenta
+ *      como «en la mano» lo que el plan YA se comprometió a agarrar, no sólo lo
+ *      que está agarrado hoy: el plan es una secuencia, y para cuando llegue el
+ *      paso, la mano va a estar llena de lo que los pasos de antes pusieron.
+ *   2. DESPUÉS, EL MÁS CERCANO, Y EL EMPATE LO ROMPE EL `id`. La métrica es la
+ *      `distancia` de `@anima/skills/innatas` —Chebyshev, la de `aMano()`—
+ *      IMPORTADA, la misma que usa `referencias.ts`. Dos métricas contra el mismo
+ *      `within` es el bug que en la grilla se ve como «a veces no llega».
+ *
+ * `see(tests)` es un PREFILTRO y no la respuesta: las geometrías no entran en un
+ * `Where`, y los cuerpos en la mano pueden no venir en `see`. La última palabra
+ * la tiene `cumpleCuerpo` sobre cada cláusula, que es la misma definición de
+ * «este cuerpo lo cumple» que usa el resto del paquete.
+ *
+ * `excluidos` son dos cosas: los cuerpos que este mismo marco ya ligó a otro rol
+ * —una vara no se frota contra sí misma, y `friccion` con `a === b` es un proceso
+ * que el mundo rebota después de haber gastado el turno— y los que el plan YA SE
+ * COMIÓ. Lo segundo no es refinamiento: sin eso, el plan de la pesca manda a
+ * pescar adentro del matorral que el paso anterior convirtió en caña, porque el
+ * rol `source` de `extraccion` sólo pide `mass > 0` y el matorral está más cerca
+ * que el río.
+ */
+function elegirCuerpo(
+  clausulas: readonly Predicado[],
+  extra: Extra,
+  v: VistaDelPlan,
+  enMano: readonly BodyId[],
+  excluidos: readonly BodyId[],
+): BodyView | undefined {
+  return candidatosPara(clausulas, extra, v, enMano, excluidos).mejor
+}
+
+/**
+ * Lo que un rol pide y no se puede fabricar: se filtra y no se regresa.
+ *
+ * Es `PedidoDeRol` sin la firma — la firma es lo otro, lo que sí se regresa—, y
+ * está acá como tipo propio para que las cuatro funciones que lo pasan de mano en
+ * mano no lo desarmen en dos parámetros que un día alguien va a mezclar.
+ */
+interface Extra {
+  readonly filtro?: Where
+  readonly celda?: WhereCell
+}
+
+const SIN_EXTRA: Extra = {}
+
+/** Las cláusulas del filtro de cuerpo, en el vocabulario de `Predicado`. */
+function comoPredicados(w: Where | undefined): readonly Predicado[] {
+  if (w === undefined) return []
+  return w.map((test) => ({ k: 'cualidad', test }) as const)
+}
+
+/**
+ * ¿La celda donde está este cuerpo cumple lo que el rol le pide al lugar?
+ *
+ * Se pregunta con `v.qAt`, que es la misma lectura de terreno que va a hacer la
+ * habilidad cuando ejecute. Sin condición, cualquier celda sirve — que es el caso
+ * de siete de las ocho filas.
+ */
+function cumpleCelda(celda: WhereCell | undefined, at: Cell, v: VistaDelPlan): boolean {
+  if (celda === undefined) return true
+  for (const t of celda) {
+    const x = v.qAt(at, t.q)
+    const pasa = t.op === '>=' ? x >= t.v : t.op === '<=' ? x <= t.v : t.op === '>' ? x > t.v : x < t.v
+    if (!pasa) return false
+  }
+  return true
+}
+
+/**
+ * El mejor candidato Y CUÁNTOS HAY, del mismo barrido.
+ *
+ * El conteo no es curiosidad: es lo que ordena los roles. Ver `armarMarco`.
+ */
+function candidatosPara(
+  clausulas: readonly Predicado[],
+  extra: Extra,
+  v: VistaDelPlan,
+  enMano: readonly BodyId[],
+  excluidos: readonly BodyId[],
+): { readonly mejor: BodyView | undefined; readonly cuantos: number } {
+  const lector = (b: BodyView, id: QualityId): number => v.q(b, id)
+  const filtro = comoPredicados(extra.filtro)
+  const vistos = new Set<BodyId>()
+  let mejor: BodyView | undefined
+  let mejorEnMano = false
+  let mejorD = 0
+  let cuantos = 0
+
+  const mirar = (b: BodyView): void => {
+    // La criatura no se presta como material: el único rol que puede jugar es el
+    // que paga, y ése se liga a `{k:'yo'}` sin pasar por acá.
+    if (b.id === v.self.id) return
+    if (excluidos.includes(b.id)) return
+    if (vistos.has(b.id)) return
+    vistos.add(b.id)
+    for (const p of clausulas) if (!cumpleCuerpo(p, b, lector)) return
+    for (const p of filtro) if (!cumpleCuerpo(p, b, lector)) return
+    // La celda se pregunta DESPUÉS de las cláusulas de cuerpo y no antes: es una
+    // lectura de terreno por candidato, y las cláusulas ya descartaron casi todo.
+    if (!cumpleCelda(extra.celda, b.at, v)) return
+    cuantos++
+    const suyoEnMano = enMano.includes(b.id)
+    const d = distancia(b.at, v.self.at)
+    if (mejor === undefined || ganaA(suyoEnMano, d, b.id, mejorEnMano, mejorD, mejor.id)) {
+      mejor = b
+      mejorEnMano = suyoEnMano
+      mejorD = d
+    }
+  }
+
+  for (const b of v.self.holding) mirar(b)
+  for (const b of v.see([...testsDe(clausulas), ...(extra.filtro ?? [])])) mirar(b)
+  return { mejor, cuantos }
+}
+
+/** Los tres criterios en una sola comparación: separarlos deja ventanas de empate. */
+function ganaA(
+  enMano: boolean,
+  d: number,
+  id: BodyId,
+  otroEnMano: boolean,
+  otroD: number,
+  otroId: BodyId,
+): boolean {
+  if (enMano !== otroEnMano) return enMano
+  if (d !== otroD) return d < otroD
+  return id < otroId
+}
+
+// ─── Emitir los pasos de un marco ya completo ───────────────────────────────
+
+interface Emision {
+  readonly pasos: readonly Step[]
+  readonly enMano: readonly BodyId[]
+  readonly gastados: readonly BodyId[]
+}
+
+/** Lo que devuelve todo lo que puede fracasar sin que sea un error de programa. */
+interface Rechazo {
+  readonly rechazo: string
+}
+
+/**
+ * Un marco con todos los roles resueltos se convierte en pasos: primero ir a
+ * buscar cada pieza (y agarrarla, si el proceso las quiere en la mano), después
+ * aplicar.
+ *
+ * El orden entre los roles es el ALFABÉTICO del nombre del rol, y hay que decir
+ * lo que eso cuesta: la pesca sale con `ir(vara)` antes que `ir(matorral)`
+ * porque `a < binder`, aunque el matorral esté más cerca. Ordenar por cercanía
+ * sería mejor plan y peor honestidad: el costo de la búsqueda no cuenta la
+ * caminata (decisión 4), así que optimizarla acá sería optimizar algo que la
+ * búsqueda no midió, con un criterio que se evalúa sobre la vista de HOY y se
+ * ejecuta decenas de ticks después. Queda anotado como hueco.
+ *
+ * Los `Ref` que no son `id` no generan caminata y eso es exacto: `{k:'yo'}` es la
+ * criatura, que ya está donde está, y `{k:'rinde'}` es algo que el paso anterior
+ * acaba de fabricar —y lo que se fabrica con las manos queda en las manos
+ * (`destinoDeUnNacido`)—.
+ */
+function emitirMarco(
+  m: MarcoDePlan,
+  enMano: readonly BodyId[],
+  gastados: readonly BodyId[],
+  capacidad: number,
+): Emision | Rechazo {
+  const p = procesoDe(m.via)
+  const aLaMano = hayQueTenerloEnLaMano(p)
+  const alcance = alcanceDe(p)
+  const pasos: Step[] = []
+  const mano: BodyId[] = [...enMano]
+
+  for (const rol of nombresOrdenados(m.roles)) {
+    const ref = m.roles[rol]
+    if (ref === undefined || ref.k !== 'id') continue
+    if (mano.includes(ref.id)) continue
+    const porQue = m.porRol[rol] ?? m.establece
+    pasos.push({ k: 'ir', a: ref, within: alcance, porQue })
+    if (aLaMano) {
+      // ─── LAS MANOS SON DOS, Y HASTA ACÁ EL PLAN CONTABA HASTA INFINITO ────
+      //
+      // `arregloOk` exige que TODOS los cuerpos ligados estén agarrados al mismo
+      // tiempo, y `take` rebota con `manos-llenas` en cuanto se pasa de
+      // `capacity`. Medido: con `capacity: 1` y dos varas, el plan salía
+      // «ir(v1)·sostener(v1)·ir(v2)·sostener(v2)·frotar» y el mundo contestaba
+      // `manos-llenas` en el segundo `sostener`.
+      //
+      // Se RECHAZA en vez de soltar algo, y hay que decir de qué lado se
+      // equivoca. Soltar sería mejor plan —`poner` está en `Step`— y es una
+      // decisión más grande que ésta: hay que elegir QUÉ se suelta (lo que
+      // ningún marco de la pila vaya a volver a pedir, y la pila no lo sabe
+      // hasta que cierra) y DÓNDE, y `poner` quiere un `Ref` de celda, o sea una
+      // foto de dónde está la criatura HOY para un paso que se ejecuta decenas
+      // de ticks después. Rechazar pierde planes que habrían salido; emitir un
+      // `sostener` que el mundo rebota manda a la criatura a hacer un viaje al
+      // pedo. Es el error barato, el mismo que elige `cumpleCuerpo`.
+      //
+      // Y la cuenta es CONSERVADORA por otro lado más: `enMano` nunca se vacía
+      // sola. Lo que un marco anterior mandó a agarrar sigue contando aunque ya
+      // no lo necesite nadie, porque el plan no tiene ningún paso que suelte.
+      if (mano.length >= capacidad) {
+        return {
+          rechazo:
+            `«${m.establece}» por «${m.via}» necesita «${ref.id}» en la mano y no entra: ` +
+            `la mano ya lleva ${String(mano.length)} y la capacidad es ${String(capacidad)}`,
+        }
+      }
+      pasos.push({ k: 'sostener', que: ref, porQue })
+      mano.push(ref.id)
+    }
+  }
+
+  pasos.push(pasoDelProceso(m, p))
+  const consumidos = consumidosPor(p, m.roles)
+  const comidos = [...gastados]
+  for (const id of consumidos) if (!comidos.includes(id)) comidos.push(id)
+  return { pasos, enMano: mano.filter((id) => !consumidos.includes(id)), gastados: comidos }
+}
+
+/**
+ * El paso que aplica el proceso, en la variante de `Step` que le corresponde.
+ *
+ * Los tres azúcares —`unir`, `deshilachar`, `frotar`— existen en el tipo, así que
+ * emitir `aplicar` para todo los dejaría muertos y le pasaría a la mente un
+ * `roles` genérico donde el tipo ya sabe distinguir. Y hay una cosa que los tres
+ * dicen y `aplicar` no: **el rol que paga no viaja en el paso**. `frotar` no
+ * lleva `actor` porque la habilidad innata pasa `ctx.self` y no puede pasar otra
+ * cosa; escribirlo en el paso sería ofrecer una elección que no existe.
+ */
+function pasoDelProceso(m: MarcoDePlan, p: Process): Step {
+  const porQue = m.establece
+  const rinde = m.rinde
+  if (m.via === 'union') {
+    const binder = exigirRef(m, 'binder')
+    const a = exigirRef(m, 'a')
+    const b = m.roles['b']
+    // El rol opcional AUSENTE es la caña entera: con `b` el atador se gasta como
+    // `Joint.via`, no queda hebra, no queda punta libre y `catch` da cero. Se
+    // omite la clave y no se manda `undefined`: con `exactOptionalPropertyTypes`
+    // no son lo mismo, y el que lee el paso tiene que ver la ausencia.
+    return b === undefined
+      ? { k: 'unir', binder, a, porQue, rinde }
+      : { k: 'unir', binder, a, b, porQue, rinde }
+  }
+  if (m.via === 'deshilachar') {
+    // UNA hebra. Pedir más sería una decisión que nadie tomó: el esquema
+    // establece que hace falta UN cuerpo que cumpla algo, y con uno se cumple.
+    return { k: 'deshilachar', fuente: exigirRef(m, 'source'), cuantas: 1, porQue, rinde }
+  }
+  if (m.via === 'friccion') {
+    const hasta = hastaDe(clausulasDe(m.establece) ?? [])
+    const a = exigirRef(m, 'a')
+    const b = exigirRef(m, 'b')
+    return hasta === undefined ? { k: 'frotar', a, b, porQue } : { k: 'frotar', a, b, hasta, porQue }
+  }
+  return rindeCuerpoNuevo(p)
+    ? { k: 'aplicar', proceso: m.via, roles: m.roles, porQue, rinde }
+    : { k: 'aplicar', proceso: m.via, roles: m.roles, porQue }
+}
+
+function exigirRef(m: MarcoDePlan, rol: RoleName): Ref {
+  const ref = m.roles[rol]
+  if (ref === undefined) {
+    throw new Error(`el marco de «${m.establece}» por «${m.via}» quedó sin el rol «${rol}»`)
+  }
+  return ref
+}
+
+/**
+ * Cómo nombra el marco de abajo lo que éste produce.
+ *
+ * Cuerpo nuevo → `{k:'rinde'}`, que es la ligadura diferida del ADR 0082: nombra
+ * algo que TODAVÍA NO EXISTE cuando el plan se arma. Sin cuerpo nuevo → el `Ref`
+ * del rol material, porque lo que quedó establecido quedó sobre él: la yesca
+ * caliente es la yesca, no un rendimiento.
+ */
+function refDelRendimiento(m: MarcoDePlan): Ref {
+  const p = procesoDe(m.via)
+  if (rindeCuerpoNuevo(p)) return { k: 'rinde', de: m.rinde }
+  const material = rolMaterialDe(p)
+  if (material === undefined) {
+    throw new Error(`«${m.via}» no rinde cuerpo nuevo y tampoco tiene rol material: no hay qué nombrar`)
+  }
+  return exigirRef(m, material)
+}
+
+// ─── Cerrar los marcos que ya no esperan nada ───────────────────────────────
+
+/**
+ * Emite y desapila todos los marcos que quedaron completos, en cascada.
+ *
+ * La cascada es el corazón: cuando el marco de `union` se completa, lo que rinde
+ * llena el `gear` del marco de `extraccion`, y si ése era su último rol, también
+ * se completa. Un solo paso de ligadura puede terminar el plan entero.
+ *
+ * Cuando se desapila el marco RAÍZ el nodo queda TERMINAL: `marcos` vacía y
+ * `falta` en `''`. No se devuelve el plan de una: se devuelve el nodo, se lo
+ * mete en la cola y se lo saca por costo como a cualquier otro. Devolverlo de
+ * una haría que el primer plan encontrado ganara sobre uno más barato que ya
+ * estaba en la cola — y encima haría que el corte por presupuesto cayera en un
+ * lugar distinto según qué rama se estaba mirando.
+ */
+function cerrar(base: NodoAbierto, capacidad: number): NodoAbierto | Rechazo {
+  let camino = base.camino
+  let enMano = base.enMano
+  let gastados = base.gastados
+  const marcos = [...base.marcos]
+
+  for (;;) {
+    const tope = marcos[marcos.length - 1]
+    if (tope === undefined || tope.faltan.length > 0) break
+    const e = emitirMarco(tope, enMano, gastados, capacidad)
+    if ('rechazo' in e) return e
+    camino = [...camino, ...e.pasos]
+    enMano = e.enMano
+    gastados = e.gastados
+    marcos.pop()
+    if (tope.paraRol === undefined) {
+      return { falta: '', camino, profundidad: 0, costo: base.costo, marcos: [], enMano, gastados }
+    }
+    const padre = marcos[marcos.length - 1]
+    if (padre === undefined) {
+      throw new Error(`«${tope.establece}» dice llenar el rol «${tope.paraRol}» y abajo no hay marco`)
+    }
+    const rol = tope.paraRol
+    marcos[marcos.length - 1] = {
+      ...padre,
+      roles: { ...padre.roles, [rol]: refDelRendimiento(tope) },
+      faltan: padre.faltan.filter((q) => q.rol !== rol),
+    }
+  }
+
+  const tope = marcos[marcos.length - 1]
+  const siguiente = tope?.faltan[0]
+  if (siguiente === undefined) {
+    throw new Error('un nodo se quedó sin marcos y sin meta: la búsqueda perdió su propio estado')
+  }
+  return {
+    falta: siguiente.firma,
+    camino,
+    profundidad: marcos.length,
+    costo: base.costo,
+    marcos,
+    enMano,
+    gastados,
+  }
+}
+
+// ─── Regresar: de un pedido a una aplicación de proceso ─────────────────────
+
+type Resultado =
+  | { readonly k: 'nodos'; readonly nodos: readonly NodoAbierto[] }
+  | { readonly k: 'muerto'; readonly muerto: RamaMuerta }
+
+interface Armado {
+  readonly marco: MarcoDePlan
+  readonly segundos: number
+}
+
+/**
+ * Los esquemas de este proceso cuyas promesas ENTRAN TODAS en el pedido.
+ *
+ * «Entran» y no «son iguales», por dos motivos distintos que se acumulan:
+ *
+ *   · SUBCONJUNTO. `catch>0 ∧ reach>=2` no lo establece ningún esquema solo, y lo
+ *     establecen DOS —los dos por `union`— que juntos lo cubren entero. Una sola
+ *     aplicación de `union` deja las dos cosas, así que se aplican los dos
+ *     esquemas a la vez y se cobra el segundo UNA vez.
+ *   · IMPLICACIÓN. Una promesa entra si GARANTIZA alguna cláusula del pedido, no
+ *     si se escribe igual. Con la comparación de texto que había acá,
+ *     `temperature>=400` tenía plan y `temperature>=399` era un `gap` — el mismo
+ *     plan de cuatro pasos cumple los dos, y el planificador no lo encontraba
+ *     para el más flojo. Ver `implica` en `predicado.ts`.
+ */
+function esquemasQueAportan(
+  todos: readonly ConstructionSchema[],
+  via: ProcessId,
+  pedido: readonly Predicado[],
+): readonly ConstructionSchema[] {
+  const out: ConstructionSchema[] = []
+  for (const e of todos) {
+    if (e.via !== via) continue
+    const cl = clausulasDe(firmaDe(e.establishes))
+    if (cl === undefined) continue
+    let cabe = true
+    for (const p of cl) if (!pedido.some((q) => implica(p, q))) cabe = false
+    if (cabe) out.push(e)
+  }
+  return out
+}
+
+/**
+ * Bajo qué `GoalId` se anota lo que rinda un marco.
+ *
+ * Sale del CONTENIDO —qué establece y por qué camino de roles se llegó hasta
+ * él— y no de un contador. Un contador global haría que la misma partida
+ * planificada dos veces diera dos planes que no son iguales para nada que los
+ * compare, que es el mismo bug que `objetivos.ts` documenta para los `GoalId`.
+ *
+ * ─── Y POR QUÉ EL CAMINO ENTERO Y NO LA PROFUNDIDAD ─────────────────────────
+ *
+ * Porque la profundidad NO ES ÚNICA entre hermanos, y en cuanto el corte de
+ * ciclos dejó de ser global apareció el caso: `friccion` necesita dos cuerpos
+ * rígidos, `deshilachar` los fabrica, y salen DOS marcos a la misma altura de la
+ * pila estableciendo la misma firma —uno para el rol `a` y otro para el `b`—.
+ * Con `firma@profundidad`, los dos rendían bajo la misma llave y el plan frotaba
+ * la hebra contra sí misma. Con el camino de roles, `rigidity>=0.5@./a` y
+ * `rigidity>=0.5@./b` son dos hebras distintas, que es lo que son.
+ */
+function rindeDe(nodo: NodoAbierto, paraRol: RoleName | undefined): GoalId {
+  const camino: string[] = ['.']
+  for (const m of nodo.marcos) if (m.paraRol !== undefined) camino.push(m.paraRol)
+  if (paraRol !== undefined) camino.push(paraRol)
+  return `${nodo.falta}@${camino.join('/')}`
+}
+
+/**
+ * Un marco listo para entrar en la pila, o el motivo por el que este proceso no
+ * sirve para este pedido.
+ *
+ * Cada rechazo se escribe con su porqué porque los rechazos SON el `gap`: cuando
+ * ninguna vía sirve, lo que la criatura le va a pedir a la fragua del Hito 8 es
+ * exactamente esta lista.
+ */
+function armarMarco(
+  nodo: NodoAbierto,
+  g: GoalNode,
+  via: ProcessId,
+  usados: readonly ConstructionSchema[],
+  residuo: readonly Predicado[],
+  v: VistaDelPlan,
+): Armado | Rechazo {
+  const p = procesoDe(via)
+  const primero = usados[0]
+  if (primero === undefined) return { rechazo: `«${via}» no aporta ninguna cláusula` }
+
+  // Los esquemas de una misma aplicación tienen que nombrar LOS MISMOS roles. Si
+  // uno nombra `b` y otro lo omite, la aplicación que salga va a llenar `b`, y el
+  // que lo omitía lo omitía por algo: en `union`, con `b` lleno el atador se gasta
+  // y `catch` da cero. Juntarlos en silencio daría un plan verde y una caña que
+  // no engancha. Se rechaza y se dice.
+  const roles = nombresOrdenados(primero.roleHints)
+  const clave = roles.join(',')
+  for (const e of usados) {
+    const suyos = nombresOrdenados(e.roleHints).join(',')
+    if (suyos !== clave) {
+      return {
+        rechazo:
+          `«${e.establishes}» y «${primero.establishes}» van los dos por «${via}» pero no nombran los mismos roles ` +
+          `(«${suyos}» contra «${clave}»): una aplicación no puede llenar un rol y omitirlo a la vez`,
+      }
+    }
+  }
+
+  // ─── Y LA TERCERA: QUE ESTÉN TODOS LOS QUE EL PROCESO NECESITA ────────────
+  //
+  // Las dos guardas de arriba revisan que los esquemas se pongan de acuerdo entre
+  // ellos y que cada rol que nombran EXISTA en el proceso. Faltaba la simétrica:
+  // que no falte ninguno de los que el proceso no puede correr sin ellos. Y no es
+  // una hipótesis de laboratorio — `opciones.esquemas` es entrada pública y es lo
+  // que va a escribir la fragua del Hito 8. Medido con la tabla real y UNA fila
+  // mutilada, las dos formas de fallar que esto cierra de una:
+  //
+  //   · `extraccion` sin `source` daba un plan VERDE que pescaba sin río: un
+  //     `aplicar` sin la clave `source`, sin ningún `ir` hasta el pozo, y el mundo
+  //     rechazándolo con `rol-sin-cuerpo`;
+  //   · `friccion` sin `b` LANZABA desde `exigirRef`, en el medio de la búsqueda.
+  //     Y eso contradice lo que este mismo paquete argumenta en `predicado.ts`
+  //     para que `cumpleCuerpo` devuelva `false` en vez de tirar: «una excepción
+  //     en el medio de la búsqueda voltea el tick de las 5000 criaturas por un
+  //     predicado mal escrito». Acá lo volteaba una FILA mal escrita.
+  //
+  // El motivo va a parar al `why` del `gap`, con el nombre del rol adentro, que es
+  // donde el Hito 8 lo tiene que leer. Y `exigirRef` queda siendo lo que dice ser:
+  // un invariante interno que ya no se puede violar desde afuera.
+  const faltantes = rolesObligatorios(p).filter((r) => primero.roleHints[r] === undefined)
+  if (faltantes.length > 0) {
+    return {
+      rechazo:
+        `el esquema de «${primero.establishes}» por «${via}» no nombra ` +
+        `${faltantes.map((r) => `«${r}»`).join(' ni ')}, que «${via}» necesita sí o sí`,
+    }
+  }
+
+  const material = rolMaterialDe(p)
+  if (residuo.length > 0 && material === undefined) {
+    return { rechazo: `«${via}» no tiene rol material: no hay a quién pasarle el residuo` }
+  }
+  const paga = rolQuePaga(p)
+
+  const resueltos: Record<RoleName, Ref> = {}
+  const porRol: Record<RoleName, PredicateSignature> = {}
+  const pendientes: { readonly pedido: PedidoDeRol; readonly cuantos: number }[] = []
+
+  const aLaMano = hayQueTenerloEnLaMano(p)
+
+  for (const rol of roles) {
+    const delProceso = whereDelProceso(p, rol)
+    if (delProceso === undefined) {
+      return { rechazo: `«${via}» no declara el rol «${rol}» que el esquema le pide` }
+    }
+    const tests: QualityTest[] = [...delProceso]
+    for (const e of usados) for (const t of e.roleHints[rol] ?? []) tests.push(t)
+    if (rol === material) for (const r of residuo) if (r.k === 'cualidad') tests.push(r.test)
+    const firma = firmaDeTests(tests)
+    porRol[rol] = firma
+    // Lo que el `arrangement` exige y ninguna fila escribe. Va en el FILTRO y no
+    // en la firma —ver `PedidoDeRol`—: `portable` no la establece ningún proceso
+    // ni la va a establecer, así que meterla en lo que se regresa haría que el
+    // `gap` le pidiera a la fragua un proceso para volver liviano un tronco.
+    // El rol que paga queda afuera: es la criatura, y no se carga a sí misma.
+    const extra: Extra = {
+      ...(aLaMano && rol !== paga ? { filtro: [PORTABLE] } : {}),
+      ...celdaDelRol(usados, rol),
+    }
+
+    if (rol === paga) {
+      // El que paga es la criatura y no se busca: se verifica. Y se verifica con
+      // `v.q` sobre `v.self`, o sea con el motor, en vez de leer `self.stamina` —
+      // que es un atajo de una sola cualidad y este chequeo es de todas las que
+      // el proceso pida.
+      const clausulas = clausulasDe(firma)
+      if (clausulas === undefined) return { rechazo: `el pedido del rol «${rol}» no se entiende: «${firma}»` }
+      const lector = (b: BodyView, id: QualityId): number => v.q(b, id)
+      for (const c of clausulas) {
+        if (!cumpleCuerpo(c, v.self, lector)) {
+          return { rechazo: `la criatura no cumple «${textoDe(c)}» para el rol «${rol}» de «${via}»` }
+        }
+      }
+      resueltos[rol] = { k: 'yo' }
+      continue
+    }
+
+    const clausulas = clausulasDe(firma)
+    if (clausulas === undefined) return { rechazo: `el pedido del rol «${rol}» no se entiende: «${firma}»` }
+
+    // ─── LA LIGADURA DIFERIDA ENTRE NODOS DEL GRAFO (ADR 0082) ─────────────
+    //
+    // `goalGraph` emite `binds: {slot, from}` cuando una cláusula nombra lo que
+    // rindió la anterior —«hacé una caña y andá a pescar, DESPUÉS asá el
+    // pescado»— y hasta acá no lo leía nadie: `plan()` daba EL MISMO objeto con
+    // `binds` y sin él, medido con `toEqual`. El pescado se buscaba contra la
+    // vista de hoy, donde todavía no existe, y el plan se caía en el paso tres —
+    // que es exactamente el bug que el ADR 0082 cerró en Ánima I.
+    //
+    // Se liga sólo en el marco RAÍZ, y eso no es una limitación: `binds.slot` es
+    // un nombre de rol del proceso que cumple ESTE objetivo, no de uno de los
+    // subobjetivos que la regresión inventa por el camino. El `GoalId` que viaja
+    // en el `Ref` es el del NODO HERMANO del grafo, así que quien ejecute tiene
+    // que tener anotado lo que ese nodo rindió — que es el contrato del ADR y la
+    // razón por la que `Step` lleva `rinde`.
+    if (nodo.marcos.length === 0 && g.binds !== undefined && g.binds.slot === rol) {
+      resueltos[rol] = { k: 'rinde', de: g.binds.from }
+      continue
+    }
+
+    pendientes.push({
+      pedido: { rol, firma, ...extra },
+      cuantos: candidatosPara(clausulas, extra, v, nodo.enMano, nodo.gastados).cuantos,
+    })
+  }
+
+  // ─── EL ROL MÁS APRETADO VA PRIMERO, Y ESO CUBRE DOS COSAS DE UNA ─────────
+  //
+  // Se ordena por CUÁNTOS CUERPOS pueden llenar cada rol, de menos a más. Es la
+  // heurística clásica de la variable más restringida, y acá arregla dos
+  // fracasos distintos que empezaron siendo dos reglas separadas:
+  //
+  //   · CERO candidatos —hay que fabricarlo— queda primero solo. Y tiene que
+  //     quedar primero, porque **fabricar CONSUME**: `extraccion` le pide al rol
+  //     `source` `mass > 0` y nada más —el mundo distingue un pozo de un matorral
+  //     con el motivo `sin-pozo`, que no es expresable en un `Where`— así que el
+  //     matorral califica de pozo y está más cerca que el río. Ligándolo primero,
+  //     el plan sale mandando a pescar adentro de la caña que él mismo hizo con
+  //     ese matorral.
+  //   · UN candidato antes que TRES. Sin esto, el rol `a` de `union` —que no pide
+  //     nada, `where: []` en el catálogo— se queda con el matorral por ser el más
+  //     cercano, y después el `binder`, que sólo el matorral podía llenar, se
+  //     queda sin nadie. Un `gap` donde había plan. Está medido en su test.
+  //
+  // No hay vuelta atrás en esta elección —decisión 3— así que el orden en que se
+  // eligen los roles ES la calidad del plan. El desempate es por nombre de rol,
+  // que es total.
+  pendientes.sort((x, y) => {
+    if (x.cuantos !== y.cuantos) return x.cuantos < y.cuantos ? -1 : 1
+    return x.pedido.rol < y.pedido.rol ? -1 : x.pedido.rol > y.pedido.rol ? 1 : 0
+  })
+
+  let segundos = 0
+  for (const e of usados) {
+    if (!Number.isFinite(e.segundos)) {
+      return { rechazo: `el esquema «${e.establishes}» por «${via}» no tiene un costo finito` }
+    }
+    if (e.segundos > segundos) segundos = e.segundos
+  }
+
+  // El id del rendimiento sale del CONTENIDO, no de un contador: ver `rindeDe`.
+  const marco: MarcoDePlan =
+    nodo.marcos.length === 0
+      ? {
+          via,
+          establece: nodo.falta,
+          rinde: rindeDe(nodo, undefined),
+          roles: resueltos,
+          porRol,
+          faltan: pendientes.map((x) => x.pedido),
+        }
+      : {
+          via,
+          establece: nodo.falta,
+          paraRol: rolDelTope(nodo),
+          rinde: rindeDe(nodo, rolDelTope(nodo)),
+          roles: resueltos,
+          porRol,
+          faltan: pendientes.map((x) => x.pedido),
+        }
+  return { marco, segundos }
+}
+
+/** Lo que los esquemas de esta aplicación le piden a la CELDA de un rol. */
+function celdaDelRol(usados: readonly ConstructionSchema[], rol: RoleName): { readonly celda?: WhereCell } {
+  const out: WhereCell[number][] = []
+  for (const e of usados) for (const t of e.cellHints?.[rol] ?? []) out.push(t)
+  return out.length === 0 ? {} : { celda: out }
+}
+
+/** A qué rol del marco de arriba de la pila viene a contestar el marco nuevo. */
+function rolDelTope(nodo: NodoAbierto): RoleName {
+  const tope = nodo.marcos[nodo.marcos.length - 1]
+  const pedido = tope?.faltan[0]
+  if (pedido === undefined) {
+    throw new Error('se quiso apilar un marco sobre un tope que no está esperando ningún rol')
+  }
+  return pedido.rol
+}
+
+// ─── La expansión ───────────────────────────────────────────────────────────
+
+function expandir(
+  nodo: NodoAbierto,
+  g: GoalNode,
+  v: VistaDelPlan,
+  todos: readonly ConstructionSchema[],
+): Resultado {
+  const clausulas = clausulasDe(nodo.falta)
+
+  // ── La regla 6: lo que ya se cumple no se planifica ──────────────────────
+  //
+  // Se pregunta con `cumple`, que es la definición del paquete de «el mundo, tal
+  // como se ve hoy, cumple esto» — la misma que va a usar la mente para decidir
+  // si el plan terminó. Dos definiciones de eso serían un plan que se da por
+  // hecho y una criatura que sigue caminando.
+  if (nodo.marcos.length === 0 && cumple(g.goal, v)) {
+    return { k: 'nodos', nodos: [{ ...nodo, falta: '', marcos: [] }] }
+  }
+
+  // ── ¿Lo cumple algo que veo? ─────────────────────────────────────────────
+  if (nodo.marcos.length > 0 && clausulas !== undefined) {
+    const tope = nodo.marcos[nodo.marcos.length - 1]
+    const yaLigados: BodyId[] = [...nodo.gastados]
+    for (const rol of nombresOrdenados(tope?.roles ?? {})) {
+      const ref = tope?.roles[rol]
+      if (ref !== undefined && ref.k === 'id' && !yaLigados.includes(ref.id)) yaLigados.push(ref.id)
+    }
+    const cuerpo = elegirCuerpo(clausulas, tope?.faltan[0] ?? SIN_EXTRA, v, nodo.enMano, yaLigados)
+    if (cuerpo !== undefined && tope !== undefined) {
+      const pedido = tope.faltan[0]
+      if (pedido === undefined) throw new Error(`el marco de «${tope.establece}» no espera ningún rol`)
+      const marcos = [...nodo.marcos]
+      marcos[marcos.length - 1] = {
+        ...tope,
+        roles: { ...tope.roles, [pedido.rol]: { k: 'id', id: cuerpo.id } },
+        faltan: tope.faltan.slice(1),
+      }
+      const cerrado = cerrar({ ...nodo, marcos }, v.self.capacity)
+      if ('rechazo' in cerrado) return morir(nodo, v, todos, clausulas, cerrado.rechazo)
+      return { k: 'nodos', nodos: [cerrado] }
+    }
+  }
+
+  return regresar(nodo, g, v, todos, clausulas)
+}
+
+/**
+ * El marco del linaje al que este pedido DOMINA, si hay alguno.
+ *
+ * Domina cuando conseguir lo que ahora falta garantizaría lo que aquel marco
+ * venía a establecer: ahí la regresión estaría pidiendo, para hacer X, algo que
+ * ya implica X. Devuelve la firma del ancestro para que el motivo la nombre —un
+ * «esto es un ciclo» sin decir contra qué no se puede discutir—.
+ */
+function dominante(
+  clausulas: readonly Predicado[],
+  marcos: readonly MarcoDePlan[],
+): PredicateSignature | undefined {
+  for (const m of marcos) {
+    const suyas = clausulasDe(m.establece)
+    if (suyas === undefined || suyas.length === 0) continue
+    let cubre = true
+    for (const c of suyas) if (!clausulas.some((p) => implica(p, c))) cubre = false
+    if (cubre) return m.establece
+  }
+  return undefined
+}
+
+function regresar(
+  nodo: NodoAbierto,
+  g: GoalNode,
+  v: VistaDelPlan,
+  todos: readonly ConstructionSchema[],
+  clausulas: readonly Predicado[] | undefined,
+): Resultado {
+  if (clausulas === undefined) {
+    return morir(nodo, v, todos, clausulas, `«${nodo.falta}» no se entiende como predicado: no hay nada que regresar`)
+  }
+  if (nodo.marcos.length >= PROFUNDIDAD_MAXIMA) {
+    return morir(
+      nodo,
+      v,
+      todos,
+      clausulas,
+      `se llegó a la profundidad máxima (${String(PROFUNDIDAD_MAXIMA)}) con «${nodo.falta}» sin cerrar`,
+    )
+  }
+  // ─── EL CORTE DE CICLOS ES POR LINAJE, Y EL LINAJE YA VIAJA EN EL NODO ────
+  //
+  // Antes había una lista de firmas ya abiertas compartida por TODA la búsqueda,
+  // y cortaba de más: mataba ramas que no eran ciclos sino HERMANAS. Medido —
+  // `friccion` necesita dos cuerpos rígidos, `deshilachar` sabe fabricarlos y su
+  // `split` no consume la fuente, así que sacarle dos hebras al mismo matorral es
+  // legal; el planificador sacaba una y contestaba «ya se había abierto más
+  // arriba en esta misma búsqueda», que además de matar el plan era falso: la
+  // firma no estaba en ningún ancestro, estaba en el rol de al lado.
+  //
+  // El linaje del nodo es su propia pila de marcos, que es lo que el mensaje
+  // prometía desde el principio. Y la comparación es por DOMINANCIA y no por
+  // igualdad, que es lo que hace falta desde que la regresión entiende de
+  // implicación: si lo que ahora falta GARANTIZA lo que un marco de más abajo
+  // venía a establecer, conseguirlo pide tenerlo, y eso no avanza. La igualdad de
+  // texto está adentro de la dominancia, así que esto no afloja nada.
+  //
+  // `PROFUNDIDAD_MAXIMA` sigue haciendo la otra mitad: corta las cadenas
+  // infinitas que no repiten firma —un residuo intensivo que viaja al rol
+  // material puede fabricar firmas nuevas para siempre— y ahora también las que
+  // bajan de a poco el umbral de la misma cualidad.
+  const ancestro = dominante(clausulas, nodo.marcos)
+  if (ancestro !== undefined) {
+    return morir(
+      nodo,
+      v,
+      todos,
+      clausulas,
+      `«${nodo.falta}» ya está en el linaje de este nodo —el marco de «${ancestro}» vino a establecerlo—: ` +
+        `para conseguirlo haría falta tenerlo`,
+    )
+  }
+
+  const vias: ProcessId[] = []
+  for (const e of todos) if (!vias.includes(e.via)) vias.push(e.via)
+
+  const nodos: NodoAbierto[] = []
+  const rechazos: string[] = []
+
+  for (const via of vias) {
+    const usados = esquemasQueAportan(todos, via, clausulas)
+    if (usados.length === 0) continue
+
+    // Lo que este puñado de esquemas promete, y lo que del pedido queda sin
+    // cubrir. Las dos cuentas van por IMPLICACIÓN y no por texto: si el esquema
+    // deja `temperature>=400` y el pedido era `temperature>=300`, no hay residuo.
+    const promesas: Predicado[] = []
+    for (const e of usados) for (const c of clausulasDe(firmaDe(e.establishes)) ?? []) promesas.push(c)
+    const residuo = clausulas.filter((c) => !promesas.some((p) => implica(p, c)))
+
+    // ── EL RESIDUO, QUE ES LA PARTE QUE SE PUEDE DISCUTIR ──────────────────
+    //
+    // Lo que la conjunción pide y este proceso no promete tiene que salir de
+    // algún lado, y el único lado posible es la materia que entra: se le exige
+    // al rol material. Vale para las cualidades INTENSIVAS y sólo para ellas,
+    // porque son las que la materia se lleva puestas —deshilachar un leño rígido
+    // da una hebra rígida—; una extensiva NO viaja —la hebra se lleva la décima
+    // parte del `heatCapacity`— y pedírsela a la fuente sería exigir diez veces
+    // de más o de menos según el signo. Ahí el proceso se rechaza.
+    //
+    // Y hay que decir de qué lado se equivoca: exigirle al material lo que el
+    // proceso quizás fabricaba es DEMASIADO ESTRICTO. Se pierden planes que
+    // habrían salido —`union` fabrica `catch` de la nada y esta regla se lo hace
+    // pedir prestado a la vara—. Es el error barato de los dos: no encontrar un
+    // plan cuesta trabajo; encontrar uno que no funciona manda a la criatura al
+    // río con las manos vacías. Es la misma elección que `cumpleCuerpo`.
+    let extensiva: string | undefined
+    for (const c of residuo) {
+      if (c.k !== 'cualidad') {
+        extensiva = `«${textoDe(c)}» no es una cualidad y no puede viajar por la materia`
+        break
+      }
+      if (specOf(c.test.q).extent !== 'intensive') {
+        extensiva = `«${textoDe(c)}» es extensiva: la materia que entra no la conserva al salir`
+        break
+      }
+    }
+    if (extensiva !== undefined) {
+      rechazos.push(`«${via}» no alcanza para «${nodo.falta}»: ${extensiva}`)
+      continue
+    }
+
+    const armado = armarMarco(nodo, g, via, usados, residuo, v)
+    if ('rechazo' in armado) {
+      rechazos.push(armado.rechazo)
+      continue
+    }
+    const cerrado = cerrar(
+      {
+        falta: nodo.falta,
+        camino: nodo.camino,
+        profundidad: nodo.marcos.length + 1,
+        costo: nodo.costo + armado.segundos,
+        marcos: [...nodo.marcos, armado.marco],
+        enMano: nodo.enMano,
+        gastados: nodo.gastados,
+      },
+      v.self.capacity,
+    )
+    if ('rechazo' in cerrado) {
+      rechazos.push(cerrado.rechazo)
+      continue
+    }
+    nodos.push(cerrado)
+  }
+
+  if (nodos.length === 0) {
+    const causa = rechazos.length > 0 ? rechazos.join('; ') : SIN_VIA
+    return morir(nodo, v, todos, clausulas, causa)
+  }
+  return { k: 'nodos', nodos }
+}
+
+/**
+ * El «por qué» del `gap`, con LO ACCIONABLE ADELANTE.
+ *
+ * Una rama puede morir por cuatro motivos mecánicos —no se entiende, tope de
+ * profundidad, ciclo, ninguna vía sirve— y ninguno de los cuatro es lo que el
+ * Hito 8 necesita leer. Lo que necesita leer es CUÁL CLÁUSULA NO TIENE NINGÚN
+ * ESQUEMA, porque eso no es un accidente de la búsqueda: es un agujero del
+ * catálogo, y es el pedido que se le lleva a la fragua —«ningún proceso conocido
+ * establece enganche»—.
+ *
+ * Y los dos se dicen, no uno. El motivo mecánico se conserva después del guion
+ * porque es lo que explica por qué la búsqueda no encontró la vuelta larga: con
+ * el puente de `catch>0` sacado, la cláusula huérfana es `catch>0` Y ADEMÁS la
+ * regresión intentó pedírsela prestada a la vara y volvió al mismo pedido. Sin
+ * la segunda mitad, alguien podría creer que ni se intentó.
+ *
+ * La única excepción es `SIN_VIA`, que no explica nada que la cabeza no diga ya:
+ * «no hay esquema para esto» y «ninguna vía aplicó» son la misma frase dos veces.
+ */
+const SIN_VIA = 'ningún esquema conocido aplica'
+function porqueMurio(
+  clausulas: readonly Predicado[] | undefined,
+  todos: readonly ConstructionSchema[],
+  causa: string,
+): string {
+  if (clausulas === undefined) return causa
+  const establecidas: Predicado[] = []
+  for (const e of todos) for (const c of clausulasDe(firmaDe(e.establishes)) ?? []) establecidas.push(c)
+  // Huérfana es la que NINGÚN esquema garantiza, y «garantiza» es `implica`: con
+  // la comparación de texto que había acá, `temperature>=300` salía como huérfana
+  // teniendo `temperature>=400` en la tabla, y el Hito 8 iba a pedirle a la
+  // fragua un proceso para calentar a 300 grados que el catálogo ya sabe hacer.
+  const cubre = (c: Predicado): boolean => establecidas.some((e) => implica(e, c))
+  const huerfanas = clausulas.filter((c) => !cubre(c))
+  if (huerfanas.length === 0) return causa
+  const nombres = huerfanas.map((c) => `«${textoDe(c)}»${loMasCerca(c, establecidas)}`).join(' ni ')
+  const otras = clausulas.filter(cubre)
+  const cabeza =
+    otras.length === 0
+      ? `ningún esquema conocido establece ${nombres}`
+      : `ningún esquema conocido establece ${nombres}; ${otras
+          .map((c) => `«${textoDe(c)}»`)
+          .join(', ')} sí tiene esquema, y por sí solo no alcanza`
+  return causa === SIN_VIA ? cabeza : `${cabeza} — ${causa}`
+}
+
+/**
+ * LO MÁS CERCA QUE LLEGA EL CATÁLOGO, dicho al lado de la cláusula huérfana.
+ *
+ * Hay dos clases de huérfana y el Hito 8 tiene que poder distinguirlas, porque
+ * lo que le va a pedir a la fragua es distinto:
+ *
+ *   · NADIE SABE NADA DE ESTA MAGNITUD. `emitsPower>0`: hace falta un proceso.
+ *   · ALGUIEN SABE, PERO NO LLEGA. `catch>0.0001` con el puente de `catch>0` dos
+ *     filas más arriba: no hace falta un proceso nuevo, hace falta uno MEJOR, o
+ *     bajar la vara. Decir «ningún esquema conocido establece catch» ahí era
+ *     falso y mandaba a inventar lo que ya está inventado.
+ *
+ * Lo que se nombra es lo que el catálogo promete sobre la misma magnitud, sin
+ * elegir cuál es «el más fuerte»: elegir exigiría un orden total entre umbrales
+ * que sólo existe adentro de la misma dirección, y las promesas se listan en el
+ * orden de la tabla, que es fijo.
+ */
+function loMasCerca(c: Predicado, establecidas: readonly Predicado[]): string {
+  const misma = (e: Predicado): boolean =>
+    (c.k === 'cualidad' && e.k === 'cualidad' && e.test.q === c.test.q) ||
+    (c.k === 'geometria' && e.k === 'geometria' && e.f === c.f)
+  const cerca: string[] = []
+  for (const e of establecidas) {
+    if (!misma(e)) continue
+    const t = textoDe(e)
+    if (!cerca.includes(t)) cerca.push(t)
+  }
+  if (cerca.length === 0) return ''
+  return ` (lo más cerca que llega el catálogo es ${cerca.map((t) => `«${t}»`).join(', ')})`
+}
+
+function morir(
+  nodo: NodoAbierto,
+  v: VistaDelPlan,
+  todos: readonly ConstructionSchema[],
+  clausulas: readonly Predicado[] | undefined,
+  causa: string,
+): Resultado {
+  return {
+    k: 'muerto',
+    muerto: {
+      falta: nodo.falta,
+      why: porqueMurio(clausulas, todos, causa),
+      nearest: pasosPosibles(nodo, v),
+      profundidad: nodo.marcos.length,
+      costo: nodo.costo,
+    },
+  }
+}
+
+/**
+ * LO QUE SÍ SE PUEDE HACER MIENTRAS TANTO: el `nearest` del `gap`.
+ *
+ * No es una consolación ni una heurística: son los pasos de esta rama que SÍ se
+ * pueden dar hoy —los marcos completos que ya emitió, más las idas y tomas de
+ * cada rol que se puede llenar con algo que se ve, esté ligado o no—. Lo de
+ * «esté ligado o no» es lo que hace que salga el ejemplo del documento: la
+ * regresión fabrica primero y liga después, así que cuando la caña resulta
+ * imposible el `source` de `extraccion` TODAVÍA NO ESTÁ LIGADO, y sin mirar los
+ * pendientes el `nearest` saldría vacío. Se sabe pescar en el río, no se sabe
+ * hacer la caña, y mientras nace el contrato el cuerpo ya está caminando al agua.
+ *
+ * ─── LO QUE EL DOCUMENTO PONE ACÁ Y NO SE PUEDE PONER ───────────────────────
+ *
+ * `nearest: [ir(río), tantear]`. `tantear` NO ESTÁ en `Step`, y su ausencia está
+ * decidida y escrita en `tipos.ts`: es percepción activa y todavía no hay ningún
+ * objetivo que la pida. `explorar` sí está y sería el reemplazo natural —«andá a
+ * buscar algo con `catch>0`»— y tampoco se puede emitir: `explorar` pide
+ * `maxTicks`, que son TICKS, y `VistaDelPlan` no tiene `hz` con qué convertir los
+ * segundos del reloj. Inventar el número sería la clase de dato que después nadie
+ * puede discutir. Queda como hueco medido y no como comentario al pasar.
+ */
+function pasosPosibles(nodo: NodoAbierto, v: VistaDelPlan): readonly Step[] {
+  const pasos: Step[] = [...nodo.camino]
+  const nombrados = new Set<BodyId>(nodo.enMano)
+  // De arriba hacia abajo de la pila: es el orden en que se hubieran usado —el
+  // marco de más adentro se completa primero—.
+  for (let i = nodo.marcos.length - 1; i >= 0; i--) {
+    const m = nodo.marcos[i]
+    if (m === undefined) continue
+    const p = procesoDe(m.via)
+    const aLaMano = hayQueTenerloEnLaMano(p)
+    const alcance = alcanceDe(p)
+    const anotar = (ref: Ref, porQue: PredicateSignature): void => {
+      if (ref.k !== 'id' || nombrados.has(ref.id)) return
+      nombrados.add(ref.id)
+      pasos.push({ k: 'ir', a: ref, within: alcance, porQue })
+      if (aLaMano) pasos.push({ k: 'sostener', que: ref, porQue })
+    }
+    for (const rol of nombresOrdenados(m.roles)) {
+      const ref = m.roles[rol]
+      if (ref !== undefined) anotar(ref, m.porRol[rol] ?? m.establece)
+    }
+    for (const pedido of m.faltan) {
+      const cl = clausulasDe(pedido.firma)
+      if (cl === undefined) continue
+      const cuerpo = elegirCuerpo(cl, pedido, v, nodo.enMano, [...nodo.gastados, ...nombrados])
+      if (cuerpo !== undefined) anotar({ k: 'id', id: cuerpo.id }, pedido.firma)
+    }
+  }
+  return pasos
+}
+
+// ─── El orden de la cola ────────────────────────────────────────────────────
+
+/**
+ * La clave de desempate: TODO lo que el nodo es, en texto.
+ *
+ * Que sea total no es un lujo: si dos nodos empataran, `sort` los dejaría en el
+ * orden en que llegaron, que es el orden de `ESQUEMAS`, y barajar la tabla
+ * cambiaría el plan. Dos nodos con la misma clave son el mismo nodo en todo lo
+ * que la búsqueda mira, así que empatar ahí no puede cambiar nada.
+ */
+function claveDe(n: NodoAbierto): string {
+  return [
+    String(n.profundidad).padStart(3, '0'),
+    n.falta,
+    n.marcos.map(firmaDeMarco).join(';'),
+    n.camino.map(firmaDePaso).join(';'),
+    [...n.enMano].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(','),
+    [...n.gastados].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).join(','),
+  ].join('|')
+}
+
+function firmaDeMarco(m: MarcoDePlan): string {
+  const roles = nombresOrdenados(m.roles)
+    .map((r) => `${r}=${firmaDeRef(m.roles[r])}`)
+    .join(',')
+  const faltan = m.faltan.map((q) => `${q.rol}:${q.firma}${firmaDeExtra(q)}`).join(',')
+  return `${m.via}[${m.establece}]${m.paraRol ?? '-'}{${roles}}(${faltan})`
+}
+
+/**
+ * La mitad del pedido que no se regresa, también en la clave.
+ *
+ * Hoy no puede desempatar nada —el filtro y la celda son función de la vía y del
+ * pedido, que ya están en la clave, así que dos marcos que empaten en todo lo
+ * demás tienen el mismo filtro— y va igual: la clave promete ser TODO lo que el
+ * nodo es, y una promesa que se cumple por accidente deja de cumplirse el día que
+ * el accidente cambie.
+ */
+function firmaDeExtra(q: PedidoDeRol): string {
+  const f = (q.filtro ?? []).map((t) => `${t.q}${t.op}${String(t.v)}`).join(',')
+  const c = (q.celda ?? []).map((t) => `${t.q}${t.op}${String(t.v)}`).join(',')
+  return f.length === 0 && c.length === 0 ? '' : `<${f}|${c}>`
+}
+
+function firmaDeRef(r: Ref | undefined): string {
+  if (r === undefined) return '-'
+  switch (r.k) {
+    case 'id':
+      return `id:${r.id}`
+    case 'donde':
+      return `donde:${r.where.map((t) => `${t.q}${t.op}${String(t.v)}`).join(',')}`
+    case 'celda':
+      return `celda:${String(r.at.x)},${String(r.at.y)}`
+    case 'rinde':
+      return `rinde:${r.de}`
+    case 'yo':
+      return 'yo'
+  }
+}
+
+function firmaDePaso(s: Step): string {
+  switch (s.k) {
+    case 'ir':
+      return `ir(${firmaDeRef(s.a)},${String(s.within ?? 0)})`
+    case 'juntar':
+      return `juntar(${String(s.cuantos)})`
+    case 'deshilachar':
+      return `deshilachar(${firmaDeRef(s.fuente)},${String(s.cuantas)},${s.rinde ?? '-'})`
+    case 'unir':
+      return `unir(${firmaDeRef(s.binder)},${firmaDeRef(s.a)},${firmaDeRef(s.b)},${s.rinde ?? '-'})`
+    case 'aplicar':
+      return `aplicar(${s.proceso},${nombresOrdenados(s.roles)
+        .map((r) => `${r}=${firmaDeRef(s.roles[r])}`)
+        .join(',')},${s.rinde ?? '-'})`
+    case 'comer':
+      return `comer(${firmaDeRef(s.bocado)})`
+    case 'frotar':
+      return `frotar(${firmaDeRef(s.a)},${firmaDeRef(s.b)},${String(s.hasta ?? 0)})`
+    case 'poner':
+      return `poner(${firmaDeRef(s.que)},${firmaDeRef(s.en)})`
+    case 'sostener':
+      return `sostener(${firmaDeRef(s.que)})`
+    case 'explorar':
+      return `explorar(${String(s.maxTicks)})`
+  }
+}
+
+function comparaNodos(a: NodoAbierto, b: NodoAbierto): number {
+  if (a.costo !== b.costo) return a.costo < b.costo ? -1 : 1
+  const x = claveDe(a)
+  const y = claveDe(b)
+  return x === y ? 0 : x < y ? -1 : 1
+}
+
+/** El muerto que se reporta: el más barato, y el empate lo rompe el contenido. */
+function comparaMuertos(a: RamaMuerta, b: RamaMuerta): number {
+  if (a.costo !== b.costo) return a.costo < b.costo ? -1 : 1
+  if (a.profundidad !== b.profundidad) return a.profundidad < b.profundidad ? -1 : 1
+  if (a.falta !== b.falta) return a.falta < b.falta ? -1 : 1
+  return a.why === b.why ? 0 : a.why < b.why ? -1 : 1
+}
+
+// ─── `plan()` ───────────────────────────────────────────────────────────────
+
+/**
+ * Encadenado hacia atrás sobre la tabla de esquemas, ANYTIME.
+ *
+ * `presupuesto` son EXPANSIONES, no milisegundos (ADR II-0012). `frontera`, si
+ * viene, es lo que devolvió un `parcial` de un tick anterior: la búsqueda sigue
+ * desde ahí y el resultado es EL MISMO que el de una corrida sin cortes.
+ *
+ * `opciones.esquemas` reemplaza la tabla entera. Existe para dos preguntas que
+ * no se pueden hacer de otra manera: «¿el orden de la tabla cambia el plan?» y
+ * «¿qué `gap` sale si le falta una fila?».
+ */
+export function plan(
+  g: GoalNode,
+  v: VistaDelPlan,
+  presupuesto: number,
+  frontera?: Frontera,
+  opciones?: OpcionesDePlan,
+): PlanResult {
+  const todos = opciones?.esquemas ?? ESQUEMAS
+
+  const abiertos: NodoAbierto[] =
+    frontera === undefined
+      ? [
+          {
+            falta: textoDe(g.goal),
+            camino: [],
+            profundidad: 0,
+            costo: 0,
+            marcos: [],
+            // Lo que ya está en la mano arranca contado: si la caña ya está
+            // agarrada, el plan no manda a buscarla.
+            enMano: v.self.holding.map((b) => b.id),
+            gastados: [],
+          },
+        ]
+      : [...frontera.abiertos]
+  const muertos: RamaMuerta[] = frontera === undefined ? [] : [...frontera.muertos]
+  let hechas = frontera?.expansiones ?? 0
+  let enEstaLlamada = 0
+
+  abiertos.sort(comparaNodos)
+
+  while (abiertos.length > 0) {
+    if (enEstaLlamada >= presupuesto) {
+      return {
+        k: 'parcial',
+        frontera: { abiertos, muertos, expansiones: hechas },
+        expansiones: hechas,
+      }
+    }
+    const nodo = abiertos.shift()
+    if (nodo === undefined) break
+    hechas++
+    enEstaLlamada++
+
+    // El nodo TERMINAL: `marcos` vacía y `falta` en `''`. Se lo saca de la cola
+    // como a cualquier otro, así que gana el plan más barato y no el primero.
+    if (nodo.marcos.length === 0 && nodo.falta.length === 0) {
+      return { k: 'plan', steps: nodo.camino, expansiones: hechas }
+    }
+
+    const r = expandir(nodo, g, v, todos)
+    if (r.k === 'muerto') muertos.push(r.muerto)
+    else for (const s of r.nodos) abiertos.push(s)
+    abiertos.sort(comparaNodos)
+  }
+
+  // La cola se vació sin plan: hay `gap`. NO es un error —es un contrato recién
+  // nacido— y por eso lleva con qué seguir: qué faltó, qué se puede hacer igual,
+  // y por qué. El Hito 8 lee esto y le pide un proceso nuevo a la fragua.
+  const ordenados = [...muertos].sort(comparaMuertos)
+  const peor = ordenados[0]
+  if (peor === undefined) {
+    return {
+      k: 'gap',
+      missing: textoDe(g.goal),
+      nearest: [],
+      why: 'la búsqueda se quedó sin nodos abiertos y sin ninguna rama muerta que explique por qué',
+      expansiones: hechas,
+    }
+  }
+  return { k: 'gap', missing: peor.falta, nearest: peor.nearest, why: peor.why, expansiones: hechas }
+}

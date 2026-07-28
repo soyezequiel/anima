@@ -382,6 +382,15 @@ describe('el fuego y su vecino', () => {
 
     const eficiencia = 0.35
     let cuantas = 0
+    /**
+     * LA GRASA MÍNIMA de todo el conjunto factible, y no es curiosidad: es lo que
+     * el bioma tiene que llegar a sembrar. Una antorcha que sólo sale con 0,21 kg
+     * obliga a sembrar piezas grandes, y una pieza grande de grasa —nutrition 22,
+     * digestibility 0,7— es comida gratis tirada en el piso, que es exactamente lo
+     * que el criterio del riesgo 4 no puede permitir. Este número es la bisagra
+     * entre «el fuego se propaga» y «se puede vivir de garronear».
+     */
+    let menosGrasa = Number.POSITIVE_INFINITY
     let mejor: { w: number; f: number; holgura: number; entrega: number; costo: number } | undefined
     for (let w = 0.2; w <= 0.7 + 1e-9; w += PASO) {
       for (let f = 0.02; f <= 0.4 + 1e-9; f += PASO) {
@@ -403,6 +412,7 @@ describe('el fuego y su vecino', () => {
         const entrega = temperaturaDeEquilibrio(q(m, 'a', 'emitsPower'), 0, 'contacto')
         if (entrega < ign) continue
         cuantas += 1
+        if (f < menosGrasa) menosGrasa = f
         // La holgura del peor de los tres umbrales, normalizada. Es lo que dice
         // si la receta vive cómoda o vive del redondeo.
         const holgura = Math.min(
@@ -424,10 +434,115 @@ describe('el fuego y su vecino', () => {
         : `  la más holgada: ${mejor.w.toFixed(2)} kg de madera + ${mejor.f.toFixed(2)} kg de grasa\n` +
           `    costo ${mejor.costo.toFixed(2)} de ${String(TANQUE)} · entrega ${mejor.entrega.toFixed(2)} °C de ${ign.toFixed(0)} pedidos\n` +
           `    holgura del umbral más ajustado: ${(mejor.holgura * 100).toFixed(2)}%`,
+      `  la que menos grasa pide: ${menosGrasa === Number.POSITIVE_INFINITY ? '—' : `${menosGrasa.toFixed(2)} kg`}`,
     ])
 
     // Si esto se pone en rojo, la antorcha se murió y con ella vuelven las cuatro
     // secuencias que dependen de que el fuego prenda otra cosa.
     expect(cuantas).toBeGreaterThan(0)
+  })
+
+  // ─── EL FARDO: la puerta que estaba abierta todo el tiempo ────────────────
+  //
+  // Todo lo de arriba mide PIEZAS SUELTAS, una por una, y de ahí sale que la
+  // cadena de la yesca no llega: la corteza más grande que un bioma siembra pesa
+  // 0,5 kg y entrega 175 °C contra los 300 que la madera pide.
+  //
+  // Pero la criatura no está obligada a usar una pieza. `union` existe, es una de
+  // las quince innatas, y la masa de un ensamble es EXTENSIVA: se suma. Dos
+  // cortezas atadas son un cuerpo de 1 kg, y un cuerpo de 1 kg de corteza entrega
+  // lo que uno de 0,5 no entrega.
+  //
+  // Y el primer eslabón ya alcanza: la vara de madera más pesada que se puede
+  // encender frotando entrega 271 °C, y la corteza enciende a 250.
+  //
+  // O sea que la cadena completa es: FROTAR UNA VARA → PRENDER UN FARDO DE
+  // CORTEZA → Y CON EL FARDO, PRENDER UN LEÑO. Sin tocar una sola constante de la
+  // física, sin sembrar nada nuevo, y con las habilidades que ya existen.
+
+  it('EL FARDO DE CORTEZA: dos piezas atadas prenden lo que ninguna prende sola', () => {
+    const ign = IGNICION_MADERA()
+    const ignCorteza = ((): number => {
+      const w = mundo({ bodies: [enElPiso(cuerpo('c', 'corteza', 0.5), EN(0, 0))] })
+      return q(w, 'c', 'ignitionPoint')
+    })()
+
+    // Eslabón 1: la vara más pesada que se puede encender, contra la corteza.
+    const eslabon1 = temperaturaDeEquilibrio(
+      q(fuenteYBlanco(0.7132), 'fuente', 'emitsPower'),
+      0,
+      'contacto',
+    )
+
+    // Eslabón 2: el fardo. Se barre cuántas piezas de corteza hacen falta, con la
+    // masa que el bioma REALMENTE siembra (0,05 a 0,5, `oracle/src/bioma.ts`).
+    const MAS_GRANDE_QUE_SE_SIEMBRA = 0.5
+    const filas: string[] = [
+      '─── LA CADENA QUE NADIE PROBÓ ───',
+      `  eslabón 1 · vara de 0,7132 kg encendida entrega ${eslabon1.toFixed(2)} °C · la corteza prende a ${ignCorteza.toFixed(0)} → ${eslabon1 >= ignCorteza ? 'PRENDE' : 'no prende'}`,
+      '',
+      '  piezas │ masa del fardo │ potencia │ entrega │ ¿prende el leño?',
+      '  ───────┼────────────────┼──────────┼─────────┼─────────────────',
+    ]
+
+    let piezasQueHacenFalta: number | undefined
+    for (const n of [1, 2, 3, 4]) {
+      const masa = n * MAS_GRANDE_QUE_SE_SIEMBRA
+      const fardo = {
+        id: 'fardo',
+        form: 'vara' as const,
+        parts: Array.from({ length: n }, () => ({
+          substance: 'corteza',
+          mass: MAS_GRANDE_QUE_SE_SIEMBRA,
+          q: {},
+        })),
+        joints: [],
+        state: { temperature: 700 },
+      }
+      const w0 = mundo({
+        bodies: [
+          enElPiso(fardo, EN(0, 0)),
+          { ...enElPiso(cuerpo('blanco', 'madera', 0.2, { temperature: 15 }), EN(0, 0)), supportedBy: 'fardo' },
+        ],
+      })
+      const potencia = q(w0, 'fardo', 'emitsPower')
+      const entrega = temperaturaDeEquilibrio(potencia, 0, 'contacto')
+      const prende = entrega >= ign
+      if (prende && piezasQueHacenFalta === undefined) piezasQueHacenFalta = n
+      filas.push(
+        `  ${String(n).padStart(6)} │ ${masa.toFixed(2).padStart(14)} │ ${potencia.toFixed(2).padStart(8)} │ ` +
+          `${entrega.toFixed(2).padStart(7)} │ ${prende ? 'SÍ' : 'no'}`,
+      )
+    }
+    log(filas)
+
+    // Y la prueba en el mundo, no en la fórmula: el fardo mínimo encendido, con un
+    // leño apoyado, y el leño tiene que arder.
+    const n = piezasQueHacenFalta ?? 2
+    const fardo = {
+      id: 'fardo',
+      form: 'vara' as const,
+      parts: Array.from({ length: n }, () => ({ substance: 'corteza', mass: 0.5, q: {} })),
+      joints: [],
+      state: { temperature: 700 },
+    }
+    const { pico } = correr(
+      mundo({
+        bodies: [
+          enElPiso(fardo, EN(0, 0)),
+          { ...enElPiso(cuerpo('blanco', 'madera', 0.2, { temperature: 15 }), EN(0, 0)), supportedBy: 'fardo' },
+        ],
+      }),
+      2000,
+    )
+    log([
+      `  y en el mundo: con ${String(n)} piezas el leño llegó a ` +
+        `${pico === Number.POSITIVE_INFINITY ? 'arder (cambió de sustancia)' : `${pico.toFixed(2)} °C`}`,
+      `  MAX_PARTS del catálogo es 6, así que un fardo de ${String(n)} entra de sobra.`,
+    ])
+
+    expect(eslabon1).toBeGreaterThanOrEqual(ignCorteza)
+    expect(piezasQueHacenFalta).toBeDefined()
+    expect(pico).toBeGreaterThanOrEqual(ign)
   })
 })
