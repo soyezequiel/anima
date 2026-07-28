@@ -44,6 +44,12 @@ falla es la perilla: un chunk acuático da del orden de 1800 calorías y vivir l
 El punto de equilibrio está medido: `COSTO_VIVIR` tendría que ser **3,8× más
 caro** para hundir a la común y **20,2×** para hundir a la afortunada.
 
+> **Corrección — ninguna de esas dos criaturas contesta el riesgo 4.** Las dos
+> **trabajan**: pescan con una caña, y la común saca 98 piezas por partida. El
+> criterio dice «sin trabajo», y hasta este tramo no lo medía nadie: el `it` que
+> se llamaba así le daba una caña a la criatura. El test que sí lo mide está
+> abajo, en las consecuencias, con su número.
+
 ### (c) Y no hay muerte
 
 Con `stamina` en 0, `sistemaMetabolismo` hace `if (s <= 0) continue` y la
@@ -107,6 +113,48 @@ cien partidas y no en la mediana: **comer crudo da neto negativo y cocinar da
 neto positivo.** La ventana entera mide 1,51× de ancho, así que el número no
 tiene lugar para pasearse.
 
+> **Corrección — esa ventana es un CONJUNTO VACÍO.** El borde de arriba se midió
+> con un modelo en el que **cocinar era gratis**: la misma pieza con
+> `digestibility` al techo y nada más, sin fuego, sin vara y sin precio. Cuando
+> este ADR se escribió eso era inofensivo, porque el fuego duraba un tick y
+> cocinar no se podía de ninguna manera. Desde el
+> [ADR II-0011](II-0011-arder-libera-calor.md) el fuego dura, cocinar es una cosa
+> que pasa de verdad y **tiene precio**: el más barato que además COCINA sale
+> **659,86 de stamina**, despejado de la física en `oracle/tests/presupuesto.test.ts`
+> (bloque 5) y medido corriendo el mundo en `perceive/tests/ataque-a-la-costura.test.ts`.
+> Con ese precio adentro, los tres bordes quedan así:
+>
+> | | por segundo |
+> |---|---|
+> | borde de ABAJO: lo que rinde comiendo **crudo** la partida que MÁS comió | **0,766** |
+> | borde de ARRIBA **si cocinar fuera gratis**, que es como se midió acá | 1,155 |
+> | borde de ARRIBA **de verdad**, con el fuego adentro | **0,495** |
+>
+> `0,495 < 0,766`, o sea que **los dos bordes se cruzan**: para que cocinar
+> alcance, vivir tendría que costar menos de lo que ya le alcanza al que come
+> crudo. No existe ningún valor de `COSTO_VIVIR_POR_SEGUNDO` que cumpla las dos
+> mitades — bajarlo hasta que cocinar salve apaga el motor de la historia, porque
+> ahí comer crudo también salva.
+>
+> Y el borde de arriba **está cerrado por arriba y no se puede empujar**: para que
+> el fuego entrara en la holgura de la partida más flaca (155,2) haría falta
+> eficiencia **1,51** en el `poweredBy` de `friccion`, que es una máquina de
+> movimiento perpetuo. Ni con eficiencia 1,00 entra: el fuego costaría 232,51. Y
+> la masa de la vara tampoco se puede bajar, porque abajo de 0,47 kg el fuego
+> enciende y **no cocina**.
+>
+> **Lo que sí queda en pie, medido, y es lo que este ADR afirma ahora:** el
+> criterio del riesgo 4 se cumple (abajo, con su número), y **cocinar se paga
+> solo**: con el fuego cobrado entero de un bolsillo solo, cocinar rinde **+33,3
+> en la partida más flaca de las cien**, o sea 1,05× lo que costó. Es una MEJORA
+> fuerte, no una condición de supervivencia. El test que lo afirma es
+> `COCINAR CONVIENE EN LAS CIEN, aunque el fuego se pague entero de un bolsillo solo`.
+>
+> Se corrige en vez de borrarse por el mismo motivo que la otra corrección de este
+> ADR: el argumento equivocado sigue vivo en la cabeza de quien lo lea. «El 1,0
+> está adentro de una ventana angosta» es una frase que suena a rigor y que acá
+> haría defender un intervalo que no tiene un solo punto adentro.
+
 **Y la criatura arranca con la `stamina` a la mitad del techo del catálogo: 500
 de 1000.** Es lo que ya usan `caminarDiezCeldas` y `vivirDiezSegundos`, deja la
 mitad de arriba libre para que comer sirva desde el primer bocado —arrancar al
@@ -135,6 +183,23 @@ exactamente la mitad del criterio.
   termina en +96 y la peor en −38 —crudo es una moneda al aire— y cocinando
   llegan las cien, con entre 655 y 1415 de sobra.** La diferencia entre vivir y
   morirse es cocinar, y no está escrito en ningún lado: sale de `digestibility`.
+
+  > **Corrección — «la diferencia entre vivir y morirse es cocinar» es falsa.**
+  > Las 1485 cocinadas suponen que cocinar es gratis. Con el fuego cobrado —un
+  > solo fuego por partida, 659,86 de encender, y la leña que hay que ir a juntar
+  > medida sobre el mundo decretado— **91 de las 100 partidas comunes terminan
+  > debiendo aunque cocinen todo lo que sacan**, y la más flaca debe 505,5. Es el
+  > mismo 91 con leña gratis y con leña cobrada: la leña mueve el mínimo 0,9 de
+  > stamina, así que **el problema no era la leña**. Cocinar sigue siendo lo mejor
+  > que se puede hacer con la misma
+  > materia —multiplica por **2,50×** lo que rinde, porque `digestibility` sube de
+  > 0,38 a 0,95, y aun pagando el fuego entero deja **+33,3** en la partida más
+  > flaca— pero eso es **una mejora que se paga sola, no una condición de
+  > supervivencia**. Es una frase más chica y es la que está medida.
+  >
+  > Y lo que se pierde con ella conviene decirlo sin maquillar: **el fuego deja de
+  > ser lo que salva.** Sigue valiendo por el carbón, la parrilla, secar y tres de
+  > las diez secuencias de emergencia — pero eso es otra cosa que sobrevivir.
 - **Y hay un número que hace que el 1,0 no parezca decretado.** A la frecuencia
   de referencia la criatura camina 20 celdas por segundo y cada celda cuesta
   0,05: **caminar cuesta exactamente 1,0 por segundo, lo mismo que vivir.**
@@ -291,13 +356,43 @@ ADR II-0008.
   10,0 de `stamina` a 10, 20, 25, 50 y 100 Hz. Se cierra el `it.fails` de
   `el-tiempo-no-depende-del-tick.test.ts:674`, y la promesa del ADR II-0007
   queda cumplida para lo único que de verdad mueve la historia.
-- **El criterio del Hito 5 pasa a medir algo.** Una criatura que no trabaja se
-  muere en el tick 10.000 de los 20.000, y una que camina sin parar en el 5000.
-  Sobrevivir obliga a la cadena entera del primer criterio: deshilachar, atar,
-  ir al río, pescar — y a repetirla.
+- **El criterio del Hito 5 pasa a medir algo.** Una criatura que no hace
+  absolutamente nada se muere en el tick 10.000 de los 20.000, y una que camina
+  sin parar en el 5000. Sobrevivir obliga a la cadena entera del primer criterio:
+  deshilachar, atar, ir al río, pescar — y a repetirla. *(Y la que camina buscando
+  comida tirada muere entre el 5508 y el 7719, o sea que queda entre las dos: ver
+  la tabla del riesgo 4 más abajo.)*
 - **Cocinar deja de ser decoración.** Es la diferencia entre 594 y 1485 contra un
   costo de 1000, y nadie tuvo que escribir «cocinar rinde más»: sale de que
-  `digestibility` sube de 0,38 a 0,95, que es 2,50×.
+  `digestibility` sube de 0,38 a 0,95, que es 2,50×. *(El 2,50× es lo que sigue en
+  pie. Que esa diferencia sea la que salva no: ver la corrección de arriba.)*
+- **EL CRITERIO DEL RIESGO 4 SE CUMPLE, y ahora está medido por un test que mide
+  eso.** *(Este punto lo agrega la corrección: el ADR original lo daba por cerrado
+  con la partida común, que trabaja.)* Cien partidas de 20.000 ticks con una
+  criatura que **no extrae nada** —sin caña, sin pozo, sin fuego y sin cocinar—,
+  que camina y levanta lo que el mundo dejó tirado, que ve el anillo entero de una
+  y nunca se equivoca de pieza:
+
+  | sin trabajo, por partida (1000 s) | mínimo | mediana | máximo |
+  |---|---|---|---|
+  | piezas levantadas | 1580 | 2472,5 | 2978 |
+  | ingreso, contra 1000 que cuesta SÓLO vivir | 104,3 | 434,8 | **529,2** |
+  | **NETO** | −1803,1 | −1435,4 | **−1321,8** |
+  | tick en el que se muere | 5508 | 7085,5 | 7719 |
+
+  Las cien negativas, y por lejos: **aunque no se le cobrara una sola celda**, lo
+  que junta en toda la partida (529,2 en el mejor caso) no llega a pagar lo que
+  cuesta estar vivo. Y se muere **antes** que el que se queda quieto —a las 20
+  celdas por segundo de hoy, caminar cuesta 1,0 por segundo, exactamente lo mismo
+  que vivir, así que buscar comida tirada duplica el gasto y lo que encuentra no
+  lo paga—. **El dios no es una fuente infinita: caminar de chunk en chunk
+  comiendo lo que hay tirado no alcanza.**
+
+  Y el techo calórico aguantó al mismo tiempo, sin tocarlo: **314 chunks cobrados
+  en las doscientas partidas, el más exprimido al 100,00% de su techo, ninguno por
+  encima.** Queda anotado que lo suelto **no pasa por `LibroCalorico`** —nadie se
+  lo cobra a ningún chunk— y cuánto es eso: el carroñero se lleva por esa puerta
+  el **0,063%** del presupuesto calórico de todo lo que barrió.
 - La mitad común del riesgo 4 se cierra **medida**, y sin tocar el techo
   calórico, que ya funcionaba.
 - `stamina` se vuelve legible de un vistazo: son segundos de vida. Cualquiera
@@ -315,6 +410,26 @@ ADR II-0008.
   ADR **afirma la ventana y no el número**: neto crudo negativo en las 100
   partidas comunes y neto cocinado positivo en las 100. Un test que afirmara
   `COSTO_VIVIR_POR_SEGUNDO === 1` mediría su propia copia.
+
+  > **Corrección — no es angosta: no existe.** Está arriba, con los tres bordes y
+  > el porqué. Lo que el criterio verificable afirma ahora no es un intervalo sino
+  > **dos hechos**: que sin trabajo el neto es negativo en las cien (el criterio
+  > del riesgo 4, tabla de arriba) y que cocinar se paga solo (+33,3 en la más
+  > flaca). Lo único que sobrevive del enunciado viejo es su última frase, y sigue
+  > valiendo: un test que afirmara `COSTO_VIVIR_POR_SEGUNDO === 1` mediría su
+  > propia copia, así que ninguno lo hace.
+  >
+  > **Y esto no es ablandar la vara**, que es lo que va a parecer dentro de tres
+  > meses. La vara es la del documento de arquitectura —«la energía neta acumulada
+  > de la criatura tiene que ser **negativa sin trabajo**»— y se cumple, y se
+  > cumple más fuerte que antes: la criatura que no trabaja no llega ni a la mitad
+  > de la partida. Lo que se corrige es una afirmación **distinta y más fuerte**
+  > que este ADR inventó mientras calibraba una perilla, y que la aritmética del
+  > fuego dejó sin conjunto solución. Las tres afirmaciones que sostienen la
+  > imposibilidad viven como `it` verdes y no como `it.fails`, a propósito: un
+  > `it.fails` que nadie va a cerrar es ruido, y una imposibilidad afirmada es un
+  > guardián que se pone rojo el día que alguien mueva una constante y los bordes
+  > se descrucen.
 - **La otra mitad del riesgo 4 sigue abierta, y este ADR no la declara cerrada.**
   La afortunada termina en **+2787,5 en la peor de sus cien partidas** aun a 1,0
   por segundo, y en +3037,6 en la mejor: ni la más flaca se acerca a cero.
