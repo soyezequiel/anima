@@ -78,6 +78,13 @@
  *                 Monótona no decreciente en todo el dominio.
  *   fln           |err| ≤ 1 ulp para todo x > 0 del rango i32. Monótona.
  *                 `fln(x ≤ 0)` satura en `FIXED_MIN`.
+ *   fraccionQueSeCierra
+ *                 error RELATIVO ≤ 6.6e-10 en todo el dominio útil, medido
+ *                 contra `1 − e^(−x)` en 200 000 puntos. Monótona no decreciente
+ *                 y siempre en [0, 1]. RELATIVO y no absoluto es el punto entero
+ *                 de la función, y por eso NO es `1 − unfx(fexp(...))`: ver su
+ *                 comentario, y el ADR II-0011. Es la única de este archivo que
+ *                 trabaja en doubles, y ahí está su porqué.
  *   fpow          exponente entero n = 2: |err| ≤ 1 ulp, exhaustivo. Es el
  *                 óptimo: el techo lo pone la resolución de la salida, no el
  *                 algoritmo. Para n ≤ 8: |err| ≤ max(n ulp, |v|·n·3e-4), porque
@@ -725,6 +732,92 @@ export function fexp(x: Fixed): Fixed {
 export function fln(x: Fixed): Fixed {
   if (x <= 0) return FIXED_MIN
   return fromS(lnS(toS(x)))
+}
+
+/** Arriba de esto `1 − e^(−x)` ya no se distingue de 1 ni a resolución de double. */
+const CIERRE_ARG_MAX = 37
+
+/** Dónde la serie directa le deja el trabajo a la reducción de rango. */
+const CIERRE_SERIE_MAX = 0.5
+
+/** `ln 2` como double. Es el mejor double que hay: |LN2 − ln2| < 1.1e-17. */
+const LN2 = 0.6931471805599453
+
+/**
+ * `1 − e^(−x)`: **la fracción del hueco que una relajación exponencial cierra en
+ * un paso**, con `x = λ·dt` el exponente de decaimiento (ADR II-0011).
+ *
+ * Es lo que la ley 1 necesita, y ni `fexp` ni la escala interna se lo pueden dar.
+ *
+ * ─── Por qué no alcanza `1 − unfx(fexp(fx(−x)))` ───────────────────────
+ *
+ * Por dos cosas, y cada una sola ya alcanzaría:
+ *
+ *   1. **la entrada**. Un `Fixed` tiene resolución 10⁻³ y este exponente es chico:
+ *      un leño de 8 kg a 100 Hz tiene `x = 0,00735`, y redondeado a 0,007 el
+ *      decaimiento se corre un 4,8%. Aplicado cien veces por segundo eso no es un
+ *      redondeo, es otra ley térmica — y el desvío DEPENDE DE LA FRECUENCIA (a
+ *      10 Hz el mismo cuerpo tiene `x = 0,0735` y se corre 0,7%), que es
+ *      exactamente lo que el ADR II-0008 prohíbe;
+ *   2. **la resta**. `e^(−x)` para `x` chico vale casi 1, así que `1 − e^(−x)` es
+ *      una resta de números parecidos y se come las cifras significativas. La
+ *      cuenta hay que hacerla SIN RESTAR, y por eso esto es una función y no una
+ *      línea en la ley 1.
+ *
+ * ─── Por qué en DOUBLES y no en la escala interna ───────────────────────
+ *
+ * Porque lo que este módulo evita es `Math.exp`, que ECMAScript no especifica, y
+ * NO los doubles: `+ − × ÷` sí están especificados bit a bit, así que un polinomio
+ * evaluado con ellos es tan determinista como uno entero. Y acá encima es más
+ * preciso —un double tiene 53 bits de mantisa contra los 24 de la escala
+ * interna— y mucho más barato.
+ *
+ * **Medido, y por eso está escrito así**: la versión que hacía esta misma cuenta
+ * con `expS` y la escala 2²⁴ costaba **191 ns por llamada**; ésta cuesta **17,5**.
+ * Esto corre una vez por cuerpo y por tick: para los 5000 cuerpos del banco son
+ * 0,95 ms contra 0,09, sobre un presupuesto de tick de 4 ms. La diferencia entre
+ * cobrar un cuarto del presupuesto y no cobrar nada.
+ *
+ * `fexp` no se toca y sigue en enteros: devuelve un `Fixed`, o sea un valor que
+ * tiene que caer exacto en la grilla de i32, y su contrato es ése. Son dos
+ * funciones distintas con dos contratos distintos, no dos copias de una. Que no
+ * divergan lo prueba un test que las clava juntas dentro de la resolución de
+ * `fexp` (`fixed.test.ts`), que es el mismo patrón con el que `leyes.test.ts`
+ * clava `capacidadTermica` contra la declaración del catálogo.
+ *
+ * ─── Las dos ramas ──────────────────────────────────────────────
+ *
+ *   · `x < 0.5` — la serie de `1 − e^(−x)` FACTORIZADA por `x`:
+ *     `x·(1 − x/2·(1 − x/3·(… (1 − x/9))))`. El `x` queda AFUERA del paréntesis
+ *     a propósito: adentro se calcula un número cercano a 1 y el error queda
+ *     RELATIVO a `x` en vez de absoluto, que es lo que hace que un exponente de
+ *     1e-4 no se coma dos órdenes de precisión. El término omitido en x = 0,5
+ *     vale 5e-9 relativo;
+ *   · `x ≥ 0.5` — ahí `1 − e^(−x)` ya vale más de 0,39 y restar no cuesta nada.
+ *     Reducción de rango `x = n·ln2 + r` con `|r| ≤ ln2/2 = 0,347`, Taylor de
+ *     `e^(−r)` —término omitido 2,6e-11— y una división por `2ⁿ`, que es EXACTA en
+ *     IEEE-754 y sale de la tabla `POW2`. `Math.round` está especificado; el
+ *     error de la reducción es `n·|LN2 − ln2| ≤ 6e-16`.
+ *
+ * `x ≤ 0` devuelve 0 —una relajación con exponente cero no cierra nada— y eso
+ * incluye `NaN`: la alternativa es un `NaN` que se propaga por el mundo y aparece
+ * cuatrocientos ticks después sin causa visible. Que el 0 sea sospechoso y el
+ * `NaN` no, es la misma decisión que toma `clampRaw`.
+ */
+export function fraccionQueSeCierra(exponente: number): number {
+  if (!(exponente > 0)) return 0
+  if (exponente >= CIERRE_ARG_MAX) return 1
+  if (exponente < CIERRE_SERIE_MAX) {
+    let t = 1 - exponente / 9
+    for (let i = 8; i >= 2; i--) t = 1 - (exponente / i) * t
+    return exponente * t
+  }
+  const n = Math.round(exponente / LN2)
+  const r = exponente - n * LN2
+  // Horner de e^(−r) = 1 − r(1 − r/2(1 − r/3(… (1 − r/8))))
+  let t = 1 - r / 8
+  for (let i = 7; i >= 1; i--) t = 1 - (r / i) * t
+  return 1 - t / pow2(n)
 }
 
 /**

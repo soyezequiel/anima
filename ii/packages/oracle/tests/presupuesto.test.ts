@@ -51,12 +51,15 @@ import {
   DIGESTIBILIDAD_TECHO,
   dtDeFrecuencia,
   EXTRACCION,
+  FRICCION,
   fx,
   HZ_DE_REFERENCIA,
+  porPaso,
   qualityOf,
   SEED_PROCESSES,
   seg,
   sumarPaso,
+  T_AMBIENTE,
   unfx,
   unir,
 } from '@anima/physics'
@@ -447,6 +450,90 @@ function caloriasDelBocado(substance: SubstanceId, masa: Fixed, digestibility?: 
   return qualityOf(bocado, 'calories', PHYS)
 }
 
+// ─── EL CUARTO NÚMERO DEL MODELO: LO QUE CUESTA EL FUEGO (ADR II-0011) ──────
+//
+// Hasta el ADR II-0011 este archivo modelaba cocinar como algo GRATIS: multiplicar
+// por `DIGESTIBILIDAD_TECHO` y listo. Se podía, porque el fuego duraba un tick y
+// no había ninguna aritmética que pudiera cerrar de todos modos. Ahora el fuego
+// dura, cocinar es una cosa que pasa de verdad en el mundo, y **tiene precio**.
+//
+// El precio se despeja acá y NO se copia. Las cinco piezas salen de
+// `@anima/physics` leídas en tiempo de ejecución —el `drive` de `friccion`, su
+// eficiencia, el punto de ignición de la sustancia, su `heatCapacity` y
+// `T_AMBIENTE`— y la sexta es `COSTO_VIVIR_POR_SEGUNDO`, que ya estaba copiada
+// arriba con su guardián. Lo único que se copia nuevo es **la forma de la cuenta**
+// que el mundo cobra (`aplicarEfectos`, `world/src/step.ts`), y el guardián del
+// final la vigila con un regex igual que a las tres constantes.
+
+/** La eficiencia del `poweredBy` de `friccion`, del catálogo y no de acá. */
+const EL_DRIVE_DE_FROTAR = ((): { porSegundo: number; efficiency: number } => {
+  const e = FRICCION.effects[0]
+  if (e === undefined || e.k !== 'drive' || e.poweredBy === undefined) {
+    throw new Error('`friccion` cambió de forma: el modelo económico de este archivo quedó viejo')
+  }
+  return { porSegundo: e.porSegundo, efficiency: e.poweredBy.efficiency }
+})()
+
+/**
+ * **La segunda perilla de acá, y es una medición ajena**: la vara más barata con
+ * la que se puede encender un fuego QUE COCINA.
+ *
+ * No se puede despejar de la física, y el porqué es todo el punto: que la yesca
+ * prenda depende de `emitsPower` —que es `fuelEnergy × masa`— y de la ley 3, o sea
+ * de correr el mundo. Este paquete no puede correrlo (`@anima/oracle` no importa
+ * `@anima/world`), así que el número viene MEDIDO de
+ * `perceive/tests/ataque-a-la-costura.test.ts`, bloque 7, donde está el barrido
+ * entero con su tabla:
+ *
+ *   vara 0,20 kg → 282,17 de stamina · PRENDE a los 2,40 s y **no cocina nada**:
+ *                  el pescado sobre la parrilla se queda en `digestibility` 0,3800
+ *   vara 0,46 kg → 645,87 · la yesca NO prende, el pescado llega a 0,7461
+ *   vara 0,47 kg → 659,86 · yesca a los 3,00 s, leño a los 3,30, pescado COCIDO
+ *                  (0,85) a los 6,70 y 0,9500 al final ← el más barato que cocina
+ *   vara 0,50 kg → 701,83 · el de la cadena de `world/tests/el-fuego.test.ts`
+ *
+ * Los 282,17 son los que el `it.fails` de `world/tests/ataque-2-al-fuego.test.ts`
+ * (e) usa hoy, y son OPTIMISTAS por un factor de 2,34: ese fuego enciende y no
+ * cocina, así que la economía que se apoya en él está comprando algo que no se
+ * puede comprar.
+ */
+const MASA_DE_LA_VARA_QUE_ENCIENDE = 0.47
+
+/**
+ * Lo que le cuesta a la criatura llevar una vara de `masa` kg de su sustancia
+ * desde el ambiente hasta que prende, en `stamina`.
+ *
+ * LA FORMA DE LA CUENTA ES DEL MUNDO, y está copiada con su ruta: `aplicarEfectos`
+ * cobra `heatCapacity × Δq / eficiencia` por paso, y el paso mueve como mucho
+ * `porPaso(porSegundo, dt)` grados. Sumada a lo largo de los pasos que hacen falta
+ * para cruzar el punto de ignición, la cuenta telescopia y queda
+ * `heatCapacity × ΔT / eficiencia`, con el ΔT del ÚLTIMO PASO ENTERO y no el
+ * exacto: el empuje no se puede fraccionar, así que la mano paga hasta
+ * `T_AMBIENTE + pasos × porPaso` aunque la ignición esté un poco antes.
+ *
+ * Y hay que sumarle lo que cuesta estar viva esos segundos, que es la otra mitad
+ * de por qué esto vive en el mismo archivo que `COSTO_VIVIR_POR_SEGUNDO`.
+ */
+function precioDeEncender(masa: number, substance: SubstanceId): { precio: number; termico: number; segundos: number } {
+  const vara: Body = { id: 'vara', form: 'vara', parts: [{ substance, mass: masa, q: {} }], joints: [], state: {} }
+  const cap = qualityOf(vara, 'heatCapacity', PHYS)
+  const ignicion = qualityOf(vara, 'ignitionPoint', PHYS)
+  const porGolpe = porPaso(EL_DRIVE_DE_FROTAR.porSegundo, DT)
+  const pasos = Math.ceil((ignicion - T_AMBIENTE) / porGolpe)
+  const termico = (cap * (pasos * porGolpe)) / EL_DRIVE_DE_FROTAR.efficiency
+  const segundos = pasos / HZ
+  return { precio: termico + segundos * COSTO_VIVIR_POR_SEGUNDO, termico, segundos }
+}
+
+/** El fuego más barato que la criatura puede encender y que además COCINA. */
+const PRECIO_DEL_FUEGO = precioDeEncender(MASA_DE_LA_VARA_QUE_ENCIENDE, 'madera')
+
+/** Lo que cocinar le agrega a UNA pieza: la misma materia, la otra digestibilidad. */
+const LO_QUE_PAGA_UNA_PIEZA =
+  (caloriasDelBocado('pescado', MASA_DE_UNA_PIEZA, DIGESTIBILIDAD_TECHO) -
+    caloriasDelBocado('pescado', MASA_DE_UNA_PIEZA)) *
+  STAMINA_POR_CALORIA
+
 // ─── La partida ─────────────────────────────────────────────────────────────
 
 type Variante = 'afortunada' | 'comun'
@@ -811,6 +898,22 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     // Se afirma sobre la COMÚN y no sobre la afortunada a propósito: la afortunada
     // es un dado cargado, y calibrar contra un adversario da el número equivocado
     // con el otro signo (ver el `it.fails` de acá arriba).
+    //
+    // ─── Y LO QUE ESTA VENTANA SUPONE, dicho en voz alta (ADR II-0011) ─────
+    //
+    // **Que cocinar es gratis.** El «ingreso cocinado» de acá es la misma pieza
+    // con `digestibility` al techo y nada más: no hay fuego, no hay vara, no hay
+    // precio. Cuando el fuego duraba un tick eso era inofensivo —cocinar no se
+    // podía de ninguna manera, así que ningún modelo iba a ser peor que la
+    // realidad—. Desde que el fuego dura, cocinar es una cosa que pasa y **tiene
+    // precio**, y este test sigue midiendo la ventana SIN ese precio adentro.
+    //
+    // Se deja tal cual a propósito: éste es el criterio que el ADR II-0009
+    // escribió y lo que afirma sigue siendo cierto. Lo que el precio del fuego le
+    // hace está medido aparte, con su número y su `it.fails`, en el bloque 5 del
+    // final de este archivo. Meterlo acá adentro convertiría un criterio que se
+    // cumple en uno que no, borrando de paso el hecho de que la mitad del
+    // metabolismo SÍ está calibrada.
     for (const p of COMUNES) {
       expect(p.netoCrudo).toBeLessThan(0)
       expect(p.netoCocinado).toBeGreaterThan(0)
@@ -1000,5 +1103,231 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     for (const viejo of ['COSTO_VIVIR', 'COSTO_PASO']) {
       expect([viejo, dice(new RegExp(`export const ${viejo}\\b`))]).toEqual([viejo, false])
     }
+
+    // ─── Y LA CUARTA COSA COPIADA, que no es una constante (ADR II-0011) ───
+    //
+    // `precioDeEncender` copia la FORMA de la cuenta con la que el mundo cobra un
+    // `drive` con `poweredBy`: `heatCapacity × Δq / eficiencia` por paso. No es un
+    // número —la eficiencia sale del catálogo de `@anima/physics` en tiempo de
+    // ejecución— pero es igual de copiable y de olvidable: si mañana alguien
+    // cobra el trabajo de otra manera, el precio del fuego de este archivo queda
+    // midiendo una física que ya no existe, y ninguna constante lo delata.
+    //
+    // Las dos mitades: que la energía sea `capacidad × delta`, y que se DIVIDA por
+    // la eficiencia. Multiplicarla en vez de dividirla daría un fuego 8× más
+    // barato y el modelo entero cerraría por el motivo equivocado.
+    expect(['la energía es capacidad × delta', dice(/const pedido = \(cap > 0 \? cap : 1\) \* delta/)]).toEqual([
+      'la energía es capacidad × delta',
+      true,
+    ])
+    expect(['y se DIVIDE por la eficiencia', dice(/const pedido = .* \/ efic/)]).toEqual([
+      'y se DIVIDE por la eficiencia',
+      true,
+    ])
+  })
+})
+
+// ═══ 5. EL PRECIO DE COCINAR: LA ECONOMÍA CON EL FUEGO ADENTRO ══════════════
+//
+// El ADR II-0011 («arder libera calor») hizo que el fuego DURE, y con eso cocinar
+// pasó de ser imposible a ser una técnica. Este bloque es la otra mitad de la
+// noticia: **ahora se puede poner el precio**, y el precio no cierra.
+//
+// Lo que de acá abajo mira partidas las mira COMUNES, por la misma razón que el
+// criterio del ADR II-0009: la afortunada es un dado cargado.
+//
+// Y TODO ESTE BLOQUE ES OPTIMISTA A PROPÓSITO, en tres lugares a la vez, porque
+// lo que concluye es que la aritmética NO cierra y una cota optimista hace esa
+// conclusión más fuerte, no más débil:
+//
+//   · **un solo fuego por partida**, encendido una vez y sostenido los 1000
+//     segundos con leña que este modelo no cobra;
+//   · **la pieza cocinada rinde `DIGESTIBILIDAD_TECHO` completa**, o sea 2,50× la
+//     cruda. En el mundo de verdad rinde 2,13×, medido en
+//     `perceive/tests/ataque-a-la-costura.test.ts`: el pescado sobre la parrilla
+//     también se SECA, y `calories` es extensiva en la masa. Este archivo cocina
+//     la misma pieza sin correr el mundo y por eso no ve la merma;
+//   · **caminar hasta la leña, juntarla y volver no cuesta nada**, igual que
+//     caminar entre orillas no cuesta tiempo (el `it.fails` de la afortunada).
+
+describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
+  it('el precio del fuego más barato QUE COCINA, despejado de la física', () => {
+    // El número entero, pieza por pieza, para que nadie tenga que despejarlo de
+    // nuevo. Y para que se vea que las dos formas de contarlo dan lo mismo: acá se
+    // despeja de `@anima/physics` y en `perceive/tests/ataque-a-la-costura.test.ts`
+    // se MIDE corriendo `stepWorld`. Los dos dan 659,8629.
+    const vara: Body = {
+      id: 'v',
+      form: 'vara',
+      parts: [{ substance: 'madera', mass: MASA_DE_LA_VARA_QUE_ENCIENDE, q: {} }],
+      joints: [],
+      state: {},
+    }
+    const cap = qualityOf(vara, 'heatCapacity', PHYS)
+    const ign = qualityOf(vara, 'ignitionPoint', PHYS)
+    const porGolpe = porPaso(EL_DRIVE_DE_FROTAR.porSegundo, DT)
+    console.log(
+      `económico · EL PRECIO DEL FUEGO, despejado:\n` +
+        `económico ·   vara de madera de ${String(MASA_DE_LA_VARA_QUE_ENCIENDE)} kg · heatCapacity ${cap.toFixed(4)} · ignición ${String(ign)} °C · ambiente ${String(T_AMBIENTE)} °C\n` +
+        `económico ·   el empuje mueve ${porGolpe.toFixed(1)} °C por paso a ${String(HZ)} Hz, así que hacen falta ${String(Math.ceil((ign - T_AMBIENTE) / porGolpe))} pasos y la mano paga hasta ${String(T_AMBIENTE + Math.ceil((ign - T_AMBIENTE) / porGolpe) * porGolpe)} °C\n` +
+        `económico ·   térmico ${PRECIO_DEL_FUEGO.termico.toFixed(4)} (= heatCapacity × ΔT / ${String(EL_DRIVE_DE_FROTAR.efficiency)}) + vivir ${(PRECIO_DEL_FUEGO.segundos * COSTO_VIVIR_POR_SEGUNDO).toFixed(4)} durante ${PRECIO_DEL_FUEGO.segundos.toFixed(2)} s\n` +
+        `económico ·   TOTAL ${PRECIO_DEL_FUEGO.precio.toFixed(4)} de stamina, contra un tanque que topa en 1000`,
+    )
+    expect(Number(PRECIO_DEL_FUEGO.precio.toFixed(4))).toBe(659.8629)
+
+    // Y LA VARA BARATA NO SIRVE, que es lo que este bloque agrega. Los 282,17 de
+    // una vara de 0,2 kg —el número con el que el `it.fails` de
+    // `world/tests/ataque-2-al-fuego.test.ts` (e) hace su cuenta— compran un fuego
+    // que ENCIENDE y no cocina: medido en `perceive`, el pescado sobre la parrilla
+    // se queda en `digestibility` 0,3800, o sea crudo. Encender y cocinar son dos
+    // umbrales distintos y hay un factor de 2,34 entre ellos.
+    const barata = precioDeEncender(0.2, 'madera')
+    expect(Number(barata.precio.toFixed(4))).toBe(282.1714)
+    expect(PRECIO_DEL_FUEGO.precio / barata.precio).toBeGreaterThan(2.3)
+    console.log(
+      `económico ·   la vara de 0,2 kg cuesta ${barata.precio.toFixed(2)} y NO cocina (el pescado se queda en 0,3800): ` +
+        `el fuego que cocina sale ${(PRECIO_DEL_FUEGO.precio / barata.precio).toFixed(2)}× eso`,
+    )
+  })
+
+  it('¿CUÁNTOS PESCADOS HAY QUE COCINAR EN UN FUEGO PARA QUE EL FUEGO SE PAGUE?', () => {
+    // LA PREGUNTA DEL TRAMO, contestada con el número. El adversario del tramo
+    // anterior la contestó con el fuego que se apagaba en un tick y le dio **332
+    // pescados por fuego** (pieza de 1 kg que sólo llegaba a `digestibility` 0,513,
+    // contra una ignición de 352,71). Con el fuego que arde:
+    //
+    //   · la pieza llega al techo de la ley 5 —0,95— y no a 0,513;
+    //   · encender pasó de 352,71 a 659,86, porque el fuego barato NO COCINA y hay
+    //     que pagar el que sí;
+    //   · y el fuego, una vez hecho, cocina **todo lo que se le ponga encima a la
+    //     vez**: 200 pescados de 2 kg sobre una sola parrilla salen los 200 cocidos
+    //     y sin carbonizar, medido en `perceive`. Cocinar no es rival: el precio es
+    //     del fuego y no del bocado.
+    //
+    // Los dos números, para que se puedan comparar con el 332 viejo y con la
+    // pieza que este archivo usa.
+    const deUnKilo =
+      (caloriasDelBocado('pescado', fx(1), DIGESTIBILIDAD_TECHO) - caloriasDelBocado('pescado', fx(1))) *
+      STAMINA_POR_CALORIA
+    const porFuegoUnKilo = Math.ceil(PRECIO_DEL_FUEGO.precio / deUnKilo)
+    const porFuego = Math.ceil(PRECIO_DEL_FUEGO.precio / LO_QUE_PAGA_UNA_PIEZA)
+    console.log(
+      `económico · PESCADOS POR FUEGO, remedido con el fuego que dura:\n` +
+        `económico ·   cocinar una pieza de 1 kg paga ${deUnKilo.toFixed(2)} de stamina → ${String(porFuegoUnKilo)} por fuego (el adversario, con el fuego de un tick, midió 332)\n` +
+        `económico ·   cocinar una pieza de ${String(unfx(MASA_DE_UNA_PIEZA))} kg paga ${LO_QUE_PAGA_UNA_PIEZA.toFixed(2)} → ${String(porFuego)} por fuego`,
+    )
+    expect(porFuegoUnKilo).toBe(145)
+    expect(porFuego).toBe(73)
+
+    // Y LO QUE ESO SIGNIFICA EN UNA PARTIDA, que es donde el número se vuelve
+    // accionable: la criatura COMÚN saca entre `min` y `max` piezas en los 1000
+    // segundos. Si el número de arriba estuviera arriba de lo que saca la que MENOS
+    // sacó, el fuego no se pagaría nunca en ninguna partida.
+    const piezas = extremos(COMUNES.map((p) => p.piezas))
+    console.log(
+      `económico ·   la común saca entre ${String(piezas.min)} y ${String(piezas.max)} piezas por partida (mediana ${String(piezas.mediana)}): ` +
+        `${piezas.min >= porFuego ? 'las cien' : 'no todas'} alcanzan para pagar UN fuego`,
+    )
+    // Está peleado, y ése es el dato: la que menos sacó saca 76 y hacen falta 73.
+    expect(piezas.min).toBeGreaterThanOrEqual(porFuego)
+  })
+
+  it('COCINAR CONVIENE EN LAS CIEN, aunque el fuego se pague entero de un bolsillo solo', () => {
+    // La comparación honesta contra la alternativa: comer todo crudo. Un fuego por
+    // partida —el supuesto MÁS GENEROSO que se puede hacer, porque supone que la
+    // criatura lo mantiene encendido los 1000 segundos con leña que este modelo no
+    // le cobra— y todo lo que saca, cocinado.
+    const conFuego = COMUNES.map((p) => p.ingresoCocinado - p.ingresoCrudo - PRECIO_DEL_FUEGO.precio)
+    const e = extremos(conFuego)
+    console.log(
+      `económico · COCINAR CONTRA COMER CRUDO, con UN fuego por partida:\n` +
+        `económico ·   lo que cocinar agrega, menos el fuego: mínimo ${e.min.toFixed(1)} · mediana ${e.mediana.toFixed(1)} · máximo ${e.max.toFixed(1)}\n` +
+        `económico ·   o sea que en la partida más flaca de las cien el fuego se paga por ${(1 + e.min / PRECIO_DEL_FUEGO.precio).toFixed(2)}× lo que costó`,
+    )
+    for (const x of conFuego) expect(x).toBeGreaterThan(0)
+  })
+
+  it.fails('SIGUE ABIERTO · la VENTANA del ADR II-0009 NO CIERRA con el precio del fuego adentro', () => {
+    // POR QUÉ SIGUE ABIERTO: el criterio del ADR II-0009 —«neto crudo negativo en
+    // las 100 partidas comunes y neto cocinado positivo en las 100»— se eligió con
+    // un modelo en el que **cocinar era gratis**. Con el precio del fuego adentro,
+    // la mitad de arriba de la ventana se cae, y no por poco.
+    //
+    // MEDIDO, con UN SOLO fuego por partida —el supuesto más generoso posible: que
+    // se enciende una vez y dura los 1000 segundos, con leña que este modelo no
+    // cobra—:
+    //
+    //   neto cocinado SIN fuego .... mínimo  +155,2 · mediana  +489,6 · máximo +915,2
+    //   neto cocinado CON fuego .... mínimo  −504,7 · mediana  −170,3 · máximo +255,3
+    //
+    // O sea que 91 de las 100 partidas comunes terminan DEBIENDO aunque cocinen
+    // todo lo que sacan, y las 9 que zafan son las que más pescaron. La afirmación
+    // que el ADR II-0009 sostiene —«la diferencia entre vivir y morirse es
+    // cocinar»— sigue siendo cierta como COMPARACIÓN (el test de acá arriba mide
+    // que cocinar conviene en las cien) y deja de serlo como SUPERVIVENCIA: cocinar
+    // es mejor que no cocinar y no alcanza para vivir.
+    //
+    // Y NO SE ARREGLA DESDE ACÁ. Bajar `COSTO_VIVIR_POR_SEGUNDO` hasta que las cien
+    // vuelvan a dar positivo es calibrar el mundo desde el arnés, que es lo que
+    // este archivo entero existe para no hacer: la ventana se afirma, no se
+    // fabrica. El número que haría falta está medido igual, abajo, porque un hueco
+    // sin su magnitud no se puede priorizar.
+    //
+    // QUÉ HARÍA FALTA PARA CERRARLO, y son las mismas tres salidas que el hueco
+    // gemelo de `world/tests/ataque-2-al-fuego.test.ts` (e) nombra, con los números
+    // de hoy:
+    //
+    //   1. que `nutrition → stamina` rinda más: hace falta un factor de 1,44 sobre
+    //      el ingreso cocinado de la partida más flaca. Es `STAMINA_POR_CALORIA` o
+    //      el `nutrition` del catálogo, y mueve el hambre entera;
+    //   2. que encender salga más barato **y por este lado no se puede**, y es el
+    //      hallazgo del bloque. La partida más flaca de las cien termina con 155,2
+    //      de holgura, así que el fuego tendría que costar menos que eso; el precio
+    //      es `heatCapacity × 288 / eficiencia + 2,4`, y despejando hace falta una
+    //      eficiencia de **1,51**. Una eficiencia mayor que 1 es una máquina de
+    //      movimiento perpetuo, que es exactamente lo que el comentario de
+    //      `FRICCION` dice que el 0,35 existe para impedir. Ni siquiera un motor
+    //      PERFECTO alcanza: con eficiencia 1 el fuego cuesta 232,51 y la holgura
+    //      es 155,2. La salida no está en el precio del trabajo, está en la masa de
+    //      la vara — y la masa no se puede bajar porque abajo de 0,47 kg el fuego
+    //      enciende y no cocina, que es el otro número de este bloque;
+    //   3. que el fuego se amortice entre más partidas de las que hay. Ya no: el
+    //      ADR II-0011 hizo que UN fuego cocine 200 pescados a la vez, y aun así
+    //      hace falta que la partida saque 73 piezas de las 76 que saca la más
+    //      flaca. Esta salida ya se gastó.
+    //
+    // Las tres son del ADR II-0009 y piden barrido. Este archivo sólo puede
+    // decirlo con el número adelante.
+    const sinFuego = extremos(COMUNES.map((p) => p.netoCocinado))
+    const conFuego = COMUNES.map((p) => p.netoCocinado - PRECIO_DEL_FUEGO.precio)
+    const e = extremos(conFuego)
+    const negativas = conFuego.filter((x) => x <= 0).length
+    // Cuánto tendría que rendir el ingreso cocinado para que las cien vuelvan a dar
+    // positivo, dicho como factor: el número accionable de la salida 1.
+    const falta = extremos(
+      COMUNES.map(
+        (p) => (COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA + p.celdasCaminadas * COSTO_POR_CELDA + PRECIO_DEL_FUEGO.precio) / p.ingresoCocinado,
+      ),
+    ).max
+    // Y la salida 2, medida y no argumentada: la eficiencia que haría falta, y lo
+    // que cuesta el fuego con la eficiencia PERFECTA que ninguna física da.
+    const holgura = sinFuego.min
+    const conMotorPerfecto = PRECIO_DEL_FUEGO.termico * EL_DRIVE_DE_FROTAR.efficiency + PRECIO_DEL_FUEGO.segundos * COSTO_VIVIR_POR_SEGUNDO
+    const eficienciaQueHaríaFalta =
+      (PRECIO_DEL_FUEGO.termico * EL_DRIVE_DE_FROTAR.efficiency) / (holgura - PRECIO_DEL_FUEGO.segundos * COSTO_VIVIR_POR_SEGUNDO)
+    console.log(
+      `económico · LA VENTANA CON EL FUEGO ADENTRO (un fuego de ${PRECIO_DEL_FUEGO.precio.toFixed(2)} por partida):\n` +
+        `económico ·   neto cocinado SIN fuego: mínimo ${sinFuego.min.toFixed(1)} · mediana ${sinFuego.mediana.toFixed(1)} · máximo ${sinFuego.max.toFixed(1)}\n` +
+        `económico ·   neto cocinado CON fuego: mínimo ${e.min.toFixed(1)} · mediana ${e.mediana.toFixed(1)} · máximo ${e.max.toFixed(1)}\n` +
+        `económico ·   ${String(negativas)} de ${String(PARTIDAS)} partidas terminan DEBIENDO aunque cocinen todo lo que sacan\n` +
+        `económico ·   salida 1 · el ingreso cocinado tendría que rendir ${falta.toFixed(2)}× lo que rinde\n` +
+        `económico ·   salida 2 · o frotar tendría que tener eficiencia ${eficienciaQueHaríaFalta.toFixed(2)}, que es una máquina de movimiento perpetuo. ` +
+        `Con la eficiencia PERFECTA (1,00) el fuego cuesta ${conMotorPerfecto.toFixed(2)} y la holgura de la partida más flaca es ${holgura.toFixed(1)}`,
+    )
+    // La salida 2 está cerrada por arriba y eso no es una opinión: ni el motor
+    // perfecto entra en la holgura.
+    expect(eficienciaQueHaríaFalta).toBeGreaterThan(1)
+    expect(conMotorPerfecto).toBeGreaterThan(holgura)
+    for (const x of conFuego) expect(x).toBeGreaterThan(0)
   })
 })

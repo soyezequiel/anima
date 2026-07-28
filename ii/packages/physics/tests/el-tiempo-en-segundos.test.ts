@@ -25,7 +25,7 @@ import { buildSeedPhysics } from '../src/physics.js'
 import type { Physics } from '../src/physics.js'
 import { qualityOf } from '../src/body.js'
 import type { Body } from '../src/body.js'
-import { CELDA_AL_AIRE, correr, paso } from '../src/leyes.js'
+import { CELDA_AL_AIRE, conSustancia, correr, paso } from '../src/leyes.js'
 import type { Entorno } from '../src/leyes.js'
 import {
   dtDeFrecuencia,
@@ -72,11 +72,17 @@ function segundosHasta(
 ): number {
   const dt = dtDeFrecuencia(hz)
   let b = inicial
-  const p = phys
+  // La sustancia que la ley 4 da de alta se AGREGA a la física antes de volver a
+  // preguntar. Sin esto, un cuerpo que transmutó queda hecho de una sustancia que
+  // `qualityOf` no encuentra, y todas sus cualidades vuelven al valor por omisión:
+  // el caso de la madera tapada medía `charred` volviendo a cero y subiendo de
+  // nuevo desde una materia desconocida, o sea el doble de tiempo del real.
+  let p = phys
   const pasos = Math.round(techo / dt)
   for (let n = 1; n <= pasos; n++) {
     const r = paso(b, e, p, dt)
     b = r.body
+    if (r.nueva !== undefined) p = conSustancia(p, r.nueva)
     if (pred(b, p)) return n * dt
   }
   return Number.NaN
@@ -135,11 +141,23 @@ describe('el ritmo del mundo no depende de la frecuencia', () => {
     // trayectorias entre frecuencias admisibles y decidir un rango soportado, en
     // vez de prometer que cualquiera anda». El rango soportado son las cinco.
     //
-    // OJO CON EL BORDE DE ABAJO: el acople de la ley 1 está topado en 1 por
-    // estabilidad, así que un cuerpo MUY liviano a 10 Hz salta al equilibrio en
-    // un paso en vez de acercarse. Por eso el caso térmico usa un cuerpo de masa
-    // 20: con masa 1 el desvío no es de integración, es que la integración se
-    // satura. Bajar de 10 Hz pide volver a medir esto, no suponerlo.
+    // EL BORDE DE ABAJO YA NO ES LA SATURACIÓN (ADR II-0011). Este comentario
+    // decía que el acople de la ley 1 estaba «topado en 1 por estabilidad» y que
+    // por eso un cuerpo liviano a 10 Hz saltaba al equilibrio en un paso. Ese tope
+    // era el síntoma del Euler explícito y ya no existe: la ley 1 se integra en
+    // forma cerrada y `1 − e^(−r·dt)` nunca llega a 1. El caso térmico sigue con
+    // masa 20 porque mide otra cosa —el ritmo de un cuerpo grande— y no porque la
+    // integración se rompa con masa 1.
+    //
+    // ─── LA COTA TIENE DOS SUMANDOS, Y EL SEGUNDO NO ES OPCIONAL ─────────────
+    //
+    // «Cuándo ocurrió algo» no se puede observar mejor que UN TICK, y a 10 Hz un
+    // tick son 0,1 s. Con un hecho que pasa a los 1,25 s, la resolución sola vale
+    // el 8% — más que la tolerancia entera. Sin este sumando el test no está
+    // midiendo la deriva de la integración: está midiendo dónde cae la grilla de
+    // muestreo, y se cae o pasa según de qué lado del tick quede el instante.
+    // Medido: `la madera llega a 375 °C en el fuego` da 1,30 s a 10 Hz y 1,25 a
+    // 20, que es exactamente medio tick de 10 Hz.
     const TOLERANCIA = 0.03
     const filas: string[] = []
     let peor = 0
@@ -154,8 +172,12 @@ describe('el ritmo del mundo no depende de la frecuencia', () => {
       for (let i = 0; i < medidos.length; i++) {
         const desvio = Math.abs((medidos[i] as number) - referencia) / referencia
         if (desvio > peor) peor = desvio
+        // Un tick de la frecuencia que se compara más uno de la de referencia: son
+        // las dos grillas de muestreo, y el instante de verdad está adentro de las
+        // dos. Es resolución de observación, no deriva.
+        const resolucion = (1 / (FRECUENCIAS_ADMISIBLES[i] as number) + 1 / HZ_DE_REFERENCIA) / referencia
         expect(
-          [c.nombre, FRECUENCIAS_ADMISIBLES[i], desvio <= TOLERANCIA],
+          [c.nombre, FRECUENCIAS_ADMISIBLES[i], desvio <= TOLERANCIA + resolucion],
           `${c.nombre} a ${String(FRECUENCIAS_ADMISIBLES[i])} Hz tarda ${String(medidos[i])} s contra ${String(referencia)} s a ${String(HZ_DE_REFERENCIA)} Hz`,
         ).toEqual([c.nombre, FRECUENCIAS_ADMISIBLES[i], true])
       }

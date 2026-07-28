@@ -129,27 +129,30 @@ function leer(w: WorldState, id: string, q: QualityId): number {
 
 // ─── (a) LA TASA ─────────────────────────────────────────────────────────────
 
-describe('frotar lleva la vara a 375 °C en tres segundos, a cualquier frecuencia', () => {
+describe('frotar lleva la vara a 375 °C en 2,40 s, a cualquier frecuencia', () => {
   it('las cinco frecuencias admisibles, en el mundo entero', () => {
-    // Es lo que el comentario de `FRICCION` promete desde que se escribió —«TRES
-    // SEGUNDOS llevan la madera de 15 a 375 °C»— y lo que hasta el ADR II-0010 no
-    // pasaba: la ley 1 relajaba proporcional al hueco y las dos se estancaban en
-    // 29,40 °C para esta misma vara.
+    // ERAN TRES SEGUNDOS Y AHORA SON 2,40, y la diferencia es el ADR II-0011: la
+    // fricción empuja 120 °C por segundo y cruza los 300 de ignición de lo leñoso
+    // a los 2,375 s; de ahí en adelante los grados no los pone la mano sino la
+    // llama, que empuja hacia los 615 °C de régimen. La vieja cuenta
+    // —15 + 120×3 = 375— sigue siendo cierta para lo que NO puede prender, y eso se
+    // mide en `physics/tests/el-empuje-no-se-relaja.test.ts` sobre hueso.
     //
     // La afirmación va en PASOS y no en segundos. El margen es UN TICK —un hecho
     // no se observa cuando ocurre sino en el primer paso posterior— y «un tick»
-    // en segundos es un double: a 50 Hz, `3,02 − 3` da 0,020000000000000018 y una
-    // comparación honesta contra 0,02 falla por el último bit. En pasos la cuenta
-    // es entera. El paso 3·hz es el que la cuenta cerrada predice; el 3·hz+1 sale
-    // de acumular 150 sumas de 2,4 en IEEE-754, que llega a 374,99999999999994.
+    // en segundos es un double: a 50 Hz, `2,42 − 2,4` da 0,020000000000000018 y
+    // una comparación honesta contra 0,02 falla por el último bit. En pasos la
+    // cuenta es entera: `ceil(2,375·hz)` es el primer paso en que el empuje cruza
+    // la ignición, y los 375 llegan en ese mismo paso o en el siguiente.
     const filas: string[] = []
     for (const hz of FRECUENCIAS_ADMISIBLES) {
       const r = frotarHasta375(0.2, hz)
       expect([hz, r.violaciones]).toEqual([hz, []])
-      expect([hz, r.pasos === 3 * hz || r.pasos === 3 * hz + 1]).toEqual([hz, true])
+      const ignicion = Math.ceil(2.375 * hz)
+      expect([hz, r.pasos === ignicion || r.pasos === ignicion + 1]).toEqual([hz, true])
       filas.push(
         `  ${String(hz).padStart(3)} Hz → 375 °C a los ${r.segundos.toFixed(3)} s` +
-          `  (paso ${String(r.pasos)} de ${String(3 * hz)})   costó ${r.costo.toFixed(2)} de stamina`,
+          `  (paso ${String(r.pasos)} de ${String(ignicion)})   costó ${r.costo.toFixed(2)} de stamina`,
       )
     }
     log([
@@ -165,7 +168,9 @@ describe('frotar lleva la vara a 375 °C en tres segundos, a cualquier frecuenci
     // EXTENSIVA. Ver la tabla de (b).
     for (const m of [0.2, 0.4, 0.55]) {
       const r = frotarHasta375(m, 20)
-      expect([m, r.pasos]).toEqual([m, 60])
+      // 48 y no 60: el ADR II-0011 le puso la llama al camino y los 375 °C llegan
+      // a los 2,40 s en vez de a los 3,00. Sigue sin depender de la masa.
+      expect([m, r.pasos]).toEqual([m, 48])
     }
   })
 })
@@ -202,25 +207,33 @@ describe('encender se paga por MASA, y por eso se enciende con yesca', () => {
     expect(esperado).toEqual([141.43, 276.86, 1384.29, 2768.57])
 
     // Y MEDIDO EN EL MUNDO, no sólo despejado: lo que la criatura gasta de verdad
-    // en llevar la vara a 375 °C es el precio térmico más lo que cuesta estar viva
-    // los tres segundos que tarda. Los dos sumandos, ninguno más.
+    // es el precio térmico más lo que cuesta estar viva los 2,40 s que tarda.
+    //
+    // OJO CON EL ΔT, que el ADR II-0011 cambió y es lo mejor que trajo: la mano ya
+    // no paga hasta los 375 °C, paga **hasta la ignición**. En el paso 48 el
+    // empuje deja la vara en 15 + 6×48 = 303 °C, cruza los 300 de lo leñoso, y los
+    // grados que faltan los pone la llama gratis. Encender pasó de costar 352,71
+    // a costar 282,17 para la vara de 0,2 kg, y el techo de lo que se puede
+    // encender con un tanque de 1000 subió de 0,55 kg a algo más de 0,6.
     const medidas: string[] = []
-    for (const m of [0.2, 0.4, 0.5, 0.55]) {
+    const empujadoHasta = 15 + (120 / 20) * 48
+    expect(empujadoHasta).toBe(303)
+    for (const m of [0.2, 0.4, 0.5, 0.55, 0.6]) {
       const r = frotarHasta375(m, 20)
-      const termico = (m * 1.7 * (375 - 15)) / efic
-      const vivir = 3 * COSTO_VIVIR_POR_SEGUNDO
+      const termico = (m * 1.7 * (empujadoHasta - 15)) / efic
+      const vivir = (48 / 20) * COSTO_VIVIR_POR_SEGUNDO
       expect([m, Number(r.costo.toFixed(4))]).toEqual([m, Number((termico + vivir).toFixed(4))])
       medidas.push(
         `  madera ${String(m).padStart(4)} kg → 375 °C cuesta ${r.costo.toFixed(2)}` +
           `  (${termico.toFixed(2)} de calor + ${vivir.toFixed(2)} de vivir)`,
       )
     }
-    // Y a los 0,6 kg ya no alcanza: el tanque tiene techo 1000.
-    const noLlega = frotarHasta375(0.6, 20)
+    // Y a 1 kg ya no alcanza: el tanque tiene techo 1000 y hacen falta 1401.
+    const noLlega = frotarHasta375(1, 20)
     expect(Number.isNaN(noLlega.pasos)).toBe(true)
     expect(noLlega.pico).toBeLessThan(375)
     medidas.push(
-      `  madera  0,6 kg → NO LLEGA: se queda en ${noLlega.pico.toFixed(2)} °C con el tanque vacío`,
+      `  madera    1 kg → NO LLEGA: se queda en ${noLlega.pico.toFixed(2)} °C con el tanque vacío`,
     )
     log([
       '══ (b) EL PRECIO DE ENCENDER, POR MASA ════════════════════════════════',
@@ -352,46 +365,39 @@ describe('la cadena: la vara prende la yesca, la yesca prende el leño, el leño
     ])
   })
 
-  it('documentado · el fuego dura lo que dura la mano, y por eso el pescado no se cocina entero', () => {
-    // Éste es el eslabón que NO cierra, y el número es la razón: a los 3,55 s la
-    // criatura agota los 1000 de `stamina`, deja de frotar y se muere. El tick
-    // siguiente, TODO vuelve al ambiente.
+  it('ADR II-0011 · el fuego le SOBREVIVE a la mano, y el pescado se cocina entero', () => {
+    // ÉSTE ERA EL ESLABÓN QUE NO CERRABA. El texto viejo decía: «a los 3,55 s la
+    // criatura agota los 1000 de `stamina`, deja de frotar y se muere; el tick
+    // siguiente, TODO vuelve al ambiente», y el pescado se quedaba en 0,513 contra
+    // los 0,85 que el banco hermano llama «cocido».
+    //
+    // La criatura se sigue muriendo —ahora a los 3,45 s, porque encender le sale
+    // más barato y por lo tanto frota menos tiempo antes de agotarse— pero el
+    // fuego que dejó hecho sigue ahí, y el pescado llega a 0,950. Es el criterio
+    // (d) del ADR II-0011: cocinar sin que nadie frote.
     const c = correrLaCadena(20)
-    expect(c.murioEn).toBeCloseTo(3.55, 6)
-    // El pescado se queda a mitad de camino: el criterio de «cocido» del banco
-    // hermano es 0,85 y acá no se llega ni cerca.
-    expect(c.digestibilidad).toBeGreaterThan(0.38)
-    expect(c.digestibilidad).toBeLessThan(0.85)
+    expect(c.murioEn).toBeCloseTo(3.45, 6)
+    expect(c.digestibilidad).toBeGreaterThanOrEqual(0.85)
+    // 0,9456 en los doce segundos que corre la cadena; con sesenta llega al techo
+    // de 0,95 que la ley 5 declara. Contra 0,513 antes del ADR II-0011.
+    expect(c.digestibilidad).toBeCloseTo(0.9456, 4)
   })
 
-  it.fails('SIGUE ABIERTO · el fuego tendría que sobrevivir a la mano que lo hizo', () => {
-    // POR QUÉ SIGUE ABIERTO: no lo causa el ADR II-0010 y no lo arregla el ADR
-    // II-0010. Lo causa que **un cuerpo que arde no es fuente de calor de sí
-    // mismo**: `entornoDe` (`world/src/step.ts`) se saltea `f.id === c.body.id`
-    // —y tiene que saltearlo, o un cuerpo se calentaría solo hasta el infinito—,
-    // así que la ley 1 relaja una brasa hacia el ambiente igual que a una piedra.
-    // El equilibrio de un cuerpo encendido es el AMBIENTE.
+  it('CERRADO por el ADR II-0011 · una brasa suelta se sostiene sola', () => {
+    // ESTO ERA UN `it.fails`. Su «POR QUÉ SIGUE ABIERTO» decía: «un cuerpo que arde
+    // no es fuente de calor de sí mismo— `entornoDe` (`world/src/step.ts`) se
+    // saltea `f.id === c.body.id`, y tiene que saltearlo, o un cuerpo se
+    // calentaría solo hasta el infinito—, así que la ley 1 relaja una brasa hacia
+    // el ambiente igual que a una piedra». Medía que una madera de 0,2 kg a 700 °C
+    // caía debajo de sus 300 de ignición EN UN TICK, y que ni la más pesada que se
+    // puede levantar aguantaba más de 1,20 s.
     //
-    // Medido abajo, al aire, a 20 Hz, sin nadie sosteniendo nada: una madera de
-    // 0,2 kg a 700 °C cae por debajo de sus 300 de ignición EN UN TICK (0,05 s), y
-    // la más pesada que la criatura puede levantar —8 kg, el techo de `portable`—
-    // aguanta 1,20 s. No hay ningún cuerpo del mundo con el que un fuego dure.
+    // Proponía dos caminos y el ADR II-0011 tomó el segundo: «que un cuerpo
+    // encendido se sostenga a su propia temperatura de llama mientras le quede
+    // `fuelEnergy`». `entornoDe` NO SE TOCÓ y sigue salteándose a sí mismo — el
+    // calor no viene de ser su propio ambiente, viene de la ley 3.
     //
-    // QUÉ HARÍA FALTA PARA CERRARLO: que el fuego tenga dónde vivir. Dos caminos,
-    // y los dos son un ADR con barrido:
-    //
-    //   · que la ley 3 escriba la `temperature` de la CELDA mientras algo arde
-    //     ahí. Es lo único del mundo que hoy no relaja —`stepWorld` copia
-    //     `cells` y las devuelve intactas—, y es exactamente lo que el banco de
-    //     `el-tiempo-no-depende-del-tick.test.ts` idealiza a mano con su «hoyo
-    //     tapado a 700 °C». Toca `CellState`, el hash y el snapshot;
-    //   · o que un cuerpo encendido se sostenga a su propia temperatura de llama
-    //     mientras le quede `fuelEnergy` — el mismo `pelea` de este ADR pero
-    //     con la combustión como empuje en vez de una mano.
-    //
-    // El primero es más barato y es el que el resto del mundo ya asume. Los dos
-    // mueven la ventana de cocción de las doce sustancias, así que hay que volver
-    // a correr `pnpm ii:barrido`.
+    // Los números de abajo son los mismos casos, con la misma función.
     const filas: string[] = []
     let peor = 0
     for (const [s, m, ign] of [
@@ -405,10 +411,14 @@ describe('la cadena: la vara prende la yesca, la yesca prende el leño, el leño
       if (dura > peor) peor = dura
       filas.push(`  ${s} ${String(m)} kg a 700 °C → cae debajo de ${String(ign)} a los ${dura.toFixed(2)} s`)
     }
-    log(['══ EL HUECO · UNA BRASA SUELTA ════════════════════════════════════════', ...filas])
-    // Lo que el hueco afirma: un fuego tiene que durar más que un puñado de
+    log(['══ LA BRASA SUELTA, YA NO UN HUECO ════════════════════════════', ...filas])
+    // Lo que el hueco afirmaba: un fuego tiene que durar más que un puñado de
     // ticks. Diez segundos es el mínimo con el que se cocina algo.
     expect(peor).toBeGreaterThanOrEqual(10)
+    // Y lo que ahora se puede afirmar de más: hasta la más liviana aguanta los
+    // diez, y el leño de 1 kg dura los 50 s que tarda en volverse ceniza.
+    expect(cuantoDuraEncendido('madera', 0.2, 700, 300)).toBeGreaterThanOrEqual(10)
+    expect(cuantoDuraEncendido('madera', 1, 700, 300)).toBeGreaterThan(45)
   })
 })
 

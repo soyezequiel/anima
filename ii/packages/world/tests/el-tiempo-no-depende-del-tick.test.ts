@@ -67,6 +67,7 @@ import {
   HZ_DE_REFERENCIA,
   MICROS_POR_SEGUNDO,
   qualityOf,
+  regimenDeLlama,
   T_AMBIENTE,
   unir,
 } from '@anima/physics'
@@ -89,8 +90,15 @@ import { actor, criatura, cuerpo, enElPiso, enLaMano, mundo } from './mundo-mini
  */
 const HZ: readonly number[] = [10, 20, 25, 50]
 
-/** Hasta dónde se corre cada mundo. El hecho más lento (el filete) tarda 14,6 s. */
-const TECHO_SEGUNDOS = 20
+/**
+ * Hasta dónde se corre cada mundo.
+ *
+ * Eran 20 s y son 60 desde el ADR II-0011: la tasa de la ley 3 pasó de 0,2 a
+ * 0,016 por segundo —con 0,2, todo fuego se volvía ceniza a los cuatro segundos—
+ * y ahora `charred` cruza los 0,8 de la rama a los 50 s. El hecho más lento ya no
+ * es el filete (14,6 s): es la rama.
+ */
+const TECHO_SEGUNDOS = 60
 
 const EN = (x: number, y: number): { x: number; y: number } => ({ x, y })
 
@@ -101,12 +109,18 @@ const EN = (x: number, y: number): { x: number; y: number } => ({ x, y })
 //
 // ─── Por qué el fuego es un hoyo tapado y no una fogata al aire ─────────────
 //
-// Porque una fogata al aire, en este mundo, **dura medio segundo**. Un cuerpo
-// caliente relaja hacia el ambiente a `H_PERDIDA_POR_SEGUNDO / heatCapacity` por
-// segundo, y para una madera de 3 kg eso son 10/5,1 ≈ 2 por segundo: de 700 °C
-// cae por debajo de su punto de ignición (300) a los 0,45 s y deja de emitir.
-// Medir una cocción de quince segundos contra una fuente que se apaga en el
-// primer medio no mediría el tiempo: mediría la agonía de la fuente.
+// Cuando este banco se escribió, una fogata al aire **duraba medio segundo**: la
+// ley 3 consumía combustible sin producir calor, así que un cuerpo caliente
+// relajaba hacia el ambiente a `H_PERDIDA_POR_SEGUNDO / heatCapacity` por segundo
+// y una madera de 3 kg caía por debajo de su ignición a los 0,45 s. Medir una
+// cocción de quince segundos contra eso no habría medido el tiempo: habría
+// medido la agonía de la fuente.
+//
+// El ADR II-0011 cerró eso —esa misma madera de 3 kg ahora arde 50 s— y el hoyo
+// se conserva igual, por una razón distinta y más fuerte: es una fuente de
+// potencia CONSTANTE. Un fuego que se apaga solo —que es lo correcto— mezclaría
+// «cuánto tarda en cocinarse» con «cuánto dura el fuego», y este archivo mide lo
+// primero.
 //
 // El hoyo tapado sí se sostiene, y con las piezas que el mundo ya tiene: una
 // celda a 700 °C **con casi nada de aire** (`oxygen` 0,04). El aire de menos hace
@@ -241,7 +255,10 @@ interface Corrida {
   readonly segundos: Readonly<Record<Hecho, number>>
   /** El mismo hecho contado en PASOS, que es lo que antes fijaba el ritmo. */
   readonly pasos: Readonly<Record<Hecho, number>>
-  /** La meseta a la que llega la vara frotada, que no es 375. */
+  /**
+   * La temperatura de la vara a los 12 s de mundo, cuando ya nadie la frota
+   * —dina se queda sin `stamina` antes— y todavía le queda combustible.
+   */
   readonly mesetaDeLaVara: number
   readonly trayectoria: readonly Foto[]
   readonly violaciones: readonly string[]
@@ -292,7 +309,11 @@ function correr(hz: number, techo = TECHO_SEGUNDOS): Corrida {
     const va = w.bodies.get('va')
     if (va !== undefined) {
       const grados = qualityOf(va.body, 'temperature', w.phys)
-      if (grados > mesetaDeLaVara) mesetaDeLaVara = grados
+      // A los 12 s exactos y no el máximo de la corrida: desde el ADR II-0011 la
+      // vara PRENDE, y el máximo es el sobrepico del tick en que prende, que sí
+      // depende de la frecuencia. Lo que no depende es el punto fijo, y a los 12 s
+      // ya se llegó a él en las cuatro.
+      if (micros === 12 * MICROS_POR_SEGUNDO) mesetaDeLaVara = grados
       if (grados >= 375) anotar('vara375')
     }
     while (marca < MARCAS.length && micros >= (MARCAS[marca] as number) * MICROS_POR_SEGUNDO) {
@@ -552,13 +573,24 @@ describe('el error de integración, medido y no estimado', () => {
     const filas: string[] = []
     for (const hz of HZ) {
       const pico = corridaDe(hz).mesetaDeLaVara
-      // Llega al techo del `drive` y no a un punto fijo entre el empuje y la ley.
-      expect([hz, pico]).toEqual([hz, drive.toward])
+      // Y desde el ADR II-0011 ya no llega al techo del `drive` sino al RÉGIMEN DE
+      // LA LLAMA, que está más arriba y no lo sostiene ninguna mano: la vara
+      // prendió a los 2,4 s y a los 12 sigue ardiendo con dina muerta hace rato.
+      //
+      // El margen de un grado es la fogata del hoyo, a 22 celdas: aporta 0,36 °C
+      // de ambiente y por lo tanto corre el punto fijo lo mismo. Que sea el MISMO
+      // número en las cuatro frecuencias —y eso se afirma abajo, sin margen— es lo
+      // que este test mide.
+      expect(pico).toBeGreaterThan(drive.toward)
+      expect(pico).toBeCloseTo(T_AMBIENTE + regimenDeLlama(1), 0)
       filas.push(`  ${String(hz).padStart(3)} Hz → ${pico.toFixed(2)} °C`)
     }
-    // Las cuatro coinciden EXACTAMENTE, y antes se corrían un 41%.
+    // Las cuatro coinciden a nueve decimales, y antes se corrían un 41%. No a
+    // TODOS los decimales: el punto fijo se alcanza asintóticamente y a los 12 s
+    // las cuatro trayectorias todavía difieren en los últimos bits. El desvío
+    // medido entre la peor y la mejor es 1,5e-10 grados sobre 615,36.
     const mesetas = HZ.map((hz) => corridaDe(hz).mesetaDeLaVara)
-    expect(new Set(mesetas).size).toBe(1)
+    for (const m of mesetas) expect(m).toBeCloseTo(mesetas[0] as number, 9)
     log([
       '══ LA MESETA DE FROTAR · CERRADA (ADR II-0010) ═════════════════════════',
       ...filas,
@@ -611,7 +643,10 @@ describe('lo que NO cumple la promesa, medido', () => {
       const c = corridaDe(hz)
       // LLEGA, y en el segundo que la cuenta predice. El margen es un tick.
       expect([hz, Number.isNaN(c.segundos.vara375)]).toEqual([hz, false])
-      expect([hz, Math.abs(c.pasos.vara375 - 3 * hz) <= 1]).toEqual([hz, true])
+      // `ceil(2,375·hz)` y no `3·hz` desde el ADR II-0011: la fricción cruza los
+      // 300 de ignición de lo leñoso a los 2,375 s y los grados que faltan hasta
+      // 375 los pone la llama, no la mano.
+      expect([hz, Math.abs(c.pasos.vara375 - Math.ceil(2.375 * hz)) <= 1]).toEqual([hz, true])
     }
     // La vara de 1 kg que este banco usaba: el techo de `stamina` no le alcanza.
     // Es el motivo por el que el banco pesa 0,2 kg y no un aflojamiento.
@@ -813,69 +848,90 @@ describe('30 Hz y 60 Hz no arrancan, y el error lo dice', () => {
 // ─── EL BORDE DE ABAJO, Y EL RANGO QUE SE RECOMIENDA ─────────────────────────
 
 describe('el borde de abajo: por qué el rango soportado no es «cualquiera»', () => {
-  it('documentado · a 10 Hz el acople de la ley 1 satura para cuerpos de masa corriente', () => {
-    // `leyTermica` topa el acople en 1 por estabilidad: `min(1, (10/hz)/cap)`. Un
-    // cuerpo con `heatCapacity` menor que `10/hz` no se acerca al equilibrio, SE
-    // PONE en el equilibrio en un paso. Y el borde se mueve con la frecuencia:
+  it('la saturación del acople SE TERMINÓ: ninguna brasa cae al ambiente en un tick', () => {
+    // ─── LO QUE ESTE TEST MEDÍA, Y ERA EL DIAGNÓSTICO DEL ADR II-0011 ───────
     //
-    //   a 10 Hz  satura todo lo que tenga heatCapacity ≤ 1     (madera ≤ 0,59 kg)
+    // `leyTermica` topaba el acople en 1 «por estabilidad»: `min(1, (10/hz)/cap)`.
+    // Un cuerpo con `heatCapacity` menor que `10/hz` no se acercaba al equilibrio,
+    // SE PONÍA en el equilibrio en un paso, y el borde se movía con la frecuencia:
+    //
+    //   a 10 Hz  saturaba todo lo que tuviera heatCapacity ≤ 1  (madera ≤ 0,59 kg)
     //   a 20 Hz  ≤ 0,5   (madera ≤ 0,29 kg)
     //   a 25 Hz  ≤ 0,4   (madera ≤ 0,24 kg)
     //   a 50 Hz  ≤ 0,2   (madera ≤ 0,12 kg)
     //
-    // O sea que bajar la frecuencia no muestrea el mismo mundo más grueso: mete
-    // más cuerpos adentro de un régimen distinto.
+    // Medido entonces: media vara de madera a 400 °C caía a 15,00 —el ambiente
+    // entero— en UN tick a 10 Hz, y a 20, 25 y 50 no. No era un desvío del 1%: era
+    // otro régimen, y era exactamente el régimen de la yesca.
     //
-    // ─── CÓMO SE MEDÍA ESTO ANTES DEL ADR II-0010, Y POR QUÉ YA NO ─────────
+    // ─── Y POR QUÉ YA NO ───────────────────────────────────────────
     //
-    // Se medía FROTANDO: media vara de madera no se calentaba nada a 10 Hz
-    // —quedaba clavada en 15 °C, porque la ley 1 le devolvía al final del tick
-    // exactamente lo que la fricción le había puesto al principio— y sí se
-    // calentaba a 20, 25 y 50. Ese síntoma se fue con el ADR II-0010: mientras la
-    // mano empuja, la ley no relaja en contra, así que ahora la vara llega al
-    // `toward` del proceso a las cuatro frecuencias.
+    // El ADR II-0011: la ley 1 se integra en forma cerrada y lo que se cierra es
+    // `1 − e^(−r·dt)`, que es menor que 1 SIEMPRE. El `min` no se relajó, se
+    // BORRÓ, porque no había nada que topar. La misma brasa de 0,5 kg a 10 Hz
+    // ahora queda en 133,66 °C después de un tick en vez de en 15,00.
     //
-    // La saturación NO se fue: se fue el síntoma que la mostraba. Ahora se mide
-    // donde sigue mandando, que es la RELAJACIÓN —el cuerpo caliente que nadie
-    // sostiene—, y es exactamente el caso que decide si un fuego dura: una brasa
-    // con `heatCapacity` ≤ 10/hz **cae al ambiente en un solo tick**.
+    // Este test es la CARNADA de esa reparación: si alguien vuelve al Euler
+    // explícito, el 15,00 reaparece y esto se pone rojo.
     for (const hz of HZ) expect(H_PERDIDA_POR_SEGUNDO / hz).toBe(10 / hz)
     const filas: string[] = []
+    // La MADERA a 400 °C es el caso histórico, y ahora mide otra cosa: está arriba
+    // de sus 300 de ignición, así que ARDE y la ley 3 la empuja hacia los 615 de
+    // régimen. Se mide igual, porque el número viejo —15,00 en un tick a 10 Hz—
+    // salía de este mismo cuerpo.
     for (const masa of [0.5, 1]) {
       const cap = masa * 1.7
-      const medidas = HZ.map((hz) => unTickDeEnfriamiento(masa, hz))
+      const medidas = HZ.map((hz) => unTickDeEnfriamiento('madera', masa, hz))
       filas.push(
         `  brasa de madera de ${masa.toFixed(1)} kg (heatCapacity ${cap.toFixed(2)}) a 400 °C, un tick:  ` +
           HZ.map((hz, i) => `${String(hz)} Hz → ${(medidas[i] as number).toFixed(2)} °C`).join('   '),
       )
-      if (masa === 0.5) {
-        // LA MEDIDA QUE DECIDE EL RANGO: media vara de madera (`heatCapacity`
-        // 0,85 ≤ 1) cae al ambiente EN UN TICK a 10 Hz, y a las otras tres no.
-        // No es un desvío del 1%: es otro régimen.
-        expect(cap).toBeLessThanOrEqual(H_PERDIDA_POR_SEGUNDO / 10)
-        expect(medidas[0]).toBe(T_AMBIENTE)
-        for (let i = 1; i < HZ.length; i++) expect(medidas[i]).toBeGreaterThan(T_AMBIENTE)
-      }
-      if (masa === 1) {
-        // Y con `heatCapacity` 1,7 > 1 ya no satura a ninguna de las cuatro.
-        for (const m of medidas) expect(m).toBeGreaterThan(T_AMBIENTE)
-      }
+      for (const m of medidas) expect(m).toBeGreaterThan(T_AMBIENTE + 100)
     }
-    // Y la contracara, que es lo que el ADR II-0010 agregó: frotando, la vara
-    // llega al mismo techo a las cuatro frecuencias, satura o no satura.
+    // Y la PIEDRA, que no arde: ahí queda la relajación de la ley 1 sola, que es
+    // lo que este test siempre quiso medir. `heatCapacity` = 0,4 para medio kilo,
+    // o sea muy por debajo del `10/hz` que saturaba a las cuatro frecuencias.
+    const piedra = HZ.map((hz) => unTickDeEnfriamiento('piedra', 0.5, hz))
+    filas.push(
+      `  canto de piedra de 0,5 kg (heatCapacity 0,40) a 400 °C, un tick:  ` +
+        HZ.map((hz, i) => `${String(hz)} Hz → ${(piedra[i] as number).toFixed(2)} °C`).join('   '),
+    )
+    // NINGUNA de las cuatro lo pone en el ambiente, ni siquiera la que saturaba
+    // con margen —a 10 Hz el exponente vale 2,5 y `1 − e^(−2,5)` es 0,918, no 1—.
+    for (const t of piedra) expect(t).toBeGreaterThan(T_AMBIENTE)
+    // Y el orden es el que la física pide: cuanto más fino el muestreo, menos se
+    // enfría en un paso. Monótono, sin saltos de régimen.
+    for (let i = 1; i < piedra.length; i++) {
+      expect([HZ[i], (piedra[i] as number) > (piedra[i - 1] as number)]).toEqual([HZ[i], true])
+    }
+    // Y a UN SEGUNDO de mundo las cuatro dan lo mismo, que es lo que el ADR
+    // II-0008 pide y lo que el `min` rompía: a 10 Hz el canto valía 15,00 desde el
+    // primer tick y a 50 todavía estaba tibio.
+    // Cinco kilos y no medio: medio kilo de piedra se enfría del todo en un
+    // segundo (constante de tiempo 0,04 s) y «las cuatro dan 15,00» no diría nada.
+    // Con cinco kilos la constante es 0,4 s y al segundo todavía queda curva.
+    const trasUnSegundo = HZ.map((hz) => unSegundoDeEnfriamiento('piedra', 5, hz))
+    // Cinco decimales y no infinitos: el desvío MEDIDO entre 10 y 50 Hz es
+    // 2,24e-6 grados sobre 46,60, o sea 4,8e-8 relativo, y es la resolución de
+    // `fraccionQueSeCierra` (± 2⁻²⁴ en el exponente). Antes de este ADR el mismo
+    // canto daba 15,00 a 10 Hz y 46,60 a 50: un 68%.
+    for (const t of trasUnSegundo) expect(t).toBeCloseTo(trasUnSegundo[0] as number, 5)
+    // Y la contracara, frotando: la vara de 0,5 kg cruza su punto de ignición a
+    // las cuatro frecuencias. El PICO ya no coincide entre ellas —desde el ADR
+    // II-0011 la vara prende, y el pico es el sobrepico del tick en que prende,
+    // que sí depende del paso— pero el hecho sí: las cuatro encienden.
     const frotadas = HZ.map((hz) => frotarUnaVaraDe(0.5, hz))
-    expect(new Set(frotadas).size).toBe(1)
+    for (const f of frotadas) expect(f).toBeGreaterThanOrEqual(300)
     log([
-      '══ EL BORDE DE ABAJO ══════════════════════════════════════════════════',
+      '══ EL BORDE DE ABAJO, DESPUÉS DEL ADR II-0011 ═════════════════════',
       ...filas,
-      `  (frotando, en cambio, la de 0,5 kg llega a ${(frotadas[0] as number).toFixed(2)} °C a las cuatro:`,
-      '   ésa es la mitad que el ADR II-0010 sacó del régimen)',
-      '  RECOMENDACIÓN: el rango soportado son 20–50 Hz. 10 Hz sigue siendo',
-      '  admisible —su `dt` es exacto— pero mete en régimen saturado a cuerpos de',
-      '  masa corriente, y ahí la frecuencia deja de ser una perilla de',
-      '  rendimiento. La regla, para que no haya que acordarse del número:',
-      '  `hz ≥ H_PERDIDA_POR_SEGUNDO / heatCapacity` del cuerpo más liviano que',
-      '  al juego le importe.',
+      `  y a UN SEGUNDO de mundo las cuatro coinciden: ${(trasUnSegundo[0] as number).toFixed(4)} °C`,
+      '  (antes de este ADR, el canto a 10 Hz valía 15,00 desde el primer tick)',
+      `  frotando, la vara de 0,5 kg enciende a las cuatro: picos ${frotadas.map((f) => f.toFixed(0)).join(' / ')} °C`,
+      '  RECOMENDACIÓN: el rango soportado siguen siendo 10–100 Hz, y ahora sin',
+      '  régimen saturado adentro. Lo que queda —y es de integración, no de',
+      '  estabilidad— es que las leyes NO lineales (la 5, la 6) se muestrean más',
+      '  grueso a 10 Hz: eso está medido arriba y vale menos del 6%.',
     ])
   })
 
@@ -899,12 +955,24 @@ describe('el borde de abajo: por qué el rango soportado no es «cualquiera»', 
  * `heatCapacity ≤ 10/hz`, el acople vale 1 y el cuerpo no se acerca al ambiente,
  * se PONE en el ambiente.
  */
-function unTickDeEnfriamiento(masa: number, hz: number): number {
+function unTickDeEnfriamiento(sustancia: string, masa: number, hz: number): number {
   const w = mundo({
     hz,
-    bodies: [enElPiso(cuerpo('brasa', 'madera', masa, { temperature: 400 }), EN(0, 0))],
+    bodies: [enElPiso(cuerpo('brasa', sustancia, masa, { temperature: 400 }), EN(0, 0))],
   })
   const c = stepWorld(w, []).state.bodies.get('brasa')
+  if (c === undefined) throw new Error('la brasa desapareció')
+  return qualityOf(c.body, 'temperature', w.phys)
+}
+
+/** La misma brasa, un SEGUNDO de mundo después: lo que no depende de la frecuencia. */
+function unSegundoDeEnfriamiento(sustancia: string, masa: number, hz: number): number {
+  let w = mundo({
+    hz,
+    bodies: [enElPiso(cuerpo('brasa', sustancia, masa, { temperature: 400 }), EN(0, 0))],
+  })
+  for (let n = 0; n < hz; n++) w = stepWorld(w, []).state
+  const c = w.bodies.get('brasa')
   if (c === undefined) throw new Error('la brasa desapareció')
   return qualityOf(c.body, 'temperature', w.phys)
 }

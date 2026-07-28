@@ -149,7 +149,10 @@ describe('se quema', () => {
       SIN_FILA.perUnitMass.pyrolysisAt!,
     )
 
-    const fin = correr(cosa, sobreLasBrasas, phys, DT, 10)
+    // 60 s y no 10: desde el ADR II-0011 la carbonización va a 0,016 por segundo
+    // —cruza los 0,8 que la ley 4 pide a los 50 s— porque a 0,2 todo fuego se
+    // volvía ceniza a los cuatro segundos. Ver `TASA_CARBONIZACION`.
+    const fin = correr(cosa, sobreLasBrasas, phys, DT, 60)
 
     expect(fin.leyes).toContain('combustion')
     expect(fin.leyes).toContain('transmutacion')
@@ -180,8 +183,8 @@ describe('se quema', () => {
     // La técnica no depende de qué es la cosa: depende del oxígeno de la celda.
     const cosa = trozo('cosa', 'filete', MASA)
     const fuente = { potencia: HOGUERA, distancia: 0, montaje: 'contacto' } as const
-    const tapada = correr(cosa, { celda: CELDA_TAPADA, fuente }, phys, DT, 10)
-    const alAire = correr(cosa, { celda: CELDA_AL_AIRE, fuente }, phys, DT, 10)
+    const tapada = correr(cosa, { celda: CELDA_TAPADA, fuente }, phys, DT, 60)
+    const alAire = correr(cosa, { celda: CELDA_AL_AIRE, fuente }, phys, DT, 60)
     expect(qualityOf(tapada.body, 'mass', tapada.phys)).toBeGreaterThan(
       qualityOf(alAire.body, 'mass', alAire.phys) * 4,
     )

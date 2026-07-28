@@ -19,6 +19,7 @@ import {
   fln,
   fmul,
   fpow,
+  fraccionQueSeCierra,
   fsub,
   fx,
   radd,
@@ -231,6 +232,127 @@ describe('fmul y fdiv son correctamente redondeadas', () => {
     // marca; ya que existen, saturan igual que el resto del módulo.
     expect(fadd(FIXED_MAX, fx(1))).toBe(FIXED_MAX)
     expect(fsub(FIXED_MIN, fx(1))).toBe(FIXED_MIN)
+  })
+})
+
+describe('fraccionQueSeCierra · `1 − e^(−x)`, el ADR II-0011', () => {
+  // Constantes conocidas, escritas a mano con dieciocho cifras. NO salen de
+  // `Math.exp` corrido acá: son `1 − e^(−x)` calculado aparte y pegado, por la
+  // misma razón por la que los TESTIGOS de `fexp` están escritos a mano — usar
+  // `Math` como oráculo sería testear la implementación contra lo que este módulo
+  // existe para no depender.
+  //
+  // Los cuatro primeros son los exponentes que la ley 1 usa de verdad: un leño de
+  // 8 kg a 100 Hz, uno de 1 kg a 100, uno de 1 kg a 20 y una yesca de 0,2 kg a 20.
+  const TESTIGOS: readonly [number, number][] = [
+    [0.000001, 9.999994999843054e-7],
+    [0.0001, 0.00009999500016666385],
+    [0.00735294117647, 0.007325974439919669],
+    [0.05882352941176, 0.057126856145120586],
+    [0.29411764705882, 0.25481118298651684],
+    [0.4999, 0.39340868418864094],
+    [0.5, 0.3934693402873666],
+    [1, 0.6321205588285577],
+    [1.4705882352941, 0.7702097253269791],
+    [3, 0.950212931632136],
+    [7, 0.9990881180344455],
+    [13.9, 0.9999990810186421],
+    [30, 0.9999999999999064],
+  ]
+
+  it('acierta los testigos con error RELATIVO, que es el punto de la función', () => {
+    // RELATIVO y no absoluto. La alternativa —`1 − unfx(fexp(fx(−x)))`— tiene
+    // error absoluto de medio milésimo, que para `x = 0,00735` es un 7% y para
+    // `x = 1e-6` es todo. Y ese error DEPENDERÍA DE LA FRECUENCIA, porque `x` es
+    // `λ/hz`: exactamente lo que el ADR II-0008 prohíbe.
+    let peor = 0
+    for (const [x, want] of TESTIGOS) {
+      const rel = Math.abs(fraccionQueSeCierra(x) - want) / want
+      if (rel > peor) peor = rel
+    }
+    expect(peor).toBeLessThan(1e-9)
+  })
+
+  it('CARNADA · el camino que NO se tomó falla el mismo test por seis órdenes', () => {
+    // Lo que hubiera pasado con `1 − unfx(fexp(fx(−x)))`, medido. Si alguien
+    // «simplifica» la función a eso, esto deja de fallar y el de arriba se cae.
+    let peorConFexp = 0
+    for (const [x, want] of TESTIGOS) {
+      const conFexp = 1 - unfx(fexp(fx(-x)))
+      const rel = Math.abs(conFexp - want) / want
+      if (rel > peorConFexp) peorConFexp = rel
+    }
+    expect(peorConFexp).toBeGreaterThan(1e-3)
+  })
+
+  it('y SIN EMBARGO coincide con `fexp` donde `fexp` tiene resolución', () => {
+    // Dos implementaciones de una fórmula divergen, así que se las clava juntas
+    // donde las dos pueden hablar: para `x ≥ 0,5`, `1 − e^(−x)` vale más de 0,39 y
+    // la resolución de `Fixed` (10⁻³) alcanza. Es el mismo patrón con el que
+    // `leyes.test.ts` clava `capacidadTermica` contra la declaración del catálogo.
+    for (let i = 500; i <= 14000; i += 7) {
+      const x = i / 1000
+      const nuestro = fraccionQueSeCierra(x)
+      const conFexp = 1 - unfx(fexp(fx(-x)))
+      // Un milésimo más el redondeo de la entrada: `fx(-x)` cuantiza `x` a 10⁻³ y
+      // eso ya mueve el resultado hasta `0.0005 · e^(−x)`.
+      expect(Math.abs(nuestro - conFexp)).toBeLessThan(0.0016)
+    }
+  })
+
+  it('es monótona no decreciente y nunca sale de [0, 1]', () => {
+    // Una relajación que cerrara más hueco con un paso más chico haría que bajar
+    // la frecuencia enfriara MENOS, y eso se ve en el mundo. Y un valor mayor que
+    // 1 es el Euler inestable de vuelta: el cuerpo se pasaría de largo el
+    // equilibrio y oscilaría, que es el bug que este ADR vino a cerrar.
+    let prev = -1
+    for (let i = 0; i <= 400000; i++) {
+      const x = i / 10000
+      const v = fraccionQueSeCierra(x)
+      if (!(v >= prev && v >= 0 && v <= 1)) {
+        expect([x, v, prev]).toEqual([x, 'monótona en [0,1]', prev])
+      }
+      prev = v
+    }
+    expect(prev).toBe(1)
+  })
+
+  it('los bordes: cero, negativo, `NaN` e infinito', () => {
+    // `x ≤ 0` no cierra nada, y eso incluye `NaN`: la alternativa es un `NaN` que
+    // se propaga por el mundo y aparece cuatrocientos ticks después sin causa
+    // visible. Misma decisión que `clampRaw`.
+    expect(fraccionQueSeCierra(0)).toBe(0)
+    expect(fraccionQueSeCierra(-1)).toBe(0)
+    expect(fraccionQueSeCierra(Number.NaN)).toBe(0)
+    expect(fraccionQueSeCierra(Number.NEGATIVE_INFINITY)).toBe(0)
+    // Y hacia arriba satura en 1 sin pasarse ni romper la tabla de `pow2`.
+    expect(fraccionQueSeCierra(Number.POSITIVE_INFINITY)).toBe(1)
+    expect(fraccionQueSeCierra(1e9)).toBe(1)
+    expect(fraccionQueSeCierra(37)).toBe(1)
+    // Y justo abajo del corte todavía no es 1, o sea que el corte no se comió
+    // nada que se pudiera distinguir: 1 − e^(−36,999) = 0,9999999999999999.
+    expect(fraccionQueSeCierra(36.999)).toBeLessThan(1)
+  })
+
+  it('es determinista bit a bit, y su huella cruza máquinas', () => {
+    // El mismo argumento que la huella de `barridoDeFixed`, y hace falta aparte
+    // porque ésta es la única función del módulo que trabaja en doubles. Si un
+    // motor de JavaScript dejara de cumplir IEEE-754 en `+ − × ÷`, o si alguien
+    // cambia un coeficiente de la serie, este número se mueve.
+    let h = 0x811c9dc5
+    const b = new DataView(new ArrayBuffer(8))
+    for (let i = 1; i <= 20000; i++) {
+      b.setFloat64(0, fraccionQueSeCierra(i / 1000))
+      for (let k = 0; k < 8; k++) {
+        h = (h ^ b.getUint8(k)) >>> 0
+        h = Math.imul(h, 0x01000193) >>> 0
+      }
+    }
+    expect(h >>> 0).toBe(3391657027)
+    // Y es pura: dos corridas, los mismos bits.
+    for (let i = 1; i <= 500; i++) {
+      expect(Object.is(fraccionQueSeCierra(i / 97), fraccionQueSeCierra(i / 97))).toBe(true)
+    }
   })
 })
 

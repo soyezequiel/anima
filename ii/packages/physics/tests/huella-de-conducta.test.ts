@@ -220,6 +220,17 @@ describe('la huella de conducta de paso()', () => {
   }, 300_000)
 
   it('la huella no se movió', () => {
-    expect(huellaDeConducta().huella).toBe(3705094564)
+    // 3705094564 → 3792335722 con el ADR II-0011, y cambió TRES conductas a la
+    // vez, todas queridas y todas medidas en sus propios tests:
+    //
+    //   · la ley 1 se integra en forma cerrada —cierra `1 − e^(−r·dt)` del hueco
+    //     y no `r·dt`—, así que toda relajación térmica escribe otros bits;
+    //   · la ley 3 escribe `temperature`: arder libera calor, que antes no;
+    //   · y su tasa de carbonización pasó de 0,2 a 0,016 por segundo, así que en
+    //     doce ticks el corpus carboniza mucho menos y la ley 4 transmuta menos.
+    //
+    // Se actualiza A MANO y con el porqué al lado, que es exactamente lo que este
+    // archivo pide en su encabezado.
+    expect(huellaDeConducta().huella).toBe(2564253564)
   }, 300_000)
 })

@@ -330,19 +330,22 @@ describe('ADR II-0001: encender no es una acción, es una consecuencia', () => {
     // El único verbo aplicable de esta historia es «poner algo en algún lado». La
     // rama es la misma; lo que cambia es dónde está.
     const rama = cosa('madera', 1)
+    // 80 s y no 15: desde el ADR II-0011 la carbonización va a 0,016 por segundo,
+    // así que `charred` llega a 1 a los 62,5 s. Con los 0,2 de antes llegaba a los
+    // cinco, y eso hacía que todo fuego se volviera ceniza antes de calentar nada.
     const lejos = correr(
       rama,
       { celda: CELDA_AL_AIRE, fuente: { potencia: 300, distancia: 2, montaje: 'piso' } },
       phys,
       DT,
-      15,
+      80,
     )
     const encima = correr(
       rama,
       { celda: CELDA_AL_AIRE, fuente: { potencia: 300, distancia: 0, montaje: 'contacto' } },
       phys,
       DT,
-      15,
+      80,
     )
     expect(lejos.leyes).not.toContain('combustion')
     expect(encima.leyes).toContain('combustion')

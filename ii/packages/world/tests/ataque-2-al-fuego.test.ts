@@ -8,11 +8,10 @@
 // Este archivo mide lo que la reparación DEJÓ ATRÁS, y son cinco cosas:
 //
 //   (a) EL DIENTE DE SIERRA NO ES UN DIENTE: es un DERRUMBE. Al saturar el
-//       `drive` la temperatura cae de 400 a 15,000 °C en UN tick a 20 Hz —385
-//       grados, de arriba del punto de ignición al ambiente de partida— y a las
-//       cinco frecuencias cae debajo de la ignición en un solo paso. El único
-//       test que lo cuida hoy afirma `toBeLessThan(400)`, que una caída de un
-//       grado cumple igual que una de 385: es un detector de diez rotos.
+//       `drive` la temperatura caía de 400 a 15,000 °C en UN tick a 20 Hz —385
+//       grados— y a las cinco frecuencias quedaba debajo de la ignición en un
+//       solo paso, con la caída dependiendo de la frecuencia (15,00 a 20 Hz
+//       contra 286,76 a 100).
 //   (b) `friccion` DECLARA `establishes: ['temperature>=400']` Y ESE HECHO VIVE
 //       CERO TICKS. Lo que la fragua lee para planificar es falso el paso
 //       siguiente al único en que fue cierto.
@@ -28,6 +27,17 @@
 //       evidencia: `Empuje`, `anotarEmpuje` y la rama nueva de `entornoDe`
 //       tenían CERO cobertura en gemelos, snapshot y crónica. Acá la tienen.
 //
+// ─── (a), (b) Y (c) LOS CERRÓ EL ADR II-0011, Y ESTE ARCHIVO LOS MIDE AL REVÉS ─
+//
+// Los tres eran el mismo hecho visto por tres lados: la ley 1 era un Euler
+// inestable y la ley 3 consumía combustible sin producir calor. Con la
+// integración en forma cerrada y con la llama liberando calor, no hay derrumbe
+// (la meseta es 615,00 °C a las cinco frecuencias), `establishes` dura los doce
+// segundos que dura el combustible, y soltar no apaga: apaga quedarse sin
+// combustible, 238 pasos después. Los tres bloques quedan acá con el número viejo
+// escrito adentro, porque un diagnóstico borrado es un diagnóstico que hay que
+// volver a hacer.
+//
 // ─── CÓMO SE LEE ────────────────────────────────────────────────────────────
 //
 //   · `it(...)`             → la promesa se cumple, con su número medido.
@@ -35,7 +45,7 @@
 //   · `it.fails(...)`       → HUECO ABIERTO, con su «POR QUÉ SIGUE ABIERTO».
 
 import { describe, expect, it } from 'vitest'
-import { FRECUENCIAS_ADMISIBLES, qualityOf } from '@anima/physics'
+import { FRECUENCIAS_ADMISIBLES, qualityOf, regimenDeLlama, T_AMBIENTE } from '@anima/physics'
 import type { Body, QualityId } from '@anima/physics'
 
 import { stepWorld } from '../src/step.js'
@@ -97,157 +107,156 @@ function frotarYAnotar(masa: number, pasos: number, hz = 20, hasta = pasos): rea
   return t
 }
 
-// ═══ (a) EL DIENTE DE SIERRA ES UN DERRUMBE ══════════════════════════════════
+// ═══ (a) EL DERRUMBE SE TERMINÓ ═══════════════════════════════════
 
-describe('(a) al saturar el `drive`, la temperatura no baja: se derrumba', () => {
-  it('documentado · de 400 °C a debajo de la ignición en UN tick, a las cinco frecuencias', () => {
-    // El ADR II-0010 lo anota como «aparece un diente de sierra cuando el `drive`
-    // satura» y dice que «es CORRECTO que mantener cueste». Lo que no dice —y es
-    // lo que este test pone en número— es CUÁNTO cuesta y cómo es la forma de
-    // onda: no hay meseta arriba ni bajada suave. Hay un solo paso a `toward` y
-    // el siguiente ya está debajo del punto de ignición, o sea que el cuerpo dejó
-    // de ser fuego. A 20 Hz vuelve EXACTAMENTE al ambiente.
+describe('(a) al saturar el `drive` la temperatura ya NO se derrumba: se queda ardiendo', () => {
+  it('un tick después del pico sigue encendida, y a los 3 s está en 615,00 a las cinco', () => {
+    // LO QUE ESTE BLOQUE MEDÍA ANTES DEL ADR II-0011, y queda escrito porque es la
+    // evidencia que lo motivó: al saturar el `drive`, la vara caía de 400 a 15,00 °C
+    // en UN tick a 20 Hz —385 grados— y a las cinco frecuencias quedaba por debajo
+    // de su ignición en un solo paso. Peor: la caída dependía de la frecuencia
+    // (15,00 a 20 Hz contra 286,76 a 100), que es una violación del ADR II-0008.
     //
-    // La aritmética de por qué es un derrumbe y no un diente:
-    //   `acople = min(1, H_PERDIDA_POR_SEGUNDO · dt / heatCapacity)`, y para una
-    //   madera de 0,2 kg `heatCapacity` es 0,34, así que a 10, 20 y 25 Hz el
-    //   `min` SATURA en 1 y la ley 1 lleva el cuerpo al ambiente entero en un
-    //   paso. La saturación ya estaba medida
-    //   (`el-tiempo-no-depende-del-tick.test.ts`, «a 10 Hz el acople de la ley 1
-    //   satura»); lo que el ADR II-0010 agrega es un cuerpo que llega a 400 °C
-    //   para que la saturación tenga 385 grados de dónde caer.
+    // Las dos causas se arreglaron juntas y por eso el número cambia entero:
     //
-    // Y LO QUE ESO DESTAPA: la caída DEPENDE DE LA FRECUENCIA, y ahora se nota.
-    // A 20 Hz el cuerpo aterriza en 15,00 y a 100 Hz en 286,76 — 272 grados de
-    // diferencia entre dos frecuencias admisibles, sobre el mismo hecho y el
-    // mismo segundo de mundo. Antes del ADR II-0010 la divergencia existía igual
-    // pero valía unas décimas, porque nada llegaba alto. El hecho GRUESO sí
-    // sobrevive a las cinco —el cuerpo cae debajo de su ignición en un solo
-    // paso—, y es lo único que este test afirma.
+    //   · la ley 1 se integra en forma cerrada, así que el `min(1, …)` que saturaba
+    //     para los cuerpos livianos —justo el régimen de la yesca— ya no existe;
+    //   · y arder libera calor, así que el punto fijo de una vara encendida no es el
+    //     ambiente: es `T_AMBIENTE + regimenDeLlama(oxígeno)` = 615,00 °C.
     //
-    // POR QUÉ IMPORTA Y NO ES COSMÉTICA: el ciclo entero son 65 pasos a 20 Hz
-    // —64 subiendo de a 6 grados y 1 cayendo— y en 200 pasos hay TRES derrumbes.
-    // Medido: la vara está arriba de sus 300 °C de ignición en 36 de esos 200
-    // pasos. O sea que la primera fuente de calor del mundo ARDE EL 18% DEL
-    // TIEMPO y se apaga sola cada 3,25 s aunque nadie suelte nada y aunque sobre
-    // `stamina`.
+    // Lo que este test afirma ahora es lo contrario de lo que afirmaba: un paso
+    // después del pico la vara SIGUE arriba de su ignición, y tres segundos
+    // después está en la meseta, que es el MISMO número en las cinco frecuencias.
+    //
+    // SE DEJA DE FROTAR A LOS 3 s, y no es una comodidad de banco: mientras la
+    // mano sigue, el `drive` de `friccion` tira la vara HACIA su `toward` de 400
+    // —un `drive` empuja hacia el objetivo desde los dos lados— y la meseta baja a
+    // `615 + Δ − Δ/acople`, que sí depende de la frecuencia porque Δ = 120/hz.
+    // Medido con la mano puesta: 614,33 a 10 Hz y 611,49 a 100. Es correcto y es
+    // otra cosa; lo que este test mide es el fuego SOLO.
+    const meseta = T_AMBIENTE + regimenDeLlama(1)
+    expect(meseta).toBe(615)
     const filas: string[] = []
     for (const hz of FRECUENCIAS_ADMISIBLES) {
-      // El paso del pico se BUSCA y no se predice: acumular (400−15)/(120/hz)
-      // sumas en IEEE-754 no cae siempre en el mismo entero.
-      const subida = Math.ceil((400 - 15) / (120 / hz)) + 4
-      const t = frotarYAnotar(0.2, subida + 3, hz)
-      const pico = t.indexOf(400)
+      const t = frotarYAnotar(0.2, Math.round(6 * hz), hz, Math.round(3 * hz))
+      const pico = t.findIndex((v) => v >= 400)
       expect([hz, pico >= 0]).toEqual([hz, true])
-      const despues = t[pico + 1] as number
-      // Lo que vale a las CINCO: en UN paso el cuerpo deja de estar encendido.
-      expect([hz, despues < 300]).toEqual([hz, true])
+      // Un paso después: encendida. Antes acá iba `despues < 300`.
+      expect([hz, (t[pico + 1] as number) >= 300]).toEqual([hz, true])
+      // Y a los 6 s, la meseta EXACTA y la misma en las cinco. La trayectoria
+      // hasta el punto fijo depende de la frecuencia y el punto fijo no, que es
+      // justo lo que el ADR II-0008 pide.
+      const alFinal = t[Math.round(6 * hz) - 1] as number
+      // `toBeCloseTo(…, 9)` y no `toBe`: la meseta es un punto fijo al que se
+      // llega asintóticamente, y a 100 Hz el último bit todavía no cerró
+      // (614,9999999999998). Nueve decimales es mucho más fino que el desvío que
+      // este test existe para cazar, que valía 272 grados.
+      expect(alFinal).toBeCloseTo(meseta, 9)
       filas.push(
-        `  ${String(hz).padStart(3)} Hz → sube ${String(pico + 1)} pasos hasta 400,00 °C y el paso ` +
-          `${String(pico + 2)} lo deja en ${despues.toFixed(2)} °C  (cae ${(400 - despues).toFixed(2)} en ${(1000 / hz).toFixed(0)} ms)`,
+        `  ${String(hz).padStart(3)} Hz → pasa 400 °C en el paso ${String(pico + 1)} (${((pico + 1) / hz).toFixed(2)} s), ` +
+          `el siguiente la deja en ${(t[pico + 1] as number).toFixed(2)} °C y a los 6 s está en ${alFinal.toFixed(2)}`,
       )
     }
-    // Y el ciclo completo, con el tiempo que la vara pasa arriba de su ignición.
-    const t = frotarYAnotar(0.2, 200, 20)
+    // Y el ciclo completo: ni un derrumbe, y la vara ARDE TODO EL TIEMPO.
+    const t = frotarYAnotar(0.2, 200, 20, 60)
     let derrumbes = 0
     let ardiendo = 0
     for (let i = 1; i < t.length; i++) {
-      if ((t[i - 1] as number) - (t[i] as number) > 100) derrumbes++
+      // Un DERRUMBE es dejar de ser fuego: pasar de arriba de la ignición a abajo
+      // en un solo paso. La bajada de 765 a 648 del tick siguiente al pico no lo
+      // es —es el sobrepico asentándose en la meseta— y contarla como derrumbe
+      // sería medir la forma de onda en vez del hecho.
+      if ((t[i - 1] as number) >= 300 && (t[i] as number) < 300) derrumbes++
       if ((t[i] as number) >= 300) ardiendo++
     }
+    expect(derrumbes).toBe(0)
+    expect(ardiendo).toBeGreaterThan(150)
     log([
-      '══ (a) EL DERRUMBE, NO EL DIENTE ══════════════════════════════════════',
+      '══ (a) YA NO HAY DERRUMBE (ADR II-0011) ══════════════════════════',
       ...filas,
       `  en 200 pasos a 20 Hz hubo ${String(derrumbes)} derrumbes y la vara estuvo arriba de sus`,
       `  300 °C en ${String(ardiendo)} de 200 pasos (${((ardiendo / 200) * 100).toFixed(0)}% del tiempo)`,
+      '  antes de este ADR eran 3 derrumbes y 36 de 200 pasos (18%)',
     ])
-    expect(derrumbes).toBeGreaterThanOrEqual(2)
   })
 
-  it('CARNADA · el test que hoy cuida el derrumbe lo cumple una caída de UN grado', () => {
-    // `physics/tests/el-empuje-no-se-relaja.test.ts` («mantener no es gratis»)
-    // afirma `expect(temperatura).toBeLessThan(TOWARD)` sobre un cuerpo puesto a
-    // 400. Eso es cierto para 399,99 y para 15,00 exactamente igual, así que si
-    // mañana alguien amortigua el derrumbe —o lo empeora— ese test no se entera.
-    // Éste sí: afirma el valor, no la desigualdad.
+  it('CARNADA · la meseta es exactamente el régimen de la llama, no una desigualdad', () => {
+    // Si alguien revierte la liberación de calor de la ley 3, esto vuelve a lo que
+    // este archivo medía antes: `t[pico + 1]` valdría 15 exactos, o sea 600 grados
+    // menos. Se afirma el VALOR y no una desigualdad, que es la misma crítica que
+    // este archivo le hacía al test que cuidaba el derrumbe.
     //
-    // Si se revierte `pelea` a `return false`, este test cae por el otro lado: la
-    // vara nunca llega a 400 y `t[subida-1]` no es 400.
-    const t = frotarYAnotar(0.2, 70, 20)
-    const pico = t.indexOf(400)
+    // Y no es un número copiado: sale de `regimenDeLlama`, que es la fórmula de la
+    // ley 3. Si la calibración se mueve con su porqué, esto se mueve con ella; si
+    // alguien borra el calor, se cae.
+    const t = frotarYAnotar(0.2, 200, 20, 60)
+    const pico = t.findIndex((v) => v >= 400)
     expect(pico, 'la vara tiene que llegar a `toward` para que haya de dónde caer').toBeGreaterThan(0)
-    expect(t[pico + 1]).toBe(15)
-    // Lo que la desigualdad floja NO distingue, dicho como número:
-    expect((t[pico] as number) - (t[pico + 1] as number)).toBe(385)
+    expect(t[pico + 1] as number).toBeGreaterThan(600)
+    expect(t[150] as number).toBe(T_AMBIENTE + regimenDeLlama(1))
+    // Y lo que la desigualdad floja NO distingue, dicho como número: la caída del
+    // paso siguiente al pico pasó de 385,00 grados a menos de 150.
+    expect((t[pico] as number) - (t[pico + 1] as number)).toBeLessThan(150)
   })
 })
 
 // ═══ (b) LA PROMESA DEL CATÁLOGO VIVE CERO TICKS ═════════════════════════════
 
-describe('(b) `friccion` promete `temperature>=400` y la promesa no dura un paso', () => {
-  it.fails('SIGUE ABIERTO · lo que `establishes` publica tiene que seguir siendo cierto al paso siguiente', () => {
-    // POR QUÉ SIGUE ABIERTO: `FRICCION.establishes` es `['temperature>=400']`
-    // (`physics/src/process.ts`), y `establishes` no es documentación: es lo que
-    // la fragua LEE PARA PLANIFICAR y con lo que arma las aristas entre procesos
-    // (`physics/src/admit.ts`, «`establishes` es lo que la fragua lee para
-    // PLANIFICAR»). Un plan que encadena «frotar hasta 400, y entonces …» encadena
-    // sobre un hecho que es cierto en el paso 64 y falso en el 65.
+describe('(b) `friccion` promete `temperature>=400` y ahora la promesa dura', () => {
+  it('lo que `establishes` publica sigue siendo cierto doce segundos después', () => {
+    // ESTO ERA UN `it.fails`. `FRICCION.establishes` es `['temperature>=400']`
+    // (`physics/src/process.ts`) y `establishes` no es documentación: es lo que la
+    // fragua LEE PARA PLANIFICAR y con lo que arma las aristas entre procesos. El
+    // hecho era falso SIEMPRE antes del ADR II-0010, cierto exactamente UN PASO
+    // después de él —que para un planificador es peor— y desde el ADR II-0011 dura
+    // lo que dura el combustible.
     //
-    // Antes del ADR II-0010 el predicado era falso SIEMPRE —la vara se estancaba
-    // en 29,4 °C— así que nadie podía notarlo. Ahora es cierto exactamente un
-    // paso, que es peor: es la clase de hecho que pasa un test y rompe un plan.
-    //
-    // Medido a 20 Hz con una vara de madera de 0,2 kg: el predicado se cumple en
-    // el paso 65 (t = 3,25 s) y en el 66 la temperatura es 15,00.
-    //
-    // QUÉ HARÍA FALTA: que el `drive` no se apague al tocar `toward` sino que
-    // SOSTENGA —que anote el empuje también cuando `delta` da 0, pagando el
-    // mantenimiento— o que `toward` deje de ser un tope duro y pase a ser un
-    // punto fijo con su propio término de pérdida. Lo primero son dos líneas en
-    // `world/src/step.ts` (`aplicarEfectos`, el `if (delta <= 0) break`) más su
-    // precio en `stamina`, y le cambia la conducta a todo `drive`: es un ADR.
-    // Lo segundo toca la forma del efecto en `physics/src/process.ts` y con ella
-    // el `.d.ts` del sandbox.
-    const t = frotarYAnotar(0.2, 80, 20)
-    const cumple = t.indexOf(400)
-    expect(cumple).toBeGreaterThan(0)
-    // Lo que el hueco afirma: la promesa tiene que sobrevivir al paso siguiente.
-    expect(t[cumple + 1]).toBeGreaterThanOrEqual(400)
-  })
-
-  it('documentado · el número exacto: cierto en el paso 65, falso en el 66', () => {
-    // El mismo hecho sin la afirmación, para que el número quede aunque el hueco
-    // tarde en cerrarse.
-    const t = frotarYAnotar(0.2, 80, 20)
-    const cumple = t.indexOf(400)
-    expect(cumple + 1).toBe(65)
-    expect(t[cumple + 1]).toBe(15)
+    // Medido a 20 Hz con una vara de madera de 0,2 kg: se cumple en el paso 48
+    // (2,40 s) y sigue cumpliéndose 240 pasos después. La vara tiene 0,2 × 18 = 3,6
+    // unidades de combustible y la llama se lleva 0,3 por segundo, o sea doce
+    // segundos de fuego; después se apaga sola, que también es lo correcto.
+    const t = frotarYAnotar(0.2, 400, 20, 60)
+    const cumple = t.findIndex((v) => v >= 400)
+    expect(cumple + 1).toBe(48)
+    // La promesa sobrevive al paso siguiente —que es lo que el hueco pedía— y a
+    // los doscientos siguientes.
+    expect(t[cumple + 1] as number).toBeGreaterThanOrEqual(400)
+    for (let n = cumple + 1; n <= 280; n++) {
+      expect([n, (t[n] as number) >= 400]).toEqual([n, true])
+    }
+    // Y se apaga sola cuando se le acaba: el combustible es una cuenta CONSERVADA
+    // y la ley 3 sólo la baja. Ver `ataque-al-fuego-que-dura.test.ts`.
+    const apagada = t.findIndex((v, n) => n > 280 && v < 300)
+    expect(apagada).toBeGreaterThan(280)
     log([
-      '══ (b) `establishes: temperature>=400` ════════════════════════════════',
-      `  se cumple en el paso ${String(cumple + 1)} (t = ${((cumple + 1) / 20).toFixed(2)} s) y en el ${String(cumple + 2)} la vara está a 15,00 °C`,
-      '  lo que la fragua lee para planificar es cierto durante 50 ms',
+      '══ (b) `establishes: temperature>=400` ════════════════════════',
+      `  se cumple en el paso ${String(cumple + 1)} (t = ${((cumple + 1) / 20).toFixed(2)} s) y sigue siendo cierto hasta el paso ${String(apagada)}`,
+      `  o sea ${(((apagada as number) - cumple - 1) / 20).toFixed(2)} s de mundo, contra los 50 ms que duraba antes del ADR II-0011`,
     ])
   })
 })
 
 // ═══ (c) SOLTAR NO ES QUEDARSE SIN FUERZAS ═══════════════════════════════════
 
-describe('(c) el fuego se apaga por soltar, no por quedarse sin aliento', () => {
-  it('documentado · con 706 de `stamina` en el tanque, dejar de frotar apaga igual', () => {
-    // El hueco abierto del tramo anterior («el fuego no sobrevive a la mano que lo
-    // hizo») lo mide con una criatura que se muere de hambre a los 3,55 s, así que
-    // las dos causas —soltar y agotarse— llegan juntas y no se distinguen. Acá se
-    // separan: la criatura DEJA de frotar en el paso 50 con el tanque a 706,07 de
-    // 1000, y la vara cae de 315,00 a 15,000 en el paso siguiente igual.
+describe('(c) el fuego YA NO se apaga por soltar: se apaga por quedarse sin combustible', () => {
+  it('soltar YA NO apaga: la vara se queda ardiendo 238 pasos después de que la mano se va', () => {
+    // ESTE TEST DECÍA LO CONTRARIO, y el número viejo queda escrito porque es el
+    // diagnóstico que motivó el ADR II-0011: la criatura dejaba de frotar en el
+    // paso 50 con el tanque a 706,07 de 1000 y la vara caía de 315,00 a 15,000 en
+    // el paso siguiente. No faltaba aliento: faltaba que el fuego tuviera de dónde
+    // salir el calor.
     //
-    // No cambia el veredicto del hueco; lo hace más chico y más nítido: no falta
-    // aliento, falta que el fuego tenga dónde vivir.
+    // Ahora, con la MISMA corrida: en el paso 50 la vara está a 621,23 °C, en el 51
+    // a 616,43, y sigue encendida hasta el paso 288 —catorce segundos y medio de
+    // mundo—, que es cuando se le acaba el combustible. La mano hizo el fuego y se
+    // fue; el fuego se quedó.
     let w = banco(0.2, 20)
     const s0 = leer(w, 'dina-cuerpo', 'stamina')
     let antes = Number.NaN
     let despues = Number.NaN
     let tanque = Number.NaN
-    for (let n = 1; n <= 60; n++) {
+    let apagoEn = Number.NaN
+    for (let n = 1; n <= 400; n++) {
       const i = n <= 50 ? apply({ by: 'dina', seq: n }, w.phys, 'friccion', ROLES) : undefined
       w = stepWorld(w, i === undefined ? [] : [i]).state
       if (n === 50) {
@@ -255,15 +264,19 @@ describe('(c) el fuego se apaga por soltar, no por quedarse sin aliento', () => 
         tanque = leer(w, 'dina-cuerpo', 'stamina')
       }
       if (n === 51) despues = leer(w, 'va', 'temperature')
+      if (Number.isNaN(apagoEn) && n > 51 && leer(w, 'va', 'emitsPower') === 0) apagoEn = n
     }
-    expect(antes).toBe(315)
-    expect(despues).toBe(15)
+    expect(antes).toBeGreaterThan(600)
+    expect(despues).toBeGreaterThan(600)
     expect(tanque).toBeGreaterThan(600)
+    // Lo que el hueco del tramo anterior pedía: diez segundos de fuego como mínimo.
+    expect((apagoEn - 50) / 20).toBeGreaterThanOrEqual(10)
     log([
-      '══ (c) SOLTAR APAGA, CON EL TANQUE LLENO ══════════════════════════════',
+      '══ (c) SOLTAR YA NO APAGA (ADR II-0011) ══════════════════════════',
       `  se frota hasta el paso 50: la vara está a ${antes.toFixed(2)} °C y quedan ${tanque.toFixed(2)} de ${s0.toFixed(0)} de stamina`,
-      `  se deja de frotar: el paso 51 la deja en ${despues.toFixed(3)} °C`,
-      '  la mano que suelta apaga tan rápido como la que se desmaya',
+      `  se deja de frotar: el paso 51 la deja en ${despues.toFixed(3)} °C (antes de este ADR: 15,000)`,
+      `  y se apaga sola en el paso ${String(apagoEn)}, o sea ${((apagoEn - 50) / 20).toFixed(2)} s después de que la mano se fue`,
+      '  se apaga por quedarse sin combustible, que es una cuenta CONSERVADA',
     ])
   })
 
@@ -299,7 +312,9 @@ describe('(c) el fuego se apaga por soltar, no por quedarse sin aliento', () => 
       v = r.state
       if (r.events.some((e) => e.k === 'murio')) murioEn = n
     }
-    expect(murioEn).toBe(174)
+    // 183 y no 174: llegar a los 375 °C pasó de 3,00 s a 2,40 s (el ADR II-0011
+    // le agregó la llama al camino) y arriba de `toward` el `drive` gasta menos.
+    expect(murioEn).toBe(183)
     log([
       '══ EL TANQUE QUE NO ES INFINITO ═══════════════════════════════════════',
       `  se escribió 1e9 de stamina y qualityOf devuelve ${leer(w, 'dina-cuerpo', 'stamina').toFixed(2)} desde el tick 0`,
@@ -536,9 +551,14 @@ describe('(e) la aritmética que el ADR II-0010 dice venir a desbloquear', () =>
     //
     // O sea que cocinar un pescado de 1 kg vale **+1,06 de stamina** hoy, y +3,76
     // en el mejor de los casos. Encender la vara MÁS BARATA que el mundo permite
-    // —madera de 0,2 kg— cuesta **352,71**. Hacen falta 94 pescados por fuego para
-    // empatar con lo que la cadena logra hoy, o 94 pescados cocinados en los 17 de
-    // 65 pasos en que la vara arde.
+    // —madera de 0,2 kg— cuesta **282,17** desde el ADR II-0011 (antes 352,71: la
+    // mano paga hasta la ignición y no hasta los 375, porque el resto lo pone la
+    // llama). Hacen falta **266** pescados por fuego para empatar con lo que la
+    // cadena logra, o **76** si el pescado llegara a 0,85.
+    //
+    // Y lo que el ADR II-0011 SÍ cambió de este hueco: el fuego ahora DURA doce
+    // segundos y el pescado de la cadena llega a 0,9456 en vez de 0,513, o sea que
+    // el numerador subió de +1,06 a +3,76. Sigue faltando un factor de 76.
     //
     // Y comer crudo NO da neto negativo: da +2,99 contra un costo de vivir de 0,05
     // por paso. La premisa que el ADR II-0010 cita como su motivo es falsa en el
@@ -546,10 +566,12 @@ describe('(e) la aritmética que el ADR II-0010 dice venir a desbloquear', () =>
     // este ADR.
     //
     // QUÉ HARÍA FALTA: es del ADR II-0009 y no de éste. O el rendimiento de
-    // `nutrition → stamina` sube dos órdenes, o el precio de `friccion` baja dos,
-    // o el fuego deja de pagarse por cuerpo y pasa a pagarse una vez (que es el
-    // otro hueco abierto: el fuego que sobrevive a la mano). Los tres mueven la
-    // calibración del hambre y piden barrido.
+    // `nutrition → stamina` sube dos órdenes, o el precio de `friccion` baja dos.
+    // La tercera salida que este bloque proponía —que el fuego deje de pagarse por
+    // cuerpo y pase a pagarse una vez— ya la dio el ADR II-0011: un fuego se
+    // enciende una vez y dura, y alcanza para cocinar todo lo que se le ponga
+    // encima mientras arde. No alcanzó. Las dos que quedan mueven la calibración
+    // del hambre y piden barrido.
     const bocado = (dig: number | undefined, masa: number, sust: string): number => {
       const estado: Record<string, number> = { }
       if (dig !== undefined) estado['digestibility'] = dig

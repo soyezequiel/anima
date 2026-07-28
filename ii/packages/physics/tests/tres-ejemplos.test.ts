@@ -85,7 +85,11 @@ describe('(a) una rama junto al fuego', () => {
     }
     expect(temperaturaDeEquilibrio(FOGATA, 0, 'contacto')).toBe(375)
 
-    const fin = correr(rama, tapado, phys, DT, 10)
+    // 60 s y no 10: desde el ADR II-0011 la ley 3 avanza `charred` a 0,016 por
+    // segundo y cruza los 0,8 que la ley 4 pide a los 50 s. Con los 0,2 de antes,
+    // cualquier cosa encendida cruzaba ese umbral a los cuatro segundos y ninguna
+    // fogata llegaba a cocinar nada. Ver la tasa de la ley 3 en `leyes.ts`.
+    const fin = correr(rama, tapado, phys, DT, 60)
 
     // 1. Cambió de materia, y la materia nueva no existía en el catálogo.
     expect(fin.nuevas).toHaveLength(1)
@@ -129,8 +133,8 @@ describe('(a) una rama junto al fuego', () => {
       celda: CELDA_TAPADA,
       fuente: { potencia: FOGATA, distancia: 0, montaje: 'contacto' },
     }
-    const corto = correr(rama, tapado, phys, DT, 10)
-    const largo = correr(rama, tapado, phys, DT, 100)
+    const corto = correr(rama, tapado, phys, DT, 60)
+    const largo = correr(rama, tapado, phys, DT, 200)
     expect(qualityOf(largo.body, 'mass', largo.phys)).toBe(
       qualityOf(corto.body, 'mass', corto.phys),
     )
@@ -144,8 +148,8 @@ describe('(a) una rama junto al fuego', () => {
     const rama = cosa('rama', 'vara', 'madera', MASA)
     const fuente = { potencia: FOGATA, distancia: 0, montaje: 'contacto' } as const
 
-    const tapado = correr(rama, { celda: CELDA_TAPADA, fuente }, phys, DT, 10)
-    const alAire = correr(rama, { celda: CELDA_AL_AIRE, fuente }, phys, DT, 10)
+    const tapado = correr(rama, { celda: CELDA_TAPADA, fuente }, phys, DT, 60)
+    const alAire = correr(rama, { celda: CELDA_AL_AIRE, fuente }, phys, DT, 60)
 
     expect(tapado.nuevas[0]!.tags).toEqual([TAG_RESIDUO_SIN_AIRE])
     expect(alAire.nuevas[0]!.tags).toEqual([TAG_RESIDUO_CON_AIRE])
@@ -227,7 +231,14 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
     // lleva masa. El 0.07% que falta no es de la cocción: es la ley 6 mordiendo
     // durante los diez ticks que el filete tarda en llegar a 63 °C desde frío.
     // El test de acá abajo lo separa y lo mide exacto.
-    expect(qualityOf(fin.body, 'nutrition', fin.phys) / 9).toBeGreaterThan(0.999)
+    //
+    // El número MEDIDO es 0,998910 y hasta el ADR II-0011 era 0,999163: la ley 1
+    // pasó a integrarse en forma cerrada y el Euler explícito venía SOBREESTIMANDO
+    // el calentamiento (con `r·dt` = 0,357, `r` contra `1 − e^(−r)` = 0,300), así
+    // que el filete tarda unos ticks más en llegar a sus 63 °C y la ley 6 muerde
+    // esos ticks de más. Es el mismo 0,1%, medido con la integración que no
+    // depende de la frecuencia.
+    expect(qualityOf(fin.body, 'nutrition', fin.phys) / 9).toBeGreaterThan(0.9989)
     expect(qualityOf(fin.body, 'mass', fin.phys)).toBeLessThan(MASA)
 
     // Y el TOTAL, que es lo que la conservación mira, baja exactamente lo que
@@ -314,7 +325,11 @@ describe('(b) un filete carnoso sobre la parrilla', () => {
     expect(temperaturaDeEquilibrio(HOGUERA, 0, 'contacto')).toBe(735)
     expect(735).toBeGreaterThan(phys.substances.get('carne')!.perUnitMass.pyrolysisAt!)
 
-    const olvidado = correr(filete, brasas, phys, DT, 10)
+    // 80 s y no 10, por la misma razón que arriba: la tasa de `charred` pasó de
+    // 0,2 a 0,016 por segundo (ADR II-0011) y llega a 1 a los 62,5 s. Y eso es lo
+    // que hace que sacarla a tiempo sea una técnica: antes se arruinaba en cuatro
+    // segundos, que no alcanza para ir a buscarla.
+    const olvidado = correr(filete, brasas, phys, DT, 80)
     expect(qualityOf(olvidado.body, 'charred', olvidado.phys)).toBeGreaterThan(0.9)
     expect(qualityOf(olvidado.body, 'nutrition', olvidado.phys)).toBe(0)
     expect(qualityOf(olvidado.body, 'calories', olvidado.phys)).toBe(0)

@@ -381,12 +381,27 @@ describe('una partida de 2000 ticks', () => {
     //   4d431de7cdd1fe94  (antes del ADR II-0009, con 8004 eventos)
     //   9a75fd6929ae0d7e  (con el II-0009 y ANTES de que la espera durara)
     //   adea782a5cd4274d  (con las dos, y con 9187 eventos: 2019 son `esperando`)
-    expect(r.hashFinal).toBe('adea782a5cd4274d')
+    //
+    // Y con el ADR II-0011 se movió otra vez, también a propósito: las leyes 1 y 3
+    // cambiaron de conducta —la relajación térmica se integra en forma cerrada y
+    // arder libera calor—, así que toda temperatura de la partida se escribe con
+    // otros bits desde el primer tick.
+    //
+    // LO QUE SE MOVIÓ AL LADO DEL HASH, Y ES INFORMACIÓN: los eventos pasaron de
+    // 9187 a 9190 y las sustancias de 30 a 31. Son las TRES transmutaciones de más
+    // que la ley 4 alcanzó a hacer, y la sustancia nueva que salió de una de
+    // ellas: con el fuego durando, algo que estaba junto a las brasas cruzó sus
+    // 0,8 de `charred` adentro de los 2000 ticks. Las violaciones NO se movieron
+    // (97, las mismas ocho criaturas pisándose), o sea que el guión de intenciones
+    // es el mismo y ninguna se aceptó o rechazó distinto: lo que cambió fue la
+    // física y no la puerta.
+    //   adea782a5cd4274d  (antes del ADR II-0011, con 9187 eventos y 30 sustancias)
+    expect(r.hashFinal).toBe('19db371807b7fb35')
     expect(r.checkpoints.join(' ')).toBe(
-      '9351f5f0182f1ca3 be96d3906bc72ca9 9b95a52f3975b8da d92525827bb89549 be8487a75351df88 32e6ab57bed1d9ce a9bfab38661e2f7d 6f90b573db9910da 9f77b9d74d57fb10 4efb09c4f8b145ad adea782a5cd4274d',
+      '2c8a2ec92994c99a 22099f614391dbf0 6d64c926b7c579a7 09579b2868bca337 f0a92a9755f4a498 fc00ed1b22a6aefc fd32a5f678249a61 e523d712d8566431 69994110b7c7c5f5 32efefd1a0390096 19db371807b7fb35',
     )
-    expect(r.eventos).toBe(9187)
-    expect(r.sustancias).toBe(30)
+    expect(r.eventos).toBe(9190)
+    expect(r.sustancias).toBe(31)
     expect(r.violaciones.length).toBe(97)
   }, 300_000)
 

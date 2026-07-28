@@ -13,22 +13,33 @@
 //
 // `FRICCION` empuja `temperature` a 120 °C/s hacia 400 y su comentario promete
 // «tres segundos de 15 a 375». La ley 1 relaja PROPORCIONAL AL HUECO, así que las
-// dos juntas se estancan:
+// dos juntas se estancan en un punto fijo muy por debajo de cualquier ignición.
+// La cuenta del proceso suponía que nada lo relajaba; la ley se lo comía. Ver el
+// ADR II-0010, y la CARNADA de acá abajo, que es esa cuenta escrita.
 //
-//   T* = ambiente + (120 / H_PERDIDA_POR_SEGUNDO) · heatCapacity − 120/hz
-//      = 15 + 12 · heatCapacity − 120/hz
+// ─── Y LO QUE CAMBIÓ CON EL ADR II-0011 ─────────────────────────────────────
 //
-// Para una madera de 2 kg eso son 49,80 °C contra 300 de ignición. La cuenta del
-// proceso suponía que nada lo relajaba; la ley se lo comía. Ver el ADR II-0010.
+// Dos cosas, y las dos se ven en los números de este archivo:
+//
+//   · la ley 1 se integra en FORMA CERRADA, así que la meseta de la carnada ya no
+//     es la del Euler explícito (`15 + 12·heatCapacity − 120/hz`) sino
+//     `15 − Δ + Δ/acople`. Las dos coinciden cuando el paso es chico y difieren
+//     cuando es grande, que es justo donde el Euler mentía: a 10 Hz, 29,98
+//     contra 23,40;
+//   · **arder libera calor**, así que la vara ya no llega a 375 °C por la
+//     fricción: llega porque a los 2,375 s cruza sus 300 de ignición y de ahí la
+//     sube la llama. 2,40 s en las cinco frecuencias, contra los 3,00 que tarda
+//     la fricción sola sobre algo que no puede prender.
 
 import { describe, expect, it } from 'vitest'
 import {
+  acopleTermico,
   AL_AIRE,
   buildSeedPhysics,
   clampToRange,
+  correr,
   dtDeFrecuencia,
   FRECUENCIAS_ADMISIBLES,
-  H_PERDIDA_POR_SEGUNDO,
   paso,
   porPaso,
   qualityOf,
@@ -104,13 +115,16 @@ const log = (lineas: readonly string[]): void => {
 // ─── EL CRITERIO ─────────────────────────────────────────────────────────────
 
 describe('la ley 1 no pelea contra la mano que frota (ADR II-0010)', () => {
-  it('la vara llega a 375 °C en 3,00 s a las CINCO frecuencias admisibles', () => {
-    // Es exactamente lo que el comentario de `FRICCION` promete: 120 grados por
-    // segundo, 15 + 120×3 = 375. Ni un grado de calibración nueva: lo único que
-    // cambió es que la ley 1 dejó de comérselos.
+  it('lo que NO puede prender llega a 375 °C en 3,00 s exactos, a las cinco', () => {
+    // La tasa de `FRICCION` sola, aislada: 120 grados por segundo, 15 + 120×3 =
+    // 375. Se mide sobre HUESO —`ignitionPoint` 500, que el `toward` de 400 no
+    // alcanza nunca— justamente para que la llama no se meta en el medio. Ni un
+    // grado de calibración nueva: lo único que el ADR II-0010 cambió es que la
+    // ley 1 dejó de comérselos.
     const filas: string[] = []
     for (const hz of FRECUENCIAS_ADMISIBLES) {
-      const r = frotar(vara(1), 6, hz)
+      const r = frotar(vara(1, 'hueso'), 6, hz)
+      expect([hz, qualityOf(r.body, 'emitsPower', F)]).toEqual([hz, 0])
       // La afirmación va en PASOS y no en segundos, y no es una comodidad: el
       // margen es UN TICK —el hecho no se observa cuando ocurre sino en el primer
       // paso posterior— y «un tick» en segundos es un double que a 50 Hz da
@@ -123,18 +137,50 @@ describe('la ley 1 no pelea contra la mano que frota (ADR II-0010)', () => {
         `  ${String(hz).padStart(3)} Hz → 375 °C a los ${r.t375.toFixed(3)} s  (paso ${String(r.pasos)} de ${String(3 * hz)} que predice la cuenta)`,
       )
     }
-    log(['══ FROTAR LLEGA (ADR II-0010) ═════════════════════════════════════════', ...filas])
+    log(['══ LA TASA DE FRICCION, SOLA ═════════════════════════════════════════', ...filas])
+  })
+
+  it('y la vara de madera llega ANTES, a los 2,40 s, porque en el camino PRENDE', () => {
+    // El ADR II-0011 en una línea. La fricción cruza los 300 de ignición de lo
+    // leñoso a los 2,375 s —(300 − 15)/120— y de ahí la temperatura ya no la pone
+    // la mano: la pone la llama, que empuja hacia los 615 °C de régimen. Los 375
+    // llegan en el MISMO tick en las cinco frecuencias, y ninguna de las cinco
+    // tarda los 3,00 s que tardaba antes.
+    const filas: string[] = []
+    for (const hz of FRECUENCIAS_ADMISIBLES) {
+      const r = frotar(vara(1), 6, hz)
+      expect([hz, r.t375]).toEqual([hz, 2.4])
+      expect([hz, r.pasos]).toEqual([hz, Math.round(2.4 * hz)])
+      // Y sigue encendida al final de los 6 s: no es un pico de un tick.
+      expect(qualityOf(r.body, 'emitsPower', F)).toBeGreaterThan(0)
+      filas.push(
+        `  ${String(hz).padStart(3)} Hz → 375 °C a los ${r.t375.toFixed(3)} s (paso ${String(r.pasos)}) · a los 6 s: ${qualityOf(r.body, 'temperature', F).toFixed(2)} °C`,
+      )
+    }
+    log([
+      '══ Y CON LLAMA LLEGA ANTES (ADR II-0011) ═════════════════════════',
+      '  la ignición de lo leñoso a los 2,375 s; los 375 °C, un tick después',
+      ...filas,
+    ])
   })
 
   it('CARNADA · sin la regla la misma vara se estanca en la meseta que la cuenta predice', () => {
     // Si alguien revierte `pelea`, esto es lo que vuelve. La cuenta cerrada
     // del ADR está escrita acá para que el número no sea un misterio, y se
-    // verifica contra la simulación: `T* = 15 + 12·heatCapacity − 120/hz`.
+    // verifica contra la simulación.
+    //
+    // Desde el ADR II-0011 la cuenta es OTRA, porque la ley 1 dejó de ser un
+    // Euler explícito. Un paso es: empujar `Δ = 120/hz` y después relajar cerrando
+    // la fracción `acople` del hueco al ambiente. El punto fijo de eso es
+    // `T* = 15 − Δ + Δ/acople`. La vieja `15 + 12·heatCapacity − 120/hz` es su
+    // primer término cuando el paso es chico; a 10 Hz predecía 23,40 y la meseta
+    // de verdad es 29,98, o sea que el Euler la subestimaba un 21%.
     const filas: string[] = []
     for (const hz of FRECUENCIAS_ADMISIBLES) {
       const sin = frotar(vara(1), 600, hz, AL_AIRE, false)
       const cap = qualityOf(vara(1), 'heatCapacity', F)
-      const predicho = T_AMBIENTE + (POR_SEGUNDO / H_PERDIDA_POR_SEGUNDO) * cap - POR_SEGUNDO / hz
+      const delta = POR_SEGUNDO / hz
+      const predicho = T_AMBIENTE - delta + delta / acopleTermico(cap, dtDeFrecuencia(hz))
       expect([hz, Number.isNaN(sin.t375)]).toEqual([hz, true])
       expect(sin.pico).toBeCloseTo(predicho, 6)
       filas.push(
@@ -269,10 +315,35 @@ describe('la ley 1 no pelea contra la mano que frota (ADR II-0010)', () => {
     // La consecuencia anotada en el ADR. Un `drive` que ya no mueve nada no se
     // anota, así que la ley 1 relaja a fondo y hay que volver a subir. Si esto
     // NO pasara, frotar sería una batería: temperatura sostenida a costo cero.
+    //
+    // Se mide sobre algo QUE NO ARDE —piedra, con el punto de ignición fuera de
+    // alcance— porque desde el ADR II-0011 una vara de madera a 400 °C no baja:
+    // sube, y eso es lo contrario de lo que este test afirma. Los dos hechos son
+    // ciertos y son distintos; el de abajo los separa.
     const dt = dtDeFrecuencia(20)
-    const aTope = { ...vara(1), state: { temperature: TOWARD } }
+    const aTope = { ...vara(1, 'piedra'), state: { temperature: TOWARD } }
     // Con el empuje saturado (delta = 0, o sea sin anotar) la ley 1 relaja.
     const despues = paso(aTope, AL_AIRE, F, dt).body
     expect(qualityOf(despues, 'temperature', F)).toBeLessThan(TOWARD)
+  })
+
+  it('ADR II-0011 · y la que SÍ arde no vuelve: la mano se va y el fuego se queda', () => {
+    // El otro lado del test de arriba, y el criterio (f) del ADR II-0011: hasta
+    // este ADR `friccion` prometía `establishes: ['temperature>=400']` y ese hecho
+    // vivía UN TICK. Ahora la vara encendida se sostiene sola.
+    const dt = dtDeFrecuencia(20)
+    const aTope = { ...vara(1), state: { temperature: TOWARD } }
+    const unTick = paso(aTope, AL_AIRE, F, dt).body
+    expect(qualityOf(unTick, 'temperature', F)).toBeGreaterThan(TOWARD)
+    // Y treinta segundos después, sin nadie tocándola, sigue arriba de 400.
+    const largo = correr(aTope, AL_AIRE, F, dt, 30)
+    expect(qualityOf(largo.body, 'temperature', largo.phys)).toBeGreaterThan(TOWARD)
+    expect(qualityOf(largo.body, 'emitsPower', largo.phys)).toBeGreaterThan(0)
+    log([
+      '══ EL FUEGO SOBREVIVE A LA MANO (ADR II-0011) ═════════════════════',
+      `  vara de madera de 1 kg soltada a ${String(TOWARD)} °C, al aire, sin nadie:`,
+      `    un tick después ...... ${qualityOf(unTick, 'temperature', F).toFixed(2)} °C`,
+      `    treinta segundos ..... ${qualityOf(largo.body, 'temperature', largo.phys).toFixed(2)} °C · emitsPower ${qualityOf(largo.body, 'emitsPower', largo.phys).toFixed(1)}`,
+    ])
   })
 })

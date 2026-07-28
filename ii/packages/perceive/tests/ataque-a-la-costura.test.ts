@@ -27,16 +27,19 @@ import {
   keyOfCell,
   mapaDeActores,
   mapaDeCuerpos,
+  apply,
   restoreWorld,
+  revisarInvariantes,
   stepWorld,
   worldSlots,
   type EstadoDelDios,
   type Placement,
+  type SimEvent,
   type WorldBody,
   type WorldState,
 } from '@anima/world'
 import type { BodyView, Ctx, Intent, Outcome, StepResult } from '@anima/skills'
-import { aplicarProceso } from '@anima/skills/innatas'
+import { aplicarProceso, comer, frotar, poner } from '@anima/skills/innatas'
 
 import { IndiceDelTick, Partida, Proyeccion } from '../src/index.js'
 import { actor, conElla, criatura, cuerpo, mundo } from './mundo.js'
@@ -274,6 +277,12 @@ describe('2. el tick 0 de una habilidad', () => {
     // El criterio (a) de este tramo, sobre el mismo criterio del Hito 5: las dos
     // listas son la MISMA. Antes de la reparación, el paso 1 no traía el banco.
     expect(paso1).toEqual(paso2)
+    // Y LOS 32 TICKS, CLAVADOS. El número estaba en el comentario y en ningún
+    // `expect`, así que podía derivar sin que nadie se enterara — y el ADR II-0011
+    // movió física que este vuelo pisa. REMEDIDO después de ese ADR: siguen siendo
+    // 32 (un `wait` de 0,05 más los 1,5 s de `EXTRACCION.completion`, más el paso
+    // en el que la habilidad lee el resultado).
+    expect(v.ticks, 'los 32 ticks del criterio se movieron').toBe(32)
   })
 
   it('EL PRIMER `see()` VE LO QUE EL DIOS PONE — cerrado, y con su carnada', () => {
@@ -935,5 +944,465 @@ describe('6. los números del tramo, medidos de nuevo', () => {
     const otra = new Proyeccion(new IndiceDelTick(w))
     expect(otra.cuerpo('h', 'otra')!.madeByMe).toBe(false)
     expect(otra.cuerpo('h', 'ella')!.madeByMe).toBe(true)
+  })
+})
+
+// ═══ 7. EL PRIMER CRITERIO DEL HITO 5, ENTERO ════════════════════════════════
+//
+// El bloque 2 de este archivo dejó la mitad: la criatura ve el pozo desde el
+// primer paso y saca un pescado en 32 ticks de vuelo. Faltaba el eslabón que el
+// mundo no daba — **encender, cocinar y comer** —, y no faltaba por la costura:
+// faltaba porque hasta el ADR II-0011 el fuego se apagaba en un tick y no había
+// nada que cocinar con él. Ahora hay.
+//
+// Lo de acá abajo corre POR LA COSTURA ENTERA, en UN SOLO VUELO y con una sola
+// habilidad: `Partida` → `Contexto` → `SkillRun` → `stepWorld` → `desenlaceDe` →
+// `Vuelo`, con el dios detrás y sin una sola llamada al modelo. Las cinco cosas
+// —pescar, encender, poner sobre la parrilla, esperar, comer— salen de cinco
+// innatas del Hito 4 que nadie escribió para esto.
+
+/** La masa de vara más barata con la que el fuego COCINA. La tabla, más abajo. */
+const VARA_QUE_COCINA = 0.47
+
+/** Los tres roles de `friccion`, para el banco de este bloque. */
+const ROLES_DE_FROTAR = [
+  { name: 'a', body: 'va' },
+  { name: 'b', body: 'vb' },
+  { name: 'actor', body: 'ana-cuerpo' },
+]
+
+/**
+ * El campamento: la orilla, la caña, dos varas y la fogata SIN ENCENDER.
+ *
+ * La geometría no es comodidad y es la misma de `world/tests/el-fuego.test.ts`:
+ * `friccion` pide `arrangement: held`, así que las dos varas están en las manos y
+ * por lo tanto en la celda de la criatura; y `montajeDe` sólo da `contacto` —la
+ * única exposición con la que una llama chica prende algo— a lo que APOYA o TAPA
+ * a la fuente. De ahí que la yesca tape la vara, el leño se apoye en la yesca y la
+ * parrilla en el leño. Una celda admite UNA sola pila, así que la yesca cuelga de
+ * la criatura: es la única geometría legal, y que sea la única es información.
+ *
+ * El pescado NO se pone acá: lo saca la criatura del pozo y lo apoya ella.
+ */
+function elCampamento(masaDeLaVara = VARA_QUE_COCINA): WorldState {
+  const p = ORILLA.parada
+  const bodies: readonly WorldBody[] = [
+    { body: criatura('ana', 1000), at: p },
+    { body: cana(), at: p, heldBy: 'ana' },
+    { body: cuerpo('va', 'madera', masaDeLaVara, { temperature: 15 }), at: p, heldBy: 'ana' },
+    { body: cuerpo('vb', 'madera-dura', masaDeLaVara, { temperature: 15 }), at: p, heldBy: 'ana' },
+    { body: cuerpo('yesca', 'hoja-seca', 1), at: p, supportedBy: 'ana-cuerpo', covering: 'va' },
+    { body: cuerpo('leno', 'madera', 1), at: p, supportedBy: 'yesca' },
+    { body: cuerpo('parrilla', 'piedra', 0.5), at: p, supportedBy: 'leno' },
+  ]
+  return {
+    tick: 0,
+    hz: 20,
+    phys: PHYS,
+    bodies: mapaDeCuerpos(bodies),
+    actors: mapaDeActores([actor('ana', { holding: ['cana', 'va', 'vb'], capacity: 6 })]),
+    cells: new Map(),
+    nextId: 1,
+    dios: ORILLA.dios,
+  }
+}
+
+/** El campamento con `cuantos` pescados de 2 kg ya apoyados sobre la parrilla. */
+function conPescadosEnLaParrilla(masaDeLaVara: number, cuantos: number): WorldState {
+  const w = elCampamento(masaDeLaVara)
+  const peces: WorldBody[] = []
+  for (let k = 0; k < cuantos; k++) {
+    peces.push({
+      body: { ...cuerpo(`pez${String(k)}`, 'pescado', 2), form: 'filete' },
+      at: ORILLA.parada,
+      supportedBy: 'parrilla',
+    })
+  }
+  return { ...w, bodies: mapaDeCuerpos([...w.bodies.values(), ...peces]) }
+}
+
+/**
+ * Las violaciones de un paso, separadas en DOS MONTONES.
+ *
+ * `conservada-aumento` va aparte porque en una partida CON DIOS el arnés no la
+ * puede juzgar: el decreto crea materia que ningún evento `convierte` respalda, y
+ * `acreditado()` —lo único que `revisarInvariantes` sabe leer— no la ve. Los tres
+ * momentos están medidos en el `it.fails` del final de este bloque. Contarlas como
+ * violaciones de la cadena sería medir la ignorancia del arnés; taparlas sin
+ * decirlo sería peor, así que se devuelven las dos listas y cada test dice qué
+ * hace con cuál.
+ *
+ * Las OTRAS cinco clases —orden canónico, sólidos solapados, referencias colgadas,
+ * inventarios y cualidades fuera de rango— sí juzgan esta cadena, y son las que
+ * dicen si apilar una parrilla sobre un fuego y poner un pescado encima es
+ * geometría legal.
+ */
+function violacionesDelPaso(
+  antes: WorldState,
+  despues: WorldState,
+  events: readonly SimEvent[],
+  n: number,
+): { readonly duras: readonly string[]; readonly conservacion: readonly string[] } {
+  const duras: string[] = []
+  const conservacion: string[] = []
+  for (const v of revisarInvariantes(antes, despues, events)) {
+    if (v.k === 'conservada-aumento') conservacion.push(`t=${String(n)} ${v.q} ${v.antes.toFixed(2)} → ${v.despues.toFixed(2)}`)
+    else duras.push(`t=${String(n)} ${v.k}`)
+  }
+  return { duras, conservacion }
+}
+
+/**
+ * Frota hasta que la vara prende y después mira nomás —que es lo que hace la
+ * innata `frotar`, y es lo que hace que el precio sea EL precio— durante
+ * `segundos` de mundo.
+ */
+function encenderYMirar(w0: WorldState, segundos: number): { w: WorldState; costo: number; violaciones: string[] } {
+  let w = w0
+  const s0 = qualityOf(w.bodies.get('ana-cuerpo')!.body, 'stamina', PHYS)
+  let costo = Number.NaN
+  const violaciones: string[] = []
+  for (let n = 1; n <= 20 * segundos; n++) {
+    const i = Number.isNaN(costo)
+      ? apply({ by: 'ana', seq: n }, w.phys, 'friccion', ROLES_DE_FROTAR)
+      : undefined
+    const antes = w
+    const r = stepWorld(w, i === undefined ? [] : [i])
+    w = r.state
+    for (const x of violacionesDelPaso(antes, w, r.events, n).duras) violaciones.push(x)
+    const va = w.bodies.get('va')
+    if (Number.isNaN(costo) && va !== undefined && qualityOf(va.body, 'temperature', PHYS) >= 300) {
+      costo = s0 - qualityOf(w.bodies.get('ana-cuerpo')!.body, 'stamina', PHYS)
+    }
+  }
+  return { w, costo, violaciones }
+}
+
+describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer', () => {
+  it('LAS CINCO COSAS EN UN SOLO VUELO, con los segundos de cada una', () => {
+    // ─── EL CRITERIO DEL HITO 5, COMPLETO POR PRIMERA VEZ ─────────────────
+    //
+    // Cinco innatas encadenadas en un generador y nada más: `aplicarProceso`
+    // (extracción), `frotar`, `poner`, un `wait` en bucle y `comer`. Ninguna se
+    // escribió para esta cadena y ninguna se tocó para que ande.
+    //
+    // Los hitos se sellan DESDE AFUERA con `p.state.tick` — el `Clock` de la API
+    // publica `phase`, `secondsToNightfall` y `dayLength`, y no el tick, que es
+    // correcto (ADR II-0008: el ritmo no se mide en muestras) pero deja al arnés
+    // sin reloj de adentro.
+    const p = new Partida(elCampamento())
+    const banco = idDePozo(ORILLA.cx, ORILLA.cy)
+    const hitos = new Map<string, number>()
+    const notas: string[] = []
+    let ahora = 0
+    let staminaAlNacer = 0
+    let staminaAlEncender = 0
+    let staminaAntesDeComer = 0
+    let staminaAlFinal = 0
+    let crudo = 0
+    let cocido = 0
+    const v = p.volar(
+      'ana',
+      function* (ctx: Ctx): Hab {
+        staminaAlNacer = ctx.self.stamina
+        const anotar = (k: string): void => {
+          if (!hitos.has(k)) hitos.set(k, ahora)
+        }
+
+        // 1 · PESCAR. Lo mismo que el bloque 2, ahora adentro de la cadena.
+        const gear = ctx.self.holding.find((b) => b.id === 'cana')
+        const source = ctx.see([{ q: 'mass', op: '>', v: 0 }]).find((b) => b.id === banco)
+        if (gear === undefined || source === undefined) return { ok: false, why: 'no veo el pozo' }
+        const pesca = yield* aplicarProceso(ctx, { proceso: 'extraccion', roles: { gear, source }, intentos: 20 })
+        if (!pesca.ok) return { ok: false, why: `pescar: ${pesca.why ?? ''}` }
+        anotar('pescó')
+        const pez = ctx.self.holding.find((b) => ctx.q(b, 'calories') > 0)
+        if (pez === undefined) return { ok: false, why: 'el pescado no quedó en la mano' }
+        crudo = ctx.q(pez, 'calories')
+        notas.push(
+          `el pozo dio ${ctx.q(pez, 'mass').toFixed(2)} kg de pescado · digestibility ` +
+            `${ctx.q(pez, 'digestibility').toFixed(3)} · ${crudo.toFixed(2)} calorías`,
+        )
+
+        // 2 · ENCENDER. `frotar` sin `hasta` apunta al `ignitionPoint` del cuerpo,
+        // o sea que lograr el contrato ES prender. Nadie escribió «encender».
+        const va = ctx.self.holding.find((b) => b.id === 'va')
+        const vb = ctx.self.holding.find((b) => b.id === 'vb')
+        if (va === undefined || vb === undefined) return { ok: false, why: 'me faltan las varas' }
+        const fuego = yield* frotar(ctx, { a: va, b: vb })
+        if (!fuego.ok) return { ok: false, why: `frotar: ${fuego.why ?? ''}` }
+        anotar('encendió')
+        staminaAlEncender = ctx.self.stamina
+
+        // 3 · PONER EL PESCADO SOBRE LA PARRILLA. `sobre` y no `tapando`: apoyar
+        // no es tapar, y taparlo ahogaría el fuego (ADR II-0002).
+        const parrilla = ctx.see([{ q: 'mass', op: '>', v: 0 }]).find((b) => b.id === 'parrilla')
+        if (parrilla === undefined) return { ok: false, why: 'no veo la parrilla' }
+        const puesto = yield* poner(ctx, { que: pez, en: parrilla.at, sobre: parrilla })
+        if (!puesto.ok) return { ok: false, why: `poner: ${puesto.why ?? ''}` }
+        anotar('lo puso al fuego')
+
+        // 4 · ESPERAR A QUE SE COCINE. Sin frotar: el fuego ya no depende de la
+        // mano que lo hizo, que es lo que el ADR II-0011 vino a arreglar.
+        const verlo = (): BodyView | undefined =>
+          ctx.see([{ q: 'mass', op: '>', v: 0 }]).find((b) => b.id === pez.id)
+        for (let k = 0; k < 2000; k++) {
+          const sigue = verlo()
+          if (sigue !== undefined && ctx.q(sigue, 'digestibility') >= 0.85) break
+          yield ctx.wait(0.05)
+        }
+        const listo = verlo()
+        if (listo === undefined) return { ok: false, why: 'el pescado dejó de existir' }
+        if (ctx.q(listo, 'digestibility') < 0.85) return { ok: false, why: 'no se cocinó' }
+        anotar('se cocinó')
+        cocido = ctx.q(listo, 'calories')
+        notas.push(
+          `cocido: digestibility ${ctx.q(listo, 'digestibility').toFixed(4)} · ` +
+            `${cocido.toFixed(2)} calorías · charred ${ctx.q(listo, 'charred').toFixed(3)}`,
+        )
+
+        // 5 · COMER.
+        staminaAntesDeComer = ctx.self.stamina
+        const bocado = yield* comer(ctx, { bocado: listo })
+        if (!bocado.ok) return { ok: false, why: `comer: ${bocado.why ?? ''}` }
+        anotar('se lo comió')
+        // Un tick más, para que `ctx.self` traiga la stamina ya acreditada.
+        yield ctx.wait(0.05)
+        staminaAlFinal = ctx.self.stamina
+        return { ok: true }
+      },
+      undefined,
+    )
+    const violaciones: string[] = []
+    const delDios: string[] = []
+    for (let i = 0; i < 4000 && !v.terminado; i++) {
+      ahora = p.state.tick
+      const antes = p.state
+      // Los EVENTOS del paso, y no una lista vacía: `revisarInvariantes` los usa
+      // para saber qué creación de materia estaba autorizada. Y `p.tick()` se
+      // guarda en una variable ANTES de armar la llamada: pasarlo como tercer
+      // argumento de `revisarInvariantes(antes, p.state, p.tick())` evalúa
+      // `p.state` primero y compara el estado consigo mismo, o sea que el arnés
+      // aprueba siempre. Ese error lo cometí escribiendo este test.
+      const eventos = p.tick()
+      const juicio = violacionesDelPaso(antes, p.state, eventos, i + 1)
+      for (const d of juicio.duras) violaciones.push(d)
+      for (const c of juicio.conservacion) delDios.push(c)
+    }
+    const seg = (k: string): number => (hitos.get(k) as number) / 20
+    console.log(
+      `\n─── EL PRIMER CRITERIO DEL HITO 5, ENTERO ───\n` +
+        `${notas.join('\n')}\n` +
+        `pescó ................ ${seg('pescó').toFixed(2)} s\n` +
+        `encendió ............. ${seg('encendió').toFixed(2)} s   (frotar tardó ${(seg('encendió') - seg('pescó')).toFixed(2)} s)\n` +
+        `lo puso al fuego ..... ${seg('lo puso al fuego').toFixed(2)} s\n` +
+        `se cocinó ............ ${seg('se cocinó').toFixed(2)} s   (${(seg('se cocinó') - seg('lo puso al fuego')).toFixed(2)} s sobre la parrilla, sin que nadie frote)\n` +
+        `se lo comió .......... ${seg('se lo comió').toFixed(2)} s\n` +
+        `el vuelo entero ...... ${String(v.ticks)} ticks = ${(v.ticks / 20).toFixed(2)} s\n` +
+        `stamina: ${staminaAlNacer.toFixed(2)} → ${staminaAlEncender.toFixed(2)} al encender → ` +
+        `${staminaAntesDeComer.toFixed(2)} antes de comer → ${staminaAlFinal.toFixed(2)}\n` +
+        `  el fuego costó ${(staminaAlNacer - staminaAlEncender).toFixed(2)} · el bocado devolvió ` +
+        `${(staminaAlFinal - staminaAntesDeComer).toFixed(2)} · NETA ${(staminaAlFinal - staminaAlNacer).toFixed(2)}\n` +
+        `  cocinar multiplicó lo que ese mismo bicho rinde por ${(cocido / crudo).toFixed(2)}×\n` +
+        `violaciones de invariantes (todas menos conservación): ${String(violaciones.length)}\n` +
+        `lo que el arnés NO PUEDE juzgar con un dios en el mundo:\n  ${delDios.join('\n  ')}\n`,
+    )
+
+    // LAS CINCO, EN ORDEN. Que estén las cinco y que el orden sea el de la
+    // técnica: sin fuego no se cocina y sin cocinar no hay qué comer.
+    expect(v.outcome, JSON.stringify(v.outcome)).toEqual({ ok: true })
+    expect([...hitos.keys()]).toEqual(['pescó', 'encendió', 'lo puso al fuego', 'se cocinó', 'se lo comió'])
+    expect(violaciones).toEqual([])
+
+    // LOS SEGUNDOS, CLAVADOS. Son los del ADR II-0011 vistos desde la costura:
+    // pescar es el 1,5 s de `EXTRACCION.completion`; encender es (300−15)/120 =
+    // 2,375 s redondeado al tick de 0,05; y cocinar son los segundos que el
+    // pescado tarda en pasar de 0,380 a 0,85 sobre la parrilla, CON LA CRIATURA
+    // MIRANDO. Antes del ADR II-0011 ese último tramo no existía: el fuego se
+    // apagaba junto con el `done` de `frotar`.
+    expect(seg('pescó')).toBeCloseTo(1.5, 6)
+    expect(seg('encendió') - seg('pescó')).toBeCloseTo(2.4, 6)
+    expect(seg('lo puso al fuego') - seg('encendió')).toBeCloseTo(0.05, 6)
+    expect(seg('se cocinó') - seg('lo puso al fuego')).toBeCloseTo(4.7, 6)
+    expect(v.ticks, 'el vuelo entero').toBe(176)
+
+    // Y LA ARITMÉTICA, que es lo que este vuelo le agrega al criterio: la cadena
+    // entera es NETA NEGATIVA, porque el fuego cuesta órdenes más que lo que un
+    // bocado devuelve. La criatura sobrevive y NO puede repetirlo: el segundo
+    // fuego no lo puede pagar.
+    //
+    // NO ES UN DEFECTO DE LA CADENA, y por eso no lleva `it.fails` acá: es la
+    // ventana del ADR II-0009, medida con el precio del fuego adentro en
+    // `oracle/tests/presupuesto.test.ts`, bloque 5, que es donde vive su hueco.
+    // El fuego costó 661,3629: los 659,8629 que el modelo de `@anima/oracle`
+    // despeja para una vara de 0,47 kg, MÁS el 1,50 de vivir los 1,5 segundos que
+    // tardó en pescar antes de empezar a frotar. Que los dos números coincidan
+    // hasta la cuarta cifra es lo que hace que el modelo de allá sea el mundo de
+    // acá y no una cuenta paralela.
+    expect(Number((staminaAlNacer - staminaAlEncender).toFixed(4))).toBe(661.3629)
+    expect(staminaAlFinal - staminaAlNacer).toBeLessThan(0)
+    expect(staminaAlFinal).toBeGreaterThan(0)
+    expect(staminaAlFinal - staminaAntesDeComer).toBeGreaterThan(18)
+    // COCINAR MULTIPLICA POR 2,13 LO QUE RINDE ESE MISMO BICHO, y no por los
+    // 2,50 que la digestibilidad sola daría (0,95 / 0,38). La diferencia está
+    // medida y es información: `calories` es `nutrition × mass × digestibility`, y
+    // el pescado sobre la parrilla PIERDE MASA mientras se cocina —la ley 11 lo
+    // seca—. O sea que la digestibilidad sube 2,50× y la masa baja lo suficiente
+    // para comerse 15 centésimas del negocio. El modelo de
+    // `oracle/tests/presupuesto.test.ts` usa el 2,50 porque cocina la misma pieza
+    // sin correr el mundo: es OPTIMISTA por ese 15%, y queda dicho acá.
+    expect(cocido / crudo).toBeGreaterThan(2)
+    expect(cocido / crudo).toBeLessThan(0.95 / 0.38)
+  })
+
+  it('EL PRECIO DEL FUEGO QUE COCINA: 659,86 y no 282,17, con la tabla', () => {
+    // ─── EL NÚMERO QUE `@anima/oracle` NO PUEDE MEDIR ─────────────────────
+    //
+    // `oracle/tests/presupuesto.test.ts` despeja el precio de encender de la
+    // física, pero **no puede saber cuál es la vara más barata que sirve**: que la
+    // yesca prenda depende de `emitsPower` —`fuelEnergy × masa`— y de la ley 3, o
+    // sea de correr el mundo, y `@anima/oracle` no importa `@anima/world`. Este
+    // test es el que lo mide, y el de allá lo cita por nombre.
+    //
+    // LO QUE LA TABLA DICE, y es la corrección más grande de este tramo: **encender
+    // y cocinar son dos umbrales distintos**. El `it.fails` de
+    // `world/tests/ataque-2-al-fuego.test.ts` (e) hace su cuenta con los 282,17 de
+    // una vara de 0,2 kg, que es el fuego más barato que ENCIENDE — y ese fuego no
+    // cocina nada: el pescado sobre la parrilla se queda en 0,3800, o sea crudo,
+    // porque un cuerpo de 0,2 kg emite un quinto de la potencia de uno de 1 kg, no
+    // alcanza para prender la yesca, y sin yesca no hay leño.
+    const filas: string[] = []
+    const medido = new Map<number, { costo: number; digestibilidad: number }>()
+    for (const masa of [0.2, 0.46, 0.47, 0.5]) {
+      const { w, costo, violaciones } = encenderYMirar(conPescadosEnLaParrilla(masa, 1), 80)
+      expect(violaciones).toEqual([])
+      const pez = w.bodies.get('pez0')
+      const d = pez === undefined ? Number.NaN : qualityOf(pez.body, 'digestibility', PHYS)
+      medido.set(masa, { costo, digestibilidad: d })
+      filas.push(
+        `  vara de ${masa.toFixed(2)} kg → ${costo.toFixed(4)} de stamina · el pescado termina en ` +
+          `digestibility ${d.toFixed(4)}${d >= 0.85 ? '  ← COCINA' : ''}`,
+      )
+    }
+    console.log(`\n─── EL PRECIO DEL FUEGO QUE COCINA ───\n${filas.join('\n')}\n`)
+
+    const de = (m: number): { costo: number; digestibilidad: number } =>
+      medido.get(m) as { costo: number; digestibilidad: number }
+    // Los cuatro, clavados. El de 0,47 es el que `@anima/oracle` usa de perilla.
+    expect(Number(de(0.2).costo.toFixed(4))).toBe(282.1714)
+    expect(de(0.2).digestibilidad).toBeCloseTo(0.38, 6)
+    expect(Number(de(0.46).costo.toFixed(4))).toBe(645.8743)
+    expect(de(0.46).digestibilidad).toBeLessThan(0.85)
+    expect(Number(de(0.47).costo.toFixed(4))).toBe(659.8629)
+    expect(de(0.47).digestibilidad).toBeCloseTo(0.95, 6)
+    expect(Number(de(0.5).costo.toFixed(4))).toBe(701.8286)
+    // El factor entre los dos umbrales, que es el que hay que tener en la cabeza.
+    expect(de(0.47).costo / de(0.2).costo).toBeCloseTo(2.339, 3)
+  })
+
+  it('COCINAR NO ES RIVAL: un fuego cocina todo lo que se le ponga encima, al mismo precio', () => {
+    // ─── LA SORPRESA DEL TRAMO, y es la que decide el número económico ─────
+    //
+    // La exposición de la ley 5 se calcula POR CUERPO contra la fuente que más lo
+    // calienta, y nada la reparte entre los cuerpos que están a la vez sobre la
+    // parrilla. O sea que un fuego cocina **N pescados por el precio de uno**, y N
+    // no tiene tope en ninguna regla: doscientos pescados de 2 kg —cuatrocientos
+    // kilos de comida sobre una piedra de medio kilo— salen los doscientos cocidos
+    // y sin carbonizar, y el arnés de invariantes no dice nada porque no hay nada
+    // que decir: la pila tiene una sola raíz y ninguna conservada se movió.
+    //
+    // ES LO QUE HACE QUE EL FUEGO SE PUEDA PAGAR. Si cocinar fuera rival —una
+    // fogata, un pescado— harían falta 73 fuegos por partida y la aritmética del
+    // ADR II-0009 no tendría ninguna salida. Con esto hace falta UN fuego y 73
+    // pescados, contra las 76 piezas que saca la partida más flaca de las cien
+    // (`oracle/tests/presupuesto.test.ts`, bloque 5).
+    //
+    // Y queda escrito como sorpresa y no como logro: que la exposición no se
+    // reparta es una decisión que nadie tomó, y el día que alguien quiera que una
+    // fogata chica no cocine media tonelada, este test es el que se va a poner
+    // rojo primero.
+    const cuantos = 200
+    const { w, violaciones } = encenderYMirar(conPescadosEnLaParrilla(VARA_QUE_COCINA, cuantos), 90)
+    let cocidos = 0
+    let arruinados = 0
+    for (let k = 0; k < cuantos; k++) {
+      const b = w.bodies.get(`pez${String(k)}`)
+      if (b === undefined) continue
+      const d = qualityOf(b.body, 'digestibility', PHYS)
+      const ch = qualityOf(b.body, 'charred', PHYS)
+      if (d >= 0.85 && ch < 0.5) cocidos++
+      else arruinados++
+    }
+    console.log(
+      `\n─── COCINAR NO ES RIVAL ───\n` +
+        `${String(cuantos)} pescados de 2 kg sobre UNA parrilla y UN fuego de ${String(VARA_QUE_COCINA)} kg de vara\n` +
+        `cocidos ${String(cocidos)} · arruinados ${String(arruinados)} · violaciones de invariantes ${String(violaciones.length)}\n`,
+    )
+    expect(cocidos).toBe(cuantos)
+    expect(arruinados).toBe(0)
+    expect(violaciones).toEqual([])
+  })
+
+  it.fails('SIGUE ABIERTO · el arnés de conservación no puede juzgar una partida CON DIOS', () => {
+    // POR QUÉ SIGUE ABIERTO: `revisarInvariantes` compara los totales de las
+    // conservadas antes y después del paso, y sólo acepta un aumento si algún
+    // evento `convierte` lo respalda (`acreditado()`, `world/src/invariants.ts`).
+    // El dios crea materia por TRES caminos y ninguno emite ese evento, así que en
+    // toda partida con dios el arnés grita conservación y no hay forma de
+    // distinguir un decreto legítimo de un agujero de verdad. Es el arnés más
+    // fuerte que tiene el mundo, y en el único mundo que se parece a una partida
+    // real está apagado de hecho.
+    //
+    // MEDIDO sobre la cadena de este bloque, y son los tres caminos:
+    //
+    //   t=1   `materializarPozos` pone el banco, y saltan LAS TRES conservadas:
+    //         mass 6,74 → 482,57, nutrition 18,00 → 3321,43 y fuelEnergy
+    //         78,13 → 902,52. Son 129,92 kg de pescado que no estaban.
+    //   t=30  la extracción: el banco baja de 129,915 a 127,028 kg y nace un
+    //         pescado de 2,887 — y aun así `nutrition` SUBE, de 3291,48 a 3299,92,
+    //         porque lo que sale del pozo no hereda el estado del banco.
+    //   t=119 la REPOSICIÓN del stock: el banco vuelve solo de 127,028 a 129,915 kg
+    //         y las tres conservadas suben con él, en un tick cuyo único evento es
+    //         `espero`.
+    //
+    // Los tres son conducta querida —el techo calórico del dios es justamente el
+    // que los acota, y `oracle/tests/presupuesto.test.ts` verifica que se respeta—
+    // pero el arnés de conservación no tiene cómo saberlo.
+    //
+    // QUÉ HARÍA FALTA: que los tres emitan un evento que `acreditado()` sepa leer.
+    // No alcanza con `convierte`, que va de una cualidad a otra: haría falta una
+    // clase nueva —«el dios decretó tanta materia acá»— y con ella el arnés podría
+    // afirmar lo que hoy no puede, que es que **el decreto es lo ÚNICO que crea
+    // materia**. Es `world/src/dios.ts` + `world/src/invariants.ts` + un `SimEvent`
+    // nuevo, o sea que toca el journal y la crónica: pide su ADR.
+    //
+    // Se mide con la cadena entera y no con un mundo de juguete a propósito: el
+    // agujero sólo aparece cuando hay dios, y ningún test del corpus de
+    // determinismo del mundo tiene uno.
+    const p = new Partida(elCampamento())
+    const banco = idDePozo(ORILLA.cx, ORILLA.cy)
+    p.volar(
+      'ana',
+      function* (ctx: Ctx): Hab {
+        const gear = ctx.self.holding.find((b) => b.id === 'cana')
+        const source = ctx.see([{ q: 'mass', op: '>', v: 0 }]).find((b) => b.id === banco)
+        if (gear === undefined || source === undefined) return { ok: false, why: 'no veo el pozo' }
+        const r = yield* aplicarProceso(ctx, { proceso: 'extraccion', roles: { gear, source }, intentos: 20 })
+        if (!r.ok) return r
+        for (let k = 0; k < 200; k++) yield ctx.wait(0.05)
+        return { ok: true }
+      },
+      undefined,
+    )
+    const conservacion: string[] = []
+    for (let i = 0; i < 200; i++) {
+      const antes = p.state
+      const eventos = p.tick()
+      for (const c of violacionesDelPaso(antes, p.state, eventos, i + 1).conservacion) conservacion.push(c)
+    }
+    console.log(
+      ['', '─── LO QUE EL ARNÉS NO PUEDE JUZGAR CON UN DIOS ───', ...conservacion, ''].join('\n'),
+    )
+    expect(conservacion, 'el dios crea materia que ningún evento respalda').toEqual([])
   })
 })

@@ -45,7 +45,7 @@ sus cuatro criterios, Hito 3 con sus SEIS, y el Hito 4 con sus SEIS.**
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 4 pases: 112 → 71 → 64 (a mano) → **84** (emitido) |
-| [Decisiones](docs/decisions/) | 8 ADRs propios (II-0001 a II-0008) |
+| [Decisiones](docs/decisions/) | 11 ADRs propios (II-0001 a II-0011) |
 
 ### Hito 0 — el banco · las cuatro piezas medidas, ninguna mató el plan
 
@@ -137,6 +137,12 @@ partida vuelve a dar `61d4b9588a81717d` con sus once checkpoints exactos. La caz
 invalidada —23 tests contra las cinco memoizaciones nuevas— encontró **una sola**
 diferencia: `tagsDe` se queda con los tags viejos si alguien muta el array de
 partes en su lugar, cosa que hoy nadie hace y que ahora tiene barrido propio.
+
+Los dos números de arriba son de ESE momento y no del árbol de hoy: cada ADR que
+cambia una conducta los mueve a mano y con el porqué al lado. La cadena completa
+vive en los propios tests (`physics/tests/huella-de-conducta.test.ts` y
+`world/tests/partida-de-2000-ticks.test.ts`), que es donde hay que mirarla para
+bisecar; hoy valen 2564253564 y `19db371807b7fb35`, después del ADR II-0011.
 
 Lo que falta son **2,2×**, y son dos frentes distintos: para el corpus del banco,
 la representación del cuerpo (y eso pide su propio ADR); para un mundo

@@ -262,6 +262,45 @@ describe('(a) las quince innatas contra `stepWorld`', () => {
     // los +120 °C/s que `FRICCION` declara y la guarda ya no se dispara. El número
     // viejo queda escrito acá al lado del nuevo, como pide el proyecto: un hueco
     // que se cierra sin dejar rastro se puede volver a abrir sin que nadie lo note.
+    //
+    // ─── REMEDIDO DESPUÉS DEL ADR II-0011, Y NO SE MOVIÓ: SIGUE SIENDO 14/15 ──
+    //
+    // El ADR II-0011 («arder libera calor») cambió la ley 1 entera —de un Euler
+    // explícito a la forma cerrada—, hizo que la ley 3 escriba `temperature` y
+    // movió tres constantes. Las quince se corrieron de nuevo contra ese mundo y
+    // **la tabla salió idéntica**: quince corren, catorce logran, y la que no es
+    // `explorar` por el mismo motivo aritmético de siempre. El número que no se
+    // mueve hay que reportarlo igual, porque «no cambió» sólo vale si alguien
+    // volvió a mirar.
+    //
+    // Y se entiende por qué no se movió, que es la otra mitad: de las quince, la
+    // ÚNICA que toca el fuego es `frotar`, y `frotar` ya lograba su contrato desde
+    // el ADR II-0010 — su contrato es llegar al `ignitionPoint`, y llegar no
+    // depende de que el fuego dure. Lo que el ADR II-0011 cambió no es si la
+    // habilidad logra, es **cuánto dura lo que logró**: un tick antes, diez
+    // segundos y más ahora. Eso no lo puede decir un 14/15, y por eso está medido
+    // aparte en el `it` de abajo («CERRADO · con una vara LIVIANA…»), que es donde
+    // el ADR II-0011 se ve.
+    //
+    // LO ÚNICO QUE SE MOVIÓ EN LA TABLA es el largo del vuelo de `frotar`: **11
+    // ticks contra los 10 de antes**, o sea uno MÁS. Medido corriendo este mismo
+    // archivo contra la ley 1 vieja, y el porqué está en la primera lectura de la
+    // temperatura de la vara:
+    //
+    //   antes  14,824 → 20,824 → … → 62,824 (cruza los 60 del banco en el tick 9)
+    //   ahora  11,624 → 17,624 → … → 65,624 (los cruza en el 10)
+    //
+    // La vara nace SIN `temperature` escrita, o sea a 0 °C, y el primer tick se le
+    // va en acercarse a los 15 del ambiente. Con el Euler explícito viejo, un
+    // cuerpo de 0,3 kg tenía `r > 1` y el `min(1, r)` lo dejaba pegado al ambiente
+    // en un solo paso: 14,824. Ésa era exactamente la saturación que el ADR II-0011
+    // sacó, porque `1 − e^(−x)` nunca llega a 1. Con la forma cerrada la vara
+    // arranca más fría y necesita un empujón más de los +6 °C por paso.
+    //
+    // O sea que el tick de más NO es una habilidad que empeoró: es la ley 1 que
+    // dejó de mentir sobre los cuerpos livianos, que son justo los que se pueden
+    // encender. Queda escrito acá porque un número que sube sin explicación se lee
+    // como una regresión.
     const noLogran = salida.filter((r) => !r.ok).map((r) => `${r.nombre}: ${r.why}`)
     expect(noLogran).toEqual(['explorar: no encontré en 300 ticks'])
     expect(corren).toBe(15)
@@ -372,27 +411,36 @@ describe('el que no logra su contrato, y el que pasó a lograrlo', () => {
     expect(v.outcome?.ok, 'la fricción no llegó al punto de ignición').toBe(true)
     expect(pico).toBeGreaterThanOrEqual(300)
 
-    // ─── Y ACÁ ESTÁ LO QUE EL 14/15 NO DICE ────────────────────────────────
+    // ─── Y EL CONTRATO YA NO DURA UN TICK (ADR II-0011) ─────────────────
     //
-    // La habilidad devuelve `done(a)` —«lo dejé listo para que prenda»— y UN TICK
-    // DESPUÉS la vara está a 20,6 °C. No es un bug de la habilidad: el `drive`
-    // deja de empujar cuando el vuelo termina, y la ley 1 relaja a fondo porque
-    // el acople satura para todo cuerpo liviano (ADR II-0010, «el diente de
-    // sierra», medido en `world/tests/ataque-2-al-fuego.test.ts`). O sea que el
-    // contrato de `frotar` es cierto en el instante del `return` y falso para
-    // quien lo lea. El 14/15 cuenta un contrato que dura un tick.
+    // Este bloque decía: «la habilidad devuelve `done(a)` —lo dejé listo para que
+    // prenda— y UN TICK DESPUÉS la vara está a 20,6 °C», y afirmaba
+    // `alFinal < 300`. Era cierto, y era el síntoma más claro del hueco: el
+    // `drive` deja de empujar cuando el vuelo termina y la ley 1 relajaba a fondo,
+    // así que el 14/15 contaba un contrato que valía cincuenta milisegundos.
     //
-    // Queda escrito acá y no en un `it.fails` propio porque el hueco YA está
-    // abierto y con su porqué en `world/tests/el-fuego.test.ts` («el fuego
-    // tendría que sobrevivir a la mano que lo hizo»): esto es el mismo hueco
-    // visto desde la superficie de la mente, y es donde más se nota.
+    // Ya no. `frotar` sin `hasta` apunta al `ignitionPoint`, o sea que lograr el
+    // contrato ES prender, y desde que arder libera calor un cuerpo que prendió se
+    // sostiene solo en los 615 °C de régimen de la llama mientras le quede
+    // combustible. Un tick después del `done` la vara está a 639,58 °C —todavía
+    // asentándose desde el sobrepico— y sigue muy arriba de su ignición.
     const t = p.state.bodies.get('palo')
     const alFinal = qualityOf(t!.body, 'temperature', p.state.phys)
-    expect(alFinal).toBeLessThan(300)
+    expect(alFinal).toBeGreaterThanOrEqual(300)
+    // Y no es el último coletazo del empuje: diez segundos después, sin que nadie
+    // la toque, sigue encendida. Ése es el criterio (f) del ADR II-0011.
+    for (let i = 0; i < 200; i++) p.tick()
+    const diezSegundos = qualityOf(
+      p.state.bodies.get('palo')!.body,
+      'temperature',
+      p.state.phys,
+    )
+    expect(diezSegundos).toBeGreaterThanOrEqual(300)
     console.log(
-      `\n─── frotar logra su contrato y el contrato dura un tick ───\n` +
+      `\n─── frotar logra su contrato y el contrato DURA ───\n` +
         `pico durante el vuelo: ${pico.toFixed(2)} °C (ignición 300)\n` +
-        `un tick después del \`done\`: ${alFinal.toFixed(2)} °C\n`,
+        `un tick después del \`done\`: ${alFinal.toFixed(2)} °C\n` +
+        `diez segundos después: ${diezSegundos.toFixed(2)} °C  (antes del ADR II-0011: 20,64)\n`,
     )
   })
 

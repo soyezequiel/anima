@@ -23,11 +23,29 @@
 // ECMAScript SÍ especifica bit a bit (IEEE-754). Es el mismo argumento que hace
 // `quality.ts` para su evaluador, y vale por la misma razón.
 //
-// La integración es INCREMENTAL a propósito. El barrido térmico del Hito 0
-// resolvió estas mismas ecuaciones en forma cerrada —con `Math.exp` y `Math.log`,
-// porque es un banco y corre una vez— y acá no se puede: la forma cerrada
-// necesita exponenciales. Un tick de `d += r·(techo − d)` es la MISMA curva
-// muestreada, y solo usa multiplicar y sumar.
+// La relajación de la ley 1 se integra en FORMA CERRADA, y este párrafo decía lo
+// contrario hasta el ADR II-0011. Decía que «la forma cerrada necesita
+// exponenciales» y que por eso un tick de `d += r·(techo − d)` era «la MISMA
+// curva muestreada». No lo es, y las dos mitades de la frase estaban mal:
+//
+//   · la exponencial EXISTE en este paquete y es determinista. `fexp` está en
+//     `fixed.ts` desde el ADR II-0006, construida con enteros justamente para
+//     no depender de `Math`. Este párrafo se escribió sin mirarla;
+//   · y el Euler explícito no muestrea la misma curva: la deforma, y con
+//     `r = (H/heatCap)/hz > 1` —que es EXACTAMENTE el régimen de la yesca, los
+//     cuerpos livianos que se pueden encender— directamente oscila. Medido, un
+//     cuerpo de 0,2 kg soltado desde 400 °C daba 15,00 °C a 20 Hz y 286,76 a
+//     100: el mismo hecho físico con dos respuestas según la frecuencia, que es
+//     una violación del ADR II-0008 y no un redondeo.
+//
+// `d(t+dt) = techo + (d − techo)·e^(−r·dt)` es independiente de la frecuencia POR
+// CONSTRUCCIÓN, porque componer dos pasos multiplica los exponentes. La fracción
+// del hueco que se cierra la da `fraccionQueSeCierra` (`fixed.ts`), que es
+// `1 − e^(−x)` calculada sin restar números parecidos.
+//
+// Las OTRAS diez leyes siguen siendo incrementales, y ahí sí está bien: ninguna
+// es una relajación hacia un techo con tasa proporcional al hueco. Cocinar,
+// pudrirse y carbonizar avanzan, no convergen.
 //
 // ─── El candado ─────────────────────────────────────────────────────────────
 //
@@ -41,7 +59,7 @@
 // promesa que no se puede testear de verdad.
 
 import type { Dt } from './fixed.js'
-import { HZ_DE_REFERENCIA, porPaso } from './fixed.js'
+import { fraccionQueSeCierra, HZ_DE_REFERENCIA, porPaso } from './fixed.js'
 import type { Body, Joint, Part } from './body.js'
 import { esDerivadaEn, MAX_JOINTS, MAX_PARTS, qualityOf, violationsOf } from './body.js'
 import type { Physics } from './physics.js'
@@ -246,11 +264,86 @@ const OXIGENO_MINIMO = 0.05
  */
 export const OXIGENO_QUE_HACE_CENIZA = 0.35
 
-/** Ley 3: cuánto carboniza por SEGUNDO lo que superó su punto de pirólisis. */
-const TASA_CARBONIZACION = 0.2
+/**
+ * Ley 3: cuánto carboniza por SEGUNDO lo que superó su punto de pirólisis.
+ *
+ * ─── Era 0,2 y nunca se había medido (ADR II-0011) ──────────────────────────
+ *
+ * Con 0,2 por segundo, `charred` llega a los 0,8 que la ley 4 pide en CUATRO
+ * SEGUNDOS. Mientras un fuego duraba un tick eso daba igual; ahora un fuego dura
+ * un minuto, y con 0,2 todo leño encendido se volvía ceniza a los cuatro
+ * segundos: la vida entera de una fogata era cuatro segundos y los 56 segundos de
+ * combustible que le quedaban se tiraban.
+ *
+ * 0,016 pone la carbonización en la misma escala que el combustible: `charred`
+ * cruza 0,8 a los 50 s y un kilo de madera tiene 60 s de combustible, así que el
+ * leño alcanza a arder casi todo lo que puede antes de transmutar, y la cocción
+ * más lenta del catálogo —el cuero, 41 s— entra adentro de UNA fogata.
+ *
+ * Y de paso arregla otra cosa que estaba mal por el mismo motivo: la comida
+ * olvidada sobre las brasas se arruinaba en cuatro segundos. Ahora hay tiempo de
+ * ir a buscarla, que es lo que hace que sacarla a tiempo sea una técnica y no un
+ * reflejo.
+ */
+const TASA_CARBONIZACION = 0.016
 
-/** Ley 3: cuánto combustible por unidad de masa se lleva la llama por SEGUNDO. */
-const TASA_COMBUSTION = 1
+/**
+ * Ley 3: cuánto combustible se lleva la llama por SEGUNDO, con oxígeno pleno.
+ *
+ * ─── Es EXTENSIVO, y antes era intensivo (ADR II-0011) ──────────────────────
+ *
+ * `fuelEnergy` es una cualidad POR UNIDAD DE MASA, así que el combustible que hay
+ * en un cuerpo es `fuelEnergy · mass` y esto son unidades de ESE producto, no del
+ * intensivo. La diferencia decide dos cosas del mundo a la vez:
+ *
+ *   · **cuánto dura un fuego**. Con la tasa intensiva, todo lo hecho de madera
+ *     ardía 18 segundos: una astilla y un tronco duraban lo mismo, y juntar leña
+ *     no servía de nada. Ahora dura `fuelEnergy · mass / 0.3`, o sea 60 s por kilo
+ *     de madera. Juntar leña ES la respuesta a que el fuego se apague;
+ *   · **a qué temperatura arde**. La meseta de la ley 1 con llama es
+ *     `CALOR_POR_COMBUSTIBLE · (lo quemado por segundo) / H_PERDIDA_POR_SEGUNDO`.
+ *     Con la tasa intensiva eso queda multiplicado por la masa —una vara de
+ *     0,2 kg se sostenía a 132 °C, por debajo de su propia ignición, y un leño de
+ *     8 kg saturaba el rango en 2000— porque el combustible crece con la masa y
+ *     la pérdida al ambiente no. Extensiva, la meseta es la misma para todo lo
+ *     que arde y lo que la masa decide es cuánto dura, que es lo que uno espera
+ *     de un fuego.
+ *
+ * El valor: 0,3 sale de que la cocción más lenta del catálogo es el cuero, 41 s
+ * medidos. Un kilo de madera tiene 18 unidades de combustible y arde 60 s, o sea
+ * alcanza para el peor caso con margen y no alcanza para dos. Un fuego que durara
+ * una hora haría que nadie tuviera que juntar leña nunca.
+ */
+const COMBUSTIBLE_POR_SEGUNDO = 0.3
+
+/**
+ * Ley 3: **arder libera calor** (ADR II-0011). Grados por unidad de combustible
+ * quemado y por unidad de `heatCapacity`.
+ *
+ * Hasta el ADR II-0011 la ley 3 consumía `fuelEnergy` y no producía NADA: arder
+ * era lo único exotérmico de la naturaleza y acá borraba combustible gratis. Por
+ * eso un fuego duraba lo que durara la mano que lo hacía.
+ *
+ * ─── El valor, y las tres cosas que lo fijan ────────────────────────────────
+ *
+ * La meseta de un cuerpo que arde al aire es `T_ambiente + régimen`, con
+ * `régimen = CALOR_POR_COMBUSTIBLE · COMBUSTIBLE_POR_SEGUNDO · oxígeno /
+ * H_PERDIDA_POR_SEGUNDO` = 600·oxígeno. O sea **615 °C al aire libre**, y:
+ *
+ *   · está por encima del `pyrolysisAt` de la madera (280), que es lo que hace
+ *     que `charred` suba y que la ley 4 pueda transmutar. También por encima del
+ *     `ignitionPoint` de las veinte sustancias que arden salvo el hueso (500) y
+ *     el carbón (420), que igual entran;
+ *   · no quema lo que se le acerca, porque lo que calienta a los vecinos no es
+ *     esta temperatura sino `emitsPower` (ADR II-0001), que sale del combustible
+ *     que le queda. Un vecino en contacto con una fogata de 1 kg sigue
+ *     equilibrando a 375 °C, igual que antes;
+ *   · y 615 es, no por casualidad, lo que equilibraría un cuerpo EXPUESTO POR
+ *     ENTERO a una fogata de un kilo: `15 + 300,6/H_PERDIDA` = 616. La llama está
+ *     tan caliente como estar adentro de ella, que es la única lectura que no
+ *     necesita un número nuevo para justificarse.
+ */
+export const CALOR_POR_COMBUSTIBLE = 20000
 
 /** Ley 4: dónde deja de haber materia orgánica y empieza el residuo. */
 export const CARBONIZADO_QUE_TRANSMUTA = 0.8
@@ -847,7 +940,26 @@ export function capacidadTermica(b: Body, phys: Physics): number {
   return total
 }
 
-function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura, dt: Dt): Body {
+/**
+ * La FRACCIÓN DEL HUECO al equilibrio que se cierra en un paso (ADR II-0011).
+ *
+ * `d(t+dt) = techo + (d − techo)·e^(−r·dt)`, o sea que lo que se cierra es
+ * `1 − e^(−r·dt)` con `r·dt = porPaso(H_PERDIDA_POR_SEGUNDO, dt) / heatCapacity`.
+ *
+ * Vale entre 0 y 1 SIEMPRE, y por eso no hay ningún `Math.min(1, …)`: el `min`
+ * que estaba acá antes no era una precaución, era el síntoma de que el Euler
+ * explícito se pasaba de largo del equilibrio y oscilaba. Con la forma cerrada no
+ * hay techo que poner porque no hay nada que se pase.
+ *
+ * Sin capacidad térmica no hay inercia: el cuerpo ES el ambiente, y se cierra el
+ * hueco entero en un paso.
+ */
+export function acopleTermico(heatCapacity: number, dt: Dt): number {
+  if (!(heatCapacity > 0)) return 1
+  return fraccionQueSeCierra(porPaso(H_PERDIDA_POR_SEGUNDO, dt) / heatCapacity)
+}
+
+function leyTermica(b: Body, e: Entorno, l: Lectura, acople: number): Body {
   const objetivo =
     e.fuente === undefined
       ? e.celda.ambiente
@@ -857,12 +969,6 @@ function leyTermica(b: Body, e: Entorno, phys: Physics, l: Lectura, dt: Dt): Bod
           e.fuente.montaje,
           e.celda.ambiente,
         )
-  const cap = capacidadTermica(b, phys)
-  // Sin masa no hay inercia térmica: el cuerpo ES el ambiente. Y el acople no
-  // puede superar 1, o el cuerpo pasaría de largo el equilibrio y oscilaría —
-  // que es exactamente lo que pasa si `dt` se agranda demasiado, y por eso el
-  // `min` es también el techo de estabilidad de la integración.
-  const acople = cap > 0 ? Math.min(1, porPaso(H_PERDIDA_POR_SEGUNDO, dt) / cap) : 1
   // El `pelea` es el ADR II-0010: si alguien está frotando este cuerpo, la
   // relajación no le come el empuje. Sigue calentándolo si el objetivo está
   // ARRIBA —un cuerpo frotado adentro del fuego se calienta igual—; lo único que
@@ -991,21 +1097,64 @@ function leyHumedad(b: Body, e: Entorno, l: Lectura, dt: Dt): Body {
  *
  * Pirolizar no necesita aire. Arder sí. De esa única diferencia sale que tapar
  * el fuego dé una cosa y no taparlo dé otra, sin ningún caso especial.
+ *
+ * ─── El `pico`, y por qué no es `l.temperature` a secas (ADR II-0011) ───────
+ *
+ * `pico` es la temperatura MÁS ALTA que el cuerpo tuvo en este paso: la de antes
+ * de que la ley 1 lo relajara y la de después. La ley 1 mueve la temperatura
+ * monótonamente adentro del paso —es una exponencial hacia un techo—, así que
+ * esas dos son los extremos y el máximo es el pico de verdad.
+ *
+ * Sin eso, ENCENDER DEPENDÍA DE LA FRECUENCIA. Medido: un leño soltado a 400 °C
+ * al aire prende a 20, 25, 50 y 100 Hz y NO prende a 10, porque a 10 Hz el paso
+ * es tan grande que la ley 1 lo baja a 228,79 °C —por debajo de sus 300 de
+ * ignición— antes de que la ley 3 lo mire. El cuerpo estuvo arriba de su punto
+ * durante ese paso; que la muestra caiga después no lo cambia.
+ *
+ * ─── Y ARDER LIBERA CALOR (ADR II-0011) ─────────────────────────────────────
+ *
+ * Ver `regimenDe`. El calor no se suma como un empujón suelto: se suma como lo
+ * que la ley 1 dejaría de ese empujón en este mismo paso, y por eso el par
+ * ley 1 + ley 3 es exactamente la solución de `T' = −λ(T − A) + P` y no un
+ * Euler partido en dos. Sin eso, la meseta de un fuego dependería de la
+ * frecuencia por un factor `1/(1 − λ·dt/2)`: medido sobre un leño de 1 kg, 37%
+ * de diferencia entre 10 y 100 Hz.
  */
-function leyCombustion(b: Body, e: Entorno, l: Lectura, dt: Dt): Body {
+function leyCombustion(
+  b: Body,
+  e: Entorno,
+  l: Lectura,
+  dt: Dt,
+  acople: number,
+  pico: number,
+): Body {
   const seca = l.moisture < HUMEDAD_QUE_APAGA
-  const piroliza = seca && l.temperature >= l.pyrolysisAt
-  const arde = seca && l.temperature >= l.ignitionPoint && e.celda.oxygen > OXIGENO_MINIMO
+  const piroliza = seca && pico >= l.pyrolysisAt
+  const arde = seca && pico >= l.ignitionPoint && e.celda.oxygen > OXIGENO_MINIMO
   if (!piroliza && !arde) return b
 
   const charred = piroliza ? Math.min(1, l.charred + porPaso(TASA_CARBONIZACION, dt)) : l.charred
   const cambios: QualityVector = { charred: clampToRange('charred', charred) }
 
   if (arde) {
+    // Lo que hay para quemar es el PRODUCTO, porque `fuelEnergy` es por unidad de
+    // masa. El `min` es lo que apaga el fuego solo: cuando no queda combustible
+    // no hay qué quemar, no hay calor, el cuerpo se enfría y deja de arder. Ése
+    // es el lazo que termina, y no hay ningún contador de segundos que lo corte.
+    const quemado = Math.min(
+      l.fuelEnergy * l.mass,
+      porPaso(COMBUSTIBLE_POR_SEGUNDO, dt) * e.celda.oxygen,
+    )
     cambios.fuelEnergy = clampToRange(
       'fuelEnergy',
-      Math.max(0, l.fuelEnergy - porPaso(TASA_COMBUSTION, dt) * e.celda.oxygen),
+      l.mass > 0 ? Math.max(0, l.fuelEnergy - quemado / l.mass) : 0,
     )
+    if (quemado > 0) {
+      cambios.temperature = clampToRange(
+        'temperature',
+        l.temperature + regimenDe(quemado, dt) * acople,
+      )
+    }
   }
   // Lo que se carboniza deja de ser comida, y no porque una lista lo prohíba:
   // `nutrition` es conservada y esto solo la baja. Es el «olvidado sobre las
@@ -1015,6 +1164,54 @@ function leyCombustion(b: Body, e: Entorno, l: Lectura, dt: Dt): Body {
     cambios.digestibility = clampToRange('digestibility', l.digestibility * (1 - charred))
   }
   return conEstado(b, cambios)
+}
+
+/**
+ * Los grados POR ENCIMA DEL EQUILIBRIO SIN LLAMA que sostiene quemar `quemado`
+ * unidades de combustible en un paso. El corazón del ADR II-0011.
+ *
+ * ─── La cuenta, y dónde está la `heatCapacity` ──────────────────────────────
+ *
+ * Los grados que esa energía pone en el cuerpo son
+ * `CALOR_POR_COMBUSTIBLE · quemado / heatCapacity` — dividido por la capacidad
+ * térmica, que es la MISMA cuenta que `aplicarEfectos` hace para el `poweredBy`
+ * de la fricción: subir un grado cuesta más en un cuerpo grande.
+ *
+ * Pero un cuerpo que arde no ACUMULA esos grados: los pierde al mismo tiempo, y
+ * la ley 1 se los lleva a razón de `λ = H_PERDIDA_POR_SEGUNDO / heatCapacity` por
+ * segundo. Lo que se sostiene es el cociente de las dos cosas, y ahí la capacidad
+ * térmica **se cancela**:
+ *
+ *     régimen = (CALOR · quemado/dt / heatCapacity) / (H_POR_SEGUNDO / heatCapacity)
+ *             =  CALOR · quemado / porPaso(H_POR_SEGUNDO, dt)
+ *
+ * No es que no importe: importa DOS VECES y por eso desaparece. Un tronco sube
+ * menos grados por unidad de energía y a la vez los pierde más lento, y las dos
+ * cosas se compensan exacto. Que se cancele es un resultado, no una omisión —
+ * escribirla y dividirla de vuelta sería la misma cuenta con dos redondeos de más.
+ *
+ * ─── Por qué el resultado se multiplica por el acople ───────────────────────
+ *
+ * La solución exacta de `T' = −λ(T − A) + P` es
+ * `T(t+dt) = A + (T−A)·e^(−λdt) + (P/λ)·(1 − e^(−λdt))`. La ley 1 pone los dos
+ * primeros sumandos; el tercero es esto por `acople`, que es el MISMO
+ * `1 − e^(−λdt)`. Sumados, el punto fijo es `A + régimen` para CUALQUIER `dt`, y
+ * la trayectoria entera es independiente de la frecuencia.
+ *
+ * Y no puede pasarse de largo: el par de leyes es una exponencial hacia
+ * `A + régimen`, se llegue desde arriba o desde abajo.
+ */
+function regimenDe(quemado: number, dt: Dt): number {
+  return (CALOR_POR_COMBUSTIBLE * quemado) / porPaso(H_PERDIDA_POR_SEGUNDO, dt)
+}
+
+/**
+ * Cuántos grados por encima del ambiente sostiene una llama con este oxígeno.
+ * Es `regimenDe` con el paso despejado, para que un test o el mundo puedan
+ * preguntarlo sin reconstruir la cuenta — dos copias de una fórmula divergen.
+ */
+export function regimenDeLlama(oxigeno: number): number {
+  return (CALOR_POR_COMBUSTIBLE * COMBUSTIBLE_POR_SEGUNDO * oxigeno) / H_PERDIDA_POR_SEGUNDO
 }
 
 // ─── Ley 6 · descomposición ──────────────────────────────────────────────────
@@ -1164,7 +1361,21 @@ export function paso(entrada: Body, e: Entorno, phys: Physics, dt: Dt): Paso {
   const b0 = normalizarMasa(entrada)
   const tags = tagsDe(b0, phys)
 
-  let b = leyTermica(b0, e, phys, leer(b0, phys), dt)
+  // El acople se calcula UNA vez y lo usan las dos leyes que relajan temperatura
+  // (ADR II-0011). Vale para las dos porque la `heatCapacity` no puede cambiar
+  // entre una y otra: lo único que mueve masa antes de la ley 3 es la ley 5, y la
+  // ley 5 corre sólo dentro de la ventana de cocción, que exige `T < ignitionPoint`
+  // — o sea justo cuando la ley 3 no arde. Las dos ramas son excluyentes, no es
+  // una aproximación.
+  const acople = acopleTermico(capacidadTermica(b0, phys), dt)
+
+  const l0 = leer(b0, phys)
+  // La temperatura con la que el cuerpo ENTRÓ al paso. La ley 3 la necesita para
+  // saber si estuvo por encima de su punto de ignición en algún momento del paso
+  // y no sólo al final — ver el comentario de `leyCombustion`.
+  const tAlEntrar = l0.temperature
+
+  let b = leyTermica(b0, e, l0, acople)
   leyes.push('termica')
 
   // Una lectura NUEVA solo cuando el cuerpo cambió.
@@ -1195,7 +1406,7 @@ export function paso(entrada: Body, e: Entorno, phys: Physics, dt: Dt): Paso {
     }
   }
 
-  const ardido = leyCombustion(b, e, l, dt)
+  const ardido = leyCombustion(b, e, l, dt, acople, Math.max(l.temperature, tAlEntrar))
   if (ardido !== b) {
     b = ardido
     leyes.push('combustion')
