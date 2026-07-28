@@ -303,6 +303,24 @@ export type Motivo =
   | 'arreglo-incorrecto'
   | 'compuerta-cerrada'
   | 'nada-que-comer'
+  /**
+   * El cuerpo que se pidió tocar ES el cuerpo de quien lo pide.
+   *
+   * Nació de un agujero medido y no de una precaución: `aMano` contesta `true`
+   * para el propio cuerpo —Chebyshev 0 contra sí mismo— y `eat` no tenía ninguna
+   * otra guarda, así que una criatura podía tragarse a sí misma. Lo que quedaba
+   * era un ACTOR SIN CUERPO: el crédito se acreditaba, `sacarCuerpo` borraba el
+   * cuerpo, el cobro del veneno se perdía porque ya no había a quién cobrarle, y
+   * el metabolismo —que descuenta sobre el cuerpo— no tenía de dónde descontar.
+   * Un fantasma inmortal, con `inventario-inconsistente` en todos los ticks
+   * siguientes (medido: 500 de 500).
+   *
+   * Es un motivo propio y no `nada-que-comer` porque las dos situaciones piden
+   * decisiones OPUESTAS, que es el mismo criterio con el que la extracción tiene
+   * cuatro finales: «esto no alimenta» se arregla buscando otra cosa, y «ése sos
+   * vos» no se arregla nunca — ninguna cantidad de hambre lo vuelve una jugada.
+   */
+  | 'es-uno-mismo'
   | 'no-implementado'
   // ─── Los cuatro finales de una extracción que no dio nada ──────────────────
   //
@@ -354,6 +372,30 @@ export type Respuesta =
   | { readonly k: 'solto'; readonly what: BodyId; readonly at: Placement }
   | { readonly k: 'puso'; readonly what: BodyId; readonly at: Placement }
   | { readonly k: 'comio'; readonly what: BodyId; readonly calorias: number }
+  /**
+   * LO QUE EL VENENO SE COBRÓ AL TRAGAR (ADR II-0013).
+   *
+   * Es un evento propio y no un campo de `comio`, y ésa es la decisión entera del
+   * ADR: «se cobra por separado y no neteado contra lo acreditado. Un solo número
+   * que mezcle lo que la comida dio con lo que el veneno costó esconde las dos
+   * mitades, y la crónica del mundo dejaría de poder contar por qué la criatura
+   * comió y adelgazó».
+   *
+   * `cobrado` es lo que se descontó DE VERDAD y no el precio de lista: `conCualidad`
+   * topa la `stamina` en cero, así que a quien le quedaban 3 el mundo le sacó 3.
+   * Es la misma regla que `anotarGasto` y que `sistemaMetabolismo`, y por el mismo
+   * motivo: el piso del invariante se arma con lo cobrado.
+   */
+  | {
+      readonly k: 'enveneno'
+      readonly what: BodyId
+      /** La `toxicity` del bocado, intensiva, tal como la leyó el mundo. */
+      readonly toxicidad: number
+      /** `toxicity · masa · COSTO_POR_TOXICIDAD_Y_KILO`, el precio de lista. */
+      readonly precio: number
+      /** Lo que el cuerpo tenía para pagar, que es lo que se anotó. */
+      readonly cobrado: number
+    }
   /**
    * Una cuenta conservada que se convirtió en otra. Es el ÚNICO permiso para que
    * un total conservado suba, y por eso es un evento y no un detalle interno: el
@@ -671,6 +713,40 @@ export const OCLUSION_CORTA_OXIGENO = 0.8
  * pena sin que nadie escriba «cocinar rinde más».
  */
 export const STAMINA_POR_CALORIA = 1
+
+/**
+ * LO QUE CUESTA TRAGAR UN KILO DE ALGO CON `toxicity` 1 (ADR II-0013).
+ *
+ * Es la `K` del ADR, y su unidad es **stamina por (toxicidad × kilo)**: `toxicity`
+ * es intensiva, así que lo que se traga de veneno es `toxicity · masa`, igual que
+ * lo que se traga de alimento es `nutrition · masa`. Se cobra APARTE de lo que las
+ * calorías acreditan y no neteado contra ellas (ver `intencionComer`).
+ *
+ * ─── Por qué 25, y no un número elegido ─────────────────────────────────────
+ *
+ * Porque el catálogo ya tenía la respuesta escrita sin que nadie la escribiera. El
+ * umbral de corte de cada comida —el `K` con el que comerla cruda da exactamente
+ * cero— es `nutrition · digestibility / toxicity`, y cae de tres números que se
+ * calibraron por separado en el Hito 0:
+ *
+ *     grasa 308,00 · médula 198,00 · huevo 55,00 ← se comen crudas
+ *     pescado 12,16 · carne 10,50 · savia 10,40 · grano 9,75 ← piden fuego
+ *     tubérculo 3,60 · molusco 2,93 · hoja 1,67 · hongo 1,64 · raíz dura 1,50 ← veneno
+ *
+ * Los tres criterios del ADR II-0013 —las tres seguras crudas en positivo, pescado
+ * y carne crudos en negativo, y los dos cocidos en positivo— se traducen en
+ * `12,16 < K < 55`, que es una ventana de 4,52× y NO un conjunto vacío (la de
+ * II-0009 sí lo era; la lección está en ese ADR). El 25 es el que más holgura deja
+ * en el umbral más ajustado, medido de las dos maneras en
+ * `tests/el-veneno-se-cobra.test.ts`: por razón contra el corte da 2,06× de piso
+ * (el óptimo, 25,86, daría 2,13×) y en stamina por kilo da 3,00 de piso (el óptimo,
+ * 24,4, daría 3,06). Está a menos del 4% del mejor por los dos lados y es redondo.
+ *
+ * El techo lo pone el HUEVO y el piso lo pone el PESCADO, y eso también es del
+ * catálogo: que las tres que se comen crudas sean grasa, médula y huevos —lo que
+ * un recolector sin fuego comería— no lo diseñó nadie.
+ */
+export const COSTO_POR_TOXICIDAD_Y_KILO = 25
 
 /** Qué fracción de la masa se lleva una hebra al deshilachar. */
 export const FRACCION_DE_HEBRA = 0.1
@@ -1896,6 +1972,40 @@ function intencionPoner(d: Borrador, a: Actor, i: Intent & { k: 'put' }): void {
  *
  * Es la única operación del mundo que hace SUBIR una cuenta conservada, y por eso
  * emite un evento `convierte` que el invariante audita. Todo lo demás baja.
+ *
+ * ─── Y DESDE EL ADR II-0013, TAMBIÉN COBRA (`toxicity`) ─────────────────────
+ *
+ * `grep toxicity world/src` devolvía CERO. La cualidad existía en el catálogo, la
+ * ley 6 la subía, la ley 5 la bajaba, `ctx.eat` documentaba «cuánto enferma
+ * (`toxicity`)» — y el mundo no la cobraba en ningún lado, así que comer veneno
+ * era exactamente igual de bueno que comer pescado fresco de las mismas calorías.
+ * Con eso, el gradiente de comida del catálogo y la ley 5 entera eran decorativos.
+ *
+ * Las dos mitades van SEPARADAS y no neteadas, que es la decisión del ADR: dos
+ * anotaciones (el crédito, que declara el `convierte`; el cobro, que declara
+ * `anotarGasto`) y dos eventos (`convierte` y `enveneno`). Un solo número que
+ * mezclara las dos escondería por qué la criatura comió y adelgazó.
+ *
+ * ─── El orden: primero se acredita y después se cobra ───────────────────────
+ *
+ * Y no al revés. Tragar da y quita en el mismo acto, así que lo que el veneno
+ * encuentra es el cuerpo YA alimentado: una criatura con 5 de stamina que se come
+ * algo de 200 calorías y 100 de veneno termina en 105 y no en 200. Al revés el
+ * cobro se toparía contra el cero, se perdería, y el veneno saldría gratis
+ * justamente para quien está más flaco — que es al revés de lo que el ADR pide.
+ *
+ * NO hay ley nueva: la ley 5 sigue siendo la única que baja `toxicity`. Esto es
+ * arbitraje del acto de comer, que es donde ya viven la conversión de `nutrition`
+ * a `stamina` y su evento `convierte`.
+ *
+ * ─── Y LO QUE NO SE COME ES UNO MISMO ───────────────────────────────────────
+ *
+ * `es-uno-mismo` está arriba de todo el resto y la razón está en su propia
+ * declaración, en el catálogo de `Motivo`. Acá alcanza con decir por qué la
+ * guarda es del MUNDO y no de la habilidad: `comer` también la tiene, pero las
+ * habilidades las escribe el modelo y el mundo es el que no negocia. Con una sola
+ * de las dos, la primera habilidad generada que ordene por calorías vuelve a
+ * abrir el agujero.
  */
 function intencionComer(d: Borrador, a: Actor, i: Intent & { k: 'eat' }): void {
   const c = d.bodies.get(i.what)
@@ -1912,6 +2022,25 @@ function intencionComer(d: Borrador, a: Actor, i: Intent & { k: 'eat' }): void {
     rechazo(d, i, 'cuerpo-desconocido')
     return
   }
+  // ─── NO SE COME A SÍ MISMA, y lo dice el mundo y no la habilidad ───────────
+  //
+  // Era EL ÚNICO BOCADO GRATIS que había. Medido por el adversario en
+  // `mind/tests/ataque-al-veneno.test.ts`: `eat('ana-cuerpo')` salía con
+  // `comio · convierte · murio`, sin `enveneno`, sin cobrar los 15,00 de stamina
+  // que 2 kg de carne cruda a `toxicity` 0,30 debían, y dejaba al actor VIVO SIN
+  // CUERPO por el resto de la partida. Y no era una intención que hubiera que
+  // fabricar a mano: `ctx.see` le muestra a la criatura su propio cuerpo con más
+  // calorías que el pescado de al lado (6,30 contra 4,56), `juntar` se lo pone en
+  // la mano en el primer despegue, y el criterio del Hito 5 detecta la muerte con
+  // `state.actors.has(quien)` — o sea que el fantasma contaba como VIVO.
+  //
+  // La guarda va acá arriba, ANTES de acreditar, y no abajo remendando el cobro:
+  // que el veneno se cobrara no arreglaría que el mundo pierda un cuerpo y se
+  // quede con el actor. El actor y su cuerpo son la misma cosa vista de dos lados.
+  if (c.body.id === mio.body.id) {
+    rechazo(d, i, 'es-uno-mismo')
+    return
+  }
   const nutricion = qualityOf(c.body, 'nutrition', d.phys)
   const masa = masaDe(c.body, d.phys)
   const gastado = nutricion * masa
@@ -1921,8 +2050,40 @@ function intencionComer(d: Borrador, a: Actor, i: Intent & { k: 'eat' }): void {
     return
   }
   const acreditado = calorias * STAMINA_POR_CALORIA
+  // El veneno se mide sobre el bocado ENTERO —`toxicity` es intensiva, la masa la
+  // vuelve extensiva— y se lee ANTES de sacar el cuerpo del mundo, que es el único
+  // momento en que todavía existe para preguntarle.
+  const toxicidad = qualityOf(c.body, 'toxicity', d.phys)
+  const precio = toxicidad * masa * COSTO_POR_TOXICIDAD_Y_KILO
   const stamina = qualityOf(mio.body, 'stamina', d.phys)
-  ponerCuerpo(d, { ...mio, body: conCualidad(mio.body, 'stamina', stamina + acreditado) })
+  // ─── EL CUERPO ALIMENTADO SE CALCULA UNA VEZ Y SIRVE PARA LAS TRES COSAS ───
+  //
+  // `conCualidad` TOPA contra el rango de la cualidad, así que quien comió estando
+  // casi lleno tiene menos que `stamina + acreditado`. De ese cuerpo salen los tres
+  // números que siguen, y ninguno se vuelve a buscar en `d`:
+  //
+  //   · `entro`, que es lo que el `convierte` DECLARA. Antes declaraba
+  //     `acreditado` —lo que se quiso meter— y el guardián arma con eso el techo
+  //     de `conservada-aumento`: una criatura con 999 que se comía 4 kg de grasa
+  //     declaraba 61,60 y le entraba 1,00, o sea que el techo se corría 60,60 de
+  //     más ese tick. El PISO ya tenía el cuidado escrito (`invariants.ts:487`) y
+  //     el techo no; ahora los dos dicen lo mismo. No era explotable solo —hace
+  //     falta otro agujero que suba la stamina en el mismo tick— pero era holgura
+  //     regalada en la mitad de los bocados de una partida;
+  //   · `cobrado`, el veneno topado contra lo que hay;
+  //   · y el estado final, que se escribe DE UNA en vez de dos veces.
+  //
+  // Escribir una sola vez es además lo que saca del medio la reescritura que hacía
+  // el cobro: releía el cuerpo DESPUÉS de `sacarCuerpo` y un `if (… !== undefined)`
+  // se comía el cobro entero en silencio cuando esa lectura fallaba. Hoy la única
+  // forma de que fallara está rechazada arriba, y aun así no queda puerta.
+  const alimentado = conCualidad(mio.body, 'stamina', stamina + acreditado)
+  const tiene = qualityOf(alimentado, 'stamina', d.phys)
+  const entro = tiene > stamina ? tiene - stamina : 0
+  // El orden es acreditar y DESPUÉS cobrar, y por eso el veneno se topa contra
+  // `tiene` y no contra `stamina`: ver el encabezado.
+  const cobrado = precio > 0 ? (tiene > precio ? precio : tiene) : 0
+  ponerCuerpo(d, { ...mio, body: conCualidad(alimentado, 'stamina', tiene - cobrado) })
   // `sacarCuerpo` lo saca de todas las manos, incluida la de quien come y la de
   // cualquier otro que lo tuviera. Antes acá se filtraba solo `a.holding`, y por
   // eso comerle algo de la mano a otro le dejaba el inventario roto.
@@ -1934,8 +2095,18 @@ function intencionComer(d: Borrador, a: Actor, i: Intent & { k: 'eat' }): void {
     de: 'nutrition',
     a: 'stamina',
     gastado,
-    acreditado,
+    acreditado: entro,
   })
+  // La condición es `precio > 0` y no `cobrado > 0`: un bocado venenoso que le
+  // cae a alguien con el tanque en cero cobra CERO, y ese cero hay que contarlo
+  // igual. Que el veneno no le haya podido sacar nada es una noticia sobre el
+  // comensal, no sobre el bocado, y la crónica tiene que poder distinguirla de
+  // «esto no tenía veneno». `anotarGasto` ya ignora sola las cantidades no
+  // positivas, así que el libro del guardián no se ensucia.
+  if (precio > 0) {
+    anotarGasto(d, 'stamina', cobrado)
+    d.events.push({ k: 'enveneno', by: a.id, what: c.body.id, toxicidad, precio, cobrado })
+  }
   d.events.push({ k: 'murio', id: c.body.id, por: 'comido' })
 }
 

@@ -25,7 +25,7 @@
 //      Así el planificador se puede testear sin sandbox, sin combustible y sin
 //      mundo — con una vista de mentira alcanza.
 
-import type { ProcessId, QualityId, QualityTest } from '@anima/physics'
+import type { LeyId, ProcessId, QualityId, QualityTest } from '@anima/physics'
 import type {
   BodyId,
   BodyView,
@@ -85,11 +85,33 @@ export type PredicateSignature = string
  *   cualidad  `temperature>=400`, `flexibility>=0.8` — un `QualityTest` pelado.
  *   geometria `freeStrandEnds>=1`, `reach>=2` — las tres `GeomFn` del cuerpo.
  *   sostiene  `holding(tag:carnoso)` — no es sobre un cuerpo, es sobre la MANO.
+ *
+ * ─── POR QUÉ `sostiene` LLEVA AHORA TESTS DE CUALIDAD ────────────────────────
+ *
+ * Porque «tener algo carnoso en la mano» y «tener algo carnoso en la mano QUE NO
+ * ENVENENE» son dos metas distintas, y hasta acá la segunda no se podía escribir.
+ * Desde el ADR II-0013 el mundo cobra `toxicity × masa` al tragar, así que la
+ * diferencia entre las dos es la diferencia entre comer y adelgazar comiendo — y
+ * `comer` ya trae `toxicidadTolerada` en su firma, o sea que la habilidad
+ * distingue lo que el vocabulario de metas no distinguía.
+ *
+ * Va DENTRO del paréntesis y no como una segunda cláusula conjuntiva, y no es
+ * cosmética: `toxicity<=0.2` suelta quiere decir «veo algún cuerpo con poca
+ * toxicidad», que es lo que contesta `cumple` para las otras dos formas. Lo que
+ * hace falta decir es que **el cuerpo de la mano** la cumple, y eso es una
+ * relación entre la criatura y UN cuerpo — exactamente la razón por la que
+ * `sostiene` existe como forma aparte.
+ *
+ * El separador de adentro es la COMA y no el `&`: `firmaDe` parte por `&` antes
+ * de interpretar nada, así que un `holding(tag:carnoso&toxicity<=0.2)` se
+ * rompería en dos trozos ilegibles. La coma no aparece en ningún `QualityId`, en
+ * ninguna `GeomFn` ni en ningún `Tag`, así que no puede juntar dos cosas
+ * distintas.
  */
 export type Predicado =
   | { readonly k: 'cualidad'; readonly test: QualityTest }
   | { readonly k: 'geometria'; readonly f: string; readonly op: Comparador; readonly v: number }
-  | { readonly k: 'sostiene'; readonly tag: string }
+  | { readonly k: 'sostiene'; readonly tag: string; readonly tests?: readonly QualityTest[] }
 
 export type Comparador = '>=' | '<=' | '>' | '<'
 
@@ -158,11 +180,9 @@ export type RoleName = string
  * MUNDO REAL. Un esquema sin su verificación es una tabla de recetas con pasos
  * de más.
  */
-export interface ConstructionSchema {
+export interface EsquemaComun {
   /** El predicado que este esquema establece, en firma. */
   readonly establishes: PredicateSignature
-  /** Con qué proceso. */
-  readonly via: ProcessId
   /** Qué le pide a cada rol, más allá de lo que el proceso ya exige. */
   readonly roleHints: Readonly<Record<RoleName, Where>>
   /**
@@ -206,6 +226,109 @@ export interface ConstructionSchema {
   readonly segundos: number
 }
 
+/**
+ * Lo de siempre: **un proceso aplicado**. `apply(via, roles)`, la puerta lo
+ * juzga, el mundo lo corre y `completion` lo cierra.
+ */
+export interface EsquemaDeProceso extends EsquemaComun {
+  readonly k: 'proceso'
+  /** Con qué proceso. */
+  readonly via: ProcessId
+}
+
+/**
+ * ─── LO QUE FALTABA, Y ES EL ADR II-0001 DICHO POR TERCERA VEZ ───────────────
+ *
+ * **COCINAR NO ES UN PROCESO.** Los cuatro `ProcessId` de la semilla son atar,
+ * deshilachar, frotar y extraer, y ninguno cocina: lo que cocina es la LEY 5,
+ * que corre sola sobre todo cuerpo orgánico que esté entre su `denaturesAt` y su
+ * `ignitionPoint`. Es literalmente lo mismo que el ADR II-0001 dice de encender
+ * —«encender no es una acción, es una consecuencia»— y vale igual para secar
+ * (ley 11), pudrir (ley 6) y carbonizar (ley 4): las doce leyes tienen todas la
+ * misma forma, **«poné esto en esta situación y esperá»**, y ninguna es un
+ * `ProcessId`.
+ *
+ * Mientras `ConstructionSchema.via` fue un `ProcessId` a secas, el planificador
+ * NO PODÍA PLANIFICAR COCINAR — y sin eso la criatura no puede comer nada
+ * carnoso, porque el pescado crudo trae `toxicity` 0,25 contra la tolerancia
+ * 0,20 que `comer` se autoimpone y que el ADR II-0013 volvió real.
+ *
+ * ─── LA ALTERNATIVA QUE SE DESCARTÓ ──────────────────────────────────────────
+ *
+ * Tratar «cocinar» como caso especial adentro de la mente: un `if` que, cuando
+ * la meta habla de comida, arme a mano la pila fuego/parrilla/comida. Es UNA FILA
+ * POR SITUACIÓN, que es lo que este proyecto rechaza en cada página, y encima
+ * dejaría mudo el planificador sobre las otras once leyes.
+ *
+ * ─── Y LA TERCERA FORMA, QUE TAMBIÉN SE DESCARTÓ ─────────────────────────────
+ *
+ * Inventar un quinto `Process` «coccion» y meterlo en el catálogo. Es la más
+ * tentadora porque no toca ningún tipo — y es exactamente el error que el ADR
+ * II-0001 nombra: un proceso es algo que ALGUIEN APLICA gastando `stamina`, y
+ * cocinar no lo aplica nadie. Con un proceso «coccion», soltar el pescado sobre
+ * la parrilla y VOLVER MÁS TARDE dejaría de cocinar, porque no habría nadie
+ * corriendo el proceso; y el fuego que ya arde sin que nadie lo sople dejaría de
+ * ser el mismo fuego para las leyes que para el planificador.
+ *
+ * ─── LA FORMA, Y POR QUÉ CADA CAMPO ──────────────────────────────────────────
+ *
+ * Una ley no tiene roles en el catálogo, así que los nombra el esquema. Y no
+ * tiene `apply`: lo que la arma son POSICIONES, y la única innata que mueve algo
+ * a una posición es `poner`.
+ */
+export interface EsquemaDeLey extends EsquemaComun {
+  readonly k: 'ley'
+  /**
+   * Cuál de las doce. Sale de `LeyId` del motor —enumeración cerrada— y no de un
+   * string libre: un esquema que dijera apoyarse en una ley que no existe no
+   * compilaría, y la verificación contra el mundo puede preguntar si esa ley
+   * corrió de verdad en vez de creerle al nombre.
+   */
+  readonly ley: LeyId
+  /**
+   * EL ROL SOBRE EL QUE LA LEY EMPUJA. Es el equivalente del rol material de un
+   * proceso: sobre él queda lo que el esquema promete, y a él le viaja el residuo.
+   */
+  readonly sujeto: RoleName
+  /**
+   * CÓMO SE ARMA LA SITUACIÓN: una pila de roles, de abajo hacia arriba.
+   *
+   * El primero NO SE MUEVE —es el fuego, y a un fuego no se lo levanta—; cada uno
+   * de los demás se pone en la celda del anterior y APOYADO sobre él (`onTopOf`,
+   * que es la ley 8 y no la 12: apoyar no es tapar).
+   *
+   * Un solo campo, y de él sale la geometría entera. El `montaje` que la ley 1
+   * lee —`piso`, `parrilla` o `contacto`— NO SE DECLARA: es una consecuencia de
+   * dónde quedó cada cuerpo, igual que en el mundo (`montajeDe`, en
+   * `world/src/step.ts`, contesta `parrilla` cuando algo está apoyado sobre algo
+   * que está en la celda del fuego). O sea que una pila de TRES da `parrilla` y
+   * una de DOS da `contacto`, y la diferencia entre las dos es la diferencia
+   * entre cocinar y quemar. Medida, en `esquemas.ts`.
+   */
+  readonly pila: readonly RoleName[]
+  /**
+   * CUÁNTOS SEGUNDOS DE MUNDO HAY QUE DEJARLO AHÍ.
+   *
+   * Una ley no completa: empuja mientras la situación se sostenga. Este número es
+   * una COTA SUPERIOR medida —lo mismo que `segundos` es para `friccion`, que
+   * tampoco completa— y `segundos` sale de él.
+   */
+  readonly mientras: number
+}
+
+/**
+ * Las dos maneras de que algo quede establecido: aplicando un proceso, o poniendo
+ * el mundo en la situación en la que una ley lo hace sola.
+ *
+ * `k` discrimina, y las dos comparten `establishes`, `roleHints`, `cellHints` y
+ * `segundos` a propósito: son los cuatro campos que `@anima/mind` lee de la tabla
+ * (`creencias.ts` saca de `roleHints` los umbrales de sus claves de contexto, y
+ * `oportunidades.ts` cotiza con `segundos`), y partirlos habría obligado a esa
+ * mente a preguntar de qué clase es cada fila para leer lo que a ella no le
+ * importa.
+ */
+export type ConstructionSchema = EsquemaDeProceso | EsquemaDeLey
+
 // ─── Pasos ───────────────────────────────────────────────────────────────────
 
 /**
@@ -213,10 +336,29 @@ export interface ConstructionSchema {
  * argumentos, con los `BodyView` reemplazados por `Ref`.
  *
  * NO están las quince: faltan `esperar`, `guarecerse`, `huirDelDolor`,
- * `seguirOrdenDeMovimiento` y `tantear`. Las cuatro primeras son conducta y no
- * plan —las emite la escalera de decisión, no la regresión—; `tantear` es
- * percepción activa y todavía no hay ningún objetivo que la pida. Cuando lo
- * haya, entra acá y no en un segundo tipo paralelo.
+ * `seguirOrdenDeMovimiento` y `tantear`. Tres de ellas son conducta y no plan
+ * —las emite la escalera de decisión, no la regresión—; `tantear` es percepción
+ * activa y todavía no hay ningún objetivo que la pida. Cuando lo haya, entra acá y
+ * no en un segundo tipo paralelo.
+ *
+ * ─── Y `esperar` YA NO ES CONDUCTA: ES UN PASO QUE FALTA ────────────────────
+ *
+ * Acá decía que las CUATRO primeras eran conducta, y de `esperar` era cierto
+ * mientras nada del plan necesitara que pasara el tiempo. Con los esquemas de ley
+ * deja de serlo: una ley no se aplica, se le arma la situación y **se espera**, y
+ * cuánto está escrito en el `mientras` de la fila. O sea que el tiempo ES el paso.
+ *
+ * No se agrega en este tramo y el motivo está MEDIDO, no supuesto: agregar
+ * `{ k: 'esperar'; segundos; porQue }` acá y correr `pnpm --filter @anima/mind
+ * typecheck` da tres errores, y dos son de otro paquete —`mind/src/mente.ts:185`
+ * (TS7030) y `mind/src/escalera.ts:609` (TS2366)—, que es el que traduce pasos a
+ * innatas y que en este tramo lo está escribiendo otra mano. El tercero
+ * (`plan/src/regresion.ts`, `firmaDePaso`) es de acá y se arregla acá.
+ *
+ * La innata `esperar` YA EXISTE y ya toma segundos (`skills/src/innatas/esperar.ts`):
+ * no falta física ni superficie, falta la costura. Está pinado con su `it.fails` en
+ * `tests/la-cocina.test.ts` y con su consecuencia medida: el plan pone la comida en
+ * el fuego y la levanta en el tick siguiente, así que la ley 5 corre un tick.
  */
 /**
  * BAJO QUÉ NOMBRE SE ANOTA LO QUE UN PASO RINDE.
@@ -382,8 +524,22 @@ export interface PedidoDeRol {
  * que todo lo demás de este archivo: viaja adentro de `Frontera` de un tick al
  * otro, y lo que sobrevive un tick no puede ser una foto de la vista.
  */
+export type MarcoPor =
+  | { readonly k: 'proceso'; readonly via: ProcessId }
+  | { readonly k: 'ley'; readonly esquema: EsquemaDeLey }
+
 export interface MarcoDePlan {
-  readonly via: ProcessId
+  /**
+   * POR DÓNDE. Un proceso del catálogo, o un esquema de ley entero.
+   *
+   * La ley viaja como el ESQUEMA y no como su `LeyId`, y es la única forma que no
+   * miente: dos filas pueden apoyarse en la misma ley con pilas distintas —cocinar
+   * lo carnoso y cocinar lo vegetal son las dos ley 5— así que el `LeyId` solo no
+   * alcanza para volver a encontrar la fila cuando el marco se cierra tres ticks
+   * después. Y sigue siendo DATO PURO, que es lo que la frontera exige: un
+   * `EsquemaDeLey` no tiene funciones, ni cuerpos, ni `BodyView`.
+   */
+  readonly por: MarcoPor
   /** La conjunción que esta aplicación viene a establecer. */
   readonly establece: PredicateSignature
   /** A qué rol del marco de abajo va a parar lo que salga. Ausente = es la raíz. */

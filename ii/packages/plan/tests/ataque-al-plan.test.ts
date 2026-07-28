@@ -547,7 +547,13 @@ describe('el corte de ciclos es del LINAJE del nodo y no de toda la búsqueda', 
     // hebras al mismo matorral es legal en el mundo.
     const tabla: readonly ConstructionSchema[] = [
       ...ESQUEMAS.map((e) => (e.establishes === 'temperature>=400' ? { ...e, roleHints: { a: [], b: [], actor: [] } } : e)),
-      { establishes: 'rigidity>=0.5', via: 'deshilachar', roleHints: { source: [], actor: [] }, segundos: 2 },
+      {
+        k: 'proceso',
+        establishes: 'rigidity>=0.5',
+        via: 'deshilachar',
+        roleHints: { source: [], actor: [] },
+        segundos: 2,
+      },
     ]
     const v = vista({
       cuerpos: [cuerpo('fibra', 3, 0)],
@@ -590,7 +596,14 @@ describe('`armarMarco` revisa TRES cosas del esquema, y la tercera es la que fal
     // ANTES: salía un plan VERDE de seis pasos que terminaba en
     // `aplicar(extraccion, {gear=lo-que-hice})` —sin la clave `source`, sin ningún
     // `ir` hasta el pozo— y el mundo lo rechazaba con `rol-sin-cuerpo`.
-    const cojo: readonly ConstructionSchema[] = ESQUEMAS.map((e) =>
+    //
+    // La fila de la COCCIÓN se saca de la tabla, y no por comodidad: también
+    // establece algo que implica `holding(tag:carnoso)`, así que con ella adentro el
+    // nodo raíz TIENE un hijo vivo —el marco de la ley— y los `rechazos` de las
+    // otras vías no llegan a ser `RamaMuerta`. El `why` que sale es el del ciclo de
+    // la ley, que es correcto y es sobre otra cosa. Es una propiedad del diseño y
+    // conviene decirla: **un motivo de rechazo sólo se ve cuando NINGUNA vía sirve**.
+    const cojo: readonly ConstructionSchema[] = ESQUEMAS.filter((e) => e.k !== 'ley').map((e) =>
       e.establishes === 'holding(tag:carnoso)' ? { ...e, roleHints: { gear: [] } } : e,
     )
     const r = plan(meta(COMER), elRio(), SIN_CORTE, undefined, { esquemas: cojo })

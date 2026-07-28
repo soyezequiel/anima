@@ -28,8 +28,8 @@
 //      índice del tick: no-determinismo con cara de heurística.
 
 import type { QualityId } from '@anima/physics'
-import type { PredicateSignature, Step, VistaDelPlan } from '@anima/plan'
-import type { ActorId, BodyView, Clock, SelfView } from '@anima/skills'
+import type { PredicateSignature, Ref, Step, VistaDelPlan } from '@anima/plan'
+import type { ActorId, BodyId, BodyView, Clock, SelfView } from '@anima/skills'
 
 // ─── Necesidades ─────────────────────────────────────────────────────────────
 
@@ -90,6 +90,32 @@ export interface AffordanceMemory {
 
 // ─── Oportunidades ───────────────────────────────────────────────────────────
 
+/**
+ * UN BOCADO YA PRECIADO: el cuerpo, lo que deja, y con cuánto veneno se banca.
+ *
+ * Es lo que convierte una oportunidad en un ACTO en vez de en una meta. Ver el
+ * encabezado de `oportunidades.ts`, sección «tener comida no es la meta».
+ */
+export interface Bocado {
+  /** Qué cuerpo se traga. Viaja como `Ref` recién cuando la escalera lo emite. */
+  readonly id: BodyId
+  /**
+   * Cuánta `stamina` deja NETA: lo acreditado (topado por lo que todavía entra
+   * en el tanque) menos lo que el veneno cobra. Siempre `> 0` — un bocado que no
+   * deja nada no es una oportunidad, es un error.
+   */
+  readonly neto: number
+  /**
+   * Hasta cuánta `toxicity` se banca ESTE bocado, calculado y no heredado.
+   *
+   * Es lo que va a `comer(ctx, { toxicidadTolerada })`, y sale de la misma
+   * desigualdad que `neto`: el `0,2` por omisión de la innata es una constante, y
+   * una constante no sabe que a la criatura llena el veneno le sale igual de caro
+   * y la comida le rinde menos.
+   */
+  readonly toxicidadTolerada: number
+}
+
 export interface Opportunity {
   /** Qué se querría tener. Es lo que se le pasa a `plan()`. */
   readonly meta: PredicateSignature
@@ -99,6 +125,14 @@ export interface Opportunity {
   readonly id: string
   /** Legible: «creo que el río rinde carnoso (p=0,50, n=3)». */
   readonly porque: string
+  /**
+   * Si esta oportunidad se cierra de un mordisco y no de un plan, cuál.
+   *
+   * Presente ⇒ `meta` NO se le pasa a `plan()`: es la firma de lo que `comer`
+   * promete en su contrato, y está para que la lista se pueda leer y comparar,
+   * no para que la busque nadie. Ver `losBocados` en `oportunidades.ts`.
+   */
+  readonly bocado?: Bocado
 }
 
 // ─── La escalera ─────────────────────────────────────────────────────────────
@@ -122,18 +156,49 @@ export type Peldano = 'D0' | 'D1' | 'D2' | 'D3' | 'D4' | 'D5'
  * segundo es del Hito 6, cuando el chat mande a caminar— y entran acá, no en un
  * tercer tipo paralelo.
  *
- * NO LLEVAN PARÁMETROS, y es deliberado: `huirDelDolor` y `guarecerse` traen sus
- * radios y sus umbrales por omisión, medidos y comentados en su propio archivo.
- * Repetirlos acá sería cablear dos veces el mismo número, que es exactamente el
- * modo de falla que la escalera evita leyendo `CONTRATO_HUIR_DEL_DOLOR` en vez
- * de escribir un 60.
+ * LAS DOS PRIMERAS NO LLEVAN PARÁMETROS, y es deliberado: `huirDelDolor` y
+ * `guarecerse` traen sus radios y sus umbrales por omisión, medidos y comentados
+ * en su propio archivo. Repetirlos acá sería cablear dos veces el mismo número,
+ * que es exactamente el modo de falla que la escalera evita leyendo
+ * `CONTRATO_HUIR_DEL_DOLOR` en vez de escribir un 60.
  *
- * Las dos `k` son ajenas a las diez de `Step`, así que `Intencion` sigue siendo
+ * ─── Y LA TERCERA SÍ, QUE ES TODO EL PUNTO: `tragar` ────────────────────────
+ *
+ * `Step` YA tiene un `comer` —`{ k:'comer', bocado?: Ref, porQue }`— y esta
+ * conducta no lo reemplaza: lo completa. La diferencia es UN número, y es el
+ * número entero del ADR II-0013:
+ *
+ *   `comer(ctx, args)` acepta `toxicidadTolerada`, y sin él se autoimpone 0,2.
+ *   `Step.comer` no tiene dónde llevarlo, porque `Step` es el vocabulario de
+ *   `@anima/plan` y esta mente no lo escribe.
+ *
+ * O sea que un plan que diga «comé» come con la prudencia de fábrica, y esa
+ * prudencia es una CONSTANTE: no sabe que a la criatura llena el veneno le sale
+ * igual de caro mientras la comida le rinde menos, ni que a la flaca le conviene
+ * bancarse más. La mente sí lo sabe, porque lee `calories`, `mass` y `toxicity`
+ * del bocado y el tanque de su propio cuerpo. Así que emite `tragar` con el
+ * número que le dio la cuenta.
+ *
+ * QUEDA DICHO COMO HUECO, porque la reparación no es de este paquete: el día que
+ * `Step.comer` sepa llevar una tolerancia, `tragar` se borra y la mente emite un
+ * `Step` como todo el mundo. Mientras tanto son dos `k` distintas a propósito
+ * —`comer` y `tragar` colisionarían en el `switch` exhaustivo si compartieran
+ * la etiqueta—, y no una sola con un campo opcional que el planificador no
+ * llenaría nunca.
+ *
+ * Las tres `k` son ajenas a las diez de `Step`, así que `Intencion` sigue siendo
  * una unión discriminada por `k` y un `switch` exhaustivo la cubre entera.
  */
 export type Conducta =
   | { readonly k: 'huir'; readonly porQue: string }
   | { readonly k: 'guarecerse'; readonly porQue: string }
+  | {
+      readonly k: 'tragar'
+      /** Cuál. NUNCA se deja elegir a la innata: la cuenta se hizo sobre ÉSTE. */
+      readonly bocado: Ref
+      readonly toxicidadTolerada: number
+      readonly porQue: string
+    }
 
 /** Lo que la escalera le puede entregar al ejecutor: un paso de plan o una conducta. */
 export type Intencion = Step | Conducta

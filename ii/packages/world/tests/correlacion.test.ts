@@ -177,7 +177,12 @@ describe('cinco intenciones en el mismo tick, cada una con su respuesta', () => 
     expect(desenlaces.map((d) => d.events.map((e) => e.k))).toEqual([
       ['movio'],
       ['tomo'],
-      ['comio', 'convierte'],
+      // TRES y no dos desde el ADR II-0013: comer acredita (`convierte`) y cobra
+      // (`enveneno`) en el mismo acto, con un evento por mitad y sin netear. Los
+      // tres le contestan a la MISMA intención `eat`, así que los tres llevan la
+      // firma `(_bob, 7)` y los tres caen en su desenlace — que es justamente lo
+      // que este test mide.
+      ['comio', 'convierte', 'enveneno'],
       ['rechazada'],
       ['esperando'],
     ])

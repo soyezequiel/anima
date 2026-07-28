@@ -14,6 +14,7 @@
 export type {
   AffordanceMemory,
   Beta,
+  Bocado,
   Conducta,
   ContextKey,
   Decision,
@@ -33,9 +34,22 @@ export {
   PERMANENCIA_EN_TICKS,
 } from './tipos.js'
 
-export { necesidades, satisfaccion } from './necesidades.js'
+export {
+  caloriasDelPeorDeTag,
+  necesidades,
+  promesaDeCalorias,
+  satisfaccion,
+  satisfaccionDe,
+  TANQUE_DE_ALIENTO,
+} from './necesidades.js'
 export { Creencias, contextoDe, INSTINTO } from './creencias.js'
-export { opportunities, costoEstimado } from './oportunidades.js'
+export {
+  opportunities,
+  costoEstimado,
+  metaComestibleDe,
+  META_DEL_BOCADO,
+  venenoQueBanca,
+} from './oportunidades.js'
 export {
   decidir,
   aterrizar,

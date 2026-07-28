@@ -61,6 +61,7 @@ import { evalQuality, specOf } from '@anima/physics'
 import type { BodyId, BodyView, Cell, CellQuality, Clock, SelfView, Where } from '@anima/skills'
 
 import { ESQUEMAS, procesoDe } from '../src/esquemas.js'
+import { implica, interpretar } from '../src/predicado.js'
 import { plan } from '../src/regresion.js'
 import { EXPANSIONES_POR_TICK, PROFUNDIDAD_MAXIMA } from '../src/tipos.js'
 import type {
@@ -386,7 +387,7 @@ function exigenciaDe(via: string, rol: string, firmas: readonly string[]): reado
   const tests: QualityTest[] = []
   for (const r of p.roles) if (r.name === rol) for (const t of r.where) tests.push(t)
   for (const f of firmas) {
-    const e = ESQUEMAS.find((x) => x.establishes === f && x.via === via)
+    const e = ESQUEMAS.find((x) => x.establishes === f && x.k === 'proceso' && x.via === via)
     if (e === undefined) throw new Error(`no hay esquema «${f}» por «${via}»`)
     for (const t of e.roleHints[rol] ?? []) tests.push(t)
   }
@@ -667,7 +668,19 @@ describe('el `gap`, que no es un error sino un contrato recién nacido', () => {
   })
 
   it('si a la meta raíz le falta el esquema, el `gap` es sobre la meta y no sobre un subobjetivo', () => {
-    const sinPesca = ESQUEMAS.filter((e) => e.establishes !== 'holding(tag:carnoso)')
+    // «Le falta el esquema» se dice por IMPLICACIÓN y no por texto, y desde el
+    // tramo H hace falta: la fila de la cocción promete
+    // `holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)`, que es OTRA firma y
+    // sin embargo garantiza la meta —tener el pescado asado en la mano es tenerlo en
+    // la mano—. Filtrando por texto sobrevivía, la regresión la usaba, y el `gap` que
+    // salía era el del ciclo («para conseguir algo carnoso haría falta tener algo
+    // carnoso») en vez del que este test viene a medir.
+    const objetivo = interpretar('holding(tag:carnoso)')
+    if (objetivo === undefined) throw new Error('`holding(tag:carnoso)` dejó de interpretarse')
+    const sinPesca = ESQUEMAS.filter((e) => {
+      const p = interpretar(e.establishes)
+      return p === undefined || !implica(p, objetivo)
+    })
     const r = plan(meta(COMER), elRio(), SIN_CORTE, undefined, { esquemas: sinPesca })
     expect(r.k).toBe('gap')
     if (r.k !== 'gap') return
@@ -691,9 +704,9 @@ function comoEnLaTabla(
   via: string,
   roleHints: Readonly<Record<string, Where>>,
 ): ConstructionSchema {
-  const gemelo = ESQUEMAS.find((e) => e.via === via)
+  const gemelo = ESQUEMAS.find((e) => e.k === 'proceso' && e.via === via)
   if (gemelo === undefined) throw new Error(`la tabla no tiene ningún esquema por «${via}»`)
-  return { establishes, via, roleHints, segundos: gemelo.segundos }
+  return { k: 'proceso', establishes, via, roleHints, segundos: gemelo.segundos }
 }
 
 describe('los ciclos y la profundidad', () => {
@@ -831,7 +844,7 @@ describe('el determinismo del plan', () => {
       via: string,
       roleHints: Readonly<Record<string, Where>>,
       segundos: number,
-    ): ConstructionSchema => ({ establishes, via, roleHints, segundos })
+    ): ConstructionSchema => ({ k: 'proceso', establishes, via, roleHints, segundos })
 
     const empatadas: readonly ConstructionSchema[] = [
       conCosto('rigidity>=0.5', 'union', { a: [], binder: [] }, 1),

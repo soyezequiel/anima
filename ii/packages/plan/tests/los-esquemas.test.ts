@@ -32,9 +32,13 @@ import {
   buildSeedPhysics,
   qualityOf,
   specOf,
+  temperaturaDeEquilibrio,
   unir,
+  DIGESTIBILIDAD_TECHO,
+  EXPOSICION,
   FRICCION,
   SEED_PROCESSES,
+  SUSTANCIAS_SEMILLA,
   T_AMBIENTE,
   type Body,
   type Physics,
@@ -46,13 +50,35 @@ import { FRACCION_DE_HEBRA } from '@anima/world'
 
 import {
   ESQUEMAS,
+  FIRMA_DE_LO_COCIDO,
+  IGNICION_QUE_ALCANZA_FROTANDO,
+  POTENCIA_QUE_COCINA_LO_CARNOSO,
   PUENTES,
   SCHEMA_INDEX,
+  SEGUNDOS_DE_COCCION,
   TECHO_DE_LO_DESHILACHABLE,
   TECHO_DE_YESCA,
+  VENTANA_CARNOSA,
+  claveDeVia,
   esquemasPara,
 } from '../src/esquemas.js'
-import type { ConstructionSchema, PredicateSignature } from '../src/tipos.js'
+import { interpretar } from '../src/predicado.js'
+import type { ConstructionSchema, EsquemaDeLey, EsquemaDeProceso, PredicateSignature } from '../src/tipos.js'
+
+/**
+ * LAS FILAS QUE VAN POR UN PROCESO, que son sobre las que hablan casi todos los
+ * criterios de este archivo: los cinco se escribieron cuando `ConstructionSchema`
+ * era una sola cosa, y cuatro de ellos —el `via` del catálogo, los roles del
+ * proceso, las seis promesas declaradas, el `segundos` de `completion`— son
+ * preguntas que sólo tienen sentido sobre un proceso.
+ *
+ * Las de ley se miden aparte y con sus propios criterios, abajo. No se saltean: el
+ * `describe` del final las barre entero y cruza que la partición no pierda ninguna.
+ */
+const DE_PROCESO: readonly EsquemaDeProceso[] = ESQUEMAS.filter(
+  (e): e is EsquemaDeProceso => e.k === 'proceso',
+)
+const DE_LEY: readonly EsquemaDeLey[] = ESQUEMAS.filter((e): e is EsquemaDeLey => e.k === 'ley')
 
 const PHYS: Physics = buildSeedPhysics()
 
@@ -88,6 +114,10 @@ function declaradasDeLaSemilla(): readonly { readonly via: string; readonly firm
 
 /** ¿Este esquema sale de un `establishes` del proceso que dice usar? */
 function esDeclarado(e: ConstructionSchema): boolean {
+  // Una fila de ley NUNCA es declarada, y no por accidente: las leyes no proponen
+  // nada, corren solas, así que no tienen `establishes` que declarar. Es lo que la
+  // vuelve puente por construcción y lo que el criterio (d) verifica.
+  if (e.k !== 'proceso') return false
   const p = SEED_PROCESSES.find((x) => x.id === e.via)
   return p !== undefined && firmasDeclaradas(p).includes(e.establishes)
 }
@@ -113,7 +143,7 @@ describe('(a) `SCHEMA_INDEX` sale de `ESQUEMAS` y de ningún otro lado', () => {
     const huerfanos: string[] = []
     for (const e of ESQUEMAS) {
       const grupo = SCHEMA_INDEX.get(e.establishes)
-      if (grupo === undefined || !grupo.includes(e)) huerfanos.push(`${e.via} → ${e.establishes}`)
+      if (grupo === undefined || !grupo.includes(e)) huerfanos.push(`${claveDeVia(e)} → ${e.establishes}`)
     }
     expect(huerfanos).toEqual([])
   })
@@ -122,9 +152,9 @@ describe('(a) `SCHEMA_INDEX` sale de `ESQUEMAS` y de ningún otro lado', () => {
     const aplanado: ConstructionSchema[] = []
     for (const grupo of SCHEMA_INDEX.values()) aplanado.push(...grupo)
     expect(aplanado.length).toBe(ESQUEMAS.length)
-    // Por firma y via, que es lo legible cuando se rompe.
-    expect([...aplanado].map((e) => `${e.via}:${e.establishes}`).sort()).toEqual(
-      [...ESQUEMAS].map((e) => `${e.via}:${e.establishes}`).sort(),
+    // Por firma y vía, que es lo legible cuando se rompe.
+    expect([...aplanado].map((e) => `${claveDeVia(e)}:${e.establishes}`).sort()).toEqual(
+      [...ESQUEMAS].map((e) => `${claveDeVia(e)}:${e.establishes}`).sort(),
     )
   })
 
@@ -136,11 +166,11 @@ describe('(a) `SCHEMA_INDEX` sale de `ESQUEMAS` y de ningún otro lado', () => {
     expect(esquemasPara('otra-que-tampoco')).toBe(esquemasPara('no-existe-esta-firma'))
   })
 
-  it('no hay dos filas con el mismo par (firma, proceso)', () => {
+  it('no hay dos filas con el mismo par (firma, vía)', () => {
     const vistos = new Set<string>()
     const repetidos: string[] = []
     for (const e of ESQUEMAS) {
-      const k = `${e.via}:${e.establishes}`
+      const k = `${claveDeVia(e)}:${e.establishes}`
       if (vistos.has(k)) repetidos.push(k)
       vistos.add(k)
     }
@@ -151,9 +181,15 @@ describe('(a) `SCHEMA_INDEX` sale de `ESQUEMAS` y de ningún otro lado', () => {
     // Agrupada por proceso, en el orden de `SEED_PROCESSES`. De este orden
     // depende qué esquema prueba primero la regresión cuando dos empatan.
     const orden = SEED_PROCESSES.map((p) => p.id)
-    const indices = ESQUEMAS.map((e) => orden.indexOf(e.via))
+    const indices = DE_PROCESO.map((e) => orden.indexOf(e.via))
     expect(indices).toEqual([...indices].sort((x, y) => x - y))
     expect(indices.includes(-1)).toBe(false)
+    // Y las de ley van DESPUÉS de todas las de proceso, que es un orden y no una
+    // preferencia: `regresar` prueba las vías en el orden de la tabla, y lo que un
+    // proceso pueda establecer sale más barato que armar una situación y esperar.
+    const primeraLey = ESQUEMAS.findIndex((e) => e.k === 'ley')
+    const ultimoProceso = ESQUEMAS.map((e) => e.k).lastIndexOf('proceso')
+    if (primeraLey >= 0) expect(primeraLey).toBeGreaterThan(ultimoProceso)
   })
 })
 
@@ -162,19 +198,31 @@ describe('(a) `SCHEMA_INDEX` sale de `ESQUEMAS` y de ningún otro lado', () => {
 describe('(b) los esquemas hablan del catálogo y no de un mundo inventado', () => {
   it('cada `via` es un `ProcessId` de `SEED_PROCESSES`', () => {
     const ids = new Set(SEED_PROCESSES.map((p) => p.id))
-    const desconocidos = ESQUEMAS.filter((e) => !ids.has(e.via)).map((e) => e.via)
+    const desconocidos = DE_PROCESO.filter((e) => !ids.has(e.via)).map((e) => e.via)
     expect(desconocidos).toEqual([])
   })
 
   it('cada nombre de rol de `roleHints` es un rol de ESE proceso, sin el `?`', () => {
     const mal: string[] = []
-    for (const e of ESQUEMAS) {
+    for (const e of DE_PROCESO) {
       const roles = new Set(procesoDe(e.via).roles.map((r) => baseRoleName(r.name)))
       for (const nombre of Object.keys(e.roleHints)) {
         if (!roles.has(nombre)) mal.push(`${e.via} → ${e.establishes}: rol «${nombre}» no existe`)
       }
     }
     expect(mal).toEqual([])
+    // Una ley no tiene roles en ningún catálogo: los nombra ella. Lo que sí se
+    // puede exigir es la simétrica, que es la que ataja un `roleHint` decorativo:
+    // que todo rol con condiciones esté en la pila o sea el sujeto, o sea que haya
+    // algún cuerpo que las tenga que cumplir.
+    const sueltos: string[] = []
+    for (const e of DE_LEY) {
+      for (const nombre of Object.keys(e.roleHints)) {
+        if (e.pila.includes(nombre) || e.sujeto === nombre) continue
+        sueltos.push(`ley ${e.ley} → ${e.establishes}: el rol «${nombre}» no está en la pila ni es el sujeto`)
+      }
+    }
+    expect(sueltos).toEqual([])
   })
 
   it('cada cualidad de cada `roleHint` está en el catálogo cerrado', () => {
@@ -185,9 +233,11 @@ describe('(b) los esquemas hablan del catálogo y no de un mundo inventado', () 
           try {
             specOf(t.q)
           } catch {
-            mal.push(`${e.via} → ${e.establishes}: ${rol}.${String(t.q)} no es una cualidad`)
+            mal.push(`${claveDeVia(e)} → ${e.establishes}: ${rol}.${String(t.q)} no es una cualidad`)
           }
-          if (!Number.isFinite(t.v)) mal.push(`${e.via} → ${e.establishes}: ${rol}.${String(t.q)} pide ${String(t.v)}`)
+          if (!Number.isFinite(t.v)) {
+            mal.push(`${claveDeVia(e)} → ${e.establishes}: ${rol}.${String(t.q)} pide ${String(t.v)}`)
+          }
         }
       }
     }
@@ -199,7 +249,7 @@ describe('(b) los esquemas hablan del catálogo y no de un mundo inventado', () 
     // exige `>= 0.8` typechequea perfecto y no lo puede llenar nadie nunca: la
     // regresión buscaría para siempre algo que no existe.
     const imposibles: string[] = []
-    for (const e of ESQUEMAS) {
+    for (const e of DE_PROCESO) {
       for (const r of procesoDe(e.via).roles) {
         const hint = e.roleHints[baseRoleName(r.name)]
         if (hint === undefined) continue
@@ -233,12 +283,25 @@ describe('(b) los esquemas hablan del catálogo y no de un mundo inventado', () 
     const empuje = FRICCION.effects.find((x) => x.k === 'drive')
     if (empuje === undefined || empuje.k !== 'drive') throw new Error('`friccion` perdió su `drive`')
     esperado.set(FRICCION.id, (empuje.toward - T_AMBIENTE) / empuje.porSegundo)
-    const mal = ESQUEMAS.filter((e) => e.segundos !== esperado.get(e.via)).map(
+    const mal = DE_PROCESO.filter((e) => e.segundos !== esperado.get(e.via)).map(
       (e) => `${e.via} → ${e.establishes}: ${String(e.segundos)} y el catálogo dice ${String(esperado.get(e.via))}`,
     )
     expect(mal).toEqual([])
     // Y el número de `friccion`, escrito: 385 grados a 120 por segundo.
     expect(esperado.get('friccion')).toBeCloseTo(3.2083, 4)
+  })
+
+  it('y el de una LEY sale de su `mientras`, que es el único costo que tiene', () => {
+    // Una ley no está en el catálogo de procesos, así que no hay `completion.at`
+    // del que leer una duración: lo que cuesta es el tiempo que hay que dejar la
+    // situación armada. Que los dos números sean el MISMO campo y no dos es lo que
+    // impide que alguien cotice barato y espere caro — la cola de `plan()` se
+    // ordena por `segundos` y quien espera es `mientras`.
+    const mal = DE_LEY.filter((e) => e.segundos !== e.mientras).map(
+      (e) => `ley ${e.ley} → ${e.establishes}: segundos ${String(e.segundos)} y mientras ${String(e.mientras)}`,
+    )
+    expect(mal).toEqual([])
+    for (const e of DE_LEY) expect(e.mientras).toBeGreaterThan(0)
   })
 })
 
@@ -264,7 +327,7 @@ describe('(c) los cuatro procesos, recorridos: ninguna promesa se queda sin esqu
     // la suite quede verde porque solo se afirmó sobre las que sí están.
     const sinEsquema: string[] = []
     for (const { via, firma } of declaradasDeLaSemilla()) {
-      const hay = ESQUEMAS.some((e) => e.via === via && e.establishes === firma)
+      const hay = DE_PROCESO.some((e) => e.via === via && e.establishes === firma)
       if (!hay) sinEsquema.push(`${via} declara «${firma}» y ningún esquema lo establece`)
     }
     expect(sinEsquema).toEqual([])
@@ -283,10 +346,10 @@ describe('(c) los cuatro procesos, recorridos: ninguna promesa se queda sin esqu
 
 describe('(d) todo lo que no sale del catálogo está marcado como puente, con evidencia', () => {
   it('ningún esquema entra de contrabando: lo que no es declarado está en `PUENTES`', () => {
-    const marcados = new Set(PUENTES.map((p) => `${p.via}:${p.establishes}`))
+    const marcados = new Set(PUENTES.map((p) => `${p.por}:${p.establishes}`))
     const contrabando = ESQUEMAS.filter((e) => !esDeclarado(e))
-      .filter((e) => !marcados.has(`${e.via}:${e.establishes}`))
-      .map((e) => `${e.via} → ${e.establishes}: no sale de ningún \`establishes\` y no está en PUENTES`)
+      .filter((e) => !marcados.has(`${claveDeVia(e)}:${e.establishes}`))
+      .map((e) => `${claveDeVia(e)} → ${e.establishes}: no sale de ningún \`establishes\` y no está en PUENTES`)
     expect(contrabando).toEqual([])
   })
 
@@ -296,12 +359,12 @@ describe('(d) todo lo que no sale del catálogo está marcado como puente, con e
     // algo que el catálogo ya decía solo.
     const mal: string[] = []
     for (const p of PUENTES) {
-      const e = ESQUEMAS.find((x) => x.via === p.via && x.establishes === p.establishes)
+      const e = ESQUEMAS.find((x) => claveDeVia(x) === p.por && x.establishes === p.establishes)
       if (e === undefined) {
-        mal.push(`${p.via} → ${p.establishes}: marcado como puente y no hay esquema`)
+        mal.push(`${p.por} → ${p.establishes}: marcado como puente y no hay esquema`)
         continue
       }
-      if (esDeclarado(e)) mal.push(`${p.via} → ${p.establishes}: lo declara el propio proceso, no es puente`)
+      if (esDeclarado(e)) mal.push(`${p.por} → ${p.establishes}: lo declara el propio proceso, no es puente`)
     }
     expect(mal).toEqual([])
   })
@@ -320,8 +383,24 @@ describe('(d) todo lo que no sale del catálogo está marcado como puente, con e
     expect(rotas).toEqual([])
   })
 
-  it('son dos, y las dos nombran el hallazgo que las hizo falta', () => {
-    expect(PUENTES.map((p) => p.establishes)).toEqual(['catch>0', 'heatCapacity<=0.9'])
+  it('son cuatro, y cada una nombra el hallazgo que la hizo falta', () => {
+    // El orden es el de la tabla, agrupado por vía, así que agregar una fila la
+    // corre acá y hay que venir a mirar. Las cuatro, y qué dice cada una que el
+    // catálogo no dice:
+    //
+    //   catch>0            atar sin el rol `b` deja una punta suelta; `union` no lo declara
+    //   emitsPower>0       cruzar el `ignitionPoint` hace fuente de calor; `friccion` no lo declara
+    //   heatCapacity<=0.9  deshilachar fabrica cosas LIVIANAS; `deshilachar` no lo declara
+    //   holding(...cocido) NINGUNA ley declara nada: no proponen, corren
+    expect(PUENTES.map((p) => p.establishes)).toEqual([
+      'catch>0',
+      'emitsPower>0',
+      'heatCapacity<=0.9',
+      FIRMA_DE_LO_COCIDO,
+    ])
+    // Y el único puente que no va por un proceso es el de la ley: si mañana
+    // apareciera otro, entra acá y hay que verificarlo contra el mundo igual.
+    expect(PUENTES.filter((p) => p.por.startsWith('ley:')).length).toBe(DE_LEY.length)
   })
 })
 
@@ -380,7 +459,7 @@ describe('(e) el puente de `catch>0`: la caña, y el rol opcional que la mata', 
     if (tensa === undefined) throw new Error('no se pudo atar')
     expect(q(tensa, 'catch')).toBe(0)
     expect(q(tensa, 'reach')).toBeCloseTo(8, 10)
-    const conB = ESQUEMAS.filter((e) => e.via === 'union').filter((e) =>
+    const conB = DE_PROCESO.filter((e) => e.via === 'union').filter((e) =>
       Object.prototype.hasOwnProperty.call(e.roleHints, 'b'),
     )
     expect(conB.map((e) => e.establishes)).toEqual([])
@@ -433,10 +512,198 @@ describe('(e) el puente de la yesca: `deshilachar` fabrica cosas livianas', () =
     const deLiana = cuerpo('hl', 'liana', 0.02, 'hebra')
     expect(q(deMadera, 'flexibility')).toBeCloseTo(0.2, 10)
     expect(q(deLiana, 'flexibility')).toBeCloseTo(0.9, 10)
-    const e = ESQUEMAS.find((x) => x.via === 'deshilachar' && x.establishes === 'flexibility>=0.8')
+    const e = DE_PROCESO.find((x) => x.via === 'deshilachar' && x.establishes === 'flexibility>=0.8')
     expect(e?.roleHints['source']).toEqual([{ q: 'flexibility', op: '>=', v: 0.8 }])
   })
 })
+
+// ─── (e) LOS DOS PUENTES NUEVOS: EL FUEGO Y LA COCCIÓN ──────────────────────
+//
+// Mismo criterio que los dos de arriba: cada número de la fila se cruza contra el
+// catálogo del que salió, así que se pone rojo si alguien recalibra. Lo pesado
+// —armar la pila en una partida y esperar— vive en
+// `tests/los-esquemas-contra-el-mundo.test.ts`.
+
+describe('(e) el puente de `emitsPower>0`: encender no es una acción', () => {
+  it('los 400 del `roleHint` son los del `drive` de `friccion` y no un número escrito', () => {
+    const empuje = FRICCION.effects.find((x) => x.k === 'drive')
+    if (empuje === undefined || empuje.k !== 'drive') throw new Error('`friccion` perdió su `drive`')
+    expect(IGNICION_QUE_ALCANZA_FROTANDO).toBe(empuje.toward)
+    // Y la madera entra: se prende a 300, que es abajo de lo que frotar promete.
+    const leno = cuerpo('l', 'madera', 0.2, 'vara')
+    expect(q(leno, 'ignitionPoint')).toBeLessThanOrEqual(IGNICION_QUE_ALCANZA_FROTANDO)
+  })
+
+  it('una vara fría no emite y la misma vara pasada su ignición sí: el `step` del ADR II-0001', () => {
+    const fria: Body = { ...cuerpo('f', 'madera', 0.2, 'vara'), state: { temperature: T_AMBIENTE } }
+    const ardiendo: Body = { ...cuerpo('a', 'madera', 0.2, 'vara'), state: { temperature: 400 } }
+    expect(q(fria, 'emitsPower')).toBe(0)
+    expect(q(ardiendo, 'emitsPower')).toBeGreaterThan(0)
+  })
+})
+
+describe('(e) el puente de la cocción: la parrilla sale de la resta', () => {
+  it('la ventana de lo carnoso son los dos bordes del catálogo, y no dos números elegidos', () => {
+    // El piso es el `denaturesAt` MÁS ALTO y el techo el `ignitionPoint` MÁS BAJO
+    // de las sustancias orgánicas con tag `carnoso`. Se recalcula acá desde
+    // `SUSTANCIAS_SEMILLA` en vez de transcribirse: si mañana el oráculo agrega una
+    // carne que se prende antes, la ventana se angosta sola y esto lo dice.
+    let piso = Number.NEGATIVE_INFINITY
+    let techo = Number.POSITIVE_INFINITY
+    const filas: string[] = []
+    for (const s of SUSTANCIAS_SEMILLA) {
+      if (!s.tags.includes('carnoso') || !s.tags.includes('organico')) continue
+      const d = s.perUnitMass.denaturesAt
+      const ig = s.perUnitMass.ignitionPoint
+      if (d === undefined || ig === undefined) continue
+      filas.push(`${s.id}: cocina desde ${String(d)} °C y se prende a ${String(ig)} °C`)
+      if (d > piso) piso = d
+      if (ig < techo) techo = ig
+    }
+    expect(VENTANA_CARNOSA.piso).toBe(piso)
+    expect(VENTANA_CARNOSA.techo).toBe(techo)
+    expect(VENTANA_CARNOSA.cuantas).toBe(filas.length)
+    // No vacía, y con margen: si los dos bordes se cruzaran no habría cocción para
+    // el tag entero y la fila sería una promesa imposible.
+    expect(piso).toBeLessThan(techo)
+    console.log(
+      `\n── LA VENTANA DE LO CARNOSO ${'─'.repeat(40)}\n` +
+        filas.map((f) => `  ${f}`).join('\n') +
+        `\n  ventana del TAG: [${piso.toFixed(0)} ; ${techo.toFixed(0)}) °C\n`,
+    )
+  })
+
+  it('DE LOS TRES MONTAJES, UNO SOLO CAE ADENTRO — y por eso la pila tiene tres', () => {
+    // ─── EL RESULTADO QUE NADIE ESCRIBIÓ ───────────────────────────────────
+    //
+    // La fogata que el Hito 0 calibró tiene `emitsPower` 300. Con las tres
+    // exposiciones del motor y el acoplamiento con el ambiente, esa misma fogata
+    // deja la comida en tres temperaturas muy distintas según cómo se apoye, y sólo
+    // una de las tres está adentro de la ventana de arriba. La palabra «parrilla»
+    // no aparece en ninguna regla: es lo único que sobrevive a la resta.
+    const FOGATA = 300
+    const t = (m: 'piso' | 'parrilla' | 'contacto'): number => temperaturaDeEquilibrio(FOGATA, 0, m)
+    const adentro = (x: number): boolean => x >= VENTANA_CARNOSA.piso && x < VENTANA_CARNOSA.techo
+    expect(adentro(t('piso'))).toBe(false)
+    expect(adentro(t('parrilla'))).toBe(true)
+    expect(adentro(t('contacto'))).toBe(false)
+    // Y falla por el motivo que se afirma y no por otro: por abajo el `piso` y por
+    // arriba el `contacto`. Sin esto, los dos podrían estar fuera por la misma punta.
+    expect(t('piso')).toBeLessThan(VENTANA_CARNOSA.piso)
+    expect(t('contacto')).toBeGreaterThanOrEqual(VENTANA_CARNOSA.techo)
+    // La fila lo dice con la pila: fuego, parrilla y comida son tres, y el montaje
+    // `parrilla` del mundo es exactamente «apoyado sobre algo que está en la celda
+    // del fuego». Con dos sería `contacto` y se quemaría.
+    const coccion = DE_LEY.find((e) => e.establishes === FIRMA_DE_LO_COCIDO)
+    if (coccion === undefined) throw new Error('no está la fila de la cocción')
+    expect(coccion.pila.length).toBe(3)
+    expect(coccion.pila[coccion.pila.length - 1]).toBe(coccion.sujeto)
+    console.log(
+      `\n── LOS TRES MONTAJES SOBRE UNA FOGATA DE ${String(FOGATA)} ${'─'.repeat(24)}\n` +
+        (['piso', 'parrilla', 'contacto'] as const)
+          .map(
+            (m) =>
+              `  ${m.padEnd(9)} exposición ${String(EXPOSICION[m]).padStart(5)} → ` +
+              `${t(m).toFixed(2).padStart(7)} °C  ${adentro(t(m)) ? '← COCINA' : ''}`,
+          )
+          .join('\n') +
+        `\n  la ventana es [${VENTANA_CARNOSA.piso.toFixed(0)} ; ${VENTANA_CARNOSA.techo.toFixed(0)}) °C\n`,
+    )
+  })
+
+  it('la ventana de POTENCIA del fuego no está vacía, y se escribe con sus dos bordes', () => {
+    const { minima, maxima } = POTENCIA_QUE_COCINA_LO_CARNOSO
+    expect(minima).toBeLessThan(maxima)
+    // El piso NO es el borde de abajo de la ventana de cocción, y ésa es la
+    // decisión: ahí la ley empuja a tasa cero (`k = (T − denaturesAt)/100`), así
+    // que el `mientras` sería infinito. Es el punto medio, que es el único punto
+    // de adentro que los dos bordes determinan.
+    const medio = (VENTANA_CARNOSA.piso + VENTANA_CARNOSA.techo) / 2
+    expect(temperaturaDeEquilibrio(minima, 0, 'parrilla')).toBeCloseTo(medio, 9)
+    expect(temperaturaDeEquilibrio(maxima, 0, 'parrilla')).toBeCloseTo(VENTANA_CARNOSA.techo, 9)
+    // Y el `roleHint` del rol `fuego` es exactamente esos dos bordes.
+    const coccion = DE_LEY.find((e) => e.establishes === FIRMA_DE_LO_COCIDO)
+    expect(coccion?.roleHints['fuego']).toEqual([
+      { q: 'emitsPower', op: '>=', v: minima },
+      { q: 'emitsPower', op: '<', v: maxima },
+    ])
+    console.log(
+      `\n── LA VENTANA DE POTENCIA ${'─'.repeat(42)}\n` +
+        `  [${minima.toFixed(4)} ; ${maxima.toFixed(4)}), ${(maxima / minima).toFixed(2)}× de ancho\n`,
+    )
+  })
+
+  it('LA CRIATURA PUEDE ENCENDER Y NO PUEDE, SÓLO CON ESO, COCINAR — medido', () => {
+    // ─── EL DATO INCÓMODO DEL TRAMO, Y NO SE ESCONDE ───────────────────────
+    //
+    // Los dos puentes de `friccion` se tocan: uno dice hasta dónde se puede
+    // encender frotando (`heatCapacity <= 0,9`, el techo de la yesca) y el otro
+    // qué potencia hace falta para cocinar. La cuenta cierra sola y da que NO
+    // ALCANZA: la madera más pesada que se puede prender frotando emite la mitad
+    // de lo que la ley 5 necesita.
+    //
+    // De acá sale, sin que nadie lo escriba, que hay que hacer FUEGO MÁS GRANDE que
+    // la yesca —pasarle la llama a un leño, que es la ley 3— y eso todavía no tiene
+    // esquema. El `gap` de `plan()` lo dice con estas dos firmas al lado.
+    const sh = q(cuerpo('m', 'madera', 1, 'vara'), 'heatCapacity')
+    const masaMaxima = TECHO_DE_YESCA / sh
+    const laMasGrande: Body = {
+      ...cuerpo('g', 'madera', masaMaxima, 'vara'),
+      state: { temperature: IGNICION_QUE_ALCANZA_FROTANDO },
+    }
+    const potencia = q(laMasGrande, 'emitsPower')
+    expect(q(laMasGrande, 'heatCapacity')).toBeCloseTo(TECHO_DE_YESCA, 9)
+    expect(potencia).toBeGreaterThan(0)
+    expect(potencia).toBeLessThan(POTENCIA_QUE_COCINA_LO_CARNOSO.minima)
+    console.log(
+      `\n── LO MÁS GRANDE QUE SE PRENDE FROTANDO ${'─'.repeat(28)}\n` +
+        `  madera de ${masaMaxima.toFixed(4)} kg (heatCapacity ${TECHO_DE_YESCA.toFixed(2)}, el techo de la yesca)\n` +
+        `  ardiendo emite ${potencia.toFixed(4)} y cocinar pide ` +
+        `${POTENCIA_QUE_COCINA_LO_CARNOSO.minima.toFixed(4)}: falta ` +
+        `${(POTENCIA_QUE_COCINA_LO_CARNOSO.minima / potencia).toFixed(2)}×\n`,
+    )
+  })
+
+  it('la parrilla tiene que aguantar el CONTACTO, que es la exposición más brava', () => {
+    // La parrilla no está en `parrilla`: está tocando el fuego. Le toca 0,6 y el
+    // equilibrio más alto de los tres, y de ahí sale su única condición.
+    const coccion = DE_LEY.find((e) => e.establishes === FIRMA_DE_LO_COCIDO)
+    const pide = coccion?.roleHints['parrilla']?.[0]
+    if (pide === undefined) throw new Error('la fila de la cocción no le pide nada a la parrilla')
+    const peor = temperaturaDeEquilibrio(POTENCIA_QUE_COCINA_LO_CARNOSO.maxima, 0, 'contacto')
+    expect(pide).toEqual({ q: 'ignitionPoint', op: '>', v: peor })
+    // La piedra entra y la madera no, que es lo que hace que una parrilla de madera
+    // no sea una parrilla sino más leña.
+    expect(q(cuerpo('p', 'piedra', 0.5, 'vara'), 'ignitionPoint')).toBeGreaterThan(peor)
+    expect(q(cuerpo('w', 'madera', 0.5, 'vara'), 'ignitionPoint')).toBeLessThan(peor)
+    console.log(`\n  la parrilla aguanta hasta ${peor.toFixed(2)} °C de contacto con el fuego más grande\n`)
+  })
+
+  it('lo que la fila promete es AL MENOS lo que `comer` tolera', () => {
+    // El 0,2 vive como literal adentro de `skills/src/innatas/comer.ts` y no se
+    // puede importar. Lo que se puede hacer —y es lo que hace este test— es cruzar
+    // que la promesa no quede más floja que la tolerancia: si alguien afloja
+    // `comer`, esto no se entera; si alguien afloja la fila, sí.
+    const TOLERANCIA_DE_COMER = 0.2
+    const p = interpretarFirma(FIRMA_DE_LO_COCIDO)
+    const tox = (p.tests ?? []).find((t) => t.q === 'toxicity')
+    const dig = (p.tests ?? []).find((t) => t.q === 'digestibility')
+    expect(p.tag).toBe('carnoso')
+    expect(tox?.op).toBe('<=')
+    expect(tox?.v).toBeLessThanOrEqual(TOLERANCIA_DE_COMER)
+    // Y la digestibilidad prometida está abajo del techo REAL de la ley, que es
+    // asintótico: prometer el techo sería prometer un `mientras` infinito.
+    expect(dig?.v).toBeLessThan(DIGESTIBILIDAD_TECHO)
+    expect(SEGUNDOS_DE_COCCION).toBeGreaterThan(0)
+  })
+})
+
+/** La firma de lo cocido, leída con el intérprete del paquete y no partida a mano. */
+function interpretarFirma(f: string): { tag: string; tests?: readonly QualityTest[] } {
+  const p = interpretar(f)
+  if (p === undefined || p.k !== 'sostiene') throw new Error(`«${f}» dejó de leerse como `.concat('`sostiene`'))
+  return p
+}
 
 // ─── LO QUE LE TOCA A LA FASE QUE VIENE ─────────────────────────────────────
 

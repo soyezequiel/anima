@@ -273,7 +273,7 @@ describe('las cuatro que `plan()` no emite', () => {
     'explorar',
   ] as const
 
-  it('el planificador construye seis de los diez pasos, y los cuatro que faltan son los que hacen falta', () => {
+  it('el planificador construye SIETE de los diez pasos, y los tres que faltan son los que hacen falta', () => {
     // El barrido va sobre la FUENTE de la regresión y no sobre una corrida, y es
     // a propósito: una corrida sólo prueba que en ESA escena no salió `comer`.
     // Lo que hay que mostrar es que no puede salir nunca, y eso se ve en que el
@@ -295,15 +295,29 @@ describe('las cuatro que `plan()` no emite', () => {
         `  emite (${String(emite.length)}):  ${emite.join(' · ')}\n` +
         `  NUNCA (${String(nunca.length)}):  ${nunca.join(' · ')}\n`,
     )
-    expect(emite).toEqual(['ir', 'deshilachar', 'unir', 'aplicar', 'frotar', 'sostener'])
-    expect(nunca).toEqual(['juntar', 'comer', 'poner', 'explorar'])
+    // SIETE Y NO SEIS desde que el planificador sabe apoyarse en una LEY y no
+    // sólo en un proceso (`EsquemaDeLey`): cocinar es la ley 5, y cocinar
+    // necesita `poner` —la comida sobre la parrilla, la parrilla sobre el fuego—.
+    // O sea que `poner` cruzó de columna, y lo hizo por la razón correcta: apareció
+    // una meta que lo necesitaba, no una fila que lo nombrara.
+    expect(emite).toEqual(['ir', 'deshilachar', 'unir', 'aplicar', 'frotar', 'poner', 'sostener'])
+    // Y las tres que quedan siguen siendo conducta y no plan: juntar, comer y
+    // explorar. `comer` es la que ordena a todas las demás y tiene su `it.fails`
+    // abajo — con la diferencia de que ahora la mente la emite igual, como
+    // `tragar`, porque el bocado lo cierra la escalera y no la regresión.
+    expect(nunca).toEqual(['juntar', 'comer', 'explorar'])
   })
 
-  it('y la razón es estructural: los esquemas sólo nombran procesos, y ninguna de las cuatro es uno', () => {
-    // `SCHEMA_INDEX` es de firma a filas, y cada fila trae un `via: ProcessId`.
-    // O sea que todo lo que la regresión puede proponer sale de esa columna: si
-    // una conducta no es un proceso del catálogo, no hay esquema que la nombre y
-    // no hay cadena hacia atrás que la alcance.
+  it('y la razón es estructural: un esquema nombra un proceso o una ley, y ninguna de las tres es ninguno', () => {
+    // `SCHEMA_INDEX` es de firma a filas, y una fila va por un PROCESO o por una
+    // LEY. O sea que todo lo que la regresión puede proponer sale de esas dos
+    // columnas: si una conducta no es ninguna de las dos, no hay esquema que la
+    // nombre y no hay cadena hacia atrás que la alcance.
+    //
+    // `poner` es el caso que muestra que la segunda columna no es decorativa: no
+    // es un proceso —sigue estando en `noSonProceso`— y aun así el planificador lo
+    // emite, porque la ley 5 necesita que la comida esté APOYADA sobre el fuego.
+    // Entró por una ley, no por una fila que lo nombrara.
     //
     // `deshilachar` es la prueba del mecanismo por el lado que SÍ funciona: se
     // llama igual que un `Step` porque ES un proceso —está en el catálogo, tiene
@@ -311,7 +325,10 @@ describe('las cuatro que `plan()` no emite', () => {
     // `unir` entra por su nombre de proceso, `union`; `frotar` por `friccion`; y
     // `aplicar` es la variante genérica que envuelve a cualquiera de los cuatro.
     const procesos = new Set<string>()
-    for (const filas of SCHEMA_INDEX.values()) for (const f of filas) procesos.add(f.via)
+    // `f.k === 'proceso'`: desde el tramo H la tabla tiene filas que no van por
+    // ningún proceso sino por una LEY —cocinar no es un `ProcessId`— y este conteo
+    // es sobre los procesos que el índice conoce.
+    for (const filas of SCHEMA_INDEX.values()) for (const f of filas) if (f.k === 'proceso') procesos.add(f.via)
     const sonProceso = LOS_DIEZ.filter((k) => procesos.has(k))
     const noSonProceso = (['juntar', 'comer', 'poner', 'explorar'] as const).filter((k) => !procesos.has(k))
     console.log(
@@ -510,15 +527,32 @@ describe('pescó, y no se entera', () => {
         `  meta en curso de la escalera:  ${String(c.mente.estado.metaEnCurso)}\n` +
         `  vuelos en 200 ticks:           ${[...c.cuenta.entries()].map(([k, n]) => `${k}×${String(n)}`).join(' ')}\n`,
     )
-    // La mano NO está vacía y el predicado dice que sí. Es el hueco de la
-    // superficie que `plan/src/predicado.ts` deja escrito —`cumpleCuerpo` del
+    // La mano NO está vacía y el predicado sigue diciendo que sí. Es el hueco de
+    // la superficie que `plan/src/predicado.ts` deja escrito —`cumpleCuerpo` del
     // caso `sostiene` devuelve `false` siempre, porque `BodyView` no trae ni
-    // sustancia ni tags— y acá se mide su consecuencia sobre la conducta.
+    // sustancia ni tags— y NO se movió.
     expect(v.self.holding.length).toBeGreaterThan(0)
     expect(cumple(meta, v)).toBe(false)
-    // La meta queda puesta para siempre y D4 la vuelve a planificar: la criatura
-    // repite la última pesca hasta que se muere. NO es que le guste pescar.
-    expect(c.mente.estado.metaEnCurso).toBe('holding(tag:carnoso)')
+
+    // ─── LO QUE SÍ SE MOVIÓ, Y ES EL TRAMO DEL BOCADO (ADR II-0013) ────────
+    //
+    // Antes de esto la meta quedaba puesta para siempre y D4 la volvía a
+    // planificar: la criatura repetía la última pesca hasta morirse, 199 veces
+    // medidas. Ahora la escalera se acuerda de que un plan SUYO consiguió esa
+    // meta y todavía tiene en la mano lo que rindió (`EstadoDeLaEscalera.
+    // conseguido`), así que D3 la saltea y sube el pedido a la versión que
+    // además se puede comer.
+    //
+    // O sea: el hueco de `cumple` sigue abierto —por eso el `it.fails` de
+    // abajo— pero ya no decide la conducta. Lo que la decide es la memoria de la
+    // propia mente, que es evidencia legítima: `plan()` promete que sus pasos
+    // establecen la meta, y sus pasos corrieron enteros y salieron bien.
+    expect(c.mente.estado.conseguido?.meta).toBe('holding(tag:carnoso)')
+    expect(c.mente.estado.metaEnCurso).toBe('holding(tag:carnoso,toxicity<0.0528)')
+    // Y sigue pescando, pero por otro motivo: `plan()` contesta la meta nueva con
+    // un `gap` cuyo `nearest` es la extracción —«mientras tanto, conseguí otro»—
+    // porque la cadena hasta el fuego todavía no cierra. Eso es de `@anima/plan`
+    // y está medido en `mind/tests/el-bocado.test.ts`, grupo (6).
     expect(c.cuenta.get('aplicar(extraccion)') ?? 0).toBeGreaterThan(5)
   })
 

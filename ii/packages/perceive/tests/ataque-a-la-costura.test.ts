@@ -1253,7 +1253,21 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     expect(Number((staminaAlNacer - staminaAlEncender).toFixed(4))).toBe(661.3629)
     expect(staminaAlFinal - staminaAlNacer).toBeLessThan(0)
     expect(staminaAlFinal).toBeGreaterThan(0)
-    expect(staminaAlFinal - staminaAntesDeComer).toBeGreaterThan(18)
+    // ─── EL BOCADO DEVUELVE MENOS DESDE EL ADR II-0013 ────────────────────
+    //
+    // Este `expect` pedía > 18 y ahora mide 16,08. La diferencia son 2,25 y es el
+    // veneno que el mundo cobra al tragar: el pescado llega a la boca con
+    // `toxicity` 0,0345 —la ley 5 le sacó el 86% de los 0,25 que traía crudo—, y
+    // sobre 1,93 kg de pieza a 25 de `COSTO_POR_TOXICIDAD_Y_KILO` eso son 1,66,
+    // más los 0,05 de vivir el tick y el resto del redondeo del instante exacto en
+    // que la criatura decidió comer.
+    //
+    // **Y ES LA MITAD BUENA DE LA NOTICIA**: el mismo bicho comido CRUDO habría
+    // dejado −6,42, o sea que cocinar acá no mejora un rendimiento, cambia un
+    // signo. Lo que este vuelo mide es que la cadena entera —pescar, encender,
+    // cocinar y comer— termina con el bocado en positivo aunque el fuego no.
+    expect(staminaAlFinal - staminaAntesDeComer).toBeGreaterThan(16)
+    expect(staminaAlFinal - staminaAntesDeComer).toBeLessThan(17)
     // COCINAR MULTIPLICA POR 2,13 LO QUE RINDE ESE MISMO BICHO, y no por los
     // 2,50 que la digestibilidad sola daría (0,95 / 0,38). La diferencia está
     // medida y es información: `calories` es `nutrition × mass × digestibility`, y

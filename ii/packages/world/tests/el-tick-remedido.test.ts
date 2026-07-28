@@ -241,31 +241,61 @@ function soloLeyes(s: WorldState, e: Entorno = AL_AIRE): void {
 
 // ─── La medición ─────────────────────────────────────────────────────────────
 
+/**
+ * DEVOLVERLE EL HILO AL CORREDOR DE TESTS UN INSTANTE.
+ *
+ * No mide nada, no cambia ningún número y va ENTRE las mediciones, nunca adentro
+ * de una. Existe por una falla de arnés que se paga cara y no se ve: este `it`
+ * hace un minuto entero de trabajo SÍNCRONO, y mientras tanto el worker de vitest
+ * no puede contestarle a su proceso principal. Cuando la máquina está cargada y el
+ * bloque cruza los 60 s, el reloj de la RPC vence y toda la corrida del paquete
+ * termina en `Unhandled Error: [vitest-worker]: Timeout calling "onTaskUpdate"` —
+ * con los 489 tests EN VERDE y el proceso saliendo en 1.
+ *
+ * Medido en esta máquina: 43 s con el equipo libre (verde) y 61,7 s con el
+ * navegador del usuario encima (rojo, y reproducible tres veces). O sea que el
+ * color del paquete dependía de lo ocupada que estuviera la máquina, que es
+ * exactamente la clase de rojo que enseña a ignorar el rojo.
+ *
+ * Se corta el bloque en pedazos y se respira entre ellos. Las mediciones son las
+ * MISMAS —cada `minMs` sigue siendo un mínimo sobre las mismas repeticiones— y no
+ * se afloja ningún número: lo único que cambia es que el hilo vuelve a estar
+ * disponible unas pocas veces por minuto.
+ */
+const respirar = (): Promise<void> => new Promise<void>((r) => { setImmediate(r) })
+
 describe('re-medición independiente del criterio (c)', () => {
-  it('el tick con 5000 cuerpos, medido de las dos maneras', () => {
+  it('el tick con 5000 cuerpos, medido de las dos maneras', async () => {
     const s = mundoSimple(N)
 
     const fijo = minMs(() => {
       stepWorld(s, [])
     })
+    await respirar()
     const avanzando = medianaAvanzando(s, 120)
+    await respirar()
     const leyes = minMs(() => {
       soloLeyes(s)
     })
+    await respirar()
 
     const variado5000 = mundoVariado(N, 20260727)
     const fijoVariado = minMs(() => {
       stepWorld(variado5000, [])
     })
+    await respirar()
     const avanzandoVariado = medianaAvanzando(variado5000, 120)
+    await respirar()
 
     // Cuántos cuerpos entran en 4 ms, medido y no extrapolado: se mide a varias
     // escalas y se interpola entre las dos que rodean al techo.
     const escalas = [500, 1000, 2000, 3000, 4000, 5000]
-    const puntos = escalas.map((n) => {
+    const puntos: { n: number; ms: number }[] = []
+    for (const n of escalas) {
       const w = mundoSimple(n)
-      return { n, ms: minMs(() => { stepWorld(w, []) }, 7) }
-    })
+      puntos.push({ n, ms: minMs(() => { stepWorld(w, []) }, 7) })
+      await respirar()
+    }
     // Se interpola entre los dos puntos MEDIDOS que rodean al techo. Extrapolar
     // linealmente desde 5000 —`5000 × 4 / ms`— da de más, porque el tick no es del
     // todo lineal en la cantidad de cuerpos: con 8,6 ms a los 5000 la

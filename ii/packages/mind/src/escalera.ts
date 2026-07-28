@@ -289,13 +289,63 @@ export interface EstadoDeLaEscalera {
   pasosPendientes: Intencion[]
   /** Lo que se le entregó al ejecutor y todavía no aterrizó. */
   enVuelo: Intencion | undefined
-  /** Si lo que vuela salió de D5 y no de un plan. */
+  /**
+   * Si lo que vuela NO salió de un plan.
+   *
+   * Se llamaba así porque hasta hoy sólo lo ponía D5, y el nombre quedó: lo que
+   * el campo decide son dos cosas y ninguna habla de peldaños — que un fracaso no
+   * se lleve puesto el plan que sigue esperando (`aterrizar`), y que D0 no
+   * devuelva la intención a la cola de pasos cuando un reflejo la interrumpe. El
+   * bocado de D3 también lo pone, y por las dos mismas razones.
+   */
   deFondo: boolean
   /** La búsqueda de D4 a medio hacer, y para qué meta era. */
   frontera: Frontera | undefined
   metaDeLaFrontera: PredicateSignature | undefined
   /** Cuántas veces se cortó por presupuesto la búsqueda de la meta en curso. */
   cortes: number
+  /**
+   * LO QUE UN PLAN DE ESTA MENTE YA CONSIGUIÓ, y todavía tiene en la mano.
+   *
+   * ─── POR QUÉ HACE FALTA ACORDARSE DE ALGO QUE SE PUEDE MIRAR ──────────────
+   *
+   * Porque no se puede mirar. `cumpleCuerpo` de `@anima/plan` contesta `false`
+   * para TODA forma `sostiene` —una `BodyView` no trae la sustancia ni sus tags,
+   * y está dicho en su propio comentario—, así que `holding(tag:carnoso)` **no se
+   * da por cumplida nunca, ni con el pescado en la mano**.
+   *
+   * Y eso no es cosmético: es el bucle que mató la primera corrida del Hito 5. La
+   * meta barata no se completa, así que no se suelta; como no se suelta, D3 no
+   * mira nunca la meta cara —«algo carnoso que además no me envenene»— y la
+   * criatura vuelve a pescar sobre un pescado que ya tiene agarrado. **199 veces,
+   * medido.**
+   *
+   * Lo que esta ranura guarda es la única evidencia que la mente sí tiene: **un
+   * plan suyo corrió entero y salió bien**. Eso no es una sospecha — es lo que
+   * `plan()` promete cuando devuelve pasos: que esos pasos establecen la meta. Y
+   * se guarda con el CUERPO que rindió, así que la respuesta deja de valer sola
+   * en cuanto ese cuerpo se va de la mano (se lo comió, se lo quitaron, se pudrió
+   * y desapareció). No hay que limpiarla: la pregunta se contesta mirando la mano.
+   *
+   * Se limita sola al caso para el que sirve, y por eso no lleva ningún filtro:
+   * la única forma de que dé `true` es que el cuerpo rendido esté EN LA MANO, que
+   * es exactamente lo que dice `sostiene`. Una meta de temperatura o de alcance no
+   * la puede activar aunque su plan haya rendido algo.
+   */
+  conseguido: { readonly meta: PredicateSignature; readonly cuerpo: string } | undefined
+  /**
+   * EL ÚLTIMO BOCADO QUE NO SE PUDO TRAGAR, para no volver a intentarlo.
+   *
+   * Es el mismo cerrojo que `fondosQueFallaron` y por el mismo motivo: un
+   * `tragar` que fracasa no gasta aliento y no cambia nada, así que si D3 vuelve a
+   * elegir el mismo cuerpo el tick que viene lo elige para siempre. La lista de
+   * bocados sale de leer `calories`, `mass` y `toxicity`, que no cambian porque
+   * uno haya fallado: sin esto, un solo rechazo del mundo tilda a la criatura.
+   *
+   * Se limpia con el primer `aterrizar(e, true)`, igual que la rueda: lo que
+   * falló una vez merece otra cuando algo volvió a salir bien.
+   */
+  bocadoQueFallo: string | undefined
   /**
    * CUÁLES de las tres conductas de fondo fracasaron desde el último éxito, en
    * una máscara de tres bits (bit `i` ↔ `ORDEN_DE_FONDO[i]`).
@@ -326,6 +376,8 @@ export function nuevoEstado(): EstadoDeLaEscalera {
     frontera: undefined,
     metaDeLaFrontera: undefined,
     cortes: 0,
+    conseguido: undefined,
+    bocadoQueFallo: undefined,
     fondosQueFallaron: 0,
   }
 }
@@ -350,12 +402,31 @@ export function avanzarReloj(e: EstadoDeLaEscalera): void {
  * que nombra algo que no se hizo. Replanificar cuesta a lo sumo un presupuesto
  * de expansiones; ejecutar un plan roto cuesta un rechazo del mundo por paso.
  */
-export function aterrizar(e: EstadoDeLaEscalera, ok: boolean): void {
+export function aterrizar(e: EstadoDeLaEscalera, ok: boolean, rindio?: string): void {
   const era = e.enVuelo
   e.enVuelo = undefined
   if (ok) {
-    // Algo salió bien: la rueda vuelve a tener las tres conductas disponibles.
+    // Algo salió bien: la rueda vuelve a tener las tres conductas disponibles y
+    // el bocado que había fallado vuelve a estar sobre la mesa.
     e.fondosQueFallaron = 0
+    e.bocadoQueFallo = undefined
+    // ─── Y SI ERA EL ÚLTIMO PASO DE UN PLAN, LA META SE CONSIGUIÓ ──────────
+    //
+    // «El último» se lee del propio estado y no de un contador: D1 saca el paso
+    // de la cola ANTES de entregarlo, así que una cola vacía al aterrizar quiere
+    // decir que no queda nada del plan. `deFondo` afuera porque una conducta de
+    // fondo no establece ninguna meta — deambular no consigue nada.
+    if (!e.deFondo && e.pasosPendientes.length === 0 && e.metaEnCurso !== undefined && rindio !== undefined) {
+      e.conseguido = { meta: e.metaEnCurso, cuerpo: rindio }
+    }
+    return
+  }
+  // El bocado se anota ANTES que la rueda: `tragar` viaja con `deFondo` puesto
+  // —no sale de un plan, así que fallar no puede llevarse ningún plan puesto— y
+  // `indiceDeFondo` lo contesta `-1`, o sea que sin esta rama un `tragar` fallido
+  // no dejaría rastro en ningún lado.
+  if (era !== undefined && era.k === 'tragar') {
+    e.bocadoQueFallo = era.bocado.k === 'id' ? era.bocado.id : undefined
     return
   }
   if (e.deFondo) {
@@ -536,7 +607,7 @@ function grados(x: number): string {
  */
 function continuar(v: VistaDeLaMente, e: EstadoDeLaEscalera): Decision | undefined {
   const meta = e.metaEnCurso
-  if (meta !== undefined && yaEstaCumplida(meta, v)) {
+  if (meta !== undefined && yaEstaCumplida(meta, v, e)) {
     const habia = e.enVuelo !== undefined
     olvidarMeta(e)
     // El corte se informa; la meta ya no está, así que el tick que viene la
@@ -579,9 +650,24 @@ function continuar(v: VistaDeLaMente, e: EstadoDeLaEscalera): Decision | undefin
  * donde la meta se tira con un motivo. Contestar `true` acá sería declarar
  * cumplido lo que no se sabe leer, que es la peor de las dos respuestas.
  */
-function yaEstaCumplida(meta: PredicateSignature, v: VistaDeLaMente): boolean {
+function yaEstaCumplida(meta: PredicateSignature, v: VistaDeLaMente, e: EstadoDeLaEscalera): boolean {
+  if (loConseguido(e, meta, v)) return true
   const p = interpretar(meta)
   return p !== undefined && cumple(p, v)
+}
+
+/**
+ * Si un plan de esta mente ya estableció esta meta y lo que rindió sigue en la
+ * mano. Ver `EstadoDeLaEscalera.conseguido`.
+ *
+ * Va ANTES de `cumple` y no después: es la barata —dos comparaciones contra una
+ * lista de tres— y es la única que hoy sabe contestar por `sostiene`.
+ */
+function loConseguido(e: EstadoDeLaEscalera, meta: PredicateSignature, v: VistaDeLaMente): boolean {
+  const c = e.conseguido
+  if (c === undefined || c.meta !== meta) return false
+  for (const b of v.self.holding) if (b.id === c.cuerpo) return true
+  return false
 }
 
 /**
@@ -623,6 +709,11 @@ function refsDe(i: Intencion): readonly Ref[] {
         })
     case 'comer':
       return i.bocado === undefined ? [] : [i.bocado]
+    // `tragar` SIEMPRE nombra su bocado: la cuenta del veneno se hizo sobre ese
+    // cuerpo, así que dejar elegir a la innata sería usar un número calculado
+    // para otra cosa.
+    case 'tragar':
+      return [i.bocado]
     case 'frotar':
       return [i.a, i.b]
     case 'poner':
@@ -713,13 +804,59 @@ function lasOportunidades(
   // tentación. Se saltea acá —en la elección— y no al fracasar, y el porqué largo
   // está en la decisión 7 del encabezado. El barrido está acotado por la lista,
   // que `opportunities()` ya recorta a `OPORTUNIDADES_QUE_MIRA`.
+  //
+  // UN BOCADO NO PASA POR ESE PORTÓN, y no es una excepción: es que el portón
+  // pregunta otra cosa. `sinVocabulario` contesta «¿sabe el PLANIFICADOR llegar
+  // hasta acá?», y un bocado no va al planificador — lo establece la mente, de un
+  // mordisco, con la habilidad `comer` cuyo contrato dice que deja `stamina > 0`.
+  // Pasarlo por la tabla de esquemas lo vetaría siempre: ningún proceso de la
+  // semilla establece `stamina`, ni tiene por qué.
+  //
+  // Y TAMPOCO ENTRA LO QUE YA ESTÁ CUMPLIDO. `tomarMeta` ya se planta ahí, pero
+  // plantarse ahí GASTA EL TICK: D3 elige la mejor, descubre que ya la tiene, no
+  // toma nada y el tick se cae a D5. Con dos metas parecidas —«algo carnoso» y
+  // «algo carnoso que no me envenene»— eso es un tapón: la barata gana siempre,
+  // ya está cumplida siempre, y la cara no se mira nunca. Saltearla acá es lo que
+  // deja que la criatura pase de una a la otra.
   let mejor: Opportunity | undefined
   for (const x of ops) {
-    if (sinVocabulario(x.meta)) continue
+    if (x.bocado === undefined) {
+      if (sinVocabulario(x.meta)) continue
+      if (yaEstaCumplida(x.meta, v, e)) continue
+    } else if (x.bocado.id === e.bocadoQueFallo) continue
     mejor = x
     break
   }
   if (mejor === undefined) return undefined
+
+  // ─── EL BOCADO SE CIERRA ACÁ MISMO: NO ES UNA META, ES UN ACTO ────────────
+  //
+  // No toma meta, no pide plan y **no consulta la histéresis**, y las tres cosas
+  // son la misma razón: la histéresis existe para que la criatura no cambie de
+  // objetivo cada tick —«no sueltes lo que estabas haciendo por algo apenas
+  // mejor»— y tragar no suelta nada. Dura un tick, no cambia `metaEnCurso`, y
+  // cuando termina D1 retoma el plan por donde iba (`pasosPendientes` sigue
+  // intacto). Hacerlo esperar `PERMANENCIA_EN_TICKS` sería una criatura con la
+  // comida en la mano contando hasta ocho.
+  //
+  // Y no puede quedarse en bucle: el bocado desaparece del mundo apenas se traga,
+  // y si el mundo lo rechaza queda anotado en `bocadoQueFallo` y no se vuelve a
+  // ofrecer hasta que algo salga bien.
+  const b = mejor.bocado
+  if (b !== undefined) {
+    const tragar: Conducta = {
+      k: 'tragar',
+      bocado: { k: 'id', id: b.id },
+      toxicidadTolerada: b.toxicidadTolerada,
+      porQue: mejor.porque,
+    }
+    // `deFondo` en `true` quiere decir «esto no salió de un plan», que es lo que
+    // el campo decide de verdad: que un fracaso no se lleve puesto el plan que
+    // sigue esperando, y que D0 no lo devuelva a la cola de pasos si el fuego lo
+    // interrumpe. Que hasta hoy sólo lo pusiera D5 era una coincidencia.
+    return entregar(e, 'D3', tragar, mejor.porque, true)
+  }
+
   if (mejor.meta === e.metaEnCurso) return undefined
   if (!puedeCambiar(e, 'D3', mejor.valor)) return undefined
 
@@ -873,7 +1010,7 @@ function tomarMeta(
   // Sin esta línea, la criatura toma la meta, `plan()` devuelve el plan vacío
   // —no hay nada que hacer— y la meta queda puesta para siempre tapándole el
   // paso a la que sí tiene trabajo detrás.
-  if (yaEstaCumplida(meta, v)) return undefined
+  if (yaEstaCumplida(meta, v, e)) return undefined
   // NI LO QUE NINGÚN ESQUEMA SABE ESTABLECER (decisión 7). Va DESPUÉS de mirar si
   // ya está cumplida y no antes: `mass>=1` no tiene esquema y aun así puede estar
   // cumplida de entrada, y contestar «no se puede» sobre algo que ya se tiene

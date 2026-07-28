@@ -294,8 +294,18 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
         `  murió en ......... ${String(r.muerta)}\n`,
     )
 
-    // UNA meta en 20.000 ticks, tomada en el tick 0, y es la que se puede hacer.
-    expect(r.metas).toEqual(['0:holding(tag:carnoso)'])
+    // DOS metas en 20.000 ticks, y la segunda es la noticia del tramo del bocado
+    // (ADR II-0013): la criatura consigue el pescado, se acuerda de que lo
+    // consiguió —`EstadoDeLaEscalera.conseguido`, que es lo único que hoy sabe
+    // contestar por `holding(tag:…)`— y **sube el pedido** a la versión que
+    // además se puede tragar sin envenenarse. Antes se quedaba con la primera
+    // para siempre y repetía la última pesca hasta morirse.
+    //
+    // Las dos se toman temprano y ninguna se suelta después: la lista sigue
+    // teniendo largo dos en 20.000 ticks, que es lo que este test cuida.
+    expect(r.metas.length).toBe(2)
+    expect(r.metas[0]).toBe('0:holding(tag:carnoso)')
+    expect(r.metas[1]).toMatch(/^\d+:holding\(tag:carnoso,toxicity<[\d.]+\)$/)
     // Y la hace: la cadena de la caña entera, y después a pescar.
     for (const paso of ['ir(vara)', 'sostener(vara)', 'ir(matorral)', 'sostener(matorral)', 'unir(matorral+vara)']) {
       expect(cuenta(r.despegues, paso), paso).toBe(1)

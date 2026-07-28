@@ -21,8 +21,10 @@
 //   `false` en las veinte partidas. El mundo no le puso NINGUNO de los nueve
 //   problemas delante a la criatura, ni una vez.
 //
-//   Y la causa no es la mente, ni el hambre, ni la semilla. Son tres cosas
-//   medidas acá, en este orden de importancia:
+//   Y la causa no es la mente, ni el hambre, ni la semilla. El bloque (4) la dice
+//   secuencia por secuencia y en las nueve contesta lo mismo —**EL MUNDO**, y no
+//   «la mente no llega» ni «se murió antes»—, separado del segundo con el control
+//   del tanque lleno. Son cinco cosas medidas acá, en este orden de importancia:
 //
 //   ─── (A) EL MUNDO NO MATERIALIZA NADA DE LO QUE EL DIOS SIEMBRA ───────────
 //
@@ -52,18 +54,24 @@
 //   construyendo UNA `Physics` por partida, y lo deja marcado en rojo: el arnés no
 //   puede ser el que arregla un agujero del motor.
 //
-//   ─── (C) LA CRIATURA NO COME, Y NO ES LO QUE MANDA ────────────────────────
+//   ─── (C) LA CRIATURA NO COME, Y AHORA SE SABE POR QUÉ ─────────────────────
 //
-//   Con el tanque de la escena canónica (310) se muere entre el tick 6.133 y el
-//   6.198 en las veinte partidas —el 29,9% del presupuesto de 400.000 ticks—, con
-//   193 a 199 pescas hechas y CERO bocados, que es lo que
-//   `mind/tests/hito-5-el-criterio.test.ts` ya tenía medido. Pero **el control con
-//   el tanque lleno (1000) no mueve una sola fila**: las veinte llegan al 96,5%
-//   del presupuesto —dieciocho mueren pasado el tick 19.870 y las otras dos en el
-//   14.392 y el 12.012—, con 12 a 645 pescas y CERO bocados, y el juez sigue
-//   diciendo 0 de 9 con 9 sin medir. O sea: la muerte temprana NO es la razón por
-//   la que las secuencias no aparecen. Esa separación es la que el número
-//   necesitaba para significar algo, y es la que el encargo pedía.
+//   Con el tanque de la escena canónica (310) se muere entre el tick 3.689 y el
+//   6.198 en las veinte partidas —el 28,0% del presupuesto de 400.000 ticks—, con
+//   CERO bocados. El control con el tanque lleno (1000) no mueve una sola fila:
+//   llega al 95,3% del presupuesto y el juez sigue diciendo 0 de 9 con 9 sin
+//   medir. La muerte temprana NO es la razón por la que las secuencias no
+//   aparecen, y esa separación es la que el número necesitaba para significar algo.
+//
+//   LO QUE CAMBIÓ desde la corrida anterior es la CAUSA del cero bocados, y hay
+//   que decirlo entero porque el diagnóstico de antes ya no vale. Entonces la
+//   mente no tenía por dónde emitir `comer`. Ahora sí —la conducta `tragar` existe
+//   y este banco la cuenta— y **el cero es correcto**: en las veinte partidas
+//   nacieron 113 cuerpos comestibles, y el mejor bocado que alguno de ellos ofreció
+//   en cualquier tick vale **−3,0140 de stamina** (bloque (4), hecho 2). Con el
+//   veneno cobrado (ADR II-0013, `K = 25`) la carne cruda del río es veneno: la
+//   criatura la rechaza, y rechazarla es lo que corresponde. Lo que le falta no es
+//   apetito, es FUEGO — y (E) dice por qué no puede tenerlo.
 //
 //   ─── (D) TRECE DE LAS VEINTE SEMILLAS DE §10 NO TIENEN RÍO ────────────────
 //
@@ -79,6 +87,22 @@
 //   cualquier barrido de las veinte con una sola `Physics` encuentra orilla en
 //   las veinte —la misma veinte veces—, así que este 13/20 es el primer número
 //   que alguien mide sobre esa lista de semillas.
+//
+//   ─── (E) NO PUEDE HABER FUEGO, Y ESE VETO EXPLICA SIETE DE LAS NUEVE ──────
+//
+//   El cuerpo encendible —el que cumple el rol `a` de `friccion` Y entregaría
+//   potencia si ardiera— **más liviano que existió en las veinte partidas** pesa
+//   **1,0000 kg**, contra un techo medido de 0,7132 (§2.2: 0,7132 no prende y 0,80
+//   sí, y eso con el tanque LLENO). Es la `vara` que este arnés pone a mano, y en
+//   cuanto la criatura arma la caña pasa a pesar 1,2. No hay yesca porque el mundo
+//   no materializa la corteza ni el junco que el dios sembró — o sea que (E) es (A)
+//   otra vez, mirada desde la fricción.
+//
+//   Siete de las nueve secuencias cuelgan de que haya fuego. Las otras dos
+//   —`no-frotar` y `ponerle-punta`— no lo necesitan y tampoco se pueden medir: no
+//   hay una SEGUNDA vara que comparar (`dosCandidatosDeFriccion` 0/20) ni nada con
+//   filo (`filoALaVista` 0/20). El bloque (4) publica las nueve con su causa, y en
+//   las nueve la causa es la misma: **EL MUNDO**.
 //
 // ═══ QUÉ SE PUBLICA, QUE ES LO QUE §10 MANDA ════════════════════════════════
 //
@@ -116,15 +140,39 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { buildSeedPhysics, HZ_DE_REFERENCIA, PHYSICS_VERSION, qualityOf, T_AMBIENTE } from '@anima/physics'
+import {
+  buildSeedPhysics,
+  cumpleRol,
+  EXTRACCION,
+  HZ_DE_REFERENCIA,
+  PHYSICS_VERSION,
+  qualityOf,
+  T_AMBIENTE,
+} from '@anima/physics'
 import type { Body, FormId, Physics, QualityVector } from '@anima/physics'
-import { crearDios, decretoDe, hashWorldState, mapaDeActores, mapaDeCuerpos } from '@anima/world'
-import type { Actor, EstadoDelDios, Placement, WorldBody, WorldState } from '@anima/world'
+import {
+  COSTO_POR_TOXICIDAD_Y_KILO,
+  crearDios,
+  decretoDe,
+  describir,
+  hashWorldState,
+  mapaDeActores,
+  mapaDeCuerpos,
+  STAMINA_POR_CALORIA,
+} from '@anima/world'
+import type {
+  Actor,
+  EstadoDelDios,
+  Placement,
+  Violacion,
+  WorldBody,
+  WorldState,
+} from '@anima/world'
 import { Partida } from '@anima/perceive'
 import { Creencias, Mente } from '@anima/mind'
 
-import { Detector, resumir, SECUENCIAS } from '../src/index.js'
-import type { NombreDeSecuencia, Veredicto } from '../src/index.js'
+import { Detector, potenciaSiArdiera, resumir, ROL_A_DE_FRICCION, SECUENCIAS, TECHO_DE_LA_FRICCION } from '../src/index.js'
+import type { FilaDelBanco, NombreDeSecuencia, Situaciones, Veredicto } from '../src/index.js'
 import { ruidoDelAzar, tablaDelControl, correrElControl } from './azar.js'
 
 /** Ver el encabezado: acá el gatillo es el COSTO y no la varianza. */
@@ -320,8 +368,52 @@ interface Corrida {
   readonly murioEn: number
   readonly alientoFinal: number
   readonly veredicto: Veredicto
+  /** Los nueve contra-detectores de ESTA partida, para poder decir CUÁL faltó. */
+  readonly situaciones: Situaciones
   /** Qué habilidades despegaron y cuántas veces. El denominador de todo diagnóstico. */
   readonly vuelos: ReadonlyMap<string, number>
+  /**
+   * CUERPOS QUE NACIERON DE UN PROCESO, y cuántos de ellos tenían calorías.
+   *
+   * ─── POR QUÉ ESTA COLUMNA REEMPLAZA A «pescas», y no es un detalle ─────────
+   *
+   * La corrida anterior publicaba `pescas` contando DESPEGUES de
+   * `aplicar(extraccion)`, y el proyecto entero leyó ese número como pescados:
+   * «pescó 199 y le faltaban 83» (`mind/tests/hito-5-el-criterio.test.ts`).
+   * Medido acá, en la misma semilla: 198 extracciones COMPLETAS y **dos cuerpos
+   * comestibles nacidos en toda la partida**. Un despegue no es un proceso
+   * completo y un proceso completo no es una pieza: el que rinde es el dado del
+   * mundo contra el `catch` del aparejo, y el pozo tiene `capacity: 1`.
+   */
+  readonly nacidos: number
+  readonly comestibles: number
+  /** Procesos `extraccion` COMPLETOS. Ni despegues ni piezas: lo del medio. */
+  readonly extraccionesCompletas: number
+  /** Lo que el MUNDO narró de comer, que es la única verdad sobre bocados. */
+  readonly comio: number
+  readonly enveneno: number
+  /**
+   * EL MEJOR BOCADO QUE EL MUNDO OFRECIÓ ALGUNA VEZ, en stamina neta.
+   *
+   * `calories · STAMINA_POR_CALORIA − toxicity · masa · COSTO_POR_TOXICIDAD_Y_KILO`,
+   * o sea las dos mitades de `intencionComer` (ADR II-0013) con las dos constantes
+   * IMPORTADAS del motor y no copiadas. Se calcula sobre todo cuerpo con calorías
+   * que no sea una criatura, en todos los ticks.
+   *
+   * Es una COTA SUPERIOR y a propósito: la mente topa lo acreditado contra lo que
+   * todavía entra en el tanque y acá no se topa nada. Si hasta la cota es
+   * negativa, no hubo un solo bocado que valiera la pena en toda la partida.
+   */
+  readonly mejorNeto: number | undefined
+  /**
+   * EL CUERPO ENCENDIBLE MÁS LIVIANO QUE EXISTIÓ, en cualquier tick.
+   *
+   * «Encendible» es la misma pregunta que hace el juez para los detectores 1 y 2:
+   * cumple el rol `a` de `friccion` Y entregaría potencia si ardiera. Es el número
+   * que decide si en esta partida podía haber fuego, porque frotar se paga del
+   * tanque y el techo medido es `TECHO_DE_LA_FRICCION`.
+   */
+  readonly encendible: { readonly id: string; readonly masa: number } | undefined
   /** Cuántas cosas sueltas decretó el dios en los 3×3 chunks alrededor de la parada. */
   readonly sueltasDecretadas: number
   /** Y cuántos cuerpos puso el mundo por su cuenta: ni a mano, ni pozo, ni nacidos. */
@@ -334,6 +426,15 @@ interface Corrida {
    */
   readonly firma: string
   readonly hash: string
+  /**
+   * LOS ESTADOS ILEGALES QUE EL ARNÉS VIO EN ESTA PARTIDA.
+   *
+   * Es la otra mitad de que un cero signifique algo. Un «0 de 9 secuencias» sobre
+   * un mundo que nadie auditó no distingue «no emergió nada» de «el mundo estaba
+   * roto y nadie miró»: hasta este tramo, `revisarEstado` no lo llamaba una sola
+   * línea de `ii/` fuera de su propio test.
+   */
+  readonly violaciones: readonly { readonly tick: number; readonly v: Violacion }[]
 }
 
 /**
@@ -356,7 +457,13 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
   const o = laOrilla(semilla)
   if (o === undefined) return undefined
 
-  const p = new Partida(escenaDe(o, tanque))
+  // `vigilar: true`: las cinco preguntas que un estado contesta solo, corridas
+  // sobre cada uno de los 20.000 ticks. Hasta este tramo el arnés de invariantes
+  // no lo llamaba una sola línea de `ii/` fuera de su propio test, y el adversario
+  // del veneno midió un estado ilegal —un actor sin cuerpo— que atravesaba una
+  // corrida entera sin que nada se pusiera rojo. Un cero de secuencias emergentes
+  // sobre un mundo que nadie está auditando vale menos que un cero auditado.
+  const p = new Partida(escenaDe(o, tanque), { vigilar: true })
   const m = new Mente({ actor: 'ana', memoria: new Creencias() })
   const d = new Detector()
   // El contrato de alimentación del detector: la primera muestra es el estado
@@ -366,6 +473,13 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
   const vuelos = new Map<string, number>()
   const nacidos = new Set<string>()
   const vistos = new Set<string>()
+  let comestibles = 0
+  let extraccionesCompletas = 0
+  let comio = 0
+  let enveneno = 0
+  let mejorNeto: number | undefined
+  let encendible: { readonly id: string; readonly masa: number } | undefined
+  const rolA = ROL_A_DE_FRICCION()
   let murioEn = -1
   let aliento = tanque
   let t = 0
@@ -377,12 +491,45 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
       vuelos.set(n, (vuelos.get(n) ?? 0) + 1)
     }
     const eventos = p.tick()
-    d.observar({ state: p.state, events: eventos })
-    for (const e of eventos) if (e.k === 'nacio') nacidos.add(e.id)
-    for (const id of p.state.bodies.keys()) vistos.add(id)
-    const cuerpo = p.state.bodies.get('ana-cuerpo')
-    if (p.state.actors.has('ana')) {
-      if (cuerpo !== undefined) aliento = qualityOf(cuerpo.body, 'stamina', p.state.phys)
+    const w = p.state
+    d.observar({ state: w, events: eventos })
+    for (const e of eventos) {
+      if (e.k === 'nacio') {
+        nacidos.add(e.id)
+        const b = w.bodies.get(e.id)
+        if (b !== undefined && qualityOf(b.body, 'calories', w.phys) > 0) comestibles += 1
+      }
+      if (e.k === 'proceso' && e.process === EXTRACCION.id && e.completo) extraccionesCompletas += 1
+      if (e.k === 'comio') comio += 1
+      if (e.k === 'enveneno') enveneno += 1
+    }
+    // ─── EL RECORRIDO DEL DIAGNÓSTICO, y por qué es por tick ────────────────
+    //
+    // Las dos preguntas —«¿hubo alguna vez un bocado que valiera la pena?» y
+    // «¿hubo alguna vez algo lo bastante liviano como para poder encenderlo?»—
+    // son sobre TODA la partida y no sobre el estado final: el cuerpo que las
+    // contesta puede haber existido treinta ticks. Mirar sólo el final diría que
+    // no hubo vara justo porque la vara se gastó en la caña.
+    //
+    // Es barato: en estas partidas el mundo nunca pasa de una docena de cuerpos,
+    // por el agujero (A).
+    const cuerpoDeAna = w.actors.get('ana')?.body
+    for (const [id, b] of w.bodies) {
+      if (id === cuerpoDeAna) continue
+      const masa = qualityOf(b.body, 'mass', w.phys)
+      const cal = qualityOf(b.body, 'calories', w.phys)
+      if (cal > 0) {
+        const neto = cal * STAMINA_POR_CALORIA - qualityOf(b.body, 'toxicity', w.phys) * masa * COSTO_POR_TOXICIDAD_Y_KILO
+        if (mejorNeto === undefined || neto > mejorNeto) mejorNeto = neto
+      }
+      if (encendible !== undefined && masa >= encendible.masa) continue
+      if (!cumpleRol(b.body, rolA, w.phys) || potenciaSiArdiera(b.body, w.phys) <= 0) continue
+      encendible = { id, masa }
+    }
+    for (const id of w.bodies.keys()) vistos.add(id)
+    const cuerpo = w.bodies.get('ana-cuerpo')
+    if (w.actors.has('ana')) {
+      if (cuerpo !== undefined) aliento = qualityOf(cuerpo.body, 'stamina', w.phys)
     } else {
       murioEn = t
       break
@@ -420,11 +567,20 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
     murioEn,
     alientoFinal: aliento,
     veredicto: d.veredicto(),
+    situaciones: { ...d.cronica.situaciones },
     vuelos,
+    nacidos: nacidos.size,
+    comestibles,
+    extraccionesCompletas,
+    comio,
+    enveneno,
+    mejorNeto,
+    encendible,
     sueltasDecretadas,
     cuerposDelMundo,
     firma,
     hash: hashWorldState(p.state),
+    violaciones: p.informe.violaciones,
   }
 }
 
@@ -567,14 +723,26 @@ function tablaDelPresupuesto(b: Banco, titulo: string): string {
   for (const c of b.corridas) {
     if (c.murioEn >= 0) muertas += 1
     vividos += c.ticks
-    const pesca = c.vuelos.get('aplicar(extraccion)') ?? 0
-    const comidas = [...c.vuelos].filter(([k]) => k.startsWith('comer')).reduce((a, [, v]) => a + v, 0)
+    // TRES COLUMNAS DONDE ANTES HABÍA UNA, y las tres dicen cosas distintas:
+    // cuántas veces despegó la habilidad, cuántas veces el proceso llegó a
+    // completarse, y cuántos cuerpos comestibles nacieron de verdad. La corrida
+    // anterior publicaba sólo la primera con el nombre «pescas», y el proyecto la
+    // leyó como pescados.
+    const despegues = c.vuelos.get(`aplicar(${EXTRACCION.id})`) ?? 0
+    // `comer` Y `tragar`: la mente bautiza `tragar(x)` al bocado que decide sola
+    // (`mind/src/mente.ts`, la conducta `tragar`) y `comer` al que sale de un
+    // plan. Contar sólo el prefijo `comer` daba cero aunque la criatura comiera.
+    const bocados = [...c.vuelos]
+      .filter(([k]) => k.startsWith('comer') || k.startsWith('tragar'))
+      .reduce((a, [, v]) => a + v, 0)
     lineas.push(
-      `  ${String(c.semilla)} · chunk ${String(c.cx)}:${String(c.cy)} · ` +
-        `parada ${String(c.parada.x)},${String(c.parada.y)} · ` +
-        `${c.murioEn < 0 ? 'viva' : `murió t=${String(c.murioEn)}`} ` +
-        `(${((c.ticks * 100) / TICKS).toFixed(1)}% del presupuesto) · ` +
-        `aliento ${dos(c.alientoFinal)} · pescas ${String(pesca)} · bocados ${String(comidas)} · ` +
+      `  ${String(c.semilla)} · ${c.murioEn < 0 ? 'viva' : `murió t=${String(c.murioEn)}`} ` +
+        `(${((c.ticks * 100) / TICKS).toFixed(1)}%) · aliento ${dos(c.alientoFinal)} · ` +
+        `extraccion ${String(despegues)} despegues → ${String(c.extraccionesCompletas)} completas → ` +
+        `${String(c.comestibles)} comestibles de ${String(c.nacidos)} nacidos · ` +
+        `bocados ${String(bocados)} (el mundo narró comio ${String(c.comio)} · enveneno ${String(c.enveneno)}) · ` +
+        `mejor neto ${c.mejorNeto === undefined ? 'no hubo comida' : dos(c.mejorNeto)} · ` +
+        `encendible ${c.encendible === undefined ? 'NINGUNO' : `${c.encendible.id} ${c.encendible.masa.toFixed(4)} kg`} · ` +
         `hash ${c.hash.slice(0, 8)}`,
     )
   }
@@ -865,6 +1033,91 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(r.cuantasCuentan, `aparecieron ${String(r.cuantasCuentan)} de ${String(r.filas.length)}`).toBeGreaterThanOrEqual(4)
   }, 600_000)
 
+  it('Y EL MUNDO SOBRE EL QUE SE MIDIÓ ES LEGAL: el arnés corrió sobre los 20.000 ticks', () => {
+    // ─── POR QUÉ ESTO ES PARTE DEL CRITERIO Y NO UNA HIGIENE ────────────────
+    //
+    // Este archivo publica un cero. Un cero vale lo que valga el mundo sobre el
+    // que se midió, y hasta este tramo ese mundo NO SE AUDITABA: `grep
+    // exigirInvariantes ii/` devolvía dos archivos —el que lo define y su propio
+    // test— y ninguna corrida real de `ii/` lo llamaba. El adversario del veneno
+    // midió un estado ilegal que atravesaba una corrida entera en silencio: una
+    // criatura que se comía a sí misma quedaba de actor SIN CUERPO, con
+    // `inventario-inconsistente` en cada uno de los 500 ticks siguientes.
+    //
+    // Ahora `correrPartida` construye la `Partida` con `vigilar: true` y las cinco
+    // preguntas que un estado contesta solo corren sobre cada tick de cada una de
+    // las veinte. Si la lista sale vacía, el cero de secuencias es un cero sobre un
+    // mundo legal. Si sale con algo, el cero no significaba nada — y hay que
+    // saberlo ANTES de discutir umbrales.
+    //
+    // La sexta pregunta, la conservación, sigue sin poder encenderse acá: los tres
+    // caminos por los que el dios materializa materia no emiten ningún evento que
+    // `acreditado()` sepa leer, y su `it.fails` está en
+    // `perceive/tests/ataque-a-la-costura.test.ts`. Lo que se afirma es lo que se
+    // midió, ni una palabra más.
+    const b = canonico()
+    const total = b.corridas.reduce((a, c) => a + c.violaciones.length, 0)
+    const conAlguna = b.corridas.filter((c) => c.violaciones.length > 0)
+    const clases = new Set(b.corridas.flatMap((c) => c.violaciones.map((x) => x.v.k)))
+    console.log(
+      `\n─── EL ARNÉS, SOBRE LAS VEINTE ───\n` +
+        `  ${String(b.corridas.reduce((a, c) => a + c.ticks, 0))} ticks auditados con \`revisarEstado\` (orden · espacio · referencias · inventarios · rangos)\n` +
+        `  estados ilegales: ${String(total)} en ${String(conAlguna.length)} de ${String(b.corridas.length)} partidas · clases: ${[...clases].join(', ') || '(ninguna)'}\n` +
+        (conAlguna.length === 0
+          ? '  ninguna partida los tuvo\n'
+          : conAlguna
+              .map(
+                (c) =>
+                  `  semilla ${String(c.semilla)} (${String(c.violaciones.length)}): ticks ` +
+                  `${c.violaciones.map((x) => String(x.tick)).join(',')} — ${describir(c.violaciones[0]?.v as Violacion)}\n`,
+              )
+              .join('') +
+            '\n' +
+            '  LO QUE ES, medido y no supuesto: **el dios materializa un banco de peces**\n' +
+            '  **encima de un cuerpo que ya estaba en esa celda**. `materializarPozos`\n' +
+            '  (`world/src/step.ts`) hace `ponerCuerpo` en `pozo.at` sin preguntarle a\n' +
+            '  `estorbo`, que es el guardián de la ley 8 que sí aplican `goTo`, `put` y\n' +
+            '  `drop`. La vara que este arnés deja a tres celdas cayó justo ahí en UNA de\n' +
+            '  las veinte semillas, y el solapamiento dura hasta que la criatura levanta la\n' +
+            '  vara: `revisarEspacio` no mira los cuerpos que están en una mano.\n' +
+            '\n' +
+            '  POR QUÉ NO SE ARREGLA EN ESTE TRAMO: la reparación no es un `if`, es una\n' +
+            '  decisión — o el banco no se materializa (y la comida del mundo depende de\n' +
+            '  dónde alguien dejó un palo), o se corre de celda (y entonces la posición de\n' +
+            '  todo pozo depende del estado, o sea que el decreto deja de ser una función\n' +
+            '  pura de la semilla y se mueven todos los hashes). Pide su ADR. Queda pinado\n' +
+            '  abajo con `it.fails` y acá se afirma su forma exacta, para que cualquier\n' +
+            '  cosa NUEVA rompa este test.\n'),
+    )
+    // Lo que se afirma es la FORMA de lo único que hay, y es una aserción fuerte:
+    // cualquier estado ilegal de otra clase, en otra partida o en otro tick pone
+    // esto en rojo. No es un umbral aflojado: es el hallazgo, escrito.
+    expect([...clases]).toEqual(total === 0 ? [] : ['solidos-solapados'])
+    expect(conAlguna.length).toBeLessThanOrEqual(1)
+    for (const c of conAlguna) {
+      for (const x of c.violaciones) {
+        expect(x.v.k).toBe('solidos-solapados')
+        // Uno de los dos siempre es un banco de peces: eso es lo que lo vuelve un
+        // problema del dios y no de la escena.
+        const dosIds = x.v.k === 'solidos-solapados' ? [x.v.a, x.v.b] : []
+        expect(dosIds.some((id) => id.startsWith('pozo:'))).toBe(true)
+      }
+    }
+  }, 600_000)
+
+  it.fails('LO QUE DEBERÍA PASAR · cero estados ilegales en los 112.187 ticks auditados', () => {
+    // El número medido hoy es **4**, todos en la semilla 20260728, en los ticks 1 a
+    // 4, y todos la misma cosa: `solidos-solapados` entre `pozo:-5:-2` y `vara` en
+    // (−79,−32). Se apaga solo en el tick 5 porque la criatura levanta la vara y
+    // `revisarEspacio` no mira lo que está en una mano — o sea que ni siquiera se
+    // arregla: se esconde.
+    //
+    // Es la primera cosa que el arnés encontró la primera vez que alguien lo
+    // encendió, y ésa es la mitad del valor de haberlo encendido.
+    const b = canonico()
+    expect(b.corridas.reduce((a, c) => a + c.violaciones.length, 0)).toBe(0)
+  }, 600_000)
+
   it('CUÁNTO DEL PRESUPUESTO SE USÓ, que es la mitad de la pregunta', () => {
     // La otra mitad —«¿cuántas no aparecieron porque la criatura se murió antes de
     // poder intentarlas?»— la contesta el control del bloque (3). Acá va el
@@ -940,6 +1193,161 @@ describe('(3) el control con el tanque lleno', () => {
   }, 900_000)
 })
 
+// ═══ (4) EL DIAGNÓSTICO: DE CUÁL DE LAS TRES CAUSAS ES CADA CERO ════════════
+//
+// Un cero por secuencia no dice nada solo. Puede ser una de tres cosas, y las
+// tres se separan con datos que ya están medidos y sin opinar sobre ninguna:
+//
+//   EL MUNDO   el contra-detector dio `false` en las veinte, y también en el
+//              control con el tanque lleno —que vive 3,4× más—. El mundo nunca
+//              puso el problema delante, y no fue por falta de tiempo.
+//   LA MUERTE  el contra-detector dio `false` en las veinte y SÍ dio `true` en
+//              alguna del control. Lo que faltó fue vida, no mundo.
+//   LA MENTE   el contra-detector dio `true` en alguna partida y la firma no
+//              salió igual. Es el único caso en el que el cero mide a la mente.
+//
+// El control con el tanque lleno es lo que hace que «EL MUNDO» y «LA MUERTE» no
+// sean la misma casilla, y por eso este bloque lo consume aunque sea caro.
+
+type Causa = 'EL MUNDO' | 'LA MUERTE' | 'LA MENTE'
+
+/**
+ * QUÉ CONTRA-DETECTORES PIDE CADA SECUENCIA.
+ *
+ * Es una transcripción del campo `situacion` de cada entrada de `src/secuencias
+ * .ts`, y una transcripción es exactamente la clase de cosa que este repositorio
+ * ya vio salir mal (§ la Regla 1 del juez). Por eso no se le cree: el test de más
+ * abajo verifica, partida por partida y fila por fila, que la conjunción de estas
+ * claves da lo mismo que el `situacion` que el detector calculó. Si mañana alguien
+ * le cambia un `&&` a un contra-detector, esto se pone rojo.
+ */
+const LO_QUE_PIDE: readonly (readonly [NombreDeSecuencia, readonly (keyof Situaciones)[]])[] = [
+  ['no-frotar-lo-que-no-alcanza-a-encender', ['dosCandidatosDeFriccion', 'candidatoDeFriccionPesado']],
+  ['la-vara-mas-liviana-que-igual-cocina', ['dosCandidatosDeFriccion']],
+  ['taparlo-con-lo-que-respira', ['fuegoYDosPermeabilidades']],
+  ['ponerle-punta-al-aparejo', ['filoALaVista']],
+  ['comerla-en-el-pico-de-calorias', ['algoSeCocino']],
+  ['cocinar-el-lote-en-un-solo-fuego', ['loteAlAlcance']],
+  ['el-fardo-de-corteza', ['fardoPosible']],
+  ['el-leno-mas-grande-que-todavia-cocina', ['dosCombustiblesEnIntervalo']],
+  ['la-piedra-primero-y-la-comida-encima', ['parrillaOfrecida']],
+]
+
+function pideDe(n: NombreDeSecuencia): readonly (keyof Situaciones)[] {
+  for (const [nombre, claves] of LO_QUE_PIDE) if (nombre === n) return claves
+  throw new Error(`la secuencia ${n} no está en LO_QUE_PIDE`)
+}
+
+function causaDe(canon: FilaDelBanco, ctrl: FilaDelBanco | undefined): Causa {
+  if (canon.situacionEn > 0) return 'LA MENTE'
+  return ctrl !== undefined && ctrl.situacionEn > 0 ? 'LA MUERTE' : 'EL MUNDO'
+}
+
+/** En cuántas partidas cada contra-detector suelto dio verdadero. */
+function cuentaDeClaves(b: Banco): ReadonlyMap<keyof Situaciones, number> {
+  const out = new Map<keyof Situaciones, number>()
+  for (const c of b.corridas) {
+    for (const k of Object.keys(c.situaciones) as (keyof Situaciones)[]) {
+      if (c.situaciones[k]) out.set(k, (out.get(k) ?? 0) + 1)
+    }
+  }
+  return out
+}
+
+describe('(4) el diagnóstico, secuencia por secuencia', () => {
+  it('DE CUÁL DE LAS TRES CAUSAS ES CADA CERO, con la evidencia al lado', () => {
+    const b = canonico()
+    const k = control()
+    const rc = resumir(b.corridas.map((x) => x.veredicto))
+    const rk = resumir(k.corridas.map((x) => x.veredicto))
+    const claves = cuentaDeClaves(b)
+    const n = b.corridas.length
+
+    const lineas: string[] = [
+      ``,
+      `═══ DE CUÁL DE LAS TRES CAUSAS ES CADA CERO ═══`,
+      ``,
+      `  ${'secuencia'.padEnd(38)} apar. situ.  causa      qué contra-detector faltó (en cuántas de ${String(n)} dio verdadero)`,
+      `  ${'─'.repeat(38)} ───── ─────  ─────────  ${'─'.repeat(60)}`,
+    ]
+    for (const f of rc.filas) {
+      const ctrl = rk.filas.find((x) => x.nombre === f.nombre)
+      const causa = causaDe(f, ctrl)
+      const detalle = pideDe(f.nombre)
+        .map((c) => `${c} ${String(claves.get(c) ?? 0)}/${String(n)}`)
+        .join(' ∧ ')
+      lineas.push(
+        `  ${f.nombre.padEnd(38)} ${`${String(f.aparecioEn)}/${String(n)}`.padStart(5)} ` +
+          `${`${String(f.situacionEn)}/${String(n)}`.padStart(5)}  ${causa.padEnd(9)}  ${detalle}`,
+      )
+    }
+
+    // ─── LOS TRES HECHOS DEL MUNDO QUE EXPLICAN LAS NUEVE FILAS ─────────────
+    //
+    // No son adornos del informe: son el «con evidencia» de cada causa. El primero
+    // es el que veta el fuego, el segundo el que veta la comida, y el tercero el
+    // que veta todo lo demás.
+    let masLiviano: { readonly id: string; readonly masa: number } | undefined
+    let sinEncendible = 0
+    let mejorNeto: number | undefined
+    let netosPositivos = 0
+    let comestibles = 0
+    let comio = 0
+    for (const c of b.corridas) {
+      if (c.encendible === undefined) sinEncendible += 1
+      else if (masLiviano === undefined || c.encendible.masa < masLiviano.masa) masLiviano = c.encendible
+      if (c.mejorNeto !== undefined) {
+        if (mejorNeto === undefined || c.mejorNeto > mejorNeto) mejorNeto = c.mejorNeto
+        if (c.mejorNeto > 0) netosPositivos += 1
+      }
+      comestibles += c.comestibles
+      comio += c.comio
+    }
+    const decretadas = b.corridas.reduce((a, c) => a + c.sueltasDecretadas, 0)
+    const materializadas = b.corridas.reduce((a, c) => a + c.cuerposDelMundo, 0)
+
+    lineas.push(
+      ``,
+      `  ── LOS TRES HECHOS DEL MUNDO QUE ESTÁN DETRÁS DE LAS NUEVE FILAS ──`,
+      ``,
+      `  1· NO PUEDE HABER FUEGO. El cuerpo encendible —rol \`a\` de fricción Y que entregaría`,
+      `     potencia si ardiera— más liviano que existió en las ${String(n)} partidas es ` +
+        `${masLiviano === undefined ? 'NINGUNO' : `«${masLiviano.id}» de ${masLiviano.masa.toFixed(4)} kg`},`,
+      `     contra un techo medido de ${String(TECHO_DE_LA_FRICCION)} kg (§2.2: 0,7132 no prende, 0,80 sí, con el tanque LLENO).`,
+      `     Partidas sin ningún encendible: ${String(sinEncendible)}/${String(n)}. Siete de las nueve secuencias cuelgan de que haya fuego.`,
+      ``,
+      `  2· NO HAY UN BOCADO QUE VALGA LA PENA. El mejor neto que ofreció un cuerpo con calorías,`,
+      `     en cualquier tick de cualquier partida, es ${mejorNeto === undefined ? 'no hubo comida' : mejorNeto.toFixed(4)} de stamina` +
+        ` — y es una COTA SUPERIOR.`,
+      `     Partidas con algún bocado de neto positivo: ${String(netosPositivos)}/${String(n)}. Cuerpos comestibles nacidos en total: ${String(comestibles)}.`,
+      `     El mundo narró ${String(comio)} \`comio\`. La mente SÍ sabe emitir el bocado —la conducta \`tragar\` está en`,
+      `     \`mind/src\` y este banco la cuenta— y no lo emite porque el neto es negativo, que es lo correcto.`,
+      ``,
+      `  3· NO HAY MATERIA. El dios decretó ${String(decretadas)} cosas sueltas alrededor y el mundo materializó ${String(materializadas)}.`,
+      `     De ahí salen las dos filas que ni siquiera necesitan fuego: no hay una SEGUNDA vara que`,
+      `     comparar (\`dosCandidatosDeFriccion\` ${String(claves.get('dosCandidatosDeFriccion') ?? 0)}/${String(n)}) ni nada con filo (\`filoALaVista\` ${String(claves.get('filoALaVista') ?? 0)}/${String(n)}).`,
+      ``,
+    )
+    console.log(lineas.join('\n'))
+
+    // ─── LO QUE SE AFIRMA: que la transcripción no miente ───────────────────
+    //
+    // El `LO_QUE_PIDE` de arriba es una copia de los `situacion` de `secuencias
+    // .ts`, y una copia que nadie verifica es la Regla 1 otra vez. Acá se verifica
+    // contra el detector, en las veinte partidas y en las nueve filas.
+    for (const c of b.corridas) {
+      for (const f of c.veredicto.filas) {
+        const esperado = pideDe(f.nombre).every((x) => c.situaciones[x])
+        expect(
+          f.situacion,
+          `${String(c.semilla)} · ${f.nombre}: LO_QUE_PIDE dice ${String(esperado)} y el detector dice ${String(f.situacion)}`,
+        ).toBe(esperado)
+      }
+    }
+    expect(rc.filas.length).toBe(SECUENCIAS.length)
+  }, 900_000)
+})
+
 // ═══ EL CUADRO ══════════════════════════════════════════════════════════════
 
 describe('el criterio de emergencia, con los números de esta corrida', () => {
@@ -952,6 +1360,17 @@ describe('el criterio de emergencia, con los números de esta corrida', () => {
     const usadoK = k.corridas.reduce((a, x) => a + x.ticks, 0)
     const decretadas = c.corridas.reduce((a, x) => a + x.sueltasDecretadas, 0)
     const materializadas = c.corridas.reduce((a, x) => a + x.cuerposDelMundo, 0)
+    const comestiblesTotales = c.corridas.reduce((a, x) => a + x.comestibles, 0)
+    let masMagro: { readonly id: string; readonly masa: number } | undefined
+    let mejorBocado: number | undefined
+    for (const x of c.corridas) {
+      if (x.encendible !== undefined && (masMagro === undefined || x.encendible.masa < masMagro.masa)) {
+        masMagro = x.encendible
+      }
+      if (x.mejorNeto !== undefined && (mejorBocado === undefined || x.mejorNeto > mejorBocado)) {
+        mejorBocado = x.mejorNeto
+      }
+    }
     console.log(
       [
         '',
@@ -974,6 +1393,11 @@ describe('el criterio de emergencia, con los números de esta corrida', () => {
         `                              ⇒ la muerte temprana NO es lo que decide el cero`,
         `  (D) las semillas de §10 .... ${String(c.reemplazos.length)} de ${String(PARTIDAS)} no tienen orilla en 13×13 chunks`,
         `                              y se reemplazaron en orden desde ${String(SEMILLA_DE_REEMPLAZO)}, como §10 manda`,
+        `  (E) no puede haber fuego .. el encendible más liviano de las ${String(PARTIDAS)} partidas pesa ` +
+          `${masMagro === undefined ? '—' : `${masMagro.masa.toFixed(4)} kg («${masMagro.id}»)`} contra un techo de ${String(TECHO_DE_LA_FRICCION)}`,
+        `                              y el mejor bocado que ofreció el mundo vale ` +
+          `${mejorBocado === undefined ? 'no hubo comida' : `${mejorBocado.toFixed(4)} de stamina`} sobre ${String(comestiblesTotales)} cuerpos comestibles`,
+        `                              ⇒ las nueve filas son EL MUNDO, ninguna es LA MENTE ni LA MUERTE (bloque 4)`,
         '',
         `  semillas jugadas .......... ${c.corridas.map((x) => String(x.semilla)).join(' ')}`,
         `  tanque publicado (§3) ..... ${String(TANQUE)} · control ${String(TANQUE_LLENO)}`,

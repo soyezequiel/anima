@@ -299,14 +299,34 @@ export function aHabilidad(i: Intencion, v: VistaDelPlan, rindes?: Rindes): Trad
       return traduccion(`explorar(${String(i.maxTicks)}t)`, (ctx) => explorar(ctx, args))
     }
 
-    // Las dos conductas no llevan parámetros, y es la decisión de `tipos.ts`: los
-    // radios y los umbrales los pone cada innata por omisión, medidos y
-    // comentados en su propio archivo. Escribirlos acá los cablearía dos veces.
+    // Las dos primeras conductas no llevan parámetros, y es la decisión de
+    // `tipos.ts`: los radios y los umbrales los pone cada innata por omisión,
+    // medidos y comentados en su propio archivo. Escribirlos acá los cablearía dos
+    // veces.
     case 'huir':
       return traduccion('huir', (ctx) => huirDelDolor(ctx, {}))
 
     case 'guarecerse':
       return traduccion('guarecerse', (ctx) => guarecerse(ctx, {}))
+
+    // ─── Y LA TERCERA LLEVA EL ÚNICO NÚMERO QUE LA MENTE CALCULA ────────────
+    //
+    // Es la MISMA innata que el `case 'comer'` de arriba, y por eso las dos ramas
+    // están en el mismo `switch` y no en dos lados: lo único que cambia es de
+    // dónde sale `toxicidadTolerada`. Por `Step.comer` sale del 0,2 por omisión
+    // de la habilidad —el planificador no tiene dónde escribirlo—; por `tragar`
+    // sale de la cuenta que hizo `oportunidades.ts` sobre ESTE cuerpo y sobre
+    // ESTE tanque (ADR II-0013).
+    //
+    // El bocado se resuelve con `resolverCuerpo` como cualquier otro `Ref`: si
+    // entre que la mente decidió y el vuelo despega el cuerpo dejó de estar, no
+    // despega nada. Comer algo que ya no está no es un fracaso de la habilidad.
+    case 'tragar': {
+      const bocado = resolverCuerpo(i.bocado, v, rindes)
+      if (bocado === undefined) return undefined
+      const args = { bocado, toxicidadTolerada: i.toxicidadTolerada }
+      return traduccion(`tragar(${corto(i.bocado)})`, (ctx) => comer(ctx, args))
+    }
   }
 }
 
@@ -510,12 +530,24 @@ export class Mente {
 
     const o = vuelo.outcome
     const ok = o !== undefined && o.ok
+    let rindio: string | undefined
     if (ok) {
       const llave = llaveDe(era)
       const got = o.got
-      if (llave !== undefined && got !== undefined) this.#rindes.set(llave, got)
+      if (got !== undefined) {
+        rindio = got.id
+        if (llave !== undefined) this.#rindes.set(llave, got)
+      }
     }
-    aterrizar(this.#e, ok)
+    // El id de lo que rindió viaja a la escalera SIEMPRE que haya rendido algo, y
+    // no sólo cuando el paso anunció una llave. Son dos usos distintos del mismo
+    // dato: `#rindes` resuelve `{k:'rinde'}` DENTRO del plan —y para eso hace
+    // falta la llave—, y `aterrizar` lo usa para acordarse de que la meta se
+    // consiguió, que es lo único que hoy sabe contestar por `holding(tag:…)` (ver
+    // `EstadoDeLaEscalera.conseguido`). El último paso de un plan casi nunca
+    // anuncia llave, porque nadie de más abajo lo iba a nombrar, y es justo ése
+    // el que cierra la meta.
+    aterrizar(this.#e, ok, rindio)
   }
 
   /** Las cuatro clases de `Decision`, con lo que cada una le pide al ejecutor. */

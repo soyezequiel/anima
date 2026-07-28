@@ -53,8 +53,17 @@ import type { NeedVector, VistaDeLaMente } from './tipos.js'
  * El tanque de `stamina`, leído del catálogo cerrado. Hoy son 1000, y son 1000
  * SEGUNDOS DE VIDA: el ADR II-0009 fijó `COSTO_VIVIR_POR_SEGUNDO = 1,0` justo
  * para que la cualidad se leyera así de un vistazo.
+ *
+ * Está EXPORTADO porque el bocado lo necesita: lo que un mordisco deja de verdad
+ * está topado por lo que todavía entra en el tanque (`conCualidad` recorta contra
+ * el rango, así que las calorías de más se pierden y el veneno se cobra igual), y
+ * una segunda copia del 1000 en `oportunidades.ts` sería el bug de
+ * `DSL_REFERENCE` de Ánima I con otro nombre.
  */
-const TANQUE = specOf('stamina').range[1]
+export const TANQUE_DE_ALIENTO = specOf('stamina').range[1]
+
+/** El mismo tanque, con el nombre corto que usa el resto de este archivo. */
+const TANQUE = TANQUE_DE_ALIENTO
 
 /**
  * El fondo de la escala térmica del catálogo. Es el cero de la comodidad, no una
@@ -237,11 +246,47 @@ const NADA: Promesa = { energia: 0, calor: 0, refugio: 0 }
  * promete cambia con ellas SIN que nadie escriba una fila.
  */
 export function satisfaccion(n: NeedVector, tag: string, phys: Physics = FISICA_SEMILLA): number {
-  const p = promesaDeTag(tag, phys)
+  return satisfaccionDe(n, promesaDeTag(tag, phys))
+}
+
+/**
+ * LA MISMA CUENTA, sobre una promesa que no salió de ningún tag.
+ *
+ * Existe por el bocado (ADR II-0013). Un tag promete lo que el CATÁLOGO dice de
+ * su mejor sustancia; un bocado concreto promete lo que ese cuerpo tiene ahora
+ * —cocido o podrido, grande o chico— y eso no es un tag ni lo va a ser nunca:
+ * cocinar no cambia la sustancia, cambia el cuerpo (`digestibility` y `toxicity`
+ * viven en `Body.state`). Sin esta puerta, la única forma de preciar un bocado
+ * sería inventarle un tag, o escribir una segunda ponderación al lado de ésta
+ * —que es cómo se empiezan a separar dos escalas que después nadie puede
+ * comparar—.
+ *
+ * Que la ponderación sea UNA sola es lo que hace que «comerme esto» y «ir a
+ * buscar aquello» se puedan ordenar en la misma lista, que es lo único que le
+ * pedimos a `valor`.
+ */
+export function satisfaccionDe(n: NeedVector, p: Promesa): number {
   const duele = n.energia + n.calor + n.refugio
   if (!(duele > 0)) return 0
   const calma = n.energia * p.energia + n.calor * p.calor + n.refugio * p.refugio
   return acotar01(calma / duele)
+}
+
+/**
+ * La promesa de algo que rinde ESTAS calorías por kilo, contra el mismo techo.
+ *
+ * El techo es el del catálogo entero —lo mejor que este mundo tiene hoy para
+ * comer, que en la semilla es la grasa con 15,40 por kilo— o sea EXACTAMENTE el
+ * denominador con el que se normaliza un tag. Es la única forma de que las dos
+ * cosas se ordenen juntas sin inventar una conversión.
+ *
+ * Toma calorías NETAS y no brutas cuando quien llama ya descontó el veneno, y
+ * eso no lo decide esta función: acá entra un número por kilo y sale su lugar en
+ * la escala. Lo negativo da 0 —no calma nada, y encima duele— sin acotar a mano:
+ * `contra` ya lo hace.
+ */
+export function promesaDeCalorias(porKilo: number, phys: Physics = FISICA_SEMILLA): Promesa {
+  return { energia: contra(porKilo, techosDe(phys).calorias), calor: 0, refugio: 0 }
 }
 
 /**
@@ -295,6 +340,29 @@ export function promesaDeTag(tag: string, phys: Physics = FISICA_SEMILLA): Prome
 }
 
 /**
+ * LO PEOR QUE PUEDE TOCAR de este tag, en calorías por kilo. `0` si el tag no
+ * existe, o si alguno de sus miembros no se come.
+ *
+ * Es el HERMANO OSCURO de `promesaDeTag`, y la asimetría es deliberada: una
+ * promesa se hace con el techo —«pensás en lo mejor que te puede tocar»— y una
+ * CONDICIÓN se hace con el piso, porque una condición que sólo aguanta el mejor
+ * caso no condiciona nada. Quien quiere «algo carnoso que no me envenene» tiene
+ * que poder pedirlo sin saber si le va a tocar grasa o molusco.
+ *
+ * Mira el catálogo y no los cuerpos, con lo que eso trae puesto: la ley 5 sube
+ * `digestibility` y la 6 baja `nutrition`, y las dos escriben sobre el CUERPO. O
+ * sea que este piso es el de la materia fresca, y una carroña puede quedar por
+ * debajo. Lo que eso cuesta está acotado y hay que decirlo: una meta un poco
+ * optimista hace planificar de más, no envenena a nadie — la tolerancia con la
+ * que se traga se calcula sobre el cuerpo de verdad, en `mordidaDe`.
+ */
+export function caloriasDelPeorDeTag(tag: string, phys: Physics = FISICA_SEMILLA): number {
+  const t = tagPelado(tag)
+  if (t === '') return 0
+  return pisosDe(phys).get(t) ?? 0
+}
+
+/**
  * Los `rinde` de la memoria de afordancias viajan como texto y no hay un solo
  * lugar que fije su forma: `@anima/plan` escribe el predicado
  * `holding(tag:carnoso)` y la memoria guarda tags pelados. Quedarse con lo que
@@ -320,23 +388,62 @@ function tagPelado(rinde: string): string {
  */
 const TABLAS = new WeakMap<Physics, ReadonlyMap<string, Promesa>>()
 
+/**
+ * Los dos denominadores: lo mejor que este mundo tiene para comer y para quemar.
+ *
+ * Está aparte de `tablaDe` porque el bocado necesita el techo calórico SIN pasar
+ * por ningún tag (ver `promesaDeCalorias`), y calcularlo dos veces sería tener
+ * dos escalas que se pueden desincronizar — que es justo lo que la normalización
+ * existe para evitar.
+ */
+const TECHOS = new WeakMap<Physics, { readonly calorias: number; readonly combustible: number }>()
+
+function techosDe(phys: Physics): { readonly calorias: number; readonly combustible: number } {
+  const visto = TECHOS.get(phys)
+  if (visto !== undefined) return visto
+  // Mira el catálogo ENTERO y no sólo el tag preguntado, porque la pregunta que
+  // contesta es «de lo mejor que hay en este mundo, cuánto es esto».
+  let calorias = 0
+  let combustible = 0
+  for (const s of phys.substances.values()) {
+    const c = caloriasDe(s.perUnitMass)
+    const f = combustibleDe(s.perUnitMass)
+    if (c > calorias) calorias = c
+    if (f > combustible) combustible = f
+  }
+  const out = { calorias, combustible }
+  TECHOS.set(phys, out)
+  return out
+}
+
+/** El piso calórico por tag, con la misma caché por objeto `Physics`. */
+const PISOS = new WeakMap<Physics, ReadonlyMap<string, number>>()
+
+function pisosDe(phys: Physics): ReadonlyMap<string, number> {
+  const visto = PISOS.get(phys)
+  if (visto !== undefined) return visto
+  const out = new Map<string, number>()
+  for (const s of phys.substances.values()) {
+    const c = caloriasDe(s.perUnitMass)
+    for (const tag of s.tags) {
+      const y = out.get(tag)
+      // Un miembro que no se come baja el piso a cero, y eso es información y no
+      // un accidente: si el tag te puede entregar una piedra, no hay umbral de
+      // veneno que lo vuelva comida.
+      if (y === undefined || c < y) out.set(tag, c)
+    }
+  }
+  PISOS.set(phys, out)
+  return out
+}
+
 function tablaDe(phys: Physics): ReadonlyMap<string, Promesa> {
   const visto = TABLAS.get(phys)
   if (visto !== undefined) return visto
 
-  // Primera pasada: el techo de cada dimensión sobre el catálogo ENTERO. Es el
-  // denominador, y tiene que mirar todo y no sólo el tag preguntado, porque la
-  // pregunta que contesta es «de lo mejor que hay en este mundo, cuánto es esto».
-  let techoCalorias = 0
-  let techoCombustible = 0
-  for (const s of phys.substances.values()) {
-    const c = caloriasDe(s.perUnitMass)
-    const f = combustibleDe(s.perUnitMass)
-    if (c > techoCalorias) techoCalorias = c
-    if (f > techoCombustible) techoCombustible = f
-  }
+  const { calorias: techoCalorias, combustible: techoCombustible } = techosDe(phys)
 
-  // Segunda pasada: el techo de cada dimensión POR TAG. El recorrido es sobre el
+  // La pasada: el techo de cada dimensión POR TAG. El recorrido es sobre el
   // Map de sustancias, cuyo orden de iteración es el de inserción y por lo tanto
   // reproducible; y de todas formas un máximo no depende del orden.
   const crudo = new Map<string, { calorias: number; combustible: number }>()

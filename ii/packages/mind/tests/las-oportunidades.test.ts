@@ -25,24 +25,31 @@
 //     TEXTO que `SCHEMA_INDEX` indexa, o el plan de la pesca no arranca nunca.
 
 import { describe, expect, it } from 'vitest'
-import { SCHEMA_INDEX } from '@anima/plan'
+import { interpretar, SCHEMA_INDEX } from '@anima/plan'
 import type { BodyView, Cell, CellQuality, PlaceMemory, SelfView, Where, WhereCell } from '@anima/skills'
 import { COSTO_POR_CELDA } from '@anima/world'
 
+import { caloriasDelPeorDeTag } from '../src/necesidades.js'
 import {
+  alientoDelEsquema,
   ALIENTO_POR_CELDA,
   celdaDeLugar,
   costoEstimado,
   lugarDeCelda,
+  metaComestibleDe,
   metaDe,
   opportunities,
   PISO_DE_COSTO,
   RADIO_DE_AGUA,
   valorDe,
+  venenoQueBanca,
   type GanchosDeOportunidad,
 } from '../src/oportunidades.js'
 import type { AffordanceMemory, Beta, ContextKey, NeedVector, VistaDeLaMente } from '../src/tipos.js'
 import { OPORTUNIDADES_QUE_MIRA } from '../src/tipos.js'
+
+/** La cola con la que se nombra la oportunidad «que además se pueda comer». */
+const COLA = '+rescate'
 
 // ─── El mundito de mentira ──────────────────────────────────────────────────
 
@@ -201,7 +208,19 @@ describe('la corrida canónica del documento', () => {
     const v = escenaCanonica()
     const lista = opportunities(v, CREENCIAS, HAMBRE, GANCHOS)
 
-    expect(lista.map((o) => o.id)).toEqual(['celda:6,0#carnoso', 'cuerpo:matorral#vegetal'])
+    // TRES Y NO DOS desde el ADR II-0013, y la tercera es la que faltaba: la
+    // MISMA creencia sobre el MISMO río, pidiendo que lo que salga se pueda
+    // comer. Sale sólo para `carnoso` y eso es información, no un descuido:
+    // `venenoQueBanca` mira el PEOR miembro del tag, y `vegetal` tiene miembros
+    // sin calorías (la madera), o sea que ningún umbral de veneno vuelve comida a
+    // un tag que te puede entregar un palo. Se ordena TERCERA porque cuesta más:
+    // lleva encima el esquema que tenga que prometerlo.
+    expect(lista.map((o) => o.id)).toEqual([
+      'celda:6,0#carnoso',
+      'cuerpo:matorral#vegetal',
+      'celda:6,0#carnoso+rescate',
+    ])
+    expect(lista[2]?.meta).toBe(metaComestibleDe('carnoso'))
     expect(lista[0]?.meta).toBe('holding(tag:carnoso)')
     expect(lista[0]?.valor).toBe(VALOR_DEL_RIO)
     expect(lista[1]?.valor).toBe(VALOR_DEL_MATORRAL)
@@ -261,8 +280,11 @@ describe('el costo', () => {
     // otra cosa, este test dice cuál de las dos afirmaciones se movió.
     const filas = SCHEMA_INDEX.get(metaDe('carnoso'))
     expect(filas?.length).toBe(1)
-    expect(filas?.[0]?.via).toBe('extraccion')
-    expect(filas?.[0]?.segundos).toBe(1.5)
+    const fila = filas?.[0]
+    // `k === 'proceso'`: la tabla ya tiene filas de LEY, que no van por ningún
+    // proceso. La de `holding(tag:carnoso)` pelado sigue siendo una sola y de proceso.
+    expect(fila?.k === 'proceso' ? fila.via : undefined).toBe('extraccion')
+    expect(fila?.segundos).toBe(1.5)
 
     // Y `vegetal` no tiene esquema: en la semilla, `holding(tag:carnoso)` es el
     // único `holding` que algún proceso promete. Lo demás se levanta con la mano.
@@ -303,11 +325,36 @@ describe('el costo', () => {
     const v = escenaCanonica()
     const lista = opportunities(v, CREENCIAS, HAMBRE, GANCHOS)
     for (const o of lista) {
-      const costo = costoEstimado(v, o.id)
-      const tag = o.id.slice(o.id.lastIndexOf('#') + 1)
+      const corte = o.id.lastIndexOf('#')
+      const lugar = o.id.slice(0, corte)
+      const cola = o.id.slice(corte + 1)
+      // La oportunidad «que se pueda comer» lleva UN TÉRMINO MÁS y `costoEstimado`
+      // no lo puede adivinar: su id nombra un tag y el término extra sale del
+      // ESQUEMA que prometa las condiciones. Se suma acá, leído de la misma
+      // función que lo suma allá, en vez de dejar el caso afuera del barrido: lo
+      // que este test cuida es que las dos escrituras de la cuenta no se
+      // desincronicen, y la comestible es una escritura más.
+      const comestible = cola.endsWith(COLA)
+      const tag = comestible ? cola.slice(0, -COLA.length) : cola
+      const pedido = comestible ? interpretar(metaComestibleDe(tag) ?? '') : undefined
+      const extra = pedido === undefined ? 0 : alientoDelEsquema(pedido)
+      const costo = costoEstimado(v, `${lugar}#${tag}`) + extra
       const p = tag === 'carnoso' ? 0.5 : 0.25
       expect(o.valor).toBe(valorDe(p, CALMA[tag] ?? 0, costo))
     }
+  })
+
+  it('el umbral de veneno de un tag sale del PEOR de sus miembros, y se mide', () => {
+    // 1,32 calorías por kilo es el molusco, que es el carnoso más flojo del
+    // catálogo; dividido por `COSTO_POR_TOXICIDAD_Y_KILO` da el veneno máximo con
+    // el que tragar cualquier carnoso todavía deja algo. Nadie escribió 0,0528.
+    expect(caloriasDelPeorDeTag('carnoso')).toBe(1.32)
+    expect(venenoQueBanca('carnoso')).toBeCloseTo(0.0528, 12)
+    expect(metaComestibleDe('carnoso')).toBe('holding(tag:carnoso,toxicity<0.0528)')
+    // Y `vegetal` no tiene umbral porque tiene miembros sin calorías: no hay
+    // forma de pedir «algo vegetal que se coma» sin arriesgarse a un palo.
+    expect(caloriasDelPeorDeTag('vegetal')).toBe(0)
+    expect(metaComestibleDe('vegetal')).toBeUndefined()
   })
 
   it('un id que la vista de hoy no puede resolver vale infinito, y eso es valor cero', () => {
@@ -365,7 +412,11 @@ describe('el orden es total y estable', () => {
     const otros = [cuerpo('piedra', 1, 1), cuerpo('matorral', 2, 0, 'el matorral')]
     const lista = opportunities(escenaCanonica({ cuerpos: otros }), CREENCIAS, HAMBRE, GANCHOS)
     // La piedra no tiene creencia: no produce oportunidad, y no desordena nada.
-    expect(lista.map((o) => o.id)).toEqual(['celda:6,0#carnoso', 'cuerpo:matorral#vegetal'])
+    expect(lista.map((o) => o.id)).toEqual([
+      'celda:6,0#carnoso',
+      'cuerpo:matorral#vegetal',
+      `celda:6,0#carnoso${COLA}`,
+    ])
   })
 })
 
@@ -467,7 +518,7 @@ describe('el trabajo está acotado', () => {
       sat: SAT,
       ctxDe: (_v, lugar) => (lugar === 'celda:30,0' ? AGUA : lugar),
     })
-    expect(lista.map((o) => o.id)).toEqual(['celda:30,0#carnoso'])
+    expect(lista.map((o) => o.id)).toEqual(['celda:30,0#carnoso', `celda:30,0#carnoso${COLA}`])
     expect(lista[0]?.valor).toBe(valorDe(0.5, 0.9, 30 * ALIENTO_POR_CELDA + 1.5))
   })
 })

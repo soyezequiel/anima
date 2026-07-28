@@ -255,17 +255,61 @@ describe('tomar, soltar y poner', () => {
 
 describe('comer, que es la única conversión', () => {
   it('convierte nutrición en fuerza y destruye la comida', () => {
+    // ─── ESTE `expect` DIO VUELTA CON EL ADR II-0013, y hay que decirlo ─────
+    //
+    // Decía `expect(despues).toBeGreaterThan(antes)` sobre un PESCADO CRUDO, y era
+    // cierto sólo porque el mundo no cobraba `toxicity`. Ahora la cobra: el bocado
+    // acredita 3,04 de calorías y el veneno se lleva 6,25 (`toxicity` 0,25 × 1 kg ×
+    // `COSTO_POR_TOXICIDAD_Y_KILO` 25), así que **comer pescado crudo adelgaza**.
+    // Ése es el gradiente de comida del catálogo, que hasta hoy era decorativo.
+    //
+    // Lo que este `it` afirma no cambió: comer es la única conversión, destruye la
+    // comida, y su eficiencia ES la digestibilidad. Lo que cambió es que además hay
+    // un cobro, y va aparte.
     const s = base()
     const antes = qualityOf(s.bodies.get('ana-cuerpo')!.body, 'stamina', s.phys)
     const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])
     expect(r.state.bodies.has('c2')).toBe(false)
     const despues = qualityOf(r.state.bodies.get('ana-cuerpo')!.body, 'stamina', r.state.phys)
-    expect(despues).toBeGreaterThan(antes)
+    // 100 + 3,04 − 6,25 − 0,05 de vivir el tick = 96,74. Las tres piezas, cada una
+    // de un lado distinto del mundo: la física, el ADR II-0013 y el metabolismo.
+    expect(despues).toBeCloseTo(96.74, 10)
+    expect(despues).toBeLessThan(antes)
     const conv = r.events.find((e) => e.k === 'convierte')
     expect(conv).toBeDefined()
     // La eficiencia ES la digestibilidad, y por eso cocinar rinde más sin que
     // nadie escriba «cocinar rinde más».
     if (conv?.k === 'convierte') expect(conv.acreditado).toBeLessThan(conv.gastado)
+    // Y LAS DOS MITADES ESTÁN SEPARADAS, que es la decisión del ADR: el crédito en
+    // el `convierte` y el cobro en el `enveneno`, sin netear. Un solo número
+    // escondería por qué la criatura comió y adelgazó.
+    const ven = r.events.find((e) => e.k === 'enveneno')
+    expect(ven?.k === 'enveneno' ? [ven.toxicidad, ven.precio, ven.cobrado] : null).toEqual([
+      0.25, 6.25, 6.25,
+    ])
+  })
+
+  it('lo que un recolector sin fuego come SÍ sube la stamina: grasa, médula y huevo', () => {
+    // La otra mitad del ADR II-0013, y la que dice que el cobro no es un impuesto
+    // parejo: el umbral de corte de cada comida es `nutrition · digestibility /
+    // toxicity`, y las tres que quedan del lado bueno con `K = 25` son exactamente
+    // las tres que un recolector sin fuego comería. Nadie las eligió: caen de tres
+    // números que el Hito 0 calibró por separado.
+    const comer = (substance: string): number => {
+      const s = mundo({
+        bodies: [enElPiso(criatura('ana'), EN(0, 0)), enElPiso(cuerpo('c2', substance, 1), EN(0, 1))],
+        actors: [actor('ana')],
+      })
+      const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])
+      return qualityOf(r.state.bodies.get('ana-cuerpo')!.body, 'stamina', r.state.phys) - 100
+    }
+    // Netos por kilo, con los 0,05 de vivir el tick adentro.
+    expect(Number(comer('grasa').toFixed(4))).toBe(14.1)
+    expect(Number(comer('medula').toFixed(4))).toBe(8.6)
+    expect(Number(comer('huevo').toFixed(4))).toBe(2.95)
+    // Y las dos que piden fuego, del otro lado.
+    expect(comer('pescado')).toBeLessThan(0)
+    expect(comer('carne')).toBeLessThan(0)
   })
 
   it('lo cocido rinde más que lo crudo, y nadie escribió cocinar', () => {

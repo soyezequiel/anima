@@ -41,12 +41,26 @@
 // **Y OJO CON LA PALABRA «VENTANA», que este archivo usó mal durante un tramo.**
 // El ADR II-0009 escribió que el 1,0 vive adentro de una ventana `(0,766 ; 1,155)`
 // donde pasan dos cosas a la vez —comer crudo da negativo y cocinar da positivo—.
-// Esa ventana **es un conjunto vacío**, y está medido en los bloques 5 y 6 del
-// final: con el precio del fuego adentro, para que cocinar alcance haría falta
-// 0,494 por segundo, y a 0,766 ya alcanza comer crudo. Los dos bordes se cruzan.
-// Lo que este archivo afirma es lo medido y no la ventana: que **sin trabajo la
-// energía neta es negativa** (el criterio del riesgo 4, bloque 4) y que **cocinar
-// se paga solo** (bloque 5), que son dos hechos y no un intervalo.
+// Esa ventana era **un conjunto vacío**: con el precio del fuego adentro, para que
+// cocinar alcanzara hacía falta 0,494 por segundo, y a 0,766 ya alcanzaba comer
+// crudo. Los dos bordes se cruzaban.
+//
+// EL ADR II-0013 LOS DESCRUZÓ, y los `expect` que afirmaban la imposibilidad se
+// pusieron rojos —que era exactamente para lo que estaban—. Con el veneno cobrado,
+// comer crudo dejó de ser ingreso y pasó a ser EGRESO, así que el borde de abajo se
+// desplomó de +0,766 a −0,488 y el de arriba bajó apenas, de +0,494 a +0,364. La
+// ventana existe y es `(0 ; 0,364)`.
+//
+// **PERO EL 1,0 QUEDÓ AFUERA**, 2,7× por encima del borde de arriba, así que la
+// consecuencia es la misma que antes y el diagnóstico es otro: antes no había
+// ningún valor posible, ahora hay un intervalo y el vigente cae afuera. Lo que este
+// archivo afirma sigue siendo lo medido: que **sin trabajo la energía neta es
+// negativa** (el criterio del riesgo 4, bloque 4, y ahora por un margen 3× mayor),
+// que **cocinar se paga solo** (bloque 5, +852,2 en la más flaca contra +33,3 de
+// antes), y que **ni cocinando alcanza** (99 de 100 debiendo).
+//
+// Bajar la perilla desde acá para meter el 1,0 adentro sería calibrar el mundo
+// desde el arnés, que es lo que este archivo entero existe para no hacer.
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -444,14 +458,60 @@ const COSTO_POR_CELDA = 0.05
 const STAMINA_POR_CALORIA = 1
 
 /**
+ * `COSTO_POR_TOXICIDAD_Y_KILO`: lo que cuesta tragar UN KILO de algo con
+ * `toxicity` 1 (ADR II-0013). La `K` del ADR.
+ *
+ * **NO es una tasa**, igual que `COSTO_POR_CELDA`: sus unidades son stamina por
+ * (toxicidad × kilo), y no se divide ni se multiplica por ningún tiempo. `toxicity`
+ * es intensiva, así que lo que se traga de veneno es `toxicity · masa`, exactamente
+ * igual que lo que se traga de alimento es `nutrition · masa`.
+ *
+ * Es la CUARTA constante copiada de `@anima/world/src/step.ts`, con el mismo
+ * guardián que las otras tres. El 25 no se eligió acá ni allá: se despejó del
+ * catálogo en `world/tests/el-veneno-se-cobra.test.ts`, donde la ventana
+ * `(12,16 ; 55)` se mide con sus dos bordes antes de elegir el número.
+ */
+const COSTO_POR_TOXICIDAD_Y_KILO = 25
+
+/**
  * **La perilla que sí es de acá**: cuánto pesa una pieza.
  *
- * Un pescado de 2 kg crudo son `8 × 2 × 0,38` = 6,08 calorías, y a 1 stamina por
- * caloría son 6,08 de trabajo. Cocinado —digestibilidad al techo de la ley 5—
- * son 15,2. El mismo bicho, dos economías: eso es lo que cocinar compra, y no
- * hay que escribirlo en ningún lado porque sale de `digestibility`.
+ * Un pescado de 2 kg crudo son `8 × 2 × 0,38` = 6,08 calorías, y desde el ADR
+ * II-0013 el mismo bocado se cobra `0,25 × 2 × 25` = 12,50 de veneno, o sea que
+ * **deja −6,42**. Cocinado —digestibilidad al techo de la ley 5, toxicidad la
+ * medida— son 15,2 menos 1,73, o sea +13,47. El mismo bicho, dos economías, y con
+ * el veneno adentro ya no es una diferencia de grado: es un cambio de signo.
  */
 const MASA_DE_UNA_PIEZA = fx(2)
+
+/**
+ * **La tercera perilla de acá, y es otra medición ajena**: a qué `toxicity` llega
+ * un pescado de 2 kg en el instante en que el mundo lo llama COCIDO
+ * (`digestibility ≥ 0,85`).
+ *
+ * No se puede despejar del catálogo y no se estima: sale de correr
+ * `leyDesnaturalizacion` adentro de `stepWorld` contra un mundo con fuego de
+ * verdad, y este paquete no puede correrlo (`@anima/oracle` no importa
+ * `@anima/world`). El número viene MEDIDO de `world/tests/el-veneno-se-cobra.test.ts`
+ * bloque (c), donde está la tabla de las doce comidas y donde este valor está
+ * clavado con un `expect`.
+ *
+ *   pescado 2 kg → cocido a los 6,55 s · digestibility 0,38 → 0,8526
+ *                  **toxicity 0,25 → 0,0345 (−86,2%)** · masa 2,00 → 1,9256
+ *
+ * EL HALLAZGO QUE ESTE NÚMERO TRAE: la ley 5 se lleva el veneno mucho más rápido
+ * de lo que ablanda. Nadie escribió esa asimetría —la destoxificación es
+ * multiplicativa y la digestibilidad se acerca a un techo— y es la mitad de por
+ * qué cocinar paga con el ADR II-0013 adentro.
+ *
+ * Y ES UN EMPAREJAMIENTO PESIMISTA, dicho para que nadie lo lea al revés: este
+ * archivo modela el ingreso cocinado con `DIGESTIBILIDAD_TECHO` (0,95), que es el
+ * límite asintótico, mientras cobra el veneno del instante en que la pieza recién
+ * cruza 0,85 y todavía tiene la toxicidad más alta de todo el resto de la cocción.
+ * Si se dejara cocinar hasta el techo de verdad, la toxicidad tiende a cero y el
+ * cocido saldría MEJOR de lo que este archivo dice.
+ */
+const TOXICIDAD_DEL_PESCADO_COCIDO = 0.0345
 
 /** Las calorías que una pieza le da a quien se la come, CRUDA o COCINADA. Las
  *  dos por la misma cualidad derivada de la física; lo único que cambia es la
@@ -466,6 +526,50 @@ function caloriasDelBocado(substance: SubstanceId, masa: Fixed, digestibility?: 
   }
   return qualityOf(bocado, 'calories', PHYS)
 }
+
+/**
+ * LO QUE EL VENENO SE LLEVA de esa misma pieza (ADR II-0013), en `stamina`.
+ *
+ * Va aparte de `caloriasDelBocado` y no neteado adentro, y no es prolijidad: es la
+ * decisión del ADR. «Un solo número que mezcle lo que la comida dio con lo que el
+ * veneno costó esconde las dos mitades.» El mundo emite dos eventos por la misma
+ * razón; acá son dos funciones.
+ *
+ * La `toxicity` sale de la MISMA cualidad que el mundo lee al tragar, y por eso se
+ * pregunta armando el cuerpo en vez de copiar el número del catálogo: si mañana
+ * alguien recalibra una sustancia, lo que el chunk paga y lo que la criatura pierde
+ * se mueven juntos.
+ */
+function venenoDelBocado(substance: SubstanceId, masa: Fixed, toxicity?: number): number {
+  const bocado: Body = {
+    id: 'bocado',
+    form: 'bloque',
+    parts: [{ substance, mass: unfx(masa), q: toxicity === undefined ? {} : { toxicity } }],
+    joints: [],
+    state: {},
+  }
+  return (
+    qualityOf(bocado, 'toxicity', PHYS) *
+    qualityOf(bocado, 'mass', PHYS) *
+    COSTO_POR_TOXICIDAD_Y_KILO
+  )
+}
+
+/** Lo que una pieza deja DE VERDAD: las calorías menos el veneno. Es el número
+ *  con el que este archivo hace toda la economía desde el ADR II-0013. */
+function netoDelBocado(
+  substance: SubstanceId,
+  masa: Fixed,
+  cocido?: { digestibility: number; toxicity: number },
+): number {
+  const cal = caloriasDelBocado(substance, masa, cocido?.digestibility) * STAMINA_POR_CALORIA
+  return cal - venenoDelBocado(substance, masa, cocido?.toxicity)
+}
+
+/** Lo que cocinar le hace a un PESCADO, con las dos cualidades que la ley 5 mueve.
+ *  Las dos juntas y no una: subir la digestibilidad sin bajar la toxicidad sería
+ *  cocinar a medias, y el número saldría mal en la dirección conveniente. */
+const COCIDO = { digestibility: DIGESTIBILIDAD_TECHO, toxicity: TOXICIDAD_DEL_PESCADO_COCIDO }
 
 // ─── EL CUARTO NÚMERO DEL MODELO: LO QUE CUESTA EL FUEGO (ADR II-0011) ──────
 //
@@ -545,11 +649,17 @@ function precioDeEncender(masa: number, substance: SubstanceId): { precio: numbe
 /** El fuego más barato que la criatura puede encender y que además COCINA. */
 const PRECIO_DEL_FUEGO = precioDeEncender(MASA_DE_LA_VARA_QUE_ENCIENDE, 'madera')
 
-/** Lo que cocinar le agrega a UNA pieza: la misma materia, la otra digestibilidad. */
+/**
+ * Lo que cocinar le agrega a UNA pieza: la misma materia, la otra digestibilidad
+ * **y el otro veneno**.
+ *
+ * Antes del ADR II-0013 eran 9,12 —la diferencia de calorías y nada más—. Ahora
+ * son 17,72, porque cocinar hace DOS cosas y no una: sube lo que la pieza da y
+ * baja lo que la pieza cuesta. Que el margen casi se duplique es lo que hace que
+ * el fuego se pague con la mitad de las piezas que antes.
+ */
 const LO_QUE_PAGA_UNA_PIEZA =
-  (caloriasDelBocado('pescado', MASA_DE_UNA_PIEZA, DIGESTIBILIDAD_TECHO) -
-    caloriasDelBocado('pescado', MASA_DE_UNA_PIEZA)) *
-  STAMINA_POR_CALORIA
+  netoDelBocado('pescado', MASA_DE_UNA_PIEZA, COCIDO) - netoDelBocado('pescado', MASA_DE_UNA_PIEZA)
 
 // ─── La partida ─────────────────────────────────────────────────────────────
 
@@ -565,8 +675,18 @@ interface Partida {
   /** Calorías que salieron del mundo, leídas del libro y no recalculadas. */
   readonly caloriasCobradas: number
   readonly techoDeLoVisitado: number
+  /**
+   * Lo que las piezas dejan comidas CRUDAS, **con el veneno ya descontado**
+   * (ADR II-0013). Puede ser negativo, y con el catálogo de hoy lo es siempre:
+   * un pescado de 2 kg acredita 6,08 y el veneno se lleva 12,50.
+   */
   readonly ingresoCrudo: number
   readonly ingresoCocinado: number
+  /** Lo que el veneno del CRUDO se llevó, aparte. Se lleva por separado por lo
+   *  mismo que el mundo emite dos eventos: un solo número escondería las mitades. */
+  readonly venenoCrudo: number
+  /** Y lo que se lleva el del cocido, que es 7,2× menos. */
+  readonly venenoCocinado: number
   readonly costo: number
   readonly netoCrudo: number
   /** El mismo bicho, la misma materia, la otra economía: lo único que cambia es
@@ -647,6 +767,8 @@ function jugar(seed: bigint, v: Variante): Partida {
   let intentos = 0
   let crudo = 0
   let cocinado = 0
+  let venenoCrudo = 0
+  let venenoCocinado = 0
 
   for (let tick = 1; tick <= TICKS; tick++) {
     t = sumarPaso(t, DT)
@@ -667,8 +789,12 @@ function jugar(seed: bigint, v: Variante): Partida {
     }
     if (r.yields === null) continue
     piezas++
-    crudo += caloriasDelBocado(r.yields, r.masa)
-    cocinado += caloriasDelBocado(r.yields, r.masa, DIGESTIBILIDAD_TECHO)
+    // Las CUATRO mitades, sin netear entre ellas: lo que la comida da y lo que el
+    // veneno cuesta, crudo y cocido. La tabla de abajo las imprime las cuatro.
+    crudo += caloriasDelBocado(r.yields, r.masa) * STAMINA_POR_CALORIA
+    cocinado += caloriasDelBocado(r.yields, r.masa, COCIDO.digestibility) * STAMINA_POR_CALORIA
+    venenoCrudo += venenoDelBocado(r.yields, r.masa)
+    venenoCocinado += venenoDelBocado(r.yields, r.masa, COCIDO.toxicity)
   }
 
   libro.verificar()
@@ -690,11 +816,18 @@ function jugar(seed: bigint, v: Variante): Partida {
     celdasCaminadas: caminadas,
     caloriasCobradas: cobrado / MILICALORIAS_POR_CALORIA,
     techoDeLoVisitado,
-    ingresoCrudo: crudo * STAMINA_POR_CALORIA,
-    ingresoCocinado: cocinado * STAMINA_POR_CALORIA,
+    // EL VENENO ENTRA ACÁ, y en un solo lugar: los `ingreso*` pasan a ser NETOS de
+    // veneno, así que todo lo que este archivo construye encima —las tablas, los
+    // bordes, el punto de equilibrio, las dos estrategias de fuego— se rehace solo
+    // y con el mismo álgebra. Es lo que el ADR II-0013 pide: «toda la cuenta
+    // económica hay que rehacerla con el veneno cobrado».
+    ingresoCrudo: crudo - venenoCrudo,
+    ingresoCocinado: cocinado - venenoCocinado,
+    venenoCrudo,
+    venenoCocinado,
     costo,
-    netoCrudo: crudo * STAMINA_POR_CALORIA - costo,
-    netoCocinado: cocinado * STAMINA_POR_CALORIA - costo,
+    netoCrudo: crudo - venenoCrudo - costo,
+    netoCocinado: cocinado - venenoCocinado - costo,
     libro,
   }
 }
@@ -734,8 +867,12 @@ function tabla(nombre: string, ps: readonly Partida[]): string {
   return [
     `económico · ${nombre}: las cien partidas, no el promedio`,
     `económico ·   ${''.padEnd(20)}${'mínimo'.padStart(11)}${'mediana'.padStart(11)}${'máximo'.padStart(11)}`,
-    fila('ingreso crudo', (p) => p.ingresoCrudo),
-    fila('ingreso cocinado', (p) => p.ingresoCocinado),
+    fila('calorías crudas', (p) => p.ingresoCrudo + p.venenoCrudo),
+    fila('· menos VENENO', (p) => -p.venenoCrudo),
+    fila('= ingreso crudo', (p) => p.ingresoCrudo),
+    fila('calorías cocinadas', (p) => p.ingresoCocinado + p.venenoCocinado),
+    fila('· menos VENENO', (p) => -p.venenoCocinado),
+    fila('= ingreso cocinado', (p) => p.ingresoCocinado),
     fila('costo', (p) => p.costo),
     fila('NETO crudo', (p) => p.netoCrudo),
     fila('NETO cocinado', (p) => p.netoCocinado),
@@ -854,11 +991,14 @@ const VARIANTES = [
  */
 const STAMINA_DE_ARRANQUE = specOf('stamina').range[1] / 2
 
-/** Un bocado tirado en el mundo: dónde está y qué da comido CRUDO. */
+/** Un bocado tirado en el mundo: dónde está, qué da y qué cuesta comido CRUDO. */
 interface Bocado {
   readonly x: number
   readonly y: number
+  /** Lo que acredita: `nutrition · masa · digestibility`. Sale del mundo. */
   readonly calorias: number
+  /** Lo que el veneno se lleva: `toxicity · masa · K` (ADR II-0013). */
+  readonly veneno: number
 }
 
 /** Lo comestible del anillo `r` de chunks alrededor de uno, en coordenadas de
@@ -875,11 +1015,18 @@ function comidaDelAnillo(seed: bigint, cx: number, cy: number, r: number): { boc
       techo += c.presupuestoCalorico
       for (const s of c.sueltas) {
         const calorias = caloriasDelBocado(s.substance, s.masa) * STAMINA_POR_CALORIA
+        // El filtro sigue siendo por CALORÍAS y no por el neto, y es a propósito:
+        // lo que el carroñero ve tirado es comida, y el ADR II-0013 no le da a
+        // nadie una nariz que distinga el veneno antes de tragarlo. Filtrar por el
+        // neto sería un carroñero que ya sabe cuál le conviene, o sea la versión
+        // MÁS generosa todavía de «no trabajar» — y el criterio del riesgo 4 ya se
+        // mide con la más generosa que se puede escribir sin regalar información.
         if (calorias <= 0) continue
         bocados.push({
           x: (cx + dx) * CELDAS_DE_LADO + (s.i % CELDAS_DE_LADO),
           y: (cy + dy) * CELDAS_DE_LADO + Math.floor(s.i / CELDAS_DE_LADO),
           calorias,
+          veneno: venenoDelBocado(s.substance, s.masa),
         })
       }
     }
@@ -893,7 +1040,18 @@ interface SinTrabajo {
   readonly celdasCaminadas: number
   readonly anillos: number
   readonly ticksUsados: number
+  /** El ingreso NETO de veneno (ADR II-0013). Puede ser —y es— negativo. */
   readonly ingreso: number
+  /**
+   * Las CALORÍAS BRUTAS que se llevó, sin descontar el veneno. Se guarda aparte
+   * porque contesta otra pregunta: lo que sale del mundo sin que ningún techo lo
+   * anote es materia y no balance, así que la «fuga» del bloque (e) se mide con
+   * esto y no con el neto. Netear ahí sería medir la salud de la criatura y
+   * llamarla contabilidad del dios.
+   */
+  readonly caloriasBrutas: number
+  /** Y lo que el veneno se llevó, para poder decir cuál de las dos mitades manda. */
+  readonly veneno: number
   readonly costo: number
   readonly neto: number
   /** El techo calórico de todos los chunks que barrió, para poder decir qué
@@ -917,6 +1075,8 @@ function carronear(seed: bigint, base: ChunkDecretado): SinTrabajo {
   let caminadas = 0
   let piezas = 0
   let ingreso = 0
+  let caloriasBrutas = 0
+  let veneno = 0
   let ticks = 0
   // La `stamina` se lleva aparte del neto porque contestan preguntas distintas:
   // el neto dice si el acumulado cierra, y ésta dice CUÁNDO se muere. Un neto
@@ -955,10 +1115,16 @@ function carronear(seed: bigint, base: ChunkDecretado): SinTrabajo {
     }
     ticks++
     gastar(COSTO_VIVIR_POR_SEGUNDO / HZ)
+    // El orden es el del mundo (`intencionComer`, ADR II-0013): primero acredita y
+    // después cobra. No es lo mismo que sumar el neto: si el crédito la salva del
+    // cero y el veneno la vuelve a bajar, el tick de la muerte cae en otro lado.
     stamina += p.calorias
+    gastar(p.veneno)
     caminadas += d
     piezas++
-    ingreso += p.calorias
+    ingreso += p.calorias - p.veneno
+    caloriasBrutas += p.calorias
+    veneno += p.veneno
     pos = { x: p.x, y: p.y }
   }
   // Los segundos que sobran también se viven: si se quedó sin adónde ir, sigue
@@ -977,6 +1143,8 @@ function carronear(seed: bigint, base: ChunkDecretado): SinTrabajo {
     anillos: anillo,
     ticksUsados: ticks,
     ingreso,
+    caloriasBrutas,
+    veneno,
     costo,
     neto: ingreso - costo,
     techoDeLoBarrido,
@@ -1036,7 +1204,32 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     expect((STAMINA_DE_ARRANQUE / COSTO_VIVIR_POR_SEGUNDO) * HZ).toBe(TICKS / 2)
 
     // ─── (b) EL CARROÑERO: las cien, y no la mediana ───────────────────────
+    //
+    // ESTE ES EL BLOQUE QUE EL ADR II-0013 REFORZÓ, y estaba previsto en el ADR
+    // («se espera que el criterio del riesgo 4 se refuerce: el carroñero come lo
+    // que hay tirado, y lo que hay tirado es justo lo de `K` bajo»). Medido, y no
+    // supuesto:
+    //
+    // (Los de la columna «antes» se remidieron para este tramo corriendo este mismo
+    // archivo con `world/src/step.ts` revertido, y no se copiaron de ningún informe:
+    // mínimo / mediana / máximo, las cien partidas.)
+    //
+    //                        antes del II-0013            ahora
+    //   INGRESO ......  +104,3 / +434,8 / +529,2   −4472,2 / −2173,0 / −1293,9
+    //   NETO .........  −1803,1 / −1435,4 / −1321,8  −6361,6 / −4040,9 / −3214,9
+    //   MUERE en el tick   5508 / 7085 / 7719          1453 / 2402 / 3249
+    //
+    // El carroñero levanta entre 1580 y 2978 piezas de lo que `scatter` deja tirado
+    // —hojas, hongos, raíces duras, tubérculos— y ésas son EXACTAMENTE las de `K` de
+    // corte más bajo: 1,67, 1,64, 1,50 y 3,60 contra un `K` de 25. O sea que lo que
+    // el mundo deja tirado es, casi todo, veneno. El ingreso pasó de ser un tercio
+    // de lo que cuesta vivir a ser un EGRESO de dos mil, y el que no trabaja se
+    // muere en el tick 2402 —el 12% de la partida— en vez de en el 7085 (el 35%).
     for (const p of SIN_TRABAJO) expect(p.neto).toBeLessThan(0)
+    // Y ahora también el INGRESO solo, sin restarle nada: comer lo que hay tirado
+    // no es «poco», es NEGATIVO. Ésta es la afirmación que el II-0013 agrega y que
+    // antes no se podía hacer.
+    for (const p of SIN_TRABAJO) expect(p.ingreso).toBeLessThan(0)
 
     // ─── (c) Y SE MUERE, que es la otra mitad de lo que el criterio quiere ─
     //
@@ -1067,7 +1260,14 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     // hay que decir cuánto es: contra el presupuesto calórico de los chunks que
     // barrió, es una migaja. Si mañana `scatter` sembrara diez veces más, este
     // número lo diría antes que nadie.
-    const fuga = extremos(SIN_TRABAJO.map((p) => p.ingreso / p.techoDeLoBarrido)).max
+    //
+    // SE MIDE SOBRE LAS CALORÍAS BRUTAS y no sobre el ingreso neto de veneno, y es
+    // deliberado: lo que este número persigue es MATERIA que sale del mundo sin
+    // quedar anotada en ningún techo, y el veneno no la devuelve. Netear acá haría
+    // que la fuga se viera más chica —o negativa— por una razón que no tiene nada
+    // que ver con la contabilidad del dios, que es la peor forma de que un número
+    // mejore.
+    const fuga = extremos(SIN_TRABAJO.map((p) => p.caloriasBrutas / p.techoDeLoBarrido)).max
     expect(fuga).toBeLessThan(0.01)
 
     const neto = extremos(SIN_TRABAJO.map((p) => p.neto))
@@ -1082,7 +1282,9 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
         `económico ·   INGRESO .......... mínimo ${ing.min.toFixed(1)} · mediana ${ing.mediana.toFixed(1)} · máximo ${ing.max.toFixed(1)} · contra ${(COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA).toFixed(0)} que cuesta SÓLO vivir\n` +
         `económico ·   NETO ............. mínimo ${neto.min.toFixed(1)} · mediana ${neto.mediana.toFixed(1)} · máximo ${neto.max.toFixed(1)} → las cien NEGATIVAS\n` +
         `económico ·   MUERE en el tick . mínimo ${String(muerte.min)} · mediana ${String(muerte.mediana)} · máximo ${String(muerte.max)}, y el que no hace NADA aguanta hasta el ${String(TICKS / 2)}\n` +
-        `económico ·   lo que se llevó sin que nadie se lo cobre: ${(fuga * 100).toFixed(3)}% del techo calórico de lo que barrió`,
+        `económico ·   lo que se llevó sin que nadie se lo cobre: ${(fuga * 100).toFixed(3)}% del techo calórico de lo que barrió (calorías BRUTAS)\n` +
+        `económico ·   y de esas calorías, el VENENO se llevó ${extremos(SIN_TRABAJO.map((p) => p.veneno / p.caloriasBrutas)).mediana.toFixed(1)}× (mediana): ` +
+        `lo que el mundo deja tirado es, casi todo, de K de corte 1,5 a 3,6 contra un K de ${String(COSTO_POR_TOXICIDAD_Y_KILO)}`,
     )
   })
 
@@ -1122,9 +1324,28 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     console.log(`económico · la común: la que MÁS comió termina en ${peor.toFixed(1)} de stamina, y es la más cerca del cero de las cien`)
   })
 
-  it.fails('SIGUE ABIERTO · la AFORTUNADA sigue terminando en positivo, y no es la perilla del metabolismo', () => {
-    // POR QUÉ SIGUE ABIERTO: porque lo que le falta a esta variante **no es
-    // cuánto cuesta vivir**. Es que en este modelo **viajar no cuesta tiempo**.
+  it('CERRADO POR EL ADR II-0013 · ni la AFORTUNADA termina en positivo comiendo crudo', () => {
+    // ─── ESTO ERA UN `it.fails` Y DEJÓ DE SERLO, Y HAY QUE DECIR POR QUÉ ────
+    //
+    // Se llamaba «SIGUE ABIERTO · la AFORTUNADA sigue terminando en positivo» y su
+    // `expect` final —`netoCrudo < 0` sobre las cien— fallaba por más de tres mil
+    // en todas. Ahora pasa: la afortunada termina entre **−5512,5 y −5274,9**.
+    //
+    // **PERO EL DEFECTO QUE ESTE `it` NOMBRABA NO SE ARREGLÓ**, y confundir las dos
+    // cosas sería exactamente el error que este archivo existe para no cometer. En
+    // este modelo **viajar sigue sin costar tiempo**: `jugar` le cobra las celdas
+    // con `COSTO_POR_CELDA` pero no le adelanta el reloj, así que la afortunada se
+    // muda gratis en tiempo y sigue pescando el resto de la partida como si nunca
+    // se hubiera ido. Eso está igual que ayer y sigue nombrado abajo.
+    //
+    // Lo que cambió es que la afirmación dejó de DEPENDER de ese defecto: con el
+    // veneno cobrado, **cada bocado crudo deja −6,42**, así que pescar más empeora
+    // el balance en vez de mejorarlo y ninguna cantidad de suerte lo da vuelta. El
+    // hueco se cerró por arriba —la conclusión ya no necesita la locomoción— y no
+    // porque la locomoción se arreglara. Queda como GUARDIÁN: si mañana alguien
+    // afloja el cobro del veneno, esto se pone rojo antes que ninguna otra cosa.
+    //
+    // EL DEFECTO QUE SIGUE, dicho entero para que no se pierda con el `it.fails`:
     //
     // La afortunada es un dado cargado —`SUERTE_PERFECTA`, pica siempre— sobre el
     // pozo más generoso que el paquete deja escribir, y cuando exprime un chunk
@@ -1135,101 +1356,118 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     // como si nunca se hubiera ido. A 20 Hz esas celdas son un cuarto de su tiempo
     // de pesca, más su propio costo de vivir, y ninguno de los dos se le cobra.
     //
-    // Subir `COSTO_VIVIR_POR_SEGUNDO` hasta hundirla tampoco es la salida, y está
-    // medido en el ADR II-0009: haría falta 4,04 por segundo, y a ese precio la
-    // criatura COMÚN se muere en el tick ~5.800 comiendo crudo y en el ~7.800
-    // cocinando. El criterio del Hito 5 pasaría de trivialmente cierto a
-    // imposible, que es el mismo error con el signo cambiado. Calibrar contra la
-    // afortunada es calibrar contra un adversario y no contra un jugador.
+    // El hueco 2 de `@anima/world/tests/el-tiempo-no-depende-del-tick.test.ts`
+    // —`intencionCaminar` avanza una celda por TICK, así que «cuántos segundos
+    // tarda un viaje» depende de la frecuencia— sigue abierto, y hasta que se
+    // cierre este modelo no puede cobrarle el tiempo del viaje a nadie con un
+    // número que sea del mundo y no una invención de acá. Eso es locomoción y no
+    // metabolismo, y merece su propio ADR (II-0009, «a tener en cuenta»).
     //
-    // QUÉ HARÍA FALTA PARA CERRARLO: que caminar consuma TICKS en este modelo, o
-    // sea que el bucle de `jugar` gaste tiempo de partida por celda recorrida en
-    // vez de teletransportarse. Y para que ese número sea el del mundo y no una
-    // invención de acá, primero hay que cerrar el hueco 2 de
-    // `@anima/world/tests/el-tiempo-no-depende-del-tick.test.ts`: hoy la velocidad
-    // se mide en muestras —`intencionCaminar` avanza una celda por TICK— así que
-    // «cuántos segundos tarda un viaje» depende de la frecuencia. Eso es
-    // locomoción y no metabolismo, pide una velocidad en celdas por segundo con
-    // un resto sub-celda en `Actor`, y merece su propio ADR (II-0009,
-    // «a tener en cuenta»).
+    // Y SIGUE SIENDO CIERTO que calibrar contra la afortunada es calibrar contra un
+    // adversario: es un dado cargado sobre el pozo más generoso que el paquete deja
+    // escribir. Lo que este `it` mide ahora no es una calibración — es que ni el
+    // adversario zafa.
     //
     // ─── Y UN NÚMERO DEL ADR QUE NO DA, medido acá ─────────────────────────
     //
     // El ADR II-0009 dice: «La afortunada termina en **+3037 en la peor de sus
     // cien partidas** — el ingreso menos la caminata le da entre 4036,9 y 4043,2
-    // contra un costo de 1000». Medido, **la peor no es +3037**: es la de acá
-    // abajo, y +3037,6 resulta ser la MEJOR. El error se ve en la frase misma: el
-    // rango «4036,9 y 4043,2» es el del ingreso CRUDO a secas —medido, 4037,1 a
-    // 4043,2— y no el del ingreso MENOS la caminata, que es lo que la frase dice.
-    // Después se le resta sólo el costo de vivir, así que las celdas quedan
-    // contadas cero veces: la partida que más camina paga 249,6 que ese rango no
-    // ve, y son 4992 celdas de las que ni el tiempo ni la stamina aparecen.
+    // contra un costo de 1000». Ese rango era el de las CALORÍAS CRUDAS a secas
+    // —medido hoy, 4037,1 a 4043,2, y sigue dando lo mismo, porque las calorías no
+    // se movieron— y no el del ingreso menos la caminata, que es lo que la frase
+    // dice. El error del ADR se ve en la frase misma y queda anotado.
     //
-    // No cambia ninguna conclusión —las cien siguen dando positivo por más de dos
-    // mil— y por eso el hueco sigue abierto por el mismo motivo. Queda escrito con
-    // el número medido adelante porque un número mal reportado sobrevive a quien
-    // lo escribió, y éste ya venía copiado de una tabla vieja.
+    // Lo que ya no existe es el +3037: con el veneno cobrado, esas mismas 4040
+    // calorías vienen con 8312,5 de veneno encima —664 piezas de 2 kg a 12,50 cada
+    // una— y el ingreso queda en −4269,3.
     const neto = extremos(AFORTUNADAS.map((p) => p.netoCrudo))
-    const limpio = extremos(AFORTUNADAS.map((p) => p.ingresoCrudo - p.celdasCaminadas * COSTO_POR_CELDA))
+    const brutas = extremos(AFORTUNADAS.map((p) => p.ingresoCrudo + p.venenoCrudo))
+    const veneno = extremos(AFORTUNADAS.map((p) => p.venenoCrudo))
     const celdas = extremos(AFORTUNADAS.map((p) => p.celdasCaminadas))
     console.log(
-      `económico · la AFORTUNADA, medida: NETO crudo entre ${neto.min.toFixed(1)} y ${neto.max.toFixed(1)} (mediana ${neto.mediana.toFixed(1)})\n` +
-        `económico ·   ingreso menos caminata entre ${limpio.min.toFixed(1)} y ${limpio.max.toFixed(1)} contra un costo de vivir de ${(COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA).toFixed(0)}\n` +
-        `económico ·   camina entre ${String(celdas.min)} y ${String(celdas.max)} celdas entre orillas, y NINGUNA de esas celdas le cuesta un segundo de partida\n` +
-        `económico ·   ⚠ el ADR II-0009 dice «+3037 en la peor»: medido, +${neto.max.toFixed(1)} es la MEJOR y la peor es +${neto.min.toFixed(1)}`,
+      `económico · la AFORTUNADA, medida con el ADR II-0013 adentro:\n` +
+        `económico ·   calorías crudas ${brutas.min.toFixed(1)} a ${brutas.max.toFixed(1)} (el rango que el ADR II-0009 citaba, intacto)\n` +
+        `económico ·   VENENO ......... ${veneno.min.toFixed(1)} a ${veneno.max.toFixed(1)} ← esto no existía\n` +
+        `económico ·   NETO crudo ..... ${neto.min.toFixed(1)} a ${neto.max.toFixed(1)} (mediana ${neto.mediana.toFixed(1)}) contra un costo de vivir de ${(COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_PARTIDA).toFixed(0)}\n` +
+        `económico ·   camina entre ${String(celdas.min)} y ${String(celdas.max)} celdas entre orillas, y NINGUNA de esas celdas le cuesta un segundo de partida (el defecto sigue)\n` +
+        `económico ·   el +3037 del ADR II-0009 dejó de existir: el veneno se lleva 2,06× las calorías`,
     )
     for (const p of AFORTUNADAS) expect(p.netoCrudo).toBeLessThan(0)
+    // Y NO ES POR POCO, que es lo que hace que la conclusión no dependa del defecto
+    // de la locomoción: aunque no se le cobrara UNA SOLA CELDA ni UN SOLO SEGUNDO de
+    // vivir, el ingreso crudo solo ya es negativo.
+    for (const p of AFORTUNADAS) expect(p.ingresoCrudo).toBeLessThan(0)
+    // El veneno se lleva más del doble de lo que las calorías dan. Ésa es la
+    // magnitud, y es la que impide leer esto como «negativo por un pelo».
+    expect(veneno.min / brutas.max).toBeGreaterThan(2)
   })
 
-  it('LA VENTANA DEL ADR II-0009 ES UN CONJUNTO VACÍO, y lo que sí queda en pie', () => {
-    // ─── LO QUE ESTE TEST DECÍA ANTES, y por qué dejó de decirlo ───────────
+  it('LA VENTANA DEL ADR II-0009 SE DESCRUZÓ CON EL II-0013, y el 1,0 quedó AFUERA', () => {
+    // ═══ EL GUARDIÁN SE PUSO ROJO, Y ESTO ES «VENIR A MIRAR» ═══════════════
     //
-    // El ADR II-0009 escribió su criterio verificable así: «afirma la ventana y no
-    // el número: neto crudo negativo en las 100 partidas comunes y neto cocinado
-    // positivo en las 100», con la ventana `(0,766 ; 1,155)` y el 1,0 adentro. La
-    // idea era linda: adentro de ese intervalo, y sólo adentro, comer crudo mata y
-    // cocinar salva, así que el 1,0 no estaría elegido a dedo.
+    // Este `it` se llamaba «LA VENTANA DEL ADR II-0009 ES UN CONJUNTO VACÍO» y su
+    // último `expect` era `arribaConFuego < abajo`, con este comentario textual:
     //
-    // **Esa ventana no existe**, y no es una opinión: está medido en los bloques 5
-    // y 6 del final de este archivo, con el precio del fuego despejado de la
-    // física. Los dos bordes se cruzan.
+    //   «Esto es un guardián y no una deuda: si mañana alguien mueve una constante
+    //    y la ventana vuelve a existir, este `expect` se pone rojo y hay que venir
+    //    a mirar.»
     //
-    // ─── ESTO NO ES ABLANDAR LA VARA, y hay que dejarlo escrito ────────────
+    // Pasó. El ADR II-0013 movió una constante —el veneno, que antes valía cero— y
+    // **los dos bordes se descruzaron**. Medido sobre las mismas cien comunes:
     //
-    // El criterio del DOCUMENTO DE ARQUITECTURA —«la energía neta acumulada de la
-    // criatura tiene que ser **negativa sin trabajo**»— se cumple, se mide en el
-    // primer `it` de este bloque y es más duro que antes: el carroñero no llega ni
-    // a la mitad de la partida. Lo que se corrige acá es una afirmación distinta y
-    // más fuerte que un ADR intermedio inventó mientras calibraba una perilla, y
-    // que la aritmética del fuego —que ese ADR no podía ver, porque el fuego duraba
-    // un tick— dejó sin conjunto solución. La vara del documento queda donde
-    // estaba; lo que se cae es una promesa que nadie le pidió.
+    //             ANTES del II-0013        AHORA
+    //   abajo ..........  +0,766/s        −0,488/s   ← se desplomó
+    //   arriba con fuego   +0,494/s        +0,364/s   ← bajó un poco
+    //
+    // El borde de ABAJO se desplomó porque **el crudo dejó de ser ingreso**: cada
+    // pieza de 2 kg acredita 6,08 y el veneno se lleva 12,50, así que la que MÁS
+    // pescó es la que más perdió. El de ARRIBA bajó apenas, porque el veneno del
+    // cocido es 7,2× más chico. Los dos se movían en la misma dirección y uno se
+    // movió veinte veces más: por eso se descruzaron.
+    //
+    // ─── PERO EL 1,0 QUEDÓ AFUERA, y ésa es la noticia entera ──────────────
+    //
+    // Que la ventana exista no quiere decir que el número elegido esté adentro. La
+    // ventana quedó en `(0 ; 0,364)` —cualquier costo de vivir positivo hace que el
+    // crudo no alcance, y hace falta menos de 0,364/s para que cocinar sí— y
+    // `COSTO_VIVIR_POR_SEGUNDO` vale 1,0, o sea **2,7× por encima del borde de
+    // arriba**. Comer crudo mata, cocinar mejora mucho, y ni cocinando alcanza: 99
+    // de las 100 comunes terminan debiendo aunque cocinen todo lo que sacan (bloque
+    // 5). Es exactamente la misma conclusión de antes, con la ventana existiendo.
+    //
+    // ─── Y ESTO NO SE ARREGLA DESDE ACÁ ────────────────────────────────────
+    //
+    // Bajar `COSTO_VIVIR_POR_SEGUNDO` hasta meter el 1,0 adentro sería calibrar el
+    // mundo desde el arnés, que es lo que este archivo entero existe para no hacer.
+    // Lo medido se afirma, no se fabrica. El número accionable está abajo y en el
+    // bloque 6; la decisión no es de este archivo.
     //
     // ─── LO QUE SÍ QUEDA EN PIE, y es lo que este test afirma ──────────────
     //
-    //   1. el borde de ABAJO: comer crudo no alcanza ni trabajando, en las cien;
-    //   2. cocinar multiplica por 2,50× lo que rinde la MISMA materia, sin crear un
-    //      gramo de nada —sale de que `digestibility` sube de 0,38 a 0,95—;
-    //   3. y con el fuego pagado entero, cocinar **se paga solo**: eso lo mide
-    //      `COCINAR CONVIENE EN LAS CIEN` en el bloque 5, con +33,3 en la partida
-    //      más flaca. Ése es el hecho al que apunta el ADR corregido, y no se mide
-    //      dos veces.
+    //   1. el borde de ABAJO: comer crudo no alcanza ni trabajando, en las cien, y
+    //      ahora por un margen que no depende de ninguna perilla del metabolismo;
+    //   2. cocinar da vuelta el SIGNO de la misma materia —de −6,42 a +13,47 por
+    //      pieza— y no ya un factor de 2,50×: la ley 5 sube `digestibility` Y baja
+    //      `toxicity`, y con el II-0013 las dos entran en la cuenta;
+    //   3. y con el fuego pagado entero, cocinar se paga solo y por más que antes:
+    //      +852,2 en la partida más flaca contra +33,3 de antes (bloque 5).
     //
     // Se afirma sobre la COMÚN y no sobre la afortunada a propósito: la afortunada
-    // es un dado cargado, y calibrar contra un adversario da el número equivocado
-    // con el otro signo (ver el `it.fails` de acá arriba).
+    // es un dado cargado, y calibrar contra un adversario da el número equivocado.
     for (const p of COMUNES) {
       expect(p.netoCrudo).toBeLessThan(0)
       // El neto cocinado SIN el precio del fuego. Sigue siendo cierto y sigue
       // sirviendo —es el control contra el que los bloques 5 y 6 restan el fuego—
       // pero **no dice que cocinar salve**: dice cuánta holgura hay para comprarlo.
+      // Y la holgura se achicó: de +155,2 a +24,1 en la más flaca, porque el veneno
+      // del cocido, aunque chico, se cobra 76 veces en la partida.
       expect(p.netoCocinado).toBeGreaterThan(0)
     }
 
     // ─── LOS TRES BORDES, medidos como tasa por segundo ────────────────────
     //
     // Los dos primeros son los del ADR. El tercero es el que el ADR no tenía, y es
-    // el que cierra el conjunto: lo que rinde cocinar CON el fuego adentro.
+    // el que decide: lo que rinde cocinar CON el fuego adentro.
     const porSegundo = (p: Partida, ingreso: number): number =>
       (ingreso - p.celdasCaminadas * COSTO_POR_CELDA) / SEGUNDOS_DE_PARTIDA
     const abajo = extremos(COMUNES.map((p) => porSegundo(p, p.ingresoCrudo))).max
@@ -1239,50 +1477,59 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     ).min
     expect(abajo).toBeLessThan(COSTO_VIVIR_POR_SEGUNDO)
     expect(COSTO_VIVIR_POR_SEGUNDO).toBeLessThan(arribaSinFuego)
-    // Y ACÁ SE CRUZAN, que es la afirmación de este test: el borde de arriba de
-    // verdad quedó por DEBAJO del de abajo. Para que cocinar alcance, vivir tendría
-    // que costar menos de lo que ya le alcanza al que come crudo — o sea que no hay
-    // ningún valor de `COSTO_VIVIR_POR_SEGUNDO` que cumpla las dos mitades. Esto es
-    // un guardián y no una deuda: si mañana alguien mueve una constante y la ventana
-    // vuelve a existir, este `expect` se pone rojo y hay que venir a mirar.
-    expect(arribaConFuego).toBeLessThan(abajo)
+    // LA VENTANA EXISTE: los dos bordes se descruzaron. Éste es el `expect` que
+    // decía lo contrario, y ahora dice lo contrario de lo contrario — con la misma
+    // función de guardián: si mañana alguien afloja el cobro del veneno, los bordes
+    // se vuelven a cruzar y esto se pone rojo.
+    expect(arribaConFuego).toBeGreaterThan(abajo)
+    // Y EL BORDE DE ABAJO ES NEGATIVO, que es lo que hace que la ventana sea
+    // `(0 ; arribaConFuego)` y no un intervalo cualquiera: comer crudo no es ingreso
+    // chico, es EGRESO, así que ningún precio positivo de vivir lo salva.
+    expect(abajo).toBeLessThan(0)
+    // PERO EL 1,0 NO ESTÁ ADENTRO, y esto es lo que hay que decir fuerte. La
+    // afirmación es idéntica en consecuencia a la de antes —cocinar no salva— y
+    // distinta en diagnóstico: antes no había NINGÚN número posible; ahora hay un
+    // intervalo y el elegido cae afuera.
+    expect(COSTO_VIVIR_POR_SEGUNDO).toBeGreaterThan(arribaConFuego)
     console.log(
-      `económico · LA VENTANA DEL ADR II-0009, medida sobre las cien comunes:\n` +
-        `económico ·   ${abajo.toFixed(3)}/s ← borde de ABAJO: lo que rinde comiendo CRUDO la partida que MÁS comió\n` +
+      `económico · LA VENTANA DEL ADR II-0009, remedida con el ADR II-0013 adentro:\n` +
+        `económico ·   ${abajo.toFixed(3)}/s ← borde de ABAJO: lo que rinde comiendo CRUDO la partida que MÁS comió (era +0,766)\n` +
+        `económico ·   ${arribaConFuego.toFixed(3)}/s ← borde de ARRIBA DE VERDAD, con el fuego de ${PRECIO_DEL_FUEGO.precio.toFixed(2)} adentro (era +0,494)\n` +
+        `económico ·   ${arribaSinFuego.toFixed(3)}/s ← borde de ARRIBA si cocinar fuera gratis, que es como el ADR lo midió\n` +
         `económico ·   ${COSTO_VIVIR_POR_SEGUNDO.toFixed(3)}/s ← COSTO_VIVIR_POR_SEGUNDO, el número elegido\n` +
-        `económico ·   ${arribaSinFuego.toFixed(3)}/s ← borde de ARRIBA **si cocinar fuera gratis**, que es como el ADR lo midió\n` +
-        `económico ·   ${arribaConFuego.toFixed(3)}/s ← borde de ARRIBA DE VERDAD, con el fuego de ${PRECIO_DEL_FUEGO.precio.toFixed(2)} adentro\n` +
-        `económico ·   ⚠ ${arribaConFuego.toFixed(3)} < ${abajo.toFixed(3)}: LOS DOS BORDES SE CRUZAN y la ventana es un CONJUNTO VACÍO\n` +
-        `económico ·   lo que sí queda: crudo no alcanza en las cien, y cocinar rinde ${(
-          caloriasDelBocado('pescado', MASA_DE_UNA_PIEZA, DIGESTIBILIDAD_TECHO) / caloriasDelBocado('pescado', MASA_DE_UNA_PIEZA)
-        ).toFixed(2)}× sobre la misma materia`,
+        `económico ·   ✔ ${arribaConFuego.toFixed(3)} > ${abajo.toFixed(3)}: LOS DOS BORDES SE DESCRUZARON y la ventana YA NO está vacía\n` +
+        `económico ·   ⚠ pero el 1,000 quedó ${(COSTO_VIVIR_POR_SEGUNDO / arribaConFuego).toFixed(1)}× por ENCIMA del borde de arriba: la ventana es (0 ; ${arribaConFuego.toFixed(3)}) y el número elegido cae AFUERA\n` +
+        `económico ·   lo que sí queda: crudo no alcanza en las cien, y cocinar da vuelta el SIGNO de la misma materia ` +
+        `(${netoDelBocado('pescado', MASA_DE_UNA_PIEZA).toFixed(2)} → ${netoDelBocado('pescado', MASA_DE_UNA_PIEZA, COCIDO).toFixed(2)} por pieza de 2 kg)`,
     )
   })
 
-  it('el punto de equilibrio, medido: de qué lado de la perilla quedó cada variante', () => {
-    // El número accionable, y dice cosas distintas según la variante: el costo de
-    // vivir por segundo que dejaría en cero a la partida que MÁS comió, o sea el
-    // que haría negativas a las cien de esa variante.
+  it('el punto de equilibrio, medido: LAS TRES VARIANTES QUEDARON DEL MISMO LADO', () => {
+    // El número accionable: el costo de vivir por segundo que dejaría en cero a la
+    // partida que MÁS comió, o sea el que haría negativas a las cien de esa
+    // variante.
     //
-    //   · el CARROÑERO, que es el que contesta el riesgo 4, está tan abajo que no
-    //     entra en la comparación: no llega ni a la mitad de la partida vivo;
-    //   · la COMÚN quedó por DEBAJO de lo que hoy cuesta vivir → las cien dan
-    //     negativo comiendo crudo, aun trabajando;
-    //   · la AFORTUNADA sigue por ENCIMA → las cien dan positivo, y ése es el
-    //     `it.fails` de más arriba, con su porqué adentro.
+    // ─── LAS TRES DAN NEGATIVO, Y ANTES ERAN DOS ───────────────────────────
     //
-    // Que las tres afirmaciones tengan distinto sentido no es una concesión: es
-    // exactamente lo que se midió, y afirmar el mismo sentido para todas sería
-    // pedirle al mundo que se calibre contra un adversario.
-    const equilibrioDe = (ps: readonly Partida[]): number => {
-      let equilibrio = 0
-      for (const p of ps) {
-        // ingreso = costoPorSegundo × 1000 + caminata  ⟹  el corte
-        const corte = (p.ingresoCrudo - p.celdasCaminadas * COSTO_POR_CELDA) / SEGUNDOS_DE_PARTIDA
-        if (corte > equilibrio) equilibrio = corte
-      }
-      return equilibrio
-    }
+    // Este `it` decía: «que las tres afirmaciones tengan distinto sentido no es una
+    // concesión», porque la AFORTUNADA quedaba por ENCIMA de lo que cuesta vivir y
+    // las otras dos por debajo. Con el ADR II-0013 las tres quedaron del mismo lado
+    // y el número de la afortunada **ni siquiera es positivo**: su equilibrio está
+    // en −4,51/s, o sea que no hay precio de vivir que la salve comiendo crudo,
+    // porque su ingreso crudo YA es negativo antes de restarle nada.
+    //
+    // ─── EL BUG QUE ESTO DESTAPÓ, y conviene contarlo ──────────────────────
+    //
+    // `equilibrioDe` arrancaba el máximo en 0 y no en −∞. Mientras todos los cortes
+    // eran positivos daba lo mismo; con los cortes negativos devolvía 0 para las
+    // dos variantes —o sea «el equilibrio está en 0,000/s»— que es un número que no
+    // significa nada y que además hacía que el `expect` de la afortunada fallara
+    // por el motivo equivocado. Un máximo que arranca en cero es un máximo que
+    // supone el signo de lo que va a ver.
+    const equilibrioDe = (ps: readonly Partida[]): number =>
+      extremos(
+        ps.map((p) => (p.ingresoCrudo - p.celdasCaminadas * COSTO_POR_CELDA) / SEGUNDOS_DE_PARTIDA),
+      ).max
     for (const [nombre, ps] of VARIANTES) {
       const equilibrio = equilibrioDe(ps)
       console.log(
@@ -1302,18 +1549,26 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     )
     expect(equilibrioCarroñero).toBeLessThan(0)
     expect(equilibrioDe(COMUNES)).toBeLessThan(COSTO_VIVIR_POR_SEGUNDO)
-    expect(equilibrioDe(AFORTUNADAS)).toBeGreaterThan(COSTO_VIVIR_POR_SEGUNDO)
+    // LA QUE DIO VUELTA. Este `expect` decía `toBeGreaterThan` y era el `it.fails`
+    // de más arriba visto desde otro ángulo. Ahora las tres están del mismo lado, y
+    // la afortunada además por debajo de CERO: comer crudo no es un ingreso chico,
+    // es un egreso, así que la suerte no cambia el signo.
+    expect(equilibrioDe(AFORTUNADAS)).toBeLessThan(0)
     // Y la otra mitad de la perilla, que es la que el documento prefiere: cocinar
     // multiplica lo que rinde el mismo bicho, sin crear ni un gramo de materia.
-    // **Es una MEJORA y no una condición de supervivencia**, y la diferencia está
-    // medida en el bloque 5: con el fuego pagado, cocinar rinde +33,3 en la partida
-    // más flaca — se paga solo, y no salva a nadie.
+    // **Sigue siendo una MEJORA y no una condición de supervivencia** —con el fuego
+    // pagado, cocinar rinde +852,2 en la partida más flaca (bloque 5), pero el neto
+    // sigue negativo en 99 de 100— y lo que cambió es que ya no se puede escribir
+    // como un cociente: el crudo es negativo, así que dividir daría un número sin
+    // sentido. Se escribe como lo que es: un cambio de signo, en stamina.
     const crudo = resumir(AFORTUNADAS).ingreso
     const cocinado = AFORTUNADAS.reduce((a, p) => a + p.ingresoCocinado, 0)
     console.log(
-      `económico · cocinar multiplica lo que rinde la MISMA materia por ${(cocinado / crudo).toFixed(2)}× (digestibilidad al techo ${String(DIGESTIBILIDAD_TECHO)} contra la cruda)`,
+      `económico · cocinar da vuelta el SIGNO de la misma materia: ${(crudo / PARTIDAS).toFixed(1)} crudo contra ${(cocinado / PARTIDAS).toFixed(1)} cocinado por partida ` +
+        `(digestibilidad al techo ${String(DIGESTIBILIDAD_TECHO)} contra la cruda, y toxicidad ${String(TOXICIDAD_DEL_PESCADO_COCIDO)} contra 0,25)`,
     )
-    expect(cocinado / crudo).toBeGreaterThan(2)
+    expect(crudo).toBeLessThan(0)
+    expect(cocinado).toBeGreaterThan(0)
   })
 
   it('EL INVARIANTE: ningún chunk pasó su techo, en ninguna de las doscientas partidas', () => {
@@ -1385,7 +1640,7 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     expect(sinTecho / techos).toBeGreaterThan(1)
   })
 
-  it('las tres constantes copiadas de `@anima/world` siguen diciendo lo que dicen acá, Y con la misma unidad', () => {
+  it('las CUATRO constantes copiadas de `@anima/world` siguen diciendo lo que dicen acá, Y con la misma unidad', () => {
     // El guardián de la copia. `@anima/oracle` no puede importar `@anima/world`
     // —sería el ciclo de paquetes que toda la arquitectura evita—, así que estos
     // tres números están copiados; y una constante copiada sin un test que la
@@ -1412,6 +1667,10 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     expect(valorDe('COSTO_VIVIR_POR_SEGUNDO')).toBe(COSTO_VIVIR_POR_SEGUNDO)
     expect(valorDe('COSTO_POR_CELDA')).toBe(COSTO_POR_CELDA)
     expect(valorDe('STAMINA_POR_CALORIA')).toBe(STAMINA_POR_CALORIA)
+    // La cuarta, del ADR II-0013. Es la que más falta hace vigilar hoy porque es la
+    // que acaba de nacer: una copia de una constante recién calibrada es la que más
+    // fácil se queda vieja.
+    expect(valorDe('COSTO_POR_TOXICIDAD_Y_KILO')).toBe(COSTO_POR_TOXICIDAD_Y_KILO)
 
     // ─── Y LA UNIDAD, que es la otra mitad de la copia ─────────────────────
     //
@@ -1425,11 +1684,34 @@ describe('el test económico: 100 partidas de 20.000 ticks', () => {
     //     20.000 ticks;
     //   · la celda NO es una tasa ⟹ se cobra tal cual con `cobrarStamina`, y no
     //     puede pasar por `porPaso` nunca: dividirla por la frecuencia haría que
-    //     el mismo viaje saliera 5× más barato a 100 Hz que a 20.
+    //     el mismo viaje saliera 5× más barato a 100 Hz que a 20;
+    //   · el veneno TAMPOCO es una tasa ⟹ se cobra por acto de tragar y se
+    //     multiplica por `toxicity · masa`. Que la MASA esté en la cuenta es la
+    //     mitad de la unidad: `toxicity` es intensiva, así que un cobro que sólo
+    //     mirara el intensivo haría que medio pescado envenenara lo mismo que uno
+    //     entero, y ninguna constante lo delataría.
     const dice = (patron: RegExp): boolean => patron.test(fuente)
     expect(['vivir pasa por porPaso', dice(/porPaso\(COSTO_VIVIR_POR_SEGUNDO,/)]).toEqual(['vivir pasa por porPaso', true])
     expect(['la celda NO pasa por porPaso', dice(/porPaso\(\s*COSTO_POR_CELDA/)]).toEqual(['la celda NO pasa por porPaso', false])
     expect(['la celda se cobra entera', dice(/cobrarStamina\(d, a, COSTO_POR_CELDA\)/)]).toEqual(['la celda se cobra entera', true])
+    expect(['el veneno es toxicidad × MASA × K', dice(/toxicidad \* masa \* COSTO_POR_TOXICIDAD_Y_KILO/)]).toEqual([
+      'el veneno es toxicidad × MASA × K',
+      true,
+    ])
+    expect(['el veneno NO pasa por porPaso', dice(/porPaso\(\s*COSTO_POR_TOXICIDAD_Y_KILO/)]).toEqual([
+      'el veneno NO pasa por porPaso',
+      false,
+    ])
+    // Y QUE SE COBRE APARTE, que es la decisión entera del ADR II-0013: dos
+    // anotaciones y dos eventos. Si alguien netea el veneno adentro de `acreditado`
+    // —o sea, si el `convierte` sale con la resta hecha— este archivo estaría
+    // modelando dos mitades que el mundo ya no distingue, y la crónica dejaría de
+    // poder contar por qué la criatura comió y adelgazó.
+    expect(['el cobro va por anotarGasto', dice(/anotarGasto\(d, 'stamina', cobrado\)/)]).toEqual([
+      'el cobro va por anotarGasto',
+      true,
+    ])
+    expect(['y emite su propio evento', dice(/k: 'enveneno'/)]).toEqual(['y emite su propio evento', true])
 
     // ─── Y los nombres viejos no volvieron por la puerta de atrás ──────────
     //
@@ -1542,20 +1824,25 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     //     y sin carbonizar, medido en `perceive`. Cocinar no es rival: el precio es
     //     del fuego y no del bocado.
     //
+    // ─── Y CON EL ADR II-0013 EL MARGEN CASI SE DUPLICA ────────────────────
+    //
+    // Porque cocinar hace DOS cosas y no una: sube lo que la pieza da (la
+    // digestibilidad, de 0,38 a 0,95) y baja lo que la pieza cuesta (la toxicidad,
+    // de 0,25 a 0,0345 medido). Antes el margen era la diferencia de calorías y
+    // nada más —9,12 por pieza de 2 kg— y ahora son 19,89.
+    //
     // Los dos números, para que se puedan comparar con el 332 viejo y con la
     // pieza que este archivo usa.
-    const deUnKilo =
-      (caloriasDelBocado('pescado', fx(1), DIGESTIBILIDAD_TECHO) - caloriasDelBocado('pescado', fx(1))) *
-      STAMINA_POR_CALORIA
+    const deUnKilo = netoDelBocado('pescado', fx(1), COCIDO) - netoDelBocado('pescado', fx(1))
     const porFuegoUnKilo = Math.ceil(PRECIO_DEL_FUEGO.precio / deUnKilo)
     const porFuego = Math.ceil(PRECIO_DEL_FUEGO.precio / LO_QUE_PAGA_UNA_PIEZA)
     console.log(
-      `económico · PESCADOS POR FUEGO, remedido con el fuego que dura:\n` +
-        `económico ·   cocinar una pieza de 1 kg paga ${deUnKilo.toFixed(2)} de stamina → ${String(porFuegoUnKilo)} por fuego (el adversario, con el fuego de un tick, midió 332)\n` +
-        `económico ·   cocinar una pieza de ${String(unfx(MASA_DE_UNA_PIEZA))} kg paga ${LO_QUE_PAGA_UNA_PIEZA.toFixed(2)} → ${String(porFuego)} por fuego`,
+      `económico · PESCADOS POR FUEGO, remedido con el fuego que dura Y el veneno cobrado:\n` +
+        `económico ·   cocinar una pieza de 1 kg paga ${deUnKilo.toFixed(2)} de stamina → ${String(porFuegoUnKilo)} por fuego (el adversario, con el fuego de un tick, midió 332; sin el veneno, 145)\n` +
+        `económico ·   cocinar una pieza de ${String(unfx(MASA_DE_UNA_PIEZA))} kg paga ${LO_QUE_PAGA_UNA_PIEZA.toFixed(2)} → ${String(porFuego)} por fuego (sin el veneno eran 73)`,
     )
-    expect(porFuegoUnKilo).toBe(145)
-    expect(porFuego).toBe(73)
+    expect(porFuegoUnKilo).toBe(67)
+    expect(porFuego).toBe(34)
 
     // Y LO QUE ESO SIGNIFICA EN UNA PARTIDA, que es donde el número se vuelve
     // accionable: la criatura COMÚN saca entre `min` y `max` piezas en los 1000
@@ -1566,8 +1853,13 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
       `económico ·   la común saca entre ${String(piezas.min)} y ${String(piezas.max)} piezas por partida (mediana ${String(piezas.mediana)}): ` +
         `${piezas.min >= porFuego ? 'las cien' : 'no todas'} alcanzan para pagar UN fuego`,
     )
-    // Está peleado, y ése es el dato: la que menos sacó saca 76 y hacen falta 73.
+    // DEJÓ DE ESTAR PELEADO, y ése es el dato nuevo: la que menos sacó saca 76 y
+    // hacen falta 34. Antes hacían falta 73 de esas 76, o sea que el fuego se
+    // pagaba por un pelo; ahora sobra el doble. El margen no cambió porque el fuego
+    // se abaratara —cuesta lo mismo, 659,86— sino porque el veneno del crudo pasó a
+    // contar como lo que cocinar EVITA.
     expect(piezas.min).toBeGreaterThanOrEqual(porFuego)
+    expect(piezas.min / porFuego).toBeGreaterThan(2)
   })
 
   it('COCINAR CONVIENE EN LAS CIEN, aunque el fuego se pague entero de un bolsillo solo', () => {
@@ -1585,23 +1877,17 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     for (const x of conFuego) expect(x).toBeGreaterThan(0)
   })
 
-  it('LA MITAD DE ARRIBA DE LA VENTANA SE CAE, con el fuego de leña gratis (el número viejo, intacto)', () => {
+  it('LA MITAD DE ARRIBA DE LA VENTANA SE CAE, y con el veneno cobrado se cae MÁS', () => {
     // ─── ESTO ES UN GUARDIÁN Y NO UNA DEUDA ────────────────────────────────
     //
     // Este `it` fue un `it.fails` dos veces, y ya no lo es ninguna. La afirmación
     // no se movió nunca —«con el precio del fuego adentro, la mitad de arriba de la
     // ventana se cae»— y lo que cambió es cómo se escribe: de «esto DEBERÍA dar
-    // positivo y no da» a «esto da negativo, y son 91 de 100».
+    // positivo y no da» a «esto da negativo, y son 99 de 100».
     //
-    // El paso que falta lo dio el ADR II-0009 corregido: la ventana que este número
-    // rompía **era el conjunto vacío**, así que no hay ningún hueco que cerrar.
-    // Un `it.fails` que nadie va a cerrar es ruido; una imposibilidad afirmada, con
-    // sus dos números, es lo que se pone rojo el día que alguien mueva una
-    // constante y la ventana vuelva a existir.
-    //
-    // Se deja con el número viejo intacto porque el bloque 6 lo usa de control: si
-    // mañana el neto cocinado sin fuego se mueve, los dos se mueven juntos y la
-    // diferencia entre ellos sigue siendo el precio del fuego.
+    // Se deja con el número intacto porque el bloque 6 lo usa de control: si mañana
+    // el neto cocinado sin fuego se mueve, los dos se mueven juntos y la diferencia
+    // entre ellos sigue siendo el precio del fuego.
     //
     // QUÉ SE MIDIÓ: el criterio del ADR II-0009 —«neto crudo negativo en las 100
     // partidas comunes y neto cocinado positivo en las 100»— se eligió con un
@@ -1610,18 +1896,26 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     //
     // MEDIDO, con UN SOLO fuego por partida —el supuesto más generoso posible: que
     // se enciende una vez y dura los 1000 segundos, con leña que este modelo no
-    // cobra—:
+    // cobra—, ANTES y DESPUÉS del ADR II-0013:
     //
-    //   neto cocinado SIN fuego .... mínimo  +155,2 · mediana  +489,6 · máximo +915,2
-    //   neto cocinado CON fuego .... mínimo  −504,7 · mediana  −170,3 · máximo +255,3
+    //                              antes del II-0013          ahora
+    //   neto cocinado SIN fuego   +155,2 / +489,6 / +915,2   +24,1 / +320,6 / +697,9
+    //   neto cocinado CON fuego   −504,7 / −170,3 / +255,3   −635,8 / −339,3 / +38,0
+    //   partidas debiendo ......  91 de 100                  99 de 100
     //
-    // O sea que 91 de las 100 partidas comunes terminan DEBIENDO aunque cocinen
-    // todo lo que sacan, y las 9 que zafan son las que más pescaron. La frase del
-    // ADR II-0009 —«la diferencia entre vivir y morirse es cocinar»— **es la que se
-    // cayó**: sigue siendo cierta como COMPARACIÓN (el test de acá arriba mide que
-    // cocinar conviene en las cien, por +33,3 en la más flaca) y es falsa como
-    // SUPERVIVENCIA. Cocinar es mejor que no cocinar y no alcanza para vivir. El ADR
-    // corregido dice eso mismo y apunta acá.
+    // El veneno del COCIDO es chico —1,73 por pieza contra 12,50 del crudo— pero se
+    // cobra 76 a 126 veces por partida, y eso se lleva los 131 de holgura que
+    // separaban a 91 de 99. La conclusión no cambia de dirección: se endurece.
+    //
+    // ─── LO QUE SÍ CAMBIÓ DE DIRECCIÓN, y va dicho acá ────────────────────
+    //
+    // La comparación CONTRA COMER CRUDO se dio vuelta a favor de cocinar, y por
+    // mucho: el `it` de acá arriba mide +852,2 en la partida más flaca contra los
+    // +33,3 de antes. Cocinar pasó de «conviene por un pelo» a «conviene 26×», y no
+    // porque el fuego se abaratara —cuesta los mismos 659,86— sino porque lo que
+    // cocinar EVITA (12,50 de veneno por pieza) pasó a contar. Las dos cosas son
+    // ciertas a la vez y no se contradicen: cocinar es mucho mejor que no cocinar, y
+    // sigue sin alcanzar para vivir.
     //
     // Y NO SE ARREGLA DESDE ACÁ. Bajar `COSTO_VIVIR_POR_SEGUNDO` hasta que las cien
     // vuelvan a dar positivo es calibrar el mundo desde el arnés, que es lo que
@@ -1630,27 +1924,29 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // imposibilidad sin su magnitud no se puede discutir.
     //
     // QUÉ HABRÍA HECHO FALTA, por las tres salidas que el hueco gemelo de
-    // `world/tests/ataque-2-al-fuego.test.ts` (e) nombra, con los números de hoy —y
-    // las tres están cerradas o piden mover el hambre entera:
+    // `world/tests/ataque-2-al-fuego.test.ts` (e) nombra, con los números de hoy:
     //
-    //   1. que `nutrition → stamina` rinda más: hace falta un factor de 1,44 sobre
-    //      el ingreso cocinado de la partida más flaca. Es `STAMINA_POR_CALORIA` o
-    //      el `nutrition` del catálogo, y mueve el hambre entera;
+    //   1. que `nutrition → stamina` rinda más: hace falta un factor de 1,62 sobre
+    //      el ingreso cocinado de la partida más flaca (era 1,44). Es
+    //      `STAMINA_POR_CALORIA` o el `nutrition` del catálogo, y mueve el hambre
+    //      entera;
     //   2. que encender salga más barato **y por este lado no se puede**, y es el
-    //      hallazgo del bloque. La partida más flaca de las cien termina con 155,2
-    //      de holgura, así que el fuego tendría que costar menos que eso; el precio
-    //      es `heatCapacity × 288 / eficiencia + 2,4`, y despejando hace falta una
-    //      eficiencia de **1,51**. Una eficiencia mayor que 1 es una máquina de
-    //      movimiento perpetuo, que es exactamente lo que el comentario de
-    //      `FRICCION` dice que el 0,35 existe para impedir. Ni siquiera un motor
-    //      PERFECTO alcanza: con eficiencia 1 el fuego cuesta 232,51 y la holgura
-    //      es 155,2. La salida no está en el precio del trabajo, está en la masa de
-    //      la vara — y la masa no se puede bajar porque abajo de 0,47 kg el fuego
-    //      enciende y no cocina, que es el otro número de este bloque;
-    //   3. que el fuego se amortice entre más partidas de las que hay. Ya no: el
-    //      ADR II-0011 hizo que UN fuego cocine 200 pescados a la vez, y aun así
-    //      hace falta que la partida saque 73 piezas de las 76 que saca la más
-    //      flaca. Esta salida ya se gastó.
+    //      hallazgo del bloque. La partida más flaca de las cien termina con 24,1
+    //      de holgura (era 155,2), así que el fuego tendría que costar menos que
+    //      eso; el precio es `heatCapacity × 288 / eficiencia + 2,4`, y despejando
+    //      hace falta una eficiencia de **10,60** (era 1,51). Una eficiencia mayor
+    //      que 1 es una máquina de movimiento perpetuo, que es exactamente lo que el
+    //      comentario de `FRICCION` dice que el 0,35 existe para impedir. Ni
+    //      siquiera un motor PERFECTO alcanza: con eficiencia 1 el fuego cuesta
+    //      232,51 y la holgura es 24,1. La salida no está en el precio del trabajo,
+    //      está en la masa de la vara — y la masa no se puede bajar porque abajo de
+    //      0,47 kg el fuego enciende y no cocina;
+    //   3. que el fuego se amortice entre más piezas. **Ésta se ABRIÓ un poco con el
+    //      II-0013**: el fuego ahora se paga con 34 piezas y no con 73, y la que
+    //      menos saca saca 76. Pero abrirse no alcanza, porque cocinar ya cocinaba
+    //      TODO lo que sale del agua (200 piezas a la vez, medido en `perceive`), o
+    //      sea que las piezas de más no existen: el tope no lo pone el fuego, lo
+    //      pone el dado.
     //
     // La 2 y la 3 están cerradas y la 1 mueve el hambre entera, así que ninguna es
     // «cerrar un hueco»: son un rediseño del hambre, y no se decide desde el arnés.
@@ -1685,13 +1981,14 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // perfecto entra en la holgura.
     expect(eficienciaQueHaríaFalta).toBeGreaterThan(1)
     expect(conMotorPerfecto).toBeGreaterThan(holgura)
-    // Y las 91, contadas. Éste es el `expect` que antes decía
-    // `toBeGreaterThan(0)` sobre las cien y por eso el `it` era un `it.fails`.
-    expect(negativas).toBe(91)
-    expect(Number(e.min.toFixed(1))).toBe(-504.7)
-    // Y que las 9 que zafan zafen NO rescata la ventana: para que fuera un
-    // intervalo tendrían que ser las cien. Nueve de cien es una cola, no un
-    // criterio.
+    // Y las 99, contadas. Éste es el `expect` que antes decía
+    // `toBeGreaterThan(0)` sobre las cien y por eso el `it` era un `it.fails`; era
+    // 91 antes del ADR II-0013 y son 99 ahora, porque el veneno del cocido se cobra
+    // una vez por pieza y la partida saca entre 76 y 126.
+    expect(negativas).toBe(99)
+    expect(Number(e.min.toFixed(1))).toBe(-635.8)
+    // Y que la que zafa zafe NO rescata la ventana: para que fuera un intervalo
+    // tendrían que ser las cien. Una de cien es una cola, no un criterio.
     expect(negativas).toBeLessThan(PARTIDAS)
   })
 })
@@ -2056,15 +2353,30 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     expect(segundosDeFuegoPorKilo('madera')).toBeGreaterThan(10 * SEGUNDOS_DE_UNA_COCCIÓN)
   })
 
-  it('CON LA LEÑA COBRADA LA VENTANA TAMPOCO CIERRA, y el bug de las constantes NO era el problema económico', () => {
-    // ─── ESTO DEJÓ DE SER UNA DEUDA: ES LA IMPOSIBILIDAD, AFIRMADA ─────────
+  it('CON LA LEÑA COBRADA LA VENTANA TAMPOCO CIERRA — pero los bordes SE DESCRUZARON', () => {
+    // ─── EL GUARDIÁN SE PUSO ROJO, Y ESTO ES «VENIR A MIRAR» ───────────────
     //
-    // Este `it` fue un `it.fails` mientras se lo leía como «falta algo para que la
-    // ventana del ADR II-0009 cierre». No falta nada: **esa ventana es un conjunto
-    // vacío**, y este bloque es el que lo demuestra con los dos números que se
-    // cruzan. Un `it.fails` que nadie va a cerrar es ruido; una imposibilidad
-    // afirmada es un guardián — si mañana alguien mueve una constante y los bordes
-    // se descruzan, los `expect` de abajo se ponen rojos y hay que venir a mirar.
+    // Este `it` decía «ES LA IMPOSIBILIDAD, AFIRMADA» y su `expect` más fuerte era
+    // `vivirQueHaríaFalta < bordeDelCrudo`, con este comentario textual: «si mañana
+    // alguien mueve una constante y los bordes se descruzan, los `expect` de abajo
+    // se ponen rojos y hay que venir a mirar».
+    //
+    // Pasó, y por el ADR II-0013. Medido sobre las mismas cien comunes:
+    //
+    //                                antes del II-0013     ahora
+    //   vivir que haría falta ......   +0,494/s           +0,364/s
+    //   borde del CRUDO ............   +0,766/s           −0,488/s
+    //
+    // El borde del crudo se desplomó —comer crudo dejó de ser ingreso y pasó a ser
+    // egreso— y por eso los dos se descruzaron. **La ventana existe**: es
+    // `(0 ; 0,364)`, o sea cualquier costo de vivir positivo por debajo de 0,364/s.
+    //
+    // PERO EL 1,0 QUEDÓ AFUERA, 2,7× por encima del borde de arriba, y por eso el
+    // título de este `it` sigue diciendo que la ventana no cierra: no cierra CON EL
+    // NÚMERO ELEGIDO. La diferencia con antes es de diagnóstico y no de consecuencia:
+    // antes no existía ningún valor posible, ahora existe un intervalo y el valor
+    // vigente cae afuera. Bajar la perilla desde acá sería calibrar el mundo desde el
+    // arnés — se mide, se dice, y decide quien tenga que decidir.
     //
     // QUÉ MIDE: la hipótesis del tramo era «el problema económico y el bug de las
     // constantes eran el mismo problema», y la medición dice que NO. El bug hacía
@@ -2092,24 +2404,23 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     //   1. QUE EL POZO RINDA MÁS. El factor está medido abajo. Es
     //      `STAMINA_POR_CALORIA` o el `nutrition` del catálogo, y mueve el hambre
     //      entera: no es cerrar un hueco, es rediseñar el metabolismo.
-    //   2. QUE VIVIR CUESTE MENOS. **Y ÉSTE TAMBIÉN ESTÁ CERRADO**, que es el
-    //      hallazgo que este bloque agrega y que el 5 no podía ver. El número que
-    //      haría falta está medido abajo, y hay que compararlo contra el OTRO borde
-    //      de la ventana del ADR II-0009: el precio de vivir al que la criatura
-    //      sobrevive comiendo CRUDO. Si el precio que salva a la que cocina está
-    //      por DEBAJO del que salva a la que no, no existe ningún valor de
-    //      `COSTO_VIVIR_POR_SEGUNDO` que cumpla la ventana entera — bajarlo hasta
-    //      que cocinar alcance hace que comer crudo también alcance, y ahí el motor
-    //      de la historia se apaga. Los dos bordes se cruzaron, y ésa es la
-    //      diferencia entre «hay que barrer una perilla» y «esta perilla no tiene
-    //      una posición que sirva».
+    //   2. QUE VIVIR CUESTE MENOS. **Y ÉSTE SE ABRIÓ CON EL ADR II-0013**, que es
+    //      lo que este bloque tiene que corregir de sí mismo. El número que haría
+    //      falta está medido abajo, y se compara contra el OTRO borde de la ventana
+    //      del ADR II-0009: el precio de vivir al que la criatura sobrevive comiendo
+    //      CRUDO. Mientras comer crudo daba ingreso, ese borde estaba ARRIBA del
+    //      otro y no había ningún valor que cumpliera la ventana entera. Ahora comer
+    //      crudo da EGRESO, así que ese borde es negativo y ningún precio positivo
+    //      de vivir lo salva: la ventana pasó a ser `(0 ; 0,364)`. Sigue sin
+    //      contener al 1,0 vigente, y eso es lo que se afirma.
     //   3. QUE EL FUEGO SE AMORTICE MÁS. Este camino ya se gastó y ahora se sabe por
     //      qué: cocinar no es rival, un fuego cocina todo lo que salga del agua en
-    //      la partida, y ni así alcanza.
+    //      la partida, y ni así alcanza. (El II-0013 bajó el fuego de 73 piezas a
+    //      34, y no mueve nada: el tope no lo pone el fuego, lo pone el dado.)
     //
     // La salida 2 del bloque 5 —«que encender salga más barato»— sigue cerrada por
     // arriba y por el mismo motivo aritmético, que la leña no toca: pediría
-    // eficiencia 1,51 en el `poweredBy` de `friccion`.
+    // eficiencia 10,60 en el `poweredBy` de `friccion`.
     const filas: string[] = []
     const netos = new Map<string, number[]>()
     for (const [nombre, pide] of ESTRATEGIAS) {
@@ -2158,24 +2469,31 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
         `económico ·   → la leña mueve el mínimo en ${(eHornada.min - viejo.min).toFixed(1)} con la hornada y en ${(eSostenido.min - viejo.min).toFixed(1)} con el fuego sostenido\n` +
         `económico ·   FALTAN ${falta.toFixed(1)} de stamina en la partida más flaca de las cien\n` +
         `económico ·   camino 1 · el pozo tendría que rendir ${factorDelPozo.toFixed(2)}× lo que rinde\n` +
-        `económico ·   camino 2 · CERRADO: vivir tendría que costar ${vivirQueHaríaFalta.toFixed(3)}/s para que cocinar alcance, ` +
-        `y a ${bordeDelCrudo.toFixed(3)}/s ya alcanza comer CRUDO. Los dos bordes se cruzaron: no hay valor que cumpla la ventana entera\n` +
+        `económico ·   camino 2 · ABIERTO desde el ADR II-0013: vivir tendría que costar ${vivirQueHaríaFalta.toFixed(3)}/s para que cocinar alcance, ` +
+        `y comer CRUDO ya no alcanza a NINGÚN precio positivo (su borde es ${bordeDelCrudo.toFixed(3)}/s, negativo). La ventana es (0 ; ${vivirQueHaríaFalta.toFixed(3)}) y el 1,000 vigente cae AFUERA\n` +
         `económico ·   camino 3 · gastado: cocinar no es rival y el fuego ya cocina todo lo que sale del agua`,
     )
-    // LOS DOS BORDES CRUZADOS. Es la afirmación más fuerte del bloque y no depende
-    // de ninguna copia: los dos números salen de las mismas cien partidas.
-    expect(vivirQueHaríaFalta).toBeLessThan(bordeDelCrudo)
+    // LOS DOS BORDES, DESCRUZADOS. Éste era el `expect` que afirmaba la
+    // imposibilidad (`vivirQueHaríaFalta < bordeDelCrudo`) y ahora afirma lo
+    // contrario, con la misma función de guardián: si alguien afloja el cobro del
+    // veneno, el borde del crudo vuelve a subir, los dos se vuelven a cruzar y esto
+    // se pone rojo.
+    expect(vivirQueHaríaFalta).toBeGreaterThan(bordeDelCrudo)
+    // Y EL BORDE DEL CRUDO ES NEGATIVO, que es lo que hace que la ventana arranque
+    // en cero: comer crudo no es un ingreso chico, es un egreso.
+    expect(bordeDelCrudo).toBeLessThan(0)
+    // PERO EL 1,0 SIGUE AFUERA, que es por qué el título dice «tampoco cierra».
+    expect(COSTO_VIVIR_POR_SEGUNDO).toBeGreaterThan(vivirQueHaríaFalta)
     // La leña no mueve la conclusión, y eso es lo que este bloque tiene que
     // afirmar: entre la cuenta con leña gratis y la cuenta con la leña cobrada de
     // verdad hay menos de tres puntos de stamina en la estrategia barata.
     expect(Math.abs(eHornada.min - viejo.min)).toBeLessThan(3)
-    // Y LA IMPOSIBILIDAD, CONTADA. Éste era el `expect` que mantenía el hueco
-    // abierto —`toBeGreaterThan(0)` sobre las cien—, y ahora afirma lo medido: con
-    // la estrategia MÁS BARATA que existe, 91 de las 100 partidas terminan
-    // debiendo, y la más flaca debe 505,5. Que 9 zafen no rescata nada: para que la
-    // ventana fuera un intervalo tendrían que ser las cien.
-    expect(hornada.filter((x) => x <= 0).length).toBe(91)
-    expect(Number(eHornada.min.toFixed(1))).toBe(-505.5)
+    // Y LA CUENTA, CONTADA. Era 91 de 100 y la más flaca debía 505,5; con el veneno
+    // del cocido cobrado —1,73 por pieza, entre 76 y 126 piezas por partida— son 99
+    // de 100 y la más flaca debe 636,3. Que una zafe no rescata nada: para que la
+    // ventana contuviera al 1,0 tendrían que ser las cien.
+    expect(hornada.filter((x) => x <= 0).length).toBe(99)
+    expect(Number(eHornada.min.toFixed(1))).toBe(-636.3)
   })
 
   it('las DOS constantes de la ley 3 copiadas de `@anima/physics` siguen diciendo lo que dicen acá', () => {

@@ -20,9 +20,26 @@
 //   4. se decide si quedó establecido LLAMANDO AL MOTOR —`qualityOf`,
 //      `evalQuality`, `cumpleCuerpo`— y nunca transcribiendo una fórmula.
 //
-// El bucle es `for (const e of ESQUEMAS)` con un `it` por fila: una novena fila
+// El bucle es `for (const e of ESQUEMAS)` con un `it` por fila: una fila nueva
 // que alguien agregue mañana entra sola al barrido y se pone roja sola si no se
 // puede armar, si no completa, o si el predicado no queda.
+//
+// ─── Y LAS FILAS QUE NO SON PROCESOS ────────────────────────────────────────
+//
+// Desde el tramo H la tabla tiene filas de LEY —cocinar no es un `ProcessId`, lo
+// hace la ley 5— y el criterio es EXACTAMENTE el mismo, con dos diferencias que
+// salen de qué es una ley y no de una comodidad del banco:
+//
+//   · el paso 3 no emite ningún `apply`. Se corre `stepWorld` con CERO
+//     intenciones, porque las leyes corren solas: si la comida se cocina, no la
+//     cocinó nadie;
+//   · el paso 2 arma una PILA —`supportedBy` de abajo hacia arriba— en vez de
+//     llenar roles del catálogo, y verifica que los tres cuerpos cumplan lo que
+//     la fila les pide ANTES de correr, para que la tilde verde no mida al banco.
+//
+// Y se mide en el PEOR CASO ADMISIBLE: el fuego en el borde de abajo de su
+// ventana, la comida corrida para las seis sustancias carnosas del catálogo, y el
+// presupuesto igual al `mientras` que la fila declara y ni un tick más.
 //
 // ─── LO ÚNICO ESCRITO A MANO, Y POR QUÉ NO SE PUEDE DERIVAR ─────────────────
 //
@@ -57,6 +74,7 @@ import { describe, expect, it, beforeAll } from 'vitest'
 import {
   baseRoleName,
   buildSeedPhysics,
+  estaEnVentanaDeCoccion,
   evalQuality,
   isDerived,
   nameOf,
@@ -64,6 +82,7 @@ import {
   specOf,
   unir,
   HZ_DE_REFERENCIA,
+  SUSTANCIAS_SEMILLA,
   T_AMBIENTE,
   type Body,
   type ExprContext,
@@ -80,6 +99,7 @@ import {
   mapaDeActores,
   mapaDeCuerpos,
   stepWorld,
+  take,
   type CellKey,
   type CellState,
   type EstadoDelDios,
@@ -90,9 +110,17 @@ import {
 } from '@anima/world'
 import type { BodyView } from '@anima/skills'
 
-import { AGUA_FRANCA, ESQUEMAS, procesoDe } from '../src/esquemas.js'
+import {
+  AGUA_FRANCA,
+  ESQUEMAS,
+  POTENCIA_QUE_COCINA_LO_CARNOSO,
+  SEGUNDOS_DE_COCCION,
+  VENTANA_CARNOSA,
+  claveDeVia,
+  procesoDe,
+} from '../src/esquemas.js'
 import { cumpleCuerpo, interpretar } from '../src/predicado.js'
-import type { ConstructionSchema, Predicado } from '../src/tipos.js'
+import type { ConstructionSchema, EsquemaDeLey, EsquemaDeProceso, Predicado } from '../src/tipos.js'
 
 // ─── El banco ────────────────────────────────────────────────────────────────
 
@@ -137,7 +165,7 @@ function compara(a: number, op: Test['op'], v: number): boolean {
 
 const num = (v: number): string => v.toFixed(4).replace('.', ',')
 const texto = (t: Test): string => `${t.q}${t.op}${String(t.v)}`
-const clave = (e: ConstructionSchema): string => `${e.via}:${e.establishes}`
+const clave = (e: ConstructionSchema): string => `${claveDeVia(e)}:${e.establishes}`
 
 // ─── El mundo, armado acá y no importado del `tests/` de otro paquete ───────
 //
@@ -326,7 +354,7 @@ function pedido(p: Process, rol: string, e: ConstructionSchema): readonly Test[]
  * `catch` da cero. El recorrido es por `p.roles` —el orden del catálogo— y no por
  * `Object.keys(roleHints)`, para que dos corridas armen los roles igual.
  */
-function montar(e: ConstructionSchema): Puesta {
+function montar(e: EsquemaDeProceso): Puesta {
   const p = procesoDe(e.via)
   const conPozo = p.roles.some((r) => DEL_MUNDO[`${e.via}:${baseRoleName(r.name)}`] !== undefined)
   const o = conPozo ? orilla() : undefined
@@ -551,7 +579,7 @@ function interpretado(e: ConstructionSchema): Predicado {
 }
 
 function medir(
-  e: ConstructionSchema,
+  e: EsquemaDeProceso,
   w: WorldState,
   nacidos: readonly string[],
   roles: readonly RoleBinding[],
@@ -651,9 +679,240 @@ interface Resultado {
  * necesitó para sacar piezas con una caña pelada.
  */
 function tope(e: ConstructionSchema): number {
+  // Una ley no completa ni sortea: lo que promete lo promete EN `mientras`
+  // segundos, así que el presupuesto es exactamente ése. Darle más sería medir otra
+  // afirmación que la que la fila hace.
+  if (e.k === 'ley') return Math.ceil(e.mientras * HZ_DE_REFERENCIA)
   const p = procesoDe(e.via)
   const sortea = (p.completion?.yields ?? []).some((y) => y.k === 'drawFromStock')
   return sortea ? 6000 : Math.ceil(e.segundos * HZ_DE_REFERENCIA) * 4 + 60
+}
+
+// ─── LA FILA QUE NO ES UN PROCESO: SE ARMA LA PILA Y SE ESPERA ──────────────
+//
+// Mismo criterio que las de proceso, y ni un renglón más flojo: se pone el mundo
+// EXACTAMENTE en la situación que la fila declara, se corre, y se decide con el
+// motor. Lo que cambia es que no hay `apply` que emitir —las leyes corren solas,
+// que es el punto entero del ADR II-0001— así que la corrida es `stepWorld` con
+// CERO intenciones. Si la comida se cocina, no la cocinó nadie.
+//
+// ─── LAS TRES COSAS QUE SE MIDEN EN EL PEOR CASO ADMISIBLE Y NO EN UNO CÓMODO ─
+//
+//   · el fuego va en el BORDE DE ABAJO de la ventana de potencia que la fila
+//     declara. Con uno más grande la cocción es más rápida y la fila parecería
+//     mejor de lo que promete;
+//   · la comida se corre PARA CADA SUSTANCIA CARNOSA del catálogo y se reporta la
+//     que más tarda. Elegir una sería elegir la cómoda;
+//   · el presupuesto es `mientras` y nada más.
+//
+// Y la mitad que la ley no hace: la fila promete algo SOBRE LA MANO, y la ley deja
+// la comida arriba de la parrilla. Así que al final se emite un `take` —una
+// intención del mundo, no un atajo del test— y recién ahí se mira la mano.
+
+/**
+ * La masa de leña que emite EXACTAMENTE la potencia pedida, despejada y no
+ * tanteada: `emitsPower` es extensiva y lineal en la masa, así que se mide sobre
+ * un kilo ardiendo y se escala. Nadie escribe el 16,7 del catálogo.
+ */
+function lenaQueEmite(potencia: number): number {
+  const uno: Body = {
+    ...cuerpoDe('patron', 'madera', 1, 'vara'),
+    state: { temperature: IGNICION_DE_PRUEBA },
+  }
+  const porKilo = qualityOf(uno, 'emitsPower', PHYS)
+  if (!(porKilo > 0)) throw new Error('un kilo de madera a 400 °C dejó de emitir: el despeje no vale')
+  return potencia / porKilo
+}
+
+/** A qué temperatura se enciende el banco su fuego. 400 es lo que `friccion` promete. */
+const IGNICION_DE_PRUEBA = 400
+
+/** Las sustancias del tag que la ley 5 cocina, leídas del catálogo. */
+function sustanciasDelTag(tag: string): readonly string[] {
+  const out: string[] = []
+  for (const s of SUSTANCIAS_SEMILLA) {
+    if (!s.tags.includes(tag as never) || !s.tags.includes('organico')) continue
+    if (s.perUnitMass.denaturesAt === undefined) continue
+    out.push(s.id)
+  }
+  return out
+}
+
+/**
+ * La masa de la comida. Dos kilos y no cien gramos: `heatCapacity` es extensiva y
+ * la ley 1 divide por ella, así que una pieza grande tarda más en llegar al
+ * equilibrio. Es el lado exigente, y sigue entrando en la mano (`portable` topa en
+ * 8 kg).
+ */
+const MASA_DE_LA_COMIDA = 2
+
+interface PuestaDeLey {
+  readonly w: WorldState
+  readonly sujeto: string
+  readonly reparto: string
+  readonly potencia: number
+}
+
+/**
+ * El mundo de una fila de ley: la pila que la fila declara, armada de abajo hacia
+ * arriba con `supportedBy`, que es la misma lectura que hace `montajeDe`.
+ */
+function montarLey(e: EsquemaDeLey, sustancia: string): PuestaDeLey {
+  const at: Placement = { x: 0, y: 0 }
+  const potencia = POTENCIA_QUE_COCINA_LO_CARNOSO.minima
+  const masaDeLena = lenaQueEmite(potencia)
+  const fuego: Body = {
+    ...cuerpoDe('fuego', 'madera', masaDeLena, 'vara'),
+    state: { temperature: IGNICION_DE_PRUEBA },
+  }
+  const parrilla = cuerpoDe('parrilla', 'piedra', 0.5, 'bloque')
+  const comida = cuerpoDe('comida', sustancia, MASA_DE_LA_COMIDA, 'bloque')
+
+  // Y se verifica que los tres cumplan lo que la fila les pide ANTES de correr: si
+  // el banco montara una situación que el esquema no declara, la tilde verde no
+  // mediría la fila sino al banco.
+  for (const [rol, body] of [
+    ['fuego', fuego],
+    ['parrilla', parrilla],
+    ['comida', comida],
+  ] as const) {
+    for (const t of e.roleHints[rol] ?? []) {
+      const x = qualityOf(body, t.q, PHYS)
+      if (!compara(x, t.op, t.v)) {
+        throw new Error(
+          `el banco montó un «${rol}» que la fila no admite: ${t.q}=${num(x)} contra ${texto(t)}. ` +
+            `O la fila cambió de condiciones, o este montaje dejó de medirla.`,
+        )
+      }
+    }
+  }
+
+  const w: WorldState = {
+    tick: 0,
+    hz: HZ_DE_REFERENCIA,
+    phys: PHYS,
+    bodies: mapaDeCuerpos([
+      { body: criatura(ANA, 1000), at },
+      { body: fuego, at },
+      { body: parrilla, at, supportedBy: 'fuego' },
+      { body: comida, at, supportedBy: 'parrilla' },
+    ]),
+    actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
+    cells: new Map<CellKey, CellState>(),
+    nextId: 1,
+  }
+  return {
+    w,
+    sujeto: 'comida',
+    reparto:
+      `fuego=leña de ${num(masaDeLena)} kg ardiendo (emitsPower ${num(potencia)}, el borde de abajo) · ` +
+      `parrilla=piedra de 0,5 kg · comida=${sustancia} de ${String(MASA_DE_LA_COMIDA)} kg`,
+    potencia,
+  }
+}
+
+/** Lo que la fila promete, mirado sobre el sujeto y sobre la mano. */
+function medirLey(e: EsquemaDeLey, w: WorldState, sujeto: string, conMano: boolean): Medicion {
+  const pred = interpretado(e)
+  if (pred.k !== 'sostiene') throw new Error(`la fila de ley «${e.establishes}» no promete sobre la mano`)
+  const c = w.bodies.get(sujeto)
+  if (c === undefined) return NADA
+  const lector = lectorDe(w)
+  const tags = tagsDe(c.body, w.phys)
+  const medidos = (pred.tests ?? []).map((t) => ({ t, x: qualityOf(c.body, t.q, w.phys) }))
+  const cumplen = medidos.every((m) => compara(m.x, m.t.op, m.t.v))
+  const ana = w.actors.get(ANA)
+  const enMano = (ana?.holding ?? []).includes(sujeto)
+  // La `digestibility` es la más lenta de las dos que la ley mueve, así que es la
+  // que sigue el pico y la que dice cuánto falta.
+  const cocido = qualityOf(c.body, 'digestibility', w.phys)
+  return {
+    ok: cumplen && tags.includes(pred.tag) && (!conMano || enMano),
+    sobre: conMano ? 'la mano' : c.body.id,
+    valor: cocido,
+    medido:
+      `${medidos.map((m) => `${m.t.q}=${num(m.x)}`).join(' · ')} · tags [${tags.join(', ')}]` +
+      `${conMano ? ` · en la mano: ${enMano ? 'sí' : 'no'}` : ''}`,
+    umbral: (pred.tests ?? []).map(texto).join(' ∧ ') + ` ∧ tag «${pred.tag}»`,
+    como: '`qualityOf` sobre el sujeto y el catálogo de sustancias para el tag',
+    // La superficie no puede contestar `sostiene` —no trae tags— y eso es el hueco
+    // que este archivo ya mide dos veces más abajo.
+    vista: cumpleCuerpo(pred, vistaDe(c, w), lector),
+  }
+}
+
+/**
+ * Correr la fila de ley con CERO intenciones, una vez por cada sustancia del tag, y
+ * quedarse con la que peor sale. Al final, un `take` de verdad para la mitad de la
+ * promesa que la ley no hace.
+ */
+function correrLey(e: EsquemaDeLey): Resultado {
+  const pred = interpretado(e)
+  if (pred.k !== 'sostiene') throw new Error(`la fila de ley «${e.establishes}» no promete sobre la mano`)
+  const limite = tope(e)
+  let peor: Resultado | undefined
+  const detalle: string[] = []
+
+  for (const sustancia of sustanciasDelTag(pred.tag)) {
+    const puesta = montarLey(e, sustancia)
+    let w = puesta.w
+    let m = medirLey(e, w, puesta.sujeto, false)
+    let pico = m.valor
+    let ventanas = 0
+    let potenciaMinima = Number.POSITIVE_INFINITY
+    let t = 0
+    while (t < limite && !m.ok) {
+      // NADIE APLICA NADA. Si esto cocina, lo cocinó la ley.
+      const r = stepWorld(w, [])
+      w = r.state
+      t++
+      const comida = w.bodies.get(puesta.sujeto)
+      if (comida !== undefined && estaEnVentanaDeCoccion(comida.body, w.phys)) ventanas++
+      const fuego = w.bodies.get('fuego')
+      const pot = fuego === undefined ? 0 : qualityOf(fuego.body, 'emitsPower', w.phys)
+      if (pot < potenciaMinima) potenciaMinima = pot
+      m = medirLey(e, w, puesta.sujeto, false)
+      if (!(pico >= m.valor)) pico = m.valor
+    }
+    // La otra mitad de la promesa: la fila habla de la MANO, y la ley deja la
+    // comida arriba de la parrilla. Se levanta con una intención del mundo.
+    const rechazos: Record<string, number> = {}
+    const conTake = stepWorld(w, [take({ by: ANA, seq: t + 1 }, puesta.sujeto)])
+    for (const ev of conTake.events) if (ev.k === 'rechazada') rechazos[ev.por] = (rechazos[ev.por] ?? 0) + 1
+    w = conTake.state
+    t++
+    const final = medirLey(e, w, puesta.sujeto, true)
+    detalle.push(
+      `  ${sustancia.padEnd(11)} ${(t / HZ_DE_REFERENCIA).toFixed(2).padStart(6)} s · ${final.medido} · ` +
+        `en la ventana de la ley 5 ${String(ventanas)} de ${String(t - 1)} ticks · ` +
+        `el fuego bajó hasta emitsPower ${num(potenciaMinima)}`,
+    )
+    const r: Resultado = {
+      e,
+      reparto: puesta.reparto,
+      ticks: t,
+      segundos: t / HZ_DE_REFERENCIA,
+      medicion: final,
+      pico,
+      nacidos: [],
+      rechazos: Object.entries(rechazos)
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+        .map(([k, n]) => `${k}×${String(n)}`)
+        .join(' '),
+      w,
+    }
+    // La peor es la que no se cocinó; entre las que sí, la que más tardó.
+    if (peor === undefined) peor = r
+    else if (peor.medicion.ok && (!r.medicion.ok || r.ticks > peor.ticks)) peor = r
+  }
+  if (peor === undefined) throw new Error(`ninguna sustancia con tag «${pred.tag}» se cocina: la fila no mide nada`)
+  console.log(
+    `\n── LA COCCIÓN, SUSTANCIA POR SUSTANCIA, EN EL PEOR FUEGO ADMISIBLE ${'─'.repeat(10)}\n` +
+      `  ${peor.reparto}\n` +
+      detalle.join('\n') +
+      `\n  el presupuesto de la fila es ${String(e.mientras)} s (${String(limite)} ticks)\n`,
+  )
+  return peor
 }
 
 /**
@@ -665,6 +924,7 @@ function tope(e: ConstructionSchema): number {
  * Una sola condición para las cuatro, y la que la fila promete.
  */
 function correr(e: ConstructionSchema): Resultado {
+  if (e.k === 'ley') return correrLey(e)
   const puesta = montar(e)
   let w = puesta.w
   const nacidos: string[] = []
@@ -703,7 +963,7 @@ function correr(e: ConstructionSchema): Resultado {
 
 /**
  * Con red, para que una fila que no se puede ni armar no se lleve puestas a las
- * otras siete: el `it` de esa fila cuenta el error y las demás siguen midiendo.
+ * demás: el `it` de esa fila cuenta el error y las otras siguen midiendo.
  */
 function correrConRed(e: ConstructionSchema): Resultado {
   try {
@@ -733,7 +993,7 @@ function resultadoDe(e: ConstructionSchema): Resultado {
 
 // ─── El barrido ─────────────────────────────────────────────────────────────
 
-describe('las ocho filas de `ESQUEMAS`, cada una contra una partida de verdad', () => {
+describe('las diez filas de `ESQUEMAS`, cada una contra una partida de verdad', () => {
   beforeAll(() => {
     for (const e of ESQUEMAS) RESULTADOS.set(clave(e), correrConRed(e))
 
@@ -743,7 +1003,7 @@ describe('las ocho filas de `ESQUEMAS`, cada una contra una partida de verdad', 
     const filas = ESQUEMAS.map((e) => resultadoDe(e))
     const col = (xs: readonly string[]): number => xs.reduce((n, s) => Math.max(n, s.length), 0)
     const firma = filas.map((r) => r.e.establishes)
-    const via = filas.map((r) => r.e.via)
+    const via = filas.map((r) => (r.e.k === 'proceso' ? r.e.via : `ley ${r.e.ley}`))
     const medido = filas.map((r) => r.medicion.medido)
     const umbral = filas.map((r) => r.medicion.umbral)
     const lineas = filas.map((r, i) =>
@@ -758,7 +1018,7 @@ describe('las ocho filas de `ESQUEMAS`, cada una contra una partida de verdad', 
       ].join('  '),
     )
     console.log(
-      `\n─── LOS OCHO ESQUEMAS CONTRA EL MUNDO ───\n${lineas.join('\n')}\n\n` +
+      `\n─── LOS ESQUEMAS CONTRA EL MUNDO ───\n${lineas.join('\n')}\n\n` +
         `cómo se decidió cada una, y qué contestó la SUPERFICIE sobre lo mismo:\n` +
         filas
           .map(
@@ -772,15 +1032,15 @@ describe('las ocho filas de `ESQUEMAS`, cada una contra una partida de verdad', 
   }, 300_000)
 
   it('el barrido cubre `ESQUEMAS` entero: ni una fila de menos', () => {
-    // Lo que ataja: agregar una fila novena y no verificarla. El barrido sale de
-    // la constante, así que la fila nueva entra sola — y si no se puede armar, su
+    // Lo que ataja: agregar una fila y no verificarla. El barrido sale de la
+    // constante, así que la fila nueva entra sola — y si no se puede armar, su
     // propio `it` lo dice.
     expect(RESULTADOS.size).toBe(ESQUEMAS.length)
     expect([...RESULTADOS.keys()].sort()).toEqual([...ESQUEMAS.map(clave)].sort())
   })
 
   for (const e of ESQUEMAS) {
-    it(`«${e.establishes}» vía \`${e.via}\` queda establecido de verdad`, () => {
+    it(`«${e.establishes}» vía \`${claveDeVia(e)}\` queda establecido de verdad`, () => {
       const r = resultadoDe(e)
       expect(r.error, `la fila no se pudo ni armar: ${r.error ?? ''}`).toBeUndefined()
       expect(
@@ -803,6 +1063,9 @@ describe('las condiciones que hacen andar a las filas, medidas aparte', () => {
     // después y sin decir de quién es la culpa.
     const faltantes: string[] = []
     for (const e of ESQUEMAS) {
+      // Una ley no tiene roles en el catálogo: los suyos los verifica
+      // `armarMarco` contra su pila y su sujeto, y `los-esquemas.test.ts` los cruza.
+      if (e.k !== 'proceso') continue
       for (const r of procesoDe(e.via).roles) {
         if (r.name.endsWith('?')) continue
         if (e.roleHints[baseRoleName(r.name)] === undefined) {
@@ -817,7 +1080,7 @@ describe('las condiciones que hacen andar a las filas, medidas aparte', () => {
     // Está afirmado en `los-esquemas.test.ts` sobre la tabla; acá está la
     // consecuencia MEDIDA en el mundo: la misma corrida con `b` lleno da catch
     // cero, o sea que el `gear` de `extraccion` no se puede llenar nunca.
-    const conB = ESQUEMAS.filter((e) => e.via === 'union' && e.roleHints['b'] !== undefined)
+    const conB = ESQUEMAS.filter((e) => e.k === 'proceso' && e.via === 'union' && e.roleHints['b'] !== undefined)
     expect(conB.map((e) => e.establishes)).toEqual([])
 
     const vara = cuerpoDe('v1', 'madera', 1, 'vara')
@@ -1078,6 +1341,104 @@ describe('lo que `cumpleCuerpo` no puede contestar sobre lo que este archivo fab
   })
 })
 
+// ─── EL CONTROL NEGATIVO DE LA PILA: LOS OTROS DOS MONTAJES NO COCINAN ──────
+//
+// La fila de la cocción declara una pila de TRES —fuego, parrilla, comida— y su
+// tilde verde por sí sola no dice que los tres hagan falta: podría estar cocinando
+// igual con dos, o con la comida tirada al lado del fuego. Acá se corren los otros
+// dos montajes que el mundo distingue, en el MISMO mundo y con el MISMO fuego, y
+// los dos tienen que salir mal — y por motivos DISTINTOS, que es lo que hace que la
+// parrilla no sea una comodidad sino la única geometría que sirve.
+
+describe('la pila de tres no es una comodidad: los otros dos montajes fallan, y por motivos distintos', () => {
+  /** Corre `mientras` segundos con la comida puesta como diga el montaje. */
+  function correrMontaje(montaje: 'piso' | 'parrilla' | 'contacto'): {
+    readonly digestibilidad: number
+    readonly temperatura: number
+    readonly pico: number
+    readonly ardio: boolean
+    readonly enVentana: number
+  } {
+    const at: Placement = { x: 0, y: 0 }
+    const otra: Placement = { x: 1, y: 0 }
+    const masaDeLena = lenaQueEmite(POTENCIA_QUE_COCINA_LO_CARNOSO.minima)
+    const fuego: Body = {
+      ...cuerpoDe('fuego', 'madera', masaDeLena, 'vara'),
+      state: { temperature: IGNICION_DE_PRUEBA },
+    }
+    const parrilla = cuerpoDe('parrilla', 'piedra', 0.5, 'bloque')
+    const comida = cuerpoDe('comida', 'pescado', MASA_DE_LA_COMIDA, 'bloque')
+    // Los tres montajes que `montajeDe` sabe distinguir, dichos en geometría y no
+    // en un campo: en el piso de al lado, apoyada sobre la piedra que está sobre el
+    // fuego, o apoyada sobre el fuego mismo.
+    const cuerpos: readonly WorldBody[] =
+      montaje === 'piso'
+        ? [{ body: fuego, at }, { body: comida, at: otra }]
+        : montaje === 'contacto'
+          ? [{ body: fuego, at }, { body: comida, at, supportedBy: 'fuego' }]
+          : [
+              { body: fuego, at },
+              { body: parrilla, at, supportedBy: 'fuego' },
+              { body: comida, at, supportedBy: 'parrilla' },
+            ]
+    let w: WorldState = {
+      tick: 0,
+      hz: HZ_DE_REFERENCIA,
+      phys: PHYS,
+      bodies: mapaDeCuerpos([{ body: criatura(ANA, 1000), at: otra }, ...cuerpos]),
+      actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
+      cells: new Map<CellKey, CellState>(),
+      nextId: 1,
+    }
+    let pico = 0
+    let enVentana = 0
+    let ardio = false
+    for (let t = 0; t < Math.ceil(SEGUNDOS_DE_COCCION * HZ_DE_REFERENCIA); t++) {
+      w = stepWorld(w, []).state
+      const c = w.bodies.get('comida')
+      if (c === undefined) break
+      const grados = qualityOf(c.body, 'temperature', w.phys)
+      if (grados > pico) pico = grados
+      if (grados >= qualityOf(c.body, 'ignitionPoint', w.phys)) ardio = true
+      if (estaEnVentanaDeCoccion(c.body, w.phys)) enVentana++
+    }
+    const c = w.bodies.get('comida')
+    return {
+      digestibilidad: c === undefined ? Number.NaN : qualityOf(c.body, 'digestibility', w.phys),
+      temperatura: c === undefined ? Number.NaN : qualityOf(c.body, 'temperature', w.phys),
+      pico,
+      ardio,
+      enVentana,
+    }
+  }
+
+  it('en el PISO se queda corta, en CONTACTO se prende fuego, y en la PARRILLA se cocina', () => {
+    const piso = correrMontaje('piso')
+    const parrilla = correrMontaje('parrilla')
+    const contacto = correrMontaje('contacto')
+    console.log(
+      `\n── LOS TRES MONTAJES, CORRIDOS EN EL MUNDO ${'─'.repeat(26)}\n` +
+        `  piso      pico ${num(piso.pico)} °C · digestibility ${num(piso.digestibilidad)} · ` +
+        `${String(piso.enVentana)} ticks en la ventana de la ley 5\n` +
+        `  parrilla  pico ${num(parrilla.pico)} °C · digestibility ${num(parrilla.digestibilidad)} · ` +
+        `${String(parrilla.enVentana)} ticks en la ventana\n` +
+        `  contacto  pico ${num(contacto.pico)} °C · digestibility ${num(contacto.digestibilidad)} · ` +
+        `${String(contacto.enVentana)} ticks en la ventana · ¿se prendió? ${contacto.ardio ? 'SÍ' : 'no'}\n` +
+        `  (el pescado cocina desde 55 °C y se prende a 260; crudo vale 0,380)\n`,
+    )
+    // La del medio es la que cumple, y las dos afirmaciones que la rodean fallan
+    // por las DOS puntas de la ventana y no por la misma.
+    expect(parrilla.digestibilidad).toBeGreaterThanOrEqual(0.85)
+    // Por abajo: en el piso nunca entra en la ventana, así que la ley 5 no corre.
+    expect(piso.enVentana).toBe(0)
+    expect(piso.digestibilidad).toBeCloseTo(0.38, 6)
+    // Por arriba: en contacto cruza el punto de ignición, que es donde la ley 5
+    // deja de correr y empieza la 3. Cocinar y quemar no son la misma cosa.
+    expect(contacto.ardio).toBe(true)
+    expect(contacto.pico).toBeGreaterThan(VENTANA_CARNOSA.techo)
+  })
+})
+
 // ─── La novena verificación: la condición DE CELDA del pozo ─────────────────
 
 describe('el `cellHints` de `extraccion`, medido contra el terreno que decreta el dios', () => {
@@ -1136,6 +1497,7 @@ describe('el `cellHints` de `extraccion`, medido contra el terreno que decreta e
     expect(pesca.cellHints).toEqual({ source: [{ q: 'wet', op: '>=', v: AGUA_FRANCA }] })
     // Y la celda se le pide al rol que el `drawFromStock` nombra como `of`, que es
     // de donde el mundo saca el stock. Eso sale del catálogo y no de la fila.
+    if (pesca.k !== 'proceso') throw new Error('la fila de la pesca dejó de ir por un proceso')
     const y = procesoDe(pesca.via).completion?.yields.find((z) => z.k === 'drawFromStock')
     if (y === undefined || y.k !== 'drawFromStock') throw new Error('`extraccion` dejó de sacar de un stock')
     expect(Object.keys(pesca.cellHints ?? {})).toEqual([baseRoleName(y.of)])

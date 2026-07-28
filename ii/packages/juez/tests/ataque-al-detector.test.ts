@@ -1008,7 +1008,16 @@ describe('frente 2 · EL RUIDO DEL AZAR, que es el número que le faltaba al ban
     const c = correrElControl('EL AZAR SIN FUEGO', false, 1000)
     console.log(`\n${tablaDelControl(c)}`)
     expect(c.cuentan).toEqual(['no-frotar-lo-que-no-alcanza-a-encender'])
-  })
+    // EL TIEMPO EXPLÍCITO, y no es una concesión: veinte partidas de 20.000 ticks
+    // tardan **3,6 s** solas contra el default de 5 s de vitest, o sea que este `it`
+    // vivía al 72% de su plazo y se ponía rojo cada vez que la máquina estaba
+    // ocupada corriendo el resto del árbol. Es un rojo intermitente, que es la
+    // clase de rojo que enseña a ignorar el rojo.
+    //
+    // Medido a los dos lados del ADR II-0013 para descartar que lo hubiera movido
+    // el cobro del veneno: 3612 ms antes y 3699 ms después. No es la carga de
+    // trabajo lo que cambió; es la carga de la máquina. Ninguna aserción se toca.
+  }, 60_000)
 
   it('HALLAZGO · el azar CON el fuego regalado dispara la 6 y la 8 en 20 de 20', () => {
     // Regalarle el fuego a la criatura al azar es lo que separa «el detector es

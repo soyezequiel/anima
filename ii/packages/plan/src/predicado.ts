@@ -37,7 +37,7 @@
 // distintas entre sí: dos cláusulas iguales colapsan antes de ordenar.
 
 import type { BodyView } from '@anima/skills'
-import type { ExprContext, GeomFn, QualityExpr, QualityId } from '@anima/physics'
+import type { ExprContext, GeomFn, QualityExpr, QualityId, QualityTest } from '@anima/physics'
 import { QUALITY_IDS, TAGS, evalQuality, specOf } from '@anima/physics'
 
 import type { Comparador, Predicado, PredicateSignature, VistaDelPlan } from './tipos.js'
@@ -110,6 +110,19 @@ const ALIAS_DE_GEOM: ReadonlyMap<GeomFn, QualityId> = (() => {
 
 const PREFIJO_SOSTIENE = 'holding(tag:'
 const CIERRE_SOSTIENE = ')'
+
+/**
+ * Cómo se separan el tag y sus condiciones adentro del paréntesis.
+ *
+ * NO es `&`, y ésa es toda la razón por la que hay una constante acá en vez de un
+ * literal: `firmaDe` parte el texto crudo por `&` ANTES de interpretar nada —tiene
+ * que hacerlo, es lo que junta `'catch>0 & reach>=2'` con `'reach>=2&catch>0'`— así
+ * que un `holding(tag:carnoso&toxicity<=0.2)` llegaría acá partido en dos trozos
+ * ilegibles, `'holding(tag:carnoso'` y `'toxicity<=0.2)'`. La coma no aparece en
+ * ningún `QualityId`, en ninguna `GeomFn` ni en ningún `Tag`, así que separa sin
+ * poder confundir dos cosas distintas.
+ */
+const SEPARADOR_INTERNO = ','
 
 function esCualidad(nombre: string): boolean {
   return (QUALITY_IDS as readonly string[]).includes(nombre)
@@ -285,17 +298,42 @@ export function firmaDe(crudo: string): PredicateSignature {
 export function interpretar(crudo: string): Predicado | undefined {
   const s = sinBlancos(crudo)
 
-  // Primero la forma sin operador. Si empieza y termina como ella, es ella o no
-  // es nada: no tiene sentido caer al parser de operadores con un `>` que estaría
-  // adentro del paréntesis.
+  // Primero la forma sin operador de PRIMER nivel. Si empieza y termina como
+  // ella, es ella o no es nada: no tiene sentido caer al parser de operadores con
+  // un `>` que estaría adentro del paréntesis.
   if (s.startsWith(PREFIJO_SOSTIENE) && s.endsWith(CIERRE_SOSTIENE)) {
-    const tag = s.slice(PREFIJO_SOSTIENE.length, s.length - CIERRE_SOSTIENE.length)
+    const adentro = s.slice(PREFIJO_SOSTIENE.length, s.length - CIERRE_SOSTIENE.length)
+    const trozos = adentro.split(SEPARADOR_INTERNO)
+    const tag = trozos[0]
     // Los tags son una enumeración CERRADA de la física, y se pregunta ahí. Un
     // `holding(tag:pescado)` no es un predicado con un tag nuevo: es alguien
     // confundiendo la sustancia con la superficie por la que las leyes la agarran.
-    return (TAGS as readonly string[]).includes(tag) ? { k: 'sostiene', tag } : undefined
+    if (tag === undefined || !(TAGS as readonly string[]).includes(tag)) return undefined
+    if (trozos.length === 1) return { k: 'sostiene', tag }
+    const tests: QualityTest[] = []
+    for (const t of trozos.slice(1)) {
+      const p = conOperador(t)
+      // Sólo CUALIDADES. Una geometría adentro del paréntesis se rechaza entera en
+      // vez de descartarse en silencio: `freeStrandEnds` no se puede contestar desde
+      // una vista (ver `geomDeVista`), así que un `holding(tag:x,freeStrandEnds>=1)`
+      // sería una promesa que nadie puede verificar ni cumplir. Es la regla del
+      // archivo: lo que no se entiende, se dice.
+      if (p === undefined || p.k !== 'cualidad') return undefined
+      tests.push(p.test)
+    }
+    return { k: 'sostiene', tag, tests }
   }
 
+  return conOperador(s)
+}
+
+/**
+ * Un `nombre OP valor` pelado. Es la mitad de `interpretar` que también necesita
+ * la forma `sostiene` para leer lo de adentro del paréntesis, y está afuera para
+ * que las dos lecturas sean LA MISMA —dos parsers de umbrales divergen, y el día
+ * que uno acepte `≥` y el otro no, la misma firma daría dos llaves—.
+ */
+function conOperador(s: string): Predicado | undefined {
   for (const { texto, op } of OPERADORES) {
     const i = s.indexOf(texto)
     if (i < 0) continue
@@ -330,8 +368,21 @@ export function textoDe(p: Predicado): string {
       return `${p.test.q}${p.test.op}${textoDeNumero(p.test.v)}`
     case 'geometria':
       return `${p.f}${p.op}${textoDeNumero(p.v)}`
-    case 'sostiene':
-      return `${PREFIJO_SOSTIENE}${p.tag}${CIERRE_SOSTIENE}`
+    case 'sostiene': {
+      // Las condiciones se ORDENAN y se DEDUPLICAN acá, igual que `firmaDe` hace
+      // con las cláusulas de una conjunción y por lo mismo: dos escrituras del
+      // mismo predicado tienen que dar la misma llave, o el índice de esquemas
+      // tiene dos entradas para una cosa. El orden es por unidades de código, que
+      // es total y no depende del idioma de la máquina.
+      const cond: string[] = []
+      for (const t of p.tests ?? []) {
+        const s = textoDe({ k: 'cualidad', test: t })
+        if (!cond.includes(s)) cond.push(s)
+      }
+      cond.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+      const cola = cond.length === 0 ? '' : SEPARADOR_INTERNO + cond.join(SEPARADOR_INTERNO)
+      return `${PREFIJO_SOSTIENE}${p.tag}${cola}${CIERRE_SOSTIENE}`
+    }
   }
 }
 
@@ -359,10 +410,18 @@ export function textoDe(p: Predicado): string {
  *                         `catch` sale de `freeStrandEnds` multiplicada por algo
  *                         que depende de `sharpness`, y despejarla necesita una
  *                         parte de la vista que no existe—.
- *   sostiene              NO TIENE ORDEN. `holding(tag:carnoso)` y
- *                         `holding(tag:organico)` son dos tags de una enumeración
- *                         plana; que uno «contenga» al otro sería conocimiento
- *                         sobre las sustancias y no sobre los predicados.
+ *   sostiene              EL TAG NO TIENE ORDEN, SUS CONDICIONES SÍ.
+ *                         `holding(tag:carnoso)` y `holding(tag:organico)` son dos
+ *                         tags de una enumeración plana; que uno «contenga» al
+ *                         otro sería conocimiento sobre las sustancias y no sobre
+ *                         los predicados. Lo que sí ordena son los umbrales de
+ *                         adentro, y con la MISMA regla que las otras dos formas:
+ *                         tener en la mano algo carnoso con `toxicity<=0.05`
+ *                         garantiza tenerlo con `toxicity<=0.2`. Y va en la
+ *                         dirección que hace falta y no en la otra —el que promete
+ *                         MÁS condiciones implica al que pide MENOS—, que es lo
+ *                         que hace que el esquema de la cocción conteste una meta
+ *                         de comida sin que nadie escriba las dos firmas iguales.
  *
  * Reflexiva: `implica(p, p)` es verdadero para las tres, y ésa es la propiedad de
  * la que depende que este cambio no rompa nada de lo que ya andaba — la
@@ -375,7 +434,17 @@ export function implica(a: Predicado, b: Predicado): boolean {
   if (a.k === 'geometria' && b.k === 'geometria') {
     return a.f === b.f && cubreUmbral(a.op, a.v, b.op, b.v)
   }
-  if (a.k === 'sostiene' && b.k === 'sostiene') return a.tag === b.tag
+  if (a.k === 'sostiene' && b.k === 'sostiene') {
+    if (a.tag !== b.tag) return false
+    const suyas = a.tests ?? []
+    for (const pide of b.tests ?? []) {
+      const cubierta = suyas.some(
+        (t) => t.q === pide.q && cubreUmbral(t.op, t.v, pide.op, pide.v),
+      )
+      if (!cubierta) return false
+    }
+    return true
+  }
   return false
 }
 
@@ -470,6 +539,14 @@ export function cumpleCuerpo(p: Predicado, b: BodyView, q: Lector): boolean {
     // cocción. Adivinar el tag desde el nombre sería reconstruir a mano lo que la
     // física ya sabe, y quedaría mal el día que el oráculo invente una carne que
     // se llame distinto — que es el día exacto para el que se hizo todo esto.
+    //
+    // ─── Y LAS CONDICIONES DE ADENTRO SÍ SE PODRÍAN CONTESTAR ────────────────
+    //
+    // `toxicity<=0.2` es una cualidad y `q` la sabe leer. No se contestan igual, y
+    // no por comodidad: la forma es una CONJUNCIÓN —tag Y condiciones— y contestar
+    // la mitad que se puede daría `true` sobre una piedra poco tóxica. De los dos
+    // errores, decir que no se cumple algo que sí es el barato (ver arriba); decir
+    // que se cumple algo que no manda a la criatura a comerse una piedra.
     case 'sostiene':
       return false
   }

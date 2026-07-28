@@ -184,8 +184,14 @@ describe('ninguna cuenta conservada sube', () => {
   })
 
   it('comer sube la stamina, y está bien, porque la conversión está declarada', () => {
+    // LA COMIDA CAMBIÓ DE PESCADO A GRASA, y no es cosmético. Con el ADR II-0013 el
+    // mundo cobra `toxicity` al tragar, y el pescado crudo (0,25 de toxicidad) sale
+    // NETO NEGATIVO: acredita 3,04 y el veneno se lleva 6,25. La grasa (0,05) sigue
+    // subiendo la stamina, que es lo que este `it` quiere probar — que una SUBIDA
+    // declarada no viola la conservación. Con el pescado, el test habría pasado a
+    // medir una bajada y no habría probado nada.
     const s = mundo({
-      bodies: [enElPiso(criatura('ana'), EN(0, 0)), enElPiso(cuerpo('c2', 'pescado', 1), EN(0, 1))],
+      bodies: [enElPiso(criatura('ana'), EN(0, 0)), enElPiso(cuerpo('c2', 'grasa', 1), EN(0, 1))],
       actors: [actor('ana')],
     })
     const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])
@@ -195,9 +201,35 @@ describe('ninguna cuenta conservada sube', () => {
     expect(revisarInvariantes(s, r.state, r.events)).toEqual([])
   })
 
-  it('pero la misma subida SIN el evento de conversión es materia inventada', () => {
+  it('y el COBRO del veneno tampoco viola nada, porque también está declarado', () => {
+    // La otra mitad del ADR II-0013, y la que el arnés podría haber cazado: el cobro
+    // pasa por `anotarGasto`, o sea que sale en el `gasto` del tick, o sea que el
+    // piso de `revisarConservacion` lo ve. Sin eso, comer pescado crudo bajaría la
+    // `stamina` 6,25 sin que nadie lo declarara y el guardián diría
+    // `conservada-evaporada` — que es exactamente lo que tiene que decir cuando una
+    // cuenta baja y nadie explica por qué.
     const s = mundo({
       bodies: [enElPiso(criatura('ana'), EN(0, 0)), enElPiso(cuerpo('c2', 'pescado', 1), EN(0, 1))],
+      actors: [actor('ana')],
+    })
+    const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])
+    const st = (w: WorldState): number =>
+      qualityOf(w.bodies.get('ana-cuerpo')!.body, 'stamina', w.phys)
+    expect(st(r.state)).toBeLessThan(st(s))
+    expect(revisarInvariantes(s, r.state, r.events)).toEqual([])
+    // Y sin el `gasto` que el cobro alimenta, el guardián se pone rojo. Es la
+    // contraprueba: el cobro no está «escondido adentro» del acto de comer.
+    const sinGasto = r.events.filter((e) => e.k !== 'gasto')
+    expect(revisarInvariantes(s, r.state, sinGasto).map((x) => x.k)).toContain(
+      'conservada-evaporada',
+    )
+  })
+
+  it('pero la misma subida SIN el evento de conversión es materia inventada', () => {
+    // Grasa y no pescado, por lo mismo que el `it` de acá arriba: sin una subida no
+    // hay nada que el `conservada-aumento` pueda cazar.
+    const s = mundo({
+      bodies: [enElPiso(criatura('ana'), EN(0, 0)), enElPiso(cuerpo('c2', 'grasa', 1), EN(0, 1))],
       actors: [actor('ana')],
     })
     const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])

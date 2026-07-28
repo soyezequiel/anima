@@ -20,6 +20,20 @@
 // última palabra y va a rebotar cosas que acá salieron verdes. Eso está bien y
 // es el reparto de trabajo: el planificador propone barato y el mundo dispone.
 //
+// ─── Y NO TODO LO QUE ESTABLECE ALGO ES UN PROCESO ──────────────────────────
+//
+// La tabla tiene dos clases de fila y la regresión las trata igual salvo en cinco
+// preguntas concretas. Un `EsquemaDeProceso` termina en un `apply` que alguien
+// paga con `stamina`; un `EsquemaDeLey` no termina en nada, porque **cocinar no es
+// un proceso**: lo hace la ley 5 sobre todo cuerpo orgánico que esté en su
+// ventana, y lo mismo vale para secar, pudrir y carbonizar. Lo que la regresión
+// emite para una ley son POSICIONES —una pila de `poner`— y lo que la ley
+// necesita para correr es que esas posiciones se sostengan un rato.
+//
+// Las cinco preguntas y sus dos respuestas están en el bloque «Las leyes, que no
+// son procesos y contestan las mismas preguntas», abajo. Ninguna es una excepción
+// metida a mano: son las mismas cinco que el bloque de arriba le hace a `Process`.
+//
 // ─── LAS NUEVE DECISIONES ───────────────────────────────────────────────────
 //
 // 1. SE REGRESA SOBRE LA TABLA, NO SOBRE EL ÍNDICE, Y POR IMPLICACIÓN Y NO POR
@@ -101,19 +115,21 @@
 // presupuesto se mide en EXPANSIONES (ADR II-0012) y no en milisegundos, que es
 // lo que hace que dos máquinas planifiquen igual.
 
-import type { Effect, Process, ProcessId, QualityId, QualityTest, Yield } from '@anima/physics'
+import type { Effect, Process, QualityId, QualityTest, Yield } from '@anima/physics'
 import { baseRoleName, isOptionalRole, specOf } from '@anima/physics'
 import type { BodyId, BodyView, Cell, Where, WhereCell } from '@anima/skills'
 import { distancia } from '@anima/skills/innatas'
 
-import { ESQUEMAS, procesoDe } from './esquemas.js'
+import { ESQUEMAS, claveDeVia, procesoDe } from './esquemas.js'
 import { cumple, cumpleCuerpo, firmaDe, implica, interpretar, textoDe } from './predicado.js'
 import type {
   ConstructionSchema,
+  EsquemaDeLey,
   Frontera,
   GoalId,
   GoalNode,
   MarcoDePlan,
+  MarcoPor,
   NodoAbierto,
   OpcionesDePlan,
   PedidoDeRol,
@@ -317,6 +333,76 @@ function rolesObligatorios(p: Process): readonly RoleName[] {
  */
 const PORTABLE: QualityTest = { q: 'portable', op: '>', v: 0 }
 
+// ─── Las leyes, que no son procesos y contestan las mismas preguntas ─────────
+//
+// Todo lo que este bloque hace es contestar, para una fila de ley, las mismas
+// cinco preguntas que el bloque de arriba le hace a un `Process`: qué roles
+// necesita, cuál aporta la materia, quién paga, qué hay que llevar en la mano y a
+// qué distancia. Las respuestas son distintas y ninguna es una excepción:
+//
+//   roles      los que la fila nombra, y son obligatorios TODOS —una ley no tiene
+//              roles opcionales porque no tiene una firma que llenar: tiene una
+//              situación que armar, y una situación a la que le falta un cuerpo
+//              no es esa situación.
+//   material   el `sujeto`: es el cuerpo sobre el que la ley empuja, así que es a
+//              él a quien se le puede pedir el residuo.
+//   paga       NADIE. Una ley no cuesta `stamina`: corre igual con la criatura
+//              dormida, y ése es justo el punto del ADR II-0011 —el fuego le
+//              sobrevive a la mano que lo hizo—.
+//   en la mano lo que está APOYADO en la pila hay que haberlo levantado, así que
+//              la exigencia de `portable` sale de estar en `pila` y no de un
+//              `arrangement`. El primero de la pila no: a un fuego no se lo alza.
+//   alcance    una celda. `poner` exige Chebyshev ≤ 1 de la celda destino.
+
+/** El nombre con el que un marco se cuenta en un mensaje de rechazo o en una clave. */
+function nombreDeVia(por: MarcoPor): string {
+  return por.k === 'proceso' ? por.via : `ley ${por.esquema.ley}`
+}
+
+/**
+ * Los roles sin los que la situación no es la situación: los de la pila más el
+ * sujeto. Sale de los dos campos y no de `Object.keys(roleHints)` a propósito: un
+ * `roleHint` de más es una condición sobre un rol que nadie llena, y eso hay que
+ * poder decirlo.
+ */
+function rolesDeLaLey(e: EsquemaDeLey): readonly RoleName[] {
+  const out: RoleName[] = [...e.pila]
+  if (!out.includes(e.sujeto)) out.push(e.sujeto)
+  return out
+}
+
+/**
+ * LO QUE EL SUJETO YA TENÍA QUE SER, DERIVADO DE LA PROMESA Y NO DECLARADO.
+ *
+ * Una ley mueve CUALIDADES y nada más: la ley 5 baja `toxicity` y sube
+ * `digestibility`, y no convierte una piedra en carne. O sea que de todo lo que la
+ * fila promete, las cláusulas de cualidad las pone la ley y **todo el resto lo
+ * tenía que traer el sujeto**. Eso es una regla sobre qué son las leyes, no un
+ * campo más en la tabla, y por eso se despeja acá en vez de escribirse en la fila.
+ *
+ * Para `holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)` despeja
+ * `holding(tag:carnoso)`: hay que conseguir algo carnoso —y el catálogo sabe, es
+ * `extraccion`— y la ley se encarga del resto. Para una promesa que sea una
+ * cualidad pelada despeja la firma vacía, que es «no le pido nada más».
+ */
+function loQueElSujetoYaTraia(e: EsquemaDeLey): PredicateSignature {
+  const p = interpretar(e.establishes)
+  if (p === undefined || p.k !== 'sostiene') return ''
+  return textoDe({ k: 'sostiene', tag: p.tag })
+}
+
+/**
+ * ¿LO QUE PROMETE ES SOBRE LA MANO?
+ *
+ * De acá sale el último paso, y sale de la FORMA del predicado y no de un campo:
+ * la ley deja la comida donde estaba —arriba de la parrilla— así que una promesa
+ * que habla de la mano obliga a volver a levantarla, y una que habla de un cuerpo
+ * no. Un `recupera: true` en la fila diría lo mismo y podría mentir; esto no puede.
+ */
+function prometeSobreLaMano(firma: PredicateSignature): boolean {
+  return interpretar(firma)?.k === 'sostiene'
+}
+
 // ─── Firmas y cláusulas ─────────────────────────────────────────────────────
 
 /**
@@ -347,13 +433,6 @@ function clausulasDe(firma: PredicateSignature): readonly Predicado[] | undefine
     out.push(p)
   }
   return out
-}
-
-/** Un puñado de tests de cualidad de vuelta en firma, normalizada por `firmaDe`. */
-function firmaDeTests(tests: readonly QualityTest[]): PredicateSignature {
-  const textos: string[] = []
-  for (const t of tests) textos.push(textoDe({ k: 'cualidad', test: t }))
-  return firmaDe(textos.join('&'))
 }
 
 /** Los tests de cualidad de una conjunción, para pedírselos al índice del mundo. */
@@ -562,7 +641,8 @@ function emitirMarco(
   gastados: readonly BodyId[],
   capacidad: number,
 ): Emision | Rechazo {
-  const p = procesoDe(m.via)
+  if (m.por.k === 'ley') return emitirLey(m, m.por.esquema, enMano, gastados, capacidad)
+  const p = procesoDe(m.por.via)
   const aLaMano = hayQueTenerloEnLaMano(p)
   const alcance = alcanceDe(p)
   const pasos: Step[] = []
@@ -599,7 +679,7 @@ function emitirMarco(
       if (mano.length >= capacidad) {
         return {
           rechazo:
-            `«${m.establece}» por «${m.via}» necesita «${ref.id}» en la mano y no entra: ` +
+            `«${m.establece}» por «${nombreDeVia(m.por)}» necesita «${ref.id}» en la mano y no entra: ` +
             `la mano ya lleva ${String(mano.length)} y la capacidad es ${String(capacidad)}`,
         }
       }
@@ -616,6 +696,111 @@ function emitirMarco(
 }
 
 /**
+ * UNA LEY NO SE APLICA: SE ARMA LA SITUACIÓN Y SE ESPERA.
+ *
+ * Un marco de proceso termina en un `aplicar` —o en uno de sus tres azúcares— y
+ * éste no termina en nada, porque no hay a quién pedírselo. Lo que emite son
+ * POSICIONES: ir hasta donde está el de más abajo de la pila (a un fuego no se lo
+ * lleva a ningún lado) y después ir apoyando cada cuerpo sobre el anterior, de
+ * abajo hacia arriba. De esos dos o tres `poner` sale el `montaje` que la ley 1
+ * lee, y de ahí la temperatura, y de ahí que la ley 5 corra.
+ *
+ * ─── Y ACÁ FALTA UN PASO QUE `Step` NO TIENE: `esperar` ─────────────────────
+ *
+ * La fila declara `mientras` segundos y este emisor no los puede decir. `Step`
+ * tiene diez variantes y ninguna es esperar — `tipos.ts` lo justifica con que
+ * esperar «es conducta y no plan», que era cierto mientras nada del plan
+ * necesitara que pasara el tiempo. Con las leyes deja de serlo: **el tiempo ES el
+ * paso**.
+ *
+ * No se agrega en este tramo, y el motivo está MEDIDO y no supuesto. Agregar
+ * `{ k: 'esperar'; segundos }` a `Step` y correr `pnpm --filter @anima/mind
+ * typecheck` da exactamente tres errores, y dos son de otro paquete:
+ *
+ *     src/escalera.ts(609,32): TS2366 Function lacks ending return statement…
+ *     src/mente.ts(185,77):    TS7030 Not all code paths return a value.
+ *     ../plan/src/regresion.ts(1445,32): TS2366  ← éste es de acá y se arregla acá
+ *
+ * O sea que la variante nueva es una línea en `tipos.ts` y otra en `firmaDePaso`,
+ * y **dos casos de `switch` en `@anima/mind`**, que es el paquete que traduce
+ * pasos a innatas y que en este tramo lo está escribiendo otra mano. La innata
+ * `esperar` YA EXISTE (`skills/src/innatas/esperar.ts`) y ya toma segundos, así
+ * que no falta física ni superficie: falta la costura.
+ *
+ * La consecuencia, dicha entera: el plan que sale de acá **pone la comida en el
+ * fuego y la levanta en el mismo tick**, así que la ley 5 corre un tick y la
+ * promesa no se cumple. La mente replanifica, vuelve a poner, vuelve a levantar.
+ * No es que cocine mal: es que no cocina. Está escrito con su test en
+ * `tests/la-cocina.test.ts`.
+ */
+function emitirLey(
+  m: MarcoDePlan,
+  e: EsquemaDeLey,
+  enMano: readonly BodyId[],
+  gastados: readonly BodyId[],
+  capacidad: number,
+): Emision | Rechazo {
+  const pasos: Step[] = []
+  let mano = [...enMano]
+  const quien = `«${m.establece}» por la ley ${e.ley}`
+
+  const base = e.pila[0]
+  if (base === undefined) return { rechazo: `${quien} no declara ninguna pila: no hay situación que armar` }
+  const refBase = m.roles[base]
+  if (refBase === undefined) return { rechazo: `${quien} quedó sin el rol «${base}», que es la base de su pila` }
+
+  // La base no se mueve: es el fuego, y a un fuego no se lo levanta. Lo único que
+  // hace falta es estar al lado, porque `poner` exige Chebyshev ≤ 1 de la celda.
+  if (refBase.k === 'id' && !mano.includes(refBase.id)) {
+    pasos.push({ k: 'ir', a: refBase, within: 1, porQue: m.porRol[base] ?? m.establece })
+  }
+
+  for (let i = 1; i < e.pila.length; i++) {
+    const rol = e.pila[i]
+    const debajo = e.pila[i - 1]
+    if (rol === undefined || debajo === undefined) continue
+    const que = m.roles[rol]
+    const sobre = m.roles[debajo]
+    if (que === undefined) return { rechazo: `${quien} quedó sin el rol «${rol}» de su pila` }
+    if (sobre === undefined) return { rechazo: `${quien} quedó sin el rol «${debajo}» de su pila` }
+    // `en` y `sobre` son el MISMO cuerpo y eso no es redundancia: `en` es la celda
+    // —`poner` la resuelve como «la celda de eso»— y `sobre` es el apoyo, que es la
+    // ley 8. Apoyar no es tapar (ADR II-0002): si esto fuera `tapando`, la parrilla
+    // ocluiría el fuego, la ley 12 le bajaría el oxígeno y la fogata se ahogaría.
+    pasos.push({ k: 'poner', que, en: sobre, sobre, porQue: m.porRol[rol] ?? m.establece })
+    // Después de ponerlo, ya no está en la mano. Y hay una cuenta que este emisor NO
+    // hace y conviene decirla: `poner` LEVANTA primero —la innata hace `take` y
+    // después `put`— así que con la mano llena el mundo la rebota con `manos-llenas`
+    // aunque la mano se vacíe un tick después. Es transitorio y no se modela; el
+    // error es del lado caro (un plan que el mundo rechaza) y queda anotado.
+    mano = mano.filter((id) => !(que.k === 'id' && id === que.id))
+  }
+
+  // ── Acá va `esperar(e.mientras)`, y no hay con qué. Ver el encabezado. ────
+
+  if (prometeSobreLaMano(m.establece)) {
+    const sujeto = m.roles[e.sujeto]
+    if (sujeto === undefined) return { rechazo: `${quien} quedó sin su sujeto, el rol «${e.sujeto}»` }
+    const yaEsta = sujeto.k === 'id' && mano.includes(sujeto.id)
+    if (!yaEsta) {
+      if (mano.length >= capacidad) {
+        return {
+          rechazo:
+            `${quien} promete algo sobre la mano y no entra: la mano ya lleva ` +
+            `${String(mano.length)} y la capacidad es ${String(capacidad)}`,
+        }
+      }
+      pasos.push({ k: 'sostener', que: sujeto, porQue: m.establece })
+      if (sujeto.k === 'id') mano.push(sujeto.id)
+    }
+  }
+
+  // Una ley no consume nada: no hay `yields`. Lo que entró sigue existiendo, con
+  // otras cualidades y —si evaporó agua— con menos masa, pero con el mismo id.
+  return { pasos, enMano: mano, gastados }
+}
+
+/**
  * El paso que aplica el proceso, en la variante de `Step` que le corresponde.
  *
  * Los tres azúcares —`unir`, `deshilachar`, `frotar`— existen en el tipo, así que
@@ -628,7 +813,8 @@ function emitirMarco(
 function pasoDelProceso(m: MarcoDePlan, p: Process): Step {
   const porQue = m.establece
   const rinde = m.rinde
-  if (m.via === 'union') {
+  const via = m.por.k === 'proceso' ? m.por.via : ''
+  if (via === 'union') {
     const binder = exigirRef(m, 'binder')
     const a = exigirRef(m, 'a')
     const b = m.roles['b']
@@ -640,26 +826,26 @@ function pasoDelProceso(m: MarcoDePlan, p: Process): Step {
       ? { k: 'unir', binder, a, porQue, rinde }
       : { k: 'unir', binder, a, b, porQue, rinde }
   }
-  if (m.via === 'deshilachar') {
+  if (via === 'deshilachar') {
     // UNA hebra. Pedir más sería una decisión que nadie tomó: el esquema
     // establece que hace falta UN cuerpo que cumpla algo, y con uno se cumple.
     return { k: 'deshilachar', fuente: exigirRef(m, 'source'), cuantas: 1, porQue, rinde }
   }
-  if (m.via === 'friccion') {
+  if (via === 'friccion') {
     const hasta = hastaDe(clausulasDe(m.establece) ?? [])
     const a = exigirRef(m, 'a')
     const b = exigirRef(m, 'b')
     return hasta === undefined ? { k: 'frotar', a, b, porQue } : { k: 'frotar', a, b, hasta, porQue }
   }
   return rindeCuerpoNuevo(p)
-    ? { k: 'aplicar', proceso: m.via, roles: m.roles, porQue, rinde }
-    : { k: 'aplicar', proceso: m.via, roles: m.roles, porQue }
+    ? { k: 'aplicar', proceso: via, roles: m.roles, porQue, rinde }
+    : { k: 'aplicar', proceso: via, roles: m.roles, porQue }
 }
 
 function exigirRef(m: MarcoDePlan, rol: RoleName): Ref {
   const ref = m.roles[rol]
   if (ref === undefined) {
-    throw new Error(`el marco de «${m.establece}» por «${m.via}» quedó sin el rol «${rol}»`)
+    throw new Error(`el marco de «${m.establece}» por «${nombreDeVia(m.por)}» quedó sin el rol «${rol}»`)
   }
   return ref
 }
@@ -673,11 +859,15 @@ function exigirRef(m: MarcoDePlan, rol: RoleName): Ref {
  * caliente es la yesca, no un rendimiento.
  */
 function refDelRendimiento(m: MarcoDePlan): Ref {
-  const p = procesoDe(m.via)
+  // Una ley nunca rinde cuerpo nuevo: empuja cualidades sobre el que ya estaba, y
+  // ese cuerpo es el `sujeto`. Es el mismo caso que `friccion` —la yesca caliente
+  // es la yesca— y por eso no hay una tercera respuesta.
+  if (m.por.k === 'ley') return exigirRef(m, m.por.esquema.sujeto)
+  const p = procesoDe(m.por.via)
   if (rindeCuerpoNuevo(p)) return { k: 'rinde', de: m.rinde }
   const material = rolMaterialDe(p)
   if (material === undefined) {
-    throw new Error(`«${m.via}» no rinde cuerpo nuevo y tampoco tiene rol material: no hay qué nombrar`)
+    throw new Error(`«${m.por.via}» no rinde cuerpo nuevo y tampoco tiene rol material: no hay qué nombrar`)
   }
   return exigirRef(m, material)
 }
@@ -772,12 +962,12 @@ interface Armado {
  */
 function esquemasQueAportan(
   todos: readonly ConstructionSchema[],
-  via: ProcessId,
+  clave: string,
   pedido: readonly Predicado[],
 ): readonly ConstructionSchema[] {
   const out: ConstructionSchema[] = []
   for (const e of todos) {
-    if (e.via !== via) continue
+    if (claveDeVia(e) !== clave) continue
     const cl = clausulasDe(firmaDe(e.establishes))
     if (cl === undefined) continue
     let cabe = true
@@ -823,14 +1013,17 @@ function rindeDe(nodo: NodoAbierto, paraRol: RoleName | undefined): GoalId {
 function armarMarco(
   nodo: NodoAbierto,
   g: GoalNode,
-  via: ProcessId,
   usados: readonly ConstructionSchema[],
   residuo: readonly Predicado[],
   v: VistaDelPlan,
 ): Armado | Rechazo {
-  const p = procesoDe(via)
   const primero = usados[0]
-  if (primero === undefined) return { rechazo: `«${via}» no aporta ninguna cláusula` }
+  if (primero === undefined) return { rechazo: 'una vía sin ningún esquema no aporta ninguna cláusula' }
+  const via = primero.k === 'proceso' ? primero.via : `ley ${primero.ley}`
+  // Un proceso trae sus roles del catálogo; una ley los nombra ella misma, así que
+  // `p` no existe y todo lo que se le preguntaba al `Process` lo contesta la fila.
+  const p = primero.k === 'proceso' ? procesoDe(primero.via) : undefined
+  const ley = primero.k === 'ley' ? primero : undefined
 
   // Los esquemas de una misma aplicación tienen que nombrar LOS MISMOS roles. Si
   // uno nombra `b` y otro lo omite, la aplicación que salga va a llenar `b`, y el
@@ -871,7 +1064,11 @@ function armarMarco(
   // El motivo va a parar al `why` del `gap`, con el nombre del rol adentro, que es
   // donde el Hito 8 lo tiene que leer. Y `exigirRef` queda siendo lo que dice ser:
   // un invariante interno que ya no se puede violar desde afuera.
-  const faltantes = rolesObligatorios(p).filter((r) => primero.roleHints[r] === undefined)
+  // `rolesObligatorios` de un proceso sale del sufijo `?` del catálogo; el de una
+  // ley sale de su pila más su sujeto, y son todos obligatorios: una situación a
+  // la que le falta un cuerpo no es esa situación.
+  const obligatorios = ley === undefined ? (p === undefined ? [] : rolesObligatorios(p)) : rolesDeLaLey(ley)
+  const faltantes = obligatorios.filter((r) => primero.roleHints[r] === undefined)
   if (faltantes.length > 0) {
     return {
       rechazo:
@@ -880,35 +1077,76 @@ function armarMarco(
     }
   }
 
-  const material = rolMaterialDe(p)
+  const material = ley !== undefined ? ley.sujeto : p === undefined ? undefined : rolMaterialDe(p)
   if (residuo.length > 0 && material === undefined) {
     return { rechazo: `«${via}» no tiene rol material: no hay a quién pasarle el residuo` }
   }
-  const paga = rolQuePaga(p)
+  // Una ley no la paga nadie: corre igual con la criatura dormida. Es el ADR
+  // II-0011 —el fuego le sobrevive a la mano que lo hizo— dicho desde este lado.
+  const paga = p === undefined ? undefined : rolQuePaga(p)
 
   const resueltos: Record<RoleName, Ref> = {}
   const porRol: Record<RoleName, PredicateSignature> = {}
   const pendientes: { readonly pedido: PedidoDeRol; readonly cuantos: number }[] = []
 
-  const aLaMano = hayQueTenerloEnLaMano(p)
+  const aLaMano = p !== undefined && hayQueTenerloEnLaMano(p)
 
   for (const rol of roles) {
-    const delProceso = whereDelProceso(p, rol)
+    // ─── ¿ESTE ROL EXISTE PARA ESTA VÍA? ───────────────────────────────────
+    //
+    // Un proceso lo contesta el catálogo. Una ley no declara roles en ningún lado
+    // —los nombra ella— así que lo que hace las veces es su propia estructura: un
+    // rol existe si está en la PILA o es el SUJETO, porque son los dos únicos
+    // lugares donde un cuerpo hace algo. Un `roleHint` sobre un nombre que no está
+    // en ninguno de los dos es una condición que nadie va a cumplir nunca, y eso hay
+    // que decirlo en vez de buscar un cuerpo para un rol que después no se usa.
+    //
+    // La guarda no es de laboratorio: `opciones.esquemas` es entrada pública y es lo
+    // que va a escribir la fragua del Hito 8. `[]` es «no le pido nada más» y
+    // `undefined` es «este rol no existe», y la diferencia es toda la guarda.
+    const delProceso =
+      ley !== undefined
+        ? ley.pila.includes(rol) || ley.sujeto === rol
+          ? []
+          : undefined
+        : p === undefined
+          ? undefined
+          : whereDelProceso(p, rol)
     if (delProceso === undefined) {
-      return { rechazo: `«${via}» no declara el rol «${rol}» que el esquema le pide` }
+      return {
+        rechazo:
+          ley === undefined
+            ? `«${via}» no declara el rol «${rol}» que el esquema le pide`
+            : `el esquema de «${primero.establishes}» por «${via}» le pide cosas al rol «${rol}», ` +
+              `que no está en su pila (${ley.pila.join(' → ')}) ni es su sujeto («${ley.sujeto}»): ` +
+              `nadie lo va a llenar`,
+      }
     }
     const tests: QualityTest[] = [...delProceso]
     for (const e of usados) for (const t of e.roleHints[rol] ?? []) tests.push(t)
     if (rol === material) for (const r of residuo) if (r.k === 'cualidad') tests.push(r.test)
-    const firma = firmaDeTests(tests)
+    // ─── LO QUE EL SUJETO DE UNA LEY YA TENÍA QUE SER ────────────────────────
+    //
+    // Una ley mueve cualidades y nada más, así que de todo lo que la fila promete,
+    // lo que NO es una cláusula de cualidad lo tenía que traer el sujeto. Para la
+    // cocción eso despeja `holding(tag:carnoso)`, y de ahí sale sola la mitad de
+    // abajo de la cadena: para asar un pescado primero hay que pescarlo, y eso el
+    // catálogo ya lo sabe hacer. Ver `loQueElSujetoYaTraia`.
+    const yaEra = ley !== undefined && rol === ley.sujeto ? loQueElSujetoYaTraia(ley) : ''
+    const firma = firmaDe([...tests.map((t) => textoDe({ k: 'cualidad', test: t })), yaEra].join('&'))
     porRol[rol] = firma
     // Lo que el `arrangement` exige y ninguna fila escribe. Va en el FILTRO y no
     // en la firma —ver `PedidoDeRol`—: `portable` no la establece ningún proceso
     // ni la va a establecer, así que meterla en lo que se regresa haría que el
     // `gap` le pidiera a la fragua un proceso para volver liviano un tronco.
     // El rol que paga queda afuera: es la criatura, y no se carga a sí misma.
+    //
+    // Y en una ley la misma exigencia sale de otro lado y llega a lo mismo: lo que
+    // va APOYADO en la pila hay que haberlo levantado, así que `portable` se le
+    // pide a todos menos al primero, que es el que no se mueve.
+    const hayQueAlzarlo = ley !== undefined && ley.pila.includes(rol) && ley.pila[0] !== rol
     const extra: Extra = {
-      ...(aLaMano && rol !== paga ? { filtro: [PORTABLE] } : {}),
+      ...((aLaMano && rol !== paga) || hayQueAlzarlo ? { filtro: [PORTABLE] } : {}),
       ...celdaDelRol(usados, rol),
     }
 
@@ -992,11 +1230,16 @@ function armarMarco(
     if (e.segundos > segundos) segundos = e.segundos
   }
 
+  const por: MarcoPor =
+    ley === undefined
+      ? { k: 'proceso', via: primero.k === 'proceso' ? primero.via : '' }
+      : { k: 'ley', esquema: ley }
+
   // El id del rendimiento sale del CONTENIDO, no de un contador: ver `rindeDe`.
   const marco: MarcoDePlan =
     nodo.marcos.length === 0
       ? {
-          via,
+          por,
           establece: nodo.falta,
           rinde: rindeDe(nodo, undefined),
           roles: resueltos,
@@ -1004,7 +1247,7 @@ function armarMarco(
           faltan: pendientes.map((x) => x.pedido),
         }
       : {
-          via,
+          por,
           establece: nodo.falta,
           paraRol: rolDelTope(nodo),
           rinde: rindeDe(nodo, rolDelTope(nodo)),
@@ -1153,8 +1396,14 @@ function regresar(
     )
   }
 
-  const vias: ProcessId[] = []
-  for (const e of todos) if (!vias.includes(e.via)) vias.push(e.via)
+  // Las vías, en el orden de la tabla. Una vía es un PROCESO —todas sus filas se
+  // aplican juntas y el costo se cobra una vez— o UNA FILA DE LEY, que no se junta
+  // con nadie: ver `claveDeVia`.
+  const vias: string[] = []
+  for (const e of todos) {
+    const c = claveDeVia(e)
+    if (!vias.includes(c)) vias.push(c)
+  }
 
   const nodos: NodoAbierto[] = []
   const rechazos: string[] = []
@@ -1202,7 +1451,7 @@ function regresar(
       continue
     }
 
-    const armado = armarMarco(nodo, g, via, usados, residuo, v)
+    const armado = armarMarco(nodo, g, usados, residuo, v)
     if ('rechazo' in armado) {
       rechazos.push(armado.rechazo)
       continue
@@ -1359,9 +1608,11 @@ function pasosPosibles(nodo: NodoAbierto, v: VistaDelPlan): readonly Step[] {
   for (let i = nodo.marcos.length - 1; i >= 0; i--) {
     const m = nodo.marcos[i]
     if (m === undefined) continue
-    const p = procesoDe(m.via)
-    const aLaMano = hayQueTenerloEnLaMano(p)
-    const alcance = alcanceDe(p)
+    // Un marco de ley no pide nada en la mano —lo que hace es apoyar— y su alcance
+    // es una celda, que es lo que `poner` exige de la celda destino.
+    const p = m.por.k === 'proceso' ? procesoDe(m.por.via) : undefined
+    const aLaMano = p !== undefined && hayQueTenerloEnLaMano(p)
+    const alcance = p === undefined ? 1 : alcanceDe(p)
     const anotar = (ref: Ref, porQue: PredicateSignature): void => {
       if (ref.k !== 'id' || nombrados.has(ref.id)) return
       nombrados.add(ref.id)
@@ -1408,7 +1659,11 @@ function firmaDeMarco(m: MarcoDePlan): string {
     .map((r) => `${r}=${firmaDeRef(m.roles[r])}`)
     .join(',')
   const faltan = m.faltan.map((q) => `${q.rol}:${q.firma}${firmaDeExtra(q)}`).join(',')
-  return `${m.via}[${m.establece}]${m.paraRol ?? '-'}{${roles}}(${faltan})`
+  // La vía entra en la clave con la MISMA forma con la que la tabla la agrupa —
+  // `proceso:union`, `ley:desnaturalizacion:…`— para que dos marcos que sólo se
+  // distinguen en por dónde van no empaten nunca.
+  const via = m.por.k === 'proceso' ? `proceso:${m.por.via}` : `ley:${m.por.esquema.ley}:${m.por.esquema.establishes}`
+  return `${via}[${m.establece}]${m.paraRol ?? '-'}{${roles}}(${faltan})`
 }
 
 /**

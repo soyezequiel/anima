@@ -80,8 +80,8 @@
 // el directorio de `src/` y por lo tanto se entera solo de los archivos nuevos —
 // un paquete nuevo nace SIN guardián, y éste nació con el suyo.
 
-import type { ActorId, Intent, SimEvent, WorldBody, WorldState } from '@anima/world'
-import { dadoDe, mapaDeCuerpos, PREFIJO_POZO, stepWorld } from '@anima/world'
+import type { ActorId, Intent, SimEvent, Violacion, WorldBody, WorldState } from '@anima/world'
+import { dadoDe, describir, mapaDeCuerpos, PREFIJO_POZO, revisarEstado, stepWorld } from '@anima/world'
 import type { Skill } from '@anima/skills'
 import type { WorldRng } from '@anima/oracle'
 import { dadoDelMundo, type DadoDelMundo } from '@anima/oracle'
@@ -113,6 +113,41 @@ export interface PartidaOptions {
    */
   readonly semilla?: number
   readonly reloj?: RelojDePared
+  /**
+   * ENCENDER EL ARNÉS DE INVARIANTES SOBRE CADA TICK.
+   *
+   * ─── Por qué existe esta opción, dicho con el número ────────────────────────
+   *
+   * `grep exigirInvariantes ii/` devolvía DOS archivos: el que lo define y su
+   * propio test. **Ninguna corrida real de `ii/` lo llamaba** — ni la del criterio
+   * del Hito 5, ni el juez de la emergencia, ni el banco. El encabezado de
+   * `world/src/invariants.ts` dice que un invariante por tick «es lo único que
+   * convierte "el modelo escribe comportamiento" en algo que se puede sostener», y
+   * estaba apagado de hecho. Medido por el adversario: el actor sin cuerpo que
+   * dejaba `eat` sobre uno mismo producía `inventario-inconsistente` en los 500
+   * ticks siguientes, uno por tick, y nadie lo escuchaba.
+   *
+   * ─── Por qué `revisarEstado` y no `revisarInvariantes` ─────────────────────
+   *
+   * Son las cinco preguntas que un estado puede contestar SOLO —orden, espacio,
+   * referencias, inventarios y rangos de cualidad—. La sexta, la conservación,
+   * necesita comparar con el estado anterior y **no se puede encender todavía en
+   * una partida CON DIOS**: los tres caminos por los que el dios materializa
+   * materia no emiten ningún evento que `acreditado()` sepa leer, así que el
+   * guardián acusaría de creación de la nada a un mundo que está funcionando bien.
+   * Ese hueco tiene su `it.fails` en `tests/ataque-a-la-costura.test.ts` y pide un
+   * ADR (un `SimEvent` de decreto). `revisarEstado` no depende de la conservación,
+   * así que ese bloqueante no la alcanza — y habría cazado igual el fantasma.
+   *
+   * ─── Por qué NO viene encendida por omisión ────────────────────────────────
+   *
+   * Cuesta O(cuerpos + celdas) por tick, y el criterio (3) del Hito 5 —el p99 del
+   * tick con 5000 cuerpos— ya está 6,2× por encima de su techo y aceptado así.
+   * Encenderla de fábrica sería empeorar en silencio el criterio que peor anda.
+   * Va encendida donde el costo es irrelevante y el valor es máximo: las corridas
+   * de criterio y las del juez, que tienen ~130 cuerpos.
+   */
+  readonly vigilar?: boolean
 }
 
 /** El informe de una corrida. Todo número que el criterio del Hito 5 nombra sale de acá. */
@@ -123,6 +158,14 @@ export interface Informe {
   readonly porFalla: number
   /** Los errores que `stepWorld` lanzó, con el tick en que pasó. */
   readonly fallas: readonly { readonly tick: number; readonly why: string }[]
+  /**
+   * Los estados ilegales que el arnés vio, con el tick en que aparecieron. Vacío
+   * cuando `vigilar` no está puesta — y eso NO quiere decir «no hubo», quiere
+   * decir «no se miró». Los dos ceros se distinguen con `vigilada`.
+   */
+  readonly violaciones: readonly { readonly tick: number; readonly v: Violacion }[]
+  /** ¿Se corrió el arnés? Sin esto, `violaciones: []` sería un cero ambiguo. */
+  readonly vigilada: boolean
 }
 
 /**
@@ -245,6 +288,9 @@ export class Partida {
   #porTiempo = 0
   #porFalla = 0
   readonly #fallas: { tick: number; why: string }[] = []
+  /** Ver `PartidaOptions.vigilar`. Apagada por omisión, y el informe lo dice. */
+  readonly #vigilar: boolean
+  readonly #violaciones: { tick: number; v: Violacion }[] = []
   /** El instante en que terminó el tick anterior. Sólo con reloj de pared. */
   #ultimoFin: number | undefined
   /** Cuánto tiempo de pared se debe, en milisegundos. Saturado en cero: ver el encabezado. */
@@ -264,6 +310,24 @@ export class Partida {
       estado: () => this.#estadoDelDado(),
     }
     this.#reloj = o.reloj
+    this.#vigilar = o.vigilar ?? false
+    // El tick 0 también se mira: un mundo que ENTRA roto no lo rompió ningún tick,
+    // y descubrirlo en el tick 1 haría culpar al paso equivocado.
+    if (this.#vigilar) this.#anotarViolaciones(this.#state)
+  }
+
+  /**
+   * Las cinco preguntas sobre el estado que salió del paso. No lanza: junta.
+   *
+   * Lanzar cortaría la corrida en el primer estado ilegal, y lo que hace falta es
+   * lo contrario — llegar hasta el final con la lista entera, porque un invariante
+   * roto suele romper el siguiente y saber cuántos y desde qué tick es la mitad
+   * del diagnóstico. Quien quiera el corte duro tiene `exigirInvariantes` en
+   * `@anima/world`, que es exactamente eso.
+   */
+  #anotarViolaciones(s: WorldState): void {
+    const v = revisarEstado(s)
+    for (const x of v) this.#violaciones.push({ tick: s.tick, v: x })
   }
 
   #estadoDelDado(): number {
@@ -303,7 +367,20 @@ export class Partida {
       porTiempo: this.#porTiempo,
       porFalla: this.#porFalla,
       fallas: this.#fallas,
+      violaciones: this.#violaciones,
+      vigilada: this.#vigilar,
     }
+  }
+
+  /**
+   * Lo que el arnés vio, ya escrito para leer. Vacío si `vigilar` está apagada.
+   *
+   * Sale `describir` de `@anima/world` y no un `JSON.stringify`: la frase que
+   * arma es la que ya usa `InvariantError`, así que un estado ilegal se lee igual
+   * lo haya cazado el corte duro o esta lista.
+   */
+  get violaciones(): readonly string[] {
+    return this.#violaciones.map((x) => `tick ${String(x.tick)}: ${describir(x.v)}`)
   }
 
   get ticksPerdidos(): number {
@@ -380,6 +457,11 @@ export class Partida {
       this.#fallas.push({ tick: this.#state.tick, why: e instanceof Error ? e.message : String(e) })
       return []
     }
+
+    // 2b. EL ARNÉS, cuando está encendido. Va acá y no al final del tick porque lo
+    //     que se juzga es el estado que produjo `stepWorld`: las fases 3 a 6 no
+    //     tocan el mundo, sólo lo miran. Ver `PartidaOptions.vigilar`.
+    if (this.#vigilar) this.#anotarViolaciones(this.#state)
 
     // 3. la proyección del tick nuevo. UNA para todas las criaturas: el índice de
     //    celdas se arma a lo sumo una vez por tick, no una por criatura.

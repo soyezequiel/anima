@@ -342,16 +342,23 @@ describe('una partida de 2000 ticks', () => {
     for (const s of r.stamina) {
       // Arrancan topadas en 1000 y vivir 100 segundos cuesta 100: la banda cae
       // alrededor de 900. Lo que la corre para abajo son los pasos (0,05 la
-      // celda) y lo que `deshilachar` le saca al que deshilacha; lo que la corre
-      // para arriba es haber comido —una termina en 900,19— y el techo de 1000
-      // que `conCualidad` no deja pasar. Medido: entre 894,10 y 900,19.
+      // celda), lo que `deshilachar` le saca al que deshilacha y —desde el ADR
+      // II-0013— **el veneno de lo que se comió crudo**; lo que la corre para
+      // arriba es el techo de 1000 que `conCualidad` no deja pasar.
+      //
+      // MEDIDO ANTES DEL II-0013: entre 894,10 y 900,19, y la que más arriba
+      // terminaba era la que HABÍA COMIDO. Medido ahora: entre 876,22 y 895,55, y
+      // la que más abajo termina es `fina`, que se comió un pescado crudo de 1,5 kg
+      // —3,04 × 1,5 = 4,56 de calorías contra 0,25 × 1,5 × 25 = 9,375 de veneno—.
+      // Comer dio vuelta de signo en el chorro al azar, que es exactamente lo que
+      // el ADR decidió: el pescado crudo adelgaza.
       //
       // ESTA ES LA AFIRMACIÓN QUE PINCHA EL GLOBO: con el costo viejo, 2000 ticks
       // a 0,01 gastaban 20 y la banda caería alrededor de 980. Si alguien vuelve a
       // contar el hambre en muestras, esto se pone rojo antes que el hash, y con
       // un número que se entiende.
-      expect(s).toBeGreaterThan(880)
-      expect(s).toBeLessThan(920)
+      expect(s).toBeGreaterThan(870)
+      expect(s).toBeLessThan(910)
     }
 
     // EL NÚMERO. Se movió con el ADR II-0008 —tres cosas de FORMA y no de
@@ -415,11 +422,28 @@ describe('una partida de 2000 ticks', () => {
     // Las violaciones NO se movieron (97, las mismas ocho criaturas pisándose) y
     // las sustancias tampoco (31): el guión de intenciones es el mismo y ninguna se
     // aceptó o rechazó distinto.
-    expect(r.hashFinal).toBe('e54643aaa90fac83')
+    //
+    // Y SE MOVIÓ OTRA VEZ con el ADR II-0013 («el veneno se cobra al tragar»), que
+    // es lo más chico que movió esta partida y por eso el más fácil de leer:
+    //
+    //   · los eventos pasaron de 11.188 a 11.190. Son DOS `enveneno`, o sea que en
+    //     los 2000 ticks el chorro al azar logró exactamente DOS bocados. Que el
+    //     delta sea 2 y no 3 es la prueba de que no se movió nada más: un solo
+    //     rechazo distinto habría cambiado la cuenta por otro lado;
+    //   · los CINCO PRIMEROS checkpoints son idénticos a los de antes del ADR
+    //     (`5138f2… 8c7e06… 45fed1… 2ea427… bcc804…`), o sea que hasta el tick 800
+    //     nadie comió y la partida es bit a bit la misma. La huella se separa en el
+    //     checkpoint del tick 1000 y no antes;
+    //   · las violaciones (97), las sustancias (31) y los cuerpos (30) no se
+    //     movieron: el guión es el mismo.
+    //
+    //   e54643aaa90fac83  (antes del ADR II-0013, con 11.188 eventos)
+    //   a15c8d9dad1a6180  (con el II-0013, con 11.190: los dos `enveneno`)
+    expect(r.hashFinal).toBe('a15c8d9dad1a6180')
     expect(r.checkpoints.join(' ')).toBe(
-      '5138f229560082ea 8c7e06cf759ce8d2 45fed156a3737007 2ea42765912623be bcc80462d850e5ed 01c29ec05de71759 dde859d4360126e7 bc82cd030038bb30 560f6c7d56dec85c ddd436339e5df508 e54643aaa90fac83',
+      '5138f229560082ea 8c7e06cf759ce8d2 45fed156a3737007 2ea42765912623be bcc80462d850e5ed b89da6b0970d1e7d 76de370b2c3fb780 894d1ff96d2c5e46 5f637ddcb338dd19 2491e5b70ee12d00 a15c8d9dad1a6180',
     )
-    expect(r.eventos).toBe(11188)
+    expect(r.eventos).toBe(11190)
     expect(r.sustancias).toBe(31)
     expect(r.violaciones.length).toBe(97)
   }, 300_000)

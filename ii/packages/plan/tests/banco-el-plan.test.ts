@@ -81,6 +81,7 @@ import type { QualityId } from '@anima/physics'
 import { evalQuality, specOf } from '@anima/physics'
 import type { BodyId, BodyView, Cell, CellQuality, Clock, SelfView, Where } from '@anima/skills'
 
+import { ESQUEMAS } from '../src/esquemas.js'
 import { plan } from '../src/regresion.js'
 import { EXPANSIONES_POR_TICK } from '../src/tipos.js'
 import type { Frontera, GoalNode, PlanResult, Predicado, VistaDelPlan } from '../src/tipos.js'
@@ -464,20 +465,36 @@ describe('el banco del plan', () => {
       `\n── (3) CUÁNTAS EXPANSIONES ENTRAN EN 8 ms ─────────────────────────\n` +
         filas.join('\n') +
         `\n\n  nodos abiertos en la cola tras k=1..6: ${abiertos.join(', ')} (0 = terminó)\n` +
-        `  con la cola en un solo nodo, el \`sort\` de cada expansión no cuesta nada;\n` +
+        `  con la cola en uno o dos nodos, el \`sort\` de cada expansión no cuesta nada;\n` +
         `  el día que la cola tenga decenas, este marginal hay que volver a medirlo.\n` +
         `  El que gobierna es el PEOR: ${String(Math.min(...techos))} expansiones — y es ${num(Math.min(...techos) / EXPANSIONES_POR_TICK, 1)}× el presupuesto de ${String(EXPANSIONES_POR_TICK)}.\n`,
     )
 
-    // La cola de un solo nodo se afirma siempre: no es una medición de tiempo.
-    for (const a of abiertos) expect(a).toBeLessThanOrEqual(1)
+    // ─── LA COLA DEJÓ DE SER DE UN SOLO NODO, Y SE SABE POR QUÉ ────────────
+    //
+    // Hasta el tramo G esto afirmaba `<= 1` y era cierto: para cada firma había una
+    // sola vía. Desde que la tabla tiene la fila de la cocción hay DOS que
+    // establecen algo que implica `holding(tag:carnoso)` —`extraccion` la declara y
+    // la ley 5 promete una versión más fuerte, y una versión más fuerte implica a la
+    // floja— así que la meta de comida abre dos ramas. La de la ley cuesta 15 s
+    // contra 1,5: se arma, se ordena detrás y NUNCA sale de la cola.
+    //
+    // El `<= 2` no es aflojar el criterio: es el mismo criterio con el número
+    // medido. Lo que cuida es que la cola no llegue a decenas, porque ahí el `sort`
+    // de cada expansión —dos claves de texto por comparación— dejaría de ser gratis
+    // y el marginal de arriba habría que volver a medirlo.
+    for (const a of abiertos) expect(a).toBeLessThanOrEqual(2)
     if (!MIDIENDO_EN_SERIO) return
     // EL CRITERIO DEL TRAMO: 64 tiene que entrar en 8 ms hasta en la vista
     // saturada. Si esto se pone rojo, se BAJA `EXPANSIONES_POR_TICK` —nunca se
     // sube el presupuesto de D4, que comparte el tick con las otras 4999
     // criaturas— y el número al que se lo baja es el que esta línea imprimió.
     expect(Math.min(...techos)).toBeGreaterThan(EXPANSIONES_POR_TICK)
-  })
+    // El tiempo de pared de este `it` —no el que mide, el que TARDA— pasó de 4,6 s a
+    // 7,0 s cuando entró la fila de la cocción: son 4800 llamadas a `plan()` y cada
+    // una arma una vía más. Se declara el techo en vez de dejar que el corte por
+    // omisión de vitest (5 s) lo mate, que es un fallo que no dice nada de nada.
+  }, 60_000)
 
   // ─── (4) Reanudar contra empezar de cero ─────────────────────────────────
 
@@ -584,5 +601,64 @@ describe('el banco del plan', () => {
     // El criterio: reanudar tiene que ser estrictamente más barato que rehacer.
     // Si esto se cayera, la frontera sería peso muerto y habría que sacarla.
     expect(Math.min(...ahorros)).toBeGreaterThan(1)
-  })
+  }, 60_000)
+
+  // ─── (5) Lo que la fila de la cocción le cuesta a una meta de comida ─────
+
+  it('(5) lo que la vía nueva le cuesta a la pesca, medido A/B', () => {
+    // ─── LA PREGUNTA QUE HAY QUE HACERSE AL AGREGAR UNA FILA ────────────────
+    //
+    // `regresar` prueba TODAS las vías cuyos esquemas aporten alguna cláusula, y
+    // armar una vía no es gratis: `armarMarco` llama a `candidatosPara` una vez por
+    // rol pendiente, y eso barre la vista. La fila de la cocción tiene tres roles,
+    // así que le agrega tres barridos a toda meta que hable de comida — incluida la
+    // pesca pelada, que no la va a usar nunca porque cuesta diez veces más.
+    //
+    // Se mide A/B con la MISMA tabla menos esa fila, que es para lo que existe
+    // `opciones.esquemas`. Si el sobrecosto creciera hasta comerse el presupuesto de
+    // D4, la reparación no sería sacar la fila: sería que la regresión no arme una
+    // vía cuyo costo ya supera al del mejor plan que tiene en la cola.
+    const sinLey = ESQUEMAS.filter((e) => e.k !== 'ley')
+    const filas: string[] = []
+    let peorRazon = 0
+    for (const [relleno, n, calentar] of [
+      [0, 3000, 200],
+      [TIPICA, 1500, 200],
+      [PEOR, 300, 50],
+    ] as const) {
+      const v = elRio(relleno)
+      const con = pct(
+        muestras(() => {
+          plan(meta(COMER), v, EXPANSIONES_POR_TICK)
+        }, n, calentar),
+        50,
+      )
+      const sin = pct(
+        muestras(() => {
+          plan(meta(COMER), v, EXPANSIONES_POR_TICK, undefined, { esquemas: sinLey })
+        }, n, calentar),
+        50,
+      )
+      const razon = con / Math.max(sin, 1)
+      if (razon > peorRazon) peorRazon = razon
+      filas.push(
+        `  ${String(relleno + 3).padStart(3)} cuerpos: con la fila ${us(con, 1).padStart(8)} µs   ` +
+          `sin ella ${us(sin, 1).padStart(8)} µs   ${num(razon, 2)}×`,
+      )
+    }
+    // Y el plan que sale es EL MISMO: la vía nueva se arma, se ordena detrás por
+    // costo y no cambia una coma de lo que la criatura va a hacer. Si esto fallara,
+    // la fila no estaría costando tiempo: estaría cambiando la conducta.
+    const conFila = plan(meta(COMER), elRio(0), EXPANSIONES_POR_TICK)
+    const sinFila = plan(meta(COMER), elRio(0), EXPANSIONES_POR_TICK, undefined, { esquemas: sinLey })
+    expect(conFila.k).toBe('plan')
+    expect(conFila).toEqual(sinFila)
+    console.log(
+      `\n── (5) EL PRECIO DE LA VÍA NUEVA ──────────────────────────────────\n` +
+        filas.join('\n') +
+        `\n  el plan que sale es idéntico con y sin la fila: lo que cuesta es MIRARLA\n`,
+    )
+    if (!MIDIENDO_EN_SERIO) return
+    expect(peorRazon).toBeLessThan(2)
+  }, 60_000)
 })

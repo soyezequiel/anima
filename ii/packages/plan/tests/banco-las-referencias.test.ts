@@ -173,7 +173,12 @@ describe('el banco de las referencias', () => {
     // aparece si la regresión resuelve `donde` adentro del bucle de expansión en
     // vez de una vez por paso emitido.
     for (const [que, ns] of filas) expect(ns, `la forma «${que}»`).toBeLessThan(41_000)
-  })
+    // El techo va DECLARADO y no en el 5 s por omisión de vitest: este `it` corre
+    // decenas de miles de resoluciones sobre 625 cuerpos, y con la máquina cargada
+    // —dos suites en paralelo— cruza los 5 s y muere por corte, que es un rojo que
+    // no dice nada de lo que el banco vino a medir. Es la misma decisión que
+    // `banco-el-plan.test.ts` toma para (3), (4) y (5).
+  }, 60_000)
 
   it('y el costo de `id` crece con los cuerpos a la vista, que es lo que se afirmó', () => {
     // La forma de la curva y no su altura: la altura depende de la máquina, pero
@@ -188,5 +193,8 @@ describe('el banco de las referencias', () => {
         `\n  razón: ${num(grande / Math.max(chica, 0.001), 2)}× para ${num(PEOR / TIPICA, 2)}× de cuerpos\n`,
     )
     expect(grande).toBeGreaterThan(chica * 2)
-  })
+    // Lo que se afirma es una RAZÓN entre dos mediciones, que es lo único de un
+    // banco que no depende de cuán ocupada esté la máquina. El techo declarado, por
+    // lo mismo que el del `it` de arriba.
+  }, 60_000)
 })

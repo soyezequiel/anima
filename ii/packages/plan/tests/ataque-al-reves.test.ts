@@ -59,7 +59,7 @@ import type {
 
 import { ESQUEMAS } from '../src/esquemas.js'
 import { goalGraph } from '../src/objetivos.js'
-import { firmaDe, interpretar } from '../src/predicado.js'
+import { firmaDe, implica, interpretar } from '../src/predicado.js'
 import { plan } from '../src/regresion.js'
 import type {
   ConstructionSchema,
@@ -636,13 +636,29 @@ describe('4 · «quiero fuego»: planificar una consecuencia', () => {
    * frotar —el plan de `temperature>=400` sale en cuatro pasos, medido arriba— y
    * el gap de «quiero fuego» no le ofrece ni uno de esos pasos.
    */
-  it('«quiero fuego» (`emitsPower>0`) es un gap, y el `nearest` sale vacío', () => {
+  it('EL HUECO SE CERRÓ: «quiero fuego» ya no es un gap, y sale con la yesca', () => {
+    // ─── LO QUE ESTE MISMO ARCHIVO PROPUSO, Y AHORA ESTÁ EN LA TABLA ────────
+    //
+    // Este `it` decía «`emitsPower>0` es un gap, y el `nearest` sale vacío» y era
+    // cierto: `friccion` declaraba `temperature>=400` y no declaraba la
+    // consecuencia. La fila que el bloque de abajo propuso —con las mismas tres
+    // condiciones sobre el rol `a`— vive desde el tramo H en `src/esquemas.ts`, así
+    // que la reparación se mide acá y no en una tabla de laboratorio.
+    //
+    // El texto viejo queda escrito porque el `nearest` VACÍO era la mitad
+    // interesante del hallazgo: la criatura tenía el leño a tres celdas y sabía
+    // deshilacharlo, y el gap no le ofrecía ni uno de esos pasos.
     const r = plan(meta({ k: 'cualidad', test: { q: 'emitsPower', op: '>', v: 0 } }), elLeno(), SIN_CORTE)
-    expect(r.k).toBe('gap')
-    if (r.k !== 'gap') throw new Error('imposible')
-    expect(r.missing).toBe('emitsPower>0')
-    expect(r.why).toBe('ningún esquema conocido establece «emitsPower>0»')
-    expect(r.nearest).toEqual([])
+    expect(r.k).toBe('plan')
+    expect(resumir(pasosDe(r))).toEqual([
+      'ir(leno)',
+      'sostener(leno)',
+      'deshilachar(leno, 1)',
+      // `hasta=0` es «sin `hasta`», y acá está BIEN: `hastaDe` lee el número del
+      // predicado que se persigue y `emitsPower>0` no trae temperatura, así que
+      // `frotar` cae en su valor por defecto, que es el `ignitionPoint` del cuerpo.
+      'frotar(a=lo-que-hice, b=leno, hasta=0)',
+    ])
   })
 
   /**
@@ -658,20 +674,24 @@ describe('4 · «quiero fuego»: planificar una consecuencia', () => {
    * Con esa fila metida por `opciones.esquemas` —la puerta que existe justo para
    * poder interrogar a la tabla— el plan sale, y sale con la yesca:
    */
-  it('con UNA fila puente, «quiero fuego» sale en cuatro pasos', () => {
-    const r = plan(meta({ k: 'cualidad', test: { q: 'emitsPower', op: '>', v: 0 } }), elLeno(), SIN_CORTE, undefined, {
-      esquemas: [...ESQUEMAS, PUENTE_DEL_FUEGO],
-    })
-    expect(resumir(pasosDe(r))).toEqual([
-      'ir(leno)',
-      'sostener(leno)',
-      'deshilachar(leno, 1)',
-      // `hasta=0` es «sin `hasta`», y acá está BIEN: `hastaDe` lee el número del
-      // predicado que se persigue y `emitsPower>0` no trae temperatura, así que
-      // `frotar` cae en su valor por defecto, que es el `ignitionPoint` del cuerpo.
-      // Para el fuego eso es exactamente lo que hay que frotar hasta.
-      'frotar(a=lo-que-hice, b=leno, hasta=0)',
-    ])
+  it('y la fila de la tabla es AL MENOS tan exigente como la que se propuso acá', () => {
+    // La propuesta pedía tres cosas al rol `a`; la fila real pide esas tres y una
+    // cuarta —`ignitionPoint <= 400`, que es hasta dónde empuja el `drive`—. Lo que
+    // se verifica es que no se haya AFLOJADO ninguna al pasar de la propuesta a la
+    // tabla: una fila más floja prometería fuego sobre cosas que no prenden.
+    const real = ESQUEMAS.find((e) => e.k === 'proceso' && e.via === 'friccion' && e.establishes === 'emitsPower>0')
+    expect(real).toBeDefined()
+    // «No aflojada» se pregunta con `implica`, que es la misma función con la que
+    // la regresión decide si un esquema aporta: la fila real pide
+    // `moisture < 0.45` donde la propuesta pedía `moisture <= 0.45`, y el estricto
+    // GARANTIZA al flojo. Compararlas por `op` idéntico habría dicho que se aflojó
+    // justo donde se apretó.
+    const suyas = real?.roleHints['a'] ?? []
+    const aflojadas = (PUENTE_DEL_FUEGO.roleHints['a'] ?? []).filter(
+      (p) => !suyas.some((t) => implica({ k: 'cualidad', test: t }, { k: 'cualidad', test: p })),
+    )
+    expect(aflojadas.map((t) => `${t.q}${t.op}${String(t.v)}`)).toEqual([])
+    expect(Object.keys(real?.roleHints ?? {}).sort()).toEqual(['a', 'actor', 'b'])
   })
 
   /**
@@ -689,17 +709,22 @@ describe('4 · «quiero fuego»: planificar una consecuencia', () => {
     // que la ley 3 mira: combustible, humedad y el techo de yesca que ya tiene la
     // tabla para `temperature>=400`.
     expect(Object.keys(PUENTE_DEL_FUEGO.roleHints).sort()).toEqual(['a', 'actor', 'b'])
+    // Y las mismas cualidades que la fila real de la tabla mira.
+    expect(Object.keys(PUENTE_DEL_FUEGO.roleHints).length).toBe(3)
   })
 })
 
 /**
- * La fila que falta, escrita acá y NO en `src/esquemas.ts` porque este archivo no
- * toca `src/`: es una propuesta medida, no un cambio.
+ * La fila que faltaba, escrita acá cuando este archivo no tocaba `src/`: era una
+ * propuesta medida, no un cambio. **Ya no falta** —el tramo H la puso en la tabla
+ * con una condición MÁS— y se conserva acá como la vara contra la que se mide que
+ * la fila real no haya aflojado ninguna de las tres.
  *
  * `segundos` va con el mismo número que la tabla le pone a `friccion`
  * —`(400 − 15) / 120`, que sale de su `drive`— para que el costo no sea inventado.
  */
 const PUENTE_DEL_FUEGO: ConstructionSchema = {
+  k: 'proceso',
   establishes: 'emitsPower>0',
   via: 'friccion',
   roleHints: {

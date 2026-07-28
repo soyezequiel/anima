@@ -17,7 +17,7 @@ export const CONTRATO_COMER: Contrato = {
   cuesta: { segundos: 0, commitment: 'irreversible' },
   huecos: [
     'LA VISTA CONGELADA: `ctx.self` y `ctx.clock` son PROPIEDADES y no métodos. Un generador recibe `ctx` una sola vez; si el ejecutor no muta ese objeto en su lugar, la habilidad nunca ve lo que acaba de hacer. `see()` y `q()` no tienen el problema porque son métodos. La API no dice cuál de las dos lecturas vale, y con la equivocada esta habilidad se rompe. Medido: corriendo las quince, cinco fallaron a la vez por esto. Y `src/ejecutor.ts` llegó a lo mismo por el otro lado y lo dejó escrito como contrato EN PROSA sobre `WorldCtx` —el mundo refresca el objeto en su lugar—, o sea que la lectura correcta existe y vive en un comentario que el modelo no lee: `skill-api.d.ts`, que ES el prompt, no la menciona',
-    '`toxicity` NO LA COBRA NADIE. Está en el catálogo, la ley de descomposición la sube y la de cocción la baja, y el comentario de `ctx.eat` dice «cuánto enferma (`toxicity`)» — pero `grep toxicity` sobre `@anima/world/src` devuelve CERO. Comer veneno es hoy exactamente igual de bueno que comer pescado fresco de las mismas calorías. La API DOCUMENTA una consecuencia que el mundo no implementa, que es el peor tipo de hueco: no hay error de compilación ni de ejecución, la habilidad hace lo correcto y el mundo no la premia',
+    'EL VENENO SE COBRA Y NO SE PUEDE PRESUPUESTAR. Hasta el ADR II-0013 este hueco decía que `grep toxicity` sobre `@anima/world/src` devolvía CERO y que comer veneno era igual de bueno que comer pescado fresco. YA NO: el mundo descuenta `toxicity · masa · COSTO_POR_TOXICIDAD_Y_KILO` de `stamina` al tragar, con su evento `enveneno` (medido: 12,5000 por 2 kg de pescado crudo). Lo que queda vivo del hueco es la otra mitad, y es la misma del hueco 4: `STAMINA_POR_CALORIA` y `COSTO_POR_TOXICIDAD_Y_KILO` viven en `@anima/world` y la superficie no publica ninguna de las dos, así que desde acá se pueden COMPARAR bocados por `toxicity` pero no calcular el NETO —`calories · S − toxicity · masa · K`—, que es el único número con el que se decide si conviene tragar. Quien sí lo calcula es `mordidaDe` de `@anima/mind`, importando las dos constantes: código de la casa haciendo algo que el código del modelo no puede hacer',
     'no hay `can()` para las primitivas: `eat` es el único acto `irreversible` cotidiano y no tiene ensayo en seco. `nada-que-comer` y `no-esta-a-mano` se pueden anticipar leyendo `calories` y la distancia; que haya que reconstruirlos a mano es reimplementar el juez del mundo del lado del código generado',
     'no hay `hunger`, y eso es CORRECTO y está bien dicho en la API: la física no tiene esa cualidad y lo que duele es la `stamina`. Lo que falta es la otra mitad: no hay techo publicado de `stamina`, así que «estoy llena» no se puede escribir y comer no tiene condición de parada',
     'no se puede saber cuánto va a rendir: `STAMINA_POR_CALORIA` (=1 hoy) es una constante de `@anima/world` que la superficie no publica. `calories` sí se lee, así que se puede COMPARAR entre bocados, que es lo que hace falta para elegir — pero no PRESUPUESTAR, que es lo que hace falta para decidir si conviene caminar veinte celdas',
@@ -79,13 +79,35 @@ export function* comer(
     return fail('todavía no tengo permiso para hacer algo irreversible')
   }
 
-  // `toxicity` es una decisión de la criatura y no una regla del mundo (ver
-  // hueco 1: el mundo no la cobra). Se filtra igual, y por eso el número es
-  // parámetro: el día que el mundo la cobre, esto ya está escrito.
+  // `toxicity` DEFIENDE DE ALGO REAL desde el ADR II-0013: el mundo cobra
+  // `toxicity · masa · COSTO_POR_TOXICIDAD_Y_KILO` de `stamina` al tragar, por
+  // separado de lo que las calorías acreditan (ver hueco 1, reescrito). Sigue
+  // siendo un parámetro y no una constante porque el umbral que conviene depende
+  // de cuánto lugar quede en el tanque —lo acreditado se topa contra el techo y
+  // el veneno se cobra entero—, y esa cuenta necesita las dos constantes de
+  // `@anima/world` que la superficie no publica.
   const veneno = args.toxicidadTolerada ?? 0.2
-  const comestible = (b: BodyView): boolean => ctx.q(b, 'calories') > 0 && ctx.q(b, 'toxicity') <= veneno
+  // ─── Y LO PRIMERO QUE SE DESCARTA ES UNO MISMO ────────────────────────────
+  //
+  // `SelfView extends BodyView` a propósito —para que la criatura pueda pasarse
+  // a sí misma como rol de un proceso, que es el paso 1 de encender el primer
+  // fuego—, así que `ctx.see()` DEVUELVE el propio cuerpo. Y lo devuelve con más
+  // calorías que la comida de al lado: medido, 6,30 de la carne propia contra
+  // 4,56 del pescado. Como acá se ordena por calorías descendentes y la mano se
+  // mira antes que la vista, el propio cuerpo no competía con la comida: le
+  // ganaba por los dos lados. Lo único que separaba a la criatura de comerse sola
+  // era el choque de dos números que nadie coordinó (carne cruda 0,30 contra el
+  // 0,2 de acá), y `toxicidadTolerada` es una perilla legítima que lo borra.
+  //
+  // El filtro va acá y no en `Proyeccion.aLaVista`: sacarse de `see()` rompería
+  // el rol de proceso. El mundo tiene su propia guarda (`es-uno-mismo`) y hacen
+  // falta las dos — ésta la escribe el modelo, aquélla no se negocia.
+  const soyYo = (b: BodyView): boolean => b.id === ctx.self.id
+  const comestible = (b: BodyView): boolean =>
+    !soyYo(b) && ctx.q(b, 'calories') > 0 && ctx.q(b, 'toxicity') <= veneno
 
   let bocado = args.bocado
+  if (bocado && soyYo(bocado)) return fail('ése soy yo')
   if (bocado && !comestible(bocado)) return fail(`${bocado.name} no alimenta`)
 
   if (!bocado) {

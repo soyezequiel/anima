@@ -1,16 +1,20 @@
 // ─── @anima/plan/esquemas.ts ─────────────────────────────────────────────────
 //
-// QUÉ PROCESO ESTABLECE QUÉ. Es la tabla sobre la que regresa `plan()`, y es el
-// módulo que decide si el paquete sirve: si estas ocho filas son recetas, el
+// QUÉ ESTABLECE QUÉ. Es la tabla sobre la que regresa `plan()`, y es el módulo
+// que decide si el paquete sirve: si estas diez filas son recetas, el
 // planificador es un recetario con pasos de más; si son física verificada, la
 // caña la arma la aritmética y nadie escribió «caña».
 //
-// ─── LAS DOS FUENTES, Y POR QUÉ NO ALCANZA CON UNA ──────────────────────────
+// ─── LAS TRES FUENTES, Y POR QUÉ NO ALCANZA CON UNA ─────────────────────────
 //
 //   (a) LO DECLARADO. Cada trozo de `Process.establishes` de los cuatro procesos
 //       de la semilla. Es mecánico y sale del catálogo: seis filas.
-//   (b) LOS PUENTES. Lo que `establishes` NO dice y el mundo SÍ hace. Dos filas,
-//       y cada una lleva su evidencia medida en `PUENTES`.
+//   (b) LOS PUENTES DE PROCESO. Lo que `establishes` NO dice y el proceso SÍ
+//       hace. Tres filas, y cada una lleva su evidencia medida en `PUENTES`.
+//   (c) LAS LEYES. Lo que no hace ningún proceso porque no lo hace NADIE: corre
+//       solo. Una fila —la cocción— y es puente por construcción: una ley no
+//       tiene `establishes` que declarar, así que lo único que la respalda es una
+//       medición. Ver `EsquemaDeLey` en `tipos.ts` para el porqué de la forma.
 //
 // El puente que ordena todo el módulo: `extraccion` le pide al rol `gear`
 // `reach >= 2 ∧ catch > 0`, y NINGUNO de los cuatro procesos declara `catch` en
@@ -46,13 +50,20 @@
 // 100 Hz.
 
 import {
+  EXPOSICION,
+  HUMEDAD_QUE_APAGA,
+  H_PERDIDA,
   SEED_PROCESSES,
+  SUSTANCIAS_SEMILLA,
   T_AMBIENTE,
+  temperaturaDeEquilibrio,
   type Process,
   type ProcessId,
+  type Tag,
 } from '@anima/physics'
 
-import type { ConstructionSchema, PredicateSignature } from './tipos.js'
+import { textoDe } from './predicado.js'
+import type { ConstructionSchema, EsquemaDeProceso, PredicateSignature } from './tipos.js'
 
 // ─── Los dos números de calibración que este módulo aporta ──────────────────
 
@@ -152,10 +163,24 @@ function esquema(
   via: ProcessId,
   roleHints: ConstructionSchema['roleHints'],
   cellHints?: ConstructionSchema['cellHints'],
-): ConstructionSchema {
+): EsquemaDeProceso {
   return cellHints === undefined
-    ? { establishes, via, roleHints, segundos: segundosDe(via) }
-    : { establishes, via, roleHints, cellHints, segundos: segundosDe(via) }
+    ? { k: 'proceso', establishes, via, roleHints, segundos: segundosDe(via) }
+    : { k: 'proceso', establishes, via, roleHints, cellHints, segundos: segundosDe(via) }
+}
+
+/**
+ * LA CLAVE DE AGRUPACIÓN: qué esquemas se pueden juntar en UNA sola aplicación.
+ *
+ * Dos esquemas del mismo proceso se aplican juntos y el costo se cobra UNA vez —es
+ * lo que hace que `catch>0 ∧ reach>=2` salga de un solo `union`—. Dos esquemas de
+ * ley NO se juntan: cada fila declara su propia pila y su propio `mientras`, y
+ * juntarlas exigiría decidir cómo se apilan dos pilas, que es una decisión que
+ * ninguna de las dos filas tiene. Por eso la clave de una ley lleva adentro su
+ * `establishes` y la de un proceso no.
+ */
+export function claveDeVia(e: ConstructionSchema): string {
+  return e.k === 'proceso' ? `proceso:${e.via}` : `ley:${e.ley}:${e.establishes}`
 }
 
 /**
@@ -174,6 +199,228 @@ function esquema(
  */
 export const AGUA_FRANCA = 0.9
 
+// ─── LO QUE HACE FALTA PARA COCINAR, DESPEJADO DEL CATÁLOGO ─────────────────
+//
+// Nada de este bloque es una preferencia. Son tres cuentas sobre números que ya
+// existen —`denaturesAt` e `ignitionPoint` de las sustancias, las tres
+// exposiciones de montaje, el acoplamiento con el ambiente— y de ellas sale sola
+// la técnica emblema del proyecto: **la parrilla**.
+
+/**
+ * ¿Hasta dónde puede calentar un fuego de esta potencia, según cómo se apoye lo
+ * que se cocina? Es la ley 1 en régimen, PREGUNTADA AL MOTOR (`temperaturaDeEquilibrio`)
+ * y no transcripta.
+ */
+function equilibrioSobre(potencia: number, montaje: 'piso' | 'parrilla' | 'contacto'): number {
+  return temperaturaDeEquilibrio(potencia, 0, montaje)
+}
+
+/** La inversa: qué potencia hace falta para llegar a esa temperatura con ese montaje. */
+function potenciaPara(temperatura: number, montaje: 'piso' | 'parrilla' | 'contacto'): number {
+  return ((temperatura - T_AMBIENTE) * H_PERDIDA) / EXPOSICION[montaje]
+}
+
+/**
+ * LA VENTANA DE COCCIÓN DE UN TAG, en grados, leída de las sustancias.
+ *
+ * `piso` es el `denaturesAt` MÁS ALTO de las sustancias del tag —abajo de eso hay
+ * alguna que ni empieza— y `techo` el `ignitionPoint` MÁS BAJO —arriba de eso hay
+ * alguna que se prende fuego—. Las dos puntas son la ventana que la ley 5 lee de
+ * verdad: `ventanaDeCoccion` en `physics/src/leyes.ts` pide
+ * `denaturesAt ≤ temperature < ignitionPoint` y encima exige el tag `organico`,
+ * así que las sustancias sin `denaturesAt` no entran y no se saltean en silencio:
+ * es que la ley no las cocina.
+ *
+ * Medido para `carnoso`: piso 63 (la carne, que es la que más tarda en empezar) y
+ * techo 220 (el huevo, que es el que antes se prende). Las seis del tag, en orden
+ * de catálogo: carne 63/280, pescado 55/260, molusco 48/240, huevo 62/220,
+ * médula 52/230, grasa 45/300.
+ */
+interface VentanaDeTag {
+  readonly piso: number
+  readonly techo: number
+  readonly cuantas: number
+}
+
+function ventanaDelTag(tag: Tag): VentanaDeTag {
+  let piso = Number.NEGATIVE_INFINITY
+  let techo = Number.POSITIVE_INFINITY
+  let cuantas = 0
+  for (const s of SUSTANCIAS_SEMILLA) {
+    if (!s.tags.includes(tag)) continue
+    // La ley 5 sólo corre sobre lo `organico`: pedirlo acá no es un filtro extra,
+    // es la misma guarda leída del mismo lado.
+    if (!s.tags.includes('organico')) continue
+    const d = s.perUnitMass.denaturesAt
+    const ig = s.perUnitMass.ignitionPoint
+    if (d === undefined || ig === undefined) continue
+    if (d > piso) piso = d
+    if (ig < techo) techo = ig
+    cuantas++
+  }
+  if (cuantas === 0) throw new RangeError(`ninguna sustancia orgánica con tag «${tag}» se cocina`)
+  return { piso, techo, cuantas }
+}
+
+/**
+ * A QUÉ TEMPERATURA TIENE QUE QUEDAR LA COMIDA, y por qué no alcanza con el borde
+ * de abajo de su ventana.
+ *
+ * Porque **en el borde la ley empuja a tasa cero**: `leyDesnaturalizacion` calcula
+ * `k = (temperature − denaturesAt) / 100` y multiplica las cuatro tasas por `k`,
+ * así que una comida parada exactamente en su `denaturesAt` no se cocina nunca. Un
+ * esquema que pusiera ahí el piso prometería algo con un `mientras` infinito.
+ *
+ * El punto medio de la ventana es el único punto de adentro que **los dos bordes
+ * determinan**: no hay que elegir un margen, sale de restar los dos números que el
+ * catálogo ya tiene. Medido para `carnoso`: (63 + 220) / 2 = 141,5 °C.
+ */
+function temperaturaDeTrabajo(v: VentanaDeTag): number {
+  return (v.piso + v.techo) / 2
+}
+
+/**
+ * LA VENTANA DE POTENCIA DEL FUEGO, y de acá sale la parrilla sin que nadie la
+ * escriba.
+ *
+ * Con `EXPOSICION` y `H_PERDIDA` del motor, un fuego de potencia `P` deja la comida
+ * en `T_ambiente + P · exposicion / h`. Los tres montajes que el mundo distingue
+ * (`montajeDe`, en `world/src/step.ts`) dan tres respuestas MUY distintas, y para un
+ * fuego de leña de 1 kg —`emitsPower` 300, la fogata que el Hito 0 calibró— son:
+ *
+ *     piso       15 + 300 · 0,06 / 0,5 =  51 °C  → por debajo de los 63 de la carne:
+ *                                                  no cocina
+ *     parrilla   15 + 300 · 0,25 / 0,5 = 165 °C  → adentro de la ventana: cocina
+ *     contacto   15 + 300 · 0,60 / 0,5 = 375 °C  → por encima de los 220 del huevo y
+ *                                                  de los 260 del pescado: se quema
+ *
+ * O sea que **de los tres montajes del mundo, uno solo cae adentro de la ventana**,
+ * y es el que se consigue apoyando la comida sobre algo que está en la celda del
+ * fuego. Nadie escribió «parrilla»: es la única geometría que sobrevive a la resta.
+ * Por eso `pila` tiene tres roles y no dos.
+ */
+function ventanaDePotencia(v: VentanaDeTag): { readonly minima: number; readonly maxima: number } {
+  return {
+    minima: potenciaPara(temperaturaDeTrabajo(v), 'parrilla'),
+    maxima: potenciaPara(v.techo, 'parrilla'),
+  }
+}
+
+/**
+ * LO QUE SE LE PIDE A LA PARRILLA, y también sale de la resta.
+ *
+ * La parrilla NO está en `parrilla`: está en `contacto` con el fuego —es lo que la
+ * sostiene—, así que le toca la exposición 0,6 y el equilibrio más bravo de los
+ * tres. Con el fuego más grande que el esquema admite eso da **507 °C** para lo
+ * carnoso, y de ahí sale la única condición: que no se prenda fuego a esa
+ * temperatura. La piedra (`ignitionPoint` 900, el techo de lo que no arde) entra;
+ * una vara de madera (300) no, y por eso una parrilla de madera no es una parrilla
+ * sino más leña.
+ */
+function ignicionQueAguantaLaParrilla(v: VentanaDeTag): number {
+  return equilibrioSobre(ventanaDePotencia(v).maxima, 'contacto')
+}
+
+/** Hasta dónde promete empujar la temperatura un proceso, leído de su `drive`. */
+function temperaturaQuePromete(via: ProcessId): number {
+  let peor = 0
+  for (const e of procesoDe(via).effects) {
+    if (e.k !== 'drive') continue
+    if (e.q !== 'temperature') continue
+    if (e.toward > peor) peor = e.toward
+  }
+  return peor
+}
+
+/**
+ * LO QUE FROTAR PUEDE ENCENDER: hasta 400 °C, que es lo que `friccion` promete.
+ *
+ * Una cosa que se prenda MÁS ARRIBA no la enciende nadie frotando, y ése es
+ * exactamente el `step(temperature ≥ ignitionPoint)` del ADR II-0001 leído al
+ * revés: no hay verbo «encender», hay un umbral que se cruza o no se cruza.
+ */
+export const IGNICION_QUE_ALCANZA_FROTANDO = temperaturaQuePromete('friccion')
+
+/** La ventana de la cocción de lo carnoso, expuesta para que el test la cruce. */
+export const VENTANA_CARNOSA = ventanaDelTag('carnoso')
+
+/** Y la del fuego que la sirve. Medido: [273,0000 ; 450,0000), 1,65× de ancho. */
+export const POTENCIA_QUE_COCINA_LO_CARNOSO = ventanaDePotencia(VENTANA_CARNOSA)
+
+/**
+ * CUÁNTOS SEGUNDOS HAY QUE DEJAR LA COMIDA EN LA PARRILLA.
+ *
+ * No se puede despejar: las cuatro tasas de la ley 5 (`COCCION_BASE`,
+ * `COCCION_DESTOXIFICA`, `COCCION_DUREZA_PISO`, `DIGESTIBILIDAD_TECHO`) son
+ * constantes privadas de `physics/src/leyes.ts` y este paquete no las ve. Así que
+ * es un número MEDIDO, y como el `segundos` de `friccion`, es una COTA SUPERIOR y
+ * no una predicción — la ley no completa, empuja.
+ *
+ * Se mide sobre el peor caso admisible y no sobre uno cómodo: el fuego más flojo
+ * de la ventana y la sustancia carnosa que más tarda. Ver
+ * `tests/los-esquemas-contra-el-mundo.test.ts`, que corre exactamente eso y se pone
+ * rojo si este número se queda corto.
+ *
+ * MEDIDO, con el fuego en el borde de abajo (`emitsPower` 253,00) y piezas de 2 kg,
+ * las seis sustancias carnosas de la semilla:
+ *
+ *     grasa 2,00 s · huevo 3,45 · médula 4,45 · pescado 5,05 · carne 7,50 · molusco 10,10
+ *
+ * El peor es el molusco —`toughness` 0,55, el más alto, y `toxicity` 0,45, la más
+ * alta— y son 10,10 s. Acá van 15, o sea **1,49× de margen**, y no 30: este número
+ * también ORDENA la búsqueda, así que inflarlo hace que cocinar parezca más caro de
+ * lo que es y que la regresión prefiera cadenas peores.
+ *
+ * Y hay una razón física para no estirarlo: **el fuego se consume mientras cocina**.
+ * Medido en la misma corrida, la leña del borde baja de 253,00 a 202,65 en los
+ * 10 s del molusco, o sea que se sale de la ventana que la fila le exige. Alcanza
+ * porque para entonces la comida ya está caliente, pero dice algo que la fila no
+ * puede decir: `emitsPower` se verifica al planificar y no se sostiene solo.
+ */
+export const SEGUNDOS_DE_COCCION = 15
+
+/**
+ * CUÁNDO ALGO ESTÁ COCIDO. Dos números, y los dos son calibración con respaldo.
+ *
+ * `digestibility >= 0,85` es el umbral que este proyecto llama «cocido» desde el
+ * Hito 0 y con el que se cierra la cadena del fuego en el mundo
+ * (`world/tests/el-fuego.test.ts`: `expect(digestibilidad).toBeGreaterThanOrEqual(0.85)`).
+ * Está cómodo abajo del techo real de la ley, `DIGESTIBILIDAD_TECHO = 0,95`, que es
+ * un límite asintótico: prometer el techo sería prometer un `mientras` infinito.
+ *
+ * `toxicity <= 0,05` es más fino y sale de otro lado: de LO QUE EL QUE COME PIDE.
+ * La innata `comer` se autoimpone `toxicidadTolerada = 0,2` y desde el ADR II-0013
+ * esa tolerancia defiende de algo real —el mundo cobra `toxicity × masa` de
+ * `stamina` al tragar—. O sea que 0,2 es el umbral que hace que cocinar sirva para
+ * algo, y esta fila promete CUATRO VECES más abajo para que la promesa aguante el
+ * peor caso admisible sin quedar pegada al borde.
+ *
+ * Y hay que decir el riesgo: el 0,2 vive como literal adentro de `comer.ts`, no
+ * como constante exportada, así que no se puede importar y esto es una segunda
+ * copia de una decisión ajena. La mitigación es del test: cruza que lo prometido
+ * sea AL MENOS tan fuerte como lo que `comer` tolera, y si alguien afloja `comer`
+ * la fila deja de tener sentido y hay que venir a mirarla.
+ */
+export const DIGESTIBILIDAD_DE_COCIDO = 0.85
+export const TOXICIDAD_DE_COCIDO = 0.05
+
+/**
+ * La firma que promete la cocción de lo carnoso, ARMADA y no escrita.
+ *
+ * Pasa por `textoDe` para que salga con las condiciones ordenadas y deduplicadas
+ * igual que las escribe `firmaDe`: si esta firma se escribiera a mano con las dos
+ * condiciones al revés, el índice tendría una entrada que la regresión no
+ * encuentra —el mismo bug que `firmaDe` existe para cerrar—.
+ */
+export const FIRMA_DE_LO_COCIDO: PredicateSignature = textoDe({
+  k: 'sostiene',
+  tag: 'carnoso',
+  tests: [
+    { q: 'digestibility', op: '>=', v: DIGESTIBILIDAD_DE_COCIDO },
+    { q: 'toxicity', op: '<=', v: TOXICIDAD_DE_COCIDO },
+  ],
+})
+
 // ─── La evidencia de los puentes ────────────────────────────────────────────
 
 /**
@@ -190,7 +437,15 @@ export const AGUA_FRANCA = 0.9
  */
 export interface Evidencia {
   readonly establishes: PredicateSignature
-  readonly via: ProcessId
+  /**
+   * Por dónde, en la misma clave que agrupa las vías: `proceso:union`, `ley:…`.
+   *
+   * Es la clave y no el `ProcessId` pelado desde que hay esquemas de ley: **una
+   * fila de ley es SIEMPRE un puente**, porque ninguna ley tiene un `establishes`
+   * que declarar —las leyes no proponen, corren— así que no hay catálogo del que
+   * pueda salir y lo único que la respalda es una medición.
+   */
+  readonly por: string
   /** Qué hace el mundo que `establishes` no dice. */
   readonly porque: string
   /** Dónde está MEDIDO, en rutas desde `ii/`. */
@@ -200,7 +455,7 @@ export interface Evidencia {
 export const PUENTES: readonly Evidencia[] = [
   {
     establishes: 'catch>0',
-    via: 'union',
+    por: 'proceso:union',
     porque:
       'ningún proceso declara `catch`, y sin `catch` no hay `gear` para `extraccion`. ' +
       'Atar una hebra flexible SIN el rol opcional `b` deja al atador vivo como parte con una ' +
@@ -224,8 +479,29 @@ export const PUENTES: readonly Evidencia[] = [
     ],
   },
   {
+    establishes: 'emitsPower>0',
+    por: 'proceso:friccion',
+    porque:
+      '`friccion` declara que establece `temperature>=400` y no declara la consecuencia que hace ' +
+      'existir al fuego: un cuerpo que cruza su `ignitionPoint` EMITE. No es una ley aparte ni un ' +
+      'verbo: `emitsPower` es una cualidad DERIVADA, `step(temperature ≥ ignitionPoint) · ' +
+      'fuelEnergy · mass · 16,7`, y el `step` es el ADR II-0001 hecho aritmética. Medido: una vara ' +
+      'de madera de 0,2 kg (ignición 300) frotada cruza los 300 °C y pasa de `emitsPower` 0 a 60,12; ' +
+      'la misma vara fría vale 0 aunque nadie la haya tocado. El `roleHint` pide `ignitionPoint <= ' +
+      '400` porque 400 es hasta donde el `drive` de `friccion` empuja: lo que se prende más arriba ' +
+      'no lo enciende nadie frotando.',
+    medidoEn: [
+      // La cadena entera medida en el mundo: la vara pasa sus 300 °C a los 2,40 s.
+      'packages/world/tests/el-fuego.test.ts',
+      // La expresión derivada de `emitsPower`, con su `step`.
+      'packages/physics/src/quality.ts',
+      // Y acá, esta misma fila corrida contra una partida.
+      'packages/plan/tests/los-esquemas-contra-el-mundo.test.ts',
+    ],
+  },
+  {
     establishes: 'heatCapacity<=0.9',
-    via: 'deshilachar',
+    por: 'proceso:deshilachar',
     porque:
       '`deshilachar` declara que establece flexibilidad y tracción, y NO declara lo único que ' +
       'de verdad fabrica: cuerpos LIVIANOS. La hebra se lleva 0,1 de la masa, `heatCapacity` es ' +
@@ -245,15 +521,41 @@ export const PUENTES: readonly Evidencia[] = [
       'packages/physics/src/quality.ts',
     ],
   },
+  {
+    establishes: FIRMA_DE_LO_COCIDO,
+    por: `ley:desnaturalizacion:${FIRMA_DE_LO_COCIDO}`,
+    porque:
+      'COCINAR NO ES UN PROCESO: no hay `ProcessId` que lo haga, lo hace la ley 5 sobre todo cuerpo ' +
+      'orgánico que esté entre su `denaturesAt` y su `ignitionPoint`. O sea que ningún `establishes` ' +
+      'lo puede declarar —las leyes no proponen, corren— y lo único que respalda esta fila es una ' +
+      'medición. Lo que la fila aporta y el catálogo no dice: que la ventana de lo carnoso es ' +
+      '[63 ; 220) °C, que de los TRES montajes que el mundo distingue uno solo cae adentro —piso 51, ' +
+      'parrilla 165, contacto 375 sobre una fogata de 300—, y que por eso la pila tiene tres cuerpos ' +
+      'y no dos. Nadie escribió «parrilla»: es la única geometría que sobrevive a la resta.',
+    medidoEn: [
+      // La ley 5, con su `k = (T − denaturesAt)/100` y sus cuatro tasas.
+      'packages/physics/src/leyes.ts',
+      // `montajeDe`: la parrilla sale de la geometría y de ninguna tabla.
+      'packages/world/src/step.ts',
+      // La cadena entera en el mundo: el pescado sobre la parrilla llega a 0,950.
+      'packages/world/tests/el-fuego.test.ts',
+      // Y acá, esta misma fila corrida contra una partida, en el peor caso admisible.
+      'packages/plan/tests/los-esquemas-contra-el-mundo.test.ts',
+    ],
+  },
 ]
 
-// ─── Los ocho esquemas ──────────────────────────────────────────────────────
+// ─── Las diez filas ─────────────────────────────────────────────────────────
 //
 // El orden es el de `SEED_PROCESSES`, y adentro de cada proceso primero lo
 // declarado y después sus puentes. No es cosmético: `SCHEMA_INDEX` conserva este
 // orden, y de él depende qué esquema prueba primero la regresión cuando dos
 // establecen la misma firma. Un orden que dependiera de cómo se construyó un
 // `Map` sería no-determinismo con otro nombre.
+//
+// Las de LEY van últimas, y también es orden y no gusto: `regresar` prueba las
+// vías en el orden de la tabla, y lo que un proceso sabe hacer sale más barato que
+// armar una situación y esperar. Está afirmado en `los-esquemas.test.ts`.
 
 export const ESQUEMAS: readonly ConstructionSchema[] = [
   // ── friccion ──────────────────────────────────────────────────────────────
@@ -274,6 +576,44 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
   // no le va a salir, y se va a enterar frotando.
   esquema('temperature>=400', 'friccion', {
     a: [{ q: 'heatCapacity', op: '<=', v: TECHO_DE_YESCA }],
+    b: [],
+    actor: [],
+  }),
+
+  // PUENTE: `emitsPower>0`. Ver `PUENTES`.
+  //
+  // Lo que `friccion` fabrica y no declara: una FUENTE DE CALOR. `emitsPower` es
+  // derivada —`step(temperature ≥ ignitionPoint) · fuelEnergy · mass · 16,7`— y el
+  // `step` es el ADR II-0001 hecho aritmética: no hay verbo «encender», hay un
+  // umbral. Frotar cruza el umbral, y lo que queda del otro lado emite.
+  //
+  // Los dos `roleHints` de `a` son las dos mitades de la misma frase. El techo de
+  // `heatCapacity` es el mismo de la yesca (frotar algo más pesado no se paga), y
+  // el `ignitionPoint <= 400` es hasta dónde llega el `drive` del proceso: lo que
+  // se prende más arriba de lo que frotar promete no lo enciende nadie frotando.
+  // Ninguno de los dos números está escrito acá.
+  //
+  // ─── Y LO QUE ESTA FILA NO ALCANZA A PROMETER, DICHO ANTES DE QUE MUERDA ──
+  //
+  // `emitsPower > 0` no es `emitsPower >= 273`, que es lo que la cocción pide. La
+  // cuenta es la de la yesca leída al derecho: `heatCapacity <= 0,9` sobre madera
+  // (calor específico 1,7) topa la masa en 0,529 kg, y 0,529 kg de madera ardiendo
+  // emiten 159 — la mitad de lo que hace falta para cocinar. Así que **la criatura
+  // puede encender y no puede, sólo con eso, cocinar**, y el `gap` lo va a decir
+  // con estas dos firmas al lado. No es un defecto de esta fila: es el dato.
+  // Las otras dos condiciones de `a` no son de `friccion` sino de la ley 3, y
+  // están porque un cuerpo calentísimo sin combustible no emite nada y uno mojado
+  // tampoco: `arde` en `physics/src/leyes.ts` es
+  // `moisture < HUMEDAD_QUE_APAGA ∧ pico >= ignitionPoint ∧ oxígeno`. Las dos salen
+  // del motor —la constante está exportada— y las propuso el adversario del tramo
+  // F antes de que esta fila existiera, en `tests/ataque-al-reves.test.ts`.
+  esquema('emitsPower>0', 'friccion', {
+    a: [
+      { q: 'heatCapacity', op: '<=', v: TECHO_DE_YESCA },
+      { q: 'ignitionPoint', op: '<=', v: IGNICION_QUE_ALCANZA_FROTANDO },
+      { q: 'fuelEnergy', op: '>', v: 0 },
+      { q: 'moisture', op: '<', v: HUMEDAD_QUE_APAGA },
+    ],
     b: [],
     actor: [],
   }),
@@ -439,6 +779,54 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
     },
     { source: [{ q: 'wet', op: '>=', v: AGUA_FRANCA }] },
   ),
+
+  // ── ley 5 · desnaturalización ─────────────────────────────────────────────
+  //
+  // LA PRIMERA FILA QUE NO ES UN PROCESO. Ver `EsquemaDeLey` en `tipos.ts` para el
+  // porqué de la forma; acá va el porqué de los números, que salen todos de restar
+  // cosas del catálogo.
+  //
+  // Los tres roles y lo que se les pide:
+  //
+  //   fuego     la ventana de potencia. Abajo del piso la comida no llega a su
+  //             `denaturesAt` (o llega tan justo que la ley empuja a tasa cero);
+  //             arriba del techo cruza su `ignitionPoint` y se quema en vez de
+  //             cocinarse. Los dos bordes salen de `ventanaDelTag('carnoso')`.
+  //   parrilla  que no se prenda fuego estando en CONTACTO con el fuego, que es
+  //             la exposición más brava de las tres. Y `portable`: hay que poder
+  //             levantarla, y eso lo agrega la regresión sola por estar en `pila`.
+  //   comida    nada en cualidades. Lo que tiene que ser —carnosa y en la mano—
+  //             sale de la propia promesa: ver `EsquemaDeLey.sujeto` y el residuo
+  //             que la regresión le pasa.
+  //
+  // ─── LO QUE ESTA FILA NO DICE, Y HAY QUE DECIRLO ──────────────────────────
+  //
+  // No dice que la parrilla AGUANTE el peso: la ley 8 es otra, `footing` es una
+  // cualidad que existe y `pila` no la mira. Hoy no muerde porque lo que se apoya
+  // pesa kilos y no toneladas, y queda escrito para que el día que muerda no
+  // parezca un accidente.
+  //
+  // Y no hay una fila por cada tag comestible: hay UNA, la de lo carnoso, porque
+  // es la que el criterio del Hito 5 necesita. La de lo vegetal es la misma cuenta
+  // con otro tag —`ventanaDelTag` no sabe de carne— y entra el día que haya un
+  // objetivo que la pida, sin tocar nada de este módulo salvo la lista.
+  {
+    k: 'ley',
+    ley: 'desnaturalizacion',
+    establishes: FIRMA_DE_LO_COCIDO,
+    sujeto: 'comida',
+    pila: ['fuego', 'parrilla', 'comida'],
+    mientras: SEGUNDOS_DE_COCCION,
+    segundos: SEGUNDOS_DE_COCCION,
+    roleHints: {
+      fuego: [
+        { q: 'emitsPower', op: '>=', v: POTENCIA_QUE_COCINA_LO_CARNOSO.minima },
+        { q: 'emitsPower', op: '<', v: POTENCIA_QUE_COCINA_LO_CARNOSO.maxima },
+      ],
+      parrilla: [{ q: 'ignitionPoint', op: '>', v: ignicionQueAguantaLaParrilla(VENTANA_CARNOSA) }],
+      comida: [],
+    },
+  },
 ]
 
 // ─── El índice ──────────────────────────────────────────────────────────────

@@ -30,7 +30,12 @@ import {
   qualityOf,
 } from '@anima/physics'
 
-import { COSTO_POR_CELDA, COSTO_VIVIR_POR_SEGUNDO, stepWorld } from '../src/step.js'
+import {
+  COSTO_POR_CELDA,
+  COSTO_POR_TOXICIDAD_Y_KILO,
+  COSTO_VIVIR_POR_SEGUNDO,
+  stepWorld,
+} from '../src/step.js'
 import type { SimEvent, WorldState } from '../src/step.js'
 import { revisarInvariantes } from '../src/invariants.js'
 import { eat, goTo, take } from '../src/intent.js'
@@ -187,14 +192,32 @@ describe('una criatura quieta y sin comer tarda lo mismo a 10, 20, 25, 50 y 100 
 
 // ─── (c) EL PUNTO DE EQUILIBRIO, EN NÚMEROS ─────────────────────────────────
 
+/**
+ * La `toxicity` de un pescado de 2 kg **EN EL INSTANTE EN QUE EL MUNDO LO LLAMA
+ * COCIDO** (`digestibility ≥ 0,85`), medida corriendo la ley 5 de verdad adentro
+ * de `stepWorld` en `tests/el-veneno-se-cobra.test.ts` (c), que la clava.
+ *
+ * No se estima y no se supone cero: baja de 0,25 a 0,0345, o sea que **la ley 5 se
+ * lleva el 86% del veneno antes de terminar de ablandar**. Esa asimetría no la
+ * escribió nadie —la destoxificación es multiplicativa y la digestibilidad se
+ * acerca a un techo— y es la mitad de por qué cocinar paga.
+ */
+const TOXICIDAD_DEL_PESCADO_COCIDO = 0.0345
+
 describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () => {
-  /** Lo que rinde en `stamina` un pescado de 2 kg, crudo y cocinado. */
-  const pescado = (digestibility?: number): number =>
-    qualityOf(
-      cuerpo('pez', 'pescado', 2, digestibility === undefined ? {} : { digestibility }),
-      'calories',
-      FISICA,
-    )
+  /** Lo que rinde en `stamina` un pescado de 2 kg, crudo y cocinado, **con el
+   *  veneno ya descontado** (ADR II-0013). Las dos mitades salen de la física: las
+   *  calorías de la cualidad derivada y el veneno de `toxicity · masa · K`. */
+  const pescado = (digestibility?: number, toxicity?: number): number => {
+    const b = cuerpo('pez', 'pescado', 2, {
+      ...(digestibility === undefined ? {} : { digestibility }),
+      ...(toxicity === undefined ? {} : { toxicity }),
+    })
+    const cal = qualityOf(b, 'calories', FISICA)
+    const veneno =
+      qualityOf(b, 'toxicity', FISICA) * qualityOf(b, 'mass', FISICA) * COSTO_POR_TOXICIDAD_Y_KILO
+    return cal - veneno
+  }
 
   it('los números, sin prosa', () => {
     const segundosDeLaCorrida = TICKS_DEL_CRITERIO / HZ_DE_REFERENCIA
@@ -206,24 +229,37 @@ describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () 
     const sinTanque = costo
 
     const crudo = pescado()
-    const cocinado = pescado(0.95)
+    const cocinado = pescado(0.95, TOXICIDAD_DEL_PESCADO_COCIDO)
 
     expect(segundosDeLaCorrida).toBe(1000)
     expect(costo).toBe(1000)
     expect(conTanque).toBe(500)
 
-    // `calories = nutrition × mass × digestibility`, y los tres salen del
-    // catálogo: pescado nutrition 8, crudo 0,38 y cocinado al techo 0,95. Nadie
-    // escribió «cocinar rinde más»: rinde 2,5× porque la digestibilidad sube.
-    expect(Number(crudo.toFixed(4))).toBe(6.08)
-    expect(Number(cocinado.toFixed(4))).toBe(15.2)
-    expect(Number((cocinado / crudo).toFixed(4))).toBe(2.5)
+    // ─── EL NÚMERO QUE DIO VUELTA: 83 PESCADOS CRUDOS YA NO ALCANZAN ───────
+    //
+    // Este bloque decía «un pescado de 2 kg CRUDO rinde 6,08 → 83 piezas», y el 83
+    // es el número que el criterio del Hito 5 cita textual («para llegar a 20.000
+    // le faltaban 83 pescados»). Con el ADR II-0013 ese 83 **no existe**: el mismo
+    // pescado acredita 6,08 de calorías y el veneno se lleva 12,50 (`toxicity` 0,25
+    // × 2 kg × 25), así que cada bocado crudo deja −6,42 y **ninguna cantidad de
+    // pescado crudo llega a los 20.000 ticks**. Comer crudo dejó de ser una
+    // estrategia lenta y pasó a ser una estrategia imposible.
+    //
+    // Cocinado sí: 15,20 de calorías contra 1,73 de veneno, o sea 13,47 netos.
+    expect(Number(crudo.toFixed(4))).toBe(-6.42)
+    expect(Number(cocinado.toFixed(4))).toBe(13.475)
+    // Y la única cosa que separa a los dos es lo que la ley 5 hizo: nadie escribió
+    // «cocinar rinde más». Antes del ADR II-0013 el cociente era 2,50× y salía sólo
+    // de `digestibility`; ahora el crudo es negativo y el cociente no es un número:
+    // es un cambio de signo.
+    expect(crudo).toBeLessThan(0)
+    expect(cocinado).toBeGreaterThan(0)
 
-    const piezas = (falta: number, rinde: number): number => Math.ceil(falta / rinde)
-    expect(piezas(conTanque, crudo)).toBe(83)
-    expect(piezas(conTanque, cocinado)).toBe(33)
-    expect(piezas(sinTanque, crudo)).toBe(165)
-    expect(piezas(sinTanque, cocinado)).toBe(66)
+    const piezas = (falta: number, rinde: number): number =>
+      rinde > 0 ? Math.ceil(falta / rinde) : Number.POSITIVE_INFINITY
+    expect(piezas(conTanque, crudo)).toBe(Number.POSITIVE_INFINITY)
+    expect(piezas(conTanque, cocinado)).toBe(38)
+    expect(piezas(sinTanque, cocinado)).toBe(75)
 
     log([
       `══ EL PRESUPUESTO DE UNA PARTIDA DE ${String(TICKS_DEL_CRITERIO)} TICKS A ${String(HZ_DE_REFERENCIA)} Hz ══`,
@@ -232,10 +268,13 @@ describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () 
       `  llega con .................... ${String(TANQUE)}`,
       `  tiene que sacarle al mundo ... ${conTanque.toFixed(0)}   (o ${sinTanque.toFixed(0)} si el tanque no cuenta)`,
       '',
-      `  un pescado de 2 kg CRUDO ..... ${crudo.toFixed(2)} de stamina  →  ${String(piezas(conTanque, crudo))} piezas  (${String(piezas(sinTanque, crudo))} sin tanque)`,
+      `  un pescado de 2 kg CRUDO ..... ${crudo.toFixed(2)} de stamina  →  NUNCA alcanza (era 6,08 → 83 piezas)`,
       `  el mismo COCINADO ............ ${cocinado.toFixed(2)} de stamina  →  ${String(piezas(conTanque, cocinado))} piezas  (${String(piezas(sinTanque, cocinado))} sin tanque)`,
       '',
-      `  cocinar rinde ${(cocinado / crudo).toFixed(2)}× y nadie lo escribió: sale de \`digestibility\`.`,
+      '  el veneno del ADR II-0013 le da vuelta el signo al crudo: 6,08 de calorías',
+      '  contra 12,50 de veneno. Cocinar dejó de ser una mejora y pasó a ser la',
+      '  única forma de que el pescado alimente, y nadie lo escribió: sale de que la',
+      '  ley 5 se lleva el 86% de la `toxicity` mientras sube la `digestibility`.',
     ])
   })
 
@@ -339,8 +378,27 @@ describe('con la stamina en cero, la criatura se muere', () => {
     const antes = staminaDe(muerte.state, 'beto')
     const comio = stepWorld(muerte.state, [eat({ by: 'beto', seq: 0 }, 'ana-cuerpo')])
     expect(comio.events.some((e) => e.k === 'comio')).toBe(true)
-    expect(staminaDe(comio.state, 'beto')).toBeGreaterThan(antes)
     expect(comio.state.bodies.has('ana-cuerpo')).toBe(false)
+    // ─── PERO CRUDO NO PAGA, y eso es del ADR II-0013 ──────────────────────
+    //
+    // Acá decía `toBeGreaterThan(antes)`, y era cierto sólo mientras el mundo no
+    // cobrara `toxicity`. El cadáver son 2 kg de carne: acredita 6,30 de calorías
+    // (`9 × 2 × 0,35`) y el veneno se lleva 15 (`0,3 × 2 × 25`). O sea que comerse
+    // a la que no llegó, sin fuego, cuesta 8,70 más de lo que da.
+    //
+    // El bucle sigue cerrando y sigue sin que nadie escribiera «canibalismo»: el
+    // cadáver ES comida —el `comio` sale, las calorías son positivas— y lo que el
+    // catálogo agrega es que es comida que hay que COCINAR. Nadie lo escribió
+    // tampoco: la carne tiene `toxicity` 0,30 desde el Hito 0.
+    //
+    // Los −8,7618 medidos no son los −8,70 de la cuenta a mano, y la diferencia es
+    // información: el cadáver ya vivió UN TICK en el mundo, y la ley 6 le subió el
+    // `decay` —y con él la `toxicity`— antes de que nadie lo levantara. La carne
+    // muerta empeora desde el primer tick, que es exactamente lo que esa ley dice.
+    const neto = staminaDe(comio.state, 'beto') - antes
+    expect(Number(neto.toFixed(4))).toBe(-8.7618)
+    const ven = comio.events.find((e) => e.k === 'enveneno')
+    expect(ven?.k === 'enveneno' ? Number(ven.cobrado.toFixed(4)) : 0).toBeGreaterThan(15)
     // Y la conversión queda declarada, así que el invariante de conservación la
     // acepta: comer un cadáver no es distinto de comer un pescado.
     expect(revisarInvariantes(muerte.state, comio.state, comio.events)).toEqual([])

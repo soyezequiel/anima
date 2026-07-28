@@ -27,10 +27,14 @@
 export type {
   Comparador,
   ConstructionSchema,
+  EsquemaComun,
+  EsquemaDeLey,
+  EsquemaDeProceso,
   Frontera,
   GoalId,
   GoalNode,
   MarcoDePlan,
+  MarcoPor,
   NodoAbierto,
   OpcionesDePlan,
   PedidoDeRol,
@@ -47,6 +51,16 @@ export { EXPANSIONES_POR_TICK, PROFUNDIDAD_MAXIMA } from './tipos.js'
 
 export { firmaDe, implica, interpretar, cumple, cumpleCuerpo, textoDe } from './predicado.js'
 export { resolver, resolverCuerpo, resolverTodos, type Resuelto, type Rindes } from './referencias.js'
-export { AGUA_FRANCA, SCHEMA_INDEX, ESQUEMAS, esquemasPara, procesoDe } from './esquemas.js'
+export {
+  AGUA_FRANCA,
+  FIRMA_DE_LO_COCIDO,
+  POTENCIA_QUE_COCINA_LO_CARNOSO,
+  SEGUNDOS_DE_COCCION,
+  SCHEMA_INDEX,
+  ESQUEMAS,
+  claveDeVia,
+  esquemasPara,
+  procesoDe,
+} from './esquemas.js'
 export { goalGraph, orden, type Lectura } from './objetivos.js'
 export { plan } from './regresion.js'

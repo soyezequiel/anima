@@ -98,6 +98,92 @@
 //    lugar lejano con una creencia mucho mejor que las doce de al lado no entra.
 //    Es una elección de escala y está dicha.
 //
+// ─── 8. TENER COMIDA NO ES LA META: LA META ES DEJAR DE TENER HAMBRE ────────
+//
+// Y acá estaba el bug que mató la primera corrida entera del Hito 5. Medido:
+// **la criatura pescó 199 veces y se murió de hambre en el tick 6194 de 20.000**,
+// con `bocados 0`.
+//
+// La causa no era un `if` que faltara en la escalera: era ESTA función. Lo que
+// una oportunidad de comida decía es `holding(tag:carnoso)` —tener algo carnoso
+// en la mano— y eso NO es lo que apaga la necesidad. La necesidad la apaga
+// TRAGAR. Peor todavía: el `valor` con el que la meta ganaba ya estaba preciado
+// como si se comiera —`satisfaccion` mira `nutrition · digestibility`, que son
+// calorías, que es lo que da el mordisco y no lo que da la mano—. O sea que el
+// numerador hablaba de comer y el objetivo hablaba de tener: **la fórmula y la
+// meta no eran de la misma frase**, y el pescado se quedaba en la mano hasta que
+// la criatura se moría al lado del río.
+//
+// La reparación es que el hambre produzca TRES clases de oportunidad y no una:
+//
+//   · las de siempre, `holding(tag:…)`, que son EL MEDIO: se le pasan a `plan()`
+//     y la regresión sabe encadenarlas (la caña, el pozo, la extracción);
+//   · **el bocado**, que es EL FIN: «comerme eso», con un cuerpo concreto ya
+//     elegido, ya preciado y con su tolerancia al veneno ya calculada. No va al
+//     planificador: lo cierra la escalera de un mordisco;
+//   · **el medio con la condición puesta** —`holding(tag:carnoso,toxicity<0,0528)`,
+//     ver `metaComestibleDe`—, que es «algo COMESTIBLE en la mano». Ésa sí va al
+//     planificador, y qué hay que hacer para conseguirla lo decide él.
+//
+// Las tres entran en la MISMA lista y se ordenan con la MISMA fórmula, que es lo
+// único que hace que la elección sea una elección: «¿me como lo que tengo, voy a
+// buscar más, o arreglo lo que traje?» se contesta comparando tres números de la
+// misma escala, no con una regla de precedencia escrita a mano.
+//
+// ─── Y EL BOCADO SE PRECIA CON EL VENENO YA COBRADO (ADR II-0013) ───────────
+//
+// `stepWorld` acredita `calories · STAMINA_POR_CALORIA` y cobra
+// `toxicity · masa · COSTO_POR_TOXICIDAD_Y_KILO`, por separado y no neteado. Con
+// esos dos números —y NO con una tabla de «esto es comida y esto no»— sale sola
+// la escalera de alimentación del catálogo: grasa, médula y huevo se comen
+// crudos, y pescado y carne son VENENO hasta que alguien los cocine. Medido acá
+// mismo, sobre la corrida canónica: el pescado que la criatura saca del pozo pesa
+// 2,8870 kg, tiene 7,8421 calorías y `toxicity` 0,3298, o sea que tragarlo deja
+// **−15,9645 de aliento**. Una mente que se lo come vive menos que una que no.
+//
+// Por eso el bocado NO EXISTE cuando el neto no es positivo: no es una
+// oportunidad que se ordena baja, es que no hay tal oportunidad.
+//
+// ─── QUE LA CRIATURA NO SE COMA A SÍ MISMA ES UN CERROJO, Y NO DOS ──────────
+//
+// Acá decía que eran dos y que el segundo era la cuenta: «su propio cuerpo es
+// carne de 2 kg con `toxicity` 0,30, o sea −8,7000, así que la cuenta la
+// excluiría igual si `lugares()` no lo hiciera». **La segunda mitad es falsa, y
+// el adversario la midió**: el cuerpo de la criatura es `carne`, o sea `organico`
+// y `carnoso` —exactamente el tag que la fila de cocción de `@anima/plan`
+// trabaja— y la ley 5 escribe `digestibility` y `toxicity` en `Body.state`, que es
+// donde ese cuerpo las tiene. Una criatura parada en la celda de un leño ardiendo
+// termina, a los 40 s y sin morirse, con su propio cuerpo en `dig 0,8574 · tox
+// 0,0184 · cal 15,2232`: **neto +14,51**, y la cuenta lo aceptaría contenta.
+//
+// O sea que el único cerrojo de este archivo es el `if (b.id === v.self.id)
+// continue` de `lugares()`, en sus dos barridos. Es UNO, y por eso hay otros dos
+// afuera y hacían falta: el mundo rechaza `eat` sobre el propio cuerpo con
+// `es-uno-mismo` (era el único bocado gratis que había: acreditaba, borraba el
+// cuerpo y perdía el cobro, dejando un actor vivo sin cuerpo para siempre), y la
+// innata `comer` se saltea `ctx.self.id` en las dos listas que mira.
+//
+// ─── Y ACÁ NO SE NOMBRA EL FUEGO NI UNA VEZ ─────────────────────────────────
+//
+// La tercera clase pide `toxicity < 0,0528` y nada más. El 0,0528 no es una
+// preferencia: es la misma desigualdad del bocado despejada sobre el tag —ver
+// `venenoQueBanca`— y sale del PEOR carnoso del catálogo. Que la cocción medida
+// deje el pescado en 0,0345 y que el esquema de cocción prometa 0,05 son números
+// de otros dos paquetes, calibrados por separado, que entran justo abajo.
+//
+// O sea: **no hay ni un `if (esPescado) cocinar`**. La mente pide una cualidad y
+// el planificador contesta con lo que sepa. Si sabe cocinar, cocina; si no,
+// `sinVocabulario` saltea la meta en D3 y la criatura sigue con lo que puede.
+//
+// La consecuencia de HOY hay que decirla igual, y está medida en
+// `tests/el-bocado.test.ts`: en la corrida canónica la mente pesca, mira lo que
+// sacó, le da **−15,9645** y no se lo come; sube el pedido a la meta comestible
+// en el tick 98; y `plan()` regresa hasta la ley de cocción y se corta en la
+// ventana de potencia del fuego (`gap` con `missing` «emitsPower<410 &
+// emitsPower>=253»), contestando mientras tanto con «pescá otro». Por eso el
+// número de pescas todavía no se mueve, y por eso lo que falta no es de este
+// paquete.
+//
 // ─── LA MITAD DE LA COSTURA QUE HOY FALTA DEL OTRO LADO ─────────────────────
 //
 // MEDIDO, y hay que decirlo acá arriba porque cambia lo que este módulo entrega
@@ -120,18 +206,31 @@
 // Regla 2: no hay reloj, ni azar, ni `Math` trascendente, ni `await`. Las únicas
 // funciones de `Math` que se usan son `max` y `min`, que están permitidas.
 
-import { HZ_DE_REFERENCIA } from '@anima/physics'
-import type { PredicateSignature } from '@anima/plan'
-import { AGUA_FRANCA, interpretar, SCHEMA_INDEX, textoDe } from '@anima/plan'
+import { HZ_DE_REFERENCIA, specOf, TAGS } from '@anima/physics'
+import type { Predicado, PredicateSignature } from '@anima/plan'
+import { AGUA_FRANCA, firmaDe, implica, interpretar, SCHEMA_INDEX, textoDe } from '@anima/plan'
 import type { BodyView, Cell, Where, WhereCell } from '@anima/skills'
-import { disco, distancia } from '@anima/skills/innatas'
-import { COSTO_POR_CELDA, COSTO_VIVIR_POR_SEGUNDO, inWorld } from '@anima/world'
+import { CONTRATO_COMER, disco, distancia } from '@anima/skills/innatas'
+import {
+  COSTO_POR_CELDA,
+  COSTO_POR_TOXICIDAD_Y_KILO,
+  COSTO_VIVIR_POR_SEGUNDO,
+  inWorld,
+  STAMINA_POR_CALORIA,
+} from '@anima/world'
 
 import { contextoDe } from './creencias.js'
-import { satisfaccion } from './necesidades.js'
+import {
+  caloriasDelPeorDeTag,
+  promesaDeCalorias,
+  satisfaccion,
+  satisfaccionDe,
+  TANQUE_DE_ALIENTO,
+} from './necesidades.js'
 import type {
   AffordanceMemory,
   Beta,
+  Bocado,
   ContextKey,
   NeedVector,
   Opportunity,
@@ -207,6 +306,58 @@ const MOJADA: WhereCell = [{ q: 'wet', op: '>=', v: AGUA_FRANCA }]
  */
 export function metaDe(tag: string): PredicateSignature {
   return textoDe({ k: 'sostiene', tag })
+}
+
+/**
+ * HASTA CUÁNTO VENENO SE BANCA CUALQUIER COSA DE ESTE TAG, en `toxicity`.
+ *
+ * Es la desigualdad del bocado despejada sobre el tag en vez de sobre un cuerpo.
+ * Tragar deja `neto = nutrition · masa · digestibility · S − toxicity · masa · K`
+ * y **la masa se cancela**, que es el regalo entero: lo que hace falta para que
+ * algo valga la pena no depende de cuánto hay. Queda
+ *
+ *     toxicity  <  (nutrition · digestibility) · S / K
+ *
+ * y `nutrition · digestibility` son las calorías por kilo, que es exactamente lo
+ * que el catálogo publica por sustancia. Se toma el PEOR miembro del tag
+ * (`caloriasDelPeorDeTag`) porque esto es una condición y no una promesa: quien
+ * pide «algo carnoso que no me envenene» no sabe si le va a tocar grasa o
+ * molusco, y una condición que sólo aguanta el mejor caso no condiciona nada.
+ *
+ * Para `carnoso` en la semilla el peor es el molusco (1,32 por kilo) y da
+ * **0,0528**. Que la cocción prometa `toxicity <= 0,05` y entre justo abajo no lo
+ * arregló nadie: son dos números calibrados por separado, en dos paquetes
+ * distintos, y se tocan.
+ */
+export function venenoQueBanca(tag: string): number {
+  return (caloriasDelPeorDeTag(tag) * STAMINA_POR_CALORIA) / COSTO_POR_TOXICIDAD_Y_KILO
+}
+
+/**
+ * «ALGO COMESTIBLE EN LA MANO», dicho en el vocabulario de `@anima/plan`.
+ *
+ * Es la meta que le falta a esta mente desde que el mundo cobra el veneno, y es
+ * la que hace innecesario cualquier `if (esPescado) cocinar`: la mente pide un
+ * carnoso **que no la envenene**, y qué hay que hacer para conseguirlo lo decide
+ * el planificador. Si hay un esquema que promete dejar algo cocido en la mano, la
+ * regresión lo encuentra por implicación; si no lo hay, `sinVocabulario` la
+ * saltea en D3 y no pasa nada.
+ *
+ * `undefined` en dos casos, y los dos quieren decir «esto no se puede pedir»:
+ *
+ *   · el tag no tiene piso calórico —alguno de sus miembros no se come, así que
+ *     ningún umbral de veneno lo vuelve comida—;
+ *   · **el vocabulario todavía no sabe decirlo.** Si `textoDe` devuelve la misma
+ *     firma que `metaDe(tag)`, es que las condiciones se perdieron por el camino
+ *     y esta meta sería un duplicado de la otra con otro id. Se compara el
+ *     resultado en vez de preguntar por la versión de otro paquete, que es la
+ *     única forma que no envejece.
+ */
+export function metaComestibleDe(tag: string): PredicateSignature | undefined {
+  const t = venenoQueBanca(tag)
+  if (!(t > 0)) return undefined
+  const firma = textoDe({ k: 'sostiene', tag, tests: [{ q: 'toxicity', op: '<', v: t }] })
+  return firma === metaDe(tag) ? undefined : firma
 }
 
 const PREFIJO_CUERPO = 'cuerpo:'
@@ -344,10 +495,20 @@ interface Lugar {
   readonly d: number
   /** Para el «por qué». De un cuerpo sale `nameOf`; de una celda, el agua. */
   readonly nombre: string
+  /**
+   * El cuerpo, cuando el lugar ES un cuerpo. `undefined` para una celda de agua.
+   *
+   * Lo necesita el bocado y nada más: la rama de los tags trabaja con la CLAVE de
+   * contexto —dos cuerpos del mismo contexto son intercambiables— y la del bocado
+   * trabaja con el cuerpo concreto, porque `calories`, `mass` y `toxicity` son de
+   * ESE cuerpo y no de su clase. Es la misma diferencia que hay entre «creo que el
+   * río rinde pescado» y «este pescado que tengo acá pesa 2,89 kg y está podrido».
+   */
+  readonly cuerpo?: BodyView
 }
 
 function deCuerpo(b: BodyView, d: number): Lugar {
-  return { clave: b.id, lugar: lugarDeCuerpo(b.id), d, nombre: b.name }
+  return { clave: b.id, lugar: lugarDeCuerpo(b.id), d, nombre: b.name, cuerpo: b }
 }
 
 function deCelda(c: Cell, d: number): Lugar {
@@ -461,6 +622,234 @@ function aguaRecordada(v: VistaDeLaMente): Lugar | undefined {
   return mejor
 }
 
+// ─── El bocado ──────────────────────────────────────────────────────────────
+
+/**
+ * LO QUE `comer` PROMETE, leído de su contrato y no escrito acá.
+ *
+ * Es el mismo movimiento que hace D0 con `CONTRATO_HUIR_DEL_DOLOR` para sacar su
+ * umbral de calor: lo que una habilidad establece es DATO (`Contrato.establece`
+ * existe justamente para que el juez del Hito 7 lo pueda ablacionar), no un
+ * comentario que haya que transcribir. Si mañana `comer` promete otra cosa, esto
+ * lanza AL CARGAR el módulo en vez de mentir en silencio.
+ *
+ * No se le pasa a `plan()` nunca —ninguna cadena de esquemas establece `stamina`,
+ * y no tiene por qué: lo establece la mente de un mordisco—. Viaja para que la
+ * lista se pueda leer, comparar y contar.
+ */
+export const META_DEL_BOCADO: PredicateSignature = ((): PredicateSignature => {
+  for (const p of CONTRATO_COMER.establece) {
+    if (p.sujeto !== 'yo' || p.q !== 'stamina') continue
+    const f = firmaDe(`${p.q}${p.op}${String(p.v)}`)
+    if (interpretar(f) !== undefined) return f
+  }
+  throw new RangeError('`CONTRATO_COMER` ya no promete `yo.stamina`: el bocado se quedó sin meta')
+})()
+
+/**
+ * Cómo se llama la «clase de cosa» de un bocado dentro de un id de oportunidad.
+ *
+ * `Opportunity.id` es `lugar#tag` y `costoEstimado` lo parsea de vuelta, así que
+ * el bocado necesita una cola que NO pueda ser un tag de verdad — si no, dos
+ * oportunidades distintas sobre el mismo cuerpo podrían compartir id. Se verifica
+ * contra la enumeración cerrada de la física al cargar, que es más barato que
+ * confiar en que nadie llame `bocado` a un tag.
+ */
+const [COLA_DEL_BOCADO, COLA_DEL_RESCATE] = ((): readonly [string, string] => {
+  const colas = ['bocado', 'rescate'] as const
+  for (const c of colas) {
+    if ((TAGS as readonly string[]).includes(c)) {
+      throw new RangeError(`«${c}» pasó a ser un tag de la física: el id de una oportunidad colisiona`)
+    }
+  }
+  return colas
+})()
+
+/**
+ * El techo de `toxicity` que declara el catálogo. Tolerar más que eso es tolerar
+ * todo, y decirlo con el rango en vez de con un 1 escrito a mano es lo que hace
+ * que esto siga siendo verdad si alguien recalibra la cualidad.
+ */
+const VENENO_MAXIMO = specOf('toxicity').range[1]
+
+/**
+ * Lo que cuesta el acto de tragar, en aliento, leído del contrato.
+ *
+ * `CONTRATO_COMER.cuesta.segundos` es 0 —comer no espera— pero ningún acto cuesta
+ * menos que el tick en el que ocurre, que es el mismo piso que usa
+ * `alientoDeConseguir` para lo que no tiene esquema. La caminata se suma aparte.
+ */
+const ALIENTO_DE_UN_BOCADO =
+  COSTO_VIVIR_POR_SEGUNDO * Math.max(CONTRATO_COMER.cuesta.segundos, SEGUNDOS_DE_UNA_INTENCION)
+
+/**
+ * LO QUE CADA ESQUEMA DEL PLANIFICADOR SABE DEJAR ESTABLECIDO, ya interpretado y
+ * con su precio en segundos, calculado UNA vez al cargar.
+ *
+ * Se calcula al cargar y no por tick porque `SCHEMA_INDEX` es una constante de
+ * `@anima/plan`. Y se guarda INTERPRETADO —no la firma en texto— porque la
+ * pregunta que hay que hacerle es de implicación y no de igualdad: un esquema que
+ * deje `digestibility >= 0,85` cubre un pedido de `digestibility > 0,78`, y
+ * compararlos por texto haría preciar como «no hay forma» algo que el catálogo
+ * sabe hacer. Parsear las ocho firmas una vez por rescate y por tick sería el
+ * peldaño D3 pagando un `replace` de expresión regular por candidato.
+ */
+const LO_QUE_CUESTA_ESTABLECER: readonly { readonly p: Predicado; readonly segundos: number }[] =
+  ((): readonly { readonly p: Predicado; readonly segundos: number }[] => {
+    const out: { readonly p: Predicado; readonly segundos: number }[] = []
+    for (const [firma, filas] of SCHEMA_INDEX) {
+      const p = interpretar(firma)
+      if (p === undefined) continue
+      for (const f of filas) {
+        // Un `segundos` que no es finito no es un precio: es una fila rota, y se
+        // saltea en vez de contaminar la cuenta con un `NaN` que después no ordena.
+        if (Number.isFinite(f.segundos)) out.push({ p, segundos: f.segundos })
+      }
+    }
+    return out
+  })()
+
+/**
+ * Cuánto aliento cuesta que ALGUIEN establezca esto, o un tick si nadie sabe.
+ *
+ * No es el costo de verdad —el planificador puede necesitar una cadena de tres
+ * esquemas y esto cuenta uno— y por eso es un piso y no una estimación. Lo que
+ * compra es que una meta que cuesta un fuego no se ordene igual que una que
+ * cuesta agacharse.
+ */
+export function alientoDelEsquema(p: Predicado): number {
+  let mejor: number | undefined
+  for (const e of LO_QUE_CUESTA_ESTABLECER) {
+    if (!implica(e.p, p)) continue
+    if (mejor === undefined || e.segundos < mejor) mejor = e.segundos
+  }
+  return COSTO_VIVIR_POR_SEGUNDO * (mejor ?? SEGUNDOS_DE_UNA_INTENCION)
+}
+
+/** Un bocado ya preciado, más su rendimiento POR KILO, que es lo que se normaliza. */
+interface Mordida {
+  readonly bocado: Bocado
+  /** Neto por unidad de masa: la misma unidad con la que el catálogo mide un tag. */
+  readonly porKilo: number
+}
+
+/**
+ * CUÁNTO DEJA TRAGARSE ESTO, con la cuenta del mundo copiada y no modelada.
+ *
+ * Las dos mitades salen de `intencionComer` (`world/src/step.ts`), en el orden en
+ * que el mundo las hace:
+ *
+ *   acredita  `calories · STAMINA_POR_CALORIA` — **topado por lo que todavía
+ *             entra en el tanque**, porque `conCualidad` recorta contra el rango
+ *             de la cualidad y lo que sobra se pierde;
+ *   cobra     `toxicity · masa · COSTO_POR_TOXICIDAD_Y_KILO`, entero y sin topar.
+ *
+ * De esas dos líneas sale TODO lo demás, sin una sola regla escrita:
+ *
+ *   · **la tolerancia al veneno deja de ser una constante.** `comer` se
+ *     autoimpone 0,2 cuando nadie le dice otra cosa, y ese 0,2 no sabe nada de
+ *     quién come. Acá el número es `gana / (masa · K)`: es el punto exacto en el
+ *     que el mordisco deja de convenir, y depende de lo vacío que esté el tanque
+ *     porque `gana` está topado por el margen. **Una criatura llena rechaza lo
+ *     que una flaca acepta** — y no porque la flaca sea imprudente, sino porque a
+ *     la llena las calorías se le derraman y el veneno se le cobra igual;
+ *   · **lo grande no es mejor.** Las dos mitades escalan con la masa, así que un
+ *     pozo de 50 kg de pescado no es cincuenta veces mejor que un kilo: es
+ *     cincuenta veces peor, porque el pescado crudo da negativo. Nadie escribió
+ *     «no te comas el río».
+ *
+ * `undefined` quiere decir **esto no es un bocado**, y no «es un bocado malo». La
+ * diferencia importa: una oportunidad con valor bajo igual compite y puede ganar
+ * un tick flojo; algo que resta no tiene que estar en la lista.
+ */
+function mordidaDe(v: VistaDeLaMente, b: BodyView, margen: number): Mordida | undefined {
+  const calorias = v.q(b, 'calories')
+  const masa = v.q(b, 'mass')
+  // Las dos precondiciones que el mundo mira antes de tragar, leídas antes de
+  // gastar el tick: sin calorías rechaza con `nada-que-comer`, y sin masa la
+  // cuenta del veneno no tiene sobre qué correr.
+  if (!(calorias > 0) || !(masa > 0)) return undefined
+  const gana = Math.min(calorias * STAMINA_POR_CALORIA, margen)
+  const porVeneno = masa * COSTO_POR_TOXICIDAD_Y_KILO
+  const neto = gana - v.q(b, 'toxicity') * porVeneno
+  if (!(neto > 0)) return undefined
+  const tolerada = porVeneno > 0 ? Math.min(gana / porVeneno, VENENO_MAXIMO) : VENENO_MAXIMO
+  return { bocado: { id: b.id, neto, toxicidadTolerada: tolerada }, porKilo: neto / masa }
+}
+
+/**
+ * QUÉ SE PODRÍA COMER AHORA, ordenado con todo lo demás.
+ *
+ * Tres portones antes de mirar un solo cuerpo, y los tres evitan gastar un tick
+ * de mundo en algo que ya se sabe que va a fracasar:
+ *
+ *   · **el permiso.** `comer` se rinde con «todavía no tengo permiso» si
+ *     `self.permits` no es `irreversible`, y se rinde SIN ceder una intención: la
+ *     criatura quedaría eligiendo el mismo bocado todos los ticks para siempre.
+ *     La cuarentena es visible desde la vista, así que se mira acá.
+ *   · **el margen.** Con el tanque lleno no hay nada que ganar y el veneno se
+ *     cobra igual. `necesidades` ya dice lo mismo por otro lado —con el tanque
+ *     lleno `energia` vale 0,0025— pero eso es una preferencia y esto es una
+ *     imposibilidad.
+ *   · **la mano ajena.** El mundo deja comerle algo de la mano a otro
+ *     (`sacarCuerpo` lo saca de todas las manos) y `comer` no lo hace: filtra
+ *     `heldBy === undefined` para lo que ve. La mente no va a ser más suelta que
+ *     la habilidad que va a correr.
+ *
+ * EL TRABAJO ESTÁ ACOTADO (decisión 7): se miran a lo sumo
+ * `OPORTUNIDADES_QUE_MIRA` cuerpos, y `lugares()` los trae del más cercano al más
+ * lejano CON LA MANO PRIMERO — que es el mismo orden que usa `comer` para elegir
+ * sola. Lo que se pierde con la cota es un bocado lejano detrás de doce cosas
+ * cercanas que no se comen, y se dice: en un mundo tapado de piedras, la mente no
+ * ve la fruta del fondo.
+ *
+ * La `satisfaccion` NO pasa por el gancho inyectable y hay que decir por qué: el
+ * gancho existe para pinar los números que la corrida canónica del documento le
+ * asigna a un TAG, y un bocado no tiene tag. Tiene calorías netas por kilo, que
+ * se normalizan contra el mismo techo del catálogo con el que se normaliza un tag
+ * (`promesaDeCalorias`), así que las dos clases de oportunidad siguen siendo
+ * comparables aunque una de las dos no se pueda inyectar.
+ */
+function losBocados(v: VistaDeLaMente, n: NeedVector, ls: readonly Lugar[]): Opportunity[] {
+  const out: Opportunity[] = []
+  if (v.self.permits !== 'irreversible') return out
+  const margen = TANQUE_DE_ALIENTO - v.self.stamina
+  if (!(margen > 0)) return out
+
+  let mirados = 0
+  for (const l of ls) {
+    if (mirados >= OPORTUNIDADES_QUE_MIRA) break
+    const b = l.cuerpo
+    if (b === undefined) continue
+    mirados += 1
+    if (b.heldBy !== undefined && !enMiMano(v, b)) continue
+    const m = mordidaDe(v, b, margen)
+    if (m === undefined) continue
+    // `p = 1` y no una creencia, y es la diferencia entera entre las dos clases de
+    // oportunidad: que el río RINDA pescado es una apuesta y se aprende; que ESTE
+    // pescado tenga estas calorías es una lectura. Meterle una Beta encima sería
+    // dudar de lo que ya se está mirando.
+    const s = satisfaccionDe(n, promesaDeCalorias(m.porKilo))
+    if (!(s > 0)) continue
+    const valor = valorDe(1, s, l.d * ALIENTO_POR_CELDA + ALIENTO_DE_UN_BOCADO)
+    if (!Number.isFinite(valor)) continue
+    out.push({
+      meta: META_DEL_BOCADO,
+      valor,
+      id: idDeOportunidad(l.lugar, COLA_DEL_BOCADO),
+      porque: `me como ${l.nombre}: deja ${dosDecimales(m.bocado.neto)} de aliento y me banco ${dosDecimales(m.bocado.toxicidadTolerada)} de veneno`,
+      bocado: m.bocado,
+    })
+  }
+  return out
+}
+
+/** Si este cuerpo lo tengo yo agarrado. Por id, que es lo único estable. */
+function enMiMano(v: VistaDeLaMente, b: BodyView): boolean {
+  for (const h of v.self.holding) if (h.id === b.id) return true
+  return false
+}
+
 // ─── La lista ───────────────────────────────────────────────────────────────
 
 /**
@@ -497,6 +886,13 @@ function porqueDe(nombre: string, tag: string, p: number, β: Beta): string {
  * Qué se puede querer, ordenado. Orden TOTAL y ESTABLE: por valor, y los empates
  * por `id`.
  *
+ * DOS CLASES DE COSA EN UNA SOLA LISTA (decisión 8): las metas —`holding(tag:…)`,
+ * que se le pasan a `plan()`— y los bocados —`Opportunity.bocado`, que no se le
+ * pasan a nadie porque la mente los cierra de un mordisco—. Están juntas porque
+ * la pregunta que hay que contestar es una sola: **¿me como lo que tengo o voy a
+ * buscar más?** Separarlas en dos listas obligaría a escribir a mano cuál gana, y
+ * no hay ninguna respuesta escrita a mano que sea correcta en los dos extremos.
+ *
  * No escribe nada: `observe` y `seed` son de quien ejecuta y ve el resultado, no
  * de quien mira. D3 propone; la evidencia la trae el mundo.
  */
@@ -508,10 +904,14 @@ export function opportunities(
 ): readonly Opportunity[] {
   const sat = ganchos.sat ?? satisfaccion
   const ctxDe = ganchos.ctxDe ?? contextoDe
-  const out: Opportunity[] = []
+  // UNA sola vez, y las dos ramas la comparten: `lugares()` barre un disco de
+  // `qAt` y un `recall`, y llamarla dos veces por tick duplicaría el peldaño más
+  // caro de D3 para obtener exactamente la misma lista.
+  const ls = lugares(v)
+  const out: Opportunity[] = losBocados(v, n, ls)
   const contextos = new Set<ContextKey>()
 
-  for (const l of lugares(v)) {
+  for (const l of ls) {
     if (contextos.size >= OPORTUNIDADES_QUE_MIRA) break
     const ctx = ctxDe(v, l.clave)
     // Decisión 2: el segundo lugar del mismo contexto no agrega nada que la
@@ -536,6 +936,32 @@ export function opportunities(
       const β = m.belief(ctx, tag)
       const p = media(β)
       const valor = valorDe(p, s, costoDe(l.d, tag))
+      // ─── LA MISMA APUESTA, PERO PIDIENDO QUE SE PUEDA COMER ──────────────
+      //
+      // Va acá adentro y no en una función aparte porque es LA MISMA creencia
+      // sobre el mismo lugar: la `p` es la misma —que el río rinda carnoso no
+      // depende de si después se cocina— y lo que cambia es lo que se pide y lo
+      // que cuesta. Que las dos convivan en la lista es lo que deja que la
+      // criatura arranque por la barata («conseguí un pescado») y siga por la
+      // cara («conseguí uno que no me envenene») cuando la primera ya se cumplió.
+      //
+      // El costo lleva el esquema encima: conseguir algo carnoso cuesta la
+      // extracción, y conseguirlo comestible cuesta además lo que valga el
+      // esquema que lo prometa —hoy, si existe, la cocción—. Sin ese término las
+      // dos metas costarían lo mismo y la mente elegiría la difícil por nada.
+      const comestible = metaComestibleDe(tag)
+      const pc = comestible === undefined ? undefined : interpretar(comestible)
+      if (comestible !== undefined && pc !== undefined) {
+        const valorC = valorDe(p, s, costoDe(l.d, tag) + alientoDelEsquema(pc))
+        if (Number.isFinite(valorC)) {
+          out.push({
+            meta: comestible,
+            valor: valorC,
+            id: idDeOportunidad(l.lugar, `${tag}+${COLA_DEL_RESCATE}`),
+            porque: `${porqueDe(l.nombre, tag, p, β)}, y lo quiero comestible: «${comestible}»`,
+          })
+        }
+      }
       // Decisión 5: lo que no es finito no entra al `sort`.
       if (!Number.isFinite(valor)) continue
       out.push({
