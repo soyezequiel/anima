@@ -149,9 +149,10 @@ describe('se quema', () => {
       SIN_FILA.perUnitMass.pyrolysisAt!,
     )
 
-    // 60 s y no 10: desde el ADR II-0011 la carbonización va a 0,016 por segundo
-    // —cruza los 0,8 que la ley 4 pide a los 50 s— porque a 0,2 todo fuego se
-    // volvía ceniza a los cuatro segundos. Ver `TASA_CARBONIZACION`.
+    // 60 s y no 10: desde el ADR II-0011 la carbonización cruza los 0,8 que la
+    // ley 4 pide a los 50 s POR KILO, porque a 0,2 por segundo todo fuego se
+    // volvía ceniza a los cuatro segundos. Con un kilo son 50 s. Ver
+    // `TASA_CARBONIZACION` y `avanceDeCarbon`.
     const fin = correr(cosa, sobreLasBrasas, phys, DT, 60)
 
     expect(fin.leyes).toContain('combustion')

@@ -190,8 +190,10 @@ describe('cinco intenciones en el mismo tick, cada una con su respuesta', () => 
     expect(repartidos).toHaveLength(respuestas.length)
     expect(new Set(repartidos).size).toBe(repartidos.length)
     // Lo único que queda sin dueño es la narración: el `murio` del pescado que se
-    // comió `_bob`, que no le contesta a nadie porque el `comio` ya dijo cuál era.
-    expect(r.events.filter((e) => !esRespuesta(e)).map((e) => e.k)).toEqual(['murio'])
+    // comió `_bob` —que no le contesta a nadie porque el `comio` ya dijo cuál
+    // era— y el `gasto`, que es el total de `stamina` que el mundo se llevó de
+    // todos en este tick y que por eso no puede tener un dueño solo.
+    expect(r.events.filter((e) => !esRespuesta(e)).map((e) => e.k)).toEqual(['murio', 'gasto'])
   })
 
   it('y el `seq` también es parte de la clave: dos intenciones del mismo actor', () => {

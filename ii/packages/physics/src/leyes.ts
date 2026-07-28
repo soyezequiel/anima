@@ -61,7 +61,14 @@
 import type { Dt } from './fixed.js'
 import { fraccionQueSeCierra, HZ_DE_REFERENCIA, porPaso } from './fixed.js'
 import type { Body, Joint, Part } from './body.js'
-import { esDerivadaEn, MAX_JOINTS, MAX_PARTS, qualityOf, violationsOf } from './body.js'
+import {
+  combustibleDeOrigen,
+  esDerivadaEn,
+  MAX_JOINTS,
+  MAX_PARTS,
+  qualityOf,
+  violationsOf,
+} from './body.js'
 import type { Physics } from './physics.js'
 import { buildSeedPhysics } from './physics.js'
 import type { QualityId, QualityVector } from './quality.js'
@@ -265,25 +272,41 @@ const OXIGENO_MINIMO = 0.05
 export const OXIGENO_QUE_HACE_CENIZA = 0.35
 
 /**
- * Ley 3: cuánto carboniza por SEGUNDO lo que superó su punto de pirólisis.
+ * Ley 3: cuánto carboniza el CALOR por segundo y **por kilo** de materia.
  *
- * ─── Era 0,2 y nunca se había medido (ADR II-0011) ──────────────────────────
+ * ─── Era por segundo a secas, y ahí se cancelaba con la otra ────────────────
  *
- * Con 0,2 por segundo, `charred` llega a los 0,8 que la ley 4 pide en CUATRO
- * SEGUNDOS. Mientras un fuego duraba un tick eso daba igual; ahora un fuego dura
- * un minuto, y con 0,2 todo leño encendido se volvía ceniza a los cuatro
- * segundos: la vida entera de una fogata era cuatro segundos y los 56 segundos de
- * combustible que le quedaban se tiraban.
+ * El ADR II-0011 hizo `COMBUSTIBLE_POR_SEGUNDO` extensivo *justamente* para que
+ * la masa decidiera cuánto dura un fuego, y en el mismo movimiento dejó ésta
+ * intensiva. Las dos se cancelan, y está medido contra `stepWorld`:
  *
- * 0,016 pone la carbonización en la misma escala que el combustible: `charred`
- * cruza 0,8 a los 50 s y un kilo de madera tiene 60 s de combustible, así que el
- * leño alcanza a arder casi todo lo que puede antes de transmutar, y la cocción
- * más lenta del catálogo —el cuero, 41 s— entra adentro de UNA fogata.
+ *     masa    duraba     quedaba
+ *      0,8      48,10 s   madera con `fuelEnergy` 0   ← leña falsa
+ *        1      49,95 s   residuo mineral
+ *       50      49,95 s   residuo mineral             ← tiró el 98% del leño
  *
- * Y de paso arregla otra cosa que estaba mal por el mismo motivo: la comida
- * olvidada sobre las brasas se arruinaba en cuatro segundos. Ahora hay tiempo de
- * ir a buscarla, que es lo que hace que sacarla a tiempo sea una técnica y no un
- * reflejo.
+ * Arriba de 0,83 kg la masa dejaba de decidir: `charred` cruzaba los 0,8 de la
+ * ley 4 a los 50 s viniera de un leño de un kilo o de uno de cincuenta, y el
+ * tronco se hacía ceniza con el tanque lleno. Debajo de 0,83 pasaba lo contrario
+ * y era peor: el combustible se acababa antes de los 0,8, el cuerpo NO transmutaba
+ * y quedaba hecho de la sustancia madre con el combustible en cero — leña que se
+ * ve como leña, que la criatura puede juntar, y que no va a arder nunca más.
+ *
+ * La reparación es la MISMA que el ADR II-0011 le hizo al combustible, aplicada a
+ * la constante que se quedó afuera: **carbonizar un cuerpo cuesta proporcional a
+ * la materia que hay que carbonizar.** Un tronco tiene diez veces más para
+ * carbonizar que una vara, y por lo tanto tarda diez veces más. `charred` cruza
+ * los 0,8 a los `0,8 · masa / 0,016` = **50 s por kilo**, contra los 60 s por kilo
+ * que dura el combustible.
+ *
+ * ─── El valor NO se mueve, y por eso el mundo de un kilo queda igual ────────
+ *
+ * 0,016 es lo que el ADR II-0011 midió y sigue valiendo lo mismo para el cuerpo de
+ * un kilo: la comida olvidada sobre las brasas tarda cincuenta segundos en
+ * arruinarse —hay tiempo de ir a buscarla, y por eso sacarla a tiempo es una
+ * técnica y no un reflejo— y el leño tapado se hace tizón antes de gastarse, que
+ * es lo que hace que tapar RINDA. Lo único que cambió es que ahora esos cincuenta
+ * segundos son los de un kilo y no los de cualquier cosa.
  */
 const TASA_CARBONIZACION = 0.016
 
@@ -445,6 +468,14 @@ interface Lectura {
   readonly decay: number
   readonly nutrition: number
   readonly fuelEnergy: number
+  /**
+   * El combustible que esta materia tenía CUANDO ESTABA ENTERA, por unidad de
+   * masa. No es `fuelEnergy` —ése es lo que queda— sino lo que las partes
+   * declararon al nacer, y la diferencia entre los dos es exactamente cuánto se
+   * quemó ya. Es lo que la ley 3 usa para que `charred` mida una fracción y no
+   * un rato. Ver `combustibleDeOrigen`.
+   */
+  readonly fuelDeOrigen: number
   readonly ignitionPoint: number
   readonly pyrolysisAt: number
   readonly denaturesAt: number | undefined
@@ -474,6 +505,7 @@ class LecturaPerezosa implements Lectura {
   private _decay: number | undefined
   private _nutrition: number | undefined
   private _fuelEnergy: number | undefined
+  private _fuelDeOrigen: number | undefined
   private _ignitionPoint: number | undefined
   private _pyrolysisAt: number | undefined
   private _toughness: number | undefined
@@ -519,6 +551,10 @@ class LecturaPerezosa implements Lectura {
   get fuelEnergy(): number {
     const v = this._fuelEnergy
     return v !== undefined ? v : (this._fuelEnergy = qualityOf(this.b, 'fuelEnergy', this.phys))
+  }
+  get fuelDeOrigen(): number {
+    const v = this._fuelDeOrigen
+    return v !== undefined ? v : (this._fuelDeOrigen = combustibleDeOrigen(this.b, this.phys))
   }
   get ignitionPoint(): number {
     const v = this._ignitionPoint
@@ -1133,18 +1169,20 @@ function leyCombustion(
   const arde = seca && pico >= l.ignitionPoint && e.celda.oxygen > OXIGENO_MINIMO
   if (!piroliza && !arde) return b
 
-  const charred = piroliza ? Math.min(1, l.charred + porPaso(TASA_CARBONIZACION, dt)) : l.charred
-  const cambios: QualityVector = { charred: clampToRange('charred', charred) }
+  // Lo que la llama se lleva en ESTE paso, y se calcula antes que nada porque la
+  // carbonización lo mira.
+  //
+  // Lo que hay para quemar es el PRODUCTO, porque `fuelEnergy` es por unidad de
+  // masa. El `min` es lo que apaga el fuego solo: cuando no queda combustible no
+  // hay qué quemar, no hay calor, el cuerpo se enfría y deja de arder. Ése es el
+  // lazo que termina, y no hay ningún contador de segundos que lo corte.
+  const quemado = arde
+    ? Math.min(l.fuelEnergy * l.mass, porPaso(COMBUSTIBLE_POR_SEGUNDO, dt) * e.celda.oxygen)
+    : 0
+
+  const cambios: QualityVector = { charred: clampToRange('charred', avanceDeCarbon(l, quemado, piroliza, dt)) }
 
   if (arde) {
-    // Lo que hay para quemar es el PRODUCTO, porque `fuelEnergy` es por unidad de
-    // masa. El `min` es lo que apaga el fuego solo: cuando no queda combustible
-    // no hay qué quemar, no hay calor, el cuerpo se enfría y deja de arder. Ése
-    // es el lazo que termina, y no hay ningún contador de segundos que lo corte.
-    const quemado = Math.min(
-      l.fuelEnergy * l.mass,
-      porPaso(COMBUSTIBLE_POR_SEGUNDO, dt) * e.celda.oxygen,
-    )
     cambios.fuelEnergy = clampToRange(
       'fuelEnergy',
       l.mass > 0 ? Math.max(0, l.fuelEnergy - quemado / l.mass) : 0,
@@ -1156,6 +1194,7 @@ function leyCombustion(
       )
     }
   }
+  const charred = cambios.charred as number
   // Lo que se carboniza deja de ser comida, y no porque una lista lo prohíba:
   // `nutrition` es conservada y esto solo la baja. Es el «olvidado sobre las
   // brasas» del documento hecho aritmética, sin ningún nombre propio adentro.
@@ -1164,6 +1203,72 @@ function leyCombustion(
     cambios.digestibility = clampToRange('digestibility', l.digestibility * (1 - charred))
   }
   return conEstado(b, cambios)
+}
+
+/**
+ * Cuánto vale `charred` al salir de este paso.
+ *
+ * `charred` es cuánto de este cuerpo ya se hizo carbón, y hay DOS cosas que lo
+ * carbonizan. Las dos son la misma pregunta —«cuánto de esto ya pasó»— contada
+ * por dos contadores distintos, y por eso se toma **la que va más adelantada** y
+ * no la suma: sumarlas sería contar dos veces el mismo calor, porque el calor de
+ * la llama ya es calor.
+ *
+ * ─── (1) EL CALOR, que trabaja sobre toda la materia ────────────────────────
+ *
+ * `TASA_CARBONIZACION` POR KILO. Un tronco tiene diez veces más para carbonizar
+ * que una vara y tarda diez veces más, que es lo mismo que el ADR II-0011 ya
+ * había decidido para el combustible y que esta constante se había quedado sin
+ * hacer. Sola, esta rama da **50 s por kilo**.
+ *
+ * ─── (2) LA LLAMA, que se lleva los volátiles ───────────────────────────────
+ *
+ * Lo que la llama consume ya no está. `quemado / (fuelDeOrigen · masa)` es la
+ * fracción de TODO lo que este cuerpo tenía para dar que se fue en este paso, y va
+ * multiplicada por `CARBONIZADO_QUE_TRANSMUTA` para que la cuenta cierre donde
+ * tiene que cerrar: **un cuerpo que ardió hasta la última unidad de combustible
+ * cruza el umbral de la ley 4 justo ahí, ni antes ni después.** Sin ese factor,
+ * cruzaría con el 20% del tanque todavía adentro y todo fuego duraría un quinto
+ * menos de lo que le da su combustible, que es acortar los fuegos para arreglar
+ * otra cosa.
+ *
+ * ─── Por qué hacen falta las dos ────────────────────────────────────────────
+ *
+ * Se cruzan en `fuelEnergy = 15 · oxígeno`, que es donde las dos tardan lo mismo.
+ *
+ * Sin (1), un leño TAPADO —que arde cinco veces más lento porque le falta aire—
+ * tardaría cinco veces más en hacerse tizón y llegaría con el combustible casi
+ * agotado: tapar dejaría de rendir, que es la única recompensa que esa técnica
+ * tiene. Con (1), el leño tapado se carboniza igual en 50 s por kilo y llega a la
+ * ley 4 con el 83% del combustible adentro — el tizón sigue saliendo más rico que
+ * la madera de la que salió. Y para todo lo que tiene MÁS de 15 unidades —la
+ * madera, la corteza, la hoja seca, la grasa— manda (1) también al aire libre, así
+ * que el fuego de un kilo sigue durando los mismos 50 s de siempre.
+ *
+ * Sin (2), queda LEÑA FALSA. Todo lo que tiene MENOS de 15 —la carne, el pescado,
+ * el cuero, el hueso, el tendón, la médula, catorce de las treinta— se gasta
+ * entero antes de que el calor lo carbonice, se apaga, se enfría y queda hecho de
+ * la sustancia madre con el tanque en cero: una cosa que se ve igual que la buena
+ * y que no va a arder nunca más. Con (2) eso no puede pasar, y no por un caso
+ * especial sino por aritmética — cuando la llama se llevó todo el combustible,
+ * esta rama sumó exactamente `CARBONIZADO_QUE_TRANSMUTA`.
+ */
+function avanceDeCarbon(l: Lectura, quemado: number, piroliza: boolean, dt: Dt): number {
+  if (!piroliza) return l.charred
+  const masa = l.mass
+  // Sin masa no hay nada que carbonizar y la división no dice nada: ya está.
+  if (!(masa > 0)) return 1
+  const deOrigen = l.fuelDeOrigen * masa
+  // Y cuando la llama se lleva la ÚLTIMA unidad, ya no queda nada que carbonizar:
+  // es carbón, y se dice en vez de dejar que lo diga la suma. Cincuenta y tres
+  // sumandos de 0,015 en doubles dan 0,7999999999999996 y no 0,8, y ese último bit
+  // es exactamente la diferencia entre un hueso de 0,2 kg que transmuta y uno que
+  // queda hecho de hueso con el combustible en cero — medido, era el único caso de
+  // leña falsa que sobrevivía al barrido de las treinta sustancias.
+  if (quemado > 0 && deOrigen > 0 && l.fuelEnergy * masa <= quemado) return 1
+  const porElCalor = porPaso(TASA_CARBONIZACION, dt) / masa
+  const porLaLlama = deOrigen > 0 ? (CARBONIZADO_QUE_TRANSMUTA * quemado) / deOrigen : 0
+  return Math.min(1, l.charred + Math.max(porElCalor, porLaLlama))
 }
 
 /**
@@ -1278,10 +1383,54 @@ function leyTransmutacion(
     mass: (p.q.mass ?? p.mass) * fraccion,
     q: {},
   }))
-  // Del estado sobrevive la temperatura, que es del cuerpo y no de la materia.
-  // Todo lo demás lo dice la sustancia nueva; arrastrarlo sería que el residuo
-  // recuerde la humedad de lo que ya no es.
-  return { body: { ...b, parts, state: { temperature: l.temperature } }, nueva }
+  return { body: { ...b, parts, state: loQueSobrevive(b, nueva, l.temperature) }, nueva }
+}
+
+/**
+ * El estado que sobrevive a la transmutación: **lo que la sustancia nueva no sabe
+ * contestar.**
+ *
+ * ─── Acá se evaporaba una conservada, y nadie lo veía ───────────────────────
+ *
+ * Esto era `state: { temperature }` a secas, con el porqué escrito al lado: «del
+ * estado sobrevive la temperatura, que es del cuerpo y no de la materia; todo lo
+ * demás lo dice la sustancia nueva». La primera mitad estaba bien y la segunda
+ * era falsa, y la diferencia costaba una vida: **`stamina` no la dice ninguna
+ * sustancia.** Ninguna la declara en su `perUnitMass`, así que tirarla no era
+ * dejar que la materia la contestara — era borrarla sin que quedara de dónde
+ * sacarla de vuelta. Medido sobre una criatura apoyada en una fogata: 949,70 → 0
+ * en un tick, y el mundo contando que se murió de hambre una que se quemó viva.
+ *
+ * La regla es la misma que aquel comentario quería decir, dicha entera: lo que
+ * sobrevive es lo que la sustancia nueva NO declara. La temperatura sobrevive
+ * porque ninguna sustancia declara una temperatura; `stamina` también, y por el
+ * mismo motivo. La humedad, la nutrición, la toxicidad y el `charred` NO, porque
+ * el residuo los declara y arrastrarlos sería que se acuerde de lo que ya no es.
+ *
+ * Y vale para la cualidad que el modelo invente mañana: si nadie la declara,
+ * viaja, en vez de desaparecer en la primera ley 4 que le pase por encima.
+ *
+ * ─── Por qué el recorrido va por `QUALITY_IDS` ──────────────────────────────
+ *
+ * Y no por `Object.keys(b.state)`: el orden de las claves de un objeto es el de
+ * inserción, o sea que dos cuerpos con el mismo estado escrito en distinto orden
+ * darían dos objetos distintos y dos hashes distintos. `QUALITY_IDS` es el orden
+ * del catálogo y no depende de cómo llegó el cuerpo hasta acá.
+ *
+ * `mass` no entra nunca: la masa vive en las partes, que la ley 4 acaba de
+ * reconstruir con la fracción de residuo. Dejarla en el estado sería el número
+ * viejo ganándole al nuevo.
+ */
+function loQueSobrevive(b: Body, nueva: Substance, temperatura: number): QualityVector {
+  const state: QualityVector = { temperature: temperatura }
+  for (const q of QUALITY_IDS) {
+    if (q === 'temperature' || q === 'mass') continue
+    const v = b.state[q]
+    if (v === undefined) continue
+    if (nueva.perUnitMass[q] !== undefined) continue
+    state[q] = v
+  }
+  return state
 }
 
 /**

@@ -122,8 +122,15 @@ function arder(
 describe('(a) un fuego dura, y dura lo mismo a las cinco frecuencias', () => {
   it('un leño de 1 kg arde 50,00 s y se apaga solo, a 10, 20, 25, 50 y 100 Hz', () => {
     // Los 50 s no son un contador: son el punto en que `charred` cruza los 0,8 de
-    // `CARBONIZADO_QUE_TRANSMUTA` a 0,016 por segundo y la ley 4 lo convierte en
-    // ceniza, que no tiene combustible. El leño se apaga porque se GASTÓ.
+    // `CARBONIZADO_QUE_TRANSMUTA` a 0,016 por segundo Y POR KILO, y la ley 4 lo
+    // convierte en ceniza, que no tiene combustible. El leño se apaga porque se
+    // GASTÓ.
+    //
+    // El «y por kilo» es lo único que se movió desde el ADR II-0011, y para un
+    // leño de un kilo no se nota: 50 s eran y 50 s son. Lo que cambió es que
+    // ahora el de 50 kg arde 2500 s en vez de estos mismos 50. Ver
+    // `avanceDeCarbon` en `leyes.ts` y el barrido de
+    // `la-masa-decide-lo-que-arde.test.ts`.
     const filas: string[] = []
     const medidos: number[] = []
     for (const hz of FRECUENCIAS_ADMISIBLES) {
@@ -159,23 +166,31 @@ describe('(a) un fuego dura, y dura lo mismo a las cinco frecuencias', () => {
     ])
   })
 
-  it('y cuánto dura lo decide la MASA, que es lo que hace que juntar leña sirva', () => {
-    // `COMBUSTIBLE_POR_SEGUNDO` es extensivo (ADR II-0011): la llama se lleva 0,3
-    // unidades por segundo, y lo que hay para quemar es `fuelEnergy · mass`. Con
-    // la tasa intensiva de antes, una astilla y un tronco ardían los mismos 18 s.
+  it('y cuánto dura lo decide la MASA, en TODO el rango y no sólo debajo de 0,83 kg', () => {
+    // ESTE TEST MEDÍA SÓLO CUATRO MASAS —0,05 · 0,2 · 0,5 · 0,8— y las cuatro
+    // estaban debajo del punto donde su propia promesa se rompía. Arriba de
+    // 0,83 kg la duración se pegaba en 50 s y ni la de 50 kg se movía de ahí.
+    // Ahora barre hasta 50 kg, que es donde el techo estaba.
+    //
+    // La tabla completa a las cinco frecuencias está en
+    // `la-masa-decide-lo-que-arde.test.ts`; acá queda la del ADR con su rango
+    // arreglado, para que no se pueda volver a medir sólo la mitad de abajo.
     const filas: string[] = []
-    for (const m of [0.05, 0.2, 0.5, 0.8]) {
-      const a = arder('madera', m, AL_AIRE, 20, 120, 20)
-      // Estas masas se quedan sin combustible ANTES de llegar a los 50 s de la
-      // ley 4, así que la duración es exactamente `18·m/0,3`.
-      expect([m, Number.isNaN(a.transmuta)]).toEqual([m, true])
-      expect([m, Math.abs(a.seApaga - 60 * m) <= 0.1]).toEqual([m, true])
-      filas.push(`  madera ${String(m).padStart(4)} kg → arde ${a.seApaga.toFixed(2)} s`)
+    for (const m of [0.05, 0.2, 0.5, 0.83, 1, 2, 5, 20, 50]) {
+      const a = arder('madera', m, AL_AIRE, 20, 60 * m + 60, 1)
+      // 50 s por kilo, y ahora sí transmutan TODAS: la que se quedaba sin
+      // combustible sin llegar a carbonizarse era la leña falsa.
+      expect([m, Number.isNaN(a.transmuta)]).toEqual([m, false])
+      expect([m, Math.abs(a.seApaga - 50 * m) <= 0.11]).toEqual([m, true])
+      filas.push(
+        `  madera ${String(m).padStart(5)} kg → arde ${a.seApaga.toFixed(2).padStart(8)} s y queda ${a.residuo}`,
+      )
     }
     log([
       '══ (a bis) MÁS LEÑA, MÁS FUEGO ════════════════════════════════════════',
       ...filas,
-      '  60 s por kilo de madera, y la temperatura es la misma para todas',
+      '  50 s por kilo de madera, y la temperatura es la misma para todas',
+      '  (antes: 12,00 · 30,05 · 48,10 · 49,95 · 49,95 · 49,95 — la masa dejaba de decidir en 0,83 kg)',
     ])
   })
 })
@@ -321,8 +336,11 @@ describe('(c) `charred` llega a 0,8 y la ley 4 transmuta, y el aire decide en qu
     expect(alAire.residuo).toContain(TAG_RESIDUO_CON_AIRE)
     expect(tapado.residuo).toContain(TAG_RESIDUO_SIN_AIRE)
     // Y `charred` cruzó de verdad el umbral que la ley 4 pide: no transmutó por
-    // otra razón.
+    // otra razón. Los dos a los 50 s, porque para la madera —18 unidades de
+    // combustible, más que las 15 donde las dos cuentas de `avanceDeCarbon` se
+    // cruzan— manda el calor y no la llama, tape uno o no tape.
     expect(alAire.transmuta).toBeCloseTo(CARBONIZADO_QUE_TRANSMUTA / 0.016, 1)
+    expect(tapado.transmuta).toBeCloseTo(CARBONIZADO_QUE_TRANSMUTA / 0.016, 1)
 
     // La diferencia, que es toda la recompensa de la técnica: lo tapado conserva
     // el esqueleto de carbono, o sea masa y poder calorífico. Lo destapado no.
@@ -529,7 +547,9 @@ describe('(f) una vara encendida no vuelve al ambiente', () => {
       filas.push(`  a los ${String(t).padStart(2)} s → ${grados.toFixed(2)} °C`)
       if (t <= 49) expect([t, grados >= 400]).toEqual([t, true])
       // Y a los 51 ya no: se volvió ceniza a los 50. La promesa dura mientras hay
-      // de qué, no para siempre, y eso también es lo correcto.
+      // de qué, no para siempre, y eso también es lo correcto. Un leño de 2 kg la
+      // sostiene 100 s, que es lo que la reparación de `avanceDeCarbon` cambió: la
+      // promesa dura lo que pese el leño y no un número fijo.
       if (t === 51) expect(grados).toBeLessThan(400)
     }
     log([

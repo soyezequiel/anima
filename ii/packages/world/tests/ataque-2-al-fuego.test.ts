@@ -212,22 +212,29 @@ describe('(b) `friccion` promete `temperature>=400` y ahora la promesa dura', ()
     // lo que dura el combustible.
     //
     // Medido a 20 Hz con una vara de madera de 0,2 kg: se cumple en el paso 48
-    // (2,40 s) y sigue cumpliéndose 240 pasos después. La vara tiene 0,2 × 18 = 3,6
-    // unidades de combustible y la llama se lleva 0,3 por segundo, o sea doce
-    // segundos de fuego; después se apaga sola, que también es lo correcto.
+    // (2,40 s) y sigue cumpliéndose 195 pasos después.
+    //
+    // EL NÚMERO ERA 240 PASOS Y AHORA SON 195, y lo que se movió no es la promesa
+    // sino qué la termina. Antes la vara ardía hasta quedarse sin combustible
+    // —0,2 × 18 = 3,6 unidades a 0,3 por segundo, doce segundos— y no llegaba
+    // nunca a carbonizarse, así que quedaba hecha de madera con el tanque en cero:
+    // leña falsa. Ahora `TASA_CARBONIZACION` es POR KILO, la vara cruza los 0,8 de
+    // la ley 4 a los `0,8 × 0,2 / 0,016` = 10,00 s de pirólisis y se vuelve ceniza
+    // de verdad. Se cambiaron dos segundos de promesa por que la yesca chica deje
+    // residuo como todo lo demás. Ver `avanceDeCarbon` en `physics/src/leyes.ts`.
     const t = frotarYAnotar(0.2, 400, 20, 60)
     const cumple = t.findIndex((v) => v >= 400)
     expect(cumple + 1).toBe(48)
     // La promesa sobrevive al paso siguiente —que es lo que el hueco pedía— y a
-    // los doscientos siguientes.
+    // los ciento noventa siguientes.
     expect(t[cumple + 1] as number).toBeGreaterThanOrEqual(400)
-    for (let n = cumple + 1; n <= 280; n++) {
+    for (let n = cumple + 1; n <= 240; n++) {
       expect([n, (t[n] as number) >= 400]).toEqual([n, true])
     }
     // Y se apaga sola cuando se le acaba: el combustible es una cuenta CONSERVADA
     // y la ley 3 sólo la baja. Ver `ataque-al-fuego-que-dura.test.ts`.
-    const apagada = t.findIndex((v, n) => n > 280 && v < 300)
-    expect(apagada).toBeGreaterThan(280)
+    const apagada = t.findIndex((v, n) => n > 240 && v < 300)
+    expect(apagada).toBeGreaterThan(240)
     log([
       '══ (b) `establishes: temperature>=400` ════════════════════════',
       `  se cumple en el paso ${String(cumple + 1)} (t = ${((cumple + 1) / 20).toFixed(2)} s) y sigue siendo cierto hasta el paso ${String(apagada)}`,
@@ -269,14 +276,36 @@ describe('(c) el fuego YA NO se apaga por soltar: se apaga por quedarse sin comb
     expect(antes).toBeGreaterThan(600)
     expect(despues).toBeGreaterThan(600)
     expect(tanque).toBeGreaterThan(600)
-    // Lo que el hueco del tramo anterior pedía: diez segundos de fuego como mínimo.
-    expect((apagoEn - 50) / 20).toBeGreaterThanOrEqual(10)
+    // ─── EL PISO DE DIEZ SEGUNDOS SE MOVIÓ DE MASA, Y HAY QUE DECIRLO ───────
+    //
+    // Lo que el hueco del tramo anterior pedía es «diez segundos de fuego como
+    // mínimo, que es el mínimo con el que se cocina algo», y sigue exigiéndose
+    // abajo. Lo que cambió es CON QUÉ se consigue: `TASA_CARBONIZACION` pasó a ser
+    // por kilo, así que una vara de 0,2 kg se hace ceniza a los 10,00 s de
+    // pirólisis y 0,30 de esos diez se los comió el propio frotado —la pirólisis
+    // empieza a los 280 °C y la mano suelta recién a los 375—. Quedan 9,70 s
+    // después de que la mano se va, contra los 14,50 de antes.
+    //
+    // No se baja el umbral: se mide con la vara más chica que lo cumple, que es
+    // 0,25 kg. El 9,70 de la de 0,2 queda escrito acá porque es el precio que se
+    // pagó, y el precio fue que la yesca chica ahora TRANSMUTA: antes se apagaba
+    // con `charred` en 0,19 y quedaba hecha de madera con el combustible en cero.
+    expect((apagoEn - 50) / 20).toBeCloseTo(9.7, 2)
+    let g = banco(0.25, 20)
+    let apagoGrande = Number.NaN
+    for (let n = 1; n <= 500; n++) {
+      const i = n <= 50 ? apply({ by: 'dina', seq: n }, g.phys, 'friccion', ROLES) : undefined
+      g = stepWorld(g, i === undefined ? [] : [i]).state
+      if (Number.isNaN(apagoGrande) && n > 51 && leer(g, 'va', 'emitsPower') === 0) apagoGrande = n
+    }
+    expect((apagoGrande - 50) / 20).toBeGreaterThanOrEqual(10)
     log([
       '══ (c) SOLTAR YA NO APAGA (ADR II-0011) ══════════════════════════',
       `  se frota hasta el paso 50: la vara está a ${antes.toFixed(2)} °C y quedan ${tanque.toFixed(2)} de ${s0.toFixed(0)} de stamina`,
       `  se deja de frotar: el paso 51 la deja en ${despues.toFixed(3)} °C (antes de este ADR: 15,000)`,
       `  y se apaga sola en el paso ${String(apagoEn)}, o sea ${((apagoEn - 50) / 20).toFixed(2)} s después de que la mano se fue`,
-      '  se apaga por quedarse sin combustible, que es una cuenta CONSERVADA',
+      `  con 0,25 kg en vez de 0,2: ${((apagoGrande - 50) / 20).toFixed(2)} s, que es el piso de diez que el hueco pedía`,
+      '  se apaga por carbonizarse del todo, y el combustible es una cuenta CONSERVADA',
     ])
   })
 
@@ -455,7 +484,13 @@ describe('(d) qué prende y qué no', () => {
     })
     const i0 = apply({ by: 'dina', seq: 1 }, pelado.phys, 'friccion', ROLES)
     const r0 = stepWorld(pelado, i0 === undefined ? [] : [i0])
-    expect(r0.events.map((e) => (e.k === 'rechazada' ? e.por : e.k))).toEqual(['rol-no-cumple'])
+    // El `gasto` es la narración del tick —lo que el mundo se llevó de `stamina`
+    // de todos, sumado— y sale aunque la intención se rechace: la criatura vivió
+    // ese tick igual. Ver el evento `gasto` en `step.ts`.
+    expect(r0.events.map((e) => (e.k === 'rechazada' ? e.por : e.k))).toEqual([
+      'rol-no-cumple',
+      'gasto',
+    ])
 
     const atado: Body = {
       id: 'va',

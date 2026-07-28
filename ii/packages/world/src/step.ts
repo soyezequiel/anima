@@ -426,11 +426,48 @@ export type Narracion =
    * Sumarlo salió gratis porque `hashWorldState` hashea `tick, hz, nextId,
    * hashPhysics, bodies, actors, cells` y los eventos no entran.
    *
+   * `'quemado'` es el de la criatura a la que la ley 4 le transmutó el cuerpo: se
+   * quemó del todo y lo que queda es residuo. Hasta que existió, esa criatura
+   * moría igual pero el mundo contaba que había sido `'hambre'` —le habían borrado
+   * la `stamina` al cambiarle la materia— y la crónica mentía sobre la única cosa
+   * que un jugador iba a querer saber. Ver `morir` y `loQueSobrevive` en
+   * `@anima/physics`.
+   *
    * `'consumido'` sigue declarado y sin emisor —lo estaba antes de esto—, y queda
    * anotado para que la unión no se llene de valores que nadie manda.
    */
-  | { readonly k: 'murio'; readonly id: BodyId; readonly por: 'comido' | 'consumido' | 'hambre' }
+  | {
+      readonly k: 'murio'
+      readonly id: BodyId
+      readonly por: 'comido' | 'consumido' | 'hambre' | 'quemado'
+    }
   | { readonly k: 'sustancia'; readonly id: string }
+  /**
+   * LO QUE EL MUNDO GASTÓ de una cuenta conservada en este tick, sumado.
+   *
+   * ─── Para qué existe: el guardián sólo perseguía los aumentos ──────────────
+   *
+   * `revisarConservacion` sabía decir que ninguna cuenta conservada SUBE. No sabía
+   * decir nada de las bajadas, así que una conservada que se evaporaba entera
+   * pasaba sin una sola violación — y pasó: la ley 4 borraba la `stamina` de la
+   * criatura al transmutarle el cuerpo, 949,70 → 0,00 en un tick, con cero
+   * violaciones y un evento que decía «murió de hambre».
+   *
+   * Perseguir las bajadas necesita distinguir la que una ley explica de la que
+   * nadie explica, y para `mass`, `nutrition` y `fuelEnergy` eso hoy no se puede:
+   * la ley 5 evapora agua, la 3 quema combustible y la 4 tira el 94% de la masa,
+   * todas legítimamente y ninguna declarando cuánto. Para `stamina` SÍ, y por una
+   * razón que no es de conveniencia: **ninguna de las doce leyes de la física
+   * escribe `stamina`.** Lo único que la mueve es el mundo —vivir, caminar, y lo
+   * que un `poweredBy` paga— y el mundo sabe exactamente cuánto movió.
+   *
+   * ─── Uno por tick y por cuenta, no uno por cobro ───────────────────────────
+   *
+   * Se acumula en el borrador y sale sumado al final. Un evento por cobro serían
+   * uno por actor y por tick sólo de metabolismo, para decir un número que
+   * únicamente el invariante mira; la crónica no tiene por qué llenarse de eso.
+   */
+  | { readonly k: 'gasto'; readonly q: QualityId; readonly cuanto: number }
 
 /**
  * LA NARRACIÓN DEL TICK. Lo que salió a la salida de `stepWorld`, ya firmado.
@@ -497,13 +534,18 @@ export interface Desenlace {
 /**
  * ¿Este evento le contesta a alguien?
  *
- * Se pregunta por los DOS que no, y no por los diez que sí: la lista corta es la
+ * Se pregunta por los TRES que no, y no por los diez que sí: la lista corta es la
  * que no se olvida de crecer. Un evento nuevo nace firmado salvo que quien lo
  * escriba diga lo contrario acá, que es el default correcto — el otro default
  * deja eventos sin dueño a la espera de que alguien note que faltan.
+ *
+ * `gasto` es de la `Narracion` por el mismo motivo que los otros dos: sale sumado
+ * al final del tick y cuenta lo que el mundo se llevó de todos, no lo que le pasó
+ * a la intención de alguno. Ponerle firma obligaría a repartir un total entre los
+ * actores que lo causaron, que es una cuenta que nadie pidió.
  */
 export function esRespuesta(e: SimEvent): e is Respuesta & Firma {
-  return e.k !== 'murio' && e.k !== 'sustancia'
+  return e.k !== 'murio' && e.k !== 'sustancia' && e.k !== 'gasto'
 }
 
 /**
@@ -701,6 +743,18 @@ interface Borrador {
   /** Adentro del tick los eventos están SIN FIRMAR: la firma la pone `firmar`. */
   events: SimEventSinFirmar[]
   /**
+   * EL LIBRO DE LO QUE EL MUNDO GASTÓ de cada cuenta conservada, en este tick.
+   *
+   * Lo escriben los tres lugares que bajan una conservada sin que sea una ley de
+   * la física —`cobrarStamina`, `sistemaMetabolismo` y lo que un `poweredBy` o un
+   * `drain` pagan— y lo lee `stepWorld` una sola vez al final para narrarlo. Ver
+   * el evento `gasto`.
+   *
+   * PEREZOSO, como los índices: un tick donde nadie gasta nada no paga un `Map`.
+   * Y muere con el borrador, así que no puede quedar viejo entre ticks.
+   */
+  gastado: Map<QualityId, number> | undefined
+  /**
    * El índice de cuerpos por celda. PEREZOSO: `undefined` hasta que la primera
    * intención pregunta qué hay en una celda. Ver `indiceDeCeldas` y `estorbo`.
    */
@@ -784,6 +838,7 @@ function abrir(s: WorldState): Borrador {
     nextId: s.nextId,
     reordenar: false,
     events: [],
+    gastado: undefined,
     // Los dos índices nacen VACÍOS y mueren con el borrador. Un índice que no
     // sobrevive al tick no puede quedar viejo entre ticks, que es la mitad de los
     // modos de falla de una caché; la otra mitad —quedar vieja ADENTRO del tick—
@@ -1573,7 +1628,55 @@ function cobrarStamina(d: Borrador, a: Actor, cuanto: number): boolean {
   const tiene = qualityOf(mio.body, 'stamina', d.phys)
   if (tiene < cuanto) return false
   ponerCuerpo(d, { ...mio, body: conCualidad(mio.body, 'stamina', tiene - cuanto) })
+  anotarGasto(d, 'stamina', cuanto)
   return true
+}
+
+/**
+ * LAS CONSERVADAS QUE NINGUNA LEY DE LA FÍSICA TOCA.
+ *
+ * Es una lista de una sola cuenta y va a seguir siéndolo mientras las doce leyes
+ * sean éstas, pero es una lista y no un `if (q === 'stamina')` porque lo que
+ * define al conjunto es una propiedad y no un nombre: `stamina` está acá porque
+ * ninguna de las leyes de `@anima/physics` la escribe —ni la 1, ni la 3, ni la 5,
+ * ni la 4 desde que devuelve lo que la sustancia nueva no sabe contestar— y
+ * porque ninguna sustancia la declara. O sea que TODO lo que le pasa a la
+ * `stamina` del mundo lo hace el mundo, y el mundo lo puede contar exacto.
+ *
+ * `mass`, `nutrition` y `fuelEnergy` NO están, y no es un olvido: la ley 5 evapora
+ * agua y con ella masa, la 3 quema combustible, la 4 tira el 94% de la materia y
+ * la 6 pudre la nutrición. Las cuatro bajan cuentas conservadas legítimamente y
+ * ninguna declara cuánto, así que para ésas no hay forma HOY de separar la bajada
+ * legítima de la evaporación. Queda dicho, y con su `it.fails` en
+ * `tests/la-conservada-que-se-evapora.test.ts`.
+ *
+ * Las dos son EXTENSIVAS —`stamina` y `mass`—, y eso también importa para el día
+ * que la lista crezca: el total conservado de una intensiva es `q · mass`, así que
+ * un libro que anote el intensivo pelado no se puede comparar contra el total.
+ */
+export const CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO: readonly QualityId[] = ['stamina']
+
+/**
+ * Anotar en el libro del tick que el mundo se llevó `cuanto` de esta cuenta.
+ *
+ * Sólo las cuentas que el invariante puede vigilar, y no por ahorrar: anotar el
+ * gasto de una cuenta que además bajan las leyes daría un piso que no significa
+ * nada, porque le faltaría todo lo que las leyes se llevaron.
+ *
+ * Se anota lo que se COBRÓ de verdad, no lo que se quiso cobrar. Un cobro que no
+ * alcanzó ya salió por otro lado sin tocar el cuerpo, y anotarlo igual haría que
+ * el piso del invariante fuera más bajo que la realidad — o sea, un guardián que
+ * perdona de más.
+ */
+function anotarGasto(d: Borrador, q: QualityId, cuanto: number): void {
+  if (!(cuanto > 0)) return
+  if (!CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO.includes(q)) return
+  let libro = d.gastado
+  if (libro === undefined) {
+    libro = new Map<QualityId, number>()
+    d.gastado = libro
+  }
+  libro.set(q, (libro.get(q) ?? 0) + cuanto)
 }
 
 function intencionCaminar(d: Borrador, a: Actor, i: Intent & { k: 'goTo' }): void {
@@ -2008,10 +2111,11 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
         const actual = d.bodies.get(c.body.id)
         if (actual === undefined) break
         const v = qualityOf(actual.body, e.q, d.phys)
-        ponerCuerpo(d, {
-          ...actual,
-          body: conCualidad(actual.body, e.q, v - porPaso(e.porSegundo, d.dt)),
-        })
+        const baja = porPaso(e.porSegundo, d.dt)
+        ponerCuerpo(d, { ...actual, body: conCualidad(actual.body, e.q, v - baja) })
+        // Igual que en el metabolismo: lo que se anota es lo que había para
+        // sacar, porque `conCualidad` topa contra el rango.
+        anotarGasto(d, e.q, v > baja ? baja : v)
         break
       }
       case 'drive': {
@@ -2041,6 +2145,11 @@ function aplicarEfectos(d: Borrador, p: Process, ligs: readonly Ligadura[]): voi
             ...actualF,
             body: conCualidad(actualF.body, e.poweredBy.q, hay - pagado),
           })
+          // El aliento que la fricción convirtió en calor. Es la tercera —y la
+          // más grande— de las tres formas que tiene el mundo de bajar `stamina`,
+          // y sin anotarla el invariante de las bajadas acusaría de evaporación a
+          // una criatura que estaba frotando un palo.
+          anotarGasto(d, e.poweredBy.q, pagado)
         }
         const despues = d.bodies.get(actual.body.id) ?? actual
         ponerCuerpo(d, { ...despues, body: conCualidad(despues.body, e.q, v + rumbo * delta) })
@@ -2598,15 +2707,51 @@ function sistemaLeyes(d: Borrador): void {
   // durante la iteración de un `Map` está especificado y es seguro. Copiar el
   // arreglo serían 5000 punteros más por tick, y el tick tiene cuatro
   // milisegundos.
+  // Los cuerpos a los que la ley 4 les cambió la materia. Si alguno de ellos es
+  // el cuerpo de una criatura, esa criatura se quemó del todo. Ver abajo.
+  let transmutados: Set<BodyId> | undefined
   for (const c of d.bodies.values()) {
     const r = paso(c.body, entornoDe(d, c, fs, ocl), d.phys, d.dt)
     if (r.body !== c.body) d.bodies.set(c.body.id, { ...c, body: r.body })
-    if (r.nueva !== undefined) nuevas.push(r.nueva)
+    if (r.nueva !== undefined) {
+      nuevas.push(r.nueva)
+      if (transmutados === undefined) transmutados = new Set<BodyId>()
+      transmutados.add(c.body.id)
+    }
   }
   for (const s of nuevas) {
     d.phys = conSustancia(d.phys, s)
     d.events.push({ k: 'sustancia', id: s.id })
   }
+  if (transmutados !== undefined) quemarVivas(d, transmutados)
+}
+
+/**
+ * LA SEGUNDA MUERTE DEL MUNDO: la que se quemó del todo.
+ *
+ * Una criatura cuyo cuerpo la ley 4 acaba de transmutar ya no es una criatura: lo
+ * que queda de ella es residuo mineral o un tizón. Que siguiera en `actors` sería
+ * una ceniza caminando con una caña en la mano.
+ *
+ * ─── Por qué no alcanzaba con dejarla morir de hambre ───────────────────────
+ *
+ * Porque no se moría de hambre: se moría porque la ley 4 le BORRABA la `stamina`
+ * al cambiarle la materia —949,70 → 0,00 en un tick, medido— y el metabolismo
+ * encontraba el cero medio segundo después. El evento decía `por: 'hambre'` con
+ * casi mil de stamina el tick anterior, y ningún invariante veía nada. Arreglar
+ * `loQueSobrevive` en `@anima/physics` sacó la mentira y dejó al descubierto lo
+ * que la mentira tapaba: sin esto, la criatura hecha ceniza sobrevive.
+ *
+ * El cuerpo se queda donde cayó, igual que en la muerte por hambre: la materia no se
+ * destruye, y la ceniza de una criatura es ceniza que sigue en el mundo.
+ */
+function quemarVivas(d: Borrador, transmutados: ReadonlySet<BodyId>): void {
+  // La lista se junta antes de ejecutar nada, por lo mismo que en el metabolismo:
+  // `morir` borra del `Map` que se estaría iterando. Sale en el orden canónico de
+  // `actors`, así que quién suelta primero no lo decide nada del motor.
+  const muertas: Actor[] = []
+  for (const a of d.actors.values()) if (transmutados.has(a.body)) muertas.push(a)
+  for (const a of muertas) morir(d, a, 'quemado')
 }
 
 /**
@@ -2641,7 +2786,14 @@ function sistemaMetabolismo(d: Borrador): void {
     const c = d.bodies.get(a.body)
     if (c === undefined) continue
     const s = qualityOf(c.body, 'stamina', d.phys)
-    const queda = s - porPaso(COSTO_VIVIR_POR_SEGUNDO, d.dt)
+    const cobro = porPaso(COSTO_VIVIR_POR_SEGUNDO, d.dt)
+    const queda = s - cobro
+    // Lo que se anota es lo que el cuerpo tenía para dar y no el precio de lista:
+    // `conCualidad` topa en cero, así que a quien le quedaban 0,03 de stamina el
+    // mundo le sacó 0,03 y no 0,05. Anotar el precio dejaría el piso del
+    // invariante dos centésimas por debajo del real, todos los ticks, y esa deuda
+    // se acumula hasta perdonar una evaporación entera.
+    anotarGasto(d, 'stamina', s > cobro ? cobro : s)
     // `conCualidad` topa contra el rango declarado —`stamina` es `[0, 1000]` y
     // conservada—, así que lo que se guarda es 0 y no una deuda. La deuda se
     // descartó a propósito: lo negativo no es representable y hacerlo
@@ -2650,21 +2802,26 @@ function sistemaMetabolismo(d: Borrador): void {
     d.bodies.set(c.body.id, { ...c, body: conCualidad(c.body, 'stamina', queda) })
     if (queda <= 0) muertos.push(a)
   }
-  // La lista se junta adentro del recorrido y se ejecuta afuera: `morirDeHambre`
+  // La lista se junta adentro del recorrido y se ejecuta afuera: `morir`
   // borra del mismo `Map` que se está iterando y además mueve cuerpos que otro
   // actor de este mismo bucle podría estar sosteniendo. `muertos` sale en el orden
   // canónico de `actors`, así que quién suelta primero no lo decide nada del
   // motor.
-  for (const a of muertos) morirDeHambre(d, a)
+  for (const a of muertos) morir(d, a, 'hambre')
 }
 
 /**
- * La primera muerte del mundo (ADR II-0009, decisión 3).
+ * MORIRSE, y el mundo dice de qué (ADR II-0009, decisión 3).
  *
  * El actor se va de `actors` y **el cuerpo se queda donde cayó**: la materia no
  * se destruye, y el cadáver de una criatura es carne con `nutrition`, o sea que la
  * que viene puede comerse a la que no llegó. Borrar el cuerpo habría sido tirar
  * comida además de tirar materia.
+ *
+ * `por` es un PARÁMETRO y no la constante `'hambre'` que era, y ésa es la mitad
+ * del arreglo que se nota desde afuera: hay dos formas de morirse —quedarse sin
+ * fuerzas y quemarse del todo— y hasta acá las dos salían con la misma palabra.
+ * La crónica contaba que se murió de hambre una que se quemó viva.
  *
  * Soltar lo que tenía en la mano NO es opcional: `invariants.ts:258` emite
  * `referencia-colgada` en cuanto un `heldBy` nombra a un actor que ya no está en
@@ -2673,7 +2830,7 @@ function sistemaMetabolismo(d: Borrador): void {
  * Y el journal no necesita nada nuevo: las intenciones posteriores del muerto se
  * rechazan con `'actor-desconocido'`, que es un motivo que ya existía.
  */
-function morirDeHambre(d: Borrador, a: Actor): void {
+function morir(d: Borrador, a: Actor, por: 'hambre' | 'quemado'): void {
   const mio = d.bodies.get(a.body)
   for (const id of a.holding) {
     const c = d.bodies.get(id)
@@ -2695,7 +2852,7 @@ function morirDeHambre(d: Borrador, a: Actor): void {
   // El `id` es el del CUERPO y no el del actor, como en el `murio` de comer: lo
   // que el evento nombra es la cosa que quedó en el mundo. Y no lleva `by` ni
   // `seq` porque no lo causó ninguna intención.
-  if (mio !== undefined) d.events.push({ k: 'murio', id: mio.body.id, por: 'hambre' })
+  if (mio !== undefined) d.events.push({ k: 'murio', id: mio.body.id, por })
 }
 
 // ─── Materializar lo que el dios decretó ─────────────────────────────────────
@@ -2905,6 +3062,19 @@ export function stepWorld(state: WorldState, intents: readonly Intent[]): StepOu
   avanzarEsperas(d)
 
   for (const s of SISTEMAS) s.correr(d)
+
+  // El libro del tick, narrado. Va DESPUÉS de los sistemas porque el metabolismo
+  // es el último que cobra, y va en el orden de
+  // `CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO` y no en el de inserción del `Map`: dos
+  // mundos gemelos que gastaron lo mismo por caminos distintos tienen que narrar
+  // los mismos eventos en el mismo orden, o el replay deja de valer.
+  const libro = d.gastado
+  if (libro !== undefined) {
+    for (const q of CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO) {
+      const cuanto = libro.get(q)
+      if (cuanto !== undefined && cuanto > 0) d.events.push({ k: 'gasto', q, cuanto })
+    }
+  }
   return cerrar(d)
 }
 
@@ -2917,14 +3087,14 @@ export function stepWorld(state: WorldState, intents: readonly Intent[]): StepOu
  * despacho narra con el `a.id` del actor de la intención— pero deja una sola
  * verdad sobre quién firmó qué.
  *
- * La `Narracion` se saltea entera: `murio` y `sustancia` no le contestan a nadie
- * ni cuando ocurren en medio de un despacho. Comer mata un cuerpo, y el que comió
- * ya se entera por su `comio`, que dice cuál.
+ * La `Narracion` se saltea entera: `murio`, `sustancia` y `gasto` no le contestan
+ * a nadie ni cuando ocurren en medio de un despacho. Comer mata un cuerpo, y el
+ * que comió ya se entera por su `comio`, que dice cuál.
  */
 function firmar(d: Borrador, i: Intent, desde: number): void {
   for (let n = desde; n < d.events.length; n++) {
     const e = d.events[n] as SimEventSinFirmar
-    if (e.k === 'murio' || e.k === 'sustancia') continue
+    if (e.k === 'murio' || e.k === 'sustancia' || e.k === 'gasto') continue
     d.events[n] = { ...e, by: i.by, seq: i.seq }
   }
 }

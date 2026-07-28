@@ -15,13 +15,21 @@
 //   2. ¿las posiciones existen y no se solapan los sólidos?
 //   3. ¿los inventarios cierran?
 //   4. ¿las cualidades guardadas están dentro del rango que declararon?
-//   5. **¿alguna cuenta CONSERVADA subió?**
+//   5. **¿alguna cuenta CONSERVADA subió, o se evaporó?**
 //
 // La quinta es la que mata el juego si falla en silencio. `nutrition` es
 // conservada, y si el mundo puede fabricarla, la criatura tiene comida infinita
 // caminando hasta el chunk de al lado — y ahí el hambre, que es el motor de toda
 // la historia, deja de doler. No se puede detectar mirando la pantalla: se ve
 // como una partida donde todo sale bien.
+//
+// Y LAS DOS MITADES SON LA MISMA PREGUNTA. Durante mucho tiempo la quinta decía
+// sólo «¿subió?», así que una cuenta conservada que se iba a CERO entera pasaba
+// sin una violación. Pasó de verdad: la ley 4 le borraba la `stamina` a la
+// criatura al transmutarle el cuerpo —949,70 → 0,00 en un tick— y el mundo
+// contaba que se había muerto de hambre una que se había quemado viva, con cero
+// violaciones. Fabricar materia y evaporarla son el mismo agujero mirado desde
+// los dos lados, y un guardián que sólo mira uno deja pasar el otro.
 
 import type { Physics, QualityId } from '@anima/physics'
 import {
@@ -36,6 +44,7 @@ import type { ActorId, BodyId, Placement } from './intent.js'
 import { compararTexto, enRango } from './intent.js'
 import { keyOfCell } from './cell.js'
 import type { SimEvent, WorldBody, WorldState } from './step.js'
+import { CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO } from './step.js'
 
 // ─── Las violaciones ─────────────────────────────────────────────────────────
 
@@ -59,6 +68,20 @@ export type Violacion =
       readonly antes: number
       readonly despues: number
       readonly acreditado: number
+    }
+  /**
+   * Una cuenta conservada bajó más de lo que el mundo declaró haberse llevado.
+   * La otra mitad de `conservada-aumento`, y la que faltaba: una cuenta que se
+   * evapora entera es tan imposible como una que se fabrica, y hasta acá sólo se
+   * perseguía una de las dos.
+   */
+  | {
+      readonly k: 'conservada-evaporada'
+      readonly q: QualityId
+      readonly antes: number
+      readonly despues: number
+      readonly gastado: number
+      readonly conLosQueSeFueron: number
     }
   | {
       readonly k: 'conversion-sin-respaldo'
@@ -102,6 +125,8 @@ export function describir(v: Violacion): string {
       return `${v.body} guarda la derivada ${v.q}`
     case 'conservada-aumento':
       return `${v.q}: ${v.antes} -> ${v.despues} (acreditado ${v.acreditado})`
+    case 'conservada-evaporada':
+      return `${v.q} se evaporó: ${v.antes} -> ${v.despues} (el mundo gastó ${v.gastado} y se fueron ${v.conLosQueSeFueron} con cuerpos)`
     case 'conversion-sin-respaldo':
       return `${v.de} -> ${v.a}: gastó ${v.gastado} y acreditó ${v.acreditado}`
   }
@@ -162,6 +187,39 @@ function acreditado(events: readonly SimEvent[]): ReadonlyMap<QualityId, number>
     out.set(e.a, (out.get(e.a) ?? 0) + e.acreditado)
   }
   return out
+}
+
+/** Lo que los eventos del tick declaran que el mundo se llevó de cada cuenta. */
+function gastado(events: readonly SimEvent[]): ReadonlyMap<QualityId, number> {
+  const out = new Map<QualityId, number>()
+  for (const e of events) {
+    if (e.k !== 'gasto') continue
+    out.set(e.q, (out.get(e.q) ?? 0) + e.cuanto)
+  }
+  return out
+}
+
+/**
+ * Lo que se fue del mundo montado en cuerpos que dejaron de existir.
+ *
+ * Comer BORRA el cuerpo comido, y con él todo lo conservado que llevaba encima.
+ * Sin este término, el piso de la bajada acusaría de evaporación a un mundo donde
+ * alguien se comió algo, que es la operación más corriente que hay.
+ *
+ * Se recorre `antes` y no `despues` a propósito: lo que se busca es lo que estaba
+ * y ya no está, y eso sólo lo sabe el estado viejo.
+ */
+function loQueSeFueConLosCuerpos(
+  antes: WorldState,
+  despues: WorldState,
+  q: QualityId,
+): number {
+  let total = 0
+  for (const [id, c] of antes.bodies) {
+    if (despues.bodies.has(id)) continue
+    total += totalConservado(c.body, q, antes.phys)
+  }
+  return total
 }
 
 // ─── Las cinco preguntas ─────────────────────────────────────────────────────
@@ -371,7 +429,8 @@ function revisarVector(
 }
 
 /**
- * Ninguna cuenta conservada sube, salvo lo que una conversión declarada acreditó.
+ * Ninguna cuenta conservada sube, salvo lo que una conversión declarada acreditó,
+ * **y ninguna baja más de lo que el mundo declaró haberse llevado**.
  *
  * La excepción no es un agujero: es la reparación que la segunda vuelta de
  * adversarios contra `admit()` encontró y que sin ella **comer no se puede
@@ -409,6 +468,37 @@ function revisarConservacion(
     const c = cred.get(q) ?? 0
     if (dsp > techo(a, c)) {
       out.push({ k: 'conservada-aumento', q, antes: a, despues: dsp, acreditado: c })
+    }
+  }
+
+  // ─── Y LA OTRA MITAD: las bajadas que nadie explica ───────────────────────
+  //
+  // Sólo para las cuentas de `CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO`, que es una
+  // restricción con motivo y no un recorte: para las otras tres el motor las baja
+  // legítimamente en cuatro leyes distintas y ninguna declara cuánto, así que un
+  // piso para ellas sería un piso que no significa nada. Está dicho ahí y medido
+  // en `tests/la-conservada-que-se-evapora.test.ts`, con su `it.fails` abierto.
+  const gas = gastado(events)
+  for (const q of CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO) {
+    const a = tA.get(q) ?? 0
+    const dsp = tD.get(q) ?? 0
+    const g = gas.get(q) ?? 0
+    const idos = loQueSeFueConLosCuerpos(antes, despues, q)
+    // El piso NO suma lo acreditado, y no es un olvido: comer SUBE la stamina, y
+    // `conCualidad` la topa contra el techo de su rango. Un piso que contara el
+    // crédito acusaría de evaporación a la criatura que comió estando casi llena,
+    // que no perdió nada — no le entró. Sin el crédito el piso es más bajo y
+    // sigue siendo correcto: lo que se busca es lo que DESAPARECIÓ.
+    const piso = a - g - idos
+    if (dsp < piso - Math.abs(piso) * TOLERANCIA_RELATIVA - TOLERANCIA_ABSOLUTA) {
+      out.push({
+        k: 'conservada-evaporada',
+        q,
+        antes: a,
+        despues: dsp,
+        gastado: g,
+        conLosQueSeFueron: idos,
+      })
     }
   }
 }

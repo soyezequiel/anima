@@ -396,11 +396,30 @@ describe('una partida de 2000 ticks', () => {
     // es el mismo y ninguna se aceptó o rechazó distinto: lo que cambió fue la
     // física y no la puerta.
     //   adea782a5cd4274d  (antes del ADR II-0011, con 9187 eventos y 30 sustancias)
-    expect(r.hashFinal).toBe('19db371807b7fb35')
+    //   19db371807b7fb35  (con el II-0011, con 9190 eventos y 31 sustancias)
+    //
+    // Y se movió OTRA VEZ con la reparación de las dos constantes que se
+    // cancelaban, también a propósito y en tres cosas que se pueden nombrar:
+    //
+    //   · `TASA_CARBONIZACION` pasó a ser por kilo, así que `charred` —y con él
+    //     `nutrition` y `digestibility`, que la ley 3 multiplica por `1 − charred`—
+    //     se escribe con otros bits en todo lo que esté arriba de su pirólisis;
+    //   · la ley 4 dejó de tirar el estado que la sustancia nueva no declara, así
+    //     que un cuerpo transmutado sale con lo que traía y no con `{ temperature }`;
+    //   · y los EVENTOS pasaron de 9190 a 11188. Los 1998 de más son el `gasto`
+    //     nuevo: uno por tick, con la `stamina` que el mundo se llevó de todos, que
+    //     es lo que `revisarConservacion` necesita para poder perseguir las
+    //     bajadas. Son 2000 ticks menos los dos primeros, donde todavía no había
+    //     nadie vivo gastando.
+    //
+    // Las violaciones NO se movieron (97, las mismas ocho criaturas pisándose) y
+    // las sustancias tampoco (31): el guión de intenciones es el mismo y ninguna se
+    // aceptó o rechazó distinto.
+    expect(r.hashFinal).toBe('e54643aaa90fac83')
     expect(r.checkpoints.join(' ')).toBe(
-      '2c8a2ec92994c99a 22099f614391dbf0 6d64c926b7c579a7 09579b2868bca337 f0a92a9755f4a498 fc00ed1b22a6aefc fd32a5f678249a61 e523d712d8566431 69994110b7c7c5f5 32efefd1a0390096 19db371807b7fb35',
+      '5138f229560082ea 8c7e06cf759ce8d2 45fed156a3737007 2ea42765912623be bcc80462d850e5ed 01c29ec05de71759 dde859d4360126e7 bc82cd030038bb30 560f6c7d56dec85c ddd436339e5df508 e54643aaa90fac83',
     )
-    expect(r.eventos).toBe(9190)
+    expect(r.eventos).toBe(11188)
     expect(r.sustancias).toBe(31)
     expect(r.violaciones.length).toBe(97)
   }, 300_000)

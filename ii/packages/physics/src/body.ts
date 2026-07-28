@@ -265,6 +265,43 @@ function massOf(p: Part): number {
 }
 
 /**
+ * El combustible por unidad de masa que este cuerpo tenía CUANDO ESTABA ENTERO.
+ *
+ * No pasa por `qualityOf`, y ésa es la única razón por la que existe:
+ * `qualityOf` contesta lo que HAY —`state.fuelEnergy`, que la ley 3 baja tick a
+ * tick— y hay dos lugares que necesitan lo que HABÍA, que es lo que la materia
+ * declaró al nacer. La resta entre los dos números es lo que ya se quemó:
+ *
+ *   · la ley 3 la usa para que `charred` mida una FRACCIÓN y no un rato — ver
+ *     `avanceDeCarbon` en `leyes.ts`;
+ *   · `nameOf` la usa para no llamar igual a un tizón entero y a uno gastado.
+ *
+ * Vive acá y no en `leyes.ts` justamente porque son dos: dos copias de la misma
+ * lectura divergen el día que alguien toque una, y entonces el motor y el nombre
+ * dirían cosas distintas de la misma cosa.
+ *
+ * Se le pregunta a la MATERIA y no a una tabla: el `fuelEnergy` que la parte
+ * trajo escrito, y si no el de su sustancia. Un hongo que el oráculo invente
+ * mañana contesta igual, sin fila propia. Va ponderado por masa por el mismo
+ * motivo que `substanceFieldOf`: `fuelEnergy` es POR UNIDAD DE MASA, así que en
+ * un cuerpo de dos materias el promedio lo decide cuánto hay de cada una.
+ *
+ * Cero cuando no hay masa: sin materia no hay volátiles que se puedan ir, y quien
+ * llama tiene que mirar ese caso antes de dividir.
+ */
+export function combustibleDeOrigen(b: Body, phys: Physics): number {
+  let total = 0
+  let masa = 0
+  for (const p of b.parts) {
+    const m = massOf(p)
+    const s = sustanciaDe(phys, p.substance)
+    total += m * (p.q.fuelEnergy ?? s?.perUnitMass.fuelEnergy ?? 0)
+    masa += m
+  }
+  return masa > 0 ? total / masa : 0
+}
+
+/**
  * Un campo de la SUSTANCIA, agregado como cualquier intensiva: pesado por masa
  * (ADR II-0006).
  *
@@ -536,7 +573,7 @@ function adjectivesOf(b: Body, phys: Physics, gender: 'm' | 'f'): string[] {
   const nutrition = qualityOf(b, 'nutrition', phys)
 
   if (ignition > 0 && temperature >= ignition) out.push('ardiendo')
-  else if (charred >= 0.8) out.push(agree('quemado', gender))
+  else if (charred >= 0.8) out.push(agree(seConsumio(b, phys) ? 'consumido' : 'quemado', gender))
   else if (charred >= 0.25) out.push(agree('chamuscado', gender))
   else if (nutrition > 0) {
     // Solo lo que alimenta se dice crudo o asado. La madera no está cruda, y no
@@ -551,6 +588,31 @@ function adjectivesOf(b: Body, phys: Physics, gender: 'm' | 'f'): string[] {
 
   if (qualityOf(b, 'decay', phys) >= 0.5) out.push(agree('podrido', gender))
   return out
+}
+
+/**
+ * ¿A esto ya no le queda nada para arder?
+ *
+ * ─── LA LEÑA FALSA, Y POR QUÉ SE ARREGLA EN EL NOMBRE ───────────────────────
+ *
+ * Un tizón entero y un tizón gastado son la MISMA sustancia: los dos son
+ * `residuo-carbonoso-de-madera`, los dos tienen `charred` 1, y hasta acá los dos
+ * se llamaban «madera hecho tizón quemada». Lo único que los distingue es el
+ * combustible que les queda —5,76 contra 0— y la mente del Hito 5 iba a juntar el
+ * segundo creyendo que servía. Lo mismo con el carbón, que nace con `charred` 1 y
+ * arde hasta cero sin cambiar de materia ni de nombre.
+ *
+ * Distinguirlos con `q(b,'fuelEnergy')` siempre se pudo. Lo que faltaba es que se
+ * NOTARA sin preguntar, que es como se ven las cosas: lo que se consumió se ve
+ * consumido.
+ *
+ * `deOrigen > 0` es la mitad que importa: la ceniza tiene el combustible en cero
+ * desde que nació y nunca tuvo nada que perder, así que sigue siendo «ceniza
+ * quemada» y no «ceniza consumida» — no se consumió, nunca ardió.
+ */
+function seConsumio(b: Body, phys: Physics): boolean {
+  if (combustibleDeOrigen(b, phys) <= 0) return false
+  return qualityOf(b, 'fuelEnergy', phys) <= 0
 }
 
 function agree(adj: string, gender: 'm' | 'f'): string {

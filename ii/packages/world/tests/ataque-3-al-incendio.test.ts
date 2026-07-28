@@ -16,17 +16,23 @@
 //      prende entera en 0,90 s; cuatro pilas de 20 kg separadas por una celda
 //      prenden a los 5,35 · 9,40 · 13,40 s, o sea una celda cada cuatro
 //      segundos, y sin techo. Revirtiendo `physics/src` a HEAD: NUNCA.
-//   2. LA DURACIÓN NO CRECE CON LA MASA arriba de 0,84 kg. Un leño de 1 kg y
-//      uno de 50 arden los MISMOS 50,00 s; el de 50 kg tira el 98,3% de su
-//      combustible. La promesa del ADR —«60 s por kilo», «juntar leña ES la
-//      respuesta a que el fuego se apague»— vale sólo en el tramo 0–0,83 kg,
-//      que es exactamente el tramo que el constructor midió.
+//   2. LA DURACIÓN NO CRECÍA CON LA MASA arriba de 0,84 kg, y **eso está
+//      CERRADO**: `TASA_CARBONIZACION` es POR KILO desde la reparación, igual
+//      que `COMBUSTIBLE_POR_SEGUNDO` desde el ADR II-0011, y las dos dejaron de
+//      cancelarse. Medido acá abajo: 2,50 · 10,00 · 25,00 · 41,50 · 50,00 ·
+//      100,00 · 250,00 · 1000,00 · 2500,00 s para 0,05 · 0,2 · 0,5 · 0,83 · 1 ·
+//      2 · 5 · 20 · 50 kg. Cincuenta segundos por kilo en TODO el rango, y el de
+//      50 kg tira el 16,7% en vez del 98,3%.
 //   3. LA CONSERVACIÓN AGUANTA. `fuelEnergy` no sube nunca, ni al transmutar
 //      (el tizón concentra ×1,6 sobre el 0,28 de la masa = 0,448×), ni en el
 //      mundo, ni a ninguna de las cinco frecuencias. No hay ciclo rentable.
 //   4. LA FRECUENCIA AGUANTA. Todo lo que el fuego toca —duración, meseta,
 //      transmutación, cocción, propagación, la muerte de la criatura— da lo
 //      mismo a 10, 20, 25, 50 y 100 Hz, dentro de un tick.
+//   5. LA CRIATURA QUE SE QUEMA YA NO MUERE «DE HAMBRE», y su `stamina` ya no
+//      se evapora. La ley 4 conserva lo que la sustancia nueva no sabe
+//      contestar, el mundo emite `murio{por:'quemado'}`, y `revisarConservacion`
+//      persigue además las BAJADAS de las conservadas que sólo mueve el mundo.
 //
 // ─── CÓMO SE LEE ────────────────────────────────────────────────────────────
 //
@@ -40,6 +46,7 @@ import type { Entorno } from '@anima/physics'
 import {
   createJournal,
   createSnapshotChain,
+  describir,
   hashWorldState,
   pasoDelMundo,
   replay,
@@ -49,7 +56,7 @@ import {
   stepWorld,
   worldSlots,
 } from '../src/index.js'
-import type { Intent, WorldBody, WorldState } from '../src/index.js'
+import type { Intent, Violacion, WorldBody, WorldState } from '../src/index.js'
 import { actor, criatura, cuerpo, enElPiso, mundo } from './mundo-minimo.js'
 
 const EN = (x: number, y: number): { x: number; y: number } => ({ x, y })
@@ -217,20 +224,28 @@ describe('1 · el incendio: el fuego que dura es un fuego que se propaga', () =>
     ])
   })
 
-  it('la criatura APOYADA sobre una fogata de 20 kg muere quemada, y la crónica dice «hambre»', () => {
-    // Tres cosas de una vez, y sólo la tercera es de este ADR:
+  it('la criatura APOYADA sobre una fogata de 20 kg muere QUEMADA, y la crónica lo dice', () => {
+    // ESTE TEST DECÍA LO CONTRARIO Y LO DECÍA BIEN. Lo que medía era la mentira:
     //
-    //   · la ley 4 le transmuta el cuerpo a `residuo-mineral-de-carne`, y al
-    //     hacerlo se queda con `state: { temperature }` y TIRA TODO LO DEMÁS.
-    //     `stamina` es CONSERVADA y desaparece: 949,70 → 0,00 en un tick;
-    //   · `revisarInvariantes` no ve nada, porque la conservación sólo mira que
-    //     no SUBA. Una cualidad conservada que se evapora entera es legal;
-    //   · el evento que sale es `{k:'murio', por:'hambre'}` con 949,70 de
-    //     stamina en el cuerpo el tick anterior. La crónica va a contar que se
-    //     murió de hambre una criatura que se quemó viva.
+    //   · la ley 4 le transmutaba el cuerpo a `residuo-mineral-de-carne` y al
+    //     hacerlo se quedaba con `state: { temperature }` y TIRABA TODO LO DEMÁS.
+    //     `stamina` es CONSERVADA y desaparecía: 949,70 → 0,00 en un tick;
+    //   · `revisarInvariantes` no veía nada, porque la conservación sólo miraba
+    //     que no SUBIERA;
+    //   · y el evento que salía era `{k:'murio', por:'hambre'}` con 949,70 de
+    //     stamina en el cuerpo el tick anterior.
     //
-    // Lo pre-existente son las dos primeras: a HEAD esto pasa a los 4,35 s (con
-    // `TASA_CARBONIZACION` 0,2). Lo que este ADR mueve es CUÁNDO, no SI.
+    // Las tres están cerradas y las tres se miden acá: `loQueSobrevive` de
+    // `physics/src/leyes.ts` deja pasar lo que la sustancia nueva no declara
+    // —`stamina` no la declara ninguna—, `quemarVivas` de `step.ts` mata a la
+    // criatura cuyo cuerpo transmutó, y el evento dice `'quemado'`.
+    //
+    // Muere a los 13,71 s y no a los 50,37, y el que se movió no es este arreglo
+    // sino la carbonización: la carne tiene 2 unidades de combustible por kilo
+    // —menos de las 15 donde las dos cuentas de `avanceDeCarbon` se cruzan— así
+    // que a un cuerpo de 2 kg lo carboniza LA LLAMA y no el calor, o sea que se
+    // consume en lo que tarda en gastar sus 4 unidades a 0,3 por segundo. Antes
+    // eran 50 s de reloj fijo, para cualquier materia y cualquier masa.
     const filas: string[] = []
     for (const hz of FRECUENCIAS_ADMISIBLES) {
       const bodies: WorldBody[] = [
@@ -239,7 +254,8 @@ describe('1 · el incendio: el fuego que dura es un fuego que se propaga', () =>
       ]
       let s = mundo({ bodies, actors: [actor('dina')], hz })
       let muere = Number.NaN
-      let stam = Number.NaN
+      let stamAntes = Number.NaN
+      let stamDespues = Number.NaN
       let por = ''
       let violaciones = -1
       for (let t = 1; seg(t, hz) <= 120; t++) {
@@ -248,83 +264,80 @@ describe('1 · el incendio: el fuego que dura es un fuego que se propaga', () =>
         s = r.state
         if (antes.actors.has('dina') && !s.actors.has('dina')) {
           muere = seg(t, hz)
-          stam = qualityOf(antes.bodies.get('dina-cuerpo')?.body ?? { id: '', form: 'vara', parts: [], joints: [], state: {} }, 'stamina', antes.phys)
+          const vacio = { id: '', form: 'vara' as const, parts: [], joints: [], state: {} }
+          stamAntes = qualityOf(antes.bodies.get('dina-cuerpo')?.body ?? vacio, 'stamina', antes.phys)
+          stamDespues = qualityOf(s.bodies.get('dina-cuerpo')?.body ?? vacio, 'stamina', s.phys)
           for (const e of r.events) if (e.k === 'murio') por = e.por
           violaciones = revisarInvariantes(antes, s, r.events).length
           break
         }
       }
-      // Muere quemada, con casi toda la stamina, y el arnés no ve nada. La
-      // tolerancia es un tick de la frecuencia más gruesa: 50,300 · 50,350 ·
-      // 50,400 · 50,400 · 50,380 medidos.
-      expect(Math.abs(muere - 50.37)).toBeLessThanOrEqual(0.1)
-      expect(stam).toBeGreaterThan(900)
-      expect(por).toBe('hambre')
+      // La tolerancia es un tick de la frecuencia más gruesa: 13,700 · 13,700 ·
+      // 13,720 · 13,720 · 13,710 medidos.
+      expect(Math.abs(muere - 13.71)).toBeLessThanOrEqual(0.1)
+      // LA STAMINA NO SE EVAPORA: el cuerpo sale de la ley 4 con la que tenía.
+      expect(stamAntes).toBeGreaterThan(900)
+      expect(stamDespues).toBe(stamAntes)
+      // Y el mundo cuenta la verdad.
+      expect(por).toBe('quemado')
       expect(violaciones).toBe(0)
       filas.push(
-        `  ${String(hz).padStart(4)}Hz muere a los ${muere.toFixed(3)} s con stamina ${stam.toFixed(2)} · la crónica dice «${por}» · violaciones ${violaciones}`,
+        `  ${String(hz).padStart(4)}Hz muere a los ${muere.toFixed(3)} s · stamina ${stamAntes.toFixed(2)} → ${stamDespues.toFixed(2)} · la crónica dice «${por}»`,
       )
     }
     log([
-      '══ 1d · MUERE QUEMADA Y EL MUNDO DICE QUE FUE HAMBRE ══════════════════',
+      '══ 1d · MUERE QUEMADA Y EL MUNDO LO DICE ══════════════════════════════',
       ...filas,
-      '  (a HEAD, lo mismo a los 4,30–4,38 s con stamina 995,6–995,8)',
+      '  (antes: moría a los 50,37 s con `por: hambre`, la stamina se iba de 949,70 a 0,00',
+      '   en un tick y `revisarInvariantes` devolvía 0 violaciones)',
     ])
   })
 
-  it.fails('SIGUE ABIERTO — la ley 4 borra `stamina`, que es CONSERVADA, y nadie lo ve', () => {
-    // POR QUÉ SIGUE ABIERTO: son dos arreglos y ninguno es de este ADR ni cabe
-    // adentro de él.
+  it('CARNADA · sin la reparación de la ley 4, la stamina se evapora y el arnés lo VE', () => {
+    // La carnada de que el invariante nuevo no es decorativo: se simula a mano lo
+    // que hacía `leyTransmutacion` —cambiarle la materia al cuerpo y quedarse
+    // sólo con la temperatura— y se le pregunta al guardián.
     //
-    //   (1) `leyTransmutacion` de `physics/src/leyes.ts` devuelve
-    //       `state: { temperature: l.temperature }`, y su comentario lo dice con
-    //       todas las letras: «Del estado sobrevive la temperatura […] Todo lo
-    //       demás lo dice la sustancia nueva». Para la humedad de un leño eso
-    //       está bien. Para `stamina` no: `stamina` no sale de ninguna sustancia
-    //       —lo dice `mundo-minimo.ts`, «es una cuenta que el cuerpo lleva»— así
-    //       que no hay de dónde volver a sacarla. Arreglarlo es decidir qué
-    //       cualidades del `state` sobreviven a un cambio de materia, y eso es
-    //       una regla del motor, no una línea.
-    //   (2) `revisarConservacion` de `world/src/invariants.ts` sólo persigue los
-    //       AUMENTOS. Una conservada que se evapora entera pasa. Cerrarlo pide
-    //       decidir qué bajadas son legítimas —la ley 5 evapora agua y baja masa
-    //       a propósito— y eso también es un ADR.
-    //
-    // Lo que este test clava mientras tanto: el número, para que el día que se
-    // arregle se caiga solo.
-    const bodies: WorldBody[] = [
-      enElPiso(cuerpo('fogata', 'madera', 20, { temperature: 700 }), EN(0, 0)),
-      { body: criatura('dina', 100000), at: EN(0, 0), supportedBy: 'fogata' },
-    ]
-    let s = mundo({ bodies, actors: [actor('dina')] })
-    let antesDeMorir = 0
-    let despues = -1
-    for (let t = 1; t <= 4000; t++) {
-      const antes = s
-      s = stepWorld(s, []).state
-      const c = s.bodies.get('dina-cuerpo')
-      const p = antes.bodies.get('dina-cuerpo')
-      if (c === undefined || p === undefined) continue
-      if (c.body.parts[0]?.substance !== p.body.parts[0]?.substance) {
-        antesDeMorir = qualityOf(p.body, 'stamina', antes.phys)
-        despues = qualityOf(c.body, 'stamina', s.phys)
-        break
-      }
+    // Antes de la reparación esto devolvía `[]`. Lo que lo caza es la mitad nueva
+    // de `revisarConservacion`: el mundo declaró en su evento `gasto` cuánta
+    // `stamina` se llevó, y 949 no es ese número.
+    // `criatura('dina', 1000)` y no 100000: el techo del rango de `stamina` es
+    // 1000, y un `state` que escribe más ya es una `cualidad-fuera-de-rango` —el
+    // control negativo de abajo tiene que salir limpio para significar algo.
+    const bodies: WorldBody[] = [enElPiso(criatura('dina', 1000), EN(0, 0))]
+    const antes = mundo({ bodies, actors: [actor('dina')] })
+    const c = antes.bodies.get('dina-cuerpo') as WorldBody
+    const despues: WorldState = {
+      ...antes,
+      tick: antes.tick + 1,
+      bodies: new Map(antes.bodies).set('dina-cuerpo', {
+        ...c,
+        // Exactamente lo que hacía la ley 4: `state: { temperature }` y nada más.
+        body: { ...c.body, state: { temperature: 615 } },
+      }),
     }
-    expect(antesDeMorir).toBeGreaterThan(900)
-    // Esto es lo que tendría que valer y no vale: la stamina no se quema.
-    expect(despues).toBe(antesDeMorir)
+    const v = revisarInvariantes(antes, despues, [])
+    expect(v).toHaveLength(1)
+    expect(v[0]?.k).toBe('conservada-evaporada')
+    // Y con el mismo estado SIN evaporar nada, el guardián no dice nada: no es un
+    // detector que grite siempre.
+    expect(revisarInvariantes(antes, { ...antes, tick: antes.tick + 1 }, [])).toEqual([])
+    log([
+      '══ 1e · LA CARNADA DEL GUARDIÁN ═══════════════════════════════════════',
+      `  se le borra la stamina a mano y el arnés devuelve: ${describir(v[0] as Violacion)}`,
+      '  (antes de la reparación: [] — una conservada que se iba a cero era legal)',
+    ])
   })
 })
 
-// ═══ 2 · LA DURACIÓN NO CRECE CON LA MASA ════════════════════════════════════
+// ═══ 2 · LA DURACIÓN AHORA SÍ CRECE CON LA MASA ══════════════════════════════
 
-describe('2 · «sesenta segundos por kilo» vale hasta 0,83 kg y ni un gramo más', () => {
+describe('2 · «cincuenta segundos por kilo», y ahora vale en todo el rango', () => {
   /** Segundos hasta que este leño deja de emitir, y cuánto combustible tiró. */
   function arco(masa: number, hz = 20): { dura: number; quemado: number; tirado: number } {
     let s = mundo({ bodies: [enElPiso(cuerpo('l', 'madera', masa, { temperature: 700 }), EN(0, 0))], hz })
     const inicial = 18 * masa
-    for (let t = 1; seg(t, hz) <= 400; t++) {
+    for (let t = 1; seg(t, hz) <= 3000; t++) {
       const antes = s
       s = stepWorld(s, []).state
       const c = s.bodies.get('l')
@@ -342,19 +355,23 @@ describe('2 · «sesenta segundos por kilo» vale hasta 0,83 kg y ni un gramo m�
     return { dura: Number.NaN, quemado: Number.NaN, tirado: Number.NaN }
   }
 
-  it('un leño de 1 kg y uno de 50 arden los MISMOS 50,00 s, y el de 50 tira el 98,3%', () => {
-    // La razón es la TERCERA constante del ADR, la que no estaba en el encargo:
-    // `TASA_CARBONIZACION` 0,016 hace que `charred` cruce los 0,8 de la ley 4 a
-    // los 50 s EXACTOS, y la ley 4 no pregunta cuánto combustible quedaba. Lo que
-    // quedaba se va con el 94% de la masa que la transmutación tira.
+  it('CERRADO · un leño de 50 kg arde cincuenta veces más que uno de 1 kg, y tira el 16,7% y no el 98,3%', () => {
+    // ESTE TEST MEDÍA EL BUG. Las dos constantes que el ADR II-0011 agregó se
+    // cancelaban: `COMBUSTIBLE_POR_SEGUNDO` se hizo EXTENSIVO para que la masa
+    // decidiera la duración, y `TASA_CARBONIZACION` se quedó INTENSIVA poniéndole
+    // un techo de 50 s que no preguntaba cuánto combustible quedaba. Arriba de
+    // 0,83 kg la primera no hacía nada: un leño de 1 kg y uno de 50 ardían los
+    // mismos 50,00 s y el de 50 tiraba 884 de sus 900 unidades.
     //
-    // O sea: las DOS constantes que el constructor agregó se cancelan. Hacer
-    // `COMBUSTIBLE_POR_SEGUNDO` extensivo existe para que la masa decida la
-    // duración; `TASA_CARBONIZACION` le pone un techo de 50 s que no depende de
-    // la masa. Arriba de 0,83 kg la primera no hace nada.
+    // La reparación es hacer extensiva la que faltaba —carbonizar un cuerpo cuesta
+    // proporcional a la materia que hay que carbonizar— y NO mueve el valor: los
+    // 50 s de un kilo siguen siendo 50 s. Lo que cambia es todo lo demás.
+    //
+    // Se barre el rango ENTERO, extremos incluidos, porque el bug anterior existió
+    // por medir sólo hasta 0,8 kg.
     const filas: string[] = ['  masa    combustible  quemado   TIRADO   %tirado  dura(s)']
     const medido = new Map<number, ReturnType<typeof arco>>()
-    for (const m of [0.2, 0.5, 0.8, 1, 2, 5, 8, 20, 50]) {
+    for (const m of [0.05, 0.2, 0.5, 0.8, 0.83, 1, 2, 5, 8, 20, 50]) {
       const a = arco(m)
       medido.set(m, a)
       filas.push(
@@ -362,28 +379,61 @@ describe('2 · «sesenta segundos por kilo» vale hasta 0,83 kg y ni un gramo m�
       )
     }
 
-    // Abajo del piso, la promesa del ADR se cumple: 60 s por kilo.
-    expect(medido.get(0.2)?.dura).toBeCloseTo(12.05, 2)
-    expect(medido.get(0.5)?.dura).toBeCloseTo(30.05, 2)
-    expect(medido.get(0.8)?.dura).toBeCloseTo(48.0, 2)
-    // Arriba del piso, deja de cumplirse y no se mueve más.
-    for (const m of [1, 2, 5, 8, 20, 50]) expect(medido.get(m)?.dura).toBeCloseTo(50.0, 2)
-    // Y lo que se quema es SIEMPRE lo mismo: 0,3 por segundo durante 50 s.
-    for (const m of [1, 2, 5, 8, 20, 50]) expect(medido.get(m)?.quemado).toBeCloseTo(15, 1)
-    expect((100 * (medido.get(50)?.tirado ?? 0)) / 900).toBeCloseTo(98.3, 1)
+    // 50 s POR KILO, en las once masas y con un tick de margen.
+    for (const [m, a] of medido) {
+      expect([m, Math.abs(a.dura - 50 * m) <= 0.11]).toEqual([m, true])
+    }
+    // Y lo que se tira es una FRACCIÓN FIJA —el 16,7%, o sea los 10 s de
+    // combustible por kilo que sobran de los 60— y no una fracción que crece con
+    // la masa hasta el 98%.
+    for (const [m, a] of medido) {
+      // El margen es 2 puntos y no décimas por las masas chiquitas: a 0,05 kg el
+      // fuego entero dura 2,50 s, o sea cincuenta ticks, y medio tick de
+      // granularidad ya vale un punto y medio de porcentaje. A partir de 1 kg da
+      // 16,7% clavado.
+      expect([m, Math.abs((100 * a.tirado) / (18 * m) - 16.7) <= 2]).toEqual([m, true])
+    }
+    // El de 50 kg, escrito aparte porque es el que el bug escondía.
+    expect(medido.get(50)?.dura).toBeCloseTo(2500, 0)
+    expect(medido.get(1)?.dura).toBeCloseTo(50, 1)
 
-    log(['══ 2a · LA DURACIÓN TIENE TECHO ═══════════════════════════════════════', ...filas])
+    log(['══ 2a · LA DURACIÓN YA NO TIENE TECHO ═════════════════════════════════', ...filas])
   })
 
-  it('juntar leña compra 0,8 segundos de fuego', () => {
-    // «Juntar leña ES la respuesta a que el fuego se apague», dice el ADR.
-    // Medido: apilar cinco leños de 1 kg da 50,75 s de fuego contra los 50,00 de
-    // uno solo, porque los cinco prenden en el primer segundo y arden A LA VEZ.
-    // Dejarlos sueltos en la misma celda da 49,95 s y deja el 80% sin tocar.
-    function hastaCuandoHayFuego(bodies: readonly WorldBody[]): { hasta: number; quemado: number } {
+  it('CERRADO · un leño de 2 kg dura EXACTAMENTE el doble que uno de 1, y el de 50 cincuenta veces', () => {
+    // Éste era el `it.fails` «SIGUE ABIERTO — la masa decide cuánto dura es falso
+    // arriba de 0,83 kg». Lo que pedía es esto y nada más.
+    const durar = (m: number): number => arco(m).dura
+    const d1 = durar(1)
+    expect(d1).toBeCloseTo(50, 1)
+    expect(durar(2) / d1).toBeCloseTo(2, 2)
+    expect(durar(5) / d1).toBeCloseTo(5, 2)
+    expect(durar(20) / d1).toBeCloseTo(20, 2)
+    expect(durar(50) / d1).toBeCloseTo(50, 2)
+  })
+
+  it('juntar leña APILADA sigue comprando poco, y lo que compra tiempo es la masa de UN cuerpo', () => {
+    // La otra mitad de la promesa del ADR —«juntar leña ES la respuesta a que el
+    // fuego se apague»— sigue siendo falsa TAL COMO ESTÁ ESCRITA, y no por las
+    // constantes: porque los leños de una pila prenden todos en el primer segundo
+    // y arden A LA VEZ. Cinco de 1 kg apilados dan 50,75 s contra los 50,00 de uno
+    // solo. Lo que sí compra tiempo es la masa de un cuerpo: uno de 5 kg da 250 s,
+    // que es exactamente cinco veces más con la misma leña.
+    //
+    // O sea: la respuesta a que el fuego se apague no es juntar CINCO PALITOS, es
+    // conseguir UN TRONCO. Y el que quiere sostener un fuego con leños chicos
+    // tiene que reponerlos de a uno, que es `la-masa-decide-lo-que-arde`.
+    function hastaCuandoHayFuego(
+      bodies: readonly WorldBody[],
+      segundos = 400,
+    ): { hasta: number; quemado: number; total: number } {
       let s = mundo({ bodies })
       let hasta = 0
-      for (let t = 1; t <= 4000; t++) {
+      let total = 0
+      for (const c of s.bodies.values()) {
+        total += qualityOf(c.body, 'fuelEnergy', s.phys) * qualityOf(c.body, 'mass', s.phys)
+      }
+      for (let t = 1; t <= 20 * segundos; t++) {
         s = stepWorld(s, []).state
         for (const c of s.bodies.values()) {
           if (qualityOf(c.body, 'emitsPower', s.phys) > 0) hasta = seg(t, 20)
@@ -393,7 +443,7 @@ describe('2 · «sesenta segundos por kilo» vale hasta 0,83 kg y ni un gramo m�
       for (const c of s.bodies.values()) {
         queda += qualityOf(c.body, 'fuelEnergy', s.phys) * qualityOf(c.body, 'mass', s.phys)
       }
-      return { hasta, quemado: 90 - queda }
+      return { hasta, quemado: total - queda, total }
     }
     const sueltos: WorldBody[] = []
     for (let i = 0; i < 5; i++) {
@@ -401,32 +451,32 @@ describe('2 · «sesenta segundos por kilo» vale hasta 0,83 kg y ni un gramo m�
     }
     const apilada = hastaCuandoHayFuego(pilaApilada(5, 1))
     const suelta = hastaCuandoHayFuego(sueltos)
+    const gordo = hastaCuandoHayFuego([enElPiso(cuerpo('l', 'madera', 5, { temperature: 700 }), EN(0, 0))])
 
-    expect(apilada.hasta).toBeCloseTo(50.75, 2)
-    expect(apilada.quemado).toBeCloseTo(90, 1)
-    expect(suelta.hasta).toBeCloseTo(49.95, 2)
-    expect(suelta.quemado).toBeCloseTo(18, 1)
-    // Cinco veces la leña, 1,5% más de fuego.
-    expect(apilada.hasta / 50.0).toBeLessThan(1.02)
+    expect(apilada.hasta).toBeCloseTo(50.75, 1)
+    expect(suelta.hasta).toBeCloseTo(49.95, 1)
+    expect(gordo.hasta).toBeCloseTo(250, 0)
+    // Cinco kilos en cinco cuerpos: 50,75 s. Cinco kilos en UNO: 250 s. 4,9×.
+    expect(gordo.hasta / apilada.hasta).toBeGreaterThan(4.8)
 
     log([
       '══ 2b · JUNTAR LEÑA ═══════════════════════════════════════════════════',
-      `  cinco leños de 1 kg APILADOS ... fuego hasta ${apilada.hasta.toFixed(2)} s · quemó ${apilada.quemado.toFixed(2)} de 90,00 (${((100 * apilada.quemado) / 90).toFixed(1)}%)`,
-      `  cinco leños de 1 kg SUELTOS .... fuego hasta ${suelta.hasta.toFixed(2)} s · quemó ${suelta.quemado.toFixed(2)} de 90,00 (${((100 * suelta.quemado) / 90).toFixed(1)}%)`,
-      '  uno solo de 1 kg ............... fuego hasta 50,00 s',
+      `  cinco leños de 1 kg APILADOS ... fuego hasta ${apilada.hasta.toFixed(2)} s · quemó ${apilada.quemado.toFixed(2)} de ${apilada.total.toFixed(2)}`,
+      `  cinco leños de 1 kg SUELTOS .... fuego hasta ${suelta.hasta.toFixed(2)} s · quemó ${suelta.quemado.toFixed(2)} de ${suelta.total.toFixed(2)}`,
+      `  UN leño de 5 kg ................ fuego hasta ${gordo.hasta.toFixed(2)} s · quemó ${gordo.quemado.toFixed(2)} de ${gordo.total.toFixed(2)}`,
+      '  la misma leña en un solo cuerpo rinde 4,9x — apilar no suma, arden a la vez',
     ])
   })
 
-  it('debajo de 0,84 kg NADA se hace carbón, y lo que queda es un leño que no puede volver a arder', () => {
-    // El otro filo de la misma constante. `charred` sube 0,016 por segundo y el
-    // cuerpo arde `fuelEnergy·mass/0,3` segundos, así que para llegar a 0,8 hacen
-    // falta 50 s, o sea 15 unidades de combustible, o sea 0,833 kg de madera.
-    //
-    // Debajo de eso el cuerpo se apaga con `charred` abajo de 0,8, no transmuta
-    // NUNCA, y queda hecho de `madera` con `fuelEnergy` 0: una vara que se ve
-    // como leña, que la criatura puede juntar, y que no va a arder nunca más.
-    // La yesca de 0,2 kg del ADR II-0010 —la que hizo que el fuego encendiera por
-    // primera vez— es exactamente ese caso.
+  it('CERRADO · ya no queda leña falsa: hasta la yesca de 0,05 kg se hace ceniza', () => {
+    // ESTE TEST TAMBIÉN MEDÍA EL BUG, y era el otro filo de la misma constante.
+    // `charred` subía 0,016 por segundo y el cuerpo ardía `fuelEnergy·mass/0,3`
+    // segundos, así que para llegar a 0,8 hacían falta 0,833 kg de madera. Debajo
+    // de eso el cuerpo se apagaba con `charred` abajo de 0,8, NO transmutaba nunca,
+    // y quedaba hecho de `madera` con `fuelEnergy` 0: una vara que se ve como leña,
+    // que la criatura puede juntar, y que no va a arder nunca más. La yesca de
+    // 0,2 kg del ADR II-0010 —la que hizo que el fuego encendiera por primera
+    // vez— era exactamente ese caso, y se quedaba en `charred` 0,1928.
     const filas: string[] = ['   masa   dura(s)  charred_máx  termina en']
     const resultado = new Map<number, { ch: number; sust: string }>()
     for (const m of [0.05, 0.2, 0.5, 0.8, 0.83, 0.9, 1]) {
@@ -446,53 +496,13 @@ describe('2 · «sesenta segundos por kilo» vale hasta 0,83 kg y ni un gramo m�
       filas.push(`  ${String(m).padStart(5)} ${dura.toFixed(2).padStart(8)} ${ch.toFixed(4).padStart(12)}  ${sust}`)
     }
 
-    // El piso está entre 0,83 y 0,9 kg, y 0,83 se queda a 8 milésimas.
-    expect(resultado.get(0.83)?.ch).toBeCloseTo(0.7992, 3)
-    expect(resultado.get(0.83)?.sust).toBe('madera')
-    expect(resultado.get(0.9)?.sust).toBe('residuo-mineral-de-madera')
-    // La yesca del ADR II-0010 no llega ni a la cuarta parte.
-    expect(resultado.get(0.2)?.ch).toBeCloseTo(0.1928, 3)
-
-    log(['══ 2c · EL PISO DE 0,84 kg PARA HACER CARBÓN ══════════════════════════', ...filas])
-  })
-
-  it.fails('SIGUE ABIERTO — «la masa decide cuánto dura» es falso arriba de 0,83 kg', () => {
-    // POR QUÉ SIGUE ABIERTO: es una decisión de calibración y no un bug de una
-    // línea, y tocarla mueve las tres constantes del ADR II-0011 a la vez.
-    //
-    // El ADR promete, y su comentario en `COMBUSTIBLE_POR_SEGUNDO` de
-    // `physics/src/leyes.ts` lo escribe: «Ahora dura `fuelEnergy · mass / 0.3`, o
-    // sea 60 s por kilo de madera. Juntar leña ES la respuesta a que el fuego se
-    // apague». Medido, eso es cierto para 0,05 · 0,2 · 0,5 · 0,8 kg —los cuatro
-    // casos que el constructor midió— y falso para 1 · 2 · 5 · 8 · 20 · 50, que
-    // dan 50,00 s los seis.
-    //
-    // Cerrarlo pide una de tres, y ninguna es de este archivo:
-    //   · que `TASA_CARBONIZACION` sea por unidad de combustible QUEMADO y no por
-    //     segundo, con lo que un tronco tardaría en carbonizarse lo que tarda en
-    //     gastarse — es la reparación honesta y cambia la ley 3;
-    //   · que la ley 4 transmute sólo la parte carbonizada y deje el resto —
-    //     cambia la ley 4 y con ella el `residuoDe` entero;
-    //   · o aceptar el techo y BORRAR la promesa de `COMBUSTIBLE_POR_SEGUNDO`,
-    //     que es lo barato y lo que este test impide hacer en silencio.
-    //
-    // Mientras tanto: un leño de 2 kg tendría que durar el doble que uno de 1.
-    let uno = mundo({ bodies: [enElPiso(cuerpo('l', 'madera', 1, { temperature: 700 }), EN(0, 0))] })
-    let dos = mundo({ bodies: [enElPiso(cuerpo('l', 'madera', 2, { temperature: 700 }), EN(0, 0))] })
-    const durar = (s0: WorldState): number => {
-      let s = s0
-      for (let t = 1; t <= 8000; t++) {
-        s = stepWorld(s, []).state
-        const c = s.bodies.get('l')
-        if (c === undefined) return Number.NaN
-        if (qualityOf(c.body, 'emitsPower', s.phys) === 0 && t > 2) return seg(t, 20)
-      }
-      return Number.NaN
+    // LAS SIETE transmutan, incluidas las cuatro que antes no llegaban.
+    for (const [m, r] of resultado) {
+      expect([m, r.sust]).toEqual([m, 'residuo-mineral-de-madera'])
+      expect([m, r.ch >= 0.8]).toEqual([m, true])
     }
-    const d1 = durar(uno)
-    const d2 = durar(dos)
-    expect(d1).toBeCloseTo(50.0, 2)
-    expect(d2 / d1).toBeCloseTo(2, 1)
+
+    log(['══ 2c · YA NO HAY PISO PARA HACER CARBÓN ══════════════════════════════', ...filas])
   })
 })
 
@@ -750,8 +760,21 @@ describe('6 · un mundo que se incendia sigue siendo el mismo mundo dos veces', 
     expect(b.checkpoints).toEqual(a.checkpoints)
     expect(hashWorldState(b.fin)).toBe(hashWorldState(a.fin))
     // Y el mundo se incendió de verdad: si no, esto sería un test sobre nada.
+    //
+    // El testigo es el PESCADO y ya no una de las pilas, y el motivo es la
+    // reparación: una pila de 20 kg tarda ahora 1000 s en hacerse ceniza —50 s por
+    // kilo— y estos 1500 ticks son 75 s de mundo. Antes cualquier pila transmutaba
+    // a los 50 s viniera de un kilo o de veinte, que es exactamente el bug. El
+    // pescado, que está a una celda de la pila encendida, sigue arruinándose
+    // adentro de la ventana.
     const sustancias = new Set([...a.fin.bodies.values()].map((c) => c.body.parts[0]?.substance ?? '?'))
-    expect(sustancias.has('residuo-mineral-de-madera')).toBe(true)
+    expect(sustancias.has('residuo-mineral-de-pescado')).toBe(true)
+    // Y las cuatro pilas están ardiendo de verdad al final de la corrida.
+    let ardiendo = 0
+    for (const c of a.fin.bodies.values()) {
+      if (qualityOf(c.body, 'emitsPower', a.fin.phys) > 0) ardiendo++
+    }
+    expect(ardiendo).toBeGreaterThanOrEqual(4)
     log([
       '══ 6a · GEMELOS CON FUEGO ═════════════════════════════════════════════',
       `  ${TICKS} ticks · ${a.checkpoints.length} checkpoints idénticos · hash final ${hashWorldState(a.fin)}`,

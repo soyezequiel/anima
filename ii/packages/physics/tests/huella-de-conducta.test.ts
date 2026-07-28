@@ -229,8 +229,22 @@ describe('la huella de conducta de paso()', () => {
     //   · y su tasa de carbonización pasó de 0,2 a 0,016 por segundo, así que en
     //     doce ticks el corpus carboniza mucho menos y la ley 4 transmuta menos.
     //
+    // 2564253564 → 1196749445 con la reparación de las dos constantes que se
+    // cancelaban, y cambió DOS conductas, las dos queridas y las dos medidas en
+    // `la-masa-decide-lo-que-arde.test.ts`:
+    //
+    //   · `charred` avanza por la MÁS ADELANTADA de dos cuentas y no por un reloj
+    //     único: el calor por segundo y POR KILO —`TASA_CARBONIZACION` es
+    //     extensiva ahora, como `COMBUSTIBLE_POR_SEGUNDO` lo era desde el ADR
+    //     II-0011— y la fracción de combustible que la llama ya se llevó. En doce
+    //     ticks eso mueve `charred`, y con él `nutrition`, `digestibility` y
+    //     cuándo transmuta la ley 4;
+    //   · la ley 4 ya no tira el estado que la sustancia nueva no sabe contestar,
+    //     así que el cuerpo transmutado sale con `stamina` —y con lo que el modelo
+    //     invente mañana— en vez de con `{ temperature }` pelado.
+    //
     // Se actualiza A MANO y con el porqué al lado, que es exactamente lo que este
     // archivo pide en su encabezado.
-    expect(huellaDeConducta().huella).toBe(2564253564)
+    expect(huellaDeConducta().huella).toBe(1196749445)
   }, 300_000)
 })

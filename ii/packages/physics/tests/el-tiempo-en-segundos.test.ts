@@ -124,7 +124,13 @@ const CASOS: readonly Caso[] = [
   },
   {
     nombre: 'la madera tapada se carboniza del todo',
-    cuerpo: () => cosa('madera', 4, { temperature: 400 }),
+    // 2 kg y no 4. `TASA_CARBONIZACION` es POR KILO desde que se arregló que la
+    // masa decidiera la duración en todo el rango (ver `avanceDeCarbon`), así que
+    // carbonizarse cuesta 50 s por kilo: 100 s con dos y 200 con cuatro, que es
+    // exactamente el techo de `segundosHasta` y lo dejaba pegado al borde. Lo que
+    // este caso mide es que el ritmo no dependa de la frecuencia, no que el cuerpo
+    // sea grande.
+    cuerpo: () => cosa('madera', 2, { temperature: 400 }),
     entorno: tapadoYAlFuego,
     pred: (b, p) => qualityOf(b, 'charred', p) >= 0.8,
   },

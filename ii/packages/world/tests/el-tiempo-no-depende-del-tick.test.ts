@@ -94,9 +94,9 @@ const HZ: readonly number[] = [10, 20, 25, 50]
  * Hasta dónde se corre cada mundo.
  *
  * Eran 20 s y son 60 desde el ADR II-0011: la tasa de la ley 3 pasó de 0,2 a
- * 0,016 por segundo —con 0,2, todo fuego se volvía ceniza a los cuatro segundos—
- * y ahora `charred` cruza los 0,8 de la rama a los 50 s. El hecho más lento ya no
- * es el filete (14,6 s): es la rama.
+ * 0,016 por segundo y POR KILO —con 0,2, todo fuego se volvía ceniza a los cuatro
+ * segundos— y ahora `charred` cruza los 0,8 de la rama de un kilo a los 50 s. El
+ * hecho más lento ya no es el filete (14,6 s): es la rama.
  */
 const TECHO_SEGUNDOS = 60
 
@@ -149,7 +149,12 @@ function elMundo(hz: number): WorldState {
   const bodies: readonly WorldBody[] = [
     // El hoyo: las brasas, y la rama apoyada encima (montaje `contacto`).
     enElPiso(cuerpo('brasas', 'carbon', 2.5, { temperature: 700 }), EN(2, 0)),
-    { body: cuerpo('rama', 'madera', 1.5), at: EN(2, 0), supportedBy: 'brasas' },
+    // Un kilo y no 1,5: `TASA_CARBONIZACION` es POR KILO desde que se arregló que
+    // la masa decidiera la duración en todo el rango, así que carbonizarse cuesta
+    // 50 s por kilo y la rama de 1,5 tardaría 75 —afuera del techo de 60 s de este
+    // banco—. Lo que este archivo mide es que el ritmo no dependa de la
+    // frecuencia, no cuánto pesa la rama.
+    { body: cuerpo('rama', 'madera', 1), at: EN(2, 0), supportedBy: 'brasas' },
     // El filete, al lado del hoyo: montaje `piso` a distancia 1, o sea equilibrio
     // en 95,16 °C — arriba de los 63 en que la carne se desnaturaliza y muy abajo
     // de los 280 en que se pirolizaría.
