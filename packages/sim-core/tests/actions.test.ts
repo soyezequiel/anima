@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { stepWorld } from '../src/index.js';
+import { spawn, stepWorld } from '../src/index.js';
 import {
   buildTestWorld,
   spawnBranch,
@@ -160,6 +160,32 @@ describe('herramientas y daño', () => {
     expect(events.some((e) => e.type === 'tool.broke')).toBe(true);
     expect(world.entities[branch.id]).toBeUndefined();
     expect(pet.components.inventory?.items).toEqual([]);
+  });
+
+  it('una herramienta sin vida declarada no se gasta ni se rompe', () => {
+    // La ausencia de `durability` es como este motor dice «eterna»: no hay
+    // número que restar, así que no hay nada que agotar. El martillo del
+    // mundo del MVP se apoya en esta regla, que hasta ahora era implícita.
+    const { world, pet } = buildTestWorld();
+    const wall = spawnWall(world, 2, 2);
+    wall.components.durability = { current: 1000, max: 1000 };
+    const eternal = spawn(world, 'hammer', {
+      position: { x: 1, y: 1 },
+      portable: {},
+      tool: { power: 8 },
+    });
+    stepWorld(world, [{ actorId: pet.id, intent: { type: 'pickup', targetId: eternal.id } }]);
+
+    for (let i = 0; i < 50; i++) {
+      const events = stepWorld(world, [
+        { actorId: pet.id, intent: { type: 'useItem', itemId: eternal.id, targetId: wall.id } },
+      ]);
+      expect(events.some((e) => e.type === 'tool.broke')).toBe(false);
+    }
+    expect(world.entities[eternal.id]).toBeDefined();
+    expect(eternal.components.durability).toBeUndefined();
+    // Y sigue pegando: el muro perdió 5 por golpe las 50 veces.
+    expect(wall.components.durability?.current).toBe(1000 - 50 * 5);
   });
 
   it('no usa un item que no tiene en el inventario', () => {

@@ -183,15 +183,14 @@ describe('materias primas', () => {
     expect(after).toBeGreaterThan(before);
   });
 
-  it('el martillo llega gastado, pero le alcanza para el muro Y para un árbol', () => {
-    // La reliquia tiene que seguir contando las dos historias del mundo. Si
-    // algún día no le da, la mascota queda encerrada del lado del hambre sin
-    // que nada avise: por eso el margen se mide acá y no se confía.
+  it('el martillo no se gasta: rompe el muro, tala el árbol y sigue entero', () => {
+    // Las dos historias del mundo (abrirse paso y talar) tienen que salir sin
+    // que la herramienta se acabe en el medio. Antes llegaba gastado y el
+    // margen se medía acá; ahora lo que se mide es que NO haya margen que
+    // medir: sin `durability` no hay cuenta regresiva que se pueda agotar.
     const { world, petId } = foodBehindWall.build(1);
     const hammer = Object.values(world.entities).find((e) => e.kind === 'hammer')!;
-    expect(hammer.components.durability!.current).toBeLessThan(
-      hammer.components.durability!.max,
-    );
+    expect(hammer.components.durability).toBeUndefined();
 
     const pet = getEntity(world, petId)!;
     pet.components.inventory!.items.push(hammer.id);
@@ -222,6 +221,10 @@ describe('materias primas', () => {
     }
     expect(world.entities[tree.id]).toBeUndefined();
     expect(Object.values(world.entities).some((e) => e.kind === 'log')).toBe(true);
+
+    // Y después de las dos historias sigue en el mundo, sin número que mostrar.
+    expect(world.entities[hammer.id]).toBeDefined();
+    expect(hammer.components.durability).toBeUndefined();
   });
 
   it('el pico firme abre la veta; el flojo no: la tirada decide qué peldaño alcanzaste', () => {

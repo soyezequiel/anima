@@ -484,23 +484,24 @@ function spawnBranch(world: WorldState, pos: Vec2): void {
 }
 
 /**
- * El martillo: una reliquia gastada, no un regalo eterno. Sigue siendo la
- * herramienta más fuerte del mundo (poder 8), pero llega con 8 usos de los 20
- * que tuvo: alcanza para romper el muro (2 golpes) y talar un árbol (3), que
- * son las dos historias que este mundo cuenta, y no mucho más.
+ * El martillo: la herramienta más fuerte del mundo (poder 8), y no se gasta.
  *
- * Que venga entero era una decisión de cuando no había forma de fabricarse una
- * herramienta fuerte: con el martillo perfecto tirado en el piso, hacerse un
- * pico (poder 6) es trabajar para conseguir algo peor, y toda la escalera de
- * piedra queda de adorno. Gastado, el martillo pasa de ser LA solución a ser
- * la ayuda del principio — y lo que venga después hay que ganárselo.
+ * Sin componente `durability` no hay nada que restar: el motor solo desgasta
+ * lo que declara una vida (ver `runHitSystem`), y el planificador ya lee la
+ * ausencia como «esta herramienta alcanza para cualquier trabajo»
+ * (`causal-world-model`). Es el vocabulario que el motor ya tenía para decir
+ * eterno; no hizo falta inventar una marca nueva.
+ *
+ * Tiene un costo conocido, y es a propósito: con el martillo perfecto tirado
+ * en el piso, fabricarse un pico (poder 6) es trabajar para conseguir algo
+ * peor, y la escalera de piedra pierde urgencia. La reliquia gastada existía
+ * para empujar esa escalera; ahora el empujón tiene que venir de otro lado.
  */
 function spawnHammer(world: WorldState, pos: Vec2): void {
   spawn(world, 'hammer', {
     position: pos,
     portable: {},
     tool: { power: 8 },
-    durability: { current: 8, max: 20 },
   });
 }
 
