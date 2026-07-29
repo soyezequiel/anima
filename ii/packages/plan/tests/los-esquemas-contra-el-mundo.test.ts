@@ -53,21 +53,29 @@
 //     porque el mundo exige que el cuerpo sea OTRA COSA. Hoy tiene una sola
 //     entrada, `extraccion.source`, y es exactamente el hueco que el propio
 //     esquema documenta: «el mundo rechaza la extracción con motivo `sin-pozo`
-//     si el cuerpo no es un banco decretado por el dios, y eso NO es expresable
-//     en un `Where`». Un rol nuevo que necesite algo así y no esté acá no pasa
+//     si el cuerpo no es un banco decretado por el dios», y eso NO se puede decir
+//     ENTERO en cualidades —las dos condiciones que la fila sí sabe decir, estar en
+//     el agua y no entrar en una mano, son necesarias y no suficientes—. Un rol
+//     nuevo que necesite algo así y no esté acá no pasa
 //     desapercibido: la fila corre, no establece nada, y sale roja con el conteo
 //     de rechazos del mundo al lado.
 //
-// ─── LOS DOS HUECOS DE LA SUPERFICIE, MEDIDOS SOBRE CUERPOS DEL MUNDO ───────
+// ─── ERAN DOS LOS HUECOS DE LA SUPERFICIE. QUEDA UNO ────────────────────────
 //
-// `cumpleCuerpo` contesta las cualidades y devuelve `false` en las otras dos
-// formas, y `predicado.ts` lo documenta: `freeStrandEnds` no tiene alias en el
-// catálogo y una `BodyView` no trae sustancia. Este archivo NO lo arregla —no
-// toca `src/`— pero tampoco lo tapa: las dos filas que caen ahí se verifican por
-// el camino que sí llega, la columna `vista` de la tabla dice qué contestó
-// `cumpleCuerpo`, y hay dos `it.fails` abajo midiendo el hueco sobre los cuerpos
-// que esta misma corrida fabricó. Un hueco medido sobre un cuerpo de laboratorio
-// se puede discutir; medido sobre la caña que pescó, no.
+// `cumpleCuerpo` contesta las cualidades, y `predicado.ts` documentaba DOS formas
+// que no podía contestar. Hoy queda una: `freeStrandEnds` no tiene alias en el
+// catálogo y despejarla desde la vista exige `maxParts(sharpness)`, que una
+// `BodyView` no puede dar. La otra —el TAG de la forma `sostiene`— se cerró
+// leyendo al revés el mismo catálogo que escribe `name`, y abajo se mide sobre EL
+// PESCADO QUE ESTA CORRIDA SACÓ DEL RÍO, cruzando las dos fuentes: los tags que
+// dice el catálogo de sustancias y los que dice el nombre.
+//
+// Este archivo NO arregla nada —no toca `src/`— pero tampoco tapa: la fila que
+// todavía cae en el hueco se verifica por el camino que sí llega (el despeje de
+// `catch`), la columna `vista` de la tabla dice qué contestó `cumpleCuerpo`, y el
+// `it.fails` que queda mide el hueco sobre la caña que ató esta corrida. Un hueco
+// medido sobre un cuerpo de laboratorio se puede discutir; medido sobre la caña
+// que pescó, no.
 
 import { describe, expect, it, beforeAll } from 'vitest'
 
@@ -79,6 +87,7 @@ import {
   isDerived,
   nameOf,
   qualityOf,
+  tagsDe as tagsDelMotor,
   specOf,
   unir,
   HZ_DE_REFERENCIA,
@@ -113,6 +122,9 @@ import type { BodyView } from '@anima/skills'
 import {
   AGUA_FRANCA,
   ESQUEMAS,
+  MASA_QUE_NO_ENTRA_EN_LA_MANO,
+  NO_ENTRA_EN_LA_MANO,
+  PISO_DE_PORTABLE,
   POTENCIA_QUE_COCINA_LO_CARNOSO,
   SEGUNDOS_DE_COCCION,
   VENTANA_CARNOSA,
@@ -448,6 +460,8 @@ function vistaDe(c: WorldBody, w: WorldState): BodyView {
     id: c.body.id,
     at: c.at,
     name: nameOf(c.body, w.phys),
+    // Igual que `perceive/src/vista.ts`: la Physics VIVA, no el catalogo de la semilla.
+    tags: tagsDelMotor(c.body, w.phys),
     madeByMe: c.body.madeBy === ANA,
     joints: c.body.joints.map((j) => ({ a: j.a, b: j.b, strength: j.strength })),
   }
@@ -591,10 +605,11 @@ function medir(
   if (pred.k === 'sostiene') {
     const ana = w.actors.get(ANA)
     const enMano = (ana?.holding ?? []).map((id) => w.bodies.get(id)).filter((c) => c !== undefined)
-    // EL SEGUNDO HUECO DE LA SUPERFICIE, medido y no supuesto: una `BodyView` no
-    // trae sustancia, así que `cumpleCuerpo` no puede contestar esto para ningún
-    // cuerpo. Lo que decide es el catálogo de sustancias, que es donde viven los
-    // tags — no el nombre del cuerpo, que es una vista.
+    // QUIÉN DECIDE Y QUIÉN OPINA, y no cambia porque el hueco se haya cerrado: lo
+    // que decide es el CATÁLOGO DE SUSTANCIAS, que es donde viven los tags, y lo
+    // que `cumpleCuerpo` contesta va a la columna `vista` como segunda fuente. Que
+    // las dos coincidan es una medición; que la fila se verifique con la que no
+    // depende de `src/` es lo que hace que este archivo pueda medir a `src/`.
     const vista = enMano.some((c) => cumpleCuerpo(pred, vistaDe(c, w), lector))
     const conTag = enMano.filter((c) => tagsDe(c.body, w.phys).includes(pred.tag))
     const primero = conTag[0]
@@ -607,7 +622,7 @@ function medir(
           ? `en la mano: ${enMano.map((c) => c.body.parts[0]?.substance ?? '?').join(', ') || 'nada'}`
           : `${primero.body.id} es de ${primero.body.parts[0]?.substance ?? '?'}, tags [${tagsDe(primero.body, w.phys).join(', ')}]`,
       umbral: `algún cuerpo en la mano con tag «${pred.tag}»`,
-      como: 'tags del catálogo de sustancias (`cumpleCuerpo` no puede: el hueco)',
+      como: 'tags del catálogo de sustancias (la fuente que no depende de `src/`)',
       vista,
     }
   }
@@ -835,8 +850,8 @@ function medirLey(e: EsquemaDeLey, w: WorldState, sujeto: string, conMano: boole
       `${conMano ? ` · en la mano: ${enMano ? 'sí' : 'no'}` : ''}`,
     umbral: (pred.tests ?? []).map(texto).join(' ∧ ') + ` ∧ tag «${pred.tag}»`,
     como: '`qualityOf` sobre el sujeto y el catálogo de sustancias para el tag',
-    // La superficie no puede contestar `sostiene` —no trae tags— y eso es el hueco
-    // que este archivo ya mide dos veces más abajo.
+    // Y la segunda fuente al lado: lo que contesta `cumpleCuerpo` leyendo el nombre.
+    // Que coincida con la de arriba se mide aparte, sobre el pescado que salió del río.
     vista: cumpleCuerpo(pred, vistaDe(c, w), lector),
   }
 }
@@ -1307,24 +1322,30 @@ describe('lo que `cumpleCuerpo` no puede contestar sobre lo que este archivo fab
     expect(cumpleCuerpo(pred, vistaDe(c, w), lectorDe(w))).toBe(true)
   })
 
-  it.fails('sobre el pescado que salió del río, `cumpleCuerpo` dice que no es carnoso', () => {
-    // POR QUÉ SIGUE ABIERTO: la forma `sostiene` de `Predicado` pregunta por un
-    // TAG, los tags son de la sustancia, y una `BodyView` no trae sustancia: trae
-    // `name`, que es lo que devuelve `nameOf` —el léxico de la sustancia dominante
-    // más adjetivos de cocción—. Adivinar el tag desde el nombre sería reconstruir
-    // a mano lo que la física ya sabe, y quedaría mal el día que el oráculo invente
-    // una carne que se llame distinto, que es el día exacto para el que se hizo
-    // todo esto.
+  it('CERRADO: sobre el pescado que salió del río, `cumpleCuerpo` dice que SÍ es carnoso', () => {
+    // ─── ERA UN `it.fails` Y ES LA MEDICIÓN QUE LO CIERRA ────────────────────
     //
-    // QUÉ HARÍA FALTA: un campo en `BodyView` con los tags de lo que se ve —que es
-    // información que la criatura de verdad tiene: se ve que algo es carne— o un
-    // `Ctx.tags(b)`. Es una decisión sobre la superficie de `@anima/skills`.
+    // Decía: «los tags son de la sustancia y una `BodyView` no trae sustancia».
+    // Hoy SÍ la trae, dicha por lo que es: `BodyView.tags` es `tagsDe(body, phys)`
+    // con la `Physics` VIVA, puesto en `perceive/src/vista.ts` al lado de `name`.
     //
-    // LA CONSECUENCIA MEDIDA, y es la peor de las dos: `cumpleCuerpo` documenta
-    // que devolver `false` es el error barato porque «hace que el planificador
-    // vuelva a construir algo que ya tiene». Para esta forma no es barato: con
-    // `holding(tag:carnoso)` sin contestar, un objetivo de comida NO SE DA POR
-    // CUMPLIDO NUNCA, y la criatura que acaba de sacar el pescado sigue pescando.
+    // ─── Y ACÁ SE CRUZABA CONTRA EL NOMBRE, QUE ERA EL BUG ──────────────────
+    //
+    // Este mismo test cruzaba la respuesta contra `tagsDeLoQueSeVe(nameOf(...))`,
+    // un índice `nombre → tags` derivado del catálogo de la semilla y buscado por
+    // prefijo. Sobre un pescado recién sacado del río coincidían, así que el cruce
+    // pasaba; sobre un pescado PASADO DE FUEGO no, porque la ley 4 lo bautiza
+    // «pescado hecho tizón» y el prefijo seguía contestando `carnoso` sobre un
+    // carbón con `nutrition 0`. La lectura por nombre se fue entera.
+    //
+    // Lo que este test aporta y `el-predicado.test.ts` no puede: el cuerpo no es
+    // uno de laboratorio. Es EL PESCADO QUE ESTA MISMA CORRIDA SACÓ DEL RÍO, con la
+    // sustancia que le puso el dios.
+    //
+    // Y las dos fuentes se siguen cruzando, sólo que ahora las dos son honestas: el
+    // `tagsDe` LOCAL de este arnés le pregunta a `phys.substances` parte por parte
+    // sin tocar `src/`, y la vista publica el de la física. Que coincidan es la
+    // prueba; si la vista empezara a inventar tags, coincidir dejaría de pasar.
     const pescar = ESQUEMAS.find((e) => e.establishes === 'holding(tag:carnoso)')
     if (pescar === undefined) throw new Error('no está el esquema de la pesca')
     const r = resultadoDe(pescar)
@@ -1335,9 +1356,23 @@ describe('lo que `cumpleCuerpo` no puede contestar sobre lo que este archivo fab
     if (pred === undefined) throw new Error('`holding(tag:carnoso)` dejó de interpretarse')
     const enMano = (ana?.holding ?? []).map((x) => w.bodies.get(x)).filter((c) => c !== undefined)
     const carnoso = enMano.filter((c) => tagsDe(c.body, w.phys).includes('carnoso'))
-    // Hay algo carnoso en la mano —el catálogo lo dice— y la superficie dice que no.
+    const primero = carnoso[0]
+    if (primero === undefined) throw new Error('la fila de pescar no dejó nada carnoso en la mano')
+    console.log(
+      `\n── EL TAG, SOBRE EL PESCADO QUE SALIÓ DEL RÍO ${'─'.repeat(22)}\n` +
+        `  ${primero.body.id}: sustancia «${primero.body.parts[0]?.substance ?? '?'}» · ` +
+        `nombre «${nameOf(primero.body, w.phys)}»\n` +
+        `  tags del catálogo (arnés): [${tagsDe(primero.body, w.phys).join(', ')}] · ` +
+        `tags que publica la vista: [${vistaDe(primero, w).tags.join(', ')}]\n`,
+    )
     expect(carnoso.length).toBeGreaterThan(0)
     expect(carnoso.some((c) => cumpleCuerpo(pred, vistaDe(c, w), lectorDe(w)))).toBe(true)
+    // Las dos lecturas, cruzadas sobre el mismo cuerpo del mundo.
+    expect([...vistaDe(primero, w).tags].sort()).toEqual([...tagsDe(primero.body, w.phys)].sort())
+    // Y el negativo sobre el mismo cuerpo: la caña que lo pescó NO es carnosa.
+    const cana = w.bodies.get('gear')
+    if (cana === undefined) throw new Error('la caña no está en el mundo')
+    expect(cumpleCuerpo(pred, vistaDe(cana, w), lectorDe(w))).toBe(false)
   })
 })
 
@@ -1501,5 +1536,127 @@ describe('el `cellHints` de `extraccion`, medido contra el terreno que decreta e
     const y = procesoDe(pesca.via).completion?.yields.find((z) => z.k === 'drawFromStock')
     if (y === undefined || y.k !== 'drawFromStock') throw new Error('`extraccion` dejó de sacar de un stock')
     expect(Object.keys(pesca.cellHints ?? {})).toEqual([baseRoleName(y.of)])
+  })
+})
+
+// ─── La décima verificación: qué separa al pozo de lo demás ─────────────────
+
+describe('las condiciones del `source` de `extraccion`, medidas contra el banco que decreta el dios', () => {
+  /**
+   * LA SEGUNDA CONDICIÓN DEL POZO, Y LA QUE CIERRA LO QUE `wet` DEJABA ABIERTO.
+   *
+   * `wet >= 0,9` descarta las piedras de la orilla y NO descarta lo que la criatura
+   * lleva en la mano cuando pesca metida en el agua: un cuerpo agarrado viaja en la
+   * celda de quien lo agarra, así que cumple la condición de celda igual que el
+   * banco — y encima le gana, porque `candidatosPara` prefiere lo que ya está en la
+   * mano. Eso es exactamente lo que la corrida del criterio midió: 196 rechazos
+   * `sin-pozo` en 6300 ticks, con el `source` ligado a lo que tenía agarrado.
+   *
+   * La condición que falta es que **el pozo no entra en una mano**, y `portable` no
+   * es una cualidad elegida entre varias que sirvieran: es LA MISMA con la que el
+   * mundo rechaza un `take` (`no-portable`, `world/src/step.ts`). Lo que se mide
+   * acá son las dos poblaciones que separa, sobre el banco de verdad y sobre la
+   * pieza que ese banco rindió en esta misma corrida — no sobre cuerpos de molde.
+   */
+  it('el banco no entra en una mano y la pieza que rinde sí: las dos poblaciones, medidas', () => {
+    const pescar = ESQUEMAS.find((e) => e.establishes === 'holding(tag:carnoso)')
+    if (pescar === undefined) throw new Error('no está el esquema de la pesca')
+    const r = resultadoDe(pescar)
+    const w = r.w
+    if (w === undefined) throw new Error('la fila de pescar no corrió')
+    const o = orilla()
+    const banco = w.bodies.get(idDePozo(o.cx, o.cy))
+    if (banco === undefined) throw new Error('el mundo no materializó el banco del dios')
+    const pieza = r.nacidos.map((id) => w.bodies.get(id)).find((c) => c !== undefined)
+    if (pieza === undefined) throw new Error('la fila de pescar no sacó ninguna pieza: no hay con qué comparar')
+
+    const masaBanco = qualityOf(banco.body, 'mass', w.phys)
+    const masaPieza = qualityOf(pieza.body, 'mass', w.phys)
+    const portableBanco = qualityOf(banco.body, 'portable', w.phys)
+    const portablePieza = qualityOf(pieza.body, 'portable', w.phys)
+    // Cuántas piezas le quedan al banco antes de que deje de calificar. Es el
+    // PRECIO de la condición, y se dice: las últimas piezas de un pozo casi vacío
+    // se vuelven inalcanzables. Sale de una división y no de una estimación.
+    const piezas = masaBanco / masaPieza
+    const piezasQueSeRegalan = Math.floor(MASA_QUE_NO_ENTRA_EN_LA_MANO / masaPieza)
+
+    console.log(
+      `\n── EL POZO NO ENTRA EN UNA MANO ${'─'.repeat(35)}\n` +
+        `  el banco ${banco.body.id}: mass ${num(masaBanco)} kg → portable ${num(portableBanco)}\n` +
+        `  la pieza ${pieza.body.id} que rindió: mass ${num(masaPieza)} kg → portable ${num(portablePieza)}\n` +
+        `  el umbral del catálogo (despejado de \`portable\`): ${num(MASA_QUE_NO_ENTRA_EN_LA_MANO)} kg\n` +
+        `  el banco tiene ${piezas.toFixed(1)} piezas, y esta condición le regala las últimas ` +
+        `${String(piezasQueSeRegalan)} (${((100 * piezasQueSeRegalan) / piezas).toFixed(1)}%)\n`,
+    )
+
+    // Las dos poblaciones, de los dos lados del escalón.
+    expect(portableBanco).toBeLessThanOrEqual(PISO_DE_PORTABLE)
+    expect(portablePieza).toBeGreaterThan(PISO_DE_PORTABLE)
+    // Y que el escalón separe algo de verdad y no por un pelo.
+    expect(masaBanco).toBeGreaterThan(MASA_QUE_NO_ENTRA_EN_LA_MANO * 2)
+    expect(masaPieza).toBeLessThan(MASA_QUE_NO_ENTRA_EN_LA_MANO / 2)
+  })
+
+  it('el umbral es el del MUNDO: el mundo rechaza levantar el banco con `no-portable`', () => {
+    // ─── LO QUE VUELVE EXACTA A UNA CONDICIÓN QUE PARECE UNA APROXIMACIÓN ────
+    //
+    // «El pozo no entra en la mano» suena a proxy de «el pozo es grande». No lo es:
+    // `portable` es la MISMA cualidad con la que `intencionTomar` rebota un `take`,
+    // así que **todo lo que una criatura pudo levantar tiene `portable > 0` por
+    // construcción del mundo**. Pedirle al `source` que no sea portátil no descarta
+    // «el pescado»: descarta la mano ENTERA.
+    //
+    // Y no se afirma leyendo el código del mundo: se le pide al mundo que levante
+    // el banco y se mira con qué motivo dice que no.
+    const pescar = ESQUEMAS.find((e) => e.establishes === 'holding(tag:carnoso)')
+    if (pescar === undefined) throw new Error('no está el esquema de la pesca')
+    const r = resultadoDe(pescar)
+    const w = r.w
+    if (w === undefined) throw new Error('la fila de pescar no corrió')
+    const o = orilla()
+    const idBanco = idDePozo(o.cx, o.cy)
+    const conTake = stepWorld(w, [take({ by: ANA, seq: 99_999 }, idBanco)])
+    const motivos = conTake.events.filter((ev) => ev.k === 'rechazada').map((ev) => ev.por)
+    console.log(
+      `\n  \`take(${idBanco})\` → el mundo contesta: ${motivos.join(', ') || '(no lo rechazó)'}\n`,
+    )
+    expect(motivos).toContain('no-portable')
+  })
+
+  it('la fila de la pesca es la única con `roleNoDeLaMano`, y se lo pide al rol del `drawFromStock`', () => {
+    // Misma cota que la de `cellHints`: una fila nueva con condición de las que no
+    // se fabrican entra acá, y entra sin verificación si nadie mira.
+    const conMano = ESQUEMAS.filter((e) => e.roleNoDeLaMano !== undefined)
+    expect(conMano.map((e) => e.establishes)).toEqual(['holding(tag:carnoso)'])
+    const pesca = conMano[0]
+    if (pesca === undefined) throw new Error('no está la fila de la pesca')
+    // Y se le pide al MISMO rol que el `drawFromStock` nombra como `of`: es de donde
+    // el mundo saca el stock, y sale del catálogo y no de la fila.
+    if (pesca.k !== 'proceso') throw new Error('la fila de la pesca dejó de ir por un proceso')
+    const y = procesoDe(pesca.via).completion?.yields.find((z) => z.k === 'drawFromStock')
+    if (y === undefined || y.k !== 'drawFromStock') throw new Error('`extraccion` dejó de sacar de un stock')
+    expect([...(pesca.roleNoDeLaMano ?? [])]).toEqual([baseRoleName(y.of)])
+  })
+
+  it('NINGUNA fila declara ya `roleFilters`, y el umbral que la fila usaba sigue siendo el del mundo', () => {
+    // ─── LA CONDICIÓN QUE SE SACÓ, Y POR QUÉ SE MIDE IGUAL ──────────────────
+    //
+    // La fila de la pesca declaraba `roleFilters: {source: [portable<=0]}`. El
+    // argumento era correcto de un lado —todo lo que la criatura pudo levantar
+    // tiene `portable > 0`, así que la condición descarta la mano entera— y falso
+    // del otro: descarta ADEMÁS todo cuerpo de menos de 8 kg, y los bancos que el
+    // dios decreta casi siempre pesan menos. Once de las veinte partidas del banco
+    // de la emergencia se quedaban sin un solo banco elegible, y en esas once la
+    // criatura no tiraba la caña una sola vez (`juez/tests/ataque-al-tramo-i.test.ts`,
+    // bloque 3). Los dos `it` de arriba de este mismo `describe` siguen midiendo lo
+    // que de esa condición ERA cierto —el escalón separa el banco de su pieza, y el
+    // mundo rechaza el `take` con `no-portable`—, así que lo único que hace falta
+    // acá es no perder los dos números derivados ni dejar que el campo vuelva sin
+    // que nadie mire.
+    expect(ESQUEMAS.filter((e) => e.roleFilters !== undefined)).toEqual([])
+    // El umbral no está escrito en el paquete: sale de la expresión derivada de
+    // `portable`, y esto lo cruza contra el motor evaluándola.
+    expect(NO_ENTRA_EN_LA_MANO.v).toBe(specOf('portable').range[0])
+    expect(MASA_QUE_NO_ENTRA_EN_LA_MANO).toBe(8)
   })
 })

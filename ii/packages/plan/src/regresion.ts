@@ -516,6 +516,13 @@ function elegirCuerpo(
 interface Extra {
   readonly filtro?: Where
   readonly celda?: WhereCell
+  /**
+   * «Este rol no lo puede llenar algo que la criatura tenga agarrado.» No es una
+   * cualidad —ver `PedidoDeRol.noDeLaMano`— y por eso viaja como bandera y no como
+   * cláusula: `candidatosPara` la contesta con la lista de la mano, que ya tenía
+   * en la mano para desempatar.
+   */
+  readonly noDeLaMano?: true
 }
 
 const SIN_EXTRA: Extra = {}
@@ -557,6 +564,13 @@ function candidatosPara(
 ): { readonly mejor: BodyView | undefined; readonly cuantos: number } {
   const lector = (b: BodyView, id: QualityId): number => v.q(b, id)
   const filtro = comoPredicados(extra.filtro)
+  // Las dos manos que existen, unidas: la de AHORA (`v.self.holding`) y la que el
+  // plan promete (`enMano`, que el nodo raíz siembra con la de ahora y que los
+  // pasos van editando). Se unen y no se elige una porque las dos mienten por
+  // separado: `enMano` pierde lo que un paso consume, y `holding` no sabe de los
+  // pasos. Sólo se construye si alguien va a preguntar.
+  const mano: ReadonlySet<BodyId> =
+    extra.noDeLaMano === true ? new Set<BodyId>([...enMano, ...v.self.holding.map((b) => b.id)]) : new Set<BodyId>()
   const vistos = new Set<BodyId>()
   let mejor: BodyView | undefined
   let mejorEnMano = false
@@ -568,6 +582,14 @@ function candidatosPara(
     // que paga, y ése se liga a `{k:'yo'}` sin pasar por acá.
     if (b.id === v.self.id) return
     if (excluidos.includes(b.id)) return
+    // ─── LO QUE UNO LLEVA PUESTO NO ES EL RÍO ────────────────────────────────
+    //
+    // La exclusión por TENENCIA, y va acá arriba junto a las otras dos de su misma
+    // clase —la criatura, lo ya ligado— y no abajo con las cláusulas: no se le
+    // pregunta nada al cuerpo, se pregunta dónde está. `mano` está vacío cuando
+    // nadie lo pidió, así que esto le cuesta una consulta a un `Set` vacío a las
+    // nueve filas que no lo declaran.
+    if (mano.has(b.id)) return
     if (vistos.has(b.id)) return
     vistos.add(b.id)
     for (const p of clausulas) if (!cumpleCuerpo(p, b, lector)) return
@@ -1145,9 +1167,23 @@ function armarMarco(
     // va APOYADO en la pila hay que haberlo levantado, así que `portable` se le
     // pide a todos menos al primero, que es el que no se mueve.
     const hayQueAlzarlo = ley !== undefined && ley.pila.includes(rol) && ley.pila[0] !== rol
+    // Y lo que las FILAS declaran de esa misma clase —lo que el cuerpo tiene que
+    // ser y nadie fabrica— se SUMA, no se pisa: son dos fuentes distintas de la
+    // misma exigencia (el `arrangement` del catálogo y el `roleFilters` del
+    // esquema) y quedarse con una sola las haría depender del orden en que se
+    // escribió este objeto. Si las dos hablaran de la misma cualidad en
+    // direcciones opuestas —`portable>0` de un proceso `held` contra el
+    // `portable<=0` de la fila de la pesca— la conjunción no la cumple nadie y el
+    // rol se queda sin candidatos, que es exactamente lo que hay que decir: un
+    // proceso que exige tener el pozo en la mano no se puede aplicar a un pozo.
+    const filtro: QualityTest[] = [
+      ...((aLaMano && rol !== paga) || hayQueAlzarlo ? [PORTABLE] : []),
+      ...filtroDelRol(usados, rol),
+    ]
     const extra: Extra = {
-      ...((aLaMano && rol !== paga) || hayQueAlzarlo ? { filtro: [PORTABLE] } : {}),
+      ...(filtro.length === 0 ? {} : { filtro }),
       ...celdaDelRol(usados, rol),
+      ...manoDelRol(usados, rol),
     }
 
     if (rol === paga) {
@@ -1256,6 +1292,35 @@ function armarMarco(
           faltan: pendientes.map((x) => x.pedido),
         }
   return { marco, segundos }
+}
+
+/**
+ * Lo que los esquemas de esta aplicación le piden al CUERPO de un rol y no se
+ * puede fabricar. Es el gemelo de `celdaDelRol`, sobre el otro campo.
+ *
+ * Devuelve un arreglo y no un `{filtro?}` porque quien llama tiene que
+ * CONCATENARLO con lo que sale del `arrangement`, y un registro opcional invita a
+ * pisar en vez de sumar.
+ */
+function filtroDelRol(usados: readonly ConstructionSchema[], rol: RoleName): readonly QualityTest[] {
+  const out: QualityTest[] = []
+  for (const e of usados) for (const t of e.roleFilters?.[rol] ?? []) out.push(t)
+  return out
+}
+
+/**
+ * ¿Alguno de los esquemas de esta aplicación dice que este rol NO se llena con lo
+ * que la criatura tenga agarrado?
+ *
+ * Basta con que lo diga UNO —es una prohibición, y las prohibiciones se suman—, y
+ * por eso es un `some` y no una intersección. Devuelve el fragmento de `Extra` y
+ * no un booleano por lo mismo que `celdaDelRol`: el campo se OMITE cuando nadie lo
+ * pide, y así `PedidoDeRol` sigue siendo comparable con `toEqual` contra los
+ * pedidos de las nueve filas que no lo declaran.
+ */
+function manoDelRol(usados: readonly ConstructionSchema[], rol: RoleName): { readonly noDeLaMano?: true } {
+  const prohibido = usados.some((e) => (e.roleNoDeLaMano ?? []).includes(rol))
+  return prohibido ? { noDeLaMano: true } : {}
 }
 
 /** Lo que los esquemas de esta aplicación le piden a la CELDA de un rol. */

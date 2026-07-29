@@ -384,6 +384,16 @@ export function decretarChunk(
     // `fx` sobre las masas de `FORMAS_SEMBRABLES` (1 y 0.3) es exacto: la escala
     // de `Fixed` es 1000 y las dos son múltiplos de una milésima.
     masa: fx(s.mass),
+    // ─── Y LA FORMA, QUE ACÁ SE TIRABA ────────────────────────────────────
+    //
+    // `ensureSolvable` no eligió esta forma de adorno: la eligió PORQUE con ella
+    // el rol se llena (`FORMAS_SEMBRABLES` son `{vara, 1 kg}` y `{hebra, 0,3 kg}`,
+    // y la tentativa se puntúa forma por forma). Copiar sustancia, celda y masa y
+    // dejar el `form` afuera obligaba a todo lector del decreto a volver a
+    // adivinarla con `formaDeLoSuelto`, que no es la misma decisión: medido sobre
+    // las veinte partidas del banco, 1 de 66 se replantaba como `bloque` cuando el
+    // dios sólo pudo haber elegido `vara` o `hebra`.
+    form: s.form,
   }))
   return {
     ...base,

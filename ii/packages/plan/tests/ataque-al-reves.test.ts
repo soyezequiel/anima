@@ -20,8 +20,10 @@
 //
 // ─── LOS OCHO PEDIDOS, Y LO QUE MIDIÓ CADA UNO ──────────────────────────────
 //
-//   1 «quiero comer»       el paso existe y es INALCANZABLE. Y con el pescado en
-//                          la mano, el plan vuelve a pescar — ADENTRO DEL PESCADO.
+//   1 «quiero comer»       el paso existe y es INALCANZABLE. Lo que este pedido
+//                          medía además —con el pescado en la mano, el plan volvía
+//                          a pescar, y pescaba ADENTRO DEL PESCADO— está cerrado:
+//                          hoy la meta se da por cumplida y el plan sale vacío.
 //   2 «quiero calentarme»  `Predicado` no tiene SUJETO: una brasa ajena a nueve
 //                          celdas da el objetivo por cumplido y el plan sale vacío.
 //   3 «quiero el pescado cocido»  `binds` sale de `goalGraph` y `plan()` no lo lee:
@@ -53,6 +55,7 @@ import type {
   JointView,
   PlaceMemory,
   SelfView,
+  Tag,
   Where,
   WhereCell,
 } from '@anima/skills'
@@ -88,8 +91,17 @@ interface Espia {
   clock: number
 }
 
-function cuerpo(id: string, x: number, y: number, joints: readonly JointView[] = []): BodyView {
-  return { id, at: { x, y }, name: id, madeByMe: false, joints }
+function cuerpo(
+  id: string,
+  x: number,
+  y: number,
+  joints: readonly JointView[] = [],
+  tags: readonly Tag[] = [],
+): BodyView {
+  // `tags` es lo que la superficie publica de la MATERIA (`tagsDe(body, phys)`),
+  // y acá no hay materia: un cuerpo de mentira no está hecho de nada, así que por
+  // omisión no tiene ninguna clase. Los tests que prueban `holding(tag:…)` la pasan.
+  return { id, at: { x, y }, name: id, tags, madeByMe: false, joints }
 }
 
 function criatura(o?: { holding?: readonly BodyView[]; stamina?: number }): SelfView {
@@ -97,6 +109,10 @@ function criatura(o?: { holding?: readonly BodyView[]; stamina?: number }): Self
     id: 'yo',
     at: { x: 0, y: 0 },
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia:
+    // `[]` es la respuesta honesta y es la misma que da `cuerpo()` por omision. En
+    // la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: o?.holding ?? [],
@@ -404,29 +420,36 @@ describe('1 · «quiero comer»: el paso existe y ningún camino lo emite', () =
   })
 
   /**
-   * ─── Y LA OTRA MITAD DEL MISMO AGUJERO, MEDIDA — MEDIO ARREGLADA ───────────
+   * ─── Y LA OTRA MITAD DEL MISMO AGUJERO, QUE ERA LA CARA Y YA NO ESTÁ ───────
    *
-   * Con el pescado YA EN LA MANO, el plan vuelve a pescar entero. Eso SIGUE
-   * PASANDO y sigue siendo un hueco de la superficie, no del planificador:
-   * `cumpleCuerpo` contesta `false` a `sostiene` porque una `BodyView` no trae
-   * sustancia, así que un objetivo de comida no se da por cumplido nunca.
+   * Este test medía dos desastres encadenados, y los dos están cerrados:
    *
-   * Lo que este test medía además, y era lo grave, era lo que pasaba DESPUÉS de
-   * esa respuesta equivocada:
+   *   1. con el pescado YA EN LA MANO, el objetivo de comida NO SE DABA POR
+   *      CUMPLIDO —`cumpleCuerpo` contestaba `false` a toda forma `sostiene`— así
+   *      que el plan salía a pescar de vuelta;
+   *   2. y salía pescando **ADENTRO DEL PESCADO**: `extraccion` le pide al rol
+   *      `source` `mass > 0` y nada más, y `candidatosPara` prefiere lo que ya
+   *      está en la mano antes que lo cercano.
    *
-   *   **el plan salía pescando ADENTRO DEL PESCADO.**
+   * El 1 lo cierra `cumpleCuerpo` leyendo `BodyView.tags`, que la vista publica con
+   * la `Physics` viva (estuvo cerrado leyendo el NOMBRE al revés contra el catálogo,
+   * y esa lectura mentía sobre los residuos de la ley 4: ver `BodyView.tags`), y lo que este test clava
+   * ahora es la consecuencia: **el plan es vacío, porque ya lo tiene**. La regla 6
+   * del planificador —«lo que ya se cumple no se planifica»— por fin la puede
+   * aplicar a una meta de comida.
    *
-   * `extraccion` le pide al rol `source` `mass > 0` y nada más, y `candidatosPara`
-   * prefiere lo que ya está en la mano antes que lo cercano: el pescado era lo
-   * único en la mano y ganaba. Salían seis pasos verdes, coherentes y absurdos
-   * para meter una caña adentro de un pescado de 400 gramos.
+   * El 2 lo cierra el `roleNoDeLaMano` de la fila de la pesca y se mide aparte, en
+   * `tests/el-pozo-y-la-mano.test.ts`: acá ya no se puede medir, justamente porque
+   * con el 1 cerrado esta meta no llega a regresar a ningún `source`.
    *
-   * Eso SÍ está arreglado: el `source` ahora pide `wet >= 0.9` a su celda, y el
-   * pescado —que está en la mano, o sea en la celda seca donde está la criatura—
-   * deja de calificar. Queda el viaje de más, que es el hueco de `sostiene`.
+   * Y hay que decir lo que SIGUE mal, que es lo de la sección entera: dar el
+   * objetivo por cumplido no es comer. El paso `comer` sigue sin emitirlo nadie.
    */
-  it('con el pescado en la mano el plan vuelve a pescar, pero YA NO adentro del pescado', () => {
-    const pescado = cuerpo('pescado', 0, 0)
+  it('con el pescado en la mano el objetivo YA ESTÁ CUMPLIDO: el plan es vacío', () => {
+    // Los tags van EXPLICITOS y no salen del nombre: la vista de verdad los saca de
+    // `tagsDe(body, phys)`, y este mundito no tiene sustancias. Que haya que
+    // escribirlos es la senal de que el nombre ya no decide nada.
+    const pescado = cuerpo('pescado', 0, 0, [], ['organico', 'carnoso'])
     const conPescado = vista({
       self: criatura({ holding: [pescado] }),
       cuerpos: [cuerpo('matorral', 2, 0), cuerpo('vara', 5, 0), cuerpo('pozo', 8, 0), pescado],
@@ -439,20 +462,30 @@ describe('1 · «quiero comer»: el paso existe y ningún camino lo emite', () =
       mojadas: [{ x: 8, y: 0 }],
     })
     const pasos = pasosDe(plan(meta({ k: 'sostiene', tag: 'carnoso' }), conPescado, SIN_CORTE))
-    expect(resumir(pasos)).toEqual([
+    expect(resumir(pasos)).toEqual([])
+    // Y NO es que la búsqueda se haya quedado sin nada que hacer: con la mano
+    // vacía, la misma vista y la misma tabla sacan el plan entero de siete pasos.
+    // Sin este control, un `[]` podría ser un planificador roto en vez de una meta
+    // cumplida.
+    const conLaManoVacia = vista({
+      self: criatura(),
+      cuerpos: [cuerpo('matorral', 2, 0), cuerpo('vara', 5, 0), cuerpo('pozo', 8, 0)],
+      qs: new Map<BodyId, Cualidades>([
+        ['matorral', { flexibility: 0.9, tensile: 0.72, mass: 3, reach: 1.2, rigidity: 0.1 }],
+        ['vara', { reach: 4, rigidity: 0.7, tensile: 0.55, flexibility: 0.2, heatCapacity: 1.7, mass: 1 }],
+        ['pozo', { mass: 50 }],
+      ]),
+      mojadas: [{ x: 8, y: 0 }],
+    })
+    expect(resumir(pasosDe(plan(meta({ k: 'sostiene', tag: 'carnoso' }), conLaManoVacia, SIN_CORTE)))).toEqual([
       'ir(vara)',
       'sostener(vara)',
       'ir(matorral)',
       'sostener(matorral)',
       'unir(binder=matorral, a=vara)',
-      // El pozo, a ocho celdas, le gana al pescado que está en la mano: es el
-      // único que está en agua franca. El plan es absurdo por otra razón —ya hay
-      // pescado— y esa razón vive en `cumpleCuerpo`, no acá.
       'ir(pozo)',
       'aplicar(extraccion, source=pozo)',
     ])
-    // Y que el pescado NO aparezca en ningún paso es la mitad que se arregló.
-    expect(resumir(pasos).some((s) => s.includes('pescado'))).toBe(false)
   })
 })
 

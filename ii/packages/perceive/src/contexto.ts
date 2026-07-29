@@ -266,6 +266,10 @@ export class Contexto {
     id: '',
     at: Object.freeze({ x: 0, y: 0 }),
     name: '',
+    // Sin cuerpo no hay partes, y sin partes no hay materia de ninguna clase: `[]`
+    // es la respuesta y no un relleno. Es la misma que da `tagsDe` sobre un cuerpo
+    // sin partes, así que la muerta no miente sobre lo que era.
+    tags: Object.freeze([]) as readonly [],
     madeByMe: false,
     joints: Object.freeze([]) as readonly [],
     holding: Object.freeze([]) as readonly [],

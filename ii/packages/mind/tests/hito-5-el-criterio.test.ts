@@ -30,51 +30,56 @@
 //       derecho a la vara y ninguno necesita partirse antes. Está clavado en un
 //       `it.fails` más abajo para que la diferencia no se pierda.
 //
-//   (2) NO SE CUMPLE. La criatura se muere de hambre en el tick 6194 de 20.000
-//       —el 31%— con CERO bocados comidos. El tick de la muerte no se movió ni
-//       uno desde la primera medición; **todo lo demás sí, y lo que se movió es
-//       el diagnóstico entero.**
+//   (2) NO SE CUMPLE, y de los dos eslabones que lo rompían **queda UNO**. La
+//       criatura muere de hambre en el tick 3627 de 20.000 —el 18%— con CERO
+//       bocados, PERO con un pescado en la mano desde el tick 96 y sin un solo
+//       rechazo del mundo.
 //
-//       ─── PRIMERO, UNA CORRECCIÓN DE ESTE MISMO ARCHIVO ───────────────────
+//       ─── LO QUE SE CERRÓ, CON LOS DOS NÚMEROS AL LADO ────────────────────
 //
-//       Donde decía «pescas 199» decía una cosa falsa, y la escribió esta línea:
-//       `r.cuenta.get('aplicar(extraccion)')`, que cuenta DESPEGUES y no
-//       aterrizajes. Medido ahora, contando las dos cosas por separado:
+//                                    tramo anterior        hoy
+//         tiros de caña                        199           2
+//         rechazos `apply/sin-pozo`            196           0
+//         pescados sacados del agua              1           1
+//         plan(holding(tag:carnoso))    aplicar(…)   0 pasos: ya está cumplida
+//         con un leño ardiendo          5 pasos, 7   4 pasos, 5 expansiones
+//                                       expansiones  (se cayó el `aplicar`)
 //
-//         199 despegues de `aplicar(extraccion)`
-//         197 aterrizaron con `ok:false` («extraccion no dio resultado en 1 intentos»)
-//           2 eventos `nacio` en toda la corrida: la caña y UN pescado
+//       Eran dos bugs acotados y estaban los dos afuera de este paquete:
+//       `cumpleCuerpo` de `@anima/plan` contestaba `false` para TODA forma
+//       `sostiene` —un `case 'sostiene': return false` literal—, así que
+//       `holding(tag:carnoso)` no se daba por cumplida ni con el pescado
+//       agarrado; y el rol `source` de `extraccion` pedía `mass > 0` y nada más,
+//       así que el cuerpo más cercano que calificaba era el de su propia mano.
+//       El bucle de 199 tiros de caña adentro de su propio pescado ya no existe.
 //
-//       **Sacó UN pescado, no 199.** La frase «pescó 199 veces y se murió de
-//       hambre» viajó por tres documentos y un ADR, y era un artefacto del
-//       contador. Lo que hacía las otras 198 veces está medido abajo.
+//       ─── Y MUERE ANTES QUE ANTES (3627 < 6194), QUE NO ES UN RETROCESO ───
 //
-//       ─── LO QUE LE CONTESTA EL MUNDO, Y ES LA PISTA ──────────────────────
+//       Es el único número de este archivo que se puede leer al revés, así que
+//       está medido aparte (DIAGNÓSTICO 6/6):
 //
-//       De los 197 rechazos, **196 son `sin-pozo`** —«no hay stock detrás de ese
-//       cuerpo»— y uno solo es `no-pico`. Y el banco del dios al que le apunta
-//       termina la corrida con 129,91 kg de stock: no se vació nunca (eso sería
-//       `pozo-vacio`, y no aparece). O sea que no le fallaba la suerte ni se le
-//       agotó el río: **le estaba pescando a otra cosa**. A qué, medido con los
-//       roles del paso que el planificador emite:
+//         · el bucle viejo era PARADA —tirar la caña adentro de su propio
+//           pescado falla sin mover una pata— y gastaba −0,0500 por tick, que es
+//           `COSTO_VIVIR_POR_SEGUNDO / hz` exacto: 310 ÷ 0,05 = 6200, murió en
+//           6194. Pagaba sólo por respirar;
+//         · el bucle nuevo CAMINA: con el pescado en la mano y el fuego fuera de
+//           alcance, la mente cae a explorar / guarecerse / juntar. Medido:
+//           −0,08636 por tick, **1,73×** lo que cuesta estar viva.
 //
-//           aplicar(extraccion)  gear = w000000001 (la caña)
-//                                source = w000000002 (EL PESCADO QUE TIENE EN LA MANO)
+//       El mismo tanque rinde 6200 ticks quieta y 3600 caminando. El criterio (2)
+//       no se mide en ticks aguantados —se mide en si comió, y las dos corridas
+//       comieron cero—: lo que se movió no es la distancia al criterio, es que el
+//       eslabón que falta quedó aislado y con contraprueba. (Con el tanque lleno
+//       pasa lo mismo a otra escala: 19.995 antes, 11.618 hoy, 0,0861 por tick.)
 //
-//       Le tira la caña adentro del pescado que ya pescó. 196 veces.
+//       Y de paso se ve algo que nadie estaba mirando: **el pescado se le pudre
+//       en la mano** mientras espera. Sale del agua con `toxicity` 0,25 y a los
+//       3000 ticks marca 0,7100; pudrirse no le saca el tag `carnoso`, así que la
+//       meta que lo retiene sigue cumplida.
 //
-//       ─── LOS DOS ESLABONES DONDE SE CORTA LA CADENA ──────────────────────
+//       ─── EL ESLABÓN QUE QUEDA, Y ES UNO SOLO ────────────────────────────
 //
-//       (A) **La mitad de abajo: `holding(tag:carnoso)` no se sabe cumplida.**
-//           `cumpleCuerpo` de `@anima/plan` contesta `false` para TODA forma
-//           `sostiene` —una `BodyView` no trae la sustancia ni sus tags— así que
-//           todo plan que quiera algo carnoso arranca con «pescá uno», y el rol
-//           `source` de `extraccion` sólo pide `mass > 0`: el cuerpo más cercano
-//           que cumple es el pescado de su propia mano. Un paso que falla se
-//           lleva puesto el plan entero, así que replanifica, sale el mismo plan,
-//           y vuelve a fallar. **Ése es el bucle que consume la corrida.**
-//
-//       (B) **La mitad de arriba: no sabe pedir un fuego de la potencia justa.**
+//       **No sabe pedir un fuego de la potencia justa.**
 //           La mente SÍ quiere lo cocido —cambia la meta a
 //           `holding(tag:carnoso,toxicity<0.0528)` en el tick 98, medido— y
 //           `plan()` regresa hasta la ley 5 y se corta con
@@ -86,16 +91,15 @@
 //
 //           Y la contraprueba, que es lo que hace que esto sea un diagnóstico y
 //           no una sospecha: **con un leño ya ardiendo adentro de la ventana
-//           (emitsPower 310,62) el plan CIERRA en 7 expansiones** y sale
-//           `aplicar → ir → poner → poner → sostener`, que es pescar, ir al
-//           fuego, apoyar la losa encima, apoyar el pescado en la losa y
-//           levantarlo cocido. O sea que el planificador sabe LIGAR un fuego que
-//           existe; lo que no sabe es ENCENDER uno del que pueda prometer la
-//           potencia.
+//           (emitsPower 310,62) el plan CIERRA en 5 expansiones** y sale
+//           `ir → poner → poner → sostener`, que es ir al fuego, apoyar la losa
+//           encima, apoyar el pescado que ya tiene en la losa y levantarlo
+//           cocido. O sea que el planificador sabe LIGAR un fuego que existe; lo
+//           que no sabe es ENCENDER uno del que pueda prometer la potencia.
 //
 //       ─── Y EL VENENO, QUE ES LO QUE VOLVIÓ OBLIGATORIO EL FUEGO ──────────
 //
-//       Forzada a tragar, el pescado crudo le SACA 11,56 de aliento (231 ticks de
+//       Forzada a tragar, el pescado crudo le SACA 11,40 de aliento (228 ticks de
 //       vida menos). Antes del ADR II-0013 daba **+8,37** y la lectura de este
 //       archivo era «le sobraba comida: pescó 199 y le hacían falta 83». Esa
 //       lectura tenía las dos mitades mal —ni pescó 199, ni le servían crudas— y
@@ -108,36 +112,40 @@
 //       Regalándole el eslabón que no sabe hacer —cien pescados YA COCIDOS en la
 //       celda donde está parada, con los números que la ley 5 deja de verdad—
 //       **la misma mente, sin tocar una línea, sobrevive los 20.000 ticks**:
-//       murió en −1, 65 bocados, aliento final 1,4331. No es que coasteó con lo
-//       que traía puesto: la cuenta cierra en 310 (inicial) + 691,43 (comidos)
-//       − 1000 (vivir) = 1,43. Comió, y por eso llegó.
+//       murió en −1, 65 bocados, aliento final 1,4593. No es que coasteó con lo
+//       que traía puesto: la cuenta cierra en 310 (inicial) + 691,46 (comidos)
+//       − 1000 (vivir) = 1,46. Comió, y por eso llegó.
 //
 //       El número que hace que esto no sea opinable: **20.000 ticks a 20 Hz son
 //       1000 segundos de mundo, `COSTO_VIVIR_POR_SEGUNDO` es 1,0 y el tanque de
 //       `stamina` topa en 1000.** O sea que el criterio (2), dicho en la moneda
 //       del mundo, es literalmente «comé al menos una vez». Medido: con el tanque
-//       LLENO tampoco llega — se muere en el 19.995, y eso NO es «a cinco ticks
-//       del final»: es exactamente haber sobrevivido lo que traía puesto y ni un
-//       segundo más, porque 1000 de tanque SON los 1000 segundos de la corrida.
-//       (Antes de la reparación del tramo G eran 18.524: se quedaba pegada a una
-//       meta que ningún esquema establece y se pasaba media vida deambulando.)
+//       LLENO tampoco llega — se muere en el 11.618 gastando 0,0861 por tick, o
+//       sea que ni siquiera le rinde el tanque: se lo va en deambular. (El tramo
+//       anterior moría en el 19.995 y el de más atrás en el 18.524; los tres son
+//       la misma cosa dicha con distinta plata, y en los tres comió cero.)
 //
 //   (4) SE CUMPLE, y medido con un reloj de pared de verdad, que es la única
 //       forma de que el contador pueda moverse. Sin reloj, `porTiempo` es cero
 //       POR CONSTRUCCIÓN (`bucle.ts`: «sin reloj de pared no hay ninguna ventana
-//       que vencer») y un `expect(0)` no mediría nada. Con reloj: entre 0,08 y
-//       0,13 ms de trabajo por tick contra una ventana de 50 ms, y CERO ticks
+//       que vencer») y un `expect(0)` no mediría nada. Con reloj: entre 0,18 y
+//       0,20 ms de trabajo por tick contra una ventana de 50 ms, y CERO ticks
 //       perdidos en los 20.000, ni por tiempo ni por falla. Sobra un factor de
-//       entre 400 y 600. (Los milisegundos se mueven entre corridas porque son
+//       entre 250 y 270. (Los milisegundos se mueven entre corridas porque son
 //       reloj de máquina; los que gobiernan son los que imprime la corrida de
 //       hoy, no los de este comentario. Lo que no se mueve es el cero.)
 //
-//       De ese total, el mundo se lleva ~0,034 ms y la mente ~0,041 encima
-//       —medido aparte, sobre 4000 ticks con una criatura—: la escalera cuesta
-//       del orden de lo que cuesta el `stepWorld` de este mundito, y las dos
-//       juntas entran cientos de veces en la ventana. Lo que hace inalcanzable el
-//       (3) no es la mente: son 5000 cuerpos de física, que es lo que aquel banco
-//       ya diagnosticó.
+//       De ese total, el mundo se lleva ~0,058 ms y la mente ~0,24 encima
+//       —medido aparte, sobre 4000 ticks con una criatura—. El tramo anterior
+//       medía 0,034 y 0,041: la mente pasó de costar 1,2 mundos a costar 4, y
+//       está medido POR QUÉ y no es la reparación. Un `plan()` que CIERRA cuesta
+//       0,003 ms y uno que se CORTA cuesta 0,25 —**entre 68× y 80× según la
+//       corrida**, porque rendirse obliga a recorrer la búsqueda entera—, y lo
+//       que la criatura pide todo el tiempo pasó de cerrar a cortarse. Cuando se
+//       cierre el eslabón B el número vuelve solo. Aun así entra 250 veces en la
+//       ventana de 50 ms, y lo que hace inalcanzable el (3) sigue sin ser la
+//       mente: son 5000 cuerpos de física, que es lo que aquel banco ya
+//       diagnosticó.
 //
 // ═══ CÓMO SE MIDE ACÁ ═══════════════════════════════════════════════════════
 //
@@ -145,10 +153,19 @@
 // siguen el patrón ya decidido del proyecto —`ANIMA_BANCO=1`—: el que depende del
 // reloj del sistema (el de pared del criterio 4), porque un test de rendimiento
 // adentro de la suite normal es flaky y un test flaky enseña a ignorar el rojo; y
-// el más CARO de todos (los 20.000 ticks con la despensa de cien cuerpos, 4,1 s
-// medidos), que se imprime siempre y se afirma sólo midiendo en serio. Ése tiene
-// al lado una corrida corta —2000 ticks— que SÍ afirma siempre, así que la guarda
-// de regresión existe igual sin pagar los cuatro segundos en cada `pnpm ii:test`.
+// el más CARO de todos (los 20.000 ticks con la despensa de cien cuerpos, **30 s
+// medidos hoy** contra los 4,1 s del tramo anterior), que se imprime siempre y se
+// afirma sólo midiendo en serio. Ése tiene al lado una corrida corta —2000 ticks—
+// que SÍ afirma siempre, así que la guarda de regresión existe igual sin pagar los
+// treinta segundos en cada `pnpm ii:test`.
+//
+// El 30 s tiene la misma causa que el párrafo de arriba, y está medido aparte: en
+// la despensa el pedido de la criatura TAMBIÉN se corta —los cocidos que le
+// quedan se pudren por encima del `toxicity<0,0528` que pide— y cada `plan()` que
+// se corta con cien cuerpos a la vista cuesta 0,6929 ms. La mente se lleva ahí
+// 0,795 ms por tick sobre 0,601 del mundo, o sea del orden de un plan cortado por
+// tick. No es que la reparación haya puesto lenta la escalera: es que pedir algo
+// que no se puede conseguir cuesta más que conseguirlo.
 //
 // Y lo que no se cumple NO se ablanda: va en `it.fails` con la salida medida al
 // lado, que es el idioma con el que este repositorio ya dejó abiertos el techo
@@ -339,7 +356,23 @@ interface Corrida {
   readonly aterrizados: ReadonlyMap<string, number>;
   /** Los aterrizajes con `ok: false`, por «nombre: porqué». */
   readonly fallados: ReadonlyMap<string, number>;
+  /**
+   * EL TICK EN QUE UN PESCADO APARECE EN LA MANO, o `-1` si nunca apareció.
+   *
+   * Es la tercera cuenta de este arnés, y existe por la misma razón que
+   * `aterrizados`: acá ya se contaron despegues creyendo que eran pescas. Pero
+   * `aterrizados` TAMPOCO alcanza, y este tramo lo midió: el vuelo que de verdad
+   * sacó el pescado aterriza con `ok:false` —«ya tengo «holding(tag:carnoso)»:
+   * corto lo que estaba haciendo»—, porque la mente lo interrumpe en el mismo
+   * tick en que la meta se cumple. Contar ESE vuelo como fracaso es la misma
+   * clase de error que contar despegues como pescas, sólo que con el signo
+   * cambiado. Lo único que no se puede leer mal es el estado del mundo: hay un
+   * cuerpo de pescado en la mano, o no lo hay.
+   */
+  readonly pescoEn: number;
   readonly aliento: readonly string[];
+  /** La misma curva de aliento en números, para poder sacarle la pendiente. */
+  readonly muestras: readonly number[];
   readonly ms: number;
   readonly partida: Partida;
   readonly mente: Mente;
@@ -363,7 +396,12 @@ interface Corrida {
  * criatura se muere, porque el criterio (4) habla de LA CORRIDA y no de la
  * criatura: 20.000 ticks son 20.000 ventanas, las viva alguien o no.
  */
-function correr(w: WorldState, quien: string, n: number, o: { reloj?: boolean } = {}): Corrida {
+function correr(
+  w: WorldState,
+  quien: string,
+  n: number,
+  o: { reloj?: boolean; cada?: number } = {},
+): Corrida {
   // ─── `vigilar: true`, Y NO ES DECORACIÓN ──────────────────────────────────
   //
   // `grep exigirInvariantes ii/` devolvía dos archivos: el que lo define y su
@@ -391,8 +429,11 @@ function correr(w: WorldState, quien: string, n: number, o: { reloj?: boolean } 
   const aterrizados = new Map<string, number>();
   const fallados = new Map<string, number>();
   const curva: string[] = [];
+  const muestras: number[] = [];
+  const cada = o.cada ?? 2000;
   let murioEn = -1;
   let ultimoAliento = 0;
+  let pescoEn = -1;
   // ─── CÓMO SE CUENTA UN ATERRIZAJE, Y POR QUÉ ASÍ ──────────────────────────
   //
   // `Partida` no publica un contador de vuelos terminados, pero sí publica EL
@@ -430,7 +471,13 @@ function correr(w: WorldState, quien: string, n: number, o: { reloj?: boolean } 
       if (p.state.actors.has(quien)) ultimoAliento = aliento(p, quien);
       else murioEn = t;
     }
-    if (t % 2000 === 0) curva.push(`${String(t)}:${aliento(p, quien).toFixed(1)}`);
+    // El estado del mundo, que es lo único que no se puede leer mal: si hay un
+    // cuerpo de pescado en la mano, pescó. Se busca sólo hasta encontrarlo.
+    if (pescoEn < 0 && enLaMano(p, quien).some((s) => s.includes('pescado'))) pescoEn = t;
+    if (t % cada === 0) {
+      curva.push(`${String(t)}:${aliento(p, quien).toFixed(1)}`);
+      muestras.push(aliento(p, quien));
+    }
   }
   const ms = Number(process.hrtime.bigint() - t0) / 1e6;
   const i = p.informe;
@@ -448,7 +495,9 @@ function correr(w: WorldState, quien: string, n: number, o: { reloj?: boolean } 
     cuenta,
     aterrizados,
     fallados,
+    pescoEn,
     aliento: curva,
+    muestras,
     ms,
     partida: p,
     mente: m,
@@ -743,14 +792,20 @@ describe('(1) con hambre y un río: la mente llega sola a la caña y al pescado'
     expect(r.ticksPerdidos).toBe(0);
     expect(r.murioEn).toBe(-1);
 
-    const primeraPesca = r.cuando[r.nombres.indexOf('aplicar(extraccion)')];
+    // LOS DOS TICKS, Y NO UNO. Acá decía «primera pesca en el tick 35» y 35 es
+    // cuando TIRA LA CAÑA: es el mismo desliz de despegue-por-aterrizaje que ya se
+    // pagó una vez en este archivo. El pescado entra a la mano en el 96, sesenta y
+    // un ticks después, y ése es el número que dice que la cadena cerró.
+    const tiraLaCaña = r.cuando[r.nombres.indexOf('aplicar(extraccion)')];
+    expect(r.pescoEn).toBeGreaterThan(0);
     MEDIDO.set(
       'cadena',
-      `7 eslabones, primera pesca en el tick ${String(primeraPesca ?? -1)}, ` +
-        `${dos(calorias(r.partida, 'ana'))} calorías en la mano`,
+      `7 eslabones: tira la caña en el tick ${String(tiraLaCaña ?? -1)} y el pescado entra a la mano ` +
+        `en el ${String(r.pescoEn)}, ${dos(calorias(r.partida, 'ana'))} calorías`,
     );
     console.log(
       `\n─── LA CADENA DE LA CAÑA, CONTRA EL MUNDO DE VERDAD ───\n${r.volados.slice(0, 8).join('\n')}\n` +
+        `  tira la caña en el tick ${String(tiraLaCaña ?? -1)} · el pescado entra a la mano en el ${String(r.pescoEn)}\n` +
         `  en la mano: ${enLaMano(r.partida, 'ana').join(' · ')} (${dos(calorias(r.partida, 'ana'))} calorías)\n`,
     );
   });
@@ -851,26 +906,51 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
   });
 
   it.fails(
-    'CRITERIO: 20.000 ticks viva — se muere de hambre a un tercio del camino',
+    'CRITERIO: 20.000 ticks viva — pesca, guarda el pescado y se muere esperando un fuego',
     () => {
-      // LA SALIDA MEDIDA, y está impresa abajo por la corrida de verdad:
+      // LA SALIDA MEDIDA HOY, y está impresa abajo por la corrida de verdad:
       //
-      //   murió en el tick 6194 de 20.000 (31%), con el aliento en 0
-      //   199 DESPEGUES de aplicar(extraccion), 197 aterrizajes con ok:false, 0 bocados
-      //   aliento: 0:309,9 → 2000:209,7 → 4000:109,7 → 6000:9,7   (−0,05 por tick, clavado)
+      //   murió en el tick 3627 de 20.000 (18%), con el aliento en 0
+      //   2 despegues de aplicar(extraccion) · UN pescado en la mano desde el tick 96
+      //   0 bocados · 321 explorar(8t) + 321 guarecerse + 321 juntar×1, todos fallando
+      //   aliento: 0:309,9 → 2000:140,5 → 4000:0
       //
-      // Los −0,05 por tick son `COSTO_VIVIR_POR_SEGUNDO / hz` y NADA MÁS: después
-      // del tick 66 la criatura no camina, se queda al lado del pozo tirando la caña
-      // adentro del pescado que ya tiene en la mano. O sea que no se muere por gastar
-      // de más: se muere porque **cada plan suyo arranca por un paso que el mundo
-      // rechaza, y un paso que falla se lleva el plan entero**.
+      // ─── LO QUE MEDÍA EL TRAMO ANTERIOR, QUE ES LA VARA DE LA MEJORA ───────
       //
-      // ─── LO QUE ESTE MISMO TEST IMPRIMÍA MAL, Y HAY QUE DEJARLO ESCRITO ─────
+      //   murió en el tick 6194 · 199 despegues de aplicar(extraccion) · 1 pescado
+      //   aliento: 0:309,9 → 2000:209,7 → 4000:109,7 → 6000:9,7  (−0,05/tick, clavado)
       //
-      // Decía `pescas 199` leyendo `r.cuenta`, que cuenta DESPEGUES. La frase
-      // «pescó 199 veces y se murió de hambre» salió de acá y viajó a tres
-      // documentos y a un ADR. Sacó UN pescado. La cuenta de aterrizajes está abajo
-      // y es la que gobierna de acá en adelante.
+      // El bucle de 199 tiros de caña adentro de su propio pescado SE TERMINÓ: son
+      // 2 despegues, y el mundo ya no contesta `sin-pozo` ni una vez (196 antes,
+      // 0 ahora — medido en el 4/6). Ése era el eslabón A y está cerrado.
+      //
+      // ─── Y AHORA MUERE ANTES. NO ES UN RETROCESO, Y HAY QUE DECIR POR QUÉ ──
+      //
+      // 3627 < 6194, y leerlo como «empeoró» sería el tercer encuadre engañoso de
+      // este proyecto. Lo que cambió es a QUÉ dedica el tiempo que le queda:
+      //
+      //   · antes se quedaba PARADA al lado del pozo tirando la caña, y un tiro
+      //     fallido no cuesta patas: gastaba −0,0500 por tick, que es exactamente
+      //     `COSTO_VIVIR_POR_SEGUNDO / hz` y nada más;
+      //   · ahora consigue el pescado en el tick 96, sube el pedido a «lo cocido»,
+      //     el planificador se corta en la ventana de potencia del fuego y la mente
+      //     cae a las conductas de fondo — que CAMINAN. Medido en el 6/6: −0,08636
+      //     por tick, 1,73× lo que cuesta estar viva.
+      //
+      // O sea que el mismo tanque de 310 rinde 6194 ticks quieta y 3627 caminando.
+      // El criterio no se mide en ticks aguantados: se mide en si comió, y en las
+      // dos corridas comió CERO. Lo que se movió no es la distancia al criterio,
+      // es el eslabón donde se corta la cadena — que ahora es UNO solo y está
+      // aislado con su contraprueba (5/6).
+      //
+      // ─── CÓMO NO SE CUENTAN LAS PESCAS, POR SEGUNDA VEZ ────────────────────
+      //
+      // Acá decía «pescas 199» leyendo `r.cuenta`, que cuenta DESPEGUES, y esa
+      // frase viajó a tres documentos y a un ADR. Pero `aterrizados` tampoco sirve:
+      // hoy imprime CERO pescas y el pescado está en la mano. El vuelo que lo sacó
+      // aterriza con `ok:false` porque la mente lo interrumpe en el mismo tick en
+      // que la meta se cumple («ya tengo «holding(tag:carnoso)»: corto lo que
+      // estaba haciendo»). Lo que gobierna es `pescoEn`, que mira el mundo.
       //
       // POR QUÉ NO SE ABLANDA A «sobrevive lo que pueda»: el criterio es del
       // documento de arquitectura y es el criterio de corte del proyecto. Los tests
@@ -878,7 +958,6 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       // qué se hace.
       const r = correr(laEscenaDelDocumento(), 'ana', CRITERIO_TICKS);
       const despegues = r.cuenta.get('aplicar(extraccion)') ?? 0;
-      const pescadas = r.aterrizados.get('aplicar(extraccion)') ?? 0;
       const comidas = [...r.cuenta]
         .filter(([k]) => k.startsWith('comer') || k.startsWith('tragar'))
         .reduce((a, [, v]) => a + v, 0);
@@ -892,19 +971,25 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
           `  ATERRIZAJES ok: ${[...r.aterrizados].map(([k, v]) => `${k}×${String(v)}`).join(' · ')}\n` +
           `  ATERRIZAJES mal:\n` +
           [...r.fallados].map(([k, v]) => `      ${String(v).padStart(4)} × ${k}`).join('\n') +
-          `\n  pescas DE VERDAD ${String(pescadas)} de ${String(despegues)} intentos · bocados ${String(comidas)} · ` +
-          `ticks perdidos ${String(r.ticksPerdidos)} · ${r.ms.toFixed(0)} ms de reloj\n` +
+          `\n  EL PESCADO ENTRA A LA MANO EN EL TICK ${String(r.pescoEn)} (${String(despegues)} tiros de caña en toda la corrida) · ` +
+          `bocados ${String(comidas)} · ticks perdidos ${String(r.ticksPerdidos)} · ${r.ms.toFixed(0)} ms de reloj\n` +
           `  ARNÉS DE INVARIANTES: ${String(r.violaciones.length)} estados ilegales en ${String(CRITERIO_TICKS)} ticks` +
           `${r.violaciones.length === 0 ? ' (y por primera vez alguien estaba mirando)' : `\n      ${r.violaciones.slice(0, 5).join('\n      ')}`}\n`,
       );
       MEDIDO.set(
         'supervivencia',
-        `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} · ` +
-          `${String(pescadas)} pescas DE VERDAD en ${String(despegues)} intentos · ${String(comidas)} bocados`,
+        `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} · pescó UNO en el tick ` +
+          `${String(r.pescoEn)} con ${String(despegues)} tiros de caña · ${String(comidas)} bocados`,
       );
 
       // Lo que la corrida tiene que seguir mostrando aunque el criterio esté rojo.
-      expect(despegues).toBeGreaterThan(100);
+      //
+      // Y ESTA GUARDA CAMBIÓ DE SIGNO, que es la forma más corta de decir lo que
+      // arregló el tramo: donde decía `expect(despegues).toBeGreaterThan(100)`
+      // —el bucle era tan estable que se podía afirmar— ahora se afirma que NO
+      // hay bucle, y que el pescado está.
+      expect(despegues).toBeLessThan(10);
+      expect(r.pescoEn).toBeGreaterThan(0);
       expect(r.ticksPerdidos).toBe(0);
       // Y EL MUNDO SOBRE EL QUE SE MIDIÓ TIENE QUE SER LEGAL. Es nuevo, y no es
       // higiene: un «murió en el tick 6194» sobre un mundo que nadie audita no
@@ -918,7 +1003,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     300_000,
   );
 
-  it('DIAGNÓSTICO 1/5 · LO QUE YA NO PASA: la mente SÍ tiene por dónde comer, y quiere lo cocido', () => {
+  it('DIAGNÓSTICO 1/6 · LO QUE YA NO PASA: la mente SÍ tiene por dónde comer, y quiere lo cocido', () => {
     // ─── ESTE DIAGNÓSTICO SE DIO VUELTA, Y ES LA MEJORA DEL TRAMO ──────────
     //
     // Decía, con estas palabras: «la mente NUNCA emite `comer`. No tiene por
@@ -964,10 +1049,12 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     );
   }, 120_000);
 
-  it('DIAGNÓSTICO 2/5 · y no come porque el crudo la MATA: `comer` rechaza el pescado', () => {
+  it('DIAGNÓSTICO 2/6 · y no come porque el crudo la MATA: `comer` rechaza el pescado', () => {
     // La innata filtra `calories > 0 && toxicity <= toxicidadTolerada`, con el
     // tolerado en 0,2 por omisión. Y el pescado que ella misma sacó del agua mide
-    // 0,2761 — apenas por encima, y no porque se haya podrido: la sustancia
+    // 0,2742 —el tramo anterior midió 0,2761, y la diferencia es que hoy el pescado
+    // sale del agua sesenta ticks más tarde y llega menos podrido a este test—:
+    // apenas por encima del tolerado, y no porque se haya podrido: la sustancia
     // `pescado` nace con `toxicity: 0,25` en el catálogo de la semilla.
     //
     // ─── LO QUE ERA INCÓMODO ACÁ SE ARREGLÓ (ADR II-0013) ──────────────────
@@ -1014,7 +1101,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     );
   });
 
-  it('DIAGNÓSTICO 3/5 · forzada a comer, el pescado CRUDO le SACA aliento (ADR II-0013)', () => {
+  it('DIAGNÓSTICO 3/6 · forzada a comer, el pescado CRUDO le SACA aliento (ADR II-0013)', () => {
     // ─── ESTE DIAGNÓSTICO CAMBIÓ DE SIGNO, Y ES LO QUE VOLVIÓ OBLIGATORIO EL FUEGO ─
     //
     // Se llamaba «le sobraba comida: pescó 199 y le hacían falta ~83» y medía
@@ -1026,22 +1113,27 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // Esa lectura tenía las DOS mitades mal, y las dos están medidas en este
     // archivo:
     //
-    //   · **no pescó 199**: pescó UNO. Las otras 198 veces tiró la caña y el mundo
-    //     le contestó que ahí no había pozo (ver el DIAGNÓSTICO 4/5);
+    //   · **no pescó 199**: pescó UNO. Las otras 198 veces tiraba la caña adentro
+    //     de su propio pescado y el mundo le contestaba que ahí no había pozo. Ese
+    //     bucle YA NO EXISTE —hoy son 2 tiros y 0 rechazos `sin-pozo`, medido en el
+    //     DIAGNÓSTICO 4/6— y sigue pescando UNO: el que le alcanza para cumplir
+    //     `holding(tag:carnoso)` y quedarse esperando el fuego;
     //   · y **no le servían crudas**: con el ADR II-0013 el mundo cobra `toxicity`
-    //     al tragar, y el mismo pescado le SACA 11,56. El «le sobraba comida» se
-    //     apoyaba en un hueco: comer veneno salía gratis.
+    //     al tragar, y el mismo pescado le SACA 11,40 (medido en esta corrida; el
+    //     tramo anterior midió 11,56 sobre un pescado un poco MÁS podrido, porque
+    //     salía del agua antes: `toxicity` 0,2761 contra 0,2742). El «le sobraba
+    //     comida» se apoyaba en un hueco: comer veneno salía gratis.
     //
     // ─── QUÉ SIGNIFICA PARA EL CRITERIO (2), dicho sin adornos ─────────────
     //
     // No hay número de pescados CRUDOS que alcance. Para llegar a los 20.000 hay
     // que cocinar, y la tolerancia de 0,2 de la innata dejó de ser prudencia sin
-    // respaldo: el `DIAGNÓSTICO 2/5` mide un rechazo que ahora el mundo respalda.
+    // respaldo: el `DIAGNÓSTICO 2/6` mide un rechazo que ahora el mundo respalda.
     //
     // Lo que la cadena del fuego ya sabe hacer está medido y anda
     // (`world/tests/el-fuego.test.ts`, `perceive/tests/ataque-a-la-costura.test.ts`):
     // el mismo pescado cocido deja +16,08. Que la mente ya lo QUIERE lo mide el
-    // 1/5; dónde se le corta la cadena, el 4/5 y el 5/5.
+    // 1/6; dónde se le corta la cadena, el 4/6 y el 5/6.
     const r = correr(laEscenaDelDocumento(), 'ana', 200);
     const p = r.partida;
     const antes = aliento(p, 'ana');
@@ -1082,44 +1174,47 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     );
   });
 
-  it('DIAGNÓSTICO 4/5 · ESLABÓN A: le tira la caña adentro del pescado que tiene en la mano', () => {
-    // ─── EL ESLABÓN QUE SE COME LA CORRIDA, Y NADIE LO HABÍA MIRADO ────────
+  it('DIAGNÓSTICO 4/6 · ESLABÓN A, CERRADO: pesca UNA vez y sabe que lo que tiene en la mano es carne', () => {
+    // ─── EL ESLABÓN QUE SE COMÍA LA CORRIDA, Y LO QUE MIDE HOY ─────────────
     //
-    // 199 despegues de `aplicar(extraccion)` y UN pescado. Lo que pasaba las otras
-    // 198 veces lo dice el mundo, y lo dice con una palabra que es un diagnóstico
-    // entero: **`sin-pozo`**, «no hay stock detrás de ese cuerpo». No es que no
-    // picara (eso sería `no-pico`, y pasó UNA vez) ni que se hubiera vaciado el
-    // río (eso sería `pozo-vacio`, y el pozo termina la corrida con 129,915 kg).
+    // Este test medía el bucle. Ahora mide su ausencia, con los mismos tres
+    // instrumentos y sin aflojar ninguno: los rechazos del mundo, los cuerpos
+    // nacidos y el paso que el planificador emite.
     //
-    // Le estaba pescando a otra cosa. A qué, con los roles del paso que el
-    // planificador emite:
+    //   ANTES (tramo anterior)            HOY (esta corrida)
+    //   196 × `apply/sin-pozo`            0 × `apply/sin-pozo`
+    //   1   × `apply/no-pico`             1 × `apply/no-pico`, 1 × `explore/sin-fuerza`
+    //   2 nacidos, 1 pescado              2 nacidos, 1 pescado (w000000002, 2,887 kg)
+    //   paso: aplicar(extraccion)         NO HAY PASO: el plan sale VACÍO
+    //         source = el pescado
+    //         de su propia mano
     //
-    //     aplicar(extraccion)  gear   = w000000001  (la caña que ella misma ató)
-    //                          source = w000000002  (EL PESCADO DE SU PROPIA MANO)
+    // ─── POR QUÉ EL PLAN SALE VACÍO, QUE ES EL DIAGNÓSTICO ENTERO ──────────
     //
-    // ─── POR QUÉ, Y POR QUÉ NO ES UN BUG DE LA MENTE ───────────────────────
+    // Las dos causas que se juntaban están las dos tapadas, y ninguna vivía en
+    // este paquete:
     //
-    // Son dos cosas que se juntan, y ninguna de las dos vive en este paquete:
+    //   · `cumpleCuerpo` de `@anima/plan` contestaba `false` para TODA forma
+    //     `sostiene` (era un `case 'sostiene': return false` literal), así que
+    //     `holding(tag:carnoso)` no se daba por cumplida NUNCA, ni con el pescado
+    //     agarrado. Hoy la contesta leyendo los tags de la sustancia al revés,
+    //     desde el nombre que la vista ya traía — y por eso, con el pescado en la
+    //     mano, `plan()` devuelve un plan de CERO PASOS: la meta ya está;
+    //   · y el rol `source` de `extraccion` pedía `mass > 0` y nada más, así que
+    //     el cuerpo más cercano que calificaba era el de su propia mano. Hoy la
+    //     fila filtra el rol, y el mundo dejó de contestar `sin-pozo`.
     //
-    //   · `cumpleCuerpo` de `@anima/plan` contesta `false` para TODA forma
-    //     `sostiene` —una `BodyView` no trae la sustancia ni sus tags— así que
-    //     `holding(tag:carnoso)` no se da por cumplida NUNCA, ni con el pescado
-    //     agarrado. Todo plan que quiera algo carnoso arranca con «pescá uno»;
-    //   · y el rol `source` de `extraccion` pide `mass > 0` y nada más —el mundo
-    //     distingue un pozo de un pescado con el motivo `sin-pozo`, que no es
-    //     expresable en un `Where`, y está dicho en `regresion.ts`— así que el
-    //     cuerpo más cercano que califica es el que tiene en la mano.
+    // ─── LO QUE ESTE CERO NO DICE ──────────────────────────────────────────
     //
-    // Y como un paso que falla se lleva puesto el plan entero, replanifica, sale
-    // el mismo plan, y vuelve a fallar. **Ése es el bucle que consume los 6194
-    // ticks**, y es AGUAS ARRIBA del fuego: aunque supiera encender, no pasaría de
-    // este primer paso.
+    // No dice que el criterio (2) se cumpla: no se cumple, se muere en el 3627.
+    // Dice que ya no se muere ACÁ. El eslabón que queda es el 5/6, y es aguas
+    // abajo: con el pescado en la mano, lo que le falta es el fuego.
     const rechazos = rechazosDelMundo(laEscenaDelDocumento(), 'ana', 6300);
     const sinPozo = rechazos.porQue.get('apply/sin-pozo') ?? 0;
-    const noPico = rechazos.porQue.get('apply/no-pico') ?? 0;
     const nac = nacidos(laEscenaDelDocumento(), 'ana', 6300);
 
-    // A quién le pesca, leído del plan de verdad y no del relato.
+    // Qué plan sale con el pescado ya en la mano, leído del planificador de verdad
+    // y no del relato.
     const p = new Partida(laEscenaDelDocumento());
     const m = new Mente({ actor: 'ana', memoria: new Creencias() });
     vivir(p, new Map([['ana', m]]), 200);
@@ -1131,42 +1226,48 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       v,
       EXPANSIONES_POR_TICK * 60,
     );
-    const paso = (r.k === 'plan' ? r.steps : r.k === 'gap' ? r.nearest : []).find(
-      (s) => s.k === 'aplicar',
-    );
-    const roles = paso !== undefined && paso.k === 'aplicar' ? paso.roles : {};
+    const pasos = r.k === 'plan' ? r.steps : r.k === 'gap' ? r.nearest : [];
     const enMano = new Set(p.state.actors.get('ana')?.holding ?? []);
-    const fuente = roles['source'];
-    const seLaTiraAlPescado =
-      fuente !== undefined && fuente.k === 'id' && enMano.has(fuente.id ?? '');
+    const tieneCarne = enLaMano(p, 'ana').some((s) => s.includes('pescado'));
 
     console.log(
-      `\n─── A QUIÉN LE ESTÁ PESCANDO ───\n` +
-        `  rechazos del mundo en 6300 ticks: ${[...rechazos.porQue].map(([k, n]) => `${k}×${String(n)}`).join(' · ')}\n` +
+      `\n─── EL ESLABÓN A, DESPUÉS DE LA REPARACIÓN ───\n` +
+        `  rechazos del mundo en 6300 ticks: ${[...rechazos.porQue].map(([k, n]) => `${k}×${String(n)}`).join(' · ')}` +
+        `   (antes: apply/sin-pozo×196)\n` +
         `  cuerpos NACIDOS en toda la corrida: ${String(nac.total)} → ${nac.peces.join(', ') || '(ningún pescado)'}\n` +
-        `  el paso que emite el planificador: aplicar(${paso?.k === 'aplicar' ? paso.proceso : '?'}) ` +
-        `${JSON.stringify(roles)}\n` +
-        `  y en la mano tiene: ${[...enMano].join(', ')}\n` +
-        `  → el \`source\` ${seLaTiraAlPescado ? 'ES lo que tiene en la mano' : 'no es lo que tiene en la mano'}\n` +
+        `  y en la mano tiene: ${[...enMano].join(', ')} → ${enLaMano(p, 'ana').join(' · ')}\n` +
+        `  plan(holding(tag:carnoso)) con el pescado agarrado: ${r.k} de ${String(pasos.length)} pasos ` +
+        `${pasos.length === 0 ? '(la meta YA está cumplida: eso es lo que antes no sabía contestar)' : pasos.map((s) => s.k).join(' → ')}\n` +
         `  el pozo al que le apunta, al final de la corrida: ${dos(rechazos.pozo)} kg de stock — nunca se vació\n`,
     );
 
-    // `sin-pozo` domina: no es mala suerte ni escasez, es que apunta mal.
-    expect(sinPozo).toBeGreaterThan(100);
-    expect(sinPozo).toBeGreaterThan(noPico * 10);
-    // Y sacó UN pescado, no 199. `nacio` cuenta cuerpos nuevos: la caña y el pez.
+    // EL CERO QUE MIDE LA REPARACIÓN: el mundo ya no la rechaza por apuntar mal.
+    expect(sinPozo).toBe(0);
+    // Y sigue sacando UN pescado. `nacio` cuenta cuerpos nuevos: la caña y el pez.
     expect(nac.peces.length).toBe(1);
-    expect(seLaTiraAlPescado).toBe(true);
+    expect(tieneCarne).toBe(true);
+    // LA OTRA MITAD, y es la que prueba que `cumpleCuerpo` contesta: con el pescado
+    // en la mano el planificador no propone NADA, porque no hay nada que hacer.
+    expect(r.k).toBe('plan');
+    expect(pasos.length).toBe(0);
     // Y el pozo NO se vació: si se hubiera vaciado, el motivo sería `pozo-vacio`.
     expect(rechazos.pozo).toBeGreaterThan(100);
     MEDIDO.set(
       'eslabón A',
-      `${String(sinPozo)} × \`sin-pozo\`: le pesca al pescado de su propia mano ` +
-        `(\`source\` = ${fuente?.k === 'id' ? String(fuente.id) : '?'}), y el pozo sigue lleno`,
+      `CERRADO: 0 × \`sin-pozo\` (eran 196), 1 pescado en la mano, y \`plan(holding(tag:carnoso))\` ` +
+        `sale de 0 pasos porque la meta ya está cumplida`,
     );
   }, 300_000);
 
-  it('DIAGNÓSTICO 5/5 · ESLABÓN B: sabe LIGAR un fuego, no sabe pedir uno de la potencia justa', () => {
+  it('DIAGNÓSTICO 5/6 · ESLABÓN B, EL ÚNICO QUE QUEDA: sabe LIGAR un fuego, no sabe pedir uno de la potencia justa', () => {
+    // ─── ESTE ESLABÓN NO SE MOVIÓ, Y AHORA ES EL ÚNICO ─────────────────────
+    //
+    // Lo que sí se movió es la contraprueba, y el cambio es la prueba más limpia
+    // que hay de que el eslabón A está cerrado: con el leño ardiendo el plan salía
+    // de CINCO pasos —`aplicar → ir → poner → poner → sostener`, siete
+    // expansiones— y hoy sale de CUATRO —`ir → poner → poner → sostener`, cinco
+    // expansiones—. El paso que desapareció es el `aplicar`, o sea PESCAR: ya no
+    // hace falta, porque el pescado que tiene en la mano por fin cuenta.
     // La mente pide `holding(tag:carnoso,toxicity<0.0528)` y `plan()` regresa hasta
     // la ley 5 de desnaturalización —o sea que la mitad de arriba de la cadena
     // EXISTE— y se corta en el rol `fuego`, que la fila pide acotado por los dos
@@ -1183,9 +1284,9 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // Con un leño de 1,2 kg YA ARDIENDO en la misma celda —emitsPower 310,62 en el
     // momento en que se pide el plan, o sea adentro de la ventana `[253 ; 410)`, y
     // el número lo imprime la corrida— y una losa de piedra al lado, **el mismo pedido
-    // cierra**: `aplicar → ir → poner → poner → sostener`, que es pescar, ir al
-    // fuego, apoyar la losa encima, apoyar el pescado en la losa y levantarlo
-    // cocido. Nadie escribió «parrilla»: sale de que la pila tiene tres cuerpos.
+    // cierra**: `ir → poner → poner → sostener`, que es ir al fuego, apoyar la losa
+    // encima, apoyar el pescado que ya tiene en la losa y levantarlo cocido. Nadie
+    // escribió «parrilla»: sale de que la pila tiene tres cuerpos.
     //
     // O sea que lo que falta NO es la ley, ni la geometría, ni el vocabulario de
     // la mente: es **una vía que establezca una ventana de potencia**. Hoy eso se
@@ -1229,14 +1330,90 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // Y con el fuego puesto la cadena CIERRA: el problema es encenderlo, no usarlo.
     expect(conFuego.k).toBe('plan');
     if (conFuego.k !== 'plan') throw new Error('imposible');
-    expect(conFuego.steps.map((s) => s.k)).toEqual(['aplicar', 'ir', 'poner', 'poner', 'sostener']);
+    // Y NO LLEVA `aplicar`. El paso de pescar se cayó solo cuando `cumpleCuerpo`
+    // aprendió a contestar tags: es el eslabón A visto desde el otro lado.
+    expect(conFuego.steps.map((s) => s.k)).toEqual(['ir', 'poner', 'poner', 'sostener']);
 
     MEDIDO.set(
       'eslabón B',
       `gap «${sinFuego.missing}» (lo más cerca del catálogo es \`emitsPower>0\`); ` +
-        `con un leño ardiendo a ${potencia.toFixed(2)} el plan CIERRA en ${String(conFuego.expansiones)} expansiones`,
+        `con un leño ardiendo a ${potencia.toFixed(2)} el plan CIERRA en ${String(conFuego.expansiones)} ` +
+        `expansiones y en ${String(conFuego.steps.length)} pasos, sin volver a pescar`,
     );
   }, 120_000);
+
+  it('DIAGNÓSTICO 6/6 · POR QUÉ MUERE ANTES QUE ANTES: el bucle era gratis y deambular no', () => {
+    // ─── EL NÚMERO QUE SE PUEDE LEER MAL, MEDIDO PARA QUE NO SE LEA MAL ────
+    //
+    // Murió en el 3627 y el tramo anterior moría en el 6194. Dicho pelado, parece
+    // que la reparación la mató antes. Lo que pasó es otra cosa, y son dos
+    // renglones de aritmética:
+    //
+    //   · el bucle viejo era PARADA. Tirar la caña adentro de su propio pescado
+    //     falla sin mover una pata, y la corrida vieja gastaba −0,0500 por tick,
+    //     que es `COSTO_VIVIR_POR_SEGUNDO / hz` exacto y nada más. 310 de tanque
+    //     ÷ 0,05 = 6200 ticks, y murió en 6194: estaba pagando SÓLO por respirar;
+    //   · el bucle nuevo CAMINA. Con el pescado ya en la mano y el fuego fuera de
+    //     alcance, la mente cae a las conductas de fondo —explorar, guarecerse,
+    //     juntar— y explorar son ocho ticks de patas. Medido abajo: −0,08636 por
+    //     tick, 1,73× lo que cuesta estar viva.
+    //
+    // O sea que el mismo tanque rinde 6200 ticks quieta y 3600 caminando, y la
+    // diferencia entre las dos corridas no es cuánto aguanta: es que ahora tiene el
+    // pescado. El criterio (2) no se mide en ticks aguantados —se mide en si comió,
+    // y las dos corridas comieron cero—, y por eso este test no afirma «murió más
+    // tarde»: afirma de dónde sale cada gramo de aliento que gasta.
+    //
+    // ─── Y LO QUE SE VE DE PASO, QUE ES NUEVO ──────────────────────────────
+    //
+    // El pescado se le PUDRE EN LA MANO mientras espera: sale del agua con
+    // `toxicity` 0,25 y a los 3000 ticks marca 0,7100. La meta que lo retiene es
+    // `holding(tag:carnoso)`, y pudrirse no le saca el tag: sigue siendo carne. La
+    // criatura no está equivocada —lo que quiere es lo COCIDO, y eso no lo
+    // consigue— pero el mundo le está cobrando la espera en la única moneda que
+    // este bicho tiene, y nadie lo estaba mirando.
+    const r = correr(laEscenaDelDocumento(), 'ana', 4000, { cada: 100 });
+    const porTick = COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA;
+    // La pendiente DESPUÉS del gap: de la muestra del tick 100 —la mente ya cayó a
+    // las conductas de fondo en el 98— a la del 2000, que es la última con aliento
+    // de sobra. Antes del 100 hay armado de caña y pesca, que es otro régimen.
+    const desde = r.muestras[1] ?? 0;
+    const hasta = r.muestras[20] ?? 0;
+    const pendiente = (desde - hasta) / 1900;
+
+    // El pescado, todavía en la mano y todavía viva, para poder leerle la podredumbre.
+    const viva = correr(laEscenaDelDocumento(), 'ana', 3000, { cada: 3000 });
+    const pez = [...viva.partida.state.bodies.values()].find(
+      (b) => b.heldBy === 'ana' && b.body.parts.some((x) => x.substance === 'pescado'),
+    );
+    const podrido =
+      pez === undefined ? -1 : qualityOf(pez.body, 'toxicity', viva.partida.state.phys);
+
+    console.log(
+      `\n─── DE QUÉ SE MUERE, GRAMO POR GRAMO ───\n` +
+        `  murió en el tick ${String(r.murioEn)} (el tramo anterior: 6194, con el bucle de 199 tiros)\n` +
+        `  pendiente del aliento entre el tick 100 y el 2000: ${pendiente.toFixed(5)}/tick\n` +
+        `  sólo estar viva cuesta ${porTick.toFixed(5)}/tick  →  gasta ${(pendiente / porTick).toFixed(2)}× ` +
+        `y la diferencia son las patas\n` +
+        `  (la corrida vieja gastaba ${porTick.toFixed(5)} clavado: el bucle de la caña fallaba sin caminar)\n` +
+        `  el pescado que espera el fuego, a los 3000 ticks: toxicity ${podrido.toFixed(4)} ` +
+        `— salió del agua en 0,25 y se le pudre en la mano\n`,
+    );
+
+    // Camina, y por eso gasta de más: la pendiente tiene que estar por ENCIMA del
+    // costo de respirar. Los bordes son anchos a propósito —es reloj de mundo, no
+    // de máquina, pero el largo de cada `explorar` depende de dónde la deje— y lo
+    // que se afirma es el hecho, no el decimal.
+    expect(pendiente).toBeGreaterThan(porTick * 1.3);
+    expect(pendiente).toBeLessThan(porTick * 2.5);
+    // Y el pescado sigue ahí, cada vez más podrido, esperando un fuego que no llega.
+    expect(podrido).toBeGreaterThan(0.25);
+    MEDIDO.set(
+      'deambular',
+      `gasta ${pendiente.toFixed(5)}/tick contra ${porTick.toFixed(5)} de sólo vivir (${(pendiente / porTick).toFixed(2)}×): ` +
+        `muere en ${String(r.murioEn)} y no en 6194 porque ahora camina, no porque le vaya peor`,
+    );
+  }, 300_000);
 
   it('CONTRAPRUEBA · con el eslabón REGALADO la mente come, y a 2000 ticks ya se le nota', () => {
     // La versión corta de la corrida cara de abajo, y la que AFIRMA siempre. Si
@@ -1337,20 +1514,28 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // con 1000 de 1000 se muere igual, y ANTES de los 20.000, porque además de
     // vivir caminó.
     //
-    // Y el número se movió con la reparación del tramo G, así que conviene tener
-    // los dos: **antes moría en el 18.524** —se quedaba pegada a una meta sin
-    // esquema y se pasaba media vida en las conductas de fondo, que caminan— y
-    // **ahora muere en el 19.995**.
+    // ─── LOS TRES NÚMEROS, QUE JUNTOS DICEN UNA SOLA COSA ──────────────────
+    //
+    //   18.524  se quedaba pegada a una meta que ningún esquema establece
+    //   19.995  reparado el tramo G: exactamente lo que da el tanque, quieta
+    //   11.618  HOY, con el eslabón A cerrado
+    //
+    // Y el 11.618 no es un retroceso: es el mismo diagnóstico del 6/6 con el
+    // tanque grande. Consigue el pescado, sube el pedido a lo cocido, se queda sin
+    // vía y cae a las conductas de fondo, que CAMINAN — 1000 ÷ 11.618 = 0,0861 por
+    // tick contra los 0,0500 de sólo respirar, el mismo 1,72× medido allá.
+    // Deambular con el tanque lleno cuesta lo mismo por tick que deambular con el
+    // tanque en 310; lo único que cambia es cuánto dura.
     //
     // ─── CÓMO NO SE LEE ESTE NÚMERO ────────────────────────────────────────
     //
-    // «Murió en el 19.995: le faltaban CINCO ticks» es la lectura equivocada, y
-    // se escribió una vez. 1000 de tanque SON 1000 segundos de vida, o sea los
-    // 20.000 ticks exactos de la corrida: lo que este número dice no es «estuvo a
-    // cinco ticks», es **«sobrevivió exactamente lo que traía puesto y ni un
-    // segundo más»**. Los cinco ticks son las cinco celdas que caminó armando la
-    // caña. El criterio (2) no es «aguantá»: es «comé al menos una vez», y acá
-    // comió cero.
+    // «Murió en el 19.995: le faltaban CINCO ticks» fue la lectura equivocada del
+    // tramo anterior, y se escribió una vez. 1000 de tanque SON 1000 segundos de
+    // vida, o sea los 20.000 ticks exactos de la corrida: lo que aquel número decía
+    // no era «estuvo a cinco ticks», era «sobrevivió exactamente lo que traía
+    // puesto y ni un segundo más». El de hoy dice menos todavía: ni siquiera le
+    // rinde el tanque, porque se lo gasta buscando. El criterio (2) no es
+    // «aguantá»: es «comé al menos una vez», y en las tres corridas comió cero.
     const r = correr(laEscenaDelDocumento(1000), 'ana', CRITERIO_TICKS);
     expect(r.murioEn).toBeGreaterThan(0);
     expect(r.murioEn).toBeLessThan(CRITERIO_TICKS);
@@ -1358,17 +1543,19 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       .filter(([k]) => k.startsWith('tragar'))
       .reduce((a, [, v]) => a + v, 0);
     expect(bocados).toBe(0);
+    const gastoPorTick = 1000 / r.murioEn;
     console.log(
       `\n  con el tanque lleno (1000): murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} · ` +
-        `${String(r.aterrizados.get('aplicar(extraccion)') ?? 0)} pescas DE VERDAD en ` +
-        `${String(r.cuenta.get('aplicar(extraccion)') ?? 0)} intentos · ${String(bocados)} bocados · ${r.ms.toFixed(0)} ms\n` +
-        `  y eso NO es «a cinco ticks del final»: 1000 de tanque son los 20.000 ticks enteros,\n` +
-        `  así que lo que midió es haber sobrevivido lo que traía puesto sin comer nada.\n`,
+        `el pescado entra a la mano en el ${String(r.pescoEn)} con ` +
+        `${String(r.cuenta.get('aplicar(extraccion)') ?? 0)} tiros de caña · ${String(bocados)} bocados · ${r.ms.toFixed(0)} ms\n` +
+        `  1000 de tanque ÷ ${String(r.murioEn)} ticks = ${gastoPorTick.toFixed(4)} por tick, contra ` +
+        `${(COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA).toFixed(4)} de sólo respirar: la diferencia es que deambula (ver 6/6)\n` +
+        `  (el tramo anterior moría en el 19.995, quieta al lado del pozo, y eso NO era «a cinco ticks del final»)\n`,
     );
     MEDIDO.set(
       'tanque lleno',
-      `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} con ${String(bocados)} bocados: ` +
-        `gastó el tanque entero y no comió`,
+      `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} con ${String(bocados)} bocados ` +
+        `(${gastoPorTick.toFixed(4)}/tick: ni siquiera le rinde el tanque, se lo gasta deambulando)`,
     );
   }, 300_000);
 });
@@ -1417,11 +1604,57 @@ describe('(3) p99 < 5 ms con 5000 cuerpos: el número ya está medido en `@anima
     // banco del mundo. Lo único que este paquete puede aportar sin repetir aquel
     // trabajo es cuánto cuesta la mente ENCIMA del mundo, con una criatura: es el
     // número que dice si la escalera es un problema de rendimiento o no lo es.
+    //
+    // ─── Y ESTE NÚMERO SE MOVIÓ FEO, ASÍ QUE SE MIDE DE DÓNDE SALE ─────────
+    //
+    // El tramo anterior medía ~0,041 ms de mente encima de ~0,034 de mundo, o sea
+    // 1,2 veces el mundo. Hoy mide del orden de 0,24 encima de 0,058, o sea 4
+    // veces el mundo: la mente se puso entre 3 y 4 veces más cara POR TICK. No es
+    // ruido de máquina —la razón mente/mundo no depende de la máquina— y no es
+    // `cumpleCuerpo` contestando tags. Es esto, medido abajo con `plan()` a mano
+    // sobre la misma vista (dos corridas de esta misma máquina, y los que
+    // gobiernan son los que imprime la de hoy: son milisegundos de reloj):
+    //
+    //     plan(holding(tag:carnoso))              cierra   0,0031 – 0,0046 ms
+    //     plan(holding(tag:carnoso,toxicity<…))   se corta 0,2454 – 0,3128 ms
+    //                                                      → entre 68× y 80×
+    //
+    // Un plan que CIERRA es barato: para en cuanto encuentra la vía. Un plan que
+    // se CORTA paga la búsqueda entera antes de rendirse. Y lo que la reparación
+    // del eslabón A hizo con la corrida es exactamente cambiarle el pedido a la
+    // criatura: antes pasaba la vida pidiendo lo carnoso —que cerraba— y ahora
+    // pasa la vida pidiendo lo cocido, que se corta. O sea que este 4× no mide
+    // que la escalera se haya puesto pesada: mide que la criatura pasó de
+    // conseguir lo que pedía a no conseguirlo, y el día que el eslabón B se
+    // cierre el número tiene que volver solo. Queda escrito para que nadie lo
+    // lea como una regresión de rendimiento y salga a optimizar lo que no es.
     const conMente = correr(laEscenaDelDocumento(1000), 'ana', 4000);
     const p = new Partida(laEscenaDelDocumento(1000));
     const t0 = process.hrtime.bigint();
     p.avanzar(4000);
     const soloMundo = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    // LOS DOS PEDIDOS, CRONOMETRADOS SOBRE LA MISMA VISTA. Cien vueltas cada uno,
+    // con veinte de precalentamiento tiradas a la basura: sin eso, el primero paga
+    // la compilación del intérprete y sale diez veces más caro de lo que es.
+    const q = new Partida(laEscenaDelDocumento());
+    vivir(q, new Map([['ana', new Mente({ actor: 'ana', memoria: new Creencias() })]]), 200);
+    const vista = vistaDe(q, 'ana');
+    const cierra = interpretar('holding(tag:carnoso)');
+    const corta = interpretar(metaComestibleDe('carnoso') ?? '');
+    if (cierra === undefined || corta === undefined) throw new Error('sin predicado');
+    const cronometrar = (g: typeof cierra, n: number): { k: string; ms: number } => {
+      const t = process.hrtime.bigint();
+      let k = '';
+      for (let i = 0; i < n; i++) {
+        const r = plan({ id: 'meta', goal: g, after: [], porque: 'el test' }, vista, EXPANSIONES_POR_TICK * 60);
+        k = r.k;
+      }
+      return { k, ms: Number(process.hrtime.bigint() - t) / 1e6 / n };
+    };
+    cronometrar(cierra, 20);
+    const barato = cronometrar(cierra, 100);
+    const caro = cronometrar(corta, 100);
 
     const porTick = conMente.ms / 4000;
     console.log(
@@ -1429,17 +1662,25 @@ describe('(3) p99 < 5 ms con 5000 cuerpos: el número ya está medido en `@anima
         `  mundo solo ......... ${(soloMundo / 4000).toFixed(4)} ms/tick\n` +
         `  mundo + mente ...... ${porTick.toFixed(4)} ms/tick\n` +
         `  la mente ........... ${((conMente.ms - soloMundo) / 4000).toFixed(4)} ms/tick ` +
-        `(la ventana de un tick a ${String(HZ_DE_REFERENCIA)} Hz son ${(1000 / HZ_DE_REFERENCIA).toFixed(0)} ms)\n`,
+        `(la ventana de un tick a ${String(HZ_DE_REFERENCIA)} Hz son ${(1000 / HZ_DE_REFERENCIA).toFixed(0)} ms)\n` +
+        `  y de dónde sale, con \`plan()\` cronometrado sobre la misma vista:\n` +
+        `      pedir lo carnoso ... ${barato.k.padEnd(4)} ${barato.ms.toFixed(4)} ms   (cierra: para en cuanto encuentra la vía)\n` +
+        `      pedir lo cocido .... ${caro.k.padEnd(4)} ${caro.ms.toFixed(4)} ms   ` +
+        `(se corta: paga la búsqueda entera) → ${(caro.ms / barato.ms).toFixed(0)}×\n`,
     );
     MEDIDO.set(
       'la mente',
       `${((conMente.ms - soloMundo) / 4000).toFixed(4)} ms/tick encima de ` +
-        `${(soloMundo / 4000).toFixed(4)} del mundo, con 1 criatura`,
+        `${(soloMundo / 4000).toFixed(4)} del mundo, con 1 criatura; y el ${(caro.ms / barato.ms).toFixed(0)}× ` +
+        `es que un pedido que se CORTA cuesta ${caro.ms.toFixed(4)} ms contra ${barato.ms.toFixed(4)} de uno que cierra`,
     );
     // Sin aserción de tiempo: es informativo y corre al lado de los otros
-    // paquetes. Lo único que se afirma es que las dos corridas hicieron el trabajo.
+    // paquetes. Lo único que se afirma es que las dos corridas hicieron el trabajo
+    // y que los dos pedidos contestaron lo que este archivo dice que contestan.
     expect(conMente.ticks).toBe(4000);
     expect(p.informe.ticks).toBe(4000);
+    expect(barato.k).toBe('plan');
+    expect(caro.k).toBe('gap');
   }, 300_000);
 });
 
@@ -1518,9 +1759,10 @@ describe('los cuatro criterios, con los números de esta corrida', () => {
         `        y no come crudo .. ${l('toxicidad')}`,
         `                           ${l('comida')}`,
         '',
-        `      DÓNDE SE CORTA LA CADENA, los dos eslabones:`,
+        `      DÓNDE SE CORTABA LA CADENA, y dónde se corta ahora:`,
         `        A · ${l('eslabón A')}`,
         `        B · ${l('eslabón B')}`,
+        `        y por qué muere antes que antes: ${l('deambular')}`,
         '',
         `      y con el eslabón regalado: ${l('regalado')}`,
         '',

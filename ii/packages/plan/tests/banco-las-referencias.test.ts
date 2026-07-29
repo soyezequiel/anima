@@ -56,6 +56,7 @@ function poblacion(n: number): BodyView[] {
       id: `b${String(i).padStart(4, '0')}`,
       at: { x: i % 25, y: (i / 25) | 0 },
       name: 'cosa',
+      tags: [],
       madeByMe: false,
       joints: [],
     })
@@ -68,6 +69,10 @@ function criatura(holding: readonly BodyView[] = []): SelfView {
     id: 'yo',
     at: { x: 12, y: 12 },
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia:
+    // `[]` es la respuesta honesta y es la misma que da `cuerpo()` por omision. En
+    // la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding,

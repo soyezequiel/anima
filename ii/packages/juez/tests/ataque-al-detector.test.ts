@@ -100,26 +100,32 @@
 //       encender y `sePodiaArmarLaCadena` ni siquiera recibe al actor: es un hueco
 //       del arnés, declarado en §1 del documento.
 //
-//   (10) SIGUE ABIERTO, Y RE-MEDIDO DESPUÉS DE LAS SIETE REPARACIONES ·
-//        EL RUIDO DEL AZAR: **TRES DE LAS NUEVE, Y EL CRITERIO PIDE CUATRO.**
+//   (10) SIGUE ABIERTO, Y RE-MEDIDO DOS VECES · EL RUIDO DEL AZAR: **UNA DE LAS
+//        NUEVE, Y EL CRITERIO PIDE CUATRO.**
 //        Una criatura que elige la FORMA del acto y los CUERPOS con el dado del
 //        mundo —`dadoDe(crearDios(semilla))`, nunca `Math.random`— y que no
-//        consulta una sola cualidad, sobre 20 semillas y 20.000 ticks:
+//        consulta una sola cualidad, sobre 20 semillas y 20.000 ticks.
 //
-//          · sin fuego regalado (tanque 1000, vivió 3133 ticks en promedio):
-//            `no-frotar-lo-que-no-alcanza-a-encender` en **20/20**, con la
-//            situación en 20/20. La única de las nueve cuyo acto es NO ACTUAR la
-//            firma un bicho que frota al azar.
-//          · con el fuego regalado (tanque 40.000, vivió 365 ticks en promedio
-//            porque se quema al lado de la fogata): `cocinar-el-lote-en-un-solo-
-//            fuego` en **20/20** y `el-leno-mas-grande-que-todavia-cocina` en
-//            **20/20**, las dos con situación 20/20.
+//        LO QUE DECÍA ESTE INFORME ANTES: **tres de nueve**, medidas sobre la
+//        escena que `azar.ts` se armaba a sí mismo —diez sueltas de una tabla de
+//        cinco sustancias escrita ahí mismo y cuatro peces regalados, todo en un
+//        cuadrado de 4×4—. Eran la 1 (20/20 sin fuego), la 6 y la 8 (20/20 con el
+//        fuego regalado).
 //
-//        La unión es **3 de 9**. El criterio publicado pide 4 de 10 y §10 del
-//        documento resolvió que con nueve entradas el número no se mueve: el ruido
-//        del azar cubre **tres de las cuatro** que el proyecto necesita para
-//        seguir. Y las dos concesiones —regalar el fuego y agrandar el tanque— van
-//        a favor del control, así que 3 es un PISO y no un techo.
+//        LO QUE DA AHORA, con el control corriendo sobre **el mundo que el dios
+//        decreta** y las mismas veinte semillas que juega la mente:
+//
+//          · sin fuego regalado (tanque 1000, vive 19.212 ticks de promedio porque
+//            come lo que hay tirado): **ninguna**. La situación de la entrada 1
+//            existe en 7/20 y el bicho no la resuelve nunca.
+//          · con el fuego regalado (tanque 40.000, vive 16.104 ticks):
+//            `el-leno-mas-grande-que-todavia-cocina` en **8/20**.
+//
+//        La unión es **1 de 9**. Las dos que se cayeron eran de la escena y no del
+//        azar, y hay que decirlo así y no «se arreglaron». El criterio real que la
+//        mente tiene que cruzar es 4 sobre las OCHO que quedan. Y las dos
+//        concesiones —regalar el fuego y agrandar el tanque— siguen yendo a favor
+//        del control, así que 1 es un PISO y no un techo.
 //
 // ═══ CÓMO SE MIDE ACÁ ═══════════════════════════════════════════════════════
 //
@@ -990,106 +996,125 @@ describe('frente 2 · EL RUIDO DEL AZAR, que es el número que le faltaba al ban
     expect(w.actors.get('ana')?.doing).toBeUndefined()
   })
 
-  it('HALLAZGO · el azar SIN fuego dispara `no-frotar-lo-que-no-alcanza-a-encender` en 20 de 20', () => {
-    // El resultado que menos me esperaba y el más caro de los diez. La criatura al
-    // azar, con el tanque del documento y sin nada regalado, dispara la entrada 1
-    // EN LAS VEINTE PARTIDAS.
+  it('EL AZAR SIN FUEGO, sobre el mundo decretado: ya no firma ninguna', async () => {
+    // ─── LO QUE ESTE TEST DECÍA ANTES, Y POR QUÉ CAMBIÓ EL NÚMERO ───────────
     //
-    // Y se entiende leyendo el detector: pide (a) que haya habido al menos una
-    // fricción, (b) que TODAS hayan terminado en ignición y (c) que en alguna
-    // hubiera a tiro un candidato del rol `a` más pesado sin tocar. Un bicho que
-    // agarra dos cosas y las frota ochenta ticks prende una madera de 0,3–0,5 kg
-    // —422 a 702 de stamina, adentro del tanque— y (c) se lo regala el mundo:
-    // `agua-dulce` siembra piedra hasta 3 kg y madera hasta 2,5.
+    // Decía: «HALLAZGO · el azar SIN fuego dispara `no-frotar-lo-que-no-alcanza-a-
+    // encender` en 20 de 20», y era el resultado más caro de los diez del
+    // adversario. Ese 20/20 se medía sobre la escena que `azar.ts` se armaba a
+    // mano: diez sueltas sorteadas de una tabla de cinco sustancias escrita ahí
+    // mismo —madera de 0,3 a 2,5 kg— y cuatro peces regalados, todo en un cuadrado
+    // de 4×4 pegado a la criatura. Con eso el bicho tenía casi siempre dos maderas
+    // en la mano, frotaba, prendía, y quedaba otra más pesada sin tocar.
     //
-    // La entrada 1 es LA ÚNICA cuyo acto es NO ACTUAR —«se niega si ninguno entra
-    // en el tanque»— y la firma que el detector le puso la produce el azar sin
-    // negarse a nada.
-    const c = correrElControl('EL AZAR SIN FUEGO', false, 1000)
+    // Ahora el control corre sobre **el mundo que el dios decreta**, las mismas
+    // veinte semillas que juega la mente (ver el encabezado de `azar.ts`: si el
+    // arnés cambia de mundo y el control no, la resta entre los dos no mide nada).
+    // Y sobre ese mundo el azar SIN fuego no firma ninguna: la situación de la
+    // entrada 1 existe en 7 de 20, pero el bicho no la resuelve nunca.
+    //
+    // LO QUE EL NÚMERO VIEJO ERA, entonces: una propiedad de la escena de diez
+    // sueltas concentradas, no del azar. Es el mismo error que el banco del
+    // criterio acaba de corregir, encontrado en el archivo de al lado.
+    const c = await correrElControl('EL AZAR SIN FUEGO', false, 1000)
     console.log(`\n${tablaDelControl(c)}`)
-    expect(c.cuentan).toEqual(['no-frotar-lo-que-no-alcanza-a-encender'])
-    // EL TIEMPO EXPLÍCITO, y no es una concesión: veinte partidas de 20.000 ticks
-    // tardan **3,6 s** solas contra el default de 5 s de vitest, o sea que este `it`
-    // vivía al 72% de su plazo y se ponía rojo cada vez que la máquina estaba
-    // ocupada corriendo el resto del árbol. Es un rojo intermitente, que es la
-    // clase de rojo que enseña a ignorar el rojo.
-    //
-    // Medido a los dos lados del ADR II-0013 para descartar que lo hubiera movido
-    // el cobro del veneno: 3612 ms antes y 3699 ms después. No es la carga de
-    // trabajo lo que cambió; es la carga de la máquina. Ninguna aserción se toca.
-  }, 60_000)
+    expect(c.cuentan).toEqual([])
+    // EL TIEMPO EXPLÍCITO: veinte partidas de 20.000 ticks sobre el mundo decretado
+    // —entre 26 y 152 cuerpos por partida, y el bicho vive casi los 20.000 porque
+    // come lo que hay tirado— tardan minutos, no segundos. El plazo viejo era de
+    // 60 s y se medía contra 3,6 s de trabajo; éste se mide contra unos 200 s.
+  }, 900_000)
 
-  it('HALLAZGO · el azar CON el fuego regalado dispara la 6 y la 8 en 20 de 20', () => {
+  it('HALLAZGO · el azar CON el fuego regalado sigue firmando la 8, y ya no la 6', async () => {
     // Regalarle el fuego a la criatura al azar es lo que separa «el detector es
     // duro» de «el mundo es duro»: siete de las nueve cuelgan de que haya fuego. El
     // tanque también se agranda, porque con 1000 se muere de puro vivir antes de
     // que el fuego grande se apague. Las dos son concesiones AL CONTROL, o sea que
     // esto es un PISO del ruido y no un techo.
-    const c = correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
+    //
+    // SOBRE LA ESCENA VIEJA firmaba DOS —la 6 y la 8, las dos en 20 de 20—. Sobre el
+    // mundo decretado firma UNA: la 8, en 8 de 20. La 6 se cayó y se entiende
+    // leyendo la escena que se fue: cuatro pescados sembrados a mano en un cuadrado
+    // de 4×4 con la fogata en (2,2) estaban TODOS a tiro del mismo fuego, así que
+    // «cocinar el lote en un solo fuego» se cocinaba solo. El decreto no concentra
+    // la comida en cuatro celdas.
+    //
+    // La 8 sobrevive, y sobrevive por lo que el adversario ya había escrito: mide un
+    // DESENLACE —prendió el grande teniendo a mano uno más chico— y un desenlace lo
+    // produce el azar.
+    const c = await correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
     console.log(`\n${tablaDelControl(c)}`)
-    expect([...c.cuentan].sort()).toEqual([
-      'cocinar-el-lote-en-un-solo-fuego',
-      'el-leno-mas-grande-que-todavia-cocina',
-    ])
-  })
+    expect([...c.cuentan].sort()).toEqual(['el-leno-mas-grande-que-todavia-cocina'])
+  }, 900_000)
 
-  it('EL NÚMERO · el azar firma TRES de las nueve, y el criterio pide cuatro', () => {
-    // La unión de los dos controles. Ninguna de las tres necesitó que la criatura
-    // mirara una masa, una permeabilidad ni una caloría: las tres las firma un
-    // bicho que elige cuerpos con el dado.
+  it('EL NÚMERO · el azar firma UNA de las nueve, y el criterio pide cuatro', async () => {
+    // La unión de los dos controles, RE-MEDIDA sobre el mundo decretado.
     //
-    //   1 · `no-frotar-lo-que-no-alcanza-a-encender`   20/20 sin fuego
-    //   6 · `cocinar-el-lote-en-un-solo-fuego`         20/20 con fuego
-    //   8 · `el-leno-mas-grande-que-todavia-cocina`    20/20 con fuego
+    //   antes, sobre la escena que `azar.ts` se armaba a mano:  TRES de nueve
+    //     1 · `no-frotar-lo-que-no-alcanza-a-encender`   20/20 sin fuego
+    //     6 · `cocinar-el-lote-en-un-solo-fuego`         20/20 con fuego
+    //     8 · `el-leno-mas-grande-que-todavia-cocina`    20/20 con fuego
     //
-    // El criterio publicado pide CUATRO de diez, y §10 del documento resolvió que
-    // con nueve el número no se mueve. O sea que el ruido del azar cubre TRES DE
-    // LAS CUATRO que el proyecto necesita para seguir.
-    const union = ruidoDelAzar()
+    //   ahora, sobre las mismas veinte semillas que juega la mente:  UNA de nueve
+    //     8 · `el-leno-mas-grande-que-todavia-cocina`     8/20 con fuego
+    //
+    // Las otras dos eran de la escena y no del azar: la 1 dependía de tener dos
+    // maderas gruesas al alcance de la mano, y la 6 de que los cuatro pescados
+    // estuvieran los cuatro a tiro de la misma fogata. Ninguna de las dos cosas la
+    // decreta el dios.
+    //
+    // LO QUE NO CAMBIA: la que queda tampoco necesitó que la criatura mirara una
+    // masa, una permeabilidad ni una caloría —la firma un bicho que elige cuerpos
+    // con el dado—, así que sigue sin poder contar para el piso de cuatro. El
+    // criterio real que la mente tiene que cruzar es 4 sobre las OCHO que quedan.
+    const union = await ruidoDelAzar()
     console.log(`\n  ══ EL RUIDO DEL AZAR: ${String(union.length)} DE 9 ══ ${union.join(' · ')}`)
-    expect(union).toEqual([
-      'cocinar-el-lote-en-un-solo-fuego',
-      'el-leno-mas-grande-que-todavia-cocina',
-      'no-frotar-lo-que-no-alcanza-a-encender',
-    ])
-  })
+    expect(union).toEqual(['el-leno-mas-grande-que-todavia-cocina'])
+  }, 900_000)
 
-  it.fails('SIGUE ABIERTO · las siete reparaciones NO movieron el ruido: sigue en tres de nueve', () => {
-    // ─── EL NÚMERO RE-MEDIDO DESPUÉS DE REPARAR, y hay que decirlo entero ─────
+  it.fails('SIGUE ABIERTO · el ruido bajó de tres a una, pero una no es cero', async () => {
+    // ─── EL NÚMERO RE-MEDIDO DOS VECES, y hay que contar las dos ────────────
     //
-    // El hallazgo del adversario pedía «arreglar los detectores 1, 6 y 8 y volver a
-    // correr el control antes de leer cualquier resultado de la mente». Se
-    // arreglaron los siete que eran de detector —los tres de esa lista incluidos— y **el control se
-    // volvió a correr acá arriba, con las mismas 20 semillas y los mismos 20.000
-    // ticks**. Da lo mismo que antes: 20/20, 20/20 y 20/20.
+    // PRIMERA VEZ. El hallazgo del adversario pedía «arreglar los detectores 1, 6 y
+    // 8 y volver a correr el control antes de leer cualquier resultado de la
+    // mente». Se arreglaron los siete que eran de detector y el control se volvió a
+    // correr sobre la MISMA escena: dio lo mismo, 20/20, 20/20 y 20/20, o sea tres
+    // de nueve. La conclusión de entonces fue que era un hueco de la LISTA —las tres
+    // entradas miden un DESENLACE, y un desenlace lo produce el azar—.
     //
-    // POR QUÉ NO SE MOVIÓ, secuencia por secuencia, leído de las dos tablas:
+    // SEGUNDA VEZ, Y ES LA QUE CORRIGE UN NÚMERO. El banco del criterio dejó de
+    // medirse sobre una escena plantada y pasó a correr sobre el mundo que el dios
+    // decreta; el control tenía que seguirlo, porque una resta entre dos mundos
+    // distintos no mide nada. Re-corrido sobre las mismas veinte semillas que juega
+    // la mente, el ruido baja de TRES a UNA:
     //
-    //   1 · el filtro de `potenciaSiArdiera` saca las piedras del conjunto de
-    //       candidatos, pero `agua-dulce` siembra MADERA de 0,3 a 2,5 kg y con diez
-    //       sueltas casi siempre hay dos: el bicho frota una, prende, y queda otra
-    //       más pesada sin tocar. La entrada 1 es la única cuyo acto es NO ACTUAR y
-    //       su firma es un desenlace, no una abstención.
-    //   6 · el conteo pasó a ser por cuerpo que arde, pero con el fuego REGALADO en
-    //       (2,2) y cuatro pescados sembrados en un cuadrado de 4×4 las cuatro
-    //       piezas están a tiro del mismo fuego y se cocinan solas. La cocción no
-    //       pide un acto en ningún lado del detector.
-    //   8 · el `puso`/`heldBy` y el filtro de la comida cierran el mundo de CERO
-    //       intenciones, pero no el del azar: un bicho que agarra cuerpos al azar
-    //       agarra también la fogata, y con eso el acto está.
+    //   1 · se cayó. Dependía de que el bicho tuviera dos maderas gruesas al alcance
+    //       de la mano, que es lo que producía la tabla de cinco sustancias que
+    //       `azar.ts` se escribía a sí mismo. El decreto reparte la materia por
+    //       nueve chunks y no la concentra en un cuadrado de 4×4.
+    //   6 · se cayó. Dependía de que los cuatro pescados regalados estuvieran los
+    //       cuatro a tiro de la misma fogata, y el decreto no siembra pescado en el
+    //       piso: el pescado está en el pozo y hay que sacarlo.
+    //   8 · SIGUE. El `puso`/`heldBy` y el filtro de la comida cierran el mundo de
+    //       CERO intenciones, pero no el del azar: un bicho que agarra cuerpos al
+    //       azar agarra también la fogata, y con eso el acto está. Firma 8/20.
     //
-    // LO QUE ESTO ES: un hueco de la LISTA y no de los detectores, y por eso queda
-    // en rojo en vez de repararse. Las tres entradas miden un DESENLACE —prendió,
-    // se cocinó, no era el más liviano— y un desenlace lo puede producir el azar.
-    // Cerrarlo pide cambiar lo que las entradas dicen medir, y la lista está
-    // cerrada: §0 sólo deja tocar un error de detector, no una entrada.
+    // LO QUE ESTO ES: sigue siendo un hueco de la LISTA y no de los detectores, y
+    // por eso sigue en rojo en vez de repararse. La entrada 8 mide un DESENLACE
+    // —prendió el grande teniendo a mano uno más chico— y un desenlace lo puede
+    // producir el azar. Cerrarlo pide cambiar lo que la entrada dice medir, y la
+    // lista está cerrada: §0 sólo deja tocar un error de detector, no una entrada.
     //
-    // LO QUE OBLIGA MIENTRAS TANTO, y va escrito acá porque es la regla que el
-    // banco tiene que aplicar al leer: **ninguna de estas tres puede contar para el
-    // piso de cuatro**, así que el criterio real que la mente tiene que cruzar es
-    // 4 sobre las 6 que quedan, y no 4 sobre 9.
-    expect(ruidoDelAzar()).toEqual([])
-  })
+    // Y LO QUE ESTO NO ES: no es que las tres reparaciones sirvieran. Las dos que se
+    // cayeron se cayeron por la ESCENA y no por el detector, que es exactamente la
+    // clase de cosa que hay que decir en voz alta para no cobrarse un arreglo que
+    // no se hizo.
+    //
+    // LO QUE OBLIGA MIENTRAS TANTO: **la que queda no puede contar para el piso de
+    // cuatro**, así que el criterio real que la mente tiene que cruzar es 4 sobre
+    // las 8 que quedan, y no 4 sobre 9.
+    expect(await ruidoDelAzar()).toEqual([])
+  }, 900_000)
 })
 
 // ═══ EL INFORME ═════════════════════════════════════════════════════════════

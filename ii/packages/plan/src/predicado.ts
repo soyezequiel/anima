@@ -108,6 +108,39 @@ const ALIAS_DE_GEOM: ReadonlyMap<GeomFn, QualityId> = (() => {
   return m
 })()
 
+// ─── DE LO QUE SE VE A LO QUE ES: LA SUPERFICIE, Y NO EL NOMBRE ─────────────
+//
+// ─── ACÁ VIVÍA UN ÍNDICE `nombre → tags`, Y MENTÍA ──────────────────────────
+//
+// Este archivo llegó a argumentar —y `cumpleCuerpo` lo obedecía devolviendo
+// `false`— que la forma `sostiene` no se puede contestar desde una vista porque
+// los tags son de la SUSTANCIA y una `BodyView` no la trae. El arreglo siguiente
+// fue un índice `TAGS_POR_NOMBRE` derivado de `SUSTANCIAS_SEMILLA` y buscado por
+// PREFIJO sobre `BodyView.name`, con el argumento de que `name` es la salida de
+// `nameOf` y `nameOf` arranca por el `lexeme.nombre` de la parte dominante: leer
+// de ahí a los tags no sería adivinar, sería leer al revés la misma tabla.
+//
+// El índice era honesto. La LECTURA mentía, y la medición es ésta:
+//
+//     sustancia nueva  residuo-carbonoso-de-pescado   tags REALES ["carbonoso"]
+//     nameOf           «pescado hecho tizón quemado»
+//     el índice leía   ["organico","carnoso"]         nutrition 0 · calories 0
+//
+// Porque `residuoDe` (`physics/src/leyes.ts`) bautiza
+// `${madre.lexeme.nombre} hecho tizón`, y por lo tanto los 60 residuos de las 30
+// sustancias de la semilla EMPIEZAN con el nombre de su madre. No era un borde:
+// era la regla de bautismo. Y el daño es el caro de los dos que el propio archivo
+// tenía escritos —`holding(tag:carnoso)` dada por cumplida sobre un carbón, o sea
+// la criatura sin hambre para siempre— disparando en el eslabón siguiente EXACTO
+// de la cadena del Hito 5: pescar → cocinar → pasarse de cocción.
+//
+// La respuesta no era leer mejor el nombre: era que la superficie publicara los
+// tags. `BodyView.tags` es `tagsDe(body, phys)` con la `Physics` VIVA, calculado
+// en `perceive/src/vista.ts` al lado de `name` y por el mismo precio. Con eso se
+// cayeron de una los tres límites que el índice tenía escritos (el catálogo de la
+// semilla, la parte dominante, el cuerpo sin partes) y este módulo dejó de tener
+// una tabla propia sobre las sustancias.
+
 const PREFIJO_SOSTIENE = 'holding(tag:'
 const CIERRE_SOSTIENE = ')'
 
@@ -515,9 +548,12 @@ export function cumple(p: Predicado, v: VistaDelPlan): boolean {
  * en el medio de la búsqueda voltea el tick de las 5000 criaturas por un
  * predicado mal escrito.
  *
- * Que sea el barato no lo vuelve gratis: con `holding(tag:carnoso)` sin contestar,
- * un objetivo de comida NUNCA se da por cumplido y el plan se rehace para siempre.
- * Por eso los dos huecos están medidos con `it.fails` y no comentados al pasar.
+ * Que sea el barato no lo vuelve gratis, y de los dos huecos que había acá el de
+ * `sostiene` lo demostró: con `holding(tag:carnoso)` sin contestar, un objetivo de
+ * comida NO se daba por cumplido NUNCA y el plan se rehacía para siempre — 196
+ * rechazos `sin-pozo` en 6300 ticks, medidos en
+ * `mind/tests/hito-5-el-criterio.test.ts`. Ése está cerrado (ver `BodyView.tags`).
+ * El de `freeStrandEnds` sigue abierto y sigue medido con su `it.fails`.
  */
 export function cumpleCuerpo(p: Predicado, b: BodyView, q: Lector): boolean {
   switch (p.k) {
@@ -532,22 +568,37 @@ export function cumpleCuerpo(p: Predicado, b: BodyView, q: Lector): boolean {
       const expr: QualityExpr = { k: 'geom', f }
       return compara(evalQuality(expr, contextoDeVista(b, q)), p.op, p.v)
     }
-    // EL SEGUNDO HUECO DE LA SUPERFICIE. Para contestar esto hay que saber de qué
-    // sustancia está hecho el cuerpo y qué tags tiene esa sustancia, y una
-    // `BodyView` no trae ninguna de las dos: trae `name`, que es una VISTA
-    // (`nameOf`) armada con el léxico de la sustancia dominante más adjetivos de
-    // cocción. Adivinar el tag desde el nombre sería reconstruir a mano lo que la
-    // física ya sabe, y quedaría mal el día que el oráculo invente una carne que
-    // se llame distinto — que es el día exacto para el que se hizo todo esto.
+    // ─── EL SEGUNDO HUECO DE LA SUPERFICIE, CERRADO — Y DOS VECES ────────────
     //
-    // ─── Y LAS CONDICIONES DE ADENTRO SÍ SE PODRÍAN CONTESTAR ────────────────
+    // Acá se devolvía `false` para TODA forma `sostiene`, con el argumento de que
+    // una `BodyView` no trae la sustancia. El primer arreglo leyó el `name` al
+    // revés contra un índice derivado de `SUSTANCIAS_SEMILLA`, y ese índice era
+    // honesto pero la lectura mentía: la ley 4 bautiza a sus residuos
+    // ``${madre.lexeme.nombre} hecho tizón``, así que «pescado hecho tizón»
+    // empieza con «pescado» y contestaba `carnoso` sobre un carbón con
+    // `nutrition 0`. Los 60 residuos de las 30 sustancias de la semilla lo hacen:
+    // era la regla de bautismo, no un borde. Ver `BodyView.tags`.
     //
-    // `toxicity<=0.2` es una cualidad y `q` la sabe leer. No se contestan igual, y
-    // no por comodidad: la forma es una CONJUNCIÓN —tag Y condiciones— y contestar
-    // la mitad que se puede daría `true` sobre una piedra poco tóxica. De los dos
-    // errores, decir que no se cumple algo que sí es el barato (ver arriba); decir
-    // que se cumple algo que no manda a la criatura a comerse una piedra.
-    case 'sostiene':
-      return false
+    // Hoy la superficie lo contesta con la `Physics` VIVA y no hay nada que leer
+    // al revés: `b.tags` es `tagsDe(body, phys)`, la unión de los tags de las
+    // partes, la misma función con la que la física decide qué ley le toca a qué.
+    //
+    // ─── LA CONJUNCIÓN SE CONTESTA ENTERA, Y ESO NO CAMBIÓ ───────────────────
+    //
+    // Tag Y condiciones, las dos, sobre EL MISMO cuerpo. Contestar la mitad que se
+    // puede daría `true` sobre una piedra poco tóxica, y de los dos errores ése es
+    // el caro: decir que no se cumple algo que sí sólo cuesta trabajo; decir que se
+    // cumple algo que no manda a la criatura a comerse una piedra.
+    //
+    // Y esto contesta LA MITAD DE CUERPO de la forma. La otra mitad —que esté en la
+    // mano— la pone `cumple`, que es quien recorre `self.holding`; acá no se puede
+    // ni se debe, porque el mismo predicado se usa como pedido de rol (la comida de
+    // la cocción sale de `loQueElSujetoYaTraia`) y ahí la pregunta es «¿este cuerpo
+    // es carnoso?», no «¿lo tengo agarrado?».
+    case 'sostiene': {
+      if (!(b.tags as readonly string[]).includes(p.tag)) return false
+      for (const t of p.tests ?? []) if (!compara(q(b, t.q), t.op, t.v)) return false
+      return true
+    }
   }
 }

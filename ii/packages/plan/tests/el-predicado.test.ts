@@ -19,22 +19,44 @@
 //   (e) **`cumpleCuerpo` contesta con el motor**, contra cuerpos armados con
 //       `unir` de la física — la caña de la pesca, no una maqueta.
 //
-// ─── Y LOS DOS QUE NO SE PUDIERON, QUE SON EL HALLAZGO ──────────────────────
+// ─── ERAN DOS LOS QUE NO SE PODÍAN. QUEDA UNO ───────────────────────────────
 //
-// `freeStrandEnds` y `holding(tag:…)` no se pueden contestar desde una
-// `BodyView`, y están abajo como `it.fails` con la medición de qué falta
-// exactamente en la superficie. No están tapados con una fórmula paralela: el
-// hueco es de la vista, y taparlo acá lo volvería invisible donde hay que
-// arreglarlo.
+// `freeStrandEnds` SIGUE sin poder contestarse desde una `BodyView` y sigue abajo
+// como `it.fails` con la medición de qué falta exactamente en la superficie: no
+// está tapado con una fórmula paralela, porque el hueco es de la vista y taparlo
+// acá lo volvería invisible donde hay que arreglarlo.
+//
+// `holding(tag:…)` SÍ se cerró, y la diferencia entre los dos es lo que este
+// archivo mide ahora: para `freeStrandEnds` falta un número que la vista no tiene
+// (`maxParts(sharpness)`); para el tag faltaba UN CAMPO EN LA SUPERFICIE, y ahora
+// está: `BodyView.tags` es `tagsDe(body, phys)` con la `Physics` viva.
+//
+// ─── Y SE CERRÓ DOS VECES, QUE ES LO QUE ESTE ARCHIVO TIENE QUE CONTAR ──────
+//
+// El primer cierre leyó el NOMBRE al revés contra un índice derivado del catálogo
+// de la semilla, con el argumento de que `name` es la salida de `nameOf` y por lo
+// tanto el léxico de la sustancia. El índice era honesto; la lectura mentía,
+// porque la ley 4 bautiza a sus residuos `«<madre> hecho tizón»` y el prefijo
+// contestaba los tags de la madre sobre un carbón con `nutrition 0`. Los cuatro
+// tests de abajo cubren la conjunción entera, la UNIÓN de las partes (el límite
+// de la parte dominante se cayó con el nombre), las 30 sustancias en 7 estados, y
+// EL TIZÓN — que es el caso que mató a la lectura por nombre, con el cuerpo hecho
+// por el motor y no a mano.
 
 import { describe, expect, it } from 'vitest'
 
 import {
   QUALITY_IDS,
   SEED_PROCESSES,
+  CELDA_TAPADA,
+  HZ_DE_REFERENCIA,
+  SUSTANCIAS_SEMILLA,
   TAGS,
   buildSeedPhysics,
+  correr,
+  dtDeFrecuencia,
   nameOf,
+  tagsDe,
   promesasDe,
   qualityOf,
   specOf,
@@ -45,7 +67,14 @@ import {
 } from '@anima/physics'
 import type { BodyView, Cell, CellQuality, PlaceMemory, SelfView, Where } from '@anima/skills'
 
-import { cumple, cumpleCuerpo, firmaDe, implica, interpretar, textoDe } from '../src/predicado.js'
+import {
+  cumple,
+  cumpleCuerpo,
+  firmaDe,
+  implica,
+  interpretar,
+  textoDe,
+} from '../src/predicado.js'
 import type { Predicado, VistaDelPlan } from '../src/tipos.js'
 
 const PHYS: Physics = buildSeedPhysics()
@@ -124,6 +153,9 @@ function vistaDe(b: Body): BodyView {
     // `name` sale de `nameOf`, igual que en la superficie de verdad. Es la única
     // pista de sustancia que tiene una vista, y abajo se mide que no alcanza.
     name: nameOf(b, PHYS),
+    // La superficie de verdad: `tagsDe(body, phys)`, la union de los tags de las
+    // partes con la Physics viva. Es lo que `perceive/src/vista.ts` publica.
+    tags: tagsDe(b, PHYS),
     madeByMe: true,
     joints: b.joints.map((j) => ({ a: j.a, b: j.b, strength: j.strength })),
   }
@@ -148,6 +180,10 @@ function escenario(o: { readonly ve?: readonly Body[]; readonly mano?: readonly 
     id: 'criatura',
     at: ORIGEN,
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia:
+    // `[]` es la respuesta honesta y es la misma que da `cuerpo()` por omision. En
+    // la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: (o.mano ?? []).map(vistaDe),
@@ -569,27 +605,170 @@ describe('lo que una `BodyView` no puede contestar', () => {
     )
   })
 
-  it.fails('HUECO 2: `holding(tag:carnoso)` con un pescado en la mano', () => {
-    // Falla por la misma clase de razón, en la otra punta. Para contestarlo hay
-    // que saber de qué SUSTANCIA está hecho el cuerpo y qué tags tiene esa
-    // sustancia. Una `BodyView` no trae ninguna de las dos cosas: trae `name`, que
-    // es la vista de `nameOf` —el léxico de la sustancia dominante más adjetivos
-    // de cocción—, y adivinar el tag desde ahí se rompe el día que el oráculo
-    // invente una carne que se llame distinto, que es el día para el que se hizo
-    // todo esto.
+  it('EL HUECO 2 ESTÁ CERRADO: `holding(tag:carnoso)` con un pescado en la mano', () => {
+    // ─── ERA UN `it.fails` Y AHORA NO, Y ÉSTA ES LA DIFERENCIA ──────────────
     //
-    // QUÉ FALTA, EXACTAMENTE: `BodyView` no tiene `tags` ni `substance`, y
-    // `VistaDelPlan` no tiene `Physics` ni forma de preguntar por un tag. Lo más
-    // barato es una lectura en la vista —`tiene(b, tag): boolean`— que del otro
-    // lado sea `phys.substances.get(parte.substance).tags.includes(tag)`.
+    // Decía que no se podía: los tags son de la SUSTANCIA y una `BodyView` no la
+    // trae. La primera mitad sigue siendo cierta; la segunda dejó de serlo cuando
+    // la superficie empezó a traerla: `BodyView.tags` es `tagsDe(body, phys)` con
+    // la `Physics` VIVA, calculado en `perceive/src/vista.ts` al lado de `name` y
+    // por el mismo precio. (En el medio hubo un cierre que leía el NOMBRE al revés
+    // contra un índice del catálogo de la semilla; mentía sobre los residuos de la
+    // ley 4 y se fue entero — ver el test del TIZÓN más abajo.)
     //
-    // MIENTRAS TANTO, Y ES CARO: `extraccion` promete exactamente esto, así que un
-    // objetivo de comida NUNCA se da por cumplido y el plan se rehace para
-    // siempre, con el pescado ya en la mano.
+    // LO QUE COSTABA, medido en `mind/tests/hito-5-el-criterio.test.ts`: 196
+    // rechazos `sin-pozo` en 6300 ticks, porque una meta de comida no se daba por
+    // cumplida NUNCA y todo plan arrancaba con «pescá uno».
     const { v } = escenario({ mano: [PESCADO] })
+    // Las dos puntas de la cadena, afirmadas contra el motor y el catálogo: el
+    // nombre lo escribe `nameOf`, los tags los tiene la sustancia.
     expect(nameOf(PESCADO, PHYS)).toContain('pescado')
     expect(PHYS.substances.get('pescado')?.tags).toContain('carnoso')
     expect(cumple(interpretar('holding(tag:carnoso)') as Predicado, v)).toBe(true)
+    // Y no contesta que sí a cualquier tag: la enumeración es plana y `carnoso` no
+    // arrastra a `mineral`. Sin esto, un `true` podría ser un índice que dice que sí
+    // a todo.
+    expect(cumple(interpretar('holding(tag:mineral)') as Predicado, v)).toBe(false)
+    // La CONJUNCIÓN entera, sobre el mismo cuerpo: el pescado crudo de este banco
+    // tiene `toxicity` 0,25, así que cumple el tag y no cumple el umbral de lo
+    // cocido. Contestar la mitad que se puede daría `true` acá, que es el error caro.
+    expect(cumple(interpretar('holding(tag:carnoso,toxicity<=0.05)') as Predicado, v)).toBe(false)
+    expect(cumple(interpretar('holding(tag:carnoso,toxicity<=0.3)') as Predicado, v)).toBe(true)
+  })
+
+  it('EL LÍMITE QUE SE CAYÓ: los tags son la UNIÓN de las partes, no los de la dominante', () => {
+    // ─── ACÁ ESTABA PINADA LA LECTURA ESTRICTA, Y ERA UNA CONSECUENCIA DEL BUG ─
+    //
+    // Cuando `holding(tag:…)` se contestaba leyendo `BodyView.name`, los tags eran
+    // por fuerza los de la parte DOMINANTE —es lo único que `nameOf` nombra—, así
+    // que «una caña con un pescado atado no es carnosa» quedaba escrito como un
+    // límite aceptado. Con `BodyView.tags = tagsDe(body, phys)` el límite no
+    // existe: `tagsDe` une los tags de TODAS las partes, que es la misma lectura
+    // con la que la física decide qué ley le toca a qué cuerpo.
+    //
+    // La caña pelada sigue sin ser carnosa, y ahora por el motivo correcto: no
+    // tiene una sola parte de carne. Lo que cambia es la caña CON el pescado.
+    expect(nameOf(CANA, PHYS)).toContain('madera')
+    const { v } = escenario({ mano: [CANA] })
+    expect(cumple(interpretar('holding(tag:carnoso)') as Predicado, v)).toBe(false)
+    // Y lo que la caña SÍ es, lo contesta bien: la madera es vegetal.
+    expect(cumple(interpretar('holding(tag:vegetal)') as Predicado, v)).toBe(true)
+
+    // La caña con el pescado atado: `nameOf` la sigue llamando por la madera —la
+    // parte más pesada es la vara de 1 kg— y los tags dicen las dos cosas.
+    const conPescado = atar(CANA, pescado('atado'), 'cana-con-pescado')
+    expect(nameOf(conPescado, PHYS)).toContain('madera')
+    // Los tags, medidos y no supuestos: la unión de madera + liana + pescado. Van
+    // los cuatro y no un `toContain`, para que agrandar la unión sin querer se note.
+    expect([...tagsDe(conPescado, PHYS)].sort()).toEqual(['carnoso', 'fibroso', 'organico', 'vegetal'])
+    const { v: v2 } = escenario({ mano: [conPescado] })
+    expect(cumple(interpretar('holding(tag:carnoso)') as Predicado, v2)).toBe(true)
+    expect(cumple(interpretar('holding(tag:vegetal)') as Predicado, v2)).toBe(true)
+  })
+
+  it('la respuesta sale del CATÁLOGO y no del nombre: las 30 sustancias, en 7 estados', () => {
+    // La cota que hace que esto no sea una lista escrita a mano: para las TREINTA
+    // sustancias de la semilla, y en los estados de cocción y de fuego que
+    // `nameOf` sabe adjetivar, la vista publica los tags EXACTOS del catálogo. El
+    // adjetivo de estado no toca la respuesta, que es justo lo que la lectura por
+    // nombre no podía garantizar.
+    const estados: readonly Record<string, number>[] = [
+      {},
+      { temperature: 900 },
+      { charred: 1 },
+      { charred: 0.3 },
+      { digestibility: 0.95 },
+      { moisture: 0.9 },
+      { decay: 0.8 },
+    ]
+    let cuantos = 0
+    for (const s of SUSTANCIAS_SEMILLA) {
+      for (const estado of estados) {
+        const b: Body = {
+          id: `probe-${s.id}`,
+          form: 'bloque',
+          parts: [{ substance: s.id, mass: 1, q: {} }],
+          joints: [],
+          state: estado,
+        }
+        expect([...vistaDe(b).tags].sort(), `«${nameOf(b, PHYS)}»`).toEqual([...s.tags].sort())
+        cuantos++
+      }
+    }
+    expect(cuantos).toBe(SUSTANCIAS_SEMILLA.length * estados.length)
+  })
+
+  it('EL TIZÓN: un pescado pasado de fuego YA NO se da por carnoso, y el motor lo fabrica', () => {
+    // ─── EL BUG QUE CERRÓ ESTE TEST, MEDIDO Y NO ARGUMENTADO ─────────────────
+    //
+    // `cumpleCuerpo` contestaba `holding(tag:…)` con un índice `nombre → tags`
+    // derivado de `SUSTANCIAS_SEMILLA` y buscado por PREFIJO sobre `BodyView.name`.
+    // El índice era honesto; lo que mentía era la entrada: `residuoDe`
+    // (`physics/src/leyes.ts`) bautiza a lo que la ley 4 da de alta
+    // ``${madre.lexeme.nombre} hecho tizón``, así que un pescado que se pasó de
+    // fuego se llama «pescado hecho tizón …» y el prefijo contestaba los tags del
+    // pescado. Los 60 residuos de las 30 sustancias de la semilla heredan el
+    // prefijo: era la regla de bautismo y no un borde.
+    //
+    // Y es EL ESLABÓN SIGUIENTE de la cadena del Hito 5 (pescar → cocinar →
+    // pasarse de cocción): con `holding(tag:carnoso)` dada por cumplida sobre un
+    // carbón, la meta de comida queda satisfecha para siempre y la criatura deja
+    // de tener hambre con cero calorías en la mano.
+    //
+    // Acá no se fabrica el tizón a mano: se le da un pescado al MOTOR, en una
+    // celda tapada (oxígeno bajo, que es lo que la ley 4 lee para decidir residuo
+    // carbonoso) y a temperatura de fuego, y se lo deja andar.
+    const phys = buildSeedPhysics()
+    const crudo: Body = {
+      id: 'pescado-al-fuego',
+      form: 'bloque',
+      parts: [{ substance: 'pescado', mass: 2.887, q: {} }],
+      joints: [],
+      state: { temperature: 700 },
+    }
+    const r = correr(
+      crudo,
+      { celda: { ...CELDA_TAPADA, ambiente: 700 } },
+      phys,
+      dtDeFrecuencia(HZ_DE_REFERENCIA),
+      200,
+    )
+    // El motor dio de alta una sustancia nueva, y no es carnosa.
+    expect(r.nuevas.length).toBeGreaterThan(0)
+    for (const s of r.nuevas) expect(s.tags).not.toContain('carnoso')
+    // El NOMBRE sigue empezando con «pescado », que es lo que hacía mentir al
+    // índice viejo. Se pina para que el día que alguien vuelva a leer el nombre,
+    // este test le muestre por qué no se puede.
+    const nombre = nameOf(r.body, r.phys)
+    expect(nombre.startsWith('pescado ')).toBe(true)
+    // Y no alimenta: cero calorías.
+    expect(qualityOf(r.body, 'calories', r.phys)).toBe(0)
+
+    // LA VISTA, construida como la construye `perceive/src/vista.ts`: con la
+    // `Physics` que salió de la corrida, que es la que tiene la sustancia nueva.
+    const vista: BodyView = {
+      id: r.body.id,
+      at: ORIGEN,
+      name: nombre,
+      tags: tagsDe(r.body, r.phys),
+      madeByMe: true,
+      joints: [],
+    }
+    const leerConNueva = (_v: BodyView, q: QualityId): number => qualityOf(r.body, q, r.phys)
+
+    console.log(
+      `\n── EL TIZÓN, VISTO POR LA SUPERFICIE ${'─'.repeat(30)}\n` +
+        `  nombre: «${nombre}» (empieza con «pescado »: sí)\n` +
+        `  sustancias nuevas: ${r.nuevas.map((s) => `${s.id} ${JSON.stringify(s.tags)}`).join(' · ')}\n` +
+        `  tags que publica la vista: [${vista.tags.join(', ')}]\n` +
+        `  calories ${qualityOf(r.body, 'calories', r.phys).toFixed(4)} · ` +
+        `nutrition ${qualityOf(r.body, 'nutrition', r.phys).toFixed(4)}\n`,
+    )
+
+    // LO QUE CIERRA EL HUECO: el tizón NO es carnoso, y sí es carbonoso.
+    expect([...vista.tags]).not.toContain('carnoso')
+    expect(cumpleCuerpo(interpretar('holding(tag:carnoso)') as Predicado, vista, leerConNueva)).toBe(false)
+    expect(cumpleCuerpo(interpretar('holding(tag:carbonoso)') as Predicado, vista, leerConNueva)).toBe(true)
   })
 
   it('HUECO 2, el lado que sí anda: con la mano vacía contesta que no, y es verdad', () => {

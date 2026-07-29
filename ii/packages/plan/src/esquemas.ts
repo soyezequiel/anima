@@ -57,8 +57,10 @@ import {
   SUSTANCIAS_SEMILLA,
   T_AMBIENTE,
   temperaturaDeEquilibrio,
+  specOf,
   type Process,
   type ProcessId,
+  type QualityTest,
   type Tag,
 } from '@anima/physics'
 
@@ -157,16 +159,34 @@ function segundosDe(via: ProcessId): number {
   return peor
 }
 
-/** Una fila, con los `segundos` puestos por el catálogo y no por quien escribe. */
+/**
+ * Una fila, con los `segundos` puestos por el catálogo y no por quien escribe.
+ *
+ * Los dos campos opcionales se agregan sólo si vinieron, y no con `undefined`: un
+ * `{ cellHints: undefined }` no es lo mismo que no tener la clave para nada que
+ * recorra el objeto —una traza, un `toEqual`, una firma— y `exactOptionalPropertyTypes`
+ * lo rechazaría de todos modos.
+ */
 function esquema(
   establishes: PredicateSignature,
   via: ProcessId,
   roleHints: ConstructionSchema['roleHints'],
-  cellHints?: ConstructionSchema['cellHints'],
+  extra?: {
+    readonly cellHints?: ConstructionSchema['cellHints']
+    readonly roleFilters?: ConstructionSchema['roleFilters']
+    readonly roleNoDeLaMano?: ConstructionSchema['roleNoDeLaMano']
+  },
 ): EsquemaDeProceso {
-  return cellHints === undefined
-    ? { k: 'proceso', establishes, via, roleHints, segundos: segundosDe(via) }
-    : { k: 'proceso', establishes, via, roleHints, cellHints, segundos: segundosDe(via) }
+  return {
+    k: 'proceso',
+    establishes,
+    via,
+    roleHints,
+    ...(extra?.roleFilters === undefined ? {} : { roleFilters: extra.roleFilters }),
+    ...(extra?.roleNoDeLaMano === undefined ? {} : { roleNoDeLaMano: extra.roleNoDeLaMano }),
+    ...(extra?.cellHints === undefined ? {} : { cellHints: extra.cellHints }),
+    segundos: segundosDe(via),
+  }
 }
 
 /**
@@ -198,6 +218,57 @@ export function claveDeVia(e: ConstructionSchema): string {
  * transcribirlo: si el decreto cambiara la humedad del agua franca, se pone rojo.
  */
 export const AGUA_FRANCA = 0.9
+
+// ─── LO QUE NO ENTRA EN UNA MANO, PREGUNTADO AL CATÁLOGO ────────────────────
+
+/**
+ * El «no» de `portable`, que es el PISO DE SU RANGO y no un cero elegido.
+ *
+ * `portable` es una cualidad derivada con forma de escalón —`step(8 − mass)`, ver
+ * abajo— así que sólo toma los dos extremos de su rango, y decir «no entra en la
+ * mano» es decir «vale el mínimo». Se lee de `specOf` y no se escribe: si mañana
+ * el catálogo le cambiara el rango, esto lo sigue.
+ */
+export const PISO_DE_PORTABLE: number = specOf('portable').range[0]
+
+/**
+ * A PARTIR DE CUÁNTOS KILOS ALGO DEJA DE ENTRAR EN UNA MANO, despejado de la
+ * expresión derivada de `portable` y no transcripto.
+ *
+ * El número no es de este archivo ni de este paquete: es la constante con la que
+ * `world/src/step.ts` rechaza un `take` con motivo `no-portable`
+ * (`qualityOf(c.body,'portable') <= 0`). O sea que **todo lo que una criatura
+ * pudo levantar tiene `portable > 0` por construcción del mundo**, y ésa es la
+ * mitad que hace que la condición de la pesca no sea una aproximación: pedirle al
+ * `source` que NO sea portátil descarta la mano entera.
+ *
+ * Se verifica la FORMA antes de leer el número —igual que `puntasLibres` hace con
+ * `catch` en el arnés— porque un `portable` que dejara de ser un escalón sobre la
+ * masa haría que este despeje devolviera un número equivocado en silencio.
+ * Medido: 8 kg.
+ */
+export const MASA_QUE_NO_ENTRA_EN_LA_MANO: number = (() => {
+  const e = specOf('portable').derived
+  if (e === undefined || e.k !== 'op' || e.f !== 'step' || e.a.k !== 'const' || e.b.k !== 'own' || e.b.q !== 'mass') {
+    throw new RangeError('`portable` dejó de ser `step(const, mass)`: el despeje de su umbral ya no vale')
+  }
+  return e.a.v
+})()
+
+/**
+ * «NO ENTRA EN UNA MANO», DESPEJADO DEL CATÁLOGO — Y NO LA USA NINGUNA FILA.
+ *
+ * Fue la condición del `source` de la pesca y se sacó: ver el bloque de la fila,
+ * que lleva escrito lo que costaba (11 partidas de 20 sin un solo banco elegible).
+ * Queda exportada porque lo que dice sobre el MUNDO es cierto y hay dos tests que
+ * lo cruzan contra el motor —el mundo rechaza `take` sobre el banco con
+ * `no-portable`, y el escalón separa de verdad al banco de su pieza—, y porque el
+ * día que la superficie sepa decir «esto es un pozo» este umbral es una de las dos
+ * cosas que van a querer volver a mirarse. Escribirla acá y no adentro de la fila
+ * es lo que deja que el test la cruce contra el catálogo sin transcribirla, igual
+ * que `AGUA_FRANCA`.
+ */
+export const NO_ENTRA_EN_LA_MANO: QualityTest = { q: 'portable', op: '<=', v: PISO_DE_PORTABLE }
 
 // ─── LO QUE HACE FALTA PARA COCINAR, DESPEJADO DEL CATÁLOGO ─────────────────
 //
@@ -753,20 +824,68 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
   //
   // El mundo rechaza la extracción con motivo `sin-pozo` si el cuerpo no es un
   // banco decretado por el dios, y eso no es expresable en un `Where`, que sólo
-  // sabe de cualidades de cuerpo. Mientras esta fila no dijo nada de la celda, el
+  // sabe de cualidades de cuerpo. Mientras esta fila no dijo nada, el
   // planificador elegía el `source` POR CERCANÍA entre todo lo que tuviera masa:
   // una piedra de 5 kg a una celda le ganaba al río de 50 kg a ocho, el plan
   // salía verde y el mundo contestaba `sin-pozo`. La pesca del Hito 5 funcionaba
   // por casualidad —el río del test tiene tres cuerpos y `union` se come dos, así
   // que el tercero quedaba de pozo por descarte—.
   //
-  // `cellHints` es lo que faltaba, y no inventa un vocabulario: `VistaDelPlan` ya
-  // traía `qAt`. Un pozo de esta semilla está SIEMPRE en agua franca (los únicos
-  // `Stock` que decreta el dios son bancos de agua), y el agua franca vale
-  // `wet = 1,0000` contra `0,6000` de la orilla desde la que se pesca. Es NECESARIA y
-  // no suficiente —una piedra adentro del río sigue pasando, y ahí sigue mandando
-  // `sin-pozo`—, y así queda escrito: lo que compra es que el hueco deje de
-  // elegir, no que desaparezca.
+  // Hacen falta las DOS condiciones de abajo y ninguna sobra, y se sabe porque las
+  // dos se midieron sobre la misma corrida que se murió:
+  //
+  //   `cellHints` — EL POZO ESTÁ EN EL AGUA. No inventa vocabulario: `VistaDelPlan`
+  //     ya traía `qAt`. Un pozo de esta semilla está SIEMPRE en agua franca (los
+  //     únicos `Stock` que decreta el dios son bancos de agua), y el agua franca
+  //     vale `wet = 1,0000` contra `0,6000` de la orilla desde la que se pesca.
+  //     Descarta las piedras de la orilla y NO descarta lo que la criatura lleva en
+  //     la mano cuando pesca metida en el agua: un cuerpo agarrado viaja en la celda
+  //     de quien lo agarra (`world/src/step.ts`), así que ahí cumple `wet >= 0,9`
+  //     igual que el pozo. Medido: parada en la orilla el plan elige el banco, y
+  //     parada en el agua elige el pescado de su propia mano.
+  //
+  //   `roleNoDeLaMano` — Y NO SE PESCA ADENTRO DE LO QUE UNO LLEVA PUESTO. Es la
+  //     condición que cierra lo otro, dicha por lo que es: una relación entre la
+  //     criatura y el candidato, no una cualidad del candidato. Caza exactamente al
+  //     impostor que se midió —el pescado agarrado, que además está a distancia
+  //     cero y que `candidatosPara` PREFIERE por estar en la mano— y no le cuesta
+  //     nada a ningún banco, porque un banco decretado no está en la mano de nadie.
+  //
+  // ─── ACÁ ESTUVO ESCRITO `roleFilters: {source:[portable<=0]}`, Y COSTÓ ONCE ──
+  //
+  // La condición vieja era «el pozo no entra en una mano», con este argumento:
+  // `portable` es LA MISMA cualidad con la que el mundo rechaza un `take`
+  // (`no-portable`), así que todo lo que la criatura pudo levantar la cumple por
+  // construcción y pedirle al `source` que NO sea portátil descarta la mano entera.
+  // La premisa es cierta. Lo que no se siguió es que descarta MUCHÍSIMO MÁS que la
+  // mano: descarta todo cuerpo de menos de 8 kg, y los bancos que el dios decreta
+  // casi siempre pesan menos que eso. El precio publicado —«le regala al río las
+  // últimas 2 piezas de 45, un 4,4%»— salía de UNA semilla, la del banco de 129,9150
+  // kg del test de esquemas. Sobre las VEINTE que juega el banco de la emergencia
+  // (`juez/tests/ataque-al-tramo-i.test.ts`, bloque 3):
+  //
+  //     partidas sin UN SOLO banco elegible          11 de 20
+  //     de esas once, partidas con alguna tirada      0 de 11
+  //     piezas regaladas                             58 de 332 (17,5%)
+  //
+  // Y el mundo sí deja pescar ahí: `stockDe` (`world/src/step.ts`) decide qué es un
+  // pozo POR IDENTIDAD del cuerpo, la masa no entra en la cuenta, y un banco de
+  // 2,2630 kg rindió su pieza sin que el mundo dijera `sin-pozo` una sola vez.
+  //
+  // Van en campos distintos porque son de clases distintas y `PedidoDeRol` ya tenía
+  // la distinción escrita: `roleHints` viaja a la firma —lo que se REGRESA— y esto
+  // no se fabrica. Ver `EsquemaComun.roleNoDeLaMano` para el porqué del campo nuevo.
+  //
+  // ─── Y LO QUE SIGUE SIN SER SUFICIENTE, DICHO Y NO ESCONDIDO ───────────────
+  //
+  // Una piedra tirada adentro del río cumple las dos y no es un pozo, y ahí el mundo
+  // sigue contestando `sin-pozo`. Con la condición vieja esa piedra quedaba tapada
+  // si pesaba más de 8 kg, y ése es el único lado por el que la vieja compraba algo
+  // que ésta no; costaba once partidas de veinte. Lo que estas dos condiciones
+  // compran es que el planificador deje de ELEGIR ACTIVAMENTE MAL —el pescado de la
+  // mano estaba SIEMPRE, era el más cercano de todos y encima ganaba por estar en la
+  // mano—; no compran que el hueco desaparezca. El hueco desaparece el día que la
+  // superficie sepa decir «esto es un pozo», y eso es una decisión sobre `BodyView`.
   //
   // La firma `holding(tag:carnoso)` tampoco parsea como `QualityTest` —no tiene
   // operador— y por eso el índice se compara por texto y no por estructura.
@@ -777,7 +896,10 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
       gear: [],
       source: [],
     },
-    { source: [{ q: 'wet', op: '>=', v: AGUA_FRANCA }] },
+    {
+      roleNoDeLaMano: ['source'],
+      cellHints: { source: [{ q: 'wet', op: '>=', v: AGUA_FRANCA }] },
+    },
   ),
 
   // ── ley 5 · desnaturalización ─────────────────────────────────────────────

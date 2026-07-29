@@ -137,7 +137,7 @@
    "archivos": 1
   },
   {
-   "falta": "Type 'readonly string[]' is missing the following properties from type 'BodyView': id, name, madeByMe, joints",
+   "falta": "Type 'readonly string[]' is missing the following properties from type 'BodyView': id, name, tags, madeByMe, joints",
    "archivos": 1
   },
   {

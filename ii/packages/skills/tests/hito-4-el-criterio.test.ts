@@ -136,6 +136,7 @@ const vista = (m: Mundito, id: string): API.BodyView => {
     id: c.id,
     at: c.at,
     name: c.name,
+    tags: c.tags ?? [],
     madeByMe: c.madeByMe ?? false,
     joints: [],
   }

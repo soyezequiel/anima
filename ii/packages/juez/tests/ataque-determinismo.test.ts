@@ -208,7 +208,24 @@ describe('la regla 2, sobre todo `src/`', () => {
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.ts'))) {
       if (IMPORTA_LA_MENTE.test(readFileSync(dir + f, 'utf8'))) tocan.push(f)
     }
-    expect(tocan).toEqual(['hito-5-la-emergencia.test.ts'])
+    // ─── EL SEGUNDO ARCHIVO, Y POR QUÉ SE LO DEJA ENTRAR ─────────────────────
+    //
+    // Esta lista tenía UN nombre y el cerco funcionó exactamente como prometía:
+    // se puso rojo cuando entró `ataque-al-tramo-i.test.ts`, y obligó a decidir en
+    // vez de dejar pasar. La decisión, escrita acá y no en el archivo que entra:
+    //
+    // El ataque al tramo I mide si la reparación del `source` deja a la MENTE sin
+    // banco para pescar, y esa pregunta no se puede contestar sin correr la mente:
+    // «el planificador no elige este cuerpo» es una afirmación sobre `@anima/plan`,
+    // y `@anima/juez` no lo tiene ni lo puede tener. Lo que sí puede es poner la
+    // mente de verdad en la orilla y contar si la caña sale. Igual que el banco de
+    // la emergencia, el archivo importa la mente para ARMAR la partida; el juez
+    // —`src/`— sigue sin poder nombrarla, y eso lo vigila el PRIMER test de este
+    // archivo leyendo el directorio, que es el cerco que de verdad importa.
+    //
+    // Y el cerco no se aflojó: sigue siendo una lista EXACTA, así que un tercer
+    // archivo lo vuelve a poner rojo. Lo que cambió es el largo, no la regla.
+    expect(tocan).toEqual(['ataque-al-tramo-i.test.ts', 'hito-5-la-emergencia.test.ts'])
   })
 })
 

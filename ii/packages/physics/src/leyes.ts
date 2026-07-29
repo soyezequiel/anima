@@ -634,6 +634,16 @@ export function tagsDe(b: Body, phys: Physics): readonly Tag[] {
     if (s === undefined) continue
     for (const t of s.tags) if (!out.includes(t)) out.push(t)
   }
+  // ─── SE CONGELA, Y NO ES CEREMONIA ──────────────────────────────────────────
+  //
+  // Este arreglo se COMPARTE: la memo lo devuelve tal cual a todo el que pregunte
+  // por el mismo arreglo de partes, y desde que `BodyView.tags` existe también sale
+  // por la superficie que ve el código que escribe el modelo. Sin congelar, un
+  // `push` desde una habilidad no le agregaría un tag a UNA vista: se lo agregaría
+  // a la física, para todos los cuerpos de esa materia y para lo que queda de
+  // partida. Congelar cuesta una vez por arreglo de partes —que es exactamente la
+  // vida de la entrada de la memo— y no una vez por lectura.
+  Object.freeze(out)
   TAGS_POR_PARTES.set(b.parts, { phys, tags: out })
   return out
 }

@@ -44,6 +44,7 @@ import {
   fx,
   type Duracion,
   type Fixed,
+  type FormId,
   type SubstanceId,
 } from '@anima/physics'
 
@@ -117,6 +118,25 @@ export interface Suelta {
   readonly i: number
   /** Masa en kilos, como `Fixed`. */
   readonly masa: Fixed
+  /**
+   * LA FORMA, CUANDO EL DIOS LA ELIGIÓ Y NO CUANDO SE PUEDE ADIVINAR.
+   *
+   * Presente sólo en lo que `ensureSolvable` siembra para GARANTIZAR que el chunk
+   * sea jugable: ahí la forma no es un detalle, es la razón de la siembra —una
+   * rama hecha vara alcanza dos celdas y hecha bloque no, y `reach` es
+   * `esbeltez(forma) × masa`—, y `SueltaSembrable.form` la traía elegida desde
+   * `FORMAS_SEMBRABLES`. Se perdía acá: `decretarChunk` copiaba sustancia, celda y
+   * masa y tiraba el campo, y después todo el que leyera el decreto la volvía a
+   * ADIVINAR con `formaDeLoSuelto`. Medido sobre las veinte partidas del banco de
+   * la emergencia: de 66 sueltas garantizadas, 1 se replantaba como `bloque`
+   * cuando el dios sólo pudo haber elegido `vara` o `hebra` — cota INFERIOR,
+   * porque los desacuerdos vara↔hebra no se ven desde afuera.
+   *
+   * `undefined` es lo que deja `scatter`: ahí el dios NO eligió forma, y quien lea
+   * tiene que inferirla (`formaDeLoSuelto`). Un `FormId` por omisión sería
+   * inventar una decisión que nadie tomó.
+   */
+  readonly form?: FormId
 }
 
 /**

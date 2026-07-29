@@ -37,7 +37,7 @@ import type { QualityId } from '@anima/physics'
 import { HZ_DE_REFERENCIA, evalQuality, specOf } from '@anima/physics'
 import type { GoalId, PredicateSignature, Ref, Step } from '@anima/plan'
 import { EXPANSIONES_POR_TICK, firmaDe, interpretar, plan, procesoDe, resolver, SCHEMA_INDEX } from '@anima/plan'
-import type { BodyId, BodyView, Cell, CellQuality, Clock, PlaceMemory, SelfView, Where, WhereCell } from '@anima/skills'
+import type { BodyId, BodyView, Cell, CellQuality, Clock, PlaceMemory, SelfView, Tag, Where, WhereCell } from '@anima/skills'
 
 import { Creencias, contextoDe } from '../src/creencias.js'
 import {
@@ -72,6 +72,12 @@ interface Cosa {
   id: BodyId
   at: Cell
   name: string
+  /**
+   * De qué CLASE es la materia. En la partida sale de `tagsDe(body, phys)`; acá no
+   * hay sustancias, así que por omisión es `[]`. Lo que pide `holding(tag:…)` la
+   * declara — y que haya que declararla es la señal de que el nombre ya no decide.
+   */
+  tags?: readonly Tag[]
   q: Cualidades
   /** En la mano de la criatura. */
   enMano: boolean
@@ -162,6 +168,7 @@ function vistaDe(s: Escena): VistaDeLaMente {
     id: c.id,
     at: c.enMano ? s.at : c.at,
     name: c.name,
+    tags: c.tags ?? [],
     madeByMe: false,
     joints: [],
   })
@@ -169,6 +176,9 @@ function vistaDe(s: Escena): VistaDeLaMente {
     id: 'yo',
     at: s.at,
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia.
+    // En la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: visibles(s).filter((c) => c.enMano).map(comoVista),

@@ -28,12 +28,18 @@
 // De ese hueco salen, uno por uno, los seis bloques de abajo:
 //
 //   `comer`     la criatura pesca y no come. YA ESTÁ MEDIDO en
-//               `hito-5-el-criterio.test.ts`; acá se mide la otra mitad, que es
-//               nueva: **tampoco se da cuenta de que ya pescó**. Con el pescado en
-//               la mano, `holding(tag:carnoso)` sigue dando `false`, la meta queda
-//               puesta para siempre y D4 la vuelve a planificar. Los 199
-//               `aplicar(extraccion)` de la corrida larga no son gula: es una
-//               criatura que no puede tachar nada de la lista.
+//               `hito-5-el-criterio.test.ts`; acá se medía la otra mitad: **que
+//               tampoco se daba cuenta de que ya pescó**. Con el pescado en la
+//               mano, `holding(tag:carnoso)` daba `false`, la meta quedaba puesta
+//               para siempre y D4 la volvía a planificar; los 199
+//               `aplicar(extraccion)` de la corrida larga no eran gula, era una
+//               criatura que no podía tachar nada de la lista.
+//               **ESTE ATAQUE GANÓ Y EL BLOQUE 3 ESTÁ DADO VUELTA**: `cumpleCuerpo`
+//               contesta los tags desde la vista, la corrida larga tira la caña
+//               DOS veces y el `it.fails` que clavaba el hueco se cayó solo. Lo
+//               que sigue abierto es lo de al lado: el tag no se pierde al
+//               pudrirse, así que el pescado que espera un fuego que no llega
+//               cumple la meta barata para siempre.
 //   `poner`     no puede soltar nada a propósito, o sea que no puede hacerse un
 //               techo — que es la ÚNICA forma que la ley 12 tiene de producir
 //               `sheltered`. Medido: 58 intentos de `guarecerse` en 120 ticks y
@@ -357,7 +363,8 @@ describe('las cuatro que `plan()` no emite', () => {
    *
    * Y es el que ordena a todos los demás. `comer` es el único paso que sube la
    * `stamina`, o sea el único que cierra el bucle de la necesidad. Sin él la
-   * criatura pesca 199 veces y se muere de hambre arriba de la comida —medido en
+   * criatura se muere de hambre arriba de la comida —antes pescando 199 veces,
+   * hoy con UN pescado en la mano esperando un fuego, medido las dos veces en
    * `hito-5-el-criterio.test.ts`— y el criterio (2) del Hito 5 no se puede cumplir
    * por más que la mente decida perfecto: dicho en la moneda del mundo, 20.000
    * ticks son exactamente un tanque de `stamina`, así que el criterio es
@@ -509,8 +516,8 @@ describe('«quiero un cuerpo de corteza de un kilo»', () => {
 
 // ═══ 3 · LA META QUE NO SE PUEDE DAR POR CUMPLIDA ═══════════════════════════
 
-describe('pescó, y no se entera', () => {
-  it('con el pescado en la mano, `holding(tag:carnoso)` sigue dando falso, y la criatura vuelve a pescar', () => {
+describe('pescó, y AHORA SÍ se entera', () => {
+  it('con el pescado en la mano, `holding(tag:carnoso)` da VERDADERO, y deja de pescar', () => {
     // 200 ticks sobre la escena del documento. La cadena de la caña sale entera
     // —eso ya está medido en el criterio— y lo que se mide acá es lo que pasa
     // DESPUÉS de que el pescado está en la mano.
@@ -527,50 +534,73 @@ describe('pescó, y no se entera', () => {
         `  meta en curso de la escalera:  ${String(c.mente.estado.metaEnCurso)}\n` +
         `  vuelos en 200 ticks:           ${[...c.cuenta.entries()].map(([k, n]) => `${k}×${String(n)}`).join(' ')}\n`,
     )
-    // La mano NO está vacía y el predicado sigue diciendo que sí. Es el hueco de
-    // la superficie que `plan/src/predicado.ts` deja escrito —`cumpleCuerpo` del
-    // caso `sostiene` devuelve `false` siempre, porque `BodyView` no trae ni
-    // sustancia ni tags— y NO se movió.
-    expect(v.self.holding.length).toBeGreaterThan(0)
-    expect(cumple(meta, v)).toBe(false)
-
-    // ─── LO QUE SÍ SE MOVIÓ, Y ES EL TRAMO DEL BOCADO (ADR II-0013) ────────
+    // ─── ESTE ATAQUE GANÓ, Y ACÁ QUEDA LA MEDICIÓN DE LOS DOS LADOS ────────
     //
-    // Antes de esto la meta quedaba puesta para siempre y D4 la volvía a
-    // planificar: la criatura repetía la última pesca hasta morirse, 199 veces
-    // medidas. Ahora la escalera se acuerda de que un plan SUYO consiguió esa
-    // meta y todavía tiene en la mano lo que rindió (`EstadoDeLaEscalera.
-    // conseguido`), así que D3 la saltea y sube el pedido a la versión que
-    // además se puede comer.
+    // Lo que este test afirmaba, palabra por palabra, era `expect(cumple(meta,
+    // v)).toBe(false)`: la mano NO estaba vacía y el predicado decía que no tenía
+    // nada. Era el hueco que `plan/src/predicado.ts` dejaba escrito —`cumpleCuerpo`
+    // del caso `sostiene` con un `return false` literal, porque nadie leía los tags
+    // de la sustancia desde la `BodyView`— y estaba pinado acá y con un `it.fails`
+    // al lado que decía «LO QUE HARÍA FALTA: que soltar el pescado y volver a
+    // agarrarlo cambie algo. No cambia».
     //
-    // O sea: el hueco de `cumple` sigue abierto —por eso el `it.fails` de
-    // abajo— pero ya no decide la conducta. Lo que la decide es la memoria de la
-    // propia mente, que es evidencia legítima: `plan()` promete que sus pasos
-    // establecen la meta, y sus pasos corrieron enteros y salieron bien.
-    expect(c.mente.estado.conseguido?.meta).toBe('holding(tag:carnoso)')
-    expect(c.mente.estado.metaEnCurso).toBe('holding(tag:carnoso,toxicity<0.0528)')
-    // Y sigue pescando, pero por otro motivo: `plan()` contesta la meta nueva con
-    // un `gap` cuyo `nearest` es la extracción —«mientras tanto, conseguí otro»—
-    // porque la cadena hasta el fuego todavía no cierra. Eso es de `@anima/plan`
-    // y está medido en `mind/tests/el-bocado.test.ts`, grupo (6).
-    expect(c.cuenta.get('aplicar(extraccion)') ?? 0).toBeGreaterThan(5)
-  })
-
-  it.fails('LO QUE HARÍA FALTA: que soltar el pescado y volver a agarrarlo cambie algo. No cambia', () => {
-    // Este es el `it.fails` que clava el hueco. Si algún día `BodyView` publica
-    // los tags de la sustancia —el hueco que `plan/tests/los-esquemas-contra-el-
-    // mundo.test.ts` ya tiene pinado— esto se pone verde solo y hay que sacarle
-    // el `.fails`.
-    //
-    // MEDIDO HOY: con el pescado en la mano, `cumple` da `false`; la aserción de
-    // abajo es la que debería dar `true` y da `false`.
-    const c = correr(laEscena(), 'ana', 200)
-    const v = vistaDe(c.partida, 'ana')
-    const meta = interpretar('holding(tag:carnoso)')
-    expect(meta).toBeDefined()
-    if (meta === undefined) return
+    // Hoy `cumple` contesta. El `it.fails` se cayó solo —vitest lo reporta como
+    // «Expect test to fail», que es la forma que tiene este repositorio de
+    // enterarse de que un hueco se tapó— y las dos aserciones se dieron vuelta.
     expect(v.self.holding.length).toBeGreaterThan(0)
     expect(cumple(meta, v)).toBe(true)
+
+    // ─── Y LO QUE ESO LE HACE A LA CONDUCTA, QUE ES EL PUNTO ───────────────
+    //
+    // Antes: la meta quedaba puesta para siempre, D4 la volvía a planificar y la
+    // criatura repetía la pesca hasta morirse — 199 tiros de caña medidos. Después
+    // del tramo del bocado eso lo tapaba la memoria de la escalera
+    // (`EstadoDeLaEscalera.conseguido`): la mente se acordaba de que un plan suyo
+    // había conseguido la meta.
+    //
+    // Hoy ni siquiera hace falta esa memoria, y por eso `conseguido` sale
+    // **`undefined`**: se llena cuando el ÚLTIMO paso de un plan aterriza bien, y
+    // el vuelo que sacó el pescado aterriza con `ok:false` porque la propia mente
+    // lo interrumpe en el mismo tick en que la meta se cumple. O sea que el rodeo
+    // quedó sin usar en este camino, y lo que gobierna es el predicado.
+    expect(c.mente.estado.conseguido).toBeUndefined()
+    expect(c.mente.estado.metaEnCurso).toBe('holding(tag:carnoso,toxicity<0.0528)')
+    // Y DEJA DE PESCAR: dos tiros de caña en 200 ticks —el primero no pica, el
+    // segundo saca el pescado— contra los «más de 5» que este mismo test afirmaba.
+    expect(c.cuenta.get('aplicar(extraccion)') ?? 0).toBeLessThan(5)
+  })
+
+  it('y el hueco que quedaba abierto es el otro: pudrirse no le saca el tag', () => {
+    // El `it.fails` que había acá clavaba el hueco de `cumple`, y se tapó. Lo que
+    // este bloque sigue teniendo para atacar es lo que el hueco tapaba: el
+    // predicado contesta por TAG, y `carnoso` no se pierde al pudrirse. La criatura
+    // se queda con el pescado agarrado y la meta barata cumplida para siempre,
+    // mientras la única meta que la salvaría —la que le pone techo a `toxicity`—
+    // se aleja sola tick a tick.
+    //
+    // MEDIDO en 200 ticks: `holding(tag:carnoso)` cumplida con un pescado de
+    // toxicity 0,2742, o sea 5,2× por encima del 0,0528 que pide lo comestible.
+    const c = correr(laEscena(), 'ana', 200)
+    const v = vistaDe(c.partida, 'ana')
+    const barata = interpretar('holding(tag:carnoso)')
+    const cara = interpretar('holding(tag:carnoso,toxicity<0.0528)')
+    expect(barata).toBeDefined()
+    expect(cara).toBeDefined()
+    if (barata === undefined || cara === undefined) return
+    const enMano = v.self.holding[0]
+    expect(enMano).toBeDefined()
+    if (enMano === undefined) return
+    const tox = v.q(enMano, 'toxicity')
+    console.log(
+      `\n─── LA MITAD QUE EL TAG NO MIRA ───\n` +
+        `  en la mano: ${enMano.name} con toxicity ${dos(tox)}\n` +
+        `  holding(tag:carnoso) ................. ${String(cumple(barata, v))}\n` +
+        `  holding(tag:carnoso,toxicity<0.0528) . ${String(cumple(cara, v))}  ` +
+        `(le falta un factor de ${dos(tox / 0.0528)})\n`,
+    )
+    expect(cumple(barata, v)).toBe(true)
+    expect(cumple(cara, v)).toBe(false)
+    expect(tox).toBeGreaterThan(0.0528)
   })
 })
 
@@ -689,18 +719,26 @@ describe('la noche', () => {
     // parámetros»). O sea que la única necesidad cuya satisfacción es un LUGAR no
     // tiene ni una salida abierta.
     //
-    // ─── DONDE D3 TIENE ALGO PLANIFICABLE: ni lo intenta ──────────────────────
+    // ─── DONDE D3 TIENE ALGO PLANIFICABLE: lo intenta TARDE, y falla igual ────
     //
-    // Y esto cambió con la reparación del tramo G, así que se mide y no se
-    // esconde. Antes, en la orilla, D3 tomaba `holding(tag:vegetal)` —que ningún
-    // esquema establece—, la búsqueda no daba nada y el tick caía a D5: la
-    // criatura se pasaba la noche intentando guarecerse (58 intentos, 58 fallos).
-    // Ahora D3 saltea esa meta, toma la que SÍ se puede planificar y se va a
-    // pescar. La necesidad de refugio no llega nunca a D5, porque D3 corta antes.
+    // Este párrafo se reescribió DOS veces y las dos con la corrida al lado, así
+    // que quedan las tres lecturas:
     //
-    // Cuál de las dos conductas es mejor no lo decide este test: las dos terminan
-    // con `sheltered` en cero. Lo que se afirma es que el refugio no tiene salida
-    // por ninguno de los dos caminos.
+    //   · antes del tramo G, en la orilla D3 tomaba `holding(tag:vegetal)` —que
+    //     ningún esquema establece—, la búsqueda no daba nada y el tick caía a
+    //     D5: 58 intentos de guarecerse, 58 fallos;
+    //   · reparado el tramo G, D3 salteaba esa meta, tomaba la que SÍ se puede
+    //     planificar y se iba a pescar: CERO intentos en 120 ticks, porque D3
+    //     cortaba antes y no soltaba nunca;
+    //   · y hoy, cerrado el eslabón A del criterio, **consigue el pescado**
+    //     —`aplicar(extraccion)×2` y adentro de los 120 ticks—, el pedido sube a
+    //     lo cocido, que no tiene vía, y recién ahí el tick llega a D5: 2
+    //     intentos de guarecerse, los 2 fallados.
+    //
+    // O sea que la reparación no cambió el veredicto, lo hizo VISIBLE por el
+    // segundo camino: ahora las dos escenas llegan a D5 y las dos terminan con
+    // `sheltered` en cero. El refugio sigue sin tener una sola salida abierta, y
+    // ya no hay forma de leer el cero de la orilla como «no le hizo falta».
     const p = new Partida(alAnochecer(20, 1000))
     const v0 = vistaDe(p, 'ana')
     const n = necesidades(v0)
@@ -710,8 +748,12 @@ describe('la noche', () => {
     const intentos = enElParamo.cuenta.get('guarecerse') ?? 0
     let fallosDeTecho = 0
     for (const [k, x] of enElParamo.fracasos) if (k.startsWith('guarecerse')) fallosDeTecho += x
-    // La orilla de noche: D3 tiene con qué, y el refugio no llega a decidirse.
+    // La orilla de noche: D3 tiene con qué, lo consigue, y RECIÉN AHÍ el refugio
+    // llega a decidirse.
     const enLaOrilla = correr(alAnochecer(20, 1000), 'ana', 120)
+    const enLaOrillaIntentos = enLaOrilla.cuenta.get('guarecerse') ?? 0
+    let enLaOrillaFallos = 0
+    for (const [k, x] of enLaOrilla.fracasos) if (k.startsWith('guarecerse')) enLaOrillaFallos += x
     const v = vistaDe(enLaOrilla.partida, 'ana')
     console.log(
       `\n─── LA NOCHE ENCIMA Y EL TANQUE LLENO, 120 TICKS ───\n` +
@@ -723,9 +765,9 @@ describe('la noche', () => {
         `      vuelos:  ${[...enElParamo.cuenta.entries()].map(([k, x]) => `${k}×${String(x)}`).join(' ')}\n` +
         `      intentos de guarecerse: ${String(intentos)} · fallados: ${String(fallosDeTecho)}\n` +
         `      ${[...enElParamo.fracasos.entries()].map(([k, x]) => `${k} ×${String(x)}`).join('\n      ')}\n` +
-        `  EN LA ORILLA (D3 tiene con qué):\n` +
+        `  EN LA ORILLA (D3 tiene con qué, lo consigue, y después cae a D5):\n` +
         `      vuelos:  ${[...enLaOrilla.cuenta.entries()].map(([k, x]) => `${k}×${String(x)}`).join(' ')}\n` +
-        `      intentos de guarecerse: ${String(enLaOrilla.cuenta.get('guarecerse') ?? 0)}\n` +
+        `      intentos de guarecerse: ${String(enLaOrillaIntentos)} · fallados: ${String(enLaOrillaFallos)}\n` +
         `  sheltered de la celda al final (orilla): ${cuatro(v.qAt(v.self.at, 'sheltered'))}\n`,
     )
     expect(n.refugio).toBeGreaterThan(0.9)
@@ -735,8 +777,12 @@ describe('la noche', () => {
     // Donde lo intenta: no lo consigue NI UNA VEZ en 120 ticks.
     expect(intentos).toBeGreaterThan(0)
     expect(fallosDeTecho).toBe(intentos)
-    // Donde no lo intenta: la noche que manda no mueve una sola decisión.
-    expect(enLaOrilla.cuenta.get('guarecerse') ?? 0).toBe(0)
+    // Y en la orilla, ahora que la pesca CIERRA: llega a intentarlo y falla igual.
+    // Lo que se afirma no es el número de intentos —depende de en qué tick se le
+    // cumple la meta barata— sino que el 100% termina mal, que es lo mismo que
+    // pasa en el páramo por el otro camino.
+    expect(enLaOrillaIntentos).toBeGreaterThan(0)
+    expect(enLaOrillaFallos).toBe(enLaOrillaIntentos)
     expect(v.qAt(v.self.at, 'sheltered')).toBe(0)
   })
 

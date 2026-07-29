@@ -399,8 +399,10 @@ describe('(5) los cerrojos: un bocado que no se puede tragar no tilda la escaler
   it('D3 saltea la oportunidad que ya está cumplida en vez de gastar el tick en ella', () => {
     // Sin este portón, dos metas parecidas se tapan: la barata gana siempre, ya
     // está cumplida siempre, y la cara no se mira nunca. Se prueba con un
-    // predicado de CUALIDAD porque es el que la vista de hoy sabe contestar —
-    // `holding(tag:…)` todavía contesta `false` siempre, y eso es del grupo (6).
+    // predicado de CUALIDAD por herencia —cuando esto se escribió era el único que
+    // la vista sabía contestar, porque `holding(tag:…)` daba `false` siempre— y se
+    // deja así a propósito: el portón tiene que andar para CUALQUIER predicado que
+    // el intérprete entienda, y el de `sostiene` ya está medido en el grupo (6).
     const w = mundo({
       bodies: [enElPiso(criatura('ana', 310), { x: 0, y: 0 }), enElPiso(cuerpo('roca', 'pedernal', 5), { x: 1, y: 0 })],
       actors: [actor('ana')],
@@ -449,6 +451,21 @@ describe('(6) «algo comestible en la mano»: lo que la mente pide y lo que falt
     // la escena del criterio y sin tocarla. Antes la mente se quedaba con
     // `holding(tag:carnoso)` para siempre; ahora la consigue, se da cuenta de que
     // la consiguió, y sube el pedido.
+    //
+    // ─── Y POR CUÁL DE LAS DOS PUERTAS SE DA CUENTA, QUE SE DIO VUELTA ─────
+    //
+    // `yaEstaCumplida` pregunta dos cosas: `loConseguido` —la memoria de que un
+    // plan SUYO estableció la meta y lo que rindió sigue en la mano— y `cumple`
+    // contra la vista. Cuando este test se escribió, la única que sabía contestar
+    // por `sostiene` era la memoria, y por eso afirmaba
+    // `conseguido?.meta === 'holding(tag:carnoso)'`.
+    //
+    // Hoy contesta `cumple`, y la memoria sale **`undefined`**: se llena cuando el
+    // ÚLTIMO paso de un plan aterriza bien, y el vuelo que saca el pescado aterriza
+    // con `ok:false` porque la propia mente lo interrumpe en el tick en que la meta
+    // se cumple. O sea que el rodeo quedó sin usar en este camino: el cambio de
+    // pedido lo produce el predicado, que es la puerta de la que este mismo
+    // comentario decía «el día que esto conteste, el rodeo deja de ser necesario».
     const p = new Partida(laEscenaDelDocumento())
     const m = new Mente({ actor: 'ana', memoria: new Creencias() })
     const mentes = new Map([['ana', m]])
@@ -472,10 +489,15 @@ describe('(6) «algo comestible en la mano»: lo que la mente pide y lo que falt
         `\n`,
     )
     expect(cambio).toBeGreaterThan(0)
-    expect(m.estado.conseguido?.meta).toBe('holding(tag:carnoso)')
+    expect(m.estado.conseguido).toBeUndefined()
+    // Y la que sí contesta: el predicado, contra la vista, con el pescado agarrado.
+    const barataCumplida = interpretar('holding(tag:carnoso)')
+    if (barataCumplida === undefined) throw new Error('sin predicado')
+    expect(v.self.holding.length).toBeGreaterThan(0)
+    expect(cumple(barataCumplida, v)).toBe(true)
     // La meta cara vale MENOS que la barata —cuesta el fuego— y aun así gana,
-    // porque la barata ya está conseguida y D3 la saltea. Si el orden alcanzara,
-    // no haría falta acordarse de nada.
+    // porque la barata ya está cumplida y D3 la saltea. Si el orden alcanzara,
+    // no haría falta ningún portón.
     const barata = ops.find((o) => o.meta === 'holding(tag:carnoso)')
     const cara = ops.find((o) => o.meta === comestible)
     expect(cara?.valor ?? 0).toBeLessThan(barata?.valor ?? 0)
@@ -494,9 +516,12 @@ describe('(6) «algo comestible en la mano»: lo que la mente pide y lo que falt
    *          llega el catálogo es «emitsPower>0»)…»
    *     nearest = [aplicar(extraccion)] — o sea «mientras tanto, seguí pescando»
    *
-   * Y eso explica el número que NO se movió: la corrida canónica sigue dando 199
-   * pescas, porque la mente pide lo correcto y el planificador le contesta con lo
-   * único que sabe hacer mientras tanto, que es pescar otro.
+   * (El `nearest` era lo que explicaba las 199 pescas de la corrida canónica: la
+   * mente pedía lo correcto y el planificador le contestaba con lo único que sabía
+   * hacer mientras tanto, que era pescar otro. Ese número ya no existe —hoy son
+   * DOS tiros de caña, medido en `hito-5-el-criterio.test.ts`— porque el pescado
+   * en la mano ya cuenta. Lo que sigue igual es el corte: el `gap` de la ventana
+   * de potencia.)
    *
    * Este test se pone verde el día que el planificador cierre la ventana de
    * potencia del fuego. No hay nada que tocar de este lado: la meta ya es la
@@ -516,20 +541,23 @@ describe('(6) «algo comestible en la mano»: lo que la mente pide y lo que falt
   })
 
   /**
-   * Y EL HUECO DE ABAJO, que es el que `EstadoDeLaEscalera.conseguido` esquiva.
+   * EL HUECO DE ABAJO, QUE SE TAPÓ, Y ESTE TEST ES EL QUE LO MIDE.
    *
-   * `cumpleCuerpo` de `@anima/plan` contesta `false` para TODA forma `sostiene`
-   * —una `BodyView` no trae la sustancia ni sus tags, y está dicho en su propio
-   * comentario—. O sea que `holding(tag:carnoso)` no se da por cumplida nunca, ni
-   * con el pescado en la mano.
+   * Estaba escrito como `it.fails` y decía: «`cumpleCuerpo` de `@anima/plan`
+   * contesta `false` para TODA forma `sostiene` —una `BodyView` no trae la
+   * sustancia ni sus tags—, así que `holding(tag:carnoso)` no se da por cumplida
+   * nunca, ni con el pescado en la mano. La mente lo esquiva acordándose de lo que
+   * su propio plan consiguió, que es evidencia legítima y no una adivinanza, pero
+   * es un rodeo, y sólo funciona para lo que ELLA misma consiguió: un pescado que
+   * se encuentra tirado en el piso y se levanta con `juntar` no cuenta».
    *
-   * La mente lo esquiva acordándose de lo que su propio plan consiguió, que es
-   * evidencia legítima y no una adivinanza — pero es un rodeo, y sólo funciona
-   * para lo que ELLA misma consiguió: un pescado que se encuentra tirado en el
-   * piso y se levanta con `juntar` no cuenta. El día que esto conteste `true`, el
-   * rodeo sigue andando y deja de ser necesario.
+   * Hoy contesta, y por eso el `.fails` se cayó. La escena es la que el rodeo NO
+   * podía cubrir —un pescado puesto en la mano por el arnés, que ningún plan de la
+   * criatura consiguió— y es exactamente la que separa las dos puertas: si la
+   * respuesta viniera de `EstadoDeLaEscalera.conseguido`, acá seguiría dando
+   * `false`, porque acá no hay ninguna escalera que se acuerde de nada.
    */
-  it.fails('y el rodeo se podría borrar: que `holding(tag:…)` se sepa cumplida desde la vista', () => {
+  it('el rodeo ya se puede borrar: `holding(tag:…)` se sabe cumplida desde la vista sola', () => {
     const w = mundo({
       bodies: [enElPiso(criatura('ana', 310), { x: 0, y: 0 }), enLaMano(pescadoCocido('c'), { x: 0, y: 0 }, 'ana')],
       actors: [actor('ana', { holding: ['c'] })],
@@ -538,5 +566,12 @@ describe('(6) «algo comestible en la mano»: lo que la mente pide y lo que falt
     const p = interpretar('holding(tag:carnoso)')
     if (p === undefined) throw new Error('sin predicado')
     expect(cumple(p, v)).toBe(true)
+    // Y la mano vacía sigue dando `false`, que es la otra mitad: si contestara
+    // `true` siempre, este test verde no diría nada.
+    const sinNada = mundo({
+      bodies: [enElPiso(criatura('beto', 310), { x: 0, y: 0 })],
+      actors: [actor('beto')],
+    })
+    expect(cumple(p, vistaDe(new Partida(sinNada), 'beto'))).toBe(false)
   })
 })

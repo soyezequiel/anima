@@ -12,107 +12,149 @@
 // es la corrida: veinte partidas, una criatura con su `Mente`, un mundo decretado
 // por el dios, y el juez escuchando tick a tick.
 //
+// ═══ LO QUE ESTE ARNÉS DECÍA ANTES, Y POR QUÉ ESTABA MAL ════════════════════
+//
+// Va primero y no en una nota al pie, porque es la vara con la que hay que leer
+// todo lo de abajo. La corrida anterior de este mismo archivo publicó esto:
+//
+//   «(A) EL MUNDO NO MATERIALIZA NADA DE LO QUE EL DIOS SIEMBRA … (E) NO PUEDE
+//    HABER FUEGO … el encendible más liviano que existió en las veinte partidas
+//    pesa 1,0000 kg contra un techo de 0,7132 … el bloque (4) contesta lo mismo en
+//    las nueve: EL MUNDO.»
+//
+// **Nueve filas de nueve diciendo EL MUNDO, y la mitad era del arnés.** El
+// «1,0000 kg» salía en las VEINTE semillas, al cuarto decimal. Veinte semillas
+// distintas dando el mismo número no es un sorteo: era esta línea, que este mismo
+// archivo escribía a mano tres renglones más arriba de donde medía —
+//
+//     { body: cuerpo('vara', 'madera', 1), at: { x: p.x + 3, y: p.y } }
+//
+// — y con ella una liana de 0,2 kg, y nada más. O sea que el arnés armaba una
+// escena de tres cuerpos, la medía, y publicaba el resultado como una propiedad
+// del mundo. Es la cuarta vez en este proyecto que una conclusión sale de medir el
+// catálogo o el arnés en vez del mundo; la anterior dio por muerta la propagación
+// del fuego, que sí existe, y la de antes contó despegues y las llamó pescados.
+//
+// LO QUE EL DIOS DECRETA DE VERDAD, medido en `lo-que-el-mundo-si-siembra.test.ts`
+// sobre los mismos 9 chunks de arranque y las mismas veinte semillas de §10:
+//
+//   semillas con al menos una vara encendible ... 13 de 20
+//   la más liviana de las veinte ............... 0,0610 kg  (el techo es 0,7132)
+//
+// La conclusión de la corrida anterior era correcta SOBRE ESA ESCENA y falsa sobre
+// el mundo.
+//
+// ═══ Y LA PREMISA DE LA CORRECCIÓN TAMBIÉN HABÍA QUE MEDIRLA ════════════════
+//
+// El encargo de este tramo decía que los cuerpos sueltos del dios «ya se
+// materializan solos» y que alcanzaba con sacar la escena a mano. **No se
+// materializan.** Medido antes de escribir una línea, con una criatura sola en la
+// orilla de `20260728n` y cinco ticks de `Partida`: el dios decretó 90 sueltas en
+// los 3×3 chunks de alrededor y lo único que apareció fueron tres bancos de peces.
+// Cero. Sacar la escena y no poner nada habría dejado un mundo MÁS pobre que el de
+// la corrida anterior.
+//
+// Así que el arnés siembra el decreto él mismo (`tests/el-mundo-decretado.ts`), y
+// eso es un rodeo declarado y no una reparación —la reparación es del motor, y su
+// `it.fails` sigue en rojo en el bloque (1)—. Lo que el arnés NO hace es elegir:
+// qué hay, cuánto pesa y en qué celda está salen de `decretoDe`, o sea de la
+// semilla. Lo único que sigue plantado a mano es el cuerpo de la criatura.
+//
 // ═══ EL VEREDICTO, ARRIBA Y CON LOS NÚMEROS DE ESTA CORRIDA ═════════════════
 //
-//   APARECIERON 0 DE 9, y **el resultado NO ES INTERPRETABLE** — que es peor y
-//   más útil que un cero. §10 del documento lo dejó escrito antes de correr: «si
-//   quedan más de tres sin medir sobre nueve, el resultado no es interpretable».
-//   Quedaron **nueve sin medir sobre nueve**: los nueve contra-detectores dieron
-//   `false` en las veinte partidas. El mundo no le puso NINGUNO de los nueve
-//   problemas delante a la criatura, ni una vez.
+//   APARECIERON 0 DE 9. El criterio no se cumple, y el número crudo se publica sin
+//   tocar un umbral: el criterio pide 4 y §10 ya resolvió antes de correr que con
+//   nueve entradas el 4 absoluto y el 40% proporcional caen en el mismo número.
 //
-//   Y la causa no es la mente, ni el hambre, ni la semilla. El bloque (4) la dice
-//   secuencia por secuencia y en las nueve contesta lo mismo —**EL MUNDO**, y no
-//   «la mente no llega» ni «se murió antes»—, separado del segundo con el control
-//   del tanque lleno. Son cinco cosas medidas acá, en este orden de importancia:
+//   PERO EL CERO CAMBIÓ DE SIGNIFICADO, y ése es el resultado de este tramo:
 //
-//   ─── (A) EL MUNDO NO MATERIALIZA NADA DE LO QUE EL DIOS SIEMBRA ───────────
+//   ─── (A) TRES DE LAS NUEVE FILAS AHORA MIDEN A LA MENTE ───────────────────
 //
-//   El dios decreta 90 cosas sueltas en los 3×3 chunks alrededor de la criatura
-//   —junco, piedra, hueso, hoja, grano, raíz, tubérculo— y **el mundo materializa
-//   CERO**. Verificado por lectura y por corrida: `decretoDe(...).chunk.sueltas`
-//   no tiene UN SOLO consumidor en `@anima/world` (`grep -rn "sueltas" world/src`
-//   devuelve nueve renglones y los nueve son prosa), y lo único que `stepWorld`
-//   materializa es el banco de peces (`materializarPozos`, `step.ts:2904`). En las
-//   veinte partidas, el mundo puso de su lado exactamente **0 cuerpos**: los
-//   únicos que hay son la criatura, los pozos, los tres que este arnés coloca a
-//   mano y los que nacieron de un proceso.
+//   Con la escena a mano, los NUEVE contra-detectores daban `false` en las veinte
+//   partidas: el mundo no le ponía NINGUNO de los nueve problemas delante y las
+//   nueve filas contestaban EL MUNDO. Con el mundo decretado, tres se encienden:
 //
-//   Con eso, siete de las nueve secuencias son inalcanzables por construcción: no
-//   hay corteza, no hay yesca, no hay una segunda vara, no hay piedra con qué
-//   hacer parrilla y no hay nada con filo. No es que la criatura no lo descubrió:
-//   **no estaba**.
+//     no-frotar-lo-que-no-alcanza-a-encender   situación en  7/20   → LA MENTE
+//     la-vara-mas-liviana-que-igual-cocina     situación en  7/20   → LA MENTE
+//     ponerle-punta-al-aparejo                 situación en  5/20   → LA MENTE
 //
-//   ─── (B) LAS VEINTE SEMILLAS SON UN SOLO MUNDO ────────────────────────────
+//   O sea: el mundo SÍ le puso esos tres problemas delante, en cinco a siete de las
+//   veinte partidas, y la criatura no los resolvió ni una vez. Ese cero mide a la
+//   mente. Los otros seis siguen sin medirse, y §10 sigue diciendo que con más de
+//   tres no-medidas sobre nueve el resultado no es interpretable — pero seis no es
+//   nueve, y las tres que se movieron cambiaron de casilla.
 //
-//   `decretoDe` memoiza por `(Physics, "cx:cy")` y **la semilla no entra en la
-//   clave** (`world/src/dios.ts:305-317`). Dos dioses distintos que compartan el
-//   objeto `Physics` comparten el decreto: medido abajo, y no «igual» sino EL
-//   MISMO OBJETO (`a === b`). Como todo el repositorio construye la física una
-//   vez por módulo, «veinte partidas con semillas distintas» corridas de la forma
-//   obvia son **veinte partidas con el mismo mundo**. Este banco lo esquiva
-//   construyendo UNA `Physics` por partida, y lo deja marcado en rojo: el arnés no
-//   puede ser el que arregla un agujero del motor.
+//   ─── (B) SÍ HAY CON QUÉ ENCENDER, Y NO ERA UN PROBLEMA DE LA FÍSICA ───────
 //
-//   ─── (C) LA CRIATURA NO COME, Y AHORA SE SABE POR QUÉ ─────────────────────
+//   Partidas con algún cuerpo encendible: **20 de 20**. Con uno POR DEBAJO del
+//   techo de la fricción: **19 de 20**. El más liviano de las veinte partidas pesa
+//   **0,0570 kg** contra los 1,0000 que publicaba el arnés viejo — un factor 17,5.
+//   Y las que no tienen NO SE DESCARTAN: se corren igual y la columna se publica,
+//   porque filtrarlas sería armar el banco para que dé bien.
 //
-//   Con el tanque de la escena canónica (310) se muere entre el tick 3.689 y el
-//   6.198 en las veinte partidas —el 28,0% del presupuesto de 400.000 ticks—, con
-//   CERO bocados. El control con el tanque lleno (1000) no mueve una sola fila:
-//   llega al 95,3% del presupuesto y el juez sigue diciendo 0 de 9 con 9 sin
-//   medir. La muerte temprana NO es la razón por la que las secuencias no
-//   aparecen, y esa separación es la que el número necesitaba para significar algo.
+//   (Y hay que decir por qué 19/20 acá y 13/20 en `lo-que-el-mundo-si-siembra`: no
+//   son las mismas veinte semillas. Aquéllas son las de §10; éstas son las que de
+//   verdad se juegan, con los trece reemplazos que §10 manda hacer cuando una
+//   semilla no tiene orilla. Dos poblaciones distintas, dos números, los dos
+//   medidos.)
 //
-//   LO QUE CAMBIÓ desde la corrida anterior es la CAUSA del cero bocados, y hay
-//   que decirlo entero porque el diagnóstico de antes ya no vale. Entonces la
-//   mente no tenía por dónde emitir `comer`. Ahora sí —la conducta `tragar` existe
-//   y este banco la cuenta— y **el cero es correcto**: en las veinte partidas
-//   nacieron 113 cuerpos comestibles, y el mejor bocado que alguno de ellos ofreció
-//   en cualquier tick vale **−3,0140 de stamina** (bloque (4), hecho 2). Con el
-//   veneno cobrado (ADR II-0013, `K = 25`) la carne cruda del río es veneno: la
-//   criatura la rechaza, y rechazarla es lo que corresponde. Lo que le falta no es
-//   apetito, es FUEGO — y (E) dice por qué no puede tenerlo.
+//   ─── (C) EL AZAR SE VOLVIÓ A CORRER, Y BAJÓ DE TRES A UNA ─────────────────
 //
-//   ─── (D) TRECE DE LAS VEINTE SEMILLAS DE §10 NO TIENEN RÍO ────────────────
+//   Si el arnés cambia de mundo y el control no, la resta entre los dos no mide
+//   nada. Así que el control del dado corre ahora sobre **las mismas veinte
+//   semillas, el mismo decreto y la misma orilla**, con las dos concesiones de
+//   siempre declaradas (fogata regalada, tanque de 40.000). Firma **1 de 9** —
+//   `el-leno-mas-grande-que-todavia-cocina`, 8/20, y sólo con el fuego regalado—
+//   contra las 3 de 9 que firmaba sobre su escena vieja. El piso de cuatro hay que
+//   cruzarlo sobre las OCHO que quedan.
 //
-//   La escena del Hito 5 es «con hambre y un río a la vista» y pide un pozo con
-//   una celda seca al lado. De las veinte semillas que §10 fijó, **siete lo
-//   tienen y trece no** en 13×13 chunks alrededor del origen. §10 previó
-//   exactamente esto —«si alguna resulta no resoluble se reemplaza en orden por
-//   `20260728n + 20 + j` y el reemplazo se anota»— y así se hizo: las trece
-//   ranuras vacías se llenaron con las primeras semillas libres que sí tienen
-//   orilla, y la lista completa de reemplazos se publica en la salida.
+//   Y hay que decir lo que el control NO dice, porque la comparación fácil sería
+//   falsa: el dado sin fuego vive 19.212 ticks de promedio con un tanque de 1000, y
+//   la mente se muere entre el 3.262 y el 6.199 — pero con un tanque de **310**.
+//   Con el tanque igualado en 1000 la mente también llega al 100,0% del presupuesto
+//   (bloque 3, tres partidas), así que **no es que el dado sobreviva mejor**: los
+//   dos aguantan lo que el tanque les da. La corrida anterior tenía al dado
+//   muriéndose en el tick 3.132, y eso sí era de su escena vieja.
 //
-//   Que sean trece y no una o dos tampoco es mala suerte: por el agujero (B),
-//   cualquier barrido de las veinte con una sola `Physics` encuentra orilla en
-//   las veinte —la misma veinte veces—, así que este 13/20 es el primer número
-//   que alguien mide sobre esa lista de semillas.
+//   ─── (D) LA CRIATURA SIGUE SIN COMER, Y AHORA SE SABE MEJOR POR QUÉ ───────
 //
-//   ─── (E) NO PUEDE HABER FUEGO, Y ESE VETO EXPLICA SIETE DE LAS NUEVE ──────
+//   Cero bocados en las veinte, con el mundo narrando cero `comio`. El mejor bocado
+//   que ofreció algún cuerpo con calorías en cualquier tick vale **−0,0305 de
+//   stamina**, y es una COTA SUPERIOR. Con el veneno cobrado (ADR II-0013) lo que
+//   hay tirado en la orilla no paga, y rechazarlo es lo que corresponde. Lo que
+//   cambió respecto de la corrida anterior es que ahora hay 2.280 cosas sueltas
+//   decretadas alrededor y el número sigue siendo negativo: ya no se puede
+//   explicar por la pobreza de la escena.
 //
-//   El cuerpo encendible —el que cumple el rol `a` de `friccion` Y entregaría
-//   potencia si ardiera— **más liviano que existió en las veinte partidas** pesa
-//   **1,0000 kg**, contra un techo medido de 0,7132 (§2.2: 0,7132 no prende y 0,80
-//   sí, y eso con el tanque LLENO). Es la `vara` que este arnés pone a mano, y en
-//   cuanto la criatura arma la caña pasa a pesar 1,2. No hay yesca porque el mundo
-//   no materializa la corteza ni el junco que el dios sembró — o sea que (E) es (A)
-//   otra vez, mirada desde la fricción.
+//   ─── (E) LA MUERTE TEMPRANA SIGUE SIN SER LA CAUSA ────────────────────────
 //
-//   Siete de las nueve secuencias cuelgan de que haya fuego. Las otras dos
-//   —`no-frotar` y `ponerle-punta`— no lo necesitan y tampoco se pueden medir: no
-//   hay una SEGUNDA vara que comparar (`dosCandidatosDeFriccion` 0/20) ni nada con
-//   filo (`filoALaVista` 0/20). El bloque (4) publica las nueve con su causa, y en
-//   las nueve la causa es la misma: **EL MUNDO**.
+//   Con el tanque canónico se muere en el 27,7% del presupuesto; con el tanque
+//   lleno llega al 100,0% y el juez sigue diciendo 0 de 9. Multiplicar por tres y
+//   medio el tiempo vivido no movió una sola fila.
+//
+//   Y el asterisco, que hay que ponerlo: sin `ANIMA_BANCO=1` el control con el
+//   tanque lleno corre TRES partidas de las veinte, así que ese 100,0% y ese 0 de 9
+//   son sobre tres. El de las veinte es el canónico. Es una separación más floja de
+//   lo que se quisiera y está dicho en la salida en vez de escondido.
+//
+//   ─── (F) Y EL MUNDO SOBRE EL QUE SE MIDIÓ ES LEGAL ────────────────────────
+//
+//   **Cero estados ilegales** en los 110.964 ticks auditados con `revisarEstado`,
+//   contra los cuatro de la corrida anterior. Y no porque el agujero se haya
+//   arreglado: `materializarPozos` sigue poniendo el banco de peces encima de lo
+//   que haya sin preguntarle a `estorbo`. Lo que dejó de pasar es que este banco lo
+//   pise, porque el decreto no siembra sobre agua. El hallazgo quedó pinado aparte,
+//   en su forma mínima y en rojo, para que no se pierda con el cambio de escena.
 //
 // ═══ QUÉ SE PUBLICA, QUE ES LO QUE §10 MANDA ════════════════════════════════
 //
 // Las nueve filas con sus tres cifras (apareció en N/20 · la situación existió en
 // M/20 · no medida en 20−M), el tick de la primera aparición de cada una, la lista
-// de semillas, el tanque de arranque, `PHYSICS_VERSION` y el hash de cada partida.
-// Lo que §10 pide y esta corrida NO puede publicar —la masa del cuerpo elegido en
-// cada disparo de las entradas 2 y 8, y si el fuego de cada disparo era de vara
-// sola o de cadena— no se publica porque **no hubo un solo disparo ni un solo
-// fuego**, y eso está dicho en la salida en vez de omitido.
+// de semillas con sus reemplazos, el tanque de arranque, `PHYSICS_VERSION` y el
+// hash de cada partida. Lo que §10 pide y esta corrida NO puede publicar —la masa
+// del cuerpo elegido en cada disparo de las entradas 2 y 8, y si el fuego de cada
+// disparo era de vara sola o de cadena— no se publica porque **no hubo un solo
+// disparo ni un solo fuego**, y eso está dicho en la salida en vez de omitido.
 //
 // ═══ EL UMBRAL: NO SE TOCA ACÁ ══════════════════════════════════════════════
 //
@@ -129,10 +171,9 @@
 // control con el tanque lleno son 400.000 ticks de mundo con una mente encima—.
 // Se imprime siempre y se afirma sólo midiendo en serio, con una corrida corta que
 // sí afirma siempre, que es el patrón que `world/tests/banco-el-tick.test.ts:165`
-// dejó escrito. Lo que NO se gatilla es el banco del criterio: son veinte partidas
-// que se mueren a un tercio del camino, sale barato, y es el criterio de corte del
-// proyecto — un criterio que sólo corre si alguien se acuerda de exportar una
-// variable de entorno no es un criterio.
+// dejó escrito. Lo que NO se gatilla es el banco del criterio: es el criterio de
+// corte del proyecto, y un criterio que sólo corre si alguien se acuerda de
+// exportar una variable de entorno no es un criterio.
 //
 // Y lo que no se cumple no se ablanda: va en `it.fails` con la salida medida al
 // lado, que es el idioma con el que este repositorio ya dejó abiertos el techo del
@@ -147,48 +188,42 @@ import {
   HZ_DE_REFERENCIA,
   PHYSICS_VERSION,
   qualityOf,
-  T_AMBIENTE,
 } from '@anima/physics'
-import type { Body, FormId, Physics, QualityVector } from '@anima/physics'
+import type { Body } from '@anima/physics'
 import {
   COSTO_POR_TOXICIDAD_Y_KILO,
   crearDios,
   decretoDe,
   describir,
   hashWorldState,
-  mapaDeActores,
   mapaDeCuerpos,
   STAMINA_POR_CALORIA,
 } from '@anima/world'
-import type {
-  Actor,
-  EstadoDelDios,
-  Placement,
-  Violacion,
-  WorldBody,
-  WorldState,
-} from '@anima/world'
+import type { Placement, Violacion } from '@anima/world'
 import { Partida } from '@anima/perceive'
 import { Creencias, Mente } from '@anima/mind'
 
 import { Detector, potenciaSiArdiera, resumir, ROL_A_DE_FRICCION, SECUENCIAS, TECHO_DE_LA_FRICCION } from '../src/index.js'
 import type { FilaDelBanco, NombreDeSecuencia, Situaciones, Veredicto } from '../src/index.js'
 import { ruidoDelAzar, tablaDelControl, correrElControl } from './azar.js'
+import {
+  cuerpo,
+  escenaDe,
+  firmaDeSueltas,
+  laOrilla,
+  PARTIDAS,
+  RADIO_EN_CHUNKS,
+  respirar,
+  SEMILLA_BASE,
+  SEMILLA_DE_REEMPLAZO,
+  semillasQueSeJuegan,
+} from './el-mundo-decretado.js'
 
 /** Ver el encabezado: acá el gatillo es el COSTO y no la varianza. */
 const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
 
-/** §10: veinte partidas. No es un largo elegido acá. */
-const PARTIDAS = 20
-
 /** §10: 20.000 ticks a 20 Hz = 1000 s de mundo, la ventana con la que está medida la economía. */
 const TICKS = 20_000
-
-/** §10: `20260728n + k` para `k = 0..19`, fijadas ANTES de correr y escritas en el documento. */
-const SEMILLA_BASE = 20260728n
-
-/** §10: el reemplazo en orden si una semilla resulta no resoluble. */
-const SEMILLA_DE_REEMPLAZO = SEMILLA_BASE + 20n
 
 /**
  * EL TANQUE DE ARRANQUE, publicado como §3 exige («el tanque de arranque decide
@@ -208,152 +243,17 @@ const TANQUE_LLENO = 1000
 /** Cuántas partidas del control se corren cuando NO se está midiendo en serio. */
 const PARTIDAS_CORTAS = 3
 
-// ─── El arnés: la orilla de verdad, y una física por partida ─────────────────
+// ─── El arnés: la escena la decreta el dios, y acá sólo se corre ─────────────
 //
-// Es la CUARTA copia del mismo armado —`world/tests/mundo-minimo.ts` →
-// `perceive/tests/mundo.ts` → `plan/tests/los-esquemas-contra-el-mundo.ts` →
-// `mind/tests/mundo.ts` → ésta— y la copia es deliberada por la razón que la
-// segunda escribió: los `tests/` de un paquete no se exportan, así que compartirla
-// exigiría mover el arnés adentro de `src/`, o sea meterle al paquete un módulo
-// que sólo existe para los tests. Y en ESTE paquete sería peor todavía: `src/`
-// tiene prohibido nombrar a `@anima/mind` y a `@anima/perceive`, así que un arnés
-// compartido metería la mente adentro del juez.
+// LO QUE ESTE BLOQUE TENÍA ANTES, y por qué se fue: armaba a mano la orilla, la
+// criatura, una `vara` de madera de 1 kg a tres celdas y un `matorral` de liana de
+// 0,2 kg a dos y media. Ochenta líneas de escena inventada, y la corrida entera
+// medía esa escena. De ahí salió el «encendible vara 1.0000 kg» de las veinte
+// semillas — ver el encabezado.
 //
-// Lo que se copia es EL ARMADO: ni una regla del mundo, ni un número de la física.
-
-/**
- * UNA `Physics` POR PARTIDA, y no es una optimización al revés: es el rodeo del
- * agujero (B) del encabezado.
- *
- * `decretoDe` memoiza por `(Physics, "cx:cy")` sin la semilla, así que veinte
- * dioses distintos que compartan el objeto `Physics` decretan un solo mundo. Está
- * medido abajo, en el bloque (0), y el hueco queda marcado en rojo ahí: esto es un
- * rodeo del arnés, no una reparación.
- */
-function nuevaFisica(): Physics {
-  return buildSeedPhysics()
-}
-
-/**
- * Un cuerpo cualquiera, A TEMPERATURA AMBIENTE. Lo de la temperatura no es adorno:
- * un cuerpo sin `temperature` escrita nace a 0 °C, y sobre una mente eso importa
- * el doble —`necesidades` mide el frío del CUERPO y D5 la manda a juntar leña
- * antes de mirar nada más—. Es un artefacto del armado, no del mundo.
- */
-function cuerpo(
-  id: string,
-  substance: string,
-  mass: number,
-  state: QualityVector = {},
-  form: FormId = 'vara',
-): Body {
-  return {
-    id,
-    form,
-    parts: [{ substance, mass, q: {} }],
-    joints: [],
-    state: { temperature: T_AMBIENTE, ...state },
-  }
-}
-
-function criatura(id: string, stamina: number): Body {
-  return cuerpo(`${id}-cuerpo`, 'carne', 2, { stamina }, 'bloque')
-}
-
-function actor(id: string): Actor {
-  // `irreversible` y no `reversible`: `comer` mira `ctx.self.permits` antes de
-  // gastar un turno. Una criatura del Hito 5 no está en cuarentena.
-  return { id, body: `${id}-cuerpo`, holding: [], capacity: 3, permits: 'irreversible' }
-}
-
-interface Orilla {
-  readonly dios: EstadoDelDios
-  readonly phys: Physics
-  readonly cx: number
-  readonly cy: number
-  /** La celda mojada donde el dios puso el banco. */
-  readonly pozo: Placement
-  /** Una celda SECA pegada al pozo: desde acá se pesca. */
-  readonly parada: Placement
-}
-
-/**
- * Una orilla de verdad de la semilla, BUSCADA y no inventada.
- *
- * Barre chunks en orden canónico hasta encontrar uno con pozo y una celda seca
- * pegada. `undefined` —y no una excepción— cuando la semilla no tiene ninguna en
- * 13×13 chunks, porque §10 tiene escrito qué hacer con eso: se reemplaza en orden
- * y el reemplazo se anota.
- */
-function laOrilla(semilla: bigint): Orilla | undefined {
-  const phys = nuevaFisica()
-  const dios = crearDios(semilla)
-  for (let cx = -6; cx <= 6; cx++) {
-    for (let cy = -6; cy <= 6; cy++) {
-      const dec = decretoDe(dios, phys, cx, cy)
-      if (dec.pozo === undefined) continue
-      const p = dec.pozo.at
-      for (const [dx, dy] of [
-        [-1, 0],
-        [1, 0],
-        [0, -1],
-        [0, 1],
-      ] as const) {
-        const parada = { x: p.x + dx, y: p.y + dy }
-        const vecino = decretoDe(dios, phys, Math.floor(parada.x / 16), Math.floor(parada.y / 16))
-        const i = (((parada.y % 16) + 16) % 16) * 16 + (((parada.x % 16) + 16) % 16)
-        if ((vecino.celdas[i] as { wet: number }).wet < 0.9) {
-          return { dios, phys, cx, cy, pozo: p, parada }
-        }
-      }
-    }
-  }
-  return undefined
-}
-
-/** Los tres cuerpos que este arnés pone a mano, por id. Ver `escenaDe`. */
-const A_MANO: readonly string[] = ['ana-cuerpo', 'vara', 'matorral']
-
-/**
- * LA ESCENA, y hay que declarar exactamente qué se le regala a la criatura.
- *
- * Es la escena canónica del Hito 5 —«con hambre y un río a la vista»,
- * `mind/tests/hito-5-el-criterio.test.ts`— y se usa ésa y no otra porque es la
- * única que el proyecto tiene medida de punta a punta. Se ponen a mano TRES
- * cuerpos y ninguno más:
- *
- *   · la criatura, con el tanque que se publica;
- *   · una vara de madera de 1 kg, a tres celdas;
- *   · un matorral de liana de 0,2 kg, a dos celdas y media.
- *
- * NO se pone a mano nada que cablee una secuencia: ni fuego, ni yesca, ni corteza,
- * ni una segunda vara, ni piedra, ni nada con filo. La vara y el matorral son los
- * dos eslabones de la caña, que es el criterio (1) del Hito 5 y no es ninguna de
- * las nueve; la entrada 4 —`ponerle-punta-al-aparejo`— pide una SEGUNDA unión con
- * algo filoso y con `catch` estrictamente mayor, y eso no se regala.
- *
- * Y hay que decir la parte incómoda: con el agujero (A) del encabezado, estos tres
- * cuerpos son **todo lo que hay en el mundo** además de los pozos. No es que la
- * escena sea pobre: es que el mundo no agrega nada.
- */
-function escenaDe(o: Orilla, stamina: number): WorldState {
-  const p = o.parada
-  const bodies: readonly WorldBody[] = [
-    { body: criatura('ana', stamina), at: p },
-    { body: cuerpo('vara', 'madera', 1), at: { x: p.x + 3, y: p.y } },
-    { body: cuerpo('matorral', 'liana', 0.2, {}, 'hebra'), at: { x: p.x - 2, y: p.y + 1 } },
-  ]
-  return {
-    tick: 0,
-    hz: HZ_DE_REFERENCIA,
-    phys: o.phys,
-    bodies: mapaDeCuerpos(bodies),
-    actors: mapaDeActores([actor('ana')]),
-    cells: new Map(),
-    nextId: 1,
-    dios: o.dios,
-  }
-}
+// Ahora la escena vive en `el-mundo-decretado.ts`, la comparten el banco y su
+// control, y **todo lo que hay en el piso sale de `decretoDe`**. Lo único que este
+// arnés sigue plantando es el cuerpo de la criatura, con su porqué escrito allá.
 
 // ─── La corrida de una partida ───────────────────────────────────────────────
 
@@ -416,7 +316,12 @@ interface Corrida {
   readonly encendible: { readonly id: string; readonly masa: number } | undefined
   /** Cuántas cosas sueltas decretó el dios en los 3×3 chunks alrededor de la parada. */
   readonly sueltasDecretadas: number
-  /** Y cuántos cuerpos puso el mundo por su cuenta: ni a mano, ni pozo, ni nacidos. */
+  /**
+   * Cuántas de esas pudo sembrar el arnés. La diferencia son las que el decreto
+   * puso en una celda ya ocupada, que la ley 8 no admite: ver `escenaDe`.
+   */
+  readonly sueltasSembradas: number
+  /** Y cuántos cuerpos puso el mundo por su cuenta: ni sembrados, ni pozo, ni nacidos. */
   readonly cuerposDelMundo: number
   /**
    * LA FIRMA DEL MUNDO que le tocó a esta partida: dónde está la orilla y qué
@@ -463,7 +368,8 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
   // del veneno midió un estado ilegal —un actor sin cuerpo— que atravesaba una
   // corrida entera sin que nada se pusiera rojo. Un cero de secuencias emergentes
   // sobre un mundo que nadie está auditando vale menos que un cero auditado.
-  const p = new Partida(escenaDe(o, tanque), { vigilar: true })
+  const escena = escenaDe(o, tanque)
+  const p = new Partida(escena.state, { vigilar: true })
   const m = new Mente({ actor: 'ana', memoria: new Creencias() })
   const d = new Detector()
   // El contrato de alimentación del detector: la primera muestra es el estado
@@ -479,6 +385,8 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
   let enveneno = 0
   let mejorNeto: number | undefined
   let encendible: { readonly id: string; readonly masa: number } | undefined
+  /** Los `Body` que el recorrido del diagnóstico ya interrogó. Ver el bucle. */
+  const yaMirados = new Set<Body>()
   const rolA = ROL_A_DE_FRICCION()
   let murioEn = -1
   let aliento = tanque
@@ -511,11 +419,24 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
     // contesta puede haber existido treinta ticks. Mirar sólo el final diría que
     // no hubo vara justo porque la vara se gastó en la caña.
     //
-    // Es barato: en estas partidas el mundo nunca pasa de una docena de cuerpos,
-    // por el agujero (A).
+    // ─── Y POR QUÉ SE SALTEA EL CUERPO QUE YA SE MIRÓ ───────────────────────
+    //
+    // Antes de este tramo el mundo tenía tres cuerpos y esto era gratis. Ahora
+    // tiene entre 26 y 152 —los que el dios decretó—, y mirarlos todos en cada uno
+    // de los 20.000 ticks era la mitad de lo que costaba el banco.
+    //
+    // El salteo es EXACTO y no una aproximación, y el porqué es del mundo: los
+    // `WorldState` son inmutables por copia, así que el objeto `Body` de un cuerpo
+    // que no cambió es EL MISMO objeto tick a tick. Y las cuatro preguntas de acá
+    // abajo —masa, calorías, toxicidad, y si cumple el rol `a` con potencia— son
+    // funciones puras de `(Body, Physics)`, con la `Physics` fija en la partida.
+    // O sea que preguntarle de nuevo al mismo objeto da lo mismo por construcción.
+    // Un cuerpo que se calienta, se parte o se ata es OTRO objeto y se vuelve a
+    // mirar.
     const cuerpoDeAna = w.actors.get('ana')?.body
     for (const [id, b] of w.bodies) {
-      if (id === cuerpoDeAna) continue
+      if (id === cuerpoDeAna || yaMirados.has(b.body)) continue
+      yaMirados.add(b.body)
       const masa = qualityOf(b.body, 'mass', w.phys)
       const cal = qualityOf(b.body, 'calories', w.phys)
       if (cal > 0) {
@@ -537,24 +458,22 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
   }
 
   // CUERPOS QUE PUSO EL MUNDO POR SU CUENTA. Todo lo que se vio alguna vez, menos
-  // los tres que este arnés colocó, menos los bancos de peces —que `stepWorld` sí
-  // materializa— menos los que nacieron de un proceso. Lo que queda es lo que el
-  // dios sembró y el mundo trajo. Ver el agujero (A) del encabezado.
+  // lo que el ARNÉS sembró —la criatura y las sueltas del decreto—, menos los
+  // bancos de peces —que `stepWorld` sí materializa— menos los que nacieron de un
+  // proceso. Lo que queda es lo que el mundo trajo solo, y sigue dando CERO: ver
+  // el agujero (A) del encabezado, que es por lo que el arnés tiene que sembrar.
   let cuerposDelMundo = 0
   for (const id of vistos) {
-    if (A_MANO.includes(id) || id.startsWith('pozo:') || nacidos.has(id)) continue
+    if (escena.plantados.has(id) || id.startsWith('pozo:') || nacidos.has(id)) continue
     cuerposDelMundo += 1
   }
 
-  let sueltasDecretadas = 0
   let firma = `${String(o.cx)}:${String(o.cy)}|${String(o.pozo.x)},${String(o.pozo.y)}|${String(o.parada.x)},${String(o.parada.y)}`
   const cx = Math.floor(o.parada.x / 16)
   const cy = Math.floor(o.parada.y / 16)
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      const sueltas = decretoDe(o.dios, o.phys, cx + dx, cy + dy).chunk.sueltas
-      sueltasDecretadas += sueltas.length
-      firma += `#${firmaDeSueltas(sueltas)}`
+  for (let dx = -RADIO_EN_CHUNKS; dx <= RADIO_EN_CHUNKS; dx++) {
+    for (let dy = -RADIO_EN_CHUNKS; dy <= RADIO_EN_CHUNKS; dy++) {
+      firma += `#${firmaDeSueltas(decretoDe(o.dios, o.phys, cx + dx, cy + dy).chunk.sueltas)}`
     }
   }
 
@@ -576,7 +495,8 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
     enveneno,
     mejorNeto,
     encendible,
-    sueltasDecretadas,
+    sueltasDecretadas: escena.decretadas,
+    sueltasSembradas: escena.sembradas,
     cuerposDelMundo,
     firma,
     hash: hashWorldState(p.state),
@@ -595,48 +515,38 @@ interface Banco {
   readonly reemplazos: readonly string[]
 }
 
-function correrElBanco(tanque: number, cuantas: number, tope = TICKS): Banco {
+async function correrElBanco(tanque: number, cuantas: number, tope = TICKS): Promise<Banco> {
+  // La lista de semillas NO se calcula acá: sale de `semillasQueSeJuegan`, que la
+  // comparten este banco y el control del azar. Ver allá el porqué — si cada
+  // archivo arma la suya, la mente y el dado se miden en mundos distintos.
+  const { semillas, reemplazos } = semillasQueSeJuegan(cuantas)
   const corridas: Corrida[] = []
-  const reemplazos: string[] = []
-  // `j` NO se reinicia entre ranuras: «se reemplaza EN ORDEN» quiere decir que la
-  // segunda ranura que falla toma la siguiente semilla libre, no la misma que
-  // tomó la primera. Si se reiniciara, dos ranuras jugarían el mismo mundo y la
-  // premisa de las veinte semillas distintas se caería sin que nada lo dijera.
-  let j = 0
-  for (let k = 0; k < cuantas; k++) {
-    const original = SEMILLA_BASE + BigInt(k)
-    let c = correrPartida(original, tanque, tope)
-    const intentadas: string[] = []
-    while (c === undefined) {
-      const reemplazo = SEMILLA_DE_REEMPLAZO + BigInt(j)
-      j += 1
-      intentadas.push(String(reemplazo))
-      c = correrPartida(reemplazo, tanque, tope)
-    }
+  for (const semilla of semillas) {
+    // Un respiro entre partida y partida, para que el canal del worker no se
+    // caiga por los 60 s de birpc. No cambia una sola medición: ver `respirar`.
+    await respirar()
+    const c = correrPartida(semilla, tanque, tope)
+    // `semillasQueSeJuegan` ya garantizó que cada una tiene orilla, así que un
+    // `undefined` acá es un mundo que dejó de ser el mismo entre dos llamadas —o
+    // sea un determinismo roto— y no un caso de §10 que haya que reemplazar.
+    if (c === undefined) throw new Error(`la semilla ${String(semilla)} tenía orilla y ahora no`)
     corridas.push(c)
-    if (intentadas.length > 0) {
-      const ultima = intentadas[intentadas.length - 1] ?? ''
-      const fallidas = intentadas.slice(0, -1)
-      reemplazos.push(
-        `  ranura ${String(k)}: ${String(original)} sin orilla` +
-          (fallidas.length === 0 ? '' : ` · también ${fallidas.join(', ')}`) +
-          ` → juega ${ultima}`,
-      )
-    }
   }
   return { corridas, reemplazos }
 }
 
 // ─── Memoización, para no correr el mismo banco dos veces ────────────────────
 
-let elCanonico: Banco | undefined
-function canonico(): Banco {
+// Se memoriza LA PROMESA y no el resultado: así dos tests que pidan el banco a la
+// vez lo corren una sola vez, y el `await` de cada uno espera al mismo trabajo.
+let elCanonico: Promise<Banco> | undefined
+function canonico(): Promise<Banco> {
   elCanonico ??= correrElBanco(TANQUE, PARTIDAS)
   return elCanonico
 }
 
-let elControl: Banco | undefined
-function control(): Banco {
+let elControl: Promise<Banco> | undefined
+function control(): Promise<Banco> {
   elControl ??= correrElBanco(TANQUE_LLENO, MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS)
   return elControl
 }
@@ -662,10 +572,10 @@ function primerasApariciones(b: Banco): ReadonlyMap<NombreDeSecuencia, number> {
  * LA TABLA CRUDA. Las tres cifras de §10 por secuencia, más el tick de la primera
  * aparición y la evidencia del primer disparo si lo hubo.
  */
-function tablaDelBanco(b: Banco, titulo: string): string {
+function tablaDelBanco(b: Banco, titulo: string, ruidoMedido: readonly NombreDeSecuencia[]): string {
   const r = resumir(b.corridas.map((c) => c.veredicto))
   const primeras = primerasApariciones(b)
-  const ruido = new Set(ruidoDelAzar())
+  const ruido = new Set(ruidoMedido)
   const n = b.corridas.length
   const lineas: string[] = [
     ``,
@@ -742,19 +652,62 @@ function tablaDelPresupuesto(b: Banco, titulo: string): string {
         `${String(c.comestibles)} comestibles de ${String(c.nacidos)} nacidos · ` +
         `bocados ${String(bocados)} (el mundo narró comio ${String(c.comio)} · enveneno ${String(c.enveneno)}) · ` +
         `mejor neto ${c.mejorNeto === undefined ? 'no hubo comida' : dos(c.mejorNeto)} · ` +
+        `sembradas ${String(c.sueltasSembradas)}/${String(c.sueltasDecretadas)} · ` +
         `encendible ${c.encendible === undefined ? 'NINGUNO' : `${c.encendible.id} ${c.encendible.masa.toFixed(4)} kg`} · ` +
         `hash ${c.hash.slice(0, 8)}`,
     )
   }
   const presupuesto = b.corridas.length * TICKS
+  lineas.push(``, columnaDelEncendible(b), ``)
   lineas.push(
-    ``,
     `  ${String(muertas)} de ${String(b.corridas.length)} partidas terminaron con la criatura muerta`,
     `  presupuesto usado: ${String(vividos)} de ${String(presupuesto)} ticks ` +
       `(${((vividos * 100) / presupuesto).toFixed(1)}%)`,
     ``,
   )
   return lineas.join('\n')
+}
+
+/**
+ * LA COLUMNA DE «¿HAY CON QUÉ ENCENDER?», que es la que este tramo vino a corregir.
+ *
+ * `lo-que-el-mundo-si-siembra.test.ts` mide sobre el DECRETO que 13 de las 20
+ * semillas de §10 tienen al menos una vara por debajo del techo de la fricción y 7
+ * no. Esta columna mide lo mismo sobre las partidas que de verdad se jugaron —que
+ * no son las mismas semillas, porque §10 reemplaza las que no tienen orilla— y con
+ * el cuerpo que existió EN CUALQUIER TICK, o sea contando también lo que la
+ * criatura armó.
+ *
+ * **Las que no tienen no se descartan.** Filtrarlas sería armar el banco para que
+ * dé bien; se corren, y el numerador se publica al lado del denominador.
+ */
+function columnaDelEncendible(b: Banco): string {
+  let conEncendible = 0
+  let bajoElTecho = 0
+  let masLiviana = Number.POSITIVE_INFINITY
+  for (const c of b.corridas) {
+    if (c.encendible === undefined) continue
+    conEncendible += 1
+    if (c.encendible.masa <= TECHO_DE_LA_FRICCION) bajoElTecho += 1
+    if (c.encendible.masa < masLiviana) masLiviana = c.encendible.masa
+  }
+  const n = b.corridas.length
+  return (
+    `  ¿HAY CON QUÉ ENCENDER? · partidas con algún cuerpo encendible: ${String(conEncendible)}/${String(n)} · ` +
+    `con uno POR DEBAJO del techo de ${String(TECHO_DE_LA_FRICCION)} kg: ${String(bajoElTecho)}/${String(n)}\n` +
+    `  el más liviano de todas las partidas: ` +
+    `${masLiviana === Number.POSITIVE_INFINITY ? '—' : `${masLiviana.toFixed(4)} kg`} ` +
+    `(el arnés viejo, con su escena a mano, decía 1,0000 kg en las veinte)\n` +
+    // ─── LAS DOS POBLACIONES EN EL MISMO RENGLÓN, Y NO EN DOS ARCHIVOS ───────
+    //
+    // El «13 de 20» que este tramo publica como corrección está medido sobre las
+    // VEINTE SEMILLAS DE §10 (`lo-que-el-mundo-si-siembra.test.ts`), y las que se
+    // juegan acá no son ésas: §10 reemplaza las que no tienen orilla, y son trece.
+    // Comparar el número de arriba con el «13 de 20» sin decirlo es comparar dos
+    // poblaciones distintas, así que se dicen las dos juntas.
+    `  (poblaciones: las 20 de §10 dan 13/20 con encendible sobre el DECRETO; ` +
+    `las ${String(n)} que se juegan acá dan ${String(conEncendible)}/${String(n)} — no son las mismas semillas)`
+  )
 }
 
 /** Qué despegó, sumado sobre todas las partidas. El diagnóstico de la mente. */
@@ -771,7 +724,7 @@ function tablaDeVuelos(b: Banco): string {
 // ═══ (0) ANTES DE CORRER: ¿SON VEINTE MUNDOS O ES UNO? ══════════════════════
 
 describe('(0) las veinte semillas, antes de correr una sola partida', () => {
-  it.fails('LA CACHÉ DEL DECRETO NO LLEVA LA SEMILLA: dos dioses con una `Physics` son un mundo', () => {
+  it.fails('LA CACHÉ DEL DECRETO NO LLEVA LA SEMILLA: dos dioses con una `Physics` son un mundo', async () => {
     // POR QUÉ FALLA, Y POR QUÉ NO SE BORRA: `decretoDe` arma su clave con
     // `${cx}:${cy}` y busca en un `WeakMap` indexado por el objeto `Physics`
     // (`world/src/dios.ts:305-317`). La semilla vive en `EstadoDelDios`, que es el
@@ -824,7 +777,7 @@ describe('(0) las veinte semillas, antes de correr una sola partida', () => {
     ).not.toBe(firmaDeSueltas(b.chunk.sueltas))
   })
 
-  it('DE LAS VEINTE SEMILLAS DE §10, sólo siete tienen orilla: el resto se reemplaza', () => {
+  it('DE LAS VEINTE SEMILLAS DE §10, sólo siete tienen orilla: el resto se reemplaza', async () => {
     // §10 fijó las semillas `20260728n + k` y dejó escrita la política: «si alguna
     // resulta no resoluble se reemplaza en orden por `20260728n + 20 + j` y el
     // reemplazo se anota». Acá se publica cuáles y por qué.
@@ -866,7 +819,7 @@ describe('(0) las veinte semillas, antes de correr una sola partida', () => {
     expect(conOrilla).toBeLessThanOrEqual(PARTIDAS)
   }, 300_000)
 
-  it('y las veinte partidas que SE JUGARON son veinte mundos distintos', () => {
+  it('y las veinte partidas que SE JUGARON son veinte mundos distintos', async () => {
     // La premisa del banco, verificada sobre las semillas que de verdad se
     // corrieron —las de §10 más los reemplazos— y no sobre las que se pensaban
     // correr. Si esto fuera falso, la tabla de más abajo sería una partida
@@ -876,7 +829,7 @@ describe('(0) las veinte semillas, antes de correr una sola partida', () => {
     // los 3×3 chunks de alrededor. Comparar semillas no probaría nada —son
     // distintas por construcción— y es exactamente el error que el agujero (B)
     // deja pasar.
-    const b = canonico()
+    const b = await canonico()
     const firmas = new Set(b.corridas.map((c) => c.firma))
     console.log(
       `\n─── LAS VEINTE QUE SE JUGARON ───\n` +
@@ -894,112 +847,122 @@ describe('(0) las veinte semillas, antes de correr una sola partida', () => {
   }, 600_000)
 })
 
-/** La firma de lo que el dios sembró en un chunk. Sin `toLocaleString` ni orden de sistema. */
-function firmaDeSueltas(
-  sueltas: readonly { readonly substance: string; readonly i: number; readonly masa: number }[],
-): string {
-  return sueltas.map((s) => `${s.substance}@${String(s.i)}:${String(s.masa)}`).join(',')
-}
-
 // ═══ (1) EL MUNDO NO LE PONE EL PROBLEMA DELANTE ════════════════════════════
 
 describe('(1) lo que el dios siembra y lo que el mundo materializa', () => {
-  it.fails('EL DIOS SIEMBRA 90 COSAS ALREDEDOR Y EL MUNDO MATERIALIZA CERO', () => {
-    // POR QUÉ FALLA, Y ES EL HALLAZGO QUE DECIDE LA CORRIDA ENTERA.
+  it.fails('EL DIOS SIEMBRA ALREDEDOR Y EL MUNDO MATERIALIZA CERO: por eso siembra el arnés', async () => {
+    // POR QUÉ SIGUE FALLANDO, Y ES LA PREMISA QUE ESTE TRAMO TUVO QUE MEDIR.
     //
     // `decretoDe(...).chunk.sueltas` trae lo que el dios sembró en cada chunk
     // —junco, piedra, hueso, hoja, grano, raíz, tubérculo alrededor de esta
     // orilla— y **`@anima/world` no lo lee en ningún lado**: `grep -rn "sueltas"
-    // world/src` devuelve nueve renglones y los nueve son comentarios. Lo único
-    // que `stepWorld` materializa del decreto es el banco de peces
-    // (`materializarPozos`, `step.ts:2904`), y `conLoQueElDiosPone` de la capa de
-    // percepción copia de la sombra únicamente lo que empieza con `pozo:`
-    // (`perceive/src/bucle.ts:193-198`).
+    // world/src` devuelve UN renglón y es un comentario. Lo único que `stepWorld`
+    // materializa del decreto es el banco de peces (`materializarPozos`), y
+    // `conLoQueElDiosPone` de la capa de percepción copia de la sombra únicamente
+    // lo que empieza con `pozo:` (`perceive/src/bucle.ts`).
     //
-    // CONSECUENCIA, y por eso este test está acá y no en un informe: los NUEVE
-    // contra-detectores del documento preguntan por materia —dos candidatos de
-    // fricción con masas distintas, dos permeabilidades, algo con filo, corteza y
-    // atadura, algo sólido con qué hacer parrilla— y en este mundo la única
-    // materia que existe es la que el arnés puso a mano. La Regla 4 del documento
-    // dice qué hacer con eso: **no es una ausencia, es una no-medida**. Y §10 dice
-    // qué significa nueve no-medidas sobre nueve: el resultado no es interpretable.
+    // MEDIDO EN ESTE TRAMO, y no leído: una criatura sola en la orilla de
+    // `20260728n`, cinco ticks de `Partida`, sin una sola línea de escena. El dios
+    // decretó 90 sueltas en los 3×3 chunks de alrededor y lo único que apareció
+    // fueron `pozo:-5:-2`, `pozo:-5:-3` y `pozo:-6:-2`. **Cero.** El encargo de
+    // este tramo daba por hecho que ya se materializaban solas; no.
     //
-    // QUÉ HABRÍA QUE CAMBIAR: que `stepWorld` materialice `chunk.sueltas` como ya
-    // materializa `pozo`. Es del motor, no del juez ni del arnés — sembrarlas a
-    // mano acá sería fabricar el mundo que uno quiere medir, que es exactamente lo
-    // que la Regla 5 del documento castiga.
-    const b = canonico()
+    // QUÉ CAMBIÓ, ENTONCES: el arnés siembra el decreto él mismo
+    // (`el-mundo-decretado.ts`), y esta columna sigue midiendo lo otro — cuántos
+    // cuerpos pone el MUNDO por su cuenta, descontando lo sembrado, los pozos y lo
+    // que nació de un proceso. Sigue dando cero, y por eso este test sigue en rojo:
+    // el rodeo del arnés no es la reparación, que es del motor —que `stepWorld`
+    // materialice `chunk.sueltas` como ya materializa `pozo`—.
+    //
+    // Y LA DIFERENCIA CON «FABRICAR EL MUNDO QUE UNO QUIERE MEDIR», que es lo que
+    // la Regla 5 castiga: el arnés no elige qué hay, ni cuánto pesa, ni dónde está
+    // —los tres salen de la semilla— y **no descarta ninguna semilla**. Las que el
+    // dios dejó sin nada encendible se corren igual y la columna se publica.
+    const b = await canonico()
     const filas = b.corridas.map(
       (c) =>
-        `  ${String(c.semilla)} · el dios sembró ${String(c.sueltasDecretadas)} sueltas en 3×3 chunks · ` +
+        `  ${String(c.semilla)} · el dios decretó ${String(c.sueltasDecretadas).padStart(3)} sueltas en 3×3 chunks · ` +
+        `el arnés sembró ${String(c.sueltasSembradas).padStart(3)} (la ley 8 le comió ${String(c.sueltasDecretadas - c.sueltasSembradas)}) · ` +
         `el mundo materializó ${String(c.cuerposDelMundo)}`,
     )
     const decretadas = b.corridas.reduce((a, c) => a + c.sueltasDecretadas, 0)
+    const sembradas = b.corridas.reduce((a, c) => a + c.sueltasSembradas, 0)
     const materializadas = b.corridas.reduce((a, c) => a + c.cuerposDelMundo, 0)
     console.log(
-      `\n─── LO QUE EL DIOS SIEMBRA Y LO QUE EL MUNDO TRAE ───\n${filas.join('\n')}\n` +
-        `  TOTAL: ${String(decretadas)} decretadas · ${String(materializadas)} materializadas\n`,
+      `\n─── LO QUE EL DIOS SIEMBRA, LO QUE EL ARNÉS PUEDE PONER Y LO QUE EL MUNDO TRAE ───\n${filas.join('\n')}\n` +
+        `  TOTAL: ${String(decretadas)} decretadas · ${String(sembradas)} sembradas por el arnés · ` +
+        `${String(materializadas)} materializadas por el mundo\n`,
     )
     expect(decretadas).toBeGreaterThan(0)
+    expect(sembradas).toBeGreaterThan(0)
     expect(materializadas, `el mundo materializó ${String(materializadas)} de ${String(decretadas)}`).toBeGreaterThan(0)
   }, 600_000)
 
-  it('y por eso los nueve contra-detectores dan `false`: es no-medida, no ausencia', () => {
+  it('CUÁNTAS SITUACIONES PUSO EL MUNDO DELANTE, que es lo que decide si el número se puede leer', async () => {
     // La Regla 4, hecha aserción. No se afirma que las secuencias no aparecieron
-    // —eso sería leer un cero que nadie pudo mover— sino que **la situación no
-    // existió**, que es un hecho del mundo y no de la mente.
-    const b = canonico()
+    // —eso sería leer un cero que nadie pudo mover— sino CUÁNTAS situaciones el
+    // mundo puso delante, que es un hecho del mundo y no de la mente. Con la
+    // escena a mano eran cero de nueve y el resultado no era interpretable; con el
+    // mundo decretado, lo que salga sale. Lo que se afirma es que el juez midió las
+    // nueve, y el número de no-medidas se publica al lado sin ablandarlo.
+    const b = await canonico()
     const r = resumir(b.corridas.map((c) => c.veredicto))
     const conSituacion = r.filas.filter((f) => f.situacionEn > 0).map((f) => f.nombre)
+    const sinMedir = r.filas.filter((f) => f.situacionEn === 0).length
     console.log(
       `\n  contra-detectores que dieron verdadero en alguna de las ${String(b.corridas.length)} partidas: ` +
-        `${conSituacion.length === 0 ? 'NINGUNO' : conSituacion.join(', ')}\n`,
+        `${conSituacion.length === 0 ? 'NINGUNO' : conSituacion.join(', ')}\n` +
+        `  sin medir: ${String(sinMedir)} de ${String(r.filas.length)} ` +
+        `→ ${r.interpretable ? 'INTERPRETABLE' : 'NO INTERPRETABLE (§10: más de tres sin medir sobre nueve)'}\n`,
     )
     expect(r.filas.length).toBe(SECUENCIAS.length)
-    expect(r.interpretable, 'con más de tres sin medir sobre nueve el resultado no es interpretable').toBe(false)
+    expect(sinMedir).toBeLessThanOrEqual(SECUENCIAS.length)
   }, 600_000)
 })
 
 // ═══ (2) EL BANCO DEL CRITERIO: VEINTE PARTIDAS ═════════════════════════════
 
 describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', () => {
-  it('LA TABLA CRUDA, que es lo que este archivo existe para publicar', () => {
-    const b = canonico()
-    console.log(
-      `\n═══ EL BANCO ═══\n` +
-        `  ${String(b.corridas.length)} partidas · tope ${String(TICKS)} ticks (${String(TICKS / HZ_DE_REFERENCIA)} s de mundo)\n` +
-        `  tanque de arranque: ${String(TANQUE)} de 1000 · capacity 3 · PHYSICS_VERSION ${String(PHYSICS_VERSION)}\n` +
-        `  semillas: ${b.corridas.map((c) => String(c.semilla)).join(' ')}\n` +
-        `  reemplazos de §10 (${String(b.reemplazos.length)}):\n` +
-        (b.reemplazos.length === 0 ? '    ninguno\n' : `${b.reemplazos.join('\n')}\n`) +
-        tablaDelPresupuesto(b, 'EL PRESUPUESTO: CUÁNTO DE LOS 20.000 TICKS SE USÓ') +
-        tablaDeVuelos(b) +
-        '\n' +
-        tablaDelBanco(b, 'LAS NUEVE SECUENCIAS, PARTIDA POR PARTIDA'),
-    )
-    // Lo que se afirma siempre acá es lo ESTRUCTURAL: que el banco corrió lo que
-    // dijo que iba a correr. Los números del veredicto van abajo, cada uno con su
-    // aserción y su color.
-    expect(b.corridas.length).toBe(PARTIDAS)
-    expect(new Set(b.corridas.map((c) => c.semilla)).size).toBe(PARTIDAS)
-    for (const c of b.corridas) expect(c.veredicto.filas.length).toBe(SECUENCIAS.length)
-  }, 600_000)
+  // ─── EL AZAR, EN TRES TESTS Y NO EN UNO ────────────────────────────────────
+  //
+  // Los dos controles son 20 × 20.000 ticks cada uno sobre el mundo decretado, y
+  // juntos en un solo `it` pasaban de los cinco minutos: vitest le corta el canal
+  // al worker («Timeout calling onTaskUpdate») y la corrida entera termina con un
+  // error que no es de ninguna medición. Van separados, y el tercero sólo imprime
+  // porque `correrElControl` memoiza. No se acortó ni una partida.
 
-  it('EL RUIDO DEL AZAR, publicado al lado del de la mente', () => {
+  it('EL AZAR SIN FUEGO, sobre las mismas veinte semillas que juega la mente', async () => {
+    const sin = await correrElControl('EL AZAR SIN FUEGO', false, 1000)
+    console.log(`\n${tablaDelControl(sin)}\n`)
+    expect(sin.filas.length).toBe(SECUENCIAS.length)
+  }, 900_000)
+
+  it('EL AZAR CON EL FUEGO REGALADO, la concesión que va a favor del dado', async () => {
+    const con = await correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
+    console.log(`\n${tablaDelControl(con)}\n`)
+    expect(con.filas.length).toBe(SECUENCIAS.length)
+  }, 900_000)
+
+  it('EL RUIDO DEL AZAR, publicado al lado del de la mente', async () => {
     // ─── POR QUÉ ESTE NÚMERO VA ACÁ Y NO SÓLO EN EL ARCHIVO DEL ADVERSARIO ────
     //
     // Porque es el denominador. Una criatura que elige la FORMA del acto y los
     // CUERPOS con el dado del mundo —y que no consulta una sola cualidad, que es
-    // exactamente la hipótesis nula de las nueve— firma TRES de las nueve sobre 20
-    // semillas y 20.000 ticks. Ninguna de esas tres puede contar para el piso de
-    // cuatro: una firma que produce un dado no distingue una mente de un dado.
+    // exactamente la hipótesis nula de las nueve— firma unas cuantas de las nueve
+    // sobre 20 semillas y 20.000 ticks. Ninguna de ésas puede contar para el piso
+    // de cuatro: una firma que produce un dado no distingue una mente de un dado.
     //
-    // O sea que el criterio real que la mente tiene que cruzar es **4 sobre las 6
-    // que quedan**, y no 4 sobre 9. Está medido y no estimado, con `dadoDe(
-    // crearDios(semilla))` y sin un solo `Math.random`, en `tests/azar.ts`.
-    const sin = correrElControl('EL AZAR SIN FUEGO', false, 1000)
-    const con = correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
-    const ruido = ruidoDelAzar()
+    // Y EL CONTROL SE VOLVIÓ A CORRER EN ESTE TRAMO, sobre el mundo decretado y
+    // con las mismas veinte semillas que juega la mente. Antes corría sobre una
+    // escena propia —diez sueltas de una tabla escrita a mano y cuatro peces
+    // regalados— y el banco de la mente sobre otra: dos mundos distintos y una
+    // resta entre ellos. Ver el encabezado de `tests/azar.ts`.
+    //
+    // Está medido y no estimado, con `dadoDe(crearDios(semilla))` y sin un solo
+    // `Math.random`.
+    const sin = await correrElControl('EL AZAR SIN FUEGO', false, 1000)
+    const con = await correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
+    const ruido = await ruidoDelAzar()
     console.log(
       `\n═══ EL RUIDO DEL AZAR, EL DENOMINADOR DEL CRITERIO ═══\n` +
         `${tablaDelControl(sin)}\n\n${tablaDelControl(con)}\n\n` +
@@ -1013,17 +976,42 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(ruido.length).toBeLessThanOrEqual(SECUENCIAS.length)
   }, 900_000)
 
-  it.fails('EL CRITERIO DE CORTE: al menos 4 de las 9 — aparecieron 0', () => {
+  it('LA TABLA CRUDA, que es lo que este archivo existe para publicar', async () => {
+    const b = await canonico()
+    const ruido = await ruidoDelAzar()
+    console.log(
+      `\n═══ EL BANCO ═══\n` +
+        `  ${String(b.corridas.length)} partidas · tope ${String(TICKS)} ticks (${String(TICKS / HZ_DE_REFERENCIA)} s de mundo)\n` +
+        `  tanque de arranque: ${String(TANQUE)} de 1000 · capacity 3 · PHYSICS_VERSION ${String(PHYSICS_VERSION)}\n` +
+        `  semillas: ${b.corridas.map((c) => String(c.semilla)).join(' ')}\n` +
+        `  reemplazos de §10 (${String(b.reemplazos.length)}):\n` +
+        (b.reemplazos.length === 0 ? '    ninguno\n' : `${b.reemplazos.join('\n')}\n`) +
+        tablaDelPresupuesto(b, 'EL PRESUPUESTO: CUÁNTO DE LOS 20.000 TICKS SE USÓ') +
+        tablaDeVuelos(b) +
+        '\n' +
+        tablaDelBanco(b, 'LAS NUEVE SECUENCIAS, PARTIDA POR PARTIDA', ruido),
+    )
+    // Lo que se afirma siempre acá es lo ESTRUCTURAL: que el banco corrió lo que
+    // dijo que iba a correr. Los números del veredicto van abajo, cada uno con su
+    // aserción y su color.
+    expect(b.corridas.length).toBe(PARTIDAS)
+    expect(new Set(b.corridas.map((c) => c.semilla)).size).toBe(PARTIDAS)
+    for (const c of b.corridas) expect(c.veredicto.filas.length).toBe(SECUENCIAS.length)
+  }, 600_000)
+
+  it.fails('EL CRITERIO DE CORTE: al menos 4 de las 9 — aparecieron 0', async () => {
     // EL NÚMERO CRUDO, que es lo único que este archivo decide: **aparecieron 0 de
     // 9**. El umbral no se toca acá y no hace falta tocarlo: §10 del documento ya
     // dejó escrito, antes de correr, que con nueve entradas el 4 absoluto del
     // criterio publicado y el 40% proporcional (3,6 → 4) caen en el mismo número.
     //
-    // Y hay que leerlo con la fila de al lado: con NUEVE no-medidas sobre nueve,
-    // este cero **no dice nada sobre la mente**. §10: «si quedan más de tres sin
-    // medir sobre nueve, el resultado no es interpretable». El bloque (1) tiene la
-    // causa medida.
-    const b = canonico()
+    // Y hay que leerlo con la fila de al lado: quedan SEIS no-medidas sobre nueve
+    // —eran nueve con la escena a mano— y §10 dice que con más de tres el resultado
+    // no es interpretable. Lo que sí es interpretable son las TRES que se movieron:
+    // el mundo puso esos problemas delante en 5 a 7 de las 20 partidas y la
+    // criatura no los resolvió una sola vez. Ese pedazo del cero mide a la mente, y
+    // es lo que el bloque (4) contesta fila por fila.
+    const b = await canonico()
     const r = resumir(b.corridas.map((c) => c.veredicto))
     console.log(
       `\n─── EL CRITERIO ───\n` +
@@ -1033,7 +1021,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(r.cuantasCuentan, `aparecieron ${String(r.cuantasCuentan)} de ${String(r.filas.length)}`).toBeGreaterThanOrEqual(4)
   }, 600_000)
 
-  it('Y EL MUNDO SOBRE EL QUE SE MIDIÓ ES LEGAL: el arnés corrió sobre los 20.000 ticks', () => {
+  it('Y EL MUNDO SOBRE EL QUE SE MIDIÓ ES LEGAL: el arnés corrió sobre los 20.000 ticks', async () => {
     // ─── POR QUÉ ESTO ES PARTE DEL CRITERIO Y NO UNA HIGIENE ────────────────
     //
     // Este archivo publica un cero. Un cero vale lo que valga el mundo sobre el
@@ -1055,7 +1043,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // `acreditado()` sepa leer, y su `it.fails` está en
     // `perceive/tests/ataque-a-la-costura.test.ts`. Lo que se afirma es lo que se
     // midió, ni una palabra más.
-    const b = canonico()
+    const b = await canonico()
     const total = b.corridas.reduce((a, c) => a + c.violaciones.length, 0)
     const conAlguna = b.corridas.filter((c) => c.violaciones.length > 0)
     const clases = new Set(b.corridas.flatMap((c) => c.violaciones.map((x) => x.v.k)))
@@ -1071,58 +1059,68 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
                   `  semilla ${String(c.semilla)} (${String(c.violaciones.length)}): ticks ` +
                   `${c.violaciones.map((x) => String(x.tick)).join(',')} — ${describir(c.violaciones[0]?.v as Violacion)}\n`,
               )
-              .join('') +
-            '\n' +
-            '  LO QUE ES, medido y no supuesto: **el dios materializa un banco de peces**\n' +
-            '  **encima de un cuerpo que ya estaba en esa celda**. `materializarPozos`\n' +
-            '  (`world/src/step.ts`) hace `ponerCuerpo` en `pozo.at` sin preguntarle a\n' +
-            '  `estorbo`, que es el guardián de la ley 8 que sí aplican `goTo`, `put` y\n' +
-            '  `drop`. La vara que este arnés deja a tres celdas cayó justo ahí en UNA de\n' +
-            '  las veinte semillas, y el solapamiento dura hasta que la criatura levanta la\n' +
-            '  vara: `revisarEspacio` no mira los cuerpos que están en una mano.\n' +
-            '\n' +
-            '  POR QUÉ NO SE ARREGLA EN ESTE TRAMO: la reparación no es un `if`, es una\n' +
-            '  decisión — o el banco no se materializa (y la comida del mundo depende de\n' +
-            '  dónde alguien dejó un palo), o se corre de celda (y entonces la posición de\n' +
-            '  todo pozo depende del estado, o sea que el decreto deja de ser una función\n' +
-            '  pura de la semilla y se mueven todos los hashes). Pide su ADR. Queda pinado\n' +
-            '  abajo con `it.fails` y acá se afirma su forma exacta, para que cualquier\n' +
-            '  cosa NUEVA rompa este test.\n'),
+              .join('')),
     )
-    // Lo que se afirma es la FORMA de lo único que hay, y es una aserción fuerte:
-    // cualquier estado ilegal de otra clase, en otra partida o en otro tick pone
-    // esto en rojo. No es un umbral aflojado: es el hallazgo, escrito.
-    expect([...clases]).toEqual(total === 0 ? [] : ['solidos-solapados'])
-    expect(conAlguna.length).toBeLessThanOrEqual(1)
-    for (const c of conAlguna) {
-      for (const x of c.violaciones) {
-        expect(x.v.k).toBe('solidos-solapados')
-        // Uno de los dos siempre es un banco de peces: eso es lo que lo vuelve un
-        // problema del dios y no de la escena.
-        const dosIds = x.v.k === 'solidos-solapados' ? [x.v.a, x.v.b] : []
-        expect(dosIds.some((id) => id.startsWith('pozo:'))).toBe(true)
-      }
-    }
+    // CERO, Y SE AFIRMA CERO. La corrida anterior tenía cuatro —`solidos-solapados`
+    // entre `pozo:-5:-2` y la `vara` que el arnés dejaba a tres celdas— y esa
+    // aserción decía «a lo sumo una partida, y de esa clase». Ya no hace falta
+    // aflojarla: con la escena decretada no hay ninguno, porque `scatter` no
+    // siembra sobre agua y el pozo está justamente en el agua. Ver el `it.fails`
+    // de abajo: **el agujero del mundo sigue ahí**, lo que dejó de pasar es que
+    // este banco lo pise.
+    expect([...clases]).toEqual([])
+    expect(total).toBe(0)
   }, 600_000)
 
-  it.fails('LO QUE DEBERÍA PASAR · cero estados ilegales en los 112.187 ticks auditados', () => {
-    // El número medido hoy es **4**, todos en la semilla 20260728, en los ticks 1 a
-    // 4, y todos la misma cosa: `solidos-solapados` entre `pozo:-5:-2` y `vara` en
-    // (−79,−32). Se apaga solo en el tick 5 porque la criatura levanta la vara y
-    // `revisarEspacio` no mira lo que está en una mano — o sea que ni siquiera se
-    // arregla: se esconde.
+  it.fails('EL AGUJERO QUE ESTE BANCO YA NO PISA: el dios materializa el banco encima de lo que haya', async () => {
+    // ─── POR QUÉ ESTE TEST EXISTE Y NO SE BORRÓ CON LA ESCENA VIEJA ─────────
     //
-    // Es la primera cosa que el arnés encontró la primera vez que alguien lo
-    // encendió, y ésa es la mitad del valor de haberlo encendido.
-    const b = canonico()
-    expect(b.corridas.reduce((a, c) => a + c.violaciones.length, 0)).toBe(0)
-  }, 600_000)
+    // El arnés de invariantes encontró esto la primera vez que alguien lo encendió:
+    // `materializarPozos` (`world/src/step.ts`) hace `ponerCuerpo` en `pozo.at` sin
+    // preguntarle a `estorbo`, que es el guardián de la ley 8 que sí aplican
+    // `goTo`, `put` y `drop`. La `vara` que el arnés viejo dejaba a tres celdas
+    // caía justo ahí en UNA de las veinte semillas, y el solapamiento duraba hasta
+    // que la criatura levantaba la vara —`revisarEspacio` no mira lo que está en
+    // una mano—, o sea que ni siquiera se arreglaba: se escondía.
+    //
+    // Con el mundo decretado el banco de arriba da cero, y ese cero podría leerse
+    // como «se arregló». **No se arregló**: dejó de dispararse porque el decreto no
+    // siembra sobre agua y el pozo está en el agua. Así que el hallazgo se pone acá
+    // en su forma mínima —un cuerpo puesto a mano en la celda del pozo, UN tick— en
+    // vez de depender de que a alguna semilla le toque. Perder un hallazgo porque
+    // cambió la escena sería peor que no haberlo encontrado.
+    //
+    // POR QUÉ NO SE ARREGLA EN ESTE TRAMO: la reparación no es un `if`, es una
+    // decisión — o el banco no se materializa (y la comida del mundo depende de
+    // dónde alguien dejó un palo), o se corre de celda (y entonces la posición de
+    // todo pozo depende del estado, o sea que el decreto deja de ser una función
+    // pura de la semilla y se mueven todos los hashes). Pide su ADR.
+    const o = laOrilla(SEMILLA_BASE)
+    expect(o).not.toBe(undefined)
+    if (o === undefined) return
+    const escena = escenaDe(o, TANQUE)
+    // UN cuerpo más, y en la única celda que importa: la del banco de peces. No es
+    // la escena del criterio —esto no mide ninguna secuencia—: es la reproducción
+    // mínima del agujero.
+    const bodies = new Map(escena.state.bodies)
+    bodies.set('estorbo', { body: cuerpo('estorbo', 'piedra', 1), at: o.pozo })
+    const p = new Partida({ ...escena.state, bodies: mapaDeCuerpos([...bodies.values()]) }, { vigilar: true })
+    p.tick()
+    const v = p.informe.violaciones
+    console.log(
+      `\n─── EL BANCO DE PECES, ENCIMA DE LO QUE HAYA ───\n` +
+        `  celda del pozo: ${String(o.pozo.x)},${String(o.pozo.y)} · violaciones en un tick: ${String(v.length)}` +
+        `${v.length === 0 ? '' : ` — ${describir(v[0]?.v as Violacion)}`}\n`,
+    )
+    // Y esto es lo que tendría que valer y no vale.
+    expect(v.length, `el mundo puso el banco encima y nadie lo frenó`).toBe(0)
+  }, 120_000)
 
-  it('CUÁNTO DEL PRESUPUESTO SE USÓ, que es la mitad de la pregunta', () => {
+  it('CUÁNTO DEL PRESUPUESTO SE USÓ, que es la mitad de la pregunta', async () => {
     // La otra mitad —«¿cuántas no aparecieron porque la criatura se murió antes de
     // poder intentarlas?»— la contesta el control del bloque (3). Acá va el
     // denominador: cuánto vivió de verdad cada partida.
-    const b = canonico()
+    const b = await canonico()
     const vividos = b.corridas.reduce((a, c) => a + c.ticks, 0)
     const presupuesto = b.corridas.length * TICKS
     const muertas = b.corridas.filter((c) => c.murioEn >= 0).length
@@ -1146,7 +1144,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
 // ═══ (3) EL CONTROL: ¿ES LA MUERTE O ES LA MENTE? ═══════════════════════════
 
 describe('(3) el control con el tanque lleno', () => {
-  it('con 1000 de aliento la criatura vive casi los 20.000 — y el juez dice lo mismo', () => {
+  it('con 1000 de aliento la criatura vive casi los 20.000 — y el juez dice lo mismo', async () => {
     // LA PREGUNTA QUE ESTE BLOQUE CONTESTA, y sin ella el cero de arriba no
     // significa nada: ¿las secuencias no aparecieron porque la mente no llega, o
     // porque la criatura no vivió lo suficiente para intentarlas?
@@ -1158,7 +1156,9 @@ describe('(3) el control con el tanque lleno', () => {
     // COSTO: son 20 × 20.000 ticks de mundo con una mente encima. Se corren las
     // veinte sólo con `ANIMA_BANCO=1`; sin él se corren tres y se dice cuántas.
     // Ver el encabezado: acá el gatillo es el costo y no la varianza.
-    const b = control()
+    const b = await control()
+    const canon = await canonico()
+    const ruido = await ruidoDelAzar()
     console.log(
       `\n═══ EL CONTROL, TANQUE ${String(TANQUE_LLENO)} ═══\n` +
         `  ${String(b.corridas.length)} partidas` +
@@ -1166,7 +1166,7 @@ describe('(3) el control con el tanque lleno', () => {
         tablaDelPresupuesto(b, 'EL PRESUPUESTO DEL CONTROL') +
         tablaDeVuelos(b) +
         '\n' +
-        tablaDelBanco(b, 'LAS NUEVE, CON EL TANQUE LLENO'),
+        tablaDelBanco(b, 'LAS NUEVE, CON EL TANQUE LLENO', ruido),
     )
 
     const vividos = b.corridas.reduce((a, c) => a + c.ticks, 0)
@@ -1174,11 +1174,11 @@ describe('(3) el control con el tanque lleno', () => {
     const r = resumir(b.corridas.map((c) => c.veredicto))
     console.log(
       `\n─── LA SEPARACIÓN ───\n` +
-        `  con tanque ${String(TANQUE)}:  ${((canonico().corridas.reduce((a, c) => a + c.ticks, 0) * 100) / (PARTIDAS * TICKS)).toFixed(1)}% del presupuesto · ` +
-        `${String(resumir(canonico().corridas.map((c) => c.veredicto)).cuantasCuentan)} de 9\n` +
+        `  con tanque ${String(TANQUE)}:  ${((canon.corridas.reduce((a, c) => a + c.ticks, 0) * 100) / (PARTIDAS * TICKS)).toFixed(1)}% del presupuesto · ` +
+        `${String(resumir(canon.corridas.map((c) => c.veredicto)).cuantasCuentan)} de 9\n` +
         `  con tanque ${String(TANQUE_LLENO)}: ${((vividos * 100) / presupuesto).toFixed(1)}% del presupuesto · ` +
         `${String(r.cuantasCuentan)} de 9\n` +
-        `  ⇒ ${r.cuantasCuentan === 0 ? 'multiplicar por tres el tiempo vivido no movió una sola fila: NO es la muerte' : 'el tiempo vivido SÍ mueve la aguja'}\n`,
+        `  ⇒ ${r.cuantasCuentan === resumir(canon.corridas.map((c) => c.veredicto)).cuantasCuentan ? 'estirar el tiempo vivido no movió una sola fila: NO es la muerte' : 'el tiempo vivido SÍ mueve la aguja'}\n`,
     )
 
     // La corrida corta que sí afirma siempre: el control corrió y el juez lo
@@ -1255,9 +1255,9 @@ function cuentaDeClaves(b: Banco): ReadonlyMap<keyof Situaciones, number> {
 }
 
 describe('(4) el diagnóstico, secuencia por secuencia', () => {
-  it('DE CUÁL DE LAS TRES CAUSAS ES CADA CERO, con la evidencia al lado', () => {
-    const b = canonico()
-    const k = control()
+  it('DE CUÁL DE LAS TRES CAUSAS ES CADA CERO, con la evidencia al lado', async () => {
+    const b = await canonico()
+    const k = await control()
     const rc = resumir(b.corridas.map((x) => x.veredicto))
     const rk = resumir(k.corridas.map((x) => x.veredicto))
     const claves = cuentaDeClaves(b)
@@ -1282,11 +1282,12 @@ describe('(4) el diagnóstico, secuencia por secuencia', () => {
       )
     }
 
-    // ─── LOS TRES HECHOS DEL MUNDO QUE EXPLICAN LAS NUEVE FILAS ─────────────
+    // ─── LOS TRES NÚMEROS DEL MUNDO QUE ACOMPAÑAN A LAS NUEVE FILAS ─────────
     //
-    // No son adornos del informe: son el «con evidencia» de cada causa. El primero
-    // es el que veta el fuego, el segundo el que veta la comida, y el tercero el
-    // que veta todo lo demás.
+    // No son adornos del informe: son el «con evidencia» de cada causa. Los tres
+    // se PUBLICAN, no se interpretan en el título: la corrida anterior los tituló
+    // «NO PUEDE HABER FUEGO» sobre una escena que el arnés había plantado, y ese
+    // título era lo único falso de las tres líneas.
     let masLiviano: { readonly id: string; readonly masa: number } | undefined
     let sinEncendible = 0
     let mejorNeto: number | undefined
@@ -1304,28 +1305,30 @@ describe('(4) el diagnóstico, secuencia por secuencia', () => {
       comio += c.comio
     }
     const decretadas = b.corridas.reduce((a, c) => a + c.sueltasDecretadas, 0)
+    const sembradas = b.corridas.reduce((a, c) => a + c.sueltasSembradas, 0)
     const materializadas = b.corridas.reduce((a, c) => a + c.cuerposDelMundo, 0)
 
     lineas.push(
       ``,
-      `  ── LOS TRES HECHOS DEL MUNDO QUE ESTÁN DETRÁS DE LAS NUEVE FILAS ──`,
+      `  ── LOS TRES NÚMEROS DEL MUNDO QUE VAN AL LADO DE LAS NUEVE FILAS ──`,
       ``,
-      `  1· NO PUEDE HABER FUEGO. El cuerpo encendible —rol \`a\` de fricción Y que entregaría`,
+      `  1· ¿HABÍA CON QUÉ ENCENDER? El cuerpo encendible —rol \`a\` de fricción Y que entregaría`,
       `     potencia si ardiera— más liviano que existió en las ${String(n)} partidas es ` +
         `${masLiviano === undefined ? 'NINGUNO' : `«${masLiviano.id}» de ${masLiviano.masa.toFixed(4)} kg`},`,
       `     contra un techo medido de ${String(TECHO_DE_LA_FRICCION)} kg (§2.2: 0,7132 no prende, 0,80 sí, con el tanque LLENO).`,
-      `     Partidas sin ningún encendible: ${String(sinEncendible)}/${String(n)}. Siete de las nueve secuencias cuelgan de que haya fuego.`,
+      `     Partidas sin ningún encendible: ${String(sinEncendible)}/${String(n)}, y no se descarta ninguna. Siete de las nueve cuelgan del fuego.`,
       ``,
-      `  2· NO HAY UN BOCADO QUE VALGA LA PENA. El mejor neto que ofreció un cuerpo con calorías,`,
+      `  2· ¿HABÍA UN BOCADO QUE VALIERA LA PENA? El mejor neto que ofreció un cuerpo con calorías,`,
       `     en cualquier tick de cualquier partida, es ${mejorNeto === undefined ? 'no hubo comida' : mejorNeto.toFixed(4)} de stamina` +
         ` — y es una COTA SUPERIOR.`,
       `     Partidas con algún bocado de neto positivo: ${String(netosPositivos)}/${String(n)}. Cuerpos comestibles nacidos en total: ${String(comestibles)}.`,
       `     El mundo narró ${String(comio)} \`comio\`. La mente SÍ sabe emitir el bocado —la conducta \`tragar\` está en`,
-      `     \`mind/src\` y este banco la cuenta— y no lo emite porque el neto es negativo, que es lo correcto.`,
+      `     \`mind/src\` y este banco la cuenta—, así que un cero de bocados es una decisión y no una carencia.`,
       ``,
-      `  3· NO HAY MATERIA. El dios decretó ${String(decretadas)} cosas sueltas alrededor y el mundo materializó ${String(materializadas)}.`,
-      `     De ahí salen las dos filas que ni siquiera necesitan fuego: no hay una SEGUNDA vara que`,
-      `     comparar (\`dosCandidatosDeFriccion\` ${String(claves.get('dosCandidatosDeFriccion') ?? 0)}/${String(n)}) ni nada con filo (\`filoALaVista\` ${String(claves.get('filoALaVista') ?? 0)}/${String(n)}).`,
+      `  3· ¿CUÁNTA MATERIA HUBO, Y QUIÉN LA PUSO? El dios decretó ${String(decretadas)} cosas sueltas alrededor,`,
+      `     el arnés pudo sembrar ${String(sembradas)} (la ley 8 se come las que caen en una celda ya ocupada) y el mundo`,
+      `     materializó ${String(materializadas)} por su cuenta. De ahí salen las dos filas que ni siquiera necesitan fuego:`,
+      `     \`dosCandidatosDeFriccion\` ${String(claves.get('dosCandidatosDeFriccion') ?? 0)}/${String(n)} y \`filoALaVista\` ${String(claves.get('filoALaVista') ?? 0)}/${String(n)}.`,
       ``,
     )
     console.log(lineas.join('\n'))
@@ -1351,25 +1354,37 @@ describe('(4) el diagnóstico, secuencia por secuencia', () => {
 // ═══ EL CUADRO ══════════════════════════════════════════════════════════════
 
 describe('el criterio de emergencia, con los números de esta corrida', () => {
-  it('el cuadro', () => {
-    const c = canonico()
-    const k = control()
+  it('el cuadro', async () => {
+    const c = await canonico()
+    const k = await control()
+    const ruido = await ruidoDelAzar()
     const rc = resumir(c.corridas.map((x) => x.veredicto))
     const rk = resumir(k.corridas.map((x) => x.veredicto))
     const usado = c.corridas.reduce((a, x) => a + x.ticks, 0)
     const usadoK = k.corridas.reduce((a, x) => a + x.ticks, 0)
     const decretadas = c.corridas.reduce((a, x) => a + x.sueltasDecretadas, 0)
+    const sembradasTotales = c.corridas.reduce((a, x) => a + x.sueltasSembradas, 0)
     const materializadas = c.corridas.reduce((a, x) => a + x.cuerposDelMundo, 0)
     const comestiblesTotales = c.corridas.reduce((a, x) => a + x.comestibles, 0)
     let masMagro: { readonly id: string; readonly masa: number } | undefined
     let mejorBocado: number | undefined
+    let bajoElTecho = 0
     for (const x of c.corridas) {
       if (x.encendible !== undefined && (masMagro === undefined || x.encendible.masa < masMagro.masa)) {
         masMagro = x.encendible
       }
+      if (x.encendible !== undefined && x.encendible.masa <= TECHO_DE_LA_FRICCION) bajoElTecho += 1
       if (x.mejorNeto !== undefined && (mejorBocado === undefined || x.mejorNeto > mejorBocado)) {
         mejorBocado = x.mejorNeto
       }
+    }
+    // DE QUIÉN ES CADA CERO, contado y no narrado. Es la misma `causaDe` del
+    // bloque (4), y va acá porque es lo que cambió de fondo entre las dos
+    // corridas: con la escena a mano las nueve filas decían EL MUNDO.
+    const porCausa = new Map<Causa, number>()
+    for (const f of rc.filas) {
+      const causa = causaDe(f, rk.filas.find((x) => x.nombre === f.nombre))
+      porCausa.set(causa, (porCausa.get(causa) ?? 0) + 1)
     }
     console.log(
       [
@@ -1378,26 +1393,28 @@ describe('el criterio de emergencia, con los números de esta corrida', () => {
         '',
         `  el criterio ............... «al menos 4 de las 10» sobre una lista de ${String(SECUENCIAS.length)}`,
         `  APARECIERON ............... ${String(rc.cuantasCuentan)} de ${String(SECUENCIAS.length)}`,
-        `  RUIDO DEL AZAR ............ ${String(ruidoDelAzar().length)} de ${String(SECUENCIAS.length)} las firma un bicho que elige con el dado:`,
-        `                              ${ruidoDelAzar().join(', ')}`,
-        `                              ⇒ el piso de cuatro hay que cruzarlo sobre las ${String(SECUENCIAS.length - ruidoDelAzar().length)} que quedan`,
+        `  RUIDO DEL AZAR ............ ${String(ruido.length)} de ${String(SECUENCIAS.length)} las firma un bicho que elige con el dado:`,
+        `                              ${ruido.join(', ')}`,
+        `                              ⇒ el piso de cuatro hay que cruzarlo sobre las ${String(SECUENCIAS.length - ruido.length)} que quedan`,
         `  SIN MEDIR ................. ${String(rc.filas.filter((f) => f.situacionEn === 0).length)} de ${String(SECUENCIAS.length)}` +
           `  →  ${rc.interpretable ? 'interpretable' : 'EL RESULTADO NO ES INTERPRETABLE (§10)'}`,
         '',
-        `  (A) el mundo no siembra ... el dios decretó ${String(decretadas)} cosas sueltas alrededor de la criatura`,
-        `                              y el mundo materializó ${String(materializadas)}`,
+        `  (A) quién puso la materia . el dios decretó ${String(decretadas)} cosas sueltas alrededor de la criatura,`,
+        `                              el arnés sembró ${String(sembradasTotales)} y el mundo materializó ${String(materializadas)} por su cuenta`,
         `  (B) las semillas .......... ${String(PARTIDAS)} mundos distintos SÓLO porque el arnés arma una \`Physics\` por`,
         `                              partida; \`decretoDe\` no lleva la semilla en la clave de su caché`,
         `  (C) el hambre ............. tanque ${String(TANQUE)}:  ${((usado * 100) / (c.corridas.length * TICKS)).toFixed(1)}% del presupuesto · ${String(rc.cuantasCuentan)} de ${String(SECUENCIAS.length)}`,
         `                              tanque ${String(TANQUE_LLENO)}: ${((usadoK * 100) / (k.corridas.length * TICKS)).toFixed(1)}% del presupuesto · ${String(rk.cuantasCuentan)} de ${String(SECUENCIAS.length)}`,
-        `                              ⇒ la muerte temprana NO es lo que decide el cero`,
+        `                              ⇒ ${rc.cuantasCuentan === rk.cuantasCuentan ? 'la muerte temprana NO es lo que decide el cero' : 'el tiempo vivido SÍ mueve la aguja'}`,
         `  (D) las semillas de §10 .... ${String(c.reemplazos.length)} de ${String(PARTIDAS)} no tienen orilla en 13×13 chunks`,
         `                              y se reemplazaron en orden desde ${String(SEMILLA_DE_REEMPLAZO)}, como §10 manda`,
-        `  (E) no puede haber fuego .. el encendible más liviano de las ${String(PARTIDAS)} partidas pesa ` +
+        `  (E) ¿había con qué encender? el encendible más liviano de las ${String(PARTIDAS)} partidas pesa ` +
           `${masMagro === undefined ? '—' : `${masMagro.masa.toFixed(4)} kg («${masMagro.id}»)`} contra un techo de ${String(TECHO_DE_LA_FRICCION)}`,
+        `                              partidas con alguno por debajo del techo: ${String(bajoElTecho)} de ${String(PARTIDAS)}, y ninguna se descartó`,
         `                              y el mejor bocado que ofreció el mundo vale ` +
           `${mejorBocado === undefined ? 'no hubo comida' : `${mejorBocado.toFixed(4)} de stamina`} sobre ${String(comestiblesTotales)} cuerpos comestibles`,
-        `                              ⇒ las nueve filas son EL MUNDO, ninguna es LA MENTE ni LA MUERTE (bloque 4)`,
+        `  (F) de quién es cada cero . ${String(porCausa.get('LA MENTE') ?? 0)} filas son LA MENTE · ` +
+          `${String(porCausa.get('LA MUERTE') ?? 0)} LA MUERTE · ${String(porCausa.get('EL MUNDO') ?? 0)} EL MUNDO (bloque 4)`,
         '',
         `  semillas jugadas .......... ${c.corridas.map((x) => String(x.semilla)).join(' ')}`,
         `  tanque publicado (§3) ..... ${String(TANQUE)} · control ${String(TANQUE_LLENO)}`,

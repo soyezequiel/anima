@@ -574,7 +574,22 @@ describe('el banco de la escalera', () => {
     // Si esto se cayera, la mente costaría 8 ms por criatura y por tick y las
     // 5000 criaturas del criterio del Hito 5 no entrarían en ningún presupuesto.
     expect(orilla.peldanos.D4 / orilla.ticks).toBeLessThan(0.1)
-    expect(orilla.peldanos.D1 / orilla.ticks).toBeGreaterThan(0.9)
+    // ─── Y EL PISO DE D1 BAJÓ DE 0,9 A 0,74, POR CONDUCTA Y NO POR COSTO ───
+    //
+    // Este renglón decía `.toBeGreaterThan(0.9)` y medía una orilla donde la
+    // criatura se pasaba los 2000 ticks pescando: `aplicar(extraccion)` dura
+    // treinta y pico de ticks y los cubre D1 enteros, así que D1 se llevaba el
+    // 96%. Cerrado el eslabón A del criterio (2), la criatura consigue el pescado
+    // en el tick 96, el pedido sube a lo cocido, `plan()` se corta en la ventana
+    // de potencia del fuego y el resto de la corrida se le va en las conductas de
+    // fondo. Medido hoy: **D1 74,0% y D5 25,9%**, que es casi exactamente el
+    // reparto del páramo (72,7% / 27,3%) — porque hace casi lo mismo.
+    //
+    // Lo que este banco cuida no cambió: que el peldaño CARO sea raro. D4 corta el
+    // 0,1% de los ticks y D1 sigue siendo mayoría absoluta contra los otros cinco
+    // juntos. El 0,74 es un piso puesto abajo de las dos escenas medidas —la
+    // orilla y el páramo— para que siga midiendo lo que decía medir.
+    expect(orilla.peldanos.D1 / orilla.ticks).toBeGreaterThan(0.7)
     // D1 solo, contra los otros cinco juntos. Es lo mismo que verifica
     // `la-escalera.test.ts` sobre la vista de mentira, acá contra el mundo real.
     expect(orilla.peldanos.D1).toBeGreaterThan(

@@ -294,31 +294,59 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
         `  murió en ......... ${String(r.muerta)}\n`,
     )
 
-    // DOS metas en 20.000 ticks, y la segunda es la noticia del tramo del bocado
-    // (ADR II-0013): la criatura consigue el pescado, se acuerda de que lo
-    // consiguió —`EstadoDeLaEscalera.conseguido`, que es lo único que hoy sabe
-    // contestar por `holding(tag:…)`— y **sube el pedido** a la versión que
-    // además se puede tragar sin envenenarse. Antes se quedaba con la primera
-    // para siempre y repetía la última pesca hasta morirse.
+    // ─── LA LISTA DE METAS CRECIÓ A TRES, Y LA DEL MEDIO ES LA NOTICIA ─────
     //
-    // Las dos se toman temprano y ninguna se suelta después: la lista sigue
-    // teniendo largo dos en 20.000 ticks, que es lo que este test cuida.
-    expect(r.metas.length).toBe(2)
+    //     antes de este tramo   0:holding(tag:carnoso) → 98:…toxicity<0.0528
+    //     hoy                   0:holding(tag:carnoso) → 97:undefined
+    //                                                  → 98:…toxicity<0.0528
+    //
+    // El `97:undefined` es **el tick en que suelta la meta porque la cumplió**, y
+    // antes no existía. La barata se daba por conseguida por el rodeo de la
+    // escalera (`EstadoDeLaEscalera.conseguido`) sin que `metaEnCurso` se vaciara
+    // nunca; ahora `cumpleCuerpo` de `@anima/plan` contesta `holding(tag:…)` desde
+    // la vista, así que la meta se cumple, se suelta, y el tick siguiente D3 elige
+    // la que sigue. Lo que este test cuida sigue siendo lo mismo: que la primera
+    // sea la planificable y en el tick 0.
+    expect(r.metas.length).toBe(3)
     expect(r.metas[0]).toBe('0:holding(tag:carnoso)')
-    expect(r.metas[1]).toMatch(/^\d+:holding\(tag:carnoso,toxicity<[\d.]+\)$/)
-    // Y la hace: la cadena de la caña entera, y después a pescar.
+    expect(r.metas[1]).toMatch(/^\d+:undefined$/)
+    expect(r.metas[2]).toMatch(/^\d+:holding\(tag:carnoso,toxicity<[\d.]+\)$/)
+    // Y la hace: la cadena de la caña entera.
     for (const paso of ['ir(vara)', 'sostener(vara)', 'ir(matorral)', 'sostener(matorral)', 'unir(matorral+vara)']) {
       expect(cuenta(r.despegues, paso), paso).toBe(1)
     }
-    expect(cuenta(r.despegues, 'aplicar(extraccion)')).toBeGreaterThan(500)
-    // D5 no corre NI UNA VEZ: mientras hay algo que hacer, no hay conducta de
-    // fondo. Antes se llevaba 10.524 de los 20.000.
-    expect(r.peldanos.D5).toBe(0)
-    expect(cuenta(r.despegues, 'guarecerse') + cuenta(r.despegues, 'juntar×1')).toBe(0)
-    // Y llega hasta el final del tanque: 1000 de aliento a 0,05 por tick son
-    // 20.000 ticks exactos, menos lo que caminó. Antes moría en el 18.524.
-    expect(r.muerta).toBeGreaterThan(19900)
-  })
+    // ─── Y ACÁ TRES NÚMEROS SE DIERON VUELTA, POR LA MISMA CAUSA ──────────
+    //
+    // Este test afirmaba `extraccion > 500`, `D5 === 0` y `muerta > 19900`. Los
+    // tres medían la misma cosa desde tres lados: que la criatura se pasaba la
+    // corrida entera pescando, porque el pescado que sacaba no contaba y volvía a
+    // empezar. Hoy cuenta:
+    //
+    //     extraccion  2 (uno no pica, el otro saca el pescado)
+    //     D5          3144 de 20.000 — el pedido sube a lo cocido, `plan()` se
+    //                 corta en la ventana de potencia del fuego y el tick cae a
+    //                 las conductas de fondo
+    //     muerta      11.619 y no 19.995, porque las conductas de fondo CAMINAN:
+    //                 1000 ÷ 11.619 = 0,0861 por tick contra 0,0500 de respirar
+    //
+    // Está medido entero en `hito-5-el-criterio.test.ts` (DIAGNÓSTICO 6/6). Lo que
+    // acá importa es que ninguno de los tres es un retroceso de ESTE hallazgo: la
+    // meta sin esquema sigue sin tapar a la planificable, que es lo que §1 ataca.
+    expect(cuenta(r.despegues, 'aplicar(extraccion)')).toBe(2)
+    expect(r.peldanos.D5).toBeGreaterThan(0)
+    // Pero D5 no arranca hasta DESPUÉS de que la cadena entera se hizo: la primera
+    // conducta de fondo sale recién cuando el pedido nuevo se queda sin vía.
+    expect(r.muerta).toBeGreaterThan(10000)
+    // ─── Y POR QUÉ ESTE TEST NECESITA UN TECHO EXPLÍCITO ───────────────────
+    //
+    // 20.000 ticks con mente tardaban menos de los 5 s que vitest da por omisión;
+    // hoy tardan 3,3 s solo y se pasan de 5 corriendo al lado de los otros ocho
+    // paquetes. La causa está medida en `hito-5-el-criterio.test.ts` (criterio 3):
+    // un `plan()` que se CORTA cuesta 0,25 ms y uno que cierra 0,003 —80×—, y desde
+    // que la criatura consigue el pescado pasa la corrida pidiendo lo cocido, que
+    // se corta. No es un test lento por descuido: es la corrida más larga de este
+    // archivo pagando lo que hoy cuesta pensar sin salida.
+  }, 300_000)
 
   /**
    * El contrafáctico, sobre EL MISMO MUNDO: lo único que cambia es la `stamina`
@@ -330,6 +358,11 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
    *
    * Ahora los dos tanques hacen lo mismo, que es lo que se querría de una mente:
    * el hambre cambia CUÁNTO vale la comida, no si la criatura sabe conseguirla.
+   *
+   * Y el número con el que «lo mismo» se afirma bajó de 128 a DOS, porque el
+   * pescado que saca ya cuenta y no vuelve a empezar. La igualdad —que es lo que
+   * este test ataca— quedó más limpia que antes: los dos tanques hacen la cadena
+   * entera una sola vez y tiran la caña las mismas dos veces.
    */
   it('REPARADO · el mismo mundo pesca lo mismo con el tanque lleno y con hambre', () => {
     const conHambre = correr(new Partida(laEscena(310)), 4000)
@@ -343,15 +376,23 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
         `                    peldaños ${JSON.stringify(sinHambre.peldanos)}\n`,
     )
 
-    expect(cuenta(conHambre.despegues, 'aplicar(extraccion)')).toBeGreaterThan(100)
+    expect(cuenta(conHambre.despegues, 'aplicar(extraccion)')).toBe(2)
     expect(cuenta(sinHambre.despegues, 'aplicar(extraccion)')).toBe(
       cuenta(conHambre.despegues, 'aplicar(extraccion)'),
     )
-    expect(cuenta(sinHambre.despegues, 'ir(vara)')).toBe(1)
-    // Los dos peldaños que gobiernan son los mismos, y D5 no corre en ninguno.
-    expect(sinHambre.peldanos.D5).toBe(0)
-    expect(conHambre.peldanos.D5).toBe(0)
-  })
+    // La cadena entera, una sola vez, con los dos tanques: es la igualdad que este
+    // test ataca, y ahora se puede afirmar paso por paso y no sólo por la pesca.
+    for (const paso of ['ir(vara)', 'sostener(vara)', 'ir(matorral)', 'sostener(matorral)', 'unir(matorral+vara)']) {
+      expect(cuenta(sinHambre.despegues, paso), paso).toBe(1)
+      expect(cuenta(conHambre.despegues, paso), paso).toBe(1)
+    }
+    // Y los dos caen a D5 después, por la misma razón y en el mismo orden: el
+    // pedido sube a lo cocido y ahí no hay vía. Antes este par decía `.toBe(0)`
+    // porque los dos se pasaban la corrida pescando de nuevo.
+    expect(sinHambre.peldanos.D5).toBeGreaterThan(0)
+    expect(conHambre.peldanos.D5).toBeGreaterThan(0)
+    // Dos corridas de 4000 ticks; mismo motivo que el techo del test de arriba.
+  }, 300_000)
 
   /**
    * EL `it.fails` DEL ADVERSARIO, AHORA VERDE. Estaba escrito así —«se deja como
@@ -383,6 +424,9 @@ function vistaPelada(o: {
     id: 'yo',
     at: { x: 0, y: 0 },
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia.
+    // En la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: [],
@@ -839,6 +883,7 @@ describe('§5 · D0 pisaba `enVuelo` y el paso interrumpido no volvía a la cola
       id,
       at: { x: 0, y: 0 },
       name: id,
+      tags: [],
       madeByMe: false,
       joints: [],
     }))
@@ -927,6 +972,7 @@ describe('§5 · D0 pisaba `enVuelo` y el paso interrumpido no volvía a la cola
       id,
       at: { x: 0, y: 0 },
       name: id,
+      tags: [],
       madeByMe: false,
       joints: [],
     }))

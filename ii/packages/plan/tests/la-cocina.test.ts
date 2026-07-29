@@ -53,7 +53,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { QualityId } from '@anima/physics'
 import { evalQuality, specOf } from '@anima/physics'
-import type { BodyId, BodyView, Cell, CellQuality, Clock, SelfView, Where } from '@anima/skills'
+import type { BodyId, BodyView, Cell, CellQuality, Clock, SelfView, Tag, Where } from '@anima/skills'
 
 import { ESQUEMAS, FIRMA_DE_LO_COCIDO, POTENCIA_QUE_COCINA_LO_CARNOSO } from '../src/esquemas.js'
 import { interpretar, textoDe } from '../src/predicado.js'
@@ -69,8 +69,11 @@ import type { EsquemaDeLey, GoalNode, PlanResult, Predicado, Step, VistaDelPlan 
 
 type Cualidades = Partial<Record<QualityId, number>>
 
-function cuerpo(id: string, x: number, y: number): BodyView {
-  return { id, at: { x, y }, name: id, madeByMe: false, joints: [] }
+function cuerpo(id: string, x: number, y: number, tags: readonly Tag[] = []): BodyView {
+  // `tags` es lo que la superficie publica de la MATERIA (`tagsDe(body, phys)`),
+  // y acá no hay materia: un cuerpo de mentira no está hecho de nada, así que por
+  // omisión no tiene ninguna clase. Los tests que prueban `holding(tag:…)` la pasan.
+  return { id, at: { x, y }, name: id, tags, madeByMe: false, joints: [] }
 }
 
 /** `portable` la contesta EL MOTOR con la expresión del catálogo, no el fixture. */
@@ -94,6 +97,10 @@ function criatura(o?: { holding?: readonly BodyView[]; stamina?: number }): Self
     id: 'yo',
     at: { x: 0, y: 0 },
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia:
+    // `[]` es la respuesta honesta y es la misma que da `cuerpo()` por omision. En
+    // la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: o?.holding ?? [],

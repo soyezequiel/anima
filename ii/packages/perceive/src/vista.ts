@@ -89,7 +89,7 @@
 // entera»), contra el banco de 5000 cuerpos y contra los 50 ms del tick a 20 Hz.
 
 import type { Physics } from '@anima/physics'
-import { nameOf, qualityOf } from '@anima/physics'
+import { nameOf, qualityOf, tagsDe } from '@anima/physics'
 import type {
   Actor,
   ActorId,
@@ -195,6 +195,15 @@ export class Proyeccion {
       id: c.body.id,
       at: sellar(c.at),
       name: nameOf(c.body, this.phys),
+      // De qué clase es la materia, con la `Physics` VIVA y no con el catálogo de
+      // la semilla: `tagsDe` lee `phys.substances`, así que una sustancia que la
+      // ley 4 dio de alta en esta partida —el residuo de una pirólisis— contesta
+      // SUS tags y no los de la madre. Ver `BodyView.tags` para el bug que costó.
+      // No se congela ACÁ y no por descuido: `tagsDe` lo memoriza por el arreglo de
+      // partes y lo comparte entre vistas, así que lo congela ELLA, una vez por
+      // arreglo de partes en vez de una por vista. Sin eso, un `push` desde una
+      // habilidad no ensuciaría una vista: ensuciaría la física entera.
+      tags: tagsDe(c.body, this.phys),
       madeByMe: c.body.madeBy === quien,
       joints,
     }

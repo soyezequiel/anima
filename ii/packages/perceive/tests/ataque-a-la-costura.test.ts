@@ -873,6 +873,15 @@ describe('5. qué más se puede mutar de la vista', () => {
     expect(Object.isFrozen(b.at), 'el `Placement` del mundo no quedó sellado').toBe(true)
     expect(Object.isFrozen(b), 'la vista entera no quedó congelada').toBe(true)
     expect(Object.isFrozen(b.joints), 'las juntas de la vista no quedaron congeladas').toBe(true)
+    // ─── Y LOS TAGS, QUE SON EL CASO PEOR DE TODOS ───────────────────────────
+    //
+    // `joints` y `at` son de este cuerpo; `tags` NO. `tagsDe` lo memoriza por el
+    // arreglo de partes y devuelve EL MISMO arreglo a todo el que pregunte por la
+    // misma materia, así que un `push` desde una habilidad no ensuciaría una vista:
+    // le agregaría un tag a la física, para todos los cuerpos de esa materia y
+    // hasta el final de la partida. Lo congela `tagsDe` —una vez por arreglo de
+    // partes, no una por vista— y acá se clava que llega congelado a la superficie.
+    expect(Object.isFrozen(b.tags), 'los tags de la vista no quedaron congelados').toBe(true)
     const self = p.proyeccion.self(p.state.actors.get('ella')!)!
     expect(Object.isFrozen(self), 'la `SelfView` no quedó congelada').toBe(true)
     expect(Object.isFrozen(self.holding), 'la mano no quedó congelada').toBe(true)

@@ -19,7 +19,7 @@
 // Regla de la carpeta: nada de acá importa de `packages/` ni de `apps/` (eso es
 // Ánima I). Los tres imports de abajo son todos de `ii/packages/`.
 
-import type { CellQuality, Commitment, QualityId } from '@anima/physics'
+import type { CellQuality, Commitment, QualityId, Tag } from '@anima/physics'
 import type { ActorId, BodyId, Cell, Motivo } from '@anima/world'
 
 // ─── Lo que se re-exporta tal cual, porque ES lo de la física y del mundo ────
@@ -43,8 +43,14 @@ import type { ActorId, BodyId, Cell, Motivo } from '@anima/world'
  * - `ProcessId`   ABIERTO (`string`) a propósito: el oráculo puede dar de alta
  *                 procesos que hoy no existen. Lo que una habilidad puede
  *                 APLICAR es `SeedProcessId`, el subconjunto con roles tipados.
+ * - `Tag`         de qué CLASE es una materia. Es el tipo de `BodyView.tags`, y
+ *                 se re-exporta por lo mismo que los otros: una segunda lista de
+ *                 clases mantenida acá divergiría de la de la física sin que
+ *                 nada falle. A diferencia de `QualityId`, el catálogo de tags
+ *                 lo puede agrandar el oráculo — `residuoDe` da de alta
+ *                 sustancias con `carbonoso`/`mineral` en cada pirólisis.
  */
-export type { QualityId, CellQuality, Commitment, ProcessId } from '@anima/physics'
+export type { QualityId, CellQuality, Commitment, ProcessId, Tag } from '@anima/physics'
 
 /**
  * De `@anima/world`:
@@ -180,6 +186,41 @@ export interface BodyView {
   readonly at: Cell
   /** Sale de `nameOf(body, phys)`. No es un `kind`: es cómo se lee lo que hay. */
   readonly name: string
+  /**
+   * DE QUÉ CLASE ES LA MATERIA DE ESTE CUERPO — `tagsDe(body, phys)`, la UNIÓN de
+   * los tags de todas sus partes, con la `Physics` VIVA en la mano.
+   *
+   * ─── POR QUÉ ESTE CAMPO EXISTE, Y EL BUG QUE LO PIDIÓ ───────────────────────
+   *
+   * Porque `name` no alcanza y el intento de que alcanzara mintió. `@anima/plan`
+   * contestaba `holding(tag:carnoso)` con un índice `nombre → tags` derivado de
+   * `SUSTANCIAS_SEMILLA`, buscado por PREFIJO sobre `name`. El índice era honesto;
+   * la lectura no, porque la ley 4 bautiza a sus residuos
+   * ``${madre.lexeme.nombre} hecho tizón`` (`physics/src/leyes.ts`), así que un
+   * pescado pasado de fuego se llama «pescado hecho tizón» y el prefijo contesta
+   * los tags del pescado. Medido en el motor: sustancia
+   * `residuo-carbonoso-de-pescado`, tags REALES `["carbonoso"]`, `nutrition 0`,
+   * `digestibility 0` — y `cumpleCuerpo(holding(tag:carnoso), …)` decía que SÍ.
+   * Los 60 residuos de las 30 sustancias de la semilla empiezan con el nombre de
+   * su madre: no era un borde, era la regla de bautismo.
+   *
+   * Y el eslabón donde disparaba es el siguiente EXACTO de la cadena del Hito 5:
+   * pescar → cocinar → pasarse de cocción. Con la meta de comida dada por cumplida
+   * sobre un carbón, la criatura deja de tener hambre para siempre.
+   *
+   * ─── POR QUÉ EN LA VISTA Y NO EN UN `Ctx.tags(b)` ──────────────────────────
+   *
+   * Porque cuesta lo mismo que `name` —la vista ya tiene la `Physics` en la mano y
+   * `tagsDe` está memorizada por el arreglo de partes, que es lo único de lo que
+   * depende— y porque un método más en `Ctx` es una puerta más que el modelo tiene
+   * que descubrir. Con el campo, los TRES límites que el índice por nombre tenía
+   * escritos desaparecen de una: el del catálogo de la semilla (esto lee la
+   * `Physics` viva, con las sustancias que la ley 4 dio de alta), el de la parte
+   * dominante (esto es la unión de TODAS las partes, así que una caña con un
+   * pescado atado es carnosa —que es lo que es—) y el del cuerpo sin partes (sin
+   * partes, `[]`, que es la verdad y no una mentira sacada del `id`).
+   */
+  readonly tags: readonly Tag[]
   /**
    * ADR II-0003 — autoría, no propiedad. Sale de `Body.madeBy`, que es el actor
    * que lo hizo. «No es lo mío, es lo que hice.»

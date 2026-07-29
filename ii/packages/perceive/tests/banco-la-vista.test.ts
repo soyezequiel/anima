@@ -29,6 +29,28 @@ const CUERPOS = 5000
 const MIRADAS_POR_TICK = 10
 const TICKS = 20
 
+/**
+ * EL PATRÓN YA DECIDIDO DEL PROYECTO PARA LOS MILISEGUNDOS DE PARED, aplicado
+ * acá porque a este archivo le faltaba y se puso rojo por eso.
+ *
+ * Está escrito entero en `world/tests/banco-el-tick.test.ts`: «un test de
+ * rendimiento adentro de la suite normal es un test flaky, y un test flaky es
+ * peor que ninguno: enseña a ignorar el rojo». `pnpm ii:test` corre los nueve
+ * paquetes EN PARALELO.
+ *
+ * LO QUE SE MIDIÓ ACÁ, y por eso este cerco existe: el «primer tick» de (b)
+ * —congelar 5000 objetos por primera vez, o sea JIT y caché fría— contra su
+ * techo de 2 ms dio, cinco corridas seguidas con el paquete SOLO:
+ *
+ *     2,858 · 0,787 · 0,496 · 0,681 · 0,808 ms
+ *
+ * o sea que UNA de cada cinco se pasa del techo sin que nadie haya tocado el
+ * código, y corriendo al lado de los otros paquetes dio 2,945 y 3,026. El número
+ * que gobierna la decisión (b) no es ése —es el de régimen, el de los ticks
+ * siguientes, que asigna cero— y ése sigue afirmado siempre.
+ */
+const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
+
 const SUSTANCIAS = ['madera', 'piedra', 'liana', 'hoja', 'carne', 'arcilla', 'hueso', 'junco']
 
 /** El mundo del banco del Hito 2: 5000 cuerpos repartidos, y una criatura. */
@@ -170,8 +192,34 @@ describe('(a) `see()` no puede ser O(cuerpos del mundo)', () => {
     console.log(
       `\n─── el índice es perezoso y se paga una vez ───\nprimera mirada ${primera.toFixed(3)} ms · las nueve siguientes ${novena.toFixed(3)} ms en total\n`,
     )
-    // Las nueve juntas tienen que costar menos que la primera sola: la primera
-    // arma el índice y las otras nueve leen la caché de vistas.
+
+    // ─── LO QUE SE AFIRMA SIEMPRE: EL MECANISMO, NO EL RELOJ ─────────────────
+    //
+    // Acá había un `expect(novena).toBeLessThan(primera)`, y se cayó corriendo la
+    // suite entera —los nueve paquetes en paralelo— mientras pasaba en verde
+    // corriendo sola. O sea el modo de falla que este repositorio ya tiene
+    // decidido y escrito en `world/tests/banco-el-tick.test.ts:162`: «un test de
+    // rendimiento adentro de la suite normal es un test flaky, y un test flaky es
+    // peor que ninguno: enseña a ignorar el rojo».
+    //
+    // La reparación NO es aflojar el umbral —`novena < primera * 3` seguiría
+    // siendo un reloj, sólo que más perezoso— sino AFIRMAR OTRA COSA: que la
+    // segunda mirada devuelve LOS MISMOS OBJETOS. Ésa es la caché, que es lo que
+    // el test quería probar; el tiempo era el síntoma. Y es determinista: no
+    // depende de cuántos núcleos haya libres.
+    const unaVez = proy.aLaVista({ x: 0, y: 0 }, 'ella')
+    const otraVez = proy.aLaVista({ x: 0, y: 0 }, 'ella')
+    expect(unaVez.length).toBeGreaterThan(0)
+    expect(otraVez.length).toBe(unaVez.length)
+    for (let k = 0; k < unaVez.length; k++) {
+      // Identidad, no igualdad: si armara la vista de nuevo, `toEqual` pasaría
+      // igual y el test no mediría nada.
+      expect(otraVez[k]).toBe(unaVez[k])
+    }
+
+    // Y el reloj, que sigue siendo la medida que importa para el presupuesto,
+    // se afirma sólo midiendo en serio. Ver `MIDIENDO_EN_SERIO` arriba.
+    if (!MIDIENDO_EN_SERIO) return
     expect(novena).toBeLessThan(primera)
   })
 })
@@ -241,8 +289,14 @@ describe('(b) sellar la celda contra clonarla', () => {
     //      en régimen se sella UNO por tick, no cinco mil.
     //
     // Lo que se afirma, entonces, es lo que se midió: sellar cuesta menos del 1%
-    // del tick a la escala del banco, y no asigna.
+    // del tick a la escala del banco, y no asigna. Éste es el número de RÉGIMEN
+    // —los ticks en que ya está todo congelado— y es el que sostiene la decisión,
+    // así que se afirma siempre.
     expect(msSellarDespues / TICKS).toBeLessThan(0.5)
+    // Y el del PRIMER tick, que es JIT y caché fría, sólo midiendo en serio: se
+    // pasaba del techo una de cada cinco corridas sin que nadie tocara nada.
+    // Ver `MIDIENDO_EN_SERIO` arriba, con las cinco medidas.
+    if (!MIDIENDO_EN_SERIO) return
     expect(msSellarPrimera).toBeLessThan(2)
   })
 

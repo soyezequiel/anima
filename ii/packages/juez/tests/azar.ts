@@ -31,15 +31,44 @@
 // muere de puro vivir antes de que el fuego grande se apague. Las dos concesiones
 // le facilitan las cosas al azar, así que lo que salga de acá es un PISO del
 // ruido y no un techo.
+//
+// Y las dos se dejaron tal cual al mudar el control al mundo decretado, aunque el
+// motivo del tanque grande se aflojó: sobre esta escena el bicho SIN fuego vive
+// 19.212 ticks de los 20.000 con un tanque de 1000 —come lo que hay tirado— y CON
+// el fuego regalado y 40.000 vive 16.104, porque se quema al lado de la fogata.
+// Bajarle el tanque ahora sería cambiarle la concesión al control en el mismo
+// tramo en que se le cambia el mundo, y entonces no se sabría cuál de las dos
+// cosas movió el número.
+//
+// ═══ Y EL MUNDO ES EL MISMO QUE EL DE LA MENTE, QUE ES LO QUE CAMBIÓ ════════
+//
+// Hasta este tramo el control corría sobre una escena propia: diez sueltas
+// sorteadas de una tabla de cinco sustancias ESCRITA ACÁ, cuatro peces regalados y
+// un mundo de 5×5 sin dios. Y el banco de la mente corría sobre otra escena, la
+// suya, también a mano. Dos escenas distintas, dos números, y una resta entre
+// ellos que no medía nada: si el arnés cambia de mundo y el control no, la
+// comparación no vale.
+//
+// Ahora los dos juegan **las mismas veinte semillas, el mismo decreto y la misma
+// orilla** (`el-mundo-decretado.ts`). Lo único que sigue siendo del control son
+// las dos concesiones de arriba —la fogata regalada y el tanque de 40.000—, que
+// están declaradas y van a favor del dado.
 
 import { crearDios, dadoDe, apply, drop, eat, goTo, put, stepWorld, take, wait } from '@anima/world'
-import type { Actor, Intent, WorldBody, WorldState } from '@anima/world'
+import type { Intent, Placement, WorldState } from '@anima/world'
 import { FRICCION, UNION } from '@anima/physics'
-import type { Body } from '@anima/physics'
+import type { Body, Physics } from '@anima/physics'
 
 import { Detector, resumir } from '../src/index.js'
 import type { FilaDelBanco, NombreDeSecuencia, Veredicto } from '../src/index.js'
-import { EN, mundo, PHYS } from './banco.js'
+import {
+  celdaLibrePegada,
+  escenaDe,
+  laOrilla,
+  PARTIDAS,
+  respirar,
+  semillasQueSeJuegan,
+} from './el-mundo-decretado.js'
 
 const QUIEN = { by: 'ana', seq: 1 } as const
 
@@ -48,60 +77,43 @@ function pieza(id: string, substance: string, mass: number, t = 15): Body {
   return { id, form: 'vara', parts: [{ substance, mass, q: {} }], joints: [], state: { temperature: t } }
 }
 
-function cuerpoDeAna(stamina: number): Body {
-  return {
-    id: 'ana-cuerpo',
-    form: 'vara',
-    parts: [{ substance: 'carne', mass: 2, q: {} }],
-    joints: [],
-    state: { temperature: 15, stamina },
-  }
-}
-
-function unActor(): Actor {
-  return { id: 'ana', body: 'ana-cuerpo', holding: [], capacity: 3, permits: 'irreversible' }
-}
-
-/** Las cinco sustancias que `agua-dulce` siembra, con sus rangos de masa. */
-const SIEMBRA: readonly (readonly [string, number, number])[] = [
-  ['junco', 0.05, 0.4],
-  ['madera', 0.3, 2.5],
-  ['piedra', 0.2, 3],
-  ['arcilla', 0.5, 4],
-  ['corteza', 0.05, 0.5],
-]
-
 interface Azar {
   readonly entero: (n: number) => number
-  readonly entre: (lo: number, hi: number) => number
 }
 
 function azarDe(semilla: bigint): Azar {
   const dado = dadoDe(crearDios(semilla))
-  return {
-    entero: (n) => Math.floor(dado.tirar() * n),
-    entre: (lo, hi) => lo + dado.tirar() * (hi - lo),
-  }
+  return { entero: (n) => Math.floor(dado.tirar() * n) }
 }
 
-/** La orilla del control: lo que el bioma siembra, cuatro peces y —o no— un fuego. */
+/**
+ * LA ORILLA DEL CONTROL: la del decreto, más —o no— la fogata regalada.
+ *
+ * La escena entera sale de `escenaDe`, o sea de la semilla. Lo único que este
+ * archivo agrega es la primera de las dos concesiones: una `fogata` de 2,5 kg de
+ * madera a 700 °C, pegada a la criatura, en la primera de las ocho celdas vecinas
+ * que el decreto haya dejado vacía. Si las ocho estuvieran ocupadas no se pone y
+ * se sigue: regalar el fuego encima de algo sería regalar además un solapamiento.
+ */
 function orillaDeControl(
-  a: Azar,
+  semilla: bigint,
   conFuego: boolean,
   tanque: number,
-): { readonly w: WorldState; readonly ids: string[] } {
-  const bodies: WorldBody[] = [{ body: cuerpoDeAna(tanque), at: EN(0, 0) }]
-  for (let i = 0; i < 10; i++) {
-    const s = SIEMBRA[a.entero(SIEMBRA.length)]
-    if (s === undefined) continue
-    bodies.push({ body: pieza(`suelta-${String(i)}`, s[0], a.entre(s[1], s[2])), at: EN(a.entero(4), a.entero(4)) })
+): { readonly w: WorldState; readonly ids: string[]; readonly phys: Physics; readonly parada: Placement } | undefined {
+  const o = laOrilla(semilla)
+  if (o === undefined) return undefined
+  const escena = escenaDe(o, tanque)
+  let w = escena.state
+  if (conFuego) {
+    const at = celdaLibrePegada(w, o.parada)
+    if (at !== undefined) {
+      const bodies = new Map(w.bodies)
+      bodies.set('fogata', { body: pieza('fogata', 'madera', 2.5, 700), at })
+      w = { ...w, bodies }
+    }
   }
-  for (let i = 0; i < 4; i++) {
-    bodies.push({ body: pieza(`pez-${String(i)}`, 'pescado', 2), at: EN(a.entero(4), a.entero(4)) })
-  }
-  if (conFuego) bodies.push({ body: pieza('fogata', 'madera', 2.5, 700), at: EN(2, 2) })
-  const ids = bodies.map((c) => c.body.id).filter((x) => x !== 'ana-cuerpo')
-  return { w: mundo({ bodies, actors: [unActor()] }), ids }
+  const ids = [...w.bodies.keys()].filter((x) => x !== 'ana-cuerpo')
+  return { w, ids, phys: o.phys, parada: o.parada }
 }
 
 /** Una partida del control. Devuelve el veredicto y cuántos ticks vivió. */
@@ -112,14 +124,25 @@ export function partidaAlAzar(
   tope: number,
 ): { readonly v: Veredicto; readonly ticks: number } {
   const a = azarDe(semilla)
-  const { w: inicial, ids } = orillaDeControl(a, conFuego, tanque)
-  let w = inicial
+  const orilla = orillaDeControl(semilla, conFuego, tanque)
+  // `semillasQueSeJuegan` sólo devuelve semillas con orilla, así que esto no pasa;
+  // si pasara, un veredicto vacío mentiría menos que una excepción a medio camino.
+  if (orilla === undefined) return { v: new Detector().veredicto(), ticks: 0 }
+  const { ids, phys, parada } = orilla
+  let w = orilla.w
   const d = new Detector()
   d.observar({ state: w, events: [] })
-  const elegir = (): string => ids[a.entero(ids.length)] ?? 'pez-0'
+  const elegir = (): string => ids[a.entero(ids.length)] ?? 'ana-cuerpo'
+  /** Una celda del entorno de la criatura, en el marco del mundo y no en el origen. */
+  const cerca = (): Placement => ({ x: parada.x + a.entero(5) - 2, y: parada.y + a.entero(5) - 2 })
   let plan: Intent | undefined
   let quedan = 0
   let t = 0
+  // Los bancos de peces los materializa `stepWorld` en el primer paso, así que en
+  // el tick 0 todavía no están en `ids`. Se agregan una sola vez, después del
+  // primer paso, recorriendo `w.bodies` en su orden canónico: el bicho al azar
+  // tiene que poder nombrar el pozo, igual que lo nombra la mente.
+  let faltanLosPozos = true
   for (; t < tope; t++) {
     const act = w.actors.get('ana')
     if (act === undefined) break
@@ -131,21 +154,21 @@ export function partidaAlAzar(
       // primeras opciones apuntan a llenarla. Sigue sin mirar QUÉ levanta.
       const k = held.length < 2 ? a.entero(3) : a.entero(8)
       if (k === 0 || k === 2) plan = take(QUIEN, elegir())
-      else if (k === 1) plan = goTo(QUIEN, EN(a.entero(5), a.entero(5)), 0)
+      else if (k === 1) plan = goTo(QUIEN, cerca(), 0)
       else if (k === 3) plan = drop(QUIEN, enMano())
       else if (k === 4) {
-        plan = put(QUIEN, enMano(), EN(a.entero(5), a.entero(5)), a.entero(2) === 0 ? { onTopOf: elegir() } : { covering: elegir() })
+        plan = put(QUIEN, enMano(), cerca(), a.entero(2) === 0 ? { onTopOf: elegir() } : { covering: elegir() })
       } else if (k === 5) plan = eat(QUIEN, elegir())
       else if (k === 6) {
         plan =
-          apply(QUIEN, PHYS, FRICCION.id, [
+          apply(QUIEN, phys, FRICCION.id, [
             { name: 'a', body: enMano() },
             { name: 'b', body: enMano() },
             { name: 'actor', body: 'ana-cuerpo' },
           ]) ?? wait(QUIEN, 0.05)
       } else {
         plan =
-          apply(QUIEN, PHYS, UNION.id, [
+          apply(QUIEN, phys, UNION.id, [
             { name: 'binder', body: enMano() },
             { name: 'a', body: enMano() },
             ...(a.entero(2) === 0 ? [{ name: 'b', body: enMano() }] : []),
@@ -157,13 +180,17 @@ export function partidaAlAzar(
     w = out.state
     d.observar({ state: w, events: out.events })
     for (const e of out.events) if (e.k === 'nacio') ids.push(e.id)
+    if (faltanLosPozos) {
+      faltanLosPozos = false
+      const yaEstan = new Set(ids)
+      for (const id of w.bodies.keys()) if (id !== 'ana-cuerpo' && !yaEstan.has(id)) ids.push(id)
+    }
   }
   return { v: d.veredicto(), ticks: t }
 }
 
-export const PARTIDAS_DEL_CONTROL = 20
+export const PARTIDAS_DEL_CONTROL = PARTIDAS
 export const TICKS_DEL_CONTROL = 20_000
-export const SEMILLA_DEL_CONTROL = 20260728n
 
 export interface Control {
   readonly titulo: string
@@ -174,33 +201,45 @@ export interface Control {
   readonly cuentan: readonly NombreDeSecuencia[]
 }
 
-/** Corre el control entero. Caro —20 × 20.000 ticks— y por eso memorizado. */
-export function correrElControl(titulo: string, conFuego: boolean, tanque: number): Control {
+/**
+ * Corre el control entero. Caro —20 × 20.000 ticks sobre el mundo decretado— y por
+ * eso memorizado, y `async` para poder respirar entre partida y partida: ver
+ * `respirar` en `el-mundo-decretado.ts`. Lo que se memoriza es la PROMESA, así que
+ * dos tests que lo pidan a la vez corren el control una sola vez.
+ */
+export function correrElControl(titulo: string, conFuego: boolean, tanque: number): Promise<Control> {
   const clave = `${titulo}|${String(conFuego)}|${String(tanque)}`
   const guardado = CACHE.get(clave)
   if (guardado !== undefined) return guardado
+  const corriendo = correrlo(titulo, conFuego, tanque)
+  CACHE.set(clave, corriendo)
+  return corriendo
+}
+
+async function correrlo(titulo: string, conFuego: boolean, tanque: number): Promise<Control> {
   const vs: Veredicto[] = []
   let vivas = 0
   let ticksVividos = 0
-  for (let k = 0; k < PARTIDAS_DEL_CONTROL; k++) {
-    const r = partidaAlAzar(SEMILLA_DEL_CONTROL + BigInt(k), conFuego, tanque, TICKS_DEL_CONTROL)
+  // LAS MISMAS VEINTE QUE JUEGA LA MENTE, reemplazos de §10 incluidos. Es la
+  // mitad de que la comparación signifique algo: ver el encabezado.
+  for (const semilla of semillasQueSeJuegan(PARTIDAS_DEL_CONTROL).semillas) {
+    await respirar()
+    const r = partidaAlAzar(semilla, conFuego, tanque, TICKS_DEL_CONTROL)
     vs.push(r.v)
     ticksVividos += r.ticks
     if (r.ticks >= TICKS_DEL_CONTROL) vivas += 1
   }
   const res = resumir(vs)
-  const c: Control = {
+  return {
     titulo,
     filas: res.filas,
     vivas,
     ticksPromedio: Math.round(ticksVividos / PARTIDAS_DEL_CONTROL),
     cuentan: res.filas.filter((f) => f.cuenta).map((f) => f.nombre),
   }
-  CACHE.set(clave, c)
-  return c
 }
 
-const CACHE = new Map<string, Control>()
+const CACHE = new Map<string, Promise<Control>>()
 
 /** La tabla de un control, en texto. Sin `toLocaleString`: la regla 2 vale acá también. */
 export function tablaDelControl(c: Control): string {
@@ -228,8 +267,8 @@ export function tablaDelControl(c: Control): string {
  * para el piso de cuatro**, porque una firma que produce un bicho que elige
  * cuerpos con el dado no distingue una mente de un dado.
  */
-export function ruidoDelAzar(): readonly NombreDeSecuencia[] {
-  const sin = correrElControl('EL AZAR SIN FUEGO', false, 1000)
-  const con = correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
+export async function ruidoDelAzar(): Promise<readonly NombreDeSecuencia[]> {
+  const sin = await correrElControl('EL AZAR SIN FUEGO', false, 1000)
+  const con = await correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
   return [...new Set([...sin.cuentan, ...con.cuentan])].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
 }

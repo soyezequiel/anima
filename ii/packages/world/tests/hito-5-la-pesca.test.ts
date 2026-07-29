@@ -617,9 +617,26 @@ describe('lo que cuesta tener al dios adentro del tick', () => {
     for (let cx = 100; cx < 108; cx++) for (let cy = 100; cy < 108; cy++) decretoDe(virgen, phys, cx, cy)
     const decretar = Number(process.hrtime.bigint() - t0) / 1e6 / 64
 
+    // ─── POR QUÉ LA PASADA MEMOIZADA SE REPITE 200 VECES ─────────────────────
+    //
+    // Porque medir 64 llamadas de una consulta a un `Map` con el reloj de pared no
+    // mide la consulta: mide el ruido del planificador de la máquina. Este test se
+    // puso ROJO en una corrida completa de `pnpm ii:test` —`expected 0.31576875 to
+    // be less than 0.06886265625`, o sea la lectura memoizada saliendo 4,6× más
+    // cara que el décimo del decreto— y corrido solo, en la misma máquina y el
+    // mismo árbol, pasaba con holgura. Un solo hipo del sistema operativo adentro
+    // de una ventana de microsegundos alcanzaba para dar vuelta el número.
+    //
+    // La reparación NO es aflojar el umbral —el décimo es la afirmación, y aflojarla
+    // sería dejar de exigir que la caché sirva—: es MEDIR MÁS. Doscientas pasadas
+    // llevan la ventana de microsegundos a milisegundos, que es donde el reloj de
+    // pared tiene resolución de sobra y un hipo se diluye en vez de mandar.
+    const REPETICIONES = 200
     const t1 = process.hrtime.bigint()
-    for (let cx = 100; cx < 108; cx++) for (let cy = 100; cy < 108; cy++) decretoDe(virgen, phys, cx, cy)
-    const memo = Number(process.hrtime.bigint() - t1) / 1e6 / 64
+    for (let r = 0; r < REPETICIONES; r++) {
+      for (let cx = 100; cx < 108; cx++) for (let cy = 100; cy < 108; cy++) decretoDe(virgen, phys, cx, cy)
+    }
+    const memo = Number(process.hrtime.bigint() - t1) / 1e6 / (64 * REPETICIONES)
 
     const conDios = mundoConRio(o, anzuelo)
     const { dios: _sin, ...sinDios } = conDios

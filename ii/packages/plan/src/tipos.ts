@@ -183,8 +183,81 @@ export type RoleName = string
 export interface EsquemaComun {
   /** El predicado que este esquema establece, en firma. */
   readonly establishes: PredicateSignature
-  /** Qué le pide a cada rol, más allá de lo que el proceso ya exige. */
+  /**
+   * Qué le pide a cada rol, más allá de lo que el proceso ya exige, DE LO QUE SE
+   * PUEDE FABRICAR. Va a parar a `PedidoDeRol.firma`, o sea que es sobre esto que
+   * la regresión regresa y es esto lo que el `gap` reporta cuando no hay esquema.
+   */
   readonly roleHints: Readonly<Record<RoleName, Where>>
+  /**
+   * QUÉ TIENE QUE **SER** EL CUERPO QUE LLENA CADA ROL, de lo que nadie fabrica.
+   *
+   * ─── POR QUÉ NO ES OTRA CLÁUSULA DE `roleHints` ────────────────────────────
+   *
+   * Porque `roleHints` viaja a la FIRMA, y la firma es lo que se regresa y lo que
+   * el `gap` le lleva a la fragua del Hito 8. `PedidoDeRol` ya tenía separadas las
+   * dos clases de condición y ya tenía escrito el precio de mezclarlas: meter
+   * `portable` en la firma hacía que el `why` dijera «ningún esquema conocido
+   * establece «portable>0»», y el Hito 8 le habría pedido a la fragua un proceso
+   * para volver portátil un tronco de veinte kilos. Lo que faltaba era la mitad de
+   * este lado: un esquema no tenía cómo decir «esto se busca, no se fabrica», y la
+   * única condición de esa clase que había —la del `arrangement`— la ponía la
+   * regresión sola.
+   *
+   * ─── LA CONDICIÓN QUE LO PIDIÓ, Y POR QUÉ HOY NO LA USA NADIE ──────────────
+   *
+   * Este campo nació para la fila de la pesca, con `source: [portable<=0]` — «un
+   * pozo no entra en una mano»— y esa condición SE SACÓ, medida: ver
+   * `roleNoDeLaMano` acá abajo y el bloque de la fila en `esquemas.ts`. El campo
+   * queda porque la distinción que encarna sigue siendo verdadera y es la que
+   * `PedidoDeRol` ya tenía escrita: hay condiciones de cuerpo que ningún
+   * `establishes` promete ni va a prometer, y meterlas en la firma le hace pedir a
+   * la fragua del Hito 8 procesos que no existen. Hoy la única de esa clase la
+   * pone la regresión sola (el `portable` del `arrangement`), y el mecanismo de
+   * SUMARLAS —no pisarlas— se sigue verificando con una fila sintética en
+   * `tests/el-pozo-y-la-mano.test.ts`.
+   *
+   * Ausente = el rol no tiene ninguna condición de las que sólo se encuentran, que
+   * es el caso de las diez filas.
+   */
+  readonly roleFilters?: Readonly<Record<RoleName, Where>>
+  /**
+   * LOS ROLES QUE NO SE PUEDEN LLENAR CON ALGO QUE LA CRIATURA TENGA AGARRADO.
+   *
+   * ─── POR QUÉ ESTO NO ES UN `roleFilters` MÁS ───────────────────────────────
+   *
+   * Porque «lo tengo en la mano» NO ES UNA CUALIDAD DE CUERPO. Es una relación
+   * entre la criatura y el cuerpo, exactamente igual que `sostiene` es una forma
+   * aparte de `Predicado` y no una cualidad. Un `Where` no la puede decir, y el
+   * intento de decirla con una cualidad —`portable <= 0`, «si no entra en una mano
+   * entonces no está en la mano»— es lo que este campo viene a reemplazar.
+   *
+   * ─── EL PRECIO DE LA APROXIMACIÓN VIEJA, MEDIDO SOBRE LAS VEINTE PARTIDAS ──
+   *
+   * `portable <= 0` es verdadera de toda la mano, sí, pero también es verdadera de
+   * casi todo lo demás: descarta CUALQUIER cuerpo de menos de 8 kg, y los bancos
+   * que el dios decreta son casi siempre más chicos que eso. Medido sobre las
+   * veinte semillas que juega el banco de la emergencia
+   * (`juez/tests/ataque-al-tramo-i.test.ts`, bloque 3):
+   *
+   *     partidas SIN UN SOLO banco elegible          11 de 20
+   *     de esas once, partidas con alguna tirada      0 de 11
+   *     piezas de pescado que el filtro regalaba     58 de 332 (17,5%)
+   *
+   * El 4,4% que la fila publicaba como precio salía de UNA semilla (la del test de
+   * esquemas, cuyo banco pesa 129,9150 kg). Y el mundo SÍ deja pescar en los otros:
+   * `stockDe` decide qué es un pozo POR IDENTIDAD (`banco.body.id !== idDePozo(...)`),
+   * la masa no entra, y un banco de 2,2630 kg rindió su pieza sin que el mundo
+   * dijera `sin-pozo` una sola vez.
+   *
+   * La exclusión por TENENCIA no le cuesta una pieza a ningún banco —un banco
+   * decretado no está en la mano de nadie— y caza exactamente al impostor que se
+   * midió: el pescado que la criatura ya llevaba agarrado, que `candidatosPara`
+   * encima PREFIERE.
+   *
+   * Ausente = ningún rol la pide, que es el caso de nueve de las diez filas.
+   */
+  readonly roleNoDeLaMano?: readonly RoleName[]
   /**
    * QUÉ LE PIDE A LA CELDA EN LA QUE ESTÁ EL CUERPO QUE LLENA CADA ROL.
    *
@@ -320,8 +393,8 @@ export interface EsquemaDeLey extends EsquemaComun {
  * Las dos maneras de que algo quede establecido: aplicando un proceso, o poniendo
  * el mundo en la situación en la que una ley lo hace sola.
  *
- * `k` discrimina, y las dos comparten `establishes`, `roleHints`, `cellHints` y
- * `segundos` a propósito: son los cuatro campos que `@anima/mind` lee de la tabla
+ * `k` discrimina, y las dos comparten `establishes`, `roleHints`, `roleFilters`,
+ * `cellHints` y `segundos` a propósito: son los campos que `@anima/mind` lee de la tabla
  * (`creencias.ts` saca de `roleHints` los umbrales de sus claves de contexto, y
  * `oportunidades.ts` cotiza con `segundos`), y partirlos habría obligado a esa
  * mente a preguntar de qué clase es cada fila para leer lo que a ella no le
@@ -509,6 +582,16 @@ export interface PedidoDeRol {
    */
   readonly filtro?: Where
   readonly celda?: WhereCell
+  /**
+   * Y LA TERCERA, QUE NO ES UNA CONDICIÓN SOBRE UN CUERPO NI SOBRE UN LUGAR.
+   *
+   * «No lo tengo agarrado» es una relación entre la criatura y el candidato, así
+   * que no cabe en un `Where` ni en un `WhereCell` — y tampoco se regresa nunca,
+   * que es lo que la pone de este lado y no en la firma. La pone el esquema de
+   * `extraccion`: no se pesca adentro de lo que uno lleva en la mano. Ver
+   * `EsquemaComun.roleNoDeLaMano` para lo que costaba decirlo con una cualidad.
+   */
+  readonly noDeLaMano?: true
 }
 
 /**

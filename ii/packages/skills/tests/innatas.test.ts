@@ -37,7 +37,7 @@ const clases = (m: Mundito): Intent['k'][] => m.emitidas.map((i) => i.k)
 const vista = (m: Mundito, id: string): BodyView => {
   const c = m.cuerpo(id)
   if (!c) throw new Error(`no existe ${id}`)
-  return { id: c.id, at: c.at, name: c.name, madeByMe: c.madeByMe ?? false, joints: [] }
+  return { id: c.id, at: c.at, name: c.name, tags: c.tags ?? [], madeByMe: c.madeByMe ?? false, joints: [] }
 }
 
 // ─── El catálogo ─────────────────────────────────────────────────────────────

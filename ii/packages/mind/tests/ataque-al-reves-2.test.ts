@@ -328,9 +328,18 @@ describe('(1) cocinar de a varios: el mundo lo paga y la mente no lo puede pedir
       expect(e.pila.filter((rol) => rol === e.sujeto)).toHaveLength(1)
     }
     expect(r.k).toBe('plan')
-    // UNA pesca, DOS `poner` —la losa y la comida—, UN `sostener`. Para el segundo
-    // pescado hay que rehacer el plan entero, y con él la losa.
-    expect(pescas).toBe(1)
+    // CERO pescas, DOS `poner` —la losa y la comida—, UN `sostener`. Y el cero es
+    // nuevo: cuando este test se escribió el plan arrancaba con `aplicar`, porque
+    // `cumpleCuerpo` de `@anima/plan` no sabía contestar `holding(tag:…)` y el
+    // pescado que la criatura ya tenía agarrado —los 200 ticks de `vivir` de acá
+    // arriba se lo dan— no contaba para nada. Hoy cuenta, así que el plan empieza
+    // directamente por ir al fuego.
+    //
+    // Lo que este test ataca NO se movió ni un milímetro: sigue habiendo UN solo
+    // rol `comida` en la pila de la ley, así que para el segundo pescado hay que
+    // rehacer el plan entero, y con él la losa. Que el plan haya perdido el
+    // `aplicar` sólo cambia de dónde sale el primero.
+    expect(pescas).toBe(0)
     expect(puestos).toBe(2)
     expect(levantados).toBe(1)
   })

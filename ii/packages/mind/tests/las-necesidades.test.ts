@@ -67,6 +67,9 @@ function vista(m: {
     id: 'yo',
     at: AQUI,
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia.
+    // En la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: [],

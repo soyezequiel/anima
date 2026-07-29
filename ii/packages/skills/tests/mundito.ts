@@ -32,6 +32,7 @@ import type {
   SelfView,
   SkillMemory,
   StepResult,
+  Tag,
   Verdict,
   Where,
   WhereCell,
@@ -41,6 +42,12 @@ export interface CuerpoDeJuguete {
   id: string
   at: Cell
   name: string
+  /**
+   * De que CLASE es la materia. En la partida sale de `tagsDe(body, phys)`; acá no
+   * hay sustancias, asi que por omision es `[]` — que es la respuesta honesta de un
+   * cuerpo de juguete y no una que haya que recordar poner.
+   */
+  tags?: readonly Tag[]
   madeByMe?: boolean
   heldBy?: string | undefined
   q: Partial<Record<QualityId, number>>
@@ -194,6 +201,7 @@ export class Mundito {
       id: c.id,
       at: c.at,
       name: c.name,
+      tags: c.tags ?? [],
       madeByMe: c.madeByMe ?? false,
       joints: [],
     }
@@ -218,6 +226,7 @@ export class Mundito {
       id: ACTOR,
       at: this.yo.at,
       name: 'ella',
+      tags: [],
       madeByMe: false,
       joints: [],
       holding: holding.map((c) => this.vista(c)),

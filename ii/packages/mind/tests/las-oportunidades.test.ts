@@ -54,7 +54,7 @@ const COLA = '+rescate'
 // ─── El mundito de mentira ──────────────────────────────────────────────────
 
 function cuerpo(id: string, x: number, y: number, nombre?: string): BodyView {
-  return { id, at: { x, y }, name: nombre ?? id, madeByMe: false, joints: [] }
+  return { id, at: { x, y }, name: nombre ?? id, tags: [], madeByMe: false, joints: [] }
 }
 
 function criatura(o?: { at?: Cell; holding?: readonly BodyView[] }): SelfView {
@@ -62,6 +62,9 @@ function criatura(o?: { at?: Cell; holding?: readonly BodyView[] }): SelfView {
     id: 'yo',
     at: o?.at ?? { x: 0, y: 0 },
     name: 'criatura',
+    // En este mundito nada tiene sustancia, asi que nada tiene clase de materia.
+    // En la partida la vista lo saca de `tagsDe(body, phys)`.
+    tags: [],
     madeByMe: false,
     joints: [],
     holding: o?.holding ?? [],
