@@ -297,6 +297,11 @@ export function isUnsupportedEffortError(stderr: string): boolean {
  * plan (o exigir un CLI más nuevo). Antes que dejar el error crudo, se reintenta
  * con el modelo por defecto de la cuenta («Automático»). El fallo de nivel de
  * razonamiento tiene su propio reintento; aquí se lo excluye para no pisarlo.
+ *
+ * El backend tiene más de una forma de decir lo mismo: un 404 `model_not_found`
+ * cuando el nombre no existe, y un 400 «The 'X' model is not supported when
+ * using Codex with a ChatGPT account» cuando el nombre existe pero no está
+ * habilitado para ese plan. Las dos se recuperan igual.
  */
 export function isUnsupportedModelError(stderr: string): boolean {
   if (isUnsupportedEffortError(stderr)) return false;
@@ -304,7 +309,7 @@ export function isUnsupportedModelError(stderr: string): boolean {
     /model[_\s-]?not[_\s-]?found|unsupported[_\s-]?model|unknown model|modelo desconocido/i.test(
       stderr,
     ) ||
-    /\bmodel\b[^.]{0,80}?(does not exist|no existe|not available|no disponible|do(?:es)? not have access|no access|sin acceso|is invalid|invalid model|modelo inv[aá]lido)/i.test(
+    /\bmodel\b[^.]{0,80}?(does not exist|no existe|not available|no disponible|do(?:es)? not have access|no access|sin acceso|is invalid|invalid model|modelo inv[aá]lido|is not supported|isn't supported|no est[áa] soportado)/i.test(
       stderr,
     )
   );

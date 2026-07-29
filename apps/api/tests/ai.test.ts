@@ -317,6 +317,11 @@ describe('parseRateLimitsResponse', () => {
 
 // Forma observada en vivo: el backend rechaza `minimal` con el modelo
 // premium de la cuenta y codex exec vuelca dos bloques JSON en stderr.
+// Forma observada en vivo (codex-cli 0.144.5, cuenta ChatGPT) al pedir un
+// nombre de familia sin sufijo: 400 sin `code`, y el CLI lo vuelca dos veces.
+const chatGptPlanModelStderr = `ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.6' model is not supported when using Codex with a ChatGPT account."}}
+ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.6' model is not supported when using Codex with a ChatGPT account."}}`;
+
 const unsupportedEffortStderr = `stream error: { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 } ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 }`;
 
 describe('errores de codex exec', () => {
@@ -369,6 +374,10 @@ describe('errores de codex exec', () => {
         `ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "model_not_found", "message": "The model 'gpt-5.6-terra' does not exist or you do not have access to it." }, "status": 404 }`,
       ),
     ).toBe(true);
+    // Forma observada en vivo con codex-cli 0.144.5: el 400 del plan ChatGPT
+    // no trae código `model_not_found` y nombra el modelo ANTES de la palabra
+    // «model». Sin esto el error salía crudo y disparaba la pausa automática.
+    expect(isUnsupportedModelError(chatGptPlanModelStderr)).toBe(true);
     // El rechazo del nivel de razonamiento tiene su propio reintento: no lo toma.
     expect(isUnsupportedModelError(unsupportedEffortStderr)).toBe(false);
     expect(isUnsupportedModelError('ERROR: stream disconnected before completion')).toBe(false);

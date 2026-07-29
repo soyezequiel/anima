@@ -26,11 +26,20 @@ const AI_CHOICE_KEY = 'anima:ai:choice';
 const CODEX_SETTINGS_KEY = 'anima:ai:codex-settings';
 const CLAUDE_SETTINGS_KEY = 'anima:ai:claude-settings';
 
+/**
+ * Slugs que el CLI de Codex publica en su catálogo (`models_cache.json` del
+ * CODEX_HOME). Son sugerencias, no una verdad: la cuenta manda, y un plan
+ * puede no ofrecer alguno. Nombres de familia sin sufijo (`gpt-5.6` a secas)
+ * NO existen para el backend — pedirlos devuelve 400 «no soportado con una
+ * cuenta ChatGPT», así que no se ofrecen.
+ */
 export const CODEX_MODEL_SUGGESTIONS = [
-  'gpt-5.6',
+  'gpt-5.6-sol',
   'gpt-5.6-terra',
+  'gpt-5.6-luna',
+  'gpt-5.5',
   'gpt-5.4',
-  'gpt-5.3-codex-spark',
+  'gpt-5.4-mini',
 ] as const;
 
 export const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
