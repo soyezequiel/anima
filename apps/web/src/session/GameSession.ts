@@ -23,6 +23,7 @@ import {
   recipeProduct,
   recipeProductKinds,
   daylight,
+  removeEntity,
   spawn,
   stepWorld,
   takeSnapshot,
@@ -1731,6 +1732,48 @@ export class GameSession {
       type: 'caretaker.placed',
       tick: this.world.tick,
       data: { kind, at },
+    });
+    void this.save();
+    this.rebuildView();
+    this.notify();
+  }
+
+  /**
+   * El poder inverso: saca del mapa UN ejemplar, el que el cuidador arrastró
+   * al tacho. Es hermano de `placeItemOnMap` y no de la poda (ADR 0075): la
+   * poda se lleva un TIPO y todo lo que las reglas dicen de él, esto se lleva
+   * una cosa y nada más. Por eso tampoco pide confirmación — no hay arrastre
+   * que mostrar, y el gesto ya es deliberado de por sí.
+   *
+   * Se borra por id y no por celda a propósito: entre agarrar y soltar el
+   * mundo sigue andando, y lo que se agarró puede haberse movido o haber
+   * dejado de existir. Por id, se va exactamente lo que se agarró; si ya no
+   * está, no pasa nada.
+   */
+  removeEntityFromMap(id: string): void {
+    if (this.getView().death) return;
+    const entity = getEntity(this.world, id);
+    if (!entity) return;
+    // A quien piensa no se la saca del mapa con un arrastre: sin ella no hay
+    // partida, y hacerla desaparecer no sería «borrar un objeto» sino terminar
+    // el juego por la puerta de atrás. Se mira el componente y no el tipo
+    // porque lo que la protege es que piensa, no cómo se llama.
+    if (entity.components.agent) return;
+
+    // Lo que llevaba adentro se va con ella: no está en el mapa, está DENTRO
+    // de lo que se borra. Dejarlo suelto lo volvería un fantasma sin posición
+    // —invisible, inalcanzable— que igual pesa en el guardado.
+    const doomed: string[] = [id];
+    for (let i = 0; i < doomed.length; i++) {
+      const held = getEntity(this.world, doomed[i]!)?.components.inventory?.items ?? [];
+      for (const item of held) if (!doomed.includes(item)) doomed.push(item);
+    }
+    for (const victim of doomed) removeEntity(this.world, victim);
+
+    this.pushDev('world', {
+      type: 'caretaker.removed',
+      tick: this.world.tick,
+      data: { id, kind: entity.kind, carried: doomed.length - 1 },
     });
     void this.save();
     this.rebuildView();

@@ -180,29 +180,38 @@ describe('GameSession (capa de sesión de la UI)', () => {
     session.dispose();
   });
 
-  it('la vida que le queda a la herramienta que lleva viaja al view y baja al usarla', async () => {
+  it('la vida de la herramienta viaja al view, y el martillo no trae ninguna porque no se gasta', async () => {
     const { session } = await makeSession(5);
-    // Cada lectura del martillo mientras está en la mochila, en orden.
-    const readings: number[] = [];
+    // El martillo se agarra y se usa a lo largo de la historia. En ninguna de
+    // esas lecturas puede aparecer un número: es eterno, y una barra que no
+    // baja nunca sería peor que no tener barra — promete un límite que no hay.
+    let seenHeld = 0;
+    let seenWithNumber = 0;
     await runUntil(session, () => {
       const held = session.getView().pet?.inventory.find((i) => i.kind === 'hammer');
-      if (held?.durability && readings[readings.length - 1] !== held.durability.current) {
-        readings.push(held.durability.current);
+      if (held) {
+        seenHeld += 1;
+        if (held.durability) seenWithNumber += 1;
       }
       return session.getView().storyCompleted;
     });
+    expect(seenHeld).toBeGreaterThan(0);
+    expect(seenWithNumber).toBe(0);
 
-    // El martillo de este escenario nace gastado (8 de 20): la reliquia se ve
-    // como lo que es, no como una herramienta entera.
-    expect(readings.length).toBeGreaterThan(0);
-    expect(readings[0]).toBe(8);
-    // Y se gasta: cada uso deja menos, nunca más.
-    expect(readings.length).toBeGreaterThan(1);
-    expect(readings.every((v, i) => i === 0 || v < readings[i - 1]!)).toBe(true);
-
-    // Lo que no se rompe no inventa un número que no tiene.
-    const others = session.getView().pet!.inventory.filter((i) => i.kind !== 'hammer');
-    expect(others.every((i) => i.durability === undefined)).toBe(true);
+    // Pero el canal sigue vivo: una herramienta que SÍ declara vida (el pico
+    // que se fabrica) la muestra. Se pone a mano porque de qué se fabrique la
+    // mascota decide ella, y esto mide la cañería del view, no su criterio.
+    const world = (session as unknown as { world: WorldState }).world;
+    const pet = getEntity(world, 'e1')!;
+    const pick = spawn(world, 'stone-pick', {
+      portable: {},
+      tool: { power: 6 },
+      durability: { current: 12, max: 12 },
+    });
+    pet.components.inventory!.items.push(pick.id);
+    await session.stepOnce();
+    const heldPick = session.getView().pet!.inventory.find((i) => i.kind === 'stone-pick');
+    expect(heldPick?.durability).toEqual({ current: 12, max: 12 });
 
     session.dispose();
   });
@@ -245,6 +254,51 @@ describe('GameSession (capa de sesión de la UI)', () => {
     // Un tipo que el mundo no conoce tampoco: no hay molde del que copiar.
     session.placeItemOnMap('tipo-que-no-existe', target!);
     expect(session.getView().entities.length).toBe(count);
+
+    session.dispose();
+  });
+
+  it('el cuidador saca del mapa el ejemplar que arrastró al tacho', async () => {
+    const { session } = await makeSession(5);
+    const view = session.getView();
+
+    // Cualquier cosa del mapa que no sea ella.
+    const victim = view.entities.find((e) => e.id !== view.pet!.id);
+    expect(victim).toBeDefined();
+    const before = view.items.find((i) => i.kind === victim!.kind)?.inWorld ?? 0;
+
+    session.removeEntityFromMap(victim!.id);
+    const after = session.getView();
+    expect(after.entities.some((e) => e.id === victim!.id)).toBe(false);
+    expect(after.items.find((i) => i.kind === victim!.kind)?.inWorld ?? 0).toBe(before - 1);
+
+    // A ella no: sacarla del mapa no sería borrar un objeto, sería terminar la
+    // partida por la puerta de atrás. Y un id que no existe no rompe nada.
+    const count = after.entities.length;
+    session.removeEntityFromMap(view.pet!.id);
+    session.removeEntityFromMap('e-que-no-existe');
+    expect(session.getView().entities.length).toBe(count);
+    expect(session.getView().pet).not.toBeNull();
+
+    session.dispose();
+  });
+
+  it('lo que el objeto borrado llevaba adentro se va con él, sin quedar de fantasma', async () => {
+    const { session } = await makeSession(5);
+    const world = (session as unknown as { world: WorldState }).world;
+
+    // Un cofre con algo adentro: lo que lleva NO está en el mapa, está dentro
+    // de lo que se borra. Si sobreviviera quedaría sin posición — invisible e
+    // inalcanzable — y seguiría pesando en el guardado.
+    const treasure = spawn(world, 'log', { portable: {} });
+    const chest = spawn(world, 'chest', {
+      position: { x: 0, y: 0 },
+      inventory: { items: [treasure.id], capacity: 4 },
+    });
+
+    session.removeEntityFromMap(chest.id);
+    expect(getEntity(world, chest.id)).toBeUndefined();
+    expect(getEntity(world, treasure.id)).toBeUndefined();
 
     session.dispose();
   });

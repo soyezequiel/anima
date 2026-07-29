@@ -238,7 +238,11 @@ export function App({ session, account }: { session: GameSession; account: Cloud
 
       <main className="layout">
         <section className="stage">
-          <PhaserStage view={view} onDropItem={(kind, at) => session.placeItemOnMap(kind, at)} />
+          <PhaserStage
+            view={view}
+            onDropItem={(kind, at) => session.placeItemOnMap(kind, at)}
+            onRemoveEntity={(id) => session.removeEntityFromMap(id)}
+          />
           {view.currentThought && !view.death && <ThoughtTicker thought={view.currentThought} />}
           {view.death && <DeathOverlay report={view.death} session={session} />}
         </section>

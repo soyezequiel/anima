@@ -636,10 +636,74 @@ select {
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 
 .stage-board {
   position: relative;
+}
+
+/*
+ * El tacho: la salida del mundo para una cosa suelta. Apagado casi no se ve
+ * —es un cartel, no un botón—, pero está siempre: es lo único que anuncia que
+ * del tablero se puede agarrar. Encendido crece, se pone rojo y dice qué va a
+ * caer adentro, para que soltar sea una confirmación y no una apuesta.
+ */
+.stage-trash {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px dashed rgba(148, 163, 184, 0.35);
+  background: rgba(12, 26, 16, 0.5);
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.45;
+  transition:
+    opacity 0.15s ease-out,
+    transform 0.15s ease-out,
+    border-color 0.15s ease-out,
+    background 0.15s ease-out;
+}
+
+.stage-trash-can {
+  font-size: 20px;
+  line-height: 1;
+}
+
+/*
+ * Encendido crece de verdad, y no por gusto: con algo en vuelo el tacho deja
+ * de ser un cartel y pasa a ser un blanco al que hay que acertar con el mouse
+ * apretado. Un blanco chico convierte «soltar» en puntería.
+ */
+.stage-trash-armed {
+  opacity: 1;
+  padding: 20px 26px;
+  border: 1px solid rgba(248, 113, 113, 0.8);
+  background: rgba(69, 10, 10, 0.85);
+  color: #fecaca;
+  font-size: 15px;
+}
+
+.stage-trash-armed .stage-trash-can {
+  font-size: 28px;
+}
+
+/* El fantasma que sigue al cursor: fuera de pantalla, nunca visible en su
+   sitio. `display:none` no sirve — el navegador no puede fotografiarlo. */
+.stage-drag-ghost {
+  position: fixed;
+  top: -1000px;
+  left: -1000px;
+  font-size: 28px;
+  line-height: 32px;
+  pointer-events: none;
 }
 
 /* La celda donde caería el item que se está arrastrando desde el catálogo. */
@@ -1713,6 +1777,13 @@ button:disabled {
   .thinking-dots i {
     animation: none;
     opacity: 0.8;
+  }
+
+  /* El tacho se enciende igual, pero sin animar el cambio: lo que dice («esto
+     se va acá») no depende del movimiento. Sigue creciendo — el tamaño no es
+     adorno, es el blanco al que hay que acertar. */
+  .stage-trash {
+    transition: none;
   }
 
   /* El punto de actividad se queda quieto y encendido: sigue diciendo lo mismo

@@ -3,7 +3,7 @@ import { kindLabel } from '@anima/shared';
 import { useEffect, useRef, useState } from 'react';
 import type { DragEvent, PointerEvent as ReactPointerEvent } from 'react';
 import type { GameView } from '../session/view.js';
-import { DND_ITEM_KIND } from '../dnd.js';
+import { DND_ITEM_KIND, DND_MAP_ENTITY } from '../dnd.js';
 import { DreamOverlay } from '../components/DreamOverlay.js';
 import { skillDevLine, skillDevPurpose, ThinkingClock } from '../components/thinking.js';
 import { KIND_EMOJI } from './appearance.js';
@@ -21,19 +21,29 @@ const MIN_CELL = 24;
 export function PhaserStage({
   view,
   onDropItem,
+  onRemoveEntity,
 }: {
   view: GameView;
   /** Soltar un tipo del catálogo sobre el tablero lo pone en esa celda. */
   onDropItem?: (kind: string, at: { x: number; y: number }) => void;
+  /** Arrastrar un ejemplar del tablero al tacho lo saca del mundo. */
+  onRemoveEntity?: (id: string) => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<WorldScene | null>(null);
   const gameRef = useRef<Phaser.Game | null>(null);
+  // El fantasma que sigue al cursor mientras se arrastra algo del tablero. Sin
+  // esto el navegador arrastra una foto del tablero ENTERO, que tapa el mundo
+  // justo cuando hay que mirarlo para elegir dónde soltar.
+  const ghostRef = useRef<HTMLDivElement>(null);
   const [cell, setCell] = useState(BASE_CELL);
   // La celda bajo el cursor mientras se arrastra un item: se resalta para que
   // el jugador vea dónde va a caer antes de soltar. null cuando no hay arrastre.
   const [dropCell, setDropCell] = useState<{ x: number; y: number } | null>(null);
+  // Lo que se está sacando del tablero, mientras dura el arrastre: enciende el
+  // tacho y le pone nombre a lo que va a caer adentro. null si no hay arrastre.
+  const [leaving, setLeaving] = useState<{ id: string; kind: string } | null>(null);
   // La celda bajo el cursor cuando no se arrastra nada. Se guarda la CELDA y no
   // la entidad: si lo señalado se mueve o desaparece mientras el puntero está
   // quieto, el rótulo sigue al mundo en vez de quedarse hablando de un fantasma.
@@ -73,6 +83,8 @@ export function PhaserStage({
   };
 
   const isItemDrag = (e: DragEvent<HTMLDivElement>) => e.dataTransfer.types.includes(DND_ITEM_KIND);
+  const isEntityDrag = (e: DragEvent<HTMLDivElement>) =>
+    e.dataTransfer.types.includes(DND_MAP_ENTITY);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     if (!onDropItem || !isItemDrag(e)) return;
@@ -91,6 +103,42 @@ export function PhaserStage({
     if (at && kind) onDropItem(kind, at);
   };
 
+  /**
+   * Agarrar algo del tablero. Se lleva lo mismo que el rótulo está nombrando
+   * —lo de arriba de la celda—: lo que se ve es lo que se agarra, y una celda
+   * con varias cosas se vacía de a una en vez de sorprender.
+   *
+   * Sobre suelo pelado no arranca ningún arrastre. A la mascota tampoco se la
+   * agarra, y sin escribir una excepción para ella: no está en `view.entities`
+   * —el view la manda aparte, en `pet`—, así que acá no hay nada que agarrar
+   * donde ella está parada. La sesión igual se niega si le llega su id.
+   */
+  const handleBoardDragStart = (e: DragEvent<HTMLDivElement>) => {
+    const at = cellFromEvent(e);
+    const target = at
+      ? ([...view.entities].reverse().find((en) => en.x === at.x && en.y === at.y) ?? null)
+      : null;
+    if (!onRemoveEntity || !target) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData(DND_MAP_ENTITY, target.id);
+    e.dataTransfer.effectAllowed = 'move';
+    if (ghostRef.current && typeof e.dataTransfer.setDragImage === 'function') {
+      ghostRef.current.textContent = KIND_EMOJI[target.kind] ?? '📦';
+      e.dataTransfer.setDragImage(ghostRef.current, 16, 16);
+    }
+    setLeaving({ id: target.id, kind: target.kind });
+  };
+
+  const handleTrashDrop = (e: DragEvent<HTMLDivElement>) => {
+    if (!onRemoveEntity || !isEntityDrag(e)) return;
+    e.preventDefault();
+    const id = e.dataTransfer.getData(DND_MAP_ENTITY);
+    setLeaving(null);
+    if (id) onRemoveEntity(id);
+  };
+
   useEffect(() => {
     if (!hostRef.current || gameRef.current) return;
     const scene = new WorldScene();
@@ -103,6 +151,19 @@ export function PhaserStage({
       backgroundColor: '#14532d',
       scene: [scene],
       banner: false,
+      // El tablero no usa el puntero de Phaser: quién está bajo el cursor lo
+      // calcula la geometría en React (ver `cellFromEvent`). Pero Phaser igual
+      // se queda con los eventos del mouse y les llama `preventDefault`, y un
+      // `mousedown` cancelado es un arrastre que el navegador NUNCA empieza —
+      // por eso no se podía sacar nada al tacho. Devolverle esos eventos al
+      // navegador no le quita nada a la escena, que no los escuchaba.
+      input: {
+        mouse: {
+          preventDefaultDown: false,
+          preventDefaultUp: false,
+          preventDefaultMove: false,
+        },
+      },
     });
     return () => {
       gameRef.current?.destroy(true);
@@ -251,11 +312,41 @@ export function PhaserStage({
     />
   );
 
+  // El tacho: la única salida del mundo para una cosa suelta. Vive fuera del
+  // tablero para no taparlo y para que soltar acá no cuente además como soltar
+  // sobre una celda. Se ve siempre, apagado: es lo que anuncia que del tablero
+  // se puede agarrar. Se enciende cuando hay algo en vuelo.
+  const trash = onRemoveEntity && (
+    <div
+      className={`stage-trash${leaving ? ' stage-trash-armed' : ''}`}
+      data-testid="stage-trash"
+      title="Arrastrá algo del tablero hasta acá para sacarlo del mundo"
+      onDragOver={(e) => {
+        if (!isEntityDrag(e)) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+      }}
+      onDrop={handleTrashDrop}
+    >
+      <span className="stage-trash-can">🗑️</span>
+      {leaving && <span className="stage-trash-name">{kindLabel(leaving.kind)}</span>}
+    </div>
+  );
+
   return (
     <div className="stage-wrap" ref={boxRef}>
       <div
         className={timeHeld ? 'stage-board stage-held' : 'stage-board'}
         style={{ width: cols * cell, height: rows * cell }}
+        draggable={onRemoveEntity !== undefined}
+        onDragStart={handleBoardDragStart}
+        onDragEnd={() => {
+          setLeaving(null);
+          // El fantasma se vacía al terminar: si no, el emoji de lo último que
+          // se arrastró queda en el DOM (invisible, pero presente en el texto
+          // de la página) hasta el próximo arrastre.
+          if (ghostRef.current) ghostRef.current.textContent = '';
+        }}
         onDragOver={handleDragOver}
         onDragLeave={() => setDropCell(null)}
         onDrop={handleDrop}
@@ -271,6 +362,10 @@ export function PhaserStage({
         {dropHint}
         <DreamOverlay dreams={view.dreams} active={view.aiBusy} petColor={view.petColor} />
       </div>
+      {trash}
+      {/* Fuera de pantalla y no `display:none`: el navegador solo puede usar de
+          fantasma un elemento que esté renderizado de verdad. */}
+      <div ref={ghostRef} className="stage-drag-ghost" aria-hidden />
     </div>
   );
 }
