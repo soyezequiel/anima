@@ -404,6 +404,19 @@ const DT = dtDeFrecuencia(HZ)
 /** 20.000 ticks a 20 Hz son 1000 segundos de mundo (ADR II-0008). */
 const SEGUNDOS_DE_PARTIDA = TICKS / HZ
 
+/**
+ * EL TANQUE DE ARRANQUE DEL CRITERIO, copiado con su ruta y con guardián.
+ *
+ * Es una `const` de `juez/tests/hito-5-la-emergencia.test.ts`, o sea de un test de
+ * otro paquete: ningún import lo trae. Entra acá porque es el borde de ABAJO de la
+ * ventana del costo de vivir —abajo de `TANQUE / SEGUNDOS_DE_PARTIDA` la criatura
+ * llega a los 20.000 ticks sin comer— y sin él la ventana parece arrancar en cero.
+ * El `it` que lo verifica está al final del archivo.
+ */
+const TANQUE_DEL_CRITERIO = 310
+/** Y los ticks del mismo criterio, del mismo archivo y con el mismo guardián. */
+const TICKS_DEL_CRITERIO = 20_000
+
 /** Cuántos segundos de mundo cuesta un intento de extracción. Del proceso, no
  *  de acá: `EXTRACCION.completion.at`. Un proceso sin `completion` corre para
  *  siempre y no se podría cronometrar; que eso lance es la única respuesta
@@ -2494,6 +2507,91 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     // ventana contuviera al 1,0 tendrían que ser las cien.
     expect(hornada.filter((x) => x <= 0).length).toBe(99)
     expect(Number(eHornada.min.toFixed(1))).toBe(-636.3)
+  })
+
+  it('LA VENTANA ENTERA DE `COSTO_VIVIR_POR_SEGUNDO`, con sus DOS bordes y no uno', async () => {
+    // ─── POR QUÉ ESTE BLOQUE EXISTE ────────────────────────────────────────
+    //
+    // El `it` de acá arriba despeja UN borde: arriba de `vivirQueHaríaFalta`,
+    // cocinar no alcanza en las cien partidas. Y de ahí sale, escrito, que «la
+    // ventana es (0 ; 0,364)». **Ese cero está mal**, y no por poco: hay un
+    // segundo borde, viene de otro criterio del Hito 5, y aprieta por abajo.
+    //
+    // EL SEGUNDO BORDE. El criterio (2) pide que la criatura **sobreviva 20.000
+    // ticks**, y con `stamina` midiéndose en segundos de vida eso es una carrera
+    // entre dos números que nadie eligió mirando al otro: el tanque de arranque
+    // (310, del arnés del Hito 5) y lo que cuesta un segundo. Si vivir sale menos
+    // que `310 / 1000 s`, la criatura llega a los 20.000 ticks **quieta y sin comer
+    // una sola vez**, y el criterio pasa a cumplirse por la puerta de atrás. Sería
+    // exactamente el número 6 de los corregidos de este proyecto —«faltan 5 ticks
+    // para los 20.000», que era una criatura sobreviviendo con lo que traía
+    // puesto— pero convertido en la calibración del mundo.
+    //
+    // O sea que el número que se elija tiene que caer ADENTRO de los dos, y la
+    // ventana no la fija este archivo: la fijan dos criterios independientes.
+    // El borde de arriba se recalcula con LA MISMA cuenta del `it` de al lado —el
+    // acarreo, el tiempo perdido y el precio térmico del fuego— y no se copia su
+    // número: si aquél se mueve, éste se tiene que mover con él o los dos bordes
+    // dejarían de ser comparables.
+    const conAcarreo = COMUNES.map((p, i) => {
+      const a = acarrear(p.seed, ORILLAS[i] as ChunkDecretado, SEGUNDOS_DE_UNA_COCCIÓN)
+      const perdidos = (a.celdasCaminadas + a.piezas) * DT + PRECIO_DEL_FUEGO.segundos
+      return {
+        ingreso: p.ingresoCocinado * ((SEGUNDOS_DE_PARTIDA - perdidos) / SEGUNDOS_DE_PARTIDA),
+        fijo: PRECIO_DEL_FUEGO.termico + a.celdasCaminadas * COSTO_POR_CELDA + p.celdasCaminadas * COSTO_POR_CELDA,
+      }
+    })
+    const arriba = extremos(conAcarreo.map((x) => (x.ingreso - x.fijo) / SEGUNDOS_DE_PARTIDA)).min
+    const abajo = TANQUE_DEL_CRITERIO / SEGUNDOS_DE_PARTIDA
+
+    const filas: string[] = [
+      'económico · LA VENTANA ENTERA DEL COSTO DE VIVIR:',
+      `económico ·   borde de ARRIBA ${arriba.toFixed(4)}/s — arriba de esto, cocinar no alcanza en las cien (este archivo)`,
+      `económico ·   borde de ABAJO  ${abajo.toFixed(4)}/s — abajo de esto, el tanque de ${String(TANQUE_DEL_CRITERIO)} llega solo a los ${String(TICKS_DEL_CRITERIO)} ticks`,
+      `económico ·                    y el criterio (2) se cumpliría SIN COMER, que es cumplirlo por la puerta de atrás`,
+      `económico ·   la ventana es (${abajo.toFixed(4)} ; ${arriba.toFixed(4)}), de ${(arriba / abajo).toFixed(3)}× de ancho`,
+      `económico ·   el valor vigente es ${COSTO_VIVIR_POR_SEGUNDO.toFixed(3)}/s y cae ${COSTO_VIVIR_POR_SEGUNDO > arriba ? 'POR ENCIMA' : COSTO_VIVIR_POR_SEGUNDO < abajo ? 'POR DEBAJO' : 'ADENTRO'}`,
+      'económico ·',
+      'económico ·   qué pasa con cada candidato, con los dos criterios a la vez:',
+      'económico ·     valor  │ ¿cocinar alcanza? │ ¿sobrevivir sigue pidiendo comer? │ vida quieta con 310',
+      'económico ·     ───────┼───────────────────┼──────────────────────────────────┼────────────────────',
+    ]
+    for (const c of [1.0, 0.5, 0.4, 0.364, 0.35, 0.34, 0.32, 0.31, 0.3, 0.25]) {
+      const cocina = c <= arriba
+      const pideComer = c > abajo
+      const ticksQuieta = Math.floor((TANQUE_DEL_CRITERIO / c) * HZ)
+      filas.push(
+        `económico ·     ${c.toFixed(3).padStart(6)} │ ${(cocina ? 'sí' : 'NO').padStart(17)} │ ` +
+          `${(pideComer ? 'sí' : 'NO — se cumple quieta').padStart(32)} │ ${String(ticksQuieta).padStart(11)} ticks`,
+      )
+    }
+    console.log(filas.join('\n'))
+
+    // LOS DOS BORDES EXISTEN Y NO SE CRUZAN, que es lo único que este bloque
+    // afirma: si mañana se cruzaran, no habría número que cumpla los dos criterios
+    // a la vez y la salida dejaría de ser una calibración.
+    expect(arriba).toBeGreaterThan(abajo)
+    // Y el vigente sigue afuera POR ARRIBA, que es de donde salió toda la
+    // discusión. El día que alguien lo mueva adentro, esto se pone rojo y hay que
+    // venir a leer el bloque.
+    expect(COSTO_VIVIR_POR_SEGUNDO).toBeGreaterThan(arriba)
+    // Los dos bordes clavados, con la misma regla que el resto del archivo.
+    expect(Number(arriba.toFixed(3))).toBe(0.364)
+    expect(Number(abajo.toFixed(3))).toBe(0.31)
+  })
+
+  it('el tanque del criterio copiado del arnés del Hito 5 sigue diciendo lo que dice acá', () => {
+    // Mismo guardián que las constantes de la ley 3, y por el mismo motivo: el 310
+    // es una `const` de un test de OTRO paquete, así que ningún import lo trae. Si
+    // el arnés del Hito 5 cambia el tanque, el borde de abajo de la ventana se
+    // mueve y este archivo tiene que enterarse.
+    const arnes = fileURLToPath(new URL('../../juez/tests/hito-5-la-emergencia.test.ts', import.meta.url))
+    const fuente = readFileSync(arnes, 'utf8')
+    const m = /const TANQUE = ([0-9.]+)/.exec(fuente)
+    expect(m).not.toBeNull()
+    expect(Number(m?.[1])).toBe(TANQUE_DEL_CRITERIO)
+    const t = /const TICKS = ([0-9_]+)/.exec(fuente)
+    expect(Number(t?.[1]?.replace(/_/g, ''))).toBe(TICKS_DEL_CRITERIO)
   })
 
   it('las DOS constantes de la ley 3 copiadas de `@anima/physics` siguen diciendo lo que dicen acá', () => {

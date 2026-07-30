@@ -12,6 +12,15 @@
 // es la corrida: veinte partidas, una criatura con su `Mente`, un mundo decretado
 // por el dios, y el juez escuchando tick a tick.
 //
+// ─── Y EL UMBRAL, QUE ESTABA ABIERTO Y LO DECIDIÓ EL USUARIO ────────────────
+//
+// El texto pide «4 de las 10» y la lista tiene NUEVE, así que el 4 podía leerse
+// como número absoluto (4 de 9, o sea 44%) o como proporción (40% → 3,6 → 3 o 4).
+// El traspaso lo dejó anotado como abierto justamente para que no lo ajustara
+// nadie por su cuenta. **Decidido: 4 de 9, el absoluto.** Es la lectura más
+// exigente de las dos y no le baja el piso al criterio de corte por haber perdido
+// una entrada de la lista.
+//
 // ═══ LO QUE ESTE ARNÉS DECÍA ANTES, Y POR QUÉ ESTABA MAL ════════════════════
 //
 // Va primero y no en una nota al pie, porque es la vara con la que hay que leer
@@ -1986,7 +1995,9 @@ describe('el criterio de emergencia, con los números de esta corrida', () => {
         '',
         '════ EL CRITERIO DE EMERGENCIA, MEDIDO ════════════════════════════════════',
         '',
-        `  el criterio ............... «al menos 4 de las 10» sobre una lista de ${String(SECUENCIAS.length)}`,
+        `  el criterio ............... AL MENOS 4 DE LAS ${String(SECUENCIAS.length)} — decidido por el usuario`,
+        `                              (el texto pide «4 de las 10» y la lista cerrada tiene ${String(SECUENCIAS.length)};`,
+        `                              se mantiene el 4 ABSOLUTO sobre la lista real, que es lo más exigente)`,
         `  APARECIERON ............... ${String(rc.cuantasCuentan)} de ${String(SECUENCIAS.length)}`,
         `  RUIDO DEL AZAR ............ ${String(ruido.length)} de ${String(SECUENCIAS.length)} las firma un bicho que elige con el dado:`,
         `                              ${ruido.join(', ')}`,

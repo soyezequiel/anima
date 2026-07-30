@@ -192,8 +192,53 @@ export function partidaAlAzar(
   return { v: d.veredicto(), ticks: t }
 }
 
-export const PARTIDAS_DEL_CONTROL = PARTIDAS
-export const TICKS_DEL_CONTROL = 20_000
+// ═══ EL GATILLO DEL COSTO, DECIDIDO POR EL USUARIO ══════════════════════════
+//
+// Hasta este tramo el control corría **siempre** 20 partidas × 20.000 ticks, dos
+// veces —una por cada concesión—, mientras el banco de la mente contra el que se
+// lo compara ya se acortaba a 3 × 2.000 sin la variable. La asimetría estaba
+// medida y anotada como abierta: la suite normal pagaba ~140 s de los ~170 que
+// tardaba `@anima/juez` para tener al lado un número que sólo se cita cuando se
+// mide en serio.
+//
+// MEDIDO ANTES DE TOCARLO, dos corridas de `pnpm --filter @anima/juez test`:
+// **172,5 s** y **167,6 s**, exit 0 las dos, con los dos controles marcando 66 y
+// 79 s. Con `ANIMA_BANCO=1`: **658 s**.
+//
+// LO QUE CAMBIA Y LO QUE NO, porque esto sí cambia qué mide la suite normal:
+//
+//   - el VEREDICTO del criterio no se movió de lugar: sale de `ANIMA_BANCO=1`,
+//     que es de donde salía. La regla 2 del método, tal cual;
+//   - lo que la suite normal deja de tener es el ruido del azar medido sobre las
+//     veinte. Pasa a ser una MUESTRA de 3 × 2.000, etiquetada como tal en la
+//     tabla, y las aserciones que dependen del tamaño quedan detrás del `env`;
+//   - `cuentan === []` **se sigue afirmando siempre**, y a propósito: si el azar
+//     firmara una entrada en tres partidas cortas, eso es un hallazgo y el rojo
+//     está bien puesto. Lo que no se puede afirmar con tres es cuántas
+//     SITUACIONES le puso el mundo delante, que es lo que se gatea abajo.
+const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
+
+/** Las mismas tres del banco de la mente, para que las dos muestras sean iguales. */
+const PARTIDAS_CORTAS = 3
+/** Y los mismos 2.000 ticks. Ver `hito-5-la-emergencia.test.ts`. */
+const TICKS_CORTOS = 2_000
+
+export const CONTROL_EN_SERIO = MIDIENDO_EN_SERIO
+export const PARTIDAS_DEL_CONTROL = MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS
+export const TICKS_DEL_CONTROL = MIDIENDO_EN_SERIO ? 20_000 : TICKS_CORTOS
+
+/**
+ * Cuántas partidas le tocan a una tanda con el reparto de hoy.
+ *
+ * Existe porque el reparto dejó de ser fijo: con las veinte, las cinco tandas se
+ * llevan cuatro semillas cada una y dan 8 (cuatro × dos controles); con la
+ * muestra corta, la primera se lleva las tres y las otras cuatro no hacen nada.
+ * Un `toBe(8)` clavado en cada tanda se pondría rojo sin que nada esté mal.
+ */
+export function loQueLeToca(desde: number, cuantas: number): number {
+  const { semillas } = semillasQueSeJuegan(PARTIDAS_DEL_CONTROL)
+  return semillas.slice(desde, desde + cuantas).length * LOS_DOS_CONTROLES.length
+}
 
 // ═══ EL CONTROL, REPARTIDO ENTRE ARCHIVOS ═══════════════════════════════════
 //
@@ -245,9 +290,17 @@ export const LOS_DOS_CONTROLES = [
 
 const GUARDADO = fileURLToPath(new URL('../node_modules/.azar/', import.meta.url))
 
-/** El nombre de la carpeta de un control. Del CONTENIDO, no del título. */
-const carpetaDe = (conFuego: boolean, tanque: number): string =>
-  `${GUARDADO}${conFuego ? 'con' : 'sin'}-fuego-${String(tanque)}/`
+/**
+ * El nombre de la carpeta de un control. Del CONTENIDO, no del título.
+ *
+ * El TOPE DE TICKS entra en el nombre desde que la muestra corta existe: una
+ * partida de 2.000 y una de 20.000 de la misma semilla son resultados distintos y
+ * caían las dos en el mismo archivo. Hoy no se pisan porque el `globalSetup` borra
+ * todo antes de cada corrida, o sea que en una misma corrida el tope es uno solo;
+ * queda igual para que el nombre no dependa de ese detalle.
+ */
+const carpetaDe = (conFuego: boolean, tanque: number, tope: number): string =>
+  `${GUARDADO}${conFuego ? 'con' : 'sin'}-fuego-${String(tanque)}-${String(tope)}/`
 
 /** Cuánto se espera a que otro archivo termine la partida que agarró. */
 const PACIENCIA = 600_000
@@ -276,7 +329,7 @@ async function partidaGuardada(
   tanque: number,
   tope: number,
 ): Promise<Guardada> {
-  const carpeta = carpetaDe(conFuego, tanque)
+  const carpeta = carpetaDe(conFuego, tanque, tope)
   const json = `${carpeta}${String(semilla)}.json`
   const lock = `${carpeta}${String(semilla)}.lock`
   if (existsSync(json)) return JSON.parse(readFileSync(json, 'utf8')) as Guardada
@@ -381,17 +434,23 @@ const CACHE = new Map<string, Promise<Control>>()
 
 /** La tabla de un control, en texto. Sin `toLocaleString`: la regla 2 vale acá también. */
 export function tablaDelControl(c: Control): string {
+  // El denominador sale del tamaño de la corrida y ya no está clavado en 20: con
+  // la muestra corta, un «0/20» al lado de tres partidas es una mentira de una
+  // cifra. Y el encabezado dice en voz alta cuando NO se midió en serio, que es
+  // lo que separa esta tabla del veredicto.
+  const de = `/${String(PARTIDAS_DEL_CONTROL)}`
   const lineas = [
-    `  ── ${c.titulo} · ${String(PARTIDAS_DEL_CONTROL)} partidas de ${String(TICKS_DEL_CONTROL)} ticks ──`,
+    `  ── ${c.titulo} · ${String(PARTIDAS_DEL_CONTROL)} partidas de ${String(TICKS_DEL_CONTROL)} ticks ` +
+      `${MIDIENDO_EN_SERIO ? '(midiendo en serio)' : '— MUESTRA, sin ANIMA_BANCO=1'} ──`,
   ]
   for (const f of c.filas) {
     lineas.push(
-      `     apareció ${String(f.aparecioEn).padStart(2)}/20 · situación ${String(f.situacionEn).padStart(2)}/20  ` +
+      `     apareció ${String(f.aparecioEn).padStart(2)}${de} · situación ${String(f.situacionEn).padStart(2)}${de}  ` +
         `${f.nombre.padEnd(38)}${f.cuenta ? ' ← CUENTA' : ''}`,
     )
   }
   lineas.push(
-    `     CUENTAN ${String(c.cuentan.length)} DE 9 · llegaron vivas ${String(c.vivas)}/20` +
+    `     CUENTAN ${String(c.cuentan.length)} DE 9 · llegaron vivas ${String(c.vivas)}${de}` +
       ` · vivieron ${String(c.ticksPromedio)} ticks en promedio`,
   )
   return lineas.join('\n')

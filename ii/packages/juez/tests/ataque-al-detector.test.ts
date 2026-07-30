@@ -183,7 +183,7 @@ import {
   tapando,
 } from './banco.js'
 import type { Paso } from './banco.js'
-import { correrElControl, ruidoDelAzar, tablaDelControl } from './azar.js'
+import { CONTROL_EN_SERIO, correrElControl, ruidoDelAzar, tablaDelControl } from './azar.js'
 
 // ─── El arnés propio: mundos CORRIDOS, sin un estado escrito a mano ──────────
 
@@ -1060,7 +1060,14 @@ describe('frente 2 · EL RUIDO DEL AZAR, que es el número que le faltaba al ban
     expect([...c.cuentan].sort()).toEqual([])
     // Y la mitad que hace que el cero se pueda leer: el mundo SÍ le puso las
     // situaciones delante. Un cero con cero situaciones no diría nada.
-    expect(c.filas.filter((f) => f.situacionEn > 0).length).toBeGreaterThan(5)
+    //
+    // El «más de 5 de las 9» es de las VEINTE partidas y por eso queda detrás del
+    // `env` desde que el control se gateó: con tres partidas de 2.000 ticks el
+    // mundo no llega a poner seis situaciones distintas delante, y exigirlo sería
+    // pedirle a una muestra lo que midió el banco. Lo que se afirma siempre es que
+    // hubo AL MENOS UNA, que es lo que hace legible el cero de arriba.
+    expect(c.filas.filter((f) => f.situacionEn > 0).length).toBeGreaterThan(0)
+    if (CONTROL_EN_SERIO) expect(c.filas.filter((f) => f.situacionEn > 0).length).toBeGreaterThan(5)
   }, 900_000)
 
   it('EL NÚMERO · el azar no firma NINGUNA de las nueve, y el criterio se lee sobre las nueve', async () => {

@@ -22,12 +22,14 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { correrLaTanda } from './azar.js'
+import { correrLaTanda, loQueLeToca } from './azar.js'
 
 describe('el control del azar · tanda 0 de 5', () => {
   it('corre y guarda las semillas 0–3 de los dos controles', async () => {
-    // 4 semillas × 2 controles. Lo que se afirma es que el trabajo se hizo:
-    // el veredicto de cada partida lo leen y lo publican los consumidores.
-    expect(await correrLaTanda(0, 4)).toBe(8)
+    // 4 semillas × 2 controles cuando se mide en serio, y lo que sobre de la
+    // muestra corta cuando no: por eso el esperado sale de `loQueLeToca` y no de un
+    // 8 clavado. Lo que se afirma es que el trabajo se hizo; el veredicto de cada
+    // partida lo leen y lo publican los consumidores.
+    expect(await correrLaTanda(0, 4)).toBe(loQueLeToca(0, 4))
   }, 900_000)
 })
