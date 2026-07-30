@@ -71,7 +71,9 @@ import type {
   WhereCell,
 } from '@anima/skills'
 import type { QualityId } from '@anima/physics'
+import { HZ_DE_REFERENCIA } from '@anima/physics'
 import type { WorldState } from '@anima/world'
+import { COSTO_VIVIR_POR_SEGUNDO } from '@anima/world'
 
 import { Creencias, LUGARES, RASGOS, contextoDe } from '../src/creencias.js'
 import { aterrizar, avanzarReloj, decidir, nuevoEstado } from '../src/escalera.js'
@@ -357,7 +359,14 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
     expect(r.peldanos.D5).toBeGreaterThan(0)
     // Pero D5 no arranca hasta DESPUÉS de que la cadena entera se hizo: la primera
     // conducta de fondo sale recién cuando el pedido nuevo se queda sin vía.
-    expect(r.muerta).toBeGreaterThan(10000)
+    //
+    // El `-1` entra al techo desde el tramo M: con `COSTO_VIVIR_POR_SEGUNDO` en
+    // 0,34 esta corrida **llega viva** en vez de morirse en el 11.619, y lo que el
+    // renglón quiere decir —«aguantó lo suficiente para que D5 tenga sentido»— se
+    // cumple más que antes. Un `-1` leído como número la haría fallar por el lado
+    // bueno, que es la peor clase de rojo.
+    const vividos = r.muerta < 0 ? 20000 : r.muerta
+    expect(vividos).toBeGreaterThan(10000)
     // ─── Y POR QUÉ ESTE TEST NECESITA UN TECHO EXPLÍCITO ───────────────────
     //
     // 20.000 ticks con mente tardaban menos de los 5 s que vitest da por omisión;
@@ -626,13 +635,16 @@ describe('§2 · la rueda de D5, que era un ciclo de dos', () => {
    *
    * ─── Y LO QUE CUESTA LA REPARACIÓN, DICHO SIN MAQUILLAJE ───────────────────
    *
-   * Caminar no es gratis: `COSTO_POR_CELDA` es exactamente lo mismo que
-   * `COSTO_VIVIR_POR_SEGUNDO / hz` a la frecuencia de referencia, así que una
-   * criatura que explora gasta hasta el doble que una quieta. En un páramo —donde
-   * por definición no hay nada que encontrar— eso se paga entero y no se cobra
-   * nada: muere ANTES que la que se quedaba tildada. Ésa es la cuenta honesta, y
-   * es la misma que hace cualquier animal que sale a buscar: la alternativa no es
-   * vivir más, es morirse quieto sin haber mirado.
+   * Caminar no es gratis, y desde el tramo M lo es MUCHO menos: `COSTO_POR_CELDA`
+   * (0,05) era exactamente `COSTO_VIVIR_POR_SEGUNDO / hz` a la frecuencia de
+   * referencia —de ahí el «gasta hasta el doble»— y hoy, con vivir en 0,34, una
+   * celda cuesta **2,94× lo que cuesta el tick de respirar**. Así que una criatura
+   * que explora gasta hasta CUATRO veces lo que una quieta.
+   *
+   * En un páramo —donde por definición no hay nada que encontrar— eso se paga
+   * entero y no se cobra nada: muere ANTES que la que se quedaba tildada. Ésa es la
+   * cuenta honesta, y es la misma que hace cualquier animal que sale a buscar: la
+   * alternativa no es vivir más, es morirse quieto sin haber mirado.
    */
   it('REPARADO · en el páramo camina: 33 celdas y una racha quieta de 7, contra 25 y 3.992', () => {
     const r = correr(paramo(0, 1000), 20000)
@@ -660,10 +672,16 @@ describe('§2 · la rueda de D5, que era un ciclo de dos', () => {
     expect(r.quietos / r.ticks).toBeLessThan(0.4)
     expect(r.celdas).toBeGreaterThan(30)
     // LO QUE CUESTA: caminar gasta, y en un páramo no rinde. Muere antes que la
-    // que se quedaba quieta (16.823), y eso es un dato del mundo y no un defecto
-    // de la mente.
+    // que se quedaba quieta, y eso es un dato del mundo y no un defecto de la mente.
+    //
+    // El testigo dejó de ser el 16.823 clavado y pasa a DERIVARSE, que es lo que el
+    // tramo M obligó a hacer: aquel número era «lo que duraba la quieta» con vivir
+    // en 1,0. Con 0,34 la quieta llegaría a 58.823 ticks y ésta muere en 18.742, o
+    // sea que la brecha se abrió en vez de cerrarse. Escrito así, la próxima vez que
+    // alguien mueva el costo de vivir el testigo se mueve solo.
+    const loQueDuraQuieta = (1000 / COSTO_VIVIR_POR_SEGUNDO) * HZ_DE_REFERENCIA
     expect(r.muerta).toBeGreaterThan(10000)
-    expect(r.muerta).toBeLessThan(16823)
+    expect(r.muerta).toBeLessThan(loQueDuraQuieta)
   })
 
   /**

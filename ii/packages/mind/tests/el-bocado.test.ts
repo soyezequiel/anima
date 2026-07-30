@@ -31,11 +31,15 @@
 
 import { describe, expect, it } from 'vitest'
 
-import { qualityOf, specOf } from '@anima/physics'
+import { HZ_DE_REFERENCIA, qualityOf, specOf } from '@anima/physics'
 import { Contexto, Partida } from '@anima/perceive'
 import { cumple, EXPANSIONES_POR_TICK, interpretar, plan } from '@anima/plan'
 import type { WorldState } from '@anima/world'
-import { COSTO_POR_TOXICIDAD_Y_KILO, STAMINA_POR_CALORIA } from '@anima/world'
+import {
+  COSTO_POR_TOXICIDAD_Y_KILO,
+  COSTO_VIVIR_POR_SEGUNDO,
+  STAMINA_POR_CALORIA,
+} from '@anima/world'
 
 import { Creencias } from '../src/creencias.js'
 import { aterrizar, decidir, nuevoEstado, sinVocabulario } from '../src/escalera.js'
@@ -286,6 +290,23 @@ describe('(3) contra `stepWorld`: come, sube el aliento, y vive más', () => {
   it('lo mismo, contra la misma escena sin comer: la diferencia es la vida', () => {
     // El control: los mismos cuerpos, la misma criatura, pero CRUDOS. Ni un
     // bocado, y se muere cuando se le acaba el tanque.
+    //
+    // ─── EL HORIZONTE ERA 6400 Y AHORA SALE DE LA CONSTANTE ────────────────
+    //
+    // 6400 era «310 ÷ 0,05 = 6200, más un poco»: el tanque de arranque dividido
+    // por lo que cuesta un tick de estar viva. Con `COSTO_VIVIR_POR_SEGUNDO` en
+    // **0,34** el tick cuesta 0,017 y ese piso se corrió a **18.235**, o sea que
+    // la derivación que justificaba el 6400 venció: una criatura QUIETA no se
+    // muere adentro de esa ventana. La de esta escena camina y se muere en el
+    // **5811** —medido—, así que el 6400 seguía alcanzando de casualidad, y de
+    // casualidad no se deja un horizonte. Se DERIVA de las dos constantes que lo
+    // determinan, con un 15% de margen: 20.971 ticks.
+    //
+    // Y el rojo con el que este test apareció era OTRO y hay que decirlo: `Test
+    // timed out in 5000ms`, o sea el vencimiento por omisión de vitest, y sólo
+    // corriendo al lado de los otros 21 archivos —solo tardaba 0,9 s—. Es la
+    // CONTENCIÓN que este proyecto ya tiene medida en el banco del p99. El
+    // vencimiento se declara acá porque ahora son ~21.000 ticks de mundo.
     const crudos = [0, 1, 2, 3].map((i) => cuerpo(`crudo${String(i)}`, 'pescado', 20, {}, 'bloque'))
     const w = mundo({
       bodies: [
@@ -294,14 +315,15 @@ describe('(3) contra `stepWorld`: come, sube el aliento, y vive más', () => {
       ],
       actors: [actor('ana', { capacity: 3 })],
     })
-    const r = correr(w, 'ana', 6400)
+    const HORIZONTE = Math.ceil((310 / (COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA)) * 1.15)
+    const r = correr(w, 'ana', HORIZONTE)
     console.log(
       `\n─── EL CONTROL: LA MISMA ESCENA, CRUDA ───\n` +
-        `  bocados ${String(r.bocados)}  ·  murió en ${String(r.murioEn)}\n`,
+        `  bocados ${String(r.bocados)}  ·  murió en ${String(r.murioEn)} de ${String(HORIZONTE)}\n`,
     )
     expect(r.bocados).toBe(0)
     expect(r.murioEn).toBeGreaterThan(0)
-  })
+  }, 300_000)
 })
 
 // ─── (4) No se come a sí misma ──────────────────────────────────────────────

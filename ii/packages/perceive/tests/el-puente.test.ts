@@ -182,14 +182,23 @@ describe('la tabla del puente, caso por caso', () => {
   })
 
   it('`goTo` sin aliento da `rejected` con `sin-fuerza`', () => {
-    // A 100 Hz, y el porqué es un hallazgo que sólo aparece corriendo esto contra
-    // el mundo de verdad: **a la frecuencia de referencia, `sin-fuerza` de un
-    // `goTo` es INALCANZABLE**. `cobrarStamina` rechaza si queda menos de
-    // `COSTO_POR_CELDA` (0,05), y `sistemaMetabolismo` cobra
-    // `COSTO_VIVIR_POR_SEGUNDO/hz`, que a 20 Hz es exactamente 0,05 también — así
-    // que toda criatura que pueda ser rechazada por falta de fuerza se muere de
-    // hambre en el mismo tick, y el ejecutor le corta el vuelo antes de que
-    // reciba la respuesta. A 100 Hz vivir cuesta 0,01 y las dos cosas se separan.
+    // A 100 Hz, y el porqué ERA un hallazgo que sólo aparecía corriendo esto contra
+    // el mundo de verdad: **a la frecuencia de referencia, `sin-fuerza` de un `goTo`
+    // era INALCANZABLE**. `cobrarStamina` rechaza si queda menos de `COSTO_POR_CELDA`
+    // (0,05), y `sistemaMetabolismo` cobra `COSTO_VIVIR_POR_SEGUNDO/hz`, que a 20 Hz
+    // valía exactamente 0,05 también — así que toda criatura que pudiera ser
+    // rechazada por falta de fuerza se moría de hambre en el mismo tick, y el
+    // ejecutor le cortaba el vuelo antes de que recibiera la respuesta. A 100 Hz
+    // vivir costaba 0,01 y las dos cosas se separaban.
+    //
+    // ESA COINCIDENCIA SE ROMPIÓ y conviene que quede escrito acá: con
+    // `COSTO_VIVIR_POR_SEGUNDO` en 0,34 el tick de 20 Hz cuesta 0,017 y ya no empata
+    // con `COSTO_POR_CELDA`, así que `sin-fuerza` es alcanzable también a la
+    // frecuencia de referencia. Este test se deja a 100 Hz igual: lo que afirma es
+    // el CAMINO del rechazo, no la frecuencia, y a 100 Hz el margen entre las dos
+    // constantes es de 5× en vez de 3× —o sea que sigue siendo el caso más limpio—.
+    // Lo que la ruptura sí movió es el test de acá abajo, que necesitaba el empate
+    // para matarla; ver su nota.
     const p = new Partida(conElla([], { stamina: 0.03, hz: 100 }))
     let visto: StepResult | undefined
     correr(p, function* (ctx) {
@@ -206,7 +215,24 @@ describe('la tabla del puente, caso por caso', () => {
     // con `actor-desconocido` hasta el fin de los tiempos, y la partida no
     // terminaría nunca — o sea que el criterio (b), que se mide sobre 2000 ticks
     // con habilidades en vuelo, mediría una habilidad zombi.
-    const p = new Partida(conElla([], { stamina: 0.04 }))
+    //
+    // ─── EL TANQUE ERA 0,04 Y CON ÉSE YA NO SE MUERE ──────────────────────
+    //
+    // Cuando vivir costaba 1,0 por segundo —o sea 0,05 por tick a 20 Hz, EXACTAMENTE
+    // lo mismo que `COSTO_POR_CELDA`— cualquier criatura a la que le faltara para
+    // dar un paso se moría en ese mismo tick, y 0,04 alcanzaba para que este caso
+    // pasara. Con `COSTO_VIVIR_POR_SEGUNDO` en 0,34 el tick sale 0,017 y las dos
+    // cosas se separaron: con 0,04 la criatura AHORA sobrevive, el `goTo` le vuelve
+    // `rejected` con `sin-fuerza` y la habilidad termina `ok: true` — que es el caso
+    // del test de arriba, no el de éste.
+    //
+    // Así que el arnés la hace morir de la única manera que sigue existiendo: con
+    // tanque para dar unos pasos y no para llegar. Cada tick de viaje le cuesta
+    // `COSTO_POR_CELDA + 0,017` = 0,067, así que 0,2 de tanque compran tres pasos de
+    // los nueve y el tercero la deja en 0,016, por debajo de lo que el metabolismo
+    // le cobra en el mismo tick. Se muere ANDANDO, que es lo que el título dice y lo
+    // que el corte tiene que ver: no se debilitó el caso, se lo volvió a poner.
+    const p = new Partida(conElla([], { stamina: 0.2 }))
     const v = p.volar(
       'ella',
       function* (ctx: Ctx): Hab {
@@ -220,6 +246,12 @@ describe('la tabla del puente, caso por caso', () => {
     expect(v.outcome?.ok).toBe(false)
     expect(p.state.actors.has('ella')).toBe(false)
     expect(p.state.bodies.has('ella-cuerpo'), 'la materia no se destruye').toBe(true)
+    // Y MURIÓ A MITAD DEL VIAJE Y NO EN LA LARGADA: salió de (0,0) y no llegó a
+    // (9,0). Sin esto, un tanque demasiado chico haría pasar el test con una
+    // criatura que se muere antes de dar un paso, que es otro caso.
+    const donde = p.state.bodies.get('ella-cuerpo')!.at
+    expect(donde.x).toBeGreaterThan(0)
+    expect(donde.x).toBeLessThan(9)
   })
 
   it('`take` de lo que está al lado da `done`', () => {

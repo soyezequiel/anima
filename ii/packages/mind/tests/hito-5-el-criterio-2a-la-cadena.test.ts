@@ -44,22 +44,43 @@ import { cuaderno } from './el-cuadro.js';
 const MEDIDO = cuaderno('2a-la-cadena');
 
 describe('(2) sobrevive 20.000 ticks sola', () => {
-  it('la aritmética del criterio: 20.000 ticks SON exactamente un tanque de aliento', () => {
-    // No es una coincidencia y conviene decirlo antes de la corrida: el criterio
-    // (2), traducido a la moneda del mundo, dice «comé al menos una vez».
+  it('la aritmética del criterio: el tanque de ARRANQUE no llega a los 20.000 ticks', () => {
+    // ─── ESTE BLOQUE DECÍA OTRA COSA, Y LA CONCLUSIÓN SOBREVIVIÓ ────────────
+    //
+    // Decía «20.000 ticks SON exactamente un tanque de aliento» y afirmaba
+    // `soloVivir === tanque`: con `COSTO_VIVIR_POR_SEGUNDO` en 1,0 los 1000
+    // segundos costaban 1000 y el tanque topa en 1000. Era cierto y era bonito.
+    //
+    // El usuario bajó la constante a **0,34** (tramo M), así que los 1000 segundos
+    // cuestan 340 y el tanque LLENO alcanzaría para 58.823 ticks. Lo que salva la
+    // conclusión —«el criterio (2) es comé al menos una vez»— es que la criatura
+    // **no arranca con el tanque lleno: arranca con 310**, que es lo que la pone
+    // hambrienta (ver `laEscenaDelDocumento`). Con 310 y 0,34, estar quieta compra
+    // 18.235 ticks contra los 20.000 que el criterio pide.
+    //
+    // Y eso no es casualidad tampoco: es **el borde de abajo de la ventana** con la
+    // que se eligió el 0,34 (`oracle/tests/presupuesto.test.ts`, «LA VENTANA
+    // ENTERA»). Abajo de 0,3100 el tanque de arranque llegaría solo y el criterio
+    // se cumpliría sin comer. O sea que este `expect` es el guardián de ese borde,
+    // visto desde el otro paquete.
     const tanque = specOf('stamina').range[1];
+    const arranque = 310;
     const segundos = CRITERIO_TICKS / HZ_DE_REFERENCIA;
     const soloVivir = segundos * COSTO_VIVIR_POR_SEGUNDO;
-    expect(soloVivir).toBe(tanque);
+    const ticksQuieta = Math.floor((arranque / COSTO_VIVIR_POR_SEGUNDO) * HZ_DE_REFERENCIA);
+    expect(soloVivir).toBeGreaterThan(arranque);
+    expect(ticksQuieta).toBeLessThan(CRITERIO_TICKS);
     console.log(
       `\n─── LA ARITMÉTICA DEL CRITERIO ───\n` +
         `  ${String(CRITERIO_TICKS)} ticks ÷ ${String(HZ_DE_REFERENCIA)} Hz = ${String(segundos)} s de mundo\n` +
         `  × COSTO_VIVIR_POR_SEGUNDO (${String(COSTO_VIVIR_POR_SEGUNDO)}) = ${String(soloVivir)} de aliento SÓLO por estar viva\n` +
-        `  y el tanque topa en ${String(tanque)}.  O sea: el criterio (2) es «comé al menos una vez».\n`,
+        `  y arranca con ${String(arranque)} de un tanque que topa en ${String(tanque)}:\n` +
+        `  estar quieta le compra ${String(ticksQuieta)} ticks de los ${String(CRITERIO_TICKS)}.\n` +
+        `  O sea: el criterio (2) sigue siendo «comé al menos una vez».\n`,
     );
     MEDIDO.set(
       'aritmética',
-      `${String(CRITERIO_TICKS)} ticks = ${String(soloVivir)} de aliento = el tanque entero`,
+      `${String(CRITERIO_TICKS)} ticks = ${String(soloVivir)} de aliento y arranca con ${String(arranque)}: quieta llega al ${String(ticksQuieta)}`,
     );
   });
 
@@ -718,8 +739,22 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // festejar. La versión anterior de este bloque afirmaba exactamente lo
     // contrario (`>= porTick × 0,99` y `< porTick × 1,3`) y por eso el bucle pasó
     // en verde.
+    //
+    // ─── Y EL TECHO SUBIÓ DE 2,5 A 3,5, que NO es aflojarlo ────────────────
+    //
+    // El usuario bajó `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a 0,34 (tramo M), o sea que
+    // **el denominador de esta razón se dividió por 2,94 y lo que gastan las patas
+    // no se movió**. La razón pasó de 1,64× a 2,89× sin que la criatura cambie una
+    // sola decisión: es la misma caminata contra un respirar más barato.
+    //
+    // Por eso, además de la banda, se afirma lo que NO depende de la constante: los
+    // gramos por tick que se van EN PATAS. Ése es el número que mide la conducta, y
+    // el que hay que mirar si algún día esto vuelve a moverse.
     expect(pendiente).toBeGreaterThan(porTick * 1.3);
-    expect(pendiente).toBeLessThan(porTick * 2.5);
+    expect(pendiente).toBeLessThan(porTick * 3.5);
+    const enPatas = pendiente - porTick;
+    expect(enPatas).toBeGreaterThan(0.02);
+    expect(enPatas).toBeLessThan(0.05);
     // Y el pescado sigue ahí, cada vez más podrido, esperando un fuego que no llega.
     expect(podrido).toBeGreaterThan(0.25);
     MEDIDO.set(

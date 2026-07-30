@@ -1040,7 +1040,11 @@ describe('§5 · lo que la tanda dejó roto', () => {
       { k: 'wait', by: 'ana', seq: 3, commitment: 'reversible', segundos: 30 },
     ])
     w = paso.state
-    for (let t = 0; t < 60; t++) {
+    // 200 ticks y no 60: con `COSTO_VIVIR_POR_SEGUNDO` en 0,34 los 2 de `stamina`
+    // duran 5,88 s, o sea que se muere en el tick 118 y no en el 40. Es el techo del
+    // ARNÉS —hasta dónde mira— y no un umbral del mundo; la espera de 30 s sigue sin
+    // llegar a terminar, que es lo que este bloque necesita.
+    for (let t = 0; t < 200; t++) {
       const antes = w
       paso = stepWorld(w, [])
       w = paso.state
@@ -1065,7 +1069,8 @@ describe('§6 · los números reportados, remedidos por el adversario', () => {
       let w = mundo({ hz, bodies: [enElPiso(criatura('ana', 500), EN(0, 0))], actors: [actor('ana')] })
       const dt = dtDeFrecuencia(hz)
       let n = -1
-      for (let t = 1; t <= Math.round(700 / dt); t++) {
+      // 1600 s y no 700: con el segundo a 0,34 los 500 de `stamina` duran 1470,6 s.
+      for (let t = 1; t <= Math.round(1600 / dt); t++) {
         const paso = stepWorld(w, [])
         w = paso.state
         if (paso.events.some((e) => e.k === 'murio' && e.por === 'hambre')) {
@@ -1077,7 +1082,13 @@ describe('§6 · los números reportados, remedidos por el adversario', () => {
       filas.push(`  ${String(hz).padStart(4)} Hz   tick ${String(n).padStart(6)}   ${(n * dt).toFixed(4)} s`)
     }
     log(['══ REMEDIDO: EL AYUNO DESDE 500 DE STAMINA ══════════════════════════════', ...filas])
-    expect(ticks).toEqual([5000, 10_000, 12_500, 25_001, 50_001])
+    // Eran [5000, 10.000, 12.500, 25.001, 50.001] con `COSTO_VIVIR_POR_SEGUNDO` en
+    // 1,0, o sea 500 s de vida. Con 0,34 son 1470,6 s y los cinco ticks se
+    // multiplican por 2,94. Lo que el bloque mide sigue siendo lo mismo: que los
+    // SEGUNDOS coinciden a las cinco frecuencias (1470,60 salvo 1470,59 a 100 Hz,
+    // que es el residuo de restar 147.059 veces un número que no es exacto en
+    // binario) y los TICKS no, que es justo al revés que el bug del ADR II-0009.
+    expect(ticks).toEqual([14_706, 29_412, 36_765, 73_530, 147_059])
   }, 120_000)
 
   it('`wait(2)` dura dos segundos, remedido con el mundo corriendo y sin reemitir', () => {

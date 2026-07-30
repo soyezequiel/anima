@@ -27,7 +27,7 @@
 import { describe, expect, it } from 'vitest'
 import { interpretar, SCHEMA_INDEX } from '@anima/plan'
 import type { BodyView, Cell, CellQuality, PlaceMemory, SelfView, Where, WhereCell } from '@anima/skills'
-import { COSTO_POR_CELDA } from '@anima/world'
+import { COSTO_POR_CELDA, COSTO_VIVIR_POR_SEGUNDO } from '@anima/world'
 
 import { caloriasDelPeorDeTag } from '../src/necesidades.js'
 import {
@@ -41,6 +41,7 @@ import {
   opportunities,
   PISO_DE_COSTO,
   RADIO_DE_AGUA,
+  SEGUNDOS_DE_UNA_INTENCION,
   valorDe,
   venenoQueBanca,
   type GanchosDeOportunidad,
@@ -197,12 +198,24 @@ const CREENCIAS = memoria({
 })
 
 // Los dos costos de la escena, medidos y no despejados:
-//   río      6 celdas × 0,10 de aliento + 1,5 s de `extraccion` = 2,10
-//   matorral 2 celdas × 0,10 de aliento + 0,05 s de una intención = 0,25
-const COSTO_DEL_RIO = 2.1
-const COSTO_DEL_MATORRAL = 0.25
-const VALOR_DEL_RIO = 0.21428571428571427
-const VALOR_DEL_MATORRAL = 0.2
+//   río      6 celdas × 0,067 de aliento + 1,5 s × 0,34 de `extraccion` = 0,912
+//   matorral 2 celdas × 0,067 de aliento + 0,05 s × 0,34 de una intención = 0,151
+//
+// ─── LOS CUATRO BAJARON, Y LOS BAJÓ `COSTO_VIVIR_POR_SEGUNDO` ───────────────
+//
+// Eran 2,10 · 0,25 · 0,21428571428571427 · 0,2 mientras la constante valió 1,0.
+// Hoy vale **0,34** y los cuatro salen de correr, no de despejar: el aliento de
+// una celda pasó de 0,10 a 0,067 (el paso no se movió, lo que se abarató es el
+// TIEMPO del paso) y el de un segundo de proceso de 1,00 a 0,34. Los dos costos
+// bajaron y los dos valores subieron, porque el valor es `p · sat / costo`.
+//
+// Y el renglón viejo del río decía «+ 1,5 s de `extraccion`» sumando SEGUNDOS a
+// ALIENTO: daba el número justo sólo porque el segundo costaba 1,0. La cuenta de
+// verdad —la que `alientoDeConseguir` hace— es `COSTO_VIVIR_POR_SEGUNDO × 1,5`.
+const COSTO_DEL_RIO = 0.912
+const COSTO_DEL_MATORRAL = 0.15100000000000002
+const VALOR_DEL_RIO = 0.4934210526315789
+const VALOR_DEL_MATORRAL = 0.3311258278145695
 
 // ─── La corrida canónica ────────────────────────────────────────────────────
 
@@ -250,27 +263,60 @@ describe('la corrida canónica del documento', () => {
     // negativo. Vienen de `estimatedTicks`, que el ADR II-0008 ya declaró mentira
     // de unidades y renombró a `segundos`.
     //
-    // Lo que este mundo contesta, medido: 0,2143 y 0,2000, con costos 2,10 y
-    // 0,25. Lo que el documento afirma y SÍ se reproduce —que gana el río, y por
-    // poco— está pinado en el test de arriba.
+    // Lo que este mundo contesta, medido: 0,4934 y 0,3311, con costos 0,912 y
+    // 0,151 (eran 0,2143 y 0,2000 con costos 2,10 y 0,25, cuando
+    // `COSTO_VIVIR_POR_SEGUNDO` valía 1,0). Lo que el documento afirma y SÍ se
+    // reproduce —que gana el río— está pinado en el test de arriba; que gane «por
+    // poco» ya NO, y eso está medido dos tests más abajo.
     const lista = opportunities(escenaCanonica(), CREENCIAS, HAMBRE, GANCHOS)
     expect(lista[0]?.valor).toBeCloseTo(0.009, 4)
     expect(lista[1]?.valor).toBeCloseTo(0.006, 4)
   })
 
-  it('la elección se decide por un 7%, y con el paso sin su tiempo se da vuelta', () => {
+  it('la elección se decide por un 49%, y ya no por un 7%', () => {
+    // ─── EL MARGEN SE MULTIPLICÓ POR SIETE, Y NO LO TOCÓ ESTE MÓDULO ────────
+    //
+    // Era **1,0714** —el «se decide por un 7%» del nombre viejo— mientras
+    // `COSTO_VIVIR_POR_SEGUNDO` valió 1,0. Hoy vale 0,34 y mide **1,4901**: el
+    // río gana por un 49%. La causa está en qué parte de cada costo se abarató.
+    // El río paga 1,5 segundos de `extraccion` y el matorral 0,05, o sea que el
+    // término que la constante divide es TREINTA veces más grande del lado del
+    // río; bajarla de 1,0 a 0,34 le sacó 1,02 de costo al río y 0,034 al
+    // matorral. La escena no cambió, las creencias tampoco: cambió el precio del
+    // segundo.
     const lista = opportunities(escenaCanonica(), CREENCIAS, HAMBRE, GANCHOS)
-    expect((lista[0]?.valor ?? 0) / (lista[1]?.valor ?? 1)).toBeCloseTo(1.0714, 4)
+    expect((lista[0]?.valor ?? 0) / (lista[1]?.valor ?? 1)).toBeCloseTo(1.4901, 4)
+  })
 
-    // LA FRAGILIDAD, MEDIDA. Si el costo de la celda fuera sólo el paso
-    // (`COSTO_POR_CELDA`) y no el paso MÁS el tiempo del paso, la misma escena
-    // con las mismas creencias elige el matorral: el proceso pesa demasiado
-    // contra una caminata de seis celdas que sale 0,30 de aliento. Es la razón
-    // por la que la decisión 3 del módulo está escrita con esa aritmética y no
-    // con otra, y es lo que se rompe el día que la partida corra a 100 Hz sin
-    // que la vista publique el `hz`.
-    const rio = 6 * COSTO_POR_CELDA + 1.5
-    const matorral = 2 * COSTO_POR_CELDA
+  it.fails('LA FRAGILIDAD SE DESACTIVÓ: con el paso sin su tiempo ya NO se da vuelta', () => {
+    // ─── ESTE HUECO ES NUEVO Y LO ABRIÓ LA CALIBRACIÓN, NO UN CAMBIO DE CÓDIGO ─
+    //
+    // Este bloque vivía adentro del test de arriba y afirmaba: si el costo de la
+    // celda fuera sólo el paso (`COSTO_POR_CELDA`) y no el paso MÁS el tiempo del
+    // paso, la misma escena con las mismas creencias elegiría el matorral. Era el
+    // argumento de por qué la decisión 3 del módulo está escrita con esa
+    // aritmética, y con `COSTO_VIVIR_POR_SEGUNDO = 1,0` se cumplía: 0,2500 contra
+    // 0,3333.
+    //
+    // Con la constante en **0,34** ya no. Medido acá abajo:
+    //
+    //     río      0,45 ÷ (6 × 0,05 + 0,34 × 1,5)  = 0,45 ÷ 0,810 = **0,5556**
+    //     matorral 0,05 ÷ (2 × 0,05 + 0,34 × 0,05) = 0,05 ÷ 0,117 = **0,4274**
+    //
+    // El río gana igual, así que el contrafáctico ya no distingue las dos
+    // aritméticas EN ESTA ESCENA. Y el motivo es el mismo que hizo crecer el
+    // margen del test de arriba: el tiempo del paso pasó de valer lo mismo que el
+    // paso (0,05 y 0,05) a valer un tercio (0,017 contra 0,05), o sea que sacarlo
+    // de la cuenta mueve mucho menos que antes.
+    //
+    // **NO se ablanda y no se borra**: queda en rojo con el número al lado, porque
+    // lo que perdió no es la decisión 3 —que sigue siendo la aritmética correcta y
+    // la que `world/tests/el-tiempo-no-depende-del-tick.test.ts` verifica en el
+    // mundo— sino la ESCENA que la delataba. El día que alguien quiera volver a
+    // tener el guardián, hace falta una escena nueva con el proceso más liviano o
+    // la caminata más larga, y eso es una decisión de diseño del test.
+    const rio = 6 * COSTO_POR_CELDA + COSTO_VIVIR_POR_SEGUNDO * 1.5
+    const matorral = 2 * COSTO_POR_CELDA + COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_UNA_INTENCION
     expect((0.5 * 0.9) / rio).toBeLessThan((0.25 * 0.2) / matorral)
   })
 })
@@ -298,13 +344,21 @@ describe('el costo', () => {
     expect(costoEstimado(v, 'cuerpo:matorral#vegetal')).toBe(COSTO_DEL_MATORRAL)
   })
 
-  it('caminar una celda cuesta 0,10 de aliento, y una intención 0,05', () => {
+  it('caminar una celda cuesta 0,067 de aliento, y una intención 0,017', () => {
     // Los dos números salen de constantes del MUNDO y de la física, no de acá:
     // `COSTO_POR_CELDA` (0,05) más un tick de `COSTO_VIVIR_POR_SEGUNDO` a
-    // `HZ_DE_REFERENCIA` (0,05). Pinarlos es pinar la cuenta que
+    // `HZ_DE_REFERENCIA` (0,34 ÷ 20 = 0,017). Pinarlos es pinar la cuenta que
     // `world/tests/el-tiempo-no-depende-del-tick.test.ts` verifica en el mundo.
-    expect(ALIENTO_POR_CELDA).toBe(0.1)
-    expect(PISO_DE_COSTO).toBe(0.05)
+    //
+    // ERAN 0,10 y 0,05, y los movió la calibración: `COSTO_VIVIR_POR_SEGUNDO`
+    // bajó de 1,0 a 0,34. Con eso se rompió la coincidencia que el comentario de
+    // `ALIENTO_POR_CELDA` festejaba —«caminar cuesta lo mismo que vivir», o sea
+    // 0,05 y 0,05, y el total el doble del paso— y **caminar pasó a costar casi
+    // tres veces lo que vivir el mismo tiempo**: 0,05 de paso contra 0,017 de
+    // segundo. Es exactamente lo que hace que la criatura del criterio (2) gaste
+    // 2,89× lo de estar quieta.
+    expect(ALIENTO_POR_CELDA).toBe(0.067)
+    expect(PISO_DE_COSTO).toBe(0.017)
   })
 
   it('un lugar pelado, sin tag, cuesta sólo la caminata', () => {
@@ -437,7 +491,12 @@ describe('el peligro de dividir', () => {
     // dos empatan, el desempate cae en el `id` y la que calma nueve veces más se
     // ordena por orden alfabético.
     expect(valorDe(0.5, 0.9, 0)).toBeGreaterThan(valorDe(0.25, 0.2, 0))
-    expect(valorDe(0.5, 0.9, 0)).toBe(9)
+    // Era 9 —`0,45 ÷ 0,05`— y hoy es `0,45 ÷ PISO_DE_COSTO` = 26,47, porque el
+    // piso es un tick de estar viva y el tick bajó de 0,05 a 0,017. El número no
+    // se copia: se lo pide a la misma constante que el módulo divide, que es lo
+    // que el test de arriba (`costo cero no es Infinity`) ya hacía.
+    expect(valorDe(0.5, 0.9, 0)).toBe((0.5 * 0.9) / PISO_DE_COSTO)
+    expect(valorDe(0.5, 0.9, 0)).toBeCloseTo(26.4706, 4)
   })
 
   it('un valor que no es finito no entra en la lista', () => {
@@ -522,7 +581,13 @@ describe('el trabajo está acotado', () => {
       ctxDe: (_v, lugar) => (lugar === 'celda:30,0' ? AGUA : lugar),
     })
     expect(lista.map((o) => o.id)).toEqual(['celda:30,0#carnoso', `celda:30,0#carnoso${COLA}`])
-    expect(lista[0]?.valor).toBe(valorDe(0.5, 0.9, 30 * ALIENTO_POR_CELDA + 1.5))
+    // El `+ 1,5` que había acá sumaba SEGUNDOS a ALIENTO y daba el número justo
+    // sólo porque `COSTO_VIVIR_POR_SEGUNDO` valía 1,0. Con la constante en 0,34 la
+    // cuenta se separó (2,52 contra 3,51) y quedó a la vista: lo que
+    // `alientoDeConseguir` suma es `COSTO_VIVIR_POR_SEGUNDO × segundos`.
+    expect(lista[0]?.valor).toBe(
+      valorDe(0.5, 0.9, 30 * ALIENTO_POR_CELDA + COSTO_VIVIR_POR_SEGUNDO * 1.5),
+    )
   })
 })
 

@@ -28,7 +28,7 @@
 //       `physics/src/leyes.ts:1735`— así que atar una vara ARDIENDO devuelve un
 //       ensamble ardiendo con un id NUEVO, que no está en `frotados`. Corrido de
 //       punta a punta con `stepWorld`: la criatura frota `vara` (0,5 kg, prende en
-//       el tick 47, 701,8286 de stamina), la ata a una corteza con un junco, y el
+//       el tick 47, 700,2446 de stamina), la ata a una corteza con un junco, y el
 //       juez firmaba «nació de una union completa … y ardió … SIN QUE NADIE LO
 //       FROTARA NUNCA». No hubo propagación: hubo un cambio de nombre. **El
 //       detector pide ahora que el ensamble haya nacido POR DEBAJO de su punto de
@@ -92,9 +92,9 @@
 //   (9) SIGUE ABIERTO · EL CONTRA-DETECTOR DEL FARDO NO MIRA EL TANQUE.
 //       `sePodiaArmarLaCadena` usa `TECHO_DE_LA_FRICCION = 0,7132`, que es el techo
 //       con un tanque de 1000, y la corrida canónica del criterio arranca con 310.
-//       Medido acá: encender una vara de 0,5 kg cuesta 701,8286, o sea 1398,857 por
+//       Medido acá: encender una vara de 0,5 kg cuesta 700,2446, o sea 1398,857 por
 //       kilo, y la vara de 0,71 que abre la cadena sale 995,6. Con 310 el techo real
-//       es 0,2199 kg —por debajo de la madera más liviana que `agua-dulce` siembra,
+//       es 0,2210 kg —por debajo de la madera más liviana que `agua-dulce` siembra,
 //       0,3— y el contra-detector contesta `true` igual, con los dos tanques. No se
 //       repara acá porque no hay función exportada que devuelva el precio de
 //       encender y `sePodiaArmarLaCadena` ni siquiera recibe al actor: es un hueco
@@ -154,7 +154,17 @@ import {
   unir,
 } from '@anima/physics'
 import type { Body, Physics } from '@anima/physics'
-import { apply, chebyshev, drop, eat, mapaDeActores, mapaDeCuerpos, stepWorld, take } from '@anima/world'
+import {
+  apply,
+  chebyshev,
+  COSTO_VIVIR_POR_SEGUNDO,
+  drop,
+  eat,
+  mapaDeActores,
+  mapaDeCuerpos,
+  stepWorld,
+  take,
+} from '@anima/world'
 import type { Actor, Intent, WorldBody, WorldState } from '@anima/world'
 
 import {
@@ -327,14 +337,25 @@ describe('frente 1 · las funciones que dice llamar existen, y la única constan
     }
     const cuerpoAna = w.bodies.get('ana-cuerpo')
     const precio = 1000 - (cuerpoAna === undefined ? 0 : qualityOf(cuerpoAna.body, 'stamina', PHYS))
-    const porKilo = (precio - 2.4) / 0.5
-    const techoCon310 = (310 - 2.4) / porKilo
+    // LO QUE SE DESCUENTA ES VIVIR MIENTRAS SE FROTA, y ahora se DERIVA en vez de
+    // clavarse: eran «2,4», que es `2,4 s × 1,0/s` con el costo de vivir de
+    // entonces. Cuando el usuario lo bajó a 0,34 el número clavado quedó midiendo un
+    // mundo que ya no existe y el precio se movió 1,5840 —de 701,8286 a 700,2446—,
+    // que es exactamente esa diferencia. Escrito con la constante adentro, la
+    // próxima vez se mueve solo.
+    const vivirMientrasSeFrota = ((prendioEn + 1) / HZ_DE_REFERENCIA) * COSTO_VIVIR_POR_SEGUNDO
+    const porKilo = (precio - vivirMientrasSeFrota) / 0.5
+    const techoCon310 = (310 - vivirMientrasSeFrota) / porKilo
     console.log(
       `\n  encender 0,5 kg de madera: prendió en el tick ${String(prendioEn)}, costó ${precio.toFixed(4)} de stamina` +
         ` → ${porKilo.toFixed(3)} por kilo · techo con el tanque de 310: ${techoCon310.toFixed(4)} kg`,
     )
     expect(prendioEn).toBe(47)
-    expect(precio).toBeCloseTo(701.8286, 3)
+    // 700,2446 y no 701,8286: la diferencia son los 1,5840 de vivir los 2,4 s del
+    // frotar, que con `COSTO_VIVIR_POR_SEGUNDO` en 0,34 salen 0,816 en vez de 2,40.
+    // Lo TÉRMICO —que es casi todo el precio— no se movió ni un decimal, y eso es lo
+    // que hay que ver acá: bajar el costo de vivir no abarató encender.
+    expect(precio).toBeCloseTo(700.2446, 3)
     // El techo con 310 cae por debajo de la madera más liviana que siembra
     // `agua-dulce` (0,3 kg, `bioma.ts:295`): no hay UNA pieza que esa criatura
     // pueda encender frotando.

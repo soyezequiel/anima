@@ -19,13 +19,18 @@
 //     cuatro, todos en el tick 64, todos a `digestibility` 0,9500 y `toxicity`
 //     0,0000. Y el fuego se queda adentro de la ventana `[253 ; 410)` hasta el
 //     tick 431 — o sea **6,7 hornadas**, sin que nadie lo atienda (grupo 1);
-//   · encender lo más barato que emite algo cuesta **142,29** de aliento sobre un
+//   · encender lo más barato que emite algo cuesta **140,70** de aliento sobre un
 //     tanque de 1000, y un pescado cocido de 2 kg deja **+11,85**. Un fuego se
-//     paga con **12,0 pescados**, y ninguna pieza que la criatura pueda encender
+//     paga con **11,9 pescados**, y ninguna pieza que la criatura pueda encender
 //     frotando llega siquiera a los 253 que la cocción pide — la de 0,7132 kg
 //     entrega 214,14 y se come el tanque entero (grupo 2);
-//   · y la mente cotiza el fuego entero en **15,0000** de aliento
-//     (`alientoDelEsquema`), o sea **9,5× por debajo** del más barato que existe.
+//   · y la mente cotiza el fuego entero en **5,1000** de aliento
+//     (`alientoDelEsquema`), o sea **27,6× por debajo** del más barato que existe.
+//     Era 15,0000 y 9,5× hasta que `COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34:
+//     la cotización es `COSTO_VIVIR_POR_SEGUNDO × SEGUNDOS_DE_COCCION`, así que
+//     abaratar el segundo abarató la cotización y NO el fuego, que se paga en
+//     `heatCapacity × ΔT / eficiencia`. **El error de la mente casi se triplicó
+//     sin que nadie tocara la mente.**
 //
 // La causa no es un `if` que falte: es que **el vocabulario de metas no tiene
 // número**. `Predicado` tiene tres formas —`cualidad`, `geometria`, `sostiene`—
@@ -90,6 +95,7 @@ import type { WorldState } from '@anima/world'
 import {
   apply,
   COSTO_POR_TOXICIDAD_Y_KILO,
+  COSTO_VIVIR_POR_SEGUNDO,
   eat,
   STAMINA_POR_CALORIA,
   stepWorld,
@@ -375,7 +381,7 @@ describe('(1) cocinar de a varios: el mundo lo paga y la mente no lo puede pedir
 // gastar el tanque. La mente tiene un solo lugar donde eso podría entrar:
 // `alientoDelEsquema`, que es lo que le suma de precio a la meta comestible.
 
-describe('(2) la economía del fuego: la mente lo cotiza 9,5× barato', () => {
+describe('(2) la economía del fuego: la mente lo cotiza 27,6× barato', () => {
   it('lo que cuesta encender, medido frotando de verdad, contra lo que la mente cree', () => {
     // El barrido de masas. `emitsPower = step(T ≥ ignición) · fuelEnergy · mass ·
     // 16,7`, o sea que la potencia sube con la masa Y el precio de encender
@@ -426,15 +432,29 @@ describe('(2) la economía del fuego: la mente lo cotiza 9,5× barato', () => {
     expect(masBarato.costo / netoDeUno).toBeGreaterThan(10)
     // (c) y la mente lo cotiza en el `mientras` de la fila de ley y nada más: no
     //     ve el fuego, ve el rato que hay que esperar al lado del fuego.
-    expect(cotizado).toBeCloseTo(SEGUNDOS_DE_COCCION, 10)
-    expect(masBarato.costo / cotizado).toBeGreaterThan(9)
+    //
+    //     ─── ACÁ HABÍA UNA CONFUSIÓN DE UNIDADES QUE EL 0,34 DESTAPÓ ────────
+    //
+    //     Decía `expect(cotizado).toBeCloseTo(SEGUNDOS_DE_COCCION, 10)`, o sea que
+    //     comparaba ALIENTO contra SEGUNDOS y daba verde nada más que porque
+    //     `COSTO_VIVIR_POR_SEGUNDO` valía 1,0. Con la constante en 0,34 la
+    //     cotización mide 5,1000 y los segundos siguen siendo 15: la igualdad era
+    //     de la calibración, no del código. Ahora se afirma el PRODUCTO, que es lo
+    //     que `alientoDelEsquema` calcula de verdad.
+    expect(cotizado).toBeCloseTo(COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_COCCION, 10)
+    // Y el error de la mente pasó de 9,5× a 27,6× por el mismo motivo: lo que se
+    // abarató es el segundo de espera, no el fuego. El piso queda en 20, holgado
+    // abajo de los 27,6 medidos y muy arriba del 9 de antes.
+    expect(masBarato.costo / cotizado).toBeGreaterThan(20)
   })
 
   /**
    * `alientoDelEsquema` mira UNA fila del índice y devuelve su `segundos`. Está
    * escrito en su propio comentario que es un piso y no una estimación — lo que
-   * no está dicho es el tamaño del error, y el tamaño es la decisión: 15 contra
-   * 142,29 no ordena mal, ordena al revés.
+   * no está dicho es el tamaño del error, y el tamaño es la decisión: 5,10 contra
+   * 140,70 no ordena mal, ordena al revés. (Era 15 contra 142,29 cuando
+   * `COSTO_VIVIR_POR_SEGUNDO` valía 1,0; abaratar el segundo abarató la
+   * cotización y dejó el fuego donde estaba.)
    *
    * La reparación no es un número más grande escrito a mano: es que el precio de
    * una meta salga de la CADENA que la establece y no de su último eslabón, y eso

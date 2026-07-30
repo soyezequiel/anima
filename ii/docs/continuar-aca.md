@@ -35,11 +35,19 @@ encima).
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2436 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
-nueve typechecks limpios, 68 huecos `it.fails` anotados.** Corridos enteros al cerrar
-el tramo L, mirando el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y
-además `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (116 de 116). En la rama `anima-2`, **ninguno pusheado** — el
-usuario pushea solo. Si la sesión nueva es en otra máquina, hay que pushear antes.
+**Nueve paquetes, 2448 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+nueve typechecks limpios.** Corridos enteros al cerrar el tramo M, mirando el exit
+code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
+`ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (121 de 121). En la rama
+`anima-2`, **ninguno pusheado** — el usuario pushea solo. Si la sesión nueva es en
+otra máquina, hay que pushear antes.
+
+> **Y el tramo M bajó una constante del mundo: `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a
+> 0,34.** Lo decidió el usuario con la ventana medida delante (sección 5·bis). Eso
+> movió ~30 números clavados en cinco paquetes —ticks de muerte, el hash de la
+> partida de 2000, el precio del fuego, la ventana del presupuesto— y todos están
+> actualizados con el viejo anotado al lado. **Dos `it.fails` se dieron vuelta y hoy
+> son `it`**: la contraprueba de la despensa y el diagnóstico 10.
 
 > **Y HAY UN VERDE QUE NO ES EL DE `pnpm ii:test`.** `@anima/juez` tiene una
 > aserción que sólo se evalúa con `ANIMA_BANCO=1`, y **estaba roja desde antes del
@@ -125,7 +133,7 @@ tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 | la cadena de la caña | **CUMPLE** | 7 eslabones en el plan, **6 vuelos** contra el mundo (el `ir` al pozo lo poda el tramo L: ya estaba al lado): tira la caña en el tick **48**, el pescado entra a la mano en el **108** |
 | `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,947 ms/tick contra una ventana de 50) — y la partida termina con **120 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
 | p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE** | muere en el **3802** de 20.000 con **0 bocados**. Con el tanque lleno: muere en el **12.124**, también con 0 bocados. Con el eslabón REGALADO (despensa de cocidos): come 68 y muere en el **12.847** |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE, y por otra razón que antes** | canónica (tanque 310): muere en el **6244** de 20.000 con **0 bocados** (era el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
 | emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE con el tanque canónico · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **10/20, 10/20 y 8/20** |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
@@ -230,14 +238,70 @@ agregalo AL FINAL de su sección allá — no hace falta releer nada para eso.
 
 ---
 
+## 5·bis · LAS TRES DECISIONES DEL TRAMO M, tomadas por el usuario
+
+Las tres cosas que el traspaso anterior dejó abiertas «porque son del usuario» se
+decidieron. Van acá arriba porque cambian cómo se lee todo lo de abajo.
+
+1. **LA ARITMÉTICA: las dos cosas a la vez.** Enseñarle al planificador **la
+   escalera de la yesca** —que cierra la cuenta sin tocar ninguna constante— y
+   además mover la calibración. De las dos palancas que se le presentaron, las dos
+   estaban cerradas por un guardián (números 27 y 28 de la sección 5 de
+   `como-se-trabaja.md`), así que la que se movió fue una tercera:
+   **`COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34**, el centro de la ventana medida
+   `(0,3100 ; 0,3637)`.
+2. **EL CONTROL DEL AZAR quedó gateado** detrás de `ANIMA_BANCO=1`. Medido antes y
+   después: `@anima/juez` pasó de **167,6 s a 34,6 s** y sigue verde con la variable
+   (**685 s, 121 de 121**).
+3. **EL UMBRAL DE LA EMERGENCIA es 4 DE 9**, el absoluto y no la proporción. Está
+   escrito en el encabezado de `juez/tests/hito-5-la-emergencia.test.ts` y en el
+   cuadro que ese archivo publica.
+
+### Lo que la escalera de la yesca es, en cinco renglones
+
+Medido en `world/tests/la-escalera-de-la-yesca.test.ts` (5 bloques):
+
+- `friccion` pide `rigidity >= 0.5` en los dos palos, así que **la yesca no se
+  frota**: se PRENDE. Cuesta 771/kg contra 1457/kg de la madera.
+- una vara de 0,5 kg frotada (**692,1** de aliento, el único gasto) prende 1 kg de
+  yesca en el tick 3; esa yesca entrega 356 °C y prende un **leño de 8 kg** en el
+  tick 61, que frotado habría costado 11.074;
+- ese leño arde 402 s y cocina **42 piezas** con la comida en el piso a UNA celda
+  —sobre la parrilla la quema, porque entrega 1217 °C—: **+160,9 de neto**, y es un
+  piso porque se cocinó de a una pieza;
+- el dios pone esa materia en **6 de 20 semillas** en los 9 chunks del arranque, con
+  la yesca en piezas de 77 g (13 para el kilo) y la madera más grande en 2,9 kg (3
+  para el leño). O sea que la escalera pide `union` muchas veces.
+
+### Y lo que la calibración compró, que es menos de lo que parece
+
+Bajar el costo de vivir 2,94× estiró la vida **1,64×**: la criatura pasa de morir en
+el 3802 a morir en el **6244** de 20.000, **con 0 bocados**. El diagnóstico del
+propio arnés dice por qué: gasta **0,04918/tick contra 0,017 de sólo estar viva**, o
+sea 2,89×, **y la diferencia son las patas**. `COSTO_POR_CELDA` no se tocó, así que
+al abaratar vivir, caminar pasó a ser el 65% del gasto (número 30 de la sección 5).
+
+**Las dos mitades se necesitan y ninguna alcanza sola.** Con vivir a 0,34, para
+llegar a los 20.000 gastando 0,04918/tick hacen falta ~983 de aliento y arranca con
+310: le faltan ~673, que son 34 bocados cocidos. Un fuego de la escalera da 42. La
+cuenta cierra **el día que la mente sepa encender por escalones**, y eso es lo que
+sigue abierto.
+
+---
+
 ## 6 · Qué está abierto, en orden de importancia
 
-1. **LA ARITMÉTICA DE LA COCCIÓN, Y HAY QUE DECIDIRLA ARRIBA** (sección 2). No es una
-   ineficiencia: es el signo. Un fuego cuesta entre 485 y 554 de aliento, un bocado
-   cocido devuelve 19,84, y no se puede comer crudo. Las palancas (a) y (b) son
-   calibración y **no se tocan sin el usuario**; la (c) ya se hizo a medias y no
-   alcanzó. La cuarta, que no es calibración, es **enseñarle al planificador a
-   propagar el fuego** en vez de frotar dos palos cada vez.
+1. **ENSEÑARLE AL PLANIFICADOR LA ESCALERA DE LA YESCA.** Ya no es «decidir la
+   aritmética»: la aritmética se decidió (sección 5·bis) y lo que queda es
+   construirlo. La escalera existe en el mundo y está medida; el planificador no la
+   conoce, y para él cada fuego sigue naciendo de frotar dos palos. Son dos cosas
+   distintas y conviene no mezclarlas:
+   - **juntar masa**: la yesca viene en piezas de 77 g y hacen falta ~13 atadas con
+     `union` para el kilo que prende el leño. Falta ver si hay atador cerca
+     (`flexibility >= 0.8` y `tensile >= 0.3`), que este tramo no contestó;
+   - **elegir dónde va la comida**: sobre la parrilla un leño de 8 kg entrega
+     1217 °C y quema el pescado; a una celda en el piso, 159 °C y lo cocina. Hoy el
+     plan pone la comida pegada al fuego siempre.
 2. **LA EMERGENCIA SE DIO VUELTA, Y ES LO MÁS IMPORTANTE QUE SALIÓ DEL TRAMO L.**
    La corrida canónica (tanque 310) sigue midiendo **0 de 9** contra **0 de 9** del
    azar, con `situación` **10/20, 10/20 y 8/20** en tres filas y 0/20 en las otras
@@ -266,10 +330,20 @@ agregalo AL FINAL de su sección allá — no hace falta releer nada para eso.
    **18,2%** (el que deja de dar un paso ya dado camina antes) y los estados ilegales
    bajaron de **47.091 en 10 partidas a 31.833 en 7**, con `solidos-solapados` sin
    encabezar ninguna.
-3. **El umbral hay que rediscutirlo con el usuario.** El criterio publicado dice
-   «≥4 de las 10» y la lista tiene **9** entradas, de las cuales el azar firma 0
-   → el piso hay que cruzarlo sobre 9. Nadie aprobó «4 de 9»:
-   **no lo ajustes por tu cuenta**, presentá el número crudo.
+3. ~~El umbral hay que rediscutirlo con el usuario.~~ **CERRADO: es 4 de 9**, el
+   absoluto (sección 5·bis). El texto pide «4 de las 10» y la lista tiene nueve; se
+   eligió la lectura más exigente para no bajarle el piso al criterio de corte por
+   haber perdido una entrada.
+3·bis. **`COSTO_POR_CELDA` es el que manda ahora y nadie lo miró.** Con vivir a 0,34,
+   caminar es el 65% del gasto de la criatura del criterio (0,04918/tick contra
+   0,017). El 0,05 por celda se eligió cuando vivir costaba 1,0 —«a la frecuencia de
+   referencia caminar cuesta lo mismo que vivir», dice su comentario— y esa frase ya
+   no es cierta: hoy caminar cuesta 2,94× lo que vivir. No se tocó porque el usuario
+   no lo decidió, y hay una segunda razón para no apurarlo: **el hueco de la
+   locomoción** (`world/tests/el-tiempo-no-depende-del-tick.test.ts`, hueco 2) dice
+   que la velocidad es una celda por TICK, o sea 20 celdas por segundo a 20 Hz. El
+   costo por celda y la velocidad por celda son el mismo número mal puesto, y
+   arreglar uno solo mueve la economía sin arreglar la física.
 4. **La promesa de un `establishes` se VENCE y nadie lo sabe.** Medido: el pescado
    cocido cumple `toxicity <= 0,05` a los 15 y a los 30 s, ya no a los 60, y a los
    300 s cruza el 0,2 que `comer` tolera — o sea que **la criatura se niega a comer lo

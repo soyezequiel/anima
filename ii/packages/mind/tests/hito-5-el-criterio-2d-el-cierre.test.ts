@@ -37,7 +37,25 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     expect(r.alientoFinal).toBeGreaterThan(0);
   }, 120_000);
 
-  it('y con el tanque LLENO tampoco llega, que es lo que cierra la discusión', () => {
+  it('y con el tanque LLENO ahora SÍ llega — sin comer una sola vez', () => {
+    // ═══ ESTE BLOQUE SE DIO VUELTA EN EL TRAMO M, Y HAY QUE LEERLO CON CUIDADO ══
+    //
+    // Decía «tampoco llega, que es lo que cierra la discusión» y afirmaba
+    // `murioEn > 0`. Con `COSTO_VIVIR_POR_SEGUNDO` en **0,34** la criatura llega
+    // viva a los 20.000 con el tanque lleno — **y con CERO bocados**.
+    //
+    // O sea que lo que llegó no es la conducta: es el presupuesto. Y por eso este
+    // bloque cambia de trabajo pero no de bando: ahora es **el guardián del borde
+    // de abajo de la ventana**. Una criatura que cruza los 20.000 sin comer es
+    // exactamente lo que ese borde existe para impedir en la corrida CANÓNICA, que
+    // arranca con 310 y no con 1000 (ahí muere en el 6244, también con 0 bocados).
+    //
+    // El criterio (2) no es «aguantá»: es «comé al menos una vez». Esta corrida
+    // sigue sin comer, así que sigue sin cumplirlo — sólo que ahora lo dice más
+    // fuerte, porque ya ni la muerte la delata.
+    //
+    // ─── LO QUE DECÍA ANTES ────────────────────────────────────────────────
+    //
     // Si el problema fuera «arrancó con poco», esto lo arreglaría. No lo arregla:
     // con 1000 de 1000 se muere igual, y ANTES de los 20.000, porque además de
     // vivir caminó.
@@ -70,25 +88,33 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // rinde el tanque, porque se lo gasta buscando. El criterio (2) no es
     // «aguantá»: es «comé al menos una vez», y en las tres corridas comió cero.
     const r = correr(laEscenaDelDocumento(1000), 'ana', CRITERIO_TICKS);
-    expect(r.murioEn).toBeGreaterThan(0);
-    expect(r.murioEn).toBeLessThan(CRITERIO_TICKS);
+    // LLEGA VIVA (−1), y eso NO es cumplir el criterio: es el borde de abajo de la
+    // ventana asomando. Lo que se afirma con la misma fuerza de siempre está en la
+    // línea de abajo, y es la que importa.
+    expect(r.murioEn).toBe(-1);
     const bocados = [...r.cuenta]
       .filter(([k]) => k.startsWith('tragar'))
       .reduce((a, [, v]) => a + v, 0);
+    // CERO BOCADOS, y esto no se ablanda: el criterio (2) es «comé al menos una
+    // vez». Aguantar los 20.000 con el tanque lleno y la boca cerrada no lo cumple.
     expect(bocados).toBe(0);
-    const gastoPorTick = 1000 / r.murioEn;
+    const vividos = r.murioEn < 0 ? CRITERIO_TICKS : r.murioEn;
+    const gastoPorTick = (1000 - r.alientoFinal) / vividos;
     console.log(
-      `\n  con el tanque lleno (1000): murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} · ` +
+      `\n  con el tanque lleno (1000): ${r.murioEn < 0 ? `LLEGÓ VIVA a los ${String(CRITERIO_TICKS)}` : `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)}`} · ` +
         `el pescado entra a la mano en el ${String(r.pescoEn)} con ` +
         `${String(r.cuenta.get('aplicar(extraccion)') ?? 0)} tiros de caña · ${String(bocados)} bocados · ${r.ms.toFixed(0)} ms\n` +
-        `  1000 de tanque ÷ ${String(r.murioEn)} ticks = ${gastoPorTick.toFixed(4)} por tick, contra ` +
+        `  lo gastado ÷ ${String(vividos)} ticks = ${gastoPorTick.toFixed(4)} por tick, contra ` +
         `${(COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA).toFixed(4)} de sólo respirar: la diferencia es que deambula (ver 6/6)\n` +
         `  (el tramo anterior moría en el 19.995, quieta al lado del pozo, y eso NO era «a cinco ticks del final»)\n`,
     );
     MEDIDO.set(
       'tanque lleno',
-      `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} con ${String(bocados)} bocados ` +
-        `(${gastoPorTick.toFixed(4)}/tick: ni siquiera le rinde el tanque, se lo gasta deambulando)`,
+      r.murioEn < 0
+        ? `LLEGÓ VIVA a los ${String(CRITERIO_TICKS)} con ${String(bocados)} bocados ` +
+            `(${gastoPorTick.toFixed(4)}/tick) — aguantar no es cumplir: el criterio pide comer`
+        : `murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} con ${String(bocados)} bocados ` +
+            `(${gastoPorTick.toFixed(4)}/tick: ni siquiera le rinde el tanque, se lo gasta deambulando)`,
     );
   }, 300_000);
 });

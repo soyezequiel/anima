@@ -413,13 +413,23 @@ describe('el mismo hash en dos motores de JavaScript — PENDIENTE, y qué falta
     // tiene que ponerse de acuerdo sobre ellas: tiene que ponerse de acuerdo
     // sobre lo que hacen, y eso es el tercer número.
     //
+    // ─── Y CUÁL SE MOVIÓ AL BAJAR `COSTO_VIVIR_POR_SEGUNDO` DE 1,0 A 0,34 ───
+    //
+    // OTRA VEZ SÓLO EL TERCERO, y es la comprobación más barata que hay de que la
+    // constante es lo único que se tocó. El mundo inicial no la lee, el catálogo no
+    // la contiene —el hambre vive en `@anima/world`— y las intenciones no cambian;
+    // lo único que se mueve es la `stamina` de cada criatura tras diez ticks, que
+    // ahora gasta `0,34 × 10/20` = 0,17 en vez de 0,5. Si alguno de los otros tres
+    // se hubiera movido, el cambio no sería el que se declaró.
+    //
     //   el tercero, antes del ADR II-0009: ac45c6b97f3cc082
     //   el tercero, antes del ADR II-0011: 74e1a1910bbf5042
+    //   el tercero, con el segundo a 1,0:  7c1eda07e25a1c3c
     const s = partida()
     expect(hashWorldState(s)).toMatchInlineSnapshot(`"be714c54e109f8c5"`)
     expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"37e26e82459ff975"`)
     const tras10 = correr(partida(), 9, 10, 4, 1000)
-    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"7c1eda07e25a1c3c"`)
+    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"aed17455a077126a"`)
     expect(tras10.journal.chain).toMatchInlineSnapshot(`"63fbe8efeeee7f54"`)
   })
 })

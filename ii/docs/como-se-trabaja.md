@@ -72,13 +72,16 @@ Tres reglas, y la primera vale más que las otras dos juntas:
    con un test final que lo imprime, cortarlo cuesta el doble: ver
    `mind/tests/el-cuadro.ts`, que es el precio de haberlo escrito así.
 
-**Y lo que quedó abierto y es del usuario, no de un agente:** el control del azar
-(`juez/tests/azar.ts`) corre **20 partidas × 20.000 ticks, dos veces, sin
-`ANIMA_BANCO=1`**, mientras el banco de la mente que se compara contra él corre una
-muestra de 3 × 2.000 en la suite normal. Son 494 s de los 287 que hoy tarda todo
-`ii/`. Gatearlo con la regla 2 —muestra corta sin la variable, corrida entera con
-ella— dejaría a `@anima/juez` en segundos, pero **cambia qué mide la suite normal**
-y por eso no se hizo por cuenta propia.
+> **CERRADO en el tramo M: el control del azar YA está gateado**, y lo decidió el
+> usuario. Corría 20 × 20.000 dos veces sin `ANIMA_BANCO=1` mientras el banco de la
+> mente ya se acortaba a 3 × 2.000, y ésa era la asimetría. Medido antes y después:
+> `pnpm --filter @anima/juez test` pasó de **167,6 s a 34,6 s** (4,8×) y sigue verde
+> con la variable puesta (**685 s, 121 de 121**). Lo que cambió de la suite normal
+> está escrito arriba de `PARTIDAS_DEL_CONTROL` en `juez/tests/azar.ts`: el veredicto
+> sigue saliendo de la corrida en serio, `cuentan === []` se sigue afirmando siempre
+> —si el azar firmara algo en tres partidas cortas, ese rojo está bien puesto— y lo
+> único que quedó detrás del `env` es «el mundo puso más de 5 situaciones delante»,
+> que es una propiedad de las veinte. Las tablas dejaron de tener el `/20` clavado.
 
 Y la asimetría que conviene tener presente antes de recortar de más: **los tramos
 que más tardaron son los que encontraron las causas raíz** —la cocción, las
@@ -132,10 +135,19 @@ más importante que la velocidad.
   este banco: corrido junto a los otros ocho paquetes llega a rozar los 45 ms por
   CONTENCIÓN. Si se pone rojo, **no aflojes el umbral**: aislalo o afirmá el
   mecanismo (sección 3).
-- **La calibración de la aritmética de comer NO se toca sin el usuario.** `eficiencia`
-  de la fricción y `STAMINA_POR_CALORIA` son las dos palancas que darían vuelta el
-  signo del criterio (2), y moverlas sería ablandar el criterio por cuenta propia.
-  Está medido y presentado; falta decidir.
+- **La calibración de la aritmética de comer NO se toca sin el usuario**, y en el
+  tramo M el usuario decidió. Las dos palancas que se le presentaron estaban las dos
+  cerradas por un guardián (números 27 y 28 de la sección 5), así que lo que se movió
+  fue una tercera: **`COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34**, el centro de la
+  ventana medida `(0,3100 ; 0,3637)`. Y en paralelo se decidió enseñarle al
+  planificador **la escalera de la yesca**, que es lo que hace que un fuego se pague
+  sin tocar ninguna constante. Ninguna de las dos alcanza sola: con el costo de vivir
+  a 0,34 la criatura muere en el 6244 de 20.000 **con 0 bocados**, o sea que lo que
+  falta sigue siendo COMER.
+- **El umbral del criterio de emergencia es 4 de 9**, el absoluto, decidido por el
+  usuario. El texto pide «4 de las 10» y la lista cerrada tiene nueve entradas; se
+  eligió la lectura más exigente de las dos para no bajarle el piso al criterio de
+  corte por haber perdido una entrada.
 - **La UI va DESPUÉS del Hito 5.** Se preguntó y el usuario eligió terminar el
   criterio de corte primero.
 
@@ -306,6 +318,58 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    nadie corre el archivo entero.** Este banco venía imprimiendo «⇒ el tiempo vivido
    SÍ mueve la aguja» mientras el comentario de arriba decía lo contrario. Un
    veredicto se lee de la corrida, no del comentario que la describe.
+
+### Los cinco del tramo M, y dos son míos
+
+26. **«La razón costo/devuelve del fuego es PLANA a cualquier escala, así que no hay
+   tamaño de fuego que cierre la cuenta»** — la medición es correcta y la conclusión
+   sólo vale para lo que ese barrido hace: **cada fila de esa tabla enciende SU fuego
+   frotando**. Por eso es plana —el costo va con la masa y lo que el fuego cocina
+   también— y por eso deja de serlo cuando el numerador se paga UNA vez. Medido en
+   `world/tests/la-escalera-de-la-yesca.test.ts`: una vara de 0,5 kg frotada (692,1)
+   prende 1 kg de yesca, la yesca prende un leño de 8 kg que frotado habría costado
+   11.074, el leño arde 402 s y cocina 42 piezas → **neto +160,9**, y es un piso
+   porque se cocinó de a una pieza.
+   → **REGLA: cuando todas las filas de un barrido dan lo mismo, mirá qué está FIJO
+   en todas las filas.** Lo que no varía es lo que hay que atacar, y no está en la
+   columna que uno barrió.
+27. **«`STAMINA_POR_CALORIA` es una de las dos palancas de calibración»** — tiene
+   techo, y es de **1,0526×** (+5,3%) contra el 1,62× que haría falta. El invariante
+   de conservación exige `acreditado <= gastado` en el `convierte` de comer, y la
+   razón entre esos dos números **ES la digestibilidad** (tope 0,95). Medido con
+   control positivo en `world/tests/el-techo-de-stamina-por-caloria.test.ts`: 110
+   sobre 100 dispara `conversion-sin-respaldo`, 95 sobre 100 no. La palanca gemela
+   —el `nutrition` del catálogo— sí se puede girar, porque está en los DOS lados de
+   la cuenta y no mueve la razón.
+   → **REGLA: antes de ofrecer una constante como palanca, medí contra qué guardián
+   choca.** Las dos palancas «de calibración» de la cocción estaban cerradas por el
+   mismo tipo de regla: no inventar energía.
+28. **«La ventana de `COSTO_VIVIR_POR_SEGUNDO` es (0 ; 0,364)»** — tiene un SEGUNDO
+   borde y estaba sin escribir: **0,310**, que sale de otro criterio del Hito 5
+   (abajo de ahí, el tanque de arranque de 310 alcanza para los 20.000 ticks
+   **quieta**, y el criterio (2) se cumpliría sin comer una sola vez). La ventana es
+   `(0,3100 ; 0,3637)`, de 1,17× de ancho, y está publicada en el bloque «LA VENTANA
+   ENTERA» de `oracle/tests/presupuesto.test.ts`.
+   → **REGLA: una ventana con un borde medido y el otro supuesto no es una ventana.**
+   Un cero de borde hay que ganárselo igual que cualquier otro número.
+29. **MÍO, y del peor tipo: le advertí al usuario que bajar `COSTO_VIVIR_POR_SEGUNDO`
+   rompería «comer crudo negativo»**, citando la ventana `0,766–1,155` del comentario
+   de `world/src/step.ts`. Esa ventana estaba **VENCIDA desde el ADR II-0013**: con el
+   veneno cobrado al tragar, comer crudo pasó a ser un EGRESO y su borde cayó a
+   −0,488/s, o sea que ningún precio positivo de vivir lo salva. El propio arnés lo
+   decía en la línea que yo no leí: «camino 2 · **ABIERTO desde el ADR II-0013**».
+   → **REGLA: el comentario que justifica una constante envejece con cada ADR que
+   toca su modelo.** Antes de citarlo como vigente, corré el arnés que lo mide. Es la
+   tercera vez que este proyecto cobra la misma regla (números 7 y 19).
+30. **«Bajar el costo de vivir 2,94× tiene que estirar la vida 2,94×»** — la estira
+   **1,64×**: la criatura pasa de morir en el 3802 a morir en el **6244** de 20.000,
+   con 0 bocados. El motivo lo dice el propio diagnóstico del arnés: gasta
+   **0,04918/tick contra 0,017 de sólo estar viva**, o sea 2,89×, y la diferencia son
+   las patas. `COSTO_POR_CELDA` no se movió, así que al abaratar vivir, **caminar
+   pasó a ser el 65% del gasto**.
+   → **REGLA: cuando bajás un término de una suma, el que manda pasa a ser otro.**
+   Remedí la COMPOSICIÓN del gasto y no sólo el total, o la próxima palanca se elige
+   contra el término que ya no decide.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación

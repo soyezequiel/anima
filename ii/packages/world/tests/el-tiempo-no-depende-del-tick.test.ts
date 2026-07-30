@@ -739,18 +739,25 @@ describe('lo que NO cumple la promesa, medido', () => {
   //
   // Ahora la constante es `COSTO_VIVIR_POR_SEGUNDO` y se aplica con
   // `porPaso(…, d.dt)`, la misma conversión que `aplicarEfectos` hace veinte
-  // líneas más arriba en el mismo archivo, y las tres columnas dan 10,0.
+  // líneas más arriba en el mismo archivo, y las tres columnas dan el mismo número.
   //
   // OJO CON LEER ESTO COMO UNA MIGRACIÓN DE FORMA: no lo es. El ADR II-0009 no
   // eligió 0,2 por segundo —el número que habría dejado la conducta quieta a
   // 20 Hz— sino 1,0, o sea 5× más caro, y con un motivo medido sobre cien
   // partidas. La huella de conducta del mundo SE TENÍA QUE MOVER, y se movió por
   // eso y sólo por eso.
-  it('documentado · vivir diez segundos cuesta 10,0 de stamina, se muestree como se muestree', () => {
+  //
+  // Y LA CONSTANTE VOLVIÓ A BAJAR: hoy es 0,34, así que las tres columnas dan 3,4 y
+  // no 10,0. Lo que este bloque afirma no cambió —el gasto no depende del muestreo—
+  // y por eso se afirma la CUENTA `10 × la constante` y no el número escrito.
+  it('documentado · vivir diez segundos cuesta 3,4 de stamina, se muestree como se muestree', () => {
     const filas: string[] = []
+    // Los dos lados redondeados, igual que en el bloque del hueco 2: `10 × 0.34` da
+    // 3,4000000000000004 en IEEE-754 y lo que se afirma es la cuenta.
+    const esperado = Number((10 * COSTO_VIVIR_POR_SEGUNDO).toFixed(6))
     for (const hz of HZ) {
       const gastado = vivirDiezSegundos(hz)
-      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, 10 * COSTO_VIVIR_POR_SEGUNDO])
+      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, esperado])
       filas.push(
         `  ${String(hz).padStart(3)} Hz → ${gastado.toFixed(3)} de stamina en diez segundos de mundo` +
           `   (antes: ${(0.01 * hz * 10).toFixed(3)})`,

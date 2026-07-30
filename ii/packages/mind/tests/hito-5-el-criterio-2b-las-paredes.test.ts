@@ -371,7 +371,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     );
   }, 300_000);
 
-  it('DIAGNÓSTICO 10 · CON EL TANQUE LLENO Y LEÑA SECA, LA CRIATURA COCINA Y COME — y la cuenta igual no cierra', () => {
+  it('DIAGNÓSTICO 10 · CON EL TANQUE LLENO Y LEÑA SECA, LA CRIATURA COCINA, COME Y LLEGA VIVA A LOS 20.000', () => {
     // ═══ ESTE ES EL TEST QUE MIDE LO QUE EL TRAMO CONSIGUIÓ ═════════════════
     //
     // Sacadas las tres paredes de arriba —leña que existe, en celdas de verdad
@@ -476,10 +476,26 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // Y el mundo sobre el que se midió es legal.
     expect(r.violaciones, r.violaciones.slice(0, 3).join(' | ')).toEqual([]);
     expect(r.ticksPerdidos).toBe(0);
-    // Y LO QUE NO SE ABLANDA: con todo esto regalado, igual se muere. El criterio
-    // (2) no se cumple, y si algún día esta línea se pone roja es porque alguien
-    // arregló la aritmética y hay que ir a levantar el `it.fails` de arriba.
-    expect(r.murioEn).toBeGreaterThan(0);
+    // ═══ Y ESTA LÍNEA SE PUSO ROJA, QUE ES LO QUE PEDÍA QUE PASARA ═══════════
+    //
+    // Decía `expect(r.murioEn).toBeGreaterThan(0)` con este comentario textual: «con
+    // todo esto regalado, igual se muere … si algún día esta línea se pone roja es
+    // porque alguien arregló la aritmética». Pasó en el tramo M: el usuario bajó
+    // `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a **0,34** y esta escena **llega viva a los
+    // 20.000** (`murioEn` −1, contra el tick 5669 de antes).
+    //
+    // LO QUE ESTO ES Y LO QUE NO ES, y la segunda mitad importa más:
+    //
+    //   ES  la primera vez en el proyecto que una criatura cruza los 20.000 ticks
+    //       de punta a punta habiendo cocinado y comido lo que ella misma pescó.
+    //   NO ES el criterio (2), y por eso el `it.fails` del bloque 2a sigue rojo: esta
+    //       escena tiene **tres cosas regaladas** —el tanque lleno, la leña seca y
+    //       las celdas secas donde ponerla—. La corrida canónica arranca con 310 y
+    //       con lo que el dios haya decretado, y ahí muere en el 6244 con 0 bocados.
+    //
+    // O sea que lo que separa a esta escena de la canónica ya no es la aritmética:
+    // es que la mente sepa CONSEGUIR la leña que acá se le pone en la mano.
+    expect(r.murioEn).toBe(-1);
     MEDIDO.set(
       'la cadena entera',
       `PRENDIÓ en el ${String(r.prendioEn)}, COCINÓ en el ${String(r.cocinoEn)} y COMIÓ en el ` +

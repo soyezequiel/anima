@@ -340,25 +340,31 @@ describe('una partida de 2000 ticks', () => {
     expect(r.muertosDeHambre).toBe(0)
     expect(r.sinFuerza).toBe(0)
     for (const s of r.stamina) {
-      // Arrancan topadas en 1000 y vivir 100 segundos cuesta 100: la banda cae
-      // alrededor de 900. Lo que la corre para abajo son los pasos (0,05 la
+      // Arrancan topadas en 1000 y vivir 100 segundos cuesta 34: la banda cae
+      // alrededor de 966. Lo que la corre para abajo son los pasos (0,05 la
       // celda), lo que `deshilachar` le saca al que deshilacha y —desde el ADR
       // II-0013— **el veneno de lo que se comió crudo**; lo que la corre para
       // arriba es el techo de 1000 que `conCualidad` no deja pasar.
       //
       // MEDIDO ANTES DEL II-0013: entre 894,10 y 900,19, y la que más arriba
-      // terminaba era la que HABÍA COMIDO. Medido ahora: entre 876,22 y 895,55, y
+      // terminaba era la que HABÍA COMIDO. Con el II-0013: entre 876,22 y 895,55, y
       // la que más abajo termina es `fina`, que se comió un pescado crudo de 1,5 kg
-      // —3,04 × 1,5 = 4,56 de calorías contra 0,25 × 1,5 × 25 = 9,375 de veneno—.
+      // —3,04 × 1,5 = 4,56 de calorías contra 0,25 × 1,5 × 9,375 de veneno—.
       // Comer dio vuelta de signo en el chorro al azar, que es exactamente lo que
       // el ADR decidió: el pescado crudo adelgaza.
       //
-      // ESTA ES LA AFIRMACIÓN QUE PINCHA EL GLOBO: con el costo viejo, 2000 ticks
-      // a 0,01 gastaban 20 y la banda caería alrededor de 980. Si alguien vuelve a
-      // contar el hambre en muestras, esto se pone rojo antes que el hash, y con
-      // un número que se entiende.
-      expect(s).toBeGreaterThan(870)
-      expect(s).toBeLessThan(910)
+      // MEDIDO HOY, con `COSTO_VIVIR_POR_SEGUNDO` en 0,34 y no en 1,0: entre 942,22
+      // y 961,55, o sea 66 puntos más arriba, que son los 100 − 34 de vivir los cien
+      // segundos. `fina` sigue siendo la de abajo del todo: lo que la separa de las
+      // otras es su bocado crudo y ése no se movió.
+      //
+      // ESTA ES LA AFIRMACIÓN QUE PINCHA EL GLOBO: con el costo contado por TICK,
+      // 2000 ticks a 0,01 gastaban 20 y la banda caería alrededor de 980. Si alguien
+      // vuelve a contar el hambre en muestras, esto se pone rojo antes que el hash, y
+      // con un número que se entiende. La banda se movió con la constante y se
+      // apretó: mide 30 y no 40.
+      expect(s).toBeGreaterThan(940)
+      expect(s).toBeLessThan(970)
     }
 
     // EL NÚMERO. Se movió con el ADR II-0008 —tres cosas de FORMA y no de
@@ -466,9 +472,30 @@ describe('una partida de 2000 ticks', () => {
     //
     //   a15c8d9dad1a6180  (la fuente elegida por potencia, con 11.190 eventos)
     //   18ad7fce912cdee3  (la fuente elegida por calor entregado, con 11.192)
-    expect(r.hashFinal).toBe('18ad7fce912cdee3')
+    //
+    // ─── Y SE MOVIÓ UNA VEZ MÁS, y ésta es la más FÁCIL de atribuir de todas ───
+    //
+    // `COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34 (decisión del usuario, tramo M).
+    // El metabolismo le cobra a las ocho criaturas desde el tick 1, así que la
+    // partida se separa en el primer checkpoint —igual que la anterior, pero por un
+    // motivo mucho más simple: la `stamina` de cada cuerpo entra al hash.
+    //
+    // LO QUE NO SE MOVIÓ, y por una vez es TODO lo demás:
+    //
+    //   · eventos 11.192, exactamente los mismos que antes;
+    //   · violaciones 97, las mismas ocho criaturas pisándose;
+    //   · sustancias 31 y cuerpos 30, o sea que la ley 4 hizo las mismas
+    //     transmutaciones y nadie se murió antes ni después.
+    //
+    // Un cambio de constante del metabolismo que mueve el hash y no mueve ni un
+    // evento es la firma de que sólo cambió una cuenta, y no una decisión: si
+    // alguna criatura hubiera muerto en otro tick, los eventos se moverían por
+    // decenas.
+    //
+    //   3f82bbd9dd7a3128  (con el costo de vivir en 0,34, con los mismos 11.192)
+    expect(r.hashFinal).toBe('3f82bbd9dd7a3128')
     expect(r.checkpoints.join(' ')).toBe(
-      '236f295737a8be88 1c570a027ab63133 63869fe4cebbc711 ce77fc691aed0306 0171ba91a3cb64fa 48f7cb88b9e91b0d b10bcae545e21f66 dd424f87c7a18ccc d18e24ffce1f5006 690ceb22c84def51 18ad7fce912cdee3',
+      '17a60f5bdab7aef8 b3cedd98b63504ed 5cff6ea6fb6071d7 912aac38c41f426b e405ba67022e85cc a7592ab51c1f04d8 d914b00af0714d69 3b5d5558be606d0f cb8e0ace4eba2bcb 986249f2efa43edd 3f82bbd9dd7a3128',
     )
     expect(r.eventos).toBe(11192)
     expect(r.sustancias).toBe(31)

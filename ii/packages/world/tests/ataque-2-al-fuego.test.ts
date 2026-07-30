@@ -317,7 +317,7 @@ describe('(c) el fuego YA NO se apaga por soltar: se apaga por quedarse sin comb
     // `clampToRange` la lleva al techo del catálogo, y ni siquiera hace falta un
     // tick: `qualityOf` ya la recorta al LEERLA. Medido: quien escribe mil
     // millones tiene 1000 desde el primer instante, y la fricción se lo come en
-    // 174 pasos (8,7 s) con una vara de 0,2 kg.
+    // 195 pasos (9,75 s) con una vara de 0,2 kg.
     let w = mundo({
       hz: 20,
       bodies: [enElPiso(criatura('dina', 1e9), EN(0, 0))],
@@ -343,7 +343,10 @@ describe('(c) el fuego YA NO se apaga por soltar: se apaga por quedarse sin comb
     }
     // 183 y no 174: llegar a los 375 °C pasó de 3,00 s a 2,40 s (el ADR II-0011
     // le agregó la llama al camino) y arriba de `toward` el `drive` gasta menos.
-    expect(murioEn).toBe(183)
+    // Y 195 y no 183: `COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34, o sea que cada
+    // paso deja de cobrar 0,05 y cobra 0,017. Son 12 pasos (0,6 s) de fricción de
+    // regalo, y no los pagó el fuego: los pagó el metabolismo.
+    expect(murioEn).toBe(195)
     log([
       '══ EL TANQUE QUE NO ES INFINITO ═══════════════════════════════════════',
       `  se escribió 1e9 de stamina y qualityOf devuelve ${leer(w, 'dina-cuerpo', 'stamina').toFixed(2)} desde el tick 0`,

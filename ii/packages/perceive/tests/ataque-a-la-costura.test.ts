@@ -1275,12 +1275,21 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     // NO ES UN DEFECTO DE LA CADENA, y por eso no lleva `it.fails` acá: es la
     // ventana del ADR II-0009, medida con el precio del fuego adentro en
     // `oracle/tests/presupuesto.test.ts`, bloque 5, que es donde vive su hueco.
-    // El fuego costó 661,3629: los 659,8629 que el modelo de `@anima/oracle`
-    // despeja para una vara de 0,47 kg, MÁS el 1,50 de vivir los 1,5 segundos que
+    // El fuego costó 658,7889: los 658,2789 que el modelo de `@anima/oracle`
+    // despeja para una vara de 0,47 kg, MÁS el 0,51 de vivir los 1,5 segundos que
     // tardó en pescar antes de empezar a frotar. Que los dos números coincidan
     // hasta la cuarta cifra es lo que hace que el modelo de allá sea el mundo de
     // acá y no una cuenta paralela.
-    expect(Number((staminaAlNacer - staminaAlEncender).toFixed(4))).toBe(661.3629)
+    //
+    // ERA 661,3629 (= 659,8629 + 1,50) y bajó 2,574 al pasar
+    // `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a 0,34 en `world/src/step.ts`. Los dos
+    // sumandos se movieron y ninguno es una perilla de este archivo: el precio del
+    // fuego trae adentro lo que cuesta VIVIR los 2,4 s que dura el frotar (2,40 →
+    // 0,816, o sea −1,584) y el peaje de pescar antes son 1,5 s de vida (1,50 →
+    // 0,51, o sea −0,99). 1,584 + 0,99 = 2,574, que es exactamente lo que se movió:
+    // la parte TÉRMICA —657,4629— no se movió ni un decimal, porque el fuego no se
+    // abarató, se abarató estar vivo mientras se lo hace.
+    expect(Number((staminaAlNacer - staminaAlEncender).toFixed(4))).toBe(658.7889)
     expect(staminaAlFinal - staminaAlNacer).toBeLessThan(0)
     expect(staminaAlFinal).toBeGreaterThan(0)
     // ─── EL BOCADO DEVUELVE MENOS DESDE EL ADR II-0013 ────────────────────
@@ -1289,8 +1298,9 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     // veneno que el mundo cobra al tragar: el pescado llega a la boca con
     // `toxicity` 0,0345 —la ley 5 le sacó el 86% de los 0,25 que traía crudo—, y
     // sobre 1,93 kg de pieza a 25 de `COSTO_POR_TOXICIDAD_Y_KILO` eso son 1,66,
-    // más los 0,05 de vivir el tick y el resto del redondeo del instante exacto en
-    // que la criatura decidió comer.
+    // más los 0,017 de vivir el tick —eran 0,05 antes de que
+    // `COSTO_VIVIR_POR_SEGUNDO` bajara a 0,34— y el resto del redondeo del instante
+    // exacto en que la criatura decidió comer.
     //
     // **Y ES LA MITAD BUENA DE LA NOTICIA**: el mismo bicho comido CRUDO habría
     // dejado −6,42, o sea que cocinar acá no mejora un rendimiento, cambia un
@@ -1319,7 +1329,15 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
   // 701,8286, y los 200 pescados siguen saliendo los 200 cocidos— y lo único que se
   // movió es el reloj: 31 barridos de 1600 ticks cuestan diez veces más cuerpos por
   // tick. Se agranda el plazo y no se toca una aserción.
-  it('EL PRECIO DEL FUEGO QUE COCINA: 659,86 y no 282,17, con la tabla', () => {
+  //
+  // LOS QUE SÍ SE MOVIERON, Y TODOS LO MISMO: al bajar
+  // `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a 0,34, los cuatro precios de la tabla
+  // perdieron **1,584** exactos y ninguno perdió otra cosa: 282,1714 → 280,5874 ·
+  // 645,8743 → 644,2903 · 659,8629 → 658,2789 · 701,8286 → 700,2446. Los 1,584 son
+  // los 2,4 segundos de frotar cobrados al precio nuevo de estar vivo (2,40 →
+  // 0,816), y que la resta sea LA MISMA para las cuatro masas es la prueba de que
+  // la parte térmica —que es la que depende de la masa— no la tocó nadie.
+  it('EL PRECIO DEL FUEGO QUE COCINA: 658,28 y no 280,59, con la tabla', () => {
     // ─── EL NÚMERO QUE `@anima/oracle` NO PUEDE MEDIR ─────────────────────
     //
     // `oracle/tests/presupuesto.test.ts` despeja el precio de encender de la
@@ -1353,15 +1371,20 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     const de = (m: number): { costo: number; digestibilidad: number } =>
       medido.get(m) as { costo: number; digestibilidad: number }
     // Los cuatro, clavados. El de 0,47 es el que `@anima/oracle` usa de perilla.
-    expect(Number(de(0.2).costo.toFixed(4))).toBe(282.1714)
+    // Ver la nota de arriba: los cuatro bajaron 1,584 con `COSTO_VIVIR_POR_SEGUNDO`
+    // en 0,34 (eran 282,1714 · 645,8743 · 659,8629 · 701,8286).
+    expect(Number(de(0.2).costo.toFixed(4))).toBe(280.5874)
     expect(de(0.2).digestibilidad).toBeCloseTo(0.38, 6)
-    expect(Number(de(0.46).costo.toFixed(4))).toBe(645.8743)
+    expect(Number(de(0.46).costo.toFixed(4))).toBe(644.2903)
     expect(de(0.46).digestibilidad).toBeLessThan(0.85)
-    expect(Number(de(0.47).costo.toFixed(4))).toBe(659.8629)
+    expect(Number(de(0.47).costo.toFixed(4))).toBe(658.2789)
     expect(de(0.47).digestibilidad).toBeCloseTo(0.95, 6)
-    expect(Number(de(0.5).costo.toFixed(4))).toBe(701.8286)
+    expect(Number(de(0.5).costo.toFixed(4))).toBe(700.2446)
     // El factor entre los dos umbrales, que es el que hay que tener en la cabeza.
-    expect(de(0.47).costo / de(0.2).costo).toBeCloseTo(2.339, 3)
+    // Era 2,339 y ahora es 2,346: el peaje de vivir el frotar era una parte más
+    // gorda del fuego barato que del caro, así que sacarlo SEPARA los dos umbrales
+    // en vez de acercarlos. El factor de 2,3 largos se banca el cambio de constante.
+    expect(de(0.47).costo / de(0.2).costo).toBeCloseTo(2.346, 3)
   }, 300_000)
 
   it('COCINAR NO ES RIVAL: un fuego cocina todo lo que se le ponga encima, al mismo precio', () => {
@@ -1623,18 +1646,23 @@ describe('8. la leña, medida contra `stepWorld`', () => {
       filas.push(`  ${masa.toFixed(2)} kg → ${costo.toFixed(4).padStart(9)} · pescado ${d.toFixed(4)}${d >= 0.85 ? '  ← COCINA' : ''}`)
     }
     console.log(`\n─── LA VARA MÁS BARATA QUE COCINA, DE A UN CENTÉSIMO ───\n${filas.join('\n')}\n`)
-    // 0,47 kg y 659,8629, verificados y no citados. Y el salto es una PARED: en
+    // 0,47 kg y 658,2789, verificados y no citados. Y el salto es una PARED: en
     // 0,46 el pescado se queda en 0,7461 y en 0,47 llega a 0,95 — no hay pendiente
     // suave que permita negociar el precio.
+    //
+    // EL UMBRAL NO SE MOVIÓ Y EL PRECIO SÍ: bajar `COSTO_VIVIR_POR_SEGUNDO` de 1,0
+    // a 0,34 le sacó 1,584 al precio (era 659,8629) y dejó los 0,47 kg donde
+    // estaban, que es lo que había que confirmar — la masa que cocina la decide la
+    // ley 3 y no el hambre.
     expect(primeraQueCocina).toBe(0.47)
-    expect(Number(precioDeLaPrimera.toFixed(4))).toBe(659.8629)
+    expect(Number(precioDeLaPrimera.toFixed(4))).toBe(658.2789)
     // 30 s eran de sobra con siete cuerpos en la escena; con el decreto
     // materializado son ~90 y el barrido tarda cuatro veces más. Ver la nota del
     // bloque 7: los números no se movieron, se movió el reloj.
   }, 300_000)
 
   it.fails('SIGUE ABIERTO · LA YESCA DEL CAMPAMENTO ES UN CUERPO QUE EL MUNDO NO DEJA TIRADO', () => {
-    // POR QUÉ SIGUE ABIERTO: el campamento del bloque 7 —y con él los 659,8629 que
+    // POR QUÉ SIGUE ABIERTO: el campamento del bloque 7 —y con él los 658,2789 que
     // el modelo económico de `@anima/oracle` usa de perilla— enciende con una yesca
     // de **`hoja-seca` de 1 kg**, y ese cuerpo no existe en ningún lado del mundo.
     // La tabla de biomas (`oracle/src/bioma.ts`) siembra `hoja-seca` en tres biomas
@@ -1664,7 +1692,9 @@ describe('8. la leña, medida contra `stepWorld`', () => {
     // técnica existe en el mundo, con la yesca que la orilla deja tirada de verdad
     // y con la misma vara. Y el precio, barrido acá abajo, **no se mueve**: con
     // junco de 0,05 kg la más barata que cocina sigue siendo la de 0,47 kg y sigue
-    // saliendo 659,8629. O sea que la perilla de `oracle/tests/presupuesto.test.ts`
+    // saliendo 658,2789 (eran 659,8629 antes de que `COSTO_VIVIR_POR_SEGUNDO` pasara
+    // a 0,34: los mismos 1,584 de menos que la tabla del bloque 7, y la yesca sigue
+    // sin cambiar el precio). O sea que la perilla de `oracle/tests/presupuesto.test.ts`
     // está bien aunque la yesca con la que se midió no exista, y eso hay que
     // decirlo: el número económico NO cuelga de este hueco.
     //
@@ -1713,7 +1743,7 @@ describe('8. la leña, medida contra `stepWorld`', () => {
       `\n─── CON QUÉ YESCA PRENDE, CON LA VARA DE ${String(VARA_QUE_COCINA)} kg ───\n${filas.join('\n')}\n` +
         `\n─── Y EL PRECIO CON LA YESCA QUE LA ORILLA SÍ DEJA ───\n${conJunco.join('\n')}\n` +
         `la más barata que cocina con junco: ${masBarataConJunco.toFixed(2)} kg → ${precioConJunco.toFixed(4)} ` +
-        `(la perilla de \`oracle\` es 659,8629: NO se mueve, aunque la yesca con la que se midió no exista)\n`,
+        `(la perilla de \`oracle\` es 658,2789: NO se mueve, aunque la yesca con la que se midió no exista)\n`,
     )
 
     // Lo que sí se puede afirmar hoy, y queda como regresión adentro del hueco: el

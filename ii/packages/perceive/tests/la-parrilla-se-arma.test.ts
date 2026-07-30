@@ -119,6 +119,16 @@ type Hab = Generator<Intent, Outcome, StepResult>
  * `world/tests/el-fuego.test.ts` y usado en `donde-se-pone-la-comida.test.ts`.
  * Todo este archivo se apoya en él: es la única potencia que la criatura puede
  * conseguir sin tener ya un fuego.
+ *
+ * ES UNA ENTRADA DE ESCENA Y NO UNA ASERCIÓN, y desde que
+ * `COSTO_VIVIR_POR_SEGUNDO` bajó a 0,34 hay que decirlo con todas las letras: los
+ * 2,40 de vivir el frotar pasaron a 0,816, así que el techo de verdad subió a
+ * `(1000 − 0,816) / 1398,857 = 0,71443`. Acá se sigue usando 0,7132 **a propósito**:
+ * es un fuego que el tanque paga con más margen que antes, o sea que ninguna
+ * medición de este archivo se vuelve optimista por dejarlo quieto, y moverlo
+ * cambiaría de golpe las veinte mediciones que se apoyan en esta potencia sin
+ * contestar ninguna pregunta nueva. Quien remida `world/tests/el-fuego.test.ts` es
+ * el que tiene que decidir si el techo nuevo entra acá.
  */
 const TECHO_DE_LA_FRICCION = 0.7132
 
@@ -127,7 +137,8 @@ const TECHO_DE_LA_FRICCION = 0.7132
  *
  * El barrido fino de `tests/ataque-a-la-costura.test.ts` (bloque 8) midió que la
  * vara más barata que prende con la yesca que la orilla sí deja —un junco de
- * 0,05 kg— es de **0,47 kg**, y cuesta 659,8629 de `stamina`. El techo de 0,7132
+ * 0,05 kg— es de **0,47 kg**, y cuesta 658,2789 de `stamina` (eran 659,8629 con
+ * `COSTO_VIVIR_POR_SEGUNDO` en 1,0). El techo de 0,7132
  * es lo que el TANQUE aguantaría; 0,47 es lo que la criatura hace. Las dos filas
  * están en el barrido de abajo porque contestan preguntas distintas: una es «¿la
  * parrilla de madera es segura en el peor caso?» y la otra «¿la parrilla sirve
@@ -952,14 +963,24 @@ describe('(5) cuánto tarda, y si entra en lo que le queda de vida', () => {
       `  y ella pagó ${(staminaAntes - staminaDespues).toFixed(2)} de stamina en los 400 ticks que estuvo mirando`,
       `  (${((staminaAntes - staminaDespues) / 400).toFixed(4)} por tick, que es COSTO_VIVIR_POR_SEGUNDO / hz)`,
       '',
-      '  CONTRA EL CRITERIO: la criatura del Hito 5 se muere en el tick 3627 con 0 bocados.',
+      '  CONTRA EL CRITERIO: la criatura del Hito 5 se moría en el tick 3627 con 0 bocados.',
       `  Los ${String(s.tickCocido + 3)} ticks de esto son el ${(((s.tickCocido + 3) / 3627) * 100).toFixed(1)}% de esa vida. No es el cuello de botella.`,
+      '  (El 3627 es de ANTES de que `COSTO_VIVIR_POR_SEGUNDO` bajara a 0,34 y este archivo no',
+      '   lo puede remedir: la partida del criterio vive en `@anima/mind`. Con el segundo de vida',
+      '   casi tres veces más barato la vida se ALARGA, así que el porcentaje de arriba es una',
+      '   cota SUPERIOR y la conclusión —no es el cuello de botella— sale reforzada, no debilitada.)',
     ])
 
     expect(s.tickCocido).toBe(128)
     expect(netoCocido).toBeGreaterThan(netoCrudo * 2)
-    // Y el costo de esperar: 128 ticks a 0,05 son 6,4 de stamina contra un tanque
+    // Y el costo de esperar: 128 ticks a 0,017 son 2,176 de stamina contra un tanque
     // de 1000. Se afirma el MECANISMO —la tasa— y no un reloj de pared.
-    expect((staminaAntes - staminaDespues) / 400).toBeCloseTo(0.05, 6)
+    //
+    // LA TASA ERA 0,05 Y AHORA ES 0,017, y no es este archivo el que se movió:
+    // `COSTO_VIVIR_POR_SEGUNDO` pasó de 1,0 a 0,34 en `world/src/step.ts`, y la tasa
+    // por tick es esa constante sobre los 20 Hz. 0,34/20 = 0,017 exacto. Los 128
+    // ticks de la cocción no se movieron —la ley 5 no sabe nada del hambre—, así que
+    // esperar el pescado pasó de costar el 0,64% del tanque al 0,2176%.
+    expect((staminaAntes - staminaDespues) / 400).toBeCloseTo(0.017, 6)
   })
 })

@@ -47,13 +47,14 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import type { Body } from '@anima/physics'
-import { qualityOf, SUSTANCIAS_SEMILLA } from '@anima/physics'
+import { HZ_DE_REFERENCIA, qualityOf, SUSTANCIAS_SEMILLA } from '@anima/physics'
 import type { Where } from '@anima/skills'
 import { Contexto, Partida } from '@anima/perceive'
 import { comer, juntar } from '@anima/skills/innatas'
 import type { SimEvent, WorldState } from '@anima/world'
 import {
   COSTO_POR_TOXICIDAD_Y_KILO,
+  COSTO_VIVIR_POR_SEGUNDO,
   STAMINA_POR_CALORIA,
   eat,
   revisarInvariantes,
@@ -521,10 +522,19 @@ describe('(5) el `convierte` declara lo que ENTRÓ, y no lo que quiso acreditar'
     // veneno se cobra sobre lo que quedó: se reconstruye con el `enveneno`.
     const ven = r.events.find((e) => e.k === 'enveneno')
     const cobrado = ven?.k === 'enveneno' ? ven.cobrado : 0
-    // Los 0,05 de vivir el tick se suman de vuelta: el metabolismo corre igual y no
-    // es parte de lo que se está midiendo. Sin esto la cuenta diría 0,95 y parecería
-    // que el tanque topa en 999,95.
-    const VIVIR_EL_TICK = 0.05
+    // Lo que cuesta vivir el tick se suma de vuelta: el metabolismo corre igual y no
+    // es parte de lo que se está midiendo. Sin esto la cuenta diría 0,983 y parecería
+    // que el tanque topa en 999,983.
+    //
+    // ─── ESTABA CLAVADO EN 0,05 Y ERA UNA CONFUSIÓN DE UNIDADES ────────────
+    //
+    // Decía `const VIVIR_EL_TICK = 0.05`, que era cierto sólo mientras
+    // `COSTO_VIVIR_POR_SEGUNDO` valió 1,0: 1,0 ÷ 20 Hz = 0,05. Con la constante en
+    // **0,34** el tick cuesta 0,017 y la resta se iba 0,033 de más
+    // (`entroDeVerdad` medía 1,0330 contra el 1,0000 que el techo del tanque
+    // permite). Ahora sale de las dos constantes que la producen, así que no puede
+    // volver a envejecer.
+    const VIVIR_EL_TICK = COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA
     const entroDeVerdad = stamina(r.state, 'ana-cuerpo') + cobrado + VIVIR_EL_TICK - stamina(w, 'ana-cuerpo')
     // Lo que el bocado HABRÍA acreditado si hubiera entrado entero: es el número que
     // el evento declaraba antes, y se recalcula del catálogo para que la comparación

@@ -271,9 +271,11 @@ describe('comer, que es la única conversión', () => {
     const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])
     expect(r.state.bodies.has('c2')).toBe(false)
     const despues = qualityOf(r.state.bodies.get('ana-cuerpo')!.body, 'stamina', r.state.phys)
-    // 100 + 3,04 − 6,25 − 0,05 de vivir el tick = 96,74. Las tres piezas, cada una
+    // 100 + 3,04 − 6,25 − 0,017 de vivir el tick = 96,773. Las tres piezas, cada una
     // de un lado distinto del mundo: la física, el ADR II-0013 y el metabolismo.
-    expect(despues).toBeCloseTo(96.74, 10)
+    // Era 96,74 con `COSTO_VIVIR_POR_SEGUNDO` en 1,0, o sea 0,05 el tick: lo único
+    // que se movió es la tercera pieza, y se movió 0,033.
+    expect(despues).toBeCloseTo(96.773, 10)
     expect(despues).toBeLessThan(antes)
     const conv = r.events.find((e) => e.k === 'convierte')
     expect(conv).toBeDefined()
@@ -303,10 +305,12 @@ describe('comer, que es la única conversión', () => {
       const r = stepWorld(s, [eat({ by: 'ana', seq: 0 }, 'c2')])
       return qualityOf(r.state.bodies.get('ana-cuerpo')!.body, 'stamina', r.state.phys) - 100
     }
-    // Netos por kilo, con los 0,05 de vivir el tick adentro.
-    expect(Number(comer('grasa').toFixed(4))).toBe(14.1)
-    expect(Number(comer('medula').toFixed(4))).toBe(8.6)
-    expect(Number(comer('huevo').toFixed(4))).toBe(2.95)
+    // Netos por kilo, con los 0,017 de vivir el tick adentro. Eran 14,1 · 8,6 · 2,95
+    // cuando el tick de vivir costaba 0,05 (`COSTO_VIVIR_POR_SEGUNDO` en 1,0): los
+    // tres subieron los mismos 0,033 y el orden no se movió.
+    expect(Number(comer('grasa').toFixed(4))).toBe(14.133)
+    expect(Number(comer('medula').toFixed(4))).toBe(8.633)
+    expect(Number(comer('huevo').toFixed(4))).toBe(2.983)
     // Y las dos que piden fuego, del otro lado.
     expect(comer('pescado')).toBeLessThan(0)
     expect(comer('carne')).toBeLessThan(0)

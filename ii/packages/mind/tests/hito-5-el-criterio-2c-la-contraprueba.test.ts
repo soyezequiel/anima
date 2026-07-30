@@ -55,8 +55,29 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     expect(r.mente.tropiezo).toBeUndefined();
   }, 300_000);
 
-  it.fails('CONTRAPRUEBA · y con el eslabón regalado TAMPOCO llega: come 68 y muere en el 12.847', () => {
-    // ─── ESTA CONTRAPRUEBA SE DIO VUELTA, Y ES LA NOTICIA MÁS INCÓMODA ─────
+  it('CONTRAPRUEBA · con el eslabón regalado LLEGA: 64 bocados y los 20.000 ticks', () => {
+    // ─── ESTA CONTRAPRUEBA SE DIO VUELTA DOS VECES, Y HAY QUE CONTAR LAS TRES ──
+    //
+    // Es la misma pregunta desde el principio —«¿falta sólo el fuego, o además
+    // falta otra cosa?»— contestada regalándole EXACTAMENTE el eslabón que no sabe
+    // hacer, cien pescados ya cocidos, y nada más:
+    //
+    //   (a) sobre la escena PLANTADA ....... llegaba viva, 65 bocados, aliento 1,4593
+    //   (b) sobre el mundo DECRETADO ....... murió en el 12.847 con 68 bocados
+    //   (c) con vivir a 0,34 (tramo M) ..... **llega viva, 64 bocados, aliento 64,6625**
+    //
+    // La (b) no fue un retroceso de la mente: fue que en un mundo con cosas
+    // alrededor **la criatura CAMINA**, y caminar no estaba pago. La (c) no la
+    // arregló la mente tampoco —come uno MENOS que en la (b)—: la arregló bajar lo
+    // que cuesta el segundo, que es lo que el usuario decidió con la ventana
+    // medida delante.
+    //
+    // O sea que la frase que este bloque existe para sostener vuelve a valer, y
+    // ahora con el número al lado: **la conducta está, y lo que faltaba era la
+    // aritmética.** Lo que sigue faltando es que la mente CONSIGA los cocidos que
+    // acá se le regalan, y eso es el fuego que se paga (la escalera de la yesca).
+    //
+    // ─── LO QUE DECÍA CUANDO ERA `it.fails` ────────────────────────────────
     //
     // Contestaba «¿falta sólo el fuego, o además falta otra cosa?» regalándole
     // EXACTAMENTE el eslabón que no sabe hacer —cien pescados ya cocidos— y nada
@@ -78,8 +99,13 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // **Aquel 1,4593 era el margen con el que pasaba, sobre un presupuesto de
     // 1000: el 0,15%.** Las dos cuentas, lado a lado:
     //
-    //     plantada   310 + 691,46 comidos − 1000 de vivir = +1,46  → llega
-    //     decretada  310 + 690,08 comidos − 1000 de vivir = +0,08  → no llega
+    //     plantada   310 + 691,46 comidos − 1000 de vivir = +1,46  → llegaba
+    //     decretada  310 + 690,08 comidos − 1000 de vivir = +0,08  → no llegaba
+    //     con 0,34   310 + 94,66 comidos  −  340 de vivir = +64,66 → LLEGA
+    //
+    // (los «comidos» de la tercera fila son muchísimos menos porque el aliento topa
+    //  en 1000 y comer con el tanque lleno tira la mitad del bocado: lo que cambió
+    //  no es cuánto entra, es cuánto se va)
     //
     // Comió MÁS (68 contra 65) y llegó menos lejos. Lo que cambió no es la boca:
     // es que en un mundo con cosas alrededor la mente CAMINA. El tanque se llena
@@ -130,15 +156,18 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       'regalado',
       r.murioEn < 0
         ? `CUMPLE: 20.000 ticks viva, ${String(bocados)} bocados, aliento final ${r.alientoFinal.toFixed(4)} ` +
-            `(310 + ${comidos.toFixed(0)} comidos − 1000 de vivir)`
+            `(310 + ${comidos.toFixed(0)} comidos − ${String(CRITERIO_TICKS * (COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA))} de vivir)`
         : `NO CUMPLE: come ${String(bocados)} y muere en el ${String(r.murioEn)} (310 + ${comidos.toFixed(0)} ` +
-            `comidos − 1000 de vivir = ${r.alientoFinal.toFixed(4)}). Sobre la escena plantada llegaba, y por +1,46`,
+            `comidos − ${String(CRITERIO_TICKS * (COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA))} de vivir = ${r.alientoFinal.toFixed(4)}). Sobre la escena plantada llegaba, y por +1,46`,
     );
 
     expect(r.ticks).toBe(CRITERIO_TICKS);
     // La boca sigue cerrando el bucle, y eso NO es lo que falla.
     expect(bocados).toBeGreaterThan(50);
-    // EL CRITERIO, y no se ablanda: con el eslabón regalado tampoco llega.
+    // Y LLEGA. Era un `it.fails` con esta misma línea adentro: la aserción no se
+    // tocó ni un carácter, lo que cambió es que ahora se cumple. Si algún día
+    // vuelve a morirse con la despensa al lado, el problema volvió a ser la
+    // aritmética y no la mente.
     expect(r.murioEn, `se murió en el tick ${String(r.murioEn)}`).toBe(-1);
   }, 600_000);
 });

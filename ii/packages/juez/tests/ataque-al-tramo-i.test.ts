@@ -110,6 +110,7 @@ import {
   laOrilla,
   PARTIDAS,
   RADIO_EN_CHUNKS,
+  respirar,
   semillasQueSeJuegan,
 } from './el-mundo-decretado.js'
 
@@ -548,6 +549,7 @@ describe('(3) el `roleFilters: portable<=0` que estuvo sobre el pozo: el hallazg
     let conBancoYConPesca = 0
     let conBanco = 0
     for (const semilla of semillas) {
+      await respirar()
       const o = laOrilla(semilla)
       if (o === undefined) continue
       const escena = escenaDe(o, 310)
@@ -733,6 +735,13 @@ describe('(5) el mundo decretado ya no es una isla: el chunk se abre cuando algu
     const { semillas } = semillasQueSeJuegan(PARTIDAS)
     const filas: string[] = []
     for (const semilla of semillas.slice(0, 3)) {
+      // EL RESPIRO ENTRE PARTIDAS, y acá hizo falta recién en el tramo M: con el
+      // costo de vivir en 1,0 estas tres se morían entre el tick 3663 y el 6062, o
+      // sea que el bucle sincrónico duraba unos 35 s en total. Con 0,34 la criatura
+      // aguanta los 20.000 enteros, el bloque pasó a 98,7 s, y **el canal de vitest
+      // vence a los 60**: los ocho tests salían VERDES con `exit 1` y un
+      // «Timeout calling onTaskUpdate» que no es de ninguna medición. Ver `respirar`.
+      await respirar()
       const o = laOrilla(semilla)
       if (o === undefined) continue
       const escena = escenaDe(o, 310)
@@ -750,6 +759,12 @@ describe('(5) el mundo decretado ya no es una isla: el chunk se abre cuando algu
       let t = 0
       let murioEn = -1
       for (; t < 20_000; t++) {
+        // Y UN RESPIRO CADA 2000 TICKS, no sólo entre semillas: con la criatura
+        // viva los 20.000, UNA sola partida ya se acerca a los 60 s del canal de
+        // vitest, y bajo carga los cruza. Diez respiros por partida no mueven
+        // ninguna medición —la partida es determinista y no mira ningún reloj— y
+        // son lo que separa «121 tests verdes con exit 1» de un verde de verdad.
+        if (t % 2000 === 0) await respirar()
         if (p.state.actors.has('ana')) m.pensar(p)
         p.tick()
         const w = p.state

@@ -724,30 +724,43 @@ export const COSTO_POR_CELDA = 0.05
  * `sistemaMetabolismo` la aplica con `porPaso(…, d.dt)`, que es la única
  * conversión entre el ritmo del mundo y el muestreo del tick.
  *
- * ─── Por qué 1,0 y no otro ──────────────────────────────────────────────────
+ * ─── Por qué 0,34, y por qué ya no es 1,0 ───────────────────────────────────
  *
- * Es 5× lo que se cobraba antes (0,01 por tick × 20 Hz = 0,20 por segundo), y el
- * número cae adentro de una ventana MEDIDA sobre cien partidas en
- * `oracle/tests/presupuesto.test.ts`:
+ * ERA 1,0, y el 1,0 salía de una ventana medida sobre cien partidas que decía:
  *
  *   0,766 por segundo ... lo que rinde comiendo CRUDO la partida que más comió
- *   1,000 ............... esto
+ *   1,000 ............... el número de entonces
  *   1,155 por segundo ... lo que rinde COCINANDO la partida que menos comió
  *
- * Adentro de esa ventana —y sólo adentro— pasan las dos cosas a la vez en las cien
- * partidas: comer crudo da neto negativo y cocinar da neto positivo. O sea que la
- * diferencia entre vivir y morirse es COCINAR, y nadie lo escribió: sale de que
- * `digestibility` sube de 0,38 a 0,95. La ventana mide 1,51× de ancho, así que el
- * número no tiene lugar para pasearse — si alguien recalibra `digestibility`, la
- * masa de una pieza o el pozo, hay que volver a medirla.
+ * **Esa ventana venció con el ADR II-0013.** Desde que el veneno se cobra al
+ * tragar, comer crudo dejó de ser un ingreso chico y pasó a ser un EGRESO: su
+ * borde cayó a −0,488/s, o sea que ningún precio positivo de vivir hace que comer
+ * crudo cierre. El borde de arriba se movió con él y quedó en 0,364/s, así que el
+ * 1,0 pasó a estar 2,7× AFUERA de su propia ventana y las cien partidas terminaban
+ * debiendo aunque cocinaran todo lo que sacaban (99 de 100, medido).
  *
- * Con esto **`stamina` se mide en segundos de vida**: mil de `stamina` son mil
- * segundos de mundo, un pescado crudo de 2 kg compra 6 y el mismo pescado
- * cocinado compra 15. Y a la frecuencia de referencia caminar cuesta lo mismo que
- * vivir —20 celdas por segundo × 0,05 = 1,0 por segundo— sin que ninguna de las
- * dos constantes se haya elegido mirando a la otra.
+ * ─── LOS DOS BORDES DE HOY, y el segundo no estaba escrito ──────────────────
+ *
+ * Los dos se miden en `oracle/tests/presupuesto.test.ts`, el bloque «LA VENTANA
+ * ENTERA DE COSTO_VIVIR_POR_SEGUNDO», y vienen de criterios INDEPENDIENTES:
+ *
+ *   0,3100/s  abajo de esto, el tanque de arranque del Hito 5 (310) alcanza para
+ *             los 20.000 ticks **quieta y sin comer**, y el criterio (2) se
+ *             cumpliría por la puerta de atrás;
+ *   0,3637/s  arriba de esto, cocinar no alcanza en las cien partidas.
+ *
+ * La ventana mide 1,17× de ancho —mucho menos que la de 1,51× de antes— y **0,34
+ * es su centro**. No es un número elegido a ojo: es el único lugar donde los dos
+ * criterios del Hito 5 se cumplen a la vez, y los dos bordes están clavados en
+ * aquel bloque para que moverlos se note.
+ *
+ * Con esto **`stamina` se sigue midiendo en segundos de vida**, sólo que el
+ * segundo salió más barato: mil de `stamina` son 2941 segundos de mundo, y el
+ * tanque de 310 del criterio da 18.235 ticks de estar quieta contra los 20.000 que
+ * el criterio pide — o sea que sobrevivir sigue pidiendo comer, que es lo único
+ * que el borde de abajo protege.
  */
-export const COSTO_VIVIR_POR_SEGUNDO = 1.0
+export const COSTO_VIVIR_POR_SEGUNDO = 0.34
 
 /**
  * La oclusión de un cuerpo que TAPA, en función de su permeabilidad, y lo que la

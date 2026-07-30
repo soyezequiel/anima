@@ -16,10 +16,15 @@
 //       `murio` con `por: 'hambre'`. Con los invariantes puestos, porque ésta es
 //       la primera vez que el mundo ve irse a un actor.
 //
-// LO QUE ESTE ARCHIVO NO PRUEBA: que 1,0 por segundo sea el número correcto. Eso
+// LO QUE ESTE ARCHIVO NO PRUEBA: que 0,34 por segundo sea el número correcto. Eso
 // se mide sobre cien partidas en `oracle/tests/presupuesto.test.ts`, y se afirma
-// como VENTANA —crudo negativo, cocinado positivo— y no como constante. Un test
-// que dijera `COSTO_VIVIR_POR_SEGUNDO === 1` estaría midiendo su propia copia.
+// como VENTANA —el borde de abajo es el tanque de 310 llegando a los 20.000 ticks
+// quieta, el de arriba es cocinar dejando de alcanzar— y no como constante. Un
+// test que dijera `COSTO_VIVIR_POR_SEGUNDO === 0.34` estaría midiendo su propia
+// copia.
+//
+// LA CONSTANTE ERA 1,0 Y HOY ES 0,34, y este archivo se remidió entero por eso.
+// Cada número que se movió tiene el viejo escrito al lado.
 
 import { describe, expect, it } from 'vitest'
 import {
@@ -52,6 +57,15 @@ const log = (lineas: readonly string[]): void => {
 /** Con cuánta `stamina` llega la criatura: la mitad del techo del catálogo. */
 const TANQUE = 500
 
+/**
+ * Con cuánta llega la del Hito 5, que NO es la de este archivo. Está acá desde que
+ * `COSTO_VIVIR_POR_SEGUNDO` bajó a 0,34: con el tanque de 500 la criatura quieta
+ * pasa los 20.000 ticks sin comer, así que el tanque que le da contenido al
+ * criterio es éste y no aquél. Es el borde de abajo de la ventana que
+ * `oracle/tests/presupuesto.test.ts` publica.
+ */
+const TANQUE_DEL_HITO_5 = 310
+
 /** El criterio del Hito 5, en ticks y a la frecuencia de referencia. */
 const TICKS_DEL_CRITERIO = 20_000
 
@@ -71,10 +85,12 @@ interface Ayuno {
  * solo cuerpo, ninguna intención, ningún proceso. Lo único que le pasa es el
  * tiempo.
  */
-function ayunar(hz: number): Ayuno {
-  let w = mundo({ hz, bodies: [enElPiso(criatura('ana', TANQUE), EN(0, 0))], actors: [actor('ana')] })
+function ayunar(hz: number, tanque = TANQUE): Ayuno {
+  let w = mundo({ hz, bodies: [enElPiso(criatura('ana', tanque), EN(0, 0))], actors: [actor('ana')] })
   const dt = dtDeFrecuencia(hz)
-  const techo = Math.round(600 / dt)
+  // 1600 s y no 600: con 0,34 por segundo el tanque de 500 dura 1470,6 s. Es el
+  // techo del ARNÉS —cuándo deja de mirar— y no un umbral del mundo.
+  const techo = Math.round(1600 / dt)
   for (let n = 1; n <= techo; n++) {
     const paso = stepWorld(w, [])
     w = paso.state
@@ -141,7 +157,7 @@ describe('una criatura quieta y sin comer tarda lo mismo a 10, 20, 25, 50 y 100 
       '══ LO QUE AGUANTA SIN COMER, EN SEGUNDOS DE MUNDO ═══════════════════════',
       `  ${''.padEnd(26)}${FRECUENCIAS_ADMISIBLES.map((h) => `${String(h)} Hz`.padStart(12)).join('')}`,
       `  ANTES (0,01 por TICK)     ${antes.map((a) => `${a.segundos.toFixed(2)} s`.padStart(12)).join('')}`,
-      `  AHORA (1,0 por SEGUNDO)   ${ahora.map((a) => `${a.segundos.toFixed(2)} s`.padStart(12)).join('')}`,
+      `  AHORA (0,34 por SEGUNDO)  ${ahora.map((a) => `${a.segundos.toFixed(2)} s`.padStart(12)).join('')}`,
       '',
       `  ANTES, en ticks           ${antes.map((a) => String(a.ticks).padStart(12)).join('')}`,
       `  AHORA, en ticks           ${ahora.map((a) => String(a.ticks).padStart(12)).join('')}`,
@@ -151,18 +167,30 @@ describe('una criatura quieta y sin comer tarda lo mismo a 10, 20, 25, 50 y 100 
     ])
   }, 120_000)
 
-  it('documentado · aguanta 500 s, o sea la MITAD EXACTA del criterio del Hito 5', () => {
-    // El número que le da contenido a «sobrevive 20.000 ticks sola». Con el tanque
-    // de arranque la criatura llega hasta el tick 10.000 de los 20.000 sin hacer
-    // nada; de ahí en adelante o resuelve su hambre o se muere. Antes de esto el
-    // criterio lo cumplía una piedra.
+  it('documentado · aguanta 1470,6 s, y con el tanque del Hito 5 no llega a los 20.000', () => {
+    // ─── EL NÚMERO SE MOVIÓ CON `COSTO_VIVIR_POR_SEGUNDO` 1,0 → 0,34 ────────
+    //
+    // Este bloque se llamaba «aguanta 500 s, o sea la MITAD EXACTA del criterio del
+    // Hito 5» y afirmaba `a.ticks === 10.000`. Con el segundo cinco veces más barato
+    // el tanque de 500 de ESTE archivo dura 1470,6 s = 29.412 ticks, o sea que pasa
+    // los 20.000 sin hacer nada. La mitad exacta era una coincidencia de aquella
+    // constante y ya no existe.
+    //
+    // Lo que sí sigue en pie —y es lo que el bloque venía a decir, «el criterio no
+    // lo cumple una piedra»— hay que medirlo con el tanque del criterio, que es 310
+    // y no 500: ahí la criatura quieta se muere en el 18.236 de los 20.000.
     const a = ayunar(HZ_DE_REFERENCIA)
-    expect(a.ticks).toBe(TICKS_DEL_CRITERIO / 2)
-    expect(a.segundos).toBe(TANQUE / COSTO_VIVIR_POR_SEGUNDO)
-    // Y `stamina` se lee como lo que ahora es: SEGUNDOS DE VIDA. Mil de `stamina`
-    // son mil segundos de mundo, y por eso el tanque de 500 son 500 s.
-    expect(TANQUE / COSTO_VIVIR_POR_SEGUNDO).toBe(500)
-  }, 60_000)
+    expect(a.ticks).toBe(29_412) // era 10.000 con 1,0 por segundo
+    expect(Number(a.segundos.toFixed(4))).toBe(1470.6) // eran 500,00 s
+    // Y `stamina` se lee como lo que ahora es: SEGUNDOS DE VIDA, sólo que el segundo
+    // salió más barato. Mil de `stamina` son 2941 s de mundo (eran 1000), y el tanque
+    // de 500 son 1470,59 s (eran 500).
+    expect(Number((TANQUE / COSTO_VIVIR_POR_SEGUNDO).toFixed(4))).toBe(1470.5882)
+    // EL CONTENIDO DEL CRITERIO, con el tanque que el criterio usa.
+    const delCriterio = ayunar(HZ_DE_REFERENCIA, TANQUE_DEL_HITO_5)
+    expect(delCriterio.ticks).toBe(18_236)
+    expect(delCriterio.ticks).toBeLessThan(TICKS_DEL_CRITERIO)
+  }, 120_000)
 
   it('documentado · el tick exacto de la muerte a cada frecuencia', () => {
     // Los ticks no son `500 × hz` clavados: restar diez mil veces un número que no
@@ -177,16 +205,21 @@ describe('una criatura quieta y sin comer tarda lo mismo a 10, 20, 25, 50 y 100 
     log([`══ EL TICK DE LA MUERTE ══  ${FRECUENCIAS_ADMISIBLES.map((h, i) => `${String(h)} Hz: ${String(medidos[i])}`).join('   ')}`])
   }, 120_000)
 
-  it('vivir diez segundos de mundo cuesta 10,0 de stamina a cualquier frecuencia', () => {
+  it('vivir diez segundos de mundo cuesta 3,4 de stamina a cualquier frecuencia', () => {
     // El mismo hecho mirado desde el otro lado y sin esperar a la muerte: es el
     // `it.fails` que `el-tiempo-no-depende-del-tick.test.ts` tenía abierto.
+    // Eran 10,0 con `COSTO_VIVIR_POR_SEGUNDO` en 1,0 y hoy son 3,4: lo que se afirma
+    // es la CUENTA `10 × la constante`, no el número escrito a mano, y los dos lados
+    // se redondean porque `10 × 0.34` da 3,4000000000000004 en IEEE-754.
+    const esperado = Number((10 * COSTO_VIVIR_POR_SEGUNDO).toFixed(6))
     for (const hz of FRECUENCIAS_ADMISIBLES) {
       let w = mundo({ hz, bodies: [enElPiso(criatura('ana', TANQUE), EN(0, 0))], actors: [actor('ana')] })
       const pasos = Math.round(10 / dtDeFrecuencia(hz))
       for (let n = 0; n < pasos; n++) w = stepWorld(w, []).state
       const gastado = TANQUE - staminaDe(w, 'ana')
-      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, 10])
+      expect([hz, Number(gastado.toFixed(6))]).toEqual([hz, esperado])
     }
+    expect(esperado).toBe(3.4)
   })
 })
 
@@ -231,9 +264,17 @@ describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () 
     const crudo = pescado()
     const cocinado = pescado(0.95, TOXICIDAD_DEL_PESCADO_COCIDO)
 
+    // ─── LOS TRES SE MOVIERON CON `COSTO_VIVIR_POR_SEGUNDO` 1,0 → 0,34 ──────
+    //
+    // Eran 1000 s, 1000 de costo y 500 que sacarle al mundo. Vivir los mil segundos
+    // ahora sale 340, o sea que **el tanque de 500 de este archivo ya le sobra**: el
+    // saldo da +160 y la criatura quieta llega a los 20.000 ticks sin comer. Con el
+    // tanque del criterio (310) el saldo se da vuelta y faltan 30, que son las tres
+    // piezas cocinadas de más abajo.
     expect(segundosDeLaCorrida).toBe(1000)
-    expect(costo).toBe(1000)
-    expect(conTanque).toBe(500)
+    expect(costo).toBe(340) // era 1000
+    expect(conTanque).toBe(-160) // eran 500
+    expect(costo - TANQUE_DEL_HITO_5).toBe(30)
 
     // ─── EL NÚMERO QUE DIO VUELTA: 83 PESCADOS CRUDOS YA NO ALCANZAN ───────
     //
@@ -256,20 +297,26 @@ describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () 
     expect(cocinado).toBeGreaterThan(0)
 
     const piezas = (falta: number, rinde: number): number =>
-      rinde > 0 ? Math.ceil(falta / rinde) : Number.POSITIVE_INFINITY
-    expect(piezas(conTanque, crudo)).toBe(Number.POSITIVE_INFINITY)
-    expect(piezas(conTanque, cocinado)).toBe(38)
-    expect(piezas(sinTanque, cocinado)).toBe(75)
+      falta <= 0 ? 0 : rinde > 0 ? Math.ceil(falta / rinde) : Number.POSITIVE_INFINITY
+    // La rama `falta <= 0` no existía y hay que decir por qué existe: con el tanque
+    // de 500 y el segundo a 0,34 ya no falta nada, así que la cuenta vieja
+    // (`Math.ceil(-160 / 13,475)`) devolvía −11 piezas, que no es un número de
+    // piezas. Lo que sigue significando algo es el balance SIN tanque —lo que el
+    // riesgo 4 pide— y el balance con el tanque del criterio.
+    expect(piezas(sinTanque, crudo)).toBe(Number.POSITIVE_INFINITY)
+    expect(piezas(conTanque, cocinado)).toBe(0) // eran 38: con 500 de tanque ya no falta
+    expect(piezas(sinTanque, cocinado)).toBe(26) // eran 75
+    expect(piezas(costo - TANQUE_DEL_HITO_5, cocinado)).toBe(3)
 
     log([
       `══ EL PRESUPUESTO DE UNA PARTIDA DE ${String(TICKS_DEL_CRITERIO)} TICKS A ${String(HZ_DE_REFERENCIA)} Hz ══`,
       `  dura ......................... ${segundosDeLaCorrida.toFixed(0)} s de mundo (cinco días)`,
-      `  vivir cuesta ................. ${costo.toFixed(0)} de stamina`,
-      `  llega con .................... ${String(TANQUE)}`,
-      `  tiene que sacarle al mundo ... ${conTanque.toFixed(0)}   (o ${sinTanque.toFixed(0)} si el tanque no cuenta)`,
+      `  vivir cuesta ................. ${costo.toFixed(0)} de stamina   (eran 1000 con 1,0 por segundo)`,
+      `  llega con .................... ${String(TANQUE)}   (el tanque del Hito 5 es ${String(TANQUE_DEL_HITO_5)})`,
+      `  tiene que sacarle al mundo ... ${conTanque.toFixed(0)}   (o ${sinTanque.toFixed(0)} si el tanque no cuenta, o ${(costo - TANQUE_DEL_HITO_5).toFixed(0)} con el del Hito 5)`,
       '',
       `  un pescado de 2 kg CRUDO ..... ${crudo.toFixed(2)} de stamina  →  NUNCA alcanza (era 6,08 → 83 piezas)`,
-      `  el mismo COCINADO ............ ${cocinado.toFixed(2)} de stamina  →  ${String(piezas(conTanque, cocinado))} piezas  (${String(piezas(sinTanque, cocinado))} sin tanque)`,
+      `  el mismo COCINADO ............ ${cocinado.toFixed(2)} de stamina  →  ${String(piezas(sinTanque, cocinado))} piezas sin tanque  (${String(piezas(costo - TANQUE_DEL_HITO_5, cocinado))} con el tanque del Hito 5)`,
       '',
       '  el veneno del ADR II-0013 le da vuelta el signo al crudo: 6,08 de calorías',
       '  contra 12,50 de veneno. Cocinar dejó de ser una mejora y pasó a ser la',
@@ -278,14 +325,38 @@ describe('cuántas comidas hacen falta para llegar viva a los 20.000 ticks', () 
     ])
   })
 
-  it('a la frecuencia de referencia, caminar sin parar cuesta lo mismo que vivir', () => {
-    // El número que hace que el 1,0 no parezca decretado: `intencionCaminar` avanza
-    // una celda por tick, o sea 20 celdas por segundo a 20 Hz, y cada celda cuesta
-    // 0,05. Andar duplica el gasto y los 500 del arranque se van en 250 segundos y
-    // 5000 celdas. Ninguna de las dos constantes se eligió mirando a la otra.
-    expect(COSTO_POR_CELDA * HZ_DE_REFERENCIA).toBe(COSTO_VIVIR_POR_SEGUNDO)
-    expect(TANQUE / (COSTO_VIVIR_POR_SEGUNDO * 2)).toBe(250)
+  it.fails('SE ROMPIÓ · caminar sin parar ya no cuesta lo mismo que vivir: cuesta 2,94×', () => {
+    // ─── LO QUE SE PERDIÓ AL BAJAR `COSTO_VIVIR_POR_SEGUNDO` A 0,34 ─────────
+    //
+    // Este bloque afirmaba una coincidencia que valía la pena: `intencionCaminar`
+    // avanza una celda por tick, o sea 20 celdas por segundo a 20 Hz, y cada celda
+    // cuesta 0,05 → caminar sin parar salía 1,00 por segundo, EXACTAMENTE lo mismo
+    // que vivir. «Ninguna de las dos constantes se eligió mirando a la otra» y aun
+    // así daban igual; andar duplicaba el gasto y nada más.
+    //
+    // Con 0,34 la coincidencia se terminó, y no es un número viejo: es una
+    // propiedad del mundo que cambió de forma. MEDIDO acá abajo:
+    //
+    //   caminar sin parar ... 0,05 × 20 = 1,00 por segundo
+    //   vivir ............... 0,34 por segundo
+    //   la razón ............ 2,94× a favor de caminar
+    //   quieta .............. el tanque de 500 dura 1470,6 s
+    //   caminando ........... 373,1 s (eran 250), o sea que andar ahora
+    //                         CUADRUPLICA el gasto en vez de duplicarlo
+    //
+    // No se afloja: se deja fallando la igualdad, porque el día que la locomoción
+    // pase a medirse en celdas por SEGUNDO (el hueco 2 de
+    // `tests/el-tiempo-no-depende-del-tick.test.ts`) esta cuenta se vuelve a
+    // escribir entera y conviene que el rojo esté esperando ahí.
+    //
+    // Lo que sigue siendo cierto va PRIMERO, para que se afirme de verdad: el
+    // `it.fails` corta en la primera que revienta.
     expect(TANQUE / COSTO_POR_CELDA).toBe(10_000)
+    expect(COSTO_POR_CELDA * HZ_DE_REFERENCIA).toBe(1)
+    expect(Number((TANQUE / (COSTO_POR_CELDA * HZ_DE_REFERENCIA + COSTO_VIVIR_POR_SEGUNDO)).toFixed(4))).toBe(373.1343)
+    expect(Number(((COSTO_POR_CELDA * HZ_DE_REFERENCIA) / COSTO_VIVIR_POR_SEGUNDO).toFixed(4))).toBe(2.9412)
+    // Y la que se rompió, al final.
+    expect(COSTO_POR_CELDA * HZ_DE_REFERENCIA).toBe(COSTO_VIVIR_POR_SEGUNDO)
   })
 })
 
@@ -391,12 +462,15 @@ describe('con la stamina en cero, la criatura se muere', () => {
     // catálogo agrega es que es comida que hay que COCINAR. Nadie lo escribió
     // tampoco: la carne tiene `toxicity` 0,30 desde el Hito 0.
     //
-    // Los −8,7618 medidos no son los −8,70 de la cuenta a mano, y la diferencia es
+    // Los −8,7288 medidos no son los −8,70 de la cuenta a mano, y la diferencia es
     // información: el cadáver ya vivió UN TICK en el mundo, y la ley 6 le subió el
     // `decay` —y con él la `toxicity`— antes de que nadie lo levantara. La carne
     // muerta empeora desde el primer tick, que es exactamente lo que esa ley dice.
+    //
+    // Eran −8,7618 con `COSTO_VIVIR_POR_SEGUNDO` en 1,0. Lo único que se movió es el
+    // tick de vivir que va adentro del neto: 0,05 → 0,017, o sea 0,033 más arriba.
     const neto = staminaDe(comio.state, 'beto') - antes
-    expect(Number(neto.toFixed(4))).toBe(-8.7618)
+    expect(Number(neto.toFixed(4))).toBe(-8.7288)
     const ven = comio.events.find((e) => e.k === 'enveneno')
     expect(ven?.k === 'enveneno' ? Number(ven.cobrado.toFixed(4)) : 0).toBeGreaterThan(15)
     // Y la conversión queda declarada, así que el invariante de conservación la
@@ -437,13 +511,14 @@ describe('con la stamina en cero, la criatura se muere', () => {
     // El control negativo de todo el bloque: si la muerte se disparara sola, todos
     // los tests de arriba darían verde midiendo nada.
     let w = mundo({ bodies: [enElPiso(criatura('ana', 1), EN(0, 0))], actors: [actor('ana')] })
-    for (let t = 0; t < 19; t++) {
+    for (let t = 0; t < 58; t++) {
       const r = stepWorld(w, [])
       expect([t, murioDeHambre(r.events)]).toEqual([t, undefined])
       w = r.state
     }
     expect(w.actors.has('ana')).toBe(true)
-    // Un segundo de vida son veinte ticks a 20 Hz, y el vigésimo es el último.
+    // Uno de `stamina` son 2,94 s de vida —eran 1,00 con el segundo a 1,0—, o sea
+    // 59 ticks a 20 Hz, y el 59 es el último. Antes eran 20.
     const ultimo = stepWorld(w, [])
     expect(murioDeHambre(ultimo.events)).toBeDefined()
   })

@@ -516,6 +516,24 @@ describe('el banco de la escalera', () => {
    */
   const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
 
+  // ─── POR QUÉ TODOS LOS BLOQUES DE ACÁ DECLARAN SU VENCIMIENTO ─────────────
+  //
+  // Los ocho corren `TICKS` de mundo con mente puesta, varias veces cada uno, y
+  // el vencimiento por omisión de vitest son 5 s. Corriendo el archivo SOLO
+  // tardan entre 0,4 y 3,7 s; corriendo al lado de los otros 21 archivos del
+  // paquete, tres de ellos —(2), (4) y (5)— cruzaron los 5 s y el paquete quedó
+  // rojo con `Test timed out in 5000ms`, que no dice nada de lo que el banco
+  // mide. Es la misma CONTENCIÓN que este proyecto ya tiene medida en el banco
+  // del p99 de `@anima/world` (30,94 ms solo contra 36,13 ms en la corrida de
+  // los nueve paquetes).
+  //
+  // **No se aflojó ningún umbral**: un vencimiento de vitest es presupuesto del
+  // arnés y no una aserción. Los umbrales de tiempo de este archivo siguen todos
+  // detrás de `MIDIENDO_EN_SERIO`, exactamente como estaban. (1) y el `it.fails`
+  // del piso de D1 ya declaraban 600_000 por esto mismo; los otros seis lo
+  // declaran ahora, y no por precaución: los tres que se cayeron son los tres
+  // más lentos y los otros tres están a un factor de dos de ellos.
+
   // ─── (0) La primera decisión del proceso ──────────────────────────────────
 
   it('(0) la primera decisión del proceso cuesta más que las siguientes', () => {
@@ -545,7 +563,7 @@ describe('el banco de la escalera', () => {
     if (!MIDIENDO_EN_SERIO) return
     // El criterio: el JIT de la primera decisión no puede comerse un tick entero.
     expect(fria).toBeLessThan(TICK_MS * 1e6)
-  })
+  }, 600_000)
 
   // ─── (1) La distribución: dónde se corta ─────────────────────────────────
 
@@ -843,7 +861,7 @@ describe('el banco de la escalera', () => {
       const cota = cotaDe(m.k)
       expect(m.p99, `${nombre}: p99 ${us(m.p99)} µs contra una cota de ${us(cota)} µs`).toBeLessThan(cota)
     }
-  })
+  }, 600_000)
 
   // ─── (3) El costo esperado, y las 5000 criaturas ─────────────────────────
 
@@ -937,7 +955,7 @@ describe('el banco de la escalera', () => {
     // Es el criterio que este tramo de verdad controla: cuántas criaturas entran
     // depende además del `Contexto` y de `Partida.volar`, que no son de acá.
     expect(media(orilla.nsPensar)).toBeLessThan(media(orilla.nsPorPeldano.D4) / 5)
-  })
+  }, 600_000)
 
   it.fails('(3 bis) las 5000 criaturas del criterio NO entran en el cuarto de tick que les tocaría', () => {
     // ─── EL HUECO, MARCADO Y NO TAPADO ──────────────────────────────────────
@@ -970,7 +988,7 @@ describe('el banco de la escalera', () => {
     const r = correr(laEscenaDelDocumento(), 'ana', TICKS)
     const presupuesto = TICK_MS * 1e6 * FRACCION_DE_LA_MENTE
     expect(media(r.nsPensar) * CRIATURAS_DEL_CRITERIO).toBeLessThan(presupuesto)
-  })
+  }, 600_000)
 
   // ─── (4) El mundo con la mente puesta y sin ella ─────────────────────────
 
@@ -1042,7 +1060,7 @@ describe('el banco de la escalera', () => {
     // mente corra todos los ticks para todas las criaturas — si pensar costara
     // más que el mundo, habría que pensar cada N ticks y no cada uno.
     expect(pensar).toBeLessThan(conAv - sinAv)
-  })
+  }, 600_000)
 
   // ─── (5) ¿Está bien calibrada `OPORTUNIDADES_QUE_MIRA = 12`? ─────────────
 
@@ -1161,5 +1179,5 @@ describe('el banco de la escalera', () => {
     const nec = necesidades(vOrilla)
     const tOrilla = pct(muestras(() => { opportunities(vOrilla, mem, nec) }, 2000), 99)
     expect(tOrilla).toBeLessThan(PRESUPUESTO.D3)
-  })
+  }, 600_000)
 })
