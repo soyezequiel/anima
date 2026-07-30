@@ -61,8 +61,8 @@ import {
 import type { BodyId, BodyView, Cell, CellQuality, Clock, SelfView, Tag, Where } from '@anima/skills'
 
 import { ESQUEMAS } from '../src/esquemas.js'
-import { plan } from '../src/regresion.js'
-import type { ConstructionSchema, GoalNode, PlanResult, Predicado, Step, VistaDelPlan } from '../src/tipos.js'
+import { pasoYaEstaHecho, plan } from '../src/regresion.js'
+import type { ConstructionSchema, GoalNode, PlanResult, Predicado, Ref, Step, VistaDelPlan } from '../src/tipos.js'
 
 // ─── El mundito de mentira, para los defectos que no llegan al mundo ────────
 
@@ -359,19 +359,48 @@ describe('lo que el plan manda a hacer, ejecutado en el mundo de verdad', () => 
     if (r.k !== 'gap') return
     expect(r.why).toContain('necesita «vara-2» en la mano y no entra')
     expect(r.why).toContain('la mano ya lleva 1 y la capacidad es 1')
-    // Y lo que ofrece mientras tanto SÍ se puede: ir y agarrar la primera.
-    expect(resumir(r.nearest)).toEqual(['ir(vara-1)', 'sostener(vara-1)', 'ir(vara-2)', 'sostener(vara-2)'])
+    // ─── Y EL `ir(vara-1)` QUE ESTA LISTA TENÍA ADELANTE YA NO ESTÁ ─────────
+    //
+    // No se le sacó un paso al test: se le sacó un paso que no hacía nada. Ana
+    // está en (0,0) y `vara-1` en (1,0), o sea Chebyshev 1, que es exactamente
+    // el `within` que el paso pedía — la innata `ir` lo habría contestado
+    // `done()` en el tick cero sin emitir una sola intención al mundo. Es el
+    // no-op que se llevaba el 98% de la vida de la criatura cuando la lista
+    // entera era uno solo de éstos (ver `sinLoQueYaEstaHecho` en `regresion.ts`).
+    //
+    // La precondición se afirma acá abajo para que el día que la escena se mueva
+    // esto se ponga rojo por el motivo correcto y no por el número de pasos.
+    const ana = inicial.bodies.get(CUERPO_DE_ANA)?.at
+    const v1 = inicial.bodies.get('vara-1')?.at
+    if (ana === undefined || v1 === undefined) throw new Error('escena sin ana o sin vara-1')
+    expect(chebyshev(ana, v1)).toBe(1)
+    // Y `vara-2` está a 2, o sea que ese `ir` NO se poda: la poda es del prefijo
+    // y se corta en el primer paso que sí hay que dar.
+    const v2 = inicial.bodies.get('vara-2')?.at
+    if (v2 === undefined) throw new Error('escena sin vara-2')
+    expect(chebyshev(ana, v2)).toBe(2)
+    // Y lo que ofrece mientras tanto SÍ se puede: agarrar la primera —ya está al
+    // lado— e ir a buscar la segunda.
+    expect(resumir(r.nearest)).toEqual(['sostener(vara-1)', 'ir(vara-2)', 'sostener(vara-2)'])
+    // Y sigue diciendo cuántos pasos sacó, que es lo que distingue «quedó corta
+    // porque ya estaba hecha» de «nunca hubo nada».
+    expect(r.why).toContain('1 paso ya estaba dado')
   })
 
   it('ARREGLADO — con DOS manos el plan sale y el mundo no rechaza nada', () => {
     // El control positivo, que es la mitad que importa: rechazar todo también
-    // «arregla» el defecto. Con `capacity: 2` los mismos cinco pasos salen, se
-    // ejecutan contra `stepWorld`, y la lista de rechazos queda VACÍA.
+    // «arregla» el defecto. Con `capacity: 2` los pasos salen, se ejecutan
+    // contra `stepWorld`, y la lista de rechazos queda VACÍA.
+    //
+    // Eran CINCO y son CUATRO, y lo que se fue es el `ir(vara-1)` de adelante:
+    // ana arranca a Chebyshev 1 de `vara-1`, que es el `within` que ese paso
+    // pedía. Lo que este test afirma —que el mundo no rechaza NADA y que las dos
+    // varas terminan en la mano— no se toca: el paso que se sacó nunca llegaba
+    // al mundo. Ver `sinLoQueYaEstaHecho` en `regresion.ts`.
     for (const cap of [2, 3]) {
       const inicial = dosVaras(cap)
       const r = plan(meta(ARDER), vistaDeMundo(inicial), SIN_CORTE)
       expect(resumir(pasosDe(r)), `con capacidad ${String(cap)}`).toEqual([
-        'ir(vara-1)',
         'sostener(vara-1)',
         'ir(vara-2)',
         'sostener(vara-2)',
@@ -381,6 +410,59 @@ describe('lo que el plan manda a hacer, ejecutado en el mundo de verdad', () => 
       expect(corrida.rechazos, `con capacidad ${String(cap)}`).toEqual([])
       expect(corrida.w.actors.get(ANA)?.holding).toEqual(['vara-1', 'vara-2'])
     }
+  })
+
+  // ─── EL NO-OP CON CARA DE PROGRESO, en la unidad que lo decide ────────────
+  //
+  // El bucle que este predicado corta se midió en la partida y es el más caro que
+  // encontró el Hito 5: **6045 despegues de `ir(suelta:-6:-7:2)` en 6171 ticks**
+  // con el tanque de 310, y **19.846 en 19.971** con el de 1000 — el 98% de la
+  // vida de la criatura dando un paso que ya estaba dado, y todo aterrizando en
+  // verde porque la innata `ir` sale por «si ya estoy, no gasto una intención».
+  //
+  // Se prueba acá, sobre el predicado suelto, además de en los dos tests de
+  // arriba, porque los dos de arriba lo tocan de refilón: lo que se poda ahí es
+  // UN paso de UNA escena. Lo que hay que poder afirmar es la regla.
+  it('`pasoYaEstaHecho` distingue los dos pasos de ESTADO de los diez de EVENTO', () => {
+    // Ana en (0,0), `vara-1` en (1,0) —Chebyshev 1— y `vara-2` en (2,0).
+    const v = vistaDeMundo(dosVaras(3))
+    const uno: Ref = { k: 'id', id: 'vara-1' }
+    const dos: Ref = { k: 'id', id: 'vara-2' }
+
+    // `ir`: la métrica es Chebyshev, la misma que la innata compara contra
+    // `within`, así que la frontera está exactamente donde el paso la pone.
+    expect(pasoYaEstaHecho({ k: 'ir', a: uno, within: 1, porQue: 'x' }, v)).toBe(true)
+    expect(pasoYaEstaHecho({ k: 'ir', a: uno, within: 0, porQue: 'x' }, v)).toBe(false)
+    expect(pasoYaEstaHecho({ k: 'ir', a: dos, within: 1, porQue: 'x' }, v)).toBe(false)
+    expect(pasoYaEstaHecho({ k: 'ir', a: dos, within: 2, porQue: 'x' }, v)).toBe(true)
+
+    // `sostener`: nada en la mano en esta escena, así que ninguno está hecho.
+    expect(pasoYaEstaHecho({ k: 'sostener', que: uno, porQue: 'x' }, v)).toBe(false)
+    // Y con la vara en la mano, sí. `enMano` la mete en `self.holding`.
+    const conMano = vistaDeMundo(mundo({
+      capacity: 3,
+      at: { x: 0, y: 0 },
+      enMano: ['vara-1'],
+      cuerpos: [{ body: cuerpoReal('vara-1', 'madera', 0.2, 'vara'), at: { x: 0, y: 0 } }],
+    }))
+    expect(pasoYaEstaHecho({ k: 'sostener', que: uno, porQue: 'x' }, conMano)).toBe(true)
+
+    // ─── Y LOS EVENTOS CONTESTAN `false` SIEMPRE, que es lo que salva perseverar ──
+    //
+    // `frotar` sobre una vara que YA está a 400 °C se sigue emitiendo, y es
+    // deliberado: la temperatura de la que depende no es la de hoy sino la que
+    // van a dejar los pasos anteriores del mismo plan, así que darlo por hecho
+    // exigiría simular. El precio de contestar `false` es a lo sumo un tick; el
+    // de contestar `true` mal es que la criatura no encienda nunca.
+    expect(pasoYaEstaHecho({ k: 'frotar', a: uno, b: dos, hasta: 400, porQue: 'x' }, v)).toBe(false)
+    expect(pasoYaEstaHecho({ k: 'esperar', segundos: 0, porQue: 'x' }, v)).toBe(false)
+    expect(pasoYaEstaHecho({ k: 'juntar', que: [], cuantos: 1, porQue: 'x' }, v)).toBe(false)
+    expect(pasoYaEstaHecho({ k: 'comer', porQue: 'x' }, v)).toBe(false)
+
+    // Y un `Ref` que no resuelve tampoco se da por hecho: no saber dónde está una
+    // cosa no es estar al lado de ella.
+    expect(pasoYaEstaHecho({ k: 'ir', a: { k: 'id', id: 'no-existe' }, within: 9, porQue: 'x' }, v)).toBe(false)
+    expect(pasoYaEstaHecho({ k: 'ir', a: { k: 'rinde', de: 'lo-que-haga' }, within: 9, porQue: 'x' }, v)).toBe(false)
   })
 
   it('ARREGLADO — el tronco de 20 kg ya no entra en ningún rol de un proceso `held`', () => {

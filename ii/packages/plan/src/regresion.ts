@@ -122,6 +122,7 @@ import { distancia } from '@anima/skills/innatas'
 
 import { ESQUEMAS, claveDeVia, procesoDe } from './esquemas.js'
 import { cumple, cumpleCuerpo, firmaDe, implica, interpretar, textoDe } from './predicado.js'
+import { resolver } from './referencias.js'
 import type {
   ConstructionSchema,
   EsquemaDeLey,
@@ -1844,6 +1845,145 @@ function pasosPosibles(nodo: NodoAbierto, v: VistaDelPlan): readonly Step[] {
   return pasos
 }
 
+// ─── Lo que ya está hecho no es un paso ─────────────────────────────────────
+//
+// ═══ EL BUG QUE ESTO CIERRA, MEDIDO ═════════════════════════════════════════
+//
+// Con el pescado en la mano y `holding(tag:carnoso,toxicity<0.0528)` de meta,
+// `plan()` contestaba `gap` con un `nearest` de UN paso —`ir(suelta:-6:-7:2,
+// within:1)`, «acercate a lo que podría hacer de parrilla»— y la criatura YA
+// ESTABA a una celda. La innata `ir` tiene su salida temprana («si ya estoy, no
+// gasto una intención»), así que el paso aterrizaba `ok:true` **sin emitir una
+// sola intención al mundo**; al tick siguiente D4 volvía a pedir el mismo plan,
+// salía el mismo `gap` y con él el mismo `ir`:
+//
+//     tanque  310 ....  6045 despegues de `ir(suelta:-6:-7:2)` en  6171 ticks
+//     tanque 1000 ... 19846 despegues                          en 19971 ticks
+//
+// El 98% de la vida dando un paso que ya estaba dado, **y todo en verde**: cada
+// vuelo aterriza bien y ningún invariante se rompe. Es la misma familia que el
+// contador que leía despegues en vez de aterrizajes: el sistema no distinguía
+// «avancé» de «hice una acción exitosa».
+//
+// ═══ Y NO ES SÓLO `ir` ══════════════════════════════════════════════════════
+//
+// Es de toda habilidad cuyo contrato establece un ESTADO en vez de un EVENTO:
+// si el estado ya vale, correrla es un no-op con cara de progreso. `grep -n
+// 'return done' skills/src/innatas/*.ts` da cinco con salida temprana en el
+// tick cero: `ir` (ya estoy adentro del `within`), `sostener` (ya lo tengo en la
+// mano), `frotar` (ya está a temperatura), `esperar` (`hasta()` ya se cumple) y
+// `explorar` (ya lo veo). Las otras diez son eventos —`unir`, `aplicar`,
+// `comer`, `poner`, `juntar`, `deshilachar`…— y aplicarlas dos veces hace dos
+// cosas, no una.
+//
+// De esas cinco, `Step` sólo puede emitir dos ya cumplidas antes de tocar el
+// mundo: `ir` y `sostener`. `frotar(hasta)`, `esperar(hasta)` y `explorar`
+// dependen de cualidades que el paso anterior del mismo plan cambia, y decidir
+// «ya está» sobre ellas exigiría simular. Se contestan `false` y está dicho en
+// `pasoYaEstaHecho`: preferimos gastar un tick antes que podar un paso que hacía
+// falta.
+//
+// ═══ POR QUÉ SÓLO EL PREFIJO, Y ESTO ES LO QUE HACE QUE SEA CORRECTO ════════
+//
+// Porque «ya está hecho» es una afirmación SOBRE UN ESTADO, y el único estado
+// que el planificador conoce es el de HOY. El primer paso de la lista se ejecuta
+// contra la vista de hoy, así que sobre él la pregunta se puede contestar; sobre
+// el segundo ya no, porque depende de lo que haga el primero. Podar
+// `ir(vara-2)` porque la criatura hoy está al lado de `vara-2` sería un error
+// cuando el paso anterior la manda a caminar diez celdas hasta `vara-1`.
+//
+// Así que se recorre desde el frente y se corta en el primer paso que NO se
+// puede dar por hecho. Lo que queda es exactamente lo mismo que se hubiera
+// ejecutado, sin los ticks que no hacían nada.
+//
+// ═══ Y UNA LISTA QUE QUEDA VACÍA NO ES «NO HAY NADA QUE HACER» ══════════════
+//
+// Son dos cosas distintas y quien las confunda vuelve a caer en el mismo pozo:
+//
+//   `nearest` VACÍO DE ENTRADA  la rama muerta no dejó nada listo — ni siquiera
+//                               sabe hacia dónde acercarse.
+//   `nearest` VACÍO DESPUÉS DE  todo lo que había para acercarse YA ESTÁ HECHO:
+//   PODAR                       la criatura está tan cerca como puede estar y
+//                               sigue sin poder. Es información distinta, y es
+//                               la que el Hito 8 le tiene que llevar a la fragua.
+//
+// Por eso la poda escribe en el `why` cuántos pasos sacó y por qué, en vez de
+// devolver una lista corta y callarse. La mente reacciona igual a las dos —cae a
+// D5, que es lo honesto: no hay nada que hacer HOY para esta meta— pero se
+// entera de cuál de las dos es.
+
+/**
+ * ¿Este paso, contra la vista de hoy, ya está cumplido antes de despegar?
+ *
+ * EXPORTADA, y es la única función de este archivo que sale del paquete además
+ * de `plan()`. La mente se hace la misma pregunta en el momento de volar —ver
+ * `escalera.ts`, el portón de despegue— y tener dos escrituras de «ya está
+ * dado» es garantizarse que un día digan cosas distintas.
+ */
+export function pasoYaEstaHecho(s: Step, v: VistaDelPlan): boolean {
+  switch (s.k) {
+    case 'ir': {
+      // El mismo `resolver` que la mente va a usar para armar los argumentos, y
+      // la misma `distancia` (Chebyshev) que la innata compara contra `within`.
+      // Dos lecturas del mismo número escritas dos veces es el bug que en la
+      // grilla se ve como «a veces no llega».
+      const a = resolver(s.a, v)
+      if (a === undefined) return false
+      const destino: Cell = 'at' in a ? a.at : a
+      return distancia(v.self.at, destino) <= (s.within ?? 0)
+    }
+    case 'sostener': {
+      // `enLaMano` de la innata es identidad de `id` sobre `self.holding`, y eso
+      // es lo que se pregunta acá: no hace falta resolver contra `see`.
+      if (s.que.k !== 'id') return false
+      const id = s.que.id
+      return v.self.holding.some((b) => b.id === id)
+    }
+    // Los diez eventos y las tres condicionales. Ver el encabezado: acá se
+    // contesta `false` a propósito, y el precio es a lo sumo un tick.
+    default:
+      return false
+  }
+}
+
+/**
+ * El prefijo de pasos que ya están dados, sacado. Ver el encabezado del bloque.
+ *
+ * ─── EL COSTO, MEDIDO Y NO ESTIMADO ────────────────────────────────────────
+ *
+ * Se corta en el primer paso que no está hecho, así que el caso normal —el
+ * primer paso hay que darlo— es **UNA** resolución de `Ref`. El peor caso es un
+ * plan entero de no-ops, y ése es justamente el que había que dejar de ejecutar.
+ *
+ * Medido sobre la orilla del criterio a los 400 ticks (15 cuerpos a la vista),
+ * 20.000 llamadas por fila:
+ *
+ *     `ir` con `{k:'id'}` que NO está en la mano ... 2,146 µs   ← el peor caso
+ *     `sostener` .................................. 0,278 µs
+ *     cualquiera de los diez eventos .............. 0,030 µs
+ *
+ * Los 2,1 µs son casi todos el `see([])` de `porId` —`referencias.ts` ya lo dice
+ * en su decisión 2: «`id` NO TIENE ÍNDICE, y el costo se dice en voz alta»— y no
+ * son costo nuevo de esta poda: es el mismo barrido que la mente iba a pagar
+ * igual al traducir el paso. Contra el `plan()` que lo contiene, que el banco
+ * mide entre 100 y 1400 µs según el tamaño de la escena, es entre el 0,15% y el
+ * 2%.
+ *
+ * Y de punta a punta no se mide: cuatro corridas de 6200 a 20.000 ticks dan
+ * 0,5835 · 0,5848 · 0,4136 · 0,2366 ms/tick contra 0,6094 · 0,5596 · 0,4289 ·
+ * 0,2446 de antes — deltas de ±5% y de los dos signos, o sea ruido de reloj de
+ * pared. Lo que sí se mueve es cuántos vuelos hay que pagar.
+ */
+function sinLoQueYaEstaHecho(pasos: readonly Step[], v: VistaDelPlan): readonly Step[] {
+  let i = 0
+  while (i < pasos.length) {
+    const s = pasos[i]
+    if (s === undefined || !pasoYaEstaHecho(s, v)) break
+    i++
+  }
+  return i === 0 ? pasos : pasos.slice(i)
+}
+
 // ─── El orden de la cola ────────────────────────────────────────────────────
 
 /**
@@ -2030,7 +2170,11 @@ export function plan(
     // El nodo TERMINAL: `marcos` vacía y `falta` en `''`. Se lo saca de la cola
     // como a cualquier otro, así que gana el plan más barato y no el primero.
     if (nodo.marcos.length === 0 && nodo.falta.length === 0) {
-      return { k: 'plan', steps: nodo.camino, expansiones: hechas }
+      // LO QUE YA ESTÁ HECHO NO SE EMITE, tampoco en un plan de verdad. Acá no
+      // hay bucle —un plan se consume paso a paso y el siguiente sí mueve el
+      // mundo— pero es el mismo no-op y cuesta un tick, que a la frecuencia de
+      // referencia son 50 ms de vida. Ver el bloque `sinLoQueYaEstaHecho`.
+      return { k: 'plan', steps: sinLoQueYaEstaHecho(nodo.camino, v), expansiones: hechas }
     }
 
     const r = expandir(nodo, g, v, todos)
@@ -2053,5 +2197,18 @@ export function plan(
       expansiones: hechas,
     }
   }
-  return { k: 'gap', missing: peor.falta, nearest: peor.nearest, why: peor.why, expansiones: hechas }
+  // Y EL «MIENTRAS TANTO» TAMBIÉN SE PODA, que es donde el no-op costaba una
+  // vida entera: el `gap` se vuelve a pedir cada tick mientras la meta siga sin
+  // cumplirse, así que un paso ya dado adelante de la lista se re-emite para
+  // siempre. Ver el bloque `sinLoQueYaEstaHecho`.
+  const queda = sinLoQueYaEstaHecho(peor.nearest, v)
+  const podados = peor.nearest.length - queda.length
+  // Y SE DICE EN EL `why`, porque «quedó vacío después de podar» NO es lo mismo
+  // que «no había nada»: la primera dice «estoy tan cerca como puedo estar y
+  // sigue sin alcanzar», que es lo que el Hito 8 le lleva a la fragua.
+  const why =
+    podados === 0
+      ? peor.why
+      : `${peor.why} (y de lo que se podía hacer mientras tanto, ${String(podados)} paso${podados === 1 ? '' : 's'} ya estaba${podados === 1 ? '' : 'n'} dado${podados === 1 ? '' : 's'}${queda.length === 0 ? ': no queda nada por acercar' : ''})`
+  return { k: 'gap', missing: peor.falta, nearest: queda, why, expansiones: hechas }
 }

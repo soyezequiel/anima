@@ -220,8 +220,10 @@
 //
 //       Sobre la escena plantada, regalarle cien pescados YA COCIDOS alcanzaba:
 //       «murió en −1, 65 bocados, aliento final 1,4593». Sobre el mundo decretado
-//       **NO alcanza: come 66 y se muere en el 12.031.** El `it.fails` está
-//       puesto con la salida al lado, y no se ablandó nada.
+//       **NO alcanza: come 68 y se muere en el 12.847.** El `it.fails` está
+//       puesto con la salida al lado, y no se ablandó nada. (Antes de la poda
+//       del tramo L eran 66 bocados y el 12.031: dejar de dar un paso ya dado le
+//       compró 816 ticks, un 6,8%, y no le alcanzó.)
 //
 //       Y el motivo es aritmética, no conducta, y estaba escrito en el número
 //       viejo sin que nadie lo leyera: **aquel 1,4593 era el margen con el que
@@ -229,9 +231,9 @@
 //       corridas, lado a lado:
 //
 //         plantada  310 + 691,46 comidos − 1000 de vivir = +1,46  → llega
-//         decretada 310 + 690,00 comidos − 1000 de vivir = +0,00  → no llega
+//         decretada 310 + 690,08 comidos − 1000 de vivir = +0,08  → no llega
 //
-//       Comió MÁS (66 contra 65) y llegó menos lejos, porque en un mundo con
+//       Comió MÁS (68 contra 65) y llegó menos lejos, porque en un mundo con
 //       cosas alrededor la mente camina: el tanque se le llena a los 2000 ticks
 //       (849,3 de aliento), los 34 cocidos que le quedan se pudren hasta
 //       `toxicity` 0,9921 —la ley 6— y desde ahí gasta 0,0847/tick en deambular
@@ -281,7 +283,7 @@
 // ticks con la despensa se afirmaban sólo con `ANIMA_BANCO=1`, así que en una
 // corrida normal el test hacía `return` antes de la única línea que medía el
 // criterio: era verde por no preguntar. Cuando la corrida se dio vuelta —de
-// «murió en −1» a «murió en el 12.031»— nadie se habría enterado. Hoy la corrida
+// «murió en −1» a «murió en el 12.847»— nadie se habría enterado. Hoy la corrida
 // entera es determinista y no toca un reloj, así que el gate no compraba nada y
 // el caso quedó como `it.fails` con la salida al lado: cuesta los mismos 18,5 s
 // y ahora dice la verdad todos los días.
@@ -1713,8 +1715,33 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     const sinLena = plan(g, vistaDe(p1, 'ana'), EXPANSIONES_POR_TICK * 60);
 
     // (b) la MISMA escena con un fuego ya prendido y una losa. Ligar lo que existe.
+    //
+    // ─── EL CALENTAMIENTO SE CORTA CUANDO EL PESCADO ENTRA A LA MANO ────────
+    //
+    // Antes eran 200 ticks fijos, y este bloque medía DOS cosas a la vez —el
+    // planificador y cuánto había avanzado la escena—; su propio comentario de
+    // abajo ya lo decía, y el largo del plan iba y venía entre cinco y siete
+    // según eso. El tramo L lo rompió del todo: con el bucle podado la criatura
+    // llega en 200 ticks a tener el pescado **YA COCIDO** en la mano
+    // (`digestibility 0,8691`, `toxicity 0,0272`, verificado contra
+    // `state.bodies`), o sea que la meta está cumplida y `plan()` contesta —bien—
+    // un plan de CERO pasos. Medido contra el árbol de antes, en el mismo tick
+    // 200 la mano tenía sólo la caña.
+    //
+    // O sea que la escena de 200 ticks dejó de servir para preguntar «¿sabe ligar
+    // un fuego que existe?», y no porque el planificador cambiara. Se corta el
+    // calentamiento en el tick en que el pescado entra a la mano, que es
+    // exactamente el estado que este bloque quería: crudo, agarrado, con un fuego
+    // al lado. Así el largo del plan vuelve a ser una propiedad del planificador
+    // y no de cuánto se dejó correr el mundo.
     const p2 = new Partida(conFuegoYLosa());
-    vivir(p2, new Map([['ana', new Mente({ actor: 'ana', memoria: new Creencias() })]]), 200);
+    const m2 = new Map([['ana', new Mente({ actor: 'ana', memoria: new Creencias() })]]);
+    let calentado = 0;
+    for (let t = 0; t < 200; t++) {
+      if (enLaMano(p2, 'ana').some((s) => s.includes('pescado'))) break;
+      vivir(p2, m2, 1);
+      calentado = t + 1;
+    }
     const fogata = p2.state.bodies.get('fogata');
     const potencia = fogata === undefined ? 0 : qualityOf(fogata.body, 'emitsPower', p2.state.phys);
     const conFuego = plan(g, vistaDe(p2, 'ana'), EXPANSIONES_POR_TICK * 60);
@@ -1729,7 +1756,8 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       `\n─── DE LA VARA AL PESCADO COCIDO, EN UN SOLO PLAN ───\n` +
         `  (a) la escena del documento tal cual:  ${sinLena.k}` +
         (sinLena.k === 'gap' ? `  missing «${sinLena.missing}»\n          ${sinLena.why}` : '') +
-        `\n  (b) con un leño YA ardiendo (emitsPower ${potencia.toFixed(2)}) y una losa:  ${conFuego.k}` +
+        `\n  (b) con un leño YA ardiendo (emitsPower ${potencia.toFixed(2)}) y una losa, ` +
+        `pedido en el tick ${String(calentado)} —el pescado recién entró a la mano—:  ${conFuego.k}` +
         (conFuego.k === 'plan'
           ? `  →  ${conFuego.steps.map((s) => s.k).join(' → ')}  (${String(conFuego.expansiones)} expansiones)`
           : conFuego.k === 'gap'
@@ -1777,13 +1805,26 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // que la vara que el arnés le ponía a tres celdas— y con trece ticks menos
     // de margen la cocción no termina adentro de la ventana de 200.
     //
-    // Se afirma la forma de CINCO y se comenta la de siete: lo que importa es el
-    // orden —armar la pila, esperar, levantar— y que el `esperar` esté en el
-    // medio, que es el paso que el tramo J tuvo que coser.
+    // Se afirma la FORMA y no el largo: lo que importa es el orden —armar la
+    // pila, esperar, levantar— y que el `esperar` esté en el medio, que es el
+    // paso que el tramo J tuvo que coser.
+    //
+    // ─── Y EL `ir` DE ADELANTE YA NO ESTÁ, POR LA MISMA RAZÓN QUE ARRIBA ────
+    //
+    // Con el calentamiento cortado en el tick 109 la criatura está PARADA EN LA
+    // CELDA de la fogata —el arnés la pone ahí, `conFuegoYLosa` regala los dos
+    // cuerpos en `parada`—, así que ese `ir` era un no-op: la innata contestaba
+    // `done()` sin emitir una intención y el tick se tiraba. Lo poda
+    // `sinLoQueYaEstaHecho` (`plan/src/regresion.ts`). Se afirma la distancia
+    // acá abajo para que, si algún día la escena mueve a la criatura, esto se
+    // ponga rojo por el motivo correcto y no por el número de pasos.
     expect(conFuego.k).toBe('plan');
     if (conFuego.k !== 'plan') throw new Error('imposible');
+    const ella = p2.state.bodies.get('ana-cuerpo')?.at;
+    const donde = p2.state.bodies.get('fogata')?.at;
+    if (ella === undefined || donde === undefined) throw new Error('escena sin ana o sin fogata');
+    expect(Math.max(Math.abs(ella.x - donde.x), Math.abs(ella.y - donde.y))).toBeLessThanOrEqual(1);
     expect(conFuego.steps.map((s) => s.k)).toEqual([
-      'ir', // hasta la fogata
       'poner', // la losa sobre la fogata
       'poner', // el pescado sobre la losa
       'esperar',
@@ -2406,11 +2447,30 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // leyó como una mejora. → **REGLA: una pendiente que baja no es una mejora.
     // Preguntá qué dejó de hacer.**
     //
-    // EL ARREGLO es `EstadoDeLaEscalera.mientrasTantoYaHecho`, el mismo cerrojo
-    // que `fondosQueFallaron` y `bocadoQueFallo`: el «mientras tanto» de un `gap`
-    // se guarda por FIRMA y no se repite; con la firma puesta la escalera cae a
-    // D5, que es lo que ya hacía cuando `nearest` venía vacío. Se limpia cuando
-    // la meta cambia y cuando aparece un plan de verdad.
+    // EL ARREGLO SON DOS CAPAS, Y LA ATRIBUCIÓN ESTUVO MAL UN TRAMO ENTERO.
+    //
+    // La primera que se escribió fue `EstadoDeLaEscalera.mientrasTantoYaHecho`
+    // (tramo K bis), el mismo cerrojo que `fondosQueFallaron` y `bocadoQueFallo`:
+    // el «mientras tanto» de un `gap` se guarda por FIRMA y no se repite. La
+    // segunda es la PODA de `@anima/plan` (`sinLoQueYaEstaHecho`, tramo L), que
+    // saca del `plan.steps` y del `gap.nearest` el prefijo de pasos que la vista
+    // de hoy ya cumple.
+    //
+    // Este comentario decía «el arreglo es el cerrojo» a secas, y eso no lo
+    // sostiene ninguna medición. La ablación, corrida al cerrar el tramo L sobre
+    // esta misma escena (las dos capas se apagaron por separado):
+    //
+    //     las dos apagadas ......  6045 `ir` en 6171 ticks, murió en el 6171
+    //     sólo el cerrojo .......     2 `ir`,               murió en el 3743
+    //     sólo la poda ..........    22 `ir` en 3686 ticks, murió en el 3686
+    //     las dos ...............     1 `ir`,               murió en el 3802
+    //
+    // O sea que **cada una de las dos, sola, se come el 99,6% del bucle**, y son
+    // redundantes en esta escena. No sobra ninguna: el cerrojo es por META y no
+    // ve un plan de quince pasos cuyo frente envejeció; la poda es por PASO y no
+    // ve la meta que vuelve a pedir lo mismo con otro `nearest`. Y la diferencia
+    // de 22 contra 2 dice cuál de las dos es más fina: la poda deja pasar el
+    // primer `ir` de cada meta nueva, que es lo correcto.
     //
     // LO QUE CUESTA, dicho sin maquillaje: la criatura pasa a deambular, o sea a
     // gastar 1,65× lo que cuesta respirar, y **muere ANTES** (3743 contra 6184).
@@ -2500,9 +2560,9 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     const algunaCierra = filas.some((f) => f.cierra);
 
     console.log(
-      `\n─── (a) EL BUCLE DEL «MIENTRAS TANTO», DESPUÉS DEL CERROJO ───\n` +
+      `\n─── (a) EL BUCLE DEL «MIENTRAS TANTO», DESPUÉS DE LAS DOS CAPAS ───\n` +
         `  el \`ir\` más repetido en 2000 ticks: ${irMasRepetido[0]} × ${String(irMasRepetido[1])}` +
-        `   (antes del cerrojo: 6045 en 6171 ticks)\n` +
+        `   (sin cerrojo NI poda: 6045 en 6171 ticks · sólo cerrojo 2 · sólo poda 22)\n` +
         `  el cerrojo puesto al final de la corrida: ${String(r.mente.estado.mientrasTantoYaHecho)}\n` +
         `\n─── (b) QUÉ MASA DE MADERA DEJA CERRAR EL PLAN, MEDIDO CON EL PLANIFICADOR ───\n` +
         `  la madera que el dios decreta en los 9 chunks de la parada: ` +
@@ -2533,8 +2593,9 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     expect(cierraLaDelDecreto).toBe(false);
     MEDIDO.set(
       'el bucle',
-      `CERRADO: el \`ir\` más repetido pasó de 6045 en 6171 ticks a ${String(irMasRepetido[1])} en 2000 ` +
-        `(\`mientrasTantoYaHecho\`). Sin el cerrojo la criatura NO prende fuego ni con la yesca al lado`,
+      `CERRADO: el \`ir\` más repetido pasó de 6045 en 6171 ticks a ${String(irMasRepetido[1])} en 2000. ` +
+        `Son DOS capas y cada una sola se come el 99,6% del bucle (ablación: cerrojo solo 2, poda sola 22, ` +
+        `las dos 1). Sin ninguna de las dos la criatura NO prende fuego ni con la yesca al lado`,
     );
     MEDIDO.set(
       'el tamaño de la leña',
@@ -2552,10 +2613,11 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // criatura la come sola y el aliento SUBE. Lo que ya no se sostiene es que
     // eso alcance para los 20.000, y eso lo mide el `it.fails` de abajo.
     //
-    // MEDIDO sobre el mundo decretado: **66 bocados y 849,30 de aliento a los
-    // 2000 ticks**, contra 147,50 de la misma escena sin cocidos. O sea que en
-    // 2000 ticks se comió DOS TERCIOS de la despensa y llenó el tanque; el resto
-    // de la corrida no tiene con qué (los 34 que quedan se pudren).
+    // MEDIDO sobre el mundo decretado, después de la poda del tramo L: **68
+    // bocados y 869,28 de aliento a los 2000 ticks**, contra 148,00 de la misma
+    // escena sin cocidos (antes de la poda eran 66 y 849,30 contra 147,50). O sea
+    // que en 2000 ticks se comió DOS TERCIOS de la despensa y llenó el tanque; el
+    // resto de la corrida no tiene con qué (los 32 que quedan se pudren).
     const r = correr(laDespensa(), 'ana', 2000);
     const bocados = [...r.cuenta]
       .filter(([k]) => k.startsWith('tragar'))
@@ -2577,17 +2639,23 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     expect(r.mente.tropiezo).toBeUndefined();
   }, 300_000);
 
-  it.fails('CONTRAPRUEBA · y con el eslabón regalado TAMPOCO llega: come 66 y muere en el 12.031', () => {
+  it.fails('CONTRAPRUEBA · y con el eslabón regalado TAMPOCO llega: come 68 y muere en el 12.847', () => {
     // ─── ESTA CONTRAPRUEBA SE DIO VUELTA, Y ES LA NOTICIA MÁS INCÓMODA ─────
     //
     // Contestaba «¿falta sólo el fuego, o además falta otra cosa?» regalándole
     // EXACTAMENTE el eslabón que no sabe hacer —cien pescados ya cocidos— y nada
     // más, y la respuesta era «sólo el fuego»: murió en −1, 65 bocados, aliento
-    // final 1,4593. Sobre el mundo decretado la respuesta es otra:
+    // final 1,4593. Sobre el mundo decretado la respuesta es otra (medido al
+    // cerrar el tramo L; entre paréntesis, lo mismo antes de la poda):
     //
-    //     murió en el 12.031 de 20.000 · 66 bocados · aliento final 0,0029
-    //     aliento: 0:321,8 → 2000:849,3 → 6000:510,6 → 10000:171,9 → 12000:2,7
-    //     quedaron 34 cocidos con toxicity 0,9921 — la ley 6 los pudrió
+    //     murió en el 12.847 de 20.000 · 68 bocados · aliento final 0,0824
+    //     aliento: 0:321,8 → 2000:869,2 → 6000:552,0 → 10000:229,8 → 12000:71,4
+    //     quedaron 32 cocidos con toxicity 0,9921 — la ley 6 los pudrió
+    //     (antes de la poda del tramo L: murió en el 12.031, 66 bocados, 34 podridos)
+    //
+    // Los 816 ticks que la poda le agregó son la medida honesta de lo que vale
+    // dejar de dar un paso ya dado con la despensa al lado: **+6,8%, y no llega
+    // igual**. La pared es la aritmética y no el bucle.
     //
     // ─── Y EL MOTIVO ESTABA ESCRITO EN EL NÚMERO VIEJO ─────────────────────
     //
@@ -2595,9 +2663,9 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // 1000: el 0,15%.** Las dos cuentas, lado a lado:
     //
     //     plantada   310 + 691,46 comidos − 1000 de vivir = +1,46  → llega
-    //     decretada  310 + 690,00 comidos − 1000 de vivir = +0,00  → no llega
+    //     decretada  310 + 690,08 comidos − 1000 de vivir = +0,08  → no llega
     //
-    // Comió MÁS (66 contra 65) y llegó menos lejos. Lo que cambió no es la boca:
+    // Comió MÁS (68 contra 65) y llegó menos lejos. Lo que cambió no es la boca:
     // es que en un mundo con cosas alrededor la mente CAMINA. El tanque se llena
     // a los 2000 ticks, los 34 cocidos que sobran se pudren, y desde ahí gasta
     // 0,0847/tick en deambular sin nada que comer.
@@ -2616,7 +2684,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // resultado. Hoy afirma siempre, en rojo esperado.
     //
     // Lo que ADEMÁS se ve, y es un hallazgo aparte que sigue en pie: **la comida
-    // no se guarda.** Comió 66 de los 100 y los 34 que quedan terminan en
+    // no se guarda.** Comió 68 de los 100 y los 32 que quedan terminan en
     // `toxicity` 0,9921. Una criatura que llene el tanque y se siente al lado de
     // la despensa la pierde igual.
     const r = correr(laDespensa(), 'ana', CRITERIO_TICKS);

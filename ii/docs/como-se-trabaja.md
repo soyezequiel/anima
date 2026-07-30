@@ -104,11 +104,12 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los veinte números corregidos, y la regla que dejó cada uno
+## 5 · Los veinticinco números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
-documentos.** Los cuatro últimos son del tramo K bis y están al final, del 17 al 20.
+documentos.** Los del tramo K bis van del 17 al 20 y los del tramo L del 21 al 25,
+al final.
 
 1. **«El fuego no se propaga»** — falso. La cuenta era correcta sobre piezas
    SUELTAS: la corteza más grande que un bioma siembra (0,5 kg) entrega 175,32 °C
@@ -220,10 +221,59 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    CIEGO a `decreta` y saca las 96 y las 21 de antes, para que el 0 y el 0 de al lado
    signifiquen algo.
 
+### Los cinco del tramo L, y tres son de un archivo que nadie había corrido entero
+
+21. **«El control con el tanque lleno llega al 81,0% del presupuesto»** — sobre las
+   VEINTE partidas es **66,2%**. El 81,0% era de las TRES de la muestra corta y se
+   citó como si fuera el del banco; viajó al encabezado de
+   `juez/tests/hito-5-la-emergencia.test.ts` y al traspaso. Medido con
+   `ANIMA_BANCO=1`: 264.776 de 400.000 ticks.
+   → **REGLA: un porcentaje de la muestra corta no se cita como el del banco.**
+22. **`@anima/juez` estaba ROJO con `ANIMA_BANCO=1` y el traspaso lo publicaba como
+   el veredicto del criterio.** La aserción era `vividos / presupuesto > 0,9`, salida
+   de aquel 81,0%, y vive detrás de `if (!MIDIENDO_EN_SERIO) return`: la suite normal
+   corre TRES partidas y nunca la evalúa. Medido sobre el árbol de HEAD, o sea ANTES
+   del tramo L: **65,338%**. No era una regresión de la poda —con la poda da 66,194%,
+   0,86 puntos mejor— y ya fallaba de antes. Es el segundo «exit 0 sobre un árbol
+   rojo» del proyecto, después del número 17.
+   → **REGLA: una aserción detrás de un `env` hay que correrla CON el `env` puesto
+   antes de escribirla, y el veredicto de un criterio no se publica sin mirar el
+   exit code de la corrida que lo produjo.**
+23. **«El bucle del `ir` lo arregló `mientrasTantoYaHecho`»** — lo arreglan DOS capas
+   y cada una sola se come el 99,6%. Ablación sobre la orilla del criterio, tanque
+   310: las dos apagadas **6045** `ir` (murió en el 6171), sólo el cerrojo **2**
+   (3743), sólo la poda de `@anima/plan` **22** (3686), las dos **1** (3802).
+   → **REGLA: cuando dos arreglos tapan el mismo bug, apagá uno por vez antes de
+   atribuir.** La atribución vivió un tramo entero en un comentario sin medirse.
+24. **«El portón de despegue de la mente corta el bucle»** — en las corridas del
+   criterio `EstadoDeLaEscalera.salteados` mide **CERO**: no dispara ni una vez,
+   porque la poda de `@anima/plan` llega antes. Sirve para lo que la poda no ve (un
+   paso que D0 devolvió a la cola, los pasos sueltos de D2/D3) y eso está probado en
+   `mind/tests/el-no-op-con-cara-de-progreso.test.ts`, no en la partida.
+   → **REGLA: un contador de telemetría en cero es un resultado y hay que
+   publicarlo.** Sin él, «el portón sirve» se habría deducido de que la criatura
+   vivió 59 ticks más.
+
+25. **«Con el tanque lleno el juez sigue diciendo 0 de 9: multiplicar por cuatro el
+   tiempo vivido no movió una sola fila»** — sobre las VEINTE partidas el control
+   mide **2 de 9**: `no-frotar-lo-que-no-alcanza-a-encender` 4/20 (1ª vez en el tick
+   45) y `comerla-en-el-pico-de-calorias` 4/20 (tick 181), y la corrida pasa de 6 sin
+   medir a **3**, o sea de NO INTERPRETABLE a interpretable. El 0 de 9 publicado era
+   de las TRES partidas de la muestra corta. **Y no lo trajo ningún arreglo**: se
+   corrió el mismo banco sobre el árbol de HEAD y sobre el del tramo L y las dos
+   tablas salen renglón por renglón idénticas. Es la conclusión más cara que se
+   corrigió acá, porque decía que la muerte temprana no era la causa y **sí lo es en
+   parte**: con un fuego encendido, dos de las nueve secuencias emergentes salen
+   solas.
+   → **REGLA: que el arnés ya imprima la conclusión correcta no sirve de nada si
+   nadie corre el archivo entero.** Este banco venía imprimiendo «⇒ el tiempo vivido
+   SÍ mueve la aguja» mientras el comentario de arriba decía lo contrario. Un
+   veredicto se lee de la corrida, no del comentario que la describe.
+
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
 apagada (96 y 21 → 0 y 0), la pérdida muda de una suelta (ahora hay evento
 `perdida`), la condición del criterio (4) (18), y la contraprueba de la despensa, que
-se dio vuelta de verdad: **come 66 y muere en el 12.031**.
+se dio vuelta de verdad: **come 68 y muere en el 12.847** (66 y 12.031 antes del tramo L).
 
 ---

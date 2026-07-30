@@ -5,8 +5,9 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: 2026-07-30, sobre el árbol de trabajo del **tramo K bis** (la
-reparación del tramo K: último commit `5f7c114`, con cambios sin commitear encima).
+Última actualización: 2026-07-30, sobre el árbol de trabajo del **tramo L** (el
+no-op con cara de progreso: último commit `c03800c`, con cambios sin commitear
+encima).
 
 ---
 
@@ -34,24 +35,56 @@ reparación del tramo K: último commit `5f7c114`, con cambios sin commitear enc
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2424 tests verdes (+1 `todo`), nueve typechecks limpios, 68
-huecos `it.fails` anotados.** Cuarenta y un commits por delante de `main`, en la
-rama `anima-2`. **Ninguno pusheado** — el usuario pushea solo. Si la sesión nueva
-es en otra máquina, hay que pushear antes.
+**Nueve paquetes, 2431 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+nueve typechecks limpios, 68 huecos `it.fails` anotados.** Corridos enteros al cerrar
+el tramo L, mirando el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y
+además `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (116 de 116). En la rama `anima-2`, **ninguno pusheado** — el
+usuario pushea solo. Si la sesión nueva es en otra máquina, hay que pushear antes.
+
+> **Y HAY UN VERDE QUE NO ES EL DE `pnpm ii:test`.** `@anima/juez` tiene una
+> aserción que sólo se evalúa con `ANIMA_BANCO=1`, y **estaba roja desde antes del
+> tramo L** mientras el traspaso publicaba el veredicto de la emergencia como si
+> nada (número 22 de la sección 5 de `como-se-trabaja.md`). Está reparada. La regla
+> que dejó: **el veredicto de la emergencia se publica MIRANDO el exit code de
+> `ANIMA_BANCO=1 pnpm --filter @anima/juez test`**, no el de la suite normal.
 
 | paquete | qué es | tests |
 |---|---|---:|
 | `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables | 605 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 534 |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 533 (+1 skipped) |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 268 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
-| `@anima/plan` | `SCHEMA_INDEX`, `goalGraph()`, `plan()` anytime | 294 (+1 todo) |
-| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5 | 294 |
+| `@anima/plan` | `SCHEMA_INDEX`, `goalGraph()`, `plan()` anytime, **la poda de lo ya hecho** | 295 (+1 todo) |
+| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, **el portón de despegue** | 301 |
 | `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 116 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
 
+> **El tramo L, en un renglón.** Se cerró **el no-op con cara de progreso**: un
+> paso que ya está cumplido contra la vista de hoy no se emite (`sinLoQueYaEstaHecho`
+> en `plan/src/regresion.ts`, poda del PREFIJO de `plan.steps` y de `gap.nearest`) ni
+> se despega (`salteaLoQueYaEstaHecho` en `mind/src/escalera.ts`). La definición que
+> se eligió, y que es el aporte del tramo:
+>
+> > **un despegue AVANZA si el paso que despega todavía NO está cumplido contra la
+> > vista de hoy.**
+>
+> Separa sin ningún umbral las dos series que desde afuera son idénticas: el
+> `frotar` sobre una vara fría despega las cien veces que haga falta, y el `ir` a una
+> celda no despega nunca. Las dos candidatas obvias —«cambió el estado relevante» y
+> «la misma decisión no se repite N veces»— están descartadas por escrito en el
+> encabezado de `regresion.ts`; la segunda apagaría el fuego.
+>
+> **Y NO MOVIÓ EL CRITERIO.** Es lo primero que hay que saber: el bucle ya estaba
+> tapado por el cerrojo `mientrasTantoYaHecho` del tramo K bis, así que lo que la
+> poda compró son **59 ticks** con tanque 310 (3743 → **3802**) y **273** con tanque
+> 1000 (11.851 → **12.124**). Lo que sí arregla es la ATRIBUCIÓN y el resto del
+> mundo: `ataque-al-reves` pasó de 297 `ir` + 297 `sostener` («la mitad exacta
+> termina mal») a **1 `ir` + 297 `sostener`**, con la tasa de fracaso honesta de
+> 99,66%; la cadena del documento pasó de 7 vuelos a 6; y los estados ilegales del
+> banco del juez bajaron de 47.091 en 10 partidas a **31.833 en 7**.
+>
 > **El tramo K bis, en un renglón.** El tramo K logró que el mundo materialice lo
 > que el dios decreta; el K bis logró que **lo materialice donde el dios dijo**. La
 > celda de cada suelta es función pura de `(semilla, chunk, índice)` y al que
@@ -73,16 +106,16 @@ Es el **criterio de corte**: si pasa, hay producto aunque el modelo nunca se
 conecte; si no pasa, el plan se para acá y se revisa antes de gastar en la fragua.
 
 Todos los números de esta tabla se corrieron el 2026-07-30 sobre el árbol del
-tramo K bis, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
+tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 
 | criterio | veredicto | número medido |
 |---|---|---|
 | proveedor apagado | **CUMPLE** | 0 llamadas a la red, 0 dependencias de runtime fuera de `ii/` |
-| la cadena de la caña | **CUMPLE** | 7 eslabones sobre materia del dios: tira la caña en el tick **48**, el pescado entra a la mano en el **109** |
-| `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,654 ms/tick contra una ventana de 50) — y la partida termina con **109 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
+| la cadena de la caña | **CUMPLE** | 7 eslabones en el plan, **6 vuelos** contra el mundo (el `ir` al pozo lo poda el tramo L: ya estaba al lado): tira la caña en el tick **48**, el pescado entra a la mano en el **108** |
+| `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,947 ms/tick contra una ventana de 50) — y la partida termina con **120 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
 | p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE** | muere en el **3743** de 20.000 con **0 bocados**. Con el tanque lleno: muere en el **11.851**, también con 0 bocados. Con el eslabón REGALADO (despensa de cocidos): come 66 y muere en el **12.031** |
-| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE** | **0 de 9**, contra **0 de 9** del azar, sin umbrales tocados. La columna «situación» sí se movió con la reparación: **10/20, 10/20 y 8/20** donde antes eran 8, 8 y 5 |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE** | muere en el **3802** de 20.000 con **0 bocados**. Con el tanque lleno: muere en el **12.124**, también con 0 bocados. Con el eslabón REGALADO (despensa de cocidos): come 68 y muere en el **12.847** |
+| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE con el tanque canónico · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **10/20, 10/20 y 8/20** |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
 
@@ -98,8 +131,9 @@ ir → sostener → ir → sostener → frotar   el fuego
 poner → esperar → sostener               la cocción
 ```
 
-Contra `stepWorld`, con la escena buena: prendió en el tick 149, cocinó en el 251,
-comió en el 257. Y **no alcanza**, por una cuenta que hay que decidir arriba:
+Contra `stepWorld`, con la escena buena (tanque lleno + leña seca): prendió en el
+tick **162**, cocinó en el **262**, comió en el **270**, y aun así muere en el
+**5669**. Y **no alcanza**, por una cuenta que hay que decidir arriba:
 
 ```
 lo que CUESTA un fuego   heatCapacity × ΔT / eficiencia = 0,68 × 285 / 0,35 = 553,71
@@ -145,13 +179,15 @@ cada fuego nace de frotar dos palos.
 - **LA CONTRAPRUEBA DE LA DESPENSA SE DIO VUELTA, y hay que leerla al revés de
   como está publicada.** Decía: «con una despensa de cocidos regalada la misma mente
   sobrevive los 20.000 con 65 bocados y aliento final 1,4593; o sea que la conducta
-  está y falta la aritmética». Sobre el mundo DECRETADO ya no: **come 66 y muere en
-  el 12.031**, con 34 cocidos sin tocar que la ley 6 le pudrió hasta `toxicity`
-  0,9921. La cuenta, y son dos renglones que se leen juntos:
+  está y falta la aritmética». Sobre el mundo DECRETADO ya no: **come 68 y muere en
+  el 12.847**, con 32 cocidos sin tocar que la ley 6 le pudrió hasta `toxicity`
+  0,9921 (antes de la poda del tramo L: 66 y el 12.031 — la poda le compró 816
+  ticks, un 6,8%, y no le alcanzó). La cuenta, y son dos renglones que se leen
+  juntos:
 
   ```
   plantada   310 + 691,46 comidos − 1000 de vivir = +1,46  → llegaba
-  decretada  310 + 690,00 comidos − 1000 de vivir = +0,00  → no llega
+  decretada  310 + 690,08 comidos − 1000 de vivir = +0,08  → no llega
   ```
 
   Comió MÁS y llegó menos lejos, porque **en un mundo con cosas alrededor la mente
@@ -191,14 +227,34 @@ agregalo AL FINAL de su sección allá — no hace falta releer nada para eso.
    calibración y **no se tocan sin el usuario**; la (c) ya se hizo a medias y no
    alcanzó. La cuarta, que no es calibración, es **enseñarle al planificador a
    propagar el fuego** en vez de frotar dos palos cada vez.
-2. **La emergencia mide 0 de 9**, contra **0 de 9** del azar (el azar bajó de 1 a 0
-   en cuanto se juega sobre el mundo decretado). La columna `situación` sí se mueve, y
-   se movió a favor con la reparación del tramo K bis: tres filas con **10/20, 10/20 y
-   8/20**, donde antes eran 8, 8 y 5 — el mundo le puso el problema delante un 25% más
-   seguido y la mente no lo resolvió ni una vez. Las otras seis siguen sin situación,
-   y las seis cuelgan del mismo cero duro: **0 fuegos en 20 partidas, ni un solo
-   disparo**. El propio juez lo declara **NO INTERPRETABLE** (§10: más de tres sin
-   medir sobre nueve).
+2. **LA EMERGENCIA SE DIO VUELTA, Y ES LO MÁS IMPORTANTE QUE SALIÓ DEL TRAMO L.**
+   La corrida canónica (tanque 310) sigue midiendo **0 de 9** contra **0 de 9** del
+   azar, con `situación` **10/20, 10/20 y 8/20** en tres filas y 0/20 en las otras
+   seis; el juez la declara **NO INTERPRETABLE** (6 sin medir sobre 9). Pero el
+   CONTROL con el tanque lleno, que hasta hoy se citaba como «0 de 9, o sea que no es
+   la muerte», mide **2 DE 9**:
+
+   | secuencia | apareció | situación | 1ª vez |
+   |---|---|---|---|
+   | `no-frotar-lo-que-no-alcanza-a-encender` | **4/20** | 10/20 | t=45 |
+   | `comerla-en-el-pico-de-calorias` | **4/20** | 4/20 | t=181 |
+
+   Con el tanque lleno la criatura **prende fuego y come**, y con eso aparecen dos de
+   las nueve secuencias que nadie implementó; la corrida además pasa de **6 sin
+   medir a 3**, o sea de NO INTERPRETABLE a interpretable. El «0 de 9 con el tanque
+   lleno» que estaba publicado era de las **TRES** partidas de la muestra corta, no
+   de las veinte (número 25 de la sección 5 de `como-se-trabaja.md`). **Verificado en
+   dos corridas —árbol de HEAD y árbol del tramo L— renglón por renglón idénticas:
+   no lo trajo la poda, es lo que este banco siempre midió y nadie había leído.**
+
+   Lo que eso quiere decir para el proyecto: **lo que separa a la mente de la
+   emergencia es el punto 1 de esta lista y no otra cosa.** Dale un fuego que se
+   pague y dos de las nueve salen solas.
+
+   Y lo que sí movió el tramo L en este banco: el presupuesto vivido bajó de 20,5% a
+   **18,2%** (el que deja de dar un paso ya dado camina antes) y los estados ilegales
+   bajaron de **47.091 en 10 partidas a 31.833 en 7**, con `solidos-solapados` sin
+   encabezar ninguna.
 3. **El umbral hay que rediscutirlo con el usuario.** El criterio publicado dice
    «≥4 de las 10» y la lista tiene **9** entradas, de las cuales el azar firma 0
    → el piso hay que cruzarlo sobre 9. Nadie aprobó «4 de 9»:
@@ -232,6 +288,34 @@ agregalo AL FINAL de su sección allá — no hace falta releer nada para eso.
    plan 5, oracle 1, skills 1. Cada uno tiene su porqué medido al lado.
 9. **`explorar` sigue caminando un ciclo cerrado de 8 celdas** — la 1 de 15 innatas
    que no logra su contrato.
+
+### Lo que se cerró en el tramo L, para que nadie lo vuelva a buscar
+
+- **El no-op con cara de progreso.** `plan()` poda el PREFIJO ya cumplido de
+  `plan.steps` y de `gap.nearest` (`sinLoQueYaEstaHecho` en `plan/src/regresion.ts`),
+  y la escalera saltea en el MISMO tick los pasos ya dados antes de despegarlos
+  (`salteaLoQueYaEstaHecho` en `mind/src/escalera.ts`, contador
+  `EstadoDeLaEscalera.salteados`). Sólo el prefijo, y ése es el argumento de
+  corrección: «ya está hecho» es una afirmación sobre un ESTADO y el único que el
+  planificador conoce es el de hoy; el segundo paso se ejecuta contra un mundo que
+  todavía no existe. De las 15 innatas, cinco tienen salida temprana en el tick cero
+  (`ir`, `sostener`, `frotar`, `esperar`, `explorar`) y sólo dos se pueden dar por
+  hechas sin simular: `ir` y `sostener`. Las otras trece contestan `false` a
+  propósito, **y eso es lo que salva perseverar**.
+- **La atribución del bucle, medida por ablación** (número 23 de la sección 5 de
+  `como-se-trabaja.md`): las dos capas apagadas dan 6045 `ir`, sólo el cerrojo 2,
+  sólo la poda 22, las dos 1. Son redundantes en esta escena y ninguna sobra.
+- **`salteados` mide CERO en las corridas del criterio**, y está publicado: el portón
+  de la mente no dispara ahí porque la poda llega antes. Lo que cubre —un paso que D0
+  devolvió a la cola, los pasos sueltos de D2/D3— está probado en
+  `mind/tests/el-no-op-con-cara-de-progreso.test.ts`, que son las DOS mitades del
+  criterio: (1) cortar el bucle y (2) perseverar el proceso. Un arreglo que pase sólo
+  una de las dos es el arreglo equivocado.
+- **La aserción del control del juez, que estaba roja detrás de `ANIMA_BANCO=1`.**
+  Ver el número 22. Ahora se afirma el MECANISMO —el control vive más de 3× lo que la
+  canónica, y el juez se mueve en la dirección que tiene que moverse— en vez de un
+  umbral inventado. Y al correrlo apareció el número 25, que es el hallazgo más caro
+  del tramo: **el control mide 2 de 9, no 0** (punto 2 de la sección 6).
 
 ### Lo que se cerró en el tramo K bis, para que nadie lo vuelva a buscar
 
@@ -304,11 +388,14 @@ agregalo AL FINAL de su sección allá — no hace falta releer nada para eso.
 
 ## 7 · Lo práctico
 
-- Rama `anima-2`, **41 commits por delante de `main`, sin pushear**.
-- El último commit es `5f7c114`, y encima hay **cambios sin commitear** de los tramos
-  K y K bis: tres archivos de test nuevos, el ADR II-0014, y cuatro `src/` tocados
-  (`world/src/step.ts`, `world/src/invariants.ts`, `world/src/dios.ts`,
-  `world/src/mundo.ts`, `perceive/src/bucle.ts`, `mind/src/escalera.ts`).
+- Rama `anima-2`, **sin pushear**.
+- El último commit es `c03800c`, y encima hay **cambios sin commitear** del tramo L:
+  `plan/src/regresion.ts` (+ `plan/src/index.ts` para exportar `pasoYaEstaHecho`),
+  `mind/src/escalera.ts`, un archivo de test nuevo
+  (`mind/tests/el-no-op-con-cara-de-progreso.test.ts`) y cuatro tests tocados
+  (`plan/tests/ataque-al-plan.test.ts`, `mind/tests/ataque-al-reves.test.ts`,
+  `mind/tests/la-mente.test.ts`, `mind/tests/hito-5-el-criterio.test.ts`,
+  `juez/tests/hito-5-la-emergencia.test.ts`).
 - **Ánima I sigue vivo al lado** (`packages/`, `apps/`) y anda: 455 tests verdes.
   Los últimos tres commits son de ahí (el tacho, el martillo eterno, el 400 de
   Codex) y no tienen nada que ver con el remake.

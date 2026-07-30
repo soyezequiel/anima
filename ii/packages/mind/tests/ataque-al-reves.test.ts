@@ -656,12 +656,25 @@ describe('insistir', () => {
     // ningún esquema establece—, se iba a deambular y los 300 ticks se le iban en
     // conductas de fondo (3 intentos de `sostener(vara)`, 67 vuelos, 94% fallados).
     // Ahora que D3 saltea las metas sin vocabulario, la meta que queda es la que
-    // SÍ se puede planificar, y el par `ir(vara)` → `sostener(vara)` se repite 149
-    // veces sin aprender nada. La mitad exacta de los vuelos termina mal, y la
-    // mitad que termina bien es el `ir` que la vuelve a dejar al lado.
+    // SÍ se puede planificar, y `sostener(vara)` se repite sin aprender nada.
+    //
+    // ─── EL TRAMO L LE SACÓ LA MITAD DE LOS VUELOS, Y ESO DESTAPÓ EL DEFECTO ──
+    //
+    // Hasta el tramo L esta corrida daba **297 `ir(vara)` y 297 `sostener(vara)`**
+    // —594 vuelos, «la mitad exacta termina mal»— y esa mitad buena era mentira:
+    // después del primer viaje la criatura YA ESTABA al lado de la vara, así que
+    // los otros 296 `ir` aterrizaban `ok:true` sin mover una pata. Eran el mismo
+    // no-op con cara de progreso que se llevaba el 98% de la vida en la corrida
+    // del criterio, y acá estaba disfrazado de «50% de éxito».
+    //
+    // Con la poda de `@anima/plan` (`sinLoQueYaEstaHecho`) queda **1 `ir` y 297
+    // `sostener`**: el único viaje que hacía falta, y el fracaso sin adorno. La
+    // tasa de fracaso pasó de 50,00% a **99,66%**, y ése es el número honesto —lo
+    // que la criatura consigue en 300 ticks es NADA, y ahora la cuenta lo dice.
     expect(c.cuenta.get('sostener(vara)') ?? 0).toBeGreaterThan(100)
-    expect(c.cuenta.get('ir(vara)') ?? 0).toBe(c.cuenta.get('sostener(vara)') ?? 0)
+    expect(c.cuenta.get('ir(vara)') ?? 0).toBe(1)
     expect(fallados).toBe(c.cuenta.get('sostener(vara)') ?? 0)
+    expect(fallados / vuelos).toBeGreaterThan(0.99)
     expect([...c.fracasos.keys()]).toEqual(['sostener(vara) → madera lo tiene otro'])
     // Y la mitad que importa: la creencia con la que eligió la meta NO SE MUEVE.
     // `AffordanceMemory.observe` existe y la mente no lo llama NUNCA (medido:

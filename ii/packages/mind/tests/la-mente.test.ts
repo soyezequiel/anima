@@ -28,7 +28,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { qualityOf } from '@anima/physics'
 import type { CellState, WorldBody, WorldState } from '@anima/world'
-import { hashWorldState, keyOfCell } from '@anima/world'
+import { chebyshev, hashWorldState, keyOfCell } from '@anima/world'
 import type { Intent, Outcome, StepResult } from '@anima/skills'
 import { Contexto, Partida } from '@anima/perceive'
 import type { Step } from '@anima/plan'
@@ -201,15 +201,38 @@ describe('la corrida del documento: hambre, un río de la semilla, y la cadena d
   it('CRITERIO DE CORTE: la corrida entera pesca, sin una sola llamada al modelo', () => {
     const r = correr(laEscenaDelDocumento(), 'ana', 400)
 
-    // Los siete eslabones, en orden y con el tick en que despegó cada uno.
+    // ─── EL PLAN TIENE SIETE ESLABONES Y SE VUELAN SEIS, y eso es el arreglo ──
+    //
+    // El test de arriba pide el plan EN EL TICK 0 y siguen saliendo los siete. Lo
+    // que cambió es cuántos llegan al mundo: cuando el plan termina de armar la
+    // caña, la criatura está parada sobre el matorral, y **desde ahí ya está
+    // adentro del alcance del pozo**. El `ir(pozo:-6:-6)` era, en ese punto, un
+    // no-op: la innata `ir` tiene su salida temprana («si ya estoy, no gasto una
+    // intención»), o sea que aterrizaba `ok:true` sin emitir nada y se llevaba un
+    // tick. Lo poda `sinLoQueYaEstaHecho` de `@anima/plan` cuando D4 replanifica
+    // desde ahí, y la cadena que el mundo ve pasa a tener seis vuelos.
+    //
+    // Es la versión chica y en verde del bucle que se llevó el 98% de una vida en
+    // `hito-5-el-criterio.test.ts` (6045 despegues de un `ir` ya dado en 6171
+    // ticks): el mismo no-op, acá una sola vez y ahí seis mil.
+    //
+    // Y LA PODA SE VERIFICA CONTRA EL MUNDO, no contra la lista: se corre la
+    // misma escena hasta el tick 20 —justo después de `unir`, que despega en el
+    // 13— y se mide dónde quedó parada. Si algún día el pozo se mueve, esto se
+    // pone rojo por el motivo correcto y no por el número de vuelos.
+    const justoDespuesDeUnir = correr(laEscenaDelDocumento(), 'ana', 20)
+    const ella = justoDespuesDeUnir.partida.state.bodies.get('ana-cuerpo')?.at
+    const pozo = justoDespuesDeUnir.partida.state.bodies.get('pozo:-6:-6')?.at
+    if (ella === undefined || pozo === undefined) throw new Error('escena sin ana o sin pozo')
+    expect(chebyshev(ella, pozo)).toBeLessThanOrEqual(1)
+
     const chain = r.volados.map((l) => l.slice(l.indexOf(' ') + 1))
-    expect(chain.slice(0, 7)).toEqual([
+    expect(chain.slice(0, 6)).toEqual([
       'ir(vara)',
       'sostener(vara)',
       'ir(matorral)',
       'sostener(matorral)',
       'unir(matorral+vara)',
-      'ir(pozo:-6:-6)',
       'aplicar(extraccion)',
     ])
 

@@ -63,4 +63,10 @@ export {
   procesoDe,
 } from './esquemas.js'
 export { goalGraph, orden, type Lectura } from './objetivos.js'
-export { plan } from './regresion.js'
+// `pasoYaEstaHecho` sale del paquete a propósito, y no es un detalle interno que
+// se escapó: la mente necesita hacerse LA MISMA pregunta en el momento de
+// despegar —un plan de hace veinte ticks puede tener el frente ya cumplido sin
+// que nadie lo haya planificado así— y dos escrituras de «este paso ya está
+// dado» divergirían el día que se agregue un `Step`. Ver el bloque
+// `sinLoQueYaEstaHecho` de `regresion.ts` para el porqué medido.
+export { pasoYaEstaHecho, plan } from './regresion.js'

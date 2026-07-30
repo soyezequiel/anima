@@ -136,7 +136,17 @@
 // dos primeras marcadas la tercera sale sola, y cuando las tres fallan la cuenta
 // se limpia y se vuelve a la que la necesidad pide.
 
-import { ESQUEMAS, EXPANSIONES_POR_TICK, cumple, firmaDe, implica, interpretar, plan, resolverCuerpo } from '@anima/plan'
+import {
+  ESQUEMAS,
+  EXPANSIONES_POR_TICK,
+  cumple,
+  firmaDe,
+  implica,
+  interpretar,
+  pasoYaEstaHecho,
+  plan,
+  resolverCuerpo,
+} from '@anima/plan'
 import type { Frontera, GoalNode, Predicado, PredicateSignature, Ref, Step } from '@anima/plan'
 import type { Where } from '@anima/skills'
 import { CONTRATO_HUIR_DEL_DOLOR } from '@anima/skills/innatas'
@@ -396,6 +406,28 @@ export interface EstadoDeLaEscalera {
    * y no al aterrizar, así que un `nearest` que fracasa también queda cerrado —
    * igual que un fondo que falla—.
    *
+   * ─── QUÉ ES ESTE CERROJO Y QUÉ NO ES, dicho en el tramo L ──────────────────
+   *
+   * NO es «la misma decisión N veces seguidas», que es la regla que este proyecto
+   * descartó por escrito (ver el bloque `salteaLoQueYaEstaHecho`): esa regla no
+   * distingue la vara que se calienta del `ir` que no mueve. Éste es otra cosa, y
+   * la llave lo dice: **la meta está adentro**, porque se limpia en cuanto la meta
+   * cambia o en cuanto aparece un plan de verdad. Lo que afirma es
+   *
+   *     «este mientras-tanto ya lo intenté PARA ESTA META, y después de hacerlo
+   *      la meta seguía sin tener plan»
+   *
+   * que es evidencia y no un contador: la corrida siguiente de `plan()` sobre el
+   * paisaje resultante volvió a contestar `gap` con el mismo `nearest`. Es la
+   * misma definición de «avanzar» del portón de despegue —¿esto cambió algo que
+   * antes no podía?— aplicada un nivel más arriba: al paso, allá; a la meta, acá.
+   *
+   * Y el grueso del bucle no lo mata este cerrojo, lo mata la poda de
+   * `@anima/plan`: con el prefijo ya cumplido podado, este mismo `nearest` sale
+   * VACÍO y la escalera cae a D5 sin necesidad de acordarse de nada. Medido, con
+   * el cerrojo apagado a propósito para poder separar las dos capas: **6045 → 22**
+   * en 6171 ticks y **19.846 → 68** en 19.971.
+   *
    * Se limpia cuando la meta cambia (`tomarMeta`), cuando aparece un plan de
    * verdad para ella (`planificar`) y cuando la meta se tira (`olvidarMeta`). NO
    * se limpia con un fondo que sale bien, y es a propósito: si se limpiara, la
@@ -403,6 +435,16 @@ export interface EstadoDeLaEscalera {
    * siempre — el mismo bucle, más caro, porque deambular sí cuesta patas.
    */
   mientrasTantoYaHecho: string | undefined
+  /**
+   * CUÁNTOS PASOS YA CUMPLIDOS NO SE DESPEGARON, en toda la vida de esta mente.
+   *
+   * No es telemetría de adorno: es el número que dice si el portón de despegue
+   * sirve para algo, y sin él la única forma de saberlo sería que la corrida
+   * viviera más — que es exactamente el proxy que este tramo vino a dejar de
+   * mirar. Cada unidad es un tick de vida que no se tiró. Ver el bloque
+   * `salteaLoQueYaEstaHecho`.
+   */
+  salteados: number
 }
 
 export function nuevoEstado(): EstadoDeLaEscalera {
@@ -422,6 +464,7 @@ export function nuevoEstado(): EstadoDeLaEscalera {
     bocadoQueFallo: undefined,
     fondosQueFallaron: 0,
     mientrasTantoYaHecho: undefined,
+    salteados: 0,
   }
 }
 
@@ -665,6 +708,18 @@ function continuar(v: VistaDeLaMente, e: EstadoDeLaEscalera): Decision | undefin
     return { k: 'seguir', por: 'D1', porque: `sigo con ${nombreDe(volando)}` }
   }
 
+  // EL PORTÓN DE DESPEGUE, y es lo primero que se pregunta sobre el paso que
+  // sigue: los que ya están dados se saltean EN ESTE MISMO TICK. Ver
+  // `salteaLoQueYaEstaHecho`.
+  const salteados = salteaLoQueYaEstaHecho(e, v)
+  if (salteados > 0 && e.pasosPendientes.length === 0) {
+    // El plan entero era cosa hecha. No se despega nada y no se finge que se
+    // hizo algo: se tira el plan y D4 replanifica —o la meta ya estaba cumplida
+    // y `yaEstaCumplida` la va a levantar arriba el tick que viene—.
+    olvidarPlan(e)
+    return undefined
+  }
+
   const paso = e.pasosPendientes[0]
   if (paso === undefined) return undefined
 
@@ -684,6 +739,122 @@ function continuar(v: VistaDeLaMente, e: EstadoDeLaEscalera): Decision | undefin
     `sigo el plan: ${nombreDe(paso)}${faltan === 0 ? ' (el último)' : `, y quedan ${String(faltan)}`}`,
     false,
   )
+}
+
+// ═══ EL PORTÓN DE DESPEGUE, o CÓMO SE DEFINE «AVANZAR» ══════════════════════
+//
+// ─── QUÉ PROBLEMA ES ÉSTE Y POR QUÉ NO LO VIO NADIE DURANTE ONCE TRAMOS ─────
+//
+// Una criatura se pasó el **98% de su vida** —6045 despegues de
+// `ir(suelta:-6:-7:2)` en 6171 ticks, y 19.846 en 19.971 con el tanque lleno—
+// dando un paso que ya estaba dado, y **todo aterrizaba en verde**. La innata
+// `ir` tiene su salida temprana («si ya estoy, no gasto una intención»), así que
+// el vuelo volvía con `ok:true` sin haberle pedido NADA al mundo. El arnés de
+// invariantes no ve nada, la corrida no se pone roja, y la criatura se muere de
+// hambre haciendo algo que técnicamente funciona.
+//
+// Es la misma familia que el contador que leía DESPEGUES en vez de aterrizajes
+// y reportaba «pescó 199» cuando había pescado una: **el sistema no distinguía
+// «avancé» de «hice una acción exitosa»**.
+//
+// ─── LA DEFINICIÓN QUE SE ELIGIÓ, Y LAS DOS QUE SE DESCARTARON ──────────────
+//
+//   **UN DESPEGUE AVANZA SI EL PASO QUE DESPEGA TODAVÍA NO ESTÁ CUMPLIDO
+//   CONTRA LA VISTA DE HOY.**
+//
+// Las dos candidatas obvias, y por qué ninguna de las dos:
+//
+//   · **«que haya cambiado el estado del mundo relevante al plan».** Es la más
+//     honesta de las tres y no se puede escribir: «relevante» habría que
+//     definirlo, y la mitad de lo que un paso mueve no se lee desde la vista —el
+//     `dt` acumulado de una actividad, por ejemplo, no es ninguna de las 29
+//     cualidades—. Una definición que se aproxima por `at` + la mano miraría
+//     exactamente lo que un `frotar` NO cambia, y cortaría el fuego.
+//   · **«que la misma decisión no se repita N veces seguidas».** Es barata y es
+//     la que rompe lo que este tramo vino a arreglar. **Está medido en este repo
+//     que un proceso NO avanza si no se re-emite la intención**: una fricción más
+//     100 ticks vacíos deja la vara a 15 °C. Desde afuera, la vara que se
+//     calienta y el `ir` que no mueve se ven IDÉNTICOS —la misma decisión, una y
+//     otra vez— y ningún N los separa: con N chico se apaga el fuego, con N
+//     grande vuelve el bucle. No es una calibración difícil: es una calibración
+//     imposible, porque las dos series son la misma serie.
+//
+// La que se eligió los separa **por construcción y sin ningún umbral**:
+//
+//   `frotar(hasta=400)` con la vara a 15 °C   NO está cumplido → despega SIEMPRE,
+//                                             las cien veces que haga falta.
+//   `frotar(hasta=400)` con la vara a 400 °C  ya está cumplido → y repetirlo sería
+//                                             exactamente el no-op que sobra.
+//   `ir(x, within:1)` a dos celdas            NO está cumplido → despega.
+//   `ir(x, within:1)` a una celda             ya está cumplido → no despega.
+//
+// O sea: **perseverar nunca se corta mientras perseverar todavía pueda
+// conseguir algo**, y se corta en el instante exacto en que ya no. No hay N que
+// elegir, no hay «relevante» que definir, y la pregunta la contesta el propio
+// paso, que es quien sabe qué venía a establecer.
+//
+// ─── POR QUÉ ADEMÁS DE LA PODA DE `@anima/plan`, Y NO EN VEZ DE ─────────────
+//
+// `plan()` poda el prefijo ya cumplido en el momento de PLANIFICAR. Este portón
+// pregunta en el momento de DESPEGAR, y son dos momentos distintos separados por
+// decenas de ticks:
+//
+//   · un plan de 15 pasos se arma una vez y se consume de a uno. Entre el paso 3
+//     y el 4 el mundo se movió —lo movió el paso 3— y el 4 puede haber quedado
+//     cumplido solo. `plan()` no lo puede saber: cuando planificó, el paso 3
+//     todavía no había pasado;
+//   · D0 devuelve un paso a la cola después de una huida, y para cuando la huida
+//     termina la criatura está en otro lado;
+//   · y los pasos que NO vienen de `plan()` —lo que D2 y D3 emiten sueltos— no
+//     pasan por la poda de la regresión ni una vez.
+//
+// ─── EL COSTO, Y CUÁNTAS VECES DISPARÓ DE VERDAD ───────────────────────────
+//
+// El costo es **una llamada a `pasoYaEstaHecho` por tick en el caso normal** —se
+// corta en el primer paso que sí hay que dar—, o sea una resolución de `Ref`:
+// 2,146 µs en el peor caso medido (un `{k:'id'}` que no está en la mano, con 15
+// cuerpos a la vista) y 0,030 µs para cualquiera de los diez eventos. Y sólo
+// corre cuando D1 va a sacar un paso de la cola: mientras algo vuela, D1
+// contesta `seguir` y esto no se ejecuta.
+//
+// Y HAY QUE DECIR ESTO, porque es lo que el número honesto pide: **en las cuatro
+// corridas del criterio (6200 a 20.000 ticks, con y sin leña) `salteados` quedó
+// en CERO**. El portón no disparó ni una vez. No es que no sirva: es que la poda
+// de `@anima/plan` llega antes —`plan()` se llama con la MISMA vista y el MISMO
+// predicado en el mismo tick, así que el primer paso de lo que emite nunca está
+// hecho— y ningún paso de MEDIO plan quedó cumplido en el camino en esas
+// corridas. Lo que el portón cubre es lo que la poda no puede ver: un paso que
+// D0 devolvió a la cola después de una huida, y los pasos que D2 y D3 emiten
+// sueltos sin pasar por la regresión. Que dispare está probado en
+// `tests/el-no-op-con-cara-de-progreso.test.ts`; que en esta escena no haga
+// falta, medido.
+
+/**
+ * Saca de la cola los pasos que YA ESTÁN DADOS y devuelve cuántos sacó.
+ *
+ * Es un prefijo y no un filtro, por la misma razón que la poda de `@anima/plan`:
+ * «ya está hecho» es una afirmación sobre un ESTADO, y el único estado conocido
+ * es el de hoy. El segundo paso de la cola se va a ejecutar después del primero,
+ * o sea contra un mundo que todavía no existe.
+ */
+function salteaLoQueYaEstaHecho(e: EstadoDeLaEscalera, v: VistaDeLaMente): number {
+  let n = 0
+  while (e.pasosPendientes.length > 0) {
+    const s = e.pasosPendientes[0]
+    // Las tres `Conducta` —`huir`, `guarecerse`, `tragar`— no son pasos de plan y
+    // no tienen «ya está hecho»: `Step` es el único vocabulario con contrato
+    // escrito. Que el portón las deje pasar es correcto y no un olvido.
+    if (s === undefined || !esPasoDePlan(s) || !pasoYaEstaHecho(s, v)) break
+    e.pasosPendientes = e.pasosPendientes.slice(1)
+    e.salteados += 1
+    n += 1
+  }
+  return n
+}
+
+/** Si una `Intencion` es un `Step` del planificador y no una de las tres conductas. */
+function esPasoDePlan(i: Intencion): i is Step {
+  return i.k !== 'huir' && i.k !== 'guarecerse' && i.k !== 'tragar'
 }
 
 /**
@@ -1182,9 +1353,11 @@ function planificar(
       e.frontera = undefined
       e.metaDeLaFrontera = undefined
       if (r.nearest.length === 0) return undefined
-      // EL MISMO «MIENTRAS TANTO» NO SE HACE DOS VECES. Ver
-      // `EstadoDeLaEscalera.mientrasTantoYaHecho`: sin esta línea la criatura se
-      // pasa el 98% de su vida repitiendo un `ir` que aterriza bien y no la mueve.
+      // EL MISMO «MIENTRAS TANTO» NO SE HACE DOS VECES PARA LA MISMA META. Ver
+      // `EstadoDeLaEscalera.mientrasTantoYaHecho`: no es «la misma decisión N
+      // veces» —es «esto ya lo intenté PARA ESTA META y la meta sigue sin tener
+      // plan»—, y por eso la llave lleva la meta adentro (el cerrojo se limpia
+      // cuando la meta cambia) y no un contador.
       const firma = firmaDeLoQueSePuede(r.nearest)
       if (e.mientrasTantoYaHecho === firma) return undefined
       e.mientrasTantoYaHecho = firma

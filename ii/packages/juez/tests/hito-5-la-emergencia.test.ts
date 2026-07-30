@@ -182,10 +182,11 @@
 //
 //   Y hay que decir lo que el control NO dice, porque la comparación fácil sería
 //   falsa: el dado sin fuego vive 18.743 ticks de promedio con un tanque de 1000, y
-//   la mente se muere entre el 80 y el 6.198 — pero con un tanque de **310**. Con el
-//   tanque igualado en 1000 la mente llega al 81,0% del presupuesto (bloque 3, tres
-//   partidas), así que **no es que el dado sobreviva mejor**: el dado se queda
-//   quieto y la mente camina.
+//   la mente se muere entre el 77 y el 6.198 — pero con un tanque de **310**. Con el
+//   tanque igualado en 1000 la mente llega al **66,2%** del presupuesto (bloque 3,
+//   las VEINTE partidas, medido con `ANIMA_BANCO=1` al cerrar el tramo L), así que
+//   **no es que el dado sobreviva mejor**: el dado se queda quieto y la mente
+//   camina.
 //
 //   ─── (D) LA CRIATURA SIGUE SIN COMER, Y AHORA SE SABE MEJOR POR QUÉ ───────
 //
@@ -197,30 +198,65 @@
 //   decretadas alrededor y el número sigue siendo negativo: ya no se puede
 //   explicar por la pobreza de la escena.
 //
-//   ─── (E) LA MUERTE TEMPRANA SIGUE SIN SER LA CAUSA ────────────────────────
+//   ─── (E) LA MUERTE TEMPRANA **SÍ** ES PARTE DE LA CAUSA, Y ESTO DECÍA LO ──
+//   ─── CONTRARIO ──────────────────────────────────────────────────────────
 //
-//   Con el tanque canónico se muere en el 20,5% del presupuesto; con el tanque
-//   lleno llega al 81,0% y el juez sigue diciendo 0 de 9. Multiplicar por cuatro el
-//   tiempo vivido no movió una sola fila.
+//   Con el tanque canónico se muere en el **18,2%** del presupuesto y el juez dice
+//   0 de 9. Con el tanque lleno la criatura llega al **66,2%** y el juez dice
+//   **2 de 9**: `no-frotar-lo-que-no-alcanza-a-encender` **4/20** (primera vez en
+//   el tick 45) y `comerla-en-el-pico-de-calorias` **4/20** (tick 181). Y la
+//   corrida deja de ser no interpretable: **3 sin medir** en vez de 6.
 //
-//   Y el asterisco, que hay que ponerlo: sin `ANIMA_BANCO=1` el control con el
-//   tanque lleno corre TRES partidas de las veinte, así que ese 81,0% y ese 0 de 9
-//   son sobre tres. El de las veinte es el canónico. Es una separación más floja de
-//   lo que se quisiera y está dicho en la salida en vez de escondido.
+//   Este bloque decía «multiplicar por cuatro el tiempo vivido no movió una sola
+//   fila», y eso era cierto **sobre las TRES partidas de la muestra corta**. Sobre
+//   las veinte es falso, y lo dice la salida del propio arnés desde siempre —«⇒ el
+//   tiempo vivido SÍ mueve la aguja»—: nadie la había leído porque nadie había
+//   corrido este archivo con `ANIMA_BANCO=1`. Verificado al cerrar el tramo L en
+//   DOS corridas, la del árbol de HEAD y la del tramo L, **renglón por renglón
+//   idénticas**: no es un efecto de la poda, es lo que siempre midió.
+//
+//   Lo que esto cambia, y no es poco: con el fuego encendido la mente **sí** produce
+//   dos de las nueve secuencias que nadie implementó. Lo que la mata en la corrida
+//   canónica es el tanque de 310, o sea la ARITMÉTICA de la cocción — la misma que
+//   ya es el punto 1 de lo que está abierto. Las dos filas que aparecen son
+//   justamente las dos que necesitan un fuego prendido para existir.
+//
+//   ─── Y EL 81,0% QUE ESTO DECÍA ERA DE TRES PARTIDAS, NO DE VEINTE ─────────
+//
+//   Corregido al cerrar el tramo L, con `ANIMA_BANCO=1` puesto: el control sobre
+//   las VEINTE vive 264.776 de 400.000 ticks = **66,194%**, y sobre el árbol de
+//   antes de la poda 261.352 = 65,338%. El 81,0% publicado salía de las TRES
+//   partidas de la muestra corta y viajó a este encabezado y al traspaso como si
+//   fuera el del banco. De ese 81,0% salía además el `> 0,9` que este bloque
+//   afirmaba, y que **nunca pasó con `ANIMA_BANCO=1`** (ver el bloque 3).
+//   → **REGLA: un porcentaje de la muestra corta no se cita como el del banco, y
+//     una aserción detrás de un `env` hay que correrla con el `env` puesto.**
 //
 //   ─── (F) Y EL MUNDO SOBRE EL QUE SE MIDIÓ **YA NO** ES LEGAL, Y AHORA MUCHO ─
 //
-//   **47.091 estados ilegales en 10 de las 20 partidas**, sobre 81.932 ticks
+//   **31.833 estados ilegales en 7 de las 20 partidas**, sobre 72.965 ticks
 //   auditados con `revisarEstado`, contra los 12 en 1 de la corrida del tramo J. Es
-//   el **57,5% de los ticks sobre los que se midió el criterio**, y no se suaviza:
+//   el **43,6% de los ticks sobre los que se midió el criterio**, y no se suaviza:
 //   va acá arriba, en la salida del bloque de auditoría, y con su `it.fails`.
 //
-//   Dos clases, y las dos crecieron por motivos distintos. La cuenta va por PARTIDA
+//   ─── Y EL TRAMO L SE LLEVÓ UNA DE LAS DOS CLASES ENTERA ──────────────────
+//
+//   Los números de arriba son los del tramo L; los del K bis eran **47.091 en 10 de
+//   20 sobre 81.932 ticks** con DOS clases. Con la poda de `@anima/plan` quedó UNA:
+//   `inventario-inconsistente`, en 7 partidas (20260728, 20260729, 20260730,
+//   20260752, 20260772, 20260792 y 20260747). **`solidos-solapados` no encabeza
+//   ninguna**, y no porque se haya arreglado nada del pozo: la criatura deja de
+//   perder ticks en un `ir` ya dado, camina antes, y las dos partidas que lo
+//   encabezaban (20260768 y 20260769) mueren ahora por otro lado. El agujero del
+//   pozo sigue abierto y su `it.fails` sigue pinándolo en un tick sin escena.
+//
+//   Lo que sigue abajo describe la corrida del K bis, y se deja porque el mecanismo
+//   de las dos clases no cambió. La cuenta va por PARTIDA
 //   y no por clase, porque el informe publica la primera violación de cada partida
 //   y no el histograma —contar por clase pediría cambiar lo que el arnés guarda, y
 //   un número que no se midió no se escribe—:
 //
-//     OCHO partidas encabezadas por `inventario-inconsistente` «ana/ana-cuerpo: se
+//     OCHO partidas (SIETE en el tramo L) encabezadas por `inventario-inconsistente` «ana/ana-cuerpo: se
 //     lleva a sí misma», desde un tick temprano (20260752 arranca en el 40) y hasta
 //     el final: 5924, 3708, 6069, 6026, 3789, 4693, 4434 y 9 ticks. Es el agujero de
 //     `juntar` de siempre, y lo que cambió no es el agujero: es que ahora se pisa
@@ -1421,11 +1457,14 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // decía “a lo sumo una partida, y de esa clase”. Ya no hace falta aflojarla».
     //
     // **Y desde entonces no dejó de empeorar: 12 violaciones en 1 de las 20 en el
-    // tramo J, 6.306 en 3 al materializarse el decreto, y 47.091 en 10 —el 57,5% de
-    // los ticks auditados— con el cerrojo de la escalera.** Las dos subidas tienen
-    // causa medida y ninguna es del juez: la primera es el pozo sentándose encima de
-    // una suelta que ahora existe, la segunda es `juntar` disparando 8.195 veces
-    // donde antes disparaba 7. La aspiración NO se aflojó y NO
+    // tramo J, 6.306 en 3 al materializarse el decreto, 47.091 en 10 —el 57,5% de
+    // los ticks auditados— con el cerrojo de la escalera, y 31.833 en 7 —el 43,6%—
+    // con la poda del tramo L encima.** Las subidas tienen causa medida y ninguna es
+    // del juez: la primera es el pozo sentándose encima de una suelta que ahora
+    // existe, la segunda es `juntar` disparando miles de veces donde antes disparaba
+    // 7 (8.195 en el K bis, 5.314 en el L). La baja del tramo L tampoco arregla nada:
+    // la criatura vive menos ticks en las partidas que encabezaba
+    // `solidos-solapados`. La aspiración NO se aflojó y NO
     // se le puso un «a lo sumo una partida» —que es exactamente el movimiento que la
     // nota de arriba celebraba haber podido deshacer—: el mismo `toEqual([])` se mudó
     // al `it.fails` de abajo, donde está el porqué medido. Y acá queda lo
@@ -1450,12 +1489,13 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // ─── EL AGUJERO QUE ESTA CORRIDA PISÓ, EN SU FORMA MÍNIMA ───────────────
     //
     // La corrida canónica de este archivo mide **estados ilegales de la clase
-    // `inventario-inconsistente` · «ana/ana-cuerpo: se lleva a sí misma» en OCHO de
-    // las 20 partidas**, y en la mayoría desde un tick temprano hasta la muerte
-    // (20260752 arranca en el 40 y suma 6.026). Cuando el tramo J lo encontró eran 12
-    // ticks en 1 sola partida: lo que lo multiplicó fue un arreglo de la escalera
-    // —el cerrojo del «mientras tanto»— que sacó a la criatura de un bucle de `ir` y
-    // la puso a `juntar` 8.195 veces en las veinte.
+    // `inventario-inconsistente` · «ana/ana-cuerpo: se lleva a sí misma» en SIETE de
+    // las 20 partidas** (eran OCHO en el K bis), y en la mayoría desde un tick
+    // temprano hasta la muerte (20260752 arranca en el 36). Cuando el tramo J lo
+    // encontró eran 12 ticks en 1 sola partida: lo que lo multiplicó fue un arreglo
+    // de la escalera —el cerrojo del «mientras tanto», y después la poda del tramo
+    // L— que sacó a la criatura de un bucle de `ir` y la puso a `juntar` miles de
+    // veces en las veinte (8.195 en el K bis, 5.314 en el L).
     //
     // QUIÉN LO PIDE, medido tick por tick cuando eran doce: en el 6180 despega
     // `juntar×1` y en el 6181 el estado tiene `holding: ["w000000001","ana-cuerpo"]`.
@@ -1608,7 +1648,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
 // ═══ (3) EL CONTROL: ¿ES LA MUERTE O ES LA MENTE? ═══════════════════════════
 
 describe('(3) el control con el tanque lleno', () => {
-  it('con 1000 de aliento la criatura vive casi los 20.000 — y el juez dice lo mismo', async () => {
+  it('con 1000 de aliento la criatura vive 3,6× más — y el juez dice lo mismo', async () => {
     // LA PREGUNTA QUE ESTE BLOQUE CONTESTA, y sin ella el cero de arriba no
     // significa nada: ¿las secuencias no aparecieron porque la mente no llega, o
     // porque la criatura no vivió lo suficiente para intentarlas?
@@ -1620,6 +1660,43 @@ describe('(3) el control con el tanque lleno', () => {
     // COSTO: son 20 × 20.000 ticks de mundo con una mente encima. Se corren las
     // veinte sólo con `ANIMA_BANCO=1`; sin él se corren tres y se dice cuántas.
     // Ver el encabezado: acá el gatillo es el costo y no la varianza.
+    //
+    // ═══ ESTE BLOQUE ESTABA ROJO CON `ANIMA_BANCO=1`, Y NADIE LO HABÍA CORRIDO ══
+    //
+    // Decía «vive casi los 20.000» y afirmaba `vividos / presupuesto > 0,9`. **Con
+    // las veinte partidas eso nunca fue cierto.** Medido al cerrar el tramo L, y
+    // las dos mediciones son mías, sobre las mismas veinte semillas:
+    //
+    //     árbol de HEAD (antes del tramo L) ... 261.352 / 400.000 = 65,338%
+    //     árbol del tramo L ................... 264.776 / 400.000 = 66,194%
+    //
+    // O sea que el `> 0,9` fallaba de antes y **no es una regresión de la poda**;
+    // la poda lo movió a favor por 0,86 puntos. Lo que hacía invisible el rojo es
+    // que la aserción vive detrás de `if (!MIDIENDO_EN_SERIO) return`, y la suite
+    // normal corre TRES partidas, no veinte.
+    //
+    // Y de dónde salió el 0,9: de un 81,0% que el traspaso publicaba como «el
+    // control llega al 81,0% del presupuesto». **Ese 81,0% es de TRES partidas**
+    // —las tres cortas— y se leyó como si fuera de las veinte.
+    // → **REGLA: un porcentaje medido sobre la muestra corta no se cita como si
+    //   fuera el del banco entero, y una aserción detrás de un `env` hay que
+    //   correrla con el `env` puesto antes de escribirla.**
+    //
+    // ═══ Y AL CORRERLO SE DIO VUELTA LA CONCLUSIÓN DEL BLOQUE ════════════════
+    //
+    // El título decía «vive casi los 20.000» y el comentario decía «multiplicar por
+    // cuatro el tiempo vivido no movió una sola fila». **Lo segundo es falso sobre
+    // las veinte partidas: el control cuenta 2 DE 9 contra 0 de la canónica**, y la
+    // corrida deja de ser no interpretable. Ver (E) en el encabezado del archivo.
+    // Y no lo trajo el tramo L: las dos corridas —HEAD y tramo L— dan esta tabla
+    // renglón por renglón idéntica.
+    //
+    // LO QUE SE AFIRMA AHORA es el MECANISMO que el bloque necesita de verdad, y no
+    // un umbral inventado: que el control vive MUCHO más que la corrida canónica
+    // —o sea que estirar el tiempo vivido fue un experimento real— y que el juez se
+    // movió en la dirección que tiene que moverse. El número exacto es un hallazgo
+    // del criterio y no un umbral de este arnés, que es exactamente lo que ya dice
+    // el bloque de la auditoría tres más arriba.
     const b = await control()
     const canon = await canonico()
     const ruido = await ruidoDelAzar()
@@ -1652,8 +1729,33 @@ describe('(3) el control con el tanque lleno', () => {
 
     // Y lo caro se afirma sólo midiendo en serio.
     if (!MIDIENDO_EN_SERIO) return
-    expect(b.corridas.length).toBe(MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS)
-    expect(vividos / presupuesto).toBeGreaterThan(0.9)
+    expect(b.corridas.length).toBe(PARTIDAS)
+    // (1) EL EXPERIMENTO OCURRIÓ: el control vive al menos TRES VECES lo que la
+    //     corrida canónica. Medido: 66,194% contra 18,241%, o sea 3,63×. Sin esta
+    //     separación, cualquier cosa que se diga sobre «la muerte» no tendría con
+    //     qué sostenerse.
+    const vividosCanon = canon.corridas.reduce((a, c) => a + c.ticks, 0)
+    const presupuestoCanon = canon.corridas.length * TICKS
+    expect(
+      vividos / presupuesto / (vividosCanon / presupuestoCanon),
+      `el control vivió ${((vividos * 100) / presupuesto).toFixed(3)}% contra ${((vividosCanon * 100) / presupuestoCanon).toFixed(3)}% de la canónica`,
+    ).toBeGreaterThan(3)
+    // (2) Y EL TIEMPO VIVIDO **SÍ** MUEVE LA AGUJA, que es lo contrario de lo que
+    //     este bloque decía. Ver el encabezado, (E): con el tanque lleno cuentan
+    //     DOS de las nueve —`no-frotar-lo-que-no-alcanza-a-encender` 4/20 y
+    //     `comerla-en-el-pico-de-calorias` 4/20— contra CERO de la canónica, y la
+    //     corrida pasa de «no interpretable» (6 sin medir) a interpretable (3).
+    //
+    //     No se afirma «dos»: el número exacto es un hallazgo del criterio y no un
+    //     umbral de este arnés, igual que en el bloque de la auditoría. Lo que se
+    //     afirma es la DIRECCIÓN, que es la que sostiene el diagnóstico del bloque
+    //     (4): darle tiempo no puede quitarle secuencias a la mente, y si algún día
+    //     se las quitara habría un defecto de monotonía que hay que mirar.
+    const cuentanCanon = resumir(canon.corridas.map((c) => c.veredicto)).cuantasCuentan
+    expect(
+      r.cuantasCuentan,
+      `control ${String(r.cuantasCuentan)} de 9 contra canónica ${String(cuentanCanon)} de 9`,
+    ).toBeGreaterThanOrEqual(cuentanCanon)
   }, 900_000)
 })
 
