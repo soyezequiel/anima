@@ -153,7 +153,7 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los veinticinco números corregidos, y la regla que dejó cada uno
+## 5 · Los treinta y un números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
@@ -370,6 +370,23 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    → **REGLA: cuando bajás un término de una suma, el que manda pasa a ser otro.**
    Remedí la COMPOSICIÓN del gasto y no sólo el total, o la próxima palanca se elige
    contra el término que ya no decide.
+
+31. **«El control con el tanque lleno vive más de 3× lo que la canónica»** — esa
+   guarda dejó de ser exigente para pasar a ser **matemáticamente imposible** cuando
+   bajó el costo de vivir. Medido con `ANIMA_BANCO=1`: la canónica vive
+   **151.537/400.000 ticks = 37,884%** y muere en las 20 partidas; el tanque lleno
+   vive **365.510/400.000 = 91,377%** y muere en 5. El cociente es **2,412×**, y aun
+   un control perfecto censurado en el 100% sólo podría dar **2,640×**. No se bajó
+   el 3: el bloque ahora afirma el mecanismo pareado por semilla —mismas veinte
+   semillas, sin duplicados, y una ventana de observación posterior a cada muerte
+   canónica—, que dio **20 de 20**. El juez sigue moviéndose de **0 de 9 a 2 de 9**.
+   Verificado mirando el exit code de la corrida seria: **121/121, exit 0**.
+   → **REGLA: un control censurado puede perder resolución aunque ambos grupos
+   mejoren.** Antes de bajar un cociente histórico, calculá su máximo posible dentro
+   del horizonte; si el umbral ya es inalcanzable, afirmá el mecanismo que el
+   experimento necesitaba. Y si la intervención también cambia la política —acá el
+   aliento altera la energía que ve D3 desde el tick cero— no publiques causalidad
+   pura: «LA MUERTE» queda como nombre operativo de la casilla, no como prueba.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación

@@ -1657,14 +1657,16 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
 // ═══ (3) EL CONTROL: ¿ES LA MUERTE O ES LA MENTE? ═══════════════════════════
 
 describe('(3) el control con el tanque lleno', () => {
-  it('con 1000 de aliento la criatura vive 3,6× más — y el juez dice lo mismo', async () => {
+  it('el tanque lleno abre una ventana después de cada muerte canónica — y el juez no retrocede', async () => {
     // LA PREGUNTA QUE ESTE BLOQUE CONTESTA, y sin ella el cero de arriba no
     // significa nada: ¿las secuencias no aparecieron porque la mente no llega, o
     // porque la criatura no vivió lo suficiente para intentarlas?
     //
-    // Se corre el mismo banco con el tanque entero. Si el cero se moviera, la
-    // respuesta sería «no vivió»; si no se mueve, la muerte temprana no es lo que
-    // manda. **No se mueve.**
+    // Se corre el mismo banco con el tanque entero. No es una intervención causal
+    // pura: el aliento también cambia la energía que D3 ve y las trayectorias pueden
+    // divergir desde el primer tick. Sí sirve para una pregunta más chica y
+    // verificable: ¿en cada semilla abre una ventana de observación DESPUÉS de la
+    // muerte canónica? Y el detector dice por separado si esa ventana movió el cero.
     //
     // COSTO: son 20 × 20.000 ticks de mundo con una mente encima. Se corren las
     // veinte sólo con `ANIMA_BANCO=1`; sin él se corren tres y se dice cuántas.
@@ -1739,27 +1741,51 @@ describe('(3) el control con el tanque lleno', () => {
     // Y lo caro se afirma sólo midiendo en serio.
     if (!MIDIENDO_EN_SERIO) return
     expect(b.corridas.length).toBe(PARTIDAS)
-    // (1) EL EXPERIMENTO OCURRIÓ: el control vive al menos TRES VECES lo que la
-    //     corrida canónica. Medido: 66,194% contra 18,241%, o sea 3,63×. Sin esta
-    //     separación, cualquier cosa que se diga sobre «la muerte» no tendría con
-    //     qué sostenerse.
+    // (1) EL EXPERIMENTO OCURRIÓ, EMPAREJADO POR SEMILLA. El cociente de promedios
+    //     truncados dejó de tener resolución cuando bajó el costo de vivir:
+    //
+    //       canónica       151.537 / 400.000 = 37,884% · 20/20 muertas
+    //       tanque lleno   365.510 / 400.000 = 91,377% ·  5/20 muertas
+    //       cociente                              2,412×
+    //
+    //     Con la canónica en 37,884%, aun un control perfecto, censurado en 100%,
+    //     sólo podría dar 2,640×. No se baja el 3: se deja de afirmar una razón que
+    //     el horizonte volvió matemáticamente imposible. El mecanismo que este
+    //     bloque necesita es pareado y no tiene umbral inventado: en cada mundo
+    //     donde la canónica muere antes de TICKS, el tanque lleno tiene que observar
+    //     al menos un tick posterior. Medido acá: 20 de 20. Si alguna vez ninguna
+    //     canónica queda censurada, la pregunta queda contestada directamente y el
+    //     conjunto vacío es correcto: la muerte ya no tapó ninguna de las veinte.
     const vividosCanon = canon.corridas.reduce((a, c) => a + c.ticks, 0)
     const presupuestoCanon = canon.corridas.length * TICKS
+    const canonPorSemilla = new Map(canon.corridas.map((c) => [c.semilla, c] as const))
+    const controlPorSemilla = new Map(b.corridas.map((c) => [c.semilla, c] as const))
+    const porSemilla = (a: bigint, z: bigint): number => (a < z ? -1 : a > z ? 1 : 0)
+    const semillasCanon = [...canonPorSemilla.keys()].sort(porSemilla)
+    const semillasControl = [...controlPorSemilla.keys()].sort(porSemilla)
+    const censuradas = canon.corridas.filter((c) => c.veredicto.ticks < TICKS)
+    const conVentanaPosterior = censuradas.filter(
+      (c) => (controlPorSemilla.get(c.semilla)?.veredicto.ticks ?? -1) > c.veredicto.ticks,
+    )
+    expect(canonPorSemilla.size, 'la canónica repitió una semilla').toBe(canon.corridas.length)
+    expect(controlPorSemilla.size, 'el control repitió una semilla').toBe(b.corridas.length)
     expect(
-      vividos / presupuesto / (vividosCanon / presupuestoCanon),
-      `el control vivió ${((vividos * 100) / presupuesto).toFixed(3)}% contra ${((vividosCanon * 100) / presupuestoCanon).toFixed(3)}% de la canónica`,
-    ).toBeGreaterThan(3)
-    // (2) Y EL TIEMPO VIVIDO **SÍ** MUEVE LA AGUJA, que es lo contrario de lo que
-    //     este bloque decía. Ver el encabezado, (E): con el tanque lleno cuentan
-    //     DOS de las nueve —`no-frotar-lo-que-no-alcanza-a-encender` 4/20 y
+      semillasControl,
+      `las semillas del control no son las mismas que las canónicas: ${semillasControl.join(', ')} contra ${semillasCanon.join(', ')}`,
+    ).toEqual(semillasCanon)
+    expect(
+      conVentanaPosterior.length,
+      `el tanque lleno abrió una ventana posterior en ${String(conVentanaPosterior.length)} de ${String(censuradas.length)} muertes canónicas; vivió ${((vividos * 100) / presupuesto).toFixed(3)}% contra ${((vividosCanon * 100) / presupuestoCanon).toFixed(3)}%`,
+    ).toBe(censuradas.length)
+    // (2) Y EL JUEZ NO RETROCEDE. En esta medición el control cuenta DOS de las
+    //     nueve —`no-frotar-lo-que-no-alcanza-a-encender` 4/20 y
     //     `comerla-en-el-pico-de-calorias` 4/20— contra CERO de la canónica, y la
     //     corrida pasa de «no interpretable» (6 sin medir) a interpretable (3).
     //
     //     No se afirma «dos»: el número exacto es un hallazgo del criterio y no un
-    //     umbral de este arnés, igual que en el bloque de la auditoría. Lo que se
-    //     afirma es la DIRECCIÓN, que es la que sostiene el diagnóstico del bloque
-    //     (4): darle tiempo no puede quitarle secuencias a la mente, y si algún día
-    //     se las quitara habría un defecto de monotonía que hay que mirar.
+    //     umbral de este arnés, igual que en el bloque de la auditoría. Se afirma
+    //     sólo la monotonía de este control: si el tanque lleno quitara secuencias,
+    //     habría que revisar el diagnóstico del bloque (4).
     const cuentanCanon = resumir(canon.corridas.map((c) => c.veredicto)).cuantasCuentan
     expect(
       r.cuantasCuentan,
@@ -1770,14 +1796,16 @@ describe('(3) el control con el tanque lleno', () => {
 
 // ═══ (4) EL DIAGNÓSTICO: DE CUÁL DE LAS TRES CAUSAS ES CADA CERO ════════════
 //
-// Un cero por secuencia no dice nada solo. Puede ser una de tres cosas, y las
-// tres se separan con datos que ya están medidos y sin opinar sobre ninguna:
+// Un cero por secuencia no dice nada solo. Este arnés lo reparte en tres casillas
+// operativas con datos medidos:
 //
 //   EL MUNDO   el contra-detector dio `false` en las veinte, y también en el
-//              control con el tanque lleno —que vive 4× más—. El mundo nunca
-//              puso el problema delante, y no fue por falta de tiempo.
+//              control con el tanque lleno —que abrió una ventana posterior en
+//              las veinte semillas—. Ninguna de las dos corridas vio la situación.
 //   LA MUERTE  el contra-detector dio `false` en las veinte y SÍ dio `true` en
-//              alguna del control. Lo que faltó fue vida, no mundo.
+//              alguna del control. Es el nombre histórico de la casilla: como el
+//              tanque también cambia la energía que D3 ve desde el tick cero, esto
+//              prueba «el control la expuso», no causalidad pura de la muerte.
 //   LA MENTE   el contra-detector dio `true` en alguna partida y la firma no
 //              salió igual. Es el único caso en el que el cero mide a la mente.
 //

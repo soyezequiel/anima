@@ -397,10 +397,14 @@ sigue abierto.
   criterio: (1) cortar el bucle y (2) perseverar el proceso. Un arreglo que pase sólo
   una de las dos es el arreglo equivocado.
 - **La aserción del control del juez, que estaba roja detrás de `ANIMA_BANCO=1`.**
-  Ver el número 22. Ahora se afirma el MECANISMO —el control vive más de 3× lo que la
-  canónica, y el juez se mueve en la dirección que tiene que moverse— en vez de un
-  umbral inventado. Y al correrlo apareció el número 25, que es el hallazgo más caro
-  del tramo: **el control mide 2 de 9, no 0** (punto 2 de la sección 6).
+  Ver los números 22 y 31. El primer mecanismo que la reemplazó —«el control vive
+  más de 3× lo que la canónica»— perdió resolución al bajar el costo de vivir:
+  37,884% contra 91,377%, o sea 2,412×, y con el horizonte censurado ni un control
+  perfecto podía pasar de 2,640×. No se bajó el 3. Ahora se afirma el mecanismo
+  pareado: mismas veinte semillas, sin duplicados, y el tanque lleno abre una
+  ventana de observación posterior a cada muerte canónica (**20 de 20**). El juez
+  no retrocede y en la medición sigue dando **2 de 9 contra 0**. Verificado con
+  `ANIMA_BANCO=1`: 121/121, exit 0.
 
 ### Lo que se cerró en el tramo K bis, para que nadie lo vuelva a buscar
 
