@@ -31,13 +31,22 @@
 // la medición del mundo justamente para que se vea cuándo no coinciden.
 
 import { describe, expect, it } from 'vitest'
-import { buildSeedPhysics, qualityOf, temperaturaDeEquilibrio, SUSTANCIAS_SEMILLA, T_AMBIENTE } from '@anima/physics'
+import {
+  buildSeedPhysics,
+  MAX_PARTS,
+  qualityOf,
+  temperaturaDeEquilibrio,
+  unir,
+  SUSTANCIAS_SEMILLA,
+  T_AMBIENTE,
+} from '@anima/physics'
 import type { QualityId } from '@anima/physics'
 
-import { crearDios, decretoDe } from '../src/index.js'
+import { crearDios, decretoDe, PREFIJO_SUELTA } from '../src/index.js'
+import { chebyshev } from '../src/intent.js'
 import { stepWorld } from '../src/step.js'
 import type { WorldBody, WorldState } from '../src/step.js'
-import { cuerpo, enElPiso, mundo } from './mundo-minimo.js'
+import { actor, criatura, cuerpo, enElPiso, mundo } from './mundo-minimo.js'
 
 const EN = (x: number, y: number): { x: number; y: number } => ({ x, y })
 const SEGUNDOS_POR_TICK = 1 / 20
@@ -333,22 +342,22 @@ describe('la escalera de la yesca', () => {
     expect(mejorNeto).toBeGreaterThan(0)
   })
 
-  it('5 · ¿Y EL DIOS PONE ESA YESCA Y ESE LEÑO? — la escalera contra el mundo decretado', () => {
+  it('5 · ¿Y EL DIOS SUMA ESA YESCA Y ESE LEÑO? — inventario bruto del mundo decretado', () => {
     // La trampa que este proyecto ya pagó tres veces, y que acá viene al revés:
     // los cuatro bloques de arriba miden LA FÍSICA con cuerpos armados a mano. Que
     // la escalera exista en la física no dice nada si el dios no siembra la
     // materia que pide. Se barre el decreto de las mismas veinte semillas del
     // banco de la emergencia, alrededor del mismo arranque.
     //
-    // La masa NO tiene que venir en una sola pieza: `union` (ley 7) hace un cuerpo
-    // de dos, y la masa de un cuerpo es la suma de sus partes. Por eso se cuenta
-    // el TOTAL por sustancia además de la pieza más grande — y por eso queda
-    // abierta la pregunta de si hay atador, que es de otro archivo.
+    // Acá se cuenta el TOTAL por sustancia además de la pieza más grande. Eso
+    // contesta cuánto material bruto hay, no si la criatura puede construir el
+    // cuerpo: los bloques 6 y 7 miden el atador y la cota de partes que esta
+    // primera medición omitía.
     const filas: string[] = [
       '─── LO QUE EL DIOS SIEMBRA, CONTRA LO QUE LA ESCALERA PIDE ───',
       `  la escalera pide: vara frotable de ${VARA.toFixed(2)} kg · yesca de ${YESCA_QUE_ALCANZA.toFixed(2)} kg · leño de 8 kg`,
       '',
-      '  semilla   │ yesca: piezas / kg / mayor │ madera: piezas / kg / mayor │ ¿alcanza?',
+      '  semilla   │ yesca: piezas / kg / mayor │ madera: piezas / kg / mayor │ ¿suma bruta?',
       '  ──────────┼────────────────────────────┼─────────────────────────────┼──────────',
     ]
 
@@ -383,21 +392,251 @@ describe('la escalera de la yesca', () => {
     }
     filas.push('')
     filas.push(
-      `  semillas donde la materia de la escalera está a la vista, en 9 chunks: ${String(alcanzan)} de 20`,
-      '  («a la vista» es la suma de las piezas sueltas: juntarlas pide `union`, y si hay',
-      '  atador cerca no lo contesta este archivo.)',
+      `  semillas donde la SUMA BRUTA alcanza, en 9 chunks: ${String(alcanzan)} de 20`,
+      '  (esto todavía no dice que el cuerpo sea construible: ver atador y MAX_PARTS',
+      '  en los bloques 6 y 7.)',
     )
     log(filas)
 
     // Clavado, igual que en `lo-que-el-mundo-si-siembra.test.ts`: no es un umbral
     // que alguien eligió, es lo que el dios decreta hoy. Y es la mitad que falta
     // del hallazgo: la puerta existe en la física y el mundo la abre en 6 de 20
-    // paradas, con la yesca en piezas de 77 gramos.
+    // paradas, con la yesca en piezas de 77 gramos. Los dos bloques siguientes
+    // clavan por qué esa suma no se puede interpretar como una escalera disponible.
     expect(alcanzan).toBe(6)
+  })
+
+  it('6 · ¿HAY ATADOR CERCA? — inventario por cada distancia desde el arranque', () => {
+    // «Atador» no es un tag ni una lista de sustancias: es exactamente el rol de
+    // `union`, escrito acá para que la medición diga qué está contando.
+    //
+    //   flexibility >= 0.8 && tensile >= 0.3
+    //
+    // No se elige un radio que signifique «cerca». Para cada una de las seis
+    // semillas donde está la materia de la escalera se imprimen TODOS los radios
+    // de Chebyshev desde (0,0) en los que cambia el inventario de yesca, madera o
+    // atador. Así quedan a la vista las piezas y la masa que compra caminar cada
+    // distancia, sin esconder un umbral espacial en el test.
+    //
+    // Se materializa un tick de mundo real, en vez de leer sólo `Suelta.i`: si
+    // dos sólidos caen en la misma celda, `abrirChunk` corre uno y esta tabla usa
+    // la posición FINAL que la criatura realmente encuentra.
+    const filas: string[] = [
+      '─── ¿HAY ATADOR CERCA DE LA ESCALERA? ───',
+      '  atador := flexibility >= 0.80 && tensile >= 0.30 (el rol binder de union)',
+      `  origen := arranque (0,0) · distancia := Chebyshev · cota := MAX_PARTS=${String(MAX_PARTS)}`,
+      '  se imprime cada radio exacto donde entra yesca, madera o atador; no hay radio elegido como «cerca».',
+      '',
+    ]
+
+    const relevantes: InventarioDeSemilla[] = []
+    for (let k = 0; k < 20; k += 1) {
+      const semilla = SEMILLA_BASE + BigInt(k)
+      const inventario = inventarioMaterializado(semilla)
+      if (tieneMateriaDeLaEscalera(inventario.recursos)) relevantes.push(inventario)
+    }
+
+    for (const inventario of relevantes) {
+      const { semilla, recursos } = inventario
+      const yescas = recursos.filter((r) => r.sustancia === 'hoja-seca')
+      const maderas = recursos.filter((r) => r.sustancia === 'madera')
+      const atadores = recursos.filter((r) => r.atador)
+      const radios = [
+        ...new Set(
+          [...yescas, ...maderas, ...atadores]
+            .map((r) => r.distanciaAlArranque)
+            .sort((a, b) => a - b),
+        ),
+      ]
+
+      filas.push(`  SEMILLA ${String(semilla)}`)
+      filas.push(
+        '    r │ yesca: piezas / kg / top6 kg │ madera: piezas / kg / top3 kg / top6 kg │ atador: piezas / kg',
+        '    ──┼───────────────────────────────┼───────────────────────────────────────────┼────────────────────',
+      )
+      for (const radio of radios) {
+        const dentro = recursos.filter((r) => r.distanciaAlArranque <= radio)
+        const y = dentro.filter((r) => r.sustancia === 'hoja-seca')
+        const m = dentro.filter((r) => r.sustancia === 'madera')
+        const a = dentro.filter((r) => r.atador)
+        filas.push(
+          `    ${String(radio).padStart(2)} │ ${String(y.length).padStart(6)} / ${masa(y).toFixed(3).padStart(6)} / ` +
+            `${masaMayorN(y, MAX_PARTS).toFixed(3).padStart(7)} │ ` +
+            `${String(m.length).padStart(6)} / ${masa(m).toFixed(3).padStart(6)} / ` +
+            `${masaMayorN(m, 3).toFixed(3).padStart(7)} / ${masaMayorN(m, MAX_PARTS).toFixed(3).padStart(7)} │ ` +
+            `${String(a.length).padStart(7)} / ${masa(a).toFixed(3).padStart(6)}`,
+        )
+      }
+
+      filas.push('    atadores crudos: sustancia / kg / (x,y) / d(arranque) / d(yesca) / d(madera)')
+      if (atadores.length === 0) {
+        filas.push('      — ninguno —')
+      } else {
+        for (const a of [...atadores].sort(compararRecurso)) {
+          filas.push(
+            `      ${a.sustancia.padEnd(12)} / ${a.masa.toFixed(3).padStart(6)} / ` +
+              `(${String(a.at.x)},${String(a.at.y)}) / ${String(a.distanciaAlArranque).padStart(2)} / ` +
+              `${distanciaMinima(a, yescas).toFixed(0).padStart(2)} / ${distanciaMinima(a, maderas).toFixed(0).padStart(2)}`,
+          )
+        }
+      }
+
+      const top6Yesca = masaMayorN(yescas, MAX_PARTS)
+      const top3Madera = masaMayorN(maderas, 3)
+      filas.push(
+        `    total 9 chunks: yesca ${String(yescas.length)} piezas / ${masa(yescas).toFixed(3)} kg / ` +
+          `máximo legal top6 ${top6Yesca.toFixed(3)} kg; ` +
+          `madera top3 ${top3Madera.toFixed(3)} kg; ` +
+          `atador ${String(atadores.length)} piezas / ${masa(atadores).toFixed(3)} kg.`,
+        `    un fardo de 6 yesca gastaría 5 atadores; uno de 13 gastaría 12 pero NO entra en MAX_PARTS=${String(MAX_PARTS)}.`,
+        '',
+      )
+    }
+    filas.push(
+      `  semillas relevantes: ${String(relevantes.length)} de 20.`,
+      '  `top6` es la masa máxima ensamblable con estas piezas bajo la cota dura;',
+      '  `top3` muestra aparte si las tres piezas grandes de madera alcanzan el leño de 8 kg.',
+    )
+    log(filas)
+
+    // Conserva la misma población del bloque 5 y afirma el mecanismo que acaba
+    // de aparecer: aunque el total llegue al kilo, ninguna de estas semillas
+    // puede meter un kilo de piezas de 77 g en UN cuerpo legal.
+    expect(relevantes).toHaveLength(6)
+    for (const inventario of relevantes) {
+      const yescas = inventario.recursos.filter((r) => r.sustancia === 'hoja-seca')
+      expect(masa(yescas)).toBeGreaterThanOrEqual(YESCA_QUE_ALCANZA)
+      expect(masaMayorN(yescas, MAX_PARTS)).toBeLessThan(YESCA_QUE_ALCANZA)
+    }
+  })
+
+  it('7 · LA COTA REAL: `unir` acepta la sexta yesca y rechaza la séptima', () => {
+    const phys = buildSeedPhysics()
+    const binder = cuerpo('atador', 'liana', 0.1)
+    let fardo = cuerpo('yesca-1', 'hoja-seca', 0.077)
+    const filas: string[] = [
+      '─── UNION CONTRA MAX_PARTS ───',
+      `  cada yesca pesa 0.077 kg · MAX_PARTS=${String(MAX_PARTS)} · el atador es liana`,
+      '',
+      '  pieza que intenta entrar │ resultado │ partes │ masa',
+      '  ──────────────────────────┼───────────┼────────┼──────',
+    ]
+
+    let primerRechazo = -1
+    for (let pieza = 2; pieza <= MAX_PARTS + 1; pieza += 1) {
+      const siguiente = unir(
+        fardo,
+        cuerpo(`yesca-${String(pieza)}`, 'hoja-seca', 0.077),
+        binder,
+        phys,
+        `fardo-${String(pieza)}`,
+      )
+      if (siguiente === undefined) {
+        if (primerRechazo < 0) primerRechazo = pieza
+        filas.push(`  ${String(pieza).padStart(24)} │ rechazado │      — │     —`)
+        continue
+      }
+      fardo = siguiente
+      filas.push(
+        `  ${String(pieza).padStart(24)} │ aceptado  │ ${String(fardo.parts.length).padStart(6)} │ ` +
+          `${qualityOf(fardo, 'mass', phys).toFixed(3)}`,
+      )
+    }
+    filas.push(
+      '',
+      `  máximo real: ${String(fardo.parts.length)} piezas = ${qualityOf(fardo, 'mass', phys).toFixed(3)} kg; ` +
+        `el kilo pediría 13 piezas y la primera que ya no entra es la ${String(primerRechazo)}.`,
+    )
+    log(filas)
+
+    expect(qualityOf(binder, 'flexibility', phys)).toBeGreaterThanOrEqual(0.8)
+    expect(qualityOf(binder, 'tensile', phys)).toBeGreaterThanOrEqual(0.3)
+    expect(fardo.parts).toHaveLength(MAX_PARTS)
+    expect(qualityOf(fardo, 'mass', phys)).toBeCloseTo(MAX_PARTS * 0.077, 12)
+    expect(primerRechazo).toBe(MAX_PARTS + 1)
   })
 })
 
 // ─── El armado de las escenas ────────────────────────────────────────────────
+
+const ATADOR = { flexibility: 0.8, tensile: 0.3 } as const
+
+interface RecursoSembrado {
+  readonly id: string
+  readonly sustancia: string
+  readonly masa: number
+  readonly at: { readonly x: number; readonly y: number }
+  readonly distanciaAlArranque: number
+  readonly atador: boolean
+}
+
+interface InventarioDeSemilla {
+  readonly semilla: bigint
+  readonly recursos: readonly RecursoSembrado[]
+}
+
+/** Los nueve chunks que la criatura abre en su primer tick, ya materializados. */
+function inventarioMaterializado(semilla: bigint): InventarioDeSemilla {
+  const phys = buildSeedPhysics()
+  const dios = crearDios(semilla)
+  const base = mundo({
+    phys,
+    bodies: [enElPiso(criatura('medidor'), EN(0, 0))],
+    actors: [actor('medidor')],
+  })
+  const w = stepWorld({ ...base, dios }, []).state
+  const recursos: RecursoSembrado[] = []
+  for (const c of w.bodies.values()) {
+    if (!c.body.id.startsWith(PREFIJO_SUELTA)) continue
+    const parte = c.body.parts[0]
+    if (parte === undefined) throw new Error(`la suelta ${c.body.id} no tiene parte`)
+    const flex = qualityOf(c.body, 'flexibility', w.phys)
+    const tensile = qualityOf(c.body, 'tensile', w.phys)
+    recursos.push({
+      id: c.body.id,
+      sustancia: parte.substance,
+      masa: qualityOf(c.body, 'mass', w.phys),
+      at: c.at,
+      distanciaAlArranque: chebyshev(c.at, EN(0, 0)),
+      atador: flex >= ATADOR.flexibility && tensile >= ATADOR.tensile,
+    })
+  }
+  return { semilla, recursos }
+}
+
+/** La misma puerta del bloque 5, aplicada al mundo que efectivamente abrió. */
+function tieneMateriaDeLaEscalera(recursos: readonly RecursoSembrado[]): boolean {
+  const yescas = recursos.filter((r) => r.sustancia === 'hoja-seca')
+  const maderas = recursos.filter((r) => r.sustancia === 'madera')
+  return (
+    masa(yescas) >= YESCA_QUE_ALCANZA &&
+    masa(maderas) >= 8 + VARA &&
+    maderas.some((r) => r.masa >= VARA)
+  )
+}
+
+function masa(recursos: readonly RecursoSembrado[]): number {
+  return recursos.reduce((total, r) => total + r.masa, 0)
+}
+
+function masaMayorN(recursos: readonly RecursoSembrado[], n: number): number {
+  return [...recursos]
+    .sort((a, b) => b.masa - a.masa)
+    .slice(0, n)
+    .reduce((total, r) => total + r.masa, 0)
+}
+
+function distanciaMinima(desde: RecursoSembrado, candidatos: readonly RecursoSembrado[]): number {
+  let minima = Number.POSITIVE_INFINITY
+  for (const c of candidatos) minima = Math.min(minima, chebyshev(desde.at, c.at))
+  return minima
+}
+
+function compararRecurso(a: RecursoSembrado, b: RecursoSembrado): number {
+  const porDistancia = a.distanciaAlArranque - b.distanciaAlArranque
+  if (porDistancia !== 0) return porDistancia
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
+}
 
 /**
  * Una vara encendida con `masa` kg y una pieza de `sub` apoyada ENCIMA (contacto).

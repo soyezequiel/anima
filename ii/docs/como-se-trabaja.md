@@ -153,7 +153,7 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los treinta y un números corregidos, y la regla que dejó cada uno
+## 5 · Los treinta y cuatro números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
@@ -387,6 +387,70 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    experimento necesitaba. Y si la intervención también cambia la política —acá el
    aliento altera la energía que ve D3 desde el tick cero— no publiques causalidad
    pura: «LA MUERTE» queda como nombre operativo de la casilla, no como prueba.
+
+32. **«El dios pone la materia de la escalera en 6 de 20 semillas; sólo falta
+   encontrar atador para unir unas 13 yesquitas»** — la suma bruta sí da 6/20, pero
+   el cuerpo supuesto no existe bajo las cotas actuales. `union` aplana el ensamble,
+   `MAX_PARTS` vale 6 y la séptima pieza se rechaza: las seis piezas más grandes de
+   yesca suman apenas **0,449; 0,423; 0,416; 0,417; 0,450 y 0,424 kg**, contra el
+   kilo que recién prende madera. El atador directo
+   (`flexibility >= 0,8 && tensile >= 0,3`) además aparece en **1 de esas 6
+   semillas**: seis juncos en 20260730; las otras cinco tienen cero en los nueve
+   chunks del arranque. En esa única semilla, cuatro atadores recién entran a radio
+   Chebyshev 16, el quinto a 29 y el sexto a 31; harían falta siete para armar top6
+   de yesca y top3 de madera. Medido y afirmado con `unir` real en los bloques 6 y 7
+   de `world/tests/la-escalera-de-la-yesca.test.ts`.
+   → **REGLA: sumar inventario no prueba construibilidad.** Antes de llamar
+   «disponible» a una materia repartida, ejecutá la ley que debe ensamblarla contra
+   sus cotas, contá también los consumibles y publicá la distancia que cuesta
+   conseguirlos.
+   → **Y la conclusión que sacó está corregida en el 33: el fardo no era de una
+   sola sustancia.** La regla de arriba sigue valiendo entera.
+
+33. **«Todavía no hay una escalera construible con el inventario decretado»** — la
+   hay, y en 8 de 20 semillas. El error fue buscar el cuerpo de UNA sustancia: como
+   el kilo de yesca no entra en seis partes, se dio por cerrada la puerta. Pero las
+   dos mitades de la cuenta se compran por separado, y eso es lo que un fardo MIXTO
+   aprovecha:
+   - lo que un cuerpo encendido ENTREGA sale de `fuelEnergy · masa` sumado sobre las
+     partes (`emitsPower` es extensiva), o sea que la corteza —piezas de 0,45 kg
+     contra 0,077 de la yesca— es la que trae la masa;
+   - lo que hace falta para PRENDERLO es su `ignitionPoint`, y en un cuerpo de varias
+     partes sale **promediado por masa** (medido exacto: 4 hojas secas de 180 más 2
+     cortezas de 250 dan 232,47);
+   - así que la yesca baja el punto de ignición y la corteza sube la potencia, y el
+     fardo entra en seis partes.
+
+   Medido y corrido en el mundo (semilla 20260730,
+   `world/tests/la-escalera-construible.test.ts`): **4×hoja-seca + 2×corteza = 6
+   partes, 1,214 kg**, armado con `unir` de verdad; una vara de **0,6213 kg** lo
+   prende en el tick 22 y el fardo prende el **leño de 2,904 kg** decretado en el
+   tick 13. Frotar ese leño habría costado **4020,0** contra los **860,1** que se
+   pagaron: **4,67× más barato**. Lo que frena la escalera no es `MAX_PARTS`: son los
+   atadores, que aparecen en **7 de 20** semillas (junco×15, liana×117 — la liana no
+   estaba en la medición anterior, que miró sólo seis semillas) y alcanzan para armar
+   el fardo en **2 de 20**.
+   → **REGLA: cuando una cota bloquea un cuerpo, probá la MEZCLA antes de declarar
+   la puerta cerrada.** Si las cualidades que la receta necesita se agregan distinto
+   —una por suma y otra por promedio—, hay combinaciones que ninguna sustancia sola
+   alcanza.
+
+34. **«Cocinar es la única puerta a la comida que la escena ofrece»** — la frase es
+   del DECRETO y estaba escrita como si fuera del MUNDO, y la diferencia decide qué
+   se puede cambiar sin tocar una constante. La cuenta que la mente usa (`mordidaDe`)
+   no compara `toxicity` contra un umbral, compara un neto, y como `calories` es
+   extensiva la masa sale de factor común: **comer crudo conviene o no por SUSTANCIA**
+   (`calorías/kg > toxicidad · 25`), y lo único que la masa decide es cuánto se gana o
+   se pierde. Barrido el catálogo entero
+   (`world/tests/hay-comida-sin-fuego.test.ts`): de las 15 sustancias con calorías
+   hay **tres que sí pagan crudas —huevo (5,5 contra 2,5), médula (9,9 contra 1,25) y
+   grasa (15,4 contra 1,25)—** y el dios **no siembra ninguna de las tres** en los
+   nueve chunks del arranque; lo que decreta con calorías es grano, hoja, molusco,
+   pescado, raíz-dura y tubérculo, y las seis dan negativo. El grano es el que menos
+   pierde: −0,03, con el veneno llevándose 2,56× lo que las calorías acreditan.
+   → **REGLA: antes de aceptar una premisa del proyecto, fijate si es del catálogo o
+   del decreto.** Las dos se enuncian igual («el mundo no tiene X») y sólo una se
+   arregla sin discutir constantes.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación

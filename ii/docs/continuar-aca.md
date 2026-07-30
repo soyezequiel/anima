@@ -5,9 +5,9 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: 2026-07-30, sobre el árbol de trabajo del **tramo L** (el
-no-op con cara de progreso: último commit `c03800c`, con cambios sin commitear
-encima).
+Última actualización: 2026-07-30, al cerrar el **tramo N** (la aritmética del
+primer fuego: qué se puede encender y qué se puede comer, medido). El resultado
+que manda está en el **punto 0 de la sección 6** y es una decisión del usuario.
 
 ---
 
@@ -35,8 +35,8 @@ encima).
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2448 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
-nueve typechecks limpios.** Corridos enteros al cerrar el tramo M, mirando el exit
+**Nueve paquetes, 2456 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+nueve typechecks limpios.** Corridos enteros al cerrar el tramo N, mirando el exit
 code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (121 de 121). En la rama
 `anima-2`, **ninguno pusheado** — el usuario pushea solo. Si la sesión nueva es en
@@ -59,12 +59,12 @@ otra máquina, hay que pushear antes.
 | paquete | qué es | tests |
 |---|---|---:|
 | `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables | 605 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 533 (+1 skipped) |
-| `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 268 |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 550 (+1 skipped) |
+| `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
 | `@anima/plan` | `SCHEMA_INDEX`, `goalGraph()`, `plan()` anytime, **la poda de lo ya hecho** | 295 (+1 todo) |
-| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, **el portón de despegue** | 301 |
+| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, **el portón de despegue** | 302 |
 | `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 121 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
@@ -133,7 +133,7 @@ tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 | la cadena de la caña | **CUMPLE** | 7 eslabones en el plan, **6 vuelos** contra el mundo (el `ir` al pozo lo poda el tramo L: ya estaba al lado): tira la caña en el tick **48**, el pescado entra a la mano en el **108** |
 | `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,947 ms/tick contra una ventana de 50) — y la partida termina con **120 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
 | p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE, y por otra razón que antes** | canónica (tanque 310): muere en el **6244** de 20.000 con **0 bocados** (era el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE, y con el tanque canónico es IMPOSIBLE — ver el punto 0 de la sección 6** | el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **6244** de 20.000 con **0 bocados** (era el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
 | emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE con el tanque canónico · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **10/20, 10/20 y 8/20** |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
@@ -257,21 +257,33 @@ decidieron. Van acá arriba porque cambian cómo se lee todo lo de abajo.
    escrito en el encabezado de `juez/tests/hito-5-la-emergencia.test.ts` y en el
    cuadro que ese archivo publica.
 
-### Lo que la escalera de la yesca es, en cinco renglones
+### Lo que la escalera de la yesca permite y lo que todavía no construye
 
-Medido en `world/tests/la-escalera-de-la-yesca.test.ts` (5 bloques):
+Medido en `world/tests/la-escalera-de-la-yesca.test.ts` (7 bloques):
 
 - `friccion` pide `rigidity >= 0.5` en los dos palos, así que **la yesca no se
-  frota**: se PRENDE. Cuesta 771/kg contra 1457/kg de la madera.
+  frota**: se PRENDE. En la corrida actual cuesta 707/kg contra 1384/kg de la
+  madera.
 - una vara de 0,5 kg frotada (**692,1** de aliento, el único gasto) prende 1 kg de
   yesca en el tick 3; esa yesca entrega 356 °C y prende un **leño de 8 kg** en el
   tick 61, que frotado habría costado 11.074;
 - ese leño arde 402 s y cocina **42 piezas** con la comida en el piso a UNA celda
   —sobre la parrilla la quema, porque entrega 1217 °C—: **+160,9 de neto**, y es un
   piso porque se cocinó de a una pieza;
-- el dios pone esa materia en **6 de 20 semillas** en los 9 chunks del arranque, con
-  la yesca en piezas de 77 g (13 para el kilo) y la madera más grande en 2,9 kg (3
-  para el leño). O sea que la escalera pide `union` muchas veces.
+- la SUMA BRUTA de esa materia aparece en **6 de 20 semillas** en los 9 chunks del
+  arranque, con la yesca en piezas de unos 77 g y la madera más grande en 2,9 kg;
+- pero `union` aplana las partes y `MAX_PARTS = 6`: las seis yesquitas más grandes
+  suman sólo **0,416–0,450 kg**, así que **el kilo de yesca no se puede construir**.
+- **Y de ahí NO se sigue que no haya escalera: el fardo tenía que ser MIXTO**, y lo
+  hay en **8 de 20 semillas** (número 33 de la sección 5 de `como-se-trabaja.md`).
+  Las dos mitades de la cuenta se compran por separado —la potencia se SUMA sobre
+  las partes y el punto de ignición se PROMEDIA por masa—, así que la yesca baja el
+  punto de ignición y la corteza trae la masa. Corrido en el mundo:
+  **4×hoja-seca + 2×corteza = 6 partes, 1,214 kg**, armado con `unir`; una vara de
+  0,6213 kg lo prende en el tick 22 y el fardo prende el leño de 2,904 kg decretado
+  en el tick 13. Frotar ese leño habría salido **4020,0** contra **860,1**.
+- lo que frena la escalera es **el atador**: aparece en 7 de 20 semillas (junco×15,
+  liana×117) y alcanza para armar el fardo en **2 de 20**.
 
 ### Y lo que la calibración compró, que es menos de lo que parece
 
@@ -284,21 +296,59 @@ al abaratar vivir, caminar pasó a ser el 65% del gasto (número 30 de la secci�
 **Las dos mitades se necesitan y ninguna alcanza sola.** Con vivir a 0,34, para
 llegar a los 20.000 gastando 0,04918/tick hacen falta ~983 de aliento y arranca con
 310: le faltan ~673, que son 34 bocados cocidos. Un fuego de la escalera da 42. La
-cuenta cierra **el día que la mente sepa encender por escalones**, y eso es lo que
-sigue abierto.
+cuenta energética cerraría con ese fuego; antes de enseñárselo a la mente hay que
+hallar una cadena de cuerpos que respete `MAX_PARTS`, o llevar al usuario la
+decisión sobre la cota del mundo.
 
 ---
 
 ## 6 · Qué está abierto, en orden de importancia
 
-1. **ENSEÑARLE AL PLANIFICADOR LA ESCALERA DE LA YESCA.** Ya no es «decidir la
-   aritmética»: la aritmética se decidió (sección 5·bis) y lo que queda es
-   construirlo. La escalera existe en el mundo y está medida; el planificador no la
-   conoce, y para él cada fuego sigue naciendo de frotar dos palos. Son dos cosas
-   distintas y conviene no mezclarlas:
-   - **juntar masa**: la yesca viene en piezas de 77 g y hacen falta ~13 atadas con
-     `union` para el kilo que prende el leño. Falta ver si hay atador cerca
-     (`flexibility >= 0.8` y `tensile >= 0.3`), que este tramo no contestó;
+0. **DECISIÓN DEL USUARIO, Y TAPA A TODO LO DEMÁS: LA CORRIDA CANÓNICA NO PUEDE
+   ENCENDER NADA.** Es una imposibilidad aritmética y está medida entera, en tres
+   renglones que se leen juntos
+   (`world/tests/hay-comida-sin-fuego.test.ts` y `world/tests/la-escalera-construible.test.ts`):
+
+   | lo medido | número |
+   |---|---|
+   | comida cruda que paga, en lo que el dios decreta | **ninguna**, en las 20 semillas |
+   | lo más barato que se puede encender en el mundo | **645,5** de aliento (vara de 0,4663 kg, para prender una hoja a 180 °C) |
+   | con qué arranca la criatura del criterio | **310** |
+
+   O sea: comer pide cocinar, cocinar pide fuego, y el fuego más barato del mundo
+   sale **2,08× el tanque entero** de la corrida canónica. **Ningún trabajo sobre el
+   planificador ni sobre la mente puede dar vuelta el criterio (5) con el tanque de
+   310**, y la escalera del punto 1 tampoco: la escalera abarata el fuego GRANDE
+   (4020 → 860), no el primer fósforo, que es el que no se paga. El piso es
+   irreducible porque sale de lo más fácil de prender que hay en el catálogo
+   (`hoja`, 180 °C) y de que frotar cuesta proporcional a la masa.
+
+   **Las salidas, y ninguna es «aflojar el criterio»:**
+   - **(a) que el dios siembre comida que pague cruda.** Es la única que no toca una
+     constante: el catálogo YA tiene tres sustancias que pagan crudas —huevo, médula
+     y grasa— y el dios no siembra ninguna en los nueve chunks del arranque
+     (número 34 de la sección 5 de `como-se-trabaja.md`). Es de `@anima/oracle`.
+   - **(b) subir el tanque de arranque.** Con 1000 el piso se paga (quedan 354,5) y
+     la escalera del punto 1 pasa a valer mucho: un fuego de 2,9 kg sale 860 en vez
+     de 4020. Es exactamente la corrida «control» que ya mide 2 de 9 en el juez.
+   - **(c) bajar el precio de frotar** (`eficiencia`, hoy 0,35). Es calibración pura
+     y estaba descartada por el guardián de la conservación; hay que re-medir la
+     ventana antes de proponer un número.
+   - **(d) aceptarlo y marcarlo.** El criterio (5) queda con `it.fails` y el porqué
+     medido al lado, igual que el p99.
+
+   **No se elige acá.** Las cuatro cambian el mundo y las cuatro son del usuario.
+
+1. **LA ESCALERA CONSTRUIBLE EXISTE; LO QUE FALTA ES EL ATADOR Y ENSEÑARLA.** El
+   fardo mixto entra en `MAX_PARTS` y está corrido en el mundo (número 33): 8 de 20
+   semillas tienen un fardo legal que prende el leño más grande decretado, pero sólo
+   **2 de 20** tienen atadores suficientes para armarlo —`unir` gasta uno por unión y
+   un fardo de seis partes gasta cinco—. Eso también es del dios, no de la ley.
+   Cuando el punto 0 se decida, el plan necesita tres capacidades generales:
+   - **juntar masa** con `union` repetida, respetando partes, manos y un atador por
+     unión, **y mezclando sustancias**: la yesca sola nunca alcanza;
+   - **que un fuego prenda otro** mediante las leyes térmica y de combustión, sin
+     inventar una segunda fricción;
    - **elegir dónde va la comida**: sobre la parrilla un leño de 8 kg entrega
      1217 °C y quema el pescado; a una celda en el piso, 159 °C y lo cocina. Hoy el
      plan pone la comida pegada al fuego siempre.
@@ -478,13 +528,13 @@ sigue abierto.
 ## 7 · Lo práctico
 
 - Rama `anima-2`, **sin pushear**.
-- El último commit es `c03800c`, y encima hay **cambios sin commitear** del tramo L:
-  `plan/src/regresion.ts` (+ `plan/src/index.ts` para exportar `pasoYaEstaHecho`),
-  `mind/src/escalera.ts`, un archivo de test nuevo
-  (`mind/tests/el-no-op-con-cara-de-progreso.test.ts`) y cuatro tests tocados
-  (`plan/tests/ataque-al-plan.test.ts`, `mind/tests/ataque-al-reves.test.ts`,
-  `mind/tests/la-mente.test.ts`, `mind/tests/hito-5-el-criterio.test.ts`,
-  `juez/tests/hito-5-la-emergencia.test.ts`).
+- El tramo N no tocó una sola línea de `src`: son **dos archivos de test nuevos** en
+  `@anima/world` (`hay-comida-sin-fuego.test.ts` y `la-escalera-construible.test.ts`)
+  y los documentos. Y **borró uno**: `la-escalera-bajo-max-parts.diagnostico.test.ts`,
+  un diagnóstico temporal que tardaba **664 s de bucle sincrónico** y rompía el canal
+  de vitest con `Timeout calling "onTaskUpdate"` —la trampa que ya está escrita al
+  final de la sección 2 de `como-se-trabaja.md`—. Lo que ese diagnóstico halló está
+  medido de nuevo, acotado y verde: `@anima/world` pasó de **671 s a 44 s**.
 - **Ánima I sigue vivo al lado** (`packages/`, `apps/`) y anda: 455 tests verdes.
   Los últimos tres commits son de ahí (el tacho, el martillo eterno, el 400 de
   Codex) y no tienen nada que ver con el remake.
