@@ -85,8 +85,43 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
   });
 
   it.fails(
-    'CRITERIO: 20.000 ticks viva — pesca, guarda el pescado y se muere esperando un fuego',
+    'CRITERIO: 20.000 ticks viva — ACEPTADO ROJO: no puede pagar el primer fuego (645,5 contra un tanque de 310)',
     () => {
+      // ─── POR QUÉ ESTE ROJO ESTÁ ACEPTADO, Y NO ES «TODAVÍA NO LLEGAMOS» ────
+      //
+      // Lo de más abajo describe el SÍNTOMA —pesca, guarda el pescado y se muere
+      // esperando un fuego— y se escribió cuando parecía que faltaba enseñarle
+      // algo a la mente. No falta. La causa está medida y es aritmética:
+      //
+      //   comida cruda que paga, en lo que el dios decreta ...... NINGUNA, 20/20
+      //   lo más barato que se puede encender EN TODO EL MUNDO ... 645,5 de aliento
+      //   con qué arranca esta criatura .......................... 310
+      //
+      // (`world/tests/hay-comida-sin-fuego.test.ts` y
+      // `world/tests/la-escalera-construible.test.ts`, bloque 1. El piso es del
+      // MUNDO y no de esta parada: sale de la sustancia ardible más fácil de
+      // prender del catálogo, la hoja a 180 °C, y de que frotar cuesta
+      // proporcional a la masa.)
+      //
+      // Comer pide cocinar, cocinar pide fuego, y el fuego más barato sale 2,08×
+      // el tanque ENTERO. **Ningún trabajo sobre el planificador ni sobre la mente
+      // puede dar vuelta este criterio con el tanque canónico**, y la escalera de
+      // la yesca tampoco: abarata el fuego GRANDE (4020 → 860) y no el primer
+      // fósforo, que es el que no se paga.
+      //
+      // Se le presentaron al usuario cuatro salidas, todas del mundo y ninguna de
+      // este archivo: sembrar comida cruda, subir el tanque, abaratar la fricción,
+      // o aceptar el rojo y marcarlo. **La primera se implementó y se midió: no
+      // cierra** —choca con «SIN TRABAJO la energía neta es NEGATIVA» de
+      // `oracle/tests/presupuesto.test.ts`, y la ventana está vacía por estructura
+      // (punto 0 de la sección 6 de `ii/docs/continuar-aca.md`)—. **El usuario
+      // eligió la cuarta.**
+      //
+      // Así que este `it.fails` no es una deuda de implementación: es el criterio
+      // publicado en rojo con su causa medida, y las guardas verdes de abajo son
+      // lo que se sigue vigilando mientras tanto. Aceptar un número no es dejar de
+      // mirarlo, igual que con el p99.
+      //
       // LA SALIDA MEDIDA HOY, SOBRE EL MUNDO DECRETADO, y está impresa abajo por
       // la corrida de verdad:
       //
@@ -139,7 +174,13 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       // documento de arquitectura y es el criterio de corte del proyecto. Los tests
       // que siguen miden POR QUÉ no llega, que es lo único que sirve para decidir
       // qué se hace.
-      const r = correr(laEscenaDelDocumento(), 'ana', CRITERIO_TICKS);
+      // `pararAlMorir`: el criterio se decide en el tick de la muerte y no en el
+      // 20.000. Todo lo que este test afirma —`murioEn`, `pescoEn`, los despegues,
+      // los ticks perdidos— ya está escrito cuando la criatura cae, y los ticks que
+      // vienen después solo mueven el mundo, que acá no se mide. El día que el
+      // criterio se cumpla no va a haber muerte, no va a haber corte, y la corrida
+      // va a valer los 20.000 enteros sin tocar una línea.
+      const r = correr(laEscenaDelDocumento(), 'ana', CRITERIO_TICKS, { pararAlMorir: true });
       const despegues = r.cuenta.get('aplicar(extraccion)') ?? 0;
       const comidas = [...r.cuenta]
         .filter(([k]) => k.startsWith('comer') || k.startsWith('tragar'))
@@ -149,6 +190,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
         `\n─── VEINTE MIL TICKS ───\n` +
           `  murió en el tick ${String(r.murioEn)} de ${String(CRITERIO_TICKS)} ` +
           `(${((r.murioEn * 100) / CRITERIO_TICKS).toFixed(0)}%)\n` +
+          `  el bucle corrió ${String(r.ticksCorridos)}: ${r.porQueParo === '' ? 'los pidió todos' : r.porQueParo}\n` +
           `  aliento: ${r.aliento.join(' ')}\n` +
           `  DESPEGUES:   ${[...r.cuenta].map(([k, v]) => `${k}×${String(v)}`).join(' · ')}\n` +
           `  ATERRIZAJES ok: ${[...r.aterrizados].map(([k, v]) => `${k}×${String(v)}`).join(' · ')}\n` +

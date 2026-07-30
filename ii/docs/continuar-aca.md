@@ -124,6 +124,19 @@ Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
 Es el **criterio de corte**: si pasa, hay producto aunque el modelo nunca se
 conecte; si no pasa, el plan se para acá y se revisa antes de gastar en la fragua.
 
+> **VEREDICTO, decidido por el usuario: CUMPLEN 3 DE 6, y el hito CIERRA con los
+> otros tres en ROJO ACEPTADO**, cada uno con su `it.fails` y su causa medida.
+> Cumplen el proveedor apagado, la cadena de la caña y `ticksPerdidos`. No cumplen
+> el p99 (7,2×, aceptado en el tramo M), sobrevivir 20.000 ticks y la emergencia, y
+> los dos últimos son **el mismo problema y no dos**: el fuego más barato del mundo
+> sale 645,5 de aliento y la criatura arranca con 310. Ver el punto 0 de la sección 6.
+>
+> **OJO CON LA CUENTA, que ya viajó mal.** El traspaso anterior decía «van 4 de 6»
+> sumando los tres que cumplen MÁS el p99 aceptado. Mezclar «cumple» con «no cumple
+> pero está aceptado» en un solo número deja de distinguir justo lo que hay que
+> distinguir el día que alguien retome esto. Son **3 que cumplen y 3 aceptados en
+> rojo**, y se cuentan por separado.
+
 Todos los números de esta tabla se corrieron el 2026-07-30 sobre el árbol del
 tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 
@@ -133,8 +146,8 @@ tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 | la cadena de la caña | **CUMPLE** | 7 eslabones en el plan, **6 vuelos** contra el mundo (el `ir` al pozo lo poda el tramo L: ya estaba al lado): tira la caña en el tick **48**, el pescado entra a la mano en el **108** |
 | `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,947 ms/tick contra una ventana de 50) — y la partida termina con **120 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
 | p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE, y con el tanque canónico es IMPOSIBLE — ver el punto 0 de la sección 6** | el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **6244** de 20.000 con **0 bocados** (era el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
-| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE con el tanque canónico · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **10/20, 10/20 y 8/20** |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE — ACEPTADO por el usuario; con el tanque canónico es IMPOSIBLE, ver el punto 0 de la sección 6** | el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **6244** de 20.000 con **0 bocados** (era el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
+| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE — ACEPTADO por el usuario · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **10/20, 10/20 y 8/20** |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
 
@@ -304,9 +317,17 @@ decisión sobre la cota del mundo.
 
 ## 6 · Qué está abierto, en orden de importancia
 
-0. **DECISIÓN DEL USUARIO, Y TAPA A TODO LO DEMÁS: LA CORRIDA CANÓNICA NO PUEDE
-   ENCENDER NADA.** Es una imposibilidad aritmética y está medida entera, en tres
-   renglones que se leen juntos
+0. **DECIDIDO POR EL USUARIO: EL HITO 5 CIERRA CON EL CRITERIO (5) Y EL (6) EN
+   ROJO ACEPTADO.** De las cuatro salidas que se le presentaron eligió la cuarta —
+   aceptarlo y marcarlo—, después de que la primera se implementara, se midiera y no
+   cerrara. **Ningún umbral se movió.** Los dos criterios quedan con `it.fails` y la
+   causa medida al lado:
+   `mind/tests/hito-5-el-criterio-2a-la-cadena.test.ts` y
+   `juez/tests/hito-5-la-emergencia.test.ts`. Lo que sigue es el porqué, que es lo
+   que hay que leer antes de volver a tocar esto.
+
+   **LA CORRIDA CANÓNICA NO PUEDE ENCENDER NADA.** Es una imposibilidad aritmética
+   y está medida entera, en tres renglones que se leen juntos
    (`world/tests/hay-comida-sin-fuego.test.ts` y `world/tests/la-escalera-construible.test.ts`):
 
    | lo medido | número |
@@ -371,7 +392,11 @@ decisión sobre la cota del mundo.
    - **(d) aceptarlo y marcarlo.** El criterio (5) queda con `it.fails` y el porqué
      medido al lado, igual que el p99.
 
-   **No se elige acá.** Las cuatro cambian el mundo y las cuatro son del usuario.
+   **ELEGIDA: la (d).** El Hito 5 cierra con **3 de 6 cumpliendo y 3 en rojo
+   aceptado**, cada uno con su causa medida. Las salidas (a·bis), (b) y (c) quedan disponibles el día que
+   alguien quiera dar vuelta el criterio; ninguna se descartó por mala, se
+   pospusieron. Y aceptar un número no es dejar de vigilarlo: las guardas verdes de
+   los dos `it.fails` siguen corriendo, igual que con el p99.
 
 1. **LA ESCALERA CONSTRUIBLE EXISTE; LO QUE FALTA ES EL ATADOR Y ENSEÑARLA.** El
    fardo mixto entra en `MAX_PARTS` y está corrido en el mundo (número 33): 8 de 20

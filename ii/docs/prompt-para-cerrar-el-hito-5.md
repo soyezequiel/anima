@@ -1,5 +1,17 @@
 # Prompt para cerrar el Hito 5
 
+> **VENCIDO — EL HITO 5 YA CERRÓ (2026-07-30).** Este archivo queda como
+> HISTORIA de cómo se lo encaró, y no hay que usarlo como plan de trabajo:
+> manda [`continuar-aca.md`](continuar-aca.md). Lo que dice acá abajo quedó
+> desactualizado en dos cosas grandes:
+>
+> - **la cuenta «van 4 de 6» sumaba el p99 aceptado a los que cumplen.** Son
+>   **3 que cumplen y 3 en rojo aceptado**, y se cuentan separado;
+> - **el plan que propone —enseñarle la escalera de la yesca a la mente— no podía
+>   dar vuelta el criterio (5)**, y eso está medido: el fuego más barato del mundo
+>   sale 645,5 de aliento y la corrida canónica arranca con 310. La escalera
+>   abarata el fuego grande, no el primer fósforo.
+
 Para pegarle a un agente nuevo, sin nada de la conversación anterior.
 Última actualización: 2026-07-30, sobre el commit `a22e1ec`.
 

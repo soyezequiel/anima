@@ -1395,7 +1395,29 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     for (const c of b.corridas) expect(c.veredicto.filas.length).toBe(SECUENCIAS.length)
   }, 600_000)
 
-  it.fails('EL CRITERIO DE CORTE: al menos 4 de las 9 — aparecieron 0', async () => {
+  it.fails('EL CRITERIO DE CORTE: al menos 4 de las 9 — aparecieron 0 · ACEPTADO ROJO', async () => {
+    // ─── ACEPTADO ROJO, Y CON LA CAUSA MEDIDA ARRIBA DE LA MENTE ───────────
+    //
+    // Este cero no es de la mente, o no sobre todo: es de la MISMA aritmética que
+    // deja rojo al criterio (5), y por eso los dos se aceptaron juntos. Medido en
+    // `world/tests/la-escalera-construible.test.ts` (bloque 1) y en
+    // `world/tests/hay-comida-sin-fuego.test.ts`:
+    //
+    //   · lo más barato de encender EN TODO EL MUNDO cuesta 645,5 de aliento y la
+    //     corrida canónica arranca con 310, o sea 2,08× el tanque entero;
+    //   · y sin fuego no hay comida: ninguna de las sustancias con calorías que el
+    //     dios decreta paga cruda, en las veinte semillas.
+    //
+    // La criatura del banco canónico no puede encender nada, así que las secuencias
+    // que el juez busca —casi todas de fuego o de comida— no tienen cómo aparecer.
+    // Y está la contraprueba al lado, en este mismo archivo: **con el tanque lleno,
+    // donde el fuego SÍ se paga, aparecen 2 de 9 sin que nadie las implemente.**
+    //
+    // Se le presentaron al usuario cuatro salidas del mundo; la de sembrar comida
+    // cruda se implementó y se midió, y no cierra (punto 0 de la sección 6 de
+    // `ii/docs/continuar-aca.md`). El usuario eligió aceptar el rojo y marcarlo. El
+    // umbral NO se movió: sigue siendo 4, y lo que se publica es el crudo.
+    //
     // EL NÚMERO CRUDO, que es lo único que este archivo decide: **aparecieron 0 de
     // 9**. El umbral no se toca acá y no hace falta tocarlo: §10 del documento ya
     // dejó escrito, antes de correr, que con nueve entradas el 4 absoluto del
