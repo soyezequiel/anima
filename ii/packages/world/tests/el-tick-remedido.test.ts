@@ -264,8 +264,29 @@ function soloLeyes(s: WorldState, e: Entorno = AL_AIRE): void {
  */
 const respirar = (): Promise<void> => new Promise<void>((r) => { setImmediate(r) })
 
+/**
+ * ─── POR QUÉ LA MEDICIÓN PESADA VA DETRÁS DE `ANIMA_BANCO=1` ────────────────
+ *
+ * Medido: este archivo tardaba **85 segundos**, más que todo el resto de
+ * `@anima/world` junto, y corría en cada `pnpm --filter @anima/world test` que
+ * hiciera cualquier agente por cualquier motivo. Es el archivo más caro de los
+ * nueve paquetes después del juez.
+ *
+ * No pierde nada: los dos tests que verifican la CONDUCTA —que el mundo avanza
+ * de verdad y que las celdas están donde la clave canónica dice— siguen
+ * corriendo siempre, porque son baratos y son los que atrapan una regresión. Lo
+ * único que se saltea es la re-medición de 5000 cuerpos, que es un NÚMERO y que
+ * sólo tiene sentido leer cuando se lo mide en serio: adentro de una suite que
+ * corre nueve paquetes en paralelo, ese número mide la contención de la máquina
+ * y no el tick.
+ *
+ * Es el mismo patrón que `banco-el-tick.test.ts:165` ya tenía decidido, aplicado
+ * al archivo que se había quedado afuera.
+ */
+const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
+
 describe('re-medición independiente del criterio (c)', () => {
-  it('el tick con 5000 cuerpos, medido de las dos maneras', async () => {
+  it.skipIf(!MIDIENDO_EN_SERIO)('el tick con 5000 cuerpos, medido de las dos maneras', async () => {
     const s = mundoSimple(N)
 
     const fijo = minMs(() => {
