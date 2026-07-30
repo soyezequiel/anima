@@ -18,15 +18,36 @@ corregidos, y se agrega AL FINAL.** No hace falta releer el resto para eso.
 Los tramos pasaron de 2h21 a 7h33 y lo que creció no fue la dificultad: fue la
 suite. Medido paquete por paquete, con `pnpm --filter @anima/X test`:
 
-| paquete | tarda |
-|---|---:|
-| `@anima/juez` | 488 s |
-| `@anima/mind` | 101 s |
-| `@anima/world` | 81 s |
-| `@anima/perceive` | 40 s |
-| `@anima/plan` | 22 s |
-| `@anima/oracle` | 13 s |
-| `@anima/physics` · `@anima/skills` | 9 s |
+| paquete | tardaba | tarda |
+|---|---:|---:|
+| `@anima/juez` | 536 s | **139 s** |
+| `@anima/mind` | 148 s | **41 s** |
+| `@anima/world` | 81 s | 30 s |
+| `@anima/perceive` | 43 s | 43 s |
+| `@anima/plan` | 24 s | 24 s |
+| `@anima/oracle` | 12 s | 12 s |
+| `@anima/physics` · `@anima/skills` | 8 s | 8 s |
+
+`pnpm ii:test` corre los paquetes **en serie**, así que la suite entera es la
+SUMA: pasó de ~790 s a **287 s**.
+
+> **Y la columna de la izquierda ya no se puede volver a medir.** Los dos números
+> grandes se bajaron **sin acortar una sola corrida**: lo único que cambió es en
+> cuántos ARCHIVOS está repartido el mismo trabajo, porque **la unidad de
+> paralelismo de vitest es el archivo** y un archivo de 146 s ocupa un núcleo y
+> deja quince mirando. Las tablas de salida se compararon renglón por renglón
+> antes y después: la de `@anima/juez` sale idéntica, y en `@anima/mind` lo único
+> que se mueve son los µs de los bancos, que se movían igual de una corrida a la
+> otra. El mapa del corte está en `mind/tests/el-criterio.ts` y en el bloque «EL
+> CONTROL, REPARTIDO ENTRE ARCHIVOS» de `juez/tests/azar.ts`.
+>
+> **De dónde salían los 536 s del juez, que no era donde se creía:** 510 de los
+> 536 eran los DOS controles del azar (`tests/azar.ts`, 20 partidas × 20.000 ticks
+> cada uno), y los corrían **dos archivos distintos**, o sea que el trabajo se
+> hacía dos veces —la memoización es por módulo y vitest aísla el grafo por
+> archivo—. El banco de la mente, que es el que uno sospecha, ya se acorta sin
+> `ANIMA_BANCO=1` y sale por 24 s. **El control del azar no está gateado**: es la
+> asimetría que quedó abierta, y ver el punto de abajo.
 
 Tres reglas, y la primera vale más que las otras dos juntas:
 
@@ -42,6 +63,22 @@ Tres reglas, y la primera vale más que las otras dos juntas:
    —arreglar, medir, atacar, reparar— vale cuando hay una decisión de diseño
    adentro. Para un `if` que faltaba, alcanza con arreglar y medir. Las fases son
    barreras: el agente más lento traba a toda la fase siguiente.
+4. **Un test caro va en un ARCHIVO, no en un `describe`.** Es la regla que salió de
+   bajar la suite de ~790 s a 287: vitest paraleliza por archivo y nada más
+   —`it.concurrent` adentro de un archivo NO es seguro acá, porque `decretoDe`
+   memoiza por `(Physics, "cx:cy")` **sin la semilla**—. Un bloque de 100 s pegado
+   a otros tres no se puede repartir después sin cortar el archivo, así que
+   conviene que nazca aparte. Y si el archivo comparte un `Map` a nivel de módulo
+   con un test final que lo imprime, cortarlo cuesta el doble: ver
+   `mind/tests/el-cuadro.ts`, que es el precio de haberlo escrito así.
+
+**Y lo que quedó abierto y es del usuario, no de un agente:** el control del azar
+(`juez/tests/azar.ts`) corre **20 partidas × 20.000 ticks, dos veces, sin
+`ANIMA_BANCO=1`**, mientras el banco de la mente que se compara contra él corre una
+muestra de 3 × 2.000 en la suite normal. Son 494 s de los 287 que hoy tarda todo
+`ii/`. Gatearlo con la regla 2 —muestra corta sin la variable, corrida entera con
+ella— dejaría a `@anima/juez` en segundos, pero **cambia qué mide la suite normal**
+y por eso no se hizo por cuenta propia.
 
 Y la asimetría que conviene tener presente antes de recortar de más: **los tramos
 que más tardaron son los que encontraron las causas raíz** —la cocción, las

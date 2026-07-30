@@ -584,7 +584,13 @@ describe('(5) el `convierte` declara lo que ENTRÓ, y no lo que quiso acreditar'
 describe('(6) el arnés que caza todo esto, AHORA lo corre alguien', () => {
   it('`revisarEstado` corre por tick desde `Partida`, y la corrida del criterio lo enciende', () => {
     const aqui = fileURLToPath(new URL('.', import.meta.url))
-    const criterio = readFileSync(`${aqui}hito-5-el-criterio.test.ts`, 'utf8')
+    // `./el-criterio.ts` y no `hito-5-el-criterio.test.ts`: el archivo del criterio
+    // se partió en cinco por costo (146 s de los 148 del paquete, ver el encabezado
+    // de aquél) y `correr()` —que es LA función que arma la `Partida` de todas las
+    // corridas del criterio, y la que enciende el arnés— se fue al módulo que los
+    // cinco comparten. Lo que este test pregunta no cambió: si la corrida del
+    // criterio del Hito 5 vigila o no.
+    const criterio = readFileSync(`${aqui}el-criterio.ts`, 'utf8')
     const bucle = readFileSync(
       fileURLToPath(new URL('../../perceive/src/bucle.ts', import.meta.url)),
       'utf8',
@@ -592,7 +598,7 @@ describe('(6) el arnés que caza todo esto, AHORA lo corre alguien', () => {
     log([
       '══ (6) QUIÉN VIGILA ═════════════════════════════════════════════════',
       `  \`perceive/src/bucle.ts\` llama a \`revisarEstado\`: ${String(/revisarEstado\(/.test(bucle))}`,
-      `  \`hito-5-el-criterio.test.ts\` enciende \`vigilar\`: ${String(/vigilar: true/.test(criterio))}`,
+      `  el arnés del criterio (\`tests/el-criterio.ts\`) enciende \`vigilar\`: ${String(/vigilar: true/.test(criterio))}`,
       '',
       '  ANTES: `exigirInvariantes` se llamaba en UN solo archivo de todo `ii/`, y era',
       '  `world/tests/invariants.test.ts`, o sea su propio test. La corrida de 20.000',

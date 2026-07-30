@@ -54,6 +54,9 @@
 // las dos concesiones de arriba —la fogata regalada y el tanque de 40.000—, que
 // están declaradas y van a favor del dado.
 
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
 import { crearDios, dadoDe, apply, drop, eat, goTo, put, stepWorld, take, wait } from '@anima/world'
 import type { Intent, Placement, WorldState } from '@anima/world'
 import { FRICCION, UNION } from '@anima/physics'
@@ -192,6 +195,135 @@ export function partidaAlAzar(
 export const PARTIDAS_DEL_CONTROL = PARTIDAS
 export const TICKS_DEL_CONTROL = 20_000
 
+// ═══ EL CONTROL, REPARTIDO ENTRE ARCHIVOS ═══════════════════════════════════
+//
+// ─── EL NÚMERO QUE MOTIVA TODO ESTO ────────────────────────────────────────
+//
+// Medido con `pnpm --filter @anima/juez test`: el paquete tardaba **536 s**, y
+// **510 de esos 536 son estos dos controles** —247 s el de sin fuego y 263 el del
+// fuego regalado, 20 partidas de 20.000 ticks cada uno—. Y peor: los corrían DOS
+// archivos, `hito-5-la-emergencia.test.ts` y `ataque-al-detector.test.ts`, o sea
+// que el trabajo se hacía **dos veces**. La memoización de acá abajo es por MÓDULO
+// y vitest aísla el grafo de módulos por archivo, así que no cruzaba de uno al otro.
+//
+// Y no era el banco de la mente: ése ya se acorta sin `ANIMA_BANCO=1` (3 partidas
+// de 2.000 ticks) y sale por 24 s. **El control del azar no está gateado**, y ésa
+// es la asimetría que costaba los ocho minutos.
+//
+// ─── LO QUE SE HIZO, Y LO QUE NO ───────────────────────────────────────────
+//
+// **No se acortó ni una partida ni un tick.** Se sigue corriendo 20 × 20.000 por
+// control, con las mismas semillas y las mismas dos concesiones. Lo único que
+// cambia es DÓNDE se corre cada una: el resultado de cada partida se guarda en
+// `node_modules/.azar/<control>/<semilla>.json`, y cinco archivos de test —las
+// «tandas», `el-azar-tanda-N.test.ts`— se reparten las veinte semillas de a cuatro
+// y las corren EN PARALELO. Los consumidores leen del disco lo que ya está y
+// esperan lo que falta.
+//
+// Que esto no cambie ningún número no es una esperanza: **cada partida del control
+// es función pura de su semilla**. `azarDe(semilla)` es un `mulberry32` propio y
+// `laOrilla(semilla)` arma una `Physics` NUEVA por llamada (`nuevaFisica()`), así
+// que la caché del decreto —que memoiza por `(Physics, "cx:cy")` SIN la semilla, y
+// que ya produjo un número mal en este proyecto— no puede cruzar de una partida a
+// otra ni adentro de un archivo ni entre archivos. Correr la semilla 20260731 en
+// otro proceso da byte por byte lo mismo, y la comparación antes/después de las dos
+// tablas del control lo confirma renglón por renglón.
+//
+// Y `resumir()` cuenta filas, así que el ORDEN en que llegan las veinte partidas no
+// puede mover una cifra; `vivas` y `ticksVividos` son sumas. Por eso repartirlas es
+// seguro y agruparlas de otra manera también lo sería.
+
+/**
+ * LOS DOS CONTROLES, con nombre, para que las tandas y los consumidores nombren lo
+ * MISMO. Si alguien agrega un tercero y no lo pone acá, las tandas no lo precalculan
+ * y el consumidor lo corre solo: sale lento, no sale mal.
+ */
+export const LOS_DOS_CONTROLES = [
+  { titulo: 'EL AZAR SIN FUEGO', conFuego: false, tanque: 1000 },
+  { titulo: 'EL AZAR CON EL FUEGO REGALADO', conFuego: true, tanque: 40_000 },
+] as const
+
+const GUARDADO = fileURLToPath(new URL('../node_modules/.azar/', import.meta.url))
+
+/** El nombre de la carpeta de un control. Del CONTENIDO, no del título. */
+const carpetaDe = (conFuego: boolean, tanque: number): string =>
+  `${GUARDADO}${conFuego ? 'con' : 'sin'}-fuego-${String(tanque)}/`
+
+/** Cuánto se espera a que otro archivo termine la partida que agarró. */
+const PACIENCIA = 600_000
+
+interface Guardada {
+  readonly v: Veredicto
+  readonly ticks: number
+}
+
+/**
+ * UNA PARTIDA DEL CONTROL, corrida por quien llegue primero.
+ *
+ * El reparto no se coordina con nadie: el que quiere una semilla intenta crear su
+ * `.lock` con `mkdir`, que **falla si ya existe** y por lo tanto es un candado
+ * atómico hasta en Windows. El que lo consigue corre la partida y escribe el
+ * `.json`; el que no, espera a que aparezca.
+ *
+ * Si el que agarró el candado se muere sin escribir, el que espera **corre la
+ * partida él mismo** al vencerse la paciencia. Eso cuesta trabajo repetido, que es
+ * exactamente el precio correcto: colgar la suite para siempre sería peor, y un
+ * resultado no puede depender de quién lo calculó.
+ */
+async function partidaGuardada(
+  semilla: bigint,
+  conFuego: boolean,
+  tanque: number,
+  tope: number,
+): Promise<Guardada> {
+  const carpeta = carpetaDe(conFuego, tanque)
+  const json = `${carpeta}${String(semilla)}.json`
+  const lock = `${carpeta}${String(semilla)}.lock`
+  if (existsSync(json)) return JSON.parse(readFileSync(json, 'utf8')) as Guardada
+  mkdirSync(carpeta, { recursive: true })
+  let mia = false
+  try {
+    mkdirSync(lock)
+    mia = true
+  } catch {
+    mia = false
+  }
+  if (!mia) {
+    const hasta = Date.now() + PACIENCIA
+    while (!existsSync(json) && Date.now() < hasta) {
+      await new Promise((listo) => setTimeout(listo, 200))
+    }
+    if (existsSync(json)) return JSON.parse(readFileSync(json, 'utf8')) as Guardada
+    // El que la agarró se cayó. Se corre acá y no se cachea: el dueño del candado
+    // sigue siendo él, y dos procesos escribiendo el mismo archivo no hace falta.
+    return partidaAlAzar(semilla, conFuego, tanque, tope)
+  }
+  try {
+    const r = partidaAlAzar(semilla, conFuego, tanque, tope)
+    writeFileSync(json, JSON.stringify(r), 'utf8')
+    return r
+  } finally {
+    rmSync(lock, { recursive: true, force: true })
+  }
+}
+
+/**
+ * LO QUE CORRE UNA TANDA: las semillas `[desde, desde + cuantas)` de los dos
+ * controles. Devuelve cuántas partidas dejó guardadas, que es lo que su test afirma.
+ */
+export async function correrLaTanda(desde: number, cuantas: number): Promise<number> {
+  const { semillas } = semillasQueSeJuegan(PARTIDAS_DEL_CONTROL)
+  let hechas = 0
+  for (const c of LOS_DOS_CONTROLES) {
+    for (const semilla of semillas.slice(desde, desde + cuantas)) {
+      await respirar()
+      await partidaGuardada(semilla, c.conFuego, c.tanque, TICKS_DEL_CONTROL)
+      hechas += 1
+    }
+  }
+  return hechas
+}
+
 export interface Control {
   readonly titulo: string
   readonly filas: readonly FilaDelBanco[]
@@ -206,6 +338,10 @@ export interface Control {
  * eso memorizado, y `async` para poder respirar entre partida y partida: ver
  * `respirar` en `el-mundo-decretado.ts`. Lo que se memoriza es la PROMESA, así que
  * dos tests que lo pidan a la vez corren el control una sola vez.
+ *
+ * Esta memoria es POR MÓDULO, o sea por archivo de test. La que cruza de un archivo
+ * a otro es la de disco: ver `partidaGuardada` y el bloque «EL CONTROL, REPARTIDO
+ * ENTRE ARCHIVOS» de más arriba.
  */
 export function correrElControl(titulo: string, conFuego: boolean, tanque: number): Promise<Control> {
   const clave = `${titulo}|${String(conFuego)}|${String(tanque)}`
@@ -224,7 +360,9 @@ async function correrlo(titulo: string, conFuego: boolean, tanque: number): Prom
   // mitad de que la comparación signifique algo: ver el encabezado.
   for (const semilla of semillasQueSeJuegan(PARTIDAS_DEL_CONTROL).semillas) {
     await respirar()
-    const r = partidaAlAzar(semilla, conFuego, tanque, TICKS_DEL_CONTROL)
+    // Del disco si alguna tanda ya la corrió, y si no la corre acá. Ninguna de las
+    // dos ramas cambia el resultado: la partida es función pura de la semilla.
+    const r = await partidaGuardada(semilla, conFuego, tanque, TICKS_DEL_CONTROL)
     vs.push(r.v)
     ticksVividos += r.ticks
     if (r.ticks >= TICKS_DEL_CONTROL) vivas += 1

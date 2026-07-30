@@ -35,7 +35,7 @@ encima).
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2431 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+**Nueve paquetes, 2436 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
 nueve typechecks limpios, 68 huecos `it.fails` anotados.** Corridos enteros al cerrar
 el tramo L, mirando el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y
 además `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (116 de 116). En la rama `anima-2`, **ninguno pusheado** — el
@@ -57,9 +57,20 @@ usuario pushea solo. Si la sesión nueva es en otra máquina, hay que pushear an
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
 | `@anima/plan` | `SCHEMA_INDEX`, `goalGraph()`, `plan()` anytime, **la poda de lo ya hecho** | 295 (+1 todo) |
 | `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, **el portón de despegue** | 301 |
-| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 116 |
+| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 121 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
+
+> **La suite tarda 287 s y no 790, y ni una corrida se acortó.** Se repartió el
+> mismo trabajo en más ARCHIVOS, que es la única unidad que vitest paraleliza:
+> `hito-5-el-criterio.test.ts` (146 s de los 148 de `@anima/mind`) quedó en siete
+> pedazos con el cuadro «EL HITO 5, MEDIDO» saliendo entero igual, y los dos
+> controles del azar de `@anima/juez` (510 s de 536, corridos DOS veces por dos
+> archivos distintos) los corren cinco «tandas» en paralelo. Los cinco tests de
+> las tandas son los +5 de la cuenta de arriba. Las tablas se compararon renglón
+> por renglón antes y después. Ver la sección 2·bis de
+> [`como-se-trabaja.md`](como-se-trabaja.md), que tiene además **lo que quedó
+> abierto**: el control del azar sigue sin `ANIMA_BANCO=1`.
 
 > **El tramo L, en un renglón.** Se cerró **el no-op con cara de progreso**: un
 > paso que ya está cumplido contra la vista de hoy no se emite (`sinLoQueYaEstaHecho`
