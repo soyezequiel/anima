@@ -487,6 +487,40 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
     )
     /* eslint-enable no-console */
 
+    // ─── EL MECANISMO, QUE SE AFIRMA SIEMPRE Y NO NECESITA RELOJ ────────────
+    //
+    // Lo que la resta de arriba quiere decir es «`wait` no recorre el mundo y `goTo`
+    // sí», y eso se puede afirmar sin cronómetro: con `esperas` ningún cuerpo se
+    // mueve y con `caminatas` se mueven todos. Si `wait` estuviera cayendo por el
+    // camino de `goTo` —que es la única forma de que la resta no signifique nada—,
+    // las criaturas se habrían movido con las dos.
+    const trasEsperar = stepWorld(b.s, esperas(b.ids, 0)).state
+    const trasCaminar = stepWorld(a.s, caminatas(a.ids, 0)).state
+    const donde = (w: WorldState, id: string): string => {
+      const c = w.bodies.get(`${id}-cuerpo`)
+      return c === undefined ? '?' : `${String(c.at.x)},${String(c.at.y)}`
+    }
+    const quietos = b.ids.filter((id) => donde(trasEsperar, id) === donde(b.s, id)).length
+    const movidos = a.ids.filter((id) => donde(trasCaminar, id) !== donde(a.s, id)).length
+    expect(quietos).toBe(b.ids.length)
+    expect(movidos).toBeGreaterThan(0)
+
+    // ─── Y LO QUE SÓLO SE AFIRMA MIDIENDO EN SERIO ─────────────────────────
+    //
+    // Las dos líneas de abajo comparan TRES perfiles de reloj de pared entre sí, y
+    // eso adentro de `pnpm ii:test` es un test intermitente: los tres barridos se
+    // corren uno después del otro mientras los otros ocho paquetes compiten por el
+    // CPU, así que el orden entre dos p50 que difieren en 1,7 ms se puede dar vuelta
+    // sin que el código cambie. Medido: se dio vuelta en una corrida de la suite
+    // completa y no volvió a darse vuelta corriendo el archivo solo.
+    //
+    // NO se aflojan los umbrales —serían otros números y no dirían nada— y no se
+    // borra el caso: se aplica lo que este paquete ya decidió para los otros tres
+    // bancos de este archivo (ver `TECHO_ACEPTADO_MS` y `MIDIENDO_EN_SERIO`). La
+    // tabla se imprime siempre y la comparación se afirma con `ANIMA_BANCO=1`; el
+    // mecanismo, que es lo que el test quiere decir, se afirma siempre.
+    if (!MIDIENDO_EN_SERIO) return
+
     // El portón cuesta MENOS que el camino que toca el mundo. Si esto se diera
     // vuelta, la optimización habría que hacerla en `ordenarIntenciones` y no acá,
     // y este banco estaría midiendo la cosa equivocada.

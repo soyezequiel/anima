@@ -374,11 +374,42 @@ export interface EsquemaDeLey extends EsquemaComun {
    * lee —`piso`, `parrilla` o `contacto`— NO SE DECLARA: es una consecuencia de
    * dónde quedó cada cuerpo, igual que en el mundo (`montajeDe`, en
    * `world/src/step.ts`, contesta `parrilla` cuando algo está apoyado sobre algo
-   * que está en la celda del fuego). O sea que una pila de TRES da `parrilla` y
-   * una de DOS da `contacto`, y la diferencia entre las dos es la diferencia
-   * entre cocinar y quemar. Medida, en `esquemas.ts`.
+   * que está en la celda del fuego). O sea que una pila de TRES da `parrilla`, una
+   * de DOS da `contacto`, y una de UNO —con el sujeto AFUERA de la pila, o sea
+   * apoyado en nada— da `piso`. La diferencia entre las tres es la diferencia
+   * entre cocinar, quemar y no hacer nada. Medida, en `esquemas.ts`.
+   *
+   * ─── EL SUJETO PUEDE NO ESTAR EN LA PILA, Y ESO ES EL TERCER MONTAJE ────────
+   *
+   * Una pila dice «apoyado sobre», y `piso` es exactamente la AUSENCIA de apoyo:
+   * el cuerpo está en la celda de la fuente y no lo sostiene nada. Por eso la fila
+   * del piso lleva `pila: ['fuego']` y su sujeto queda afuera — no es un olvido,
+   * es la geometría, y `rolesDeLaLey` cuenta pila ∪ sujeto justamente para eso.
    */
   readonly pila: readonly RoleName[]
+  /**
+   * A CUÁNTAS CELDAS DE LA FUENTE QUEDA EL SUJETO. La segunda variable libre de la
+   * ley 1, y hasta este tramo no existía.
+   *
+   * `T_eq = ambiente + potencia · exposicion(montaje) / (1 + d²) / h`. La tabla
+   * resolvía siempre por la POTENCIA —«que el fuego sea de tanto»— con las otras
+   * dos variables clavadas en un solo valor cada una: la pila de tres y el pegado.
+   * Y la potencia es justamente la que NO se puede elegir cada vez: se elige UNA
+   * vez, cuando se enciende, y depende de lo que haya para quemar. El lugar, en
+   * cambio, se elige cada vez que se apoya algo.
+   *
+   * Va como campo y no como consecuencia de la pila porque no lo es: una pila
+   * SIEMPRE deja el sujeto en la celda de la base —apoyarse es estar encima—, o
+   * sea `distancia = 0`, y un sujeto fuera de la pila puede quedar donde uno lo
+   * deje. Que hoy la única distancia que la tabla usa sea 0 no es una decisión de
+   * este campo sino un límite de `Step`: ningún `Ref` sabe decir «la celda que
+   * está a `d` de ese cuerpo», y `emitirLey` RECHAZA —con el motivo escrito— la
+   * fila que pida una distancia que no sabe armar, en vez de emitir una pila que
+   * pone la comida en otro lado. El barrido de las nueve combinaciones, con la
+   * ventana de potencia de cada una y el porqué de cada descarte, está en
+   * `GEOMETRIAS_DE_LA_COCCION` y `GEOMETRIAS_DESCARTADAS` de `esquemas.ts`.
+   */
+  readonly distancia: number
   /**
    * CUÁNTOS SEGUNDOS DE MUNDO HAY QUE DEJARLO AHÍ.
    *
@@ -408,30 +439,40 @@ export type ConstructionSchema = EsquemaDeProceso | EsquemaDeLey
  * Un paso del plan. Cada variante corresponde a una habilidad innata y sus
  * argumentos, con los `BodyView` reemplazados por `Ref`.
  *
- * NO están las quince: faltan `esperar`, `guarecerse`, `huirDelDolor`,
+ * NO están las quince: faltan `guarecerse`, `huirDelDolor`,
  * `seguirOrdenDeMovimiento` y `tantear`. Tres de ellas son conducta y no plan
  * —las emite la escalera de decisión, no la regresión—; `tantear` es percepción
  * activa y todavía no hay ningún objetivo que la pida. Cuando lo haya, entra acá y
  * no en un segundo tipo paralelo.
  *
- * ─── Y `esperar` YA NO ES CONDUCTA: ES UN PASO QUE FALTA ────────────────────
+ * ─── `esperar` DEJÓ DE SER CONDUCTA: EL TIEMPO ES UN PASO ───────────────────
  *
  * Acá decía que las CUATRO primeras eran conducta, y de `esperar` era cierto
  * mientras nada del plan necesitara que pasara el tiempo. Con los esquemas de ley
  * deja de serlo: una ley no se aplica, se le arma la situación y **se espera**, y
  * cuánto está escrito en el `mientras` de la fila. O sea que el tiempo ES el paso.
  *
- * No se agrega en este tramo y el motivo está MEDIDO, no supuesto: agregar
- * `{ k: 'esperar'; segundos; porQue }` acá y correr `pnpm --filter @anima/mind
- * typecheck` da tres errores, y dos son de otro paquete —`mind/src/mente.ts:185`
- * (TS7030) y `mind/src/escalera.ts:609` (TS2366)—, que es el que traduce pasos a
- * innatas y que en este tramo lo está escribiendo otra mano. El tercero
- * (`plan/src/regresion.ts`, `firmaDePaso`) es de acá y se arregla acá.
+ * Y acá decía, además, «no se agrega en este tramo», con los tres errores de
+ * `tsc` que costaba anotados. Se agregó, y los tres eran los tres: uno en
+ * `firmaDePaso` de este paquete y dos en `@anima/mind` —el `switch` de `refsDe` y
+ * el de `aHabilidad`—. La innata `esperar` ya existía y ya tomaba segundos
+ * (`skills/src/innatas/esperar.ts`): no faltaba física ni superficie, faltaba la
+ * costura, y era esto.
  *
- * La innata `esperar` YA EXISTE y ya toma segundos (`skills/src/innatas/esperar.ts`):
- * no falta física ni superficie, falta la costura. Está pinado con su `it.fails` en
- * `tests/la-cocina.test.ts` y con su consecuencia medida: el plan pone la comida en
- * el fuego y la levanta en el tick siguiente, así que la ley 5 corre un tick.
+ * LO QUE SE MIDIÓ CUANDO SE CERRÓ, porque es la diferencia entre cocinar y no:
+ * el plan ponía la comida sobre el fuego y la levantaba DOS TICKS después
+ * (medido: `poner` en el tick 151, `sostener` en el 153), así que la ley 5 corría
+ * dos ticks y la `digestibility` del pescado no se movía de 0,3800 en toda la
+ * corrida. Con la espera puesta, el mismo pescado sobre la misma leña de 0,40 kg
+ * llega a `digestibility` 0,8555 y `toxicity` 0,0323 en CINCO segundos —cien
+ * ticks— y a 0,9432 / 0,0016 en los quince que la fila declara.
+ *
+ * NO LLEVA `mirando`, y es una decisión con su número: la innata sabe muestrear
+ * con `rateOf` y despertarse cerca del final, pero para eso hace falta nombrarle
+ * la cualidad y el umbral, o sea despejar el `establishes` de la fila acá adentro.
+ * Sin eso la espera es a ciegas y cuesta `segundos / pasoMinimo` despertadas —15 /
+ * 0,25 = 60 en los 300 ticks de la cocción—, que es barato. El día que una ley
+ * declare un `mientras` de minutos, esto es lo primero que hay que apretar.
  */
 /**
  * BAJO QUÉ NOMBRE SE ANOTA LO QUE UN PASO RINDE.
@@ -498,6 +539,47 @@ export type Step =
       readonly porQue: PredicateSignature
     }
   | { readonly k: 'sostener'; readonly que: Ref; readonly porQue: PredicateSignature }
+  // El paso que no le pide nada al mundo: sólo deja pasar el tiempo. `segundos`
+  // son SEGUNDOS DE MUNDO y no ticks, que es la unidad del ADR II-0008 y la que
+  // la innata toma.
+  | {
+      readonly k: 'esperar'
+      readonly segundos: number
+      /**
+         * QUÉ SE ESTÁ ESPERANDO, Y POR QUÉ EL PASO DEJÓ DE SER CIEGO.
+         *
+         * `segundos` es una COTA SUPERIOR —el `mientras` de la fila, medido sobre el
+         * peor caso admisible— y no una predicción. Sin este campo la innata gastaba
+         * la cota entera: medido, el pescado sobre la brasa está cocido a los **5 s**
+         * (`digestibility` 0,8715 · `toxicity` 0,0261) y la fila hace esperar **15**,
+         * y el fuego dura **20**. O sea que la espera ciega se comía tres cuartos del
+         * fuego para nada y la segunda pieza habría empezado a cocinarse con la brasa
+         * apagada: ése era el techo duro de «un fuego, un bocado», y no venía de que
+         * la criatura fuera lenta.
+         *
+         * `tests` son las condiciones del `establishes` de la fila que hablan de
+         * CUALIDADES del sujeto, despejadas con `interpretar` sobre la firma. La
+         * innata ya sabía qué hacer con esto (`hasta` y `mirando` de
+         * `skills/src/innatas/esperar.ts`, que muestrea con `rateOf` y se despierta
+         * cuando la cualidad llega): no faltaba física ni superficie, faltaba pasar el
+         * dato. Es el mismo movimiento que agregó este paso.
+         *
+         * Es OPCIONAL y no obligatorio porque hay esperas que no esperan nada —el
+         * `esperarLaNoche` de la innata, por ejemplo— y porque un `establishes` que no
+         * hable de cualidades del sujeto (una geometría, un tag pelado) no tiene con
+         * qué llenarlo. Sin él el paso vuelve a ser lo que era, que es correcto y
+         * caro, y no un error.
+         *
+         * Y ATENCIÓN CON `refsDe`: este `Ref` **no entra** en los `Ref` que
+         * `sigueEnPie` revisa cada tick, a propósito y con el número al lado. La
+         * espera de la cocción dura 300 ticks y el sujeto está APOYADO SOBRE EL FUEGO
+         * —no en la mano— así que un solo tick en que la vista no lo alcanzara mataría
+         * el plan a mitad de la cocción. Se resuelve UNA vez, al despegar, y si no
+         * resuelve la espera sale ciega en vez de envejecer el plan.
+         */
+      readonly mirando?: { readonly que: Ref; readonly tests: readonly QualityTest[] }
+      readonly porQue: PredicateSignature
+    }
   | {
       readonly k: 'explorar'
       readonly busco?: Where

@@ -97,6 +97,7 @@
 // Queda como hueco con su `it.fails`, y la reparación es de `escalera.ts`
 // —cargarle a la meta de dónde salió— y no de acá.
 
+import type { QualityTest } from '@anima/physics'
 import { Contexto } from '@anima/perceive'
 import type { Partida, Proyeccion } from '@anima/perceive'
 import type { GoalId, Ref, Rindes, VistaDelPlan } from '@anima/plan'
@@ -119,6 +120,7 @@ import {
   aplicarProceso,
   comer,
   deshilachar,
+  esperar,
   explorar,
   frotar,
   guarecerse,
@@ -288,6 +290,76 @@ export function aHabilidad(i: Intencion, v: VistaDelPlan, rindes?: Rindes): Trad
       return traduccion(`sostener(${corto(i.que)})`, (ctx) => sostener(ctx, args))
     }
 
+    // ─── EL PASO QUE NO PIDE NADA, Y ES EL QUE HACE QUE SE COCINE ────────────
+    //
+    // Una ley no se aplica: se le arma la situación y se espera, y `emitirLey`
+    // pone acá el `mientras` de la fila. No hay ningún `Ref` que resolver —lo
+    // único que este paso nombra son segundos— así que es la única rama del
+    // `switch` que no puede contestar `undefined`: un plan no envejece por el
+    // lado del reloj.
+    //
+    // ─── Y CON `hasta`, QUE ES LO QUE LE DEVUELVE EL FUEGO ───────────────────
+    //
+    // Acá decía «SIN `hasta` NI `mirando`, a propósito», y el porqué era cierto:
+    // la cualidad y el umbral viven en el `establishes` de la fila y este archivo
+    // no los despejaba. Ahora los despeja `@anima/plan` (`esperarPor` en
+    // `regresion.ts`) y viajan en `Step.esperar.mirando`, así que lo único que
+    // falta acá es resolver el `Ref` y armar el cierre.
+    //
+    // LO QUE COSTABA SER CIEGA, y no es lo que se había contado. El precio en
+    // DESPERTADAS ya estaba medido y era barato: `segundos / pasoMinimo` = 15 /
+    // 0,25 = 60 en los 300 ticks. El precio que faltaba contar está en SEGUNDOS DE
+    // FUEGO: el pescado sobre la brasa está cocido a los **5 s** y la fila hace
+    // esperar **15**, y el fuego se apaga a los **20**. O sea que la espera se
+    // llevaba tres cuartos del fuego para nada y la segunda pieza habría empezado a
+    // cocinarse con la brasa apagada.
+    //
+    // `hasta` SÍ Y `mirando` NO, Y ESTO SE PROBÓ DE LAS DOS MANERAS. La innata
+    // tiene los dos parámetros: `hasta` es la condición y `mirando` sirve para
+    // elegir CUÁNDO volver a mirar —divide lo que falta por `rateOf` y duerme casi
+    // todo de una vez—. Pasar `mirando` parece gratis y no lo es: la innata falla
+    // con «lo que espero no está pasando» si `rateOf` de la cualidad mirada es cero,
+    // y `rateOf` es la tasa del tick PASADO (`perceive/src/contexto.ts` lo dice).
+    //
+    // Medido en la corrida de la contraprueba, con `mirando: digestibility>=0,85`:
+    //
+    //     t151  poner(el pescado sobre la brasa)     el pescado está a 13,61 °C
+    //     t153  esperar(15s)  →  ok:false, «la tasa es cero o va al revés»
+    //     t155…157  el pescado cruza sus 55 °C de `denaturesAt` y la ley 5 arranca
+    //
+    // O sea: la tasa es CERO con razón durante los primeros cuatro ticks, porque la
+    // comida todavía se está calentando y la ley 5 no empezó. `mirando` mataba el
+    // plan justo ahí y la criatura no cocinaba NUNCA (`cocinoEn` volvía a −1). La
+    // guarda de la innata es correcta para lo que ella hace —esperar al lado de un
+    // fuego apagado es tirar tiempo— y es la pregunta equivocada en el primer tick.
+    //
+    // Sin `mirando`, el muestreo vuelve al `pasoMinimo` de 0,25 s, o sea 5 ticks: 60
+    // despertadas en el peor caso, que es el precio que ya estaba medido y es
+    // barato. Lo que se gana es lo que importaba: cortar cuando la comida está
+    // lista y no cuando se acaba la cota.
+    //
+    // Si el `Ref` no resuelve, la espera sale CIEGA y no `undefined`: es la única
+    // rama del `switch` que no puede envejecer un plan por el lado del reloj, y ese
+    // contrato no se toca por agregarle una condición. Ver el comentario de
+    // `refsDe` en `escalera.ts`, que es la otra mitad del mismo argumento: el
+    // sujeto está apoyado sobre el fuego durante toda la cocción y no en la mano.
+    case 'esperar': {
+      const nombre = `esperar(${String(i.segundos)}s)`
+      const mirado = i.mirando
+      const cuerpo = mirado === undefined ? undefined : resolverCuerpo(mirado.que, v, rindes)
+      if (mirado === undefined || cuerpo === undefined) {
+        const ciega = { segundos: i.segundos }
+        return traduccion(nombre, (ctx) => esperar(ctx, ciega))
+      }
+      const tests = mirado.tests
+      return traduccion(nombre, (ctx) =>
+        esperar(ctx, {
+          segundos: i.segundos,
+          hasta: () => tests.every((t) => cumpleTest(ctx.q(cuerpo, t.q), t)),
+        }),
+      )
+    }
+
     case 'explorar': {
       const args: {
         busco?: Where
@@ -334,6 +406,29 @@ export function aHabilidad(i: Intencion, v: VistaDelPlan, rindes?: Rindes): Trad
 function esDeLaSemilla(p: string): p is SeedProcessId {
   for (const x of SEED_PROCESS_IDS) if (x === p) return true
   return false
+}
+
+/**
+ * Un `QualityTest` contra un número leído del mundo.
+ *
+ * Se escribe acá y no se importa de `@anima/plan` a propósito: lo que ese paquete
+ * exporta (`cumple`, `cumpleCuerpo`) trabaja sobre `BodyView` y sobre la vista
+ * CONGELADA del principio del tick, y lo que este cierre necesita es lo contrario
+ * —el valor de AHORA, leído con `ctx.q`, que va al estado vivo—. Usar el de allá
+ * haría que la espera preguntara siempre por el tick en que despegó y no cortara
+ * nunca. Son cuatro operadores y son los cuatro de `QualityTest`.
+ */
+function cumpleTest(x: number, t: QualityTest): boolean {
+  switch (t.op) {
+    case '>=':
+      return x >= t.v
+    case '<=':
+      return x <= t.v
+    case '>':
+      return x > t.v
+    case '<':
+      return x < t.v
+  }
 }
 
 /** Cómo se lee un `Ref` en el nombre de una traducción. Exhaustivo sobre las cinco. */

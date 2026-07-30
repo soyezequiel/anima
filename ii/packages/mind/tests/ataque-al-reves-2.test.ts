@@ -328,18 +328,23 @@ describe('(1) cocinar de a varios: el mundo lo paga y la mente no lo puede pedir
       expect(e.pila.filter((rol) => rol === e.sujeto)).toHaveLength(1)
     }
     expect(r.k).toBe('plan')
-    // CERO pescas, DOS `poner` —la losa y la comida—, UN `sostener`. Y el cero es
-    // nuevo: cuando este test se escribió el plan arrancaba con `aplicar`, porque
-    // `cumpleCuerpo` de `@anima/plan` no sabía contestar `holding(tag:…)` y el
-    // pescado que la criatura ya tenía agarrado —los 200 ticks de `vivir` de acá
-    // arriba se lo dan— no contaba para nada. Hoy cuenta, así que el plan empieza
-    // directamente por ir al fuego.
+    // UNA pesca, DOS `poner` —la losa y la comida—, UN `sostener`.
     //
-    // Lo que este test ataca NO se movió ni un milímetro: sigue habiendo UN solo
-    // rol `comida` en la pila de la ley, así que para el segundo pescado hay que
-    // rehacer el plan entero, y con él la losa. Que el plan haya perdido el
-    // `aplicar` sólo cambia de dónde sale el primero.
-    expect(pescas).toBe(0)
+    // Y la cuenta de las pescas fue y volvió, las dos veces por el mismo motivo y
+    // ninguna tiene que ver con lo que este test ataca. Cuando se escribió era 1,
+    // porque `cumpleCuerpo` de `@anima/plan` no sabía contestar `holding(tag:…)` y el
+    // pescado agarrado no contaba. Después fue 0, porque aprendió a contestarlo y los
+    // 200 ticks de `vivir` de acá arriba dejaban un pescado en la mano. Y hoy es 1
+    // otra vez, porque en esos mismos 200 ticks la criatura **ya lo cocinó y se lo
+    // comió**: la espera del plan dejó de ser ciega y corta a los 100 ticks en vez de
+    // a los 300, así que el bocado entra adentro de la ventana. La mano está vacía y
+    // hay que volver al pozo.
+    //
+    // Lo que este test ataca NO se movió ni un milímetro: sigue habiendo UN solo rol
+    // `comida` en la pila de la ley, así que para cada pescado hay que rehacer el plan
+    // entero, y con él la losa. De dónde sale el pescado es circunstancia de la
+    // escena; que sean de a uno es la fila.
+    expect(pescas).toBe(1)
     expect(puestos).toBe(2)
     expect(levantados).toBe(1)
   })

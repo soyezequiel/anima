@@ -30,10 +30,48 @@
 //       derecho a la vara y ninguno necesita partirse antes. Está clavado en un
 //       `it.fails` más abajo para que la diferencia no se pierda.
 //
-//   (2) NO SE CUMPLE, y de los dos eslabones que lo rompían **queda UNO**. La
-//       criatura muere de hambre en el tick 3627 de 20.000 —el 18%— con CERO
-//       bocados, PERO con un pescado en la mano desde el tick 96 y sin un solo
-//       rechazo del mundo.
+//   (2) NO SE CUMPLE — pero LA CADENA SE CERRÓ, y eso es lo nuevo de este tramo.
+//
+//       En la escena del documento tal cual, la criatura sigue muriendo de hambre
+//       en el tick 3627 de 20.000 —el 18%— con CERO bocados, un pescado en la mano
+//       desde el tick 96 y sin un solo rechazo del mundo. Ese número no se movió.
+//
+//       Lo que se movió es lo que hay detrás de él. **La cadena entera existe, sale
+//       de `plan()` en un solo pedido y CORRE contra `stepWorld`**: con leña de
+//       0,40 kg en celdas de verdad secas y el tanque lleno, la corrida mide
+//
+//           tick 149  el primer cuerpo del mundo con `emitsPower > 0`   PRENDIÓ
+//           tick 251  el primero con `digestibility >= 0,85` y calorías  COCINÓ
+//           tick 457  el primer `tragar`, y aterriza con `ok: true`      COMIÓ
+//
+//       que es **la primera vez en el proyecto que la criatura come algo que ella
+//       cocinó**. Las dos corridas anteriores medían `-1` en los tres.
+//
+//       Y lo que la sigue matando ya no es saber. Son tres paredes de MUNDO y una
+//       de ARITMÉTICA, cada una con su test (DIAGNÓSTICOS 7 a 10):
+//
+//         7 · NO HAY LEÑA. El dios decreta 62 cuerpos sueltos en los nueve chunks
+//             de la parada y `stepWorld` materializa CERO: sólo los pozos. En el
+//             mundo entero hay tres cosas —ella, la caña y el pescado— y la caña se
+//             comió la única madera que el arnés había puesto.
+//         8 · Y SI SE LE PONE, SE AHOGA. La celda que `laOrilla()` llama seca mide
+//             `wet` 0,6000 (su prueba es `wet < 0,9`), la `moisture` de la yesca
+//             relaja hacia ahí y cruza el 0,45 que apaga en el tick **85**. El
+//             pescado no llega a la mano hasta el 96: pierde la carrera por ONCE
+//             ticks. Tenerla en la mano no la protege —mismo número hasta el último
+//             decimal— y a UNA celda hay tierra con `wet` 0,1500.
+//         9 · EL FUEGO CUESTA MÁS QUE EL TANQUE. La yesca más chica que llena la
+//             ventana del contacto pesa 0,3506875 kg y frotar cobra
+//             `heatCapacity × ΔT / 0,35` = **485,45** de aliento. La escena le da
+//             **310**, y los 310 no son de gusto: están puestos para que tenga
+//             hambre. Medido: frotó 26 ticks a 11,7071, murió en el 131 y la innata
+//             lo dijo con el número adentro —«me quedé sin aliento a 169,46 de 300»—.
+//        10 · Y AUN ASÍ NO CIERRA. Con las tres paredes sacadas come UNA vez y se
+//             muere en el 5744: un pescado cocido de 2,887 kg tiene `calories`
+//             21,81 y el fuego costó 485. **Un fuego vale veintidós pescados**, y
+//             una yesca de 0,40 kg se consume en 20 s cocinando de a 5. La salida no
+//             es cocinar más rápido: es no volver a pagar el `frotar` —la ley 3 ya
+//             sabe propagar el fuego y el planificador no lo sabe—.
 //
 //       ─── LO QUE SE CERRÓ, CON LOS DOS NÚMEROS AL LADO ────────────────────
 //
@@ -77,25 +115,35 @@
 //       3000 ticks marca 0,7100; pudrirse no le saca el tag `carnoso`, así que la
 //       meta que lo retiene sigue cumplida.
 //
-//       ─── EL ESLABÓN QUE QUEDA, Y ES UNO SOLO ────────────────────────────
+//       ─── EL ESLABÓN QUE ERA «EL ÚNICO QUE QUEDA», Y SE CERRÓ ────────────
 //
-//       **No sabe pedir un fuego de la potencia justa.**
-//           La mente SÍ quiere lo cocido —cambia la meta a
-//           `holding(tag:carnoso,toxicity<0.0528)` en el tick 98, medido— y
-//           `plan()` regresa hasta la ley 5 y se corta con
-//           `missing «emitsPower<410&emitsPower>=253»` y el porqué textual
-//           «ningún esquema conocido establece «emitsPower<410» (lo más cerca que
-//           llega el catálogo es «emitsPower>0»)». `friccion` promete que algo va
-//           a EMITIR; no promete cuánto. La ventana de cocción es acotada por los
-//           dos lados y no hay quien la establezca.
+//       Acá decía, con estas palabras: «**no sabe pedir un fuego de la potencia
+//       justa**», y lo medía con `missing «emitsPower<410&emitsPower>=253»` y el
+//       porqué textual «lo más cerca que llega el catálogo es «emitsPower>0»».
+//       Está cerrado, y se cerró de dos lados que no eran el que se esperaba:
 //
-//           Y la contraprueba, que es lo que hace que esto sea un diagnóstico y
-//           no una sospecha: **con un leño ya ardiendo adentro de la ventana
-//           (emitsPower 310,62) el plan CIERRA en 5 expansiones** y sale
-//           `ir → poner → poner → sostener`, que es ir al fuego, apoyar la losa
-//           encima, apoyar el pescado que ya tiene en la losa y levantarlo
-//           cocido. O sea que el planificador sabe LIGAR un fuego que existe; lo
-//           que no sabe es ENCENDER uno del que pueda prometer la potencia.
+//         · `@anima/plan` dejó de tener UNA fila de cocción con el montaje clavado
+//           en la parrilla: barre los tres montajes por tres distancias y saca DOS
+//           filas, y le agregó a `friccion` las dos que acotan el producto
+//           `fuelEnergy × mass` que ES `emitsPower`. Con eso el catálogo YA
+//           establece las dos puntas de una ventana, y el mismo `why` que decía
+//           «lo más cerca es emitsPower>0» hoy nombra «emitsPower>=105,42» y
+//           «emitsPower<170,83». Está afirmado en el DIAGNÓSTICO 5/6;
+//         · y faltaba UN PASO que no era de potencia sino de TIEMPO. `Step` tenía
+//           diez variantes y ninguna era esperar, así que el plan ponía la comida
+//           sobre el fuego y la levantaba dos ticks después: medido, `poner` en el
+//           151 y `sostener` en el 153, la ley 5 corriendo dos ticks y la
+//           `digestibility` del pescado clavada en 0,3800 en veinte mil. La innata
+//           `esperar` ya existía; lo que faltaba era la costura —`{k:'esperar'}` en
+//           `Step`, un caso en `firmaDePaso`, y los dos `switch` de este paquete—.
+//
+//       Con las dos cosas puestas, el pedido de la mente sale COMPLETO en un solo
+//       plan, quince pasos y dieciséis expansiones, y nadie los escribió:
+//
+//           ir → sostener → ir → sostener → unir      la caña
+//           ir → aplicar                              el pescado
+//           ir → sostener → ir → sostener → frotar    el fuego
+//           poner → esperar → sostener                la cocción
 //
 //       ─── Y EL VENENO, QUE ES LO QUE VOLVIÓ OBLIGATORIO EL FUEGO ──────────
 //
@@ -107,7 +155,13 @@
 //       comer veneno salía gratis. Hoy no hay ningún número de pescados CRUDOS
 //       que alcance, y por eso el fuego dejó de ser un lujo.
 //
-//       ─── LO QUE PRUEBA QUE NO FALTA NADA MÁS QUE ESO ─────────────────────
+//       ─── Y LA CONTRAPRUEBA VIEJA, QUE HOY MIDE OTRA COSA ────────────────
+//
+//       Este párrafo se escribió para contestar «¿falta sólo el fuego, o además
+//       falta otra cosa?», y contestaba que sólo el fuego. Hoy el fuego ya no
+//       falta, así que lo que la despensa mide es lo de más arriba de la cadena: que
+//       el bucle de la necesidad cierra cuando la comida es comestible. Sigue siendo
+//       la guarda de regresión más barata que hay y por eso se conserva entera.
 //
 //       Regalándole el eslabón que no sabe hacer —cien pescados YA COCIDOS en la
 //       celda donde está parada, con los números que la ley 5 deja de verdad—
@@ -174,14 +228,14 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { HZ_DE_REFERENCIA, qualityOf, specOf } from '@anima/physics';
 import type { QualityId } from '@anima/physics';
-import { COSTO_VIVIR_POR_SEGUNDO } from '@anima/world';
+import { COSTO_VIVIR_POR_SEGUNDO, decretoDe } from '@anima/world';
 import type { WorldState } from '@anima/world';
 import { Contexto, Partida } from '@anima/perceive';
-import { EXPANSIONES_POR_TICK, interpretar, plan } from '@anima/plan';
+import { EXPANSIONES_POR_TICK, SEGUNDOS_DE_COCCION, interpretar, plan } from '@anima/plan';
 import type { GoalNode, Step } from '@anima/plan';
 import { comer } from '@anima/skills/innatas';
 
@@ -190,7 +244,8 @@ import { Mente, vivir } from '../src/mente.js';
 import { necesidades } from '../src/necesidades.js';
 import { metaComestibleDe, opportunities } from '../src/oportunidades.js';
 import type { VistaDeLaMente } from '../src/tipos.js';
-import { actor, criatura, cuerpo, enElPiso, laOrilla, mundo } from './mundo.js';
+import { PHYS, actor, criatura, cuerpo, enElPiso, laOrilla, mundo } from './mundo.js';
+import type { Orilla } from './mundo.js';
 
 /** El único número que se afirma contra el reloj del sistema. Ver el encabezado. */
 const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1';
@@ -315,6 +370,98 @@ function conFuegoYLosa(): WorldState {
   });
 }
 
+// ─── LA LEÑA, Y DÓNDE SE LA PUEDE DEJAR SIN QUE SE AHOGUE ────────────────────
+//
+// Estas cuatro funciones son de este tramo entero, y existen porque los tres
+// diagnósticos nuevos son sobre el MUNDO y no sobre la mente: lo que le falta a la
+// criatura para cocinar no es saber, es que haya con qué.
+
+/** `HUMEDAD_QUE_APAGA` de `@anima/plan`, que es el techo de lo que se prende. */
+const HUMEDAD_QUE_APAGA = 0.45;
+
+/**
+ * LA MASA DE LA YESCA MÁS CHICA QUE LLENA LA VENTANA DEL CONTACTO, y el aliento
+ * que cuesta prenderla. Los dos salen de `@anima/plan` y de la física, no de acá:
+ * el `roleHint` de la fila de encender pide `mass >= 0,3506875138611668`, y frotar
+ * cobra `heatCapacity × ΔT / eficiencia`.
+ *
+ * Se escriben como constantes porque son la vara de dos tests y hay que poder
+ * leerlas de un renglón; los dos las verifican contra el mundo antes de usarlas.
+ */
+const YESCA_MAS_CHICA = 0.3506875138611668;
+/** El calor específico de la madera de la semilla. Se verifica contra el motor. */
+const CALOR_ESPECIFICO_MADERA = 1.7;
+/** Los tres números de frotar, del catálogo: ignición, ambiente y eficiencia. */
+const IGNICION_MADERA = 300;
+const AMBIENTE = 15;
+const EFICIENCIA_DE_FROTAR = 0.35;
+
+/** El `wet` de una celda, leído del decreto y no de un cuerpo puesto ahí. */
+function humedadDeLaCelda(o: Orilla, c: { x: number; y: number }): number {
+  const cx = Math.floor(c.x / 16);
+  const cy = Math.floor(c.y / 16);
+  const dec = decretoDe(o.dios, PHYS, cx, cy);
+  const i = (((c.y % 16) + 16) % 16) * 16 + (((c.x % 16) + 16) % 16);
+  return (dec.celdas[i] as { wet: number }).wet;
+}
+
+/**
+ * LAS CELDAS DE VERDAD SECAS más cercanas a la parada, en orden de distancia.
+ *
+ * «Seca» acá quiere decir `wet < HUMEDAD_QUE_APAGA`, que es lo que la leña
+ * necesita para seguir prendiéndose. `laOrilla()` usa otro umbral —`wet < 0,9`, que
+ * es «no es agua»— y esa diferencia es el diagnóstico 8: la celda que la escena del
+ * documento elige mide 0,6000 y ahoga cualquier yesca en noventa ticks.
+ */
+function celdasSecas(o: Orilla, cuantas: number): { x: number; y: number }[] {
+  const out: { x: number; y: number; d: number }[] = [];
+  for (let dx = -12; dx <= 12; dx++) {
+    for (let dy = -12; dy <= 12; dy++) {
+      const c = { x: o.parada.x + dx, y: o.parada.y + dy };
+      if (humedadDeLaCelda(o, c) >= HUMEDAD_QUE_APAGA) continue;
+      const ax = dx < 0 ? -dx : dx;
+      const ay = dy < 0 ? -dy : dy;
+      out.push({ ...c, d: ax > ay ? ax : ay });
+    }
+  }
+  // Orden total y estable: por distancia de Chebyshev y después por coordenada.
+  out.sort((a, b) => (a.d !== b.d ? a.d - b.d : a.x !== b.x ? a.x - b.x : a.y - b.y));
+  return out.slice(0, cuantas).map((c) => ({ x: c.x, y: c.y }));
+}
+
+/**
+ * LA ESCENA DEL DOCUMENTO CON LEÑA, y en celdas SECAS.
+ *
+ * Es la contraprueba del tramo, y cada cosa que cambia está acá y no en otro lado:
+ *
+ *   · **cuatro varas de 0,40 kg de madera** — 0,40 cae adentro de la ventana de la
+ *     yesca del contacto ([0,3507 ; 0,4871) kg) y da `emitsPower` 120,24, adentro
+ *     de la ventana que la fila de cocción le pide al fuego ([105,42 ; 170,83)).
+ *     CUATRO y no una porque `friccion` necesita DOS cuerpos rígidos y porque una
+ *     yesca se consume: con una sola el plan sale `gap` en «rigidity>=0.5», medido;
+ *   · **una celda distinta para cada una** — dos cuerpos sueltos en la misma celda
+ *     es un estado ilegal, y `vigilar: true` lo canta: la primera versión de esta
+ *     escena juntaba tres leñas en una celda y el arnés devolvió 20.107 violaciones
+ *     en 20.000 ticks. Que las cuente es exactamente para qué está encendido;
+ *   · **`stamina` a elección** — porque el diagnóstico 9 es que 310 no alcanza para
+ *     encender NADA que cocine, y hay que poder correr las dos.
+ */
+function conLenaSeca(stamina: number, cuantas = 4): WorldState {
+  const o = laOrilla();
+  const p = o.parada;
+  const secas = celdasSecas(o, cuantas);
+  return mundo({
+    dios: o.dios,
+    bodies: [
+      enElPiso(criatura('ana', stamina), p),
+      enElPiso(cuerpo('vara', 'madera', 1, {}, 'vara'), { x: p.x + 3, y: p.y }),
+      enElPiso(cuerpo('matorral', 'liana', 0.2, {}, 'hebra'), { x: p.x - 2, y: p.y + 1 }),
+      ...secas.map((c, i) => enElPiso(cuerpo(`lena${String(i)}`, 'madera', 0.4, {}, 'vara'), c)),
+    ],
+    actors: [actor('ana', { capacity: 3 })],
+  });
+}
+
 function aliento(p: Partida, quien: string): number {
   const b = p.state.bodies.get(`${quien}-cuerpo`);
   return b === undefined ? 0 : qualityOf(b.body, 'stamina', p.state.phys);
@@ -370,6 +517,23 @@ interface Corrida {
    * cuerpo de pescado en la mano, o no lo hay.
    */
   readonly pescoEn: number;
+  /**
+   * LOS TRES TICKS DE LA COCINA, y son la medición nueva de este tramo.
+   *
+   * Van al lado de `pescoEn` y por la misma razón que aquél existe: se leen del
+   * ESTADO DEL MUNDO y no de lo que la mente dice que hizo. `prendioEn` es el
+   * primer tick en que hay un cuerpo con `emitsPower > 0`; `cocinoEn` el primero en
+   * que hay uno con `digestibility >= 0,85` y calorías —o sea la promesa de la fila
+   * cumplida sobre materia de verdad—; y `comioEn` el primer despegue de `comer` o
+   * `tragar`, que es lo único de los tres que sí es una decisión y no un hecho.
+   *
+   * Los tres valían `-1` hasta este tramo. Ver el veredicto del encabezado.
+   */
+  readonly prendioEn: number;
+  readonly cocinoEn: number;
+  readonly comioEn: number;
+  /** El aliento que tenía justo antes del primer bocado. Para la cuenta del 10. */
+  readonly alientoAntesDelBocado: number;
   readonly aliento: readonly string[];
   /** La misma curva de aliento en números, para poder sacarle la pendiente. */
   readonly muestras: readonly number[];
@@ -434,6 +598,10 @@ function correr(
   let murioEn = -1;
   let ultimoAliento = 0;
   let pescoEn = -1;
+  let prendioEn = -1;
+  let cocinoEn = -1;
+  let comioEn = -1;
+  let alientoAntesDelBocado = 0;
   // ─── CÓMO SE CUENTA UN ATERRIZAJE, Y POR QUÉ ASÍ ──────────────────────────
   //
   // `Partida` no publica un contador de vuelos terminados, pero sí publica EL
@@ -466,6 +634,10 @@ function correr(
       cuando.push(t);
       cuenta.set(nombre, (cuenta.get(nombre) ?? 0) + 1);
       nombreEnVuelo = nombre;
+      if (comioEn < 0 && (nombre.startsWith('comer') || nombre.startsWith('tragar'))) {
+        comioEn = t;
+        alientoAntesDelBocado = aliento(p, quien);
+      }
     }
     if (murioEn < 0) {
       if (p.state.actors.has(quien)) ultimoAliento = aliento(p, quien);
@@ -474,6 +646,24 @@ function correr(
     // El estado del mundo, que es lo único que no se puede leer mal: si hay un
     // cuerpo de pescado en la mano, pescó. Se busca sólo hasta encontrarlo.
     if (pescoEn < 0 && enLaMano(p, quien).some((s) => s.includes('pescado'))) pescoEn = t;
+    // Lo mismo para el fuego y para lo cocido: se le pregunta al MUNDO, no a la
+    // mente. Se barre una sola vez y sólo mientras falte alguno de los dos, que es
+    // lo que hace que esto no le cueste nada a los 20.000 ticks: en la corrida del
+    // criterio los dos quedan en `-1` y el barrido corre igual, pero son quince
+    // cuerpos; en la de la contraprueba se apaga en el tick 251.
+    if (prendioEn < 0 || cocinoEn < 0) {
+      for (const b of p.state.bodies.values()) {
+        if (b.body.id.startsWith('pozo:')) continue;
+        if (prendioEn < 0 && qualityOf(b.body, 'emitsPower', p.state.phys) > 0) prendioEn = t;
+        if (
+          cocinoEn < 0 &&
+          qualityOf(b.body, 'digestibility', p.state.phys) >= 0.85 &&
+          qualityOf(b.body, 'calories', p.state.phys) > 0
+        ) {
+          cocinoEn = t;
+        }
+      }
+    }
     if (t % cada === 0) {
       curva.push(`${String(t)}:${aliento(p, quien).toFixed(1)}`);
       muestras.push(aliento(p, quien));
@@ -496,6 +686,10 @@ function correr(
     aterrizados,
     fallados,
     pescoEn,
+    prendioEn,
+    cocinoEn,
+    comioEn,
+    alientoAntesDelBocado,
     aliento: curva,
     muestras,
     ms,
@@ -586,6 +780,36 @@ const dos = (x: number): string => x.toFixed(2);
  * tests —vitest corre un archivo en orden— y lo que falte sale como `—`.
  */
 const MEDIDO = new Map<string, string>();
+
+// ─── UN RESPIRO ENTRE TESTS, Y NO ES COSMÉTICA ───────────────────────────────
+//
+// Este archivo son **ochenta segundos de bucle sincrónico** —el criterio pide
+// 20.000 ticks y hay siete corridas que los hacen— y eso rompe el worker de vitest
+// por un lado que no tiene nada que ver con lo que se está midiendo:
+//
+//     Error: [vitest-worker]: Timeout calling "onTaskUpdate"
+//
+// El mecanismo, leído del paquete: el runner le manda al proceso principal el
+// resultado de cada test por RPC (`vitest/dist/chunks/index.CwejwG0H.js` parchea
+// `onTaskUpdate` para que devuelva la promesa de `rpc().onTaskUpdate`), birpc le
+// pone un vencimiento de 60 s con un `setTimeout`, y el aviso de vuelta llega por
+// IPC. Un `for` sincrónico de 34 segundos no deja correr NI el temporizador NI la
+// lectura del socket; cuando por fin suelta el hilo, Node corre la fase de
+// TEMPORIZADORES antes que la de POLL, así que el vencimiento gana la carrera
+// aunque la respuesta ya esté en la cola. El resultado es una suite con los 291
+// tests en verde y `exit 1`, que es la peor clase de rojo: enseña a ignorarlo.
+//
+// Un `await` sobre una promesa ya resuelta NO alcanza —eso es una microtarea y no
+// drena la fase de poll—: hace falta un `setTimeout`, que es una macrotarea de
+// verdad. Va en un `beforeEach` de raíz para no tocar el cuerpo de ningún test, y
+// por lo tanto NO puede mover ninguna medición: corre antes de que el test empiece,
+// y las dos cosas que este archivo mide con reloj de pared —`ms` y
+// `ticksPerdidos`— arrancan su cronómetro adentro de `correr`.
+beforeEach(async () => {
+  await new Promise((listo) => {
+    setTimeout(listo, 0);
+  });
+});
 
 // ═══ (0) EL PROVEEDOR ESTÁ APAGADO, Y NO ES UNA PROMESA ═════════════════════
 
@@ -914,6 +1138,21 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       //   2 despegues de aplicar(extraccion) · UN pescado en la mano desde el tick 96
       //   0 bocados · 321 explorar(8t) + 321 guarecerse + 321 juntar×1, todos fallando
       //   aliento: 0:309,9 → 2000:140,5 → 4000:0
+      //
+      // ─── Y ESTE NÚMERO NO SE MOVIÓ, PERO EL MOTIVO SÍ ──────────────────────
+      //
+      // 3627 es exactamente el mismo tick que el tramo anterior, y eso es
+      // información y no un empate: la cadena de cocinar se cerró entera —el plan
+      // sale completo y la criatura PRENDE, COCINA y COME, medido en el
+      // DIAGNÓSTICO 10— y en ESTA escena no cambia nada, porque en esta escena no
+      // hay con qué. La única madera que el arnés pone es la vara de 1 kg, y la
+      // mente se la gasta atando la caña en el tick 32. Después el mundo entero
+      // tiene tres cuerpos y ninguno arde (DIAGNÓSTICO 7).
+      //
+      // O sea que el `it.fails` sigue rojo por tres paredes NUEVAS y ninguna es de
+      // la mente: no hay leña (7), la que se le ponga se ahoga en la orilla (8), y
+      // el fuego más barato cuesta 485 contra los 310 que la escena le da (9). Y
+      // sacadas las tres, come una vez y aun así no llega, por aritmética (10).
       //
       // ─── LO QUE MEDÍA EL TRAMO ANTERIOR, QUE ES LA VARA DE LA MEJORA ───────
       //
@@ -1259,86 +1498,164 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     );
   }, 300_000);
 
-  it('DIAGNÓSTICO 5/6 · ESLABÓN B, EL ÚNICO QUE QUEDA: sabe LIGAR un fuego, no sabe pedir uno de la potencia justa', () => {
-    // ─── ESTE ESLABÓN NO SE MOVIÓ, Y AHORA ES EL ÚNICO ─────────────────────
+  it('DIAGNÓSTICO 5/6 · EL ESLABÓN B SE CERRÓ: el plan sale ENTERO, de la vara al pescado cocido', () => {
+    // ─── ESTE DIAGNÓSTICO SE DIO VUELTA, Y ES EL TRAMO ENTERO ──────────────
     //
-    // Lo que sí se movió es la contraprueba, y el cambio es la prueba más limpia
-    // que hay de que el eslabón A está cerrado: con el leño ardiendo el plan salía
-    // de CINCO pasos —`aplicar → ir → poner → poner → sostener`, siete
-    // expansiones— y hoy sale de CUATRO —`ir → poner → poner → sostener`, cinco
-    // expansiones—. El paso que desapareció es el `aplicar`, o sea PESCAR: ya no
-    // hace falta, porque el pescado que tiene en la mano por fin cuenta.
-    // La mente pide `holding(tag:carnoso,toxicity<0.0528)` y `plan()` regresa hasta
-    // la ley 5 de desnaturalización —o sea que la mitad de arriba de la cadena
-    // EXISTE— y se corta en el rol `fuego`, que la fila pide acotado por los dos
-    // lados: `emitsPower >= 253` y `emitsPower < 410`. Abajo del piso la comida no
-    // llega a su `denaturesAt`; arriba del techo cruza su `ignitionPoint` y se
-    // quema. Los dos bordes salen del catálogo y no los eligió nadie.
+    // Decía, con este título: «sabe LIGAR un fuego, no sabe pedir uno de la potencia
+    // justa», y medía el `gap` de `emitsPower<410&emitsPower>=253` como lo único que
+    // separaba a la criatura de comer. Eso era verdad de la tabla que había: UNA
+    // fila de cocción, con el montaje clavado en la parrilla, cuya ventana no la
+    // llenaba ningún fuego que se pueda encender frotando.
     //
-    // Y lo único que el catálogo sabe establecer es `emitsPower>0`, que es lo que
-    // `friccion` promete: que algo va a EMITIR. No promete cuánto. Una desigualdad
-    // sin techo no implica una ventana, así que la regresión se queda sin vía.
+    // Hoy la tabla barre los tres montajes por tres distancias y saca DOS filas
+    // —parrilla y contacto, las dos a distancia 0—, y de las dos sólo la del
+    // contacto se puede encender. Con eso el `plan()` deja de cortarse: **pedirle
+    // `holding(tag:carnoso,toxicity<0.0528)` con dos varas de madera de 0,40 kg a la
+    // vista devuelve la cadena completa de QUINCE pasos**, que es esto y nadie lo
+    // escribió:
     //
-    // ─── LA CONTRAPRUEBA, QUE ES LO QUE VUELVE ESTO UN DIAGNÓSTICO ─────────
+    //     ir → sostener → ir → sostener → unir     la caña
+    //     ir → aplicar                             el pescado
+    //     ir → sostener → ir → sostener → frotar   el fuego
+    //     poner → esperar → sostener               la cocción
     //
-    // Con un leño de 1,2 kg YA ARDIENDO en la misma celda —emitsPower 310,62 en el
-    // momento en que se pide el plan, o sea adentro de la ventana `[253 ; 410)`, y
-    // el número lo imprime la corrida— y una losa de piedra al lado, **el mismo pedido
-    // cierra**: `ir → poner → poner → sostener`, que es ir al fuego, apoyar la losa
-    // encima, apoyar el pescado que ya tiene en la losa y levantarlo cocido. Nadie
-    // escribió «parrilla»: sale de que la pila tiene tres cuerpos.
+    // Los dos `poner` de la vieja versión son uno solo: la parrilla no está porque
+    // la fila que se liga es la del CONTACTO, o sea el pescado apoyado sobre la
+    // brasa. Y el `esperar` es el paso que este tramo tuvo que coser —`Step` no lo
+    // tenía y la mente no lo sabía traducir—: sin él la criatura apoyaba el pescado
+    // en el tick 151 y lo levantaba en el 153, la ley 5 corría dos ticks y la
+    // `digestibility` no se movía de 0,3800 en veinte mil.
     //
-    // O sea que lo que falta NO es la ley, ni la geometría, ni el vocabulario de
-    // la mente: es **una vía que establezca una ventana de potencia**. Hoy eso se
-    // arregla en `@anima/plan` o en el catálogo, no acá.
+    // ─── LO QUE SIGUE FALLANDO YA NO ES ESTO, Y ESTÁ EN LOS 7, 8, 9 Y 10 ────
+    //
+    // En la escena del documento, TAL CUAL, el pedido sigue saliendo `gap`. Pero el
+    // motivo cambió de piso: ya no es que falte una vía, es que **no hay una sola
+    // vara de madera de ese tamaño en el mundo**. El `gap` lo dice con todas las
+    // letras si se le saca la fila de la parrilla —que es la que gana el reporte por
+    // ser la rama más barata—: lo que falta es un cuerpo con
+    // «fuelEnergy∈[18;21] ∧ mass∈[0,3507;0,4871) ∧ moisture<0,45 ∧ rigidity>=0,5»,
+    // y eso no se planifica: se encuentra o no se encuentra.
+    //
+    // O sea que lo que falta ya no es la ley, ni la geometría, ni la vía, ni el
+    // vocabulario de la mente: es MATERIA, y después ARITMÉTICA. Los cuatro
+    // diagnósticos nuevos la miden pieza por pieza.
     const meta = interpretar(metaComestibleDe('carnoso') ?? '');
     if (meta === undefined) throw new Error('sin predicado');
     const g: GoalNode = { id: 'meta', goal: meta, after: [], porque: 'el test' };
 
-    // (a) la escena del documento, tal cual.
+    // (a) la escena del documento, tal cual: el `gap` que queda.
     const p1 = new Partida(laEscenaDelDocumento());
     vivir(p1, new Map([['ana', new Mente({ actor: 'ana', memoria: new Creencias() })]]), 200);
-    const sinFuego = plan(g, vistaDe(p1, 'ana'), EXPANSIONES_POR_TICK * 60);
+    const sinLena = plan(g, vistaDe(p1, 'ana'), EXPANSIONES_POR_TICK * 60);
 
-    // (b) la MISMA escena con un fuego ya prendido y una losa. Nada más cambia.
+    // (b) la MISMA escena con un fuego ya prendido y una losa. Ligar lo que existe.
     const p2 = new Partida(conFuegoYLosa());
     vivir(p2, new Map([['ana', new Mente({ actor: 'ana', memoria: new Creencias() })]]), 200);
     const fogata = p2.state.bodies.get('fogata');
     const potencia = fogata === undefined ? 0 : qualityOf(fogata.body, 'emitsPower', p2.state.phys);
     const conFuego = plan(g, vistaDe(p2, 'ana'), EXPANSIONES_POR_TICK * 60);
 
+    // (c) LA CONTRAPRUEBA DEL TRAMO: la escena del documento con leña seca, y el
+    // plan pedido EN EL TICK 0 —antes de que el mundo le moje la yesca, que es el
+    // diagnóstico 8—. Acá sale la cadena entera.
+    const p3 = new Partida(conLenaSeca(1000));
+    const entera = plan(g, vistaDe(p3, 'ana'), EXPANSIONES_POR_TICK * 400);
+
     console.log(
-      `\n─── LA VENTANA DE POTENCIA DEL FUEGO ───\n` +
-        `  sin fuego:  ${sinFuego.k}` +
-        (sinFuego.k === 'gap'
-          ? `  missing «${sinFuego.missing}»\n              ${sinFuego.why}`
-          : '') +
-        `\n  con un leño ardiendo (emitsPower ${potencia.toFixed(2)}, la ventana es [253 ; 410)):  ${conFuego.k}` +
+      `\n─── DE LA VARA AL PESCADO COCIDO, EN UN SOLO PLAN ───\n` +
+        `  (a) la escena del documento tal cual:  ${sinLena.k}` +
+        (sinLena.k === 'gap' ? `  missing «${sinLena.missing}»\n          ${sinLena.why}` : '') +
+        `\n  (b) con un leño YA ardiendo (emitsPower ${potencia.toFixed(2)}) y una losa:  ${conFuego.k}` +
         (conFuego.k === 'plan'
           ? `  →  ${conFuego.steps.map((s) => s.k).join(' → ')}  (${String(conFuego.expansiones)} expansiones)`
           : conFuego.k === 'gap'
             ? `  missing «${conFuego.missing}»`
             : '') +
+        `\n  (c) con leña de 0,40 kg en celdas SECAS, en el tick 0:  ${entera.k}` +
+        (entera.k === 'plan'
+          ? `\n        ${entera.steps.map((s) => s.k).join(' → ')}` +
+            `\n        ${String(entera.steps.length)} pasos, ${String(entera.expansiones)} expansiones, y NADIE los escribió`
+          : entera.k === 'gap'
+            ? `  missing «${entera.missing}»\n          ${entera.why}`
+            : '') +
         `\n`,
     );
 
-    expect(sinFuego.k).toBe('gap');
-    if (sinFuego.k !== 'gap') throw new Error('imposible');
-    expect(sinFuego.missing).toContain('emitsPower');
-    // Lo más cerca que llega el catálogo es una desigualdad sin techo.
-    expect(sinFuego.why).toContain('emitsPower>0');
-    // Y con el fuego puesto la cadena CIERRA: el problema es encenderlo, no usarlo.
+    // (a) Sigue habiendo `gap`, y el `why` sigue nombrando la potencia: la rama que
+    // gana el reporte es la de la parrilla, que es la más barata de las dos.
+    expect(sinLena.k).toBe('gap');
+    if (sinLena.k !== 'gap') throw new Error('imposible');
+    expect(sinLena.missing).toContain('emitsPower');
+    // Y ACÁ ESTÁ LO QUE CAMBIÓ DE VERDAD: el catálogo YA establece las dos puntas de
+    // una ventana. Donde este test afirmaba `toContain('emitsPower>0')` como «lo más
+    // cerca que llega», hoy el mismo `why` nombra las dos filas nuevas.
+    expect(sinLena.why).toContain('emitsPower>=105');
+    expect(sinLena.why).toContain('emitsPower<170');
+
+    // (b) Ligar un fuego que existe: la parrilla, el tiempo, y AHORA ADEMÁS EL
+    // PESCADO, y el motivo es información y no ruido.
+    //
+    // Acá se afirmaban cinco pasos —`ir → poner → poner → esperar → sostener`— y hoy
+    // son SIETE, con un `ir → aplicar` adelante que es ir al pozo y pescar. Lo que
+    // cambió no es el planificador: es que este bloque le corre **200 ticks de mente
+    // de verdad** a la escena antes de pedir el plan, y en esos 200 ticks la criatura
+    // ahora COCINA Y COME. Antes no llegaba: la espera era ciega, gastaba los 15 s
+    // enteros y a los 200 ticks todavía estaba parada al lado del fuego con el
+    // pescado encima. Con la espera que corta cuando la comida está lista —medido:
+    // termina a los 100 ticks y no a los 300— el bocado entra adentro de la ventana,
+    // y el plan que sale después es el de una criatura que ya se comió el pescado y
+    // necesita otro.
+    //
+    // O sea que las dos formas son correctas y la de siete es la de un mundo donde
+    // pasó MÁS. Se afirma la forma entera igual, porque el orden es lo que importa:
+    // primero conseguir la comida, después armar la pila, después el tiempo, y el
+    // `sostener` al final.
     expect(conFuego.k).toBe('plan');
     if (conFuego.k !== 'plan') throw new Error('imposible');
-    // Y NO LLEVA `aplicar`. El paso de pescar se cayó solo cuando `cumpleCuerpo`
-    // aprendió a contestar tags: es el eslabón A visto desde el otro lado.
-    expect(conFuego.steps.map((s) => s.k)).toEqual(['ir', 'poner', 'poner', 'sostener']);
+    expect(conFuego.steps.map((s) => s.k)).toEqual([
+      'ir',
+      'aplicar', // el pescado, porque el primero ya se lo comió
+      'ir',
+      'poner', // la losa sobre la fogata
+      'poner', // el pescado sobre la losa
+      'esperar',
+      'sostener',
+    ]);
+
+    // (c) Y LA CADENA ENTERA. Lo que se afirma es la FORMA y no el largo: que estén
+    // los cuatro tramos, en este orden, y que el tiempo esté entre poner y levantar.
+    expect(entera.k).toBe('plan');
+    if (entera.k !== 'plan') throw new Error('imposible');
+    const ks = entera.steps.map((s) => s.k);
+    expect(ks).toEqual([
+      'ir',
+      'sostener',
+      'ir',
+      'sostener',
+      'unir', // la caña
+      'ir',
+      'aplicar', // el pescado
+      'ir',
+      'sostener',
+      'ir',
+      'sostener',
+      'frotar', // el fuego
+      'poner',
+      'esperar',
+      'sostener', // la cocción
+    ]);
+    // Y la espera dura lo que la fila declara, no lo que este test quiera.
+    const espera = entera.steps.find((s) => s.k === 'esperar');
+    expect(espera?.k).toBe('esperar');
+    if (espera?.k !== 'esperar') throw new Error('imposible');
+    expect(espera.segundos).toBe(SEGUNDOS_DE_COCCION);
 
     MEDIDO.set(
       'eslabón B',
-      `gap «${sinFuego.missing}» (lo más cerca del catálogo es \`emitsPower>0\`); ` +
-        `con un leño ardiendo a ${potencia.toFixed(2)} el plan CIERRA en ${String(conFuego.expansiones)} ` +
-        `expansiones y en ${String(conFuego.steps.length)} pasos, sin volver a pescar`,
+      `CERRADO: con leña de 0,40 kg a la vista el plan sale ENTERO —${String(entera.steps.length)} pasos, ` +
+        `${String(entera.expansiones)} expansiones— y lleva \`esperar(${String(espera.segundos)}s)\` entre ` +
+        `poner la comida y levantarla. El \`gap\` que queda es «${sinLena.missing}» y ya no es por falta de vía: ` +
+        `es porque no hay una vara de ese tamaño en el mundo`,
     );
   }, 120_000);
 
@@ -1412,6 +1729,365 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       'deambular',
       `gasta ${pendiente.toFixed(5)}/tick contra ${porTick.toFixed(5)} de sólo vivir (${(pendiente / porTick).toFixed(2)}×): ` +
         `muere en ${String(r.murioEn)} y no en 6194 porque ahora camina, no porque le vaya peor`,
+    );
+  }, 300_000);
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // LOS CUATRO DIAGNÓSTICOS NUEVOS. Con la cadena cerrada, lo que queda entre la
+  // criatura y el criterio ya no es saber: son tres paredes de MUNDO y una de
+  // ARITMÉTICA, y ninguna se arregla en `@anima/mind`.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  it('DIAGNÓSTICO 7 · EL MUNDO NO LE PONE LEÑA DELANTE: el dios siembra 62 cuerpos y se materializan 0', () => {
+    // ─── LA PARED MÁS BARATA DE ARREGLAR Y LA QUE NADIE ESTABA MIRANDO ─────
+    //
+    // La escena del documento le pone DOS cuerpos: una vara de madera de 1 kg y un
+    // matorral de liana de 0,2 kg. La mente los ata y hace la caña, o sea que se
+    // gasta la única madera que hay. Después de eso, en el mundo entero no queda
+    // nada que arda.
+    //
+    // Y NO ES QUE EL DIOS NO SIEMBRE. `decretoDe` trae `chunk.sueltas` y en los
+    // nueve chunks alrededor de la parada hay 62 cuerpos decretados. Lo que pasa es
+    // que `stepWorld` **materializa los pozos y nada más**: `grep sueltas ii/*/src`
+    // devuelve UN comentario que no habla de esto. Los 62 existen en el decreto y no
+    // existen en `state.bodies`.
+    //
+    // Es la misma clase de error que el número 3 de los catorce —«el mundo no
+    // permite fuego: el encendible más liviano pesa 1 kg», que era el arnés y no el
+    // mundo— pero al revés: acá el arnés es POBRE de más y el dios es generoso. El
+    // juez ya había medido que 13 de 20 semillas decretan una vara encendible; lo
+    // que faltaba medir es que ninguna llega al suelo.
+    const o = laOrilla();
+    const cxp = Math.floor(o.parada.x / 16);
+    const cyp = Math.floor(o.parada.y / 16);
+    let decretadas = 0;
+    const porSustancia = new Map<string, number>();
+    for (let cx = cxp - 1; cx <= cxp + 1; cx++) {
+      for (let cy = cyp - 1; cy <= cyp + 1; cy++) {
+        for (const s of decretoDe(o.dios, PHYS, cx, cy).chunk.sueltas) {
+          decretadas += 1;
+          porSustancia.set(s.substance, (porSustancia.get(s.substance) ?? 0) + 1);
+        }
+      }
+    }
+
+    // Y lo que hay DE VERDAD después de 400 ticks de vivir en esa orilla.
+    const p = new Partida(laEscenaDelDocumento());
+    vivir(p, new Map([['ana', new Mente({ actor: 'ana', memoria: new Creencias() })]]), 400);
+    const materializados = [...p.state.bodies.values()];
+    const pozos = materializados.filter((b) => b.body.id.startsWith('pozo:')).length;
+    const resto = materializados
+      .filter((b) => !b.body.id.startsWith('pozo:'))
+      .map(
+        (b) =>
+          `${b.body.id} [${b.body.parts.map((x) => x.substance).join('+')}] ${qualityOf(b.body, 'mass', p.state.phys).toFixed(4)} kg`,
+      );
+
+    console.log(
+      `\n─── LO QUE EL DIOS DECRETA CONTRA LO QUE EL MUNDO PONE ───\n` +
+        `  sueltas DECRETADAS en los 9 chunks de la parada: ${String(decretadas)}\n` +
+        `      ${[...porSustancia].map(([k, v]) => `${k}×${String(v)}`).join(' · ')}\n` +
+        `  cuerpos MATERIALIZADOS a los 400 ticks: ${String(materializados.length)} ` +
+        `= ${String(pozos)} bancos de peces + ${String(resto.length)} cuerpos, y los ${String(resto.length)} son ella y lo que el arnés puso\n` +
+        `      ${resto.join('\n      ')}\n` +
+        `  o sea: de las ${String(decretadas)} que el dios sembró, llegaron al suelo 0.\n`,
+    );
+
+    // El dios siembra de verdad…
+    expect(decretadas).toBeGreaterThan(50);
+    // …y en el mundo no hay una sola cosa suelta que no la haya puesto el arnés.
+    // Tres: su cuerpo, la caña (vara + matorral unidos) y el pescado.
+    expect(resto.length).toBe(3);
+    expect(resto.some((s) => s.includes('madera+liana'))).toBe(true);
+    MEDIDO.set(
+      'la leña',
+      `el dios decreta ${String(decretadas)} cuerpos sueltos en los 9 chunks de la parada y \`stepWorld\` ` +
+        `materializa 0: sólo los ${String(pozos)} pozos. En el mundo hay 3 cosas y las 3 son del arnés`,
+    );
+  }, 300_000);
+
+  it('DIAGNÓSTICO 8 · Y SI SE LE PONE, SE AHOGA: la celda «seca» mide wet 0,6 y la yesca cruza el 0,45 en el tick 85, once antes del pescado', () => {
+    // ─── LA CARRERA QUE PIERDE POR DIEZ TICKS ──────────────────────────────
+    //
+    // `laOrilla()` busca «una celda seca pegada al pozo», y su prueba de seco es
+    // `wet < 0.9`, o sea «no es agua». La celda que devuelve mide **0,6000**. La
+    // `moisture` de un cuerpo relaja hacia el `wet` de su celda, así que una vara de
+    // madera puesta ahí arranca en 0,2500 y sube: 0,3277 al tick 25, 0,3882 al 50,
+    // **0,4719 al 100**. `HUMEDAD_QUE_APAGA` es 0,45.
+    //
+    // Y la criatura no tiene el pescado en la mano hasta el tick 96. O sea que
+    // cuando por fin quiere cocinar, la leña ya no prende. El plan que salía ENTERO
+    // en el tick 0 —los quince pasos del 5/6— es `gap` en el tick 100.
+    //
+    // TENERLA EN LA MANO NO LA PROTEGE, y es lo primero que uno probaría: la misma
+    // vara agarrada y la misma en el piso dan la misma `moisture` **hasta el último
+    // decimal**. El agua no la pone la celda de abajo, la pone el aire de la celda.
+    //
+    // NO ES UNA PARED DEL MUNDO, y por eso este diagnóstico es el más accionable de
+    // los cuatro: a UNA celda de la parada hay tierra con `wet` 0,1500, y ahí la
+    // leña no se moja nunca. Lo que está mal es de qué lado del río deja la escena
+    // la leña, y eso lo elige el arnés.
+    const o = laOrilla();
+    const secas = celdasSecas(o, 3);
+    const p = new Partida(
+      mundo({
+        dios: o.dios,
+        bodies: [
+          enElPiso(criatura('ana', 310), o.parada),
+          enElPiso(cuerpo('mojada', 'madera', 0.4, {}, 'vara'), o.parada),
+          enElPiso(cuerpo('seca', 'madera', 0.4, {}, 'vara'), secas[0] ?? o.parada),
+        ],
+        actors: [actor('ana', { capacity: 3 })],
+      }),
+    );
+    const m = new Mente({ actor: 'ana', memoria: new Creencias() });
+    const mentes = new Map([['ana', m]]);
+    const hum = (id: string): number => {
+      const b = p.state.bodies.get(id);
+      return b === undefined ? -1 : qualityOf(b.body, 'moisture', p.state.phys);
+    };
+    const filas: string[] = [];
+    let cruzoLaDeLaOrilla = -1;
+    for (let t = 0; t <= 400; t++) {
+      if (t > 0) vivir(p, mentes, 1);
+      if (cruzoLaDeLaOrilla < 0 && hum('mojada') >= HUMEDAD_QUE_APAGA) cruzoLaDeLaOrilla = t;
+      if (t % 50 === 0) {
+        filas.push(
+          `      tick ${String(t).padStart(3)}  en la orilla ${hum('mojada').toFixed(4)}  ` +
+            `en lo seco ${hum('seca').toFixed(4)}`,
+        );
+      }
+    }
+
+    console.log(
+      `\n─── LA YESCA SE AHOGA EN LA ORILLA ───\n` +
+        `  la celda que \`laOrilla()\` elige: ${JSON.stringify(o.parada)} con wet ` +
+        `${humedadDeLaCelda(o, o.parada).toFixed(4)}  (su prueba de «seca» es wet < 0,9)\n` +
+        `  la celda seca más cercana: ${JSON.stringify(secas[0])} con wet ` +
+        `${(secas[0] === undefined ? -1 : humedadDeLaCelda(o, secas[0])).toFixed(4)}, a 1 celda\n` +
+        `  HUMEDAD_QUE_APAGA = ${String(HUMEDAD_QUE_APAGA)}\n${filas.join('\n')}\n` +
+        `  la de la orilla cruza el 0,45 en el tick ${String(cruzoLaDeLaOrilla)} ` +
+        `y el pescado no llega a la mano hasta el 96: pierde la carrera por ` +
+        `${String(96 - cruzoLaDeLaOrilla)} ticks\n`,
+    );
+
+    // La celda de la escena NO es seca para lo que la yesca necesita…
+    expect(humedadDeLaCelda(o, o.parada)).toBeGreaterThan(HUMEDAD_QUE_APAGA);
+    // …y hay una de verdad seca a una celda de ahí.
+    expect(secas[0]).toBeDefined();
+    expect(humedadDeLaCelda(o, secas[0] ?? o.parada)).toBeLessThan(HUMEDAD_QUE_APAGA);
+    // La de la orilla se ahoga ANTES de que la criatura tenga el pescado…
+    expect(cruzoLaDeLaOrilla).toBeGreaterThan(0);
+    expect(cruzoLaDeLaOrilla).toBeLessThan(96);
+    // …y la de al lado no se ahoga nunca.
+    expect(hum('seca')).toBeLessThan(HUMEDAD_QUE_APAGA);
+    MEDIDO.set(
+      'la humedad',
+      `la celda de la escena mide wet ${humedadDeLaCelda(o, o.parada).toFixed(4)} y la yesca cruza el ` +
+        `${String(HUMEDAD_QUE_APAGA)} en el tick ${String(cruzoLaDeLaOrilla)}, ${String(96 - cruzoLaDeLaOrilla)} ` +
+        `ticks antes de que el pescado llegue a la mano. A una celda hay wet 0,1500`,
+    );
+  }, 300_000);
+
+  it('DIAGNÓSTICO 9 · EL FUEGO MÁS BARATO CUESTA MÁS QUE EL TANQUE QUE LA ESCENA LE DA: 485 contra 310', () => {
+    // ─── LA PARED QUE NO ES DE MATERIA NI DE HUMEDAD: ES DE PLATA ──────────
+    //
+    // La ventana de potencia del contacto empieza en 105,42, y para llegar ahí hace
+    // falta una vara de al menos 0,3506875 kg de madera (`emitsPower = fuelEnergy ×
+    // mass × 16,7`). Frotar cobra `heatCapacity × ΔT / eficiencia`, y para esa vara
+    // eso es 0,3507 × 1,7 × (300 − 15) / 0,35 = **485,45 de aliento**.
+    //
+    // La escena del documento le da **310**. Y los 310 no son de gusto: están
+    // elegidos —dice el comentario de `laEscenaDelDocumento`— porque con el tanque
+    // lleno D3 no elige comida. O sea que la escena la pone hambrienta para que
+    // QUIERA cocinar, y con eso mismo la deja sin plata para PODER.
+    //
+    // Medido en el mundo, con una vara de 0,40 kg: frotar le saca 11,7071 por tick
+    // durante 26 ticks, se queda en cero en el tick 132 y la innata lo dice con el
+    // número adentro: «me quedé sin aliento a 169.45958054934604 de 300». Le faltaron
+    // 130 grados de los 285 que hay que subir.
+    //
+    // Esto NO se arregla en la mente y hay que decirlo: o la eficiencia de frotar
+    // sube, o el tanque de la escena sube, o la ventana del contacto baja. Las tres
+    // son decisiones de otro y ninguna se toma acá.
+    const p = new Partida(conLenaSeca(310), { vigilar: true });
+    const lena = p.state.bodies.get('lena0');
+    if (lena === undefined) throw new Error('la escena no tiene leña');
+    // Los tres números que la cuenta usa, VERIFICADOS contra el motor.
+    expect(qualityOf(lena.body, 'ignitionPoint', p.state.phys)).toBe(IGNICION_MADERA);
+    expect(qualityOf(lena.body, 'heatCapacity', p.state.phys)).toBeCloseTo(0.4 * CALOR_ESPECIFICO_MADERA, 10);
+    const cuestaLaMasChica =
+      (YESCA_MAS_CHICA * CALOR_ESPECIFICO_MADERA * (IGNICION_MADERA - AMBIENTE)) / EFICIENCIA_DE_FROTAR;
+
+    const m = new Mente({ actor: 'ana', memoria: new Creencias() });
+    const mentes = new Map([['ana', m]]);
+    let porTickDeFrotar = 0;
+    let ticksFrotando = 0;
+    let murioEn = -1;
+    let anterior = aliento(p, 'ana');
+    // ─── LA TEMPERATURA SE MIDE COMO MÁXIMO Y SOBRE TODAS LAS LEÑAS ──────────
+    //
+    // Y las dos cosas hacen falta. La primera versión de este test leía `lena0` al
+    // final de la corrida y imprimía 15,00 °C: la criatura había frotado `lena1` —el
+    // planificador elige por su propio orden, no por el mío— y, muerta ella, la leña
+    // se había enfriado sola hasta el ambiente. El máximo sobre las cuatro contesta
+    // «hasta dónde llegó a calentar», que es la pregunta.
+    let hastaDonde = 0;
+    // Y el motivo con el que la innata se rinde trae el número adentro: se lee del
+    // `outcome` del vuelo que aterriza, que es lo único que lo dice.
+    let comoSeRindio = '';
+    let vueloAnterior: unknown;
+    for (let t = 0; t < 400 && murioEn < 0; t++) {
+      vivir(p, mentes, 1);
+      const enVuelo: unknown = p.vuelo('ana');
+      if (vueloAnterior !== undefined && enVuelo !== vueloAnterior) {
+        const o = (vueloAnterior as { outcome?: { ok: boolean; why?: string } }).outcome;
+        if (o?.ok === false && (o.why ?? '').includes('aliento')) comoSeRindio = o.why ?? '';
+      }
+      vueloAnterior = enVuelo;
+      for (const b of p.state.bodies.values()) {
+        if (!b.body.id.startsWith('lena')) continue;
+        const T = qualityOf(b.body, 'temperature', p.state.phys);
+        if (T > hastaDonde) hastaDonde = T;
+      }
+      if (!p.state.actors.has('ana')) {
+        murioEn = t;
+        break;
+      }
+      const ahora = aliento(p, 'ana');
+      if ((m.ultimoDespegue ?? '').startsWith('frotar') && anterior - ahora > 1) {
+        porTickDeFrotar = anterior - ahora;
+        ticksFrotando += 1;
+      }
+      anterior = ahora;
+    }
+
+    console.log(
+      `\n─── LO QUE CUESTA PRENDER EL FUEGO MÁS CHICO QUE COCINA ───\n` +
+        `  la yesca más chica de la ventana del contacto: ${YESCA_MAS_CHICA.toFixed(7)} kg de madera\n` +
+        `  heatCapacity ${(YESCA_MAS_CHICA * CALOR_ESPECIFICO_MADERA).toFixed(6)} · ` +
+        `ΔT ${String(IGNICION_MADERA - AMBIENTE)} · eficiencia ${String(EFICIENCIA_DE_FROTAR)}\n` +
+        `  → cuesta ${cuestaLaMasChica.toFixed(2)} de aliento, y la escena del documento le da 310\n` +
+        `  medido con una de 0,40 kg: ${porTickDeFrotar.toFixed(4)} por tick × ${String(ticksFrotando)} ticks, ` +
+        `murió en el ${String(murioEn)} y la leña no pasó de ${hastaDonde.toFixed(2)} °C de ${String(IGNICION_MADERA)}\n` +
+        `  ${comoSeRindio === '' ? '' : `y así se rindió la innata: «${comoSeRindio}»\n`}` +
+        `  ARNÉS DE INVARIANTES: ${String(p.violaciones.length)} estados ilegales\n`,
+    );
+
+    // La cuenta, dicha como afirmación: el fuego más barato que cocina cuesta MÁS
+    // que el tanque entero con el que la escena arranca.
+    expect(cuestaLaMasChica).toBeGreaterThan(310);
+    // Y en el mundo pasa exactamente eso: frotó, se quedó sin aliento y se murió con
+    // la leña tibia.
+    expect(murioEn).toBeGreaterThan(0);
+    expect(murioEn).toBeLessThan(200);
+    expect(hastaDonde).toBeLessThan(IGNICION_MADERA);
+    expect(porTickDeFrotar).toBeGreaterThan(10);
+    // Y la escena era legal: la leña está en celdas distintas.
+    expect(p.violaciones, p.violaciones.slice(0, 3).join(' | ')).toEqual([]);
+    MEDIDO.set(
+      'el precio del fuego',
+      `la yesca más chica que cocina cuesta ${cuestaLaMasChica.toFixed(2)} de aliento y la escena le da 310: ` +
+        `frotó ${String(ticksFrotando)} ticks a ${porTickDeFrotar.toFixed(4)}, murió en el ${String(murioEn)} con la ` +
+        `leña a ${hastaDonde.toFixed(2)} °C de ${String(IGNICION_MADERA)}`,
+    );
+  }, 300_000);
+
+  it('DIAGNÓSTICO 10 · CON EL TANQUE LLENO Y LEÑA SECA, LA CRIATURA COCINA Y COME — y la cuenta igual no cierra', () => {
+    // ═══ ESTE ES EL TEST QUE MIDE LO QUE EL TRAMO CONSIGUIÓ ═════════════════
+    //
+    // Sacadas las tres paredes de arriba —leña que existe, en celdas de verdad
+    // secas, y un tanque que alcance para pagarla— la cadena entera corre sola
+    // contra `stepWorld`, sin proveedor y sin que nadie le diga qué hacer. Los
+    // cuatro ticks que lo dicen, y son de la corrida:
+    //
+    //     tick 149   el primer cuerpo del mundo con `emitsPower > 0`  ← PRENDIÓ
+    //     tick 251   el primero con `digestibility >= 0,85` y calorías  ← COCINÓ
+    //     tick 257   el primer `tragar`, y aterriza con `ok: true`  ← COMIÓ
+    //
+    // (el bocado era el 457 hasta que la espera dejó de ser ciega; hoy la espera
+    // corta cuando la comida está lista —100 ticks en vez de 300— y el pescado se
+    // levanta del fuego seis ticks después de estar cocido en vez de cincuenta)
+    //
+    // **Es la primera vez en el proyecto que la criatura come algo que ella
+    // cocinó.** Las dos corridas anteriores medían 0 bocados y `-1` en los tres
+    // contadores.
+    //
+    // ─── Y LA MITAD QUE NO SE PUEDE LEER DE MÁS ────────────────────────────
+    //
+    // No sobrevive los 20.000. Come UNA vez y se muere en el 5627, y el motivo es
+    // aritmético y no de conducta: un pescado cocido de 2,887 kg tiene `calories`
+    // 21,81 (el de 2 kg, 15,11), y el fuego costó 485. **Un fuego vale veintidós
+    // pescados**, y una yesca de 0,40 kg se consume en veinte segundos mientras
+    // cocinar tarda cinco: alcanza para tres o cuatro. Cocinar, en esta física y
+    // por esta vía, pierde por un factor de entre 5 y 22.
+    //
+    // ─── Y ARREGLAR LA ESPERA NO LO MOVIÓ, QUE ES EL DATO ──────────────────
+    //
+    // La espera dejó de ser ciega —corta a los 100 ticks y no a los 300, o sea que
+    // le devuelve DIEZ de los veinte segundos que el fuego dura— y el resultado es
+    // el mismo: **UN bocado**, y muere en el 5627 en vez del 5744. El techo de
+    // «un fuego, un bocado» subió a tres o cuatro en teoría y en la corrida sigue
+    // siendo uno, porque después de frotar se queda con el tizón apagado en la mano
+    // y no le entra otra leña. Y la no-monotonía se agravó: con SEIS manos enciende
+    // dos fuegos y se muere en el **365** (era el 574), o sea quince veces antes que
+    // con tres. Cuando una capacidad extra empeora el resultado, lo que está mal es
+    // el signo de lo que esa capacidad habilita.
+    //
+    // Lo que eso quiere decir para el criterio (2) —que traducido a la moneda del
+    // mundo es «comé al menos una vez»— es que comer una vez NO alcanza: hay que
+    // comer mil de aliento, y el fuego se lleva medio tanque por adelantado. Y la
+    // salida NO es cocinar más rápido: eso ya se hizo y no alcanzó. Aun con la
+    // parada perfecta, un fuego da 20 s / 5 s = 4 piezas ≈ 81,5 de aliento contra
+    // 485 de costo: sigue siendo 6× negativo. Las dos salidas que quedan son (a) no
+    // volver a pagar el `frotar` —la ley 3 ya sabe propagar el fuego, medido en
+    // `world/tests/el-fuego-no-se-propaga.test.ts`, y el planificador no lo sabe— y
+    // (b) la calibración: `eficiencia` de la fricción (0,35) o
+    // `STAMINA_POR_CALORIA` (1). La (b) es decisión del usuario y no se toca acá.
+    const r = correr(conLenaSeca(1000), 'ana', 6000);
+    const bocados = [...r.cuenta]
+      .filter(([k]) => k.startsWith('comer') || k.startsWith('tragar'))
+      .reduce((a, [, v]) => a + v, 0);
+    const tragoBien = [...r.aterrizados]
+      .filter(([k]) => k.startsWith('comer') || k.startsWith('tragar'))
+      .reduce((a, [, v]) => a + v, 0);
+
+    console.log(
+      `\n─── LA CADENA ENTERA, CONTRA EL MUNDO ───\n` +
+        `  PRENDIÓ en el tick ${String(r.prendioEn)} · COCINÓ en el ${String(r.cocinoEn)} · ` +
+        `COMIÓ en el ${String(r.comioEn)} (con ${dos(r.alientoAntesDelBocado)} de aliento)\n` +
+        `  bocados ${String(bocados)}, de los cuales aterrizaron bien ${String(tragoBien)}\n` +
+        `  murió en el tick ${String(r.murioEn)} · ticks perdidos ${String(r.ticksPerdidos)}\n` +
+        `  aliento ${r.aliento.join(' ')}\n` +
+        `  los pasos de la cadena, en orden de despegue:\n` +
+        `      ${r.nombres.slice(0, 16).join(' → ')}\n` +
+        `  ARNÉS DE INVARIANTES: ${String(r.violaciones.length)} estados ilegales\n` +
+        `  ─── y por qué igual no llega ───\n` +
+        `  el fuego costó ~485 de aliento y un pescado cocido de 2,887 kg tiene calories 21,81:\n` +
+        `  un fuego vale 22 pescados, y la yesca de 0,40 kg dura 20 s cocinando de a 5.\n` +
+        `  con la espera que ya NO es ciega (100 ticks en vez de 300) el bocado se adelantó del\n` +
+        `  tick 457 al 257 y el conteo de bocados no se movió: sigue siendo UNO en 20.000.\n`,
+    );
+
+    // LOS TRES HECHOS, en orden, y cada uno leído del ESTADO DEL MUNDO.
+    expect(r.prendioEn).toBeGreaterThan(0);
+    expect(r.cocinoEn).toBeGreaterThan(r.prendioEn);
+    expect(r.comioEn).toBeGreaterThan(r.cocinoEn);
+    // Y el bocado no es un despegue: aterrizó bien. Es la regla del número 2 de los
+    // catorce —no midas el proxy, medí la cosa— aplicada a la boca.
+    expect(tragoBien).toBeGreaterThan(0);
+    // Y el mundo sobre el que se midió es legal.
+    expect(r.violaciones, r.violaciones.slice(0, 3).join(' | ')).toEqual([]);
+    expect(r.ticksPerdidos).toBe(0);
+    // Y LO QUE NO SE ABLANDA: con todo esto regalado, igual se muere. El criterio
+    // (2) no se cumple, y si algún día esta línea se pone roja es porque alguien
+    // arregló la aritmética y hay que ir a levantar el `it.fails` de arriba.
+    expect(r.murioEn).toBeGreaterThan(0);
+    MEDIDO.set(
+      'la cadena entera',
+      `PRENDIÓ en el ${String(r.prendioEn)}, COCINÓ en el ${String(r.cocinoEn)} y COMIÓ en el ` +
+        `${String(r.comioEn)} (${String(tragoBien)} bocado bien aterrizado) — la primera vez en el proyecto. ` +
+        `Y aun así muere en el ${String(r.murioEn)}: el fuego cuesta 485 y un pescado cocido devuelve 21,81`,
     );
   }, 300_000);
 
@@ -1763,6 +2439,12 @@ describe('los cuatro criterios, con los números de esta corrida', () => {
         `        A · ${l('eslabón A')}`,
         `        B · ${l('eslabón B')}`,
         `        y por qué muere antes que antes: ${l('deambular')}`,
+        '',
+        `      LAS TRES PAREDES DE MUNDO QUE QUEDAN, y la de aritmética:`,
+        `        7 · ${l('la leña')}`,
+        `        8 · ${l('la humedad')}`,
+        `        9 · ${l('el precio del fuego')}`,
+        `       10 · ${l('la cadena entera')}`,
         '',
         `      y con el eslabón regalado: ${l('regalado')}`,
         '',

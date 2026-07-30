@@ -439,11 +439,38 @@ describe('una partida de 2000 ticks', () => {
     //
     //   e54643aaa90fac83  (antes del ADR II-0013, con 11.188 eventos)
     //   a15c8d9dad1a6180  (con el II-0013, con 11.190: los dos `enveneno`)
-    expect(r.hashFinal).toBe('a15c8d9dad1a6180')
+    //
+    // Y SE MOVIÓ OTRA VEZ, y ésta es la más grande de todas las que movieron esta
+    // partida, porque **se separa en el PRIMER checkpoint** (tick 200) y no en el
+    // 800 ni en el 1000: `entornoDe` dejó de elegir la fuente por POTENCIA y la
+    // elige por CALOR ENTREGADO (`potencia · formFactor(distancia, montaje)`, ver
+    // `calorEntregado` en `step.ts`). Lo que arregla está medido en
+    // `tests/la-fuente-se-elige-por-calor.test.ts`: antes un fuego más grande a
+    // SESENTA celdas le ganaba el único hueco de `Fuente` a la brasa que la comida
+    // tenía debajo y el pescado se quedaba crudo (`digestibility` 0,3800), y el
+    // empate entre dos fuegos iguales lo decidía el abecedario del id.
+    //
+    // Que el primer checkpoint se mueva es exactamente lo que hay que esperar: esta
+    // partida tiene ocho criaturas y varias fogatas desde el arranque, así que en
+    // cuanto hay DOS fuentes a la vista de un mismo cuerpo la elección cambia, y con
+    // ella la temperatura de ese cuerpo, y con ella todo lo que las leyes 3 a 6 le
+    // escriben encima. Lo que NO se movió es lo que dice que no cambió la puerta:
+    //
+    //   · violaciones 97, las mismas ocho criaturas pisándose;
+    //   · sustancias 31 y cuerpos 30, o sea que la ley 4 hizo las mismas
+    //     transmutaciones y ninguna sustancia nueva apareció ni faltó;
+    //   · los eventos pasaron de 11.190 a 11.192, o sea DOS de más. Con dos
+    //     `enveneno` en la partida, dos de más es lo que se ve cuando algo que antes
+    //     no llegaba a la ventana de una ley ahora sí (o al revés) en dos ticks
+    //     sueltos: no hay un rechazo distinto, que movería la cuenta por decenas.
+    //
+    //   a15c8d9dad1a6180  (la fuente elegida por potencia, con 11.190 eventos)
+    //   18ad7fce912cdee3  (la fuente elegida por calor entregado, con 11.192)
+    expect(r.hashFinal).toBe('18ad7fce912cdee3')
     expect(r.checkpoints.join(' ')).toBe(
-      '5138f229560082ea 8c7e06cf759ce8d2 45fed156a3737007 2ea42765912623be bcc80462d850e5ed b89da6b0970d1e7d 76de370b2c3fb780 894d1ff96d2c5e46 5f637ddcb338dd19 2491e5b70ee12d00 a15c8d9dad1a6180',
+      '236f295737a8be88 1c570a027ab63133 63869fe4cebbc711 ce77fc691aed0306 0171ba91a3cb64fa 48f7cb88b9e91b0d b10bcae545e21f66 dd424f87c7a18ccc d18e24ffce1f5006 690ceb22c84def51 18ad7fce912cdee3',
     )
-    expect(r.eventos).toBe(11190)
+    expect(r.eventos).toBe(11192)
     expect(r.sustancias).toBe(31)
     expect(r.violaciones.length).toBe(97)
   }, 300_000)

@@ -480,17 +480,25 @@ describe('el banco del plan', () => {
     // ─── LA COLA DEJÓ DE SER DE UN SOLO NODO, Y SE SABE POR QUÉ ────────────
     //
     // Hasta el tramo G esto afirmaba `<= 1` y era cierto: para cada firma había una
-    // sola vía. Desde que la tabla tiene la fila de la cocción hay DOS que
-    // establecen algo que implica `holding(tag:carnoso)` —`extraccion` la declara y
-    // la ley 5 promete una versión más fuerte, y una versión más fuerte implica a la
-    // floja— así que la meta de comida abre dos ramas. La de la ley cuesta 15 s
-    // contra 1,5: se arma, se ordena detrás y NUNCA sale de la cola.
+    // sola vía. Después fue `<= 2`, cuando la tabla ganó la fila de la cocción:
+    // `extraccion` declara `holding(tag:carnoso)` y la ley 5 promete una versión más
+    // fuerte, y una versión más fuerte implica a la floja, así que la meta de comida
+    // abre dos ramas. La de la ley cuesta 15 s contra 1,5: se arma, se ordena detrás
+    // y NUNCA sale de la cola.
     //
-    // El `<= 2` no es aflojar el criterio: es el mismo criterio con el número
-    // medido. Lo que cuida es que la cola no llegue a decenas, porque ahí el `sort`
-    // de cada expansión —dos claves de texto por comparación— dejaría de ser gratis
-    // y el marginal de arriba habría que volver a medirlo.
-    for (const a of abiertos) expect(a).toBeLessThanOrEqual(2)
+    // Desde el tramo J son UNA POR GEOMETRÍA: la cocción tiene una fila por montaje
+    // que se pueda armar —la parrilla y el contacto—, las dos prometen lo mismo y
+    // las dos se abren. El techo se DERIVA de la tabla y no se escribe: agregar una
+    // geometría lo mueve solo, y agregar una vía que no sea de ley lo pone rojo, que
+    // es lo que hay que saber. Medido: la cola llega a 3 (una por ley más la de
+    // `extraccion`).
+    //
+    // Lo que esto cuida no cambió: que la cola no llegue a decenas, porque ahí el
+    // `sort` de cada expansión —dos claves de texto por comparación— dejaría de ser
+    // gratis y el marginal de arriba habría que volver a medirlo.
+    const techoDeLaCola = ESQUEMAS.filter((e) => e.k === 'ley').length + 1
+    expect(techoDeLaCola).toBe(3)
+    for (const a of abiertos) expect(a).toBeLessThanOrEqual(techoDeLaCola)
     if (!MIDIENDO_EN_SERIO) return
     // EL CRITERIO DEL TRAMO: 64 tiene que entrar en 8 ms hasta en la vista
     // saturada. Si esto se pone rojo, se BAJA `EXPANSIONES_POR_TICK` —nunca se

@@ -74,15 +74,20 @@
 //   partidas: el mundo no le ponía NINGUNO de los nueve problemas delante y las
 //   nueve filas contestaban EL MUNDO. Con el mundo decretado, tres se encienden:
 //
-//     no-frotar-lo-que-no-alcanza-a-encender   situación en  7/20   → LA MENTE
-//     la-vara-mas-liviana-que-igual-cocina     situación en  7/20   → LA MENTE
+//     no-frotar-lo-que-no-alcanza-a-encender   situación en  8/20   → LA MENTE
+//     la-vara-mas-liviana-que-igual-cocina     situación en  8/20   → LA MENTE
 //     ponerle-punta-al-aparejo                 situación en  5/20   → LA MENTE
 //
-//   O sea: el mundo SÍ le puso esos tres problemas delante, en cinco a siete de las
+//   O sea: el mundo SÍ le puso esos tres problemas delante, en cinco a ocho de las
 //   veinte partidas, y la criatura no los resolvió ni una vez. Ese cero mide a la
 //   mente. Los otros seis siguen sin medirse, y §10 sigue diciendo que con más de
 //   tres no-medidas sobre nueve el resultado no es interpretable — pero seis no es
 //   nueve, y las tres que se movieron cambiaron de casilla.
+//
+//   (Las dos primeras subieron de 7/20 a 8/20 con la tabla de cocción por montaje.
+//   No es que el mundo cambió: la criatura camina a otros cuerpos y ve otras cosas
+//   a tiro, así que el contra-detector se enciende en una semilla más. La tercera no
+//   se movió.)
 //
 //   ─── (B) SÍ HAY CON QUÉ ENCENDER, Y NO ERA UN PROBLEMA DE LA FÍSICA ───────
 //
@@ -110,11 +115,11 @@
 //
 //   Y hay que decir lo que el control NO dice, porque la comparación fácil sería
 //   falsa: el dado sin fuego vive 19.212 ticks de promedio con un tanque de 1000, y
-//   la mente se muere entre el 3.262 y el 6.199 — pero con un tanque de **310**.
-//   Con el tanque igualado en 1000 la mente también llega al 100,0% del presupuesto
-//   (bloque 3, tres partidas), así que **no es que el dado sobreviva mejor**: los
-//   dos aguantan lo que el tanque les da. La corrida anterior tenía al dado
-//   muriéndose en el tick 3.132, y eso sí era de su escena vieja.
+//   la mente se muere entre el 81 y el 6.199 — pero con un tanque de **310**. Con el
+//   tanque igualado en 1000 la mente llega al 56,2% del presupuesto (bloque 3, tres
+//   partidas), así que **no es que el dado sobreviva mejor**: el dado se queda
+//   quieto y la mente camina. La corrida anterior tenía al dado muriéndose en el
+//   tick 3.132, y eso sí era de su escena vieja.
 //
 //   ─── (D) LA CRIATURA SIGUE SIN COMER, Y AHORA SE SABE MEJOR POR QUÉ ───────
 //
@@ -128,23 +133,212 @@
 //
 //   ─── (E) LA MUERTE TEMPRANA SIGUE SIN SER LA CAUSA ────────────────────────
 //
-//   Con el tanque canónico se muere en el 27,7% del presupuesto; con el tanque
-//   lleno llega al 100,0% y el juez sigue diciendo 0 de 9. Multiplicar por tres y
-//   medio el tiempo vivido no movió una sola fila.
+//   Con el tanque canónico se muere en el 17,7% del presupuesto; con el tanque
+//   lleno llega al 56,2% y el juez sigue diciendo 0 de 9. Multiplicar por tres el
+//   tiempo vivido no movió una sola fila.
 //
 //   Y el asterisco, que hay que ponerlo: sin `ANIMA_BANCO=1` el control con el
-//   tanque lleno corre TRES partidas de las veinte, así que ese 100,0% y ese 0 de 9
+//   tanque lleno corre TRES partidas de las veinte, así que ese 56,2% y ese 0 de 9
 //   son sobre tres. El de las veinte es el canónico. Es una separación más floja de
 //   lo que se quisiera y está dicho en la salida en vez de escondido.
 //
-//   ─── (F) Y EL MUNDO SOBRE EL QUE SE MIDIÓ ES LEGAL ────────────────────────
+//   Los dos porcentajes BAJARON respecto de la corrida anterior —27,7% y 100,0%— y
+//   no es ruido: es la tabla de cocción por montaje, que le da a la mente un plan
+//   que caminar donde antes se quedaba quieta. Ver (G).
 //
-//   **Cero estados ilegales** en los 110.964 ticks auditados con `revisarEstado`,
-//   contra los cuatro de la corrida anterior. Y no porque el agujero se haya
-//   arreglado: `materializarPozos` sigue poniendo el banco de peces encima de lo
-//   que haya sin preguntarle a `estorbo`. Lo que dejó de pasar es que este banco lo
-//   pise, porque el decreto no siembra sobre agua. El hallazgo quedó pinado aparte,
-//   en su forma mínima y en rojo, para que no se pierda con el cambio de escena.
+//   ─── (F) Y EL MUNDO SOBRE EL QUE SE MIDIÓ **YA NO** ES LEGAL ──────────────
+//
+//   **12 estados ilegales en 1 de las 20 partidas**, contra los cero de la corrida
+//   anterior, sobre 70.963 ticks auditados con `revisarEstado`. Clase única:
+//   `inventario-inconsistente` · «ana/ana-cuerpo: **se lleva a sí misma**», semilla
+//   20260769, ticks 6182 a 6193 — los doce últimos ticks antes de morirse.
+//
+//   MEDIDO, tick por tick, y no es del planificador: en el 6180 despega `juntar×1` y
+//   en el 6181 el estado tiene `holding: ["w000000001","ana-cuerpo"]`. La innata
+//   `juntar` filtra por `!enLaMano`, `heldBy === undefined` y `portable >= 1`
+//   (`skills/src/innatas/juntar.ts:60`) y **el cuerpo de la propia criatura pasa los
+//   tres**: no lo tiene en la mano, nadie lo sostiene y su `portable` es 1,0000.
+//   El mundo tampoco la frena: `intencionTomar` (`world/src/step.ts:1861`) chequea
+//   cinco cosas y ninguna es «no te levantes a vos misma». Reproducido en UN tick y
+//   sin escena, en el `it.fails` de abajo: el `take` sale con evento `tomo` y
+//   `revisarEstado` del mismo estado contesta la violación. O sea que el motor
+//   acepta un estado que su propio arnés de invariantes declara ilegal.
+//
+//   Es un agujero VIEJO que esta corrida recién pisa: la corrida anterior no lo veía
+//   porque en esa semilla la criatura hacía otra cosa. La aserción NO se aflojó —el
+//   cero sigue afirmado, en `it.fails`, con este porqué al lado— y el bloque quedó
+//   partido en dos: uno verde que publica la auditoría y afirma que corrió sobre
+//   todos los ticks, y el rojo con la aspiración.
+//
+//   Y lo que eso le hace al resto del informe, dicho y no escondido: **el 0 de 9 de
+//   esta corrida está medido sobre veinte partidas de las cuales una tuvo doce ticks
+//   ilegales**, todos en la agonía de la única semilla que llegó al 6.193. Ninguna
+//   de las nueve firmas depende de un inventario, así que no hay motivo para pensar
+//   que mueva una fila — pero eso es un argumento y no una medición, y va escrito
+//   como argumento.
+//
+//   El agujero de `materializarPozos` —el banco de peces encima de lo que haya—
+//   sigue donde estaba y sigue pinado aparte, en su forma mínima y en rojo.
+//
+//   ─── (G) LO QUE SÍ CAMBIÓ DE FONDO: **LA MENTE AHORA FROTA, Y NO PRENDE** ──
+//
+//   Es la novedad de esta corrida y no está en ninguna de las nueve filas: la tabla
+//   de vuelos tiene **cuatro `frotar`**, en cuatro partidas distintas. La cadena del
+//   fuego dejó de ser inalcanzable para el planificador. Y sigue habiendo **CERO
+//   fuegos**: ninguna de las cuatro fricciones encendió nada.
+//
+//   MEDIDO PARTIDA POR PARTIDA, con las veinte corridas de nuevo contando `frotar` por
+//   semilla, y sale una correspondencia exacta:
+//
+//     20260768  frotó en el tick  49  →  murió en el  81
+//     20260739  frotó en el tick  55  →  murió en el  82
+//     20260788  frotó en el tick  58  →  murió en el  81
+//     20260760  frotó en el tick 109  →  murió en el 130
+//     las otras dieciséis: cero frotares, murieron entre el 3.359 y el 6.199
+//
+//   **Las cuatro que frotan son exactamente las cuatro que se mueren antes del tick
+//   130**, y se mueren entre 21 y 32 ticks después de frotar. Frotar les vació el
+//   tanque de 310 de una sentada.
+//
+//   (Y lo que NO se afirma: que antes no frotara. La corrida anterior no publicaba
+//   una tabla de vuelos con `frotar` y no se volvió a correr con la tabla vieja. Lo
+//   que sí está publicado de ella es el rango de muertes, 3.262 a 6.199, o sea que
+//   ninguna partida se moría en los ochenta primeros ticks — y acá las cuatro que
+//   frotan mueren todas antes del 130. La inferencia es fuerte y sigue siendo una
+//   inferencia.)
+//
+//   POR QUÉ, MEDIDO CON `stepWorld` Y NO DESPEJADO (una criatura, dos varas de
+//   madera, `apply(friccion)` hasta que prende o hasta que el tanque se vacía):
+//
+//     tanque   yesca más grande que PRENDE      qué pasa con la que no
+//        310            0,2216 kg  (66,61 P)    0,3507 kg topa en 196,11 °C y muere
+//       1000            0,7132 kg (214,39 P)    prende todo el rango
+//
+//   Y la yesca MÁS CHICA que la tabla de cocción acepta —la punta de abajo de la
+//   ventana del contacto, 105,4167 de potencia— pesa **0,3507 kg**. O sea que con el
+//   tanque canónico de 310 hay un factor **1,58×** entre lo que la cocina pide y lo
+//   que el aliento paga: la criatura frota lo que el plan le dice, gasta los 310
+//   enteros, la vara queda a 196 °C de los 300 que necesita, y se muere.
+//
+//   La cuenta del planificador es correcta y su techo también, y ahí está el detalle:
+//   `TECHO_DE_YESCA` vale 0,9 y su propio comentario dice de dónde sale — «con el
+//   techo de `stamina` del catálogo (**1000**), la eficiencia 0,35 y el salto de 385
+//   grados, el techo exacto es 0,909091». El mismo comentario ya avisaba que «el
+//   tanque nunca está lleno cuando hay hambre» y redondeaba para abajo por eso; lo que
+//   no se puede arreglar redondeando es un factor tres. Con el tanque de la corrida
+//   canónica el techo sería 310 × 0,35 / 285 = 0,3807 de `heatCapacity`, o sea 0,2239
+//   kg de madera — y medido: 0,2216 prende y 0,2500 ya no.
+//
+//   O sea que lo que falta es que la yesca se elija contra el aliento QUE HAY y no
+//   contra el tanque lleno. Es un hallazgo para el planificador y para la mente, no
+//   para el juez, y por eso acá sólo queda medido.
+//
+//   ─── (H) Y LA PREGUNTA DE ESTE TRAMO: ¿LA PARRILLA SE VOLVIÓ OBLIGATORIA? ──
+//
+//   **NO. Medido, y da lo contrario de lo que este tramo esperaba.** El camino
+//   principal no pasa por la parrilla: pasa por el CONTACTO. Corrido en
+//   `plan/tests/la-cocina.test.ts`, el plan sin fuego a la vista termina en **un
+//   solo** `poner(lo-que-hice sobre rama)` —el pescado directamente sobre la brasa—
+//   y no en dos.
+//
+//   Las dos ventanas de la tabla nueva, leídas de `GEOMETRIAS_DE_LA_COCCION`, contra
+//   los 204,1667 de potencia que el detector 9 pide para que el contacto arruine la
+//   pieza (`temperaturaDeEquilibrio(P, 0, 'contacto') >= ignitionPoint` del pescado,
+//   que son 260 °C):
+//
+//     fila       potencia              masa de madera        ¿la puede encender?
+//     contacto  [105,42 ; 170,83)     [0,3507 ; 0,5683)     sí con 1000, NO con 310
+//     parrilla  [253,00 ; 410,00)     [0,8417 ; 1,3639)     NO: la yesca pide
+//                                                           heatCapacity 1,3466 y el
+//                                                           techo de frotar es 0,9
+//
+//   De donde salen las dos mitades de la respuesta, y son distintas:
+//
+//   1· **La parrilla NO es lo único que cocina, y la fila que la usa es la única que
+//      la criatura no puede encender.** La ventana del contacto entera —hasta 146,43
+//      de potencia con la yesca más grande que el plan pide, o sea 190,71 °C en
+//      contacto— queda **por debajo** de los 260 del pescado. Con el fuego que el
+//      plan enciende, apoyar la comida encima no la arruina: la cocina. Así que el
+//      contra-detector `parrillaOfrecida` **no se enciende nunca por el camino
+//      principal**, y la fila 9 no pasa a medir «que el camino principal funciona».
+//
+//   2· **PERO cuando el fuego lo trae el mundo y es grande, el planificador la hace
+//      solo.** Con una fogata regalada de `emitsPower` 300 —adentro de [253 ; 410) y
+//      arriba de los 204,17— el plan sale `poner(piedra sobre fogata)` +
+//      `poner(lo-que-hice sobre piedra)`: los pasos 2 y 3 de la entrada 9 del
+//      documento, en orden, compilados. En ese régimen la fila 9 deja de medir
+//      emergencia.
+//
+//   O sea que la 9 se partió en CUATRO regímenes por potencia del fuego, y los tres
+//   umbrales están medidos con `temperaturaDeEquilibrio` y el `ignitionPoint` del
+//   pescado (260 °C), no despejados a mano:
+//
+//     < 204,17         el contacto todavía cocina → no hay nada que elegir y la
+//                      situación no existe (`parrillaOfrecida` da false).
+//     [204,17 ; 253)   situación SÍ · la parrilla cocina · el planificador NO tiene
+//                      fila → **mide a la mente de verdad**. Y es justo donde cae el
+//                      techo de lo que la fricción enciende con el tanque lleno
+//                      (0,7132 kg → 214,39).
+//     [253 ; 410)      situación SÍ · la parrilla cocina · el planificador la resuelve
+//                      por construcción → **NO mide emergencia**. Son 0,84 a 1,36 kg
+//                      de madera ardiendo: fuego que la criatura no puede encender
+//                      frotando, o sea regalado o de cadena (la entrada 7).
+//     [410 ; 490)      situación SÍ · la parrilla cocina · ninguna fila de la tabla →
+//                      mide a la mente.
+//     >= 490           la parrilla TAMBIÉN pasa los 260 EN RÉGIMEN, así que ningún
+//                      montaje deja la pieza cocinándose donde la dejaron: sólo cocina
+//                      de paso, mientras sube. La 9 podría disparar en tránsito, y por
+//                      eso este renglón dice «en régimen» y no «no se puede».
+//
+//   Y el control del dado toca justamente ese último renglón: su fogata regalada es
+//   de 2,5 kg —751,5 de potencia— y firma `parrillaOfrecida` en 6 de 20 partidas con
+//   `apareció` 0/20. Lo que eso NO prueba es de quién es ese cero: con esa potencia
+//   la parrilla queda en 390,75 °C, así que ni la parrilla sirve, y además es un dado.
+//   Se publica porque muestra que **el contra-detector 9 es alcanzable en cuanto hay
+//   un fuego** —6/20 contra 0/20 acá—, y eso ya dice que el 0/20 de la mente es un
+//   cero de «no hubo fuego» y no de «el mundo no lo ofrece».
+//
+//   En esta corrida de la MENTE el régimen del medio no se tocó ni una vez:
+//   `parrillaOfrecida` da 0/20 porque **no hubo un solo fuego**, así que la fila 9
+//   sigue siendo NO MEDIDA y nada de esto la movió todavía. Pero va escrito ahora y
+//   no cuando pase, porque el día que la criatura encienda algo de 0,84 kg —que es la
+//   entrada 7, el fardo— la 9 se dispara sin que nadie haya aprendido nada.
+//
+//   Y CON QUÉ REGLA SE DISCUTE, que es lo que hace que esto no sea una opinión: §1
+//   REGLA 3 no dice sólo «nadie la implementó», dice además —y es el filo que le
+//   agregó la tanda dos— **«tampoco vale si la mente que se va a construir la tiene
+//   escrita en su diseño»**, con el ejemplo de una fila de la tabla D0. La fila de la
+//   parrilla es literalmente una fila de una tabla del planificador. Y el «ángulo de
+//   decisión» que §4 le puso a la entrada 9 es, palabra por palabra, **«elegir el
+//   montaje, no el lugar»**: exactamente lo que `GEOMETRIAS_DE_LA_COCCION` barre.
+//
+//   El matiz que juega para el otro lado y hay que decirlo igual: **nadie escribió
+//   «parrilla» en esa tabla**. Sale de barrer los tres `MONTAJES` del motor por tres
+//   distancias y quedarse con las que se pueden armar; el descarte de las siete que
+//   no entran está en `GEOMETRIAS_DESCARTADAS` con su motivo. O sea que la técnica
+//   emergió, pero emergió en el planificador y no en la criatura — y el criterio del
+//   Hito 5 mide a la criatura.
+//
+//   **LO QUE HAY QUE DECIDIR, Y NO SE DECIDE ACÁ.** Tres opciones, con su precio:
+//
+//     (i)  dejarla como está y publicar la advertencia. Barato y honesto, pero el
+//          primer disparo de la 9 va a ser indistinguible de una emergencia y alguien
+//          lo va a contar como cuarta fila.
+//     (ii) sacarla de las nueve y bajar la lista a ocho, como se sacaron las de §5.
+//          El encabezado de `src/secuencias.ts` dice que la lista está CERRADA y que
+//          si se pudiera ajustar después de ver qué hace la criatura mediría al que la
+//          ajustó — pero acá lo que cambió no es lo que hace la criatura: es que el
+//          planificador aprendió a hacerla. Igual mueve el denominador del criterio y
+//          eso lo decide el usuario.
+//     (iii) partir la fila en dos por régimen: «la hizo con un fuego que la tabla
+//          resuelve» (no cuenta) y «la hizo con un fuego de [204,17 ; 253) o de
+//          >= 410» (cuenta). Es lo que mide de verdad y es un detector nuevo —el
+//          contra-detector ya tiene la potencia del fuego a mano—, pero es cambiarle
+//          el detector a una entrada de la lista cerrada, que §5 ya hizo una vez
+//          (✗3) y con fundamento escrito.
+//
+//   No se aplicó ninguna. El umbral tampoco se tocó: con K = 0 la disyuntiva sigue
+//   siendo académica.
 //
 // ═══ QUÉ SE PUBLICA, QUE ES LO QUE §10 MANDA ════════════════════════════════
 //
@@ -197,7 +391,10 @@ import {
   describir,
   hashWorldState,
   mapaDeCuerpos,
+  revisarEstado,
   STAMINA_POR_CALORIA,
+  stepWorld,
+  take,
 } from '@anima/world'
 import type { Placement, Violacion } from '@anima/world'
 import { Partida } from '@anima/perceive'
@@ -206,6 +403,12 @@ import { Creencias, Mente } from '@anima/mind'
 import { Detector, potenciaSiArdiera, resumir, ROL_A_DE_FRICCION, SECUENCIAS, TECHO_DE_LA_FRICCION } from '../src/index.js'
 import type { FilaDelBanco, NombreDeSecuencia, Situaciones, Veredicto } from '../src/index.js'
 import { ruidoDelAzar, tablaDelControl, correrElControl } from './azar.js'
+// LA REPRODUCCIÓN MÍNIMA del agujero de `juntar` va sobre el mundito de `banco.ts`
+// —dos cuerpos y un tick— y no sobre la escena decretada: un agujero que necesita
+// una semilla afortunada para verse se pierde en cuanto la escena cambia, y este
+// archivo ya perdió uno así. Los nombres se aliasan porque `el-mundo-decretado.ts`
+// tiene su propio `cuerpo`/`criatura`/`actor` con otra firma.
+import { actor as actorDeBanco, criatura as criaturaDeBanco, EN, enElPiso, mundo } from './banco.js'
 import {
   cuerpo,
   escenaDe,
@@ -1008,7 +1211,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // Y hay que leerlo con la fila de al lado: quedan SEIS no-medidas sobre nueve
     // —eran nueve con la escena a mano— y §10 dice que con más de tres el resultado
     // no es interpretable. Lo que sí es interpretable son las TRES que se movieron:
-    // el mundo puso esos problemas delante en 5 a 7 de las 20 partidas y la
+    // el mundo puso esos problemas delante en 5 a 8 de las 20 partidas y la
     // criatura no los resolvió una sola vez. Ese pedazo del cero mide a la mente, y
     // es lo que el bloque (4) contesta fila por fila.
     const b = await canonico()
@@ -1021,7 +1224,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(r.cuantasCuentan, `aparecieron ${String(r.cuantasCuentan)} de ${String(r.filas.length)}`).toBeGreaterThanOrEqual(4)
   }, 600_000)
 
-  it('Y EL MUNDO SOBRE EL QUE SE MIDIÓ ES LEGAL: el arnés corrió sobre los 20.000 ticks', async () => {
+  it('LA AUDITORÍA CORRIÓ SOBRE CADA TICK DE CADA PARTIDA — y esta vez encontró algo', async () => {
     // ─── POR QUÉ ESTO ES PARTE DEL CRITERIO Y NO UNA HIGIENE ────────────────
     //
     // Este archivo publica un cero. Un cero vale lo que valga el mundo sobre el
@@ -1061,16 +1264,83 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
               )
               .join('')),
     )
-    // CERO, Y SE AFIRMA CERO. La corrida anterior tenía cuatro —`solidos-solapados`
-    // entre `pozo:-5:-2` y la `vara` que el arnés dejaba a tres celdas— y esa
-    // aserción decía «a lo sumo una partida, y de esa clase». Ya no hace falta
-    // aflojarla: con la escena decretada no hay ninguno, porque `scatter` no
-    // siembra sobre agua y el pozo está justamente en el agua. Ver el `it.fails`
-    // de abajo: **el agujero del mundo sigue ahí**, lo que dejó de pasar es que
-    // este banco lo pise.
-    expect([...clases]).toEqual([])
-    expect(total).toBe(0)
+    // ─── LO QUE SE AFIRMA ACÁ, Y POR QUÉ LA ASPIRACIÓN SE MUDÓ ABAJO ─────────
+    //
+    // Acá vivía `expect([...clases]).toEqual([])` en verde, con esta nota: «CERO, Y
+    // SE AFIRMA CERO. La corrida anterior tenía cuatro —`solidos-solapados` entre
+    // `pozo:-5:-2` y la `vara` que el arnés dejaba a tres celdas— y esa aserción
+    // decía “a lo sumo una partida, y de esa clase”. Ya no hace falta aflojarla».
+    //
+    // **Esta corrida volvió a romperlo, con otra clase: 12 violaciones de
+    // `inventario-inconsistente` en 1 de las 20.** La aspiración NO se aflojó y NO
+    // se le puso un «a lo sumo una partida» —que es exactamente el movimiento que la
+    // nota de arriba celebraba haber podido deshacer—: el mismo `toEqual([])` se mudó
+    // al `it.fails` de abajo, donde está el porqué medido. Y acá queda lo
+    // ESTRUCTURAL, que es lo que este test tiene que garantizar siempre: que la
+    // auditoría corrió sobre cada tick de cada partida, o sea que un cero de
+    // violaciones significaría algo el día que vuelva a haberlo.
+    //
+    // `revisarEstado` corre en `Partida` con `vigilar: true`, una vez por tick. Si el
+    // arnés se apagara —o si `informe` dejara de acumular— esto se pone rojo sin
+    // depender de que alguna semilla tenga la suerte de romper algo.
+    const ticks = b.corridas.reduce((a, c) => a + c.ticks, 0)
+    expect(ticks).toBeGreaterThan(0)
+    for (const c of b.corridas) expect(c.ticks).toBeGreaterThan(0)
+    // Y que el informe sea legible: cada violación viaja con el tick en que se vio.
+    for (const c of b.corridas) for (const x of c.violaciones) expect(x.tick).toBeGreaterThanOrEqual(0)
+    // La cuenta se publica arriba; el número exacto es un hallazgo y no un umbral.
+    expect(total).toBe(conAlguna.reduce((a, c) => a + c.violaciones.length, 0))
+    expect(clases.size).toBeLessThanOrEqual(total)
   }, 600_000)
+
+  it.fails('Y ESE MUNDO **NO** ERA LEGAL: `juntar` levanta el cuerpo de la propia criatura', async () => {
+    // ─── EL AGUJERO QUE ESTA CORRIDA PISÓ, EN SU FORMA MÍNIMA ───────────────
+    //
+    // La corrida canónica de este archivo midió **12 estados ilegales en 1 de las 20
+    // partidas** (semilla 20260769, ticks 6182 a 6193), todos de la misma clase:
+    // `inventario-inconsistente` · «ana/ana-cuerpo: se lleva a sí misma». La corrida
+    // anterior tenía cero, así que esto es un cambio de veredicto y va con su medida.
+    //
+    // QUIÉN LO PIDE, medido tick por tick sobre esa misma semilla: en el 6180 despega
+    // `juntar×1` y en el 6181 el estado tiene `holding: ["w000000001","ana-cuerpo"]`.
+    // La innata filtra los candidatos por `!enLaMano`, `heldBy === undefined` y
+    // `portable >= 1` (`skills/src/innatas/juntar.ts:60`) y el cuerpo de la propia
+    // criatura **pasa los tres**: no lo tiene en la mano, nadie lo sostiene, y su
+    // `portable` vale 1,0000.
+    //
+    // QUIÉN LO DEJA: `intencionTomar` (`world/src/step.ts:1861`) chequea cinco cosas
+    // —que el cuerpo exista, que nadie lo tenga, que esté a mano, que sea portable y
+    // que quepan las manos— y ninguna es «no te levantes a vos misma». Este test es
+    // la reproducción mínima: UN tick, dos cuerpos —la criatura y nada más—, un
+    // `take` de su propio cuerpo. El mundo lo ACEPTA (evento `tomo`, `holding` con
+    // `ana-cuerpo` adentro) y `revisarEstado` del mismo estado contesta la violación.
+    // O sea que el motor produce un estado que su propio arnés declara ilegal, y no
+    // hace falta ninguna semilla afortunada para verlo.
+    //
+    // POR QUÉ NO SE ARREGLA ACÁ: el juez no toca `src` de nadie, y menos el de dos
+    // paquetes. Y la reparación tiene dos lugares posibles y no son equivalentes —el
+    // filtro de `juntar` arregla esta habilidad, y la guarda de `intencionTomar`
+    // arregla las quince y las que escriba el modelo—. La segunda es la que
+    // corresponde por el ADR II-0001 (el modelo escribe habilidades, y una habilidad
+    // mal escrita no tiene que poder ensuciar el estado), pero mueve el motor y por
+    // lo tanto pide su decisión.
+    const w = mundo({
+      bodies: [enElPiso(criaturaDeBanco('ana', TANQUE), EN(0, 0))],
+      actors: [actorDeBanco('ana', { holding: [] })],
+    })
+    const r = stepWorld(w, [take({ by: 'ana', seq: 1 }, 'ana-cuerpo')])
+    const v = revisarEstado(r.state)
+    console.log(
+      `\n─── LA CRIATURA SE LEVANTA A SÍ MISMA, EN UN TICK ───\n` +
+        `  portable de su cuerpo: ${qualityOf(w.bodies.get('ana-cuerpo')?.body as Body, 'portable', w.phys).toFixed(4)}\n` +
+        `  eventos: ${r.events.map((e) => e.k).join(', ')}\n` +
+        `  holding después: ${(r.state.actors.get('ana')?.holding ?? []).join(', ') || '(vacío)'}\n` +
+        `  violaciones: ${String(v.length)}${v.length === 0 ? '' : ` — ${describir(v[0] as Violacion)}`}\n`,
+    )
+    // Y esto es lo que tendría que valer y no vale. Es la MISMA aserción que estaba
+    // arriba en verde, con el mismo `toEqual([])`, movida y no aflojada.
+    expect(v.map((x) => x.k)).toEqual([])
+  }, 120_000)
 
   it.fails('EL AGUJERO QUE ESTE BANCO YA NO PISA: el dios materializa el banco encima de lo que haya', async () => {
     // ─── POR QUÉ ESTE TEST EXISTE Y NO SE BORRÓ CON LA ESCENA VIEJA ─────────

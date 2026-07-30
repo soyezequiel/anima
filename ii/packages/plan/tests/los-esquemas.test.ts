@@ -51,6 +51,7 @@ import { FRACCION_DE_HEBRA } from '@anima/world'
 import {
   ESQUEMAS,
   FIRMA_DE_LO_COCIDO,
+  GEOMETRIAS_DE_LA_COCCION,
   IGNICION_QUE_ALCANZA_FROTANDO,
   POTENCIA_QUE_COCINA_LO_CARNOSO,
   PUENTES,
@@ -59,6 +60,8 @@ import {
   TECHO_DE_LO_DESHILACHABLE,
   TECHO_DE_YESCA,
   VENTANA_CARNOSA,
+  YESCAS_DE_COCINA,
+  YESCAS_IMPOSIBLES,
   claveDeVia,
   esquemasPara,
 } from '../src/esquemas.js'
@@ -383,24 +386,39 @@ describe('(d) todo lo que no sale del catálogo está marcado como puente, con e
     expect(rotas).toEqual([])
   })
 
-  it('son cuatro, y cada una nombra el hallazgo que la hizo falta', () => {
+  it('son ocho, y cada una nombra el hallazgo que la hizo falta', () => {
     // El orden es el de la tabla, agrupado por vía, así que agregar una fila la
-    // corre acá y hay que venir a mirar. Las cuatro, y qué dice cada una que el
+    // corre acá y hay que venir a mirar. Las siete, y qué dice cada una que el
     // catálogo no dice:
     //
     //   catch>0            atar sin el rol `b` deja una punta suelta; `union` no lo declara
     //   emitsPower>0       cruzar el `ignitionPoint` hace fuente de calor; `friccion` no lo declara
+    //   emitsPower ACOTADO frotar puede hacer un fuego DE UN TAMAÑO, y el tamaño sale
+    //                      de acotar los dos factores del producto que es `emitsPower`
     //   heatCapacity<=0.9  deshilachar fabrica cosas LIVIANAS; `deshilachar` no lo declara
-    //   holding(...cocido) NINGUNA ley declara nada: no proponen, corren
+    //   holding(...cocido) ×3 — NINGUNA ley declara nada: no proponen, corren. Y son
+    //                      tres porque son tres geometrías, no tres promesas.
+    // Las dos puntas de la ventana son DOS filas y no una conjuntiva: ver
+    // `firmaDelPiso` en `esquemas.ts`, que explica que una llave conjuntiva apaga el
+    // portón de `sinVocabulario` en `@anima/mind`.
+    const laVentana = DE_PROCESO.filter(
+      (e) => e.via === 'friccion' && e.establishes.startsWith('emitsPower') && e.establishes !== 'emitsPower>0',
+    )
+    expect(laVentana.length, 'no están las dos filas del fuego acotado').toBe(2)
+    for (const e of laVentana) expect(e.establishes).not.toContain('&')
     expect(PUENTES.map((p) => p.establishes)).toEqual([
       'catch>0',
       'emitsPower>0',
+      ...laVentana.map((e) => e.establishes),
       'heatCapacity<=0.9',
-      FIRMA_DE_LO_COCIDO,
+      ...DE_LEY.map(() => FIRMA_DE_LO_COCIDO),
     ])
-    // Y el único puente que no va por un proceso es el de la ley: si mañana
-    // apareciera otro, entra acá y hay que verificarlo contra el mundo igual.
+    // Los puentes que no van por un proceso son los de la ley, uno por geometría: si
+    // mañana apareciera otro, entra acá y hay que verificarlo contra el mundo igual.
     expect(PUENTES.filter((p) => p.por.startsWith('ley:')).length).toBe(DE_LEY.length)
+    // DOS y no tres: el montaje `piso` se barre y se descarta, porque es la AUSENCIA
+    // de apoyo y una pila es una lista de apoyos. Ver `GEOMETRIAS_DESCARTADAS`.
+    expect(DE_LEY.length).toBe(2)
   })
 })
 
@@ -573,14 +591,18 @@ describe('(e) el puente de la cocción: la parrilla sale de la resta', () => {
     )
   })
 
-  it('DE LOS TRES MONTAJES, UNO SOLO CAE ADENTRO — y por eso la pila tiene tres', () => {
-    // ─── EL RESULTADO QUE NADIE ESCRIBIÓ ───────────────────────────────────
+  it('LA MISMA FOGATA COCINA, QUEMA O NO HACE NADA SEGÚN DÓNDE SE APOYE', () => {
+    // ─── EL RESULTADO QUE REORDENA EL PROBLEMA ─────────────────────────────
     //
     // La fogata que el Hito 0 calibró tiene `emitsPower` 300. Con las tres
     // exposiciones del motor y el acoplamiento con el ambiente, esa misma fogata
     // deja la comida en tres temperaturas muy distintas según cómo se apoye, y sólo
-    // una de las tres está adentro de la ventana de arriba. La palabra «parrilla»
-    // no aparece en ninguna regla: es lo único que sobrevive a la resta.
+    // una de las tres está adentro de la ventana de arriba.
+    //
+    // Acá esto se leía como «la parrilla es LA geometría». Leído al revés —que es
+    // como hay que leerlo, porque el fuego lo trae la suerte y el lugar lo pone la
+    // mano— dice otra cosa: **la parrilla es la geometría DE ESA fogata**, y cada
+    // fuego tiene la suya. Por eso hay una fila por montaje y no una sola.
     const FOGATA = 300
     const t = (m: 'piso' | 'parrilla' | 'contacto'): number => temperaturaDeEquilibrio(FOGATA, 0, m)
     const adentro = (x: number): boolean => x >= VENTANA_CARNOSA.piso && x < VENTANA_CARNOSA.techo
@@ -591,13 +613,10 @@ describe('(e) el puente de la cocción: la parrilla sale de la resta', () => {
     // arriba el `contacto`. Sin esto, los dos podrían estar fuera por la misma punta.
     expect(t('piso')).toBeLessThan(VENTANA_CARNOSA.piso)
     expect(t('contacto')).toBeGreaterThanOrEqual(VENTANA_CARNOSA.techo)
-    // La fila lo dice con la pila: fuego, parrilla y comida son tres, y el montaje
-    // `parrilla` del mundo es exactamente «apoyado sobre algo que está en la celda
-    // del fuego». Con dos sería `contacto` y se quemaría.
-    const coccion = DE_LEY.find((e) => e.establishes === FIRMA_DE_LO_COCIDO)
-    if (coccion === undefined) throw new Error('no está la fila de la cocción')
-    expect(coccion.pila.length).toBe(3)
-    expect(coccion.pila[coccion.pila.length - 1]).toBe(coccion.sujeto)
+    // Y la fogata de 300 cae, de las tres ventanas de la tabla, EXACTAMENTE en una:
+    // la de la parrilla. Eso es lo mismo dicho del lado de las filas.
+    const sirven = GEOMETRIAS_DE_LA_COCCION.filter((g) => FOGATA >= g.minima && FOGATA < g.maxima)
+    expect(sirven.map((g) => g.montaje)).toEqual(['parrilla'])
     console.log(
       `\n── LOS TRES MONTAJES SOBRE UNA FOGATA DE ${String(FOGATA)} ${'─'.repeat(24)}\n` +
         (['piso', 'parrilla', 'contacto'] as const)
@@ -611,40 +630,64 @@ describe('(e) el puente de la cocción: la parrilla sale de la resta', () => {
     )
   })
 
-  it('la ventana de POTENCIA del fuego no está vacía, y se escribe con sus dos bordes', () => {
-    const { minima, maxima } = POTENCIA_QUE_COCINA_LO_CARNOSO
-    expect(minima).toBeLessThan(maxima)
-    // El piso NO es el borde de abajo de la ventana de cocción, y ésa es la
-    // decisión: ahí la ley empuja a tasa cero (`k = (T − denaturesAt)/100`), así
-    // que el `mientras` sería infinito. Es el punto medio, que es el único punto
+  it('cada geometría tiene SU ventana, cada fila la escribe con sus dos bordes, y son dos', () => {
+    // El piso de cada ventana NO es el borde de abajo de la ventana de cocción, y
+    // ésa es la decisión: ahí la ley empuja a tasa cero (`k = (T − denaturesAt)/100`),
+    // así que el `mientras` sería infinito. Es el punto medio, que es el único punto
     // de adentro que los dos bordes determinan.
     const medio = (VENTANA_CARNOSA.piso + VENTANA_CARNOSA.techo) / 2
-    expect(temperaturaDeEquilibrio(minima, 0, 'parrilla')).toBeCloseTo(medio, 9)
-    expect(temperaturaDeEquilibrio(maxima, 0, 'parrilla')).toBeCloseTo(VENTANA_CARNOSA.techo, 9)
-    // Y el `roleHint` del rol `fuego` es exactamente esos dos bordes.
-    const coccion = DE_LEY.find((e) => e.establishes === FIRMA_DE_LO_COCIDO)
-    expect(coccion?.roleHints['fuego']).toEqual([
-      { q: 'emitsPower', op: '>=', v: minima },
-      { q: 'emitsPower', op: '<', v: maxima },
-    ])
-    console.log(
-      `\n── LA VENTANA DE POTENCIA ${'─'.repeat(42)}\n` +
-        `  [${minima.toFixed(4)} ; ${maxima.toFixed(4)}), ${(maxima / minima).toFixed(2)}× de ancho\n`,
-    )
+    expect(GEOMETRIAS_DE_LA_COCCION.length).toBe(2)
+    expect(GEOMETRIAS_DE_LA_COCCION.map((g) => g.montaje)).toEqual(['parrilla', 'contacto'])
+    const filas: string[] = []
+    for (const g of GEOMETRIAS_DE_LA_COCCION) {
+      expect(g.minima).toBeLessThan(g.maxima)
+      // Las dos puntas las contesta el MOTOR, no una copia de la fórmula.
+      expect(temperaturaDeEquilibrio(g.minima, g.distancia, g.montaje)).toBeCloseTo(medio, 9)
+      expect(temperaturaDeEquilibrio(g.maxima, g.distancia, g.montaje)).toBeCloseTo(VENTANA_CARNOSA.techo, 9)
+      // Y el `roleHint` del rol `fuego` de SU fila es exactamente esos dos bordes.
+      const fila = DE_LEY.find((e) => e.pila.join('>') === g.pila.join('>') && e.distancia === g.distancia)
+      expect(fila, `no está la fila de «${g.montaje}»`).toBeDefined()
+      expect(fila?.roleHints['fuego']).toEqual([
+        { q: 'emitsPower', op: '>=', v: g.minima },
+        { q: 'emitsPower', op: '<', v: g.maxima },
+      ])
+      filas.push(
+        `  ${g.montaje.padEnd(9)} d=${String(g.distancia)}  [${g.minima.toFixed(4)} ; ${g.maxima.toFixed(4)})  ` +
+          `${(g.maxima / g.minima).toFixed(2)}× de ancho  pila [${g.pila.join(' > ')}]`,
+      )
+    }
+    // El ancho relativo es el MISMO para las tres, y no es casualidad: la ley 1 es
+    // afín en la potencia, así que cambiar de montaje o de distancia escala la
+    // ventana entera sin deformarla. De ahí que un fuego que sirve para un montaje
+    // no sirva para otro por un factor, y no por poquito.
+    const anchos = GEOMETRIAS_DE_LA_COCCION.map((g) => g.maxima / g.minima)
+    for (const a of anchos) expect(a).toBeCloseTo(anchos[0] ?? 0, 9)
+    console.log(`\n── LAS TRES VENTANAS DE POTENCIA ${'─'.repeat(35)}\n${filas.join('\n')}\n`)
   })
 
-  it('LA CRIATURA PUEDE ENCENDER Y NO PUEDE, SÓLO CON ESO, COCINAR — medido', () => {
-    // ─── EL DATO INCÓMODO DEL TRAMO, Y NO SE ESCONDE ───────────────────────
+  it('y `POTENCIA_QUE_COCINA_LO_CARNOSO` sigue siendo la de la PARRILLA, que es lo que otros paquetes leen', () => {
+    // El nombre viejo se conserva porque `@anima/mind` lo lee. Lo que cambió es que
+    // ya no es LA ventana: es una de tres, y se cruza contra la fila que le
+    // corresponde para que no se despegue en silencio.
+    const parrilla = GEOMETRIAS_DE_LA_COCCION.find((g) => g.montaje === 'parrilla')
+    expect(POTENCIA_QUE_COCINA_LO_CARNOSO.minima).toBe(parrilla?.minima)
+    expect(POTENCIA_QUE_COCINA_LO_CARNOSO.maxima).toBe(parrilla?.maxima)
+  })
+
+  it('LA CRIATURA PUEDE ENCENDER, Y DE LAS TRES VENTANAS SÓLO LLEGA A UNA — medido', () => {
+    // ─── EL DATO QUE ORDENA EL TRAMO, Y NO SE ESCONDE ──────────────────────
     //
-    // Los dos puentes de `friccion` se tocan: uno dice hasta dónde se puede
-    // encender frotando (`heatCapacity <= 0,9`, el techo de la yesca) y el otro
-    // qué potencia hace falta para cocinar. La cuenta cierra sola y da que NO
-    // ALCANZA: la madera más pesada que se puede prender frotando emite la mitad
-    // de lo que la ley 5 necesita.
+    // Los puentes de `friccion` se tocan con los de la cocción: uno dice hasta dónde
+    // se puede encender frotando (`heatCapacity <= 0,9`, el techo de la yesca) y los
+    // otros qué potencia hace falta en cada lugar. La cuenta cierra sola:
     //
-    // De acá sale, sin que nadie lo escriba, que hay que hacer FUEGO MÁS GRANDE que
-    // la yesca —pasarle la llama a un leño, que es la ley 3— y eso todavía no tiene
-    // esquema. El `gap` de `plan()` lo dice con estas dos firmas al lado.
+    //   la madera más pesada que se prende frotando (0,5294 kg) emite 159,14
+    //   parrilla pide desde  253,00  → NO
+    //   contacto pide desde  105,42  → SÍ
+    //
+    // Mientras la tabla tuvo una sola fila —la de la parrilla— eso se leía como «la
+    // criatura sabe encender y no sabe cocinar», y era falso: sabía encender el
+    // fuego de cocinar EN CONTACTO y nadie le había escrito la geometría.
     const sh = q(cuerpo('m', 'madera', 1, 'vara'), 'heatCapacity')
     const masaMaxima = TECHO_DE_YESCA / sh
     const laMasGrande: Body = {
@@ -653,29 +696,70 @@ describe('(e) el puente de la cocción: la parrilla sale de la resta', () => {
     }
     const potencia = q(laMasGrande, 'emitsPower')
     expect(q(laMasGrande, 'heatCapacity')).toBeCloseTo(TECHO_DE_YESCA, 9)
-    expect(potencia).toBeGreaterThan(0)
-    expect(potencia).toBeLessThan(POTENCIA_QUE_COCINA_LO_CARNOSO.minima)
+    const alcanza = GEOMETRIAS_DE_LA_COCCION.filter((g) => potencia >= g.minima && potencia < g.maxima)
+    expect(alcanza.map((g) => g.montaje)).toEqual(['contacto'])
+    // Y la tabla lo dice sola: hay UNA yesca de cocina y una imposible, y la
+    // imposible no lo es por potencia sino por ALIENTO.
+    expect(YESCAS_DE_COCINA.length).toBe(1)
+    expect(YESCAS_IMPOSIBLES.length).toBe(1)
+    for (const y of YESCAS_IMPOSIBLES) expect(y.porque).toContain('no entra en el tanque')
     console.log(
       `\n── LO MÁS GRANDE QUE SE PRENDE FROTANDO ${'─'.repeat(28)}\n` +
         `  madera de ${masaMaxima.toFixed(4)} kg (heatCapacity ${TECHO_DE_YESCA.toFixed(2)}, el techo de la yesca)\n` +
-        `  ardiendo emite ${potencia.toFixed(4)} y cocinar pide ` +
-        `${POTENCIA_QUE_COCINA_LO_CARNOSO.minima.toFixed(4)}: falta ` +
-        `${(POTENCIA_QUE_COCINA_LO_CARNOSO.minima / potencia).toFixed(2)}×\n`,
+        `  ardiendo emite ${potencia.toFixed(4)}, y de las tres ventanas:\n` +
+        GEOMETRIAS_DE_LA_COCCION.map(
+          (g) =>
+            `    ${g.montaje.padEnd(9)} [${g.minima.toFixed(2)} ; ${g.maxima.toFixed(2)})  ` +
+            `${potencia >= g.minima && potencia < g.maxima ? '← ALCANZA' : `falta ${(g.minima / potencia).toFixed(2)}×`}`,
+        ).join('\n') +
+        '\n',
     )
   })
 
-  it('la parrilla tiene que aguantar el CONTACTO, que es la exposición más brava', () => {
+  it('la parrilla tiene que aguantar el CONTACTO, y sólo se la pide la fila que la usa', () => {
     // La parrilla no está en `parrilla`: está tocando el fuego. Le toca 0,6 y el
     // equilibrio más alto de los tres, y de ahí sale su única condición.
-    const coccion = DE_LEY.find((e) => e.establishes === FIRMA_DE_LO_COCIDO)
+    const conParrilla = DE_LEY.filter((e) => e.pila.includes('parrilla'))
+    expect(conParrilla.length).toBe(1)
+    const coccion = conParrilla[0]
     const pide = coccion?.roleHints['parrilla']?.[0]
-    if (pide === undefined) throw new Error('la fila de la cocción no le pide nada a la parrilla')
-    const peor = temperaturaDeEquilibrio(POTENCIA_QUE_COCINA_LO_CARNOSO.maxima, 0, 'contacto')
+    if (coccion === undefined || pide === undefined) throw new Error('la fila de la parrilla no le pide nada')
+    // El umbral sale de la ventana DE ESA FILA y no de una constante del módulo.
+    const suMaxima = coccion.roleHints['fuego']?.find((t) => t.op === '<')?.v ?? Number.NaN
+    const peor = temperaturaDeEquilibrio(suMaxima, 0, 'contacto')
     expect(pide).toEqual({ q: 'ignitionPoint', op: '>', v: peor })
     // La piedra entra y la madera no, que es lo que hace que una parrilla de madera
     // no sea una parrilla sino más leña.
     expect(q(cuerpo('p', 'piedra', 0.5, 'vara'), 'ignitionPoint')).toBeGreaterThan(peor)
     expect(q(cuerpo('w', 'madera', 0.5, 'vara'), 'ignitionPoint')).toBeLessThan(peor)
+
+    // ─── Y LO QUE ESTA CONDICIÓN NO DICE, QUE ES LA PREGUNTA INCÓMODA ───────
+    //
+    // El esquema no dice que la parrilla NO SEA COMIDA. Un `roleHints` es una lista
+    // de pruebas sobre cualidades y «no es lo que quiero cocinar» no es una
+    // cualidad, así que en principio el pescado de al lado calificaría de parrilla y
+    // el plan sacrificaría uno para asar el otro.
+    //
+    // Lo que cierra ese agujero HOY no es la fila: es el catálogo, y por eso se mide
+    // en vez de argumentarse. Las seis sustancias carnosas se prenden entre 220 y
+    // 300 °C, o sea muy por debajo de los 507 que la parrilla tiene que aguantar, así
+    // que ninguna pasa. Queda escrito para que el día que el oráculo invente una
+    // carne refractaria no parezca un accidente.
+    const carnosasQuePasarian = SUSTANCIAS_SEMILLA.filter(
+      (s) => s.tags.includes('carnoso') && (s.perUnitMass.ignitionPoint ?? 0) > peor,
+    ).map((s) => s.id)
+    expect(carnosasQuePasarian).toEqual([])
+    // Y la otra que no dice, dicha: que AGUANTE EL PESO. `footing` es una cualidad
+    // que existe (ley 8) y la fila no la mira. Hoy no muerde porque lo que se apoya
+    // pesa kilos y no toneladas.
+    expect(coccion.roleHints['parrilla']?.some((t) => t.q === 'footing')).toBe(false)
+    // Y las otras dos filas NO le piden nada a ninguna parrilla, porque no hay tercer
+    // cuerpo: un `roleHint` sobre un rol que la pila no nombra es una condición que
+    // nadie cumple, y `armarMarco` la rechaza. Esto lo ataja antes.
+    for (const e of DE_LEY) {
+      if (e.pila.includes('parrilla')) continue
+      expect(e.roleHints['parrilla']).toBeUndefined()
+    }
     console.log(`\n  la parrilla aguanta hasta ${peor.toFixed(2)} °C de contacto con el fuego más grande\n`)
   })
 

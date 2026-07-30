@@ -89,6 +89,7 @@ import {
   qualityOf,
   tagsDe as tagsDelMotor,
   specOf,
+  temperaturaDeEquilibrio,
   unir,
   HZ_DE_REFERENCIA,
   SUSTANCIAS_SEMILLA,
@@ -121,18 +122,38 @@ import type { BodyView } from '@anima/skills'
 
 import {
   AGUA_FRANCA,
+  COMBUSTIBLES_DE_FROTAR,
   ESQUEMAS,
+  GEOMETRIAS_DE_LA_COCCION,
+  GEOMETRIAS_DESCARTADAS,
   MASA_QUE_NO_ENTRA_EN_LA_MANO,
   NO_ENTRA_EN_LA_MANO,
   PISO_DE_PORTABLE,
-  POTENCIA_QUE_COCINA_LO_CARNOSO,
   SEGUNDOS_DE_COCCION,
   VENTANA_CARNOSA,
+  YESCAS_DE_COCINA,
+  YESCAS_IMPOSIBLES,
   claveDeVia,
   procesoDe,
 } from '../src/esquemas.js'
 import { cumpleCuerpo, interpretar } from '../src/predicado.js'
 import type { ConstructionSchema, EsquemaDeLey, EsquemaDeProceso, Predicado } from '../src/tipos.js'
+
+/**
+ * LA ÚNICA YESCA DE COCINA QUE LA TABLA GENERA, y el test la exige en singular.
+ *
+ * Si mañana hubiera dos, este `throw` lo dice en vez de que el banco se quede
+ * midiendo la primera y callando la otra. Que sea UNA es el resultado del tramo:
+ * de las tres ventanas de cocción, sólo la del contacto entra en el tanque de
+ * aliento — las otras dos están en `YESCAS_IMPOSIBLES` con su porqué.
+ */
+const YESCA_DE_COCINA = (() => {
+  const y = YESCAS_DE_COCINA[0]
+  if (y === undefined || YESCAS_DE_COCINA.length !== 1) {
+    throw new Error(`el banco esperaba UNA yesca de cocina y hay ${String(YESCAS_DE_COCINA.length)}`)
+  }
+  return y
+})()
 
 // ─── El banco ────────────────────────────────────────────────────────────────
 
@@ -246,12 +267,20 @@ interface Candidato {
 const CANDIDATOS: readonly Candidato[] = (() => {
   const vara = cuerpoDe('molde-vara', 'madera', 1, 'vara')
   const liviana = cuerpoDe('molde-liviana', 'madera', 0.2, 'vara')
+  // La yesca DE COCINA: la masa sale del punto medio de la banda que la fila de
+  // `emitsPower` acotado despeja, y no de un número lindo. Va TERCERA, después de la
+  // liviana, para que no le robe ningún rol a las filas viejas: todo lo que pedía
+  // «algo liviano y rígido» sigue quedándose con la de 0,2 kg, que es la primera que
+  // cumple. Sólo la fila nueva, que pide la masa por las dos puntas, llega hasta acá.
+  const media = (YESCA_DE_COCINA.masaMin + YESCA_DE_COCINA.masaMax) / 2
+  const yesca = cuerpoDe('molde-yesca-de-cocina', 'madera', media, 'vara')
   const hebra = cuerpoDe('molde-hebra', 'liana', 0.2, 'hebra')
   const cana = unir(vara, undefined, hebra, PHYS, 'molde-cana')
   if (cana === undefined) throw new Error('el banco no pudo atar la caña: `unir` cambió de forma')
   return [
     { nombre: 'vara de madera de 1 kg', body: vara, esElla: false },
     { nombre: 'vara de madera de 0,2 kg', body: liviana, esElla: false },
+    { nombre: `vara de madera de ${num(media)} kg (la yesca de cocina)`, body: yesca, esElla: false },
     { nombre: 'hebra de liana de 0,2 kg', body: hebra, esElla: false },
     { nombre: 'la caña (vara + hebra, sin `b`)', body: cana, esElla: false },
     { nombre: 'ella misma', body: criatura('molde', 1000), esElla: true },
@@ -586,8 +615,31 @@ const NADA: Medicion = {
   vista: false,
 }
 
+/**
+ * LAS CLÁUSULAS de lo que una fila promete, y son varias desde este tramo.
+ *
+ * `interpretar` contesta UNA —`Predicado` no tiene forma conjuntiva— y la fila que
+ * promete un fuego acotado por las dos puntas escribe `emitsPower>=105,42 &
+ * emitsPower<170,83`, que son dos. Se parte por `&` igual que `firmaDe` y se
+ * verifican TODAS: quedarse con la primera mediría media promesa, y la mitad que se
+ * caería es justo la del techo — la que separa cocinar de quemar.
+ */
+function interpretados(e: ConstructionSchema): readonly Predicado[] {
+  const out: Predicado[] = []
+  for (const trozo of e.establishes.split('&')) {
+    if (trozo.length === 0) continue
+    const p = interpretar(trozo)
+    if (p === undefined) throw new Error(`«${trozo}» no se interpreta: la fila «${e.establishes}» no se puede verificar`)
+    out.push(p)
+  }
+  const primero = out[0]
+  if (primero === undefined) throw new Error(`«${e.establishes}» no tiene ninguna cláusula que verificar`)
+  return out
+}
+
 function interpretado(e: ConstructionSchema): Predicado {
-  const p = interpretar(e.establishes)
+  const cl = interpretados(e)
+  const p = cl[0]
   if (p === undefined) throw new Error(`«${e.establishes}» no se interpreta: la fila no se puede verificar`)
   return p
 }
@@ -638,14 +690,19 @@ function medir(
   if (c === undefined) return NADA
 
   if (pred.k === 'cualidad') {
+    // TODAS las cláusulas de cualidad, y no sólo la primera: la fila del fuego
+    // acotado promete dos —el piso y el techo— y medir una sola diría «cocina» de un
+    // fuego que quema. El `valor` que se sigue a lo largo de la corrida es el de la
+    // primera, que es la que tiene el pico interesante.
+    const cualidades = interpretados(e).filter((p): p is Extract<Predicado, { k: 'cualidad' }> => p.k === 'cualidad')
     const v = qualityOf(c.body, pred.test.q, w.phys)
-    const ok = cumpleCuerpo(pred, vistaDe(c, w), lector)
+    const ok = cualidades.every((p) => cumpleCuerpo(p, vistaDe(c, w), lector))
     return {
       ok,
       sobre: c.body.id,
       valor: v,
-      medido: `${pred.test.q}=${num(v)}`,
-      umbral: `${pred.test.op} ${String(pred.test.v)}`,
+      medido: cualidades.map((p) => `${p.test.q}=${num(qualityOf(c.body, p.test.q, w.phys))}`).join(' · '),
+      umbral: cualidades.map((p) => `${p.test.op} ${String(p.test.v)}`).join(' ∧ '),
       como: '`cumpleCuerpo` (que entra por `qualityOf`)',
       vista: ok,
     }
@@ -769,28 +826,66 @@ interface PuestaDeLey {
 }
 
 /**
+ * EL BORDE DE ABAJO DE LA VENTANA QUE **ESTA** FILA DECLARA, leído de su `roleHint`
+ * y no de una constante del módulo.
+ *
+ * Desde que hay una fila por geometría, «el peor fuego admisible» es distinto para
+ * cada una —1054 en el piso, 253 en la parrilla, 105 en contacto— y leer una sola
+ * constante mediría una fila con la exigencia de otra. Que salga del `roleHint` es,
+ * además, lo que hace que el banco no pueda montar una situación que la fila no
+ * declara: el mismo número que el planificador va a pedir es el que se enciende.
+ */
+function potenciaDelBordeDeAbajo(e: EsquemaDeLey): number {
+  for (const t of e.roleHints['fuego'] ?? []) if (t.op === '>=' || t.op === '>') return t.v
+  throw new Error(`la fila «${claveDeVia(e)}» no le pone piso a la potencia del fuego: no hay peor caso que montar`)
+}
+
+/**
  * El mundo de una fila de ley: la pila que la fila declara, armada de abajo hacia
  * arriba con `supportedBy`, que es la misma lectura que hace `montajeDe`.
+ *
+ * El sujeto TIENE que estar en la pila —`emitirLey` rechaza la fila que lo deje
+ * afuera, porque `poner` sólo sabe apoyar— y acá se verifica antes de montar: una
+ * fila que el planificador no podría emitir no se puede verificar armándola a mano,
+ * porque estaría midiendo una situación que ningún plan va a producir.
  */
 function montarLey(e: EsquemaDeLey, sustancia: string): PuestaDeLey {
   const at: Placement = { x: 0, y: 0 }
-  const potencia = POTENCIA_QUE_COCINA_LO_CARNOSO.minima
+  const potencia = potenciaDelBordeDeAbajo(e)
   const masaDeLena = lenaQueEmite(potencia)
   const fuego: Body = {
-    ...cuerpoDe('fuego', 'madera', masaDeLena, 'vara'),
+    ...cuerpoDe(e.pila[0] ?? 'fuego', 'madera', masaDeLena, 'vara'),
     state: { temperature: IGNICION_DE_PRUEBA },
   }
-  const parrilla = cuerpoDe('parrilla', 'piedra', 0.5, 'bloque')
-  const comida = cuerpoDe('comida', sustancia, MASA_DE_LA_COMIDA, 'bloque')
+  // Un cuerpo por rol, y el rol dice de qué está hecho: el sujeto es la comida y
+  // todo lo que la fila apile en el medio es una piedra —que es lo único del
+  // catálogo que aguanta el contacto—. Nada de esto elige la geometría: la
+  // geometría la eligió la fila y acá se la copia.
+  const cuerpos: WorldBody[] = [{ body: criatura(ANA, 1000), at }, { body: fuego, at }]
+  const materia = new Map<string, Body>([[e.pila[0] ?? 'fuego', fuego]])
+  for (let i = 1; i < e.pila.length; i++) {
+    const rol = e.pila[i]
+    const debajo = e.pila[i - 1]
+    if (rol === undefined || debajo === undefined) continue
+    const body =
+      rol === e.sujeto
+        ? cuerpoDe(rol, sustancia, MASA_DE_LA_COMIDA, 'bloque')
+        : cuerpoDe(rol, 'piedra', 0.5, 'bloque')
+    materia.set(rol, body)
+    cuerpos.push({ body, at, supportedBy: debajo })
+  }
+  if (!e.pila.includes(e.sujeto)) {
+    throw new Error(
+      `la fila «${claveDeVia(e)}» deja su sujeto «${e.sujeto}» afuera de la pila: `.concat(
+        '`emitirLey` la rechaza, así que armarla acá mediría una situación que ningún plan produce',
+      ),
+    )
+  }
 
-  // Y se verifica que los tres cumplan lo que la fila les pide ANTES de correr: si
-  // el banco montara una situación que el esquema no declara, la tilde verde no
+  // Y se verifica que todos cumplan lo que la fila les pide ANTES de correr: si el
+  // banco montara una situación que el esquema no declara, la tilde verde no
   // mediría la fila sino al banco.
-  for (const [rol, body] of [
-    ['fuego', fuego],
-    ['parrilla', parrilla],
-    ['comida', comida],
-  ] as const) {
+  for (const [rol, body] of materia) {
     for (const t of e.roleHints[rol] ?? []) {
       const x = qualityOf(body, t.q, PHYS)
       if (!compara(x, t.op, t.v)) {
@@ -801,27 +896,29 @@ function montarLey(e: EsquemaDeLey, sustancia: string): PuestaDeLey {
       }
     }
   }
+  // Y la simétrica, que es la que ataja el error caro: que no haya ningún rol de la
+  // fila sin cuerpo. Sin esto, una fila que nombrara un rol que el banco no arma
+  // saldría verde midiendo una situación más chica que la que declara.
+  for (const rol of [...e.pila, e.sujeto]) {
+    if (!materia.has(rol)) throw new Error(`el banco no armó el rol «${rol}» de la fila «${claveDeVia(e)}»`)
+  }
 
   const w: WorldState = {
     tick: 0,
     hz: HZ_DE_REFERENCIA,
     phys: PHYS,
-    bodies: mapaDeCuerpos([
-      { body: criatura(ANA, 1000), at },
-      { body: fuego, at },
-      { body: parrilla, at, supportedBy: 'fuego' },
-      { body: comida, at, supportedBy: 'parrilla' },
-    ]),
+    bodies: mapaDeCuerpos(cuerpos),
     actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
     cells: new Map<CellKey, CellState>(),
     nextId: 1,
   }
   return {
     w,
-    sujeto: 'comida',
+    sujeto: e.sujeto,
     reparto:
+      `pila [${e.pila.join(' > ')}] · ` +
       `fuego=leña de ${num(masaDeLena)} kg ardiendo (emitsPower ${num(potencia)}, el borde de abajo) · ` +
-      `parrilla=piedra de 0,5 kg · comida=${sustancia} de ${String(MASA_DE_LA_COMIDA)} kg`,
+      `${e.sujeto}=${sustancia} de ${String(MASA_DE_LA_COMIDA)} kg`,
     potencia,
   }
 }
@@ -998,6 +1095,56 @@ function correrConRed(e: ConstructionSchema): Resultado {
   }
 }
 
+/**
+ * ─── LOS HUECOS ABIERTOS DE LA TABLA, CON SU MEDICIÓN ───────────────────────
+ *
+ * Una fila que hoy NO cumple lo que promete entra acá y su `it` se corre con
+ * `it.fails`: la afirmación es la misma —el peor caso admisible, sin aflojar una
+ * coma— y lo que cambia es que está declarado que falla y por qué. Una fila que se
+ * arregle y siga en esta lista pone rojo el test de abajo.
+ *
+ * ─── EL ÚNICO, Y ES UN HALLAZGO DEL TRAMO: EL FUEGO DE CONTACTO SE APAGA ────
+ *
+ * La fila del contacto es la única de las tres que una criatura puede encender —las
+ * otras dos piden yescas que no entran en el tanque de aliento— y por eso mismo es
+ * la que trabaja con la brasa MÁS CHICA: 0,3507 kg de leña en el borde de abajo de
+ * su ventana, contra 0,8417 de la parrilla y 3,5069 del piso. Y ahí muerde algo que
+ * ninguna de las otras dos siente: **el fuego se consume mientras cocina.**
+ *
+ * Medido, con el fuego en el borde de abajo (emitsPower 105,4167) y piezas de 2 kg:
+ *
+ *     grasa 2,00 s · huevo 3,60 · medula 4,85 · pescado 5,55 · carne 10,10 · molusco NUNCA
+ *     el fuego se apaga a los 17,55 s — `emitsPower` llega a 0,00
+ *
+ * Cinco de las seis carnosas cocinan, **incluido el pescado**, que es el que la
+ * cadena del Hito 5 consigue. La sexta, el molusco (`toughness` 0,55, el más alto
+ * del tag), se queda en `digestibility` 0,8396 y no llega nunca, porque para cuando
+ * la ley 5 lo empezó a empujar en serio el fuego ya se apagó. Y no es la masa de la
+ * comida: con moluscos de 0,5, 1, 1,5 y 2 kg el fuego se apaga a los 17,55 s igual y
+ * la digestibilidad topa en 0,8448 / 0,8431 / 0,8414 / 0,8396.
+ *
+ * Con el fuego a mitad de ventana (138,13, o sea 0,4595 kg de leña) el molusco SÍ
+ * cocina, en 7,50 s. O sea que el borde de abajo de la ventana está mal puesto para
+ * esta geometría y no para las otras dos, y la razón es que la ventana la calcula la
+ * ley 1 EN RÉGIMEN —una foto— mientras que la ley 3 vacía el tanque.
+ *
+ * ─── POR QUÉ NO SE ARREGLA ACÁ, Y QUÉ HARÍA FALTA ──────────────────────────
+ *
+ * La condición que falta es «que al fuego le quede combustible para todo el
+ * `mientras` CON MARGEN», y se puede decir: la reserva de un fuego es exactamente
+ * `emitsPower / 16,7` unidades de combustible, así que un piso de `emitsPower` es un
+ * piso de duración. Lo que no se puede es despejar CUÁNTO: la tasa es
+ * `COMBUSTIBLE_POR_SEGUNDO`, una constante PRIVADA de `physics/src/leyes.ts` que
+ * este paquete no ve, y el margen que hace falta está medido sólo por sus dos lados
+ * —1,17× de duración sobre `mientras` no alcanza, 1,84× sí—. Elegir un número ahí
+ * adentro sin bisecarlo sería inventar una calibración; ponerle el `it.fails` con
+ * las dos cotas medidas deja el trabajo hecho para quien la bisecte.
+ */
+const HUECOS_DE_LA_TABLA: Readonly<Record<string, string>> = {
+  'ley:desnaturalizacion:holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05):fuego>comida@0':
+    'el fuego del borde de abajo se apaga a los 17,55 s y el molusco topa en digestibility 0,8396',
+}
+
 const RESULTADOS = new Map<string, Resultado>()
 
 function resultadoDe(e: ConstructionSchema): Resultado {
@@ -1055,7 +1202,11 @@ describe('las diez filas de `ESQUEMAS`, cada una contra una partida de verdad', 
   })
 
   for (const e of ESQUEMAS) {
-    it(`«${e.establishes}» vía \`${claveDeVia(e)}\` queda establecido de verdad`, () => {
+    // Un hueco ABIERTO no se tapa aflojando la afirmación: se corre la MISMA
+    // afirmación y se declara que hoy falla, con el porqué medido al lado. Ver
+    // `HUECOS_DE_LA_TABLA`.
+    const corre = HUECOS_DE_LA_TABLA[claveDeVia(e)] === undefined ? it : it.fails
+    corre(`«${e.establishes}» vía \`${claveDeVia(e)}\` queda establecido de verdad`, () => {
       const r = resultadoDe(e)
       expect(r.error, `la fila no se pudo ni armar: ${r.error ?? ''}`).toBeUndefined()
       expect(
@@ -1066,6 +1217,15 @@ describe('las diez filas de `ESQUEMAS`, cada una contra una partida de verdad', 
       ).toBe(true)
     })
   }
+
+  it('la lista de huecos no tiene entradas de más: cada una nombra una fila que existe', () => {
+    // El error simétrico del `it.fails`, y es el que haría inútil a la lista: dejar
+    // una entrada vieja después de arreglar la fila convierte un `it` en `it.fails`
+    // para siempre, y un `it.fails` que pasaría es un test que nadie mira.
+    const filas = new Set(ESQUEMAS.map((e) => claveDeVia(e)))
+    expect(Object.keys(HUECOS_DE_LA_TABLA).filter((k) => !filas.has(k))).toEqual([])
+    expect(Object.keys(HUECOS_DE_LA_TABLA).length).toBe(1)
+  })
 })
 
 // ─── Lo que la tabla sola no dice ───────────────────────────────────────────
@@ -1376,39 +1536,46 @@ describe('lo que `cumpleCuerpo` no puede contestar sobre lo que este archivo fab
   })
 })
 
-// ─── EL CONTROL NEGATIVO DE LA PILA: LOS OTROS DOS MONTAJES NO COCINAN ──────
+// ─── LA MATRIZ: CADA FUEGO EN CADA LUGAR, CORRIDA EN EL MUNDO ───────────────
 //
-// La fila de la cocción declara una pila de TRES —fuego, parrilla, comida— y su
-// tilde verde por sí sola no dice que los tres hagan falta: podría estar cocinando
-// igual con dos, o con la comida tirada al lado del fuego. Acá se corren los otros
-// dos montajes que el mundo distingue, en el MISMO mundo y con el MISMO fuego, y
-// los dos tienen que salir mal — y por motivos DISTINTOS, que es lo que hace que la
-// parrilla no sea una comodidad sino la única geometría que sirve.
+// Acá vivía el control negativo de UNA pila: con la fogata que la fila de la
+// parrilla pide, el piso se quedaba corto y el contacto quemaba. Era cierto y era
+// media verdad, y la media que faltaba es la que reordenó el tramo: **eso no dice
+// que la parrilla sea la geometría buena, dice que ESE fuego pide la parrilla.**
+//
+// Lo que se corre ahora es la matriz entera: los tres fuegos que las tres filas
+// declaran (el borde de abajo de cada ventana) contra los tres montajes que el
+// mundo distingue. Nueve corridas, cero intenciones, y lo que tiene que salir es la
+// DIAGONAL: cada fuego cocina exactamente en el lugar de su fila, y fuera de ahí se
+// queda corto o quema.
 
-describe('la pila de tres no es una comodidad: los otros dos montajes fallan, y por motivos distintos', () => {
-  /** Corre `mientras` segundos con la comida puesta como diga el montaje. */
-  function correrMontaje(montaje: 'piso' | 'parrilla' | 'contacto'): {
+describe('la matriz de los tres fuegos por los tres lugares: lo que cocina es la diagonal', () => {
+  interface Corrida {
     readonly digestibilidad: number
-    readonly temperatura: number
     readonly pico: number
     readonly ardio: boolean
     readonly enVentana: number
-  } {
+  }
+
+  /** Corre `SEGUNDOS_DE_COCCION` con ese fuego y la comida puesta como diga el montaje. */
+  function correrMontaje(potencia: number, montaje: 'piso' | 'parrilla' | 'contacto'): Corrida {
     const at: Placement = { x: 0, y: 0 }
     const otra: Placement = { x: 1, y: 0 }
-    const masaDeLena = lenaQueEmite(POTENCIA_QUE_COCINA_LO_CARNOSO.minima)
+    const masaDeLena = lenaQueEmite(potencia)
     const fuego: Body = {
       ...cuerpoDe('fuego', 'madera', masaDeLena, 'vara'),
       state: { temperature: IGNICION_DE_PRUEBA },
     }
     const parrilla = cuerpoDe('parrilla', 'piedra', 0.5, 'bloque')
     const comida = cuerpoDe('comida', 'pescado', MASA_DE_LA_COMIDA, 'bloque')
-    // Los tres montajes que `montajeDe` sabe distinguir, dichos en geometría y no
-    // en un campo: en el piso de al lado, apoyada sobre la piedra que está sobre el
-    // fuego, o apoyada sobre el fuego mismo.
+    // Los tres montajes que `montajeDe` sabe distinguir, dichos en geometría y no en
+    // un campo: en la celda del fuego y apoyada en NADA, apoyada sobre la piedra que
+    // está sobre el fuego, o apoyada sobre el fuego mismo. El `piso` va en la MISMA
+    // celda —distancia 0— porque es lo que las filas declaran: alejarse es la otra
+    // variable, y las filas que la usarían están en `GEOMETRIAS_DESCARTADAS`.
     const cuerpos: readonly WorldBody[] =
       montaje === 'piso'
-        ? [{ body: fuego, at }, { body: comida, at: otra }]
+        ? [{ body: fuego, at }, { body: comida, at }]
         : montaje === 'contacto'
           ? [{ body: fuego, at }, { body: comida, at, supportedBy: 'fuego' }]
           : [
@@ -1440,37 +1607,252 @@ describe('la pila de tres no es una comodidad: los otros dos montajes fallan, y 
     const c = w.bodies.get('comida')
     return {
       digestibilidad: c === undefined ? Number.NaN : qualityOf(c.body, 'digestibility', w.phys),
-      temperatura: c === undefined ? Number.NaN : qualityOf(c.body, 'temperature', w.phys),
       pico,
       ardio,
       enVentana,
     }
   }
 
-  it('en el PISO se queda corta, en CONTACTO se prende fuego, y en la PARRILLA se cocina', () => {
-    const piso = correrMontaje('piso')
-    const parrilla = correrMontaje('parrilla')
-    const contacto = correrMontaje('contacto')
+  it('EL CRITERIO: cada fuego cocina en SU lugar, y fuera de su lugar se queda corto o quema', () => {
+    const MONTAJES_DEL_MUNDO = ['piso', 'parrilla', 'contacto'] as const
+    // Las TRES geometrías a distancia cero, no sólo las dos que la tabla genera. La
+    // del piso se descarta por VOCABULARIO —una pila no puede decir «apoyado en
+    // nada»— y no por física, así que el mundo la puede armar y hay que medirla: si
+    // resultara que su fuego cocina en cualquier lado, la ventana por geometría
+    // sería decorado. Las ventanas de las descartadas salen calculadas igual, que es
+    // justo para lo que `GEOMETRIAS_DESCARTADAS` guarda sus números.
+    const todas = [...GEOMETRIAS_DE_LA_COCCION, ...GEOMETRIAS_DESCARTADAS].filter((g) => g.distancia === 0)
+    expect(todas.length).toBe(MONTAJES_DEL_MUNDO.length)
+    const filas: string[] = [
+      '─── LA MATRIZ: TRES FUEGOS × TRES LUGARES, CORRIDOS EN EL MUNDO ───',
+      '  el fuego de cada fila es el BORDE DE ABAJO de su ventana; la comida es pescado de 2 kg',
+      '',
+      '  fuego de la fila │ potencia │      en el piso │    en parrilla │    en contacto',
+      '  ─────────────────┼──────────┼─────────────────┼────────────────┼───────────────',
+    ]
+    const veredictos = new Map<string, string>()
+    for (const g of todas) {
+      const celdas: string[] = []
+      for (const m of MONTAJES_DEL_MUNDO) {
+        const r = correrMontaje(g.minima, m)
+        const v = r.ardio ? 'QUEMA' : r.digestibilidad >= 0.85 ? 'cocina' : 'corto'
+        veredictos.set(`${g.montaje}/${m}`, v)
+        celdas.push(`${v} ${num(r.digestibilidad)}`.padStart(15))
+      }
+      filas.push(`  ${g.montaje.padEnd(16)} │ ${g.minima.toFixed(2).padStart(8)} │ ${celdas.join(' │ ')}`)
+    }
+    console.log(`\n${filas.join('\n')}\n`)
+
+    // LA DIAGONAL: cada geometría cocina en el montaje que declara. Es lo que hace
+    // que la ventana por geometría no sea una cuenta linda sino la cuenta correcta.
+    for (const g of todas) {
+      expect(veredictos.get(`${g.montaje}/${g.montaje}`), `${g.montaje} no cocinó en su propio montaje`).toBe('cocina')
+    }
+    // Y FUERA DE LA DIAGONAL nada cocina, que es la otra mitad: si cocinara igual en
+    // cualquier lado, tener una fila por geometría sería decorado.
+    const fuera: string[] = []
+    for (const g of todas) {
+      for (const m of MONTAJES_DEL_MUNDO) {
+        if (m === g.montaje) continue
+        const v = veredictos.get(`${g.montaje}/${m}`)
+        if (v === 'cocina') fuera.push(`el fuego de «${g.montaje}» también cocina en «${m}»`)
+      }
+    }
+    expect(fuera).toEqual([])
+    // Y falla por las DOS puntas y no siempre por la misma: más exposición que la de
+    // su fila quema, menos se queda corto. `EXPOSICION` ordena piso < parrilla <
+    // contacto, así que el veredicto tiene que seguir ese orden.
+    expect(veredictos.get('parrilla/piso')).toBe('corto')
+    expect(veredictos.get('parrilla/contacto')).toBe('QUEMA')
+    expect(veredictos.get('contacto/piso')).toBe('corto')
+    expect(veredictos.get('contacto/parrilla')).toBe('corto')
+    expect(veredictos.get('piso/parrilla')).toBe('QUEMA')
+    expect(veredictos.get('piso/contacto')).toBe('QUEMA')
+  })
+})
+
+// ─── EL HUECO DEL FUEGO QUE SE APAGA, ACOTADO POR LOS DOS LADOS ────────────
+//
+// El `it.fails` de arriba dice que la fila del contacto no cumple en el peor caso.
+// Un `it.fails` solo es información pobre: no dice si falla por poco o por todo, ni
+// si la cadena del Hito 5 se cae con él. Acá se acota, y las dos cotas son verdes.
+
+describe('el fuego de contacto se apaga: qué cocina igual y qué no', () => {
+  /** Cuántos segundos tarda esta sustancia, o `Infinity` si no llega. */
+  function tardanza(potencia: number, sustancia: string): { readonly s: number; readonly dig: number } {
+    const at: Placement = { x: 0, y: 0 }
+    const otra: Placement = { x: 1, y: 0 }
+    const fuego: Body = {
+      ...cuerpoDe('fuego', 'madera', lenaQueEmite(potencia), 'vara'),
+      state: { temperature: IGNICION_DE_PRUEBA },
+    }
+    const comida = cuerpoDe('comida', sustancia, MASA_DE_LA_COMIDA, 'bloque')
+    let w: WorldState = {
+      tick: 0,
+      hz: HZ_DE_REFERENCIA,
+      phys: PHYS,
+      bodies: mapaDeCuerpos([
+        { body: criatura(ANA, 1000), at: otra },
+        { body: fuego, at },
+        { body: comida, at, supportedBy: 'fuego' },
+      ]),
+      actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
+      cells: new Map<CellKey, CellState>(),
+      nextId: 1,
+    }
+    // Cuatro veces el `mientras` de la fila: darle exactamente `mientras` mediría
+    // «no entró en el presupuesto», y lo que hay que distinguir es «tarda más» de
+    // «no llega nunca porque el fuego se apagó».
+    const limite = Math.ceil(SEGUNDOS_DE_COCCION * 4 * HZ_DE_REFERENCIA)
+    let t = 0
+    let dig = 0
+    while (t < limite) {
+      w = stepWorld(w, []).state
+      t++
+      const c = w.bodies.get('comida')
+      if (c === undefined) break
+      dig = qualityOf(c.body, 'digestibility', w.phys)
+      if (dig >= 0.85) return { s: t / HZ_DE_REFERENCIA, dig }
+    }
+    return { s: Number.POSITIVE_INFINITY, dig }
+  }
+
+  it('cinco de las seis carnosas cocinan igual, y EL PESCADO —el del Hito 5— es una de ellas', () => {
+    const contacto = GEOMETRIAS_DE_LA_COCCION.find((g) => g.montaje === 'contacto')
+    if (contacto === undefined) throw new Error('no está la geometría del contacto')
+    const filas: string[] = []
+    const nollegan: string[] = []
+    for (const sustancia of sustanciasDelTag('carnoso')) {
+      const r = tardanza(contacto.minima, sustancia)
+      filas.push(
+        `  ${sustancia.padEnd(10)} ${Number.isFinite(r.s) ? `${r.s.toFixed(2)} s` : 'NO LLEGA'.padStart(7)} · ` +
+          `digestibility ${num(r.dig)}`,
+      )
+      if (!Number.isFinite(r.s)) nollegan.push(sustancia)
+    }
+    // Y el mismo fuego a mitad de ventana, que es la cota de arriba del hueco.
+    const medio = (contacto.minima + contacto.maxima) / 2
+    const conMedio = tardanza(medio, 'molusco')
     console.log(
-      `\n── LOS TRES MONTAJES, CORRIDOS EN EL MUNDO ${'─'.repeat(26)}\n` +
-        `  piso      pico ${num(piso.pico)} °C · digestibility ${num(piso.digestibilidad)} · ` +
-        `${String(piso.enVentana)} ticks en la ventana de la ley 5\n` +
-        `  parrilla  pico ${num(parrilla.pico)} °C · digestibility ${num(parrilla.digestibilidad)} · ` +
-        `${String(parrilla.enVentana)} ticks en la ventana\n` +
-        `  contacto  pico ${num(contacto.pico)} °C · digestibility ${num(contacto.digestibilidad)} · ` +
-        `${String(contacto.enVentana)} ticks en la ventana · ¿se prendió? ${contacto.ardio ? 'SÍ' : 'no'}\n` +
-        `  (el pescado cocina desde 55 °C y se prende a 260; crudo vale 0,380)\n`,
+      `\n── EL FUEGO DE CONTACTO EN SU BORDE DE ABAJO (${contacto.minima.toFixed(2)}) ${'─'.repeat(14)}\n` +
+        filas.join('\n') +
+        `\n  el mismo molusco con el fuego a mitad de ventana (${medio.toFixed(2)}): ` +
+        `${Number.isFinite(conMedio.s) ? `${conMedio.s.toFixed(2)} s` : 'NO LLEGA'}\n`,
     )
-    // La del medio es la que cumple, y las dos afirmaciones que la rodean fallan
-    // por las DOS puntas de la ventana y no por la misma.
-    expect(parrilla.digestibilidad).toBeGreaterThanOrEqual(0.85)
-    // Por abajo: en el piso nunca entra en la ventana, así que la ley 5 no corre.
-    expect(piso.enVentana).toBe(0)
-    expect(piso.digestibilidad).toBeCloseTo(0.38, 6)
-    // Por arriba: en contacto cruza el punto de ignición, que es donde la ley 5
-    // deja de correr y empieza la 3. Cocinar y quemar no son la misma cosa.
-    expect(contacto.ardio).toBe(true)
-    expect(contacto.pico).toBeGreaterThan(VENTANA_CARNOSA.techo)
+    // La cota de abajo del hueco: es UNO solo, y es el más duro del tag.
+    expect(nollegan).toEqual(['molusco'])
+    // La cota que importa para el criterio del Hito 5: lo que la criatura pesca.
+    expect(Number.isFinite(tardanza(contacto.minima, 'pescado').s)).toBe(true)
+    // Y la cota de arriba: no es que la geometría no sirva, es que el borde de abajo
+    // está mal puesto. Con más fuego —dentro de la MISMA ventana— el molusco cocina.
+    expect(Number.isFinite(conMedio.s)).toBe(true)
+  })
+})
+
+// ─── EL BARRIDO DE GEOMETRÍAS, LEÍDO ENTERO ────────────────────────────────
+//
+// La tabla no elige el montaje: barre `MONTAJES` por las distancias y se queda con
+// lo que se puede armar. Acá se imprime el barrido completo —las que entraron y las
+// que no, con su porqué— y se cruzan las dos afirmaciones que lo sostienen: que la
+// ventana de cada geometría es la que el motor contesta, y que el descarte es por
+// vocabulario de pasos y no por física.
+
+describe('el barrido de geometrías: qué se eligió, qué se descartó y con qué número', () => {
+  it('las que entran son las que una PILA puede armar, a distancia 0, y cada ventana la contesta el motor', () => {
+    expect(GEOMETRIAS_DE_LA_COCCION.map((g) => g.montaje).sort()).toEqual(['contacto', 'parrilla'])
+    for (const g of GEOMETRIAS_DE_LA_COCCION) expect(g.distancia).toBe(0)
+    // La ventana no se transcribe: se le pregunta a la ley 1 dónde cae cada punta.
+    // El piso de la ventana deja la comida en el PUNTO MEDIO de su ventana de
+    // cocción, y el techo justo en el `ignitionPoint` más bajo del tag.
+    const medio = (VENTANA_CARNOSA.piso + VENTANA_CARNOSA.techo) / 2
+    for (const g of GEOMETRIAS_DE_LA_COCCION) {
+      expect(temperaturaDeEquilibrio(g.minima, g.distancia, g.montaje)).toBeCloseTo(medio, 9)
+      expect(temperaturaDeEquilibrio(g.maxima, g.distancia, g.montaje)).toBeCloseTo(VENTANA_CARNOSA.techo, 9)
+    }
+    console.log(
+      `\n── EL BARRIDO DE GEOMETRÍAS ${'─'.repeat(40)}\n` +
+        GEOMETRIAS_DE_LA_COCCION.map(
+          (g) =>
+            `  ✓ ${g.montaje.padEnd(9)} d=${String(g.distancia)}  pila [${g.pila.join(' > ')}]  ` +
+            `fuego [${g.minima.toFixed(4)} ; ${g.maxima.toFixed(4)})`,
+        ).join('\n') +
+        '\n' +
+        GEOMETRIAS_DESCARTADAS.map(
+          (g) =>
+            `  ✗ ${g.montaje.padEnd(9)} d=${String(g.distancia)}  ` +
+            `fuego [${g.minima.toFixed(4)} ; ${g.maxima.toFixed(4)})  · ${g.porque}`,
+        ).join('\n') +
+        '\n',
+    )
+  })
+
+  it('lo descartado se descarta por el VOCABULARIO, y el mundo sí lo permitiría', () => {
+    // La distinción importa para el Hito 8: si el descarte fuera físico, no habría
+    // nada que pedirle a nadie. Es de VOCABULARIO —lo que `pila` y `Ref` saben
+    // decir— y por eso cada motivo nombra qué no se puede escribir. La prueba de que
+    // el mundo lo permitiría es doble: la ley 1 contesta una temperatura
+    // perfectamente razonable para las nueve combinaciones, y la matriz de arriba
+    // corre la del piso EN EL MUNDO y cocina.
+    expect(GEOMETRIAS_DESCARTADAS.length).toBe(7)
+    for (const g of GEOMETRIAS_DESCARTADAS) {
+      expect(Number.isFinite(temperaturaDeEquilibrio(g.minima, g.distancia, g.montaje))).toBe(true)
+    }
+    // Las tres del PISO —a cualquier distancia— se descartan porque una pila es una
+    // lista de apoyos y `piso` es la ausencia de apoyo.
+    const porApoyo = GEOMETRIAS_DESCARTADAS.filter((g) => g.montaje === 'piso')
+    expect(porApoyo.length).toBe(3)
+    for (const g of porApoyo) expect(g.porque).toContain('AUSENCIA de apoyo')
+    // Y las cuatro de `contacto` y `parrilla` a distancia, por lo simétrico: apoyarse
+    // es estar en la misma celda, así que esas filas no existen ni en el mundo.
+    const porCelda = GEOMETRIAS_DESCARTADAS.filter((g) => g.montaje !== 'piso')
+    expect(porCelda.length).toBe(4)
+    for (const g of porCelda) {
+      expect(g.distancia).toBeGreaterThan(0)
+      expect(g.porque).toContain('misma celda')
+    }
+  })
+
+  it('de las dos ventanas que la tabla arma, sólo UNA se puede encender frotando — y la otra dice por qué', () => {
+    // El resultado que reordena el problema, medido contra el catálogo: la yesca que
+    // haría falta para la parrilla NO ENTRA EN EL TANQUE de aliento. Nadie eligió el
+    // contacto: quedó solo.
+    expect(YESCAS_DE_COCINA.length).toBe(1)
+    expect(YESCAS_IMPOSIBLES.length).toBe(GEOMETRIAS_DE_LA_COCCION.length - 1)
+    for (const y of YESCAS_IMPOSIBLES) expect(y.porque).toContain('no entra en el tanque')
+
+    // Y la banda que sí entra se verifica CONTRA EL MOTOR, no contra el despeje: se
+    // arman los cuatro cuerpos de las esquinas (las dos puntas de la masa por las dos
+    // del poder calorífico), se los prende, y se les pregunta `emitsPower`.
+    const esquinas: string[] = []
+    for (const s of COMBUSTIBLES_DE_FROTAR) {
+      for (const masa of [YESCA_DE_COCINA.masaMin, YESCA_DE_COCINA.masaMax]) {
+        const b: Body = { ...cuerpoDe('yesca', s.id, masa, 'vara'), state: { temperature: IGNICION_DE_PRUEBA } }
+        const p = qualityOf(b, 'emitsPower', PHYS)
+        const c = qualityOf(b, 'heatCapacity', PHYS)
+        esquinas.push(`  ${s.id.padEnd(12)} ${num(masa)} kg → emitsPower ${num(p)} · heatCapacity ${num(c)}`)
+        // El piso se cumple con `>=` y el techo con `<`: la fila pide `mass < masaMax`,
+        // así que en el borde de arriba se admite la igualdad de la potencia.
+        expect(p).toBeGreaterThanOrEqual(YESCA_DE_COCINA.minima)
+        expect(p).toBeLessThanOrEqual(YESCA_DE_COCINA.maxima)
+      }
+    }
+    // Y que la yesca ENTRE en el tanque es la otra mitad: el precio de frotar es
+    // `heatCapacity × ΔT / eficiencia`, y por eso la fila la topa en 0,9.
+    const masaChica = YESCA_DE_COCINA.masaMin
+    const laMasBarata = COMBUSTIBLES_DE_FROTAR.map((s) =>
+      qualityOf(cuerpoDe('y', s.id, masaChica, 'vara'), 'heatCapacity', PHYS),
+    ).reduce((a, b) => (a < b ? a : b), Number.POSITIVE_INFINITY)
+    console.log(
+      `\n── LA YESCA DE COCINA, MEDIDA CONTRA EL MOTOR ${'─'.repeat(22)}\n` +
+        `  ventana [${YESCA_DE_COCINA.minima.toFixed(4)} ; ${YESCA_DE_COCINA.maxima.toFixed(4)}) → ` +
+        `fuelEnergy [${String(YESCA_DE_COCINA.fuelEnergyMin)} ; ${String(YESCA_DE_COCINA.fuelEnergyMax)}] · ` +
+        `masa [${YESCA_DE_COCINA.masaMin.toFixed(4)} ; ${YESCA_DE_COCINA.masaMax.toFixed(4)})\n` +
+        esquinas.join('\n') +
+        `\n  la más barata de encender cuesta heatCapacity ${num(laMasBarata)} contra el techo 0,9\n` +
+        YESCAS_IMPOSIBLES.map((y) => `  ✗ ${y.geometria.montaje}: ${y.porque}`).join('\n') +
+        '\n',
+    )
+    expect(laMasBarata).toBeLessThanOrEqual(0.9)
   })
 })
 

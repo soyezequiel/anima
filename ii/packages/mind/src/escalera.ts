@@ -720,10 +720,21 @@ function refsDe(i: Intencion): readonly Ref[] {
       return [i.que, i.en, ...(i.sobre === undefined ? [] : [i.sobre]), ...(i.tapando === undefined ? [] : [i.tapando])]
     case 'sostener':
       return [i.que]
-    // `juntar` y `explorar` hablan de `Where`, no de cuerpos; las dos conductas
-    // no nombran nada. No tienen nada que se pueda quedar viejo.
+    // `juntar` y `explorar` hablan de `Where`, no de cuerpos; `esperar` habla de
+    // segundos; las dos conductas no nombran nada. No tienen nada que se pueda
+    // quedar viejo.
+    //
+    // Y en `esperar` eso no es un descuido, es la mitad de por qué la cocción
+    // funciona: la espera del plan de cocinar dura 300 ticks, y si nombrara el
+    // pescado, `sigueEnPie` lo tendría que encontrar A LA VISTA en cada uno de
+    // ellos. El pescado está APOYADO SOBRE EL FUEGO durante toda la espera —no en
+    // la mano— así que cualquier tick en que la vista no lo alcanzara mataría el
+    // plan a mitad de la cocción. No nombrar nada es lo correcto por la misma
+    // razón que `juntar` no nombra: el paso no depende de ningún cuerpo, depende
+    // del reloj.
     case 'juntar':
     case 'explorar':
+    case 'esperar':
     case 'huir':
     case 'guarecerse':
       return []

@@ -22,32 +22,44 @@
 //
 //   · `it(...)`             → la cadena sale, con los pasos clavados.
 //   · `it.fails(...)`       → HUECO ABIERTO, con su «POR QUÉ SIGUE ABIERTO» y su
-//                             medición al lado. Hay uno y es `esperar`.
+//                             medición al lado. Acá decía «hay uno y es `esperar`»:
+//                             ese se cerró, y este archivo ya no tiene ninguno.
 //
 // ─── EL VEREDICTO, MEDIDO ───────────────────────────────────────────────────
 //
-// LA CADENA SALE ENTERA salvo el tiempo. Con un río y una fogata a la vista, once
+// LA CADENA SALE ENTERA, EL TIEMPO INCLUIDO. Con un río y una fogata a la vista, doce
 // pasos y nadie escribió ninguno de los dos verbos:
 //
 //     ir(vara) · sostener(vara) · ir(matorral) · sostener(matorral) ·
 //     unir(matorral+vara) · ir(pozo) · aplicar(extraccion) ·
 //     ir(fogata) · poner(piedra sobre fogata) · poner(lo-que-hice sobre piedra) ·
-//     sostener(lo-que-hice)
+//     esperar(15s) · sostener(lo-que-hice)
 //
 // La mitad de abajo es la pesca del Hito 5 y no la pidió nadie: sale de que una
 // ley mueve CUALIDADES y nada más, así que lo que la fila promete y no es una
 // cualidad —el tag— lo tenía que traer el sujeto. La mitad de arriba es la pila.
 //
-// LO QUE NO SALE ES LA ESPERA, y el motivo está medido: `Step` no tiene la
-// variante y agregarla rompe el typecheck de `@anima/mind` en dos líneas. Va con
-// `it.fails` y con los tres errores de `tsc` transcritos.
+// ACÁ DECÍA «lo que no sale es la espera», con los tres errores de `tsc` que costaba
+// agregarla a `Step` transcritos. Se agregó y los tres eran los tres. Y después la
+// espera aprendió a saber QUÉ está esperando: `Step.esperar.mirando` lleva el `Ref`
+// del sujeto y los `QualityTest` del `establishes` de la fila, despejados con
+// `interpretar`, y la innata corta cuando la comida está lista en vez de gastar la
+// cota entera. Medido contra `stepWorld`: 100 ticks de espera y no 300.
 //
-// Y SIN FUEGO A LA VISTA NO SALE, y el `gap` dice exactamente por qué: la criatura
-// SABE encender —el puente de `emitsPower>0` está en la tabla desde este tramo— y
-// lo que sabe encender es demasiado chico para cocinar. La cuenta cierra sola:
-// frotar sólo paga hasta `heatCapacity` 0,9 y eso, en madera, son 0,53 kg que
-// arden a 159 de potencia contra los 253 que la ley 5 pide. El eslabón que falta
-// no es hacer fuego: es pasarle la llama a un leño, que es la ley 3.
+// ─── Y SIN FUEGO A LA VISTA, AHORA TAMBIÉN SALE ─────────────────────────────
+//
+// Acá decía que no salía, y el `gap` lo explicaba así: «la criatura sabe encender,
+// y lo que sabe encender —0,53 kg de madera, 159 de potencia— es chico contra los
+// 253 que la ley 5 pide». La cuenta era correcta y la conclusión estaba mal, porque
+// esos 253 no son los que la ley 5 pide: son los que pide **la parrilla**, que era
+// la única geometría que la tabla tenía escrita. La ley 1 tiene tres variables
+// libres —potencia, montaje y distancia— y la tabla resolvía siempre por la única
+// que no se puede elegir cada vez: la potencia se elige UNA vez, al encender.
+//
+// Con una fila por montaje, esos mismos 159 caen adentro de la ventana del CONTACTO
+// ([105,42 ; 170,83)) y la cadena cierra sin fuego a la vista: se deshilacha, se
+// ata, se pesca, se frota una rama del tamaño justo y se apoya el pescado
+// DIRECTAMENTE SOBRE LA BRASA. Medido en el bloque 3.
 
 import { describe, expect, it } from 'vitest'
 
@@ -55,7 +67,13 @@ import type { QualityId } from '@anima/physics'
 import { evalQuality, specOf } from '@anima/physics'
 import type { BodyId, BodyView, Cell, CellQuality, Clock, SelfView, Tag, Where } from '@anima/skills'
 
-import { ESQUEMAS, FIRMA_DE_LO_COCIDO, POTENCIA_QUE_COCINA_LO_CARNOSO } from '../src/esquemas.js'
+import {
+  ESQUEMAS,
+  FIRMA_DE_LO_COCIDO,
+  GEOMETRIAS_DE_LA_COCCION,
+  SEGUNDOS_DE_COCCION,
+  YESCAS_DE_COCINA,
+} from '../src/esquemas.js'
 import { interpretar, textoDe } from '../src/predicado.js'
 import { plan } from '../src/regresion.js'
 import { PROFUNDIDAD_MAXIMA } from '../src/tipos.js'
@@ -201,6 +219,10 @@ function corto(s: Step): string {
       return 'juntar'
     case 'explorar':
       return 'explorar'
+    // El paso que este archivo pedía con un `it.fails` y ahora existe. Lleva los
+    // segundos adentro porque son lo único que dice: son el `mientras` de la fila.
+    case 'esperar':
+      return `esperar(${String(s.segundos)}s)`
   }
 }
 
@@ -260,6 +282,66 @@ function elRio(): VistaDelPlan {
       ['vara', { reach: 4, rigidity: 0.7, tensile: 0.55, flexibility: 0.2, heatCapacity: 1.7, mass: 1 }],
       ['pozo', { mass: 50 }],
       ['piedra', { mass: 0.5, ignitionPoint: 900, rigidity: 0.9 }],
+    ]),
+    mojadas: [{ x: 8, y: 0 }],
+  })
+}
+
+/**
+ * LA YESCA DE COCINA, con la masa leída de la tabla y no elegida.
+ *
+ * `YESCAS_DE_COCINA` es lo que `esquemas.ts` despeja: qué combustible da un fuego de
+ * la ventana que cocina. El escenario de abajo pone EXACTAMENTE eso —el punto medio
+ * de la banda de masa, con el poder calorífico de la madera— así que si mañana la
+ * banda se mueve, el escenario se mueve con ella en vez de quedar viejo en silencio.
+ */
+const YESCA = (() => {
+  const y = YESCAS_DE_COCINA[0]
+  if (y === undefined) throw new Error('la tabla no genera ninguna yesca de cocina: el escenario no tiene sentido')
+  return y
+})()
+
+/**
+ * EL MISMO RÍO, MÁS UNA RAMA DEL TAMAÑO JUSTO. Es el escenario del tramo.
+ *
+ * La diferencia con `elRio()` es UN cuerpo: una rama de madera que se puede frotar
+ * (`rigidity` 0,7), que arde (`fuelEnergy` 18, `ignitionPoint` 300, seca), que entra
+ * en el tanque de aliento (`heatCapacity` por debajo de 0,9) y que pesa lo que la
+ * tabla pide para que, ardiendo, emita una potencia adentro de la ventana del
+ * CONTACTO. Ni una condición más: no hay ningún cuerpo «fogata» prendido.
+ *
+ * Es el escenario que el `gap` del `emitsPower` decía que no se podía resolver.
+ */
+function elRioConLena(): VistaDelPlan {
+  const masa = (YESCA.masaMin + YESCA.masaMax) / 2
+  return vista({
+    self: criatura(),
+    cuerpos: [
+      cuerpo('matorral', 2, 0),
+      cuerpo('vara', 5, 0),
+      cuerpo('pozo', 8, 0),
+      cuerpo('piedra', 1, 0),
+      cuerpo('rama', 3, 0),
+    ],
+    qs: new Map<BodyId, Cualidades>([
+      ['matorral', { flexibility: 0.9, tensile: 0.72, mass: 3, reach: 1.2, rigidity: 0.1 }],
+      ['vara', { reach: 4, rigidity: 0.7, tensile: 0.55, flexibility: 0.2, heatCapacity: 1.7, mass: 1 }],
+      ['pozo', { mass: 50 }],
+      ['piedra', { mass: 0.5, ignitionPoint: 900, rigidity: 0.9 }],
+      [
+        'rama',
+        {
+          mass: masa,
+          // `heatCapacity = mass × specificHeat`, y el de la madera es 1,7. Se escribe
+          // el producto porque este mundito no tiene sustancias: lo que se copia es la
+          // aritmética del catálogo, no un número inventado.
+          heatCapacity: masa * 1.7,
+          fuelEnergy: 18,
+          ignitionPoint: 300,
+          moisture: 0.25,
+          rigidity: 0.7,
+        },
+      ],
     ]),
     mojadas: [{ x: 8, y: 0 }],
   })
@@ -331,6 +413,17 @@ describe('2 · con una fogata y una piedra, la cadena de cocinar sale', () => {
       // cuando el plan se arma, así que el paso lo nombra por lo que rindió el
       // `extraccion` de arriba y no por un id que todavía no hay.
       'poner(lo-que-hice sobre piedra)',
+      // ── Y EL TIEMPO, QUE ES EL PASO QUE FALTABA ─────────────────────────
+      //
+      // Acá abajo había un `it.fails` que decía «falta `esperar`, y por eso la
+      // comida se levanta en el mismo tick». Está cerrado, y lo que se midió
+      // cuando se cerró es la diferencia entre cocinar y no: con el `poner` y el
+      // `sostener` pegados, la ley 5 corría dos ticks y la `digestibility` del
+      // pescado no se movía de 0,3800 en veinte mil. Con la espera puesta, el
+      // mismo pescado sobre la misma leña llega a 0,8555 en cien ticks.
+      //
+      // Los 15 s no los elige este test: son el `mientras` de la fila.
+      `esperar(${String(SEGUNDOS_DE_COCCION)}s)`,
       // La ley deja la comida donde estaba: si lo que se prometió es sobre la MANO,
       // hay que volver a levantarla. El paso sale de la FORMA del predicado.
       'sostener(lo-que-hice)',
@@ -370,40 +463,51 @@ describe('2 · con una fogata y una piedra, la cadena de cocinar sale', () => {
     }
   })
 
-  it.fails('EL HUECO — falta `esperar`, y por eso la comida se levanta en el mismo tick', () => {
-    // ─── POR QUÉ SIGUE ABIERTO ─────────────────────────────────────────────
+  it('EL HUECO QUE SE CERRÓ: entre poner la comida y levantarla hay `esperar`, y dura lo que la fila dice', () => {
+    // ─── LO QUE ACÁ DECÍA, Y CÓMO SE CERRÓ ─────────────────────────────────
     //
-    // `Step` tiene diez variantes y ninguna es esperar. `tipos.ts` lo justificaba
-    // con que esperar «es conducta y no plan», que era cierto mientras nada del plan
-    // necesitara que pasara el tiempo. Con las leyes deja de serlo: **el tiempo ES
-    // el paso**, y la fila lo dice con todas las letras en su campo `mientras`.
+    // Esto era un `it.fails` titulado «falta `esperar`, y por eso la comida se
+    // levanta en el mismo tick». `Step` tenía diez variantes y ninguna era
+    // esperar; `tipos.ts` lo justificaba con que esperar «es conducta y no plan»,
+    // que era cierto mientras nada del plan necesitara que pasara el tiempo. Con
+    // las leyes dejó de serlo: **el tiempo ES el paso**, y la fila lo dice con
+    // todas las letras en su campo `mientras`.
     //
-    // QUÉ HARÍA FALTA, medido y no supuesto. Agregar
-    // `{ k: 'esperar'; segundos; porQue }` a `Step` y correr
-    // `pnpm --filter @anima/mind typecheck` da exactamente tres errores:
+    // El precio estaba medido acá y era exacto: tres errores de `tsc` —uno en
+    // `firmaDePaso` de este paquete y dos `switch` de `@anima/mind`, el de
+    // `refsDe` y el de `aHabilidad`—. Los tres eran los tres. La innata `esperar`
+    // ya existía y ya tomaba segundos: no faltaba física ni superficie, faltaba
+    // la costura, y era esto.
     //
-    //     mind/src/escalera.ts(609,32)   TS2366  Function lacks ending return statement
-    //     mind/src/mente.ts(185,77)      TS7030  Not all code paths return a value
-    //     plan/src/regresion.ts(1445,32) TS2366  ← éste es de este paquete
+    // ─── Y LO QUE SE MIDIÓ AL CERRARLO, QUE ES LA VARA DE LA MEJORA ────────
     //
-    // O sea: una línea en `tipos.ts`, un caso en `firmaDePaso` —los dos de acá— y
-    // DOS CASOS DE `switch` en `@anima/mind`, que es el paquete que traduce pasos a
-    // innatas. La innata `esperar` ya existe (`skills/src/innatas/esperar.ts`) y ya
-    // toma segundos: no falta física ni superficie, falta la costura.
+    // Con el `poner` y el `sostener` pegados, la corrida de veinte mil ticks de
+    // `@anima/mind` mostraba a la criatura apoyando el pescado sobre la fogata en
+    // el tick 151 y levantándolo en el 153. La ley 5 corría DOS ticks y la
+    // `digestibility` del pescado no se movía de 0,3800 en toda la corrida. Con
+    // la espera puesta, el mismo pescado sobre la misma leña de 0,40 kg llega a
+    // `digestibility` 0,8555 y `toxicity` 0,0323 a los cien ticks, y a
+    // 0,9432 / 0,0016 a los trescientos que la fila declara. La criatura comió
+    // por primera vez en el tick 457.
     //
-    // LA CONSECUENCIA, y es la que este `it.fails` mide: entre el `poner` y el
-    // `sostener` no hay nada, así que la criatura apoya el pescado y lo levanta en
-    // el tick siguiente. La ley 5 corre UN tick. No es que cocine mal: no cocina.
+    // Lo que este test afirma es el MECANISMO y no el número: que entre poner la
+    // comida y levantarla hay un paso, que ese paso es una espera, y que dura
+    // exactamente lo que la fila pide. Los grados los mide `@anima/world`.
     const pasos = pasosDe(plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE))
     const ultimoPoner = pasos.findIndex((s) => s.k === 'poner' && s.que.k === 'rinde')
     const recoge = pasos.findIndex((s) => s.k === 'sostener' && s.que.k === 'rinde')
     expect(ultimoPoner).toBeGreaterThanOrEqual(0)
     expect(recoge).toBeGreaterThan(ultimoPoner)
-    // Lo que DEBERÍA haber en el medio: la espera que la fila declara.
+    // Y en el medio hay exactamente un paso, que es la espera.
+    expect(recoge - ultimoPoner).toBe(2)
+    const enElMedio = pasos[ultimoPoner + 1]
+    expect(enElMedio?.k).toBe('esperar')
+    // Los segundos NO son de este test: salen del `mientras` de la fila.
     const fila = ESQUEMAS.find((e): e is EsquemaDeLey => e.k === 'ley' && e.establishes === FIRMA_DE_LO_COCIDO)
     if (fila === undefined) throw new Error('no está la fila de la cocción')
     expect(fila.mientras).toBeGreaterThan(0)
-    expect(recoge - ultimoPoner).toBeGreaterThan(1)
+    if (enElMedio?.k !== 'esperar') throw new Error('imposible')
+    expect(enElMedio.segundos).toBe(fila.mientras)
   })
 
   it('el plan NO menciona la ley por su nombre: lo que emite son posiciones', () => {
@@ -412,10 +516,17 @@ describe('2 · con una fogata y una piedra, la cadena de cocinar sale', () => {
     // fuego y una comida sobre la piedra, y el mundo hace el resto. El mismo emisor
     // sirve para secar (ley 11) o carbonizar (ley 4) el día que haya una fila.
     const pasos = pasosDe(plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE))
-    // Los cuatro últimos son los del marco de la ley, y son todos POSICIONES. Los de
-    // antes son los de la pesca, que sí van por procesos del catálogo.
-    const delMarcoDeLaLey = pasos.slice(-4).map((s) => s.k)
-    expect(delMarcoDeLaLey).toEqual(['ir', 'poner', 'poner', 'sostener'])
+    // Los CINCO últimos son los del marco de la ley: cuatro posiciones y el tiempo.
+    // Los de antes son los de la pesca, que sí van por procesos del catálogo.
+    //
+    // Eran cuatro hasta que `esperar` entró, y que el tiempo esté en esta lista es
+    // parte de lo que el test dice: la mente que ejecute esta cadena tampoco sabe
+    // que la cocción tarda. Le dicen «quedate hasta quince segundos, y andá mirando
+    // que esto suba a 0,85 y baje a 0,05» —el `mirando` del paso, que sale del
+    // `establishes` de la fila y no de un nombre de ley— y se queda. Sigue sin haber
+    // en ningún lado la palabra «cocinar».
+    const delMarcoDeLaLey = pasos.slice(-5).map((s) => s.k)
+    expect(delMarcoDeLaLey).toEqual(['ir', 'poner', 'poner', 'esperar', 'sostener'])
     // Y ningún `aplicar` nombra la ley: `desnaturalizacion` no es un `ProcessId`, y
     // si apareciera en un paso sería porque alguien la coló como proceso.
     const procesos = pasos.filter((s): s is Extract<Step, { k: 'aplicar' }> => s.k === 'aplicar')
@@ -427,44 +538,81 @@ describe('2 · con una fogata y una piedra, la cadena de cocinar sale', () => {
 // 3 · SIN FUEGO A LA VISTA: EL GAP DICE QUÉ FALTA, Y ES UN NÚMERO
 // ════════════════════════════════════════════════════════════════════════════
 
-describe('3 · sin fuego, el `gap` nombra la potencia que falta', () => {
-  it('«conseguir fuego» no cierra la cadena: lo que se enciende frotando es chico', () => {
-    // ─── EL DATO INCÓMODO DEL TRAMO, MEDIDO Y NO ESCONDIDO ─────────────────
+describe('3 · sin fuego: con una rama del tamaño justo la cadena CIERRA, y sin ella el `gap` dice otra cosa', () => {
+  it('EL CRITERIO DEL TRAMO: sin fuego a la vista, el plan lo enciende y pone la comida en CONTACTO', () => {
+    // ─── LO QUE ESTE TEST MIDE, Y POR QUÉ ES EL TRAMO ENTERO ───────────────
     //
-    // El río tiene con qué encender —una vara de madera para deshilachar y frotar—
-    // y la tabla tiene desde este tramo el puente de `emitsPower>0`. Y aun así la
-    // cadena de cocinar no cierra, porque las dos filas de `friccion` se tocan y la
-    // cuenta da que NO ALCANZA: frotar sólo paga hasta `heatCapacity` 0,9, que en
-    // madera son 0,53 kg, que ardiendo emiten 159 contra los 253 que la ley 5 pide.
+    // Antes de este tramo la tabla tenía UNA fila de cocción, con el montaje clavado
+    // en la parrilla, y su ventana de potencia —[253 ; 410)— no la llenaba ningún
+    // fuego que la criatura sepa encender: el techo de la yesca son 0,53 kg de
+    // madera, que ardiendo emiten 159. El `gap` decía «ningún esquema conocido
+    // establece emitsPower<410» y la lectura obvia —«hay que encender más fuerte»—
+    // era la equivocada. La potencia se elige UNA vez, al encender; el LUGAR se
+    // elige cada vez.
     //
-    // O sea que el eslabón que falta no es «saber hacer fuego»: es **pasarle la
-    // llama a un leño más grande**, que es la ley 3 y que todavía no tiene fila.
-    // El `gap` lo dice con las dos firmas al lado, que es lo que el Hito 8 le lleva
-    // a la fragua.
+    // Con una fila por montaje, esos 159 caen adentro de la ventana del CONTACTO
+    // ([105,42 ; 170,83)), y la cadena cierra sin inventar física: se deshilacha,
+    // se ata, se pesca, se frota la rama contra la vara y se apoya el pescado
+    // DIRECTAMENTE SOBRE LA BRASA — que es una pila de dos y no de tres.
+    const r = plan(meta(COMIDA_SANA), elRioConLena(), SIN_CORTE)
+    const pasos = resumir(pasosDe(r))
+    console.log(`\n── LA CADENA SIN FUEGO A LA VISTA ${'─'.repeat(38)}\n  ${pasos.join('\n  ')}\n`)
+    expect(r.k).toBe('plan')
+    // Enciende: hay un `frotar`, y lo que frota es la rama del tamaño justo.
+    const frota = pasosDe(r).filter((s): s is Extract<Step, { k: 'frotar' }> => s.k === 'frotar')
+    expect(frota.length).toBe(1)
+    expect(frota[0]?.a).toEqual({ k: 'id', id: 'rama' })
+    // Y pone la comida EN EL MONTAJE QUE CORRESPONDE: un solo `poner`, del pescado
+    // directamente sobre la rama encendida. Dos `poner` serían la parrilla, que con
+    // este fuego no cocina; ninguno sería no cocinar.
+    const puestas = pasosDe(r).filter((s): s is Extract<Step, { k: 'poner' }> => s.k === 'poner')
+    expect(puestas.length).toBe(1)
+    expect(puestas[0]?.que.k).toBe('rinde')
+    expect(puestas[0]?.sobre).toEqual({ k: 'id', id: 'rama' })
+    // `sobre` y no sólo `en`: apoyado SOBRE el fuego es `contacto`; en la celda y sin
+    // apoyo sería `piso`, que con este fuego no llega ni al `denaturesAt`.
+    expect(puestas[0]?.en).toEqual(puestas[0]?.sobre)
+    expect(puestas[0]?.tapando).toBeUndefined()
+    // Y la mitad de abajo sigue estando: para asar un pescado primero hay que
+    // pescarlo, y eso lo pone la regresión sola.
+    expect(pasos).toContain('aplicar(extraccion)')
+  })
+
+  it('y SIN la rama del tamaño justo, el `gap` ya no habla de los 253: habla de lo que falta encender', () => {
+    // El río pelado no tiene con qué: su única vara tiene `fuelEnergy` 0 y su
+    // matorral tampoco arde. La cadena no cierra —está bien que no cierre— y lo que
+    // cambió es lo que el `gap` dice. Antes nombraba la ventana de la parrilla, que
+    // es la que NINGUNA criatura puede encender; ahora las tres ventanas están en la
+    // tabla y la que queda huérfana es otra.
     const r = plan(meta(COMIDA_SANA), elRio(), SIN_CORTE)
     expect(r.k).toBe('gap')
     if (r.k !== 'gap') throw new Error('imposible')
     console.log(
-      `\n── EL GAP DE LA COCINA SIN FUEGO ${'─'.repeat(35)}\n` +
+      `\n── EL GAP DE LA COCINA SIN NADA QUE ARDA ${'─'.repeat(27)}\n` +
         `  falta: ${r.missing}\n  porque: ${r.why}\n` +
         `  nearest: ${resumir(r.nearest).join(' · ') || '(vacío)'}\n`,
     )
-    // Nombra la potencia y no «el fuego»: es una magnitud con un número, que es lo
-    // único con lo que se puede ir a pedir un proceso nuevo.
+    // Sigue nombrando una magnitud con un número, que es lo único con lo que se
+    // puede ir a pedirle un proceso a la fragua del Hito 8.
     expect(r.why).toContain('emitsPower')
-    expect(r.why).toContain(String(POTENCIA_QUE_COCINA_LO_CARNOSO.minima))
-    // Y dice lo más cerca que llega el catálogo, que es el puente de encender: la
-    // criatura SABE hacer fuego, y el que sabe hacer no alcanza. Sin esta mitad, el
-    // mensaje mandaría a inventar lo que ya está inventado.
+    // Y ya NO es la ventana de la parrilla la que se reporta huérfana: la ventana que
+    // el `gap` nombra ahora es una de las que la tabla tiene, y la de la parrilla
+    // tiene esquema de encender... no. Se afirma lo que se midió: la firma que falta
+    // es la de ALGUNA de las tres geometrías, y no una inventada.
+    const ventanas = GEOMETRIAS_DE_LA_COCCION.map((g) => `emitsPower<${String(g.maxima)}&emitsPower>=${String(g.minima)}`)
+    expect(ventanas).toContain(r.missing)
+    // Lo que sí no cambió: dice lo más cerca que llega el catálogo, o sea que la
+    // criatura SABE hacer fuego. Sin esa mitad, el mensaje mandaría a inventar lo que
+    // ya está inventado.
     expect(r.why).toContain('emitsPower>0')
   })
 
   it('y la meta SIN condiciones sigue saliendo por la pesca, que es diez veces más barata', () => {
     // La fila de la cocción también establece algo que implica `holding(tag:carnoso)`
     // —tener el pescado asado en la mano es tenerlo en la mano— así que la meta vieja
-    // abre DOS ramas. La de la ley cuesta 15 s contra 1,5 y nunca sale de la cola:
-    // el plan que sale es el de siempre.
-    const pasos = resumir(pasosDe(plan(meta(COMIDA_CRUDA), elRio(), SIN_CORTE)))
+    // abre ramas de más. Las de la ley cuestan 15 s contra 1,5 y nunca salen de la
+    // cola: el plan que sale es el de siempre.
+    const pasos = resumir(pasosDe(plan(meta(COMIDA_CRUDA), elRioConLena(), SIN_CORTE)))
     expect(pasos[pasos.length - 1]).toBe('aplicar(extraccion)')
     expect(pasos.some((p) => p.startsWith('poner'))).toBe(false)
   })
@@ -482,23 +630,39 @@ describe('3 · sin fuego, el `gap` nombra la potencia que falta', () => {
 // rol adentro — nunca lanzar en el medio de la búsqueda, que es lo que voltearía el
 // tick de las 5000 criaturas.
 
-describe('4 · las dos guardas de una fila de ley, con la fila mutilada', () => {
+describe('4 · las tres guardas de una fila de ley, con la fila mutilada', () => {
+  /** La fila de la PARRILLA, que es la única con tres cuerpos en la pila. */
   const laFila = (): EsquemaDeLey => {
-    const e = ESQUEMAS.find((x): x is EsquemaDeLey => x.k === 'ley' && x.establishes === FIRMA_DE_LO_COCIDO)
-    if (e === undefined) throw new Error('no está la fila de la cocción')
+    const e = ESQUEMAS.find((x): x is EsquemaDeLey => x.k === 'ley' && x.pila.includes('parrilla'))
+    if (e === undefined) throw new Error('no está la fila de la parrilla')
     return e
   }
 
-  /** La tabla real con la fila de la cocción reemplazada por una mutante. */
-  const con = (mutante: EsquemaDeLey): readonly (typeof ESQUEMAS)[number][] =>
-    ESQUEMAS.map((e) => (e.k === 'ley' && e.establishes === FIRMA_DE_LO_COCIDO ? mutante : e))
+  /**
+   * LA TABLA REAL CON **UNA SOLA** FILA DE LEY, Y ES LA MUTANTE.
+   *
+   * Se saca a las tres y se pone la mutante, en vez de reemplazar la que le
+   * corresponde, y las dos mitades hacen falta desde que hay una fila por geometría:
+   *
+   *   · sacar a las otras dos, porque si no la búsqueda encuentra plan por una fila
+   *     sana y la mutante no se mide nunca;
+   *   · no reemplazar por clave, porque la clave de una ley LLEVA SU PILA: una
+   *     mutante que le cambia la pila cambia de clave, cae encima de OTRA fila real
+   *     y las dos se aplican juntas. Medido: la mutante de la pila de dos aterrizaba
+   *     sobre la fila del contacto y `esquemasQueAportan` sumaba los dos `roleHints`,
+   *     pidiendo un fuego que cumpliera las DOS ventanas a la vez —«emitsPower<170,83
+   *     ∧ emitsPower<410 ∧ emitsPower>=105,42 ∧ emitsPower>=253»— que no cumple nadie.
+   */
+  const soloEsta = (mutante: EsquemaDeLey): readonly (typeof ESQUEMAS)[number][] => [
+    ...ESQUEMAS.filter((e) => e.k !== 'ley'),
+    mutante,
+  ]
 
   it('si le falta un rol de su propia pila, contesta `gap` y lo nombra', () => {
     const real = laFila()
     const { parrilla: _, ...sinParrilla } = real.roleHints
-    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, {
-      esquemas: con({ ...real, roleHints: sinParrilla }),
-    })
+    const mutante: EsquemaDeLey = { ...real, roleHints: sinParrilla }
+    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, { esquemas: soloEsta(mutante) })
     expect(r.k).toBe('gap')
     if (r.k !== 'gap') return
     expect(r.why).toContain('no nombra «parrilla»')
@@ -510,41 +674,84 @@ describe('4 · las dos guardas de una fila de ley, con la fila mutilada', () => 
     // nadie va a cumplir: la regresión saldría a buscar un cuerpo para un rol que
     // después no se usa en ningún paso. Sin la guarda salía plan igual.
     const real = laFila()
-    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, {
-      esquemas: con({
-        ...real,
-        roleHints: { ...real.roleHints, sal: [{ q: 'mass', op: '>', v: 0 }] },
-      }),
-    })
+    const mutante: EsquemaDeLey = {
+      ...real,
+      roleHints: { ...real.roleHints, sal: [{ q: 'mass', op: '>', v: 0 }] },
+    }
+    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, { esquemas: soloEsta(mutante) })
     expect(r.k).toBe('gap')
     if (r.k !== 'gap') return
     expect(r.why).toContain('«sal»')
     expect(r.why).toContain('nadie lo va a llenar')
   })
 
+  it('LA GUARDA NUEVA: una fila con `distancia` que ningún `Ref` sabe armar se rechaza y lo dice', () => {
+    // ─── POR QUÉ ESTA GUARDA NO ES DE LABORATORIO ──────────────────────────
+    //
+    // `opciones.esquemas` es entrada pública y es lo que va a escribir la fragua del
+    // Hito 8. Una fila que declare `distancia: 2` calculó su ventana de potencia con
+    // `formFactor` dividiendo por `1 + d²`, o sea que pide un fuego CINCO VECES más
+    // grande que la misma fila pegada. Si el emisor la armara igual —poniendo la
+    // comida encima, que es lo único que `poner` sabe hacer— la temperatura sería
+    // cinco veces la que la fila calculó: un plan verde que quema la comida.
+    //
+    // Se rechaza, y el motivo nombra lo que falta: un `Ref` que sepa decir «la celda
+    // que está a dos de ese cuerpo». Es lo mismo que la tabla ya hace sola —esas
+    // filas están en `GEOMETRIAS_DESCARTADAS` y no se generan— dicho del lado del
+    // emisor, que es el que tiene que sobrevivir a una tabla escrita por otro.
+    const real = laFila()
+    const mutante: EsquemaDeLey = { ...real, distancia: 2 }
+    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, { esquemas: soloEsta(mutante) })
+    expect(r.k).toBe('gap')
+    if (r.k !== 'gap') return
+    expect(r.why).toContain('a 2 celdas del fuego')
+    expect(r.why).toContain('ningún `Ref` sabe')
+  })
+
   it('y una fila con la pila de DOS sigue saliendo: el planificador propone, el mundo dispone', () => {
     // ─── EL LÍMITE DE LO QUE UN ESQUEMA PUEDE PROMETER, DICHO ──────────────
     //
-    // Con la parrilla sacada de la pila —la comida directamente sobre el fuego— el
-    // plan SALE, y el mundo la va a quemar: en contacto el equilibrio se va a
-    // 375 °C contra los 260 en que el pescado se piroliza, medido en
-    // `los-esquemas-contra-el-mundo.test.ts`. El planificador no lo puede saber
-    // porque `ConstructionSchema` no tiene aritmética sobre montajes: lo que la fila
-    // declara es una pila, y una pila de dos es una pila.
+    // Con la parrilla sacada de la pila —la comida directamente sobre el fuego— pero
+    // dejándole la VENTANA DE POTENCIA de la parrilla, el plan SALE y el mundo la va
+    // a quemar: en contacto ese mismo fuego se va a 375 °C contra los 260 en que el
+    // pescado se piroliza, medido en `los-esquemas-contra-el-mundo.test.ts`.
     //
-    // Es la decisión del encabezado de `regresion.ts` —«el planificador propone
-    // barato y el mundo dispone»— y el precio de que la tabla sea humana. Lo que la
-    // hace segura no es un chequeo acá: es que CADA FILA está verificada contra una
-    // partida, y esta mutante no lo está.
+    // Y ahí está exactamente lo que el tramo arregló: la fila REAL de la pila de dos
+    // existe, y pide un fuego diez veces más chico. La mutante no es «la fila de
+    // contacto»: es la de la parrilla con la pila cambiada y la ventana vieja, o sea
+    // una fila cuya geometría y cuyo número no se hablan. El planificador no lo puede
+    // saber —`ConstructionSchema` no tiene aritmética sobre montajes— y lo que hace
+    // segura a la tabla no es un chequeo acá: es que CADA FILA está verificada contra
+    // una partida, y esta mutante no lo está.
     const real = laFila()
     const { parrilla: _, ...sinParrilla } = real.roleHints
-    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, {
-      esquemas: con({ ...real, pila: ['fuego', 'comida'], roleHints: sinParrilla }),
-    })
+    const mutante: EsquemaDeLey = { ...real, pila: ['fuego', 'comida'], roleHints: sinParrilla }
+    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, { esquemas: soloEsta(mutante) })
     expect(r.k).toBe('plan')
     const pasos = resumir(pasosDe(r))
     expect(pasos.filter((p) => p.startsWith('poner')).length).toBe(1)
     expect(pasos).toContain('poner(lo-que-hice sobre fogata)')
+  })
+
+  it('LA OTRA GUARDA NUEVA: una fila cuyo sujeto queda AFUERA de la pila se rechaza y lo dice', () => {
+    // ─── EL TERCER MONTAJE, Y POR QUÉ NO ESTÁ EN LA TABLA ──────────────────
+    //
+    // `piso` es el «todo lo demás» de `montajeDe`: en la celda del fuego y apoyado
+    // en NADA. Con una pila —que es una lista de apoyos— eso sólo se escribiría
+    // sacando al sujeto de la pila, y `poner` no sabe hacer otra cosa que apoyar.
+    // Armarla igual daría `contacto`, que tiene DIEZ VECES la exposición con la que
+    // esa fila calculó su ventana: la comida se carbonizaría con un plan verde.
+    //
+    // La tabla no genera esas filas —quedan en `GEOMETRIAS_DESCARTADAS` con su
+    // ventana y su motivo— y el emisor las rechaza igual, porque `opciones.esquemas`
+    // es entrada pública.
+    const real = laFila()
+    const mutante: EsquemaDeLey = { ...real, pila: ['fuego', 'parrilla'] }
+    const r = plan(meta(COMIDA_SANA), laFogata(), SIN_CORTE, undefined, { esquemas: soloEsta(mutante) })
+    expect(r.k).toBe('gap')
+    if (r.k !== 'gap') return
+    expect(r.why).toContain('afuera de la pila')
+    expect(r.why).toContain('sólo sabe apoyar')
   })
 })
 

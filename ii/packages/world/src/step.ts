@@ -49,6 +49,7 @@ import {
   conSustancia,
   cumpleRol,
   dtDeFrecuencia,
+  formFactor,
   isOptionalRole,
   paso,
   porPaso,
@@ -1502,12 +1503,48 @@ function montajeDe(d: Borrador, c: WorldBody, f: FuenteEnMundo): Montaje {
 }
 
 /**
+ * CUÁNTO CALOR LE LLEGA DE VERDAD, y por qué esto no es la potencia.
+ *
+ * `Entorno` de la física acepta UNA fuente, así que hay que ordenarlas y quedarse
+ * con una. Acá estuvo escrito `cand.potencia > mejor.potencia`, o sea que se
+ * ordenaba por lo que la fuente EMITE, y la ley 1 dos líneas después no usa eso:
+ * usa `potencia · formFactor(distancia, montaje)`. Ordenar por la mitad de la
+ * cuenta tenía dos consecuencias medidas, y las dos rompían la cocción:
+ *
+ *   1. **la fuente secuestrada.** `fuentes()` barre `d.bodies` entero y no tiene
+ *      límite de distancia, así que un fuego más grande A SESENTA CELDAS le
+ *      ganaba el único hueco a la brasa que la comida tenía debajo. Medido: el
+ *      pescado apoyado en una brasa de 0,40 kg —adentro de la ventana que el plan
+ *      pide— se quedaba en `digestibility` 0,3800, o sea CRUDO, con otro fuego de
+ *      1 kg a cualquier distancia entre 1 y 60. No había radio a partir del cual
+ *      dejara de pasar.
+ *   2. **el desempate por abecedario.** Con dos fuegos de potencia exactamente
+ *      igual, uno pegado y uno a seis celdas, decidía `compararTexto` del id: la
+ *      misma escena cocinaba o no según cómo se llamaran los cuerpos.
+ *
+ * Se ordena por el calor entregado y las dos desaparecen juntas, sin inventar
+ * ninguna constante: el radio de corte no hace falta porque el `(1 + d²)` de
+ * `formFactor` ya lo pone —a seis celdas con `piso` divide por 37— y el desempate
+ * por id queda para el empate de VERDAD (misma potencia, mismo montaje, misma
+ * distancia), que es donde tiene sentido.
+ *
+ * Se pregunta a `formFactor` y no se transcribe la división: es la misma función
+ * que `temperaturaDeEquilibrio` usa, así que si la geometría deja de ser
+ * `1/(1+d²)` esta elección se mueve con ella.
+ */
+function calorEntregado(f: Fuente): number {
+  return f.potencia * formFactor(f.distancia, f.montaje)
+}
+
+/**
  * El entorno de un cuerpo: su celda ocluida más la fuente que más lo calienta.
  *
  * UNA fuente y no la suma de todas, porque `Entorno` de la física acepta una
- * sola. Se elige la de mayor potencia y, a igualdad, la de id menor: con dos
- * fogatas idénticas a la misma distancia, quedarse con «la primera que apareció
- * en el mapa» haría que el resultado dependiera del orden de creación.
+ * sola. Se elige la que MÁS LO CALIENTA —ver `calorEntregado`, que es potencia
+ * por factor de forma y no potencia sola— y, a igualdad de calor entregado, la de
+ * id menor: con dos fogatas idénticas a la misma distancia y en el mismo montaje,
+ * quedarse con «la primera que apareció en el mapa» haría que el resultado
+ * dependiera del orden de creación.
  */
 function entornoDe(
   d: Borrador,
@@ -1526,16 +1563,20 @@ function entornoDe(
   }
   let mejor: Fuente | undefined
   let mejorId = ''
+  let mejorCalor = 0
   for (const f of fs) {
     if (f.id === c.body.id) continue
     const dist = chebyshev(c.at, f.at)
     const cand: Fuente = { potencia: f.potencia, distancia: dist, montaje: montajeDe(d, c, f) }
-    if (mejor === undefined || cand.potencia > mejor.potencia) {
+    const calor = calorEntregado(cand)
+    if (mejor === undefined || calor > mejorCalor) {
       mejor = cand
       mejorId = f.id
-    } else if (cand.potencia === mejor.potencia && compararTexto(f.id, mejorId) < 0) {
+      mejorCalor = calor
+    } else if (calor === mejorCalor && compararTexto(f.id, mejorId) < 0) {
       mejor = cand
       mejorId = f.id
+      mejorCalor = calor
     }
   }
   if (empujes !== undefined) {

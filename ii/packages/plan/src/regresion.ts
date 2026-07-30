@@ -727,33 +727,22 @@ function emitirMarco(
  * abajo hacia arriba. De esos dos o tres `poner` sale el `montaje` que la ley 1
  * lee, y de ahí la temperatura, y de ahí que la ley 5 corra.
  *
- * ─── Y ACÁ FALTA UN PASO QUE `Step` NO TIENE: `esperar` ─────────────────────
+ * ─── EL PASO QUE FALTABA YA ESTÁ, Y ACÁ ESTÁ SU HISTORIA ────────────────────
  *
- * La fila declara `mientras` segundos y este emisor no los puede decir. `Step`
- * tiene diez variantes y ninguna es esperar — `tipos.ts` lo justifica con que
- * esperar «es conducta y no plan», que era cierto mientras nada del plan
- * necesitara que pasara el tiempo. Con las leyes deja de serlo: **el tiempo ES el
- * paso**.
+ * Acá decía «falta un paso que `Step` no tiene: `esperar`», con los tres errores
+ * de `tsc` que costaba anotados y la consecuencia medida —el emisor ponía la
+ * comida en el fuego y la levantaba dos ticks después, la ley 5 corría dos ticks y
+ * la `digestibility` del pescado no se movía de 0,3800—. **Se agregó, y los tres
+ * eran los tres**: uno en `firmaDePaso` de este archivo y dos en el `switch` de
+ * `@anima/mind` (`refsDe` y `aHabilidad`). La innata `esperar` ya existía y ya
+ * tomaba segundos: no faltaba física ni superficie, faltaba la costura.
  *
- * No se agrega en este tramo, y el motivo está MEDIDO y no supuesto. Agregar
- * `{ k: 'esperar'; segundos }` a `Step` y correr `pnpm --filter @anima/mind
- * typecheck` da exactamente tres errores, y dos son de otro paquete:
- *
- *     src/escalera.ts(609,32): TS2366 Function lacks ending return statement…
- *     src/mente.ts(185,77):    TS7030 Not all code paths return a value.
- *     ../plan/src/regresion.ts(1445,32): TS2366  ← éste es de acá y se arregla acá
- *
- * O sea que la variante nueva es una línea en `tipos.ts` y otra en `firmaDePaso`,
- * y **dos casos de `switch` en `@anima/mind`**, que es el paquete que traduce
- * pasos a innatas y que en este tramo lo está escribiendo otra mano. La innata
- * `esperar` YA EXISTE (`skills/src/innatas/esperar.ts`) y ya toma segundos, así
- * que no falta física ni superficie: falta la costura.
- *
- * La consecuencia, dicha entera: el plan que sale de acá **pone la comida en el
- * fuego y la levanta en el mismo tick**, así que la ley 5 corre un tick y la
- * promesa no se cumple. La mente replanifica, vuelve a poner, vuelve a levantar.
- * No es que cocine mal: es que no cocina. Está escrito con su test en
- * `tests/la-cocina.test.ts`.
+ * Y después faltó una segunda mitad, que es la de este tramo: la espera era
+ * CIEGA. Gastaba el `mientras` entero —que es una cota sobre el peor caso
+ * admisible— cuando la comida estaba lista mucho antes, y el fuego no dura lo
+ * suficiente para pagar esa diferencia. Medido: cocido a los 5 s, la fila hace
+ * esperar 15, el fuego se apaga a los 20. Lo arregla `esperarPor`, acá abajo,
+ * despejando las condiciones del `establishes` con `interpretar`.
  */
 function emitirLey(
   m: MarcoDePlan,
@@ -770,6 +759,47 @@ function emitirLey(
   if (base === undefined) return { rechazo: `${quien} no declara ninguna pila: no hay situación que armar` }
   const refBase = m.roles[base]
   if (refBase === undefined) return { rechazo: `${quien} quedó sin el rol «${base}», que es la base de su pila` }
+
+  // ─── LA DISTANCIA QUE NO SE SABE ARMAR SE RECHAZA, NO SE IGNORA ────────────
+  //
+  // La fila declara a cuántas celdas de la fuente tiene que quedar el sujeto, y de
+  // ese número depende su ventana de potencia: `formFactor` divide por `1 + d²`, o
+  // sea que una fila pensada para distancia 2 pide un fuego CINCO VECES más grande
+  // que la misma a distancia 0. Emitirla igual —poniendo la comida pegada, que es
+  // lo único que `poner` sabe hacer— sería multiplicar por cinco la temperatura que
+  // la fila calculó, o sea quemar la comida con un plan verde.
+  //
+  // Lo que falta no es física: es un `Ref`. `poner` sabe decir «en la celda de ese
+  // cuerpo» y «apoyado sobre ese cuerpo», y no sabe decir «en la celda que está a
+  // dos de ese cuerpo». Con `{k:'celda', at}` habría que congelar la coordenada al
+  // planificar y usarla decenas de ticks después, que es lo que la primera decisión
+  // de `tipos.ts` prohíbe. Por eso la tabla no genera esas filas —ver
+  // `GEOMETRIAS_DESCARTADAS`— y por eso esto igual está: `opciones.esquemas` es
+  // entrada pública y es lo que va a escribir la fragua del Hito 8.
+  if (e.distancia !== 0) {
+    return {
+      rechazo:
+        `${quien} pide que el sujeto quede a ${String(e.distancia)} celdas del fuego, y ningún \`Ref\` sabe ` +
+        `nombrar esa celda: \`poner\` sólo llega a «la celda de ese cuerpo»`,
+    }
+  }
+
+  // ─── Y EL SUJETO TIENE QUE ESTAR EN LA PILA, QUE ES LO MISMO POR EL OTRO LADO ─
+  //
+  // Una pila es una lista de APOYOS y lo único que este emisor sabe emitir es
+  // `poner … sobre …`. Una fila cuyo sujeto quede afuera está pidiendo el montaje
+  // `piso` —«en la celda y apoyado en nada», que es el «todo lo demás» de
+  // `montajeDe`— y armarla con la pila le daría `contacto`, que es una exposición
+  // DIEZ VECES mayor que la que esa fila usó para calcular su ventana. La tabla no
+  // genera esas filas —ver `porQueNoSePuedeArmar`— y esto está igual porque
+  // `opciones.esquemas` es entrada pública.
+  if (!e.pila.includes(e.sujeto)) {
+    return {
+      rechazo:
+        `${quien} deja su sujeto «${e.sujeto}» afuera de la pila (${e.pila.join(' → ')}), o sea apoyado en ` +
+        `nada, y \`poner\` sólo sabe apoyar: armarlo daría otro montaje y otra temperatura`,
+    }
+  }
 
   // La base no se mueve: es el fuego, y a un fuego no se lo levanta. Lo único que
   // hace falta es estar al lado, porque `poner` exige Chebyshev ≤ 1 de la celda.
@@ -798,7 +828,37 @@ function emitirLey(
     mano = mano.filter((id) => !(que.k === 'id' && id === que.id))
   }
 
-  // ── Acá va `esperar(e.mientras)`, y no hay con qué. Ver el encabezado. ────
+  // ─── Y ACÁ VA EL TIEMPO, QUE ES EL PASO QUE FALTABA ───────────────────────
+  //
+  // La situación armada no cocina sola en un tick: la ley empuja mientras se
+  // sostenga, y cuánto tiene que sostenerse está en el `mientras` de la fila. Sin
+  // este paso el emisor ponía la comida sobre el fuego y la levantaba dos ticks
+  // después —medido: `poner` en el 151, `sostener` en el 153— y la
+  // `digestibility` del pescado no se movía de 0,3800. No es que cocinara mal: no
+  // cocinaba.
+  //
+  // Va DESPUÉS de los `poner` y ANTES del `sostener`, que es el único orden en el
+  // que significa algo: esperar antes de armar la situación es esperar al lado de
+  // un fuego apagado, y esperar después de levantar la comida es esperar con la
+  // comida cruda en la mano.
+  //
+  // `e.mientras` y no `e.segundos`: son el mismo número en la tabla de hoy y
+  // quieren decir cosas distintas —`segundos` es lo que la vía CUESTA, que es lo
+  // que ordena la cola de la búsqueda, y `mientras` es cuánto hay que aguantar la
+  // situación—. El paso emitido es el segundo.
+  //
+  // ─── Y LA ESPERA SABE QUÉ ESTÁ ESPERANDO ──────────────────────────────────
+  //
+  // `mientras` es una COTA y no una predicción, así que gastarla entera es tirar
+  // fuego: medido, el pescado sobre la brasa está cocido a los 5 s, la fila hace
+  // esperar 15, y el fuego dura 20. Ver `Step.esperar.mirando` en `tipos.ts`.
+  //
+  // Las condiciones salen del `establishes` de la fila con `interpretar`, que es la
+  // vuelta que `firmaDe` ya usa: la firma es la forma canónica del predicado y el
+  // predicado tiene los `QualityTest` adentro. No se escribe ningún umbral acá.
+  if (e.mientras > 0) {
+    pasos.push(esperarPor(m, e))
+  }
 
   if (prometeSobreLaMano(m.establece)) {
     const sujeto = m.roles[e.sujeto]
@@ -820,6 +880,57 @@ function emitirLey(
   // Una ley no consume nada: no hay `yields`. Lo que entró sigue existiendo, con
   // otras cualidades y —si evaporó agua— con menos masa, pero con el mismo id.
   return { pasos, enMano: mano, gastados }
+}
+
+/**
+ * LA ESPERA CON SU CONDICIÓN, despejada del `establishes` de la fila.
+ *
+ * Tres cosas tienen que estar a la vez para poder llenar `mirando`, y si falta
+ * cualquiera la espera sale CIEGA —con su cota de segundos y nada más— en vez de
+ * rechazar la fila: una espera ciega es caro y correcto, y rechazar la fila
+ * dejaría a la criatura sin cocinar por una limitación del vocabulario del
+ * predicado.
+ *
+ *   1. que el sujeto de la ley tenga un `Ref` en el marco. Es el mismo `Ref` que
+ *      el `sostener` de más abajo usa: el cuerpo sobre el que la ley empuja.
+ *   2. que la firma prometida se pueda interpretar. `interpretar` contesta
+ *      `undefined` para una conjunción de varias cláusulas —`Predicado` no tiene
+ *      forma conjuntiva— y eso está bien acá: si la promesa son dos predicados,
+ *      este emisor no sabe cuál mirar.
+ *   3. que sea un `sostiene` CON condiciones de cualidad. Un `sostiene(tag)`
+ *      pelado no dice nada que se pueda muestrear, y una `geometria` tampoco:
+ *      `freeStrandEnds` no se contesta desde una vista.
+ *
+ * Para `FIRMA_DE_LO_COCIDO` las tres se cumplen y salen los dos números que la
+ * fila ya traía: `digestibility >= 0,85` y `toxicity <= 0,05`.
+ *
+ * ─── Y SE MIRA `e.establishes` Y NO `m.establece`, Y LA DIFERENCIA ES REAL ────
+ *
+ * `m.establece` es LA META sobre la que se está regresando y `e.establishes` es lo
+ * que LA FILA promete, y la regresión sólo exige que la segunda IMPLIQUE la
+ * primera: la meta puede ser más floja. Medido en la corrida de la contraprueba, la
+ * meta que la escalera traía era `holding(tag:carnoso,toxicity<0.0528)` —la cuenta
+ * del veneno del ADR II-0013 sobre ESE tanque— y la fila promete además
+ * `digestibility >= 0,85`. Con `m.establece` la espera cortaba en el tick 238 con la
+ * digestibilidad en 0,8212, o sea **sacaba la comida del fuego antes de que
+ * estuviera cocida** y la fila quedaba mintiendo: `Creencias` anotaría la promesa
+ * entera cumplida por una situación que sólo cumplió la mitad floja. Con
+ * `e.establishes` corta cuando la fila dice, que es lo que la fila mide y lo que el
+ * proyecto llama cocido desde el Hito 0.
+ */
+function esperarPor(m: MarcoDePlan, e: EsquemaDeLey): Step {
+  const base: { k: 'esperar'; segundos: number; porQue: PredicateSignature } = {
+    k: 'esperar',
+    segundos: e.mientras,
+    porQue: m.establece,
+  }
+  const que = m.roles[e.sujeto]
+  if (que === undefined) return base
+  const p = interpretar(e.establishes)
+  if (p === undefined || p.k !== 'sostiene') return base
+  const tests = p.tests ?? []
+  if (tests.length === 0) return base
+  return { ...base, mirando: { que, tests } }
 }
 
 /**
@@ -988,13 +1099,44 @@ function esquemasQueAportan(
   pedido: readonly Predicado[],
 ): readonly ConstructionSchema[] {
   const out: ConstructionSchema[] = []
+  // ─── Y APORTAR NO ES SÓLO ENTRAR: TIENE QUE CUBRIR ALGO QUE FALTABA ───────
+  //
+  // Acá se juntaban TODAS las filas de la vía que entraran en el pedido, y eso
+  // alcanzaba mientras dos filas de un mismo proceso nunca hablaran de la misma
+  // cualidad. Desde que `friccion` tiene la fila del piso de la potencia deja de
+  // ser cierto, y el precio fue inmediato y medido: el objetivo «quiero fuego»
+  // —`emitsPower>0` pelado— hacía entrar TAMBIÉN a `emitsPower>=105,42`, porque una
+  // promesa más fuerte implica a la floja. Las dos filas se aplicaban juntas, sus
+  // `roleHints` se sumaban, y para encender una ramita cualquiera el plan pasaba a
+  // exigir una yesca de 0,35 kg de madera. Un `gap` donde había plan, y por pedir
+  // de más.
+  //
+  // La regla que lo arregla es la del recubrimiento MÍNIMO, en el orden de la tabla:
+  // una fila entra si además de caber CUBRE alguna cláusula del pedido que ninguna
+  // de las anteriores cubría. Lo que se pierde no se pierde: si `emitsPower>0` ya
+  // cubrió la única cláusula, la fila más fuerte no aporta NADA a la promesa —sólo
+  // condiciones— así que saltearla no afloja lo que el plan establece.
+  //
+  // El orden de `ESQUEMAS` decide cuál gana cuando dos cubren lo mismo, y eso ya era
+  // así y está afirmado en `los-esquemas.test.ts`: la tabla está agrupada por
+  // proceso y adentro va primero lo declarado y después los puentes.
+  const cubiertas = new Set<number>()
   for (const e of todos) {
     if (claveDeVia(e) !== clave) continue
     const cl = clausulasDe(firmaDe(e.establishes))
     if (cl === undefined) continue
     let cabe = true
     for (const p of cl) if (!pedido.some((q) => implica(p, q))) cabe = false
-    if (cabe) out.push(e)
+    if (!cabe) continue
+    const nuevas: number[] = []
+    for (let i = 0; i < pedido.length; i++) {
+      const q = pedido[i]
+      if (q === undefined || cubiertas.has(i)) continue
+      if (cl.some((p) => implica(p, q))) nuevas.push(i)
+    }
+    if (nuevas.length === 0) continue
+    for (const i of nuevas) cubiertas.add(i)
+    out.push(e)
   }
   return out
 }
@@ -1163,10 +1305,14 @@ function armarMarco(
     // `gap` le pidiera a la fragua un proceso para volver liviano un tronco.
     // El rol que paga queda afuera: es la criatura, y no se carga a sí misma.
     //
-    // Y en una ley la misma exigencia sale de otro lado y llega a lo mismo: lo que
-    // va APOYADO en la pila hay que haberlo levantado, así que `portable` se le
-    // pide a todos menos al primero, que es el que no se mueve.
-    const hayQueAlzarlo = ley !== undefined && ley.pila.includes(rol) && ley.pila[0] !== rol
+    // Y en una ley la misma exigencia sale de otro lado y llega a lo mismo: TODO lo
+    // que la situación mueve hay que haberlo levantado, así que `portable` se le
+    // pide a todos menos al primero de la pila, que es el que no se mueve. Se
+    // pregunta por la base y no por «estar en la pila» desde que el montaje `piso`
+    // existe: ahí el sujeto NO está en la pila y hay que cargarlo igual —hay que
+    // llevar la comida hasta el fuego— y con la pregunta vieja se le podía asignar
+    // un cadáver de veinte kilos que el mundo rebota con `no-portable`.
+    const hayQueAlzarlo = ley !== undefined && rol !== ley.pila[0]
     // Y lo que las FILAS declaran de esa misma clase —lo que el cuerpo tiene que
     // ser y nadie fabrica— se SUMA, no se pisa: son dos fuentes distintas de la
     // misma exigencia (el `arrangement` del catálogo y el `roleFilters` del
@@ -1724,10 +1870,13 @@ function firmaDeMarco(m: MarcoDePlan): string {
     .map((r) => `${r}=${firmaDeRef(m.roles[r])}`)
     .join(',')
   const faltan = m.faltan.map((q) => `${q.rol}:${q.firma}${firmaDeExtra(q)}`).join(',')
-  // La vía entra en la clave con la MISMA forma con la que la tabla la agrupa —
-  // `proceso:union`, `ley:desnaturalizacion:…`— para que dos marcos que sólo se
-  // distinguen en por dónde van no empaten nunca.
-  const via = m.por.k === 'proceso' ? `proceso:${m.por.via}` : `ley:${m.por.esquema.ley}:${m.por.esquema.establishes}`
+  // La vía entra en la clave con la MISMA forma con la que la tabla la agrupa —y se
+  // le pregunta a `claveDeVia` en vez de rearmarla acá, que es lo que hacía que dos
+  // marcos de la misma ley con geometrías distintas empataran: desde que la cocción
+  // tiene una fila por montaje, `ley:desnaturalizacion:<firma>` ya no identifica una
+  // fila. Dos claves iguales en `claveDe` son «el mismo nodo en todo lo que la
+  // búsqueda mira», y eso dejaría de ser cierto.
+  const via = m.por.k === 'proceso' ? `proceso:${m.por.via}` : claveDeVia(m.por.esquema)
   return `${via}[${m.establece}]${m.paraRol ?? '-'}{${roles}}(${faltan})`
 }
 
@@ -1782,6 +1931,23 @@ function firmaDePaso(s: Step): string {
       return `frotar(${firmaDeRef(s.a)},${firmaDeRef(s.b)},${String(s.hasta ?? 0)})`
     case 'poner':
       return `poner(${firmaDeRef(s.que)},${firmaDeRef(s.en)})`
+    // Los segundos SÍ entran en la firma: dos esperas de distinto largo son dos
+    // pasos distintos, y esta firma es lo que distingue un nodo de otro.
+    //
+    // Y `mirando` NO ENTRA, y esto se probó de las dos maneras. `claveDe` no es una
+    // llave de deduplicación: es el DESEMPATE de la cola, o sea que cambiarla
+    // reordena nodos de igual costo y con eso cambia qué plan sale. Metiendo el
+    // `mirando` acá, el plan de ligar un fuego que ya existe pasó de 5 pasos a 7 —
+    // medido en `mind/tests/hito-5-el-criterio.test.ts`— sin que ninguna de las dos
+    // versiones fuera mejor: era el orden lexicográfico moviéndose.
+    //
+    // Y no se pierde nada, porque `mirando` no discrimina: sale del `establishes` de
+    // la fila y del rol sujeto, y los dos ya están en la clave por otro lado —la
+    // promesa en `n.falta` y los roles en `firmaDeMarco`—. Dos caminos que sólo
+    // difirieran en el sujeto de la espera difieren también en los `poner` y el
+    // `sostener` que lo nombran.
+    case 'esperar':
+      return `esperar(${String(s.segundos)})`
     case 'sostener':
       return `sostener(${firmaDeRef(s.que)})`
     case 'explorar':

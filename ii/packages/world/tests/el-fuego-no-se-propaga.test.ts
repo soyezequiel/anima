@@ -30,9 +30,14 @@
 //
 // ─── POR QUÉ NO SE PUEDE SALIR POR ARRIBA ───────────────────────────────────
 //
-// Sumando fuentes, no: `entornoDe` toma UNA —la de mayor potencia— y está dicho
-// en su comentario (`src/step.ts`), porque el `Entorno` de la física acepta una
-// sola. Dos fogatas al lado de la misma vara valen lo que la más grande.
+// Sumando fuentes, no: `entornoDe` toma UNA —la que MÁS LO CALIENTA, o sea la de
+// mayor `potencia · formFactor(distancia, montaje)`— y está dicho en su comentario
+// (`src/step.ts`), porque el `Entorno` de la física acepta una sola. Dos fogatas al
+// lado de la misma vara valen lo que la que le entrega más calor, y no lo que la
+// más grande: eso último es lo que decía acá y era el bug que
+// `la-fuente-se-elige-por-calor.test.ts` mide. Para el barrido de abajo no cambia
+// nada —hay una sola fuente— y para la conclusión tampoco: la propagación sigue
+// gobernada por la masa de lo que arde.
 //
 // Y la masa de la fuente tiene techo, porque **encender cuesta y `stamina` topa en
 // 1000**: llevar m kg de madera a sus 300 °C cuesta `m · 1,7 · 288 / 0,35 + 2,40`

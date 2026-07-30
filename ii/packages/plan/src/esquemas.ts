@@ -50,22 +50,31 @@
 // 100 Hz.
 
 import {
-  EXPOSICION,
   HUMEDAD_QUE_APAGA,
-  H_PERDIDA,
+  MONTAJES,
   SEED_PROCESSES,
   SUSTANCIAS_SEMILLA,
   T_AMBIENTE,
+  baseRoleName,
+  evalQuality,
   temperaturaDeEquilibrio,
   specOf,
+  type Montaje,
   type Process,
   type ProcessId,
   type QualityTest,
+  type Substance,
   type Tag,
 } from '@anima/physics'
 
-import { textoDe } from './predicado.js'
-import type { ConstructionSchema, EsquemaDeProceso, PredicateSignature } from './tipos.js'
+import { firmaDe, textoDe } from './predicado.js'
+import type {
+  ConstructionSchema,
+  EsquemaDeLey,
+  EsquemaDeProceso,
+  PredicateSignature,
+  RoleName,
+} from './tipos.js'
 
 // ─── Los dos números de calibración que este módulo aporta ──────────────────
 
@@ -200,7 +209,17 @@ function esquema(
  * `establishes` y la de un proceso no.
  */
 export function claveDeVia(e: ConstructionSchema): string {
-  return e.k === 'proceso' ? `proceso:${e.via}` : `ley:${e.ley}:${e.establishes}`
+  return e.k === 'proceso'
+    ? `proceso:${e.via}`
+    : // ─── Y LA GEOMETRÍA ENTRA EN LA CLAVE, QUE ES LO QUE HACE QUE HAYA TRES ──
+      //
+      // Desde que la cocción tiene una fila POR MONTAJE, tres filas comparten ley y
+      // `establishes` y se distinguen sólo en dónde va la comida. Con la clave
+      // vieja las tres caían en la misma vía, `esquemasQueAportan` las devolvía
+      // juntas y `armarMarco` rechazaba la vía entera con «no nombran los mismos
+      // roles» —una nombra `parrilla` y las otras no—: la tabla habría tenido tres
+      // filas y la búsqueda, ninguna. La pila y la distancia SON la fila.
+      `ley:${e.ley}:${e.establishes}:${e.pila.join('>')}@${String(e.distancia)}`
 }
 
 /**
@@ -279,16 +298,31 @@ export const NO_ENTRA_EN_LA_MANO: QualityTest = { q: 'portable', op: '<=', v: PI
 
 /**
  * ¿Hasta dónde puede calentar un fuego de esta potencia, según cómo se apoye lo
- * que se cocina? Es la ley 1 en régimen, PREGUNTADA AL MOTOR (`temperaturaDeEquilibrio`)
- * y no transcripta.
+ * que se cocina y a qué distancia? Es la ley 1 en régimen, PREGUNTADA AL MOTOR
+ * (`temperaturaDeEquilibrio`) y no transcripta.
  */
-function equilibrioSobre(potencia: number, montaje: 'piso' | 'parrilla' | 'contacto'): number {
-  return temperaturaDeEquilibrio(potencia, 0, montaje)
+function equilibrioSobre(potencia: number, montaje: Montaje, distancia: number): number {
+  return temperaturaDeEquilibrio(potencia, distancia, montaje)
 }
 
-/** La inversa: qué potencia hace falta para llegar a esa temperatura con ese montaje. */
-function potenciaPara(temperatura: number, montaje: 'piso' | 'parrilla' | 'contacto'): number {
-  return ((temperatura - T_AMBIENTE) * H_PERDIDA) / EXPOSICION[montaje]
+/**
+ * LA INVERSA, DESPEJADA SOBRE DOS PUNTOS DEL MOTOR Y NO TRANSCRIPTA.
+ *
+ * Acá estaba escrito `((t − T_AMBIENTE) · H_PERDIDA) / EXPOSICION[montaje]`, que
+ * es la fórmula de la ley 1 copiada a mano, y una fórmula copiada mide su propia
+ * copia: el día que `formFactor` deje de ser lineal en la potencia —o que aparezca
+ * un término más— este módulo seguiría contestando lo de siempre, en verde.
+ *
+ * La ley 1 en régimen SÍ es afín en la potencia (`T = a + b·P` con `b` función del
+ * montaje y de la distancia), así que se la invierte muestreándola en `P = 0` y
+ * `P = 1` y nada más. Los tres números que antes se importaban —el ambiente, el
+ * acoplamiento y la exposición— dejan de estar escritos acá: los tres viajan
+ * adentro de los dos puntos.
+ */
+function potenciaPara(temperatura: number, montaje: Montaje, distancia: number): number {
+  const cero = temperaturaDeEquilibrio(0, distancia, montaje)
+  const porUnidad = temperaturaDeEquilibrio(1, distancia, montaje) - cero
+  return (temperatura - cero) / porUnidad
 }
 
 /**
@@ -351,29 +385,35 @@ function temperaturaDeTrabajo(v: VentanaDeTag): number {
 }
 
 /**
- * LA VENTANA DE POTENCIA DEL FUEGO, y de acá sale la parrilla sin que nadie la
- * escriba.
+ * LA VENTANA DE POTENCIA DEL FUEGO **PARA UNA GEOMETRÍA**, y acá está el arreglo
+ * entero de este tramo.
  *
- * Con `EXPOSICION` y `H_PERDIDA` del motor, un fuego de potencia `P` deja la comida
- * en `T_ambiente + P · exposicion / h`. Los tres montajes que el mundo distingue
- * (`montajeDe`, en `world/src/step.ts`) dan tres respuestas MUY distintas, y para un
- * fuego de leña de 1 kg —`emitsPower` 300, la fogata que el Hito 0 calibró— son:
+ * Un fuego de potencia `P` deja la comida en `ambiente + P · exposicion(montaje) /
+ * (1 + d²) / h`. O sea que la temperatura tiene TRES variables libres y no una, y
+ * mientras esta función devolvió una sola ventana —la del montaje `parrilla`, a
+ * distancia cero— la tabla estaba resolviendo por la única de las tres que no se
+ * puede elegir cada vez: **la potencia se elige UNA sola vez, cuando se enciende, y
+ * el LUGAR se elige cada vez que se apoya algo.**
  *
- *     piso       15 + 300 · 0,06 / 0,5 =  51 °C  → por debajo de los 63 de la carne:
- *                                                  no cocina
- *     parrilla   15 + 300 · 0,25 / 0,5 = 165 °C  → adentro de la ventana: cocina
- *     contacto   15 + 300 · 0,60 / 0,5 = 375 °C  → por encima de los 220 del huevo y
- *                                                  de los 260 del pescado: se quema
+ * Con la misma fogata de 1 kg de leña que el Hito 0 calibró (`emitsPower` 300):
  *
- * O sea que **de los tres montajes del mundo, uno solo cae adentro de la ventana**,
- * y es el que se consigue apoyando la comida sobre algo que está en la celda del
- * fuego. Nadie escribió «parrilla»: es la única geometría que sobrevive a la resta.
- * Por eso `pila` tiene tres roles y no dos.
+ *     piso       15 + 300 · 0,06 / 0,5 =  51 °C  → por debajo de los 63 de la carne
+ *     parrilla   15 + 300 · 0,25 / 0,5 = 165 °C  → adentro de la ventana
+ *     contacto   15 + 300 · 0,60 / 0,5 = 375 °C  → por encima de los 220 del huevo
+ *
+ * Leído al derecho, eso decía «hay un montaje que sirve». Leído al revés —que es
+ * como hay que leerlo, porque el fuego lo trae la suerte y el lugar lo pone la
+ * mano— dice **cada montaje sirve para un fuego distinto**, y cada uno tiene su
+ * propia ventana. Nadie escribe cuál: se barren los tres de `MONTAJES`.
  */
-function ventanaDePotencia(v: VentanaDeTag): { readonly minima: number; readonly maxima: number } {
+function ventanaDePotencia(
+  v: VentanaDeTag,
+  montaje: Montaje,
+  distancia: number,
+): { readonly minima: number; readonly maxima: number } {
   return {
-    minima: potenciaPara(temperaturaDeTrabajo(v), 'parrilla'),
-    maxima: potenciaPara(v.techo, 'parrilla'),
+    minima: potenciaPara(temperaturaDeTrabajo(v), montaje, distancia),
+    maxima: potenciaPara(v.techo, montaje, distancia),
   }
 }
 
@@ -382,14 +422,18 @@ function ventanaDePotencia(v: VentanaDeTag): { readonly minima: number; readonly
  *
  * La parrilla NO está en `parrilla`: está en `contacto` con el fuego —es lo que la
  * sostiene—, así que le toca la exposición 0,6 y el equilibrio más bravo de los
- * tres. Con el fuego más grande que el esquema admite eso da **507 °C** para lo
+ * tres. Con el fuego más grande que ESA fila admite eso da **507 °C** para lo
  * carnoso, y de ahí sale la única condición: que no se prenda fuego a esa
  * temperatura. La piedra (`ignitionPoint` 900, el techo de lo que no arde) entra;
  * una vara de madera (300) no, y por eso una parrilla de madera no es una parrilla
  * sino más leña.
+ *
+ * El argumento se pasa: es la punta de arriba de la ventana de LA GEOMETRÍA que la
+ * usa, no una constante del módulo. Una fila con otro montaje pediría otra cosa —y
+ * las dos que no llevan parrilla no piden nada, porque no hay tercer cuerpo.
  */
-function ignicionQueAguantaLaParrilla(v: VentanaDeTag): number {
-  return equilibrioSobre(ventanaDePotencia(v).maxima, 'contacto')
+function ignicionQueAguantaLaParrilla(maxima: number): number {
+  return equilibrioSobre(maxima, 'contacto', 0)
 }
 
 /** Hasta dónde promete empujar la temperatura un proceso, leído de su `drive`. */
@@ -415,8 +459,16 @@ export const IGNICION_QUE_ALCANZA_FROTANDO = temperaturaQuePromete('friccion')
 /** La ventana de la cocción de lo carnoso, expuesta para que el test la cruce. */
 export const VENTANA_CARNOSA = ventanaDelTag('carnoso')
 
-/** Y la del fuego que la sirve. Medido: [273,0000 ; 450,0000), 1,65× de ancho. */
-export const POTENCIA_QUE_COCINA_LO_CARNOSO = ventanaDePotencia(VENTANA_CARNOSA)
+/**
+ * LA VENTANA DEL FUEGO QUE COCINA **EN LA PARRILLA**, que es lo que este nombre
+ * quiso decir siempre. Medido: [253,0000 ; 410,0000), 1,62× de ancho.
+ *
+ * Se conserva el nombre y la forma porque `@anima/mind` lo lee en sus tests para
+ * cotizar y para decidir si un fuego de la partida sirve, y porque sigue siendo
+ * cierto lo que decía. Lo que ya no es cierto es que sea LA ventana: son tres, una
+ * por montaje, y están en `GEOMETRIAS_DE_LA_COCCION`.
+ */
+export const POTENCIA_QUE_COCINA_LO_CARNOSO = ventanaDePotencia(VENTANA_CARNOSA, 'parrilla', 0)
 
 /**
  * CUÁNTOS SEGUNDOS HAY QUE DEJAR LA COMIDA EN LA PARRILLA.
@@ -491,6 +543,425 @@ export const FIRMA_DE_LO_COCIDO: PredicateSignature = textoDe({
     { q: 'toxicity', op: '<=', v: TOXICIDAD_DE_COCIDO },
   ],
 })
+
+// ─── LAS GEOMETRÍAS: EL MONTAJE Y LA DISTANCIA, BARRIDOS Y NO ELEGIDOS ───────
+//
+// Este bloque es el tramo entero. Antes había UNA fila de cocción con el montaje
+// clavado en la parrilla y la distancia clavada en cero, y su ventana de potencia
+// —[253 ; 410)— no la podía llenar ningún fuego que la criatura sepa encender: el
+// techo de la yesca son 0,53 kg de madera, que ardiendo emiten 159. El `gap` decía
+// «ningún esquema conocido establece emitsPower<410», y la lectura obvia —«hay que
+// poder encender más fuerte»— era la equivocada.
+//
+// Lo que la ley 1 pide no es una potencia: es una TERNA (fuente, montaje,
+// distancia) cuya temperatura de equilibrio caiga en la ventana del cuerpo. Así que
+// acá se barren los tres montajes de `MONTAJES` por tres distancias —nueve
+// combinaciones—, se le pregunta al motor la ventana de cada una, y las que se
+// pueden ARMAR con los pasos que existen se vuelven filas. Ninguna se elige a mano,
+// y las siete que se descartan quedan escritas con su ventana y su motivo, que es lo
+// que hace que el descarte se pueda discutir en vez de tener que adivinarlo.
+//
+// Medido: entran DOS —parrilla y contacto, las dos a distancia 0— y de esas dos sólo
+// una se puede encender frotando. Ver `yescaPara`.
+
+const FUEGO: RoleName = 'fuego'
+const PARRILLA: RoleName = 'parrilla'
+const COMIDA: RoleName = 'comida'
+
+/**
+ * HASTA QUÉ DISTANCIA SE BARRE. Tres celdas, que es lo que `formFactor` necesita
+ * para mostrar su forma: el `1 + d²` divide por 1, por 2 y por 5, o sea que la
+ * distancia mueve la ventana MÁS que la diferencia entre dos montajes vecinos.
+ *
+ * No es «cuántas distancias soporta el emisor» —eso lo decide
+ * `porQueNoSePuedeArmar`, y hoy es una sola—: es hasta dónde se mira antes de
+ * descartar. Un barrido que sólo mirara el cero no podría decir qué se está
+ * perdiendo, y lo que se está perdiendo es lo que el Hito 8 tiene que leer.
+ */
+const DISTANCIAS_BARRIDAS: readonly number[] = [0, 1, 2]
+
+/**
+ * QUÉ PILA DEJA A LA COMIDA EN CADA MONTAJE.
+ *
+ * Es la única cosa de este bloque que no sale de una cuenta: es cómo lee la
+ * geometría `montajeDe` (`world/src/step.ts`), o sea conocimiento del mundo. Por eso
+ * cada fila que sale de acá viaja con su evidencia en `PUENTES` y se verifica
+ * armando la situación en una partida de verdad.
+ *
+ *   contacto  la comida APOYADA sobre el fuego —`supportedBy` la fuente—      pila de 2
+ *   parrilla  la comida apoyada sobre algo que está en la celda del fuego     pila de 3
+ *   piso      la comida en la celda y apoyada en NADA                         NO ES UNA PILA
+ *
+ * La de `piso` devuelve una pila SIN el sujeto, y eso no es un descuido: `piso` es
+ * literalmente la ausencia de apoyo y una pila es una lista de apoyos, así que la
+ * geometría del piso no se puede decir con este vocabulario. `porQueNoSePuedeArmar`
+ * la descarta con ese motivo escrito; ver ahí el precio y por qué no cuesta nada
+ * medible.
+ */
+function pilaQueMonta(montaje: Montaje): readonly RoleName[] {
+  switch (montaje) {
+    case 'contacto':
+      return [FUEGO, COMIDA]
+    case 'parrilla':
+      return [FUEGO, PARRILLA, COMIDA]
+    case 'piso':
+      return [FUEGO]
+  }
+}
+
+/**
+ * ¿ESTA GEOMETRÍA SE PUEDE ARMAR CON LOS PASOS QUE HAY? El motivo, o `undefined`
+ * si se puede.
+ *
+ * Está separado de la ventana a propósito: la ventana es física y este límite es
+ * del VOCABULARIO DE PASOS, y mezclarlos haría creer que el mundo no permite algo
+ * que sí permite. Lo que falta es un `Ref`: `poner` sabe decir «en la celda de ese
+ * cuerpo» y «apoyado sobre ese cuerpo», y no sabe decir «en la celda que está a dos
+ * de ese cuerpo». Con `{k:'celda', at}` habría que congelar una coordenada al
+ * planificar y usarla decenas de ticks después, que es justo lo que `tipos.ts`
+ * prohíbe en su primera decisión.
+ */
+function porQueNoSePuedeArmar(montaje: Montaje, distancia: number): string | undefined {
+  // ─── LO QUE UNA PILA NO PUEDE DECIR: LA AUSENCIA DE APOYO ─────────────────
+  //
+  // `piso` es «todo lo demás» de `montajeDe`: el cuerpo está cerca de la fuente y no
+  // lo sostiene ni ella ni nada que esté en su celda. Con `pila` —que es una lista
+  // de apoyos— eso sólo se podría escribir dejando al SUJETO afuera de la pila, y
+  // ese camino está cerrado por dos lados: rompe el invariante «el sujeto aparece
+  // exactamente una vez en la pila», que ya está afirmado FUERA de este paquete
+  // (`mind/tests/ataque-al-reves-2.test.ts`), y obliga al emisor a un `poner` sin
+  // `sobre` que ninguna fila generada usa.
+  //
+  // Y no cuesta nada medible, que es lo que hace que descartarla no sea una excusa:
+  // la ventana del piso es [1054,17 ; 1708,33), o sea entre 3,5 y 5,7 kg de leña
+  // ARDIENDO. El dios no siembra nada de ese tamaño —la vara más pesada de las
+  // veinte semillas anda por el kilo— así que la fila existiría para no ligarse
+  // nunca. El día que el mundo tenga incendios, esto es lo primero que hay que
+  // volver a mirar, y por eso queda en `GEOMETRIAS_DESCARTADAS` con su ventana.
+  if (!pilaQueMonta(montaje).includes(COMIDA)) {
+    return `«${montaje}» es la AUSENCIA de apoyo, y una pila es una lista de apoyos: no se puede escribir`
+  }
+  if (distancia === 0) return undefined
+  return `apoyarse es estar en la misma celda: «${montaje}» sólo existe a distancia 0`
+}
+
+/** Una geometría de la ley 1, con la ventana de fuego que le corresponde. */
+export interface Geometria {
+  readonly montaje: Montaje
+  readonly distancia: number
+  readonly pila: readonly RoleName[]
+  readonly minima: number
+  readonly maxima: number
+}
+
+/** Y una que se barrió y no entró, con el porqué escrito al lado. */
+export interface Descartada extends Geometria {
+  readonly porque: string
+}
+
+const BARRIDO: readonly (Geometria & { readonly porque?: string })[] = (() => {
+  const out: (Geometria & { porque?: string })[] = []
+  // `MONTAJES` es la enumeración CERRADA del motor: si mañana la física agrega un
+  // cuarto montaje, entra acá solo y `pilaQueMonta` no compila hasta que alguien
+  // diga cómo se arma. Eso es lo que hace que esto sea un barrido y no una lista.
+  for (const montaje of MONTAJES) {
+    for (const distancia of DISTANCIAS_BARRIDAS) {
+      const v = ventanaDePotencia(VENTANA_CARNOSA, montaje, distancia)
+      const no = porQueNoSePuedeArmar(montaje, distancia)
+      const g: Geometria & { porque?: string } = {
+        montaje,
+        distancia,
+        pila: pilaQueMonta(montaje),
+        minima: v.minima,
+        maxima: v.maxima,
+        ...(no === undefined ? {} : { porque: no }),
+      }
+      out.push(g)
+    }
+  }
+  return out
+})()
+
+/** Las que se pueden armar. De acá sale una fila de cocción por cada una. */
+export const GEOMETRIAS_DE_LA_COCCION: readonly Geometria[] = BARRIDO.filter((g) => g.porque === undefined)
+
+/** Y las que no, con el motivo, para que el barrido se pueda leer entero. */
+export const GEOMETRIAS_DESCARTADAS: readonly Descartada[] = BARRIDO.filter(
+  (g): g is Geometria & { porque: string } => g.porque !== undefined,
+)
+
+// ─── QUÉ FUEGO SE PUEDE ENCENDER PARA CADA VENTANA ──────────────────────────
+//
+// La otra mitad del arreglo, y la que hace que la cadena cierre en vez de mover el
+// `gap` de lugar. Una fila de cocción le pide al rol `fuego` una potencia acotada
+// POR LAS DOS PUNTAS, y el único esquema de `friccion` que hablaba de `emitsPower`
+// prometía `emitsPower > 0` — que no garantiza ni el piso ni el techo, así que la
+// regresión no lo podía usar y la rama moría igual.
+//
+// Lo que falta es una fila que diga QUÉ HAY QUE FROTAR para que salga un fuego de
+// ESA ventana. Y se puede decir sin inventar nada, porque `emitsPower` es, palabra
+// por palabra del catálogo, `step(temperature ≥ ignitionPoint) · fuelEnergy · mass ·
+// 16,7`: acotar el producto `fuelEnergy · mass` acota la potencia, y las dos son
+// cualidades que un `Where` sabe pedir.
+
+/**
+ * `emitsPower` de un cuerpo que ya cruzó su ignición, PREGUNTADA AL MOTOR.
+ *
+ * Se evalúa la expresión derivada del catálogo con un contexto de mentira —una
+ * temperatura por encima de la ignición para que el `step` valga 1— en vez de
+ * escribir `fuelEnergy · mass · 16,7`. El 16,7 es «el único número libre» de
+ * `quality.ts` y está calibrado contra el barrido térmico: una segunda copia acá
+ * sería el bug de `DSL_REFERENCE` otra vez.
+ */
+const EXPRESION_DE_EMITIR = specOf('emitsPower').derived
+
+function potenciaDeArder(fuelEnergy: number, mass: number): number {
+  if (EXPRESION_DE_EMITIR === undefined) {
+    throw new RangeError('`emitsPower` dejó de ser derivada: no hay a quién preguntarle cuánto emite lo que arde')
+  }
+  const noHace = (): never => {
+    throw new RangeError('`emitsPower` dejó de depender sólo de cualidades propias')
+  }
+  return evalQuality(EXPRESION_DE_EMITIR, {
+    own: (q) =>
+      q === 'temperature' ? 1 : q === 'ignitionPoint' ? 0 : q === 'fuelEnergy' ? fuelEnergy : q === 'mass' ? mass : 0,
+    geom: noHace,
+    sumParts: noHace,
+    maxParts: noHace,
+    substance: noHace,
+  })
+}
+
+/** Lo que `friccion` le exige al rol que se calienta, leído del catálogo. */
+const LO_QUE_FRICCION_LE_PIDE_AL_QUE_ARDE: readonly QualityTest[] = (() => {
+  const p = procesoDe('friccion')
+  for (const e of p.effects) {
+    if (e.k !== 'drive') continue
+    const rol = baseRoleName(e.on)
+    for (const r of p.roles) if (baseRoleName(r.name) === rol) return r.where
+  }
+  throw new RangeError('`friccion` dejó de empujar sobre ningún rol: no se sabe qué se frota')
+})()
+
+/**
+ * LAS SUSTANCIAS QUE SE PUEDEN PRENDER FROTANDO, barridas del catálogo con las
+ * MISMAS condiciones que la fila de encender ya le pone al rol `a`.
+ *
+ * No es una lista: es un filtro sobre `SUSTANCIAS_SEMILLA` con las cuatro
+ * condiciones del puente de `emitsPower>0` —arde (`fuelEnergy > 0`), se prende
+ * abajo de lo que frotar promete, no está mojada— más lo que el proceso ya le pide
+ * al rol. Medido, dan dos: **madera** (fuelEnergy 18, calor específico 1,7) y
+ * **madera-dura** (21 y 1,6). Las otras ocho que arden no pasan la rigidez.
+ */
+export const COMBUSTIBLES_DE_FROTAR: readonly Substance[] = SUSTANCIAS_SEMILLA.filter((s) => {
+  const p = s.perUnitMass
+  const fe = p.fuelEnergy
+  const ig = p.ignitionPoint
+  if (fe === undefined || !(fe > 0)) return false
+  if (ig === undefined || ig > IGNICION_QUE_ALCANZA_FROTANDO) return false
+  if ((p.moisture ?? 0) >= HUMEDAD_QUE_APAGA) return false
+  for (const t of LO_QUE_FRICCION_LE_PIDE_AL_QUE_ARDE) {
+    const x = p[t.q as keyof typeof p]
+    const val = typeof x === 'number' ? x : 0
+    const pasa = t.op === '>=' ? val >= t.v : t.op === '<=' ? val <= t.v : t.op === '>' ? val > t.v : val < t.v
+    if (!pasa) return false
+  }
+  return true
+})
+
+/** Lo que hay que frotar para que salga un fuego de una ventana, o el porqué de que no. */
+export interface Yesca {
+  readonly minima: number
+  readonly maxima: number
+  readonly fuelEnergyMin: number
+  readonly fuelEnergyMax: number
+  readonly masaMin: number
+  readonly masaMax: number
+}
+
+/** Un flotante para arriba y uno para abajo. Ver `yescaPara`. */
+function siguiente(x: number): number {
+  return x + (x < 0 ? -x : x) * Number.EPSILON
+}
+function anterior(x: number): number {
+  return x - (x < 0 ? -x : x) * Number.EPSILON
+}
+
+/**
+ * QUÉ COMBUSTIBLE DA UN FUEGO DE ESTA VENTANA — y de acá sale, sin que nadie la
+ * escriba, que sólo una de las tres geometrías se puede encender.
+ *
+ * `emitsPower = fuelEnergy · mass · 16,7`, y un `Where` no sabe acotar un producto:
+ * sabe acotar cada factor. Así que se acota `fuelEnergy` a la banda de las
+ * sustancias que la fila ya admite —de `F` a `G`, medido [18 ; 21]— y se despeja la
+ * masa contra la punta que cada lado necesita:
+ *
+ *     mass >= minima / (16,7 · F)     ⟹  emitsPower >= minima  para cualquier fe ≥ F
+ *     mass <  maxima / (16,7 · G)     ⟹  emitsPower <  maxima  para cualquier fe ≤ G
+ *
+ * Las dos son verdaderas de cualquier cuerpo, ensamblado o no, porque no se apoyan
+ * en la sustancia: se apoyan en la misma expresión que el motor usa para contestar
+ * `emitsPower`. Y la banda existe sólo si `mLo < mHi`, o sea si `G/F` es más chico
+ * que el ancho de la ventana (1,62×): medido, 21/18 = 1,17, entra.
+ *
+ * ─── Y LA SEGUNDA CONDICIÓN, QUE ES LA QUE DESCARTA DOS DE LAS TRES ─────────
+ *
+ * Que la yesca ENTRE EN EL TANQUE: frotar cobra `heatCapacity × ΔT / eficiencia` de
+ * `stamina`, y por eso la fila de encender topa `heatCapacity` en 0,9. La masa
+ * mínima de la banda, multiplicada por el calor específico de alguna de las
+ * sustancias admitidas, tiene que caer abajo de ese techo. Medido:
+ *
+ *     contacto  masa desde 0,3507 kg → heatCapacity 0,5962 (madera)  ENTRA
+ *     parrilla  masa desde 0,8415 kg → heatCapacity 1,4305           no entra
+ *     piso      masa desde 3,5069 kg → heatCapacity 5,9617           no entra
+ *
+ * O sea: **el único fuego de cocina que una criatura sola puede encender es el que
+ * cocina en contacto.** Nadie escribió eso; sale de cruzar el tanque de aliento con
+ * la exposición de cada montaje.
+ */
+function yescaPara(minima: number, maxima: number): Yesca | string {
+  let F = Number.POSITIVE_INFINITY
+  let G = 0
+  for (const s of COMBUSTIBLES_DE_FROTAR) {
+    const fe = s.perUnitMass.fuelEnergy ?? 0
+    if (fe < F) F = fe
+    if (fe > G) G = fe
+  }
+  if (!(F > 0) || !(G > 0)) return 'ninguna sustancia del catálogo se prende frotando: no hay banda de combustible'
+
+  // El despeje y la vuelta al motor no dan el mismo número en IEEE-754 —dividir y
+  // volver a multiplicar pierde el último bit— así que el despeje se COMPRUEBA
+  // contra `potenciaDeArder` y, si se queda corto, se corre UN flotante para el lado
+  // seguro. No es un margen elegido: es el sucesor.
+  let masaMin = minima / potenciaDeArder(F, 1)
+  for (let i = 0; i < 8 && potenciaDeArder(F, masaMin) < minima; i++) masaMin = siguiente(masaMin)
+  let masaMax = maxima / potenciaDeArder(G, 1)
+  for (let i = 0; i < 8 && potenciaDeArder(G, masaMax) > maxima; i++) masaMax = anterior(masaMax)
+
+  if (!(masaMin < masaMax)) {
+    return (
+      `la banda de combustible del catálogo (${String(F)} a ${String(G)} de fuelEnergy) es más ancha que la ` +
+      `ventana de potencia: la masa tendría que estar entre ${masaMin.toFixed(4)} y ${masaMax.toFixed(4)} kg`
+    )
+  }
+  let masaQueEntra = Number.POSITIVE_INFINITY
+  for (const s of COMBUSTIBLES_DE_FROTAR) {
+    const c = masaMin * s.specificHeat
+    if (c < masaQueEntra) masaQueEntra = c
+  }
+  if (masaQueEntra > TECHO_DE_YESCA) {
+    return (
+      `no entra en el tanque: la yesca más chica que da ${minima.toFixed(2)} de potencia pesa ` +
+      `${masaMin.toFixed(4)} kg y tiene heatCapacity ${masaQueEntra.toFixed(4)}, arriba del techo ` +
+      `${String(TECHO_DE_YESCA)} que frotar puede pagar`
+    )
+  }
+  return { minima, maxima, fuelEnergyMin: F, fuelEnergyMax: G, masaMin, masaMax }
+}
+
+/** Lo que se puede encender, y lo que no con su porqué. Los dos se exportan. */
+export const YESCAS_DE_COCINA: readonly Yesca[] = GEOMETRIAS_DE_LA_COCCION.map((g) =>
+  yescaPara(g.minima, g.maxima),
+).filter((y): y is Yesca => typeof y !== 'string')
+
+export const YESCAS_IMPOSIBLES: readonly { readonly geometria: Geometria; readonly porque: string }[] =
+  GEOMETRIAS_DE_LA_COCCION.map((g) => ({ geometria: g, resultado: yescaPara(g.minima, g.maxima) }))
+    .filter((x): x is { geometria: Geometria; resultado: string } => typeof x.resultado === 'string')
+    .map((x) => ({ geometria: x.geometria, porque: x.resultado }))
+
+/**
+ * LAS DOS PUNTAS VAN EN DOS FILAS Y NO EN UNA CONJUNTIVA, y no es estética.
+ *
+ * La primera versión de esto era UNA fila con `establishes:
+ * 'emitsPower>=105,42&emitsPower<170,83'`, y funcionaba acá y rompía tres tests de
+ * `@anima/mind`. El motivo está escrito allá y es una decisión suya: `sinVocabulario`
+ * —el portón que evita querer lo que ningún esquema sabe hacer— lee las llaves de
+ * `SCHEMA_INDEX` con `interpretar`, que devuelve UNA cláusula, y su contrato dice
+ * que **el día que alguna llave sea conjuntiva la función se apaga entera y
+ * contesta que todo se puede querer**. O sea que una firma conjuntiva no rompía
+ * `mind`: la desarmaba en silencio, abriendo el portón para todo.
+ *
+ * Partirla en dos es además más honesto de este lado: cada fila lleva EXACTAMENTE
+ * los `roleHints` que hacen verdadera SU promesa, así que un pedido que sólo quiera
+ * el piso —«un fuego de al menos tanto»— usa una sola fila y no arrastra la
+ * condición de la otra. Y las dos se aplican JUNTAS cuando el pedido las pide
+ * juntas, porque van por la misma vía (`proceso:friccion`) y `esquemasQueAportan`
+ * suma los `roleHints` de todas las filas de una vía que entren en el pedido — que
+ * es el mismo mecanismo que hace la caña con `catch>0` y `reach>=2`.
+ */
+function firmaDelPiso(y: Yesca): PredicateSignature {
+  return firmaDe(textoDe({ k: 'cualidad', test: { q: 'emitsPower', op: '>=', v: y.minima } }))
+}
+
+function firmaDelTecho(y: Yesca): PredicateSignature {
+  return firmaDe(textoDe({ k: 'cualidad', test: { q: 'emitsPower', op: '<', v: y.maxima } }))
+}
+
+// ─── Las filas de la cocción, una por geometría ─────────────────────────────
+
+const ESQUEMAS_DE_LA_COCCION: readonly EsquemaDeLey[] = GEOMETRIAS_DE_LA_COCCION.map((g) => ({
+  k: 'ley' as const,
+  ley: 'desnaturalizacion' as const,
+  establishes: FIRMA_DE_LO_COCIDO,
+  sujeto: COMIDA,
+  pila: g.pila,
+  distancia: g.distancia,
+  mientras: SEGUNDOS_DE_COCCION,
+  segundos: SEGUNDOS_DE_COCCION,
+  roleHints: {
+    fuego: [
+      { q: 'emitsPower' as const, op: '>=' as const, v: g.minima },
+      { q: 'emitsPower' as const, op: '<' as const, v: g.maxima },
+    ],
+    // La parrilla sólo existe donde la pila la nombra, y lo que se le pide sale de
+    // la ventana de ESA fila: es el cuerpo que está en CONTACTO con el fuego.
+    ...(g.pila.includes(PARRILLA)
+      ? {
+          parrilla: [{ q: 'ignitionPoint' as const, op: '>' as const, v: ignicionQueAguantaLaParrilla(g.maxima) }],
+        }
+      : {}),
+    comida: [],
+  },
+}))
+
+// ─── Y las de encender un fuego de cocina, una por yesca que exista ─────────
+
+/**
+ * Las tres condiciones que las dos filas comparten, y son las de la ley 3: sin
+ * combustible no emite, mojado no prende, y lo que se prende más arriba de lo que
+ * frotar promete no lo enciende nadie frotando. Más el techo del tanque de aliento.
+ */
+const LO_QUE_SE_PUEDE_PRENDER_FROTANDO: readonly QualityTest[] = [
+  { q: 'heatCapacity', op: '<=', v: TECHO_DE_YESCA },
+  { q: 'ignitionPoint', op: '<=', v: IGNICION_QUE_ALCANZA_FROTANDO },
+  { q: 'moisture', op: '<', v: HUMEDAD_QUE_APAGA },
+]
+
+const ESQUEMAS_DE_ENCENDER_PARA_COCINAR: readonly EsquemaDeProceso[] = YESCAS_DE_COCINA.flatMap((y) => [
+  // EL PISO: para que emita AL MENOS tanto, el combustible tiene que rendir al menos
+  // tanto por kilo y pesar al menos tanto. Las dos juntas garantizan el producto.
+  esquema(firmaDelPiso(y), 'friccion', {
+    a: [
+      ...LO_QUE_SE_PUEDE_PRENDER_FROTANDO,
+      { q: 'fuelEnergy', op: '>=', v: y.fuelEnergyMin },
+      { q: 'mass', op: '>=', v: y.masaMin },
+    ],
+    b: [],
+    actor: [],
+  }),
+  // Y EL TECHO, que es la otra punta del mismo producto y la que separa cocinar de
+  // quemar. Sin esta fila la regresión podía prometer un fuego «de al menos tanto»
+  // y traer uno que carboniza la comida.
+  esquema(firmaDelTecho(y), 'friccion', {
+    a: [
+      ...LO_QUE_SE_PUEDE_PRENDER_FROTANDO,
+      { q: 'fuelEnergy', op: '<=', v: y.fuelEnergyMax },
+      { q: 'mass', op: '<', v: y.masaMax },
+    ],
+    b: [],
+    actor: [],
+  }),
+])
 
 // ─── La evidencia de los puentes ────────────────────────────────────────────
 
@@ -570,6 +1041,38 @@ export const PUENTES: readonly Evidencia[] = [
       'packages/plan/tests/los-esquemas-contra-el-mundo.test.ts',
     ],
   },
+  ...ESQUEMAS_DE_ENCENDER_PARA_COCINAR.map((e, i) => {
+    // Dos filas por yesca —el piso y el techo—, así que la yesca es la mitad del
+    // índice. Ver `firmaDelPiso` para por qué son dos y no una conjuntiva.
+    const y = YESCAS_DE_COCINA[i >> 1]
+    const punta = i % 2 === 0 ? 'EL PISO' : 'EL TECHO'
+    return {
+      establishes: e.establishes,
+      por: claveDeVia(e),
+      porque:
+        `LA MISMA CONSECUENCIA QUE LA FILA DE ARRIBA, PERO ACOTADA — y ésta pone ${punta}. ` +
+        '`emitsPower>0` no acota nada, y la cocción necesita las dos puntas: un fuego chico no llega a la ' +
+        'ventana y uno grande quema la comida. La fila de arriba dice que frotar hace fuego; ésta dice DE QUÉ ' +
+        'TAMAÑO, y sale de que `emitsPower` es `step(temperature ≥ ignitionPoint) · fuelEnergy · mass · 16,7`: ' +
+        'acotar los dos factores acota el producto, y los dos son cualidades que un `Where` sabe pedir. La banda ' +
+        'de `fuelEnergy` es la de las sustancias que la fila de arriba ya admitía —medido, ' +
+        `[${String(y?.fuelEnergyMin ?? 0)} ; ${String(y?.fuelEnergyMax ?? 0)}], que son madera y madera-dura— y la ` +
+        `masa se despeja contra cada punta: de ${(y?.masaMin ?? 0).toFixed(4)} a ${(y?.masaMax ?? 0).toFixed(4)} kg. ` +
+        'Lo que las dos filas aportan y el catálogo no dice: que de las TRES ventanas de cocción, ésta es la ' +
+        'única que entra en el tanque de aliento —las otras dos piden yescas de 0,84 y 3,51 kg, o sea ' +
+        'heatCapacity 1,35 y 5,61 contra el techo 0,9 que frotar puede pagar—.',
+      medidoEn: [
+        // La cadena entera medida en el mundo: la vara pasa sus 300 °C a los 2,40 s.
+        'packages/world/tests/el-fuego.test.ts',
+        // La expresión derivada de `emitsPower`, con su `step` y su 16,7.
+        'packages/physics/src/quality.ts',
+        // El precio de frotar: `heatCapacity × ΔT / eficiencia` de `stamina`.
+        'packages/world/src/step.ts',
+        // Y acá, esta misma fila corrida contra una partida.
+        'packages/plan/tests/los-esquemas-contra-el-mundo.test.ts',
+      ],
+    }
+  }),
   {
     establishes: 'heatCapacity<=0.9',
     por: 'proceso:deshilachar',
@@ -592,28 +1095,37 @@ export const PUENTES: readonly Evidencia[] = [
       'packages/physics/src/quality.ts',
     ],
   },
-  {
-    establishes: FIRMA_DE_LO_COCIDO,
-    por: `ley:desnaturalizacion:${FIRMA_DE_LO_COCIDO}`,
-    porque:
-      'COCINAR NO ES UN PROCESO: no hay `ProcessId` que lo haga, lo hace la ley 5 sobre todo cuerpo ' +
-      'orgánico que esté entre su `denaturesAt` y su `ignitionPoint`. O sea que ningún `establishes` ' +
-      'lo puede declarar —las leyes no proponen, corren— y lo único que respalda esta fila es una ' +
-      'medición. Lo que la fila aporta y el catálogo no dice: que la ventana de lo carnoso es ' +
-      '[63 ; 220) °C, que de los TRES montajes que el mundo distingue uno solo cae adentro —piso 51, ' +
-      'parrilla 165, contacto 375 sobre una fogata de 300—, y que por eso la pila tiene tres cuerpos ' +
-      'y no dos. Nadie escribió «parrilla»: es la única geometría que sobrevive a la resta.',
-    medidoEn: [
-      // La ley 5, con su `k = (T − denaturesAt)/100` y sus cuatro tasas.
-      'packages/physics/src/leyes.ts',
-      // `montajeDe`: la parrilla sale de la geometría y de ninguna tabla.
-      'packages/world/src/step.ts',
-      // La cadena entera en el mundo: el pescado sobre la parrilla llega a 0,950.
-      'packages/world/tests/el-fuego.test.ts',
-      // Y acá, esta misma fila corrida contra una partida, en el peor caso admisible.
-      'packages/plan/tests/los-esquemas-contra-el-mundo.test.ts',
-    ],
-  },
+  ...ESQUEMAS_DE_LA_COCCION.map((e, i) => {
+    const g = GEOMETRIAS_DE_LA_COCCION[i]
+    const m = g?.montaje ?? 'piso'
+    return {
+      establishes: e.establishes,
+      por: claveDeVia(e),
+      porque:
+        'COCINAR NO ES UN PROCESO: no hay `ProcessId` que lo haga, lo hace la ley 5 sobre todo cuerpo ' +
+        'orgánico que esté entre su `denaturesAt` y su `ignitionPoint`. O sea que ningún `establishes` ' +
+        'lo puede declarar —las leyes no proponen, corren— y lo único que respalda esta fila es una ' +
+        `medición. Lo que ESTA fila aporta y el catálogo no dice: que la ventana de lo carnoso es ` +
+        `[${String(VENTANA_CARNOSA.piso)} ; ${String(VENTANA_CARNOSA.techo)}) °C, y que el montaje «${m}» ` +
+        `—que en el mundo se arma poniendo ${String(g?.pila.length ?? 0)} cuerpo(s) en la celda del fuego— ` +
+        `la sirve con un fuego de [${(g?.minima ?? 0).toFixed(4)} ; ${(g?.maxima ?? 0).toFixed(4)}) de potencia. ` +
+        'Nadie escribió «parrilla» ni «contacto»: los tres montajes salen de `MONTAJES`, la ventana de cada ' +
+        'uno sale de invertir la ley 1 sobre el motor, y la pila que lo arma sale de cómo lee la geometría ' +
+        '`montajeDe`. Lo que se elige cada vez es el LUGAR; la potencia se elige una sola vez, al encender.',
+      medidoEn: [
+        // La ley 5, con su `k = (T − denaturesAt)/100` y sus cuatro tasas.
+        'packages/physics/src/leyes.ts',
+        // `montajeDe`: los tres montajes salen de la geometría y de ninguna tabla.
+        'packages/world/src/step.ts',
+        // La cadena entera en el mundo: el pescado sobre la parrilla llega a 0,950.
+        'packages/world/tests/el-fuego.test.ts',
+        // La misma fogata en los tres lugares, con la tabla de qué le pasa a cada una.
+        'packages/world/tests/donde-se-pone-la-comida.test.ts',
+        // Y acá, esta misma fila corrida contra una partida, en el peor caso admisible.
+        'packages/plan/tests/los-esquemas-contra-el-mundo.test.ts',
+      ],
+    }
+  }),
 ]
 
 // ─── Las diez filas ─────────────────────────────────────────────────────────
@@ -666,12 +1178,15 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
   //
   // ─── Y LO QUE ESTA FILA NO ALCANZA A PROMETER, DICHO ANTES DE QUE MUERDA ──
   //
-  // `emitsPower > 0` no es `emitsPower >= 273`, que es lo que la cocción pide. La
-  // cuenta es la de la yesca leída al derecho: `heatCapacity <= 0,9` sobre madera
-  // (calor específico 1,7) topa la masa en 0,529 kg, y 0,529 kg de madera ardiendo
-  // emiten 159 — la mitad de lo que hace falta para cocinar. Así que **la criatura
-  // puede encender y no puede, sólo con eso, cocinar**, y el `gap` lo va a decir
-  // con estas dos firmas al lado. No es un defecto de esta fila: es el dato.
+  // `emitsPower > 0` NO ACOTA NADA POR ARRIBA NI POR ABAJO, y la cocción pide las
+  // dos puntas: un fuego chico no llega a la ventana y uno grande la quema. Por eso
+  // la regresión no podía usar esta fila para llenar el rol `fuego` de la cocción
+  // —`emitsPower>0` no GARANTIZA `emitsPower>=105,42`— y la rama moría con el `gap`
+  // del `emitsPower`. Lo que faltaba no era encender más fuerte: era poder pedir un
+  // fuego DE UN TAMAÑO, y eso lo dice la fila de abajo.
+  //
+  // Esta fila se queda igual y sigue haciendo falta: es la que contesta «quiero
+  // fuego» a secas —para ver, para calentarse, para propagar— sin exigir tamaño.
   // Las otras dos condiciones de `a` no son de `friccion` sino de la ley 3, y
   // están porque un cuerpo calentísimo sin combustible no emite nada y uno mojado
   // tampoco: `arde` en `physics/src/leyes.ts` es
@@ -688,6 +1203,17 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
     b: [],
     actor: [],
   }),
+
+  // PUENTE: `emitsPower` ACOTADO POR LAS DOS PUNTAS, una fila por ventana que se
+  // pueda encender. Ver `PUENTES` y `yescaPara`.
+  //
+  // Es la fila que cierra la cadena de cocinar sin fuego a la vista, y la que dice
+  // —sin que nadie lo escriba— que de las tres ventanas de cocción sólo UNA se
+  // puede encender frotando: las otras dos piden yescas que no entran en el tanque
+  // de aliento. Las condiciones de `a` son las mismas cuatro de arriba (menos
+  // `fuelEnergy>0`, que queda subsumida) más las dos bandas despejadas del producto
+  // `fuelEnergy · mass` que es `emitsPower`.
+  ...ESQUEMAS_DE_ENCENDER_PARA_COCINAR,
 
   // ── union ─────────────────────────────────────────────────────────────────
   //
@@ -902,53 +1428,37 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
     },
   ),
 
-  // ── ley 5 · desnaturalización ─────────────────────────────────────────────
+  // ── ley 5 · desnaturalización, UNA FILA POR GEOMETRÍA ─────────────────────
   //
-  // LA PRIMERA FILA QUE NO ES UN PROCESO. Ver `EsquemaDeLey` en `tipos.ts` para el
-  // porqué de la forma; acá va el porqué de los números, que salen todos de restar
-  // cosas del catálogo.
+  // LAS FILAS QUE NO SON PROCESOS. Ver `EsquemaDeLey` en `tipos.ts` para el porqué
+  // de la forma y `GEOMETRIAS_DE_LA_COCCION` para el porqué de los números, que
+  // salen todos de barrer `MONTAJES` × distancias contra el motor.
   //
-  // Los tres roles y lo que se les pide:
+  // Los roles y lo que se les pide:
   //
-  //   fuego     la ventana de potencia. Abajo del piso la comida no llega a su
-  //             `denaturesAt` (o llega tan justo que la ley empuja a tasa cero);
-  //             arriba del techo cruza su `ignitionPoint` y se quema en vez de
-  //             cocinarse. Los dos bordes salen de `ventanaDelTag('carnoso')`.
-  //   parrilla  que no se prenda fuego estando en CONTACTO con el fuego, que es
-  //             la exposición más brava de las tres. Y `portable`: hay que poder
-  //             levantarla, y eso lo agrega la regresión sola por estar en `pila`.
+  //   fuego     la ventana de potencia DE ESA GEOMETRÍA. Abajo del piso la comida
+  //             no llega a su `denaturesAt` (o llega tan justo que la ley empuja a
+  //             tasa cero); arriba del techo cruza su `ignitionPoint` y se quema en
+  //             vez de cocinarse. Los dos bordes salen de invertir la ley 1.
+  //   parrilla  sólo donde la pila la nombra: que no se prenda fuego estando en
+  //             CONTACTO con el fuego, que es la exposición más brava de las tres.
+  //             Y `portable`, que lo agrega la regresión sola por no ser la base.
   //   comida    nada en cualidades. Lo que tiene que ser —carnosa y en la mano—
   //             sale de la propia promesa: ver `EsquemaDeLey.sujeto` y el residuo
   //             que la regresión le pasa.
   //
-  // ─── LO QUE ESTA FILA NO DICE, Y HAY QUE DECIRLO ──────────────────────────
+  // ─── LO QUE ESTAS FILAS NO DICEN, Y HAY QUE DECIRLO ───────────────────────
   //
-  // No dice que la parrilla AGUANTE el peso: la ley 8 es otra, `footing` es una
+  // No dicen que la parrilla AGUANTE el peso: la ley 8 es otra, `footing` es una
   // cualidad que existe y `pila` no la mira. Hoy no muerde porque lo que se apoya
   // pesa kilos y no toneladas, y queda escrito para que el día que muerda no
   // parezca un accidente.
   //
-  // Y no hay una fila por cada tag comestible: hay UNA, la de lo carnoso, porque
-  // es la que el criterio del Hito 5 necesita. La de lo vegetal es la misma cuenta
-  // con otro tag —`ventanaDelTag` no sabe de carne— y entra el día que haya un
-  // objetivo que la pida, sin tocar nada de este módulo salvo la lista.
-  {
-    k: 'ley',
-    ley: 'desnaturalizacion',
-    establishes: FIRMA_DE_LO_COCIDO,
-    sujeto: 'comida',
-    pila: ['fuego', 'parrilla', 'comida'],
-    mientras: SEGUNDOS_DE_COCCION,
-    segundos: SEGUNDOS_DE_COCCION,
-    roleHints: {
-      fuego: [
-        { q: 'emitsPower', op: '>=', v: POTENCIA_QUE_COCINA_LO_CARNOSO.minima },
-        { q: 'emitsPower', op: '<', v: POTENCIA_QUE_COCINA_LO_CARNOSO.maxima },
-      ],
-      parrilla: [{ q: 'ignitionPoint', op: '>', v: ignicionQueAguantaLaParrilla(VENTANA_CARNOSA) }],
-      comida: [],
-    },
-  },
+  // Y no hay filas por cada tag comestible: hay las de lo carnoso, porque es lo que
+  // el criterio del Hito 5 necesita. Las de lo vegetal son la misma cuenta con otro
+  // tag —`ventanaDelTag` no sabe de carne— y entran el día que haya un objetivo que
+  // las pida, sin tocar nada de este módulo salvo el barrido.
+  ...ESQUEMAS_DE_LA_COCCION,
 ]
 
 // ─── El índice ──────────────────────────────────────────────────────────────
