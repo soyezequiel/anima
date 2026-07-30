@@ -361,6 +361,48 @@ export interface EstadoDeLaEscalera {
    * bien, así que la tercera sale sola.
    */
   fondosQueFallaron: number
+  /**
+   * EL «MIENTRAS TANTO» DE UN `gap` QUE YA SE HIZO, por firma, para no volver a
+   * hacerlo idéntico contra el mismo paisaje.
+   *
+   * ─── EL BUCLE QUE ESTE CERROJO MATA, MEDIDO ────────────────────────────────
+   *
+   * Es el mismo cerrojo que `fondosQueFallaron` y que `bocadoQueFallo`, y llegó
+   * por el mismo camino: un paso que no gasta aliento y no cambia nada se vuelve
+   * a elegir para siempre, porque lo que lo eligió no se movió. La diferencia es
+   * que acá el paso **sale bien**, y ésa es la parte que costó ver.
+   *
+   * MEDIDO sobre el mundo decretado (`hito-5-el-criterio.test.ts`), con la
+   * criatura pidiendo `holding(tag:carnoso,toxicity<0.0528)`: `plan()` contesta
+   * `gap` con `missing «emitsPower<410&emitsPower>=253»` y un `nearest` de UN
+   * paso, `ir(suelta:-6:-7:2, within:1)`, que es «acercate a lo que podría hacer
+   * de parrilla». La criatura ya está **a una celda** de esa pieza, así que `ir`
+   * aterriza con `ok:true` en un tick sin mover una pata; al tick siguiente D4
+   * vuelve a pedir el mismo plan, sale el mismo `gap`, y con él el mismo `ir`.
+   *
+   *     tanque 310 ..... 6045 despegues de `ir(suelta:-6:-7:2)` en 6171 ticks
+   *     tanque 1000 ... 19846 despegues de `ir(suelta:-6:-7:2)` en 19971 ticks
+   *
+   * O sea: el 98% de la vida de la criatura, dando el mismo paso que ya estaba
+   * dado. Antes de que el mundo materializara el decreto esto no se veía porque
+   * no había ninguna pieza que pudiera hacer de parrilla: `nearest` venía vacío y
+   * la escalera caía a D5, que es la rama que el encabezado de `planificar` ya
+   * describe («D5 manda a deambular, la vista cambia, y la próxima búsqueda de la
+   * misma meta corre sobre otro paisaje»). El cerrojo no inventa esa salida: le
+   * hace tomar la misma al `nearest` que no cambió nada.
+   *
+   * Se guarda la FIRMA de los pasos y no un `boolean`: un `nearest` que nombra
+   * otro cuerpo es otro «mientras tanto» y merece su turno. Y se pone al DESPEGAR
+   * y no al aterrizar, así que un `nearest` que fracasa también queda cerrado —
+   * igual que un fondo que falla—.
+   *
+   * Se limpia cuando la meta cambia (`tomarMeta`), cuando aparece un plan de
+   * verdad para ella (`planificar`) y cuando la meta se tira (`olvidarMeta`). NO
+   * se limpia con un fondo que sale bien, y es a propósito: si se limpiara, la
+   * criatura alternaría un tick de deambular con un tick del mismo `ir` para
+   * siempre — el mismo bucle, más caro, porque deambular sí cuesta patas.
+   */
+  mientrasTantoYaHecho: string | undefined
 }
 
 export function nuevoEstado(): EstadoDeLaEscalera {
@@ -379,6 +421,7 @@ export function nuevoEstado(): EstadoDeLaEscalera {
     conseguido: undefined,
     bocadoQueFallo: undefined,
     fondosQueFallaron: 0,
+    mientrasTantoYaHecho: undefined,
   }
 }
 
@@ -456,6 +499,7 @@ function olvidarMeta(e: EstadoDeLaEscalera): void {
   e.valorEnCurso = 0
   e.porQuien = undefined
   e.cortes = 0
+  e.mientrasTantoYaHecho = undefined
 }
 
 // ─── La escalera ─────────────────────────────────────────────────────────────
@@ -689,6 +733,40 @@ function sigueEnPie(i: Intencion, v: VistaDeLaMente): boolean {
     if (resolverCuerpo(r, v) === undefined) return false
   }
   return true
+}
+
+/**
+ * LA FIRMA DE UN «MIENTRAS TANTO»: qué pasos son y sobre qué caen.
+ *
+ * Es lo que deja decir «esto ya lo hice» sin guardar los pasos. Se arma con la
+ * `k` de cada paso y sus `Ref`, que es lo único que distingue dos pedidos: el
+ * mismo `ir` sobre otro cuerpo es otro «mientras tanto» y merece su turno.
+ *
+ * `{k:'donde'}` colapsa a la palabra `donde` a propósito y no a su `Where`: un
+ * `Where` se resuelve contra la vista al ejecutar, así que dos `donde` idénticos
+ * pueden caer en cuerpos distintos y dos distintos en el mismo. Colapsarlos hace
+ * que el cerrojo se cierre ANTES —lo cual es el lado seguro: cerrarse de más
+ * manda a D5, que es exactamente lo que la escalera hace cuando `nearest` viene
+ * vacío; abrirse de más devuelve el bucle—.
+ *
+ * Sin `join` sobre nada ordenado por el sistema y sin `localeCompare`: `refsDe`
+ * ya entrega los roles en orden total propio (regla 2).
+ */
+function firmaDeLoQueSePuede(pasos: readonly Intencion[]): string {
+  return pasos.map((i) => `${i.k}(${refsDe(i).map(firmaDeRef).join(',')})`).join(';')
+}
+
+function firmaDeRef(r: Ref): string {
+  switch (r.k) {
+    case 'id':
+      return `id:${r.id}`
+    case 'celda':
+      return `celda:${String(r.at.x)}:${String(r.at.y)}`
+    case 'rinde':
+      return `rinde:${r.de}`
+    default:
+      return r.k
+  }
 }
 
 /** Los `Ref` de una intención. Exhaustivo sobre las trece variantes. */
@@ -1038,6 +1116,8 @@ function tomarMeta(
   e.porQuien = quien
   e.desdeTick = e.tick
   e.cortes = 0
+  // Meta nueva, «mientras tanto» nuevo: el cerrojo es POR META, no por vida.
+  e.mientrasTantoYaHecho = undefined
   return planificar(v, e, o, quien, porque, penso)
 }
 
@@ -1086,6 +1166,10 @@ function planificar(
     case 'plan':
       e.frontera = undefined
       e.metaDeLaFrontera = undefined
+      // Apareció una vía de verdad: lo que se hizo «mientras tanto» deja de ser
+      // un mientras tanto, y si mañana el plan se rompe y vuelve el `gap`, ese
+      // paso se puede volver a hacer sobre un paisaje que ya cambió.
+      e.mientrasTantoYaHecho = undefined
       return arrancarPlan(e, quien, r.steps, meta, porque)
     case 'parcial':
       // La frontera se guarda y el tick se cae a D5: el cuerpo hace algo
@@ -1098,6 +1182,12 @@ function planificar(
       e.frontera = undefined
       e.metaDeLaFrontera = undefined
       if (r.nearest.length === 0) return undefined
+      // EL MISMO «MIENTRAS TANTO» NO SE HACE DOS VECES. Ver
+      // `EstadoDeLaEscalera.mientrasTantoYaHecho`: sin esta línea la criatura se
+      // pasa el 98% de su vida repitiendo un `ir` que aterriza bien y no la mueve.
+      const firma = firmaDeLoQueSePuede(r.nearest)
+      if (e.mientrasTantoYaHecho === firma) return undefined
+      e.mientrasTantoYaHecho = firma
       return arrancarPlan(
         e,
         quien,

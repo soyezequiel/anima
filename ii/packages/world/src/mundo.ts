@@ -302,6 +302,7 @@ export function restaurarDios(v: unknown): EstadoDelDios {
     dado?: unknown
     stocks?: unknown
     cobros?: unknown
+    sembrados?: unknown
   }
   if (typeof o.semilla !== 'string' || typeof o.dado !== 'number') {
     throw new RangeError('la ranura del dios no tiene semilla ni dado')
@@ -325,11 +326,30 @@ export function restaurarDios(v: unknown): EstadoDelDios {
       stock: crearStock(p.stock),
     })),
   )
+  // ─── LOS CHUNKS ABIERTOS, y es el MISMO agujero que los pozos ──────────────
+  //
+  // Sin esta línea, cargar un guardado le devuelve al mundo todos sus chunks
+  // cerrados: la criatura vuelve sobre sus pasos y **encuentra otra vez la leña
+  // que ya quemó**. Es exactamente la fuente infinita por la puerta de atrás del
+  // guardado que el diario del libro calórico existe para tapar del lado de la
+  // pesca, y lo encontró el criterio (d) de `world/tests/hito-5-la-pesca.test.ts`
+  // en el primer viaje por JSON — el mismo test que había encontrado el de los
+  // pozos, y por el mismo motivo: un ida y vuelta en memoria no lo habría visto.
+  //
+  // Se filtra a enteros y se ORDENA: el arreglo es una clave del hash y un
+  // guardado de afuera puede traerlo con basura o en cualquier orden. Ausente
+  // cuando queda vacío, para no escribir la clave en un mundo que no abrió nada.
+  const abiertos = Array.isArray(o.sembrados)
+    ? [...new Set((o.sembrados as readonly unknown[]).filter((k): k is number => Number.isSafeInteger(k)))].sort(
+        (a, b) => a - b,
+      )
+    : []
   return {
     semilla: o.semilla,
     dado: o.dado | 0,
     stocks,
     cobros: Array.isArray(o.cobros) ? (o.cobros as EstadoDelDios['cobros']) : [],
+    ...(abiertos.length === 0 ? {} : { sembrados: abiertos }),
   }
 }
 

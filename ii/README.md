@@ -10,8 +10,8 @@ El remake. Vive acá, al lado del Ánima que anda, hasta que se lo gane.
 
 > **¿Sesión nueva? Empezá por [`docs/continuar-aca.md`](docs/continuar-aca.md).**
 > Es el traspaso: dónde está el Hito 5 criterio por criterio, cómo se trabaja
-> acá, las decisiones ya tomadas, y los catorce números que ya se corrigieron
-> —dos de ellos conclusiones enteras que estaban mal y habían llegado a
+> acá, las decisiones ya tomadas, y los veinte números que ya se corrigieron
+> —cinco de ellos conclusiones enteras que estaban mal y habían llegado a
 > documentos—. Lo de abajo es el índice; eso es el estado.
 
 - Arquitectura: [`docs/architecture/remake-anima-ii.md`](../docs/architecture/remake-anima-ii.md)
@@ -44,19 +44,20 @@ Hito 5 puede parar el proyecto entero. Están para eso.
 ## Estado
 
 **Hitos 0 a 4 CERRADOS. El Hito 5 —la mente sin LLM, que es el criterio de corte
-del proyecto— con cuatro de sus seis criterios cumplidos y medidos.**
+del proyecto— con tres de sus seis criterios cumplidos y los otros tres medidos y
+publicados en rojo.**
 El detalle, con los números y lo que falta, está en
 [`docs/continuar-aca.md`](docs/continuar-aca.md).
 
 | | |
 |---|---|
-| **nueve paquetes** | 2315 tests verdes · nueve typechecks limpios · 68 `it.fails` anotados |
+| **nueve paquetes** | 2424 tests verdes (+1 `todo`) · nueve typechecks limpios · 68 `it.fails` anotados |
 | [Traspaso del Hito 5](docs/continuar-aca.md) | **empezá por acá** |
 | [Las diez secuencias](docs/hito-5-las-diez-secuencias.md) | el criterio de emergencia, cerrado antes de medirlo |
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 4 pases: 112 → 71 → 64 (a mano) → **84** (emitido) |
-| [Decisiones](docs/decisions/) | **13 ADRs propios** (II-0001 a II-0013) |
+| [Decisiones](docs/decisions/) | **14 ADRs propios** (II-0001 a II-0014) |
 
 ### Hito 0 — el banco · las cuatro piezas medidas, ninguna mató el plan
 

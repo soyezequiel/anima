@@ -27,37 +27,39 @@
 //
 // O sea: la conclusión era correcta SOBRE ESA ESCENA y falsa sobre el mundo.
 //
-// ═══ Y LA PREMISA DEL ENCARGO TAMBIÉN ERA FALSA, MEDIDA ═════════════════════
+// ═══ Y LA PREMISA DEL ENCARGO TAMBIÉN ERA FALSA, MEDIDA — Y YA SE REPARÓ ════
 //
-// El encargo de este tramo decía «los cuerpos sueltos que el dios siembra ya se
+// El encargo del tramo I decía «los cuerpos sueltos que el dios siembra ya se
 // materializan solos: lo que hay que sacar es la escena a mano». **No se
-// materializan.** Medido acá antes de escribir una línea, con la escena vacía —una
-// criatura sola en la orilla de `20260728n`, cinco ticks de `Partida`—:
+// materializaban.** Medido acá antes de escribir una línea, con la escena vacía
+// —una criatura sola en la orilla de `20260728n`, cinco ticks de `Partida`—:
 //
 //     el dios decretó en los 3×3 chunks de alrededor .......... 90 sueltas
 //     el mundo materializó ................................... 0
 //     lo único que trajo: pozo:-5:-2, pozo:-5:-3, pozo:-6:-2
 //
-// Es lo mismo que el bloque (1) del banco tiene en rojo desde la tanda anterior:
-// `grep -rn "sueltas" world/src` devuelve UN renglón y es un comentario, y el paso
-// en sombra de `Partida` (`conLoQueElDiosPone`) copia de la sombra únicamente lo
-// que empieza con `pozo:`. Sacar la escena a mano y no poner nada en su lugar
-// habría dejado a la criatura en un mundo con tres bancos de peces y NADA MÁS: el
-// cero de las nueve secuencias se habría mantenido y habría medido todavía menos.
+// Este archivo lo rodeó sembrándolas a mano y dijo, con todas las letras, que era
+// un rodeo: «la reparación es del motor —que `stepWorld` materialice
+// `chunk.sueltas` como ya materializa `pozo`—».
+//
+// **La reparación se hizo en el tramo K**, en `world/src/step.ts`
+// (`materializarLoDecretado` → `abrirChunk`) y en `perceive/src/bucle.ts` (el paso
+// en sombra ahora copia los dos prefijos del dios y no sólo `pozo:`). O sea que
+// este archivo dejó de sembrar: la escena es la criatura, y todo lo demás lo pone
+// el mundo. Sobre la misma orilla de `20260728n`, medido después:
+//
+//     el dios decretó en los 3×3 chunks de alrededor .......... 87 sueltas
+//     el mundo materializó ................................... 87
+//
+// Y el mundo **sigue a la criatura**: donde antes había una isla de 48×48 celdas
+// con materia rodeada de vacío —lo que el bloque (5) de `ataque-al-tramo-i` midió
+// como hallazgo—, ahora el chunk se abre cuando alguien llega, una sola vez.
 //
 // ═══ QUÉ HACE ESTE ARCHIVO, ENTONCES ════════════════════════════════════════
 //
-// **Siembra lo que el dios decretó**, y nada más que eso. Sustancia, masa y celda
-// de cada cuerpo salen de `decretoDe(...).chunk.sueltas`, o sea de la semilla; el
-// arnés no elige QUÉ hay ni CUÁNTO pesa ni DÓNDE está. Los 3×3 chunks son la misma
-// vecindad con la que el mundo materializa los pozos (`NUEVE` en
-// `materializarPozos`), no un radio elegido acá.
-//
-// Es un RODEO DEL ARNÉS y no una reparación, exactamente como `nuevaFisica()` lo
-// es de la caché sin semilla: la reparación es del motor —que `stepWorld`
-// materialice `chunk.sueltas` como ya materializa `pozo`— y queda en rojo en el
-// bloque (1) del banco, que sigue contando cuántos cuerpos pone el mundo POR SU
-// CUENTA y sigue dando cero.
+// Pone a la criatura en la orilla y **cuenta**: cuántas sueltas decretó el dios en
+// los 3×3 chunks (`decretadas`) y cuántas materializó el mundo (`sembradas`,
+// medido con un paso en sombra que se tira). Ninguna de las dos las elige él.
 //
 // ═══ QUÉ SEMILLAS SE JUEGAN, DICHO SIN EUFEMISMO ════════════════════════════
 //
@@ -94,10 +96,17 @@ import {
   T_AMBIENTE,
   tagsDe,
   UNION,
-  unfx,
 } from '@anima/physics'
 import type { Body, FormId, Physics, Process, QualityVector } from '@anima/physics'
-import { crearDios, decretoDe, keyOfCell, mapaDeActores, mapaDeCuerpos } from '@anima/world'
+import {
+  crearDios,
+  decretoDe,
+  keyOfCell,
+  mapaDeActores,
+  mapaDeCuerpos,
+  PREFIJO_SUELTA,
+  stepWorld,
+} from '@anima/world'
 import type { Actor, EstadoDelDios, Placement, WorldBody, WorldState } from '@anima/world'
 
 import { rolDe } from '../src/index.js'
@@ -112,12 +121,13 @@ export const PARTIDAS = 20
 export const SEMILLA_DE_REEMPLAZO = SEMILLA_BASE + 20n
 
 /**
- * EL RADIO EN CHUNKS de lo que se siembra alrededor de la criatura.
+ * EL RADIO EN CHUNKS de lo que el dios pone alrededor de la criatura.
  *
  * 1, o sea 3×3, y no es un número de este archivo: es la vecindad `NUEVE` con la
- * que `materializarPozos` decide hasta dónde llega el dios alrededor de un actor
- * (`world/src/step.ts`). Sembrar más lejos sería regalarle mundo a la criatura;
- * sembrar menos, quitárselo.
+ * que `materializarLoDecretado` decide hasta dónde llega el dios alrededor de un
+ * actor (`world/src/step.ts`). Se usa para CONTAR el decreto en la misma vecindad
+ * en la que el mundo lo materializa; contar más lejos o más cerca daría un
+ * denominador que no es el del mundo.
  */
 export const RADIO_EN_CHUNKS = 1
 
@@ -270,17 +280,25 @@ export function laOrilla(semilla: bigint): Orilla | undefined {
 export interface Escena {
   readonly state: WorldState
   /**
-   * LO QUE EL ARNÉS PUSO, por id: el cuerpo de la criatura y las sueltas del
-   * decreto. Es el denominador de «cuántos cuerpos puso el mundo por su cuenta»,
-   * y por eso sale como dato y no como una lista escrita a mano en otro archivo.
+   * LO QUE EL ARNÉS PUSO, por id. Desde que el mundo materializa el decreto es
+   * **el cuerpo de la criatura y nada más**: sigue siendo el denominador de
+   * «cuántos cuerpos puso el mundo por su cuenta», y ahora ese denominador dice la
+   * verdad, porque la respuesta es «todos los demás».
    */
   readonly plantados: ReadonlySet<string>
   /** Cuántas sueltas decretó el dios en los 3×3 chunks de alrededor. */
   readonly decretadas: number
   /**
-   * Cuántas se pudieron sembrar. La diferencia con `decretadas` es la ley 8: el
-   * decreto puede poner DOS cosas en la misma celda —sortea celda seca con
-   * reposición— y el mundo no admite dos sólidos sueltos en una. Ver `escenaDe`.
+   * Cuántas MATERIALIZÓ EL MUNDO, contadas dándole un paso en sombra a la escena.
+   * No es lo que este archivo sembró —ya no siembra nada—: es lo que
+   * `materializarLoDecretado` puso, medido y no supuesto.
+   *
+   * La diferencia con `decretadas` es la ley 8. `scatter` sortea celda CON
+   * REPOSICIÓN, así que el decreto pone dos cosas en la misma celda con toda
+   * naturalidad, y el mundo no admite dos sólidos sueltos en una: corre a la
+   * segunda a la primera celda libre pegada (`celdaLibreCerca`), y sólo la
+   * descarta si los nueve rumbos están tomados. O sea que hoy la resta suele dar
+   * CERO, y cuando no da cero es una noticia.
    */
   readonly sembradas: number
 }
@@ -301,72 +319,42 @@ export interface Escena {
  * para la parrilla— y la criatura es de `carne`, que el juez saca a mano de todo
  * conjunto de candidatos (`cuerposDeActores`, Regla 6).
  *
- * ─── Y la ley 8, que decide cuántas sueltas entran ──────────────────────────
+ * ─── EL RODEO SE FUE, PORQUE LA REPARACIÓN LLEGÓ ────────────────────────────
  *
- * `scatter` sortea la celda de cada suelta CON REPOSICIÓN, así que el decreto pone
- * dos cosas en la misma celda con toda naturalidad. El mundo no admite dos sólidos
- * sueltos en una celda: `drop` busca la primera celda libre alrededor
- * (`celdaLibreCerca`) y `revisarEspacio` lo cuenta como `solidos-solapados`.
+ * Hasta el tramo J este archivo sembraba las sueltas del decreto a mano, con los
+ * ids `suelta-0`, `suelta-1`… y se decía a sí mismo, en el encabezado, que era «un
+ * RODEO DEL ARNÉS y no una reparación: la reparación es del motor —que
+ * `stepWorld` materialice `chunk.sueltas` como ya materializa `pozo`—».
  *
- * MEDIDO sobre las veinte partidas que se juegan: el dios decretó 2280 sueltas y
- * entraron 2177, o sea que la ley 8 se comió **103**. Por semilla va de 0 a 20 —la
- * peor es `20260769n`, que decreta 46 en un puñado de celdas y deja 26—. En una de
- * las veinte la celda repetida es la de la criatura.
+ * **La reparación está hecha** (`world/src/step.ts`, `materializarLoDecretado` y
+ * `abrirChunk`), así que la siembra a mano se fue entera. Si se hubiera quedado,
+ * la escena tendría la materia DOS VECES: los `suelta-N` del arnés en las celdas
+ * del decreto y los `suelta:cx:cy:n` del mundo corridos a la celda de al lado —
+ * que es exactamente el «regalarle mundo a la criatura» que este archivo existe
+ * para no hacer.
  *
- * Así que se siembra **la primera de cada celda en el orden canónico del decreto**
- * y la segunda no entra. Es la dirección segura —se pierde materia, no se
- * inventa— y se publica: `decretadas` contra `sembradas`. Apilarlas con
- * `supportedBy` habría sido legal y habría sido peor: una pila que ninguna
- * intención pidió es una relación espacial fabricada por el arnés, y la ley 12 la
- * lee.
+ * Lo que cambia de forma, y hay que saberlo al comparar contra las corridas
+ * viejas:
+ *
+ *   · los ids pasan de `suelta-N` a `suelta:cx:cy:n`, que es función del LUGAR;
+ *   · la materia entra en el tick 1 y no en el 0. La percepción del tick 0 la ve
+ *     igual, porque `Partida` proyecta el paso en sombra (`conLoQueElDiosPone`);
+ *   · la ley 8 ya no DESCARTA la segunda de una celda repetida: la corre a la
+ *     primera celda libre pegada. Se pierde menos materia que antes;
+ *   · el radio lo elige el mundo y no este archivo, y además **sigue a la
+ *     criatura**: donde antes había una isla de 3×3 chunks rodeada de vacío, ahora
+ *     el chunk se abre cuando alguien llega. `RADIO_EN_CHUNKS` queda porque los
+ *     tests que cuentan el decreto lo siguen usando para nombrar la misma
+ *     vecindad.
  */
 export function escenaDe(o: Orilla, stamina: number): Escena {
   const cuerpos: WorldBody[] = [{ body: criatura('ana', stamina), at: o.parada }]
-  // `keyOfCell` del mundo y no una clave propia: es la forma canónica del paquete
-  // y es la misma con la que `estorbo` indexa la celda al decidir si algo estorba.
-  const ocupadas = new Set<number>([keyOfCell(o.parada)])
   const acx = Math.floor(o.parada.x / CELDAS_DE_LADO)
   const acy = Math.floor(o.parada.y / CELDAS_DE_LADO)
   let decretadas = 0
-  let n = 0
-  // Orden canónico: los nueve chunks por `dx` y después por `dy`, y adentro de
-  // cada uno las sueltas en el orden en que el dios las sorteó. Nada de este
-  // recorrido depende del estado, así que dos corridas gemelas siembran igual.
   for (let dx = -RADIO_EN_CHUNKS; dx <= RADIO_EN_CHUNKS; dx++) {
     for (let dy = -RADIO_EN_CHUNKS; dy <= RADIO_EN_CHUNKS; dy++) {
-      const cx = acx + dx
-      const cy = acy + dy
-      for (const s of decretoDe(o.dios, o.phys, cx, cy).chunk.sueltas) {
-        decretadas += 1
-        const at = {
-          x: cx * CELDAS_DE_LADO + (s.i % CELDAS_DE_LADO),
-          y: cy * CELDAS_DE_LADO + Math.floor(s.i / CELDAS_DE_LADO),
-        }
-        if (ocupadas.has(keyOfCell(at))) continue
-        ocupadas.add(keyOfCell(at))
-        // `unfx` y no una división por mil: es la única puerta declarada entre la
-        // escala `Fixed` del dios y los reales del mundo (ADR II-0006).
-        // ─── LA FORMA: LA QUE EL DIOS ELIGIÓ, Y SÓLO SI NO ELIGIÓ SE INFIERE ──
-        //
-        // `Suelta.form` viene puesto en lo que `ensureSolvable` sembró para
-        // GARANTIZAR el chunk —ahí la forma es la razón de la siembra, no un
-        // detalle— y viene `undefined` en lo que dejó `scatter`, donde el dios no
-        // eligió ninguna. Antes acá se inferían las dos, y el arnés le cambiaba la
-        // forma a 1 de cada 66 garantizadas (cota inferior). Ahora la única que se
-        // infiere es la que nadie decidió, que es lo que `formaDeLoSuelto` dice de
-        // sí misma.
-        cuerpos.push({
-          body: cuerpo(
-            `suelta-${String(n)}`,
-            s.substance,
-            unfx(s.masa),
-            {},
-            s.form ?? formaDeLoSuelto(s.substance, o.phys),
-          ),
-          at,
-        })
-        n += 1
-      }
+      decretadas += decretoDe(o.dios, o.phys, acx + dx, acy + dy).chunk.sueltas.length
     }
   }
   const state: WorldState = {
@@ -379,11 +367,20 @@ export function escenaDe(o: Orilla, stamina: number): Escena {
     nextId: 1,
     dios: o.dios,
   }
+  // CUÁNTAS ENTRAN DE VERDAD, contadas y no supuestas: un paso en sombra que se
+  // tira. Es el mismo recurso que usa `Partida` para proyectar el tick 0, y el
+  // estado que sale de acá es el CRUDO —el de tick 0, sin materializar—: quien lo
+  // corra va a materializar por su cuenta y con el mismo resultado, porque
+  // `stepWorld` es puro.
+  let sembradas = 0
+  for (const id of stepWorld(state, []).state.bodies.keys()) {
+    if (id.startsWith(PREFIJO_SUELTA)) sembradas += 1
+  }
   return {
     state,
     plantados: new Set(cuerpos.map((c) => c.body.id)),
     decretadas,
-    sembradas: n,
+    sembradas,
   }
 }
 

@@ -107,7 +107,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { qualityOf } from '@anima/physics'
 import { COSTO_POR_CELDA, COSTO_VIVIR_POR_SEGUNDO } from '@anima/world'
@@ -122,6 +122,27 @@ import { necesidades } from '../src/necesidades.js'
 import { costoEstimado, opportunities } from '../src/oportunidades.js'
 import type { Decision, Drive, VistaDeLaMente } from '../src/tipos.js'
 import { actor, criatura, cuerpo, enElPiso, laOrilla, mundo, conElla } from './mundo.js'
+
+// ─── EL RESPIRO QUE MANTIENE VIVO AL WORKER DE VITEST ────────────────────────
+//
+// birpc le pone 60 s de vencimiento al aviso de cada test, y un `for` sincrónico
+// largo no deja correr ni el temporizador ni la lectura del socket; cuando suelta
+// el hilo, Node corre la fase de temporizadores antes que la de poll y el
+// vencimiento gana la carrera aunque la respuesta ya esté en la cola. El síntoma
+// es la peor clase de rojo: TODOS los tests en verde y `exit 1` con
+// `Timeout calling "onTaskUpdate"`.
+//
+// Desde que el mundo materializa el decreto (`world/src/step.ts`, `abrirChunk`)
+// las corridas de este archivo cuestan diez veces más por tick, así que varias
+// cruzan los 60 s. Se arregla con una MACROTAREA de verdad —`setTimeout(…, 0)`;
+// un `await` sobre una promesa resuelta es una microtarea y no drena la fase de
+// poll— en un `beforeEach` de raíz, que no toca el cuerpo de ningún test ni puede
+// mover ninguna medición: corre antes de que el test empiece.
+beforeEach(async () => {
+  await new Promise((listo) => {
+    setTimeout(listo, 0)
+  })
+})
 
 // ─── El arnés ────────────────────────────────────────────────────────────────
 
@@ -777,11 +798,24 @@ describe('la noche', () => {
     // Donde lo intenta: no lo consigue NI UNA VEZ en 120 ticks.
     expect(intentos).toBeGreaterThan(0)
     expect(fallosDeTecho).toBe(intentos)
-    // Y en la orilla, ahora que la pesca CIERRA: llega a intentarlo y falla igual.
-    // Lo que se afirma no es el número de intentos —depende de en qué tick se le
-    // cumple la meta barata— sino que el 100% termina mal, que es lo mismo que
-    // pasa en el páramo por el otro camino.
-    expect(enLaOrillaIntentos).toBeGreaterThan(0)
+    // ─── Y EN LA ORILLA, EL CERO CAMBIÓ DE MOTIVO POR TERCERA VEZ ───────────
+    //
+    // Los tres motivos, en orden, porque el título del test cubre los dos extremos
+    // y lo que se movió es cuál de los dos aplica acá:
+    //
+    //   (1) antes de que la pesca cerrara: no llegaba a D5 porque se pasaba la
+    //       corrida pescando de nuevo. Cero intentos;
+    //   (2) con la pesca cerrada: llegaba a D5 —el pedido subía a lo cocido y ahí no
+    //       había vía— y `guarecerse` fallaba el 100%. Intentos > 0, fallos = 100%;
+    //   (3) con el mundo materializando el decreto (tramo K): **vuelve a ser CERO**,
+    //       y por un motivo nuevo. Con cien cuerpos a la vista D4 —la búsqueda
+    //       anytime— siempre tiene algo que planificar y no le suelta el turno a
+    //       D5. Medido en `la-mente.test.ts`: `D5: 0` en 2000 ticks.
+    //
+    // El veredicto no se movió y es el que el test existe para sostener:
+    // **`sheltered` termina en cero por los dos caminos**. Donde D5 corre, lo
+    // intenta y falla el 100% (el páramo, arriba); donde no corre, ni lo intenta.
+    // El refugio sigue sin una sola salida abierta.
     expect(enLaOrillaFallos).toBe(enLaOrillaIntentos)
     expect(v.qAt(v.self.at, 'sheltered')).toBe(0)
   })
@@ -846,7 +880,7 @@ describe('la memoria del lugar', () => {
     expect(deCelda).toEqual([])
   })
 
-  it('y sin la vara al lado, el pozo que ve la deja atrapada: 193 despegues de `ir` en 200 ticks, todos «bien»', () => {
+  it('y sin la vara al lado, el pozo que ve la deja dando vueltas: un ciclo de tres, 63 vuelos en 200 ticks', () => {
     // Esta escena la armé para medir otra cosa —una criatura lejos de todo pozo—
     // y la semilla tenía un segundo pozo a la vista. Lo que salió es peor y es
     // nuevo, así que se queda medido acá.
@@ -864,10 +898,24 @@ describe('la memoria del lugar', () => {
     //   · D4 replanifica, vuelve a dar el mismo `gap`, y vuelve a arrancar el
     //     mismo `nearest`.
     //
-    // O sea: un despegue por tick, cada uno traduce, resuelve `Ref`, construye el
-    // generador y lo pone en vuelo — para caminar cero celdas. **193 vuelos en
-    // 200 ticks y CERO fracasos**, que es lo que hace este bucle tan difícil de
-    // ver desde afuera: todos los contadores dicen que anda bárbaro.
+    // ─── LA FORMA DEL BUCLE CAMBIÓ, Y EL BUCLE NO ──────────────────────────
+    //
+    // MEDIDO ANTES, con el piso vacío: **193 vuelos de `ir(pozo)` en 200 ticks y
+    // CERO fracasos**, un despegue por tick para caminar cero celdas. Eso era lo
+    // que lo hacía difícil de ver desde afuera: todos los contadores decían que
+    // andaba bárbaro.
+    //
+    // MEDIDO AHORA, con el mundo materializando el decreto (tramo K): el piso tiene
+    // hoja, liana y molusco, así que hay cinco oportunidades en vez de una y el
+    // bucle pasa a ser un CICLO DE TRES, repetido veintiún veces:
+    //
+    //     ir(pozo:-4:-6)×21 → aplicar(extraccion)×21 → ir(suelta:-4:-7:6)×21
+    //     de 64 vuelos, terminaron mal 21   (los 21 `aplicar`)
+    //
+    // O sea que el mundo lleno **no la sacó del bucle: le cambió el largo**, y de
+    // paso lo hizo un poco más visible —ahora un tercio de los vuelos falla, donde
+    // antes no fallaba ninguno—. El hueco que este test sostiene sigue abierto: la
+    // escalera vuelve a arrancar el mismo `nearest` mientras el `gap` no se mueva.
     const or = laOrilla()
     const lejos = { x: or.parada.x + 40, y: or.parada.y }
     const w = mundo({
@@ -895,12 +943,18 @@ describe('la memoria del lugar', () => {
     // Ninguna oportunidad sale de una celda recordada: todas son de lo que tiene
     // delante de los ojos (ver el test de arriba).
     expect(ops.every((o) => !o.id.startsWith('celda:'))).toBe(true)
-    // Y el bucle: un vuelo por tick, casi todos del mismo paso, y ninguno falla.
+    // Y el bucle: el paso más repetido sigue siendo un `ir`, y se repite decenas de
+    // veces en 200 ticks. El número exacto ya no se clava —depende de cuántas
+    // sueltas le tocaron alrededor, que es cosa de la semilla y no de la mente— y
+    // lo que se afirma es la FORMA: un ciclo corto que se repite y no llega a nada.
     expect(repetido).toBeDefined()
     if (repetido === undefined) return
     expect(repetido[0].startsWith('ir(')).toBe(true)
-    expect(repetido[1]).toBeGreaterThan(150)
-    expect(fallados).toBe(0)
+    expect(repetido[1]).toBeGreaterThan(15)
+    // Los vuelos que fallan son los `aplicar(extraccion)` sin vara, y son
+    // exactamente los que el bucle repite. Cero ya no: el ciclo nuevo sí falla.
+    expect(fallados).toBeGreaterThan(0)
+    expect(c.nombres.length - fallados).toBeGreaterThan(fallados)
   })
 })
 

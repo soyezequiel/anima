@@ -599,22 +599,33 @@ describe('(3) el `roleFilters: portable<=0` que estuvo sobre el pozo: el hallazg
 
 // ═══ (4) LO QUE LA LEY 8 SE COME, Y NADIE MIRA QUÉ ══════════════════════════
 
-describe('(4) las sueltas que el arnés descarta por celda ocupada', () => {
-  it('cuántas se pierden y si alguna era el encendible más liviano de su partida', () => {
-    // ─── QUÉ SE ATACA ────────────────────────────────────────────────────────
+describe('(4) las sueltas que el arnés descartaba por celda ocupada — y que ya no se descartan', () => {
+  it('cuántas se perdían y si alguna era el encendible más liviano de su partida', () => {
+    // ─── QUÉ SE ATACABA, Y CÓMO TERMINÓ ──────────────────────────────────────
     //
-    // `escenaDe` siembra «la primera de cada celda en el orden canónico del
-    // decreto» y descarta la segunda, con este argumento: «es la dirección segura
+    // `escenaDe` sembraba «la primera de cada celda en el orden canónico del
+    // decreto» y descartaba la segunda, con este argumento: «es la dirección segura
     // —se pierde materia, no se inventa—». La dirección es segura para el conteo y
-    // no lo es para el DIAGNÓSTICO: la columna que este tramo publica como
+    // no lo es para el DIAGNÓSTICO: la columna que el tramo I publicó como
     // corrección central es «¿hay con qué encender?», y la respuesta se decide con
     // UN cuerpo —el más liviano que cumpla el rol `a` de `friccion`—. Si la que se
-    // descarta es justo ésa, el arnés cambia la conclusión del tramo sin que nada
-    // lo diga.
+    // descartaba era justo ésa, el arnés cambiaba la conclusión sin que nada lo
+    // dijera.
     //
-    // Acá se reconstruye la MISMA elección de `escenaDe` (la criatura en la
-    // `parada`, y después las sueltas en orden canónico, saltando celda ocupada) y
-    // se pregunta por las descartadas.
+    // **YA NO SE DESCARTA NINGUNA.** El tramo K movió la materialización al mundo
+    // (`world/src/step.ts`, `abrirChunk`) y ahí la celda ocupada NO tira la suelta:
+    // la corre a la primera celda libre pegada, que es lo que el mundo ya hacía
+    // cuando la criatura suelta algo donde está parada (`celdaLibreCerca`). Sólo la
+    // descartaría si los nueve rumbos estuvieran tomados, y eso pide nueve sólidos.
+    //
+    // El test se queda porque el número que publica sigue siendo el TAMAÑO del
+    // problema que la reparación resolvió, y porque es el denominador contra el que
+    // se lee «entraron todas»: **2280 decretadas · 103 que la regla vieja tiraba
+    // (4,5%) · y en 0 de las 20 partidas la tirada era el encendible más liviano**.
+    //
+    // Se reconstruye a mano la elección VIEJA de `escenaDe` —la criatura en la
+    // `parada`, y después las sueltas en orden canónico, saltando celda ocupada—
+    // porque el código que la hacía ya no existe.
     const { semillas } = semillasQueSeJuegan(PARTIDAS)
     const rolA = ROL_A_DE_FRICCION()
     const filas: string[] = []
@@ -679,29 +690,42 @@ describe('(4) las sueltas que el arnés descarta por celda ocupada', () => {
 
 // ═══ (5) EL LENTE AL REVÉS: LA ISLA SEMBRADA, Y LA CRIATURA QUE SE VA DE ELLA ═
 
-describe('(5) el mundo decretado se siembra UNA vez y alrededor de la celda de arranque', () => {
-  it('HALLAZGO · la criatura camina fuera de lo sembrado, y afuera el mundo no pone nada', async () => {
-    // ─── QUÉ COSA HONESTA SIGUE REBOTANDO ────────────────────────────────────
+describe('(5) el mundo decretado ya no es una isla: el chunk se abre cuando alguien llega', () => {
+  it('CERRADO · la isla se terminó: el chunk se abre cuando alguien llega', async () => {
+    // ─── QUÉ COSA HONESTA REBOTABA ───────────────────────────────────────────
     //
     // Una criatura razonable, con hambre y sin nada a mano que valga la pena, se
-    // va a caminar. Es exactamente lo que este tramo midió que la mente hace
-    // ahora: el diagnóstico del criterio publica que el bucle nuevo «cae a
+    // va a caminar. Es exactamente lo que el tramo I midió que la mente hacía: el
+    // diagnóstico del criterio publicaba que el bucle nuevo «cae a
     // explorar/guarecerse/juntar, que CAMINAN: −0,08636/tick contra −0,05000».
     //
-    // Y ahí choca con la forma del arnés. `escenaDe` siembra las sueltas del
+    // Y ahí chocaba con la forma del arnés. `escenaDe` sembraba las sueltas del
     // decreto **una sola vez, en los 3×3 chunks alrededor de la celda de
-    // arranque**, y el mundo no materializa ninguna por su cuenta —el propio banco
-    // lo tiene en rojo en su bloque (1)—. O sea que el mundo decretado es una ISLA
-    // de 48×48 celdas con materia, rodeada de vacío: los pozos siguen apareciendo
-    // donde la criatura vaya (`materializarPozos` la sigue), pero un leño, una
-    // corteza o una liana no.
+    // arranque**, y el mundo no materializaba ninguna por su cuenta. O sea que el
+    // mundo decretado era una ISLA de 48×48 celdas con materia, rodeada de vacío:
+    // los pozos aparecían donde la criatura fuera, pero un leño, una corteza o una
+    // liana no.
     //
-    // Eso muerde justo donde el tramo puso su resultado. Tres de las nueve filas
+    // Eso mordía justo donde el tramo I puso su resultado. Tres de las nueve filas
     // pasaron de EL MUNDO a LA MENTE con el argumento «el mundo SÍ le puso el
     // problema delante en 5 a 7 de las 20 y la mente no lo resolvió». La situación
-    // se detecta sobre lo que hay EN LA VISTA, y la vista se vacía en cuanto la
-    // criatura sale de la isla. Lo que se mide acá es cuánto de su vida transcurre
-    // afuera.
+    // se detecta sobre lo que hay EN LA VISTA, y la vista se vaciaba en cuanto la
+    // criatura salía de la isla.
+    //
+    // ─── LA REPARACIÓN, Y POR QUÉ EL TEST SE QUEDA ───────────────────────────
+    //
+    // El tramo K hizo que `stepWorld` materialice `chunk.sueltas` una vez por
+    // chunk, con la MISMA vecindad de nueve con la que sigue al actor
+    // (`world/src/step.ts`, `materializarLoDecretado` → `abrirChunk`). El arnés
+    // dejó de sembrar y **la isla se terminó**: la criatura camina y el mundo se
+    // abre delante de ella.
+    //
+    // El test se queda porque lo que mide sigue haciendo falta —cuánto de su vida
+    // pasa fuera de los 3×3 del arranque— y porque el número que sale ahora es
+    // otro dato: MEDIDO sobre las tres primeras semillas, **0,0% en las tres**. Ya
+    // no sale de la isla, y no porque la isla la contenga sino porque la escalera
+    // se le va en D4 y casi no camina (ver `mind/tests/banco-la-escalera.test.ts`).
+    // El vacío de afuera dejó de ser el problema; el que quedó es otro.
     //
     // Se corren TRES semillas y no veinte, y se dice: son 60.000 ticks de mundo
     // con una mente encima, y el número que hace falta —¿sale o no sale de la
@@ -750,7 +774,7 @@ describe('(5) el mundo decretado se siembra UNA vez y alrededor de la celda de a
       `\n─── LA ISLA SEMBRADA Y LO QUE LA CRIATURA HACE CON ELLA ───\n` +
         `  la isla mide ${String((2 * RADIO_EN_CHUNKS + 1) * CELDAS_DE_LADO)}×${String((2 * RADIO_EN_CHUNKS + 1) * CELDAS_DE_LADO)} celdas y se siembra en el tick 0\n` +
         `${filas.join('\n')}\n` +
-        `  (afuera hay pozos —\`materializarPozos\` sigue al actor— y NADA MÁS: ni leña, ni corteza, ni liana)\n`,
+        `  (y afuera YA NO hay vacío: \`abrirChunk\` abre el chunk cuando alguien llega)\n`,
     )
     expect(filas.length).toBeGreaterThan(0)
   }, 1_800_000)

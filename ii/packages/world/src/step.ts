@@ -47,6 +47,10 @@ import {
   baseRoleName,
   clampToRange,
   conSustancia,
+  // Las cuentas que no pueden subir solas, y cómo se suma una en un cuerpo.
+  // Entran acá porque el mundo materializa materia decretada y tiene que
+  // DECLARAR cuánta trajo: ver `anotarDecreto`.
+  CONSERVED,
   cumpleRol,
   dtDeFrecuencia,
   formFactor,
@@ -57,6 +61,7 @@ import {
   seg,
   sumarPaso,
   T_AMBIENTE,
+  totalConservado,
   unfx,
   unir,
 } from '@anima/physics'
@@ -65,16 +70,19 @@ import type { Celda, Dt, Duracion, Empuje, Entorno, Fuente, Montaje } from '@ani
 // paso, y va por `dios.ts` —la costura— y no directo: acá adentro no se decreta
 // nada ni se traduce nada, sólo se consulta y se cobra. Ver el encabezado de
 // `dios.ts` por qué la flecha va del mundo al dios y no al revés.
-import type { DadoDelMundo, LibroCalorico, Stock } from '@anima/oracle'
+import type { DadoDelMundo, LibroCalorico, Stock, Suelta } from '@anima/oracle'
 import { draw, population } from '@anima/oracle'
-import type { EstadoDelDios } from './dios.js'
+import type { Decreto, EstadoDelDios } from './dios.js'
 import {
   celdaDecretada,
+  celdaDeSuelta,
   cuerpoDePozo,
+  cuerpoDeSuelta,
   dadoDe,
   decretoDe,
   entornoDecretado,
   idDePozo,
+  idDeSuelta,
   libroDe,
   ordenarPozos,
 } from './dios.js'
@@ -511,6 +519,57 @@ export type Narracion =
    * únicamente el invariante mira; la crónica no tiene por qué llenarse de eso.
    */
   | { readonly k: 'gasto'; readonly q: QualityId; readonly cuanto: number }
+  /**
+   * LO QUE EL DIOS PUSO EN EL MUNDO en este tick, sumado por cuenta conservada.
+   *
+   * ─── Para qué existe: el guardián de la conservación estaba apagado ────────
+   *
+   * Materializar un chunk sube `mass`, `nutrition` y `fuelEnergy` de la nada
+   * —desde el punto de vista del tick, que es el único que el invariante tiene—.
+   * Sin este evento `revisarConservacion` acusa `conservada-aumento` en cada
+   * apertura, y MEDIDO antes de que existiera: 96 violaciones en 400 ticks de
+   * caminata al este (32 aperturas × 3 cuentas) y 21 al norte con los chunks
+   * pre-marcados, o sea sólo por los pozos que se reponen. Ésa es la razón entera
+   * por la que `Partida` usaba las cinco preguntas de `revisarEstado` y no las
+   * seis de `revisarInvariantes`: la sexta habría gritado en toda partida con
+   * dios, que son todas las que importan.
+   *
+   * Con el evento puesto, el guardián puede distinguir lo que el dios entregó de
+   * una bomba de materia — que era justo lo que no podía hacer.
+   *
+   * ─── Por qué es una `Narracion` y no una `Respuesta` ───────────────────────
+   *
+   * Porque no le contesta a nadie: el chunk se abre ANTES de que se despache una
+   * sola intención y se abre igual aunque nadie haya pedido nada. Ponerle una
+   * firma obligaría a elegir a cuál de los actores que tienen el chunk en su
+   * vecindad culpar, y un culpable inventado es peor que ninguno (misma regla que
+   * `murio` por hambre y que `gasto`).
+   *
+   * ─── Uno por tick y por cuenta, no uno por cuerpo ──────────────────────────
+   *
+   * Mismo trato que `gasto`, y por lo mismo: abrir un chunk son ~10 cuerpos y
+   * reponer bancos toca hasta nueve pozos por actor, así que un evento por cuerpo
+   * llenaría la crónica de renglones que sólo el invariante mira. QUIÉN entró ya
+   * se puede decir sin evento —los ids son función del lugar y `EstadoDelDios.
+   * sembrados` dice qué chunks se abrieron—; cuánta materia entró no se podía
+   * decir de ninguna forma, y es lo único que esto agrega.
+   */
+  | { readonly k: 'decreta'; readonly q: QualityId; readonly cuanto: number }
+  /**
+   * UNA PIEZA DECRETADA QUE EL MUNDO NO PUDO PONER EN NINGÚN LADO.
+   *
+   * `abrirChunk` le da a cada suelta la celda que el decreto eligió y corre de ahí
+   * a quien estuviera; cuando el que estaba tampoco tiene a dónde irse —hace falta
+   * un racimo de sólidos alrededor— la suelta NO ENTRA, y el chunk queda anotado
+   * en `sembrados` igual, o sea que no vuelve nunca.
+   *
+   * Antes de este evento esa pérdida era **invisible**: `revisarEstado` no la puede
+   * ver porque no hay nada roto —hay algo que falta—, la crónica no la tenía, y el
+   * único modo de contarla era comparar el mundo contra el decreto desde afuera.
+   * Un mundo que se traga materia en silencio es exactamente lo que el arnés de
+   * invariantes existe para que no pase.
+   */
+  | { readonly k: 'perdida'; readonly id: BodyId; readonly en: number }
 
 /**
  * LA NARRACIÓN DEL TICK. Lo que salió a la salida de `stepWorld`, ya firmado.
@@ -832,6 +891,16 @@ interface Borrador {
    */
   gastado: Map<QualityId, number> | undefined
   /**
+   * EL LIBRO DE LO QUE EL DIOS PUSO en el mundo en este tick, por cuenta
+   * conservada. Es el espejo de `gastado` y existe por lo contrario: aquél
+   * sostiene el PISO de la conservación, éste sostiene el TECHO.
+   *
+   * PEREZOSO igual, y con más razón: el 99,99% de los ticks de una partida no
+   * abre ningún chunk ni mueve un solo pozo, y en esos ticks esto sigue en
+   * `undefined` y no se narra nada. Ver el evento `decreta`.
+   */
+  decretado: Map<QualityId, number> | undefined
+  /**
    * El índice de cuerpos por celda. PEREZOSO: `undefined` hasta que la primera
    * intención pregunta qué hay en una celda. Ver `indiceDeCeldas` y `estorbo`.
    */
@@ -881,7 +950,7 @@ interface Borrador {
    * EL ÍNDICE DE POZOS del tick, por id de banco. PEREZOSO, como los otros dos.
    *
    * En el estado los pozos viven en un ARREGLO —una ranura tiene que sobrevivir a
-   * JSON y un `Map` no— y acá adentro hacen falta por clave: `materializarPozos`
+   * JSON y un `Map` no— y acá adentro hacen falta por clave: la materialización
    * pregunta hasta nueve veces por actor y por tick. Es el mismo trato que
    * `indiceDeCeldas`: la forma canónica afuera, el índice adentro, y el índice
    * muere con el borrador así que no puede quedar viejo entre ticks.
@@ -895,6 +964,17 @@ interface Borrador {
   /** Si alguno de los pozos CAMBIÓ. Aparte del índice porque el índice se arma
    *  también para leer, y leer no genera delta. */
   pozosTocados: boolean
+  /**
+   * LOS CHUNKS YA ABIERTOS, como conjunto. PEREZOSO, igual que `stocks`, y por la
+   * misma razón: en el estado viven en un arreglo —una ranura tiene que sobrevivir
+   * a JSON— y acá adentro hacen falta por clave, hasta nueve veces por actor y por
+   * tick.
+   */
+  sembrados: Set<number> | undefined
+  /** Si se abrió algún chunk en este tick. Aparte del conjunto por lo mismo que
+   *  `pozosTocados`: el conjunto se arma también para LEER, y leer no genera
+   *  delta — el 99,99% de los ticks de una partida no abre ningún chunk. */
+  sembroChunk: boolean
   /** El segundo de mundo de este tick. `tick / hz`, con la cuenta exacta de
    *  `segundosDe`. Lo piden `population`, `retirarUno` y `Cobro.at`. */
   segundos: Duracion
@@ -916,6 +996,7 @@ function abrir(s: WorldState): Borrador {
     reordenar: false,
     events: [],
     gastado: undefined,
+    decretado: undefined,
     // Los dos índices nacen VACÍOS y mueren con el borrador. Un índice que no
     // sobrevive al tick no puede quedar viejo entre ticks, que es la mitad de los
     // modos de falla de una caché; la otra mitad —quedar vieja ADENTRO del tick—
@@ -929,6 +1010,8 @@ function abrir(s: WorldState): Borrador {
     libro: undefined,
     stocks: undefined,
     pozosTocados: false,
+    sembrados: undefined,
+    sembroChunk: false,
     segundos: segundosDe(s),
   }
 }
@@ -944,6 +1027,16 @@ function indiceDePozos(d: Borrador): Map<BodyId, Stock> {
   return i
 }
 
+/** El conjunto de chunks ya abiertos, armado a demanda del arreglo del estado. */
+function indiceDeSembrados(d: Borrador): Set<number> {
+  let s = d.sembrados
+  if (s === undefined) {
+    s = new Set(d.dios?.sembrados ?? [])
+    d.sembrados = s
+  }
+  return s
+}
+
 /**
  * El estado del dios de salida.
  *
@@ -955,13 +1048,27 @@ function indiceDePozos(d: Borrador): Map<BodyId, Stock> {
 function diosDeSalida(d: Borrador): EstadoDelDios | undefined {
   const previo = d.dios
   if (previo === undefined) return undefined
-  if (d.dado === undefined && !d.pozosTocados && d.libro === undefined) return previo
+  if (d.dado === undefined && !d.pozosTocados && d.libro === undefined && !d.sembroChunk) {
+    return previo
+  }
+  // Los chunks abiertos, en orden NUMÉRICO ascendente, que es el orden canónico de
+  // `chunkKey` —monótono en `(cy, cx)`, o sea por filas—. Dos partidas que
+  // abrieron los mismos chunks en distinto orden guardan el mismo arreglo.
+  //
+  // Se OMITE la clave mientras no haya ninguno, en vez de escribir `[]`: un
+  // arreglo vacío cuenta como clave en `hashWorld` y habría movido el hash de
+  // todos los mundos con dios de los ocho paquetes sin que ninguno cambiara. Ver
+  // `EstadoDelDios.sembrados`.
+  const sembrados = d.sembroChunk
+    ? [...indiceDeSembrados(d)].sort((a, b) => a - b)
+    : previo.sembrados
   return {
     semilla: previo.semilla,
     dado: d.dado === undefined ? previo.dado : d.dado.estado(),
     stocks: d.pozosTocados
       ? ordenarPozos([...indiceDePozos(d)].map(([banco, stock]) => ({ banco, stock })))
       : previo.stocks,
+    ...(sembrados === undefined ? {} : { sembrados }),
     // El diario se COPIA al salir: `LibroCalorico` devuelve el suyo por
     // referencia y le hace `push` al cobrar, así que dejarlo entrar tal cual
     // pondría un arreglo vivo adentro de un estado que se dice inmutable — y el
@@ -3086,7 +3193,18 @@ const NUEVE: readonly (readonly [number, number])[] = [
 ]
 
 /**
- * EL BANCO DE PECES ENTRA AL MUNDO, y se pone al día con su pozo.
+ * LO QUE EL DIOS DECRETÓ ENTRA AL MUNDO: el banco de peces, que se pone al día
+ * con su pozo, y las COSAS SUELTAS del chunk, que entran una sola vez.
+ *
+ * ─── Por qué son una función y no dos ───────────────────────────────────────
+ *
+ * Porque son el mismo recorrido —cada actor, sus nueve chunks, el decreto de cada
+ * uno— y separarlas lo pagaba dos veces por tick y por actor. Con 5000 criaturas
+ * eso son 45 000 `chunkKey` + 45 000 búsquedas de más por tick, contra un
+ * presupuesto de 5 ms que hoy ya se pasa por 6,8×. Y hay una razón que no es de
+ * costo: **la vecindad del dios tiene que ser UNA**. Si el pozo llegara a nueve
+ * chunks y la leña a uno, la criatura pescaría en una orilla donde no hay con qué
+ * hacer fuego, y nadie sabría de dónde salió la asimetría.
  *
  * ─── Por qué corre ANTES de las intenciones y no es un sistema ──────────────
  *
@@ -3112,8 +3230,22 @@ const NUEVE: readonly (readonly [number, number])[] = [
  * allá lo que no puede cambiar el mundo es LEER el terreno —y no lo cambia, porque
  * el terreno no se copia a ningún lado—; acá lo que entra al mundo es un cuerpo, y
  * un mundo donde alguien ya llegó al río no es el mismo que uno donde no.
+ *
+ * ─── Y por qué las sueltas se abren UNA vez y el pozo se mira TODOS los ticks ─
+ *
+ * Porque son dos clases de cosa. El banco de peces es una PROYECCIÓN del `Stock`
+ * que vive en el estado del dios: se reescribe cada tick porque el stock se agota
+ * y se repone, y quien manda es el stock. Una rama tirada en el piso no es la
+ * proyección de nada: en cuanto entra al mundo es un cuerpo como cualquier otro, y
+ * la criatura lo levanta, lo ata a otro y lo quema. Volver a mirarlo sería
+ * reponerlo, o sea leña infinita.
+ *
+ * Por eso el chunk abierto queda anotado en `EstadoDelDios.sembrados` y no se
+ * vuelve a abrir. Preguntar `d.bodies.has(id)` no alcanza y el porqué está escrito
+ * en el campo: el cuerpo QUEMADO ya no está en `d.bodies`, y con esa guarda el
+ * chunk lo pariría de nuevo al tick siguiente.
  */
-function materializarPozos(d: Borrador): void {
+function materializarLoDecretado(d: Borrador): void {
   const dios = d.dios
   if (dios === undefined) return
   // El conjunto de chunks ya mirados en ESTE tick, con clave NUMÉRICA. Con clave
@@ -3121,6 +3253,8 @@ function materializarPozos(d: Borrador): void {
   // con 5000 criaturas, todas basura— y eso era la mitad de lo que costaba. Es la
   // misma `chunkKey` que usa la grilla: una sola forma de nombrar un chunk.
   const vistos = new Set<number>()
+  // Los chunks ya ABIERTOS, que es cosa de toda la partida y no de este tick.
+  const abiertos = indiceDeSembrados(d)
   for (const a of d.actors.values()) {
     const mio = d.bodies.get(a.body)
     if (mio === undefined) continue
@@ -3132,7 +3266,19 @@ function materializarPozos(d: Borrador): void {
       const clave = chunkKey(cx, cy)
       if (vistos.has(clave)) continue
       vistos.add(clave)
-      const pozo = decretoDe(dios, d.phys, cx, cy).pozo
+      const dec = decretoDe(dios, d.phys, cx, cy)
+      // Las sueltas ANTES del pozo, y el orden importa una sola vez pero importa:
+      // el banco va en una celda de agua y una suelta puede caer en la misma. Si el
+      // banco entrara primero, la suelta lo vería como estorbo y se correría de la
+      // celda que el dios le dio; entrando primero la suelta, el banco se pone
+      // donde el dios dijo —`ponerCuerpo` no le pide permiso a nadie— y la que se
+      // corre no es ninguna. Un banco de peces no es un obstáculo del piso.
+      if (!abiertos.has(clave)) {
+        abiertos.add(clave)
+        d.sembroChunk = true
+        abrirChunk(d, dec, cx, cy)
+      }
+      const pozo = dec.pozo
       if (pozo === undefined) continue
       const id = idDePozo(cx, cy)
       const stock = indiceDePozos(d).get(id) ?? pozo.stock
@@ -3143,8 +3289,329 @@ function materializarPozos(d: Borrador): void {
       // por delta —que compara IDENTIDADES— metería una ranura por banco en todos
       // los deltas de la partida para no decir nada.
       if (habia !== undefined && masaDe(habia.body, d.phys) === masaDe(cuerpo, d.phys)) continue
+      // EL QUE ESTÉ PARADO EN LA CELDA DEL BANCO SE CORRE, igual que con una
+      // suelta y por lo mismo: el lugar del banco lo fija el decreto y no se
+      // negocia —es la proyección de un `Stock`, se reescribe todos los ticks y no
+      // hay «otra celda» a la que mandarlo—. Sin esto el banco se materializa
+      // ENCIMA, y el barrido de veinte semillas lo encuentra en el tick 1: la
+      // criatura nace en (0,0) y `pozo:0:0` de esa semilla va en (0,0).
+      //
+      // Se llama sólo cuando el banco se escribe de verdad —o sea cuando la masa se
+      // movió— y no todos los ticks: agregar un `estorbo` por chunk y por tick le
+      // costaría al criterio (3), que ya está 6,4× por encima de su techo. El
+      // residuo es que un mundo CARGADO con alguien encima del banco queda solapado
+      // hasta el primer tick en que el stock se mueva, que es casi siempre el
+      // siguiente.
+      hacerLugar(d, pozo.at, id, SIN_RESERVAS)
       ponerCuerpo(d, habia === undefined ? { body: cuerpo, at: pozo.at } : { ...habia, body: cuerpo })
+      // LO QUE EL BANCO SUMÓ, declarado. Es la DIFERENCIA y no el total: el banco
+      // ya estaba en el mundo y sólo lo nuevo necesita respaldo. Cuando la
+      // diferencia es negativa —lo pescaron— no se anota nada: bajar no necesita
+      // permiso, y anotar un negativo bajaría el techo del invariante para todo lo
+      // demás del tick. Ver el evento `decreta`.
+      anotarDecretoDelta(d, habia?.body, cuerpo)
     }
+  }
+}
+
+/**
+ * ABRIR UN CHUNK: las `sueltas` de su decreto se vuelven cuerpos del mundo.
+ *
+ * ─── LA CELDA OCUPADA, que es la decisión difícil de acá ────────────────────
+ *
+ * `scatter` sortea la celda de cada suelta CON REPOSICIÓN, así que el decreto pone
+ * dos cosas en la misma celda con toda naturalidad —medido sobre las veinte
+ * partidas del banco de la emergencia: 103 de 2280, un 4,5%—, puede ponerla en la
+ * celda del banco de peces, y además puede ponerla encima de la criatura, que ya
+ * está parada ahí. El mundo no admite dos sólidos sueltos en una celda
+ * (`revisarEspacio`, `solidos-solapados`), así que algo tiene que ceder.
+ *
+ * Las respuestas posibles, y las dos primeras se descartan igual que antes:
+ *
+ *   1. **apilarlas** con `supportedBy`. Es legal y es la peor: una pila que
+ *      ninguna intención pidió es una relación espacial fabricada, y la ley 12 la
+ *      LEE — dos cortezas apiladas por accidente tapan la de abajo del oxígeno;
+ *   2. **descartar la segunda**. Es lo que el arnés del juez hacía, y la dirección
+ *      es segura para el conteo pero no para el diagnóstico: el propio juez mide
+ *      que en algunas partidas la descartada era el encendible más liviano, o sea
+ *      que el descarte cambia la conclusión sin que nada lo diga;
+ *   3. **correr la suelta a la primera celda libre DEL MUNDO** (`celdaLibreCerca`).
+ *      Fue lo que hizo el tramo K y **está mal, y lo rompe el criterio publicado
+ *      del Hito 3**: preguntarle al mundo hace que la celda final dependa de dónde
+ *      estaba parada la criatura cuando el chunk se abrió. MEDIDO, con los mismos
+ *      dos puntos visitados en los dos órdenes —los dos abren los mismos 9 chunks
+ *      y materializan las mismas 90 sueltas—: `suelta:2:0:0` sale en (34,6) o en
+ *      (35,6) según el orden, y el mundo entero hashea `2f63c2f9eabd29b6` contra
+ *      `a4fc2879124b0d36`. El documento (`remake-anima-ii.md`, Hito 3) dice «el
+ *      mismo mundo explorado en dos órdenes **y con dos historias distintas entre
+ *      medio** produce el mismo hash», y el hash del que habla es `hashWorld`, que
+ *      es el único que el paquete tiene.
+ *   4. **la celda final es función pura del DECRETO, y el que estaba se corre**.
+ *      Es lo que se hace ahora.
+ *
+ * ─── (4), en dos mitades, y hay que leerlas separadas ───────────────────────
+ *
+ * La primera mitad es la que arregla el determinismo: `celdaDelDecreto` recorre
+ * los nueve rumbos preguntando por las celdas que **el decreto de este chunk** ya
+ * comprometió —el banco de peces primero, después las sueltas anteriores— y no
+ * mira `d.bodies` ni una vez. Con eso, dónde termina cada suelta es función de
+ * `(semilla, chunk, índice)` y de nada más: dos partidas que abran el mismo chunk
+ * en cualquier momento de cualquier historia ponen la misma piedra en la misma
+ * celda.
+ *
+ * Que el banco de peces entre en esa cuenta cierra de paso el otro agujero
+ * medido: `materializarLoDecretado` lo pone con `ponerCuerpo`, que no le pregunta
+ * a `estorbo`, y sobre veinte semillas eso dejaba **2 de 20 partidas con
+ * `solidos-solapados`** entre el pozo y una suelta (`pozo:6:0` con `suelta:6:0:3`,
+ * `pozo:7:1` con `suelta:7:1:4`). No hacía falta enseñarle al banco a esquivar:
+ * alcanza con que las sueltas sepan que esa celda es de él, que es lo que el
+ * decreto dice.
+ *
+ * La segunda mitad es la que decide el caso que ninguna función pura puede
+ * resolver sola: **alguien está parado en la celda que el decreto eligió**. Ahí el
+ * decreto manda y el que estaba se corre (`correrAlQueEstaba`). Es raro y es
+ * determinista, que era la condición. Y es lo único honesto: si en vez de eso se
+ * descartara la suelta, su EXISTENCIA pasaría a depender del camino, que es la
+ * misma dependencia de recién con otro disfraz.
+ *
+ * Lo que se paga, dicho entero: la celda de quien estaba parado ahí SÍ depende del
+ * mundo. No es lo mismo, y por eso se elige así: la posición de la criatura ya
+ * depende de su historia por definición —caminó—, mientras que la de una piedra
+ * que el dios sembró no dependía de nada y el tramo K la había atado al camino.
+ *
+ * Y queda un residuo honesto: si el que estaba tampoco tiene a dónde irse, la
+ * suelta **no entra** y el chunk queda anotado igual, o sea que no vuelve. Hace
+ * falta un racimo muy denso de sólidos para eso. A diferencia del tramo K, ahora
+ * **se narra**: `perdida` con el id y el chunk, para que el mundo no se trague
+ * materia decretada en silencio.
+ */
+function abrirChunk(d: Borrador, dec: Decreto, cx: number, cy: number): void {
+  const sueltas = dec.chunk.sueltas
+  // La temperatura del chunk, LEÍDA UNA VEZ: es del chunk y no de la celda (el
+  // decreto guarda una sola por chunk, ver `Terreno.temperatura`).
+  const ambiente = dec.chunk.terreno.temperatura
+  // LAS CELDAS QUE EL DECRETO YA COMPROMETIÓ, y NADA MÁS QUE ÉSAS. Que este
+  // conjunto no se llene nunca de cuerpos del mundo es la propiedad entera de
+  // esta función; el día que alguien le agregue un `d.bodies` acá, el criterio
+  // del Hito 3 se cae de nuevo y el contraejemplo está en
+  // `world/tests/ataque-a-las-sueltas.test.ts`, bloque (2).
+  const tomadas = new Set<CellKey>()
+  // El banco de peces PRIMERO, porque es el único cuerpo que el decreto pone sin
+  // pedir permiso (se reescribe todos los ticks desde el `Stock`: no se le puede
+  // buscar otro lugar sin que el lugar cambie solo).
+  if (dec.pozo !== undefined) tomadas.add(keyOfCell(dec.pozo.at))
+  for (let n = 0; n < sueltas.length; n++) {
+    const s = sueltas[n] as Suelta
+    const id = idDeSuelta(cx, cy, n)
+    // Si ya hay un cuerpo con ese nombre, no se pisa. No debería pasar —el chunk
+    // se abre una sola vez y el nombre es del lugar— y por eso mismo la guarda es
+    // barata: pisar un cuerpo vivo con uno recién nacido sería borrar lo que la
+    // criatura hizo con él.
+    if (d.bodies.has(id)) continue
+    const cuerpo = cuerpoDeSuelta(id, s, d.phys, ambiente)
+    const decretada = celdaDeSuelta(cx, cy, s.i)
+    if (!enRango(decretada)) continue
+    // Lo que no es sólido no le disputa la celda a nadie, así que no reserva ni
+    // busca: va donde el dios dijo. Es la misma lista de filtros que `estorbo`.
+    if (qualityOf(cuerpo, 'solid', d.phys) <= 0) {
+      ponerCuerpo(d, { body: cuerpo, at: decretada })
+      anotarDecreto(d, cuerpo)
+      continue
+    }
+    const at = celdaDelDecreto(d, decretada, tomadas)
+    if (at === undefined) {
+      d.events.push({ k: 'perdida', id, en: chunkKey(cx, cy) })
+      continue
+    }
+    // Se reserva ANTES de saber si el cuerpo va a entrar de verdad, y a propósito:
+    // la reserva es del DECRETO —«acá va la suelta n»— y no del mundo. Si la
+    // suelta se pierde porque el que estaba no se pudo correr, la celda igual
+    // queda ocupada por ése; dejarla libre haría que la suelta n+1 se corriera a
+    // un lugar distinto según si la n entró, o sea justo la dependencia que esta
+    // función viene a sacar.
+    tomadas.add(keyOfCell(at))
+    if (!hacerLugar(d, at, id, tomadas)) {
+      d.events.push({ k: 'perdida', id, en: chunkKey(cx, cy) })
+      continue
+    }
+    ponerCuerpo(d, { body: cuerpo, at })
+    anotarDecreto(d, cuerpo)
+  }
+}
+
+/**
+ * ¿Esta celda es de alguien POR DECRETO? O sea: ¿la reservó el chunk que se está
+ * abriendo, o es la celda del banco de peces del chunk al que pertenece?
+ *
+ * Las dos mitades hacen falta y la segunda la encontró el arnés después de la
+ * primera. `tomadas` es del chunk que se abre, y los nueve rumbos de una suelta
+ * decretada en el borde CRUZAN al chunk de al lado: una suelta de (5,0) decretada
+ * en x=95 puede terminar en x=96, que es la primera columna de (6,0) y puede ser
+ * la celda de su banco. El banco entra con `ponerCuerpo` sin preguntarle a
+ * `estorbo` —su lugar lo fija el decreto—, así que lo que quede en su celda queda
+ * SOLAPADO. Medido: era `pozo:6:0` contra `suelta:5:0:6` en (98,0), la última
+ * violación que quedaba del barrido de veinte semillas.
+ *
+ * `decretoDe` está memoizado por `(Physics, chunk)`, así que preguntar por una
+ * celda de al lado no vuelve a decretar nada.
+ */
+function reservadaPorElDecreto(d: Borrador, p: Placement, tomadas: ReadonlySet<CellKey>): boolean {
+  if (tomadas.has(keyOfCell(p))) return true
+  const dios = d.dios
+  if (dios === undefined) return false
+  const pozo = decretoDe(dios, d.phys, chunkCoord(p.x), chunkCoord(p.y)).pozo
+  return pozo !== undefined && pozo.at.x === p.x && pozo.at.y === p.y
+}
+
+/**
+ * La celda de una suelta, DECIDIDA CONTRA EL DECRETO Y CONTRA NADA MÁS: la que le
+ * tocó, y si el decreto ya la comprometió, el primero de los ocho rumbos que no lo
+ * esté.
+ *
+ * Es la misma forma que `celdaLibreCerca` —la propia y después `OCHO_RUMBOS` en
+ * orden fijo— con una sola diferencia, que es toda la reparación: en vez de
+ * preguntarle al mundo si la celda está ocupada, le pregunta al decreto. El mundo
+ * no entra.
+ *
+ * `undefined` quiere decir que el decreto amontonó diez cosas en un rombo de tres
+ * por tres, que es lo que `scatter` puede hacer y casi nunca hace.
+ */
+function celdaDelDecreto(
+  d: Borrador,
+  decretada: Placement,
+  tomadas: ReadonlySet<CellKey>,
+): Placement | undefined {
+  if (!reservadaPorElDecreto(d, decretada, tomadas)) return decretada
+  for (const r of OCHO_RUMBOS) {
+    const c = { x: decretada.x + r.x, y: decretada.y + r.y }
+    if (!enRango(c)) continue
+    if (!reservadaPorElDecreto(d, c, tomadas)) return c
+  }
+  return undefined
+}
+
+/**
+ * Dejar libre una celda que el decreto reclamó: al que esté parado ahí se lo corre
+ * a un rumbo pegado.
+ *
+ * El bucle existe porque una celda puede tener MÁS DE UN sólido: el propio
+ * `IndiceDeCeldas` documenta que en una partida de 2000 ticks se cuentan 97
+ * solapamientos legales (dos cuerpos que se apoyan uno en el otro cuentan como
+ * dos ocupantes para `estorbo` en cuanto se rompe la relación). La cota es el
+ * tamaño de la cubeta y no un número mágico; sin cota, un `estorbo` que devolviera
+ * siempre lo mismo dejaría el tick sin terminar.
+ *
+ * Devuelve `false` cuando alguno no tiene a dónde ir. Los que ya se corrieron se
+ * quedan corridos, y eso es correcto: se fueron a celdas legales, así que ningún
+ * invariante queda roto — lo único que pasa es que se movieron para nada.
+ */
+function hacerLugar(d: Borrador, at: Placement, quien: BodyId, tomadas: ReadonlySet<CellKey>): boolean {
+  for (let vuelta = 0; vuelta < LIMITE_DE_DESALOJO; vuelta++) {
+    const c = estorbo(d, at, quien, d.phys)
+    if (c === undefined) return true
+    if (!correrAlQueEstaba(d, c, at, tomadas)) return false
+  }
+  return estorbo(d, at, quien, d.phys) === undefined
+}
+
+/**
+ * La cota del desalojo. Nueve es lo que puede haber en una celda sin que el mundo
+ * ya esté roto: los ocho rumbos son las salidas y un noveno ocupante no tendría a
+ * dónde ir de todos modos.
+ */
+const LIMITE_DE_DESALOJO = 9
+
+/**
+ * «Este desalojo no tiene celdas reservadas aparte de las que el decreto ya sabe
+ * solo.» Lo usa el banco de peces, que no está abriendo ningún chunk. Es un
+ * `ReadonlySet` compartido y no un `new Set()` por pozo y por tick, que serían
+ * decenas de miles de asignaciones inútiles con 5000 criaturas.
+ */
+const SIN_RESERVAS: ReadonlySet<CellKey> = new Set<CellKey>()
+
+/**
+ * Correr un cuerpo de la celda que el decreto reclamó, al primer rumbo libre que
+ * no sea la celda que está cediendo.
+ *
+ * Es `moverActor` en chico y sin el actor: se sueltan las relaciones espaciales en
+ * las dos direcciones —con `olvidar`, para que la pila que tenía encima baje un
+ * escalón en vez de quedar flotando— y lo que lleve en la mano viaja con él.
+ *
+ * ─── Cómo encuentra lo que lleva puesto sin recorrer los actores ────────────
+ *
+ * Un `heldBy` es un `ActorId`, así que `d.actors.get(heldBy).body` contesta en O(1)
+ * si esa mano es la de ESTE cuerpo. Recorrer `d.actors` sería O(actores) adentro
+ * de un camino que corre con 5000 criaturas en el primer tick de la partida, que
+ * es justo cuando todos los chunks se abren a la vez.
+ *
+ * La cubeta se copia antes de recorrerla porque `ponerCuerpo` la modifica.
+ */
+function correrAlQueEstaba(
+  d: Borrador,
+  c: WorldBody,
+  cede: Placement,
+  tomadas: ReadonlySet<CellKey>,
+): boolean {
+  for (const r of OCHO_RUMBOS) {
+    const p = { x: c.at.x + r.x, y: c.at.y + r.y }
+    // La celda que está cediendo no cuenta como salida ni aunque el cuerpo esté
+    // en otra: es la que el decreto reclamó.
+    if (p.x === cede.x && p.y === cede.y) continue
+    if (!enRango(p)) continue
+    // Y ninguna otra celda del decreto tampoco: correrlo a la celda del banco de
+    // peces sería cambiar un solapamiento por otro, y correrlo a la celda que le
+    // toca a la suelta siguiente sería hacerle a ella lo que se le está haciendo
+    // a él. Ver `reservadaPorElDecreto`.
+    if (reservadaPorElDecreto(d, p, tomadas)) continue
+    if (estorbo(d, p, c.body.id, d.phys) !== undefined) continue
+    // Lo que lleva en la mano, LEÍDO ANTES de mudarlo: mudarlo reescribe las
+    // cubetas y la de la celda vieja deja de tenerlo.
+    const enLaMano: BodyId[] = []
+    for (const id of [...(indiceDeCeldas(d).porCelda.get(keyOfCell(c.at)) ?? [])]) {
+      const h = d.bodies.get(id)
+      if (h?.heldBy === undefined) continue
+      if (d.actors.get(h.heldBy)?.body !== c.body.id) continue
+      enLaMano.push(id)
+    }
+    const { supportedBy: _apoyo, covering: _tapa, ...suelto } = c
+    ponerCuerpo(d, { ...suelto, at: p })
+    olvidar(d, c.body.id, c.supportedBy)
+    for (const id of enLaMano) {
+      const h = d.bodies.get(id)
+      if (h !== undefined) ponerCuerpo(d, { ...h, at: p })
+    }
+    return true
+  }
+  return false
+}
+
+/**
+ * Anotar en el libro del tick lo que un cuerpo recién materializado trajo de cada
+ * cuenta conservada. Ver el evento `decreta`.
+ *
+ * Va sobre `CONSERVED` y no sobre `CONSERVADAS_QUE_SOLO_MUEVE_EL_MUNDO`: acá se
+ * sostiene el TECHO del invariante, y el techo vale para las cinco.
+ */
+function anotarDecreto(d: Borrador, cuerpo: Body): void {
+  anotarDecretoDelta(d, undefined, cuerpo)
+}
+
+/**
+ * Lo mismo, para el cuerpo que YA ESTABA y al que el dios le cambió la materia:
+ * se anota `ahora − antes`, y sólo la parte positiva. Es el caso del banco de
+ * peces, que se repone.
+ */
+function anotarDecretoDelta(d: Borrador, antes: Body | undefined, ahora: Body): void {
+  let libro = d.decretado
+  for (const q of CONSERVED) {
+    const previo = antes === undefined ? 0 : totalConservado(antes, q, d.phys)
+    const cuanto = totalConservado(ahora, q, d.phys) - previo
+    if (!(cuanto > 0)) continue
+    if (libro === undefined) {
+      libro = new Map<QualityId, number>()
+      d.decretado = libro
+    }
+    libro.set(q, (libro.get(q) ?? 0) + cuanto)
   }
 }
 
@@ -3181,9 +3648,25 @@ export const SISTEMAS: readonly { readonly nombre: string; readonly correr: (d: 
 export function stepWorld(state: WorldState, intents: readonly Intent[]): StepOutcome {
   const d = abrir(state)
   // Lo que el dios decretó y todavía no estaba, ANTES de que nadie actúe. Ver
-  // `materializarPozos`: sin esto, pescar dependería de haber llegado un tick
-  // antes, y un pozo repuesto calificaría un tick tarde.
-  materializarPozos(d)
+  // `materializarLoDecretado`: sin esto, pescar dependería de haber llegado un tick
+  // antes, un pozo repuesto calificaría un tick tarde, y la leña que el dios sembró
+  // en la orilla no existiría para nadie.
+  materializarLoDecretado(d)
+  // LO QUE EL DIOS PUSO, NARRADO, y acá y no al final del tick: pasó antes que
+  // nada y la crónica cuenta el tick en el orden en que ocurrió. Va en el orden de
+  // `CONSERVED` y no en el de inserción del `Map`, por lo mismo que `gasto`: dos
+  // mundos gemelos que abrieron los mismos chunks por caminos distintos tienen que
+  // narrar los mismos eventos en el mismo orden, o el replay deja de valer.
+  //
+  // Son `Narracion`, así que `firmar` los saltea aunque queden antes del primer
+  // despacho. Ver el evento `decreta`.
+  const decretado = d.decretado
+  if (decretado !== undefined) {
+    for (const q of CONSERVED) {
+      const cuanto = decretado.get(q)
+      if (cuanto !== undefined && cuanto > 0) d.events.push({ k: 'decreta', q, cuanto })
+    }
+  }
   const ordenadas = ordenarIntenciones(intents)
 
   // ─── Los empates, marcados ANTES de despachar nada ────────────────────────
@@ -3299,14 +3782,37 @@ export function stepWorld(state: WorldState, intents: readonly Intent[]): StepOu
  * despacho narra con el `a.id` del actor de la intención— pero deja una sola
  * verdad sobre quién firmó qué.
  *
- * La `Narracion` se saltea entera: `murio`, `sustancia` y `gasto` no le contestan
- * a nadie ni cuando ocurren en medio de un despacho. Comer mata un cuerpo, y el
- * que comió ya se entera por su `comio`, que dice cuál.
+ * La `Narracion` se saltea entera: `murio`, `sustancia`, `gasto`, `decreta` y
+ * `perdida` no le contestan a nadie ni cuando ocurren en medio de un despacho.
+ * Comer mata un cuerpo, y el que comió ya se entera por su `comio`, que dice cuál.
  */
 function firmar(d: Borrador, i: Intent, desde: number): void {
   for (let n = desde; n < d.events.length; n++) {
     const e = d.events[n] as SimEventSinFirmar
-    if (e.k === 'murio' || e.k === 'sustancia' || e.k === 'gasto') continue
+    if (esNarracion(e)) continue
     d.events[n] = { ...e, by: i.by, seq: i.seq }
   }
+}
+
+/**
+ * Las clases que NO llevan firma, como registro completo y no como una lista de
+ * `||`.
+ *
+ * El tipo es `{ [K in Narracion['k']]: true }`, o sea que **agregar una
+ * `Narracion` sin agregarla acá no compila**. La lista suelta que había antes no
+ * tenía esa propiedad: los dos eventos nuevos de este tramo —`decreta` y
+ * `perdida`— habrían salido firmados con la intención que estuviera despachándose
+ * en ese momento, o sea el mundo culpando a la criatura de que el dios sembró un
+ * chunk.
+ */
+const SIN_FIRMA: { readonly [K in Narracion['k']]: true } = {
+  murio: true,
+  sustancia: true,
+  gasto: true,
+  decreta: true,
+  perdida: true,
+}
+
+function esNarracion(e: SimEventSinFirmar): e is Narracion {
+  return (SIN_FIRMA as Record<string, true | undefined>)[e.k] === true
 }

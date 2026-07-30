@@ -44,21 +44,28 @@
 // La conclusión de la corrida anterior era correcta SOBRE ESA ESCENA y falsa sobre
 // el mundo.
 //
-// ═══ Y LA PREMISA DE LA CORRECCIÓN TAMBIÉN HABÍA QUE MEDIRLA ════════════════
+// ═══ Y LA PREMISA DE LA CORRECCIÓN TAMBIÉN HABÍA QUE MEDIRLA — Y YA SE REPARÓ ═
 //
-// El encargo de este tramo decía que los cuerpos sueltos del dios «ya se
+// El encargo del tramo I decía que los cuerpos sueltos del dios «ya se
 // materializan solos» y que alcanzaba con sacar la escena a mano. **No se
-// materializan.** Medido antes de escribir una línea, con una criatura sola en la
+// materializaban.** Medido antes de escribir una línea, con una criatura sola en la
 // orilla de `20260728n` y cinco ticks de `Partida`: el dios decretó 90 sueltas en
 // los 3×3 chunks de alrededor y lo único que apareció fueron tres bancos de peces.
-// Cero. Sacar la escena y no poner nada habría dejado un mundo MÁS pobre que el de
-// la corrida anterior.
+// Cero. Así que el arnés las sembró él mismo y lo dijo con todas las letras: era un
+// rodeo, y la reparación era del motor.
 //
-// Así que el arnés siembra el decreto él mismo (`tests/el-mundo-decretado.ts`), y
-// eso es un rodeo declarado y no una reparación —la reparación es del motor, y su
-// `it.fails` sigue en rojo en el bloque (1)—. Lo que el arnés NO hace es elegir:
-// qué hay, cuánto pesa y en qué celda está salen de `decretoDe`, o sea de la
-// semilla. Lo único que sigue plantado a mano es el cuerpo de la criatura.
+// **La reparación se hizo en el tramo K** (`world/src/step.ts`,
+// `materializarLoDecretado` → `abrirChunk`, y `perceive/src/bucle.ts` copiando de
+// la sombra los dos prefijos del dios y no sólo `pozo:`). El arnés dejó de sembrar:
+// lo único que sigue plantado a mano es el cuerpo de la criatura, y **todo lo demás
+// lo pone el mundo**. Medido en el bloque (1), que pasó de `it.fails` a verde:
+//
+//     el dios decretó en los 3×3 del arranque ......... 2280
+//     `abrirChunk` materializó en el primer paso ...... 2277  (se perdieron 3, el 0,13%)
+//     y a lo largo de la partida ...................... 3021  (el chunk se abre cuando alguien llega)
+//
+// Contra el 4,5% que descartaba la regla vieja del arnés: treinta y cuatro veces
+// menos materia perdida, y ya no en una isla de 3×3 rodeada de vacío.
 //
 // ═══ EL VEREDICTO, ARRIBA Y CON LOS NÚMEROS DE ESTA CORRIDA ═════════════════
 //
@@ -66,28 +73,73 @@
 //   tocar un umbral: el criterio pide 4 y §10 ya resolvió antes de correr que con
 //   nueve entradas el 4 absoluto y el 40% proporcional caen en el mismo número.
 //
-//   PERO EL CERO CAMBIÓ DE SIGNIFICADO, y ése es el resultado de este tramo:
+//   PERO EL CERO CAMBIÓ DE SIGNIFICADO, y ése es el resultado de estos dos tramos:
 //
-//   ─── (A) TRES DE LAS NUEVE FILAS AHORA MIDEN A LA MENTE ───────────────────
+//   ─── (A) TRES DE LAS NUEVE FILAS MIDEN A LA MENTE, Y LAS SEIS RESTANTES ───
 //
 //   Con la escena a mano, los NUEVE contra-detectores daban `false` en las veinte
 //   partidas: el mundo no le ponía NINGUNO de los nueve problemas delante y las
-//   nueve filas contestaban EL MUNDO. Con el mundo decretado, tres se encienden:
+//   nueve filas contestaban EL MUNDO. Con el mundo que el motor materializa, tres
+//   se encienden:
 //
-//     no-frotar-lo-que-no-alcanza-a-encender   situación en  8/20   → LA MENTE
-//     la-vara-mas-liviana-que-igual-cocina     situación en  8/20   → LA MENTE
-//     ponerle-punta-al-aparejo                 situación en  5/20   → LA MENTE
+//     no-frotar-lo-que-no-alcanza-a-encender   situación en  9/20   → LA MENTE
+//     la-vara-mas-liviana-que-igual-cocina     situación en  9/20   → LA MENTE
+//     ponerle-punta-al-aparejo                 situación en  8/20   → LA MENTE
 //
-//   O sea: el mundo SÍ le puso esos tres problemas delante, en cinco a ocho de las
+//   O sea: el mundo SÍ le puso esos tres problemas delante, en ocho o nueve de las
 //   veinte partidas, y la criatura no los resolvió ni una vez. Ese cero mide a la
-//   mente. Los otros seis siguen sin medirse, y §10 sigue diciendo que con más de
-//   tres no-medidas sobre nueve el resultado no es interpretable — pero seis no es
-//   nueve, y las tres que se movieron cambiaron de casilla.
+//   mente. Las otras seis siguen sin medirse, y §10 sigue diciendo que con más de
+//   tres no-medidas sobre nueve el resultado NO ES INTERPRETABLE.
 //
-//   (Las dos primeras subieron de 7/20 a 8/20 con la tabla de cocción por montaje.
-//   No es que el mundo cambió: la criatura camina a otros cuerpos y ve otras cosas
-//   a tiro, así que el contra-detector se enciende en una semilla más. La tercera no
-//   se movió.)
+//   ─── EL ASTERISCO QUE ESTA COLUMNA NECESITA, Y ES CARO ────────────────────
+//
+//   **La columna `situación` se movió tres veces en tres tramos sin que cambiara
+//   una sola línea del juez**: 7/20-7/20-5/20 con el arnés sembrando, 8/20-8/20-5/20
+//   con la tabla de cocción por montaje, 6/20-6/20-4/20 con el mundo materializando
+//   el decreto, y 9/20-9/20-8/20 con el cerrojo del «mientras tanto» de la escalera
+//   (`mind/src/escalera.ts`, `mientrasTantoYaHecho`). Es una columna que dice «el
+//   mundo puso el problema delante», y sin embargo depende de POR DÓNDE CAMINÓ LA
+//   CRIATURA: los contra-detectores se evalúan a Chebyshev ≤ 3 de donde ella está.
+//
+//   Lo último la subió porque el cerrojo la sacó de un bucle: sin él la criatura
+//   gastaba el 98% de sus ticks re-pidiendo el mismo `ir` a un cuerpo que ya tenía
+//   al lado, y con él camina —`explorar` pasó de 5 despegues en las veinte a 8250—.
+//   Un mundo más recorrido es un mundo que ofrece más situaciones.
+//
+//   Lo que eso obliga a decir, y va acá y no en una nota al pie: **estos números son
+//   de una corrida contra un árbol de trabajo que otro tramo estaba tocando**, y se
+//   publican con la huella de lo que se midió (`git hash-object`):
+//
+//     mind/src/escalera.ts   0935e9268ffc568f52b06d780952c9f280de5d02
+//     mind/src/mente.ts      ced6c8657e17f478a36b3b23c098808d1fb52b28
+//     world/src/step.ts      eb27705f71e6c6f2a0f90a2020316fd2c99def1c
+//     perceive/src/bucle.ts  e5625db562cfe20534fb1e02a1c1cad90dc8fed1
+//
+//   La primera corrida de este tramo salió con la escalera vieja y publicó
+//   6/20-6/20-4/20; se volvió a correr entera. **Una corrida del criterio de corte
+//   contra un árbol que se está editando es una corrida que hay que fechar**, y esa
+//   es la regla que este párrafo deja escrita.
+//
+//   ─── (A bis) Y LAS SEIS QUE DICEN «EL MUNDO» NO LO MERECEN, MEDIDO ────────
+//
+//   Es el hallazgo de este tramo y está en `tests/las-seis-que-dicen-el-mundo
+//   .test.ts`, en verde. La casilla EL MUNDO de `causaDe` quiere decir «el mundo
+//   nunca puso el problema delante». Sobre el mundo que ahora existe eso es falso
+//   en las seis:
+//
+//     · CINCO cuelgan de que haya fuego, y el control del azar con la fogata
+//       regalada —las MISMAS veinte semillas y el MISMO decreto— las enciende:
+//       `fuegoYDosPermeabilidades` 20/20, `dosCombustiblesEnIntervalo` 20/20,
+//       `parrillaOfrecida` 6/20, `algoSeCocino` 5/20, `loteAlAlcance` 5/20. Su cero
+//       no es del mundo: es de los CERO FUEGOS en veinte partidas.
+//     · LA SEXTA, `fardoPosible`, es la única que no necesita fuego, y el barrido
+//       de las 46.080 celdas de los 3×3 materializados dice que **el mundo ofrecía
+//       la cadena en 5 de las 20 partidas, desde 32 celdas, y la más cercana estaba
+//       a 5 celdas del arranque** contra un alcance de 3. Dice «la criatura no fue»,
+//       no «el mundo no la tiene».
+//
+//   Nada de esto mueve el cero del criterio: siguen siendo 0 de 9. Lo que mueve es
+//   QUÉ SE PUEDE CONCLUIR de ese cero, que es lo que dos tramos vinieron a arreglar.
 //
 //   ─── (B) SÍ HAY CON QUÉ ENCENDER, Y NO ERA UN PROBLEMA DE LA FÍSICA ───────
 //
@@ -103,23 +155,37 @@
 //   semilla no tiene orilla. Dos poblaciones distintas, dos números, los dos
 //   medidos.)
 //
-//   ─── (C) EL AZAR SE VOLVIÓ A CORRER, Y BAJÓ DE TRES A UNA ─────────────────
+//   ─── (C) EL AZAR SE VOLVIÓ A CORRER, Y BAJÓ DE TRES A UNA Y DE UNA A CERO ─
 //
 //   Si el arnés cambia de mundo y el control no, la resta entre los dos no mide
-//   nada. Así que el control del dado corre ahora sobre **las mismas veinte
-//   semillas, el mismo decreto y la misma orilla**, con las dos concesiones de
-//   siempre declaradas (fogata regalada, tanque de 40.000). Firma **1 de 9** —
-//   `el-leno-mas-grande-que-todavia-cocina`, 8/20, y sólo con el fuego regalado—
-//   contra las 3 de 9 que firmaba sobre su escena vieja. El piso de cuatro hay que
-//   cruzarlo sobre las OCHO que quedan.
+//   nada. Así que el control del dado corre sobre **las mismas veinte semillas, el
+//   mismo decreto y la misma orilla**, con las dos concesiones de siempre
+//   declaradas (fogata regalada, tanque de 40.000). Sobre el mundo que el motor
+//   materializa firma **0 de 9**: ni una.
+//
+//   Firmaba 3 sobre su escena inventada, 1 con el arnés sembrando el decreto, y 0
+//   ahora. La que se cayó en este tramo es `el-leno-mas-grande-que-todavia-cocina`,
+//   que antes disparaba en 8/20 y ahora **dispara en 0/20 con la situación en
+//   20/20**: el mundo le sigue poniendo dos combustibles de masas distintas al lado
+//   de la fogata regalada en las veinte, y el dado ya no acierta a quemar el más
+//   grande de los dos. No es que el control se debilitó —las concesiones son las
+//   mismas y van a su favor—: es que con más de cien cuerpos alrededor en vez de
+//   diez, un dado que elige cuerpo uniformemente acierta mucho menos seguido. **Un
+//   control que se vuelve más flojo cuando el mundo se vuelve más rico es una
+//   propiedad del control y hay que decirla**, porque el piso de cuatro pasa a haber
+//   que cruzarlo sobre las NUEVE y eso hace el criterio más duro, no más fácil.
+//
+//   Y el control es lo ÚNICO de este archivo que no depende de la mente: los dos
+//   dados corrieron idénticos en las dos corridas de este tramo —con la escalera
+//   vieja y con la nueva—, renglón por renglón. Eso es lo que lo hace un
+//   denominador y no otra medición más.
 //
 //   Y hay que decir lo que el control NO dice, porque la comparación fácil sería
-//   falsa: el dado sin fuego vive 19.212 ticks de promedio con un tanque de 1000, y
-//   la mente se muere entre el 81 y el 6.199 — pero con un tanque de **310**. Con el
-//   tanque igualado en 1000 la mente llega al 56,2% del presupuesto (bloque 3, tres
+//   falsa: el dado sin fuego vive 18.743 ticks de promedio con un tanque de 1000, y
+//   la mente se muere entre el 80 y el 6.198 — pero con un tanque de **310**. Con el
+//   tanque igualado en 1000 la mente llega al 81,0% del presupuesto (bloque 3, tres
 //   partidas), así que **no es que el dado sobreviva mejor**: el dado se queda
-//   quieto y la mente camina. La corrida anterior tenía al dado muriéndose en el
-//   tick 3.132, y eso sí era de su escena vieja.
+//   quieto y la mente camina.
 //
 //   ─── (D) LA CRIATURA SIGUE SIN COMER, Y AHORA SE SABE MEJOR POR QUÉ ───────
 //
@@ -133,79 +199,95 @@
 //
 //   ─── (E) LA MUERTE TEMPRANA SIGUE SIN SER LA CAUSA ────────────────────────
 //
-//   Con el tanque canónico se muere en el 17,7% del presupuesto; con el tanque
-//   lleno llega al 56,2% y el juez sigue diciendo 0 de 9. Multiplicar por tres el
+//   Con el tanque canónico se muere en el 20,5% del presupuesto; con el tanque
+//   lleno llega al 81,0% y el juez sigue diciendo 0 de 9. Multiplicar por cuatro el
 //   tiempo vivido no movió una sola fila.
 //
 //   Y el asterisco, que hay que ponerlo: sin `ANIMA_BANCO=1` el control con el
-//   tanque lleno corre TRES partidas de las veinte, así que ese 56,2% y ese 0 de 9
+//   tanque lleno corre TRES partidas de las veinte, así que ese 81,0% y ese 0 de 9
 //   son sobre tres. El de las veinte es el canónico. Es una separación más floja de
 //   lo que se quisiera y está dicho en la salida en vez de escondido.
 //
-//   Los dos porcentajes BAJARON respecto de la corrida anterior —27,7% y 100,0%— y
-//   no es ruido: es la tabla de cocción por montaje, que le da a la mente un plan
-//   que caminar donde antes se quedaba quieta. Ver (G).
+//   ─── (F) Y EL MUNDO SOBRE EL QUE SE MIDIÓ **YA NO** ES LEGAL, Y AHORA MUCHO ─
 //
-//   ─── (F) Y EL MUNDO SOBRE EL QUE SE MIDIÓ **YA NO** ES LEGAL ──────────────
+//   **47.091 estados ilegales en 10 de las 20 partidas**, sobre 81.932 ticks
+//   auditados con `revisarEstado`, contra los 12 en 1 de la corrida del tramo J. Es
+//   el **57,5% de los ticks sobre los que se midió el criterio**, y no se suaviza:
+//   va acá arriba, en la salida del bloque de auditoría, y con su `it.fails`.
 //
-//   **12 estados ilegales en 1 de las 20 partidas**, contra los cero de la corrida
-//   anterior, sobre 70.963 ticks auditados con `revisarEstado`. Clase única:
-//   `inventario-inconsistente` · «ana/ana-cuerpo: **se lleva a sí misma**», semilla
-//   20260769, ticks 6182 a 6193 — los doce últimos ticks antes de morirse.
+//   Dos clases, y las dos crecieron por motivos distintos. La cuenta va por PARTIDA
+//   y no por clase, porque el informe publica la primera violación de cada partida
+//   y no el histograma —contar por clase pediría cambiar lo que el arnés guarda, y
+//   un número que no se midió no se escribe—:
 //
-//   MEDIDO, tick por tick, y no es del planificador: en el 6180 despega `juntar×1` y
-//   en el 6181 el estado tiene `holding: ["w000000001","ana-cuerpo"]`. La innata
-//   `juntar` filtra por `!enLaMano`, `heldBy === undefined` y `portable >= 1`
+//     OCHO partidas encabezadas por `inventario-inconsistente` «ana/ana-cuerpo: se
+//     lleva a sí misma», desde un tick temprano (20260752 arranca en el 40) y hasta
+//     el final: 5924, 3708, 6069, 6026, 3789, 4693, 4434 y 9 ticks. Es el agujero de
+//     `juntar` de siempre, y lo que cambió no es el agujero: es que ahora se pisa
+//     todo el tiempo. Con el cerrojo del «mientras tanto» la escalera dejó de
+//     repetir un `ir` y pasó a `juntar` **8.195 veces** en las veinte — y `juntar`
+//     acepta el cuerpo de la propia criatura como candidato.
+//
+//     DOS partidas encabezadas por `solidos-solapados`: «pozo:3:-6 y suelta:3:-6:14»
+//     (20260768, 81 ticks) y «pozo:-6:0 y suelta:-6:0:6» (20260769, 12.358 ticks
+//     sobre 6.198 de partida, o sea DOS por tick: ahí conviven las dos clases).
+//
+//   **EL AGUJERO DEL POZO DEJÓ DE SER HIPOTÉTICO Y AHORA SE DISPARA SOLO.** Es el
+//   mismo que el `it.fails` de más abajo tiene pinado desde el tramo I:
+//   `materializarLoDecretado` pone el banco de peces con `ponerCuerpo` y sin
+//   preguntarle a `estorbo`. Lo que cambió es quién le pone algo debajo: antes era
+//   la `vara` que el arnés dejaba a tres celdas, y con el arnés fuera el bloque daba
+//   cero y su comentario decía que el decreto «no siembra sobre agua». **Eso era
+//   falso y ahora está medido**: en 2 de las 20 semillas el decreto pone una suelta
+//   en la celda del pozo, `abrirChunk` la materializa donde el dios dijo —el pozo
+//   todavía no está— y un tick después el pozo se le sienta encima.
+//
+//   El orden «las sueltas ANTES del pozo» de `materializarLoDecretado` está elegido
+//   a propósito y con su porqué escrito (que la suelta no se corra de la celda que
+//   el dios le dio), y este número es su precio: la suelta no se corre, y el
+//   solapamiento lo pone el pozo. Las dos mitades del intercambio están ahora
+//   medidas y ninguna se escondió.
+//
+//   Lo de `juntar` es el mismo agujero de siempre y no es del planificador: la
+//   innata filtra por `!enLaMano`, `heldBy === undefined` y `portable >= 1`
 //   (`skills/src/innatas/juntar.ts:60`) y **el cuerpo de la propia criatura pasa los
-//   tres**: no lo tiene en la mano, nadie lo sostiene y su `portable` es 1,0000.
-//   El mundo tampoco la frena: `intencionTomar` (`world/src/step.ts:1861`) chequea
-//   cinco cosas y ninguna es «no te levantes a vos misma». Reproducido en UN tick y
-//   sin escena, en el `it.fails` de abajo: el `take` sale con evento `tomo` y
-//   `revisarEstado` del mismo estado contesta la violación. O sea que el motor
-//   acepta un estado que su propio arnés de invariantes declara ilegal.
-//
-//   Es un agujero VIEJO que esta corrida recién pisa: la corrida anterior no lo veía
-//   porque en esa semilla la criatura hacía otra cosa. La aserción NO se aflojó —el
-//   cero sigue afirmado, en `it.fails`, con este porqué al lado— y el bloque quedó
-//   partido en dos: uno verde que publica la auditoría y afirma que corrió sobre
-//   todos los ticks, y el rojo con la aspiración.
+//   tres**. El mundo tampoco la frena: `intencionTomar` chequea cinco cosas y
+//   ninguna es «no te levantes a vos misma». Reproducido en UN tick y sin escena, en
+//   el `it.fails` de abajo. Lo que cambió es la FRECUENCIA, y eso lo trajo un
+//   arreglo de la mente: un agujero que se pisaba en una partida de veinte ahora se
+//   pisa en ocho. **Un arreglo correcto río arriba puede multiplicar por mil un
+//   agujero río abajo**, y por eso el arnés de invariantes tiene que correr en el
+//   banco del criterio y no sólo en su propio test.
 //
 //   Y lo que eso le hace al resto del informe, dicho y no escondido: **el 0 de 9 de
-//   esta corrida está medido sobre veinte partidas de las cuales una tuvo doce ticks
-//   ilegales**, todos en la agonía de la única semilla que llegó al 6.193. Ninguna
-//   de las nueve firmas depende de un inventario, así que no hay motivo para pensar
-//   que mueva una fila — pero eso es un argumento y no una medición, y va escrito
-//   como argumento.
+//   esta corrida está medido sobre veinte partidas de las cuales DIEZ tuvieron
+//   estados ilegales, y sobre el 57,5% de los ticks**. Ninguna de las nueve firmas
+//   depende de un inventario ni de que dos sólidos compartan celda —el pozo y la
+//   suelta siguen siendo dos cuerpos con sus cualidades— así que no hay motivo para
+//   pensar que mueva una fila, pero eso es un argumento y no una medición, y va
+//   escrito como argumento. Con este porcentaje el argumento ya no alcanza: el
+//   número que hace falta es «el criterio corrido sobre un mundo legal», y ése no
+//   existe hasta que se cierre `juntar`.
 //
-//   El agujero de `materializarPozos` —el banco de peces encima de lo que haya—
-//   sigue donde estaba y sigue pinado aparte, en su forma mínima y en rojo.
+//   ─── (G) LO QUE SÍ CAMBIÓ DE FONDO: **LA MENTE FROTA, Y NO PRENDE** ────────
 //
-//   ─── (G) LO QUE SÍ CAMBIÓ DE FONDO: **LA MENTE AHORA FROTA, Y NO PRENDE** ──
-//
-//   Es la novedad de esta corrida y no está en ninguna de las nueve filas: la tabla
-//   de vuelos tiene **cuatro `frotar`**, en cuatro partidas distintas. La cadena del
-//   fuego dejó de ser inalcanzable para el planificador. Y sigue habiendo **CERO
-//   fuegos**: ninguna de las cuatro fricciones encendió nada.
+//   No está en ninguna de las nueve filas: la tabla de vuelos tiene **tres
+//   `frotar`**, en tres partidas distintas. La cadena del fuego dejó de ser
+//   inalcanzable para el planificador. Y sigue habiendo **CERO fuegos**: ninguna de
+//   las tres fricciones encendió nada.
 //
 //   MEDIDO PARTIDA POR PARTIDA, con las veinte corridas de nuevo contando `frotar` por
 //   semilla, y sale una correspondencia exacta:
 //
-//     20260768  frotó en el tick  49  →  murió en el  81
-//     20260739  frotó en el tick  55  →  murió en el  82
-//     20260788  frotó en el tick  58  →  murió en el  81
-//     20260760  frotó en el tick 109  →  murió en el 130
-//     las otras dieciséis: cero frotares, murieron entre el 3.359 y el 6.199
+//     20260768  frotó en el tick 51  →  murió en el 80
+//     20260739  frotó en el tick 55  →  murió en el 82
+//     20260788  frotó en el tick 58  →  murió en el 81
+//     las otras diecisiete: cero frotares, murieron entre el 3.719 y el 6.198
 //
-//   **Las cuatro que frotan son exactamente las cuatro que se mueren antes del tick
-//   130**, y se mueren entre 21 y 32 ticks después de frotar. Frotar les vació el
-//   tanque de 310 de una sentada.
-//
-//   (Y lo que NO se afirma: que antes no frotara. La corrida anterior no publicaba
-//   una tabla de vuelos con `frotar` y no se volvió a correr con la tabla vieja. Lo
-//   que sí está publicado de ella es el rango de muertes, 3.262 a 6.199, o sea que
-//   ninguna partida se moría en los ochenta primeros ticks — y acá las cuatro que
-//   frotan mueren todas antes del 130. La inferencia es fuerte y sigue siendo una
-//   inferencia.)
+//   **Las tres que frotan son exactamente las tres que se mueren antes del tick
+//   100**, y se mueren entre 23 y 29 ticks después de frotar. Frotar les vació el
+//   tanque de 310 de una sentada. Ninguna otra partida se muere antes del 3.719: la
+//   separación entre los dos grupos es de un factor 45.
 //
 //   POR QUÉ, MEDIDO CON `stepWorld` Y NO DESPEJADO (una criatura, dos varas de
 //   madera, `apply(friccion)` hasta que prende o hasta que el tanque se vacía):
@@ -661,10 +743,14 @@ function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida |
   }
 
   // CUERPOS QUE PUSO EL MUNDO POR SU CUENTA. Todo lo que se vio alguna vez, menos
-  // lo que el ARNÉS sembró —la criatura y las sueltas del decreto—, menos los
-  // bancos de peces —que `stepWorld` sí materializa— menos los que nacieron de un
-  // proceso. Lo que queda es lo que el mundo trajo solo, y sigue dando CERO: ver
-  // el agujero (A) del encabezado, que es por lo que el arnés tiene que sembrar.
+  // lo que el ARNÉS plantó —hoy sólo la criatura—, menos los bancos de peces
+  // —que `stepWorld` materializa desde el Hito 3— menos los que nacieron de un
+  // proceso. Lo que queda es lo que el mundo trajo solo.
+  //
+  // **DABA CERO Y AHORA NO**, y ése es el tramo K entero: `stepWorld` materializa
+  // las `sueltas` del decreto igual que materializa el pozo
+  // (`world/src/step.ts`, `abrirChunk`). Los `suelta:cx:cy:n` NO se descuentan a
+  // propósito: son exactamente lo que esta columna existe para contar.
   let cuerposDelMundo = 0
   for (const id of vistos) {
     if (escena.plantados.has(id) || id.startsWith('pozo:') || nacidos.has(id)) continue
@@ -1053,52 +1139,77 @@ describe('(0) las veinte semillas, antes de correr una sola partida', () => {
 // ═══ (1) EL MUNDO NO LE PONE EL PROBLEMA DELANTE ════════════════════════════
 
 describe('(1) lo que el dios siembra y lo que el mundo materializa', () => {
-  it.fails('EL DIOS SIEMBRA ALREDEDOR Y EL MUNDO MATERIALIZA CERO: por eso siembra el arnés', async () => {
-    // POR QUÉ SIGUE FALLANDO, Y ES LA PREMISA QUE ESTE TRAMO TUVO QUE MEDIR.
+  it('CERRADO · EL MUNDO MATERIALIZA LO QUE EL DIOS SIEMBRA, y ya no lo siembra el arnés', async () => {
+    // ─── LO QUE ESTE TEST MEDÍA, Y POR QUÉ ESTUVO EN ROJO TRES TRAMOS ────────
     //
     // `decretoDe(...).chunk.sueltas` trae lo que el dios sembró en cada chunk
     // —junco, piedra, hueso, hoja, grano, raíz, tubérculo alrededor de esta
-    // orilla— y **`@anima/world` no lo lee en ningún lado**: `grep -rn "sueltas"
-    // world/src` devuelve UN renglón y es un comentario. Lo único que `stepWorld`
-    // materializa del decreto es el banco de peces (`materializarPozos`), y
-    // `conLoQueElDiosPone` de la capa de percepción copia de la sombra únicamente
-    // lo que empieza con `pozo:` (`perceive/src/bucle.ts`).
+    // orilla— y **`@anima/world` no lo leía en ningún lado**: `grep -rn "sueltas"
+    // world/src` devolvía UN renglón y era un comentario. Lo único que `stepWorld`
+    // materializaba del decreto era el banco de peces, y `conLoQueElDiosPone` de la
+    // capa de percepción copiaba de la sombra únicamente lo que empieza con
+    // `pozo:`.
     //
-    // MEDIDO EN ESTE TRAMO, y no leído: una criatura sola en la orilla de
-    // `20260728n`, cinco ticks de `Partida`, sin una sola línea de escena. El dios
-    // decretó 90 sueltas en los 3×3 chunks de alrededor y lo único que apareció
-    // fueron `pozo:-5:-2`, `pozo:-5:-3` y `pozo:-6:-2`. **Cero.** El encargo de
-    // este tramo daba por hecho que ya se materializaban solas; no.
+    // MEDIDO ENTONCES: una criatura sola en la orilla de `20260728n`, cinco ticks
+    // de `Partida`, sin una línea de escena. El dios decretó 90 sueltas en los 3×3
+    // chunks y lo único que apareció fueron `pozo:-5:-2`, `pozo:-5:-3` y
+    // `pozo:-6:-2`. **Cero.** El arnés lo rodeaba sembrando el decreto él mismo, y
+    // este test quedaba en rojo diciendo que el rodeo no era la reparación.
     //
-    // QUÉ CAMBIÓ, ENTONCES: el arnés siembra el decreto él mismo
-    // (`el-mundo-decretado.ts`), y esta columna sigue midiendo lo otro — cuántos
-    // cuerpos pone el MUNDO por su cuenta, descontando lo sembrado, los pozos y lo
-    // que nació de un proceso. Sigue dando cero, y por eso este test sigue en rojo:
-    // el rodeo del arnés no es la reparación, que es del motor —que `stepWorld`
-    // materialice `chunk.sueltas` como ya materializa `pozo`—.
+    // ─── LA REPARACIÓN, Y QUÉ SE MIDE AHORA ─────────────────────────────────
     //
-    // Y LA DIFERENCIA CON «FABRICAR EL MUNDO QUE UNO QUIERE MEDIR», que es lo que
-    // la Regla 5 castiga: el arnés no elige qué hay, ni cuánto pesa, ni dónde está
-    // —los tres salen de la semilla— y **no descarta ninguna semilla**. Las que el
-    // dios dejó sin nada encendible se corren igual y la columna se publica.
+    // `world/src/step.ts` materializa `chunk.sueltas` igual que materializa el pozo
+    // (`materializarLoDecretado` → `abrirChunk`), una vez por chunk, anotado en
+    // `EstadoDelDios.sembrados` para que lo quemado no reaparezca; y
+    // `perceive/src/bucle.ts` copia de la sombra los DOS prefijos del dios. El
+    // arnés dejó de sembrar (`el-mundo-decretado.ts`), así que `plantados` es hoy
+    // el cuerpo de la criatura y nada más, y **esta columna cuenta lo que el mundo
+    // trajo solo**.
+    //
+    // Y hay una diferencia de FORMA que no es cosmética, y por eso el test cambia
+    // de nombre en vez de ablandarse: antes, el mundo materializado era una ISLA de
+    // 3×3 chunks alrededor de la celda de arranque, porque el arnés sembraba una
+    // vez y ahí terminaba. Ahora el chunk se abre cuando alguien llega, así que
+    // `cuerposDelMundo` cuenta también lo que apareció mientras la criatura
+    // caminaba — que es exactamente el hallazgo del bloque (5) de
+    // `ataque-al-tramo-i`, cerrado.
     const b = await canonico()
     const filas = b.corridas.map(
       (c) =>
-        `  ${String(c.semilla)} · el dios decretó ${String(c.sueltasDecretadas).padStart(3)} sueltas en 3×3 chunks · ` +
-        `el arnés sembró ${String(c.sueltasSembradas).padStart(3)} (la ley 8 le comió ${String(c.sueltasDecretadas - c.sueltasSembradas)}) · ` +
-        `el mundo materializó ${String(c.cuerposDelMundo)}`,
+        `  ${String(c.semilla)} · el dios decretó ${String(c.sueltasDecretadas).padStart(3)} sueltas en los 3×3 del arranque · ` +
+        `el mundo materializó ${String(c.sueltasSembradas).padStart(3)} en el primer paso · ` +
+        `y ${String(c.cuerposDelMundo).padStart(4)} en toda la partida`,
     )
     const decretadas = b.corridas.reduce((a, c) => a + c.sueltasDecretadas, 0)
-    const sembradas = b.corridas.reduce((a, c) => a + c.sueltasSembradas, 0)
+    const enElPrimerPaso = b.corridas.reduce((a, c) => a + c.sueltasSembradas, 0)
     const materializadas = b.corridas.reduce((a, c) => a + c.cuerposDelMundo, 0)
     console.log(
-      `\n─── LO QUE EL DIOS SIEMBRA, LO QUE EL ARNÉS PUEDE PONER Y LO QUE EL MUNDO TRAE ───\n${filas.join('\n')}\n` +
-        `  TOTAL: ${String(decretadas)} decretadas · ${String(sembradas)} sembradas por el arnés · ` +
-        `${String(materializadas)} materializadas por el mundo\n`,
+      `\n─── LO QUE EL DIOS SIEMBRA Y LO QUE EL MUNDO TRAE ───\n${filas.join('\n')}\n` +
+        `  TOTAL: ${String(decretadas)} decretadas en los 3×3 del arranque · ` +
+        `${String(enElPrimerPaso)} materializadas en el primer paso ` +
+        `(se perdieron ${String(decretadas - enElPrimerPaso)}, el ${(((decretadas - enElPrimerPaso) * 100) / Math.max(1, decretadas)).toFixed(2)}%, ` +
+        `contra el 4,5% que descartaba la regla vieja del arnés) · ` +
+        `${String(materializadas)} vistas en toda la partida (el mundo sigue a la criatura)\n`,
     )
     expect(decretadas).toBeGreaterThan(0)
-    expect(sembradas).toBeGreaterThan(0)
-    expect(materializadas, `el mundo materializó ${String(materializadas)} de ${String(decretadas)}`).toBeGreaterThan(0)
+    // ─── EL CRITERIO DE ESTE TRAMO, CON SU RESIDUO MEDIDO ───────────────────
+    //
+    // El mundo trae lo que el dios decretó y lo trae CASI entero. MEDIDO sobre las
+    // veinte partidas: **2280 decretadas, 2277 materializadas — se perdieron 3, el
+    // 0,13%**. Contra la regla vieja del arnés, que descartaba la segunda de cada
+    // celda repetida y perdía **103, el 4,5%**: treinta y cuatro veces menos.
+    //
+    // Las tres que faltan son el residuo declarado de `abrirChunk`: cuando la celda
+    // decretada está ocupada, la suelta se corre a la primera celda libre pegada, y
+    // si los NUEVE rumbos están tomados no entra. Hace falta un racimo muy denso
+    // para eso —el decreto sortea celda con reposición y hay semillas que ponen 46
+    // sueltas en un puñado de celdas—. Se afirma el residuo y no el cero: taparlo
+    // con un `toBe` que no se cumple sería peor, y aflojarlo a «alguna entra» sería
+    // dejar de mirar si mañana se pierden doscientas.
+    expect(decretadas - enElPrimerPaso).toBeLessThan(decretadas * 0.01)
+    // Y trae MÁS que eso a lo largo de la partida, porque el chunk se abre cuando
+    // alguien llega: la isla de 3×3 se terminó.
+    expect(materializadas).toBeGreaterThanOrEqual(enElPrimerPaso)
   }, 600_000)
 
   it('CUÁNTAS SITUACIONES PUSO EL MUNDO DELANTE, que es lo que decide si el número se puede leer', async () => {
@@ -1211,8 +1322,9 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // Y hay que leerlo con la fila de al lado: quedan SEIS no-medidas sobre nueve
     // —eran nueve con la escena a mano— y §10 dice que con más de tres el resultado
     // no es interpretable. Lo que sí es interpretable son las TRES que se movieron:
-    // el mundo puso esos problemas delante en 5 a 8 de las 20 partidas y la
-    // criatura no los resolvió una sola vez. Ese pedazo del cero mide a la mente, y
+    // el mundo puso esos problemas delante en 8 y 9 de las 20 partidas —9/20, 9/20
+    // y 8/20, vueltas a medir en este tramo— y la criatura no los resolvió una sola
+    // vez. Ese pedazo del cero mide a la mente, y
     // es lo que el bloque (4) contesta fila por fila.
     const b = await canonico()
     const r = resumir(b.corridas.map((c) => c.veredicto))
@@ -1271,8 +1383,12 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // `pozo:-5:-2` y la `vara` que el arnés dejaba a tres celdas— y esa aserción
     // decía “a lo sumo una partida, y de esa clase”. Ya no hace falta aflojarla».
     //
-    // **Esta corrida volvió a romperlo, con otra clase: 12 violaciones de
-    // `inventario-inconsistente` en 1 de las 20.** La aspiración NO se aflojó y NO
+    // **Y desde entonces no dejó de empeorar: 12 violaciones en 1 de las 20 en el
+    // tramo J, 6.306 en 3 al materializarse el decreto, y 47.091 en 10 —el 57,5% de
+    // los ticks auditados— con el cerrojo de la escalera.** Las dos subidas tienen
+    // causa medida y ninguna es del juez: la primera es el pozo sentándose encima de
+    // una suelta que ahora existe, la segunda es `juntar` disparando 8.195 veces
+    // donde antes disparaba 7. La aspiración NO se aflojó y NO
     // se le puso un «a lo sumo una partida» —que es exactamente el movimiento que la
     // nota de arriba celebraba haber podido deshacer—: el mismo `toEqual([])` se mudó
     // al `it.fails` de abajo, donde está el porqué medido. Y acá queda lo
@@ -1296,12 +1412,15 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
   it.fails('Y ESE MUNDO **NO** ERA LEGAL: `juntar` levanta el cuerpo de la propia criatura', async () => {
     // ─── EL AGUJERO QUE ESTA CORRIDA PISÓ, EN SU FORMA MÍNIMA ───────────────
     //
-    // La corrida canónica de este archivo midió **12 estados ilegales en 1 de las 20
-    // partidas** (semilla 20260769, ticks 6182 a 6193), todos de la misma clase:
-    // `inventario-inconsistente` · «ana/ana-cuerpo: se lleva a sí misma». La corrida
-    // anterior tenía cero, así que esto es un cambio de veredicto y va con su medida.
+    // La corrida canónica de este archivo mide **estados ilegales de la clase
+    // `inventario-inconsistente` · «ana/ana-cuerpo: se lleva a sí misma» en OCHO de
+    // las 20 partidas**, y en la mayoría desde un tick temprano hasta la muerte
+    // (20260752 arranca en el 40 y suma 6.026). Cuando el tramo J lo encontró eran 12
+    // ticks en 1 sola partida: lo que lo multiplicó fue un arreglo de la escalera
+    // —el cerrojo del «mientras tanto»— que sacó a la criatura de un bucle de `ir` y
+    // la puso a `juntar` 8.195 veces en las veinte.
     //
-    // QUIÉN LO PIDE, medido tick por tick sobre esa misma semilla: en el 6180 despega
+    // QUIÉN LO PIDE, medido tick por tick cuando eran doce: en el 6180 despega
     // `juntar×1` y en el 6181 el estado tiene `holding: ["w000000001","ana-cuerpo"]`.
     // La innata filtra los candidatos por `!enLaMano`, `heldBy === undefined` y
     // `portable >= 1` (`skills/src/innatas/juntar.ts:60`) y el cuerpo de la propia
@@ -1342,29 +1461,62 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(v.map((x) => x.k)).toEqual([])
   }, 120_000)
 
-  it.fails('EL AGUJERO QUE ESTE BANCO YA NO PISA: el dios materializa el banco encima de lo que haya', async () => {
+  it('CERRADO · el banco ya no se materializa encima: al que está parado ahí lo corre', async () => {
     // ─── POR QUÉ ESTE TEST EXISTE Y NO SE BORRÓ CON LA ESCENA VIEJA ─────────
     //
     // El arnés de invariantes encontró esto la primera vez que alguien lo encendió:
-    // `materializarPozos` (`world/src/step.ts`) hace `ponerCuerpo` en `pozo.at` sin
-    // preguntarle a `estorbo`, que es el guardián de la ley 8 que sí aplican
-    // `goTo`, `put` y `drop`. La `vara` que el arnés viejo dejaba a tres celdas
-    // caía justo ahí en UNA de las veinte semillas, y el solapamiento duraba hasta
-    // que la criatura levantaba la vara —`revisarEspacio` no mira lo que está en
-    // una mano—, o sea que ni siquiera se arreglaba: se escondía.
+    // `materializarLoDecretado` (`world/src/step.ts`) hace `ponerCuerpo` en
+    // `pozo.at` sin preguntarle a `estorbo`, que es el guardián de la ley 8 que sí
+    // aplican `goTo`, `put` y `drop`. La `vara` que el arnés viejo dejaba a tres
+    // celdas caía justo ahí en UNA de las veinte semillas, y el solapamiento duraba
+    // hasta que la criatura levantaba la vara —`revisarEspacio` no mira lo que está
+    // en una mano—, o sea que ni siquiera se arreglaba: se escondía.
     //
-    // Con el mundo decretado el banco de arriba da cero, y ese cero podría leerse
-    // como «se arregló». **No se arregló**: dejó de dispararse porque el decreto no
-    // siembra sobre agua y el pozo está en el agua. Así que el hallazgo se pone acá
-    // en su forma mínima —un cuerpo puesto a mano en la celda del pozo, UN tick— en
-    // vez de depender de que a alguna semilla le toque. Perder un hallazgo porque
-    // cambió la escena sería peor que no haberlo encontrado.
+    // ─── Y LA NOTA QUE ESTE BLOQUE TENÍA ACÁ ERA FALSA, MEDIDA ──────────────
     //
-    // POR QUÉ NO SE ARREGLA EN ESTE TRAMO: la reparación no es un `if`, es una
-    // decisión — o el banco no se materializa (y la comida del mundo depende de
-    // dónde alguien dejó un palo), o se corre de celda (y entonces la posición de
-    // todo pozo depende del estado, o sea que el decreto deja de ser una función
-    // pura de la semilla y se mueven todos los hashes). Pide su ADR.
+    // Decía: «con el mundo decretado el banco de arriba da cero, y ese cero podría
+    // leerse como “se arregló”; no se arregló, dejó de dispararse porque el decreto
+    // no siembra sobre agua y el pozo está en el agua». **El decreto SÍ siembra en la
+    // celda del pozo**, y desde que el motor materializa las sueltas se ve: la
+    // corrida canónica mide `solidos-solapados` entre un pozo y una suelta en 2 de
+    // las 20 semillas —«pozo:3:-6 y suelta:3:-6:14 en (63,-89)» y «pozo:-6:0 y
+    // suelta:-6:0:6 en (-93,0)»—, desde el tick 1 y por el resto de la partida.
+    //
+    // Así que el agujero volvió a ser el del banco y no sólo el de este `it.fails`.
+    // La reproducción mínima se queda igual —un cuerpo puesto a mano en la celda del
+    // pozo, UN tick— porque sigue valiendo lo de siempre: un hallazgo que necesita
+    // una semilla afortunada se pierde en cuanto la escena cambia, y este archivo ya
+    // perdió uno así.
+    //
+    // Y el orden de `materializarLoDecretado` —las sueltas ANTES del pozo— no es el
+    // culpable ni la cura: está elegido para que la suelta no se corra de la celda
+    // que el dios le dio, y su precio es exactamente esto. Invertirlo cambiaría de
+    // víctima, no de problema.
+    //
+    // ─── CÓMO SE CERRÓ, Y NO POR NINGUNA DE LAS DOS QUE ESTABAN ESCRITAS ────
+    //
+    // Acá decía: «la reparación no es un `if`, es una decisión — o el banco no se
+    // materializa (y la comida del mundo depende de dónde alguien dejó un palo), o
+    // se corre de celda (y entonces la posición de todo pozo depende del estado, o
+    // sea que el decreto deja de ser una función pura de la semilla y se mueven
+    // todos los hashes)». Las dos eran malas y las dos eran innecesarias, porque
+    // había una tercera: **el banco se queda donde el decreto dijo y se corre EL QUE
+    // ESTABA** (ADR II-0014, `hacerLugar` en `world/src/step.ts`).
+    //
+    // Con eso el pozo sigue siendo función pura de la semilla —su celda no se movió
+    // ni un lugar— y el invariante deja de romperse. La otra mitad del mismo
+    // hallazgo, la de las sueltas que caían en la celda del banco, se cerró sin
+    // tocar el banco: `abrirChunk` arranca reservándole su celda, así que ninguna
+    // suelta la elige. El barrido de veinte semillas del paquete `world` pasó de
+    // 2/20 a 0/20 (`world/tests/ataque-a-las-sueltas.test.ts`, bloque 3).
+    //
+    // Lo que cuesta, dicho acá porque es donde se ve: **una criatura no puede
+    // quedarse parada encima del banco de peces**, el mundo la corre una celda.
+    // Pescar sigue andando —`aMano` es Chebyshev ≤ 1— y el único test que se movió
+    // por eso es una escena de arnés que era ilegal desde siempre.
+    //
+    // La reproducción mínima se queda igual: un cuerpo puesto a mano en la celda del
+    // pozo y UN tick. Lo que cambió es que ahora tiene que dar CERO.
     const o = laOrilla(SEMILLA_BASE)
     expect(o).not.toBe(undefined)
     if (o === undefined) return
@@ -1377,13 +1529,18 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     const p = new Partida({ ...escena.state, bodies: mapaDeCuerpos([...bodies.values()]) }, { vigilar: true })
     p.tick()
     const v = p.informe.violaciones
+    const corrido = p.state.bodies.get('estorbo')
     console.log(
-      `\n─── EL BANCO DE PECES, ENCIMA DE LO QUE HAYA ───\n` +
+      `\n─── EL BANCO DE PECES, Y EL QUE ESTABA PARADO AHÍ ───\n` +
         `  celda del pozo: ${String(o.pozo.x)},${String(o.pozo.y)} · violaciones en un tick: ${String(v.length)}` +
-        `${v.length === 0 ? '' : ` — ${describir(v[0]?.v as Violacion)}`}\n`,
+        `${v.length === 0 ? '' : ` — ${describir(v[0]?.v as Violacion)}`}\n` +
+        `  el estorbo terminó en ${JSON.stringify(corrido?.at)}\n`,
     )
-    // Y esto es lo que tendría que valer y no vale.
     expect(v.length, `el mundo puso el banco encima y nadie lo frenó`).toBe(0)
+    // Y no se perdió: se corrió. Un invariante que se arregla borrando el cuerpo que
+    // molesta no está arreglado.
+    expect(corrido).toBeDefined()
+    expect(corrido?.at).not.toEqual(o.pozo)
   }, 120_000)
 
   it('CUÁNTO DEL PRESUPUESTO SE USÓ, que es la mitad de la pregunta', async () => {
@@ -1469,7 +1626,7 @@ describe('(3) el control con el tanque lleno', () => {
 // tres se separan con datos que ya están medidos y sin opinar sobre ninguna:
 //
 //   EL MUNDO   el contra-detector dio `false` en las veinte, y también en el
-//              control con el tanque lleno —que vive 3,4× más—. El mundo nunca
+//              control con el tanque lleno —que vive 4× más—. El mundo nunca
 //              puso el problema delante, y no fue por falta de tiempo.
 //   LA MUERTE  el contra-detector dio `false` en las veinte y SÍ dio `true` en
 //              alguna del control. Lo que faltó fue vida, no mundo.
@@ -1478,6 +1635,27 @@ describe('(3) el control con el tanque lleno', () => {
 //
 // El control con el tanque lleno es lo que hace que «EL MUNDO» y «LA MUERTE» no
 // sean la misma casilla, y por eso este bloque lo consume aunque sea caro.
+//
+// ═══ Y «EL MUNDO» ESTÁ MAL NOMBRADA, MEDIDO Y NO OPINADO ═══════════════════
+//
+// La casilla dice «el mundo nunca puso el problema delante». Sobre el mundo que el
+// motor materializa desde el tramo K, eso es FALSO en las seis filas que hoy caen
+// ahí, y está medido en `tests/las-seis-que-dicen-el-mundo.test.ts`:
+//
+//   · cinco cuelgan de que haya fuego, y el control del azar con la fogata regalada
+//     —mismas veinte semillas, mismo decreto— las enciende: 20/20, 20/20, 6/20,
+//     5/20 y 5/20. Su cero es de los CERO FUEGOS, no del mundo;
+//   · la sexta, `fardoPosible`, es la única que no necesita fuego, y el barrido de
+//     las 46.080 celdas de los 3×3 materializados dice que el mundo ofrecía la
+//     cadena en 5 de las 20 partidas, desde 32 celdas, la más cercana a 5 del
+//     arranque contra un alcance de 3. Su cero es «la criatura no fue».
+//
+// LA CASILLA **NO SE RENOMBRÓ NI SE MOVIÓ NINGUNA FILA**, y es a propósito: `causaDe`
+// es la regla con la que este banco viene clasificando desde el tramo H, cambiarla
+// después de ver el resultado es exactamente lo que §10 prohíbe, y el cero del
+// criterio no se mueve en ninguno de los dos casos. Lo que corresponde es publicar la
+// medición al lado —que es lo que hace la línea de más abajo— y dejar la decisión de
+// partir la casilla en dos («no hubo fuego» / «no caminó hasta ahí») para el usuario.
 
 type Causa = 'EL MUNDO' | 'LA MUERTE' | 'LA MENTE'
 
@@ -1596,9 +1774,17 @@ describe('(4) el diagnóstico, secuencia por secuencia', () => {
       `     \`mind/src\` y este banco la cuenta—, así que un cero de bocados es una decisión y no una carencia.`,
       ``,
       `  3· ¿CUÁNTA MATERIA HUBO, Y QUIÉN LA PUSO? El dios decretó ${String(decretadas)} cosas sueltas alrededor,`,
-      `     el arnés pudo sembrar ${String(sembradas)} (la ley 8 se come las que caen en una celda ya ocupada) y el mundo`,
-      `     materializó ${String(materializadas)} por su cuenta. De ahí salen las dos filas que ni siquiera necesitan fuego:`,
-      `     \`dosCandidatosDeFriccion\` ${String(claves.get('dosCandidatosDeFriccion') ?? 0)}/${String(n)} y \`filoALaVista\` ${String(claves.get('filoALaVista') ?? 0)}/${String(n)}.`,
+      `     el mundo materializó ${String(sembradas)} en el primer paso (la ley 8 corre a la que cae en celda ocupada, y`,
+      `     descarta sólo si los nueve rumbos están tomados) y ${String(materializadas)} a lo largo de la partida. De ahí salen`,
+      `     las dos filas que ni siquiera necesitan fuego: \`dosCandidatosDeFriccion\` ` +
+        `${String(claves.get('dosCandidatosDeFriccion') ?? 0)}/${String(n)} y \`filoALaVista\` ${String(claves.get('filoALaVista') ?? 0)}/${String(n)}.`,
+      ``,
+      `  4· Y LA CASILLA «EL MUNDO» NO QUIERE DECIR LO QUE SU NOMBRE DICE. Medido en`,
+      `     \`tests/las-seis-que-dicen-el-mundo.test.ts\`: cinco de esas seis se encienden en cuanto hay`,
+      `     un fuego —el control del azar con la fogata regalada, sobre estas mismas veinte semillas,`,
+      `     las pone en 20/20, 20/20, 6/20, 5/20 y 5/20— y la sexta, \`fardoPosible\`, la ofrecía el mundo`,
+      `     en 5 de las 20 partidas desde 32 celdas, la más cercana a 5 del arranque con un alcance de 3.`,
+      `     Ninguna fila se movió de casilla por esto: ver el encabezado del bloque (4).`,
       ``,
     )
     console.log(lineas.join('\n'))
@@ -1669,8 +1855,9 @@ describe('el criterio de emergencia, con los números de esta corrida', () => {
         `  SIN MEDIR ................. ${String(rc.filas.filter((f) => f.situacionEn === 0).length)} de ${String(SECUENCIAS.length)}` +
           `  →  ${rc.interpretable ? 'interpretable' : 'EL RESULTADO NO ES INTERPRETABLE (§10)'}`,
         '',
-        `  (A) quién puso la materia . el dios decretó ${String(decretadas)} cosas sueltas alrededor de la criatura,`,
-        `                              el arnés sembró ${String(sembradasTotales)} y el mundo materializó ${String(materializadas)} por su cuenta`,
+        `  (A) quién puso la materia . EL MUNDO, y ya no el arnés (tramo K): el dios decretó ${String(decretadas)} cosas`,
+        `                              sueltas en los 3×3 del arranque, \`abrirChunk\` puso ${String(sembradasTotales)} en el primer`,
+        `                              paso y ${String(materializadas)} en toda la partida — el chunk se abre cuando alguien llega`,
         `  (B) las semillas .......... ${String(PARTIDAS)} mundos distintos SÓLO porque el arnés arma una \`Physics\` por`,
         `                              partida; \`decretoDe\` no lleva la semilla en la clave de su caché`,
         `  (C) el hambre ............. tanque ${String(TANQUE)}:  ${((usado * 100) / (c.corridas.length * TICKS)).toFixed(1)}% del presupuesto · ${String(rc.cuantasCuentan)} de ${String(SECUENCIAS.length)}`,

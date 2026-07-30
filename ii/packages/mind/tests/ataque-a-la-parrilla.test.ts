@@ -78,7 +78,7 @@
 // que el próximo pueda ver si se movieron sin que un `toBeCloseTo` de nueve dígitos
 // ponga rojo la suite cuando alguien recalibre una tasa.
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import type { Body, QualityId } from '@anima/physics'
 import { HUMEDAD_QUE_APAGA, SUSTANCIAS_SEMILLA, qualityOf, temperaturaDeEquilibrio } from '@anima/physics'
@@ -92,6 +92,27 @@ import { Creencias } from '../src/creencias.js'
 import { Mente, vivir } from '../src/mente.js'
 import { PHYS, actor, criatura, cuerpo, enElPiso, laOrilla, mundo } from './mundo.js'
 import type { Orilla } from './mundo.js'
+
+// ─── EL RESPIRO QUE MANTIENE VIVO AL WORKER DE VITEST ────────────────────────
+//
+// birpc le pone 60 s de vencimiento al aviso de cada test, y un `for` sincrónico
+// largo no deja correr ni el temporizador ni la lectura del socket; cuando suelta
+// el hilo, Node corre la fase de temporizadores antes que la de poll y el
+// vencimiento gana la carrera aunque la respuesta ya esté en la cola. El síntoma
+// es la peor clase de rojo: TODOS los tests en verde y `exit 1` con
+// `Timeout calling "onTaskUpdate"`.
+//
+// Desde que el mundo materializa el decreto (`world/src/step.ts`, `abrirChunk`)
+// las corridas de este archivo cuestan diez veces más por tick, así que varias
+// cruzan los 60 s. Se arregla con una MACROTAREA de verdad —`setTimeout(…, 0)`;
+// un `await` sobre una promesa resuelta es una microtarea y no drena la fase de
+// poll— en un `beforeEach` de raíz, que no toca el cuerpo de ningún test ni puede
+// mover ninguna medición: corre antes de que el test empiece.
+beforeEach(async () => {
+  await new Promise((listo) => {
+    setTimeout(listo, 0)
+  })
+})
 
 const num = (x: number): string => x.toFixed(4)
 const log = (l: readonly string[]): void => {
@@ -430,7 +451,11 @@ describe('1 · la fila verifica una potencia y el mundo entrega otra cosa', () =
     expect(a300.dig).toBeCloseTo(a15.dig, 2)
     // Y las calorías se van con la nutrición que la ley 6 se lleva: 20,38 → 14,22.
     expect(a300.cal).toBeLessThan(a15.cal * 0.75)
-  })
+    // EL PLAZO, Y QUÉ LO MOVIÓ: este bloque corre 300 s de mundo (6000 ticks) sobre
+    // una escena con `dios`. Desde que el mundo materializa las `sueltas` del
+    // decreto (`world/src/step.ts`, `abrirChunk`), esa escena tiene ~90 cuerpos más y
+    // las doce leyes corren sobre todos. Los números de arriba no se movieron.
+  }, 300_000)
 
   it.fails('HUECO · un `establishes` es una promesa sobre un INSTANTE y `Creencias` lo trata como durable', () => {
     // ─── POR QUÉ SIGUE ABIERTO, Y POR QUÉ NO SE ARREGLA DESDE ACÁ ──────────

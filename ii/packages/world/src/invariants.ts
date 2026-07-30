@@ -189,6 +189,31 @@ function acreditado(events: readonly SimEvent[]): ReadonlyMap<QualityId, number>
   return out
 }
 
+/**
+ * Lo que los eventos del tick declaran que **el dios puso** de cada cuenta.
+ *
+ * Es el segundo permiso para que un total conservado suba, y es distinto del
+ * primero: `convierte` mueve una cuenta a otra dentro del mundo y por eso pide
+ * `acreditado ≤ gastado`; `decreta` trae materia de afuera, porque el mundo es
+ * perezoso y el chunk que nadie visitó todavía no existe. No hay nada contra lo
+ * que compararlo —el decreto no es un cuerpo que se gastó—, así que lo único que
+ * el invariante puede exigir es que el mundo lo DIGA, y que lo dicho sea lo mismo
+ * que entró.
+ *
+ * Sin esto, `revisarConservacion` acusaba `conservada-aumento` en cada chunk que
+ * se abría (96 violaciones en 400 ticks de caminata) y en cada pozo que se
+ * reponía (21 más), y la consecuencia práctica era que la sexta pregunta estaba
+ * APAGADA en toda partida con dios — que son todas las que importan.
+ */
+function decretado(events: readonly SimEvent[]): ReadonlyMap<QualityId, number> {
+  const out = new Map<QualityId, number>()
+  for (const e of events) {
+    if (e.k !== 'decreta') continue
+    out.set(e.q, (out.get(e.q) ?? 0) + e.cuanto)
+  }
+  return out
+}
+
 /** Lo que los eventos del tick declaran que el mundo se llevó de cada cuenta. */
 function gastado(events: readonly SimEvent[]): ReadonlyMap<QualityId, number> {
   const out = new Map<QualityId, number>()
@@ -462,10 +487,16 @@ function revisarConservacion(
   const tA = totales(antes)
   const tD = totales(despues)
   const cred = acreditado(events)
+  const dec = decretado(events)
   for (const q of CONSERVED) {
     const a = tA.get(q) ?? 0
     const dsp = tD.get(q) ?? 0
-    const c = cred.get(q) ?? 0
+    // Los dos permisos, sumados: lo que una conversión declaró y lo que el dios
+    // declaró haber puesto. `acreditado` se sigue reportando solo en la violación
+    // porque es el que tiene una contraparte que revisar (`conversion-sin-respaldo`);
+    // lo decretado no la tiene, y mezclarlos en el mensaje escondería cuál de los
+    // dos permisos se estaba usando.
+    const c = (cred.get(q) ?? 0) + (dec.get(q) ?? 0)
     if (dsp > techo(a, c)) {
       out.push({ k: 'conservada-aumento', q, antes: a, despues: dsp, acreditado: c })
     }

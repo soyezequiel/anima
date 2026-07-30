@@ -1025,55 +1025,76 @@ describe('frente 2 · EL RUIDO DEL AZAR, que es el número que le faltaba al ban
     // 60 s y se medía contra 3,6 s de trabajo; éste se mide contra unos 200 s.
   }, 900_000)
 
-  it('HALLAZGO · el azar CON el fuego regalado sigue firmando la 8, y ya no la 6', async () => {
+  it('el azar CON el fuego regalado tampoco firma ninguna, y la situación la tiene delante', async () => {
     // Regalarle el fuego a la criatura al azar es lo que separa «el detector es
     // duro» de «el mundo es duro»: siete de las nueve cuelgan de que haya fuego. El
     // tanque también se agranda, porque con 1000 se muere de puro vivir antes de
     // que el fuego grande se apague. Las dos son concesiones AL CONTROL, o sea que
     // esto es un PISO del ruido y no un techo.
     //
-    // SOBRE LA ESCENA VIEJA firmaba DOS —la 6 y la 8, las dos en 20 de 20—. Sobre el
-    // mundo decretado firma UNA: la 8, en 8 de 20. La 6 se cayó y se entiende
-    // leyendo la escena que se fue: cuatro pescados sembrados a mano en un cuadrado
-    // de 4×4 con la fogata en (2,2) estaban TODOS a tiro del mismo fuego, así que
-    // «cocinar el lote en un solo fuego» se cocinaba solo. El decreto no concentra
-    // la comida en cuatro celdas.
+    // ─── EL NÚMERO, RE-MEDIDO DOS VECES ─────────────────────────────────────
     //
-    // La 8 sobrevive, y sobrevive por lo que el adversario ya había escrito: mide un
-    // DESENLACE —prendió el grande teniendo a mano uno más chico— y un desenlace lo
-    // produce el azar.
+    // SOBRE LA ESCENA VIEJA —diez sueltas de una tabla escrita a mano y cuatro
+    // pescados regalados en un cuadrado de 4×4— firmaba DOS: la 6 y la 8, las dos en
+    // 20 de 20.
+    //
+    // SOBRE EL MUNDO DECRETADO CON EL ARNÉS SEMBRANDO firmaba UNA: la 8, en 8 de 20.
+    // La 6 se cayó porque los cuatro pescados de la escena vieja estaban TODOS a
+    // tiro de la misma fogata y «cocinar el lote en un solo fuego» se cocinaba solo.
+    //
+    // SOBRE EL MUNDO QUE EL MUNDO MATERIALIZA (tramo K) firma **CERO**, y la tabla
+    // dice por qué: las situaciones están MÁS presentes que nunca —12/20, 12/20,
+    // 20/20, 8/20, 5/20, 5/20, 0/20, 20/20, 6/20— y `apareció` es 0/20 en las nueve.
+    //
+    //     CUENTAN 0 DE 9 · llegaron vivas 0/20 · vivieron 12053 ticks en promedio
+    //
+    // La 8 se cayó y hay que decir por qué, porque es el mecanismo: sobre la escena
+    // sembrada a mano el bicho tenía DOS leños grandes al alcance y agarraba
+    // cualquiera; sobre el mundo materializado la materia está repartida por chunks
+    // enteros y un bicho que elige cuerpos con el dado, con cien cuerpos a la vista,
+    // ya casi no vuelve a tocar el mismo dos veces. O sea que **el ruido bajó porque
+    // el mundo se agrandó, no porque el detector se afilara**, y eso vale más dicho
+    // que festejado: si algún día la vista se achica, el ruido vuelve.
     const c = await correrElControl('EL AZAR CON EL FUEGO REGALADO', true, 40_000)
     console.log(`\n${tablaDelControl(c)}`)
-    expect([...c.cuentan].sort()).toEqual(['el-leno-mas-grande-que-todavia-cocina'])
+    expect([...c.cuentan].sort()).toEqual([])
+    // Y la mitad que hace que el cero se pueda leer: el mundo SÍ le puso las
+    // situaciones delante. Un cero con cero situaciones no diría nada.
+    expect(c.filas.filter((f) => f.situacionEn > 0).length).toBeGreaterThan(5)
   }, 900_000)
 
-  it('EL NÚMERO · el azar firma UNA de las nueve, y el criterio pide cuatro', async () => {
-    // La unión de los dos controles, RE-MEDIDA sobre el mundo decretado.
+  it('EL NÚMERO · el azar no firma NINGUNA de las nueve, y el criterio se lee sobre las nueve', async () => {
+    // La unión de los dos controles, RE-MEDIDA tres veces y hay que contar las tres
+    // porque cada vez cambió el MUNDO y no el detector.
     //
-    //   antes, sobre la escena que `azar.ts` se armaba a mano:  TRES de nueve
+    //   (a) sobre la escena que `azar.ts` se armaba a mano:  TRES de nueve
     //     1 · `no-frotar-lo-que-no-alcanza-a-encender`   20/20 sin fuego
     //     6 · `cocinar-el-lote-en-un-solo-fuego`         20/20 con fuego
     //     8 · `el-leno-mas-grande-que-todavia-cocina`    20/20 con fuego
     //
-    //   ahora, sobre las mismas veinte semillas que juega la mente:  UNA de nueve
+    //   (b) sobre el mundo decretado, con el arnés sembrándolo:  UNA de nueve
     //     8 · `el-leno-mas-grande-que-todavia-cocina`     8/20 con fuego
     //
-    // Las otras dos eran de la escena y no del azar: la 1 dependía de tener dos
-    // maderas gruesas al alcance de la mano, y la 6 de que los cuatro pescados
-    // estuvieran los cuatro a tiro de la misma fogata. Ninguna de las dos cosas la
-    // decreta el dios.
+    //   (c) sobre el mundo que el MUNDO materializa (tramo K):  CERO de nueve
     //
-    // LO QUE NO CAMBIA: la que queda tampoco necesitó que la criatura mirara una
-    // masa, una permeabilidad ni una caloría —la firma un bicho que elige cuerpos
-    // con el dado—, así que sigue sin poder contar para el piso de cuatro. El
-    // criterio real que la mente tiene que cruzar es 4 sobre las OCHO que quedan.
+    // Las tres se cayeron por lo mismo y conviene decirlo junto: **cada una
+    // dependía de que la materia estuviera concentrada al alcance de la mano**. La
+    // 1 pedía dos maderas gruesas a mano, la 6 que los cuatro pescados estuvieran a
+    // tiro de la misma fogata, la 8 dos leños de tamaños distintos en la misma
+    // manotada. El decreto reparte por chunks enteros y el mundo materializado
+    // reparte todavía más lejos, así que un bicho que elige con el dado sobre cien
+    // cuerpos no vuelve a caer dos veces en la misma combinación.
+    //
+    // LO QUE ESTO HABILITA, y es lo único que habilita: el piso del criterio vuelve
+    // a leerse sobre las NUEVE y no sobre ocho. **No dice nada sobre la mente**: la
+    // mente sigue midiendo lo que mida en su propio banco.
     const union = await ruidoDelAzar()
     console.log(`\n  ══ EL RUIDO DEL AZAR: ${String(union.length)} DE 9 ══ ${union.join(' · ')}`)
-    expect(union).toEqual(['el-leno-mas-grande-que-todavia-cocina'])
+    expect(union).toEqual([])
   }, 900_000)
 
-  it.fails('SIGUE ABIERTO · el ruido bajó de tres a una, pero una no es cero', async () => {
-    // ─── EL NÚMERO RE-MEDIDO DOS VECES, y hay que contar las dos ────────────
+  it('CERRADO · el ruido bajó de tres a una y de una a CERO, y lo bajó el mundo', async () => {
+    // ─── EL NÚMERO RE-MEDIDO TRES VECES, y hay que contar las tres ──────────
     //
     // PRIMERA VEZ. El hallazgo del adversario pedía «arreglar los detectores 1, 6 y
     // 8 y volver a correr el control antes de leer cualquier resultado de la
@@ -1095,24 +1116,34 @@ describe('frente 2 · EL RUIDO DEL AZAR, que es el número que le faltaba al ban
     //   6 · se cayó. Dependía de que los cuatro pescados regalados estuvieran los
     //       cuatro a tiro de la misma fogata, y el decreto no siembra pescado en el
     //       piso: el pescado está en el pozo y hay que sacarlo.
-    //   8 · SIGUE. El `puso`/`heldBy` y el filtro de la comida cierran el mundo de
+    //   8 · seguía. El `puso`/`heldBy` y el filtro de la comida cierran el mundo de
     //       CERO intenciones, pero no el del azar: un bicho que agarra cuerpos al
-    //       azar agarra también la fogata, y con eso el acto está. Firma 8/20.
+    //       azar agarra también la fogata, y con eso el acto está. Firmaba 8/20.
     //
-    // LO QUE ESTO ES: sigue siendo un hueco de la LISTA y no de los detectores, y
-    // por eso sigue en rojo en vez de repararse. La entrada 8 mide un DESENLACE
-    // —prendió el grande teniendo a mano uno más chico— y un desenlace lo puede
-    // producir el azar. Cerrarlo pide cambiar lo que la entrada dice medir, y la
-    // lista está cerrada: §0 sólo deja tocar un error de detector, no una entrada.
+    // TERCERA VEZ, Y ES LA QUE LO CIERRA. El tramo K hizo que `stepWorld`
+    // materialice las `sueltas` del decreto (`world/src/step.ts`, `abrirChunk`), así
+    // que el arnés dejó de sembrar y el mundo pasó a poner la materia él —y a
+    // ponerla también donde la criatura camina—. Re-corrido sobre las mismas veinte
+    // semillas, **el ruido es CERO de nueve**:
     //
-    // Y LO QUE ESTO NO ES: no es que las tres reparaciones sirvieran. Las dos que se
-    // cayeron se cayeron por la ESCENA y no por el detector, que es exactamente la
-    // clase de cosa que hay que decir en voz alta para no cobrarse un arreglo que
-    // no se hizo.
+    //     CUENTAN 0 DE 9 · llegaron vivas 0/20 · vivieron 12053 ticks en promedio
+    //     y la situación 12/20, 12/20, 20/20, 8/20, 5/20, 5/20, 0/20, 20/20, 6/20
     //
-    // LO QUE OBLIGA MIENTRAS TANTO: **la que queda no puede contar para el piso de
-    // cuatro**, así que el criterio real que la mente tiene que cruzar es 4 sobre
-    // las 8 que quedan, y no 4 sobre 9.
+    //   8 · se cayó. Por lo mismo que las otras dos: dependía de tener dos leños de
+    //       tamaños distintos en la misma manotada. Con cien cuerpos repartidos, un
+    //       bicho que elige con el dado no vuelve a caer dos veces en la misma
+    //       combinación.
+    //
+    // ─── LO QUE ESTO ES Y LO QUE NO ES, y la segunda mitad importa más ──────
+    //
+    // ES: el piso del criterio vuelve a leerse sobre las NUEVE. La discusión de «4
+    // sobre 8 o 4 sobre 9» se terminó por el lado bueno, sin tocar la lista.
+    //
+    // NO ES: que los detectores se hayan afilado. **El ruido bajó porque el mundo se
+    // agrandó**, y las tres entradas siguen midiendo un DESENLACE —lo que el
+    // adversario había encontrado sigue siendo cierto—. Si mañana la vista se
+    // achica, o alguien mide sobre una escena concentrada, el ruido vuelve tal cual.
+    // Por eso este test se queda: es el que se va a poner rojo primero.
     expect(await ruidoDelAzar()).toEqual([])
   }, 900_000)
 })
@@ -1161,24 +1192,36 @@ describe('el informe · `SÍ … (no medida)` era una contradicción, y el resum
 // ═══ FRENTE 6 · DE CUÁL DE LAS TRES CAUSAS ES CADA CERO ═════════════════════
 
 describe('frente 6 · los nueve ceros de la corrida, atribuidos', () => {
-  it('la causa NO es la mente ni la muerte: el mundo no materializa lo que el dios siembra', () => {
-    // `Decreto.chunk.sueltas` no tiene UN SOLO consumidor en `@anima/world`. Se lee
-    // el directorio —así un módulo nuevo entra solo, igual que el guardián de la
-    // regla 2— y se cuentan las apariciones fuera de comentarios.
+  it('CERRADO · el mundo YA materializa lo que el dios siembra: `sueltas` tiene consumidores', () => {
+    // ─── LA MEDICIÓN QUE ESTE TEST HACÍA, Y QUE AHORA DA VUELTA ─────────────
     //
-    // Con eso, la atribución de los nueve ceros de la corrida canónica es:
+    // Decía: «`Decreto.chunk.sueltas` no tiene UN SOLO consumidor en
+    // `@anima/world`», y lo medía leyendo el directorio —así un módulo nuevo entra
+    // solo, igual que el guardián de la regla 2— y contando las apariciones fuera
+    // de comentarios. Daba **cero**, y de ahí salía la atribución de los nueve
+    // ceros de la corrida canónica: los nueve eran EL MUNDO, ninguno era «la mente
+    // no llega» ni «se murió antes».
     //
-    //   1, 2    · EL MUNDO. Hacen falta DOS candidatos del rol `a` y el arnés pone
-    //             una sola vara; el mundo no agrega ninguna.
+    //   1, 2    · EL MUNDO. Hacen falta DOS candidatos del rol `a` y el arnés ponía
+    //             una sola vara; el mundo no agregaba ninguna.
     //   3       · EL MUNDO. Pide un fuego y dos permeabilidades a mano.
-    //   4       · EL MUNDO. Pide `sharpness >= 0,15`, y lo que hay es carne, madera
-    //             y liana.
+    //   4       · EL MUNDO. Pide `sharpness >= 0,15`, y lo que había era carne,
+    //             madera y liana.
     //   5, 6    · EL MUNDO. Piden cocción, o sea fuego.
     //   7, 8, 9 · EL MUNDO. Piden corteza, un segundo combustible y una piedra.
     //
-    // NINGUNO de los nueve es «la mente no llega» ni «se murió antes», y eso está
-    // separado en la corrida: el control con el tanque lleno llega al 96,5% del
-    // presupuesto y sigue dando 0 de 9 con 9 sin medir.
+    // ─── LA REPARACIÓN, Y LO QUE ESTE TEST PUEDE Y NO PUEDE DECIR ───────────
+    //
+    // `world/src/step.ts` materializa `chunk.sueltas` igual que materializa el pozo
+    // (`materializarLoDecretado` → `abrirChunk`), y el chunk se abre cuando alguien
+    // llega. La causa está cerrada.
+    //
+    // **Lo que este test NO puede decir es cuánto se movieron los nueve ceros**, y
+    // por eso no lo dice: eso lo mide el banco (`hito-5-la-emergencia.test.ts`) y se
+    // lee de su salida, no de un grep. Lo único que se afirma acá es lo que un grep
+    // puede afirmar: que la costura existe. Cambiar esta línea por una afirmación
+    // sobre las secuencias sería justo el error que la sección 5 del traspaso
+    // castiga —festejar una reparación sin volver a correr el criterio—.
     const dir = fileURLToPath(new URL('../../world/src/', import.meta.url))
     const usos: string[] = []
     for (const f of readdirSync(dir).filter((x) => x.endsWith('.ts'))) {
@@ -1190,7 +1233,7 @@ describe('frente 6 · los nueve ceros de la corrida, atribuidos', () => {
       }
     }
     console.log(`\n  consumidores de \`sueltas\` en world/src, fuera de comentarios: ${usos.length === 0 ? 'NINGUNO' : usos.join(', ')}`)
-    expect(usos).toEqual([])
+    expect(usos.length).toBeGreaterThan(0)
   })
 
   it('y la 9 mide cero por el MUNDO y no por el detector: con los cuerpos delante dispara sola', () => {

@@ -81,7 +81,15 @@
 // un paquete nuevo nace SIN guardián, y éste nació con el suyo.
 
 import type { ActorId, Intent, SimEvent, Violacion, WorldBody, WorldState } from '@anima/world'
-import { dadoDe, describir, mapaDeCuerpos, PREFIJO_POZO, revisarEstado, stepWorld } from '@anima/world'
+import {
+  dadoDe,
+  describir,
+  mapaDeCuerpos,
+  PREFIJO_POZO,
+  PREFIJO_SUELTA,
+  revisarEstado,
+  stepWorld,
+} from '@anima/world'
 import type { Skill } from '@anima/skills'
 import type { WorldRng } from '@anima/oracle'
 import { dadoDelMundo, type DadoDelMundo } from '@anima/oracle'
@@ -131,13 +139,22 @@ export interface PartidaOptions {
    *
    * Son las cinco preguntas que un estado puede contestar SOLO —orden, espacio,
    * referencias, inventarios y rangos de cualidad—. La sexta, la conservación,
-   * necesita comparar con el estado anterior y **no se puede encender todavía en
-   * una partida CON DIOS**: los tres caminos por los que el dios materializa
-   * materia no emiten ningún evento que `acreditado()` sepa leer, así que el
-   * guardián acusaría de creación de la nada a un mundo que está funcionando bien.
-   * Ese hueco tiene su `it.fails` en `tests/ataque-a-la-costura.test.ts` y pide un
-   * ADR (un `SimEvent` de decreto). `revisarEstado` no depende de la conservación,
-   * así que ese bloqueante no la alcanza — y habría cazado igual el fantasma.
+   * necesita comparar con el estado anterior y **todavía no se puede encender en
+   * una partida CON DIOS**, pero por mucho menos que antes.
+   *
+   * Antes eran TRES los caminos por los que el dios materializaba materia sin
+   * emitir un evento que el guardián supiera leer: abrir un chunk, extraer del
+   * banco, y reponer el stock. El evento `decreta` de `world/src/step.ts` cerró el
+   * primero y el tercero —medido: 96 y 21 violaciones en 400 ticks pasaron a 0 y
+   * 0—. Queda el segundo, y **ya no es un problema de declaración**: lo que sale
+   * del banco no tiene la misma nutrición por kilo que el banco (la masa cuadra al
+   * bit), así que el aumento es real y taparlo con un `decreta` sería mentir.
+   * Acusa una vez por pesca, y la partida del criterio pesca. El `it.fails` con la
+   * medición nueva está en `tests/ataque-a-la-costura.test.ts` y pide un ADR de
+   * modelo, no de crónica.
+   *
+   * `revisarEstado` no depende de la conservación, así que ese bloqueante no la
+   * alcanza — y habría cazado igual el fantasma.
    *
    * ─── Por qué NO viene encendida por omisión ────────────────────────────────
    *
@@ -234,7 +251,17 @@ function conLoQueElDiosPone(state: WorldState): WorldState {
   }
   let nuevos: WorldBody[] | undefined
   for (const [id, c] of sombra.bodies) {
-    if (!id.startsWith(PREFIJO_POZO)) continue
+    // LOS DOS PREFIJOS DEL DIOS, y el segundo llegó tarde y a propósito: el mundo
+    // pasó a materializar también las `sueltas` del decreto —la leña, la corteza,
+    // el junco— y con la lista vieja el paso 1 veía el banco de peces en un
+    // desierto. Medido en `tests/ataque-a-la-costura.test.ts`, bloque 2: el paso 1
+    // traía 3 cuerpos y el paso 2 traía 17.
+    //
+    // El filtro es por PREFIJO y no «todo lo que el paso de sombra agregó» porque
+    // el paso de sombra también hace correr las leyes, y un cuerpo que nació de la
+    // ley 4 en el tick de sombra no es una cosa que el dios puso: es una cosa que
+    // pasó en un mundo que se va a tirar.
+    if (!id.startsWith(PREFIJO_POZO) && !id.startsWith(PREFIJO_SUELTA)) continue
     if (state.bodies.has(id)) continue
     if (nuevos === undefined) nuevos = [...state.bodies.values()]
     nuevos.push(c)

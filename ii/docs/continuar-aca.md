@@ -5,8 +5,8 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: 2026-07-29, sobre el árbol de trabajo del tramo J (último
-commit `07b9c66`, con cambios sin commitear encima).
+Última actualización: 2026-07-30, sobre el árbol de trabajo del **tramo K bis** (la
+reparación del tramo K: último commit `5f7c114`, con cambios sin commitear encima).
 
 ---
 
@@ -17,33 +17,47 @@ commit `07b9c66`, con cambios sin commitear encima).
 3. [`docs/architecture/remake-anima-ii.md`](../../docs/architecture/remake-anima-ii.md)
    — la arquitectura. La sección del **Hito 5** (cerca de la línea 1452) es el
    criterio de corte del proyecto.
-4. [`ii/docs/decisions/`](decisions/) — **13 ADRs propios**. Los que más pesan hoy:
+4. [`ii/docs/decisions/`](decisions/) — **14 ADRs propios**. Los que más pesan hoy:
    II-0001 (encender no es una acción), II-0007 (el tick es un parámetro),
    II-0008 (el tiempo va en segundos), II-0009 (el hambre mata), II-0010 (frotar
    no relaja), II-0011 (arder libera calor), II-0012 (el presupuesto del plan va
-   en expansiones), II-0013 (el veneno se cobra al tragar).
+   en expansiones), II-0013 (el veneno se cobra al tragar), **II-0014 (el decreto
+   manda sobre la celda, y el mundo narra lo que el dios pone)**.
 
 ---
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2382 tests verdes, nueve typechecks limpios, 70 huecos
-`it.fails` anotados.** Cuarenta y un commits por delante de `main`, en la rama
-`anima-2`. **Ninguno pusheado** — el usuario pushea solo. Si la sesión nueva es
-en otra máquina, hay que pushear antes.
+**Nueve paquetes, 2424 tests verdes (+1 `todo`), nueve typechecks limpios, 68
+huecos `it.fails` anotados.** Cuarenta y un commits por delante de `main`, en la
+rama `anima-2`. **Ninguno pusheado** — el usuario pushea solo. Si la sesión nueva
+es en otra máquina, hay que pushear antes.
 
 | paquete | qué es | tests |
 |---|---|---:|
 | `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables | 605 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 496 |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 534 |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 268 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
 | `@anima/plan` | `SCHEMA_INDEX`, `goalGraph()`, `plan()` anytime | 294 (+1 todo) |
-| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5 | 292 |
-| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 114 |
+| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5 | 294 |
+| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 116 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
+
+> **El tramo K bis, en un renglón.** El tramo K logró que el mundo materialice lo
+> que el dios decreta; el K bis logró que **lo materialice donde el dios dijo**. La
+> celda de cada suelta es función pura de `(semilla, chunk, índice)` y al que
+> estaba parado ahí se lo corre. Con eso se cerraron, juntos: el criterio del Hito
+> 3 (los mismos dos puntos en dos órdenes daban dos hashes), el solapamiento del
+> banco de peces (2 de 20 semillas → **0 de 20**) y la conservación, que estaba
+> apagada de hecho en toda partida con dios (96 y 21 violaciones → **0 y 0**). Es
+> el [ADR II-0014](decisions/II-0014-el-decreto-manda-sobre-la-celda.md).
+>
+> Y **el árbol que recibió el tramo K bis estaba rojo**, no verde como decía el
+> traspaso: `mind/tests/banco-la-escalera.test.ts` tenía un `it.fails` cuyas tres
+> aserciones pasaban. Ver el número 17 de la sección 5.
 
 ---
 
@@ -52,14 +66,17 @@ Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
 Es el **criterio de corte**: si pasa, hay producto aunque el modelo nunca se
 conecte; si no pasa, el plan se para acá y se revisa antes de gastar en la fragua.
 
+Todos los números de esta tabla se corrieron el 2026-07-30 sobre el árbol del
+tramo K bis, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
+
 | criterio | veredicto | número medido |
 |---|---|---|
 | proveedor apagado | **CUMPLE** | 0 llamadas a la red, 0 dependencias de runtime fuera de `ii/` |
-| la cadena de la caña | **CUMPLE** | 7 eslabones; caña en el tick 35, pescado en la mano en el 96 |
-| `ticksPerdidos === 0` | **CUMPLE** | 0 en 20.000 ticks, con reloj de pared (0,151 ms/tick contra 50) |
-| p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | 33,90 ms (6,8×) · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE** | escena del documento: muere en 3627 con **0 bocados**. Escena BUENA (leña seca, tanque lleno): muere en **5627** con **1 bocado** |
-| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE** | **0 de 9**, contra **1 de 9** del azar, sin umbrales tocados |
+| la cadena de la caña | **CUMPLE** | 7 eslabones sobre materia del dios: tira la caña en el tick **48**, el pescado entra a la mano en el **109** |
+| `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,654 ms/tick contra una ventana de 50) — y la partida termina con **109 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
+| p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE** | muere en el **3743** de 20.000 con **0 bocados**. Con el tanque lleno: muere en el **11.851**, también con 0 bocados. Con el eslabón REGALADO (despensa de cocidos): come 66 y muere en el **12.031** |
+| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE** | **0 de 9**, contra **0 de 9** del azar, sin umbrales tocados. La columna «situación» sí se movió con la reparación: **10/20, 10/20 y 8/20** donde antes eran 8, 8 y 5 |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
 
@@ -119,12 +136,29 @@ cada fuego nace de frotar dos palos.
 
 ### Las contrapruebas que aíslan el criterio
 
-- Con una despensa de cocidos regalada, la misma mente **sobrevive los 20.000** con
-  65 bocados y aliento final 1,4593. O sea: la conducta está, falta la aritmética.
+- **LA CONTRAPRUEBA DE LA DESPENSA SE DIO VUELTA, y hay que leerla al revés de
+  como está publicada.** Decía: «con una despensa de cocidos regalada la misma mente
+  sobrevive los 20.000 con 65 bocados y aliento final 1,4593; o sea que la conducta
+  está y falta la aritmética». Sobre el mundo DECRETADO ya no: **come 66 y muere en
+  el 12.031**, con 34 cocidos sin tocar que la ley 6 le pudrió hasta `toxicity`
+  0,9921. La cuenta, y son dos renglones que se leen juntos:
+
+  ```
+  plantada   310 + 691,46 comidos − 1000 de vivir = +1,46  → llegaba
+  decretada  310 + 690,00 comidos − 1000 de vivir = +0,00  → no llega
+  ```
+
+  Comió MÁS y llegó menos lejos, porque **en un mundo con cosas alrededor la mente
+  CAMINA**: gasta 0,08242/tick contra 0,05 de sólo vivir, o sea 1,65×. Así que la
+  frase «la conducta está, falta la aritmética» **ya no la sostiene ninguna corrida**,
+  y eso cambia qué se decide arriba sobre las palancas (a) y (b): el criterio (2)
+  falla incluso con el eslabón regalado.
 - Con la escena del documento tal cual, el `plan()` sigue saliendo `gap`, y el motivo
-  cambió de piso: **no hay una sola vara de madera de ese tamaño en el mundo**. El
-  dios decreta 62 cuerpos sueltos en los 9 chunks de la parada y `stepWorld`
-  materializa 0 (diagnóstico 7).
+  cambió de piso: **no hay una sola vara de madera de ese tamaño en el mundo**. Ya no
+  es que el mundo no materialice —eso se cerró—: el dios decreta 62 cuerpos sueltos
+  en los 9 chunks de la parada y a los 400 ticks hay 95 sueltas en el piso; lo que no
+  hay es madera del tamaño que el plan pide (la única que el dios decreta pesa
+  2,3280 kg contra las 0,40–0,48 que cierran la cadena).
 - Y si se le pone, **se ahoga**: la celda que `laOrilla()` llama seca mide `wet`
   0,6000 y la `moisture` de la yesca cruza el 0,45 de `HUMEDAD_QUE_APAGA` en el tick
   85, once antes de que el pescado llegue a la mano (diagnóstico 8).
@@ -184,11 +218,11 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los dieciséis números corregidos, y la regla que dejó cada uno
+## 5 · Los veinte números corregidos, y la regla que dejó cada uno
 
-Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Tres
+Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
-documentos.**
+documentos.** Los cuatro últimos son del tramo K bis y están al final, del 17 al 20.
 
 1. **«El fuego no se propaga»** — falso. La cuenta era correcta sobre piezas
    SUELTAS: la corteza más grande que un bioma siembra (0,5 kg) entrega 175,32 °C
@@ -255,6 +289,57 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
 (`cocinoEn` volvía a −1). Se pasa sólo `hasta`.
 → **REGLA: una guarda correcta puede ser la pregunta equivocada en el primer tick.**
 
+### Los cuatro del tramo K bis, y tres son del mismo adversario
+
+17. **«El grueso del tick pasó a D4: 95,0% donde antes era 0,1%»** — NO SE REPRODUCE, y
+   es la más cara de las cuatro porque venía con tabla, con costo en microsegundos y
+   con una conclusión de arquitectura encima («entran 9 criaturas donde el criterio
+   pide 5000»). Corrida por mí sobre el árbol **tal como se recibió** —con `git stash`
+   de mis dos archivos de `src/`, para medir exactamente el código que la produjo— la
+   orilla da `D1 74,0% · D4 0,1%`, que es la fila «antes» al cuarto decimal. El costo
+   real: **media 299 µs, p99 1714 µs, y D4 aporta el 0,1%**; entran **41 criaturas**
+   pescando en la orilla (167 con el tick entero), no 9.
+   Y hay un daño colateral que importa más que el número: como con esos valores las
+   tres aserciones del `it.fails` PASABAN, el test daba «Expect test to fail» y
+   **`@anima/mind` estaba ROJO en el traspaso**, que decía «exit 0, 2410 tests».
+   → **REGLA: una tabla de dos filas donde la segunda dice «HOY» hay que volver a
+   correrla antes de publicarla.** La primera fila es historia y no se puede
+   verificar; la segunda es una medición y sí. Y su corolario, que este proyecto ya
+   tenía escrito y volvió a costar caro: **el verde se corre entero y se corre al
+   final**, no se deduce de los paquetes que uno tocó.
+18. **«El criterio (4) `ticksPerdidos === 0` sigue reportado como CUMPLE y ya no vale»**
+   — VERIFICADO, y la condición ya está escrita en el test y en la tabla. La partida
+   del criterio termina con **109 cuerpos**: no recorre mundo, así que su cero es
+   real y no es general. Una criatura que camina derecho deja 23.353 cuerpos a los
+   10.000 ticks y el tick pasa a 74 ms contra una ventana de 50, o sea que cruza
+   ADENTRO de los 20.000. El mecanismo —la población sólo sube, ningún cuerpo se
+   retira jamás— está afirmado **sin cronómetro** en
+   `world/tests/ataque-a-las-sueltas.test.ts`, bloque (4).
+   → **REGLA: un cero medido es un cero DE ESA CORRIDA.** Antes de publicarlo como
+   criterio, medí también la variable que lo hace verdadero (acá: cuántos cuerpos
+   tenía el mundo) y publicala al lado.
+19. **«La reparación de la celda ocupada no toca el criterio del Hito 3»** — falso, y lo
+   decía el comentario de `abrirChunk`, no un agente. El hash del que habla el
+   documento es `hashWorld` y los mismos dos puntos visitados en los dos órdenes daban
+   `2f63c2f9eabd29b6` contra `a4fc2879124b0d36`. Reparado (ADR II-0014).
+   → **REGLA (la misma del número 7, cobrada por segunda vez): volvé al texto que lo
+   pidió.** Un comentario que declara el precio de su decisión y en el mismo párrafo
+   explica por qué el precio no cuenta es exactamente donde hay que mirar.
+20. **«Un control que da cero»**, mío y del adversario, las dos veces: el primero midió
+   0 violaciones de conservación caminando al ESTE, donde esa semilla no tiene un solo
+   pozo. El cero era de que no había qué medir.
+   → **REGLA: un control que da cero hay que probarlo primero contra el caso
+   positivo.** Está puesto en el propio test: el bloque 5 de
+   `world/tests/ataque-a-las-sueltas.test.ts` corre la misma caminata con el guardián
+   CIEGO a `decreta` y saca las 96 y las 21 de antes, para que el 0 y el 0 de al lado
+   signifiquen algo.
+
+**Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
+el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
+apagada (96 y 21 → 0 y 0), la pérdida muda de una suelta (ahora hay evento
+`perdida`), la condición del criterio (4) (18), y la contraprueba de la despensa, que
+se dio vuelta de verdad: **come 66 y muere en el 12.031**.
+
 ---
 
 ## 6 · Qué está abierto, en orden de importancia
@@ -265,14 +350,17 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    calibración y **no se tocan sin el usuario**; la (c) ya se hizo a medias y no
    alcanzó. La cuarta, que no es calibración, es **enseñarle al planificador a
    propagar el fuego** en vez de frotar dos palos cada vez.
-2. **La emergencia mide 0 de 9** (0 de 8 contando: §10.2 pide ≥2 de las 20 con
-   situación y que el azar no la firme), contra **1 de 9** del azar. La columna
-   `situación` sí se mueve: tres filas con **8/20, 8/20 y 5/20** — el mundo le puso el
-   problema delante y la mente no lo resolvió ni una vez. Las otras seis siguen sin
-   situación, y las seis cuelgan de un cero duro: **0 fuegos en 20 partidas**.
+2. **La emergencia mide 0 de 9**, contra **0 de 9** del azar (el azar bajó de 1 a 0
+   en cuanto se juega sobre el mundo decretado). La columna `situación` sí se mueve, y
+   se movió a favor con la reparación del tramo K bis: tres filas con **10/20, 10/20 y
+   8/20**, donde antes eran 8, 8 y 5 — el mundo le puso el problema delante un 25% más
+   seguido y la mente no lo resolvió ni una vez. Las otras seis siguen sin situación,
+   y las seis cuelgan del mismo cero duro: **0 fuegos en 20 partidas, ni un solo
+   disparo**. El propio juez lo declara **NO INTERPRETABLE** (§10: más de tres sin
+   medir sobre nueve).
 3. **El umbral hay que rediscutirlo con el usuario.** El criterio publicado dice
-   «≥4 de las 10» y la lista tiene **9** entradas, de las cuales el azar firma 1
-   → el piso hay que cruzarlo sobre 8. Nadie aprobó «4 de 8» ni «4 de 9»:
+   «≥4 de las 10» y la lista tiene **9** entradas, de las cuales el azar firma 0
+   → el piso hay que cruzarlo sobre 9. Nadie aprobó «4 de 9»:
    **no lo ajustes por tu cuenta**, presentá el número crudo.
 4. **La promesa de un `establishes` se VENCE y nadie lo sabe.** Medido: el pescado
    cocido cumple `toxicity <= 0,05` a los 15 y a los 30 s, ya no a los 60, y a los
@@ -291,10 +379,40 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    y cocinar (ley 5) tienen todos la forma «poné esto acá y esperá». La variante
    `EsquemaDeLey` ya está y anda —dos filas de cocción, barridas de los tres
    montajes— pero `via` sigue siendo un `ProcessId` para los esquemas de proceso.
-7. **70 `it.fails`**, repartidos: mind 19, world 16, physics 13, juez 8, perceive 7,
+7. **La sexta pregunta del arnés sigue apagada en `Partida`, pero por UN camino de
+   tres y ya no es de la crónica.** El evento `decreta` cerró la apertura de chunks y
+   la reposición de pozos; lo que queda es la extracción: **`nutrition` 3310,72 →
+   3319,15 en el tick de la pesca**, con la masa cuadrando al bit. No es materia de
+   más, es que el banco proyecta el stock con `stock.yields` y `draw` puede entregar
+   otra sustancia, y las dos no valen lo mismo por kilo. Declararlo con un `decreta`
+   sería taparlo. Es de `dios.ts` + `@anima/oracle` y pide su ADR de modelo.
+   `it.fails` con la medición nueva en `perceive/tests/ataque-a-la-costura.test.ts`.
+8. **68 `it.fails`**, repartidos: mind 21, world 15, physics 13, perceive 7, juez 5,
    plan 5, oracle 1, skills 1. Cada uno tiene su porqué medido al lado.
-8. **`explorar` sigue caminando un ciclo cerrado de 8 celdas** — la 1 de 15 innatas
+9. **`explorar` sigue caminando un ciclo cerrado de 8 celdas** — la 1 de 15 innatas
    que no logra su contrato.
+
+### Lo que se cerró en el tramo K bis, para que nadie lo vuelva a buscar
+
+- **El determinismo del mundo materializado.** `abrirChunk` le preguntaba al MUNDO
+  dónde había lugar y ahora le pregunta al DECRETO (`celdaDelDecreto`), y al que está
+  parado en la celda decretada se lo corre (`correrAlQueEstaba`). Los mismos dos
+  puntos en los dos órdenes daban `2f63c2f9eabd29b6` contra `a4fc2879124b0d36` y ahora
+  dan el mismo hash. ADR II-0014.
+- **El banco de peces ya no se materializa encima de nadie.** No se le enseñó a
+  esquivar: `abrirChunk` le reserva su celda a las sueltas, y al que esté parado ahí lo
+  corre. `solidos-solapados` sobre veinte semillas: **2/20 → 0/20**. Consecuencia
+  visible, y está afirmada: **una criatura no puede quedarse parada encima del banco**;
+  el mundo la corre una celda y pescar sigue andando (`aMano` es Chebyshev ≤ 1).
+- **La conservación dejó de estar apagada de hecho.** Dos eventos nuevos, los dos
+  `Narracion`: `decreta` (cuánto puso el dios, por tick y por cuenta conservada) y
+  `perdida` (la pieza decretada que no entró en ningún lado). 96 y 21 violaciones en
+  400 ticks de caminata → **0 y 0**, con el control ciego al lado que sigue dando 96 y
+  21 para que el cero signifique algo.
+- **`SIN_FIRMA` es ahora un registro con tipo** —`{ [K in Narracion['k']]: true }`—,
+  así que agregar una `Narracion` sin declararla ahí **no compila**. La lista de `||`
+  que había habría firmado los dos eventos nuevos con la intención que estuviera
+  despachándose, o sea el mundo culpando a la criatura de que el dios sembró un chunk.
 
 ### Y tres cosas que se cerraron en el tramo J, para que nadie las vuelva a buscar
 
@@ -346,9 +464,10 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
 ## 7 · Lo práctico
 
 - Rama `anima-2`, **41 commits por delante de `main`, sin pushear**.
-- El último commit es `07b9c66`, y el tramo J tiene **cambios sin commitear encima**
-  (cuatro archivos de test nuevos y cuatro `src/` tocados: `world/src/step.ts`,
-  `plan/src/tipos.ts`, `plan/src/regresion.ts`, `mind/src/mente.ts`).
+- El último commit es `5f7c114`, y encima hay **cambios sin commitear** de los tramos
+  K y K bis: tres archivos de test nuevos, el ADR II-0014, y cuatro `src/` tocados
+  (`world/src/step.ts`, `world/src/invariants.ts`, `world/src/dios.ts`,
+  `world/src/mundo.ts`, `perceive/src/bucle.ts`, `mind/src/escalera.ts`).
 - **Ánima I sigue vivo al lado** (`packages/`, `apps/`) y anda: 455 tests verdes.
   Los últimos tres commits son de ahí (el tacho, el martillo eterno, el 400 de
   Codex) y no tienen nada que ver con el remake.
@@ -360,7 +479,7 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
 > Seguimos con Ánima II, el remake que vive en `ii/` del repo `F:\proyectos\Anima`
 > (el Ánima I original sigue andando al lado, en `packages/` y `apps/`).
 > Leé `ii/docs/continuar-aca.md` entero antes de hacer nada: es el traspaso, y trae
-> el estado, el método, las decisiones tomadas y los dieciséis números que ya se
+> el estado, el método, las decisiones tomadas y los veinte números que ya se
 > corrigieron. Después seguí por donde dice la sección 6.
 > Usá workflows con agentes en paralelo sobre archivos disjuntos. Commiteá cuando
 > un tramo esté verde y verificado, sin pushear.

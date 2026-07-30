@@ -24,7 +24,7 @@
 // los ticks de cada eslabón. Es el criterio de corte del proyecto y no se reporta
 // como un `expect` a secas: se imprime la corrida.
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { qualityOf } from '@anima/physics'
 import type { CellState, WorldBody, WorldState } from '@anima/world'
@@ -38,6 +38,27 @@ import { Mente, aHabilidad, vivir } from '../src/mente.js'
 import { cuantasVeces } from '../src/tipos.js'
 import type { Decision, Intencion, Peldano, VistaDeLaMente } from '../src/tipos.js'
 import { actor, criatura, cuerpo, enElPiso, laOrilla, mundo } from './mundo.js'
+
+// ─── EL RESPIRO QUE MANTIENE VIVO AL WORKER DE VITEST ────────────────────────
+//
+// birpc le pone 60 s de vencimiento al aviso de cada test, y un `for` sincrónico
+// largo no deja correr ni el temporizador ni la lectura del socket; cuando suelta
+// el hilo, Node corre la fase de temporizadores antes que la de poll y el
+// vencimiento gana la carrera aunque la respuesta ya esté en la cola. El síntoma
+// es la peor clase de rojo: TODOS los tests en verde y `exit 1` con
+// `Timeout calling "onTaskUpdate"`.
+//
+// Desde que el mundo materializa el decreto (`world/src/step.ts`, `abrirChunk`)
+// las corridas de este archivo cuestan diez veces más por tick, así que varias
+// cruzan los 60 s. Se arregla con una MACROTAREA de verdad —`setTimeout(…, 0)`;
+// un `await` sobre una promesa resuelta es una microtarea y no drena la fase de
+// poll— en un `beforeEach` de raíz, que no toca el cuerpo de ningún test ni puede
+// mover ninguna medición: corre antes de que el test empiece.
+beforeEach(async () => {
+  await new Promise((listo) => {
+    setTimeout(listo, 0)
+  })
+})
 
 // ─── El arnés ────────────────────────────────────────────────────────────────
 
@@ -280,13 +301,40 @@ describe('(a) una criatura sola vive y no explota nada', () => {
         `${String(r.vida.ticksPerdidos)} ticks perdidos\n` +
         `  aliento al final: ${qualityOf(r.partida.state.bodies.get('ana-cuerpo')!.body, 'stamina', r.partida.state.phys).toFixed(1)}\n`,
     )
-    // El peldaño que carga el tick es D1, y por la razón aritmética que su propio
-    // encabezado da: el mundo avanza una celda por tick y `extraccion` dura
-    // `1,5 s × hz` ticks. En una criatura que SIEMPRE tiene plan, casi todo tick
-    // es «seguí con lo que estabas haciendo».
+    // ─── EL PELDAÑO QUE CARGA EL TICK ES D1, Y VOLVIÓ A SERLO ───────────────
+    //
+    // La razón es aritmética y la da el propio encabezado de D1: el mundo avanza
+    // una celda por tick y `extraccion` dura `1,5 s × hz` ticks. En una criatura
+    // que SIEMPRE tiene plan, casi todo tick es «seguí con lo que estabas
+    // haciendo». Medido hoy:
+    //
+    //     peldaños: D0 0 · D1 1388 · D2 0 · D3 2 · D4 1 · D5 609
+    //     619 despegues · 2 pescas · 0 ticks perdidos · aliento 310 → 148,4
+    //
+    // ─── Y EL D4 DE 1899 QUE HUBO EN EL MEDIO ERA UN BUCLE ──────────────────
+    //
+    // Entre el tramo K y este bloque, esto mismo midió **D1 99 · D4 1899** con
+    // 1908 despegues, y se escribió que era «el costo del mundo lleno: el mundo se
+    // enriqueció 30× y el presupuesto del planificador no se movió». No era eso.
+    // Era que `plan()` contestaba `gap`, la escalera ejecutaba el `nearest`
+    // —`ir` a un cuerpo que estaba A UNA CELDA— y el paso aterrizaba bien sin
+    // moverla, así que replanificaba el tick siguiente y otra vez. 1899 ticks de
+    // D4 eran 1899 replanificaciones del mismo `gap`.
+    //
+    // Está arreglado en `escalera.ts` con `mientrasTantoYaHecho` y medido en
+    // `hito-5-el-criterio.test.ts`, DIAGNÓSTICO 11. Lo que este bloque tiene que
+    // recordar es la regla: **un peldaño que se lleva el 95% de los ticks no es
+    // un dato de rendimiento, es una pregunta.**
+    //
+    // Y lo que cambió de verdad al arreglarlo: el aliento final pasó de 209,6 a
+    // 148,4, porque ahora D5 la manda a caminar en vez de dejarla replanificando
+    // gratis. Vive menos y hace más; el criterio (2) se mide en si comió.
     expect(r.peldanos.D1).toBeGreaterThan(
       r.peldanos.D0 + r.peldanos.D2 + r.peldanos.D3 + r.peldanos.D4 + r.peldanos.D5,
     )
+    // Y los otros dos que deciden siguen decidiendo alguna vez.
+    expect(r.peldanos.D3).toBeGreaterThan(0)
+    expect(r.peldanos.D5).toBeGreaterThan(0)
   })
 
   it('y en el páramo tampoco: sin nada que hacer, D5 la sostiene 400 ticks', () => {
@@ -312,9 +360,19 @@ describe('(a) una criatura sola vive y no explota nada', () => {
     // viva —dos corridas del mismo actor emiten el mismo `seq` y `stepWorld`
     // rechaza a las dos— así que 400 ticks sin excepción SON la verificación. Lo
     // que se agrega acá es el contrapositivo: si el corte no cortara, esto lanza.
+    // ─── ESTE BLOQUE SE ROMPIÓ Y SE ARREGLÓ SOLO, Y VALE ANOTARLO ───────────
+    //
+    // Entre el tramo K y el arreglo del bucle del `nearest`, la criatura NO tenía
+    // un vuelo vivo en ningún tick: replanificaba el mismo `gap` todos los ticks y
+    // cada `ir` se cerraba adentro del mismo. Así que este bloque tuvo que armar
+    // el vuelo vivo a mano con una habilidad que espera. Con el bucle cerrado
+    // (`escalera.ts`, `mientrasTantoYaHecho`) la criatura vuelve a estar SIEMPRE
+    // en medio de algo —D1 se lleva el 69% de los ticks— y la forma original
+    // vuelve a valer, que es la que menos supone.
     const r = correr(laEscenaDelDocumento(), 'ana', 200)
     const v = r.partida.vuelo('ana')
     expect(v).toBeDefined()
+    expect(v?.terminado).toBe(false)
     expect(() => {
       r.partida.volar('ana', function* (): Generator<Intent, Outcome, StepResult> {
         return { ok: true }

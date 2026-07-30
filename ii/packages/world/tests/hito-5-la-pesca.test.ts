@@ -665,7 +665,7 @@ describe('lo que cuesta tener al dios adentro del tick', () => {
   it('la pasada de materialización escala SUBLINEAL con los actores, y el número', () => {
     // ─── ESTE TEST EMPEZÓ SIENDO UN `it.fails` Y LA MEDICIÓN LO DESMINTIÓ ─────
     //
-    // La hipótesis escrita antes de medir era: «`materializarPozos` recorre los
+    // La hipótesis escrita antes de medir era: «la pasada de materialización recorre los
     // nueve chunks de CADA actor todos los ticks, así que con 5000 criaturas son
     // 45 000 vueltas aunque estén todas paradas en el mismo lugar; eso es un
     // hueco». La primera medición pareció confirmarlo —118× de un actor a mil—
@@ -828,32 +828,50 @@ describe('lo que este frente NO cerró', () => {
     ).toBeGreaterThan(0)
   })
 
-  it.fails('lo que el dios deja TIRADO no se materializa: no hay matorral que deshilachar', () => {
-    // POR QUÉ SIGUE ABIERTO: `decretarChunk` devuelve `sueltas` —lo que el ruido
-    // dejó tirado más lo que la garantía de resolubilidad tuvo que sembrar para
-    // que se pueda armar un aparejo en radio 2— y `materializarPozos` sólo
-    // materializa el banco de peces. O sea que la criatura llega a la orilla y no
-    // hay ni una liana que levantar: el aparejo hay que ponérselo en la mano desde
-    // afuera, como hace este mismo archivo.
+  it('CERRADO · lo que el dios deja TIRADO se materializa: el matorral está en la orilla', () => {
+    // ─── POR QUÉ ESTUVO ABIERTO, Y QUÉ SE PREDIJO ACÁ ──────────────────────
     //
-    // Es exactamente la mitad que le falta al primer criterio del Hito 5:
+    // `decretarChunk` devuelve `sueltas` —lo que el ruido dejó tirado más lo que la
+    // garantía de resolubilidad tuvo que sembrar para que se pueda armar un aparejo
+    // en radio 2— y `materializarPozos` materializaba **el banco de peces y nada
+    // más**. O sea que la criatura llegaba a la orilla y no había ni una liana que
+    // levantar: el aparejo había que ponérselo en la mano desde afuera, como hace
+    // este mismo archivo.
+    //
+    // Era exactamente la mitad que le faltaba al primer criterio del Hito 5:
     // «deshilacha un matorral, ata una vara» necesita el matorral y la vara EN EL
     // MUNDO.
     //
-    // QUÉ HARÍA FALTA: extender `materializarPozos` a las `sueltas`, con ids
-    // derivados del lugar (`suelta:<cx>:<cy>:<n>`) por la misma razón que el
-    // banco, y decidir qué pasa cuando alguien se lleva una y vuelve —el chunk se
-    // re-decreta igual, así que hay que llevar en `EstadoDelDios` cuáles ya se
-    // materializaron o el mundo las repone solas—. Eso último es la decisión, y
-    // no es chica.
+    // Este `it.fails` escribió qué haría falta y el tramo K lo hizo tal cual: ids
+    // derivados del lugar (`suelta:<cx>:<cy>:<n>`) por la misma razón que el banco,
+    // y **la decisión que el comentario marcaba como «no es chica»** —qué pasa
+    // cuando alguien se lleva una y vuelve— resuelta con `EstadoDelDios.sembrados`,
+    // los chunks ya abiertos, para que el mundo no las reponga solo.
     //
-    // EN QUÉ ARCHIVO: `world/src/step.ts` (`materializarPozos`) y
-    // `world/src/dios.ts` (`EstadoDelDios`).
+    // ─── Y POR QUÉ EL CONTEO ES SOBRE LOS NUEVE Y NO SOBRE EL DEL POZO ────
+    //
+    // Porque **el chunk del pozo casi nunca tiene nada tirado**: el 88,8% de los
+    // chunks de `agua-dulce` está enteramente inundado, y eso es lo que hace que la
+    // `parada` sea del chunk vecino. El `it.fails` viejo comparaba contra
+    // `decretoDe(o.cx, o.cy).chunk.sueltas` y ahí medía CERO — o sea que fallaba en
+    // su primera línea y no en la materialización. Se cuenta sobre la misma
+    // vecindad de nueve con la que el mundo materializa, que es la única
+    // comparación que significa algo.
     const { anzuelo } = aparejos()
     const r = stepWorld(mundoConRio(o, anzuelo), [])
-    const dec = decretoDe(dios, PHYS, o.cx, o.cy)
-    expect(dec.chunk.sueltas.length).toBeGreaterThan(0)
-    const materializadas = [...r.state.bodies.values()].filter((c) => c.body.id.startsWith('suelta:'))
-    expect(materializadas.length).toBe(dec.chunk.sueltas.length)
+    const acx = Math.floor(o.parada.x / 16)
+    const acy = Math.floor(o.parada.y / 16)
+    let decretadas = 0
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        decretadas += decretoDe(dios, PHYS, acx + dx, acy + dy).chunk.sueltas.length
+      }
+    }
+    expect(decretadas).toBeGreaterThan(0)
+    const todas = [...r.state.bodies.values()].filter((c) => c.body.id.startsWith('suelta:'))
+    expect(todas.length).toBe(decretadas)
+    // Y hay materia de la que el criterio pide: algo flexible para deshilachar.
+    const sustancias = new Set(todas.flatMap((c) => c.body.parts.map((p) => p.substance)))
+    expect(sustancias.size).toBeGreaterThan(3)
   })
 })

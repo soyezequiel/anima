@@ -518,11 +518,36 @@ describe('(a) el `source` de la extracción no es «cualquier cosa con masa»', 
     // estar en la mano. Ése es, exactamente, el bug del criterio.
     expect(salida.get('sin `roleNoDeLaMano`|false')).toBe(banco)
     expect(salida.get('sin `roleNoDeLaMano`|true')).toBe('piedra')
-    // Sin `cellHints` falla EN LA ORILLA y sólo ahí: el leño está tirado en el suelo
-    // y no en la mano, así que la exclusión por tenencia no lo toca, y desde la
-    // orilla está a cero celdas contra la una del banco.
+    // Sin `cellHints` falla EN LAS DOS: el leño está tirado en el suelo y no en la
+    // mano, así que la exclusión por tenencia no lo toca, y le gana al banco por
+    // cercanía desde cualquiera de las dos posiciones.
+    //
+    // ─── Y ESTE RENGLÓN SE MOVIÓ, ASÍ QUE DICE POR QUÉ ──────────────────────
+    //
+    // `sin cellHints|en el agua` daba `pozo:-6:-6` mientras la criatura podía estar
+    // PARADA ENCIMA del banco, o sea a cero celdas. No podía: dos sólidos no
+    // comparten celda, y el mundo materializaba el banco arriba de ella sin
+    // preguntarle a `estorbo` —un `solidos-solapados` que ningún test miraba, y que
+    // el barrido de veinte semillas del paquete `world` encuentra en el tick 1—.
+    // Desde la reparación de `materializarLoDecretado`, **al que está parado en la
+    // celda del banco se lo corre** (`hacerLugar`), así que «en el agua» quiere
+    // decir pegada al banco y no encima, y a una celda el leño le empata y gana por
+    // desempate.
+    //
+    // Lo que NO cambió, y es lo único que este bloque existe para sostener: la fila
+    // entera acierta en las dos posiciones. Las dos condiciones siguen haciendo
+    // falta, y la de `cellHints` ahora hace falta MÁS.
     expect(salida.get('sin `cellHints`|false')).toBe('leno')
-    expect(salida.get('sin `cellHints`|true')).toBe(banco)
+    expect(salida.get('sin `cellHints`|true')).toBe('leno')
+    // Y se afirma la causa, para que el día que esto vuelva a moverse se sepa si se
+    // movió el plan o se movió el mundo: la criatura no queda en la celda del banco.
+    const enElAgua = escena({ enElAgua: true, tambien: [piedra()], conLeno: true }).w
+    const suCuerpo = enElAgua.bodies.get(`${ANA}-cuerpo`) as WorldBody
+    expect(suCuerpo.at).not.toEqual(o.pozo)
+    // Pegada, no lejos: correrse es un paso y no una mudanza.
+    expect(
+      Math.max(Math.abs(suCuerpo.at.x - o.pozo.x), Math.abs(suCuerpo.at.y - o.pozo.y)),
+    ).toBe(1)
   })
 
   it('`roleFilters` sigue vivo aunque ninguna fila lo use: una fila sintética lo prueba', () => {

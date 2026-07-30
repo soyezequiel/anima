@@ -85,10 +85,12 @@ import {
   LibroCalorico,
   dadoDelMundo,
   decretarChunk,
+  formaDeLoSuelto,
   stockDeAgua,
   waterCellKey,
   type ChunkDecretado,
   type DadoDelMundo,
+  type Suelta,
 } from '@anima/oracle'
 
 import { chunkCoord, localCoord, CHUNK_SIZE, type Cell } from './cell.js'
@@ -181,9 +183,40 @@ export interface EstadoDelDios {
    * mismo río — la fuente infinita por la puerta de atrás del guardado.
    */
   readonly cobros: readonly Cobro[]
+  /**
+   * LOS CHUNKS QUE YA SE ABRIERON: aquellos cuyas `sueltas` el mundo ya convirtió
+   * en cuerpos. Claves de `chunkKey`, en orden numérico ascendente.
+   *
+   * Es la MISMA idea que `stocks` y por la misma razón: acá vive sólo la
+   * DESVIACIÓN de lo que la semilla dice por su cuenta. El decreto es función pura
+   * y siempre contesta «en este chunk hay estas diez cosas»; lo que no es función
+   * pura es si el mundo ya las trajo, porque una vez traídas la criatura las
+   * quema, se las come y las ata, y ninguna de esas tres cosas se puede recalcular
+   * de la semilla.
+   *
+   * ─── Por qué no alcanza con preguntar si el cuerpo está ─────────────────────
+   *
+   * La idempotencia barata sería `if (d.bodies.has(id)) continue`. **Miente en el
+   * único caso que importa**: la criatura frota dos varas, las quema, y el cuerpo
+   * desaparece del mundo. Al tick siguiente `d.bodies` ya no lo tiene y el chunk
+   * volvería a parirlo — leña infinita por la puerta de atrás, que es exactamente
+   * el agujero que el libro calórico existe para tapar del lado de la pesca.
+   * Guardar el chunk y no el cuerpo dice lo que de verdad pasó: **el chunk ya dio
+   * lo que tenía**.
+   *
+   * OPCIONAL, y omitido mientras esté vacío. `hashWorld` saltea las propiedades
+   * `undefined` de un objeto y `JSON.stringify` también, así que un mundo donde
+   * nadie abrió un chunk —los ocho paquetes están llenos de ellos— hashea
+   * EXACTAMENTE igual que antes de que este campo existiera. Un arreglo vacío no:
+   * ése cuenta como clave y habría movido el hash de todos los mundos con dios sin
+   * que ninguno cambiara.
+   */
+  readonly sembrados?: readonly number[]
 }
 
-/** Un dios recién nacido: la semilla, el dado en su estado inicial y nada más. */
+/** Un dios recién nacido: la semilla, el dado en su estado inicial y nada más.
+ *  Sin `sembrados`: nadie abrió ningún chunk todavía, y el campo ausente es lo
+ *  que hace que su hash sea el de siempre. */
 export function crearDios(semilla: Seed, dado = 0): EstadoDelDios {
   return { semilla: String(semilla), dado: dado | 0, stocks: [], cobros: [] }
 }
@@ -439,5 +472,83 @@ export function cuerpoDePozo(id: BodyId, stock: Stock, poblacion: number): Body 
     parts: [{ substance: stock.yields, mass: poblacion * unfx(stock.masaPorUnidad), q: {} }],
     joints: [],
     state: {},
+  }
+}
+
+// ─── Lo que está tirado en el piso, que también son cuerpos ─────────────────
+
+/**
+ * El prefijo de las cosas sueltas que el dios sembró.
+ *
+ * Mismo argumento entero que `PREFIJO_POZO`, y hace falta repetirlo porque acá el
+ * riesgo es peor: hay ~10 sueltas por chunk y con `nuevoId` el nombre de cada una
+ * dependería de cuántas se materializaron antes, o sea del camino. Dos partidas
+ * gemelas que abrieran los mismos chunks en otro orden tendrían la misma rama con
+ * dos nombres, dos órdenes canónicos y dos hashes. Acá el nombre es
+ * `(chunk, posición en el decreto)`, que es función pura de la semilla.
+ *
+ * `p` < `s` < `w` en unidades de código, así que el recorrido canónico deja
+ * primero los pozos, después lo sembrado y último lo que fabricó la partida.
+ * `w` seguido de nueve dígitos no empieza con `suelta:`, y `pozo:` tampoco.
+ */
+export const PREFIJO_SUELTA = 'suelta:'
+
+/**
+ * El id de la suelta número `n` del chunk `(cx, cy)`. Función del lugar y del
+ * ÍNDICE DENTRO DEL DECRETO, no de la celda: `scatter` sortea celdas CON
+ * REPOSICIÓN, así que dos sueltas del mismo chunk comparten celda con toda
+ * naturalidad y un id por celda las haría colisionar de nombre.
+ */
+export function idDeSuelta(cx: number, cy: number, n: number): BodyId {
+  return `${PREFIJO_SUELTA}${String(cx)}:${String(cy)}:${String(n)}`
+}
+
+/**
+ * UNA COSA TIRADA EN EL PISO, COMO CUERPO.
+ *
+ * ─── La forma, que es lo único que el decreto no siempre dice ───────────────
+ *
+ * `Suelta.form` viene puesto en lo que `ensureSolvable` sembró —ahí la forma ES
+ * la razón de la siembra: una rama hecha vara alcanza dos celdas y hecha bloque
+ * no— y viene `undefined` en lo que dejó `scatter`. Cuando falta se infiere con
+ * `formaDeLoSuelto` del oráculo, que es la MISMA función con la que el dios juzgó
+ * si el chunk era jugable. Se importa en vez de reescribirse: dos copias de esa
+ * regla harían que el mundo materialice con una forma lo que el dios garantizó
+ * con otra, y el chunk quedaría injugable en silencio.
+ *
+ * ─── Y la temperatura, que el pozo no escribe y ésta sí ─────────────────────
+ *
+ * Un cuerpo con `state: {}` vale 0 °C para `qualityOf`, y una rama tirada en un
+ * chunk a 15 °C no está a cero: está a lo que el lugar diga. Sin esto la ley 1
+ * la relaja hacia el ambiente durante los primeros ticks, o sea que el mundo
+ * entrega piedras heladas que se templan solas mientras la criatura las mira — un
+ * transitorio que nadie pidió y que además le mueve el hash a los primeros ticks
+ * de toda partida. El ambiente sale del DECRETO del chunk (`terreno.temperatura`)
+ * y no de `T_AMBIENTE`: el chunk polar y el chunk cálido no están a lo mismo.
+ *
+ * (El banco de peces sigue con `state: {}` y no se toca acá: su masa es una
+ * proyección que se reescribe cada tick, y meterle una temperatura obligaría a
+ * decidir qué pasa cuando esa reescritura la pisa. Queda anotado.)
+ */
+export function cuerpoDeSuelta(
+  id: BodyId,
+  s: Suelta,
+  phys: Physics,
+  ambiente: number,
+): Body {
+  return {
+    id,
+    form: s.form ?? formaDeLoSuelto(s.substance, phys),
+    parts: [{ substance: s.substance, mass: unfx(s.masa), q: {} }],
+    joints: [],
+    state: { temperature: ambiente },
+  }
+}
+
+/** La celda del mundo donde el decreto puso su suelta número `i` local. */
+export function celdaDeSuelta(cx: number, cy: number, i: number): Cell {
+  return {
+    x: cx * CELDAS_DE_LADO + (i % CELDAS_DE_LADO),
+    y: cy * CELDAS_DE_LADO + Math.floor(i / CELDAS_DE_LADO),
   }
 }

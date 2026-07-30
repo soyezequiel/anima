@@ -55,7 +55,7 @@
 //   §6  lo que aguantó el ataque, medido igual: el determinismo y el tope de la
 //       memoria de creencias.
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import { Contexto, Partida } from '@anima/perceive'
 import type { GoalNode, Step } from '@anima/plan'
@@ -80,6 +80,27 @@ import { necesidades } from '../src/necesidades.js'
 import { metaDe, opportunities } from '../src/oportunidades.js'
 import type { Decision, Intencion, Peldano, VistaDeLaMente } from '../src/tipos.js'
 import { actor, criatura, cuerpo, enElPiso, enLaMano, laOrilla, mundo } from './mundo.js'
+
+// ─── EL RESPIRO QUE MANTIENE VIVO AL WORKER DE VITEST ────────────────────────
+//
+// birpc le pone 60 s de vencimiento al aviso de cada test, y un `for` sincrónico
+// largo no deja correr ni el temporizador ni la lectura del socket; cuando suelta
+// el hilo, Node corre la fase de temporizadores antes que la de poll y el
+// vencimiento gana la carrera aunque la respuesta ya esté en la cola. El síntoma
+// es la peor clase de rojo: TODOS los tests en verde y `exit 1` con
+// `Timeout calling "onTaskUpdate"`.
+//
+// Desde que el mundo materializa el decreto (`world/src/step.ts`, `abrirChunk`)
+// las corridas de este archivo cuestan diez veces más por tick, así que varias
+// cruzan los 60 s. Se arregla con una MACROTAREA de verdad —`setTimeout(…, 0)`;
+// un `await` sobre una promesa resuelta es una microtarea y no drena la fase de
+// poll— en un `beforeEach` de raíz, que no toca el cuerpo de ningún test ni puede
+// mover ninguna medición: corre antes de que el test empiece.
+beforeEach(async () => {
+  await new Promise((listo) => {
+    setTimeout(listo, 0)
+  })
+})
 
 // ─── El arnés ────────────────────────────────────────────────────────────────
 
@@ -365,8 +386,23 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
    * entera una sola vez y tiran la caña las mismas dos veces.
    */
   it('REPARADO · el mismo mundo pesca lo mismo con el tanque lleno y con hambre', () => {
-    const conHambre = correr(new Partida(laEscena(310)), 4000)
-    const sinHambre = correr(new Partida(laEscena(1000)), 4000)
+    // ─── EL HORIZONTE BAJÓ DE 4000 A 3000, Y NO ES ABLANDAR ────────────────
+    //
+    // Con 4000 las dos corridas NO son comparables, y el motivo no tiene nada que
+    // ver con lo que este test ataca: **la del tanque de 310 se muere en el 3743**
+    // (medido en `hito-5-el-criterio.test.ts`) y `correr` corta el bucle al morir,
+    // así que la del tanque lleno cuenta 257 ticks más de conductas de fondo. Los
+    // histogramas salían 397 contra 417 por eso y por nada más.
+    //
+    // Con 3000 las dos están vivas y la comparación es la que el test quiere hacer.
+    //
+    // (Con el bucle del `nearest` sin arreglar esto pasaba en 4000 porque las DOS
+    // llegaban vivas: el bucle no gasta aliento. Otro verde que se apoyaba en él.)
+    const conHambre = correr(new Partida(laEscena(310)), 3000)
+    const sinHambre = correr(new Partida(laEscena(1000)), 3000)
+    // La premisa del contrafáctico, afirmada y no supuesta: las dos llegan vivas.
+    expect(conHambre.muerta).toBe(-1)
+    expect(sinHambre.muerta).toBe(-1)
 
     console.log(
       '\n─── EL MISMO MUNDO, DOS TANQUES ───\n' +
@@ -386,12 +422,48 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
       expect(cuenta(sinHambre.despegues, paso), paso).toBe(1)
       expect(cuenta(conHambre.despegues, paso), paso).toBe(1)
     }
-    // Y los dos caen a D5 después, por la misma razón y en el mismo orden: el
-    // pedido sube a lo cocido y ahí no hay vía. Antes este par decía `.toBe(0)`
-    // porque los dos se pasaban la corrida pescando de nuevo.
+    // ─── DÓNDE CAEN LOS DOS DESPUÉS: D5, Y VOLVIÓ A SER D5 ──────────────────
+    //
+    // Hecha la caña y con el pescado en la mano, el pedido sube a lo cocido, no hay
+    // vía, y los dos caen a las conductas de fondo. Eso es lo que este par afirma,
+    // y es lo mismo que afirmaba antes del tramo K.
+    //
+    // En el medio hubo una versión que afirmaba **D4 mayoritario y D5 cero**, con
+    // `ir(suelta:-6:-7:2)×3899`, y lo escribió como lo que era —«un bucle nuevo y
+    // hay que decirlo así»—. Ese bucle está cerrado (`escalera.ts`,
+    // `mientrasTantoYaHecho`; medido en `hito-5-el-criterio.test.ts`, DIAGNÓSTICO
+    // 11) y D5 volvió a correr, que es lo que la escalera tiene que hacer cuando
+    // no hay vía.
+    //
+    // ─── Y UNA AFIRMACIÓN QUE SE HABÍA AGREGADO DE MÁS, MEDIDA Y SACADA ─────
+    //
+    // El tramo K agregó acá `expect(sinHambre.peldanos).toEqual(conHambre.peldanos)`
+    // —el histograma de peldaños IDÉNTICO tick a tick— y pasaba. Pasaba porque D5
+    // no corría ni una vez: con el bucle del `nearest` sin cerrar los dos tanques
+    // se quedaban en D4 replanificando, y dos corridas que no hacen nada hacen lo
+    // mismo. Con D5 corriendo, es FALSA, y no por un error: **la rueda de D5 se
+    // elige con `necesidades(v)`, que lee la `stamina`**, así que el tanque cambia
+    // qué conducta de fondo sale. Medido, la primera divergencia:
+    //
+    //     tick 102   310 → explorar(8t)
+    //                1000 → juntar×1 (se cae en el acto) y explorar(8t) en el 103
+    //
+    // O sea que en 3000 ticks los dos hacen 310 explorar, 310 juntar y 310/311
+    // guarecerse: la misma rueda, con un turno de corrimiento.
+    //
+    // Lo que este test ATACA —que el tanque no cambie si la criatura sabe conseguir
+    // la comida— se afirma entero arriba: la cadena de cinco pasos una vez cada
+    // una, y las mismas dos tiradas de caña. Que las conductas de FONDO dependan
+    // del hambre no es el defecto que este archivo persigue: es lo que D5 promete.
     expect(sinHambre.peldanos.D5).toBeGreaterThan(0)
     expect(conHambre.peldanos.D5).toBeGreaterThan(0)
-    // Dos corridas de 4000 ticks; mismo motivo que el techo del test de arriba.
+    // Los dos pasan la mayor parte del tiempo en D1 —haciendo, no pensando— y
+    // ninguno se clava en un peldaño. Es la forma comparable que sí es cierta.
+    for (const p of [conHambre.peldanos, sinHambre.peldanos]) {
+      expect(p.D1).toBeGreaterThan(p.D0 + p.D2 + p.D3 + p.D4 + p.D5)
+      expect(p.D4).toBeLessThan(10)
+    }
+    // Dos corridas de 3000 ticks; mismo motivo que el techo del test de arriba.
   }, 300_000)
 
   /**
@@ -404,7 +476,11 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
   it('lo que se quería: que una meta sin esquema no tape a la que sí se puede planificar', () => {
     const r = correr(new Partida(laEscena(1000)), 3000)
     expect(cuenta(r.despegues, 'aplicar(extraccion)')).toBeGreaterThan(0)
-  })
+    // EL PLAZO, Y QUÉ LO MOVIÓ: 3000 ticks entraban de sobra en los 5 s de vitest
+    // cuando la escena tenía tres cuerpos. Desde que el mundo materializa el decreto
+    // (`world/src/step.ts`, `abrirChunk`) tiene más de cien, y las doce leyes corren
+    // sobre todos, todos los ticks. Ninguna aserción se tocó.
+  }, 300_000)
 })
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1037,11 +1113,12 @@ describe('§6 · lo que no se rompió, medido igual', () => {
       }
       return out
     }
+    // 2000 ticks × 2 sobre el mundo materializado: ver la nota de plazo del §1.
     const a = historia()
     const b = historia()
     console.log(`\n─── DETERMINISMO ───\n  ${String(a.length)} decisiones, ${a.length === b.length && a.every((x, i) => x === b[i]) ? 'idénticas' : 'DISTINTAS'}\n`)
     expect(b).toEqual(a)
-  })
+  }, 300_000)
 
   /**
    * La memoria de creencias NO crece, y la razón hay que decirla porque es peor
@@ -1084,5 +1161,6 @@ describe('§6 · lo que no se rompió, medido igual', () => {
     )
     expect(casilleros).toBe(5)
     expect(contextos).toBe(5)
-  })
+    // 20.000 ticks sobre el mundo materializado: ver la nota de plazo del §1.
+  }, 900_000)
 })

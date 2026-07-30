@@ -16,7 +16,7 @@
  * no, con su `it.fails` y su «POR QUÉ SIGUE ABIERTO».
  */
 
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import { buildSeedPhysics, qualityOf, unir, type Body, type Physics, type SubstanceId } from '@anima/physics'
 import {
   celdaDecretada,
@@ -43,6 +43,27 @@ import { aplicarProceso, comer, frotar, poner } from '@anima/skills/innatas'
 
 import { IndiceDelTick, Partida, Proyeccion } from '../src/index.js'
 import { actor, conElla, criatura, cuerpo, mundo } from './mundo.js'
+
+// ─── EL RESPIRO QUE MANTIENE VIVO AL WORKER DE VITEST ────────────────────────
+//
+// birpc le pone 60 s de vencimiento al aviso de cada test, y un `for` sincrónico
+// largo no deja correr ni el temporizador ni la lectura del socket; cuando suelta
+// el hilo, Node corre la fase de temporizadores antes que la de poll y el
+// vencimiento gana la carrera aunque la respuesta ya esté en la cola. El síntoma
+// es la peor clase de rojo: TODOS los tests en verde y `exit 1` con
+// `Timeout calling "onTaskUpdate"`.
+//
+// Desde que el mundo materializa el decreto (`world/src/step.ts`, `abrirChunk`)
+// las corridas de este archivo cuestan diez veces más por tick, así que varias
+// cruzan los 60 s. Se arregla con una MACROTAREA de verdad —`setTimeout(…, 0)`;
+// un `await` sobre una promesa resuelta es una microtarea y no drena la fase de
+// poll— en un `beforeEach` de raíz, que no toca el cuerpo de ningún test ni puede
+// mover ninguna medición: corre antes de que el test empiece.
+beforeEach(async () => {
+  await new Promise((listo) => {
+    setTimeout(listo, 0)
+  })
+})
 
 type Hab = Generator<Intent, Outcome, StepResult>
 
@@ -1289,6 +1310,15 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     expect(cocido / crudo).toBeLessThan(0.95 / 0.38)
   })
 
+  // EL PLAZO, Y QUÉ LO MOVIÓ. Estos tres bloques barren masas contra `stepWorld`
+  // sobre `elCampamento`, que tiene `dios` puesto para tener el agua del río. Desde
+  // que el mundo materializa las `sueltas` del decreto (`world/src/step.ts`,
+  // `abrirChunk`), esa escena de siete cuerpos pasa a tener ~90: el dios le pone la
+  // leña, el junco y la corteza de los 3×3 chunks alrededor de la orilla. Los
+  // NÚMEROS no se movieron ni un decimal —282,1714 · 645,8743 · 659,8629 ·
+  // 701,8286, y los 200 pescados siguen saliendo los 200 cocidos— y lo único que se
+  // movió es el reloj: 31 barridos de 1600 ticks cuestan diez veces más cuerpos por
+  // tick. Se agranda el plazo y no se toca una aserción.
   it('EL PRECIO DEL FUEGO QUE COCINA: 659,86 y no 282,17, con la tabla', () => {
     // ─── EL NÚMERO QUE `@anima/oracle` NO PUEDE MEDIR ─────────────────────
     //
@@ -1332,7 +1362,7 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     expect(Number(de(0.5).costo.toFixed(4))).toBe(701.8286)
     // El factor entre los dos umbrales, que es el que hay que tener en la cabeza.
     expect(de(0.47).costo / de(0.2).costo).toBeCloseTo(2.339, 3)
-  })
+  }, 300_000)
 
   it('COCINAR NO ES RIVAL: un fuego cocina todo lo que se le ponga encima, al mismo precio', () => {
     // ─── LA SORPRESA DEL TRAMO, y es la que decide el número económico ─────
@@ -1375,19 +1405,15 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     expect(cocidos).toBe(cuantos)
     expect(arruinados).toBe(0)
     expect(violaciones).toEqual([])
-  })
+  }, 300_000)
 
-  it.fails('SIGUE ABIERTO · el arnés de conservación no puede juzgar una partida CON DIOS', () => {
+  it.fails('SIGUE ABIERTO · pero por UN camino de tres: lo que sale del banco no tiene la nutrición del banco', () => {
     // POR QUÉ SIGUE ABIERTO: `revisarInvariantes` compara los totales de las
     // conservadas antes y después del paso, y sólo acepta un aumento si algún
-    // evento `convierte` lo respalda (`acreditado()`, `world/src/invariants.ts`).
-    // El dios crea materia por TRES caminos y ninguno emite ese evento, así que en
-    // toda partida con dios el arnés grita conservación y no hay forma de
-    // distinguir un decreto legítimo de un agujero de verdad. Es el arnés más
-    // fuerte que tiene el mundo, y en el único mundo que se parece a una partida
-    // real está apagado de hecho.
+    // evento lo respalda (`acreditado()` y `decretado()`, `world/src/invariants.ts`).
+    // El dios creaba materia por TRES caminos y ninguno emitía uno.
     //
-    // MEDIDO sobre la cadena de este bloque, y son los tres caminos:
+    // MEDIDO ENTONCES, sobre la cadena de este bloque:
     //
     //   t=1   `materializarPozos` pone el banco, y saltan LAS TRES conservadas:
     //         mass 6,74 → 482,57, nutrition 18,00 → 3321,43 y fuelEnergy
@@ -1399,16 +1425,36 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     //         y las tres conservadas suben con él, en un tick cuyo único evento es
     //         `espero`.
     //
-    // Los tres son conducta querida —el techo calórico del dios es justamente el
-    // que los acota, y `oracle/tests/presupuesto.test.ts` verifica que se respeta—
-    // pero el arnés de conservación no tiene cómo saberlo.
+    // ─── LO QUE CERRÓ EL EVENTO `decreta`, Y LO QUE NO ─────────────────────
     //
-    // QUÉ HARÍA FALTA: que los tres emitan un evento que `acreditado()` sepa leer.
-    // No alcanza con `convierte`, que va de una cualidad a otra: haría falta una
-    // clase nueva —«el dios decretó tanta materia acá»— y con ella el arnés podría
-    // afirmar lo que hoy no puede, que es que **el decreto es lo ÚNICO que crea
-    // materia**. Es `world/src/dios.ts` + `world/src/invariants.ts` + un `SimEvent`
-    // nuevo, o sea que toca el journal y la crónica: pide su ADR.
+    // `world/src/step.ts` narra ahora, por tick y por cuenta conservada, cuánta
+    // materia puso el dios: al abrir un chunk y al reponer un pozo. Con eso los
+    // caminos 1 y 3 se apagaron enteros, y el barrido de 400 ticks de caminata del
+    // paquete `world` pasó de 96 y 21 violaciones a CERO y CERO
+    // (`world/tests/ataque-a-las-sueltas.test.ts`, bloque 5, con el control ciego
+    // al lado que sigue dando 96 y 21).
+    //
+    // MEDIDO HOY sobre esta misma cadena, y es UNA sola línea:
+    //
+    //   t=30  nutrition 3310,72 → 3319,15
+    //
+    // O sea: no queda nada de «el dios materializa sin declarar». Lo que queda es
+    // otra cosa, y hay que decirla con su nombre porque cambia a quién le toca
+    // arreglarla: **la pieza que sale del banco no tiene la misma nutrición por
+    // kilo que el banco**. La masa cuadra al bit —no hay una sola violación de
+    // `mass`—, así que no es materia de más: es que `cuerpoDePozo` proyecta el
+    // stock con `stock.yields` y `draw` puede entregar otra cosa
+    // (`intencionAplicar`, `r.yields`), y las dos sustancias no valen lo mismo por
+    // kilo. Declararlo con un `decreta` sería taparlo: el evento diría «el dios
+    // puso 8,43 de nutrición» cuando lo que pasó es que el banco mentía sobre lo
+    // que tenía adentro.
+    //
+    // QUÉ HARÍA FALTA AHORA: que el banco proyecte lo que de verdad va a salir, o
+    // que la pieza salga con la sustancia que el banco declara. Es de `dios.ts` +
+    // `@anima/oracle` y no de la costura, y es una decisión de modelo: pide su ADR.
+    // Mientras tanto `Partida` sigue con las cinco preguntas de `revisarEstado`
+    // —ver `PartidaOptions.vigilar`—, porque la sexta acusaría en cada pesca, y la
+    // partida del criterio pesca.
     //
     // Se mide con la cadena entera y no con un mundo de juguete a propósito: el
     // agujero sólo aparece cuando hay dios, y ningún test del corpus de
@@ -1582,7 +1628,10 @@ describe('8. la leña, medida contra `stepWorld`', () => {
     // suave que permita negociar el precio.
     expect(primeraQueCocina).toBe(0.47)
     expect(Number(precioDeLaPrimera.toFixed(4))).toBe(659.8629)
-  }, 30_000)
+    // 30 s eran de sobra con siete cuerpos en la escena; con el decreto
+    // materializado son ~90 y el barrido tarda cuatro veces más. Ver la nota del
+    // bloque 7: los números no se movieron, se movió el reloj.
+  }, 300_000)
 
   it.fails('SIGUE ABIERTO · LA YESCA DEL CAMPAMENTO ES UN CUERPO QUE EL MUNDO NO DEJA TIRADO', () => {
     // POR QUÉ SIGUE ABIERTO: el campamento del bloque 7 —y con él los 659,8629 que
