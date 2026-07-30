@@ -165,6 +165,44 @@ cada fuego nace de frotar dos palos.
 
 ---
 
+## 2·bis · Cómo NO gastar horas de más
+
+Los tramos pasaron de 2h21 a 7h33 y lo que creció no fue la dificultad: fue la
+suite. Medido paquete por paquete, con `pnpm --filter @anima/X test`:
+
+| paquete | tarda |
+|---|---:|
+| `@anima/juez` | 488 s |
+| `@anima/mind` | 101 s |
+| `@anima/world` | 81 s |
+| `@anima/perceive` | 40 s |
+| `@anima/plan` | 22 s |
+| `@anima/oracle` | 13 s |
+| `@anima/physics` · `@anima/skills` | 9 s |
+
+Tres reglas, y la primera vale más que las otras dos juntas:
+
+1. **Un agente corre SÓLO el paquete que toca** (`pnpm --filter @anima/X test`)
+   mientras trabaja. `pnpm ii:test` se corre UNA vez, al final, y lo corre quien
+   cierra el tramo. Un agente de `@anima/plan` que corre la suite entera cuatro
+   veces gasta 50 minutos para verificar 22 segundos de trabajo.
+2. **Las corridas caras van detrás de `ANIMA_BANCO=1`.** `hito-5-la-emergencia`
+   ya lo hace: sin la variable corre 3 partidas × 2.000 ticks y lo etiqueta como
+   muestra; el veredicto del criterio sale de la corrida en serio, que es la
+   única que se cita. Se imprime siempre, se afirma sólo midiendo en serio.
+3. **Un tramo acotado no necesita adversario.** El aparato de cuatro fases
+   —arreglar, medir, atacar, reparar— vale cuando hay una decisión de diseño
+   adentro. Para un `if` que faltaba, alcanza con arreglar y medir. Las fases son
+   barreras: el agente más lento traba a toda la fase siguiente.
+
+Y la asimetría que conviene tener presente antes de recortar de más: **los tramos
+que más tardaron son los que encontraron las causas raíz** —la cocción, las
+sueltas que no se materializaban— y **los cortos son los que produjeron los
+números que después hubo que corregir**. Lo que hay que recortar es la
+infraestructura, no la desconfianza.
+
+---
+
 ## 3 · Cómo se trabaja acá — esto es lo que más importa
 
 El usuario lo dijo así en la primera línea de la sesión anterior, y sostenerlo es

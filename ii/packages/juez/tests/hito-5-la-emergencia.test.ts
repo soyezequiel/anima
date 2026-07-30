@@ -528,6 +528,20 @@ const TANQUE_LLENO = 1000
 /** Cuántas partidas del control se corren cuando NO se está midiendo en serio. */
 const PARTIDAS_CORTAS = 3
 
+/**
+ * Y los TICKS del muestreo, que es donde estaba el costo de verdad.
+ *
+ * Acortar de 20 partidas a 3 sin tocar los ticks dejaba 60.000 ticks: medido,
+ * el archivo seguía tardando 592 s. El costo no está en cuántas partidas hay
+ * sino en cuántos ticks se corren, y por eso las dos cosas se acortan juntas.
+ *
+ * 2.000 ticks son 100 segundos de mundo: alcanza para que la cadena de la caña
+ * ocurra entera —el pescado entra a la mano en el tick 109— y para que los
+ * detectores tengan de dónde disparar. Lo que NO alcanza es para el veredicto,
+ * y por eso el veredicto sale de `ANIMA_BANCO=1`.
+ */
+const TICKS_CORTOS = 2_000
+
 // ─── El arnés: la escena la decreta el dios, y acá sólo se corre ─────────────
 //
 // LO QUE ESTE BLOQUE TENÍA ANTES, y por qué se fue: armaba a mano la orilla, la
@@ -830,13 +844,30 @@ async function correrElBanco(tanque: number, cuantas: number, tope = TICKS): Pro
 // vez lo corren una sola vez, y el `await` de cada uno espera al mismo trabajo.
 let elCanonico: Promise<Banco> | undefined
 function canonico(): Promise<Banco> {
-  elCanonico ??= correrElBanco(TANQUE, PARTIDAS)
+  // ─── LA CORRIDA CANÓNICA TAMBIÉN SE GATEA, y hasta hoy no lo hacía ─────────
+  //
+  // El control ya se acortaba sin `ANIMA_BANCO=1` y la canónica no, así que la
+  // suite normal pagaba **20 partidas × 20.000 ticks** en cada corrida. Medido
+  // paquete por paquete: `@anima/mind` tarda 101 s, `@anima/world` 81, y este
+  // paquete solo se comía más que los siete restantes juntos.
+  //
+  // No es aflojar el criterio: el veredicto del Hito 5 sale de la corrida con
+  // `ANIMA_BANCO=1`, que es la que el documento pide y la única que se cita. Lo
+  // que corre en la suite normal es una MUESTRA, y el informe la etiqueta como
+  // tal (ver el `«sin ANIMA_BANCO=1»` del cuadro). Es el mismo patrón que
+  // `world/tests/banco-el-tick.test.ts` ya tenía decidido: se imprime siempre, se
+  // afirma sólo midiendo en serio.
+  elCanonico ??= MIDIENDO_EN_SERIO
+    ? correrElBanco(TANQUE, PARTIDAS)
+    : correrElBanco(TANQUE, PARTIDAS_CORTAS, TICKS_CORTOS)
   return elCanonico
 }
 
 let elControl: Promise<Banco> | undefined
 function control(): Promise<Banco> {
-  elControl ??= correrElBanco(TANQUE_LLENO, MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS)
+  elControl ??= MIDIENDO_EN_SERIO
+    ? correrElBanco(TANQUE_LLENO, PARTIDAS)
+    : correrElBanco(TANQUE_LLENO, PARTIDAS_CORTAS, TICKS_CORTOS)
   return elControl
 }
 
@@ -1132,7 +1163,8 @@ describe('(0) las veinte semillas, antes de correr una sola partida', () => {
           .join('\n') +
         `\n  firmas distintas: ${String(firmas.size)} de ${String(b.corridas.length)}\n`,
     )
-    expect(firmas.size).toBe(PARTIDAS)
+    // Ídem: las firmas son una por partida corrida.
+    expect(firmas.size).toBe(MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS)
   }, 600_000)
 })
 
@@ -1308,8 +1340,13 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // Lo que se afirma siempre acá es lo ESTRUCTURAL: que el banco corrió lo que
     // dijo que iba a correr. Los números del veredicto van abajo, cada uno con su
     // aserción y su color.
-    expect(b.corridas.length).toBe(PARTIDAS)
-    expect(new Set(b.corridas.map((c) => c.semilla)).size).toBe(PARTIDAS)
+      // Se exige LO QUE SE CORRIÓ y no un 20 clavado: sin `ANIMA_BANCO=1` esto
+      // es una muestra de 3, y afirmar 20 sobre una muestra de 3 sería exigir
+      // algo que nadie midió. El veredicto del criterio sigue saliendo de la
+      // corrida en serio, que es la única que se cita.
+    const cuantas = MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS
+    expect(b.corridas.length).toBe(cuantas)
+    expect(new Set(b.corridas.map((c) => c.semilla)).size).toBe(cuantas)
     for (const c of b.corridas) expect(c.veredicto.filas.length).toBe(SECUENCIAS.length)
   }, 600_000)
 
@@ -1615,7 +1652,7 @@ describe('(3) el control con el tanque lleno', () => {
 
     // Y lo caro se afirma sólo midiendo en serio.
     if (!MIDIENDO_EN_SERIO) return
-    expect(b.corridas.length).toBe(PARTIDAS)
+    expect(b.corridas.length).toBe(MIDIENDO_EN_SERIO ? PARTIDAS : PARTIDAS_CORTAS)
     expect(vividos / presupuesto).toBeGreaterThan(0.9)
   }, 900_000)
 })
