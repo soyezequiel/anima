@@ -324,10 +324,44 @@ decisión sobre la cota del mundo.
    (`hoja`, 180 °C) y de que frotar cuesta proporcional a la masa.
 
    **Las salidas, y ninguna es «aflojar el criterio»:**
-   - **(a) que el dios siembre comida que pague cruda.** Es la única que no toca una
-     constante: el catálogo YA tiene tres sustancias que pagan crudas —huevo, médula
-     y grasa— y el dios no siembra ninguna en los nueve chunks del arranque
-     (número 34 de la sección 5 de `como-se-trabaja.md`). Es de `@anima/oracle`.
+   - **(a) que el dios siembre comida que pague cruda — ELEGIDA POR EL USUARIO,
+     IMPLEMENTADA, MEDIDA Y REVERTIDA: NO CIERRA.** El catálogo tiene tres
+     sustancias que pagan crudas —huevo, médula y grasa— y el dios no siembra
+     ninguna (número 34 de la sección 5). Se probó la regla «todo bioma que nombra
+     `carne` suelta `grasa`», y choca de frente con un invariante que el proyecto ya
+     tenía afirmado en `oracle/tests/presupuesto.test.ts`: **«SIN TRABAJO la energía
+     neta acumulada es NEGATIVA, en las cien»** (el criterio del riesgo 4, reforzado
+     por el ADR II-0013). Los dos extremos, medidos:
+
+     | grasa sembrada | neto del carroñero (tiene que ser < 0) | aliento crudo por celda (tiene que ser > 0,05) |
+     |---|---|---|
+     | peso 2–3, 0,4–2,0 kg | **+5746** ✗ | 0,161 ✓ (11 de 20 semillas) |
+     | peso 1, 0,07–0,26 kg | **+12,9** (el borde) | **0,00827** ✗ (0 de 20) |
+
+     O sea que en el borde donde no trabajar deja de pagar, lo crudo rinde **6×
+     menos** de lo que cuesta caminar hasta él. **La ventana está vacía**, y el
+     motivo es estructural y no de calibración: **la mente y el carroñero ingenuo
+     levantan LA MISMA grasa.** Ser selectivo ahorra el veneno, no agrega comida, así
+     que el guardián acota exactamente la cantidad de la que la mente depende.
+
+     Y dos efectos de borde que aparecieron y hay que tener en cuenta si alguien
+     vuelve por acá:
+     - **`grasa` es también combustible de primera** («lo único que es comida Y
+       combustible», dice su ficha), así que sembrarla mueve además la economía de
+       la leña: el fuego «sostenido» pasó de 19 partidas de 100 en rojo a 8/13/16
+       según la calibración;
+     - **las tres sustancias que pagan crudas tienen el tag `carnoso`**, y
+       `especiesDe` (`oracle/src/pesca.ts`) decide con ese tag qué vive en un cuerpo
+       de agua. Sembrar cualquiera de las tres en un bioma con una gota hace que un
+       charco entregue trozos de grasa. No se esquiva eligiendo otra: pediría que
+       `especiesDe` distinga un animal de una PARTE de un animal.
+   - **(a·bis) LA QUE LA MEDICIÓN SUGIERE, y no estaba en la lista.** Que la comida
+     cruda exista pero **no esté tirada**: que haya que trabajarla. Es lo que los
+     nombres del catálogo ya insinúan —`huevo` pide un nido y `medula` pide partir
+     el hueso—. Con eso el invariante del riesgo 4 se sostiene POR CONSTRUCCIÓN
+     (el carroñero come lo que está tirado, y esto no lo está) y la criatura tiene
+     una puerta a la comida que no es el fuego. Cuesta más: es una técnica, no una
+     fila en la tabla de biomas.
    - **(b) subir el tanque de arranque.** Con 1000 el piso se paga (quedan 354,5) y
      la escalera del punto 1 pasa a valer mucho: un fuego de 2,9 kg sale 860 en vez
      de 4020. Es exactamente la corrida «control» que ya mide 2 de 9 en el juez.
