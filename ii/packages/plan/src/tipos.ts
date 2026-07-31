@@ -625,6 +625,26 @@ export interface Frontera {
    */
   readonly muertos: readonly RamaMuerta[]
   readonly expansiones: number
+  /**
+   * CON QUÉ CATÁLOGO SE ARMÓ ESTA BÚSQUEDA.
+   *
+   * Una frontera es una promesa sobre un catálogo: los nodos abiertos se
+   * expandieron contra unas filas, y los muertos murieron porque ninguna fila
+   * los cubría. Si el catálogo cambió entre dos ticks —la criatura aprendió algo
+   * o se le revocó algo— retomarla sería seguir buscando con media tabla vieja,
+   * y peor: una rama que murió por «no hay esquema» seguiría muerta aunque el
+   * esquema acabe de entrar.
+   *
+   * `plan()` la DESCARTA y replantea desde cero cuando no coincide. Es la misma
+   * disciplina que el ADR II-0012 le puso al presupuesto anytime, y el precio es
+   * el correcto: se pierde una búsqueda a medias, no se gana un plan mentiroso.
+   *
+   * Va como campo de la frontera y no como argumento de `plan()` porque es un
+   * dato DE LA FRONTERA: quien la guarda no tiene por qué acordarse aparte de
+   * con qué se armó, y si se lo dejara al que llama, el día que se olvide nadie
+   * se entera.
+   */
+  readonly catalogEpoch: number
 }
 
 /**

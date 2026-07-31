@@ -145,19 +145,51 @@ export function esquemasDe(v: PlannerCatalogView): readonly ConstructionSchema[]
 
 // ─── La identidad ───────────────────────────────────────────────────────────
 
+interface Sello {
+  readonly epoch: number
+  readonly digest: string
+}
+
+/**
+ * ─── EL SELLO ES PEREZOSO, y eso es lo que deja UN SOLO CAMINO ──────────────
+ *
+ * Serializar la tabla entera y hashearla no es gratis, y `plan()` corre por
+ * tick. Si sellar fuera ansioso, envolver la escotilla de laboratorio
+ * (`opciones.esquemas`) en una vista le cobraría ese precio a cada corrida del
+ * banco, y la salida barata sería no envolverla — o sea, un segundo camino
+ * adentro de `plan()`, que es justo lo que este gate vino a sacar.
+ *
+ * Con el sello perezoso no hay que elegir: la lista pelada entra por la misma
+ * puerta y no paga nada hasta que alguien pregunte por su identidad. El que
+ * pregunta hoy es el descarte de la frontera vencida, y sólo cuando hay una
+ * frontera de por medio.
+ *
+ * Se calcula UNA vez por vista: la vista es inmutable —las listas se copian al
+ * construirla— así que el valor no puede quedar viejo.
+ */
 function sellar(
   core: readonly ConstructionSchema[],
   build: readonly CatalogCapability[],
   skill: readonly CatalogCapability[],
 ): PlannerCatalogView {
-  const manifiesto = manifiestoDe(core, build, skill)
-  const [a, b] = dosCarriles(manifiesto)
+  let sello: Sello | undefined
+  const sellado = (): Sello => {
+    if (sello === undefined) {
+      const [a, b] = dosCarriles(manifiestoDe(core, build, skill))
+      sello = { epoch: a, digest: a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0') }
+    }
+    return sello
+  }
   return {
     coreSchemas: core,
     buildCapabilities: build,
     skillCapabilities: skill,
-    catalogEpoch: a,
-    registryDigest: a.toString(16).padStart(8, '0') + b.toString(16).padStart(8, '0'),
+    get catalogEpoch(): number {
+      return sellado().epoch
+    },
+    get registryDigest(): string {
+      return sellado().digest
+    },
   }
 }
 

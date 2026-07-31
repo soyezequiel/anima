@@ -5,9 +5,10 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: **2026-07-31**, con el **tramo A del Gate 5→6** cerrado: la
-costura del catálogo llega hasta la mente y **la deuda 1 del gate está pagada**
-(ver el final de la sección 0·bis). Antes de eso, el gate decidido y escrito
+Última actualización: **2026-07-31**, con los **tramos A y B del Gate 5→6**
+cerrados: la costura del catálogo llega hasta la mente —**la deuda 1 del gate está
+pagada**— y una frontera armada con otro catálogo se descarta y se replantea (ver
+el final de la sección 0·bis). Antes de eso, el gate decidido y escrito
 (sección 0·bis, y el criterio entero en
 [`gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md)), y antes el
 **tramo Ñ** (el ancla del fondo y el rumbo del `explore`: el punto 9 de la
@@ -66,9 +67,10 @@ hasta la mente es **deuda del gate**.
 > aparece un lector nuevo de `ESQUEMAS`/`SCHEMA_INDEX`. Es lo que faltaba: la
 > deuda creció a cuatro sitios justamente porque agregar el quinto no rompía nada.
 >
-> Lo que NO se hizo, para que nadie lo dé por hecho: **una frontera con otro
-> `catalogEpoch` todavía no se descarta.** El epoch está en la vista, pero
-> `Frontera` no lo lleva y `plan()` no lo compara.
+> **Y el tramo B cerró el cabo suelto:** `Frontera` lleva el `catalogEpoch` con el
+> que se armó y `plan()` la descarta y replantea cuando no coincide. Sellar pasó a
+> ser perezoso, que es lo que dejó que la escotilla de laboratorio entre por el
+> mismo camino en vez de tener el suyo.
 
 ### Las trece decisiones de producto, que NO se vuelven a preguntar
 
@@ -135,8 +137,8 @@ capacidades físicas disponibles en ese nivel.*
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2506 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
-nueve typechecks limpios.** Corridos enteros al cerrar el tramo A del gate, mirando
+**Nueve paquetes, 2514 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+nueve typechecks limpios.** Corridos enteros al cerrar el tramo B del gate, mirando
 el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
 dos cohortes del banco de la mente se reparten en cinco tandas desde el tramo Ñ,
@@ -165,8 +167,8 @@ otra máquina, hay que pushear antes.
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
-| `@anima/plan` | **el catálogo como vista**, `goalGraph()`, `plan()` anytime, la poda de lo ya hecho | 312 (+1 todo) |
-| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, el portón de despegue | 317 |
+| `@anima/plan` | **el catálogo como vista**, `goalGraph()`, `plan()` anytime, la poda de lo ya hecho | 319 (+1 todo) |
+| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, el portón de despegue | 318 |
 | `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 126 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.

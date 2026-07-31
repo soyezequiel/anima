@@ -120,7 +120,7 @@ import { baseRoleName, isOptionalRole, specOf } from '@anima/physics'
 import type { BodyId, BodyView, Cell, Where, WhereCell } from '@anima/skills'
 import { distancia } from '@anima/skills/innatas'
 
-import { CATALOGO_CORE, esquemasDe } from './catalogo.js'
+import { CATALOGO_CORE, catalogoDe, esquemasDe } from './catalogo.js'
 import { claveDeVia, procesoDe } from './esquemas.js'
 import { cumple, cumpleCuerpo, firmaDe, implica, interpretar, textoDe } from './predicado.js'
 import { resolver } from './referencias.js'
@@ -2141,18 +2141,22 @@ export function plan(
   // de la VISTA del core y no de `ESQUEMAS`: ésa es la puerta que el Gate 5→6
   // cierra, y no tiene una segunda.
   //
-  // La escotilla de laboratorio se toma tal cual, sin envolverla en una vista, y
-  // es a propósito: sellar una vista cuesta serializar y hashear la tabla entera,
-  // y `plan()` se llama por tick. Envolverla le cobraría ese precio a cada
-  // corrida del banco para producir una identidad que nadie mira — la lista
-  // pelada no tiene procedencia y ése es justamente su punto.
-  const todos =
-    opciones?.catalogo !== undefined
-      ? esquemasDe(opciones.catalogo)
-      : (opciones?.esquemas ?? esquemasDe(CATALOGO_CORE))
+  // La escotilla de laboratorio entra por la MISMA puerta, envuelta en una vista.
+  // Puede hacerlo porque sellar es perezoso (ver `sellar` en `catalogo.ts`): una
+  // lista pelada no paga el hash hasta que alguien le pregunte la identidad, y
+  // acá eso pasa sólo cuando hay una frontera de por medio.
+  const catalogo =
+    opciones?.catalogo ?? (opciones?.esquemas === undefined ? CATALOGO_CORE : catalogoDe(opciones.esquemas))
+  const todos = esquemasDe(catalogo)
+
+  // UNA FRONTERA DE OTRO CATÁLOGO NO SIRVE, y se tira acá y no más adelante para
+  // que el resto de la función no tenga que preguntarse nunca de dónde salió.
+  // El `&&` corta antes de leer `catalogEpoch`, así que una corrida sin frontera
+  // —que es la mayoría— no toca el sello.
+  const vigente = frontera !== undefined && frontera.catalogEpoch === catalogo.catalogEpoch ? frontera : undefined
 
   const abiertos: NodoAbierto[] =
-    frontera === undefined
+    vigente === undefined
       ? [
           {
             falta: textoDe(g.goal),
@@ -2166,9 +2170,9 @@ export function plan(
             gastados: [],
           },
         ]
-      : [...frontera.abiertos]
-  const muertos: RamaMuerta[] = frontera === undefined ? [] : [...frontera.muertos]
-  let hechas = frontera?.expansiones ?? 0
+      : [...vigente.abiertos]
+  const muertos: RamaMuerta[] = vigente === undefined ? [] : [...vigente.muertos]
+  let hechas = vigente?.expansiones ?? 0
   let enEstaLlamada = 0
 
   abiertos.sort(comparaNodos)
@@ -2177,7 +2181,7 @@ export function plan(
     if (enEstaLlamada >= presupuesto) {
       return {
         k: 'parcial',
-        frontera: { abiertos, muertos, expansiones: hechas },
+        frontera: { abiertos, muertos, expansiones: hechas, catalogEpoch: catalogo.catalogEpoch },
         expansiones: hechas,
       }
     }

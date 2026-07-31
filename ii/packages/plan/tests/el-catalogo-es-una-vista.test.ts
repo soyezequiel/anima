@@ -384,6 +384,21 @@ describe('la identidad del catálogo es su CONTENIDO', () => {
     expect(catalogoDe([gemelo]).registryDigest).toBe(catalogoDe([con]).registryDigest)
   })
 
+  it('sellar es PEREZOSO: la identidad se calcula recién cuando alguien la mira', () => {
+    // No es una micro-optimización, es lo que deja que la escotilla de
+    // laboratorio entre por el mismo camino que todo lo demás. Envolver una lista
+    // pelada en una vista cuesta serializar y hashear la tabla entera, y `plan()`
+    // corre por tick; con el sello perezoso, una corrida que no mira la identidad
+    // no paga nada, y una que sí la mira la paga UNA vez.
+    //
+    // Se mide por el mecanismo y no por el reloj (sección 3 de `como-se-trabaja`):
+    // que dos lecturas devuelvan el MISMO string prueba la memoización sin
+    // cronómetro y sin depender de cuántos núcleos haya libres.
+    const v = catalogoDe(ESQUEMAS)
+    expect(v.registryDigest).toBe(v.registryDigest)
+    expect(v.catalogEpoch).toBe(v.catalogEpoch)
+  })
+
   it('`catalogEpoch` es función del digest y no un contador', () => {
     // Escrito como test y no sólo como comentario: dos vistas con el mismo
     // digest tienen que tener el mismo epoch, hayan pasado por los registros que
@@ -396,5 +411,92 @@ describe('la identidad del catálogo es su CONTENIDO', () => {
 
     expect(enDosPasos.registryDigest).toBe(directo.registryDigest)
     expect(enDosPasos.catalogEpoch).toBe(directo.catalogEpoch)
+  })
+})
+
+// ─── La frontera vencida ────────────────────────────────────────────────────
+
+describe('una frontera armada con otro catálogo se descarta y se replantea', () => {
+  // Una frontera es una búsqueda A MEDIO HACER: `plan()` es anytime, y cuando se
+  // le acaba el presupuesto guarda los nodos abiertos y sigue el tick que viene.
+  // Con un catálogo que puede cambiar en el medio, retomarla sería seguir
+  // buscando con media tabla vieja — nodos expandidos con filas que ya no están,
+  // o sin las que acaban de entrar.
+  //
+  // Es la misma disciplina que el [ADR II-0012](../../docs/decisions/II-0012-el-presupuesto-del-plan-va-en-expansiones.md)
+  // le puso al presupuesto anytime: **una frontera guardada es una promesa sobre
+  // un catálogo, y si el catálogo cambió, la promesa venció.**
+  //
+  // Lo que hace observable el descarte es `expansiones`, que ACUMULA a través de
+  // los cortes (`hechas = frontera?.expansiones ?? 0`). Una frontera retomada
+  // sigue contando; una descartada arranca de cero. Y como cada llamada corta
+  // exactamente en el presupuesto, los números no dependen de cuántas filas tenga
+  // la tabla, que es lo que hace comparables los dos catálogos.
+
+  const PRESUPUESTO = 3
+
+  /** Una vista con las mismas filas del core más una capacidad: otro catálogo. */
+  const OTRO = conOverlay(CATALOGO_CORE, [CAPACIDADES_DE_LA_PESCA[0] as CatalogCapability])
+
+  function aMedias(catalogo: PlannerCatalogView, frontera?: Parameters<typeof plan>[3]): PlanResult {
+    return plan(meta(COMER), vista(CUERPOS_DEL_RIO, QS_DEL_RIO), PRESUPUESTO, frontera, { catalogo })
+  }
+
+  it('la premisa: con presupuesto 3 la búsqueda se corta, y son dos catálogos distintos', () => {
+    const r = aMedias(CATALOGO_CORE)
+    expect(r.k).toBe('parcial')
+    expect(CATALOGO_CORE.catalogEpoch).not.toBe(OTRO.catalogEpoch)
+  })
+
+  it('la frontera se lleva puesto el `catalogEpoch` con el que se armó', () => {
+    const r = aMedias(CATALOGO_CORE)
+    if (r.k !== 'parcial') throw new Error('la premisa cambió: no cortó')
+    expect(r.frontera.catalogEpoch).toBe(CATALOGO_CORE.catalogEpoch)
+  })
+
+  it('CON EL MISMO catálogo se retoma: las expansiones siguen contando', () => {
+    // La mitad que NO se puede romper mientras se arregla la otra. Si el descarte
+    // se pasara de celoso y tirara toda frontera, `plan()` dejaría de ser anytime
+    // y volvería a empezar cada tick — y eso no se nota en ningún test de plan,
+    // sólo en el reloj.
+    const uno = aMedias(CATALOGO_CORE)
+    if (uno.k !== 'parcial') throw new Error('la premisa cambió: no cortó')
+    const dos = aMedias(CATALOGO_CORE, uno.frontera)
+    expect(dos.expansiones).toBe(2 * PRESUPUESTO)
+  })
+
+  it('CON OTRO catálogo se descarta: la búsqueda arranca de cero', () => {
+    const uno = aMedias(CATALOGO_CORE)
+    if (uno.k !== 'parcial') throw new Error('la premisa cambió: no cortó')
+    const dos = aMedias(OTRO, uno.frontera)
+    expect(dos.expansiones).toBe(PRESUPUESTO)
+  })
+
+  it('y lo replanteado es IDÉNTICO a no haberle pasado nunca una frontera', () => {
+    // El que dice que descartar está bien hecho. «Arrancó de cero» lo probaría
+    // igual un `plan()` que tirara la frontera y además se olvidara de algo: el
+    // contador diría 3 y el resultado sería basura. Lo que hay que afirmar es que
+    // la corrida descartada es la MISMA que la que nunca vio una frontera vieja.
+    const uno = aMedias(CATALOGO_CORE)
+    if (uno.k !== 'parcial') throw new Error('la premisa cambió: no cortó')
+    const conBasura = aMedias(OTRO, uno.frontera)
+    const desdeCero = aMedias(OTRO)
+    expect(JSON.stringify(conBasura)).toBe(JSON.stringify(desdeCero))
+  })
+
+  it('y el plan COMPLETO sale igual cortando a través de un cambio de catálogo', () => {
+    // El contrato del anytime, atravesado por el caso nuevo: cortar y reanudar
+    // tiene que dar el mismo plan que una corrida de una sola vez. Acá el
+    // catálogo cambia a mitad de camino, así que lo que hay que obtener es el
+    // plan del catálogo NUEVO — no una mezcla de los dos, que es exactamente lo
+    // que saldría si la frontera vieja se reusara.
+    const cortada = aMedias(CATALOGO_CORE)
+    if (cortada.k !== 'parcial') throw new Error('la premisa cambió: no cortó')
+    const conElNuevo = plan(meta(COMER), vista(CUERPOS_DEL_RIO, QS_DEL_RIO), 500, cortada.frontera, {
+      catalogo: OTRO,
+    })
+    const deUnaVez = plan(meta(COMER), vista(CUERPOS_DEL_RIO, QS_DEL_RIO), 500, undefined, { catalogo: OTRO })
+    expect(conElNuevo.k).toBe('plan')
+    expect(JSON.stringify(conElNuevo)).toBe(JSON.stringify(deUnaVez))
   })
 })

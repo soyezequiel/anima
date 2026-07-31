@@ -315,10 +315,36 @@ Verde y verificado: `pnpm ii:test` **exit 0** (2506 tests, +1 skipped, +1 todo) 
    `alientoDeConseguir`, y su índice se arma en `@anima/mind`, no en el
    planificador, justamente para no fijar la respuesta sin medirla.
 
-**Y lo que NO se hizo, dicho para que nadie lo dé por hecho:** una frontera
-creada con otro `catalogEpoch` **todavía no se descarta**. La vista tiene con qué
-—el epoch está ahí— pero `Frontera` no lo lleva adentro y `plan()` no lo compara.
-Es lo primero del tramo siguiente.
+### HECHO — tramo B, 2026-07-31. La frontera vencida
+
+Era el cabo suelto del tramo A, y ya no lo es. `Frontera` lleva adentro el
+`catalogEpoch` con el que se armó, y `plan()` la **descarta y replantea desde
+cero** cuando no coincide. Es la misma disciplina del ADR II-0012 aplicada al
+catálogo: una frontera guardada es una promesa sobre una tabla, y si la tabla
+cambió, la promesa venció.
+
+Por qué el epoch va en la frontera y no como argumento de `plan()`: es un dato
+**de la frontera**. Quien la guarda no tiene por qué acordarse aparte de con qué
+se armó, y si se lo dejara al que llama, el día que se olvide no se entera nadie.
+
+**Y sellar pasó a ser PEREZOSO, que es lo que dejó un solo camino adentro de
+`plan()`.** Con sello ansioso, envolver la escotilla de laboratorio
+(`opciones.esquemas`) en una vista le cobraba el hash de la tabla entera a cada
+corrida del banco, y la salida barata era no envolverla — o sea, un segundo
+camino, que es lo que este gate vino a sacar. Perezoso, la lista pelada entra por
+la misma puerta y no paga nada hasta que alguien le pregunte la identidad.
+
+Lo que hace observable el descarte es `expansiones`, que acumula a través de los
+cortes: una frontera retomada sigue contando, una descartada arranca de cero. Y
+las dos mitades están afirmadas —que con el mismo catálogo SE RETOMA es tan
+importante como que con otro se tire: un descarte demasiado celoso apagaría el
+anytime entero y lo único que se movería es el reloj.
+
+Del lado de la mente hay un test más, en `mind/tests/la-escalera.test.ts`, para un
+modo de falla callado: si la mente le pasara a `plan()` un catálogo distinto del
+que cree usar, la frontera quedaría sellada con el epoch equivocado y se
+descartaría en cada tick. El plan que sale seguiría siendo correcto. Se afirma de
+qué catálogo es el sello, no el tiempo.
 
 ---
 

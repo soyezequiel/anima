@@ -35,8 +35,19 @@ import { describe, expect, it } from 'vitest'
 
 import type { QualityId } from '@anima/physics'
 import { HZ_DE_REFERENCIA, evalQuality, specOf } from '@anima/physics'
-import type { GoalId, PredicateSignature, Ref, Step } from '@anima/plan'
-import { EXPANSIONES_POR_TICK, firmaDe, interpretar, plan, procesoDe, resolver, SCHEMA_INDEX } from '@anima/plan'
+import type { ConstructionSchema, GoalId, PredicateSignature, Ref, Step } from '@anima/plan'
+import {
+  CATALOGO_CORE,
+  ESQUEMAS,
+  EXPANSIONES_POR_TICK,
+  conOverlay,
+  firmaDe,
+  interpretar,
+  plan,
+  procesoDe,
+  resolver,
+  SCHEMA_INDEX,
+} from '@anima/plan'
 import type { BodyId, BodyView, Cell, CellQuality, Clock, PlaceMemory, SelfView, Tag, Where, WhereCell } from '@anima/skills'
 
 import { Creencias, contextoDe } from '../src/creencias.js'
@@ -1005,6 +1016,33 @@ describe('requisito 4 · la frontera se guarda entre ticks', () => {
     expect(e.frontera).toBeDefined()
     expect(e.metaDeLaFrontera).toBe(COMIDA)
     expect(e.cortes).toBe(1)
+  })
+
+  it('y con el catálogo de ESTA partida: la frontera se sella con SU epoch', () => {
+    // ─── EL MODO DE FALLA QUE ESTE BLOQUE ATAJA, Y ES CALLADO ────────────────
+    //
+    // `plan()` descarta una frontera cuyo `catalogEpoch` no coincide con el del
+    // catálogo de hoy (Gate 5→6). Si la mente le pasara a `plan()` un catálogo
+    // distinto del que ella cree estar usando —el core, por ejemplo, olvidándose
+    // del overlay— la frontera quedaría sellada con el epoch equivocado y `plan()`
+    // la descartaría EN CADA TICK.
+    //
+    // Y eso no rompe ningún test: el plan que sale es correcto, sólo que la
+    // búsqueda vuelve a empezar de cero todas las veces. O sea que el anytime se
+    // apagaría entero y lo único que se movería es el reloj. Por eso se afirma el
+    // MECANISMO —de qué catálogo es el sello— y no el tiempo.
+    const conLoDeEstaPartida = conOverlay(CATALOGO_CORE, [
+      { clase: 'usar', de: 'algo-que-invento@1', esquema: ESQUEMAS[0] as ConstructionSchema },
+    ])
+    expect(conLoDeEstaPartida.catalogEpoch).not.toBe(CATALOGO_CORE.catalogEpoch)
+
+    const s = elRio()
+    const e = nuevoEstado()
+    avanzarReloj(e)
+    decidir(vistaDe(s), e, conCreencias({ presupuesto: 1, catalogo: conLoDeEstaPartida }))
+
+    expect(e.frontera).toBeDefined()
+    expect(e.frontera?.catalogEpoch).toBe(conLoDeEstaPartida.catalogEpoch)
   })
 
   it('la frontera es de UNA meta: cambiar de idea la tira', () => {
