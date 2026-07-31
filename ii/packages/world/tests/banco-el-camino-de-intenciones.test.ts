@@ -94,19 +94,48 @@
 // ─── EL CRITERIO DEL HITO 5 NO SE CUMPLE, Y YA NO ES POR ESTE CAMINO ────────
 //
 // 30,9 ms de p99 con 5000 cuerpos y 5000 criaturas, contra un techo de 5. Faltan
-// 6,2×. De esos 30,9:
+// 6,2×.
 //
-//   - 10,6 son el mundo QUIETO —`sistemaLeyes` sobre 5000 cuerpos, cero actores,
-//     cero intenciones—, que es trabajo de `@anima/physics` y está diagnosticado
-//     desde el Hito 2 en `banco-el-tick.test.ts`: el perfil quedó plano y lo que
-//     falta es un cambio de REPRESENTACIÓN —las cualidades de un cuerpo resueltas
-//     en un vector numérico, recalculado solo cuando cambian las partes—, no otra
-//     micro-optimización;
-//   - los otros 20,3 son 5000 criaturas moviéndose, o sea ~4,1 µs por criatura y
-//     por tick. Ahí adentro ya no queda ningún recorrido del mundo: quedan la copia
-//     de `bodies`, `actors` y `cells` que `abrir` hace en cada tick (`new Map`,
-//     5000 entradas), el reordenamiento de `cerrar` cuando nace o muere algo
-//     (`compararTexto` sobre 5000 ids), y un objeto nuevo por cada cuerpo tocado.
+// ─── DE DÓNDE SALEN, Y ESTA ATRIBUCIÓN ESTUVO MAL POR 10× ───────────────────
+//
+// Acá decía que 10,6 ms eran el mundo quieto y **«los otros 20,3 son 5000
+// criaturas moviéndose… la copia de `bodies`, `actors` y `cells` que `abrir`
+// hace en cada tick, el reordenamiento de `cerrar`, y un objeto nuevo por cada
+// cuerpo tocado»**. Es falso, y mandó a optimizar el lugar equivocado.
+//
+// MEDIDO por ablación, cortando el recorrido de leyes con una variable de
+// entorno y volviendo a correr este mismo barrido (p50, esta máquina):
+//
+//     modo                          0 actores   5000 actores
+//     completo                          9,60         21,65
+//     sin `paso()`, con `entornoDe`     0,57          2,48
+//     sin leyes y sin entorno           0,38          2,23
+//
+// O sea que **`paso()` es el 94% del tick quieto y el 89% del tick con 5000
+// criaturas**, y TODO lo demás junto —las tres copias de `abrir`, el camino de
+// intenciones entero, `cerrar`— son 2,2 ms de los 21,6. `entornoDe` son 0,2.
+// Optimizar las copias de mapas, que es adonde apuntaba el párrafo viejo, no
+// podría bajar el p99 ni un 10%.
+//
+// → La conclusión de fondo NO cambia y se refuerza: lo que falta es el cambio de
+//   REPRESENTACIÓN de `@anima/physics` —las cualidades resueltas en un vector
+//   numérico, recalculado sólo cuando cambian las partes—, que es lo que
+//   `banco-el-tick.test.ts` viene diciendo desde el Hito 2. Lo que cambia es a
+//   dónde NO hay que ir.
+//
+// ─── Y UNA PREGUNTA QUE PARECÍA LA SALIDA Y NO LO ERA ───────────────────────
+//
+// Si casi todo el tick es `paso()`, el atajo obvio es saltear los cuerpos que no
+// cambian. Medido: **cambian 5000 de 5000, los 120 ticks**. No es un defecto —
+// en esta escena los cuerpos arrancan a 0 °C en celdas a 15 y están relajando,
+// y la relajación es asintótica—. Una piedra tarda 59 ticks en quedarse quieta
+// de verdad (`physics/tests/el-cuerpo-quieto-sigue-siendo-el-mismo.test.ts`), o
+// sea que **este banco mide el transitorio y no el régimen**. Persiguiendo ese
+// 5000 de 5000 apareció otra cosa, ésa sí real: `conCualidad` devolvía un cuerpo
+// NUEVO aunque escribiera el valor que ya estaba, y con eso un mundo en
+// equilibrio se recreaba entero cada tick y todos los atajos por identidad del
+// motor quedaban en cero. Está reparado y afirmado en aquel archivo; en ESTA
+// escena no mueve el p99, porque acá no hay nada quieto.
 //
 // **NO SE ABLANDA EL CRITERIO NI SE MIDEN MENOS CRIATURAS.** El número está medido
 // con la estadística que el criterio pide y con la población que el criterio pide,

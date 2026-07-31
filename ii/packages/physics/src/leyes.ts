@@ -672,6 +672,26 @@ function conEstado(b: Body, cambios: QualityVector): Body {
 
 /** Una sola cualidad, por si la clave es dinámica. Evita un objeto con índice suelto. */
 function conCualidad(b: Body, q: QualityId, v: number): Body {
+  // ─── ESCRIBIR LO MISMO NO ES ESCRIBIR ───────────────────────────────────
+  //
+  // `leyTermica` llama acá para TODO cuerpo en TODO tick, y `leyHumedad`
+  // también. Un cuerpo que ya está en equilibrio con su celda recibe el número
+  // que ya tenía, y esta función igual armaba un `state` nuevo y un `Body`
+  // nuevo: **diez mil objetos por tick en el mundo de 5000 cuerpos, todos
+  // idénticos al anterior**.
+  //
+  // Y el costo no era la basura, que es lo que uno miraría primero. Era la
+  // IDENTIDAD: `Body` es inmutable, así que un cuerpo que no cambió tiene que
+  // seguir siendo EL MISMO OBJETO. Devolver una copia idéntica rompe todo memo
+  // río abajo —`sistemaLeyes` compara `r.body !== c.body` para no reescribir el
+  // mapa, el juez saltea con `yaMirados`— y hace que el mundo entero parezca
+  // cambiar en cada tick. Medido: los 5000 cuerpos «cambiaban» los 120 ticks,
+  // y ni uno solo tenía una clave distinta después del tick 0.
+  //
+  // La guarda es EXACTA y no una tolerancia: `===` sobre el número que ya está.
+  // Un cuerpo cuya cualidad no se mueve ni un ulp es, por definición de `Body`,
+  // el mismo cuerpo.
+  if (b.state[q] === v) return b
   const state: QualityVector = { ...b.state }
   state[q] = v
   return { ...b, state }

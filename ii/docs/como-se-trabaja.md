@@ -169,7 +169,7 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los treinta y cinco números corregidos, y la regla que dejó cada uno
+## 5 · Los treinta y seis números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
@@ -528,6 +528,30 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
      100 ticks (era 3 y 8), y las 15 innatas quedan 15/15;
    - y el diag 7 cambió de signo: caminar derecho TRAE madera a la vista (2
      sueltas en el piso a los 400 ticks donde antes quedaba 0).
+
+36. **«De los 30,9 ms del p99, 20,3 son las criaturas moviéndose: la copia de
+   `bodies`/`actors`/`cells` de `abrir`, el reordenamiento de `cerrar`, un objeto
+   nuevo por cuerpo tocado»** — falso, y por 10×. Medido por ablación, cortando el
+   recorrido de leyes con una variable de entorno y volviendo a correr el mismo
+   barrido (p50): completo 9,60 / 21,65; sin `paso()` 0,57 / 2,48; sin leyes ni
+   entorno 0,38 / 2,23. O sea que **`paso()` es el 89–94% del tick** y todo lo
+   demás junto —las tres copias, el camino de intenciones entero, `cerrar`— son
+   2,2 ms de 21,6. El párrafo viejo mandaba a optimizar justo lo que no se puede
+   ganar: las copias de mapas no bajarían el p99 ni un 10%.
+   → **REGLA: una atribución de costo es una MEDICIÓN, no una lectura del código.**
+   Restar dos corridas (con y sin la parte sospechada) cuesta diez minutos y es la
+   única forma de saber. Un párrafo que reparte milisegundos por inspección tiene
+   la misma pinta que uno medido y puede estar diez veces mal.
+
+   Y de perseguir ese número salieron dos cosas más, las dos escritas donde
+   corresponde: **cambian 5000 de 5000 cuerpos los 120 ticks** —no es un defecto,
+   es que el banco mide el TRANSITORIO: los cuerpos relajan hacia el ambiente y
+   una piedra tarda 59 ticks en quedarse quieta de verdad—, y **`conCualidad`
+   devolvía un `Body` nuevo aunque escribiera el valor que ya estaba**, con lo
+   cual un mundo en equilibrio se recreaba entero cada tick y todos los atajos por
+   identidad del motor (`r.body !== c.body`, `yaMirados`, `tagsDe`) quedaban en
+   cero sin que nada se pusiera rojo. Reparado con una guarda exacta y afirmado en
+   `physics/tests/el-cuerpo-quieto-sigue-siendo-el-mismo.test.ts`.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
