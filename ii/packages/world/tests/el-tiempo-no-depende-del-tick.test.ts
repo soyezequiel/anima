@@ -66,6 +66,7 @@ import {
   H_PERDIDA_POR_SEGUNDO,
   HZ_DE_REFERENCIA,
   MICROS_POR_SEGUNDO,
+  PHYSICS_VERSION,
   qualityOf,
   regimenDeLlama,
   T_AMBIENTE,
@@ -909,7 +910,7 @@ describe('30 Hz y 60 Hz no arrancan, y el error lo dice', () => {
       roto.set('mundo', { ...cabecera, hz })
       expect(() => restoreWorld(roto)).toThrow(new RegExp(`${String(hz)} Hz`))
       expect(() => restoreWorld(roto)).toThrow(/no se puede reproducir/)
-      expect(() => createJournal({ hz, semilla: 0 })).toThrow(new RegExp(`${String(hz)} Hz`))
+      expect(() => createJournal({ hz, semilla: 0, physicsVersion: PHYSICS_VERSION })).toThrow(new RegExp(`${String(hz)} Hz`))
     })
   }
 })

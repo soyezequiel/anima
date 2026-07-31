@@ -14,7 +14,7 @@
 // exactamente la clase de bug que este paquete existe para hacer imposible.
 
 import { describe, expect, it } from 'vitest'
-import { dtDeFrecuencia, FRECUENCIAS_ADMISIBLES, HZ_DE_REFERENCIA } from '@anima/physics'
+import { dtDeFrecuencia, FRECUENCIAS_ADMISIBLES, HZ_DE_REFERENCIA, PHYSICS_VERSION } from '@anima/physics'
 
 import { stepWorld } from '../src/step.js'
 import { hashWorldState, restoreWorld, worldSlots, pasoDelMundoA } from '../src/mundo.js'
@@ -98,7 +98,7 @@ describe('la frecuencia entra en la identidad del mundo', () => {
 
 describe('la crónica dice con qué se corrió', () => {
   it('el journal guarda frecuencia y semilla, y las devuelve al cargarlo', () => {
-    const de: CronicaDe = { hz: 25, semilla: 20260727 }
+    const de: CronicaDe = { hz: 25, semilla: 20260727, physicsVersion: PHYSICS_VERSION }
     const j = createJournal<Intent>(de)
     j.append(0, wait({ by: 'ana', seq: 0 }, 1))
     j.append(1, wait({ by: 'ana', seq: 0 }, 1))
@@ -108,23 +108,23 @@ describe('la crónica dice con qué se corrió', () => {
   })
 
   it('cargarlo con OTRA frecuencia es un error explícito, no una divergencia', () => {
-    const j = createJournal<Intent>({ hz: 25, semilla: 7 })
+    const j = createJournal<Intent>({ hz: 25, semilla: 7, physicsVersion: PHYSICS_VERSION })
     j.append(0, wait({ by: 'ana', seq: 0 }, 1))
     const data = j.toData()
-    expect(() => journalFromData(data, { hz: 20, semilla: 7 })).toThrow(/25 Hz/)
-    expect(() => journalFromData(data, { hz: 20, semilla: 7 })).toThrow(/muestreos distintos/)
+    expect(() => journalFromData(data, { hz: 20, semilla: 7, physicsVersion: PHYSICS_VERSION })).toThrow(/25 Hz/)
+    expect(() => journalFromData(data, { hz: 20, semilla: 7, physicsVersion: PHYSICS_VERSION })).toThrow(/muestreos distintos/)
     // Y la semilla, por la misma razón: son las dos cosas que hay que volver a
     // tener para llegar al mismo lado.
-    expect(() => journalFromData(data, { hz: 25, semilla: 8 })).toThrow(/semilla/)
+    expect(() => journalFromData(data, { hz: 25, semilla: 8, physicsVersion: PHYSICS_VERSION })).toThrow(/semilla/)
     // Con las dos iguales, abre.
-    expect(journalFromData(data, { hz: 25, semilla: 7 }).length).toBe(1)
+    expect(journalFromData(data, { hz: 25, semilla: 7, physicsVersion: PHYSICS_VERSION }).length).toBe(1)
   })
 
   it('una crónica con frecuencia inadmisible no se crea ni se abre', () => {
-    expect(() => createJournal<Intent>({ hz: 30, semilla: 0 })).toThrow(/30 Hz/)
-    const j = createJournal<Intent>({ hz: 20, semilla: 0 })
+    expect(() => createJournal<Intent>({ hz: 30, semilla: 0, physicsVersion: PHYSICS_VERSION })).toThrow(/30 Hz/)
+    const j = createJournal<Intent>({ hz: 20, semilla: 0, physicsVersion: PHYSICS_VERSION })
     j.append(0, wait({ by: 'ana', seq: 0 }, 1))
-    const roto = { ...j.toData(), de: { hz: 30, semilla: 0 } }
+    const roto = { ...j.toData(), de: { hz: 30, semilla: 0, physicsVersion: PHYSICS_VERSION } }
     expect(() => journalFromData(roto)).toThrow(/30 Hz/)
   })
 

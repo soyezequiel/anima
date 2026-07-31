@@ -33,6 +33,7 @@ import { describe, expect, it } from 'vitest'
 import {
   buildSeedPhysics,
   HZ_DE_REFERENCIA,
+  PHYSICS_VERSION,
   qualityOf,
   seg,
   unir,
@@ -529,7 +530,7 @@ describe('(d) el dado del mundo adentro del estado, y el determinismo intacto', 
     // error de por medio.
     const w0 = mundoConRio(o, anzuelo)
     const banco = idDePozo(o.cx, o.cy)
-    const j = createJournal<Intent>({ hz: w0.hz, semilla: 0 })
+    const j = createJournal<Intent>({ hz: w0.hz, semilla: 0, physicsVersion: PHYSICS_VERSION })
     let w = w0
     for (let t = 0; t < TICKS; t++) {
       const is = tirar(w, t, banco, anzuelo.id)

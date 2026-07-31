@@ -50,7 +50,7 @@
 // trascendente. El tick lo pone quien llama; el reloj del mundo es el contador
 // de ticks y nada más.
 
-import { esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES, HZ_DE_REFERENCIA } from '@anima/physics'
+import { esFrecuenciaAdmisible, FRECUENCIAS_ADMISIBLES, HZ_DE_REFERENCIA, PHYSICS_VERSION } from '@anima/physics'
 
 import { HASH_VACIO, hashWorld, worldHashFromHex } from './hash.js'
 import type { WorldHash } from './hash.js'
@@ -79,10 +79,44 @@ export interface CronicaDe {
    * olvidarse de la otra.
    */
   readonly semilla: number
+  /**
+   * LA VERSIÓN DE FÍSICA CONTRA LA QUE SE CORRIÓ.
+   *
+   * Entró por el mismo argumento con el que entró la semilla, y es el tercer
+   * miembro de la misma familia: es LO OTRO que hay que volver a tener para
+   * llegar al mismo lado.
+   *
+   * ─── EL SÍNTOMA QUE TAPA, MEDIDO EN EL GATE 5→6 ────────────────────────────
+   *
+   * Desde el punto 10 del gate, la crónica no lleva sólo intenciones: lleva
+   * también los REGISTROS de catálogo de la partida, y cada uno nombra una
+   * revisión de plano. Una revisión lleva la versión de física **adentro del
+   * hash** (`physics/src/plano.ts`), así que cargar la misma crónica contra otra
+   * física reconstruye un catálogo cuyas revisiones no corresponden a ningún
+   * plano que exista. No falla: da una partida coherente y equivocada, que es la
+   * clase de bug que no se encuentra nunca.
+   *
+   * ─── POR QUÉ ES OBLIGATORIO Y NO OPCIONAL CON DEFAULT ──────────────────────
+   *
+   * Porque un opcional con default es exactamente el modo de falla que este tipo
+   * existe para tapar, dicho tres párrafos más arriba para la semilla: «las dos
+   * cosas que hay que reproducir tienen que vivir juntas o alguien va a guardar
+   * una y olvidarse de la otra». Un default silencioso ES olvidarse.
+   *
+   * No mueve ninguna cadena de hashes: el eslabón mezcla `[chain, tick, seq,
+   * intent]` y `de` no entra. Un journal escrito antes de este campo no se puede
+   * cargar, y eso está bien: no hay ninguno guardado, y el día que lo haya, lo
+   * correcto es que reviente al abrirlo.
+   */
+  readonly physicsVersion: number
 }
 
-/** Lo que una crónica supone cuando no dice nada: la frecuencia de referencia. */
-export const CRONICA_POR_OMISION: CronicaDe = { hz: HZ_DE_REFERENCIA, semilla: 0 }
+/** Lo que una crónica supone cuando no dice nada: la referencia de las tres. */
+export const CRONICA_POR_OMISION: CronicaDe = {
+  hz: HZ_DE_REFERENCIA,
+  semilla: 0,
+  physicsVersion: PHYSICS_VERSION,
+}
 
 function exigirCronica(c: CronicaDe): CronicaDe {
   if (!esFrecuenciaAdmisible(c.hz)) {
@@ -93,7 +127,13 @@ function exigirCronica(c: CronicaDe): CronicaDe {
   if (!Number.isInteger(c.semilla)) {
     throw new RangeError(`semilla inválida en la crónica: ${String(c.semilla)}`)
   }
-  return { hz: c.hz, semilla: c.semilla }
+  // Se exige y no se rellena: un archivo sin este campo es un archivo de antes de
+  // que la crónica supiera contra qué física se corrió, y adivinárselo es la
+  // misma mentira que el campo vino a sacar.
+  if (!Number.isInteger(c.physicsVersion) || c.physicsVersion < 0) {
+    throw new RangeError(`versión de física inválida en la crónica: ${String(c.physicsVersion)}`)
+  }
+  return { hz: c.hz, semilla: c.semilla, physicsVersion: c.physicsVersion }
 }
 
 /** Una intención escrita en la crónica. */
@@ -263,6 +303,15 @@ export function journalFromData<I>(data: JournalData<I>, esperada?: CronicaDe): 
     if (esperada.semilla !== de.semilla) {
       throw new Error(
         `la crónica se escribió con semilla ${String(de.semilla)} y se está cargando con ${String(esperada.semilla)}`,
+      )
+    }
+    // Y la física, por lo mismo. Con el punto 10 del Gate 5→6 la crónica lleva
+    // adentro los registros de catálogo de la partida, y cada uno nombra una
+    // revisión de plano que tiene la versión de física adentro del hash: cargarla
+    // contra otra física da un catálogo cuyas revisiones no nombran ningún plano.
+    if (esperada.physicsVersion !== de.physicsVersion) {
+      throw new Error(
+        `la crónica se escribió contra la física ${String(de.physicsVersion)} y se está cargando contra la ${String(esperada.physicsVersion)}: las revisiones de plano que registró no nombran los mismos planos`,
       )
     }
   }

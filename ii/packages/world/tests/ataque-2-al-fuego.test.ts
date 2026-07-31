@@ -45,7 +45,7 @@
 //   · `it.fails(...)`       → HUECO ABIERTO, con su «POR QUÉ SIGUE ABIERTO».
 
 import { describe, expect, it } from 'vitest'
-import { FRECUENCIAS_ADMISIBLES, qualityOf, regimenDeLlama, T_AMBIENTE } from '@anima/physics'
+import { FRECUENCIAS_ADMISIBLES, PHYSICS_VERSION, qualityOf, regimenDeLlama, T_AMBIENTE } from '@anima/physics'
 import type { Body, QualityId } from '@anima/physics'
 
 import { stepWorld } from '../src/step.js'
@@ -768,7 +768,7 @@ describe('(f) gemelos, snapshot y crónica CON un `drive` de por medio', () => {
   it('el replay del journal reproduce una fricción tick por tick, con checkpoints', () => {
     // Y con `checkpoints`, que es lo que corta en el PRIMER tick que diverge en
     // vez de dejar un hash final distinto sin causa visible.
-    const j = createJournal<Intent>({ hz: 20, semilla: 0 })
+    const j = createJournal<Intent>({ hz: 20, semilla: 0, physicsVersion: PHYSICS_VERSION })
     let w = banco(0.5, 20)
     const checkpoints = new Map<number, ReturnType<typeof hashWorldState>>()
     for (let k = 1; k <= 80; k++) {

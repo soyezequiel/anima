@@ -16,7 +16,7 @@
 // arista que el diagrama no tiene — que es exactamente el motivo por el que el
 // catálogo no vive adentro de `WorldState`.
 //
-// ─── LAS CINCO COSAS QUE SE MIDEN ──────────────────────────────────────────
+// ─── LAS SEIS COSAS QUE SE MIDEN ───────────────────────────────────────────
 //
 //   (a) una crónica con las dos clases de renglón adentro se pliega DOS veces, y
 //       las dos veces da lo mismo: mismo `worldHash` y mismo `registryDigest`;
@@ -26,7 +26,8 @@
 //       `stepWorld` y no mueve el `worldHash`;
 //   (d) y el catálogo no se entera del mundo: mil intenciones no lo mueven;
 //   (e) la crónica sobrevive al ARCHIVO: pasa por JSON, se revalida la cadena, y
-//       las dos huellas siguen siendo las mismas.
+//       las dos huellas siguen siendo las mismas;
+//   (f) y la crónica DICE contra qué física se corrió, y lo hace cumplir al abrir.
 
 import { describe, expect, it } from 'vitest'
 
@@ -43,6 +44,7 @@ import {
   type RegistroDeCatalogo,
 } from '@anima/plan'
 import {
+  CRONICA_POR_OMISION,
   createJournal,
   goTo,
   hashWorldState,
@@ -256,25 +258,38 @@ describe('(e) la crónica sobrevive al archivo, con las dos huellas', () => {
   })
 })
 
-// ─── El otro guardián: la física NO está en la crónica, y hay que decirlo ───
+// ─── (f) La crónica dice contra qué FÍSICA se corrió ───────────────────────
+//
+// Era un hueco marcado con `it.fails` y se cerró en el mismo tramo. El argumento
+// es el mismo con el que entró la semilla, y está escrito en `CronicaDe`: es LO
+// OTRO que hay que volver a tener para llegar al mismo lado.
+//
+// El síntoma que tapa es de este punto y de ningún otro: la crónica lleva ahora
+// los REGISTROS de catálogo, cada uno nombra una revisión de plano, y una revisión
+// lleva la versión de física adentro del hash. Cargarla contra otra física
+// reconstruye un catálogo cuyas revisiones no nombran ningún plano existente. No
+// falla: da una partida coherente y equivocada.
 
-describe('lo que este punto NO cubre, dicho y medido', () => {
-  it.fails('HUECO — la crónica no dice contra qué FÍSICA se corrió', () => {
-    // ─── EL HUECO, CON SU PORQUÉ ─────────────────────────────────────────────
-    //
-    // `CronicaDe` guarda `hz` y `semilla` —las dos cosas sin las cuales el mundo
-    // no se reproduce— y `journalFromData` revienta explícitamente si se cargan
-    // distintas (ADR II-0008). La versión de FÍSICA no está, y hace falta por el
-    // mismo argumento exacto: un registro journaleado lleva un `de` que es una
-    // revisión, y una revisión lleva la versión de física adentro del hash. Cargar
-    // la misma crónica contra otra física da un catálogo cuyas revisiones no
-    // corresponden a ningún plano, sin ninguna causa visible.
-    //
-    // Es barato de arreglar —un campo más en `CronicaDe` y un chequeo más en
-    // `journalFromData`, y no mueve ninguna cadena porque `de` no entra en el
-    // eslabón— y se deja marcado en vez de hecho porque toca el journal del mundo,
-    // que es del Hito 2 y tiene su propio criterio publicado.
-    const de = cronica().toData().de as { readonly physicsVersion?: number }
-    expect(de.physicsVersion).toBe(buildSeedPhysics().version)
+describe('(f) la crónica dice contra qué física se corrió, y lo hace cumplir', () => {
+  it('el campo está, y vale la versión de la física semilla', () => {
+    expect(cronica().toData().de.physicsVersion).toBe(buildSeedPhysics().version)
+  })
+
+  it('cargarla contra OTRA física revienta al abrirla, no mil ticks después', () => {
+    const data = JSON.parse(JSON.stringify(cronica().toData())) as never
+    const otra = { ...CRONICA_POR_OMISION, physicsVersion: PHYS.version + 1 }
+    expect(() => journalFromData<Renglon>(data, otra)).toThrow(/física/)
+    expect(() => journalFromData<Renglon>(data, otra)).toThrow(/revisiones de plano/)
+    // Y contra la suya, entra sin chistar.
+    expect(journalFromData<Renglon>(data, CRONICA_POR_OMISION).length).toBe(6)
+  })
+
+  it('y una crónica SIN el campo tampoco se carga: no se le adivina la física', () => {
+    // Rellenarlo con un default es exactamente el modo de falla que el campo vino
+    // a sacar. Un archivo de antes de este campo es un archivo del que no se sabe
+    // contra qué corrió, y lo correcto es que reviente al abrirlo.
+    const data = cronica().toData()
+    const viejo = { ...data, de: { hz: data.de.hz, semilla: data.de.semilla } }
+    expect(() => journalFromData<Renglon>(viejo as never)).toThrow(/versión de física/)
   })
 })
