@@ -33,6 +33,7 @@ export * from './invariants.js'
 // 11 del Gate 5→6 y ADR II-0017. Sale del paquete porque lo consume la UI del
 // Hito 12 y el E2E, que comparan su hash contra el del mundo.
 export * from './descriptor.js'
+export * from './escena.js'
 // El día y la noche. Va después del paso porque se DERIVA de él: `relojDe` no
 // lee más que el `tick` y el `hz` que `step.ts` declara (ADR II-0009).
 export * from './reloj.js'

@@ -335,7 +335,7 @@ describe('4. Math trascendente, el reloj, el azar y Ánima I', () => {
     // `src/descriptor.ts`, el descriptor visual del punto 11 del Gate 5→6 (ADR
     // II-0017). El guardián lee el directorio, así que un archivo nuevo entra
     // solo; esta cota está para que BORRAR uno también se note.
-    expect(FUENTES.length).toBeGreaterThanOrEqual(14)
+    expect(FUENTES.length).toBeGreaterThanOrEqual(15)
     const infracciones: string[] = []
     for (const archivo of FUENTES) {
       const codigo = codigoDe(archivo)
