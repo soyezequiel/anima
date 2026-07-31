@@ -24,19 +24,19 @@
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "El Hito 6 en marcha: de una frase en castellano a un plan de verdad",
-    "detalle": "Nace `@anima/lang`, el decimo paquete. Antes de escribir una linea se midio cuanto castellano entiende el mundo solo, y el numero decidio todo: 9% de cobertura sobre once frases reales (3 palabras de 34) y CERO de doce verbos. El mundo sabe decir frotar, atar, deshilachar y sacar; nadie habla asi. Diecinueve filas escritas a mano lo llevan al 53%, y viven en su propio archivo para que se pueda contar cuanto conocimiento humano lleva el sistema. Hoy «fabrica una trampa para peces» sale como cuatro pasos que nadie escribio —sostener, ir, sostener, unir— y la palabra «trampa» no aparece en ninguno: el plan lo armo la regresion sobre `catch>0`. Y «construi una ahoguera», mal escrita, da exactamente el mismo plan que «hace fuego».",
+    "titulo": "El criterio del Hito 6 medía la mitad, y el usuario lo vio",
+    "detalle": "Nace `@anima/lang`, el decimo paquete: de una frase en castellano a un plan de verdad. Hoy «fabrica una trampa para peces» son cuatro pasos que nadie escribio y la palabra «trampa» no aparece en ninguno. PERO el criterio tenia un agujero que solo se ve juntando dos de sus puntos: LOS CINCO SE CUMPLIAN IGUAL CON EL PROVEEDOR DESCONECTADO, porque «colgado da el mismo p95» es trivialmente verde si el proveedor no existe. O sea que media que el modelo NO ESTORBE y no media que SIRVA. Entra un punto 3 —con el proveedor contestando la cobertura SUBE, medido 13% a 30%— y se va el «corpus de 200 frases», que era la otra herencia del mundo sin modelo: ese numero media cobertura por enumeracion, y ademas su premisa era falsa (el historial de chat del repo tiene NUEVE mensajes, no doscientos). Y se construyo por donde entra el modelo, que el ADR daba por hecho y no existia: el paquete no LLAMA al modelo, lo DESCRIBE — `leer()` devuelve una `Consulta` y el llamador, que si puede esperar, decide que hacer con ella.",
     "proximosPasos": [
-      "Faltan 123 frases para las 200 del corpus. Las 77 que hay son las verificables una por una, con archivo de origen; el resto es EXTRACCION del repo, no invencion.",
-      "El punto 5 del criterio (consistenciaDelPrimerGesto >= 0,85) no esta medido: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya esta escrito.",
-      "Y dos huecos medidos que son de @anima/plan y no del lenguaje: `Predicado` no puede hablar del LUGAR («anda al rio» no es una meta que este sistema pueda recibir) y 6 de sus 7 `holding(tag:X)` terminan en gap."
+      "El punto 6 (consistenciaDelPrimerGesto >= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya esta escrito.",
+      "Terminar de extraer las ~110 frases reales que el barrido midio y el corpus todavia no transcribio. Ninguna se inventa, ni con modelo ni sin el.",
+      "Y dos huecos medidos que son de @anima/plan y no del lenguaje: `Predicado` no puede hablar del LUGAR y 6 de sus 7 `holding(tag:X)` terminan en gap."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2741",
-      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 629+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · juez 126 · lang 43"
+      "valor": "2751",
+      "nota": "re-corrido y confirmado, exit 0 · lang 53 (y ANIMA_BANCO=1 tambien exit 0)"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -60,7 +60,7 @@
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "5",
+      "valor": "7",
       "nota": "rama anima-2 — el usuario pushea solo"
     }
   ],
@@ -291,24 +291,28 @@
       "semanas": 2.5,
       "puntos": [
         {
-          "estado": "medio",
-          "texto": "1 · ninguna frase devuelve «nada»: CUMPLE sobre las 77 del corpus, 0 sin respuesta. Falta llegar a 200"
+          "estado": "si",
+          "texto": "1 · ninguna frase del corpus devuelve «nada»: 77 frases, 0 sin respuesta"
         },
         {
           "estado": "si",
-          "texto": "2 · con el proveedor COLGADO el mismo p95 que apagado: 1,29 ms contra 1,52, y el control positivo —el proveedor puesto en el camino a proposito— da 21,22. Sin ese control la comparacion no valdria nada"
+          "texto": "2 · con el proveedor COLGADO el mismo p95 que apagado: 1,29 ms contra 1,52. El control positivo —el proveedor puesto en el camino a proposito— da 21,15, y va afirmado ANTES que la comparacion: sin el, dos p95 iguales serian un cero que sale de no tener que medir"
         },
         {
           "estado": "si",
-          "texto": "3 · p95 de mensaje a primer movimiento < 150 ms: sobra 100×"
+          "texto": "3 · con el proveedor CONTESTANDO la cobertura SUBE: 13% a 30%, 14 clausulas leidas por el modelo. Es el punto que faltaba, y sin el los otros cinco se cumplian con el proveedor desconectado"
         },
         {
           "estado": "si",
-          "texto": "4 · el acuse en el mismo frame, afirmado POR MECANISMO: `leer` es sincronica y el guardian de la regla 2 prohibe `await` en todo `src/`"
+          "texto": "4 · p95 de mensaje a primer movimiento < 150 ms en las tres corridas: sobra 100×"
+        },
+        {
+          "estado": "si",
+          "texto": "5 · el acuse en el mismo frame, afirmado POR MECANISMO: `leer` es sincronica y el guardian de la regla 2 prohibe `await` en todo `src/`"
         },
         {
           "estado": "no",
-          "texto": "5 · consistenciaDelPrimerGesto >= 0,85: NO MEDIDO. Pide correr la mente sobre ticks; el acumulador ya esta escrito"
+          "texto": "6 · consistenciaDelPrimerGesto >= 0,85: NO MEDIDO. Pide correr la mente sobre ticks; el acumulador ya esta escrito"
         },
         {
           "estado": "si",
@@ -317,9 +321,13 @@
         {
           "estado": "si",
           "texto": "informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que hoy eran una sola respuesta"
+        },
+        {
+          "estado": "si",
+          "texto": "`revisar` NUNCA empeora una lectura, con control positivo: 77 frases × 4 clases de basura, 0 empeoradas"
         }
       ],
-      "nota": "El agujero era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe, y cero verbos de doce. Lo que lo tapa son 19 filas escritas a mano, que es la tabla de alias que el documento mando presupuestar y que ahora tiene tamano. Y el criterio dice que las 200 frases salen «del historial de chat del repo, que existe»: se fue a buscar y el historial tiene NUEVE mensajes. Lo que si es verdad, y nadie lo habia escrito, es que los tests de Anima I son el corpus."
+      "nota": "El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenia otro agujero, que lo vio el usuario: media que el modelo no estorbe y no que sirva. Los dos estan escritos con su numero."
     },
     {
       "id": "H7",
