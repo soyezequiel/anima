@@ -166,10 +166,10 @@ todo lo demás pase.
 | 8 guardar y restaurar | **CUMPLE** (tramo D·ter): una ranura `desplegado:<id>` por obra, y la ida y vuelta por JSON devuelve el sitio, la revisión y el MISMO hash | `world/tests/la-obra-queda-desplegada.test.ts`, bloque (f) |
 | 9 cambio de física invalida sellos | **la mitad del plano CUMPLE**: la revisión lleva `physicsVersion` adentro del hash, así que subir la versión produce otra revisión. Faltan los sellos de habilidades | `el-plano-es-canonico`, bloque (c) |
 | 10 mismo journal, mismo catálogo | **no empezado** | — |
-| 11 descriptor visual | **no empezado** | — |
+| 11 descriptor visual | **CUMPLE** (tramo D·quater): vista derivada, siete claves y ni una más, con `renderDescriptorHash` | `world/tests/el-descriptor-visual.test.ts` |
 | 12 sin nombres especiales | **CUMPLE** (tramo D·ter): 90 fuentes de producción barridos, cero infracciones — y no es sólo el grep: lo que hace que un cuerpo retenga es `catch > 0`, una cualidad derivada | `world/tests/sin-nombres-especiales.test.ts` |
 
-**Van 7 de 12 cumpliendo y 3 a medias.** Los tres primeros los cerró el tramo A
+**Van 8 de 12 cumpliendo y 3 a medias.** Los tres primeros los cerró el tramo A
 —la deuda 1, la costura del catálogo hasta la mente— y el cuarto es el plano, del
 tramo C.
 
@@ -360,6 +360,41 @@ ahí es un paquete. Alcanza con correr `npx` una vez parado ahí para que aparez
 un `node_modules/` con la caché de vitest y los dos revienten con `ENOENT` — un
 rojo del criterio de corte del proyecto causado por una caché. Ahora filtran por
 tener `package.json`, que es lo que hace paquete a un paquete.
+
+---
+
+### El tramo D·quater: el descriptor visual
+
+**Punto 11 — CUMPLE.** El gate lo exige **aunque la UI no exista todavía**, y ése
+es justamente el punto: es dato derivado del estado, así que se puede afirmar sin
+dibujar un píxel. Un descriptor que sólo se pudiera probar mirando la pantalla no
+se probaría nunca.
+
+Sale de lo que el ADR II-0017 declara y de nada más: forma, materiales, partes,
+juntas, sitio, y si está desplegado, cuánto retuvo. **Seis claves, y hay un test
+que las afirma una por una.** No es ceremonia: el modo de falla de este tipo es
+que alguien le agregue `nombre` o `sprite` «total es una línea», y con eso el hash
+deja de ser comparable entre dos clientes con distinto idioma sin que nada se
+ponga rojo.
+
+Tres decisiones de forma:
+
+1. **El id del cuerpo NO está adentro.** Es la llave del mapa, no parte de lo que
+   se dibuja: dos obras iguales en dos lugares se dibujan iguales. Meterlo haría
+   que el hash del dibujo cambiara con el contador de nombres del mundo, que es
+   historia y no estado visible.
+2. **`captura` es un NÚMERO, no la lista de ids.** Dos peces retenidos se dibujan
+   igual sean cuales sean sus ids.
+3. **`materiales` va ordenado y sin repetir**, porque el orden de las partes es un
+   accidente de cómo se armó la obra — medido en el tramo C·bis.
+
+Y el fallback es total: no hay rama que devuelva `undefined` ni que pida arte. Un
+palo se dibuja igual que una obra que nadie diseñó.
+
+Lo que el descriptor NO dice, y hay un test que lo afirma por nombre: orientación,
+aberturas, contención, sprite, ícono, color. **Lo que la física no modela, la
+pantalla no lo afirma** — si no, el jugador ve una jaula donde el mundo tiene un
+estado.
 
 ---
 

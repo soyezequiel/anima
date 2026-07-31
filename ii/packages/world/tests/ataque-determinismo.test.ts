@@ -330,11 +330,12 @@ describe('4. Math trascendente, el reloj, el azar y Ánima I', () => {
   it(`los ${FUENTES.length} fuentes del paquete, no tres`, () => {
     // La cuenta va en el nombre del test para que agregar un módulo y olvidarse
     // de mirarlo sea visible en la salida.
-    // Subió de 11 a 12 con `src/reloj.ts` (ADR II-0009) y de 12 a 13 con
-    // `src/dios.ts`, la costura con `@anima/oracle`. El guardián lee el
-    // directorio, así que un archivo nuevo entra solo; esta cota está para que
-    // BORRAR uno también se note.
-    expect(FUENTES.length).toBeGreaterThanOrEqual(13)
+    // Subió de 11 a 12 con `src/reloj.ts` (ADR II-0009), de 12 a 13 con
+    // `src/dios.ts` —la costura con `@anima/oracle`— y de 13 a 14 con
+    // `src/descriptor.ts`, el descriptor visual del punto 11 del Gate 5→6 (ADR
+    // II-0017). El guardián lee el directorio, así que un archivo nuevo entra
+    // solo; esta cota está para que BORRAR uno también se note.
+    expect(FUENTES.length).toBeGreaterThanOrEqual(14)
     const infracciones: string[] = []
     for (const archivo of FUENTES) {
       const codigo = codigoDe(archivo)
