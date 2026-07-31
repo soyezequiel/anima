@@ -466,7 +466,58 @@ decisión sobre la cota del mundo.
    pospusieron. Y aceptar un número no es dejar de vigilarlo: las guardas verdes de
    los dos `it.fails` siguen corriendo, igual que con el p99.
 
-1. **LA ESCALERA CONSTRUIBLE EXISTE; LO QUE FALTA ES EL ATADOR Y ENSEÑARLA.** El
+1. **RE-MEDIDO (tramo N·bis): EL ATADOR NO ES LA COTA. EL HUECO SON 23,02 DE
+   POTENCIA.** Todo lo que sigue en este punto es anterior y hay que leerlo con
+   esto adelante. La medición entera está en
+   `world/tests/del-fosforo-al-fuego-que-cocina.test.ts`, cinco bloques.
+
+   **QUÉ HACE FALTA, exacto.** El mejor fósforo que un tanque de 310 paga es
+   **0,5067 kg de `madera-dura`**, entrega 177,71 contra los 253 de la ventana de
+   cocción y calienta a lo que tenga encima hasta **228,25 °C**. De todo el
+   catálogo, la sustancia que entra abajo de ese techo y más rinde es `hoja-seca`
+   (283,90 por kilo): **0,8912 kg de hoja-seca en UN cuerpo cocinan**. No hace
+   falta una escalera de tres escalones ni nada exótico — hace falta ese cuerpo.
+
+   **POR QUÉ `unir` ES OBLIGATORIO, y es el mecanismo que faltaba escrito.** La
+   potencia **no se suma entre cuerpos**: una fuente, dos y cuatro debajo del mismo
+   objetivo le entregan el MISMO pico (197,79 °C), y la misma masa en UN cuerpo da
+   746,15. `montajeDe` calcula la exposición por cuerpo contra la fuente que más lo
+   calienta y nada acumula entre fuentes. Así que apilar no sirve y `unir` no es
+   una comodidad: es lo único que hace que la potencia sume.
+
+   **Y AUN ASÍ EL ATADOR NO ES LA COTA.** Con la búsqueda mixta completa sobre las
+   veinte semillas son **0/20**, y las dos escaseces caen en semillas distintas:
+
+   | | potencia | atadores |
+   |---|---|---|
+   | las tres mejores (16, 17, 19) | 222–239 | **0** |
+   | las tres con más atadores (3, 8, 18) | 115–123 | 36, 31, 33 |
+   | la única con las dos cosas (semilla 2) | **229,98** | de sobra |
+
+   O sea que el hueco real son **23,02 de potencia (un 9%)** y no «2 de 20 semillas
+   tienen atadores». Darle juncos a todo el mundo no cerraría nada.
+
+   Y la mezcla importa: las mejores son `5×hoja-seca + 1×corteza`. La corteza sola
+   no se prende —ignición 250 contra 228,25— y adentro de la mezcla sí, porque
+   `unir` promedia la ignición por masa y suma la potencia.
+
+   **LAS TRES PALANCAS, y las tres son del mundo:**
+   - **(a) `MAX_PARTS` de 6 a 16** — cierra en 8/20 con las piezas que ya hay. Es
+     una constante de `@anima/physics` y toca `unir` en todo el mundo;
+   - **(b) un fósforo más caliente** — le faltan **2,61 de aliento** para prender
+     `medula`, que es el número más chico de los tres. **Y NO CIERRA**, medido: con
+     ese fósforo el mejor cuerpo armable no se mueve ni un decimal (239,36 antes y
+     después). Está afirmado en el test para que nadie pague por nada;
+   - **(c) piezas más gordas** — cada `hoja-seca` tendría que pesar 0,1485 kg y hoy
+     vienen de ~0,077. Es del oráculo, no de la ley, y no toca `unir`.
+
+   Quedan la (a) y la (c), y son decisión del usuario.
+
+   ---
+
+   **LO QUE SIGUE ES EL PUNTO 1 ANTERIOR.**
+
+   **LA ESCALERA CONSTRUIBLE EXISTE; LO QUE FALTA ES EL ATADOR Y ENSEÑARLA.** El
    fardo mixto entra en `MAX_PARTS` y está corrido en el mundo (número 33): 8 de 20
    semillas tienen un fardo legal que prende el leño más grande decretado, pero sólo
    **2 de 20** tienen atadores suficientes para armarlo —`unir` gasta uno por unión y

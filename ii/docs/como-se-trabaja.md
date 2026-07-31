@@ -202,7 +202,7 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los treinta y ocho números corregidos, y la regla que dejó cada uno
+## 5 · Los treinta y nueve números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
@@ -641,6 +641,34 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    medían una imposibilidad hay que dar vuelta con lo que decían escrito al lado, y
    los que medían una distinción hay que revisarlos por si se quedaron mudos. Un
    pin que se actualiza sin leer qué afirmaba es un guardián que se apaga en silencio.
+
+39. **«Lo que frena la escalera es el atador: sólo 2 de 20 semillas tienen tantos»** —
+   el atador es OBLIGATORIO y no es la cota. Re-medido contra el cuerpo que de
+   verdad hace falta: son 0 de 20, y **las dos escaseces caen en semillas
+   distintas**. Las tres de más potencia (222–239) tienen CERO atadores; las tres
+   con 36, 31 y 33 atadores se quedan en 115–123. La única con las dos cosas es la
+   semilla 2, con 229,98 contra 253: **el hueco son 23,02 de potencia, un 9%**.
+   Darle juncos a todo el mundo no cerraría nada.
+   → **REGLA: cuando dos recursos escasean a la vez, contá en cuántos casos escasean
+   JUNTOS.** Publicar «falta A» mirando la tabla de A, y «falta B» mirando la de B,
+   deja sin contestar la única pregunta que decide: cuántos casos tienen A y B a la
+   vez. Acá la respuesta era uno de veinte, y cambia qué palanca se toca.
+
+   Y de esa medición salieron otras dos cosas:
+   - **la potencia NO se suma entre cuerpos**, que es el mecanismo que faltaba
+     escrito. Una fuente, dos y cuatro debajo del mismo objetivo le entregan el
+     MISMO pico —197,79 °C, idéntico— y la misma masa en UN cuerpo da 746,15.
+     `montajeDe` calcula la exposición por cuerpo contra la fuente que más lo
+     calienta y nada acumula entre fuentes. De ahí sale, sin que nadie lo escriba,
+     que apilar no sirve y que **`unir` es lo único que hace que la potencia sume**.
+     Este archivo se escribió apostando lo contrario y la medición lo dio vuelta en
+     el segundo bloque;
+   - **una palanca barata que no cierra es peor que ninguna.** La palanca más barata
+     de las tres eran 2,61 de aliento —abrir `medula`— y se iba a publicar como «la
+     salida barata». El seguimiento midió que con ella el mejor cuerpo armable **no
+     se mueve ni un decimal**: 239,36 antes y después. → **REGLA: un número
+     accionable que no dice SI SIRVE no es accionable.** Es el mismo vicio del «~25
+     a 1» del número 37, con otra cara: medir bien el costo y no medir el efecto.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
