@@ -83,6 +83,22 @@ Tres reglas, y la primera vale más que las otras dos juntas:
 > único que quedó detrás del `env` es «el mundo puso más de 5 situaciones delante»,
 > que es una propiedad de las veinte. Las tablas dejaron de tener el `/20` clavado.
 
+> **Y CERRADO en el tramo Ñ: las DOS COHORTES del banco de la mente también se
+> reparten.** La canónica (tanque 310) y el control del tanque lleno corrían
+> secuenciales adentro de `hito-5-la-emergencia.test.ts` —40 partidas de 20.000
+> ticks, ~13 de los ~17 minutos del banco caro— mientras las tandas del azar ya
+> corrían en paralelo. Se les aplicó el mismo patrón, calcado: el corredor vive en
+> `juez/tests/el-banco-de-la-mente.ts`, cinco tandas (`el-banco-tanda-N.test.ts`)
+> se reparten las veinte semillas de a cuatro con sus dos tanques, y el guardado
+> viaja por `node_modules/.azar/banco-<tanque>-<tope>/` con el mismo candado
+> `mkdir` y el mismo borrado del `globalSetup`. Dos trampas de serializar que
+> costaron su renglón: `semilla` es `bigint` (JSON lanza) y `vuelos` es un `Map`
+> (JSON lo convierte en `{}` EN SILENCIO) — viajan como texto y como pares.
+> Medido: `ANIMA_BANCO=1` pasó de **747,5 s a 310,9 s** (2,4×), exit 0, 126/126,
+> y las 41 líneas de medición de las tablas son **idénticas renglón por renglón**
+> entre las dos corridas. El cerco de la mente en `ataque-determinismo.test.ts`
+> se puso rojo y obligó a escribir la decisión, que es exactamente su trabajo.
+
 Y la asimetría que conviene tener presente antes de recortar de más: **los tramos
 que más tardaron son los que encontraron las causas raíz** —la cocción, las
 sueltas que no se materializaban— y **los cortos son los que produjeron los

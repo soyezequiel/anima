@@ -225,7 +225,21 @@ describe('la regla 2, sobre todo `src/`', () => {
     //
     // Y el cerco no se aflojó: sigue siendo una lista EXACTA, así que un tercer
     // archivo lo vuelve a poner rojo. Lo que cambió es el largo, no la regla.
-    expect(tocan).toEqual(['ataque-al-tramo-i.test.ts', 'hito-5-la-emergencia.test.ts'])
+    //
+    // ─── EL TERCER ARCHIVO, Y POR QUÉ SE LO DEJA ENTRAR ──────────────────────
+    //
+    // `el-banco-de-la-mente.ts` no es un import NUEVO de la mente: es el banco de
+    // la emergencia —`correrPartida`, las dos cohortes— que vivía adentro de
+    // `hito-5-la-emergencia.test.ts` y se mudó a su propio módulo para que cinco
+    // tandas lo corran en paralelo (la unidad de paralelismo de vitest es el
+    // archivo, mismo movimiento que `azar.ts`). El import de `Mente` se mudó CON
+    // el código que la usa, para lo mismo de siempre: ARMAR la partida. `src/`
+    // sigue sin poder nombrarla, y eso lo vigila el primer test de este archivo.
+    expect(tocan).toEqual([
+      'ataque-al-tramo-i.test.ts',
+      'el-banco-de-la-mente.ts',
+      'hito-5-la-emergencia.test.ts',
+    ])
   })
 })
 

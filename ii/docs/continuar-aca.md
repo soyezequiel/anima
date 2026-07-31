@@ -40,7 +40,9 @@ con 3 de 6 y 3 aceptados—, y el tramo Ñ acercó la canónica al techo: muere 
 **Nueve paquetes, 2456 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
 nueve typechecks limpios.** Corridos enteros al cerrar el tramo N, mirando el exit
 code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
-`ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (121 de 121). En la rama
+`ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
+dos cohortes del banco de la mente se reparten en cinco tandas desde el tramo Ñ,
+ver la sección 2 de `como-se-trabaja.md`). En la rama
 `anima-2`, **ninguno pusheado** — el usuario pushea solo. Si la sesión nueva es en
 otra máquina, hay que pushear antes.
 
