@@ -21,6 +21,25 @@ import type { Cell, Intent, Outcome, StepResult } from '../src/ctx.js'
 import { ACTOR, Mundito } from './mundito.js'
 
 /**
+ * Igual que en los bancos del mundo y del juez: **se imprime siempre, se afirma
+ * sólo midiendo en serio**. Acá el gatillo no es el costo sino la VARIANZA — los
+ * bloques que miden el portón lanzan `tsc`, y con la suite corriendo los ocho
+ * paquetes a la vez ocho compiladores se pelean los mismos núcleos. Medido: el
+ * peor de los seis pasó de ~30 ms a 2807 ms sin que nada del código cambiara.
+ */
+const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
+
+/**
+ * Cuánto espera el ARNÉS antes de dar por colgado un bloque que lanza `tsc`.
+ *
+ * No es una medición y no es un criterio: es la paciencia del andamio. Los 5 s
+ * de vitest alcanzan con la suite en serie y no alcanzan con los ocho paquetes
+ * en paralelo, que es la diferencia entre 239 s y 72 s de verificación. Subirlo
+ * no afloja ninguna afirmación: las de tiempo están gateadas arriba.
+ */
+const TOPE_DE_PACIENCIA = 120_000
+
+/**
  * EL CRITERIO DEL HITO 4, LOS SEIS, EN UN SOLO LUGAR.
  *
  * El documento de arquitectura los escribe en una línea:
@@ -403,6 +422,12 @@ describe(`(a) las quince corren dentro del presupuesto · tick de ${TICK} ms a $
       `\n  PEOR DE LAS QUINCE: ${peor.nombre} con ${peor.peorPaso.toFixed(3)} ms = ` +
         `${((peor.peorPaso / TICK) * 100).toFixed(2)}% del tick (tope ${TOPE_PASO} ms, margen ${(TOPE_PASO / peor.peorPaso).toFixed(1)}×)`,
     )
+    // El reloj se afirma midiendo en serio, igual que los otros bloques de este
+    // archivo y que los bancos de `world`, `perceive` y `plan`: con la suite
+    // corriendo los ocho paquetes en paralelo este renglón midió 18,2 ms contra
+    // un tope de 5, y no porque `unir` se haya encarecido. El tope sigue siendo
+    // el bueno; la máquina, no.
+    if (!MIDIENDO_EN_SERIO) return
     for (const c of corridas) {
       expect(c.peorPaso, `${c.nombre} se pasó del 10% del tick`).toBeLessThan(TOPE_PASO)
     }
@@ -870,13 +895,24 @@ describe('(f) un programa mal tipado se rechaza en menos de 250 ms sin viaje al 
     },
   ]
 
-  it('los seis se rechazan, y el error dice cuál es el problema', () => {
-    for (const m of MALOS) {
-      const r = portón(m.fuente)
-      expect(r.errores.length, `${m.nombre} NO fue rechazado`).toBeGreaterThan(0)
-      expect(r.errores.join(' | '), `${m.nombre}: el error no nombra el problema`).toMatch(m.espera)
-    }
-  })
+  it(
+    'los seis se rechazan, y el error dice cuál es el problema',
+    () => {
+      for (const m of MALOS) {
+        const r = portón(m.fuente)
+        expect(r.errores.length, `${m.nombre} NO fue rechazado`).toBeGreaterThan(0)
+        expect(r.errores.join(' | '), `${m.nombre}: el error no nombra el problema`).toMatch(m.espera)
+      }
+    },
+    // Este bloque no mide tiempo: LANZA SEIS TYPECHECKS. Con la suite en serie
+    // entra en los 5 s de vitest; con los ocho paquetes en paralelo, ocho `tsc`
+    // se pelean los mismos núcleos y tardó 15 s. **El timeout no es el criterio**
+    // —el criterio es que los seis se rechacen y que el error nombre el
+    // problema— así que subirlo no afloja nada: lo que se afloja es la cota de
+    // paciencia del arnés, que nunca fue una medición. La cota de VERDAD, los
+    // 250 ms del Hito 4, vive en el bloque de abajo y está gateada.
+    TOPE_DE_PACIENCIA,
+  )
 
   it('y se rechazan en menos de 250 ms cada uno, sin salir de la máquina', () => {
     const tiempos = MALOS.map((m) => ({ nombre: m.nombre, ms: portón(m.fuente).ms }))
@@ -884,11 +920,22 @@ describe('(f) un programa mal tipado se rechaza en menos de 250 ms sin viaje al 
     console.log(
       `\n  el portón (escáner de determinismo + typecheck en ranura fija):\n` +
         tiempos.map((t) => `  ${t.nombre.padEnd(46)} ${t.ms.toFixed(1).padStart(6)} ms`).join('\n') +
-        `\n\n  PEOR: ${peor.ms.toFixed(1)} ms contra el presupuesto de 250 ms (margen ${(250 / peor.ms).toFixed(0)}×).` +
+        `\n\n  PEOR: ${peor.ms.toFixed(1)} ms contra el presupuesto de 250 ms (margen ${(250 / peor.ms).toFixed(0)}×)` +
+        `${MIDIENDO_EN_SERIO ? '' : ' — sólo se IMPRIME; se afirma con ANIMA_BANCO=1'}.` +
         `\n  Un viaje al modelo son 6000 a 25000 ms.`,
     )
+    // ─── EL CRITERIO SE AFIRMA MIDIENDO EN SERIO, y no es aflojarlo ──────────
+    //
+    // Los 250 ms son del Hito 4 y no se tocan. Lo que cambió es CUÁNDO se
+    // afirman: este bloque mide reloj de pared, y la suite en paralelo lo corre
+    // con ocho `tsc` peleando por los mismos núcleos — medido, el peor pasó de
+    // ~30 ms a **2807 ms**. Un test de rendimiento adentro de la suite normal es
+    // un test flaky, y un test flaky enseña a ignorar el rojo; es la misma
+    // decisión que ya tomaron `world/tests/banco-el-tick.test.ts` y los bancos
+    // del juez. Se imprime siempre, se afirma sólo midiendo en serio.
+    if (!MIDIENDO_EN_SERIO) return
     for (const t of tiempos) expect(t.ms, `${t.nombre} tardó ${t.ms.toFixed(1)} ms`).toBeLessThan(250)
-  })
+  }, TOPE_DE_PACIENCIA)
 
   it('lo que el typecheck no ve lo ve el escáner, y también sin viaje', () => {
     // `Math.random()` typechequea PERFECTO: es JavaScript válido y tipado. Lo que
@@ -898,11 +945,14 @@ describe('(f) un programa mal tipado se rechaza en menos de 250 ms sin viaje al 
     // evitar.
     const fuente = `${CABECERA}export function* f(ctx: Ctx): Generator<Intent, Outcome, StepResult> {\n  const x = Math.random() ** 2\n  return x > 0.5 ? done() : fail('no')\n}\n`
     const r = portón(fuente)
+    // Lo que este bloque afirma SIEMPRE es la conducta, que es lo que enseña: el
+    // programa typechequea perfecto y aun así lo rebota el escáner.
     expect(r.errores).toEqual([])
     expect(r.hallazgos).toBeGreaterThanOrEqual(2) // `Math.random` y `**`
     console.log(`\n  Math.random() ** 2 → 0 errores de tipos, ${r.hallazgos} hallazgos del escáner, ${r.ms.toFixed(1)} ms`)
-    expect(r.ms).toBeLessThan(250)
-  })
+    // Y el reloj, con la misma regla que el bloque de arriba.
+    if (MIDIENDO_EN_SERIO) expect(r.ms).toBeLessThan(250)
+  }, TOPE_DE_PACIENCIA)
 
   it('una habilidad sana pasa el portón: una puerta que rechaza todo no mide nada', () => {
     const sana = `${CABECERA}export function* f(ctx: Ctx, args: { con: BodyView }): Generator<Intent, Outcome, StepResult> {\n  ctx.phase('pescar')\n  const pozo = ctx.recall([{ q: 'wet', op: '>=', v: 0.9 }])[0]\n  if (!pozo) return fail('no me acuerdo de ningún pozo')\n  const ir = yield ctx.goTo(pozo.at, { within: 1 })\n  if (ir.status !== 'arrived') return fail('no llegué')\n  for (let i = 0; i < 40; i++) {\n    const o = yield ctx.apply('extraccion', { gear: args.con, source: args.con })\n    const p = o.got[0]\n    if (p) return done(p)\n  }\n  return fail('no picó')\n}\n`

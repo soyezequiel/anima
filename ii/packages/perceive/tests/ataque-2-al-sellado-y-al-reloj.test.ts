@@ -44,6 +44,19 @@ import { actor, conElla, criatura, cuerpo, mundo } from './mundo.js'
 
 type Hab = Generator<Intent, Outcome, StepResult>
 
+/**
+ * El patrón de siempre para los milisegundos de pared: **se imprime siempre, se
+ * afirma sólo midiendo en serio**. Lo usa el bloque (d), que corre con
+ * `Date.now()` de verdad y por lo tanto mide la MÁQUINA además del bucle.
+ *
+ * Hizo falta cuando la suite pasó a poder correrse con los ocho paquetes en
+ * paralelo —239 s a ~80 s de verificación—: ahí la guarda de margen de (d) hizo
+ * exactamente su trabajo y dijo que el cero no significaba nada. Tenía razón, y
+ * la respuesta correcta no es aflojar la guarda sino no afirmar el reloj cuando
+ * la máquina está llena.
+ */
+const MIDIENDO_EN_SERIO = process.env['ANIMA_BANCO'] === '1'
+
 const log = (lineas: readonly string[]): void => {
   console.log(['', ...lineas, ''].join('\n'))
 }
@@ -466,6 +479,9 @@ describe('(d) `ticksPerdidos === 0` sobre 2000 ticks, con el contador arreglado'
       )
       expect(r.ticks).toBe(2000)
       expect(r.porFalla).toBe(0)
+      // Lo del RELOJ va detrás de `ANIMA_BANCO=1`, y lo de arriba no: `ticks` y
+      // `porFalla` son del bucle y no de la máquina, así que se afirman siempre.
+      if (!MIDIENDO_EN_SERIO) continue
       // El margen primero: si la máquina estuvo tan cargada que 2000 ticks
       // tardaron más de dos segundos, el cero de abajo no querría decir nada y
       // conviene fallar acá, con el número, y no allá.

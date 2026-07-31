@@ -290,13 +290,27 @@ describe('(b) sellar la celda contra clonarla', () => {
     //
     // Lo que se afirma, entonces, es lo que se midió: sellar cuesta menos del 1%
     // del tick a la escala del banco, y no asigna. Éste es el número de RÉGIMEN
-    // —los ticks en que ya está todo congelado— y es el que sostiene la decisión,
-    // así que se afirma siempre.
-    expect(msSellarDespues / TICKS).toBeLessThan(0.5)
-    // Y el del PRIMER tick, que es JIT y caché fría, sólo midiendo en serio: se
-    // pasaba del techo una de cada cinco corridas sin que nadie tocara nada.
-    // Ver `MIDIENDO_EN_SERIO` arriba, con las cinco medidas.
+    // —los ticks en que ya está todo congelado— y es el que sostiene la decisión.
+    //
+    // ─── Y SE AFIRMA MIDIENDO EN SERIO, que antes era «siempre» ─────────────
+    //
+    // Decía «se afirma siempre», y era la última aserción de reloj de la suite
+    // que quedaba sin gatear. La suite pasó a poder correrse con los ocho
+    // paquetes EN PARALELO —239 s a ~80 s de verificación— y con la máquina así
+    // este renglón midió **7,761 ms/tick contra un techo de 0,5**: quince veces
+    // el umbral, sin que nadie tocara una línea. No es que sellar se encareció:
+    // es `Object.isFrozen` sobre 5000 objetos peleándose los núcleos con otros
+    // siete vitest.
+    //
+    // La regla del proyecto ya estaba escrita y es la que se aplica: **un test de
+    // rendimiento adentro de la suite normal es un test flaky, y un test flaky
+    // enseña a ignorar el rojo.** Se imprime siempre; el techo se afirma con
+    // `ANIMA_BANCO=1`, que es cuando la máquina está tranquila. Lo que este
+    // bloque afirma SIEMPRE es lo de abajo, que no mira el reloj.
     if (!MIDIENDO_EN_SERIO) return
+    expect(msSellarDespues / TICKS).toBeLessThan(0.5)
+    // Y el del PRIMER tick, que es JIT y caché fría: se pasaba del techo una de
+    // cada cinco corridas sin que nadie tocara nada.
     expect(msSellarPrimera).toBeLessThan(2)
   })
 
@@ -374,6 +388,10 @@ describe('(c) congelar la vista entera, y no sólo su `at`', () => {
     // La cota absoluta va floja —1% del tick— por la misma razón que la del bloque
     // (a): el proceso es compartido con los otros ocho archivos y una pausa del
     // recolector cae donde cae. El número fino se lee del `console.log`.
+    //
+    // Y va detrás de `ANIMA_BANCO=1` por lo mismo que las otras dos de este
+    // archivo: con la suite en paralelo la cota floja tampoco alcanza.
+    if (!MIDIENDO_EN_SERIO) return
     expect(marginal).toBeLessThan(0.5)
   })
 
@@ -406,6 +424,10 @@ describe('el tick entero de la costura', () => {
     console.log(
       `\n─── lo que la percepción le agrega al tick ───\n${(soloIndice / TICKS).toFixed(3)} ms/tick con ${String(CUERPOS)} cuerpos (${((soloIndice / TICKS / 50) * 100).toFixed(2)}% del tick a 20 Hz)\n`,
     )
+    // Mismo criterio que el resto del archivo: se imprime siempre, se afirma
+    // midiendo en serio. Con los ocho paquetes en paralelo esto midió 13,05 ms
+    // contra un techo de 5 — el techo sigue siendo el bueno, la máquina no.
+    if (!MIDIENDO_EN_SERIO) return
     expect(soloIndice / TICKS).toBeLessThan(5)
   })
 })

@@ -6,14 +6,21 @@
 // dos cosas. El porqué del reparto entero está en el bloque «EL CONTROL, REPARTIDO
 // ENTRE ARCHIVOS» de `tests/azar.ts`.
 //
-// Todo lo demás queda en los valores por defecto A PROPÓSITO: el paralelismo por
+// Todo lo demás queda en lo que dice `ii/vitest.base.ts` A PROPÓSITO: el paralelismo por
 // archivo, el pool de forks y el aislamiento de módulos son justamente lo que hace
 // que repartir el control sirva para algo.
 
-import { defineConfig } from 'vitest/config'
+import { defineConfig, mergeConfig } from 'vitest/config'
 
-export default defineConfig({
-  test: {
-    globalSetup: ['./tests/el-azar-global.ts'],
-  },
-})
+import base from '../../vitest.base.js'
+
+// Se MEZCLA con la compartida y no la reemplaza: de allá viene la paciencia
+// del arnés, que este archivo no tiene por qué volver a decidir.
+export default mergeConfig(
+  base,
+  defineConfig({
+    test: {
+      globalSetup: ['./tests/el-azar-global.ts'],
+    },
+  }),
+)

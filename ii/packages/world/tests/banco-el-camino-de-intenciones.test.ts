@@ -361,7 +361,11 @@ function pct(ordenadas: readonly number[], p: number): number {
  * existe. Lo que hay es una corrida larga y su distribución, que es exactamente
  * lo que el criterio pregunta.
  */
-function perfilar(s0: WorldState, ids: readonly string[], intentar: (ids: readonly string[], seq: number) => Intent[]): Perfil {
+async function perfilar(
+  s0: WorldState,
+  ids: readonly string[],
+  intentar: (ids: readonly string[], seq: number) => Intent[],
+): Promise<Perfil> {
   let w = s0
   for (let t = 0; t < CALIENTA; t++) w = stepWorld(w, intentar(ids, t)).state
   const ms: number[] = []
@@ -370,6 +374,19 @@ function perfilar(s0: WorldState, ids: readonly string[], intentar: (ids: readon
     const r = stepWorld(w, intentar(ids, CALIENTA + t))
     ms.push(Number(process.hrtime.bigint() - antes) / 1e6)
     w = r.state
+    // ─── SE CEDE EL HILO CADA TANTO ────────────────────────────────────────
+    //
+    // La trampa que este proyecto ya tiene escrita: birpc le pone 60 s de
+    // vencimiento al aviso de cada test y un bucle sincrónico largo no deja
+    // correr ni el temporizador ni la lectura del socket — salen los tests en
+    // verde y `exit 1`. Con la suite en serie estas seis filas de 125 ticks
+    // sobre 5000 cuerpos entraban; con los ocho paquetes en paralelo el mismo
+    // trabajo tarda el triple y llega al vencimiento.
+    //
+    // Se cede DESPUÉS de cerrar el cronómetro, así que no entra en la medición,
+    // y con `setTimeout(0)` —una macrotarea— porque un `await` sobre una
+    // promesa resuelta es una microtarea y no drena la fase de poll.
+    if ((t & 0xf) === 0xf) await new Promise((listo) => setTimeout(listo, 0))
   }
   ms.sort((a, b) => a - b)
   return { p50: pct(ms, 0.5), p95: pct(ms, 0.95), p99: pct(ms, 0.99), peor: ms[ms.length - 1] as number }
@@ -381,11 +398,12 @@ const col = (x: string, n: number): string => x.padStart(n)
 // ─── El barrido ──────────────────────────────────────────────────────────────
 
 describe('el camino de intenciones, con criaturas que se mueven de verdad', () => {
-  it(`p50/p95/p99/peor con ${CUERPOS} cuerpos y ${BARRIDO.join('/')} criaturas caminando`, () => {
-    const filas = BARRIDO.map((n) => {
+  it(`p50/p95/p99/peor con ${CUERPOS} cuerpos y ${BARRIDO.join('/')} criaturas caminando`, async () => {
+    const filas: { n: number; p: Perfil }[] = []
+    for (const n of BARRIDO) {
       const { s, ids } = mundoDeCriaturas(n)
-      return { n, p: perfilar(s, ids, caminatas) }
-    })
+      filas.push({ n, p: await perfilar(s, ids, caminatas) })
+    }
 
     /* eslint-disable no-console */
     console.log(
@@ -459,9 +477,9 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
    * pasó» y hay que borrar el `.fails`. Un criterio que se mueve para dar verde no
    * es un criterio.
    */
-  it.fails(`p99 < ${TECHO_P99_MS} ms con ${CUERPOS} cuerpos y ${CUERPOS} criaturas`, () => {
+  it.fails(`p99 < ${TECHO_P99_MS} ms con ${CUERPOS} cuerpos y ${CUERPOS} criaturas`, async () => {
     const { s, ids } = mundoDeCriaturas(CUERPOS)
-    expect(perfilar(s, ids, caminatas).p99).toBeLessThan(TECHO_P99_MS)
+    expect((await perfilar(s, ids, caminatas)).p99).toBeLessThan(TECHO_P99_MS)
   }, 900_000)
 
   /**
@@ -471,9 +489,9 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
    * guarda la aspiración y éste guarda lo que hay, porque un número que se acepta
    * y deja de medirse se triplica sin que nadie se entere.
    */
-  it(`y lo ACEPTADO se sigue vigilando: p99 < ${TECHO_ACEPTADO_MS} ms (5 a 7× el criterio)`, () => {
+  it(`y lo ACEPTADO se sigue vigilando: p99 < ${TECHO_ACEPTADO_MS} ms (5 a 7× el criterio)`, async () => {
     const { s, ids } = mundoDeCriaturas(CUERPOS)
-    const p = perfilar(s, ids, caminatas)
+    const p = await perfilar(s, ids, caminatas)
     /* eslint-disable no-console */
     console.log(
       `\n  p99 con ${CUERPOS} cuerpos y ${CUERPOS} criaturas: ${num(p.p99)} ms` +
@@ -495,13 +513,13 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
    * funciones que recorrían el mundo entero. La resta es, entonces, exactamente lo
    * que cuestan `estorbo` + `olvidar`, sin tener que instrumentar `step.ts`.
    */
-  it('un goTo contra un wait: cuánto cuesta el portón y cuánto el mundo', () => {
+  it('un goTo contra un wait: cuánto cuesta el portón y cuánto el mundo', async () => {
     const n = 1000
     const a = mundoDeCriaturas(n)
     const b = mundoDeCriaturas(n)
-    const conMundo = perfilar(a.s, a.ids, caminatas)
-    const soloPorton = perfilar(b.s, b.ids, esperas)
-    const quieto = perfilar(mundoDeCriaturas(0).s, [], caminatas)
+    const conMundo = await perfilar(a.s, a.ids, caminatas)
+    const soloPorton = await perfilar(b.s, b.ids, esperas)
+    const quieto = await perfilar(mundoDeCriaturas(0).s, [], caminatas)
 
     /* eslint-disable no-console */
     console.log(
@@ -581,7 +599,7 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
    * frontera entre los dos modos y el p99 mide el modo caro. Antes: p50 21,84 · p99
    * 73,39. Después: p50 13,15 · p99 21,62.
    */
-  it('un drop cuesta dos estorbos donde un goTo cuesta uno, y eso se mide', () => {
+  it('un drop cuesta dos estorbos donde un goTo cuesta uno, y eso se mide', async () => {
     const n = 200
     const { s, ids } = mundoDeCriaturas(n)
     // Cada criatura arranca con una piedra en la mano, y alterna soltarla y
@@ -593,7 +611,7 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
           ? ({ k: 'drop', by, seq, commitment: 'reversible', what: `${by}-cosa` } as Intent)
           : ({ k: 'take', by, seq, commitment: 'reversible', what: `${by}-cosa` } as Intent),
       )
-    const p = perfilar(conCosasEnLaMano(s, ids), ids, alternado)
+    const p = await perfilar(conCosasEnLaMano(s, ids), ids, alternado)
 
     /* eslint-disable no-console */
     console.log(
@@ -661,7 +679,7 @@ describe('el índice de cuerpos por celda: grid.ts contra uno propio del Borrado
    * `sacarCuerpo`, y se tira al cerrar. No toca el terreno, no entra al hash y no
    * sobrevive al tick — así que no puede quedar vieja entre ticks.
    */
-  it('construir el índice de 5000 cuerpos: grid.ts contra un Map de celdas', () => {
+  it('construir el índice de 5000 cuerpos: grid.ts contra un Map de celdas', async () => {
     const { s } = mundoDeCriaturas(0)
     const celdas: { id: string; at: { x: number; y: number } }[] = []
     for (const [id, c] of s.bodies) celdas.push({ id, at: c.at })
@@ -723,7 +741,7 @@ describe('el índice de cuerpos por celda: grid.ts contra uno propio del Borrado
     expect(mapa).toBeGreaterThan(0)
   }, 300_000)
 
-  it('placeBody materializa chunks, y por eso no puede ser el índice del tick', () => {
+  it('placeBody materializa chunks, y por eso no puede ser el índice del tick', async () => {
     // La evidencia estructural, que no depende de ningún milisegundo: indexar UN
     // cuerpo con `grid.ts` crea un chunk de terreno que antes no existía. Ése es
     // el efecto que descalifica a `grid.ts` para este uso, y está acá para que si
@@ -741,7 +759,7 @@ describe('el índice de cuerpos por celda: grid.ts contra uno propio del Borrado
 // ─── Control: el mundo del banco se mueve de verdad ─────────────────────────
 
 describe('lo que el banco mide existe', () => {
-  it('las criaturas caminan: cada tick cambia la celda de todas', () => {
+  it('las criaturas caminan: cada tick cambia la celda de todas', async () => {
     const { s, ids } = mundoDeCriaturas(10)
     let w = s
     const antes = ids.map((id) => (w.bodies.get(`${id}-cuerpo`) as WorldBody).at.y)
@@ -753,7 +771,7 @@ describe('lo que el banco mide existe', () => {
     for (let i = 0; i < ids.length; i++) expect(despues[i]).toBe((antes[i] as number) + 5)
   })
 
-  it('y el mundo del banco tiene los 5000 cuerpos del criterio, en todas las filas', () => {
+  it('y el mundo del banco tiene los 5000 cuerpos del criterio, en todas las filas', async () => {
     for (const n of BARRIDO) {
       const { s } = mundoDeCriaturas(n)
       expect(s.bodies.size).toBe(CUERPOS)
@@ -761,7 +779,7 @@ describe('lo que el banco mide existe', () => {
     }
   })
 
-  it('ninguna criatura arranca solapada con nada: el estado medido es legal', () => {
+  it('ninguna criatura arranca solapada con nada: el estado medido es legal', async () => {
     const { s } = mundoDeCriaturas(CUERPOS)
     const ocupadas = new Set<number>()
     for (const c of s.bodies.values()) {

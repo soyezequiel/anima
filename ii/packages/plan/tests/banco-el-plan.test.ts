@@ -218,13 +218,29 @@ const PEOR = 622 // 625 cuerpos: un cuerpo por celda percibida
  * otra distribución; cuánto cuesta esa primera llamada se mide aparte, arriba de
  * todo, que es donde significa algo.
  */
-function muestras(f: () => void, n: number, calentar = 200): number[] {
+async function muestras(f: () => void, n: number, calentar = 200): Promise<number[]> {
   for (let i = 0; i < calentar; i++) f()
   const xs: number[] = new Array<number>(n)
   for (let i = 0; i < n; i++) {
     const t0 = process.hrtime.bigint()
     f()
     xs[i] = Number(process.hrtime.bigint() - t0)
+    // ─── SE CEDE EL HILO CADA TANTO, y no es cosmético ──────────────────────
+    //
+    // Es la trampa que este proyecto ya tiene escrita: birpc le pone 60 s de
+    // vencimiento al aviso de cada test, y un bucle sincrónico largo no deja
+    // correr ni el temporizador ni la lectura del socket. Cuando suelta el hilo,
+    // Node corre la fase de temporizadores antes que la de poll y el vencimiento
+    // gana la carrera aunque la respuesta ya esté en la cola: salen **los tests
+    // en verde y `exit 1`**, que es la peor clase de rojo.
+    //
+    // Con la suite en serie estos miles de muestras entraban cómodas; con los
+    // ocho paquetes en paralelo el mismo bucle tarda lo suficiente como para
+    // llegar al vencimiento, y apareció el `Timeout calling "onTaskUpdate"` en
+    // una corrida de dos. La macrotarea de `setTimeout(0)` drena la fase de poll
+    // —un `await` sobre una promesa resuelta es una microtarea y NO alcanza— y
+    // no toca la medición: se cede DESPUÉS de cerrar el cronómetro.
+    if ((i & 0x3ff) === 0x3ff) await new Promise((listo) => setTimeout(listo, 0))
   }
   return xs.sort((a, b) => a - b)
 }
@@ -255,7 +271,7 @@ describe('el banco del plan', () => {
 
   // ─── (0) La primera llamada, la que paga el JIT ───────────────────────────
 
-  it('la primera llamada del proceso cuesta más que las siguientes', () => {
+  it('la primera llamada del proceso cuesta más que las siguientes', async () => {
     // VA PRIMERA EN EL ARCHIVO A PROPÓSITO, y es la única medición que no se
     // puede repetir: en cuanto `plan()` corrió una vez, V8 ya la compiló y el
     // número desaparece para siempre. En la partida esto se paga UNA vez, en el
@@ -265,7 +281,7 @@ describe('el banco del plan', () => {
     const t0 = process.hrtime.bigint()
     const r = plan(meta(COMER), v, EXPANSIONES_POR_TICK)
     const fria = Number(process.hrtime.bigint() - t0)
-    const tibias = muestras(() => {
+    const tibias = await muestras(() => {
       plan(meta(COMER), v, EXPANSIONES_POR_TICK)
     }, 500)
     console.log(
@@ -282,7 +298,7 @@ describe('el banco del plan', () => {
 
   // ─── (1) La pesca con presupuesto 64: p50 y p99 ──────────────────────────
 
-  it('(1) `plan()` con presupuesto 64 sobre la pesca: p50 y p99', () => {
+  it('(1) `plan()` con presupuesto 64 sobre la pesca: p50 y p99', async () => {
     const casos: readonly (readonly [string, VistaDelPlan, number])[] = [
       ['el río del documento (3 cuerpos)', elRio(), 3000],
       [`la vista típica (${String(TIPICA + 3)} cuerpos)`, elRio(TIPICA), 2000],
@@ -297,7 +313,7 @@ describe('el banco del plan', () => {
       // las tres filas medirían tres problemas distintos y la comparación entre
       // ellas no diría nada. Se compara contra el del río pelado.
       expect(r.k, nombre).toBe('plan')
-      const xs = muestras(() => {
+      const xs = await muestras(() => {
         plan(meta(COMER), v, EXPANSIONES_POR_TICK)
       }, n, n > 1000 ? 200 : 50)
       p99s.push(pct(xs, 99))
@@ -322,7 +338,7 @@ describe('el banco del plan', () => {
     for (const p99 of p99s) expect(p99).toBeLessThan(D4_NS)
   })
 
-  it('el relleno no cambia el plan, así que las tres filas miden el mismo problema', () => {
+  it('el relleno no cambia el plan, así que las tres filas miden el mismo problema', async () => {
     // Sin esto, la fila de 625 podría estar midiendo un plan más corto —pescar en
     // un cuerpo de relleno, que califica de `source` porque `extraccion` sólo le
     // pide `mass > 0`— y la comparación entre filas sería falsa. No es una
@@ -371,7 +387,7 @@ describe('el banco del plan', () => {
     return { peor, filas }
   }
 
-  it('(2) el catálogo semilla no llega ni a 7 expansiones, así que 64 nunca corta', () => {
+  it('(2) el catálogo semilla no llega ni a 7 expansiones, así que 64 nunca corta', async () => {
     // ESTA MEDICIÓN NO ES DE TIEMPO: contar expansiones es determinista, da lo
     // mismo en cualquier máquina, y por eso se afirma SIEMPRE y no sólo midiendo
     // en serio. Es el hallazgo que ordena todo el informe.
@@ -409,7 +425,7 @@ describe('el banco del plan', () => {
 
   // ─── (3) Cuántas expansiones entran de verdad en 8 ms ────────────────────
 
-  it('(3) cuántas expansiones entran en 8 ms, por el marginal medido', () => {
+  it('(3) cuántas expansiones entran en 8 ms, por el marginal medido', async () => {
     // ─── CÓMO SE SACA EL NÚMERO, porque la resta importa ─────────────────────
     //
     // `plan(meta, v, k)` con `k` chico corta y devuelve `parcial`, así que se
@@ -436,7 +452,7 @@ describe('el banco del plan', () => {
       for (let k = 1; k <= 7; k++) {
         ts.push(
           pct(
-            muestras(() => {
+            await muestras(() => {
               plan(meta(COMER), v, k)
             }, n, calentar),
             50,
@@ -513,7 +529,7 @@ describe('el banco del plan', () => {
 
   // ─── (4) Reanudar contra empezar de cero ─────────────────────────────────
 
-  it('(4) reanudar desde la frontera contra empezar de cero', () => {
+  it('(4) reanudar desde la frontera contra empezar de cero', async () => {
     // ─── LA PREGUNTA QUE PUEDE MATAR AL ANYTIME ─────────────────────────────
     //
     // Si reanudar costara casi lo mismo que empezar de cero, toda la maquinaria
@@ -539,13 +555,13 @@ describe('el banco del plan', () => {
       const v = elRio(relleno)
 
       const entero = pct(
-        muestras(() => {
+        await muestras(() => {
           plan(meta(COMER), v, 5000)
         }, n, calentar),
         50,
       )
       const aTirones = pct(
-        muestras(() => {
+        await muestras(() => {
           let f: Frontera | undefined
           for (;;) {
             const r: PlanResult = plan(meta(COMER), v, 1, f)
@@ -569,13 +585,13 @@ describe('el banco del plan', () => {
       for (let k = 1; k <= fronteras.length; k++) {
         const f = fronteras[k - 1] as Frontera
         const reanudando = pct(
-          muestras(() => {
+          await muestras(() => {
             plan(meta(COMER), v, 1, f)
           }, n, calentar),
           50,
         )
         const deCero = pct(
-          muestras(() => {
+          await muestras(() => {
             plan(meta(COMER), v, k + 1)
           }, n, calentar),
           50,
@@ -620,7 +636,7 @@ describe('el banco del plan', () => {
 
   // ─── (5) Lo que la fila de la cocción le cuesta a una meta de comida ─────
 
-  it('(5) lo que la vía nueva le cuesta a la pesca, medido A/B', () => {
+  it('(5) lo que la vía nueva le cuesta a la pesca, medido A/B', async () => {
     // ─── LA PREGUNTA QUE HAY QUE HACERSE AL AGREGAR UNA FILA ────────────────
     //
     // `regresar` prueba TODAS las vías cuyos esquemas aporten alguna cláusula, y
@@ -643,13 +659,13 @@ describe('el banco del plan', () => {
     ] as const) {
       const v = elRio(relleno)
       const con = pct(
-        muestras(() => {
+        await muestras(() => {
           plan(meta(COMER), v, EXPANSIONES_POR_TICK)
         }, n, calentar),
         50,
       )
       const sin = pct(
-        muestras(() => {
+        await muestras(() => {
           plan(meta(COMER), v, EXPANSIONES_POR_TICK, undefined, { esquemas: sinLey })
         }, n, calentar),
         50,

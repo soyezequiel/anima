@@ -99,6 +99,39 @@ Tres reglas, y la primera vale más que las otras dos juntas:
 > entre las dos corridas. El cerco de la mente en `ataque-determinismo.test.ts`
 > se puso rojo y obligó a escribir la decisión, que es exactamente su trabajo.
 
+> **EN CURSO: la suite EN PARALELO baja de 239 s a ~80 s, y todavía no está
+> verde.** `pnpm ii:test:par` corre los ocho paquetes a la vez en vez de en
+> serie. Medido: **239 s → 69–98 s** según la corrida. Lo que hay que arreglar no
+> es el paralelismo, es lo que la contención destapa, y son DOS clases:
+>
+> - **aserciones de reloj de pared sin gatear.** Ocho, ya reparadas y commiteadas:
+>   `skills/hito-4` (tres), `skills/presupuesto`, `perceive/banco-la-vista`
+>   (tres), `perceive/ataque-2-al-sellado-y-al-reloj`. Todas pasaron al patrón que
+>   el proyecto ya tenía escrito —se imprime siempre, se afirma con
+>   `ANIMA_BANCO=1`— porque con ocho vitest peleando 16 hilos midieron 2807 ms
+>   contra un techo de 250, 7,76 contra 0,5, 13,05 contra 5 y 18,2 contra 5, **sin
+>   que una línea de código cambiara**. Los techos no se movieron; lo que cambió
+>   es cuándo se afirman;
+> - **bucles sincrónicos que rompen el canal de vitest.** Es la trampa ya
+>   documentada al final de esta sección (`Timeout calling "onTaskUpdate"`: los
+>   tests salen verdes y el exit es 1). Reparados los de `plan/banco-el-plan` y
+>   `world/banco-el-camino-de-intenciones`, cediendo el hilo con una macrotarea
+>   cada tantas vueltas —después de cerrar el cronómetro, así que no entra en la
+>   medición—. **QUEDAN MÁS en `@anima/world`**: tres corridas seguidas dieron
+>   `onTaskUpdate` en ese paquete y un `expected 1.1777 to be less than 1` en
+>   `hito-5-la-pesca`. Ésa es la cola que falta.
+>
+> El timeout por omisión, que era la tercera clase, se cerró de una vez en
+> `ii/vitest.base.ts`: los 5 s son un valor de la herramienta y no un criterio de
+> este proyecto —todo lo que acá se afirma sobre el reloj vive en un `expect`
+> explícito y gateado—, así que subirlo a dos minutos no afloja nada y saca de
+> encima el juego de topos de los bloques que sólo tardan.
+>
+> **La regla que dejó, y vale más que el tramo:** una suite que se puede correr en
+> paralelo es una suite sin aserciones de reloj sueltas. Paralelizar no las causa;
+> las **encuentra**. Cada una de las ocho llevaba meses pudiendo ponerse roja en
+> una máquina ocupada.
+
 Y la asimetría que conviene tener presente antes de recortar de más: **los tramos
 que más tardaron son los que encontraron las causas raíz** —la cocción, las
 sueltas que no se materializaban— y **los cortos son los que produjeron los

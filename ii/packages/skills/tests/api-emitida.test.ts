@@ -38,6 +38,17 @@ function emitir(): string {
   return normalizar(r.stdout)
 }
 
+/**
+ * Cuánto espera el ARNÉS antes de dar por colgado un bloque que lanza el emisor.
+ *
+ * Los tres bloques de este archivo hacen `spawnSync` de un proceso que compila:
+ * no miden tiempo, pero lo consumen. Los 5 s de vitest alcanzan con la suite en
+ * serie y no alcanzan con los ocho paquetes en paralelo —medido: 20,9 s, 24,7 s
+ * y 9,8 s—. El timeout es la paciencia del andamio y no una afirmación: acá no
+ * hay ninguna sobre el reloj.
+ */
+const TOPE_DE_PACIENCIA = 120_000
+
 describe('el .d.ts se emite, no se transcribe', () => {
   it('lo commiteado es exactamente lo emitido', () => {
     const emitido = emitir()
@@ -49,13 +60,13 @@ describe('el .d.ts se emite, no se transcribe', () => {
       commiteado,
       'src/skill-api.d.ts quedó viejo. Corré: pnpm --filter @anima/skills emitir-api',
     ).toBe(emitido)
-  })
+  }, TOPE_DE_PACIENCIA)
 
   it('el emitido no tiene ninguna referencia relativa colgada', () => {
     // La costura de `tipos.d.ts` + `ctx.d.ts` borra los imports internos. Si
     // quedara uno, el archivo que ES el prompt tendría un import roto.
     expect(emitir()).not.toMatch(/from '\.[^']*'/)
-  })
+  }, TOPE_DE_PACIENCIA)
 
   it('el emitido no vuelve a escribir el catálogo de cualidades', () => {
     // El catálogo se re-exporta de `@anima/physics`. Si alguien lo copia acá, la
@@ -66,7 +77,7 @@ describe('el .d.ts se emite, no se transcribe', () => {
     expect(texto).not.toContain("'heatCapacity'")
     expect(texto).toContain("from '@anima/physics'")
     expect(texto).toContain("from '@anima/world'")
-  })
+  }, TOPE_DE_PACIENCIA)
 })
 
 describe('las tres listas que no se pueden derivar en tipos', () => {
