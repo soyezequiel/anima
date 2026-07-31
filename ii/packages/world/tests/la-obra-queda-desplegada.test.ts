@@ -166,31 +166,48 @@ describe('(d) levantar la obra retira su entrada', () => {
 // ─── (e) El orden ───────────────────────────────────────────────────────────
 
 describe('(e) la tabla se recorre por ID, no por orden de llegada', () => {
-  it('desplegar dos obras en distinto orden da EL MISMO hash', () => {
+  it('el ORDEN DE LLEGADA de dos despliegues del mismo tick no decide nada', () => {
     // El agujero que el ataque al determinismo del Hito 2 ya encontró una vez con
     // `seq`: resolver por orden de llegada hace que dos réplicas del mismo mundo
     // dejen de ser la misma partida. Con dos dispositivos sobre el mismo pozo eso
     // deja de ser teórico, y es el caso que el tramo siguiente va a necesitar.
+    //
+    // ─── LOS DOS VAN EN EL MISMO TICK, y eso lo enseñó un rojo ──────────────
+    //
+    // La primera versión los desplegaba en dos `stepWorld` seguidos y daba verde
+    // — pero verde por casualidad: **estaba midiendo en qué TICK se desplegó cada
+    // uno**, que sí es otra partida. No se notaba porque nada del mundo dependía
+    // todavía del tick de despliegue. Se puso roja sola al entrar el sistema de
+    // dispositivos, que le anota a cada uno cuándo vuelve a intentar.
+    //
+    // Y hacen falta DOS actores: un actor no emite dos intenciones en un tick —la
+    // segunda sale `ya-actuo`—. Lo que se revuelve es el arreglo de entrada, que
+    // es el orden en que contestaron las mentes y no puede decidir nada.
     function conDos(alReves: boolean): WorldState {
-      const yo = criatura('yo')
       const s = mundo({
         phys: PHYS,
         bodies: [
-          enElPiso(yo, PARADA),
+          enElPiso(criatura('yo'), PARADA),
+          enElPiso(criatura('vos'), PARADA),
           enLaMano(cuerpo('obra-a', 'madera', 1), PARADA, 'yo'),
-          enLaMano(cuerpo('obra-b', 'madera', 1), PARADA, 'yo'),
+          enLaMano(cuerpo('obra-b', 'madera', 1), PARADA, 'vos'),
         ],
-        actors: [actor('yo', { holding: ['obra-a', 'obra-b'], capacity: 4 })],
+        actors: [
+          actor('yo', { holding: ['obra-a'], capacity: 4 }),
+          actor('vos', { holding: ['obra-b'], capacity: 4 }),
+        ],
       })
       const is: readonly Intent[] = [
         place({ by: 'yo', seq: 0 }, 'obra-a', SITIO),
-        place({ by: 'yo', seq: 1 }, 'obra-b', { x: 0, y: 1 }),
+        place({ by: 'vos', seq: 0 }, 'obra-b', { x: 0, y: 1 }),
       ]
-      let w = s
-      for (const i of alReves ? [...is].reverse() : is) w = corre(w, i)
-      return w
+      return stepWorld(s, alReves ? [...is].reverse() : is).state
     }
-    expect(hashWorldState(conDos(true))).toBe(hashWorldState(conDos(false)))
+    const derecho = conDos(false)
+    // La premisa: los dos quedaron puestos. Sin esto el test compararía dos
+    // mundos con una sola obra y pasaría sin medir nada.
+    expect(derecho.desplegados.size).toBe(2)
+    expect(hashWorldState(conDos(true))).toBe(hashWorldState(derecho))
   })
 
   it('y las claves salen ordenadas, no en orden de inserción', () => {

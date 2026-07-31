@@ -10,7 +10,10 @@ Gate 5→6** cerrados. El D: **`place` dejó de contestar `'no-implementado'`** 
 pasó a significar otra cosa —despliega un CUERPO ya armado, no construye un plano
 (ADR II-0022)—, con la tabla `WorldState.desplegados`, su ranura de guardado y su
 entrada al hash. Van **5 de los 12 puntos** del gate cumpliendo o a medias por
-encima de la mitad. Y antes: la costura del catálogo llega hasta la mente —**la deuda 1 del
+encima de la mitad. Y el D·bis le dio de comer: **un cuerpo desplegado con `catch > 0`
+al lado de un pozo saca solo** —3 piezas en 20 s, sin una sola intención— y la
+regla es una CUALIDAD DERIVADA, no un `kind`: ahí está el punto 12 cumplido por
+la física. Y antes: la costura del catálogo llega hasta la mente —**la deuda 1 del
 gate está pagada**—, una frontera armada con otro catálogo se descarta y se
 replantea (ver el final de la sección 0·bis), **`BlueprintDefinition` existe** en
 `@anima/physics` con `definirPlano()` de puerta, y el **C·bis midió `unir` antes
@@ -158,7 +161,7 @@ capacidades físicas disponibles en ese nivel.*
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2565 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+**Nueve paquetes, 2574 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
 nueve typechecks limpios.** Corridos enteros al cerrar el tramo D del gate, mirando
 el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
@@ -184,7 +187,7 @@ otra máquina, hay que pushear antes.
 | paquete | qué es | tests |
 |---|---|---:|
 | `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables, **`BlueprintDefinition`** | 646 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj, **las obras desplegadas** | 572 (+1 skipped) |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj, **las obras desplegadas que trabajan solas** | 581 (+1 skipped) |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 121 |

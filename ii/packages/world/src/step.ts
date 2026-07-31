@@ -145,11 +145,7 @@ export interface WorldBody {
 /**
  * UNA OBRA DESPLEGADA: dejó de ser carga y pasó a ser un dispositivo puesto.
  *
- * Hoy tiene los dos campos que el tramo D necesita. Los otros tres que el
- * [ADR II-0016] declara —stock asociado, próximo intento y captura almacenada—
- * entran cuando entre la retención pasiva, que pide el destino nuevo de
- * `drawFromStock` y por lo tanto pasa por `admit()`. No se declaran vacíos ahora:
- * un campo que nadie llena es un campo que el hash igual cuenta.
+ * Los cinco campos del [ADR II-0016], y ninguno de más.
  */
 export interface Desplegado {
   /**
@@ -166,6 +162,40 @@ export interface Desplegado {
    * conservarla cuando la hay, que es lo que piden el punto 8 del gate y el juez.
    */
   readonly revision?: string
+  /**
+   * CONTRA QUÉ POZO trabaja. Se resuelve AL DESPLEGAR y no por tick.
+   *
+   * Ausente si no había ninguno al lado, y entonces el dispositivo está puesto y
+   * no hace nada — que es lo correcto: una obra en el medio del páramo es una
+   * obra en el medio del páramo.
+   *
+   * Se fija una vez porque el sitio no se muda: buscarlo por tick sería pagar un
+   * barrido de vecinos por dispositivo y por tick para contestar siempre lo mismo.
+   */
+  readonly stock?: BodyId
+  /**
+   * EN QUÉ SEGUNDO DE MUNDO vuelve a intentar. En segundos y no en ticks
+   * (ADR II-0008): un dispositivo tira cada tantos segundos a 20 Hz y a 100 Hz.
+   */
+  readonly proximoIntento: number
+  /**
+   * LO QUE RETUVO, por id. **Son cuerpos de verdad**, en la celda del
+   * dispositivo, y esta lista dice de quién son.
+   *
+   * ─── POR QUÉ IDS Y NO MASA ANOTADA ────────────────────────────────────────
+   *
+   * Guardar «2,4 kg de pescado» como número sería más corto y abriría un agujero
+   * que este proyecto persigue por nombre: la conservación se mide sobre los
+   * CUERPOS del mundo, así que una captura que no es un cuerpo desaparece de la
+   * cuenta al entrar y aparece de la nada al salir. Es la bomba de materia del
+   * riesgo 4, con otro disfraz.
+   *
+   * Con ids, la conservación no se entera de que existe este campo y sigue
+   * cerrando sola. Y no contradice al ADR II-0016 —«la captura es estado
+   * autoritativo almacenado, no contención geométrica»—: lo que retiene no es una
+   * jaula ni un volumen, es esta lista.
+   */
+  readonly captura: readonly BodyId[]
 }
 
 /** Un proceso en curso. Es una de las dos cosas que un actor arrastra de un tick al otro. */
@@ -2168,6 +2198,14 @@ function intencionTomar(d: Borrador, a: Actor, i: Intent & { k: 'take' }): void 
   // II-0020: la entrada tiene que SEGUIR AL CUERPO, y ésta es una de las dos
   // puntas de esa costura.
   if (d.desplegados.delete(i.what)) d.reordenarDesplegados = true
+  // Y si lo que se levanta es una pieza RETENIDA, sale de la lista de su
+  // dispositivo. Es la otra punta de la misma costura: sin esto, la lista guarda
+  // el id de algo que ahora está en una mano, y el aparato «tiene» un pescado que
+  // se comieron hace mil ticks.
+  for (const [id, x] of d.desplegados) {
+    if (!x.captura.includes(i.what)) continue
+    d.desplegados.set(id, { ...x, captura: x.captura.filter((c) => c !== i.what) })
+  }
   // Al levantar algo se sueltan sus relaciones espaciales: lo que estaba apoyado
   // sobre otra cosa deja de estarlo, y lo que tapaba deja de tapar. Arrastrar la
   // relación en la mano haría que la criatura tape una fogata desde el otro lado
@@ -2253,9 +2291,20 @@ function intencionDesplegar(d: Borrador, a: Actor, i: Intent & { k: 'place' }): 
   }
 
   soltar(d, a, i.what, i.at)
-  // `revision` sólo si vino: un `undefined` explícito viajaría al hash como una
-  // clave más y dos mundos idénticos darían huellas distintas.
-  d.desplegados.set(i.what, i.revision === undefined ? { at: i.at } : { at: i.at, revision: i.revision })
+  // EL POZO SE RESUELVE ACÁ Y NO POR TICK. Ver `Desplegado.stock`.
+  const pozo = pozoCerca(d, i.at)
+  const base: Desplegado = {
+    at: i.at,
+    // Arranca pudiendo tirar ya: el primer intento es en el tick que viene, no
+    // dentro de un rato. Poner el reloj adelante haría que un dispositivo puesto
+    // y levantado en seguida no se distinguiera de uno que nunca funcionó.
+    proximoIntento: d.segundos,
+    captura: [],
+  }
+  // Las claves opcionales sólo si hay valor: un `undefined` explícito viajaría al
+  // hash como una clave más y dos mundos idénticos darían huellas distintas.
+  const conRev = i.revision === undefined ? base : { ...base, revision: i.revision }
+  d.desplegados.set(i.what, pozo === undefined ? conRev : { ...conRev, stock: pozo })
   d.reordenarDesplegados = true
   d.events.push({ k: 'solto', by: a.id, what: i.what, at: i.at })
 }
@@ -3002,6 +3051,130 @@ function sacarDelPozo(d: Borrador, a: Actor, rol: string, ligs: readonly Ligadur
   guardar(d, a, sacado, donde)
   d.events.push({ k: 'nacio', by: a.id, id: sacado.id, por: 'rendimiento' })
 }
+
+/**
+ * EL POZO SOBRE EL QUE ESTÁ PUESTO ESTO, o al lado.
+ *
+ * Se busca en la celda y en las ocho de alrededor, con el mismo alcance con el
+ * que una criatura pesca (`aMano` es Chebyshev 1). El empate lo rompe el id, que
+ * es la misma regla de todo el archivo: quedarse con «el primero que apareció»
+ * haría que el resultado dependiera del orden del mapa.
+ */
+function pozoCerca(d: Borrador, at: Placement): BodyId | undefined {
+  let mejor: BodyId | undefined
+  for (const c of d.bodies.values()) {
+    if (chebyshev(c.at, at) > 1) continue
+    if (stockDe(d, c) === undefined) continue
+    if (mejor === undefined || compararTexto(c.body.id, mejor) < 0) mejor = c.body.id
+  }
+  return mejor
+}
+
+/**
+ * ─── LOS DISPOSITIVOS TRABAJAN, y es lo único del tick que no lo pide nadie ──
+ *
+ * Todo lo demás del mundo pasa porque un actor emitió una intención. Un
+ * dispositivo desplegado avanza **sin nadie**, que es la mitad difícil del ADR
+ * II-0016: la criatura lo deja, se aleja, y la trampa sigue.
+ *
+ * ─── QUÉ HACE QUE UN CUERPO RETENGA, Y NO ES UN `kind` ──────────────────────
+ *
+ * `catch > 0`, y nada más. Es una cualidad DERIVADA de `freeStrandEnds` y
+ * `sharpness`, o sea de la geometría de lo que se armó, y es LA MISMA con la que
+ * `aparejoDe` elige el aparejo cuando pesca una criatura. Acá el aparejo es el
+ * dispositivo. Un palo pelado puesto sobre el mejor pozo del mundo no saca nada,
+ * y eso no lo decide una tabla: le da cero la fórmula.
+ *
+ * ─── EL ORDEN ES POR ID, Y ACÁ DEJA DE SER TEÓRICO ──────────────────────────
+ *
+ * `d.desplegados` se recorre en orden de clave. Dos dispositivos sobre el mismo
+ * pozo tiran del MISMO dado y del MISMO presupuesto calórico, así que resolverlos
+ * por orden de llegada haría que dos réplicas del mismo mundo divergieran — que
+ * es el agujero que el ataque al determinismo del Hito 2 ya encontró con `seq`.
+ *
+ * ─── Y NO ES MATERIA GRATIS ─────────────────────────────────────────────────
+ *
+ * Sale por `draw`, el mismo del oráculo que usa la pesca a mano: baja el stock,
+ * re-ancla la reposición y lo cobra al techo calórico del chunk. Un camino de
+ * extracción que no pasara por ahí es exactamente la bomba de materia del riesgo
+ * 4, y este proyecto ya tuvo dos extracciones con una sola cobrando.
+ */
+function sistemaDispositivos(d: Borrador): void {
+  if (d.desplegados.size === 0 || d.dios === undefined) return
+
+  for (const [id, x] of d.desplegados) {
+    if (x.stock === undefined) continue
+    if (d.segundos < x.proximoIntento) continue
+
+    const cuerpo = d.bodies.get(id)
+    const banco = d.bodies.get(x.stock)
+    // El dispositivo o el pozo pueden haber dejado de existir entre dos ticks. No
+    // es un error: se salta y el próximo tick vuelve a mirar.
+    if (cuerpo === undefined || banco === undefined) continue
+    if (qualityOf(cuerpo.body, 'catch', d.phys) <= 0) continue
+
+    const stock = stockDe(d, banco)
+    if (stock === undefined) continue
+
+    // El clon es obligatorio por lo mismo que en `sacarDelPozo`: `retirarUno`
+    // MUTA, y escribir adentro del estado de entrada rompe el replay.
+    const mio: Stock = { ...stock }
+    if (d.dado === undefined) d.dado = dadoDe(d.dios)
+    if (d.libro === undefined) d.libro = libroDe(d.dios)
+    const r = draw({ phys: d.phys, rng: d.dado.tirar, calorias: d.libro }, mio, cuerpo.body, d.segundos)
+
+    // El próximo intento se corre SIEMPRE, haya salido algo o no. Sin esto un
+    // dispositivo tiraría el dado en cada tick del mundo y la partida entera
+    // dependería de cuántos aparatos hay puestos.
+    d.desplegados.set(id, { ...x, proximoIntento: d.segundos + SEGUNDOS_ENTRE_INTENTOS })
+
+    if (r.yields === null) {
+      // Un intento fallido igual movió el dado, y eso ya quedó en `d.dado`. No se
+      // narra: nadie lo pidió, y un evento por tick por dispositivo llenaría la
+      // crónica de ruido que ninguna criatura puede leer.
+      if (r.razon !== 'no-pico') indiceDePozos(d).set(banco.body.id, mio)
+      d.pozosTocados = true
+      continue
+    }
+
+    const donde = celdaLibreCerca(d, x.at, id)
+    if (donde === undefined) {
+      // No hay dónde ponerla y el stock YA bajó. Es el mismo caso que
+      // `sacarDelPozo` documenta: lo que se pierde es la pieza, no la
+      // contabilidad — devolverla al agua sería regalar reposición.
+      indiceDePozos(d).set(banco.body.id, mio)
+      d.pozosTocados = true
+      continue
+    }
+
+    const sacado: Body = {
+      id: nuevoId(d),
+      form: 'bloque',
+      parts: [{ substance: r.yields, mass: unfx(r.masa), q: {} }],
+      joints: [],
+      state: {},
+    }
+    indiceDePozos(d).set(banco.body.id, mio)
+    d.pozosTocados = true
+    ponerCuerpo(d, { ...banco, body: cuerpoDePozo(banco.body.id, mio, population(mio, d.segundos)) })
+    ponerCuerpo(d, { body: sacado, at: donde })
+    // La pieza es un CUERPO del mundo y además está en la lista del dispositivo.
+    // Las dos cosas: el cuerpo para que la conservación lo vea, la lista para que
+    // se sepa de quién es. Ver `Desplegado.captura`.
+    const ahora = d.desplegados.get(id)
+    if (ahora !== undefined) d.desplegados.set(id, { ...ahora, captura: [...ahora.captura, sacado.id] })
+    d.events.push({ k: 'nacio', by: id, id: sacado.id, por: 'rendimiento' })
+  }
+}
+
+/**
+ * Cada cuántos SEGUNDOS de mundo vuelve a tirar un dispositivo.
+ *
+ * Es RITMO, así que va en segundos (ADR II-0008). El número sale de `extraccion`:
+ * una criatura que pesca tarda 1,5 segundos por tirada, y un aparato que no se
+ * cansa no tiene por qué ser más rápido que una criatura que sí.
+ */
+const SEGUNDOS_ENTRE_INTENTOS = 1.5
 
 /**
  * Partir un cuerpo. Es la mitad de `split` que conserva materia: lo que sale
@@ -3807,6 +3980,11 @@ export const SISTEMAS: readonly { readonly nombre: string; readonly correr: (d: 
   [
     { nombre: 'leyes', correr: sistemaLeyes },
     { nombre: 'metabolismo', correr: sistemaMetabolismo },
+    // Los dispositivos van DESPUÉS de las leyes y del metabolismo, y el orden es
+    // dato: un aparato saca del pozo con el estado del mundo ya avanzado este
+    // tick, igual que una criatura que actúa después de que la física corrió.
+    // Ponerlo antes le daría un tick de ventaja sobre todo lo demás.
+    { nombre: 'dispositivos', correr: sistemaDispositivos },
   ]
 
 // ─── El paso ─────────────────────────────────────────────────────────────────

@@ -299,6 +299,57 @@ se rechaza con `celda-ocupada`**, en vez de correr la obra a la celda libre más
 cercana como hace `drop`. El sitio es el que se pidió (ADR 0049 de Ánima I): una
 obra que se muda sola deja media choza abandonada en el sitio anterior.
 
+### El tramo D·bis: el dispositivo trabaja solo
+
+**La obra hace algo.** Un cuerpo desplegado saca del pozo **sin que nadie aplique
+un proceso**, guarda lo sacado, y la criatura vuelve y lo retira. Es el corazón
+del caso de aceptación, y es lo único del tick que no lo pide nadie.
+
+**Y no hay ningún `kind` ni nombre.** La regla entera es:
+
+> cualquier cuerpo desplegado con `catch > 0` al lado de un pozo retiene.
+
+`catch` es una cualidad **derivada** de `freeStrandEnds` y `sharpness`, o sea de
+la geometría de lo que se armó — y es **la misma** con la que `aparejoDe` ya elige
+el aparejo cuando pesca una criatura. Acá el aparejo es el dispositivo. Un palo
+pelado sobre el mejor pozo del mundo no saca nada, y eso no lo decide una tabla:
+le da cero la fórmula. **Ése es el punto 12 del criterio, cumplido por la física y
+no por un grep.**
+
+Medido: **3 piezas en 20 segundos de mundo, sin una sola intención.**
+
+Los tres campos que faltaban de `Desplegado` —`stock`, `proximoIntento`,
+`captura`— ya están, y el pozo se resuelve **al desplegar** y no por tick: el
+sitio no se muda, así que buscarlo cada tick sería pagar un barrido por
+dispositivo para contestar siempre lo mismo.
+
+**La captura son IDS DE CUERPOS DE VERDAD, y ésa es la decisión del tramo.**
+Anotar «2,4 kg de pescado» como número sería más corto y abriría exactamente el
+agujero que el riesgo 4 nombra: la conservación se mide sobre los cuerpos, así que
+una captura que no es un cuerpo desaparece de la cuenta al entrar y aparece de la
+nada al salir. Con ids, la conservación no se entera de que este campo existe y
+sigue cerrando sola. Y no contradice al ADR II-0016 —«la captura es estado
+almacenado, no contención geométrica»—: lo que retiene no es una jaula, es la
+lista.
+
+**Tres cosas que salieron de rojos, y las tres valen:**
+
+1. **`retirarUno` re-ancla la reposición.** El pozo con aparato quedó en 44 contra
+   45 sin él, con TRES piezas retenidas — no 42. Sacar no sólo baja la población:
+   adelanta el reloj con el que el pozo se repuebla, y las dos cosas se compensan
+   en parte. Así que el test afirma **que el pozo pagó**, no cuánto: clavar la
+   resta sería clavar la tasa de reposición de una semilla.
+2. **Un test de determinismo del tramo D estaba verde por casualidad.** Desplegaba
+   dos obras en dos `stepWorld` seguidos y creía medir el orden de llegada;
+   **medía en qué TICK se desplegó cada una**, que sí es otra partida. No se
+   notaba porque nada dependía todavía del tick de despliegue. Se puso rojo solo al
+   entrar este sistema. Ahora van los dos en el mismo tick y con dos actores —un
+   actor no emite dos intenciones en un tick, la segunda sale `ya-actuo`—.
+3. **`fibra` no existe como sustancia.** El fixture de la obra la usaba y `catch`
+   daba cero, así que el dispositivo no sacaba nada y el sistema parecía roto. Con
+   `liana` da 0,15. Vale mirarlo aparte: `physics/tests/mundo-de-prueba.ts` arma su
+   `CANA` con esa misma sustancia inexistente, o sea que esa caña no es una caña.
+
 ---
 
 ## 5 · Lo que ya existe y lo que falta, verificado contra el código
