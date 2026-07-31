@@ -1,0 +1,294 @@
+{
+  "_comoSeUsa": [
+    "ESTE ARCHIVO ES LA FUENTE DE LA VERDAD DEL TABLERO. Nada más lo es.",
+    "El procedimiento entero está en COMO-ACTUALIZAR.md, al lado. Leelo antes de tocar nada.",
+    "",
+    "LO QUE NO SE DECIDE A OJO:",
+    "  · El porcentaje NO se escribe. Se deriva de los criterios de cada etapa.",
+    "    si = 1 · rojo = 1 · medio = 0,5 · no = 0, promediado, y pesado por «semanas».",
+    "    Si una etapa tiene «puntos», poner «avance» es un error y el portón lo rechaza.",
+    "  · Las etapas con semanas: null NO entran en la cuenta. El plan de arquitectura",
+    "    dice, con esas palabras, que no se calcula un total nuevo sin base.",
+    "",
+    "LOS ESTADOS, y son los únicos que existen:",
+    "  etapa: hecho | cerrado-con-rojo | en-curso | pendiente | sin-estimar",
+    "  punto: si (cumple) | medio (a medias) | no (falta) | rojo (no cumple, aceptado con causa medida)",
+    "",
+    "Después de editar: node construir.mjs. Si el portón se queja, arreglá y volvé a correr.",
+    "No se escribe ningún archivo hasta que pase."
+  ],
+
+  "artifactUrl": "https://claude.ai/code/artifact/a8badcf1-8c50-4e29-b4e3-668ce387fe15",
+
+  "proyecto": "Ánima II",
+  "subtitulo": "Cuerpo, materia y vara — el remake que vive en ii/",
+  "actualizado": "2026-07-31",
+  "rama": "anima-2",
+  "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
+
+  "ahora": {
+    "titulo": "El gate saltó de 8 a 10 de 12 en una sola tanda, y sólo queda un punto sin empezar",
+    "detalle": "El tramo F que la vez pasada estaba sin commitear ya cerró y entró: `realizaElPlano` (F1) compara la obra armada contra el plano por las tres cosas que importan —cuántas piezas, cómo están atadas, y si cada una cumple lo que su rol pide—, con un contraejemplo medido para cada una. Con eso, el punto 6 CIERRA (construir y usar se sellan y se publican por separado) y el punto 9 CIERRA por dos caminos independientes (el sello vencido se rechaza con el mismo código que `admit()` ya usa, y la revisión del plano lleva la física adentro del hash). El punto 3 se midió y **no cierra**, con la causa exacta dicha por el propio planificador: un `ConstructionSchema` es UNA aplicación de UN proceso, y armar un plano son N−1 uniones encadenadas — hace falta una tercera clase de esquema, y esa es la fragua del Hito 8, no un ajuste de catálogo. Y el punto 10 cerró entero: el catálogo ahora sale de la misma crónica append-only que el mundo, con un lector cada uno, y el hueco que quedaba —la crónica no decía contra qué física se corrió— se tapó altiro. Aparte del gate: el Hito 12A (el view model, sin estimación propia) quedó completo, con un visor de un solo archivo que reconstruyó 441 cuadros por hash contra la partida grabada.",
+    "proximosPasos": [
+      "Punto 3, el único que falta del gate: una tercera clase de ConstructionSchema cuyo paso sea «correr esta habilidad» y no `apply` — es del Hito 8, no de esta etapa.",
+      "Punto 5, el otro que queda a medias: falta el BuildSkill que encadene uniones. Va a chocar con la HONDURA — una cadena de 5 piezas no arma aunque 5 entren en MAX_PARTS, porque el camino mide 4 contra un techo de 3.",
+      "Con 10 de 12 ya cumpliendo y los 2 que faltan con causa exacta y sin sorpresas, el gate está a un tramo de cerrarse del todo."
+    ]
+  },
+
+  "salud": [
+    { "etiqueta": "tests verdes", "valor": "2673", "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 627+1 skipped · plan 331+1 todo · mind 331 · oracle 270 · skills 193 · juez 126 · perceive 121" },
+    { "etiqueta": "typechecks limpios", "valor": "9 de 9", "nota": "re-verificado ahora, exit 0 · 8 paquetes + la app del banco de navegador" },
+    { "etiqueta": "it.fails abiertos", "valor": "69", "nota": "re-contado ahora, subió 1 desde la vez pasada (punto 3 del gate) · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1" },
+    { "etiqueta": "ADRs propios", "valor": "22", "nota": "re-contado ahora, sin cambios · II-0001 a II-0022" },
+    { "etiqueta": "commits sin pushear", "valor": "16", "nota": "rama anima-2 — el usuario pushea solo. Subieron 6 desde la última vez" },
+    { "etiqueta": "sin commitear", "valor": "5 archivos", "nota": "el visor (partida.html) y su test se regeneraron al correr la suite; los 3 tests de physics de dos actualizaciones atrás SIGUEN sin entrar" }
+  ],
+
+  "etapas": [
+    {
+      "id": "H0",
+      "nombre": "El banco de latencia",
+      "enUnaFrase": "Medir antes de construir encima: cuánto cuesta el typecheck, el combustible y el arranque.",
+      "estado": "hecho",
+      "semanas": 1,
+      "puntos": [
+        { "estado": "si", "texto": "typecheck en frío: 240 ms contra un techo de 3000" },
+        { "estado": "si", "texto": "barrido térmico: 12 de 12 sustancias con ventana" },
+        { "estado": "si", "texto": "arranque en el navegador: 6 ms contra un techo de 250" },
+        { "estado": "rojo", "texto": "el combustible costaba 22–52% y el techo era 15% — el criterio se reemplazó (ADR II-0005): el presupuesto se mide contra el tick, no contra sí mismo" }
+      ],
+      "nota": "Ninguna medición mató el plan. Una lo obligó a cambiar de regla y otra encontró una degeneración en la física."
+    },
+    {
+      "id": "H1",
+      "nombre": "Materia y leyes",
+      "enUnaFrase": "Las 22 cualidades, las 12 leyes y la puerta admit(). Sin mundo, sin criatura, sin UI.",
+      "estado": "hecho",
+      "semanas": 5,
+      "puntos": [
+        { "estado": "si", "texto": "los tres ejemplos corren sin que las palabras «carbón», «asar» ni «pescar» aparezcan en el código" },
+        { "estado": "si", "texto": "una sustancia nueva del oráculo, sin fila propia, se quema, se cocina y se ata" },
+        { "estado": "si", "texto": "admit() rechaza «frotar produce calor infinito» citando poweredBy" }
+      ],
+      "nota": "646 tests. Es el paquete más grande del árbol."
+    },
+    {
+      "id": "H2",
+      "nombre": "El mundo determinista",
+      "enUnaFrase": "La grilla, el reloj y stepWorld: el mismo mundo con la misma historia da siempre el mismo hash.",
+      "estado": "hecho",
+      "semanas": 2.5,
+      "puntos": [
+        { "estado": "si", "texto": "dos mundos gemelos con 100.000 intenciones dan el mismo hashWorld" },
+        { "estado": "si", "texto": "restaurar un snapshot a mitad reproduce el final exacto" },
+        { "estado": "si", "texto": "el replay del journal reconstruye el estado exacto" },
+        { "estado": "no", "texto": "el mismo hash en Chrome y en Firefox — pide un arnés de navegador que todavía no existe" },
+        { "estado": "rojo", "texto": "5000 cuerpos en menos de 4 ms: se midió 8,48 ms y el criterio se reemplazó (ADR II-0007). El tick pasó a ser un parámetro y el presupuesto una fracción: stepWorld ≤ 25%, medido 17,2%" }
+      ],
+      "nota": "La optimización sacó 39,66 ms a 8,48 (4,6×) sin mover la huella de conducta, y aun así quedaba lejos. El piso estaba en la representación, no en otra micro-optimización."
+    },
+    {
+      "id": "H3",
+      "nombre": "El dios perezoso",
+      "enUnaFrase": "El mapa infinito se resuelve al caminar, y lo que el dios decide queda escrito para siempre.",
+      "estado": "hecho",
+      "semanas": 2.5,
+      "puntos": [
+        { "estado": "si", "texto": "el mismo mundo explorado en dos órdenes distintos da el mismo hash" },
+        { "estado": "si", "texto": "escribir otra respuesta para una clave que ya existe lanza InvariantError" },
+        { "estado": "si", "texto": "la conservación dejó de estar apagada de hecho: 96 y 21 violaciones pasaron a 0 y 0" }
+      ],
+      "nota": "Cerrado del todo recién en el tramo K bis: el mundo materializa donde el dios dijo, no donde había lugar (ADR II-0014)."
+    },
+    {
+      "id": "H4",
+      "nombre": "Cuerpo, sandbox y quince innatas",
+      "enUnaFrase": "Quince habilidades escritas a mano en el mismo TypeScript que después va a escribir el modelo.",
+      "estado": "hecho",
+      "semanas": 3.5,
+      "puntos": [
+        { "estado": "si", "texto": "las quince corren dentro del presupuesto" },
+        { "estado": "si", "texto": "un while(true) plantado se corta sin caer un frame" },
+        { "estado": "si", "texto": "una habilidad corrida dos veces da el mismo hash" },
+        { "estado": "si", "texto": "explorar cierra su contrato: 44 celdas de distancia y 96 distintas en 100 ticks (eran 3 y 8). 15 de 15 innatas" }
+      ],
+      "nota": "El contrato de explorar se cerró tarde, en el tramo Ñ: caminaba un ciclo cerrado de 8 celdas."
+    },
+    {
+      "id": "H5",
+      "nombre": "La mente, sin LLM",
+      "enUnaFrase": "El hito que decide si la tesis vive: con hambre y un río a la vista, la criatura ata una caña y pesca sola.",
+      "estado": "cerrado-con-rojo",
+      "semanas": 3.5,
+      "puntos": [
+        { "estado": "si", "texto": "proveedor apagado: 0 llamadas a la red, 0 dependencias de runtime fuera de ii/" },
+        { "estado": "si", "texto": "la cadena de la caña: 7 eslabones en el plan, 6 vuelos contra el mundo. Tira la caña en el tick 48, el pescado entra a la mano en el 108" },
+        { "estado": "si", "texto": "ticksPerdidos === 0 en 20.000 ticks, con una condición escrita al lado" },
+        { "estado": "rojo", "texto": "p99 < 5 ms con 5000 cuerpos: se midió 30,94 ms (6,2×). Aceptado por el usuario, con guarda verde en 45 ms" },
+        { "estado": "rojo", "texto": "sobrevivir 20.000 ticks sola: muere en el 18.150 con 0 bocados. Aceptado" },
+        { "estado": "rojo", "texto": "emergencia: 0 de 9 con el tanque canónico, 2 de 9 con el tanque lleno. El umbral es 4. Aceptado" }
+      ],
+      "nota": "CUMPLEN 3 DE 6, y el hito cierra con los otros 3 en rojo aceptado — cada uno con su it.fails y su causa medida. No se mezclan en un solo número: «cumple» y «no cumple pero está aceptado» son cosas distintas. Y los dos últimos rojos eran el mismo problema: sin fuego no hay comida. La pared aritmética se cayó en el tramo N (el fósforo bajó de 645,50 a 244,65 contra un tanque de 310), pero la corrida canónica no se movió un tick. Lo que la frena ahora es MATERIA, no aritmética."
+    },
+    {
+      "id": "Gate",
+      "nombre": "Gate 5→6 — objetos emergentes",
+      "enUnaFrase": "Fabricar una trampa para peces que no está precargada, dejarla trabajando sola y volver a retirar la captura.",
+      "estado": "en-curso",
+      "semanas": 4,
+      "puntos": [
+        { "estado": "si", "texto": "1 · BlueprintDefinition canónico y versionado" },
+        { "estado": "si", "texto": "2 · registro en un overlay aislado por sesión" },
+        { "estado": "no", "texto": "3 · publicación de capacidades al planificador: NO CUMPLE, medido — un ConstructionSchema es una aplicación de UN proceso y armar un plano son N−1 uniones encadenadas. Pide una tercera clase de esquema, que es la fragua del Hito 8" },
+        { "estado": "si", "texto": "4 · sin mutación global de SCHEMA_INDEX, con guardián de texto en los dos paquetes" },
+        { "estado": "medio", "texto": "5 · construcción incremental e idempotente: desplegar ya es idempotente; falta el BuildSkill que encadene uniones" },
+        { "estado": "si", "texto": "6 · separar construir de usar: capacidadDe no deja publicar un sello vencido. Caso asimétrico medido: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar" },
+        { "estado": "si", "texto": "7 · dos partidas no se contaminan" },
+        { "estado": "si", "texto": "8 · guardar y restaurar conserva la revisión exacta, y el hash es el mismo" },
+        { "estado": "si", "texto": "9 · un cambio de física invalida los sellos, por dos caminos independientes: el sello vencido se rechaza con el mismo código que admit() ya usa, y la revisión del plano lleva la física adentro del hash" },
+        { "estado": "si", "texto": "10 · el mismo journal produce el mismo mundo y el mismo catálogo: una sola crónica append-only con dos lectores. El hueco que quedaba —qué física se corrió— ya se tapó" },
+        { "estado": "si", "texto": "11 · descriptor visual procedural determinista: seis claves y ni una más, derivadas del estado. Se afirma sin dibujar un píxel" },
+        { "estado": "si", "texto": "12 · sin nombres especiales: 90 fuentes barridos, cero infracciones — y lo que hace que un cuerpo retenga es catch > 0, una cualidad derivada" }
+      ],
+      "nota": "Van 10 cumpliendo, 1 a medias (el 5, falta el BuildSkill) y 1 con el hueco medido y nombrado (el 3, pide la fragua del Hito 8). El punto 12 no lo cumple un grep, lo cumple la física — con un palo pelado la misma partida no saca ni un pez."
+    },
+    {
+      "id": "H6",
+      "nombre": "El chat, sin LLM",
+      "enUnaFrase": "Le hablás en castellano rioplatense y hace, sin llamar a ningún modelo.",
+      "estado": "pendiente",
+      "semanas": 2.5,
+      "puntos": [
+        { "estado": "no", "texto": "corpus de 200 frases reales con su lectura esperada, ≥80% resueltas sin red" },
+        { "estado": "no", "texto": "p95 de mensaje a primer movimiento < 150 ms con el proveedor apagado" },
+        { "estado": "no", "texto": "transformar «fabricá una trampa para peces» en un objetivo funcional SIN nombrar la solución" }
+      ],
+      "nota": "Trae una deuda escrita de antemano: el puente entre el castellano hablado y los nombres de procesos físicos es una tabla de alias que hay que escribir a mano y presupuestar."
+    },
+    {
+      "id": "H7",
+      "nombre": "El juez",
+      "enUnaFrase": "Decidir si una habilidad recién escrita es estable, con mundos adversos que ella no vio.",
+      "estado": "pendiente",
+      "semanas": 2.5,
+      "puntos": [
+        { "estado": "no", "texto": "una habilidad que sólo funciona donde la corrigieron no promueve" },
+        { "estado": "no", "texto": "el juez evalúa por separado plano, construcción, uso y utilidad" }
+      ],
+      "nota": "OJO: @anima/juez ya existe con 126 tests, pero es el detector de secuencias de emergencia del Hito 5, no el juez de este hito. Son dos cosas con el mismo nombre."
+    },
+    {
+      "id": "H8",
+      "nombre": "La fragua y el carril de mejora",
+      "enUnaFrase": "Acá recién entra el LLM: escribe habilidades nuevas mientras el mundo sigue corriendo.",
+      "estado": "pendiente",
+      "semanas": 4.5,
+      "puntos": [
+        { "estado": "no", "texto": "matar la conexión a mitad de un parche no deja el mundo inconsistente" },
+        { "estado": "no", "texto": "ticksPerdidos === 0 durante todo el episodio" },
+        { "estado": "no", "texto": "con la cuota agotada, la cola no dispara ni una consulta" }
+      ]
+    },
+    {
+      "id": "H9",
+      "nombre": "La biblioteca semilla",
+      "enUnaFrase": "Cuarenta a sesenta habilidades de fábrica, para que la demo sea instantánea y no de 6 a 25 segundos.",
+      "estado": "pendiente",
+      "semanas": 2,
+      "puntos": [
+        { "estado": "no", "texto": "las tres historias del usuario corren en camino caliente, con cero llamadas al modelo" },
+        { "estado": "no", "texto": "la biblioteca NO incluye la trampa reservada — si viniera de fábrica, el caso de aceptación dejaría de medir nada" }
+      ]
+    },
+    {
+      "id": "H10",
+      "nombre": "Crónica y herencia",
+      "enUnaFrase": "Cerrar la pestaña y volver sin perder nada, y que la segunda generación sepa lo que aprendió la primera.",
+      "estado": "pendiente",
+      "semanas": 2,
+      "puntos": [
+        { "estado": "no", "texto": "replay de 20.000 ticks reproduce el hash exacto y re-ejecuta las habilidades comparando la traza" },
+        { "estado": "no", "texto": "una segunda vida resuelve «pescá» en menos de 100 ms con cero llamadas al modelo" }
+      ]
+    },
+    {
+      "id": "H11",
+      "nombre": "Calibración y presupuestos como test",
+      "enUnaFrase": "Que el build falle si algún número empeora. Es lo que hace que «rápido» siga siendo verdad en seis meses.",
+      "estado": "pendiente",
+      "semanas": 4,
+      "puntos": [
+        { "estado": "no", "texto": "100 partidas de 20.000 ticks sin violar ningún invariante económico" },
+        { "estado": "no", "texto": "CI determinista, benchmark real y E2E de navegador corren APARTE. Mezclarlos ya pasó dos veces" }
+      ],
+      "nota": "No es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo."
+    },
+    {
+      "id": "H12",
+      "nombre": "La UI presentable",
+      "enUnaFrase": "El mapa es la vista principal, la criatura se ve moverse, y el chat acompaña sin reemplazarlo.",
+      "estado": "sin-estimar",
+      "semanas": null,
+      "puntos": [
+        { "estado": "si", "texto": "12A · el view model: mapa, criatura, cuerpos, relaciones y deltas deterministas, con la propiedad aplicarDelta(a, deltaEntre(a,b)) === b afirmada por hash. Verificado con un visor que reconstruyó 441 cuadros y los comparó por hash contra la partida grabada" },
+        { "estado": "no", "texto": "12B · la vertical visible: nueve cosas, y son la definición de «presentable»" },
+        { "estado": "no", "texto": "12C · los objetos emergentes en pantalla, con fallback procedural obligatorio" }
+      ],
+      "nota": "Va DESPUÉS del Hito 11 igual, y sigue sin estimación propia: el modelo de datos (12A) se puede probar sin un solo píxel, y ya está. El visor que lo probó dibuja cuadrados a propósito — es una herramienta de descarte para mirar el dato, no la UI real. Todavía no hay estilo gráfico, paleta ni distribución elegidos."
+    },
+    {
+      "id": "H13-16",
+      "nombre": "La física se abre",
+      "enUnaFrase": "Procesos nuevos propuestos por Ánima, geometría autoritativa, objetos abiertos y fauna que se mueve.",
+      "estado": "sin-estimar",
+      "semanas": null,
+      "puntos": [
+        { "estado": "no", "texto": "13 · procesos físicos propuestos por Ánima, con roles seguros y cuarentena" },
+        { "estado": "no", "texto": "14 · geometría física autoritativa — pide un spike, hoy no hay base para estimarlo" },
+        { "estado": "no", "texto": "15 · objetos físicos abiertos" },
+        { "estado": "no", "texto": "16 · fauna y agentes físicos — la primera trampa NO depende de este hito" }
+      ],
+      "nota": "La promesa no es «cualquier cosa». Es: cualquier artefacto cuya estructura, construcción, uso y efectos se puedan representar y comprobar con la física disponible en ese nivel."
+    }
+  ],
+
+  "verificacion": {
+    "cuando": "Re-verificado en esta máquina, contra el ÁRBOL DE TRABAJO — que tiene 5 archivos sin commitear (el visor recién regenerado más los 3 tests de physics que ya vienen de dos actualizaciones atrás).",
+    "comandos": [
+      { "cmd": "pnpm ii:typecheck", "resultado": "exit 0 · 9 de 9 proyectos", "ok": true },
+      { "cmd": "pnpm ii:test", "resultado": "exit 0 · 2673 pasan, 0 fallan — coincide exacto con lo citado en bce91e1", "ok": true },
+      { "cmd": "grep it.fails ii/packages", "resultado": "69 llamadas reales, subió 1", "ok": true },
+      { "cmd": "ls ii/docs/decisions", "resultado": "22 ADRs, sin cambios", "ok": true },
+      { "cmd": "git log origin/anima-2..HEAD", "resultado": "16 commits sin pushear", "ok": true }
+    ],
+    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia. El commit e650f31 lo declara en exit 0, 126 de 126, y ninguno de los commits siguientes tocó el juez."
+  },
+
+  "decisionesQueEsperan": [
+    {
+      "titulo": "Cómo cerrar el hueco de 23,02 de potencia",
+      "porQue": "Es lo único que separa a la criatura de encender un fuego que cocine, y con eso caen dos de los tres rojos del Hito 5.",
+      "opciones": [
+        "(a) subir MAX_PARTS de 6 a 16 — cierra en 8 de 20 semillas con las piezas que ya hay, pero es una constante de la física y toca unir en todo el mundo",
+        "(c) piezas más gordas — cada hoja-seca tendría que pesar 0,1485 kg y hoy vienen de 0,077. Es del oráculo, no de la ley, y no toca unir"
+      ],
+      "descartado": "(b) un fósforo más caliente. Medido: el mejor cuerpo armable no se mueve ni un decimal."
+    },
+    {
+      "titulo": "COSTO_POR_CELDA y la velocidad de locomoción",
+      "porQue": "Caminar es hoy el 65% del gasto de la criatura y ese 0,05 se eligió cuando vivir costaba 1,0. Hoy vivir cuesta 0,34.",
+      "opciones": [
+        "El costo por celda y la velocidad por celda son el mismo número mal puesto: arreglar uno solo mueve la economía sin arreglar la física."
+      ]
+    }
+  ],
+
+  "deudasAbiertas": [
+    "La promesa de un establishes se VENCE y nadie lo sabe: la criatura se niega a comer lo que ella misma cocinó a los 300 s.",
+    "El mundo no le pide NADA al que hace de parrilla: 10 g de hoja sostienen 2 kg de pescado. El día que se cierre, la parrilla es lo primero que se rompe.",
+    "Cocinar no es un proceso, y el planificador lo sufre: secar, carbonizar y cocinar tienen todos la forma «poné esto acá y esperá».",
+    "El costo de un dispositivo autónomo por tick: cero medición. Si hay veinte trampas desplegadas, el mundo las recorre todas.",
+    "¿El overlay se indexa por firma o por capacidad? Abierta a propósito: indexar es una optimización y pide una medición con un overlay de tamaño real."
+  ]
+}

@@ -1,0 +1,813 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ánima II — tablero (53%)</title>
+<style>*,*::before,*::after{box-sizing:border-box}
+:root {
+  color-scheme: light dark;
+  --ground: #f4f4f1;
+  --surface: #ffffff;
+  --line: #e2e2da;
+  --line-suave: #ecece5;
+  --ink: #1f211e;
+  --ink-2: #6c706a;
+  --ink-3: #93978f;
+  --si: #3d7a4c;
+  --si-suave: #e6efe6;
+  --medio: #96700f;
+  --medio-suave: #f5eddb;
+  --no: #8b8f88;
+  --no-suave: #ececeb;
+  --rojo: #a4483b;
+  --rojo-suave: #f4e6e3;
+  --radio: 3px;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #121412;
+    --surface: #1a1c1a;
+    --line: #2b2e2b;
+    --line-suave: #232622;
+    --ink: #e8eae5;
+    --ink-2: #969b91;
+    --ink-3: #6f746c;
+    --si: #78b487;
+    --si-suave: #1e2a20;
+    --medio: #d3a548;
+    --medio-suave: #2c2517;
+    --no: #757a72;
+    --no-suave: #232522;
+    --rojo: #d98577;
+    --rojo-suave: #2e1e1b;
+  }
+}
+:root[data-theme='dark'] {
+  --ground: #121412;
+  --surface: #1a1c1a;
+  --line: #2b2e2b;
+  --line-suave: #232622;
+  --ink: #e8eae5;
+  --ink-2: #969b91;
+  --ink-3: #6f746c;
+  --si: #78b487;
+  --si-suave: #1e2a20;
+  --medio: #d3a548;
+  --medio-suave: #2c2517;
+  --no: #757a72;
+  --no-suave: #232522;
+  --rojo: #d98577;
+  --rojo-suave: #2e1e1b;
+}
+:root[data-theme='light'] {
+  --ground: #f4f4f1;
+  --surface: #ffffff;
+  --line: #e2e2da;
+  --line-suave: #ecece5;
+  --ink: #1f211e;
+  --ink-2: #6c706a;
+  --ink-3: #93978f;
+  --si: #3d7a4c;
+  --si-suave: #e6efe6;
+  --medio: #96700f;
+  --medio-suave: #f5eddb;
+  --no: #8b8f88;
+  --no-suave: #ececeb;
+  --rojo: #a4483b;
+  --rojo-suave: #f4e6e3;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+.hoja {
+  max-width: 50rem;
+  margin: 0 auto;
+  padding: 3.5rem 1.5rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 3.5rem;
+}
+h1, h2, h3 { margin: 0; text-wrap: balance; font-weight: 600; }
+p { margin: 0; }
+.mono, .dato-valor, .cifra, .marcador, .semanas, .id, .eyebrow, .leyenda {
+  font-family: ui-monospace, 'Cascadia Mono', 'SF Mono', Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+.eyebrow {
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* ── cabecera ───────────────────────────────────────────── */
+.cabecera { display: flex; flex-direction: column; gap: 0.75rem; }
+.cabecera h1 { font-size: 2rem; letter-spacing: -0.02em; }
+.cabecera .sub { color: var(--ink-2); font-size: 1.05rem; }
+.cabecera .tesis {
+  border-left: 2px solid var(--line);
+  padding-left: 1rem;
+  color: var(--ink-2);
+  max-width: 40rem;
+}
+.sello { display: flex; flex-wrap: wrap; gap: 1.25rem; font-size: 0.8rem; color: var(--ink-3); }
+.sello b { font-weight: 500; color: var(--ink-2); }
+
+/* ── la barra ────────────────────────────────────────────── */
+.avance { display: flex; flex-direction: column; gap: 1rem; }
+.cifra-fila { display: flex; align-items: baseline; gap: 0.75rem; }
+.cifra { font-size: 3.25rem; line-height: 1; letter-spacing: -0.04em; font-weight: 500; }
+.cifra-pie { color: var(--ink-2); font-size: 0.95rem; }
+.barra {
+  display: flex;
+  height: 0.75rem;
+  border-radius: var(--radio);
+  overflow: hidden;
+  background: var(--no-suave);
+  border: 1px solid var(--line);
+}
+.tramo { height: 100%; }
+.tramo.si { background: var(--si); }
+.tramo.medio { background: var(--medio); }
+.leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  font-size: 0.78rem;
+  color: var(--ink-2);
+}
+.leyenda span::before {
+  content: '';
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+  background: currentColor;
+}
+.leyenda .l-si { color: var(--si); }
+.leyenda .l-medio { color: var(--medio); }
+.leyenda .l-no { color: var(--no); }
+.aclaracion { font-size: 0.85rem; color: var(--ink-3); max-width: 38rem; }
+
+/* ── dónde estás parado ─────────────────────────────────── */
+.ahora {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radio);
+  padding: 1.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.ahora h2 { font-size: 1.35rem; letter-spacing: -0.01em; }
+.ahora .detalle { color: var(--ink-2); max-width: 42rem; }
+.ahora ol { margin: 0; padding-left: 1.25rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.ahora li { color: var(--ink); padding-left: 0.25rem; }
+.ahora li::marker { color: var(--ink-3); font-family: ui-monospace, monospace; font-size: 0.85em; }
+
+/* ── datos de salud ─────────────────────────────────────── */
+.salud { display: grid; grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radio); overflow: hidden; }
+.dato { background: var(--surface); padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.15rem; }
+.dato-valor { font-size: 1.3rem; font-weight: 500; letter-spacing: -0.01em; }
+.dato-etiqueta { font-size: 0.8rem; color: var(--ink-2); }
+.dato-nota { font-size: 0.72rem; color: var(--ink-3); line-height: 1.45; }
+
+/* ── el camino ──────────────────────────────────────────── */
+.seccion { display: flex; flex-direction: column; gap: 1.5rem; }
+.seccion > header { display: flex; flex-direction: column; gap: 0.35rem; }
+.seccion h2 { font-size: 1.15rem; letter-spacing: -0.01em; }
+.seccion header p { font-size: 0.9rem; color: var(--ink-2); max-width: 38rem; }
+.camino { display: flex; flex-direction: column; }
+
+.etapa { display: grid; grid-template-columns: 1.5rem 1fr; gap: 1rem; }
+.rail { position: relative; display: flex; justify-content: center; }
+.rail::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--line);
+}
+.etapa:first-child .rail::before { top: 0.7rem; }
+.etapa:last-child .rail::before { bottom: calc(100% - 0.7rem); }
+.punto-rail {
+  position: relative;
+  margin-top: 0.45rem;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--ground);
+  border: 2px solid var(--no);
+}
+.etapa.si .punto-rail { background: var(--si); border-color: var(--si); }
+.etapa.medio .punto-rail { background: var(--medio); border-color: var(--medio); }
+.etapa.rojo .punto-rail { background: var(--rojo); border-color: var(--rojo); }
+
+.cuerpo { padding-bottom: 2.25rem; display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; }
+.encabezado { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.6rem; }
+.encabezado h3 { font-size: 1.05rem; letter-spacing: -0.01em; }
+.id { font-size: 0.72rem; color: var(--ink-3); letter-spacing: 0.06em; }
+.chip {
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+.chip.si { color: var(--si); background: var(--si-suave); }
+.chip.medio { color: var(--medio); background: var(--medio-suave); }
+.chip.no { color: var(--no); background: var(--no-suave); }
+.chip.rojo { color: var(--rojo); background: var(--rojo-suave); }
+.frase { color: var(--ink-2); max-width: 40rem; }
+.medidas { display: flex; gap: 1rem; font-size: 0.78rem; color: var(--ink-3); }
+.marcador { color: var(--ink-2); }
+.barra-diagonal { color: var(--ink-3); margin: 0 0.1em; }
+.semanas.apagado { font-style: italic; }
+.nota {
+  font-size: 0.87rem;
+  color: var(--ink-2);
+  border-left: 2px solid var(--line);
+  padding-left: 0.9rem;
+  max-width: 40rem;
+}
+
+.criterios { font-size: 0.88rem; }
+.criterios summary {
+  cursor: pointer;
+  color: var(--ink-3);
+  font-size: 0.78rem;
+  width: fit-content;
+  padding: 0.15rem 0;
+  border-radius: 2px;
+}
+.criterios summary:hover { color: var(--ink-2); }
+.criterios summary:focus-visible { outline: 2px solid var(--ink-2); outline-offset: 3px; }
+.criterios ul { margin: 0.65rem 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.55rem; }
+.punto { display: grid; grid-template-columns: 1.1rem 1fr; gap: 0.5rem; color: var(--ink-2); max-width: 42rem; line-height: 1.5; }
+.punto-marca { font-family: ui-monospace, monospace; text-align: center; }
+.punto.si .punto-marca { color: var(--si); }
+.punto.medio .punto-marca { color: var(--medio); }
+.punto.no .punto-marca { color: var(--ink-3); }
+.punto.rojo .punto-marca { color: var(--rojo); }
+.punto.no { color: var(--ink-3); }
+
+/* ── decisiones y deudas ────────────────────────────────── */
+.decisiones { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radio); overflow: hidden; }
+.decision { background: var(--surface); padding: 1.4rem 1.5rem; display: flex; flex-direction: column; gap: 0.6rem; }
+.decision h3 { font-size: 1rem; }
+.porque { color: var(--ink-2); font-size: 0.92rem; max-width: 40rem; }
+.opciones { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.4rem; font-size: 0.88rem; color: var(--ink-2); }
+.opciones li::marker { color: var(--ink-3); }
+.descartado { font-size: 0.82rem; color: var(--ink-3); }
+.descartado span { color: var(--rojo); }
+.deudas { margin: 0; padding-left: 1.1rem; display: flex; flex-direction: column; gap: 0.65rem; color: var(--ink-2); font-size: 0.92rem; max-width: 42rem; }
+.deudas li::marker { color: var(--ink-3); }
+
+/* ── qué se corrió ──────────────────────────────────────── */
+.corridas { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--radio); overflow: hidden; }
+.corrida {
+  background: var(--surface);
+  padding: 0.8rem 1.1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  border-left: 3px solid var(--no);
+  font-size: 0.85rem;
+}
+.corrida.si { border-left-color: var(--si); }
+.corrida.rojo { border-left-color: var(--rojo); }
+.corrida code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  color: var(--ink);
+  font-size: 0.82rem;
+}
+.corrida .resultado { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+
+.pie {
+  border-top: 1px solid var(--line);
+  padding-top: 1.25rem;
+  font-size: 0.8rem;
+  color: var(--ink-3);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.pie code {
+  font-family: ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  background: var(--line-suave);
+  padding: 0.1rem 0.35rem;
+  border-radius: 2px;
+  color: var(--ink-2);
+}
+@media (max-width: 34rem) {
+  .hoja { padding: 2.5rem 1.1rem 4rem; gap: 2.75rem; }
+  .cifra { font-size: 2.5rem; }
+  .cabecera h1 { font-size: 1.6rem; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="hoja">
+
+  <header class="cabecera">
+    <div class="eyebrow">Tablero del proyecto</div>
+    <h1>Ánima II</h1>
+    <p class="sub">Cuerpo, materia y vara — el remake que vive en ii/</p>
+    <p class="tesis">Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.</p>
+    <div class="sello">
+      <span>Actualizado <b>2026-07-31</b></span>
+      <span>Rama <b>anima-2</b></span>
+      <span><b>6</b> etapas listas · <b>1</b> en curso · <b>6</b> por delante · <b>2</b> sin estimar</span>
+    </div>
+  </header>
+
+  <section class="avance" aria-label="Avance general">
+    <div class="cifra-fila">
+      <span class="cifra">53%</span>
+      <span class="cifra-pie">del plan que tiene estimación</span>
+    </div>
+    <div class="barra" role="img" aria-label="53 por ciento avanzado">
+      <div class="tramo si" style="width:44.30%"></div>
+      <div class="tramo medio" style="width:8.86%"></div>
+    </div>
+    <div class="leyenda">
+      <span class="l-si">terminado · 17,5 de 39,5 semanas</span>
+      <span class="l-medio">en curso · 3,5</span>
+      <span class="l-no">por delante · 18,5</span>
+    </div>
+    <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
+  </section>
+
+  <section class="ahora" aria-label="Dónde está parado el proyecto">
+    <div class="eyebrow">Dónde estás parado</div>
+    <h2>El gate saltó de 8 a 10 de 12 en una sola tanda, y sólo queda un punto sin empezar</h2>
+    <p class="detalle">El tramo F que la vez pasada estaba sin commitear ya cerró y entró: `realizaElPlano` (F1) compara la obra armada contra el plano por las tres cosas que importan —cuántas piezas, cómo están atadas, y si cada una cumple lo que su rol pide—, con un contraejemplo medido para cada una. Con eso, el punto 6 CIERRA (construir y usar se sellan y se publican por separado) y el punto 9 CIERRA por dos caminos independientes (el sello vencido se rechaza con el mismo código que `admit()` ya usa, y la revisión del plano lleva la física adentro del hash). El punto 3 se midió y **no cierra**, con la causa exacta dicha por el propio planificador: un `ConstructionSchema` es UNA aplicación de UN proceso, y armar un plano son N−1 uniones encadenadas — hace falta una tercera clase de esquema, y esa es la fragua del Hito 8, no un ajuste de catálogo. Y el punto 10 cerró entero: el catálogo ahora sale de la misma crónica append-only que el mundo, con un lector cada uno, y el hueco que quedaba —la crónica no decía contra qué física se corrió— se tapó altiro. Aparte del gate: el Hito 12A (el view model, sin estimación propia) quedó completo, con un visor de un solo archivo que reconstruyó 441 cuadros por hash contra la partida grabada.</p>
+    <ol>
+      <li>Punto 3, el único que falta del gate: una tercera clase de ConstructionSchema cuyo paso sea «correr esta habilidad» y no `apply` — es del Hito 8, no de esta etapa.</li>
+      <li>Punto 5, el otro que queda a medias: falta el BuildSkill que encadene uniones. Va a chocar con la HONDURA — una cadena de 5 piezas no arma aunque 5 entren en MAX_PARTS, porque el camino mide 4 contra un techo de 3.</li>
+      <li>Con 10 de 12 ya cumpliendo y los 2 que faltan con causa exacta y sin sorpresas, el gate está a un tramo de cerrarse del todo.</li>
+    </ol>
+  </section>
+
+  <section class="salud" aria-label="Estado del árbol">
+      <div class="dato">
+        <div class="dato-valor">2673</div>
+        <div class="dato-etiqueta">tests verdes</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 627+1 skipped · plan 331+1 todo · mind 331 · oracle 270 · skills 193 · juez 126 · perceive 121</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">9 de 9</div>
+        <div class="dato-etiqueta">typechecks limpios</div>
+        <div class="dato-nota">re-verificado ahora, exit 0 · 8 paquetes + la app del banco de navegador</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">69</div>
+        <div class="dato-etiqueta">it.fails abiertos</div>
+        <div class="dato-nota">re-contado ahora, subió 1 desde la vez pasada (punto 3 del gate) · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">22</div>
+        <div class="dato-etiqueta">ADRs propios</div>
+        <div class="dato-nota">re-contado ahora, sin cambios · II-0001 a II-0022</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">16</div>
+        <div class="dato-etiqueta">commits sin pushear</div>
+        <div class="dato-nota">rama anima-2 — el usuario pushea solo. Subieron 6 desde la última vez</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">5 archivos</div>
+        <div class="dato-etiqueta">sin commitear</div>
+        <div class="dato-nota">el visor (partida.html) y su test se regeneraron al correr la suite; los 3 tests de physics de dos actualizaciones atrás SIGUEN sin entrar</div>
+      </div>
+  </section>
+
+  <section class="seccion">
+    <header>
+      <h2>El camino, en orden</h2>
+      <p>De arriba abajo es el orden real de trabajo. Cada etapa abre sus criterios: verde cumple, ámbar va a medias, rojo es un número que no cumple y el usuario aceptó igual, con la causa medida al lado.</p>
+    </header>
+    <div class="camino">
+      <article class="etapa si">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H0</span>
+            <h3>El banco de latencia</h3>
+            <span class="chip si">Listo</span>
+          </div>
+          <p class="frase">Medir antes de construir encima: cuánto cuesta el typecheck, el combustible y el arranque.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>4</span><span class="semanas">1 sem</span></div>
+        <p class="nota">Ninguna medición mató el plan. Una lo obligó a cambiar de regla y otra encontró una degeneración en la física.</p>
+        <details class="criterios">
+          <summary>4 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>typecheck en frío: 240 ms contra un techo de 3000</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>barrido térmico: 12 de 12 sustancias con ventana</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>arranque en el navegador: 6 ms contra un techo de 250</span></li>
+          <li class="punto rojo"><span class="punto-marca" aria-label="rojo aceptado">!</span><span>el combustible costaba 22–52% y el techo era 15% — el criterio se reemplazó (ADR II-0005): el presupuesto se mide contra el tick, no contra sí mismo</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa si">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H1</span>
+            <h3>Materia y leyes</h3>
+            <span class="chip si">Listo</span>
+          </div>
+          <p class="frase">Las 22 cualidades, las 12 leyes y la puerta admit(). Sin mundo, sin criatura, sin UI.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>3</span><span class="semanas">5 sem</span></div>
+        <p class="nota">646 tests. Es el paquete más grande del árbol.</p>
+        <details class="criterios">
+          <summary>3 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>los tres ejemplos corren sin que las palabras «carbón», «asar» ni «pescar» aparezcan en el código</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una sustancia nueva del oráculo, sin fila propia, se quema, se cocina y se ata</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>admit() rechaza «frotar produce calor infinito» citando poweredBy</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa si">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H2</span>
+            <h3>El mundo determinista</h3>
+            <span class="chip si">Listo</span>
+          </div>
+          <p class="frase">La grilla, el reloj y stepWorld: el mismo mundo con la misma historia da siempre el mismo hash.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>5</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">La optimización sacó 39,66 ms a 8,48 (4,6×) sin mover la huella de conducta, y aun así quedaba lejos. El piso estaba en la representación, no en otra micro-optimización.</p>
+        <details class="criterios">
+          <summary>5 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>dos mundos gemelos con 100.000 intenciones dan el mismo hashWorld</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>restaurar un snapshot a mitad reproduce el final exacto</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el replay del journal reconstruye el estado exacto</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>el mismo hash en Chrome y en Firefox — pide un arnés de navegador que todavía no existe</span></li>
+          <li class="punto rojo"><span class="punto-marca" aria-label="rojo aceptado">!</span><span>5000 cuerpos en menos de 4 ms: se midió 8,48 ms y el criterio se reemplazó (ADR II-0007). El tick pasó a ser un parámetro y el presupuesto una fracción: stepWorld ≤ 25%, medido 17,2%</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa si">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H3</span>
+            <h3>El dios perezoso</h3>
+            <span class="chip si">Listo</span>
+          </div>
+          <p class="frase">El mapa infinito se resuelve al caminar, y lo que el dios decide queda escrito para siempre.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>3</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">Cerrado del todo recién en el tramo K bis: el mundo materializa donde el dios dijo, no donde había lugar (ADR II-0014).</p>
+        <details class="criterios">
+          <summary>3 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el mismo mundo explorado en dos órdenes distintos da el mismo hash</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>escribir otra respuesta para una clave que ya existe lanza InvariantError</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>la conservación dejó de estar apagada de hecho: 96 y 21 violaciones pasaron a 0 y 0</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa si">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H4</span>
+            <h3>Cuerpo, sandbox y quince innatas</h3>
+            <span class="chip si">Listo</span>
+          </div>
+          <p class="frase">Quince habilidades escritas a mano en el mismo TypeScript que después va a escribir el modelo.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">4<span class="barra-diagonal">/</span>4</span><span class="semanas">3,5 sem</span></div>
+        <p class="nota">El contrato de explorar se cerró tarde, en el tramo Ñ: caminaba un ciclo cerrado de 8 celdas.</p>
+        <details class="criterios">
+          <summary>4 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>las quince corren dentro del presupuesto</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>un while(true) plantado se corta sin caer un frame</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una habilidad corrida dos veces da el mismo hash</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>explorar cierra su contrato: 44 celdas de distancia y 96 distintas en 100 ticks (eran 3 y 8). 15 de 15 innatas</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa rojo">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H5</span>
+            <h3>La mente, sin LLM</h3>
+            <span class="chip rojo">Cerrado con rojo aceptado</span>
+          </div>
+          <p class="frase">El hito que decide si la tesis vive: con hambre y un río a la vista, la criatura ata una caña y pesca sola.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>6</span><span class="semanas">3,5 sem</span></div>
+        <p class="nota">CUMPLEN 3 DE 6, y el hito cierra con los otros 3 en rojo aceptado — cada uno con su it.fails y su causa medida. No se mezclan en un solo número: «cumple» y «no cumple pero está aceptado» son cosas distintas. Y los dos últimos rojos eran el mismo problema: sin fuego no hay comida. La pared aritmética se cayó en el tramo N (el fósforo bajó de 645,50 a 244,65 contra un tanque de 310), pero la corrida canónica no se movió un tick. Lo que la frena ahora es MATERIA, no aritmética.</p>
+        <details class="criterios">
+          <summary>6 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>proveedor apagado: 0 llamadas a la red, 0 dependencias de runtime fuera de ii/</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>la cadena de la caña: 7 eslabones en el plan, 6 vuelos contra el mundo. Tira la caña en el tick 48, el pescado entra a la mano en el 108</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>ticksPerdidos === 0 en 20.000 ticks, con una condición escrita al lado</span></li>
+          <li class="punto rojo"><span class="punto-marca" aria-label="rojo aceptado">!</span><span>p99 &lt; 5 ms con 5000 cuerpos: se midió 30,94 ms (6,2×). Aceptado por el usuario, con guarda verde en 45 ms</span></li>
+          <li class="punto rojo"><span class="punto-marca" aria-label="rojo aceptado">!</span><span>sobrevivir 20.000 ticks sola: muere en el 18.150 con 0 bocados. Aceptado</span></li>
+          <li class="punto rojo"><span class="punto-marca" aria-label="rojo aceptado">!</span><span>emergencia: 0 de 9 con el tanque canónico, 2 de 9 con el tanque lleno. El umbral es 4. Aceptado</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa medio">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">Gate</span>
+            <h3>Gate 5→6 — objetos emergentes</h3>
+            <span class="chip medio">En curso</span>
+          </div>
+          <p class="frase">Fabricar una trampa para peces que no está precargada, dejarla trabajando sola y volver a retirar la captura.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">10<span class="barra-diagonal">/</span>12</span><span class="semanas">4 sem</span></div>
+        <p class="nota">Van 10 cumpliendo, 1 a medias (el 5, falta el BuildSkill) y 1 con el hueco medido y nombrado (el 3, pide la fragua del Hito 8). El punto 12 no lo cumple un grep, lo cumple la física — con un palo pelado la misma partida no saca ni un pez.</p>
+        <details class="criterios">
+          <summary>12 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · BlueprintDefinition canónico y versionado</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · registro en un overlay aislado por sesión</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>3 · publicación de capacidades al planificador: NO CUMPLE, medido — un ConstructionSchema es una aplicación de UN proceso y armar un plano son N−1 uniones encadenadas. Pide una tercera clase de esquema, que es la fragua del Hito 8</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · sin mutación global de SCHEMA_INDEX, con guardián de texto en los dos paquetes</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>5 · construcción incremental e idempotente: desplegar ya es idempotente; falta el BuildSkill que encadene uniones</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · separar construir de usar: capacidadDe no deja publicar un sello vencido. Caso asimétrico medido: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>7 · dos partidas no se contaminan</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>8 · guardar y restaurar conserva la revisión exacta, y el hash es el mismo</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>9 · un cambio de física invalida los sellos, por dos caminos independientes: el sello vencido se rechaza con el mismo código que admit() ya usa, y la revisión del plano lleva la física adentro del hash</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>10 · el mismo journal produce el mismo mundo y el mismo catálogo: una sola crónica append-only con dos lectores. El hueco que quedaba —qué física se corrió— ya se tapó</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>11 · descriptor visual procedural determinista: seis claves y ni una más, derivadas del estado. Se afirma sin dibujar un píxel</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>12 · sin nombres especiales: 90 fuentes barridos, cero infracciones — y lo que hace que un cuerpo retenga es catch &gt; 0, una cualidad derivada</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H6</span>
+            <h3>El chat, sin LLM</h3>
+            <span class="chip no">No empezado</span>
+          </div>
+          <p class="frase">Le hablás en castellano rioplatense y hace, sin llamar a ningún modelo.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>3</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">Trae una deuda escrita de antemano: el puente entre el castellano hablado y los nombres de procesos físicos es una tabla de alias que hay que escribir a mano y presupuestar.</p>
+        <details class="criterios">
+          <summary>3 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>corpus de 200 frases reales con su lectura esperada, ≥80% resueltas sin red</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>p95 de mensaje a primer movimiento &lt; 150 ms con el proveedor apagado</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>transformar «fabricá una trampa para peces» en un objetivo funcional SIN nombrar la solución</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H7</span>
+            <h3>El juez</h3>
+            <span class="chip no">No empezado</span>
+          </div>
+          <p class="frase">Decidir si una habilidad recién escrita es estable, con mundos adversos que ella no vio.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">OJO: @anima/juez ya existe con 126 tests, pero es el detector de secuencias de emergencia del Hito 5, no el juez de este hito. Son dos cosas con el mismo nombre.</p>
+        <details class="criterios">
+          <summary>2 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una habilidad que sólo funciona donde la corrigieron no promueve</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>el juez evalúa por separado plano, construcción, uso y utilidad</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H8</span>
+            <h3>La fragua y el carril de mejora</h3>
+            <span class="chip no">No empezado</span>
+          </div>
+          <p class="frase">Acá recién entra el LLM: escribe habilidades nuevas mientras el mundo sigue corriendo.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>3</span><span class="semanas">4,5 sem</span></div>
+
+        <details class="criterios">
+          <summary>3 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>matar la conexión a mitad de un parche no deja el mundo inconsistente</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>ticksPerdidos === 0 durante todo el episodio</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>con la cuota agotada, la cola no dispara ni una consulta</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H9</span>
+            <h3>La biblioteca semilla</h3>
+            <span class="chip no">No empezado</span>
+          </div>
+          <p class="frase">Cuarenta a sesenta habilidades de fábrica, para que la demo sea instantánea y no de 6 a 25 segundos.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2 sem</span></div>
+
+        <details class="criterios">
+          <summary>2 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>las tres historias del usuario corren en camino caliente, con cero llamadas al modelo</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>la biblioteca NO incluye la trampa reservada — si viniera de fábrica, el caso de aceptación dejaría de medir nada</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H10</span>
+            <h3>Crónica y herencia</h3>
+            <span class="chip no">No empezado</span>
+          </div>
+          <p class="frase">Cerrar la pestaña y volver sin perder nada, y que la segunda generación sepa lo que aprendió la primera.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2 sem</span></div>
+
+        <details class="criterios">
+          <summary>2 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>replay de 20.000 ticks reproduce el hash exacto y re-ejecuta las habilidades comparando la traza</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una segunda vida resuelve «pescá» en menos de 100 ms con cero llamadas al modelo</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H11</span>
+            <h3>Calibración y presupuestos como test</h3>
+            <span class="chip no">No empezado</span>
+          </div>
+          <p class="frase">Que el build falle si algún número empeora. Es lo que hace que «rápido» siga siendo verdad en seis meses.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">4 sem</span></div>
+        <p class="nota">No es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo.</p>
+        <details class="criterios">
+          <summary>2 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>100 partidas de 20.000 ticks sin violar ningún invariante económico</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>CI determinista, benchmark real y E2E de navegador corren APARTE. Mezclarlos ya pasó dos veces</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H12</span>
+            <h3>La UI presentable</h3>
+            <span class="chip no">Sin estimación</span>
+          </div>
+          <p class="frase">El mapa es la vista principal, la criatura se ve moverse, y el chat acompaña sin reemplazarlo.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">1<span class="barra-diagonal">/</span>3</span><span class="semanas apagado">sin estimar</span></div>
+        <p class="nota">Va DESPUÉS del Hito 11 igual, y sigue sin estimación propia: el modelo de datos (12A) se puede probar sin un solo píxel, y ya está. El visor que lo probó dibuja cuadrados a propósito — es una herramienta de descarte para mirar el dato, no la UI real. Todavía no hay estilo gráfico, paleta ni distribución elegidos.</p>
+        <details class="criterios">
+          <summary>3 criterios</summary>
+          <ul>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>12A · el view model: mapa, criatura, cuerpos, relaciones y deltas deterministas, con la propiedad aplicarDelta(a, deltaEntre(a,b)) === b afirmada por hash. Verificado con un visor que reconstruyó 441 cuadros y los comparó por hash contra la partida grabada</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>12B · la vertical visible: nueve cosas, y son la definición de «presentable»</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>12C · los objetos emergentes en pantalla, con fallback procedural obligatorio</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+      <article class="etapa no">
+        <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
+        <div class="cuerpo">
+          <div class="encabezado">
+            <span class="id">H13-16</span>
+            <h3>La física se abre</h3>
+            <span class="chip no">Sin estimación</span>
+          </div>
+          <p class="frase">Procesos nuevos propuestos por Ánima, geometría autoritativa, objetos abiertos y fauna que se mueve.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>4</span><span class="semanas apagado">sin estimar</span></div>
+        <p class="nota">La promesa no es «cualquier cosa». Es: cualquier artefacto cuya estructura, construcción, uso y efectos se puedan representar y comprobar con la física disponible en ese nivel.</p>
+        <details class="criterios">
+          <summary>4 criterios</summary>
+          <ul>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>13 · procesos físicos propuestos por Ánima, con roles seguros y cuarentena</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>14 · geometría física autoritativa — pide un spike, hoy no hay base para estimarlo</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>15 · objetos físicos abiertos</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>16 · fauna y agentes físicos — la primera trampa NO depende de este hito</span></li>
+          </ul>
+        </details>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <section class="seccion">
+    <header>
+      <h2>Lo que espera una decisión tuya</h2>
+      <p>Nadie puede avanzar acá sin que vos elijas. Cada una viene con su precio medido.</p>
+    </header>
+    <div class="decisiones">
+      <div class="decision">
+        <h3>Cómo cerrar el hueco de 23,02 de potencia</h3>
+        <p class="porque">Es lo único que separa a la criatura de encender un fuego que cocine, y con eso caen dos de los tres rojos del Hito 5.</p>
+        <ul class="opciones">
+          <li>(a) subir MAX_PARTS de 6 a 16 — cierra en 8 de 20 semillas con las piezas que ya hay, pero es una constante de la física y toca unir en todo el mundo</li>
+          <li>(c) piezas más gordas — cada hoja-seca tendría que pesar 0,1485 kg y hoy vienen de 0,077. Es del oráculo, no de la ley, y no toca unir</li>
+        </ul>
+        <p class="descartado"><span>Descartado —</span> (b) un fósforo más caliente. Medido: el mejor cuerpo armable no se mueve ni un decimal.</p>
+      </div>
+      <div class="decision">
+        <h3>COSTO_POR_CELDA y la velocidad de locomoción</h3>
+        <p class="porque">Caminar es hoy el 65% del gasto de la criatura y ese 0,05 se eligió cuando vivir costaba 1,0. Hoy vivir cuesta 0,34.</p>
+        <ul class="opciones">
+          <li>El costo por celda y la velocidad por celda son el mismo número mal puesto: arreglar uno solo mueve la economía sin arreglar la física.</li>
+        </ul>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="seccion">
+    <header>
+      <h2>Qué se corrió, y qué salió</h2>
+      <p>Re-verificado en esta máquina, contra el ÁRBOL DE TRABAJO — que tiene 5 archivos sin commitear (el visor recién regenerado más los 3 tests de physics que ya vienen de dos actualizaciones atrás).</p>
+    </header>
+    <div class="corridas">
+      <div class="corrida si">
+        <code>pnpm ii:typecheck</code>
+        <span class="resultado">exit 0 · 9 de 9 proyectos</span>
+      </div>
+      <div class="corrida si">
+        <code>pnpm ii:test</code>
+        <span class="resultado">exit 0 · 2673 pasan, 0 fallan — coincide exacto con lo citado en bce91e1</span>
+      </div>
+      <div class="corrida si">
+        <code>grep it.fails ii/packages</code>
+        <span class="resultado">69 llamadas reales, subió 1</span>
+      </div>
+      <div class="corrida si">
+        <code>ls ii/docs/decisions</code>
+        <span class="resultado">22 ADRs, sin cambios</span>
+      </div>
+      <div class="corrida si">
+        <code>git log origin/anima-2..HEAD</code>
+        <span class="resultado">16 commits sin pushear</span>
+      </div>
+    </div>
+    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia. El commit e650f31 lo declara en exit 0, 126 de 126, y ninguno de los commits siguientes tocó el juez.</p>
+  </section>
+
+  <section class="seccion">
+    <header>
+      <h2>Deudas abiertas</h2>
+      <p>No bloquean el tramo de hoy, pero muerden más adelante. Están acá para que no las descubra alguien a los golpes.</p>
+    </header>
+    <ul class="deudas">
+        <li>La promesa de un establishes se VENCE y nadie lo sabe: la criatura se niega a comer lo que ella misma cocinó a los 300 s.</li>
+        <li>El mundo no le pide NADA al que hace de parrilla: 10 g de hoja sostienen 2 kg de pescado. El día que se cierre, la parrilla es lo primero que se rompe.</li>
+        <li>Cocinar no es un proceso, y el planificador lo sufre: secar, carbonizar y cocinar tienen todos la forma «poné esto acá y esperá».</li>
+        <li>El costo de un dispositivo autónomo por tick: cero medición. Si hay veinte trampas desplegadas, el mundo las recorre todas.</li>
+        <li>¿El overlay se indexa por firma o por capacidad? Abierta a propósito: indexar es una optimización y pide una medición con un overlay de tamaño real.</li>
+    </ul>
+  </section>
+
+  <footer class="pie">
+    <p>La única fuente de la verdad de esta página es <code>ii/docs/tablero/estado.json</code>.</p>
+    <p>Se regenera con <code>node ii/docs/tablero/construir.mjs</code>. Editar el HTML a mano no sirve: la próxima corrida lo pisa.</p>
+  </footer>
+
+</div>
+</body>
+</html>
