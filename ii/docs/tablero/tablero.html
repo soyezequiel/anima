@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ánima II — tablero (54%)</title>
+<title>Ánima II — tablero (59%)</title>
 <style>*,*::before,*::after{box-sizing:border-box}
 :root {
   color-scheme: light dark;
@@ -331,68 +331,68 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-07-31</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>7</b> etapas listas · <b>0</b> en curso · <b>6</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>7</b> etapas listas · <b>1</b> en curso · <b>5</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">54%</span>
+      <span class="cifra">59%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="54 por ciento avanzado">
+    <div class="barra" role="img" aria-label="59 por ciento avanzado">
       <div class="tramo si" style="width:54.43%"></div>
-      <div class="tramo medio" style="width:0.00%"></div>
+      <div class="tramo medio" style="width:4.97%"></div>
     </div>
     <div class="leyenda">
       <span class="l-si">terminado · 21,5 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 0,0</span>
-      <span class="l-no">por delante · 18,0</span>
+      <span class="l-medio">en curso · 2,0</span>
+      <span class="l-no">por delante · 16,0</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>LOS DOCE PUNTOS CUMPLEN — el Gate 5→6 cerró entero</h2>
-    <p class="detalle">Entró `usar`, la innata 17 y el UseSkill del ADR II-0015: delgada a propósito, y no es `poner` con otro nombre —`put` deja un cuerpo apoyado, `place` lo deja DESPLEGADO, y el mundo los trata distinto—. Antes de caminar hasta el sitio le pregunta al cuerpo cuánto engancha (catch), y si da cero no va: no sabe qué es una trampa, le pregunta a la geometría. Con eso el punto 5 cerró sus TRES mitades, medidas contra las habilidades y no contra intenciones escritas a mano: avanza de a una unión sin dejar un estado a mitad de camino, la masa se conserva al cortar la construcción, y desplegar dos veces es un no-op. Y la historia entera —atar la vara y la hebra, dejarla puesta, que el mundo la haga trabajar sola 60 ticks— ya corre con las dos habilidades de verdad, no con intenciones a mano. El gate empezó con 3 de 12 el mismo día y terminó con los doce.</p>
+    <h2>El Hito 6 en marcha: de una frase en castellano a un plan de verdad</h2>
+    <p class="detalle">Nace `@anima/lang`, el decimo paquete. Antes de escribir una linea se midio cuanto castellano entiende el mundo solo, y el numero decidio todo: 9% de cobertura sobre once frases reales (3 palabras de 34) y CERO de doce verbos. El mundo sabe decir frotar, atar, deshilachar y sacar; nadie habla asi. Diecinueve filas escritas a mano lo llevan al 53%, y viven en su propio archivo para que se pueda contar cuanto conocimiento humano lleva el sistema. Hoy «fabrica una trampa para peces» sale como cuatro pasos que nadie escribio —sostener, ir, sostener, unir— y la palabra «trampa» no aparece en ninguno: el plan lo armo la regresion sobre `catch&gt;0`. Y «construi una ahoguera», mal escrita, da exactamente el mismo plan que «hace fuego».</p>
     <ol>
-      <li>El gate no reabre el Hito 5, y ahora tampoco queda nada pendiente propio: lo que sigue en el orden del plan es el Hito 6 — el chat, con el criterio ya reescrito (ADR II-0024).</li>
-      <li>Un límite marcado y no bloqueante que sigue abierto: un rol que necesita DOS cuerpos todavía no se puede planificar (la regresión liga un cuerpo por rol). Tiene su it.fails con el número.</li>
-      <li>La HONDURA sigue esperando al día que alguien retome objetos más grandes: una cadena de 5 piezas no arma aunque 5 entren en MAX_PARTS, porque el camino mide 4 contra un techo de 3.</li>
+      <li>Faltan 123 frases para las 200 del corpus. Las 77 que hay son las verificables una por una, con archivo de origen; el resto es EXTRACCION del repo, no invencion.</li>
+      <li>El punto 5 del criterio (consistenciaDelPrimerGesto &gt;= 0,85) no esta medido: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya esta escrito.</li>
+      <li>Y dos huecos medidos que son de @anima/plan y no del lenguaje: `Predicado` no puede hablar del LUGAR («anda al rio» no es una meta que este sistema pueda recibir) y 6 de sus 7 `holding(tag:X)` terminan en gap.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2698</div>
+        <div class="dato-valor">2741</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 627+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 629+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · juez 126 · lang 43</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">9 de 9</div>
+        <div class="dato-valor">10 de 10</div>
         <div class="dato-etiqueta">typechecks limpios</div>
-        <div class="dato-nota">re-verificado ahora, exit 0 · 8 paquetes + la app del banco de navegador</div>
+        <div class="dato-nota">re-verificado ahora, exit 0 · nueve paquetes + @anima/lang + la app del banco</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">10</div>
+        <div class="dato-etiqueta">paquetes</div>
+        <div class="dato-nota">nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de el todavia</div>
       </div>
       <div class="dato">
         <div class="dato-valor">69</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">re-contado ahora, mismo total que la vez pasada · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1</div>
+        <div class="dato-nota">sin cambios: el Hito 6 no abrio ninguno nuevo</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">re-contado ahora, +1 · II-0024, el piso del chat no es «sin LLM» es «sin espera». Es el primero que AFLOJA un criterio escrito, y dice qué se apretó a cambio</div>
+        <div class="dato-nota">II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">0</div>
+        <div class="dato-valor">5</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — HEAD y origin/anima-2 coinciden exacto: todo pusheado</div>
-      </div>
-      <div class="dato">
-        <div class="dato-valor">limpio</div>
-        <div class="dato-etiqueta">árbol de trabajo</div>
-        <div class="dato-nota">los 3 tests de physics que venían arrastrándose desde hace tres actualizaciones ya entraron</div>
+        <div class="dato-nota">rama anima-2 — el usuario pushea solo</div>
       </div>
   </section>
 
@@ -565,24 +565,27 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa medio">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H6</span>
             <h3>El chat, que no espera al proveedor</h3>
-            <span class="chip no">No empezado</span>
+            <span class="chip medio">En curso</span>
           </div>
           <p class="frase">Le hablás en castellano rioplatense y se mueve antes de que termines de leer tu propia frase.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>4</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">El criterio cambió antes de arrancar (ADR II-0024): el piso no es «sin LLM», es «sin espera». El «≥80% sin red» era un número puesto a dedo antes de tener el corpus y medía la variable equivocada — se cumple con un chat que tarda dos segundos y se incumple con uno instantáneo que entiende el 79%. Lo que NO cambia es la deuda escrita de antemano: el puente entre el castellano hablado y los nombres de procesos físicos es una tabla de alias que hay que escribir a mano, y el modelo no la ahorra.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">5<span class="barra-diagonal">/</span>7</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">El agujero era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe, y cero verbos de doce. Lo que lo tapa son 19 filas escritas a mano, que es la tabla de alias que el documento mando presupuestar y que ahora tiene tamano. Y el criterio dice que las 200 frases salen «del historial de chat del repo, que existe»: se fue a buscar y el historial tiene NUEVE mensajes. Lo que si es verdad, y nadie lo habia escrito, es que los tests de Anima I son el corpus.</p>
         <details class="criterios">
-          <summary>4 criterios</summary>
+          <summary>7 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>corpus de 200 frases reales con su lectura esperada. La cobertura sin red no es una puerta: la primera corrida fija la línea base y de ahí no baja</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>con el proveedor COLGADO —responde a los 30 s, o nunca— las 200 frases dan el mismo p95 que con el proveedor apagado. Es el punto que un modelo en el camino crítico no puede pasar de ninguna manera</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>p95 de mensaje a primer movimiento &lt; 150 ms en las dos corridas, y el acuse en el mismo frame que el mensaje</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>transformar «fabricá una trampa para peces» en un objetivo funcional SIN nombrar la solución</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>1 · ninguna frase devuelve «nada»: CUMPLE sobre las 77 del corpus, 0 sin respuesta. Falta llegar a 200</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · con el proveedor COLGADO el mismo p95 que apagado: 1,29 ms contra 1,52, y el control positivo —el proveedor puesto en el camino a proposito— da 21,22. Sin ese control la comparacion no valdria nada</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · p95 de mensaje a primer movimiento &lt; 150 ms: sobra 100×</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · el acuse en el mismo frame, afirmado POR MECANISMO: `leer` es sincronica y el guardian de la regla 2 prohibe `await` en todo `src/`</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>5 · consistenciaDelPrimerGesto &gt;= 0,85: NO MEDIDO. Pide correr la mente sobre ticks; el acumulador ya esta escrito</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el caso de aceptacion: «fabrica una trampa para peces» sale como `catch&gt;0` y da un plan de 4 pasos, sin nombrar la solucion en ninguno</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que hoy eran una sola respuesta</span></li>
           </ul>
         </details>
         </div>
