@@ -214,6 +214,47 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
+  ii/packages/juez:
+    dependencies:
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
+      '@anima/world':
+        specifier: workspace:*
+        version: link:../world
+    devDependencies:
+      '@anima/mind':
+        specifier: workspace:*
+        version: link:../mind
+      '@anima/perceive':
+        specifier: workspace:*
+        version: link:../perceive
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
+  ii/packages/lang:
+    dependencies:
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
+      '@anima/plan':
+        specifier: workspace:*
+        version: link:../plan
+      '@anima/skills':
+        specifier: workspace:*
+        version: link:../skills
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
   ii/packages/mind:
     dependencies:
       '@anima/perceive':

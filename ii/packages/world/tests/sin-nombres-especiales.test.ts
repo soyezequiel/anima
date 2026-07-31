@@ -179,3 +179,65 @@ describe('ningún carácter de control crudo en las fuentes de producción', () 
     expect('const s = `${a}\\u0000${b}`'.match(CONTROL)).toBeNull()
   })
 })
+
+// --- LA SEGUNDA CLASE DE BYTE INVISIBLE, y la encontro el Hito 6 -----------
+//
+// El guardian de arriba barre los caracteres de CONTROL, que es la clase que
+// costo `plano.ts`. Escribiendo `@anima/lang` aparecio otra que ese barrido no
+// ve y que es igual de mala: una **marca combinante suelta**.
+//
+// El caso, tal cual paso. La regex que le saca los acentos a una palabra es
+// `/[\u0300-\u036f]/g`, y escrita con los caracteres de verdad en vez de con los
+// escapes se dibuja asi:
+//
+//     const MARCAS = /[̀-ͯ]/g
+//
+// Una marca combinante no ocupa lugar propio: se pinta **encima del caracter
+// anterior**. Asi que el `U+0300` se dibuja sobre el corchete, el `U+036F` sobre
+// el guion, y la clase de caracteres se lee `[-]` -- una regex que engancha
+// guiones y nada mas. `tsc` la acepta, los tests de esa funcion dan verde
+// mientras nadie le pase un acento, y a ojo el archivo esta bien.
+//
+// Es peor que el NUL en un sentido: el NUL al menos hace que `grep` conteste
+// «Binary file matches» y avise de que algo raro hay. Este no avisa nada.
+//
+// --- Como se distingue de una enie legitima --------------------------------
+//
+// Un comentario de este repo esta lleno de acentos y de enies, y ninguno es un
+// problema: en `rio` la marca viene **despues de una letra**, y ahi se dibuja
+// donde tiene que dibujarse. Lo que no puede pasar es una marca detras de algo
+// que no es letra -- un corchete, un guion, una comilla, un espacio -- porque
+// eso es exactamente una marca que se monto sobre puntuacion.
+//
+// Esa es la regla que hace cumplir el bloque de abajo, y es barata: mira el
+// caracter de antes y nada mas.
+
+/** Una marca combinante que NO viene detras de una letra: se monto en cualquier cosa. */
+const MARCA_SUELTA = /(^|[^\p{L}])[\u0300-\u036f]/u
+
+describe('ninguna marca combinante montada sobre puntuacion', () => {
+  const FUENTES = fuentesDeProduccion()
+
+  it('los `src/` de los paquetes no tienen acentos pegados a un corchete', () => {
+    const infracciones: string[] = []
+    for (const f of FUENTES) {
+      const texto = readFileSync(f, 'utf8')
+      const donde = texto.search(MARCA_SUELTA)
+      if (donde < 0) continue
+      const linea = texto.slice(0, donde).split('\n').length
+      infracciones.push(`${f.slice(PAQUETES.length)}:${String(linea)}`)
+    }
+    expect(infracciones).toEqual([])
+  })
+
+  it('y distingue la marca montada de la palabra acentuada', () => {
+    // El control positivo: la regex del bug, escrita como se escribio.
+    expect(MARCA_SUELTA.test('const MARCAS = /[̀-ͯ]/g')).toBe(true)
+    // Y los controles negativos, que son los que hacen que el guardian se pueda
+    // dejar puesto: este repo escribe en castellano y sus fuentes tienen tildes.
+    expect(MARCA_SUELTA.test('// el río tiene pescado')).toBe(false)
+    expect(MARCA_SUELTA.test('// una caña de pescar')).toBe(false)
+    // El escape ESCRITO, que es la forma correcta y la que este archivo usa.
+    expect(MARCA_SUELTA.test('const MARCAS = /[\\u0300-\\u036f]/g')).toBe(false)
+  })
+})
