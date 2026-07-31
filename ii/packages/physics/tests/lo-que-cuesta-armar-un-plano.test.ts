@@ -31,7 +31,7 @@ import { describe, expect, it } from 'vitest'
 import { MAX_ASSEMBLY_DEPTH, MAX_JOINTS, MAX_PARTS, assemblyDepthOf } from '../src/body.js'
 import { buildSeedPhysics } from '../src/index.js'
 import { unir } from '../src/leyes.js'
-import { cuerpo, parte } from './mundo-de-prueba.js'
+import { cuerpo, materiaFantasma, parte } from './mundo-de-prueba.js'
 import type { Body, Physics } from '../src/index.js'
 
 const PHYS: Physics = buildSeedPhysics()
@@ -41,10 +41,44 @@ function pieza(id: string, masa = 0.5): Body {
   return cuerpo(id, 'vara', [parte('madera', masa)])
 }
 
-/** Un atador cualquiera. `fibra` cumple lo que `union` le pide al `binder`. */
+/**
+ * Un atador cualquiera. **`liana` y no `fibra`**: este archivo mide contra
+ * `buildSeedPhysics()`, o sea el catálogo SEMILLA, y ahí `fibra` no existe —
+ * existe sólo en el catálogo local de `mundo-de-prueba.ts`, de donde este
+ * archivo importa `cuerpo` y `parte` pero NO la física.
+ *
+ * Nombrar una sustancia que el catálogo no tiene no explota: `qualityOf`
+ * devuelve 0 para todo. Medido con la semilla, `fibra` daba `tensile` 0 y
+ * `cohesion` 0, y de ahí `strength` 0 — el atador ataba con fuerza cero y los
+ * tests de acá seguían verdes porque sólo miran la FORMA de la obra (cuántas
+ * partes, cuántas juntas, qué topología), no con cuánta fuerza quedó atada.
+ * Con `liana`: `tensile` 0,72, `cohesion` 0,62, `strength` 0,69.
+ */
 function atador(id: string, masa = 0.1): Body {
-  return cuerpo(id, 'hebra', [parte('fibra', masa)])
+  return cuerpo(id, 'hebra', [parte('liana', masa)])
 }
+
+// ─── (0) El chequeo que este archivo no tenía y por eso midió mal ───────────
+
+describe('(0) las dos piezas están hechas de materia que la SEMILLA conoce', () => {
+  it('ni la pieza ni el atador nombran una sustancia que `PHYS` no tenga', () => {
+    // Este archivo importa `cuerpo` y `parte` de `mundo-de-prueba.ts` pero arma
+    // su física con `buildSeedPhysics()`, que es OTRO catálogo. Cruzar los dos no
+    // falla: da un cuerpo legal con todas sus cualidades en cero. Acá se afirma
+    // que el par cuerpo↔catálogo es el mismo, y sin eso todo lo de abajo mide un
+    // atador que no ata.
+    expect(materiaFantasma(pieza('p'), PHYS)).toEqual([])
+    expect(materiaFantasma(atador('a'), PHYS)).toEqual([])
+  })
+
+  it('y el atador ata de VERDAD: la junta sale con fuerza, no con cero', () => {
+    // El síntoma que delataba a `fibra`. La forma de la obra —partes, juntas,
+    // profundidad— sale igual con un atador fantasma, así que ninguno de los diez
+    // tests de abajo se ponía rojo. Lo único que cambiaba era esto.
+    const r = unir(pieza('v'), undefined, atador('h'), PHYS, 'cana')
+    expect(r?.joints[0]?.strength).toBeGreaterThan(0)
+  })
+})
 
 // ─── (1) Los dos modos de `unir` ────────────────────────────────────────────
 
@@ -55,7 +89,7 @@ describe('(1) qué hace `unir` con el atador, en sus dos modos', () => {
     const r = unir(pieza('vara'), undefined, atador('hebra'), PHYS, 'cana')
     expect(r).toBeDefined()
     expect(r?.parts.length).toBe(2)
-    expect(r?.parts.map((p) => p.substance).sort()).toEqual(['fibra', 'madera'])
+    expect(r?.parts.map((p) => p.substance).sort()).toEqual(['liana', 'madera'])
   })
 
   it('CON `b`: el atador SE CONSUME y NO queda como parte', () => {
@@ -66,7 +100,7 @@ describe('(1) qué hace `unir` con el atador, en sus dos modos', () => {
     expect(r).toBeDefined()
     expect(r?.parts.length).toBe(2)
     expect(r?.parts.map((p) => p.substance)).toEqual(['madera', 'madera'])
-    expect(r?.parts.some((p) => p.substance === 'fibra')).toBe(false)
+    expect(r?.parts.some((p) => p.substance === 'liana')).toBe(false)
   })
 
   it('pero su SUSTANCIA queda escrita en la junta: el atador se nota aunque no esté', () => {
@@ -74,7 +108,7 @@ describe('(1) qué hace `unir` con el atador, en sus dos modos', () => {
     // se ató, así que una obra atada con junco y otra con tendón no son la misma
     // obra aunque tengan las mismas piezas.
     const r = unir(pieza('vara-a'), pieza('vara-b'), atador('hebra'), PHYS, 'dos')
-    expect(r?.joints[0]?.via).toBe('fibra')
+    expect(r?.joints[0]?.via).toBe('liana')
   })
 })
 

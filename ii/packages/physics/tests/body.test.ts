@@ -11,7 +11,7 @@ import {
   type Body,
   type Joint,
 } from '../src/body.js'
-import { CANA, CANA_CON_ANZUELO, VARA, cuerpo, mundo, parte } from './mundo-de-prueba.js'
+import { CANA, CANA_CON_ANZUELO, VARA, cuerpo, materiaFantasma, mundo, parte } from './mundo-de-prueba.js'
 
 const phys = mundo()
 
@@ -69,6 +69,16 @@ describe('qualityOf — de dónde sale cada número', () => {
 })
 
 describe('la caña, que nadie escribió', () => {
+  it('y antes que nada: los tres cuerpos están hechos de materia que ESTA física conoce', () => {
+    // El chequeo va PRIMERO porque sin él los tres de abajo son ambiguos: un
+    // `catch` de 0 puede ser «la vara no engancha» —que es lo que se quiere
+    // afirmar— o «la sustancia no existe y `qualityOf` devolvió 0 en silencio».
+    // Con esto, un 0 de acá para abajo significa una sola cosa.
+    for (const b of [VARA, CANA, CANA_CON_ANZUELO]) {
+      expect(materiaFantasma(b, phys), `${b.id} nombra materia que no existe`).toEqual([])
+    }
+  })
+
   it('la vara sola alcanza pero no engancha: no califica como aparejo', () => {
     expect(qualityOf(VARA, 'reach', phys)).toBeGreaterThanOrEqual(2)
     expect(qualityOf(VARA, 'catch', phys)).toBe(0)

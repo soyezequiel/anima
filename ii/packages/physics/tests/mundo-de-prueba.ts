@@ -2,6 +2,23 @@
 // de `quality.ts` a propósito: lo que se prueba es el evaluador, no los números
 // de la semilla. Si mañana la semilla recalibra `reach`, estos tests siguen
 // diciendo la verdad sobre `qualityOf`, que es lo suyo.
+//
+// ─── LA TRAMPA DE ESTE ARCHIVO, Y YA MORDIÓ UNA VEZ ─────────────────────────
+//
+// Los cuerpos de acá abajo SÓLO tienen sentido leídos contra `mundo()`. Dos de
+// las cinco sustancias —`fibra` y `espina`— existen únicamente en este archivo:
+// no están en `SUSTANCIAS_SEMILLA`. Y `qualityOf` no explota con una sustancia
+// que el catálogo no conoce: **devuelve 0 para todo, en silencio**.
+//
+// O sea que importar `cuerpo`/`parte` de acá y medir contra `buildSeedPhysics()`
+// da un cuerpo que parece bien armado y mide cero en todo lo que dependa de su
+// materia. Medido: `CANA` da `catch` 0,15 contra `mundo()` y 0 contra la semilla.
+// Y al revés también: una `CANA` de `liana` da 0,15 contra la semilla y 0 contra
+// `mundo()`, porque acá no hay `liana`. No es que una sustancia sea mejor —
+// **es que el cuerpo y el catálogo tienen que ser el mismo par**.
+//
+// Contra eso está `materiaFantasma`, más abajo. Un fixture nuevo que cruce mal
+// los catálogos se caza con una línea.
 
 import type { QualitySpec } from '../src/quality.js'
 import type { Substance } from '../src/substance.js'
@@ -180,6 +197,18 @@ export function cuerpo(
   state: Body['state'] = {},
 ): Body {
   return { id, form, parts, joints, state }
+}
+
+/**
+ * Las sustancias que un cuerpo NOMBRA y esta física NO conoce — partes y juntas.
+ *
+ * Existe porque nombrar materia inexistente no falla: `qualityOf` da 0 y el
+ * cuerpo sigue pareciendo legal. Un fixture así no mide lo que dice medir. Ver
+ * el encabezado.
+ */
+export function materiaFantasma(b: Body, phys: Physics): readonly string[] {
+  const nombradas = [...b.parts.map((p) => p.substance), ...b.joints.map((j) => j.via)]
+  return [...new Set(nombradas.filter((s) => !phys.substances.has(s)))].sort()
 }
 
 /** Vara sola: alcanza, pero no engancha nada. */
