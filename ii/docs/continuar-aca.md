@@ -5,8 +5,32 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: **2026-07-31**, con los **tramos A, B, C, C·bis y D del
-Gate 5→6** cerrados. El D: **`place` dejó de contestar `'no-implementado'`** y
+Última actualización: **2026-07-31**. **EL GATE 5→6 CIERRA: los doce puntos
+cumplen.** El detalle punto por punto está en la sección 4 de
+[`gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md); lo que sigue en
+este párrafo es el recorrido histórico y se conserva porque explica de dónde salió
+cada decisión.
+
+**Las cinco cosas que más vale saber al retomar**, y ninguna es una lista de
+archivos:
+
+1. **La criatura arma y despliega lo que nadie programó.** `construir` (innata 16)
+   encuentra el orden de las uniones y `usar` (innata 17) deja la obra funcionando.
+   Los seis pasos de la historia corren **por las habilidades** y no por
+   intenciones a mano, en `perceive/tests/construir-y-usar-cierran-el-punto-5.test.ts`.
+2. **Hay una tercera clase de `ConstructionSchema`** —`EsquemaDeObra`, ADR
+   II-0023— cuyo paso no es `apply` sino `armar`: «corré esta habilidad». Es la
+   única fila del catálogo cuyo destinatario no es el mundo.
+3. **El catálogo de una partida sale de la crónica**, no de una variable: una sola
+   lista append-only con dos lectores. Y la crónica dice contra qué física corrió.
+4. **El Hito 12A está adelantado** —mapa, relaciones, criatura y deltas
+   deterministas— y hay un **visor de descarte** en `ii/docs/visor/partida.html`,
+   generado por un test para que no se pueda pudrir.
+5. **Lo único abierto del gate no es del criterio:** un rol que necesita DOS
+   cuerpos no se puede planificar todavía. Tiene su `it.fails` con el número.
+
+Lo que sigue abajo es el recorrido, tramo por tramo, empezando por los **tramos A,
+B, C, C·bis y D**. El D: **`place` dejó de contestar `'no-implementado'`** y
 pasó a significar otra cosa —despliega un CUERPO ya armado, no construye un plano
 (ADR II-0022)—, con la tabla `WorldState.desplegados`, su ranura de guardado y su
 entrada al hash. Van **8 de los 12 puntos** del gate CUMPLIENDO y 3 a medias. Y el D·bis le dio de comer: **un cuerpo desplegado con `catch > 0`

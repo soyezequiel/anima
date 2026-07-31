@@ -160,8 +160,8 @@ todo lo demás pase.
 | 2 overlay aislado por sesión | **CUMPLE** | `plan/tests/el-catalogo-es-una-vista.test.ts`, bloque (2) |
 | 3 publicación de capacidades | **CUMPLE, con las dos mitades** (tramos H e I). El planificador emite `ir · sostener · … · armar` con la revisión adentro (`EsquemaDeObra`), y la innata `construir` lo ejecuta contra el mundo real: el árbol de tres piezas en 51 ticks, confirmado por `realizaElPlano`. Queda un límite medido y marcado: un rol que necesita DOS cuerpos no se puede planificar todavía | `plan/tests/construir-y-usar-se-publican-aparte.test.ts` + `perceive/tests/construir-arma-el-plano.test.ts` |
 | 4 sin mutación global | **CUMPLE**, con guardián de texto en los DOS paquetes | ídem, bloque (4) + `mind/tests/el-catalogo-llega-a-la-mente.test.ts` |
-| 5 construcción incremental e idempotente | **la mitad CUMPLE** (tramo D): desplegar es idempotente y la obra no se muda. Construir ya era incremental por `unir` y falta el `BuildSkill` que encadene | `world/tests/la-obra-queda-desplegada.test.ts` |
-| 6 separar construir de usar | **CUMPLE** (tramo F). `capacidadDe` no deja publicar un sello vencido, y el caso que lo hace significar algo es el asimétrico: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar. Los dos catálogos ni siquiera comparten digest | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (6) |
+| 5 construcción incremental e idempotente | **CUMPLE** (tramo J). Las tres mitades, medidas contra las habilidades y no contra intenciones a mano: avanza de a una unión y cada paso deja un cuerpo legal; **cortada a la mitad la masa se conserva entera** y los cuerpos siguen nombrables; desplegar dos veces es un no-op | `perceive/tests/construir-y-usar-cierran-el-punto-5.test.ts` |
+| 6 separar construir de usar | **CUMPLE, y ahora con las dos EJECUTADAS** (tramos F y J). En el dato: `capacidadDe` no deja publicar un sello vencido, y el caso asimétrico —obra bien construida cuyo uso no se demostró— publica capacidad de construir y NINGUNA de usar. En la ejecución: son **dos habilidades distintas**, `construir` y `usar`, con contratos y compromisos distintos —`usar` es la segunda irreversible del catálogo, porque desplegar arranca una máquina— | `plan/tests/construir-y-usar-se-publican-aparte.test.ts` + `perceive/tests/construir-y-usar-cierran-el-punto-5.test.ts` |
 | 7 dos partidas no se contaminan | **CUMPLE** | `el-catalogo-es-una-vista`, bloque (7) |
 | 8 guardar y restaurar | **CUMPLE** (tramo D·ter): una ranura `desplegado:<id>` por obra, y la ida y vuelta por JSON devuelve el sitio, la revisión y el MISMO hash | `world/tests/la-obra-queda-desplegada.test.ts`, bloque (f) |
 | 9 cambio de física invalida sellos | **CUMPLE, por dos caminos independientes** (tramo F): `selloVigente` rechaza con el MISMO código que `admit()` ya usa, y la revisión lleva la versión adentro del hash, así que el mismo candidato contra otra física es otro plano y el sello viejo apunta a nada. Las dos clases mueren juntas y el catálogo vuelve al core pelado | `physics/tests/la-obra-es-el-plano.test.ts` bloque (6) + `construir-y-usar-se-publican-aparte` bloque (9) |
@@ -169,7 +169,20 @@ todo lo demás pase.
 | 11 descriptor visual | **CUMPLE** (tramo D·quater): vista derivada, siete claves y ni una más, con `renderDescriptorHash` | `world/tests/el-descriptor-visual.test.ts` |
 | 12 sin nombres especiales | **CUMPLE** (tramo D·ter): 90 fuentes de producción barridos, cero infracciones — y no es sólo el grep: lo que hace que un cuerpo retenga es `catch > 0`, una cualidad derivada | `world/tests/sin-nombres-especiales.test.ts` |
 
-**Van 11 de 12 cumpliendo y 1 a medias (el 5).**
+**LOS DOCE CUMPLEN.**
+
+El último en caer fue el 5, y su historia es la del gate entero en chico: estuvo
+«a medias» desde el tramo D con una frase —«falta el `BuildSkill` que encadene»—
+que nadie podía verificar. Lo que lo cerró no fue escribir el `BuildSkill`: fue
+**medir las tres cosas que «incremental» tiene que querer decir** contra las
+habilidades de verdad, en vez de contra intenciones escritas a mano.
+
+**Lo que queda abierto NO es del criterio**, y son dos, los dos medidos y marcados
+con su `it.fails`:
+
+1. **un rol que necesita DOS cuerpos no se puede planificar** — la regresión liga
+   uno por rol, y levantarlo toca la búsqueda entera;
+2. las tres preguntas de la sección 10, que **no se deciden, se miden**.
 
 El punto 3 recorrió el camino entero en un día: de «falta para planos» —una frase—
 a una frase del planificador, a una clase de esquema, a un plan que sale. Es el
@@ -666,6 +679,47 @@ con «no me entran las piezas en las manos», los dos **antes de atar nada**. Si
 habilidad fuera más permisiva que el plan habría conocimiento perdido; si fuera
 menos, habría planes verdes que se rompen a mitad de camino — y `unir` no tiene
 inversa, así que lo que se ató queda atado.
+
+### El tramo J: `usar`, y el punto 5 cerrado
+
+**`usar` es la innata 17 y el `UseSkill` del ADR II-0015.** Es delgada a propósito
+y no es `poner` con otro nombre: `put` deja un cuerpo **apoyado** y `place` lo deja
+**desplegado**, y el mundo los trata distinto — una obra desplegada con `catch > 0`
+al lado de un pozo saca **sin que nadie aplique un proceso**. Por eso su compromiso
+es `irreversible` y es la **segunda** del catálogo, después de `comer`: soltar algo
+se deshace levantándolo, y desplegar arranca una máquina.
+
+**La mitad de su valor es lo que se niega a hacer.** Antes de caminar hasta el
+sitio le pregunta al cuerpo cuánto engancha, y si da cero no va. Medido en el
+mismo test:
+
+```
+la obra armada ... catch 0,1500
+un palo pelado ... catch 0,0000
+```
+
+**Ningún nombre interviene.** La habilidad no sabe qué es una trampa: le pregunta a
+la geometría.
+
+#### Las tres mitades del punto 5, medidas
+
+| qué | cómo se midió |
+|---|---|
+| **avanza de a una** | dos cuerpos entran y sale uno; en ningún tick el mundo queda con un estado que sólo la habilidad entienda |
+| **lo armado queda armado** | cortando la construcción a los tres ticks, **la masa total se conserva al sexto decimal** y los cuerpos siguen nombrables. `unir` no tiene inversa, así que lo único que se puede pedir es que la materia no desaparezca |
+| **idempotente** | desplegar dos veces termina bien, y ni los cuerpos ni la tabla de desplegados se mueven |
+
+**Y la historia entera, corrida por las habilidades:**
+
+```
+  1 · ata la vara y la hebra → «w000000001» con catch 0,1500  (25 ticks)
+  2 · la deja puesta y funcionando en {"x":2,"y":0}           (3 ticks)
+  3 · el mundo corre 60 ticks y la obra sigue puesta
+```
+
+`world/tests/la-historia-entera.test.ts` ya la corría **con las intenciones
+emitidas a mano**. La diferencia es la que separa «el mundo lo permite» de «la
+criatura lo hace».
 
 #### El vertical, en el mundo de verdad
 

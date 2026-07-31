@@ -1,5 +1,5 @@
 /**
- * LAS HABILIDADES INNATAS — quince del Hito 4, más «construir» del Gate 5-6.
+ * LAS HABILIDADES INNATAS — quince del Hito 4, más «construir» y «usar» del Gate 5-6.
  *
  * Escritas a mano en el mismo TypeScript que después va a escribir el modelo.
  * No están acá para que la criatura las use: están acá para MEDIR SI LA API
@@ -40,6 +40,7 @@ export { juntar, CONTRATO_JUNTAR } from './juntar.js'
 export { comer, rinde, CONTRATO_COMER } from './comer.js'
 export { unir, CONTRATO_UNIR } from './unir.js'
 export { construir, CONTRATO_CONSTRUIR } from './construir.js'
+export { usar, CONTRATO_USAR } from './usar.js'
 export { deshilachar, CONTRATO_DESHILACHAR } from './deshilachar.js'
 export { aplicarProceso, loQueSeHacer, CONTRATO_APLICAR_PROCESO } from './aplicar-proceso.js'
 export { poner, tapar, CONTRATO_PONER } from './poner.js'
@@ -59,6 +60,7 @@ import { CONTRATO_JUNTAR } from './juntar.js'
 import { CONTRATO_COMER } from './comer.js'
 import { CONTRATO_UNIR } from './unir.js'
 import { CONTRATO_CONSTRUIR } from './construir.js'
+import { CONTRATO_USAR } from './usar.js'
 import { CONTRATO_DESHILACHAR } from './deshilachar.js'
 import { CONTRATO_APLICAR_PROCESO } from './aplicar-proceso.js'
 import { CONTRATO_PONER } from './poner.js'
@@ -100,4 +102,5 @@ export const INNATAS: readonly Contrato[] = [
   // de `unir`: el orden de esta lista es el de las quince del Hito 4 y moverlo
   // haría que un test que las nombra por posición mienta.
   CONTRATO_CONSTRUIR,
+  CONTRATO_USAR,
 ]

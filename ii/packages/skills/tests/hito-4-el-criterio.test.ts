@@ -995,7 +995,7 @@ describe('el inventario del Hito 4', () => {
       'unir.ts',
     ]
     /** Lo que llego despues, con el hito que lo trajo. */
-    const DESPUES = ['construir.ts']
+    const DESPUES = ['construir.ts', 'usar.ts']
 
     const archivos = readdirSync(INNATAS_DIR)
       .filter((f) => f.endsWith('.ts'))

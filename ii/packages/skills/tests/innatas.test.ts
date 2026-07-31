@@ -65,6 +65,7 @@ describe('el catálogo de las quince', () => {
       // Gate 5-6, ADR II-0023: el `BuildSkill`. No es del Hito 4 y por eso va al
       // final y anotada — el orden de las quince de arriba es historia.
       'construir',
+      'usar',
     ])
   })
 
@@ -85,10 +86,24 @@ describe('el catálogo de las quince', () => {
     expect(INNATAS.reduce((n, c) => n + c.huecos.length, 0)).toBeGreaterThanOrEqual(15)
   })
 
-  it('una sola de las quince es IRREVERSIBLE, y es comer', () => {
+  it('las IRREVERSIBLES son dos, y cada una lo es porque el MUNDO lo dice', () => {
     // Si esto crece, la cuarentena de lo provisional se vuelve una jaula: una
-    // habilidad `provisional` entra con `permits: reversible`.
-    expect(INNATAS.filter((c) => c.cuesta.commitment === 'irreversible').map((c) => c.nombre)).toEqual(['comer'])
+    // habilidad `provisional` entra con `permits: reversible` y no puede emitir
+    // nada de acá. Por eso la lista se afirma entera y cada entrada lleva su porqué.
+    //
+    // Y ninguno de los dos porqués es una opinión de esta carpeta: `COMMITMENT_OF`
+    // de `world/src/intent.ts` clasifica `eat` y `place` como irreversibles, y una
+    // habilidad que declarara menos de lo que emite sería rechazada por el mundo
+    // con `mal-declarado`. El contrato dice el PEOR compromiso que puede llegar a
+    // emitir, no el que a uno le gustaría.
+    //
+    //   comer  destruye el cuerpo comido;
+    //   usar   deja una obra DESPLEGADA, que no es lo mismo que apoyada: arranca
+    //          una máquina que saca del pozo mientras nadie la levante.
+    expect(INNATAS.filter((c) => c.cuesta.commitment === 'irreversible').map((c) => c.nombre)).toEqual([
+      'comer',
+      'usar',
+    ])
   })
 })
 
