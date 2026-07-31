@@ -316,8 +316,18 @@ export function vistaDe(p: Partida, quien: string): VistaDeLaMente {
 // ─── La corrida ──────────────────────────────────────────────────────────────
 
 export interface Corrida {
-  /** Ticks que avanzó EL MUNDO. Llega a `n` aunque la criatura se muera antes. */
+  /** Ticks que avanzó EL MUNDO. Llega a `n` salvo que se haya pedido un corte. */
   readonly ticks: number;
+  /**
+   * LOS TICKS QUE EL BUCLE CORRIÓ DE VERDAD, y `n` si nadie cortó.
+   *
+   * Existe para que el corte sea legible desde el test: `ticksCorridos < n` dice
+   * que la corrida terminó antes, y el `porQueParo` dice por qué. Sin esto, un
+   * test que imprime «de 20.000» estaría mintiendo sobre una corrida de 6.194.
+   */
+  readonly ticksCorridos: number;
+  /** `''` si corrió los `n` enteros. Si no, qué lo cortó. */
+  readonly porQueParo: string;
   readonly ticksPerdidos: number;
   readonly porTiempo: number;
   readonly porFalla: number;
@@ -400,12 +410,48 @@ export interface Corrida {
  * después habría que creerle. El mundo sigue avanzando después de que la
  * criatura se muere, porque el criterio (4) habla de LA CORRIDA y no de la
  * criatura: 20.000 ticks son 20.000 ventanas, las viva alguien o no.
+ *
+ * ─── LOS DOS CORTES, Y POR QUÉ SON OPT-IN ──────────────────────────────────
+ *
+ * Por omisión no se corta nada, y ese default es el que sostiene la frase de
+ * arriba: el criterio (4) mide LA CORRIDA y necesita las 20.000 ventanas aunque
+ * adentro no viva nadie. Cortar ahí no sería una optimización, sería medir otra
+ * cosa.
+ *
+ * Los cortes se piden test por test, y solo valen donde **la conclusión ya está
+ * escrita cuando el corte llega**:
+ *
+ *   · `pararAlMorir` — un cadáver no cambia de opinión. Todo lo que la corrida
+ *     anota (`murioEn`, `pescoEn`, los tres de la cocina, los despegues) queda
+ *     fijo en el tick de la muerte; lo único que sigue moviéndose después es el
+ *     mundo, que este test no está midiendo.
+ *   · `pararCuando` — para los tests que preguntan «¿pasa X?». Recibe lo que la
+ *     corrida lleva anotado y corta cuando el test ya tiene su respuesta.
+ *
+ * LO QUE SE PIERDE, DICHO: el arnés de invariantes (`vigilar: true`) audita
+ * menos ticks, así que una corrida cortada da menos cobertura de estados
+ * ilegales que una entera. Se acepta porque la auditoría larga la paga el
+ * criterio (4), que corre los 20.000 completos y no lleva corte.
  */
 export function correr(
   w: WorldState,
   quien: string,
   n: number,
-  o: { reloj?: boolean; cada?: number } = {},
+  o: {
+    reloj?: boolean;
+    cada?: number;
+    /** Corta en el tick en que la criatura se va de `state.actors`. */
+    pararAlMorir?: boolean;
+    /** Corta cuando devuelve `true`, mirando lo que la corrida ya anotó. */
+    pararCuando?: (c: {
+      t: number;
+      murioEn: number;
+      pescoEn: number;
+      prendioEn: number;
+      cocinoEn: number;
+      comioEn: number;
+    }) => boolean;
+  } = {},
 ): Corrida {
   // ─── `vigilar: true`, Y NO ES DECORACIÓN ──────────────────────────────────
   //
@@ -453,6 +499,8 @@ export function correr(
   // bucle de producción ni tocar `src/`.
   let vueloAnterior: unknown;
   let nombreEnVuelo = '';
+  let corridos = 0;
+  let porQueParo = '';
 
   const t0 = process.hrtime.bigint();
   for (let t = 0; t < n; t++) {
@@ -509,12 +557,27 @@ export function correr(
       curva.push(`${String(t)}:${aliento(p, quien).toFixed(1)}`);
       muestras.push(aliento(p, quien));
     }
+    // Los cortes van AL FINAL del tick, después de anotar: lo que se ahorra son
+    // los ticks siguientes, nunca el que acaba de pasar.
+    corridos = t + 1;
+    if (o.pararAlMorir === true && murioEn >= 0) {
+      porQueParo = `murió en el tick ${String(murioEn)} y no quedaba nadie a quien medir`;
+      break;
+    }
+    if (
+      o.pararCuando?.({ t, murioEn, pescoEn, prendioEn, cocinoEn, comioEn }) === true
+    ) {
+      porQueParo = `lo que el test pregunta quedó contestado en el tick ${String(t)}`;
+      break;
+    }
   }
   const ms = Number(process.hrtime.bigint() - t0) / 1e6;
   const i = p.informe;
 
   return {
     ticks: i.ticks,
+    ticksCorridos: corridos,
+    porQueParo,
     ticksPerdidos: i.ticksPerdidos,
     porTiempo: i.porTiempo,
     porFalla: i.porFalla,

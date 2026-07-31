@@ -9,8 +9,9 @@
 // La CONDICIÓN que va con el cero (el tick cuesta por cuerpo, y esta partida no
 // recorre mundo) se imprime en el cuadro, no acá. El arnés está en `./el-criterio.ts`.
 
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { MIDIENDO_EN_SERIO, CRITERIO_TICKS, laEscenaDelDocumento, correr } from './el-criterio.js';
+import type { Corrida } from './el-criterio.js';
 import { cuaderno } from './el-cuadro.js';
 
 /** Lo que este pedazo anota para el cuadro. Ver `./el-cuadro.ts`. */
@@ -19,17 +20,33 @@ const MEDIDO = cuaderno('4-los-ticks');
 // ═══ (4) `ticksPerdidos === 0` DURANTE TODA LA CORRIDA ══════════════════════
 
 describe('(4) ticksPerdidos === 0, y contado contra un reloj que puede moverlo', () => {
-  it('sin reloj de pared: cero, y sólo dice que el mundo nunca lanzó', () => {
-    // La mitad honesta del criterio. Sin `RelojDePared`, `porTiempo` no se puede
-    // mover POR CONSTRUCCIÓN —`bucle.ts`: «sin reloj de pared no hay ninguna
-    // ventana que vencer»— así que este cero mide `porFalla` y nada más: que
-    // `stepWorld` no lanzó una sola vez en 20.000 ticks con una mente encima.
-    // Que el contador SÍ se puede mover lo prueba `perceive/tests/el-bucle.test.ts`
-    // con un reloj falso que hace que cada tick tarde el doble de su ventana.
-    const r = correr(laEscenaDelDocumento(1000), 'ana', CRITERIO_TICKS);
+  // ─── UNA SOLA CORRIDA PARA LAS DOS MITADES, Y POR QUÉ NO SE PIERDE NADA ────
+  //
+  // Este archivo hacía DOS corridas de 20.000 ticks —una sin reloj de pared y otra
+  // con él— y era el más lento del paquete: 42 s de los 146 que tardaba el archivo
+  // entero antes de partirse. Ahora corre una, CON reloj, y las dos mitades afirman
+  // sobre ella.
+  //
+  // La afirmación no se ablanda, y el argumento es del propio encabezado que estaba
+  // acá: sin `RelojDePared`, `porTiempo` no se puede mover POR CONSTRUCCIÓN
+  // (`bucle.ts`: «sin reloj de pared no hay ninguna ventana que vencer»), así que
+  // aquel `ticksPerdidos === 0` medía `porFalla` y nada más. Con el reloj puesto hay
+  // una ventana de verdad que vencer y `porFalla` sigue dando cero: es la MISMA
+  // afirmación bajo una condición más brava, no una más débil. Lo único que la
+  // corrida sin reloj tenía y ésta no es el aislamiento —saber, si algo se rompiera,
+  // si fue tiempo o falla—, y eso se lee igual porque `porTiempo` y `porFalla` se
+  // publican por separado en el mismo informe.
+  //
+  // Que el contador SÍ se puede mover lo prueba `perceive/tests/el-bucle.test.ts`
+  // con un reloj falso que hace que cada tick tarde el doble de su ventana.
+  let r: Corrida;
+  beforeAll(() => {
+    r = correr(laEscenaDelDocumento(1000), 'ana', CRITERIO_TICKS, { reloj: true });
+  }, 300_000);
+
+  it('el mundo nunca lanzó: cero fallas de `stepWorld` en los 20.000 ticks', () => {
     expect(r.ticks).toBe(CRITERIO_TICKS);
     expect(r.porFalla).toBe(0);
-    expect(r.ticksPerdidos).toBe(0);
     expect(r.partida.informe.fallas).toEqual([]);
     console.log(
       `\n  ${String(r.ticks)} ticks de mundo, ${String(r.porFalla)} fallas de \`stepWorld\`, ` +
@@ -38,7 +55,6 @@ describe('(4) ticksPerdidos === 0, y contado contra un reloj que puede moverlo',
   }, 300_000);
 
   it('CON reloj de pared: la otra mitad, que es la que el criterio pide de verdad', () => {
-    const r = correr(laEscenaDelDocumento(1000), 'ana', CRITERIO_TICKS, { reloj: true });
     const ventana = 1000 / r.partida.state.hz;
     const porTick = r.ms / r.ticks;
     // ─── HASTA DÓNDE LLEGA ESTE CERO, Y ES LA MITAD QUE FALTABA ─────────────
