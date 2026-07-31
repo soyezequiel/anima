@@ -504,6 +504,40 @@ prueba en el mundo de verdad, y eso es el vertical de abajo.
 `BlueprintDefinition` y nada más; si hubiera un caso especial para una obra, el
 punto 12 se cae y con él el gate entero.
 
+#### MEDIDO — F1 a F4 y F6 cumplen; **F5 no, y eso es el hallazgo del tramo**
+
+| # | resultado | dónde |
+|---|---|---|
+| F1 · F2 | **CUMPLE.** `realizaElPlano` mide las tres, y cada una tiene su contraejemplo | `physics/tests/la-obra-es-el-plano.test.ts` |
+| F3 | **CUMPLE**, por dos caminos independientes | ídem, bloque (6) |
+| F4 | **CUMPLE.** El asimétrico: un sello de construir publica una capacidad y ninguna de usar | `plan/tests/construir-y-usar-se-publican-aparte.test.ts` |
+| F5 | **NO CUMPLE, y está medido por qué** | ídem, bloque (3), con su `it.fails` |
+| F6 | **CUMPLE.** Subir la versión mata las dos, y el catálogo vuelve a ser el core pelado | ídem, bloque (9) |
+
+**Lo que dijo el planificador**, palabra por palabra, cuando se le publicó la
+capacidad de construir el plano y se le pidió la meta que sólo esa fila establece:
+
+> el esquema de «reach>=5» por «union» no nombra «binder» ni «a», que «union»
+> necesita sí o sí
+
+**Un `ConstructionSchema` es UNA aplicación de UN proceso**, y sus `RoleName` son
+los de ESE proceso. Los roles de un plano son los del plano —`brazo`, `cola`,
+`punta`— y armar la obra son **N−1 uniones encadenadas**. O sea que **la capacidad
+de construir un plano no se puede decir con las dos clases de esquema que
+existen**, y la salida fácil es una mentira medible: publicar la fila con los
+roles de `union` diría que un solo `union` alcanza, la criatura ataría dos cosas y
+se quedaría a mitad de camino sin que nada se ponga rojo.
+
+**Lo que el punto 3 necesita para cerrar, dicho con precisión:** una tercera clase
+de `ConstructionSchema` **cuyo paso no sea `apply` sino «correr esta habilidad»**.
+Eso toca la regresión y el vocabulario de `Step`, y es la fragua del Hito 8 — no
+un ajuste del catálogo.
+
+**Y la distinción que el bloque (3) deja afirmada, porque vale:** la fila **entra**
+al catálogo, el `catalogEpoch` **se mueve**, y el planificador **la alcanza y la
+expande**. No es que no esté publicada; es que no la puede ejecutar. Las dos cosas
+se ven distinto en el `why`, y ahora hay un test que las separa.
+
 #### El vertical, en el mundo de verdad
 
 Una sola partida, sin arneses: se define un plano, se arma **con intenciones del

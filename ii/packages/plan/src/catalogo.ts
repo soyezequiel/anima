@@ -32,8 +32,12 @@
 // y el Hito 7 las juzgan y las promueven por separado, y una lista sola habría
 // obligado a re-derivar esa distinción después.
 
+import { selloVigente } from '@anima/physics'
+import type { BlueprintDefinition, Physics, SelloDeHabilidad, Verdict } from '@anima/physics'
+import type { Where } from '@anima/skills'
+
 import { ESQUEMAS } from './esquemas.js'
-import type { ConstructionSchema } from './tipos.js'
+import type { ConstructionSchema, RoleName } from './tipos.js'
 
 // ─── Las capacidades ────────────────────────────────────────────────────────
 
@@ -141,6 +145,88 @@ export function esquemasDe(v: PlannerCatalogView): readonly ConstructionSchema[]
     ...v.buildCapabilities.map((c) => c.esquema),
     ...v.skillCapabilities.map((c) => c.esquema),
   ]
+}
+
+// ─── PUBLICAR UN SELLO COMO CAPACIDAD — punto 3 del criterio, la mitad que faltaba ──
+//
+// El punto 3 pide «publicación de capacidades al planificador». Cumplía para
+// esquemas desde el tramo A —una fila entra por el overlay y la regresión la
+// consume igual que una del core— y **no cumplía para planos**: no había forma de
+// convertir «esta obra se sabe construir» en una fila.
+//
+// ─── LO QUE ESTA PUERTA HACE, Y LO QUE NO ───────────────────────────────────
+//
+// Hace UNA cosa: no deja publicar un sello que no vale. Es poco código y es el
+// único punto por el que un sello vencido podría entrar al catálogo, así que vale
+// que sea una puerta y no una convención.
+//
+// **No deriva el `establishes`**, y eso es deliberado. Qué establece una obra sale
+// de la corrida que lo demostró —la trampa retiene porque se midió que retuvo—, no
+// de mirar el plano. Inventar acá una regla que adivine el `establishes` a partir
+// de las piezas sería exactamente la clase de diseño especulativo que este
+// proyecto ya pagó dos veces: la escribiría alguien sin una sola medición y
+// después habría que sostenerla. Quien juzga trae el esquema; hoy es el criterio
+// del gate con su candidato fijo, mañana es el juez del Hito 7.
+
+export type Publicada =
+  | { readonly k: 'ok'; readonly cap: CatalogCapability }
+  | { readonly k: 'rechazado'; readonly verdict: Verdict }
+
+/**
+ * CONVIERTE UN SELLO EN UNA FILA QUE EL PLANIFICADOR CONSUME.
+ *
+ * `de` queda con la revisión exacta, que es lo que el punto 8 —«guardar y
+ * restaurar conserva la revisión exacta»— compara, y lo que el replay necesita
+ * para saber contra qué plano se planificó.
+ */
+export function capacidadDe(
+  sello: SelloDeHabilidad,
+  esquema: ConstructionSchema,
+  phys: Physics,
+): Publicada {
+  const v = selloVigente(sello, phys)
+  if (!v.ok) return { k: 'rechazado', verdict: v }
+  return { k: 'ok', cap: { clase: sello.clase, de: sello.revision, esquema } }
+}
+
+/**
+ * LO QUE EL PLANO LE PIDE A CADA ROL, reindexado. Es lo que hay que ir a buscar.
+ *
+ * `BlueprintPart.pide` es una lista de `QualityTest` y `Where` ES una lista de
+ * `QualityTest`: no hay traducción, hay reindexado. Los roles de ATADOR entran
+ * igual que las piezas, porque hay que ir a buscarlos y son cuerpos de verdad
+ * aunque se consuman al unir (medido en el tramo C·bis).
+ *
+ * ─── ESTO NO ES UN `roleHints`, Y ESTÁ MEDIDO ───────────────────────────────
+ *
+ * La primera versión de esta función se llamaba `roleHintsDe` y alimentaba
+ * directamente el `roleHints` de un `EsquemaDeProceso` con `via: 'union'`. **No
+ * funciona**, y el planificador lo dijo con todas las letras:
+ *
+ *   > el esquema de «reach>=5» por «union» no nombra «binder» ni «a», que «union»
+ *   > necesita sí o sí
+ *
+ * Un `ConstructionSchema` es UNA aplicación de UN proceso, y sus `RoleName` son
+ * los de ESE proceso. Los roles de un plano son los del plano —`brazo`, `cola`,
+ * `punta`— y armar la obra son N−1 uniones encadenadas, no una. O sea que la
+ * capacidad de construir un plano **no se puede decir con las dos clases de
+ * esquema que hay**, y publicar una fila con los roles de `union` diría que un
+ * solo `union` alcanza, que es falso.
+ *
+ * Queda como hueco medido del gate, con su `it.fails` en
+ * `tests/construir-y-usar-se-publican-aparte.test.ts`. Lo que pide es una tercera
+ * clase de `ConstructionSchema` cuyo paso no sea `apply` sino «correr esta
+ * habilidad», y eso es la fragua del Hito 8.
+ *
+ * Mientras tanto esta función sirve a quien SÍ tiene los roles del plano: el
+ * constructor. Sin ella, quien construya transcribe las condiciones a mano y una
+ * transcripción que diverge hace que la criatura junte los ingredientes de otra
+ * obra.
+ */
+export function pedidosDelPlano(def: BlueprintDefinition): Readonly<Record<RoleName, Where>> {
+  const out: Record<RoleName, Where> = {}
+  for (const p of def.parts) out[p.rol] = p.pide
+  return out
 }
 
 // ─── La identidad ───────────────────────────────────────────────────────────
