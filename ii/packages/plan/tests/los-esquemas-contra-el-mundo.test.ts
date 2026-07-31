@@ -756,6 +756,7 @@ function tope(e: ConstructionSchema): number {
   // segundos, así que el presupuesto es exactamente ése. Darle más sería medir otra
   // afirmación que la que la fila hace.
   if (e.k === 'ley') return Math.ceil(e.mientras * HZ_DE_REFERENCIA)
+  if (e.k === 'obra') throw new Error(SIN_OBRAS)
   const p = procesoDe(e.via)
   const sortea = (p.completion?.yields ?? []).some((y) => y.k === 'drawFromStock')
   return sortea ? 6000 : Math.ceil(e.segundos * HZ_DE_REFERENCIA) * 4 + 60
@@ -1037,8 +1038,20 @@ function correrLey(e: EsquemaDeLey): Resultado {
  * `extraccion` completa cada 1,5 segundos sin rendir nada la mayoría de las veces.
  * Una sola condición para las cuatro, y la que la fila promete.
  */
+/**
+ * Este archivo verifica el CATÁLOGO CORE contra el mundo, y el core no tiene ni va
+ * a tener filas de obra: una obra es de una partida y entra por el overlay (ver
+ * `EsquemaDeObra` en `tipos.ts`). Verificar una pediría además armarla, que es
+ * otra afirmación y tiene su propio arnés.
+ *
+ * Se lanza en vez de saltear porque una fila de obra ACÁ sería un error de quien
+ * la puso, y saltearla en silencio dejaría una fila del core sin verificar.
+ */
+const SIN_OBRAS = 'este arnés verifica el catálogo core contra el mundo, y el core no tiene filas de obra'
+
 function correr(e: ConstructionSchema): Resultado {
   if (e.k === 'ley') return correrLey(e)
+  if (e.k === 'obra') throw new Error(SIN_OBRAS)
   const puesta = montar(e)
   let w = puesta.w
   const nacidos: string[] = []
@@ -1167,7 +1180,9 @@ describe('las diez filas de `ESQUEMAS`, cada una contra una partida de verdad', 
     const filas = ESQUEMAS.map((e) => resultadoDe(e))
     const col = (xs: readonly string[]): number => xs.reduce((n, s) => Math.max(n, s.length), 0)
     const firma = filas.map((r) => r.e.establishes)
-    const via = filas.map((r) => (r.e.k === 'proceso' ? r.e.via : `ley ${r.e.ley}`))
+    const via = filas.map((r) =>
+      r.e.k === 'proceso' ? r.e.via : r.e.k === 'obra' ? `obra ${r.e.revision}` : `ley ${r.e.ley}`,
+    )
     const medido = filas.map((r) => r.medicion.medido)
     const umbral = filas.map((r) => r.medicion.umbral)
     const lineas = filas.map((r, i) =>

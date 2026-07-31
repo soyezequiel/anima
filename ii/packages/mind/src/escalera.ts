@@ -1007,6 +1007,16 @@ function refsDe(i: Intencion): readonly Ref[] {
           const r = i.roles[k]
           return r === undefined ? [] : [r]
         })
+    // `armar` nombra un cuerpo por rol DEL PLANO, igual que `aplicar` nombra uno
+    // por rol del proceso. Que los dos se lean igual no es casualidad: los dos
+    // ligan cuerpos a nombres, y lo unico que cambia es de donde salen los nombres.
+    case 'armar':
+      return Object.keys(i.roles)
+        .sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
+        .flatMap((k) => {
+          const r = i.roles[k]
+          return r === undefined ? [] : [r]
+        })
     case 'comer':
       return i.bocado === undefined ? [] : [i.bocado]
     // `tragar` SIEMPRE nombra su bocado: la cuenta del veneno se hizo sobre ese

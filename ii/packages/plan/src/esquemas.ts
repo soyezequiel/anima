@@ -209,9 +209,19 @@ function esquema(
  * `establishes` y la de un proceso no.
  */
 export function claveDeVia(e: ConstructionSchema): string {
-  return e.k === 'proceso'
-    ? `proceso:${e.via}`
-    : // ─── Y LA GEOMETRÍA ENTRA EN LA CLAVE, QUE ES LO QUE HACE QUE HAYA TRES ──
+  if (e.k === 'proceso') return `proceso:${e.via}`
+  // ─── UNA OBRA ES SU REVISIÓN, Y NADA MÁS LA AGRUPA ────────────────────────
+  //
+  // Dos filas que arman la MISMA revisión se pueden aplicar juntas —es la misma
+  // construcción prometiendo dos cosas— y dos revisiones distintas nunca, aunque
+  // prometan lo mismo: son dos obras y hay que armar las dos. El `establishes` NO
+  // entra en la clave, al revés que en la ley, y la asimetría tiene motivo: una
+  // ley se distingue por la SITUACIÓN que hay que armarle, y dos situaciones
+  // distintas de la misma ley son dos pilas incompatibles; una obra se distingue
+  // por la obra, y armarla es armarla.
+  if (e.k === 'obra') return `obra:${e.revision}`
+  return (
+    // ─── Y LA GEOMETRÍA ENTRA EN LA CLAVE, QUE ES LO QUE HACE QUE HAYA TRES ──
       //
       // Desde que la cocción tiene una fila POR MONTAJE, tres filas comparten ley y
       // `establishes` y se distinguen sólo en dónde va la comida. Con la clave
@@ -219,7 +229,8 @@ export function claveDeVia(e: ConstructionSchema): string {
       // juntas y `armarMarco` rechazaba la vía entera con «no nombran los mismos
       // roles» —una nombra `parrilla` y las otras no—: la tabla habría tenido tres
       // filas y la búsqueda, ninguna. La pila y la distancia SON la fila.
-      `ley:${e.ley}:${e.establishes}:${e.pila.join('>')}@${String(e.distancia)}`
+    `ley:${e.ley}:${e.establishes}:${e.pila.join('>')}@${String(e.distancia)}`
+  )
 }
 
 /**

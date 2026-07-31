@@ -811,6 +811,34 @@ describe('un `Ref` que no resuelve es «el plan envejeció», no un error', () =
     ).toBeUndefined()
   })
 
+  // ─── EL PASO QUE EL PLAN SABE PEDIR Y NADIE SABE CORRER ───────────────────
+  //
+  // `armar` entró con `EsquemaDeObra` (ADR II-0023) y cerró el punto 3 del Gate
+  // 5-6: el planificador emite un paso con la revisión exacta y los roles del plano
+  // ligados. **Del otro lado no hay nadie todavía**: falta la innata `construir`,
+  // que es la fragua del Hito 8.
+  //
+  // Se afirma acá y no se deja implícito porque un `undefined` sin test se
+  // convierte en un olvido: el día que la innata exista, este bloque se pone rojo y
+  // hay que venir a cambiarlo, que es exactamente lo que tiene que pasar.
+  it('`armar` se PLANIFICA y no DESPEGA: la innata que lo corre todavía no existe', () => {
+    const p = new Partida(conElla())
+    const v = vistaDe(p, 'ella')
+    expect(
+      aHabilidad(
+        {
+          k: 'armar',
+          revision: 'aaaaaaaabbbbbbbb',
+          roles: { brazo: { k: 'id', id: 'vara' } },
+          cuantos: { brazo: 1 },
+          porQue: 'reach>=5',
+        },
+        v,
+      ),
+      'ya existe quien corre `armar`: sacale el `undefined` a `aHabilidad` y borrá este test',
+    ).toBeUndefined()
+  })
+
   it('la mente no despega, tira el plan, y el tick siguiente vuelve a decidir', () => {
     const p = new Partida(conElla([], { stamina: 900 }))
     const m = new Mente({ actor: 'ella', memoria: new Creencias() })

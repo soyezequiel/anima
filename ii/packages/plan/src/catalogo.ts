@@ -37,7 +37,7 @@ import type { BlueprintDefinition, Physics, SelloDeHabilidad, Verdict } from '@a
 import type { Where } from '@anima/skills'
 
 import { ESQUEMAS } from './esquemas.js'
-import type { ConstructionSchema, RoleName } from './tipos.js'
+import type { ConstructionSchema, EsquemaDeObra, RoleName } from './tipos.js'
 
 // ─── Las capacidades ────────────────────────────────────────────────────────
 
@@ -227,6 +227,69 @@ export function pedidosDelPlano(def: BlueprintDefinition): Readonly<Record<RoleN
   const out: Record<RoleName, Where> = {}
   for (const p of def.parts) out[p.rol] = p.pide
   return out
+}
+
+/**
+ * CUÁNTOS CUERPOS HACEN FALTA DE CADA ROL. Sale de la forma del plano, no se declara.
+ *
+ * Es la regla que el tramo C·bis midió y que `BlueprintJoint` explica entera:
+ * `unir(a, b, binder)` **consume el atador**, así que hace falta un cuerpo de
+ * atador POR JUNTA que lo nombre. Un rol que sólo es pieza vale 1.
+ *
+ * Y el caso de la caña sale solo, sin ningún campo aparte: cuando el `binder` de
+ * una junta es uno de sus propios extremos, ese rol es pieza y atador a la vez —
+ * un solo cuerpo, que sobrevive adentro de la obra con la punta suelta—. Por eso
+ * la cuenta del atador NO suma cuando `binder === a` o `binder === b`.
+ */
+export function cuantosCuerpos(def: BlueprintDefinition): Readonly<Record<RoleName, number>> {
+  const out: Record<RoleName, number> = {}
+  for (const p of def.parts) out[p.rol] = 1
+  for (const j of def.joints) {
+    if (j.binder === j.a || j.binder === j.b) continue
+    out[j.binder] = (out[j.binder] ?? 0) + 1
+  }
+  // Un rol que sólo ata y no es pieza empezó en 1 por ser parte declarada, así que
+  // la suma de arriba lo dejó en 1 + juntas. Hay que sacarle ese 1: no hace falta
+  // un cuerpo «de base» que después ate, hacen falta exactamente las juntas.
+  const piezas = new Set<string>()
+  for (const j of def.joints) {
+    piezas.add(j.a)
+    piezas.add(j.b)
+  }
+  if (def.joints.length === 0 && def.parts.length === 1) {
+    const solo = def.parts[0]
+    if (solo !== undefined) piezas.add(solo.rol)
+  }
+  for (const rol of Object.keys(out)) {
+    if (!piezas.has(rol) && (out[rol] ?? 0) > 1) out[rol] = (out[rol] ?? 1) - 1
+  }
+  return out
+}
+
+/**
+ * LA FILA QUE PUBLICA «ESTA OBRA SE SABE ARMAR», lista para el planificador.
+ *
+ * `establishes` viene de afuera y no se deriva, por lo mismo que en `capacidadDe`:
+ * qué logra una obra sale de la corrida que lo demostró, no de mirar el plano.
+ * Lo que sí se deriva es todo lo demás — los pedidos de cada rol y la cuenta de
+ * cuerpos— porque eso ES el plano dicho en otro vocabulario.
+ *
+ * `segundos` por omisión es una unión por junta, que es lo medido: cada `union`
+ * tarda un segundo de mundo.
+ */
+export function esquemaDeObra(
+  def: BlueprintDefinition,
+  establishes: string,
+  segundos = def.joints.length,
+): EsquemaDeObra {
+  return {
+    k: 'obra',
+    establishes,
+    revision: def.revision,
+    roleHints: pedidosDelPlano(def),
+    cuantos: cuantosCuerpos(def),
+    segundos,
+  }
 }
 
 // ─── La identidad ───────────────────────────────────────────────────────────

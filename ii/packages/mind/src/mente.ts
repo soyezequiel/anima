@@ -290,6 +290,27 @@ export function aHabilidad(i: Intencion, v: VistaDelPlan, rindes?: Rindes): Trad
       return traduccion(`sostener(${corto(i.que)})`, (ctx) => sostener(ctx, args))
     }
 
+    // ─── ARMAR UNA OBRA: EL PASO QUE EL PLAN SABE PEDIR Y NADIE SABE CORRER ──
+    //
+    // `EsquemaDeObra` cerro el punto 3 del Gate 5-6: el planificador ya emite un
+    // paso `armar` con la revision exacta y los roles del plano ligados. Lo que
+    // falta del otro lado es la HABILIDAD que lo ejecute — el `BuildSkill` del
+    // ADR II-0015, que encuentra el orden de las uniones y las encadena.
+    //
+    // Se contesta `undefined` y no se lanza, que es lo que esta rama significa en
+    // todas las demas: «este paso no se puede volar hoy». La consecuencia es
+    // exacta y esta medida en su test: un plan con `armar` se planifica y no
+    // despega. Es mejor que las dos alternativas —no poder planificarlo, que era
+    // el estado anterior, o lanzar en el medio del tick de las 5000 criaturas—.
+    //
+    // Escribir la innata `construir` es lo que sigue, y es territorio de la fragua
+    // del Hito 8: la habilidad recibe el `BlueprintDefinition`, elige una raiz,
+    // arma el subarbol de cada hijo y ata el hijo al padre. La regla esta MEDIDA
+    // en `physics/tests/el-orden-de-las-uniones-realiza-el-plano.test.ts` — once
+    // lineas, sin busqueda— asi que lo que falta es la costura, no el algoritmo.
+    case 'armar':
+      return undefined
+
     // ─── EL PASO QUE NO PIDE NADA, Y ES EL QUE HACE QUE SE COCINE ────────────
     //
     // Una ley no se aplica: se le arma la situación y se espera, y `emitirLey`

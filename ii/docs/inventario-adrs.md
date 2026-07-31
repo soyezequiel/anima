@@ -40,6 +40,7 @@ tocar planos, catálogo o UI:
 | [II-0020](decisions/II-0020-la-captura-vive-en-una-tabla-del-mundo.md) | La captura vive en una tabla del mundo, y el pozo entrega ahí por un tercer `into` | Gate 5→6 · revalida H2, H3 · refina II-0016 |
 | [II-0021](decisions/II-0021-el-overlay-de-una-partida-solo-crece.md) | El overlay de una partida sólo crece: revocar es entre partidas | Gate 5→6 · H7 · H10 · refina II-0018 |
 | [II-0022](decisions/II-0022-place-despliega-un-cuerpo-no-construye-un-plano.md) | `place` despliega un cuerpo ya armado, y no construye un plano | Gate 5→6 · revalida H2, H4 · sale de una medición |
+| [II-0023](decisions/II-0023-armar-una-obra-es-la-tercera-clase-de-esquema.md) | Armar una obra es la tercera clase de esquema, y su paso corre una habilidad | Gate 5→6 punto 3 · toca `@anima/plan` y `@anima/mind` · sale de una medición |
 
 ## Reparto por hito
 

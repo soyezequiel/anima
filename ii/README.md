@@ -58,7 +58,7 @@ El detalle, con los números y lo que falta, está en
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 4 pases: 112 → 71 → 64 (a mano) → **84** (emitido) |
-| [Decisiones](docs/decisions/) | **22 ADRs propios** (II-0001 a II-0022) |
+| [Decisiones](docs/decisions/) | **23 ADRs propios** (II-0001 a II-0023) |
 
 ### El orden de acá en adelante
 

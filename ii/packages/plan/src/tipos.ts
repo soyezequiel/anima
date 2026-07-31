@@ -312,6 +312,62 @@ export interface EsquemaDeProceso extends EsquemaComun {
 }
 
 /**
+ * ─── ARMAR UNA OBRA NO ES APLICAR UN PROCESO ────────────────────────────────
+ *
+ * La tercera clase, y la trajo una MEDICIÓN y no un diseño. El tramo F publicó
+ * la capacidad de construir un plano como un `EsquemaDeProceso` con `via:
+ * 'union'` y los roles del plano adentro de `roleHints`, y el planificador la
+ * rechazó con todas las letras:
+ *
+ *   > el esquema de «reach>=5» por «union» no nombra «binder» ni «a», que
+ *   > «union» necesita sí o sí
+ *
+ * Y tenía razón. **Un `EsquemaDeProceso` es UNA aplicación de UN proceso**, así
+ * que sus `RoleName` son los de ESE proceso — `binder`, `a`, `b`. Los roles de un
+ * plano son los del PLANO —`brazo`, `cola`, `punta`— y armar la obra son **N−1
+ * uniones encadenadas** cuyo orden decide la topología (medido en
+ * `physics/tests/el-orden-de-las-uniones-realiza-el-plano.test.ts`).
+ *
+ * La salida fácil era publicarla igual con los roles de `union`, y es una mentira
+ * medible: diría que un solo `union` alcanza, la criatura ataría dos cosas y se
+ * quedaría a mitad de camino sin que nada se ponga rojo.
+ *
+ * ─── QUÉ HACE ESTA CLASE Y QUÉ NO ──────────────────────────────────────────
+ *
+ * Dice **qué obra** y **qué hace falta para armarla**. NO dice en qué orden se
+ * ata, y eso es la división del [ADR II-0015]: el plano declara la forma y el
+ * `BuildSkill` encuentra el orden. Un plan que enumerara las N−1 uniones tendría
+ * que nombrar los ensambles intermedios, que **no existen todavía** — no hay
+ * `Ref` que pueda nombrar un cuerpo que va a nacer en tres pasos.
+ *
+ * O sea que el paso que emite es uno solo (`armar`) y del otro lado hay una
+ * habilidad. Es la primera fila del catálogo cuyo paso no es «pedile esto al
+ * mundo» sino «corré esta habilidad», y eso está dicho acá porque es una puerta
+ * nueva y conviene que se vea en el tipo.
+ */
+export interface EsquemaDeObra extends EsquemaComun {
+  readonly k: 'obra'
+  /**
+   * LA REVISIÓN EXACTA del `BlueprintDefinition`. Texto, y opaco a propósito:
+   * `@anima/plan` no valida planos —eso es `definirPlano`, en la física— y lo
+   * único que necesita de él es poder decir CUÁL es, para que el replay y el juez
+   * sepan contra qué se planificó.
+   */
+  readonly revision: string
+  /**
+   * CUÁNTOS CUERPOS HACEN FALTA DE CADA ROL, y es un campo y no una constante
+   * porque el número sale de la forma del plano.
+   *
+   * Medido en el tramo C·bis: `unir(a, b, binder)` **consume el atador**, así que
+   * una obra de N piezas gasta **N−1 atadores** y son N−1 cuerpos de verdad que
+   * hay que ir a buscar. Un rol pieza vale 1; un rol atador vale cuántas juntas lo
+   * nombran. Sin este número, el plan manda a la criatura a construir con dos
+   * tercios de lo que necesita y el fallo aparece recién en la tercera unión.
+   */
+  readonly cuantos: Readonly<Record<RoleName, number>>
+}
+
+/**
  * ─── LO QUE FALTABA, Y ES EL ADR II-0001 DICHO POR TERCERA VEZ ───────────────
  *
  * **COCINAR NO ES UN PROCESO.** Los cuatro `ProcessId` de la semilla son atar,
@@ -423,17 +479,21 @@ export interface EsquemaDeLey extends EsquemaComun {
 }
 
 /**
- * Las dos maneras de que algo quede establecido: aplicando un proceso, o poniendo
- * el mundo en la situación en la que una ley lo hace sola.
+ * Las TRES maneras de que algo quede establecido: aplicando un proceso, poniendo
+ * el mundo en la situación en la que una ley lo hace sola, o armando una obra.
  *
- * `k` discrimina, y las dos comparten `establishes`, `roleHints`, `roleFilters`,
+ * `k` discrimina, y las tres comparten `establishes`, `roleHints`, `roleFilters`,
  * `cellHints` y `segundos` a propósito: son los campos que `@anima/mind` lee de la tabla
  * (`creencias.ts` saca de `roleHints` los umbrales de sus claves de contexto, y
  * `oportunidades.ts` cotiza con `segundos`), y partirlos habría obligado a esa
  * mente a preguntar de qué clase es cada fila para leer lo que a ella no le
  * importa.
+ *
+ * La tercera la trajo el tramo F del Gate 5→6, y la trajo una medición: ver el
+ * encabezado de `EsquemaDeObra`. **El core no tiene ninguna fila de esa clase** y
+ * no la va a tener: una obra es de una partida, y entra por el overlay.
  */
-export type ConstructionSchema = EsquemaDeProceso | EsquemaDeLey
+export type ConstructionSchema = EsquemaDeProceso | EsquemaDeLey | EsquemaDeObra
 
 // ─── Pasos ───────────────────────────────────────────────────────────────────
 
@@ -514,6 +574,36 @@ export type Step =
       readonly binder: Ref
       readonly a: Ref
       readonly b?: Ref
+      readonly porQue: PredicateSignature
+      readonly rinde?: GoalId
+    }
+  /**
+   * ARMAR UNA OBRA ENTERA. El único paso que no le pide nada al mundo sino a una
+   * HABILIDAD, y por eso conviene que se vea distinto de los demás.
+   *
+   * ─── POR QUÉ NO SON N−1 PASOS `unir`, QUE ES LO PRIMERO QUE UNO INTENTA ────
+   *
+   * Porque cada `unir` produce un ensamble NUEVO y el siguiente lo necesita como
+   * argumento, y **no hay `Ref` que pueda nombrarlo**: `{k:'rinde'}` nombra el
+   * rendimiento de un OBJETIVO del grafo, no el de un paso intermedio, y
+   * `{k:'id'}` pediría el id de un cuerpo que todavía no nació. Enumerar la
+   * secuencia obligaría a inventar un `Ref` a un cuerpo futuro, que es
+   * exactamente el estado que la primera decisión de este archivo prohíbe.
+   *
+   * Y hay una segunda razón, que es la del ADR II-0015: **el orden de las uniones
+   * decide la topología**, y encontrarlo es del `BuildSkill`. El plano declara la
+   * forma; quien construye busca el orden. Un plan que fijara el orden estaría
+   * decidiendo por la habilidad con la información de hace veinte ticks.
+   *
+   * `roles` liga cada rol DEL PLANO a un cuerpo. Cuántos cuerpos hacen falta de
+   * cada uno lo dice `cuantos`, que sale de la forma del plano — un atador se
+   * consume por unión y hacen falta N−1.
+   */
+  | {
+      readonly k: 'armar'
+      readonly revision: string
+      readonly roles: Readonly<Record<RoleName, Ref>>
+      readonly cuantos: Readonly<Record<RoleName, number>>
       readonly porQue: PredicateSignature
       readonly rinde?: GoalId
     }
@@ -714,6 +804,14 @@ export interface PedidoDeRol {
 export type MarcoPor =
   | { readonly k: 'proceso'; readonly via: ProcessId }
   | { readonly k: 'ley'; readonly esquema: EsquemaDeLey }
+  /**
+   * La obra viaja como el ESQUEMA entero, por el mismo motivo exacto que la ley:
+   * dos filas pueden armar la misma revisión prometiendo cosas distintas, así que
+   * la revisión sola no alcanza para volver a encontrar la fila cuando el marco
+   * cierra tres ticks después. Y sigue siendo DATO PURO, que es lo que la frontera
+   * exige: un `EsquemaDeObra` no tiene funciones, ni cuerpos, ni `BodyView`.
+   */
+  | { readonly k: 'obra'; readonly esquema: EsquemaDeObra }
 
 export interface MarcoDePlan {
   /**

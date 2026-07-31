@@ -146,13 +146,13 @@ capacidades físicas disponibles en ese nivel.*
    **qué viene después del Hito 5 y antes del 6**, con las trece decisiones de
    producto fijadas, el criterio de doce puntos y los contratos que los Hitos 0–4
    van a tener que revalidar. Se lee una vez, como `como-se-trabaja.md`.
-6. [`ii/docs/decisions/`](decisions/) — **22 ADRs propios**. Los que más pesan hoy:
+6. [`ii/docs/decisions/`](decisions/) — **23 ADRs propios**. Los que más pesan hoy:
    II-0001 (encender no es una acción), II-0007 (el tick es un parámetro),
    II-0008 (el tiempo va en segundos), II-0009 (el hambre mata), II-0010 (frotar
    no relaja), II-0011 (arder libera calor), II-0012 (el presupuesto del plan va
    en expansiones), II-0013 (el veneno se cobra al tragar), **II-0014 (el decreto
    manda sobre la celda, y el mundo narra lo que el dios pone)**, y los cinco del
-   gate: **II-0015 a II-0022** (ver la sección 0·bis), con II-0020 (la captura vive
+   gate: **II-0015 a II-0023** (ver la sección 0·bis), con II-0020 (la captura vive
    en una tabla del mundo) y II-0021 (el overlay de una partida sólo crece) ya
    decididos por el usuario.
 

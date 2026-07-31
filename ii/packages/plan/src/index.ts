@@ -68,9 +68,11 @@ export {
 export {
   CATALOGO_CORE,
   capacidadDe,
+  cuantosCuerpos,
   catalogoDe,
   conOverlay,
   esquemasDe,
+  esquemaDeObra,
   pedidosDelPlano,
   type CatalogCapability,
   type PlannerCatalogView,

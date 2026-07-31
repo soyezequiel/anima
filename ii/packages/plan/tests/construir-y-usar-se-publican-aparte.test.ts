@@ -15,24 +15,27 @@
 // capacidad de construir y ninguna de usar. Es literalmente la frase del §2 del
 // criterio —«construir algo no demuestra que funcione»— vuelta un número.
 //
-// ─── Y EL PUNTO 3 NO CIERRA, Y ESE ES EL HALLAZGO ──────────────────────────
+// ─── Y EL PUNTO 3, QUE ESTUVO ABIERTO Y SE CERRÓ CON LO QUE ESTE ARCHIVO MIDIÓ ─
 //
 // Publicar quiere decir que el planificador PLANIFIQUE distinto: una fila que
 // entra al catálogo y no cambia ningún plan no está publicada, está guardada.
 //
-// Este archivo pidió una meta que el core no sabe establecer, publicó la
-// capacidad, y el planificador **la alcanzó y la rechazó**:
+// La primera versión de este archivo publicó la capacidad como un
+// `EsquemaDeProceso` con `via: 'union'` y los roles del PLANO adentro, y el
+// planificador la alcanzó y la rechazó con todas las letras:
 //
 //   > el esquema de «reach>=5» por «union» no nombra «binder» ni «a», que «union»
 //   > necesita sí o sí
 //
-// Un `ConstructionSchema` es UNA aplicación de UN proceso; armar un plano son
-// **N−1 uniones encadenadas** con los roles del PLANO. La capacidad de construir
-// no se puede decir con las dos clases de esquema que existen, y la salida fácil
-// —publicar la fila con los roles de `union`— es una mentira medible.
+// Y tenía razón: un `EsquemaDeProceso` es UNA aplicación de UN proceso, así que
+// sus roles son los de ESE proceso, y armar un plano son **N−1 uniones
+// encadenadas** con los roles del plano. Quedó marcado con `it.fails` y el porqué
+// medido, que es la regla del proyecto para un hueco abierto.
 //
-// Queda como `it.fails` con el porqué medido, que es la regla del proyecto. Ver
-// el bloque (3).
+// **Lo que lo cerró fue una tercera clase de `ConstructionSchema`**: `EsquemaDeObra`,
+// cuyo paso final no es `apply` sino `armar` —«corré esta habilidad»—. Ver el
+// encabezado de `EsquemaDeObra` en `tipos.ts` para el porqué de cada decisión, y
+// el bloque (3) de acá abajo para lo que ahora se afirma.
 
 import { describe, expect, it } from 'vitest'
 
@@ -52,6 +55,8 @@ import {
   capacidadDe,
   conOverlay,
   esquemasDe,
+  cuantosCuerpos,
+  esquemaDeObra,
   pedidosDelPlano,
   type CatalogCapability,
   type PlannerCatalogView,
@@ -82,10 +87,42 @@ const CANDIDATO: BlueprintCandidate = {
   ],
 }
 
+/**
+ * EL SEGUNDO CANDIDATO: la caña, o sea el caso de aceptación del gate.
+ *
+ * Dos piezas y UNA junta, y el `binder` es uno de sus propios extremos. Eso quiere
+ * decir que la hebra sobrevive adentro de la obra con la punta suelta —es la caña
+ * entera, medido en el tramo C·bis— y que hace falta **un cuerpo por rol**.
+ *
+ * Existe aparte del de arriba porque los dos miden cosas distintas: aquél tiene un
+ * atador compartido por dos juntas y hoy no se puede planificar; éste sí.
+ */
+const CANDIDATO_CANA: BlueprintCandidate = {
+  parts: [
+    { rol: 'brazo', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
+    { rol: 'hebra', pide: [{ q: 'flexibility', op: '>=', v: 0.8 }] },
+  ],
+  joints: [{ a: 'brazo', b: 'hebra', binder: 'hebra' }],
+}
+
 function definicion(phys: Physics = PHYS): BlueprintDefinition {
   const d = definirPlano(CANDIDATO, phys)
   if (d.k !== 'ok') throw new Error('el candidato del gate no se define')
   return d.def
+}
+
+function definicionCana(phys: Physics = PHYS): BlueprintDefinition {
+  const d = definirPlano(CANDIDATO_CANA, phys)
+  if (d.k !== 'ok') throw new Error('la cana no se define')
+  return d.def
+}
+
+function publicarCana(): CatalogCapability {
+  const se = sellarHabilidad('construir', definicionCana(), 'traza-de-la-cana', PHYS)
+  if (se.k !== 'ok') throw new Error('no sello la cana')
+  const pu = capacidadDe(se.sello, esquemaDeObra(definicionCana(), LO_QUE_LOGRA), PHYS)
+  if (pu.k !== 'ok') throw new Error('no publico la cana')
+  return pu.cap
 }
 
 // ─── Lo que la obra logra, según la corrida que lo demostró ─────────────────
@@ -99,17 +136,13 @@ function definicion(phys: Physics = PHYS): BlueprintDefinition {
 const LO_QUE_LOGRA = 'reach>=5'
 
 function esquemaDeLaObra(def: BlueprintDefinition): ConstructionSchema {
-  return {
-    k: 'proceso',
-    establishes: LO_QUE_LOGRA,
-    via: 'union',
-    // ─── EL ÚNICO PUENTE QUE SE DERIVA DEL PLANO ────────────────────────────
-    // El resto lo trae la corrida. Ver el porqué en `capacidadDe`.
-    roleHints: pedidosDelPlano(def),
-    // Dos juntas, un segundo de mundo cada una. Medido en el tramo C·bis: una obra
-    // de N piezas son N−1 uniones y cada `union` tarda un segundo.
-    segundos: 2,
-  }
+  // La TERCERA clase de esquema, que existe por lo que este archivo midió: un
+  // `EsquemaDeProceso` con `via: 'union'` y los roles del plano adentro no se puede
+  // planificar, porque un esquema de proceso lleva los roles de ESE proceso.
+  //
+  // `establishes` viene de afuera: qué logra una obra sale de la corrida que lo
+  // demostró, no de mirar el plano. Todo lo demás se deriva.
+  return esquemaDeObra(def, LO_QUE_LOGRA)
 }
 
 // ─── La escena, calcada de `el-catalogo-es-una-vista` ───────────────────────
@@ -129,7 +162,7 @@ function criatura(): SelfView {
     madeByMe: false,
     joints: [],
     holding: [],
-    capacity: 4,
+    capacity: 6,
     stamina: 1000,
     permits: 'reversible',
   }
@@ -231,29 +264,11 @@ describe('(6) construir y usar se publican por separado', () => {
   })
 })
 
-// ─── (3) La fila LLEGA al planificador… y el planificador no la puede usar ──
+// ─── (3) La fila llega al planificador Y EL PLANIFICADOR LA USA ────────────
 //
-// ─── EL HUECO QUE ESTE BLOQUE MIDIÓ, Y ES EL HALLAZGO DEL TRAMO F ───────────
-//
-// La fila entra, el planificador la ALCANZA —la expande, la considera— y la
-// rechaza con una frase que hay que leer entera:
-//
-//   > el esquema de «reach>=5» por «union» no nombra «binder» ni «a», que «union»
-//   > necesita sí o sí
-//
-// Un `ConstructionSchema` es **una aplicación de un proceso**, y sus `RoleName`
-// son los de ESE proceso. Los roles de un plano son los del plano —`brazo`,
-// `cola`, `punta`— y armar la obra son **N−1 uniones encadenadas**, no una.
-//
-// O sea que la capacidad de construir un plano NO SE PUEDE DECIR con las dos
-// clases de esquema que existen. Y la salida fácil es una mentira medible:
-// publicar la fila con los roles de `union` diría que un solo `union` alcanza
-// para llegar a cinco, y la criatura ataría dos cosas y se quedaría a mitad de
-// camino sin que nada se ponga rojo.
-//
-// Lo que el punto 3 necesita para cerrar es una **tercera clase de
-// `ConstructionSchema` cuyo paso no sea `apply` sino «correr esta habilidad»**, y
-// eso es la fragua del Hito 8 — no un ajuste de este archivo.
+// El punto 3, cerrado. Lo que sigue afirma la cadena entera: que el core NO sabe
+// llegar a cinco, que la fila entra, que el planificador la usa, y que el paso que
+// emite lleva la revisión exacta y los roles del PLANO.
 
 describe('(3) la capacidad del plano llega al planificador', () => {
   it('el core NO sabe llegar a cinco: sale `gap`', () => {
@@ -272,29 +287,105 @@ describe('(3) la capacidad del plano llega al planificador', () => {
     expect(v.catalogEpoch).not.toBe(CATALOGO_CORE.catalogEpoch)
   })
 
-  it('y el planificador la ALCANZA: la expande y explica por qué no le sirve', () => {
-    // La diferencia entre «la fila no está» y «la fila está y no se puede usar».
-    // Sin esta distinción, el hueco de abajo se confundiría con no haber publicado.
+  it('EL PUNTO 3: con la capacidad publicada, SALE PLAN', () => {
+    const r = planearCon(conOverlay(CATALOGO_CORE, [publicarCana()]))
+    expect(r.k, r.k === 'gap' ? r.why : '').toBe('plan')
+  })
+
+  it('y el plan termina en un `armar` con la REVISION exacta y los roles del plano', () => {
+    // Lo que hace que el paso valga: lleva la revision, asi que el replay y el juez
+    // saben contra que plano se planifico, y liga cada rol DEL PLANO a un cuerpo.
+    const r = planearCon(conOverlay(CATALOGO_CORE, [publicarCana()]))
+    if (r.k !== 'plan') throw new Error('no salio plan')
+    const armar = r.steps.find((s) => s.k === 'armar')
+    expect(armar, `los pasos fueron: ${r.steps.map((s) => s.k).join(' - ')}`).toBeDefined()
+    if (armar === undefined || armar.k !== 'armar') return
+    expect(armar.revision).toBe(definicionCana().revision)
+    expect(Object.keys(armar.roles).sort()).toEqual(['brazo', 'hebra'])
+    console.log(`\n--- EL PLAN DE ARMAR UNA OBRA ---\n  ${r.steps.map((s) => s.k).join(' - ')}\n`)
+  })
+
+  it('y ANTES de armar va a buscar y agarrar cada pieza: `union` las quiere en la mano', () => {
+    // `union` pide `arrangement: { k: 'held' }` para sus tres roles, asi que todo lo
+    // que entra en la obra pasa por las manos. Un plan que fuera derecho al `armar`
+    // seria rechazado por el mundo con `arreglo-incorrecto`.
+    const r = planearCon(conOverlay(CATALOGO_CORE, [publicarCana()]))
+    if (r.k !== 'plan') throw new Error('no salio plan')
+    const clases = r.steps.map((s) => s.k)
+    expect(clases.filter((k) => k === 'sostener').length).toBe(2)
+    expect(clases.indexOf('armar')).toBe(clases.length - 1)
+  })
+
+  it('LA CUENTA DE LOS ATADORES llega al plan, y el caso de la cana no paga de mas', () => {
+    // --- EL NUMERO DEL TRAMO C-BIS, LLEGANDO AL PLAN -------------------------
+    //
+    // `unir(a, b, binder)` CONSUME el atador, asi que el plano de tres piezas y dos
+    // juntas necesita CINCO cuerpos: tres piezas y dos atadores.
+    expect(cuantosCuerpos(definicion())).toEqual({ brazo: 1, cola: 1, punta: 1, atadura: 2 })
+    // Y la cana no: su binder es uno de sus propios extremos, asi que la hebra
+    // sobrevive adentro de la obra y hace falta UN cuerpo por rol. El caso de
+    // aceptacion del gate no paga el atador de mas, y eso sale de la forma del
+    // plano sin ningun campo aparte.
+    expect(cuantosCuerpos(definicionCana())).toEqual({ brazo: 1, hebra: 1 })
+  })
+
+  it('y un atador usado UNA sola vez vale UNO, que es el caso del medio', () => {
+    // El borde de la cuenta, y es donde una resta de mas o de menos se esconde: un
+    // rol que SOLO ata y aparece en una sola junta necesita exactamente un cuerpo.
+    // Se declara como pieza del plano —hay que ir a buscarlo— y no queda adentro de
+    // la obra, asi que no es 2 ni es 0.
+    const dosPiezasConAtador: BlueprintCandidate = {
+      parts: [
+        { rol: 'brazo', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
+        { rol: 'cola', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
+        { rol: 'atadura', pide: [{ q: 'flexibility', op: '>=', v: 0.8 }] },
+      ],
+      joints: [{ a: 'brazo', b: 'cola', binder: 'atadura' }],
+    }
+    const d = definirPlano(dosPiezasConAtador, PHYS)
+    expect(d.k, d.k === 'rechazado' ? JSON.stringify(d.verdict.razones) : '').toBe('ok')
+    if (d.k !== 'ok') return
+    expect(cuantosCuerpos(d.def)).toEqual({ brazo: 1, cola: 1, atadura: 1 })
+  })
+
+  it('y con las manos justas el plan se rechaza CON EL NUMERO, no con un plan roto', () => {
+    // Dos cuerpos no entran en una mano. Se dice con los dos numeros adelante en
+    // vez de emitir un plan que el mundo rebota con `manos-llenas`.
+    const r = plan(meta(), { ...vista(), self: { ...criatura(), capacity: 1 } }, 500, undefined, {
+      catalogo: conOverlay(CATALOGO_CORE, [publicarCana()]),
+    })
+    expect(r.k).toBe('gap')
+    if (r.k !== 'gap') return
+    expect(r.why).toContain('2 cuerpos')
+    expect(r.why).toContain('la capacidad es 1')
+  })
+
+  it.fails('HUECO — un rol que necesita DOS cuerpos todavia no se puede planificar', () => {
+    // --- EL HUECO, CON SU NUMERO MEDIDO --------------------------------------
+    //
+    // La regresion liga UN cuerpo por rol: `MarcoDePlan.roles` es
+    // `Record<RoleName, Ref>` y un `Ref` nombra un cuerpo. Un atador que aparece en
+    // dos juntas necesita dos cuerpos y sale del plan con uno.
+    //
+    // MEDIDO antes de cerrarlo: con este plano y TRES hebras a la vista, el plan
+    // salia `cola=h1 - punta=h2 - atadura=h0` y no quedaba ninguna hebra libre para
+    // la segunda atadura. Verde, y la criatura ataba una junta y se quedaba parada.
+    //
+    // Ahora se rechaza. Lo que falta para levantarlo no es el chequeo: es que un rol
+    // pueda ligar N cuerpos —`Record<RoleName, readonly Ref[]>`— y eso toca la
+    // busqueda entera: `candidatosPara`, el orden por rol mas apretado, la frontera.
+    const r = planearCon(conOverlay(CATALOGO_CORE, [publicar('construir')]))
+    expect(r.k).toBe('plan')
+  })
+
+  it('y mientras tanto lo RECHAZA en vez de emitir una obra a medias', () => {
+    // La otra mitad del hueco, y es la que importa: el modo de falla viejo era un
+    // plan verde. Ahora es un `gap` que dice cual es el rol y cuantos necesita.
     const r = planearCon(conOverlay(CATALOGO_CORE, [publicar('construir')]))
     expect(r.k).toBe('gap')
     if (r.k !== 'gap') return
-    expect(r.missing).toBe(LO_QUE_LOGRA)
-    expect(r.why).toContain('union')
-    expect(r.why).toContain('binder')
-  })
-
-  it.fails('HUECO — con la capacidad publicada tendría que salir plan', () => {
-    // ─── EL HUECO, CON SU PORQUÉ MEDIDO ──────────────────────────────────────
-    //
-    // Marcado con `it.fails` y no borrado, que es la regla del proyecto para un
-    // hueco abierto. Lo que falta no es código de este archivo: es que exista una
-    // clase de esquema cuyo paso sea «correr la habilidad `construir` con este
-    // plano» en vez de «aplicar este proceso con estos roles».
-    //
-    // Se pone verde solo el día que esa clase exista, y entonces hay que sacarle
-    // el `.fails` — que es justamente para lo que sirve que esté escrito.
-    const r = planearCon(conOverlay(CATALOGO_CORE, [publicar('construir')]))
-    expect(r.k).toBe('plan')
+    expect(r.why).toContain('atadura')
+    expect(r.why).toContain('UN cuerpo por rol')
   })
 
   it('`pedidosDelPlano` es el `pide` del plano REINDEXADO, no una copia a mano', () => {

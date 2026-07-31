@@ -223,6 +223,12 @@ function corto(s: Step): string {
     // segundos adentro porque son lo único que dice: son el `mientras` de la fila.
     case 'esperar':
       return `esperar(${String(s.segundos)}s)`
+    // El tercer emisor del catálogo (tramo F del Gate 5→6). Este archivo mide la
+    // cocina, que es de LEYES, así que no lo va a ver nunca — pero el `switch` es
+    // exhaustivo a propósito y contestar acá es más barato que un `default` que
+    // silencie el paso nuevo que alguien agregue mañana.
+    case 'armar':
+      return `armar(${s.revision})`
   }
 }
 

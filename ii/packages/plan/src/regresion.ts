@@ -127,6 +127,7 @@ import { resolver } from './referencias.js'
 import type {
   ConstructionSchema,
   EsquemaDeLey,
+  EsquemaDeObra,
   Frontera,
   GoalId,
   GoalNode,
@@ -358,7 +359,9 @@ const PORTABLE: QualityTest = { q: 'portable', op: '>', v: 0 }
 
 /** El nombre con el que un marco se cuenta en un mensaje de rechazo o en una clave. */
 function nombreDeVia(por: MarcoPor): string {
-  return por.k === 'proceso' ? por.via : `ley ${por.esquema.ley}`
+  if (por.k === 'proceso') return por.via
+  if (por.k === 'obra') return `la obra ${por.esquema.revision}`
+  return `ley ${por.esquema.ley}`
 }
 
 /**
@@ -666,6 +669,7 @@ function emitirMarco(
   capacidad: number,
 ): Emision | Rechazo {
   if (m.por.k === 'ley') return emitirLey(m, m.por.esquema, enMano, gastados, capacidad)
+  if (m.por.k === 'obra') return emitirObra(m, m.por.esquema, enMano, gastados, capacidad)
   const p = procesoDe(m.por.via)
   const aLaMano = hayQueTenerloEnLaMano(p)
   const alcance = alcanceDe(p)
@@ -717,6 +721,146 @@ function emitirMarco(
   const comidos = [...gastados]
   for (const id of consumidos) if (!comidos.includes(id)) comidos.push(id)
   return { pasos, enMano: mano.filter((id) => !consumidos.includes(id)), gastados: comidos }
+}
+
+/**
+ * UNA OBRA NO SE APLICA NI SE ESPERA: SE ARMA, Y LA ARMA UNA HABILIDAD.
+ *
+ * Es el tercer emisor, y el único cuyo paso final no le pide nada al mundo sino a
+ * una habilidad. El porqué está entero en `EsquemaDeObra` de `tipos.ts`, y en una
+ * frase: **cada `union` produce un ensamble nuevo y el siguiente lo necesita como
+ * argumento, y no hay `Ref` que pueda nombrar un cuerpo que todavía no nació**.
+ * Enumerar las N−1 uniones acá obligaría a inventar ese `Ref`.
+ *
+ * Lo que sí emite, y es lo mismo que emite un proceso: **ir a buscar cada pieza y
+ * agarrarla**. `union` pide `arrangement: { k: 'held' }` para sus tres roles, así
+ * que todo lo que va a entrar en la obra tiene que pasar por las manos.
+ *
+ * ─── LA CUENTA DE LAS MANOS, QUE ES DONDE ESTO SE CAE ─────────────────────
+ *
+ * Y se cae de verdad: una obra de N piezas necesita **N piezas más N−1 atadores**
+ * —once cuerpos para seis piezas, medido en el tramo C·bis— y las manos son
+ * cuatro. La cuenta se hace acá, con `cuantos`, y se RECHAZA con el número
+ * adelante en vez de emitir un plan que el mundo va a rebotar con `manos-llenas`
+ * en la tercera unión.
+ *
+ * De qué lado se equivoca: rechazar pierde planes que habrían salido soltando
+ * algo en el medio. Emitirlos manda a la criatura a hacer un viaje al pedo. Es el
+ * mismo error barato que elige `emitirMarco`, y por el mismo motivo — soltar pide
+ * decidir QUÉ y DÓNDE, y `poner` quiere un `Ref` de celda, o sea una foto de hoy
+ * para un paso que corre decenas de ticks después.
+ *
+ * ─── LO QUE ESTO NO CHEQUEA, Y HAY QUE DECIRLO ────────────────────────────
+ *
+ * Que el plano sea CONSTRUIBLE. Eso ya lo hizo `definirPlano` en la física —las
+ * juntas son piezas−1, el grafo es conexo, la hondura entra en `MAX_ASSEMBLY_DEPTH`—
+ * y volver a hacerlo acá sería una segunda verdad sobre lo mismo. Acá sólo se
+ * chequea lo que este emisor puede saber: si lo que hay que juntar entra en las
+ * manos.
+ */
+function emitirObra(
+  m: MarcoDePlan,
+  e: EsquemaDeObra,
+  enMano: readonly BodyId[],
+  gastados: readonly BodyId[],
+  capacidad: number,
+): Emision | Rechazo {
+  const pasos: Step[] = []
+  const mano: BodyId[] = [...enMano]
+  const quien = `«${m.establece}» por la obra ${e.revision}`
+
+  // ─── EL LÍMITE DE HOY, MEDIDO, Y ES LO PRIMERO QUE SE CHEQUEA ─────────────
+  //
+  // **La regresión liga UN cuerpo por rol.** `MarcoDePlan.roles` es
+  // `Record<RoleName, Ref>` y un `Ref` nombra un cuerpo, así que un rol que
+  // necesita DOS —un atador que aparece en dos juntas— sale del plan con uno solo.
+  //
+  // Medido, y es un plan verde que no se puede construir: con el plano de tres
+  // piezas y dos juntas, y tres hebras a la vista, el plan salía con
+  // `cola=h1 · punta=h2 · atadura=h0` y ninguna hebra libre para la segunda
+  // atadura. La criatura ataba una junta y se quedaba parada.
+  //
+  // Se rechaza en vez de emitirlo, y de este lado se equivoca a propósito: pierde
+  // planes que se podrían armar yendo a buscar la segunda atadura en el medio, y
+  // no manda a nadie a un viaje que termina en una obra a medias. Es el mismo
+  // criterio con el que `emitirMarco` rechaza cuando las manos no alcanzan.
+  //
+  // Lo que falta para levantarlo NO es este chequeo: es que un rol pueda ligar N
+  // cuerpos, o sea `Record<RoleName, readonly Ref[]>`, y eso toca la búsqueda
+  // entera —`candidatosPara`, el orden por rol más apretado, la frontera—. Tiene
+  // su `it.fails` con este número en
+  // `tests/construir-y-usar-se-publican-aparte.test.ts`.
+  //
+  // Y no deja afuera el caso de aceptación: la caña es `unir(vara, ·, hebra)` con
+  // el binder siendo su propio extremo, o sea **un cuerpo por rol** (ver
+  // `cuantosCuerpos`). Lo que queda afuera son los planos con un atador compartido.
+  const multiples = nombresOrdenados(e.cuantos).filter((r) => (e.cuantos[r] ?? 0) > 1)
+  if (multiples.length > 0) {
+    return {
+      rechazo:
+        `${quien} necesita más de un cuerpo para ${multiples.map((r) => `«${r}» (${String(e.cuantos[r] ?? 0)})`).join(' y ')}, ` +
+        `y el plan liga UN cuerpo por rol: la obra saldría a medias`,
+    }
+  }
+
+  // CUÁNTOS CUERPOS EN TOTAL. Es la suma de `cuantos`, y es lo que tiene que
+  // caber: los atadores se consumen DE A UNO por unión, pero todos tienen que
+  // estar juntados antes de la primera —no hay paso que vuelva a buscar.
+  let hacenFalta = 0
+  for (const rol of nombresOrdenados(e.cuantos)) hacenFalta += e.cuantos[rol] ?? 0
+  if (hacenFalta > capacidad) {
+    return {
+      rechazo:
+        `${quien} necesita ${String(hacenFalta)} cuerpos juntados a la vez ` +
+        `(${nombresOrdenados(e.cuantos)
+          .map((r) => `${String(e.cuantos[r] ?? 0)}× «${r}»`)
+          .join(' + ')}) y la capacidad es ${String(capacidad)}`,
+    }
+  }
+
+  for (const rol of nombresOrdenados(m.roles)) {
+    const ref = m.roles[rol]
+    if (ref === undefined || ref.k !== 'id') continue
+    if (mano.includes(ref.id)) continue
+    const porQue = m.porRol[rol] ?? m.establece
+    // Alcance 1: `take` exige Chebyshev ≤ 1, igual que para cualquier proceso.
+    pasos.push({ k: 'ir', a: ref, within: 1, porQue })
+    if (mano.length >= capacidad) {
+      return {
+        rechazo:
+          `${quien} necesita «${ref.id}» en la mano y no entra: ` +
+          `la mano ya lleva ${String(mano.length)} y la capacidad es ${String(capacidad)}`,
+      }
+    }
+    pasos.push({ k: 'sostener', que: ref, porQue })
+    mano.push(ref.id)
+  }
+
+  pasos.push({
+    k: 'armar',
+    revision: e.revision,
+    roles: m.roles,
+    cuantos: e.cuantos,
+    porQue: m.establece,
+    rinde: m.rinde,
+  })
+
+  // TODO lo que entró se gasta, y ésa es la diferencia con un proceso: las piezas
+  // quedan adentro de la obra y los atadores se consumen en las juntas. Lo que
+  // sale es un cuerpo NUEVO, que se nombra por `rinde`.
+  const consumidos = mano.filter((id) => !enMano.includes(id) || esDeLaObra(id, m))
+  const comidos = [...gastados]
+  for (const id of consumidos) if (!comidos.includes(id)) comidos.push(id)
+  return { pasos, enMano: mano.filter((id) => !consumidos.includes(id)), gastados: comidos }
+}
+
+/** Si este id quedó ligado a algún rol de la obra. Lo que se liga, se consume. */
+function esDeLaObra(id: BodyId, m: MarcoDePlan): boolean {
+  for (const rol of nombresOrdenados(m.roles)) {
+    const r = m.roles[rol]
+    if (r !== undefined && r.k === 'id' && r.id === id) return true
+  }
+  return false
 }
 
 /**
@@ -998,6 +1142,10 @@ function refDelRendimiento(m: MarcoDePlan): Ref {
   // ese cuerpo es el `sujeto`. Es el mismo caso que `friccion` —la yesca caliente
   // es la yesca— y por eso no hay una tercera respuesta.
   if (m.por.k === 'ley') return exigirRef(m, m.por.esquema.sujeto)
+  // Una obra SÍ rinde cuerpo nuevo, y es el único caso en que el cuerpo que sale
+  // no es ninguno de los que entraron: las piezas quedan adentro y los atadores se
+  // consumen. Por eso se nombra por el rendimiento del objetivo y no por un rol.
+  if (m.por.k === 'obra') return { k: 'rinde', de: m.rinde }
   const p = procesoDe(m.por.via)
   if (rindeCuerpoNuevo(p)) return { k: 'rinde', de: m.rinde }
   const material = rolMaterialDe(p)
@@ -1185,11 +1333,18 @@ function armarMarco(
 ): Armado | Rechazo {
   const primero = usados[0]
   if (primero === undefined) return { rechazo: 'una vía sin ningún esquema no aporta ninguna cláusula' }
-  const via = primero.k === 'proceso' ? primero.via : `ley ${primero.ley}`
-  // Un proceso trae sus roles del catálogo; una ley los nombra ella misma, así que
-  // `p` no existe y todo lo que se le preguntaba al `Process` lo contesta la fila.
+  const via =
+    primero.k === 'proceso'
+      ? primero.via
+      : primero.k === 'obra'
+        ? `la obra ${primero.revision}`
+        : `ley ${primero.ley}`
+  // Un proceso trae sus roles del catálogo; una ley y una obra los nombran ellas
+  // mismas, así que `p` no existe y todo lo que se le preguntaba al `Process` lo
+  // contesta la fila.
   const p = primero.k === 'proceso' ? procesoDe(primero.via) : undefined
   const ley = primero.k === 'ley' ? primero : undefined
+  const obra = primero.k === 'obra' ? primero : undefined
 
   // Los esquemas de una misma aplicación tienen que nombrar LOS MISMOS roles. Si
   // uno nombra `b` y otro lo omite, la aplicación que salga va a llenar `b`, y el
@@ -1233,7 +1388,17 @@ function armarMarco(
   // `rolesObligatorios` de un proceso sale del sufijo `?` del catálogo; el de una
   // ley sale de su pila más su sujeto, y son todos obligatorios: una situación a
   // la que le falta un cuerpo no es esa situación.
-  const obligatorios = ley === undefined ? (p === undefined ? [] : rolesObligatorios(p)) : rolesDeLaLey(ley)
+  // Los de una OBRA son TODOS los que declara, y no hay opcionales: un plano cuyo
+  // rol nadie llena no se puede armar — la unión que lo nombra se queda sin cuerpo
+  // y la obra queda a medias, que es un cuerpo legal y no es la obra.
+  const obligatorios =
+    obra !== undefined
+      ? nombresOrdenados(obra.cuantos)
+      : ley === undefined
+        ? p === undefined
+          ? []
+          : rolesObligatorios(p)
+        : rolesDeLaLey(ley)
   const faltantes = obligatorios.filter((r) => primero.roleHints[r] === undefined)
   if (faltantes.length > 0) {
     return {
@@ -1243,6 +1408,10 @@ function armarMarco(
     }
   }
 
+  // Una obra NO tiene rol material, y no es un olvido: lo que sale de armarla es un
+  // cuerpo NUEVO —las piezas quedan adentro y los atadores se consumen— así que no
+  // hay ningún rol sobre el que caiga el residuo. Una fila de obra con cláusulas
+  // sobrantes se rechaza abajo, con el mensaje que ya existe.
   const material = ley !== undefined ? ley.sujeto : p === undefined ? undefined : rolMaterialDe(p)
   if (residuo.length > 0 && material === undefined) {
     return { rechazo: `«${via}» no tiene rol material: no hay a quién pasarle el residuo` }
@@ -1255,7 +1424,10 @@ function armarMarco(
   const porRol: Record<RoleName, PredicateSignature> = {}
   const pendientes: { readonly pedido: PedidoDeRol; readonly cuantos: number }[] = []
 
-  const aLaMano = p !== undefined && hayQueTenerloEnLaMano(p)
+  // Y una obra SIEMPRE los quiere en la mano: armarla son N−1 `union` encadenados
+  // y `union` pide `arrangement: { k: 'held' }` para sus tres roles. Es tenencia,
+  // no proximidad, y de ahí sale que un plano tenga que caber en las manos.
+  const aLaMano = obra !== undefined || (p !== undefined && hayQueTenerloEnLaMano(p))
 
   for (const rol of roles) {
     // ─── ¿ESTE ROL EXISTE PARA ESTA VÍA? ───────────────────────────────────
@@ -1270,18 +1442,29 @@ function armarMarco(
     // La guarda no es de laboratorio: `opciones.esquemas` es entrada pública y es lo
     // que va a escribir la fragua del Hito 8. `[]` es «no le pido nada más» y
     // `undefined` es «este rol no existe», y la diferencia es toda la guarda.
+    //
+    // Y en una OBRA lo contesta el plano: un rol existe si el plano lo declara, y
+    // eso lo dice `cuantos` —que es la lista de roles con cuántos cuerpos hace
+    // falta de cada uno—. Un `roleHint` sobre un rol que el plano no declara es
+    // una condición que nadie va a cumplir nunca.
     const delProceso =
-      ley !== undefined
-        ? ley.pila.includes(rol) || ley.sujeto === rol
-          ? []
-          : undefined
-        : p === undefined
+      obra !== undefined
+        ? obra.cuantos[rol] === undefined
           ? undefined
-          : whereDelProceso(p, rol)
+          : []
+        : ley !== undefined
+          ? ley.pila.includes(rol) || ley.sujeto === rol
+            ? []
+            : undefined
+          : p === undefined
+            ? undefined
+            : whereDelProceso(p, rol)
     if (delProceso === undefined) {
       return {
         rechazo:
-          ley === undefined
+          obra !== undefined
+            ? `el plano ${obra.revision} no declara el rol «${rol}» que el esquema le pide`
+            : ley === undefined
             ? `«${via}» no declara el rol «${rol}» que el esquema le pide`
             : `el esquema de «${primero.establishes}» por «${via}» le pide cosas al rol «${rol}», ` +
               `que no está en su pila (${ley.pila.join(' → ')}) ni es su sujeto («${ley.sujeto}»): ` +
@@ -1415,9 +1598,11 @@ function armarMarco(
   }
 
   const por: MarcoPor =
-    ley === undefined
-      ? { k: 'proceso', via: primero.k === 'proceso' ? primero.via : '' }
-      : { k: 'ley', esquema: ley }
+    obra !== undefined
+      ? { k: 'obra', esquema: obra }
+      : ley === undefined
+        ? { k: 'proceso', via: primero.k === 'proceso' ? primero.via : '' }
+        : { k: 'ley', esquema: ley }
 
   // El id del rendimiento sale del CONTENIDO, no de un contador: ver `rindeDe`.
   const marco: MarcoDePlan =
@@ -2064,6 +2249,14 @@ function firmaDePaso(s: Step): string {
       return `unir(${firmaDeRef(s.binder)},${firmaDeRef(s.a)},${firmaDeRef(s.b)},${s.rinde ?? '-'})`
     case 'aplicar':
       return `aplicar(${s.proceso},${nombresOrdenados(s.roles)
+        .map((r) => `${r}=${firmaDeRef(s.roles[r])}`)
+        .join(',')},${s.rinde ?? '-'})`
+    // La REVISIÓN y los roles ligados. `cuantos` NO entra, y no es un olvido: sale
+    // de la forma del plano, o sea de la revisión, así que dos pasos con la misma
+    // revisión y distinto `cuantos` no pueden existir. Meterlo sería agrandar la
+    // clave con algo que ya está adentro de la primera letra.
+    case 'armar':
+      return `armar(${s.revision},${nombresOrdenados(s.roles)
         .map((r) => `${r}=${firmaDeRef(s.roles[r])}`)
         .join(',')},${s.rinde ?? '-'})`
     case 'comer':

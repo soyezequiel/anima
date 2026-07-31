@@ -158,7 +158,7 @@ todo lo demás pase.
 |---|---|---|
 | 1 `BlueprintDefinition` canónico | **CUMPLE** (tramo C) | `physics/tests/el-plano-es-canonico.test.ts` |
 | 2 overlay aislado por sesión | **CUMPLE** | `plan/tests/el-catalogo-es-una-vista.test.ts`, bloque (2) |
-| 3 publicación de capacidades | **NO CUMPLE para planos, y ya no es una sospecha: está medido.** Para esquemas cumple. La fila del plano entra al catálogo, mueve el `catalogEpoch` y el planificador la alcanza — y la rechaza, porque un `ConstructionSchema` es UNA aplicación de UN proceso y armar un plano son N−1 uniones. Pide una tercera clase de esquema cuyo paso sea «correr esta habilidad» (Hito 8) | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (3), con su `it.fails` |
+| 3 publicación de capacidades | **CUMPLE** (tramo H). Se abrió con una medición y se cerró con una **tercera clase de `ConstructionSchema`**: `EsquemaDeObra`, cuyo paso final no es `apply` sino `armar`. El planificador emite `ir · sostener · … · armar` con la revisión exacta adentro. Queda un límite medido y marcado: un rol que necesita DOS cuerpos no se puede planificar todavía | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (3) |
 | 4 sin mutación global | **CUMPLE**, con guardián de texto en los DOS paquetes | ídem, bloque (4) + `mind/tests/el-catalogo-llega-a-la-mente.test.ts` |
 | 5 construcción incremental e idempotente | **la mitad CUMPLE** (tramo D): desplegar es idempotente y la obra no se muda. Construir ya era incremental por `unir` y falta el `BuildSkill` que encadene | `world/tests/la-obra-queda-desplegada.test.ts` |
 | 6 separar construir de usar | **CUMPLE** (tramo F). `capacidadDe` no deja publicar un sello vencido, y el caso que lo hace significar algo es el asimétrico: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar. Los dos catálogos ni siquiera comparten digest | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (6) |
@@ -169,10 +169,13 @@ todo lo demás pase.
 | 11 descriptor visual | **CUMPLE** (tramo D·quater): vista derivada, siete claves y ni una más, con `renderDescriptorHash` | `world/tests/el-descriptor-visual.test.ts` |
 | 12 sin nombres especiales | **CUMPLE** (tramo D·ter): 90 fuentes de producción barridos, cero infracciones — y no es sólo el grep: lo que hace que un cuerpo retenga es `catch > 0`, una cualidad derivada | `world/tests/sin-nombres-especiales.test.ts` |
 
-**Van 10 de 12 cumpliendo, 1 a medias (el 5) y 1 con el hueco medido y nombrado
-(el 3).** Y esa última línea es el resultado que más vale del día: el punto 3 pasó
-de «falta para planos» —una frase— a una frase del planificador y una clase de
-esquema que hay que escribir.
+**Van 11 de 12 cumpliendo y 1 a medias (el 5).**
+
+El punto 3 recorrió el camino entero en un día: de «falta para planos» —una frase—
+a una frase del planificador, a una clase de esquema, a un plan que sale. Es el
+mejor argumento a favor de la regla del proyecto: **el hueco se midió antes de
+diseñar la reparación**, y la reparación resultó ser otra de la que se hubiera
+escrito sin medir.
 
 ### El tramo G: el catálogo sale de la crónica
 
@@ -578,6 +581,49 @@ al catálogo, el `catalogEpoch` **se mueve**, y el planificador **la alcanza y l
 expande**. No es que no esté publicada; es que no la puede ejecutar. Las dos cosas
 se ven distinto en el `why`, y ahora hay un test que las separa.
 
+### El tramo H: la tercera clase de esquema, y el punto 3 cerrado
+
+El tramo F dejó el punto 3 con un `it.fails` y una frase del planificador. Este
+tramo la contesta.
+
+**La forma:** `EsquemaDeObra`, con `k: 'obra'`, la **revisión** del plano y
+`cuantos` —cuántos cuerpos hacen falta de cada rol—. Su paso final es `armar`, el
+primero del catálogo que no le pide nada al mundo sino a una **habilidad**.
+
+**Por qué el paso es uno y no N−1 `unir`**, que es lo primero que uno intenta:
+porque cada `unir` produce un ensamble nuevo y el siguiente lo necesita como
+argumento, y **no hay `Ref` que pueda nombrar un cuerpo que todavía no nació**.
+`{k:'rinde'}` nombra el rendimiento de un objetivo del grafo, no el de un paso
+intermedio. Enumerar la secuencia obligaría a inventar un `Ref` a un cuerpo
+futuro, que es exactamente el estado que la primera decisión de `tipos.ts`
+prohíbe. Y hay una segunda razón, que es el ADR II-0015: **el orden de las uniones
+decide la topología**, y encontrarlo es del `BuildSkill`.
+
+**El plan que sale**, para la caña:
+
+```
+sostener · ir · sostener · armar
+```
+
+**Y `cuantos` es la cuenta del tramo C·bis llegando al plan.** `unir(a, b, binder)`
+consume el atador, así que un plano de tres piezas y dos juntas necesita **cinco
+cuerpos** y no tres. La caña **no** paga ese atador de más —su binder es uno de sus
+propios extremos, así que la hebra sobrevive adentro de la obra— y eso sale de la
+forma del plano sin ningún campo aparte.
+
+**El límite que queda, medido antes de cerrarlo.** La regresión liga UN cuerpo por
+rol: `MarcoDePlan.roles` es `Record<RoleName, Ref>`. Con el plano de dos juntas y
+**tres hebras a la vista**, el plan salía `cola=h1 · punta=h2 · atadura=h0` y no
+quedaba ninguna hebra libre para la segunda atadura — **verde, y la criatura ataba
+una junta y se quedaba parada**. Ahora se rechaza con el rol y el número adelante.
+Levantarlo pide `Record<RoleName, readonly Ref[]>`, y eso toca la búsqueda entera.
+
+**Y del otro lado no hay nadie todavía.** `aHabilidad` contesta `undefined` para
+`armar`: el plan se planifica y no despega. Escribir la innata `construir` es lo
+que sigue, y el algoritmo ya está medido —once líneas, sin búsqueda— en
+`physics/tests/el-orden-de-las-uniones-realiza-el-plano.test.ts`. Lo que falta es
+la costura, no la idea.
+
 #### El vertical, en el mundo de verdad
 
 Una sola partida, sin arneses: se define un plano, se arma **con intenciones del
@@ -945,4 +991,5 @@ aditivas** —se solapan entre sí y con hitos que ya están planificados—:
 - [ADR II-0020](decisions/II-0020-la-captura-vive-en-una-tabla-del-mundo.md) — la captura vive en una tabla del mundo, y el pozo entrega ahí por un tercer `into`
 - [ADR II-0021](decisions/II-0021-el-overlay-de-una-partida-solo-crece.md) — el overlay de una partida sólo crece: revocar es entre partidas
 - [ADR II-0022](decisions/II-0022-place-despliega-un-cuerpo-no-construye-un-plano.md) — `place` despliega un cuerpo ya armado, y no construye un plano
+- [ADR II-0023](decisions/II-0023-armar-una-obra-es-la-tercera-clase-de-esquema.md) — armar una obra es la tercera clase de esquema, y su paso corre una habilidad
 - [`../../docs/architecture/remake-anima-ii.md`](../../docs/architecture/remake-anima-ii.md) — el plan de construcción entero
