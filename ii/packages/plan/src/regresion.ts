@@ -794,6 +794,16 @@ function emitirObra(
   // Y no deja afuera el caso de aceptación: la caña es `unir(vara, ·, hebra)` con
   // el binder siendo su propio extremo, o sea **un cuerpo por rol** (ver
   // `cuantosCuerpos`). Lo que queda afuera son los planos con un atador compartido.
+  // SIN JUNTAS NO HAY NADA QUE ATAR, y el paso que se emitiria no se puede correr:
+  // `construir` lo rechaza en su primera linea. `definirPlano` ya no deja definir
+  // un plano asi, pero `opciones.esquemas` es entrada publica y una fila escrita a
+  // mano llega hasta aca. Y hay un agravante medido: `esquemaDeObra` le pone
+  // `segundos = juntas.length`, o sea COSTO CERO, asi que esa fila le gana a
+  // cualquier via que si se pueda ejecutar.
+  if (e.juntas.length === 0) {
+    return { rechazo: `${quien} no declara ninguna junta: no hay nada que atar` }
+  }
+
   const multiples = nombresOrdenados(e.cuantos).filter((r) => (e.cuantos[r] ?? 0) > 1)
   if (multiples.length > 0) {
     return {

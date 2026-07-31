@@ -224,7 +224,11 @@ export function capacidadDe(
  * obra.
  */
 export function pedidosDelPlano(def: BlueprintDefinition): Readonly<Record<RoleName, Where>> {
-  const out: Record<RoleName, Where> = {}
+  // Sin prototipo: un rol se usa de CLAVE, y `__proto__` no se comporta como una.
+  // La puerta ya los rechaza (ver `revisar` en `physics/src/plano.ts`) y esto es la
+  // segunda mitad, para el que arme un esquema a mano — `opciones.esquemas` es
+  // entrada pública.
+  const out = Object.create(null) as Record<RoleName, Where>
   for (const p of def.parts) out[p.rol] = p.pide
   return out
 }
@@ -242,7 +246,10 @@ export function pedidosDelPlano(def: BlueprintDefinition): Readonly<Record<RoleN
  * la cuenta del atador NO suma cuando `binder === a` o `binder === b`.
  */
 export function cuantosCuerpos(def: BlueprintDefinition): Readonly<Record<RoleName, number>> {
-  const out: Record<RoleName, number> = {}
+  // Sin prototipo, por lo mismo que `pedidosDelPlano`. Acá el síntoma era peor:
+  // `out[rol] ?? 0` sobre `__proto__` lee `Object.prototype`, que NO es nullish, así
+  // que la cuenta del atador desaparecía y el plan salía verde con la obra a medias.
+  const out = Object.create(null) as Record<RoleName, number>
   for (const p of def.parts) out[p.rol] = 1
   for (const j of def.joints) {
     if (j.binder === j.a || j.binder === j.b) continue

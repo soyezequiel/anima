@@ -22,8 +22,9 @@
 //   (a) LA CAÑA — dos piezas, una junta, y el atador es uno de sus extremos. Es
 //       el caso de aceptación del gate: la hebra sobrevive con la punta suelta,
 //       que es lo único que da `catch`, que es lo único que pesca;
-//   (b) EL ÁRBOL — tres piezas, dos juntas, atadores propios. Es el caso que
-//       obliga a elegir el orden: encadenar de a una daría OTRA obra;
+//   (b) LA CADENA — tres piezas en fila, con atadores propios. Es el caso que
+//       obliga a elegir el orden: encadenar de a una da una ESTRELLA, que es otra
+//       obra con las mismas piezas;
 //   (c) LO QUE PASA CUANDO NO SE PUEDE — el plano que no cabe en las manos.
 
 import { describe, expect, it } from 'vitest'
@@ -189,17 +190,31 @@ describe('(a) la caña: el atador es uno de sus extremos y sobrevive adentro', (
 
 // ─── (b) El árbol de tres piezas ────────────────────────────────────────────
 
+/**
+ * UNA CADENA, y no una estrella. La diferencia es todo el bloque.
+ *
+ * ─── POR QUE ESTE PLANO Y NO EL DE ANTES ──────────────────────────────────
+ *
+ * La primera version de este bloque usaba una ESTRELLA centrada en «centro», que
+ * es la pieza primera por texto — o sea exactamente la obra que sale de encadenar
+ * de a una sobre la misma obra, sin elegir nada. El describe decia «hay que elegir
+ * el orden» y el test habria quedado verde con un armador que no elige.
+ *
+ * Una CADENA no: encadenar da `p1-p2` y `p1-p3`, y la cadena pide `p1-p2` y
+ * `p2-p3`. Son dos obras distintas con las mismas tres piezas, y la unica forma de
+ * conseguir la segunda es armar el subarbol del hijo ANTES de atarlo al padre.
+ */
 const ARBOL: BlueprintCandidate = {
   parts: [
-    { rol: 'centro', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
-    { rol: 'punta-a', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
-    { rol: 'punta-b', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
+    { rol: 'p1', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
+    { rol: 'p2', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
+    { rol: 'p3', pide: [{ q: 'rigidity', op: '>=', v: 0.5 }] },
     { rol: 'at-1', pide: [{ q: 'flexibility', op: '>=', v: 0.8 }] },
     { rol: 'at-2', pide: [{ q: 'flexibility', op: '>=', v: 0.8 }] },
   ],
   joints: [
-    { a: 'centro', b: 'punta-a', binder: 'at-1' },
-    { a: 'centro', b: 'punta-b', binder: 'at-2' },
+    { a: 'p1', b: 'p2', binder: 'at-1' },
+    { a: 'p2', b: 'p3', binder: 'at-2' },
   ],
 }
 
@@ -211,9 +226,9 @@ const CUERPOS_DEL_ARBOL: readonly WorldBody[] = [
   enElPiso('l2', 'liana', 0.15, 1, 0),
 ]
 
-const DE_ROL_ARBOL = { centro: 'v1', 'punta-a': 'v2', 'punta-b': 'v3', 'at-1': 'l1', 'at-2': 'l2' }
+const DE_ROL_ARBOL = { p1: 'v1', p2: 'v2', p3: 'v3', 'at-1': 'l1', 'at-2': 'l2' }
 
-describe('(b) el árbol: tres piezas, dos atadores propios, y hay que elegir el orden', () => {
+describe('(b) la cadena: tres piezas en fila, y encadenar de a una daria OTRA obra', () => {
   const def = definir(ARBOL)
 
   /**
@@ -253,12 +268,29 @@ describe('(b) el árbol: tres piezas, dos atadores propios, y hay que elegir el 
     )
   })
 
+  it('EL CONTROL: la obra que sale NO es la que sale de encadenar de a una', () => {
+    // Sin esto, el bloque de arriba lo cumpliria un armador que no elige nada.
+    // Encadenar de a una sobre la misma obra da una ESTRELLA con centro en la
+    // primera pieza —medido en `physics/tests/el-orden-de-las-uniones...`— o sea
+    // las juntas 0-1 y 0-2. Una cadena tiene una junta que NO sale de la parte 0.
+    const r = armar(escena(), def.joints, DE_ROL)
+    expect(r.obra).toBeDefined()
+    if (r.obra === undefined) return
+    expect(r.obra.joints.every((j) => j.a === 0), 'salio una estrella: el armador no eligio nada').toBe(false)
+  })
+
   it('y es REPRODUCIBLE: dos corridas dan la misma obra, junta por junta', () => {
     // El orden lo elige la habilidad recorriendo el árbol, y el recorrido está
     // ordenado por texto a propósito. Si dependiera del orden de un `Map`, dos
     // corridas darían dos obras distintas y el hash del mundo dejaría de cerrar.
     const a = armar(escena(), def.joints, DE_ROL)
     const b = armar(escena(), def.joints, DE_ROL)
+    // Que las DOS armaron algo, primero. Sin esto el test es verde vacio: con la
+    // habilidad rota, `a.obra` y `b.obra` son los dos `undefined` y el `toEqual`
+    // compara `undefined` contra `undefined` y pasa.
+    expect(a.obra, a.why).toBeDefined()
+    expect(b.obra, b.why).toBeDefined()
+    expect(a.obra?.joints.length).toBe(2)
     expect(a.obra?.joints.map((j) => `${String(j.a)}-${String(j.b)}`)).toEqual(
       b.obra?.joints.map((j) => `${String(j.a)}-${String(j.b)}`),
     )

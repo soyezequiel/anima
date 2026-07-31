@@ -231,6 +231,12 @@ describe('(2) el mismo plano da la misma obra, junta por junta y en el mismo ord
   it('dos corridas dan juntas idénticas, en el mismo orden', () => {
     const a = armarPlano(MIXTO, PIEZAS.mixto)
     const b = armarPlano(MIXTO, PIEZAS.mixto)
+    // Que las DOS armaron algo, primero. Sin esto el test es verde vacío: con el
+    // armador roto, `a?.cuerpo` y `b?.cuerpo` son los dos `undefined` y el
+    // `toEqual` compara `undefined` contra `undefined` y pasa.
+    expect(a, 'la primera corrida no armó nada').toBeDefined()
+    expect(b, 'la segunda corrida no armó nada').toBeDefined()
+    expect(a?.cuerpo.joints.length).toBe(MIXTO.length)
     expect(a?.cuerpo.joints.map((j) => `${String(j.a)}-${String(j.b)}`)).toEqual(
       b?.cuerpo.joints.map((j) => `${String(j.a)}-${String(j.b)}`),
     )

@@ -25,6 +25,7 @@ import { describe, expect, it } from 'vitest'
 import { buildSeedPhysics, type Body, type Physics } from '@anima/physics'
 
 import { VERSION_DEL_DESCRIPTOR, descriptorDe, descriptoresDe, renderDescriptorHash } from '../src/descriptor.js'
+import { hashWorld } from '../src/hash.js'
 import { place } from '../src/intent.js'
 import { stepWorld, type WorldState } from '../src/step.js'
 import { actor, criatura, cuerpo, enElPiso, enLaMano, mundo } from './mundo-minimo.js'
@@ -200,8 +201,22 @@ describe('(e) el descriptor no dice nada que la física no modele', () => {
   })
 
   it('la versión del descriptor entra en el hash: dos clientes distintos no coinciden', () => {
-    // Es lo mismo que `physicsVersion` para los sellos. Se afirma el mecanismo
-    // —que la versión está adentro— y no un número, que cambiaría al subirla.
+    // ─── ESTE TEST NO HACIA LO QUE SU NOMBRE DICE ─────────────────────────────
+    //
+    // La primera version sólo comprobaba que `descriptorDe` devolviera la constante
+    // que el propio test importa. Eso no toca el hash ni compara dos versiones: es
+    // `VERSION === VERSION`, y habria quedado verde aunque la version no entrara.
+    //
+    // Ahora se hashea el MISMO mundo con dos versiones y se exige que no coincidan.
+    // Es lo mismo que `physicsVersion` para los sellos, y se afirma el mecanismo
+    // —que la version esta adentro— y no un numero, que cambiaria al subirla.
+    const w = desplegada()
+    const conLaSuya = renderDescriptorHash(w)
+    const conOtra = hashWorld({ v: VERSION_DEL_DESCRIPTOR + 1, cuerpos: descriptoresDe(w) })
+    expect(conOtra).not.toBe(conLaSuya)
+    // Y el control: con la MISMA version, el mismo mundo da el mismo numero. Sin
+    // esto, un hash que devolviera algo distinto en cada llamada pasaria igual.
+    expect(hashWorld({ v: VERSION_DEL_DESCRIPTOR, cuerpos: descriptoresDe(w) })).toBe(conLaSuya)
     expect(descriptorDe({ body: obra('x'), at: PARADA }).v).toBe(VERSION_DEL_DESCRIPTOR)
   })
 })

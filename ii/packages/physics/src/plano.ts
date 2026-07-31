@@ -209,6 +209,29 @@ function revisar(c: BlueprintCandidate): Razones {
   const roles = new Set<string>()
   for (const p of c.parts) {
     if (p.rol.length === 0) puesta('sin-nombre', 'una pieza del plano no tiene rol')
+    // ─── EL ROL ES TEXTO LIBRE, Y ESTOS TRES NOMBRES NO ─────────────────────
+    //
+    // Un rol se usa de CLAVE en varios objetos —`roleHints`, `cuantos`, los roles
+    // resueltos del marco— y `__proto__` no se comporta como una clave: asignarle
+    // un objeto reemplaza el prototipo, asignarle un primitivo es un no-op
+    // silencioso, y leerlo devuelve `Object.prototype`, que no es nullish y pasa
+    // cualquier guarda de `?? undefined`.
+    //
+    // Medido con un plano igual al del test del atador compartido, cambiándole el
+    // nombre del atador a `__proto__`: `cuantosCuerpos` devolvía 3 cuerpos en vez
+    // de 5, `emitirObra` no disparaba su rechazo, y `plan()` daba VERDE con un paso
+    // `armar` cuyo atador no estaba en `roles`. Río abajo, la habilidad recibía
+    // `Object.prototype` de atador y se lo pasaba a `union`.
+    //
+    // Se rechaza acá y no se sanea río abajo porque acá es donde el texto libre
+    // entra: cada consumidor que lo sanee por su cuenta es otro que se puede
+    // olvidar. `constructor` y `prototype` van por lo mismo aunque hoy no rompan
+    // nada: son las otras dos claves que un objeto trae puestas.
+    if (p.rol === '__proto__' || p.rol === 'constructor' || p.rol === 'prototype') {
+      puesta('sin-nombre', `«${p.rol}» no se puede usar de rol: es una clave que todo objeto ya tiene`, {
+        rol: p.rol,
+      })
+    }
     if (roles.has(p.rol)) {
       puesta('rol-repetido', `el plano declara dos piezas con el rol «${p.rol}»`, { rol: p.rol })
     }
@@ -241,6 +264,28 @@ function revisar(c: BlueprintCandidate): Razones {
   if (out.length === 0 && c.parts.length > 0) {
     for (const r of rolesSinUsar(c, piezas)) {
       puesta('rol-desconocido', `el plano declara «${r}» y ninguna junta lo nombra: es una pieza suelta`, { rol: r })
+    }
+
+    // (0) SIN JUNTAS NO HAY OBRA. Un plano de UNA pieza y cero juntas cerraba
+    //     todas las cuentas —piezas − 1 = 0, conexo trivialmente, hondura 0— y
+    //     describía un cuerpo que ya existe.
+    //
+    //     El problema no es filosófico y está medido: `esquemaDeObra` le pone
+    //     `segundos = juntas.length`, o sea COSTO CERO, así que esa fila le ganaba
+    //     a cualquier vía que sí se pudiera ejecutar; `plan()` daba VERDE con un
+    //     paso `armar` de `juntas: []`; y la habilidad lo rechaza en su primera
+    //     línea, porque no hay nada que atar. Un plan que no se puede ejecutar es
+    //     peor que un `gap`: el `gap` al menos dice qué falta.
+    //
+    //     Va acá y no arriba del portón `out.length === 0` a propósito: con las
+    //     otras razones prendidas, una pila de tres piezas sueltas tiene que seguir
+    //     diciendo `rol-desconocido` por cada una, que es lo que su test afirma.
+    if (c.joints.length === 0) {
+      puesta(
+        'juntas-fuera-de-cota',
+        'el plano no declara ninguna junta: describe un cuerpo que ya existe, no una obra que haya que armar',
+        { encontrado: 0, cota: 1 },
+      )
     }
 
     // (1) Una obra de N piezas tiene N−1 juntas y ni una más ni una menos. De

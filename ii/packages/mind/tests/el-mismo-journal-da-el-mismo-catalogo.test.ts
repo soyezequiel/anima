@@ -29,6 +29,8 @@
 //       las dos huellas siguen siendo las mismas;
 //   (f) y la crónica DICE contra qué física se corrió, y lo hace cumplir al abrir.
 
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 import { buildSeedPhysics, type Physics } from '@anima/physics'
@@ -250,11 +252,25 @@ describe('(e) la crónica sobrevive al archivo, con las dos huellas', () => {
   })
 
   it('y ninguna clase de `Intent` del mundo se llama `registrar`', () => {
-    // El guardián. `k: 'registrar'` convive con las nueve clases del mundo, y el
-    // día que alguien agregue una décima con ese nombre, un registro se
-    // convertiría en una intención —o al revés— sin que nada se ponga rojo.
-    const nueve: Intent['k'][] = ['wait', 'goTo', 'explore', 'take', 'drop', 'put', 'eat', 'apply', 'place']
-    expect(nueve).not.toContain('registrar' as never)
+    // ─── EL GUARDIAN, Y ESTUVO ESCRITO MAL ────────────────────────────────────
+    //
+    // La primera version comparaba contra un arreglo literal escrito tres lineas
+    // mas arriba en el mismo test. Eso es cierto por construccion y no puede
+    // fallar nunca: el dia que el mundo agregara una decima clase llamada
+    // `registrar`, el guardian habria seguido verde.
+    //
+    // Ahora lee LA FUENTE del mundo y saca las clases de ahi. Es un guardian de
+    // texto, igual que el de los nombres especiales y el de los caracteres de
+    // control, y por el mismo motivo: `Intent['k']` es un tipo, y un tipo no
+    // existe en tiempo de ejecucion para poder recorrerlo.
+    const fuente = readFileSync(fileURLToPath(new URL('../../world/src/intent.ts', import.meta.url)), 'utf8')
+    const clases = [...fuente.matchAll(/readonly k: '([a-zA-Z-]+)'/g)].map((m) => m[1])
+    // El control de que el guardian sabe leer: si el regex dejara de encontrar
+    // nada, el `not.toContain` de abajo pasaria sin haber mirado nada.
+    expect(clases).toContain('place')
+    expect(clases).toContain('apply')
+    expect(clases.length).toBeGreaterThanOrEqual(9)
+    expect(clases).not.toContain('registrar')
   })
 })
 
