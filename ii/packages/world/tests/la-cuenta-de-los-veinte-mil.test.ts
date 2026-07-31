@@ -149,17 +149,15 @@ function prende(fuente: Body, objetivo: Body, techo = 3_000): number {
  * La vara de madera más liviana que PRENDE `objetivo` corriendo `stepWorld`.
  * Bisección sobre el mundo, arrancando en el `toward` de `friccion`.
  */
-function varaQueDeVerdadPrende(objetivo: Body, alto = 4): number {
+function varaQueDeVerdadPrende(objetivo: Body, alto = 4, sustancia = 'madera'): number {
+  const vara = (m: number): Body => cuerpo('f', sustancia, m, { temperature: TECHO_DE_FROTAR })
   let bajo = 0
   let arriba = alto
-  if (prende(cuerpo('f', 'madera', arriba, { temperature: TECHO_DE_FROTAR }), objetivo) < 0) {
-    return Number.POSITIVE_INFINITY
-  }
+  if (prende(vara(arriba), objetivo) < 0) return Number.POSITIVE_INFINITY
   for (let i = 0; i < 14; i += 1) {
     const medio = (bajo + arriba) / 2
-    if (prende(cuerpo('f', 'madera', medio, { temperature: TECHO_DE_FROTAR }), objetivo) > 0) {
-      arriba = medio
-    } else bajo = medio
+    if (prende(vara(medio), objetivo) > 0) arriba = medio
+    else bajo = medio
   }
   return arriba
 }
@@ -607,4 +605,172 @@ describe('la cuenta de los veinte mil', () => {
     // cuesta menos de un décimo de lo que cuesta el primer fósforo.
     expect(hueco).toBeLessThan(645.5 / 10)
   })
+
+  it('5 · DE QUÉ SE PUEDE HACER EL FÓSFORO: la vara no tiene por qué ser de madera', () => {
+    // ─── EL SUPUESTO QUE NADIE HABÍA MIRADO ────────────────────────────────
+    //
+    // Los 645,50 salen de frotar una vara DE MADERA, y `la-escalera-construible`
+    // la escribe así: `cuerpo('vara', 'madera', medida)`. Pero `friccion` no pide
+    // madera: pide `rigidity >= 0,5` en los dos palos. Cuál sustancia sale más
+    // barata de llevar hasta su propia ignición es una pregunta del catálogo que
+    // nadie le hizo, y como el precio es `heatCapacity × ΔT / eficiencia`, la
+    // respuesta depende de DOS cosas que varían por sustancia —cuánto calor pide
+    // por grado y cuántos grados hay hasta su ignición— y de una tercera que
+    // varía en contra: cuánta masa hace falta para que, ardiendo, alcance a
+    // prender el objetivo.
+    //
+    // Este bloque las barre y publica la tabla. No propone ningún número: lo que
+    // sale de acá es de dónde puede bajar `C` sin tocar una constante.
+    const p = phys()
+    const RIG = 0.5
+    const objetivo = SUSTANCIAS_SEMILLA.filter(
+      (s) => qualityOf(cuerpo('x', s.id, 1), 'fuelEnergy', p) > 0,
+    )
+      .map((s) => ({ s: s.id, ign: qualityOf(cuerpo('x', s.id, 1), 'ignitionPoint', p) }))
+      .sort((a, b) => a.ign - b.ign)[0]
+    if (objetivo === undefined) throw new Error('no arde nada')
+
+    const filas: string[] = [
+      '─── DE QUÉ SE PUEDE HACER EL FÓSFORO ───',
+      `  \`friccion\` pide rigidity ≥ ${RIG.toFixed(2)} en los DOS palos, y nada más. No pide madera.`,
+      `  lo que hay que prender: ${objetivo.s} a ${objetivo.ign.toFixed(0)} °C`,
+      '',
+      '  sustancia │ rigidez │ arde │ ignición │ vara MEDIDA │ COSTO',
+      '  ──────────┼─────────┼──────┼──────────┼─────────────┼──────',
+    ]
+    let piso = Number.POSITIVE_INFINITY
+    let laBarata = ''
+    for (const s of SUSTANCIAS_SEMILLA) {
+      const uno = cuerpo('x', s.id, 1)
+      const rig = qualityOf(uno, 'rigidity', p)
+      const arde = qualityOf(uno, 'fuelEnergy', p) > 0
+      const ign = qualityOf(uno, 'ignitionPoint', p)
+      if (rig < RIG) continue
+      // Una vara que no arde no sirve de fósforo: se la puede calentar, pero
+      // apagado el frotar la ley 1 la relaja y no prende nada.
+      const vara = arde
+        ? varaQueDeVerdadPrende(cuerpo('o', objetivo.s, 0.3), 4, s.id)
+        : Number.POSITIVE_INFINITY
+      const costo = Number.isFinite(vara)
+        ? costoDeEncender(cuerpo('vara', s.id, vara), p)
+        : Number.POSITIVE_INFINITY
+      if (costo < piso) {
+        piso = costo
+        laBarata = s.id
+      }
+      filas.push(
+        `  ${s.id.padEnd(9)} │ ${rig.toFixed(2).padStart(7)} │ ${(arde ? 'sí' : 'no').padStart(4)} │ ` +
+          `${(arde ? ign.toFixed(0) : '—').padStart(8)} │ ` +
+          `${(Number.isFinite(vara) ? vara.toFixed(4) : '—').padStart(11)} │ ` +
+          `${Number.isFinite(costo) ? costo.toFixed(1) : '—'}`,
+      )
+    }
+    filas.push(
+      '',
+      `  EL FÓSFORO MÁS BARATO DEL MUNDO ES DE ${laBarata.toUpperCase()}: ${piso.toFixed(1)} de aliento.`,
+      `  contra el tanque de ${String(TANQUE_CANONICO)}: ${piso < TANQUE_CANONICO ? 'LO PAGA' : `no lo paga, por ${(piso / TANQUE_CANONICO).toFixed(2)}×`}`,
+      '',
+      `  y con la eficiencia PERFECTA que el guardián de la conservación permite (1,00, en`,
+      `  \`physics/tests/process.test.ts\`) ese mismo fósforo saldría ${(piso * eficienciaDeFrotar()).toFixed(1)}:`,
+      `  ${piso * eficienciaDeFrotar() < TANQUE_CANONICO ? 'ahí SÍ entra en el tanque' : 'ni así entra'}.`,
+    )
+    log(filas)
+
+    expect(Number.isFinite(piso)).toBe(true)
+    // El piso del mundo no puede ser MÁS CARO que el que ya se publicó con madera:
+    // si esta tabla diera algo peor, estaría midiendo mal.
+    expect(piso).toBeLessThanOrEqual(645.51)
+    // Y la noticia del bloque, dicha como afirmación: cambiar de sustancia AYUDA y
+    // NO ALCANZA. Si algún día alcanzara, el criterio se cerraría sin tocar ninguna
+    // constante y este `expect` sería lo que lo avisa.
+    expect(piso).toBeGreaterThan(TANQUE_CANONICO)
+  }, 300_000)
+
+  it('6 · LA VENTANA DE LA EFICIENCIA: qué valores cierran el criterio y con qué fuego', () => {
+    // ─── LO QUE ESTE BLOQUE ES Y LO QUE NO ES ──────────────────────────────
+    //
+    // No propone un número: publica la ventana. Para cada eficiencia candidata
+    // calcula lo que costaría el fósforo más barato del mundo y contesta las dos
+    // preguntas del bloque 3 —¿lo puede pagar? ¿le alcanza después?— contra los
+    // fuegos que el barrido del bloque 2 midió.
+    //
+    // El techo de la ventana no lo elige nadie: es 1,00, y lo afirma el guardián
+    // de la conservación en `physics/tests/process.test.ts` («todo drive que
+    // empuja hacia arriba declara de qué cuenta drena», con
+    // `efficiency <= 1`). Arriba de 1 sale más calor del que entra trabajo y eso
+    // es la máquina de movimiento perpetuo que el ADR II-0001 vino a cerrar.
+    //
+    // Y LA COLUMNA QUE DECIDE ES LA ÚLTIMA: cuántos bocados hace falta que la
+    // criatura cocine. Bajar la eficiencia no vuelve el criterio imposible, lo
+    // vuelve MÁS TRABAJOSO, y ese trabajo lo tiene que hacer la mente. Elegir el
+    // número es elegir cuántas veces querés que pesque y cocine.
+    const p = phys()
+    const objetivo = SUSTANCIAS_SEMILLA.filter(
+      (s) => qualityOf(cuerpo('x', s.id, 1), 'fuelEnergy', p) > 0,
+    )
+      .map((s) => ({ s: s.id, ign: qualityOf(cuerpo('x', s.id, 1), 'ignitionPoint', p) }))
+      .sort((a, b) => a.ign - b.ign)[0]
+    if (objetivo === undefined) throw new Error('no arde nada')
+
+    // El fósforo más barato del catálogo, medido en el bloque 5, y su costo
+    // TÉRMICO —el que no depende de la eficiencia—: `heatCapacity × ΔT`.
+    let termico = Number.POSITIVE_INFINITY
+    let deQue = ''
+    for (const s of SUSTANCIAS_SEMILLA) {
+      const uno = cuerpo('x', s.id, 1)
+      if (qualityOf(uno, 'rigidity', p) < 0.5) continue
+      if (!(qualityOf(uno, 'fuelEnergy', p) > 0)) continue
+      const vara = varaQueDeVerdadPrende(cuerpo('o', objetivo.s, 0.3), 4, s.id)
+      if (!Number.isFinite(vara)) continue
+      const t = costoDeEncender(cuerpo('vara', s.id, vara), p) * eficienciaDeFrotar()
+      if (t < termico) {
+        termico = t
+        deQue = s.id
+      }
+    }
+
+    const porTick = COSTO_VIVIR_POR_SEGUNDO / HZ_DE_REFERENCIA
+    const presupuestoDeVida = CRITERIO_TICKS * porTick
+    const porBocado = elMejorFuego(BRASAS).porBocado
+    const filas: string[] = [
+      '─── LA VENTANA DE LA EFICIENCIA ───',
+      `  el fósforo más barato es de ${deQue}, y su costo TÉRMICO —el que no depende de la`,
+      `  eficiencia— es ${dos(termico)}. El precio es ese número dividido la eficiencia.`,
+      `  el techo de la ventana es 1,00 y lo pone el guardián de la conservación, no este archivo.`,
+      '',
+      '  eficiencia │ el fósforo │ ¿lo paga? │ le queda │ comida que necesita │ bocados a cocinar',
+      '  ───────────┼────────────┼───────────┼──────────┼─────────────────────┼──────────────────',
+    ]
+    let elMinimoQueCierra = Number.POSITIVE_INFINITY
+    for (const ef of [0.35, 0.5, 0.6, 0.7, 0.75, 0.8, 0.85, 0.9, 1]) {
+      const costo = termico / ef
+      const paga = costo < TANQUE_CANONICO
+      const queda = TANQUE_CANONICO - costo
+      const necesita = presupuestoDeVida - TANQUE_CANONICO + costo
+      const bocados = Math.ceil(necesita / porBocado)
+      if (paga && elMinimoQueCierra === Number.POSITIVE_INFINITY) elMinimoQueCierra = ef
+      filas.push(
+        `  ${ef.toFixed(2).padStart(10)} │ ${dos(costo).padStart(10)} │ ` +
+          `${(paga ? 'sí' : 'NO').padStart(9)} │ ${dos(queda).padStart(8)} │ ` +
+          `${dos(necesita).padStart(19)} │ ${String(bocados).padStart(18)}` +
+          `${ef === eficienciaDeFrotar() ? '   ← hoy' : ''}`,
+      )
+    }
+    filas.push(
+      '',
+      `  cada bocado de pescado cocido deja ${dos(porBocado)}, y el barrido del bloque 2 dice cuántos`,
+      `  entran adentro de un fuego: 11 en uno de 1 kg, 18 en uno de 1,25 y 32 en uno de 1,7.`,
+      '',
+      `  LA SOLVENCIA SE ABRE EN ${elMinimoQueCierra.toFixed(2)}, y ahí la criatura queda con casi nada:`,
+      `  el número no se elige por el borde, se elige por cuántos bocados querés pedirle a la mente.`,
+    )
+    log(filas)
+
+    // El techo de la ventana es del guardián, no de acá: se afirma que existe.
+    expect(termico).toBeLessThan(TANQUE_CANONICO)
+    // Y que la ventana esté ABIERTA: hay eficiencias legales que hacen solvente a
+    // la criatura. Si esto se pusiera rojo, la salida (c) estaría muerta y habría
+    // que volver al bloque 3 a elegir otra.
+    expect(elMinimoQueCierra).toBeLessThanOrEqual(1)
+  }, 300_000)
 })
