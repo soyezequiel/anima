@@ -178,6 +178,18 @@ export interface ClausulaLeida {
   readonly confianza: number
   /** La firma del predicado, cuando hay. `interpretar()` de `@anima/plan` la lee. */
   readonly firma?: string
+  /**
+   * El verbo que se leyó, si hubo.
+   *
+   * Está aparte de `firma` porque **no todo pedido es una meta**. «Pará» y
+   * «esperá» no describen un estado del mundo al que llegar: describen qué hacer
+   * con lo que ya está pasando. Un tipo que sólo tuviera `firma` obligaría a
+   * inventarles un predicado, y un predicado inventado es una meta que el
+   * planificador va a perseguir de verdad.
+   */
+  readonly verbo?: VerboId
+  /** Sobre qué. Sirve para el acuse y para el `bindeaSlot` del paso siguiente. */
+  readonly objetos: readonly Denota[]
   /** `'despues'` la ata a la anterior; `'y'` la deja suelta (orden parcial). */
   readonly liga: 'y' | 'despues'
   readonly bindeaSlot?: string

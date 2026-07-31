@@ -244,3 +244,79 @@ llamado `trampa-para-peces`, así que no hay adónde apuntar salvo a la física.
 test recorre las 120 claves del léxico y exige que ninguna nombre la solución.
 
 Medido: `@anima/lang` **14 tests verdes**, typecheck limpio.
+
+### Tramo C — leer, y el contrato raro que hace al punto 1
+
+`leer(texto, opciones)` **siempre devuelve una `Lectura` con al menos una
+cláusula.** No tiene rama vacía, no tira, no devuelve `undefined`.
+
+La forma barata de cumplir el punto 1 del criterio sería un `if` al final que
+rellena. Acá no es un `if`: **el tipo no tiene variante vacía** y los cuatro
+grados son respuestas. La regla del documento —«corte a los 25 ms: no existe
+rama que devuelva "nada"»— quedó escrita como tipo y no como intención.
+
+| grado | qué quiere decir | qué se hace con eso |
+|---|---|---|
+| `entendida` | hay predicado y el catálogo sabe establecerlo | va a `plan()` como meta |
+| `sin-camino` | se entendió y ningún esquema lo establece | se acusa y se dice qué falta |
+| `orientacion` | se entendió hacia dónde mirar, no a qué estado llegar | gesto reversible |
+| `no-entendida` | ni eso | se pregunta, y el cuerpo sigue con lo suyo |
+
+Corridas las diecinueve frases del corpus —las once de la medición, las cuatro
+del historial de chat real, y cuatro bordes (la vacía, la de espacios, tres
+palabras inventadas y los signos solos)—:
+
+```
+  fabricá una trampa para peces      entendida     catch>0
+  traé un palo                       sin-camino    holding(tag:fibroso)
+  andá al río                        orientacion   —
+  hacé fuego                         entendida     emitsPower>0
+  pescá algo                         entendida     holding(tag:carnoso)
+  asá el pescado                     entendida     holding(tag:carnoso,digestibility>=0.85,…)
+  atá la vara con la hebra           orientacion   reach>=2
+  construi una ahoguera              entendida     emitsPower>0
+  rompe el muro y levanta 5 piedras  no-entendida  —
+  (vacía)                            no-entendida  —
+```
+
+**Y hay un test que exige que los cuatro grados aparezcan**, porque «nunca
+devuelve nada» lo cumpliría igual un lector que contesta `no-entendida` a todo.
+
+#### Las dos firmas que el puente NO puede inventar, y se dicen
+
+- **`andá al río` sale como `orientacion`.** `Predicado` no puede hablar del
+  lugar: se probó con `wet>=0.9`, `at.x>=8` y `distance<=1`, y los tres dan
+  `interpretar → undefined`. La respuesta honesta no es inventar un predicado
+  —sería una meta que el planificador persigue de verdad— sino decir que se
+  entendió hacia dónde mirar.
+- **`traé un palo` sale como `sin-camino`**, con esta frase: «entendí
+  `holding(tag:fibroso)` y ningún esquema conocido lo establece». Es la
+  diferencia entre avisar y mandar a alguien a un viaje que no termina.
+
+#### El guardián que impide que el puente mienta
+
+Todas las firmas —las escritas en `alias.ts` y las que `componer()` arma en
+vivo— pasan por `interpretar` de `@anima/plan`, que es el mismo lector que usa
+la mente. Sin eso, la tabla puede apuntar a cualquier cosa y nada se pone rojo
+hasta que una criatura sale a perseguir un predicado inexistente.
+
+#### Tres cosas que los tests dieron vuelta
+
+1. **`ahoguera` estaba en la tabla de alias.** Con la falta de ortografía
+   adentro, «construi una ahoguera» y «construí una hoguera» daban **la misma
+   confianza**: el emparejamiento difuso, que existe justamente para eso, no se
+   estaba ejerciendo en el único caso que lo justifica. Sacada, la frase mal
+   escrita baja de 0,67 a **0,57** y el difuso se la gana.
+2. **El atajo de la meta no podía ser global.** «Atá la vara con la hebra» tiene
+   `hebra` adentro, que el puente mapea a `freeStrandEnds>=1`, así que el atajo
+   contestaba «conseguí una punta suelta» cuando lo que se pidió es que ATE las
+   dos cosas. La regla que quedó: el atajo vale para los verbos de **conseguir**
+   —donde lo que se nombra es lo que se quiere— y no para los de **transformar**,
+   donde lo que se nombra es con qué.
+3. **`palo` da `fibroso`, no `vegetal`.** La primera versión del test afirmaba
+   `vegetal` copiándolo de un informe en vez de mirarlo salir: `tagDe` elige el
+   tag más específico contándolo del catálogo, y `fibroso` cubre menos
+   sustancias.
+
+Medido: `@anima/lang` **28 tests**, y la suite entera **2726** (eran 2698),
+typecheck limpio en los diez paquetes.

@@ -56,7 +56,15 @@ import type { AliasCrudo } from './lexico.js'
 const METAS: readonly AliasCrudo[] = [
   // → plan de 4 pasos: ir · sostener · deshilachar · frotar. El fuego se hace
   //   frotando, y eso el planificador lo sabe solo desde el Hito 5.
-  { dice: ['fuego', 'fogata', 'hoguera', 'ahoguera', 'llama', 'calor'], denota: { k: 'meta', firma: 'emitsPower>0' } },
+  //
+  // Y NO va `ahoguera`, que es como está escrito en el único historial de chat
+  // real del repo. Estaba, y un test lo sacó: con la falta de ortografía
+  // adentro de la tabla, «construi una ahoguera» y «construí una hoguera» daban
+  // **la misma confianza**, o sea que el emparejamiento difuso —que existe
+  // justamente para eso— no se estaba ejerciendo en el único caso que lo
+  // justifica. Una tabla que absorbe los errores de ortografía se convierte en
+  // la lista infinita que este paquete existe para no tener.
+  { dice: ['fuego', 'fogata', 'hoguera', 'llama', 'calor'], denota: { k: 'meta', firma: 'emitsPower>0' } },
 
   // → plan de 7 pasos, que incluye armar la caña. «Comida» apunta a lo carnoso y
   //   no a algo más amplio por la medición del encabezado: los otros seis tags
