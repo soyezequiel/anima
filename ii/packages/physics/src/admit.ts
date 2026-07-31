@@ -239,6 +239,11 @@ export type Codigo =
   | 'partes-fuera-de-cota'
   | 'juntas-fuera-de-cota'
   | 'junta-reflexiva'
+  // regla 4 — la OBRA contra el plano (tramo F). Son dos y no una porque son dos
+  // fracasos distintos: la obra puede estar mal ATADA aunque cada pieza sirva, y
+  // puede estar bien atada con la pieza equivocada adentro.
+  | 'obra-no-es-el-plano'
+  | 'pieza-no-cumple'
   // regla 5 — ciclos
   | 'ciclo-rentable'
   | 'ciclo-con-aporte'

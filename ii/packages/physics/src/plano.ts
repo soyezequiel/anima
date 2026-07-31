@@ -36,7 +36,8 @@
 // dos partidas comparten el plano sin compartir mundo — que es lo que hace
 // posible la herencia del Hito 10.
 
-import { MAX_ASSEMBLY_DEPTH, MAX_JOINTS, MAX_PARTS } from './body.js'
+import { MAX_ASSEMBLY_DEPTH, MAX_JOINTS, MAX_PARTS, qualityOf } from './body.js'
+import type { Body, Part } from './body.js'
 import { specOf } from './quality.js'
 import type { QualityId } from './quality.js'
 import type { QualityTest } from './process.js'
@@ -530,6 +531,292 @@ function sellar(s: string): BlueprintRevision {
   }
   const hex = (a >>> 0).toString(16).padStart(8, '0') + (b >>> 0).toString(16).padStart(8, '0')
   return hex as BlueprintRevision
+}
+
+// ─── LA OBRA CONTRA EL PLANO: ¿esto que se armó ES ese plano? ───────────────
+//
+// Tramo F, punto F1 del criterio. Hasta acá el plano se podía definir y una obra
+// se podía armar, y **nadie comparaba las dos cosas**. Sin esta función,
+// «construyó» quiere decir «no explotó»: una obra con las piezas correctas mal
+// atadas, o bien atada con la pieza equivocada adentro, pasaba igual.
+//
+// ─── POR QUÉ LA ASIGNACIÓN VIENE DE AFUERA ──────────────────────────────────
+//
+// Porque una obra armada **no sabe qué rol es cada parte**. `Part` guarda
+// sustancia, masa y cualidades; el nombre `costilla-a` no viaja adentro del
+// cuerpo y no puede viajar, porque entonces el punto 12 se caería por el otro
+// lado —habría dónde escribir un nombre—. Quien armó la obra sí lo sabe, así que
+// lo declara y esta puerta lo verifica. La afirmación que se juzga no es «esta
+// obra es un plano» sino «esta obra es ESTE plano, con ESTA correspondencia».
+//
+// ─── POR QUÉ EL CUERPO «COMO ENTRÓ», Y NO LA PARTE ──────────────────────────
+//
+// Porque el `pide` de un rol habla de **un cuerpo**, y una parte de un ensamble
+// ya no es un cuerpo. Reconstituirla como cuerpo de una sola parte da el número
+// correcto para lo intensivo —`rigidity`, `flexibility`, `tensile` salen de la
+// sustancia— y el número EQUIVOCADO para lo derivado de la geometría: `reach`
+// pasa por `SLENDERNESS[form]` y el `form` se pierde al unir, y `freeStrandEnds`
+// depende de las juntas, que la parte suelta no tiene.
+//
+// Así que se pide el cuerpo tal como entró. Quien construye lo tiene en la mano
+// por definición, y con él la respuesta es exacta en vez de aproximada. El precio
+// —hay que guardarlos— se paga una vez; el de una cualidad derivada mal medida se
+// paga en un veredicto que dice que sí y no era.
+
+/** Qué parte de la obra terminó siendo cada rol, y con qué cuerpo se llenó. */
+export interface AsignacionDeRol {
+  readonly rol: string
+  /** El índice de parte que ocupa en la obra. */
+  readonly parte: number
+  /** El cuerpo tal como se eligió, ANTES de unirlo. Ahí el `pide` es exacto. */
+  readonly comoEntro: Body
+}
+
+/**
+ * ¿ESTA OBRA ES ESTE PLANO? Tres afirmaciones, y ninguna sobra.
+ *
+ * Las tres fallan distinto y por eso se miden las tres: la cuenta de piezas
+ * atrapa la obra a medio armar, la topología atrapa la obra bien surtida y mal
+ * atada, y el `pide` atrapa la obra bien atada con junco donde iba tendón.
+ */
+export function realizaElPlano(
+  obra: Body,
+  def: BlueprintDefinition,
+  asignacion: readonly AsignacionDeRol[],
+  phys: Physics,
+): Verdict {
+  const out: Razon[] = []
+  const puesta = (codigo: Codigo, mensaje: string, cita: Cita = {}): void => {
+    out.push({ regla: 4, codigo, mensaje, ...cita })
+  }
+
+  // El plano sellado contra otra física promete otra cosa: `rigidity >= 0,5` con
+  // otro rango es otra frase. Es la mitad del punto 9 que le toca al plano, y acá
+  // se vuelve a mirar porque una obra puede armarse mucho después de definirse.
+  if (def.physicsVersion !== phys.version) {
+    puesta(
+      'version-de-fisica',
+      `el plano esta sellado contra la fisica ${String(def.physicsVersion)} y esta es la ${String(phys.version)}`,
+      { encontrado: def.physicsVersion, cota: phys.version },
+    )
+    return { ok: false, razones: out, advertencias: [] }
+  }
+
+  const piezas = piezasDe({ parts: def.parts, joints: def.joints })
+  const parteDe = new Map<string, number>()
+  const rolDe = new Map<number, string>()
+  for (const a of asignacion) {
+    if (!piezas.has(a.rol)) {
+      puesta('obra-no-es-el-plano', `la asignacion nombra el rol «${a.rol}», que el plano no deja como pieza`, {
+        rol: a.rol,
+      })
+      continue
+    }
+    if (parteDe.has(a.rol)) {
+      puesta('obra-no-es-el-plano', `el rol «${a.rol}» esta asignado dos veces`, { rol: a.rol })
+      continue
+    }
+    if (rolDe.has(a.parte)) {
+      puesta('obra-no-es-el-plano', `la parte ${String(a.parte)} de la obra tiene dos roles`, { rol: a.rol })
+      continue
+    }
+    if (a.parte < 0 || a.parte >= obra.parts.length) {
+      puesta('obra-no-es-el-plano', `el rol «${a.rol}» apunta a la parte ${String(a.parte)}, que la obra no tiene`, {
+        rol: a.rol,
+        encontrado: a.parte,
+        cota: obra.parts.length - 1,
+      })
+      continue
+    }
+    parteDe.set(a.rol, a.parte)
+    rolDe.set(a.parte, a.rol)
+  }
+
+  for (const p of piezas) {
+    if (!parteDe.has(p)) {
+      puesta('obra-no-es-el-plano', `el plano pide la pieza «${p}» y la asignacion no dice donde quedo`, { rol: p })
+    }
+  }
+
+  // (1) LA CUENTA. Una obra a medio armar tiene menos partes que piezas el plano,
+  //     y una con materia de más las tiene de sobra.
+  if (obra.parts.length !== piezas.size) {
+    puesta(
+      'obra-no-es-el-plano',
+      `la obra tiene ${String(obra.parts.length)} partes y el plano declara ${String(piezas.size)} piezas`,
+      { encontrado: obra.parts.length, cota: piezas.size },
+    )
+  }
+
+  if (out.length > 0) return { ok: false, razones: out, advertencias: [] }
+
+  // (2) LA TOPOLOGÍA, dicha en roles. Es lo que el tramo C·bis dejó como el
+  //     hallazgo filoso: `unir` no obedece qué se ata con qué, así que el orden
+  //     de las uniones puede dar una obra con las piezas justas y otra forma.
+  const enLaObra = new Set(obra.joints.map((j) => claveDeArista(rolDe.get(j.a) ?? '?', rolDe.get(j.b) ?? '?')))
+  const enElPlano = new Set(def.joints.map((j) => claveDeArista(j.a, j.b)))
+  for (const clave of enElPlano) {
+    if (!enLaObra.has(clave)) puesta('obra-no-es-el-plano', `el plano ata «${clave}» y la obra no`)
+  }
+  for (const clave of enLaObra) {
+    if (!enElPlano.has(clave)) puesta('obra-no-es-el-plano', `la obra ata «${clave}» y el plano no lo pide`)
+  }
+
+  // (3) EL `pide` DE CADA ROL, contra el cuerpo tal como entró — y contra la
+  //     parte que quedó, para que nadie declare un cuerpo que no es el que puso.
+  const pideDe = new Map(def.parts.map((p) => [p.rol, p.pide]))
+  for (const a of asignacion) {
+    const parte = obra.parts[a.parte]
+    if (parte === undefined) continue
+    if (!mismaMateria(a.comoEntro, parte)) {
+      puesta(
+        'obra-no-es-el-plano',
+        `el rol «${a.rol}» declara un cuerpo que no es el que quedo en la parte ${String(a.parte)}`,
+        { rol: a.rol },
+      )
+      continue
+    }
+    for (const t of pideDe.get(a.rol) ?? []) {
+      const medido = qualityOf(a.comoEntro, t.q, phys)
+      if (cumple(medido, t)) continue
+      puesta(
+        'pieza-no-cumple',
+        `el rol «${a.rol}» pide «${t.q} ${t.op} ${numeroCanonico(t.v)}» y el cuerpo que se puso mide ${numeroCanonico(medido)}`,
+        { rol: a.rol, q: t.q, encontrado: medido, cota: t.v },
+      )
+    }
+  }
+
+  return { ok: out.length === 0, razones: out, advertencias: [] }
+}
+
+/**
+ * El cuerpo que se declara y la parte que quedó son la misma materia.
+ *
+ * Un cuerpo de UNA parte, con la misma sustancia y la misma masa. Sin esto, la
+ * asignación es una promesa: se podría declarar cualquier cuerpo que cumpla el
+ * `pide` y la obra estar hecha de otra cosa, y el veredicto daría que sí.
+ */
+function mismaMateria(comoEntro: Body, parte: Part): boolean {
+  if (comoEntro.parts.length !== 1) return false
+  const p = comoEntro.parts[0]
+  return p !== undefined && p.substance === parte.substance && p.mass === parte.mass
+}
+
+function cumple(medido: number, t: QualityTest): boolean {
+  switch (t.op) {
+    case '>=':
+      return medido >= t.v
+    case '<=':
+      return medido <= t.v
+    case '>':
+      return medido > t.v
+    case '<':
+      return medido < t.v
+  }
+}
+
+/** La arista sin lado: una junta no distingue `a` de `b`. Ver `BlueprintJoint`. */
+function claveDeArista(a: string, b: string): string {
+  return comparaTexto(a, b) <= 0 ? `${a} ${b}` : `${b} ${a}`
+}
+
+// ─── EL SELLO DE UNA HABILIDAD: construir y usar se juzgan por separado ─────
+//
+// Punto 6 del criterio del gate, y punto F3 del tramo F. La frase del §2 que esto
+// convierte en dato:
+//
+//   > **La definición, la construcción y el uso se juzgan y se promueven por
+//   > separado.** Un plano correcto con un `BuildSkill` roto no promueve la
+//   > construcción; un `BuildSkill` que levanta la obra no acredita que la obra
+//   > sirva. **Construir algo no demuestra que funcione.**
+//
+// De ahí sale que `clase` esté ADENTRO del sello y no al lado: dos sellos con la
+// misma revisión y distinta clase son dos afirmaciones distintas, y la que vale
+// para una no vale para la otra.
+//
+// ─── Y LA OTRA MITAD DEL PUNTO 9 ────────────────────────────────────────────
+//
+// Un sello lleva `physicsVersion` y `selloVigente` lo rechaza contra otra física
+// con **el mismo código que `admit()` ya usa** (`version-de-fisica`). Un código
+// nuevo sería una segunda verdad sobre lo mismo, y el día que alguien filtre por
+// uno se le escaparía el otro.
+//
+// Hay una segunda muerte, y es la que hace que esto no dependa de acordarse: la
+// REVISIÓN del plano lleva la versión de física adentro del hash, así que al subir
+// la versión el mismo plano se define con otra revisión y el sello viejo apunta a
+// un plano que ya no existe. Las dos mitades se miden por separado.
+
+export type ClaseDeSello = 'construir' | 'usar'
+
+/** Que se demostró, sobre qué plano exacto, y contra qué física. */
+export interface SelloDeHabilidad {
+  readonly clase: ClaseDeSello
+  readonly revision: BlueprintRevision
+  readonly physicsVersion: number
+  /**
+   * EL HASH DE LA CORRIDA QUE LO DEMOSTRÓ. Opaco acá a propósito: quién lo
+   * calcula es el juez, y el juez vive arriba —necesita un mundo, y este paquete
+   * es el piso—. Lo que la física fija es que el sello NO VALE SIN ÉL: un sello
+   * sin corrida detrás es una promesa autodeclarada, que es exactamente lo que la
+   * regla de `confianza-autodeclarada` de `admit()` no deja pasar en un proceso.
+   */
+  readonly traza: string
+}
+
+export type Sellado =
+  | { readonly k: 'ok'; readonly sello: SelloDeHabilidad }
+  | { readonly k: 'rechazado'; readonly verdict: Verdict }
+
+/**
+ * SELLA UNA HABILIDAD contra un plano y una física. La única forma de tener uno.
+ *
+ * Rechaza en vez de lanzar, por lo mismo que `definirPlano`: del otro lado hay un
+ * modelo y a un modelo hay que decirle qué corregir.
+ */
+export function sellarHabilidad(
+  clase: ClaseDeSello,
+  def: BlueprintDefinition,
+  traza: string,
+  phys: Physics,
+): Sellado {
+  const razones: Razon[] = []
+  if (def.physicsVersion !== phys.version) {
+    razones.push({
+      regla: 4,
+      codigo: 'version-de-fisica',
+      mensaje: `el plano esta sellado contra la fisica ${String(def.physicsVersion)} y esta es la ${String(phys.version)}`,
+      encontrado: def.physicsVersion,
+      cota: phys.version,
+    })
+  }
+  if (traza.length === 0) {
+    razones.push({
+      regla: 4,
+      codigo: 'confianza-autodeclarada',
+      mensaje: 'no se puede sellar una habilidad sin la traza de la corrida que la demostro',
+    })
+  }
+  if (razones.length > 0) return { k: 'rechazado', verdict: { ok: false, razones, advertencias: [] } }
+  return { k: 'ok', sello: { clase, revision: def.revision, physicsVersion: phys.version, traza } }
+}
+
+/** ¿Este sello sigue valiendo contra esta física? */
+export function selloVigente(s: SelloDeHabilidad, phys: Physics): Verdict {
+  if (s.physicsVersion === phys.version) return { ok: true, razones: [], advertencias: [] }
+  return {
+    ok: false,
+    razones: [
+      {
+        regla: 4,
+        codigo: 'version-de-fisica',
+        mensaje: `el sello de ${s.clase} esta contra la fisica ${String(s.physicsVersion)} y esta es la ${String(phys.version)}`,
+        encontrado: s.physicsVersion,
+        cota: phys.version,
+      },
+    ],
+    advertencias: [],
+  }
 }
 
 // ─── Tipos auxiliares ───────────────────────────────────────────────────────

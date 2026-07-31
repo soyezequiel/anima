@@ -467,6 +467,52 @@ estado.
 
 ---
 
+### El tramo F: construir y usar, separados y sellados — EL CRITERIO
+
+> **Escrito ANTES del código**, que es la regla del proyecto. Lo que sigue es lo
+> que hay que demostrar; abajo de cada línea va después dónde se mide.
+
+Cierra los puntos **3**, **6** y **la otra mitad del 9**. El usuario lo adelantó
+a la fragua del Hito 8 con los precios delante.
+
+**Lo que YA se midió, y de acá sale la forma** (`physics/tests/el-orden-de-las-uniones-realiza-el-plano.test.ts`,
+diez bloques): un orden de uniones **sí** realiza un árbol cualquiera, y lo
+encuentra una regla de once líneas —elegir raíz, armar el subárbol de cada hijo,
+atar el hijo al padre—. No hace falta buscar. Y hay una cota que el constructor
+va a chocar: **una cadena de cinco piezas no se puede armar** aunque cinco entren
+de sobra en `MAX_PARTS`, porque el camino mide 4 y el techo es 3.
+
+#### Las seis cosas que hay que demostrar
+
+| # | qué | por qué no alcanza con menos |
+|---|---|---|
+| F1 | **`realizaElPlano(obra, def, asignación, phys)`**: dada una obra armada y qué pieza es cada rol, el juez dice si esa obra ES ese plano | sin esto, «construyó» quiere decir «no explotó». Un cuerpo con las piezas correctas mal atadas pasaría |
+| F2 | el veredicto mira **las tres cosas**: cuántas piezas, la **topología** en roles, y que cada pieza **cumpla su `pide`** | cualquiera de las tres sola se satisface con una obra equivocada |
+| F3 | **`SelloDeHabilidad`** lleva `clase`, `revision` y `physicsVersion`, y `selloVigente` lo rechaza contra otra física con el código `version-de-fisica` que `admit()` ya usa | es la otra mitad del punto 9. Un código nuevo sería una segunda verdad sobre lo mismo |
+| F4 | **construir y usar se sellan por SEPARADO**, y el caso que lo prueba es el asimétrico: **una obra bien construida cuyo uso NO se demuestra** publica capacidad de construir y ninguna de usar | es literalmente el punto 6. «Construir algo no demuestra que funcione» |
+| F5 | los sellos **se publican como `CatalogCapability`** y el planificador las ve por `esquemasDe` | es el punto 3, la mitad que falta: hoy cumple para esquemas y no para planos |
+| F6 | subir `physicsVersion` **mata las dos capacidades a la vez**, y el `catalogEpoch` se mueve | un sello que sobrevive a su física es un plan que promete contra números que ya no significan lo mismo |
+
+#### Y las dos habilidades, escritas a mano
+
+`construir` y `usar` entran como **innatas 16 y 17**, en el mismo TypeScript que
+va a escribir el modelo, y se corren contra el `mundito` como las otras quince:
+prueban que se puedan **expresar y ejecutar**, no que funcionen. Que FUNCIONEN se
+prueba en el mundo de verdad, y eso es el vertical de abajo.
+
+**`construir` no puede tener adentro ninguna forma concreta.** Recibe un
+`BlueprintDefinition` y nada más; si hubiera un caso especial para una obra, el
+punto 12 se cae y con él el gate entero.
+
+#### El vertical, en el mundo de verdad
+
+Una sola partida, sin arneses: se define un plano, se arma **con intenciones del
+mundo**, `realizaElPlano` lo confirma, se sella la construcción; se despliega, el
+mundo corre solo, retiene, y recién ahí se sella el uso. Las dos capacidades
+entran al catálogo y el planificador las ve.
+
+---
+
 ## 5 · Lo que ya existe y lo que falta, verificado contra el código
 
 Medido sobre el árbol de la rama `anima-2`, leyendo las fuentes. Sirve para que
