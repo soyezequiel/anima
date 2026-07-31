@@ -125,3 +125,57 @@ describe('punto 12 del Gate 5→6: ningún nombre especial en producción', () =
     expect(prohibidasEn(soloCodigo("const x = 'fish-trap'"))).toContain('fish-trap')
   })
 })
+
+// ─── EL OTRO GUARDIÁN, QUE VIAJA EN EL MISMO BARRIDO ────────────────────────
+//
+// No es del punto 12 y está acá por una razón sola: `fuentesDeProduccion()` ya
+// enumera los nueve `src/`, y duplicar veinte líneas de recorrido para tener dos
+// barridos que pueden divergir es peor que compartir el archivo.
+//
+// ─── EL BUG QUE LO PIDIÓ, MEDIDO ────────────────────────────────────────────
+//
+// `physics/src/plano.ts` tenía SEIS bytes NUL crudos adentro de tres template
+// literals. Eran los separadores de `claveDeJunta` y de `comparaClausulas`, o sea
+// que uno de ellos entra en `textoCanonico`, o sea en la REVISIÓN de todo plano.
+//
+// Lo que hace caro a este modo de falla no es que estuviera mal —un NUL de
+// separador es *más* correcto que un espacio, porque un rol es texto libre y
+// puede tener espacios— sino que **era invisible**. El archivo se lee como si
+// dijera espacio, `tsc` no dice nada, los tests dan verde, y `grep` contesta
+// «Binary file matches» en vez de la línea. Un separador que no se ve no se puede
+// revisar, y de ese hash cuelga la identidad de cada plano que la fragua produzca.
+//
+// La regla que deja: **un carácter de control en una fuente va escrito como
+// escape**. Este guardián la hace cumplir.
+
+/** Los de control menos los tres que un archivo de texto usa: tab, LF y CR. */
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g
+
+describe('ningún carácter de control crudo en las fuentes de producción', () => {
+  const FUENTES = fuentesDeProduccion()
+
+  it('los nueve `src/` no tienen bytes invisibles adentro del código', () => {
+    const infracciones: string[] = []
+    for (const f of FUENTES) {
+      const texto = readFileSync(f, 'utf8')
+      const halladas = texto.match(CONTROL)
+      if (halladas === null) continue
+      // La línea, para que el mensaje sirva: un archivo entero no se busca a ojo.
+      const linea = texto.slice(0, texto.search(CONTROL)).split('\n').length
+      const codigos = [...new Set(halladas.map((c) => `U+${c.charCodeAt(0).toString(16).padStart(4, '0')}`))]
+      infracciones.push(`${f.slice(PAQUETES.length)}:${String(linea)} — ${String(halladas.length)} × ${codigos.join(' ')}`)
+    }
+    expect(infracciones).toEqual([])
+  })
+
+  it('y sabe encontrar lo que busca: un NUL adentro de un literal se ve', () => {
+    // El control. Sin esto, el bloque de arriba pasaría igual si el regex
+    // estuviera mal escrito — que es como el NUL sobrevivió en primer lugar.
+    expect('const s = `${a}\u0000${b}`'.match(CONTROL)).toHaveLength(1)
+    // Y no se come lo legítimo: tab, salto de línea y retorno de carro.
+    expect('const s = 1\n\tconst t = 2\r\n'.match(CONTROL)).toBeNull()
+    // El escape ESCRITO es texto normal y no infringe nada: es la forma correcta.
+    expect('const s = `${a}\\u0000${b}`'.match(CONTROL)).toBeNull()
+  })
+})

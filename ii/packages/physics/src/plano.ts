@@ -451,13 +451,28 @@ function canonizarJuntas(js: readonly BlueprintJoint[]): readonly BlueprintJoint
   return out
 }
 
+/**
+ * LA CLAVE DE UNA JUNTA, y el separador es un NUL A PROPÓSITO.
+ *
+ * Un rol es TEXTO LIBRE —está dicho en `BlueprintPart.rol`— así que puede llevar
+ * espacios adentro. Con un espacio de separador, la junta «a b»+«c» y la junta
+ * «a»+«b c» dan la misma clave; y como esta clave entra en `textoCanonico`, o sea
+ * en la REVISIÓN, dos planos distintos compartirían sello. Es exactamente el
+ * error que el encabezado de la forma canónica dice que no se puede cometer: un
+ * duplicado registrado dos veces cuesta memoria, dos planos colapsando en la
+ * misma revisión cuesta correctitud y no hay forma de notarlo después.
+ *
+ * Va escrito como escape y no como el byte crudo porque **estuvo escrito como el
+ * byte crudo** —invisible en el archivo— y así se descubrió, con un barrido de
+ * NULs sobre los nueve `src/`. Un separador que no se ve no se puede revisar.
+ */
 function claveDeJunta(j: BlueprintJoint): string {
-  return `${j.a} ${j.b} ${j.binder}`
+  return `${j.a}\u0000${j.b}\u0000${j.binder}`
 }
 
 function comparaClausulas(x: QualityTest, y: QualityTest): number {
-  const a = `${x.q} ${x.op} ${numeroCanonico(x.v)}`
-  const b = `${y.q} ${y.op} ${numeroCanonico(y.v)}`
+  const a = `${x.q}\u0000${x.op}\u0000${numeroCanonico(x.v)}`
+  const b = `${y.q}\u0000${y.op}\u0000${numeroCanonico(y.v)}`
   return comparaTexto(a, b)
 }
 
