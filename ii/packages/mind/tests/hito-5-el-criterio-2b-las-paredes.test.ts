@@ -134,8 +134,9 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
         `= ${String(pozos)} bancos de peces + ${String(resto.length)} cuerpos, ` +
         `de los cuales ${String(delDios.length)} los puso EL MUNDO\n` +
         `  la caña que ella ató, con materia del dios: ${cañas.join(', ')}\n` +
-        `  MADERA: el decreto pone ${String(porSustancia.get('madera') ?? 0)} en los 9 chunks y a los 400 ` +
-        `ticks quedan ${String(delDios.filter((s) => s.includes('[madera]')).length)} sueltas — se la comió la caña\n` +
+        `  MADERA: el decreto pone ${String(porSustancia.get('madera') ?? 0)} en los 9 chunks (la caña se la come) ` +
+        `y a los 400 ticks hay ${String(delDios.filter((s) => s.includes('[madera]')).length)} sueltas en el piso, ` +
+        `traídas por lo que abrió caminando\n` +
         `      ${resto.slice(0, 12).join('\n      ')}\n      …\n`,
     );
 
@@ -145,22 +146,28 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // chunks pisó la criatura en 400 ticks, que es cosa de la mente.
     expect(delDios.length).toBeGreaterThanOrEqual(decretadas);
     expect(cañas.length).toBe(1);
-    // ─── Y LA QUE IMPORTABA PARA EL FUEGO, QUE ES LA NOTICIA MALA ───────────
+    // ─── Y LA QUE IMPORTABA PARA EL FUEGO, QUE CAMBIÓ DE SIGNO ──────────────
     //
-    // Acá se afirmaba «entre lo que el mundo puso hay MADERA». **Es falso a los
-    // 400 ticks, y no porque el mundo no la ponga: porque ella se la gastó.** De
-    // las 62 sueltas de los 9 chunks, madera hay UNA —`suelta:-6:-7:0`, 2,3280
-    // kg— y es exactamente la que la mente ata a la caña en el tick 23. Después
-    // de eso, en todo lo que abrió caminando no aparece otra.
+    // Acá se afirmaba `maderaEnElPiso === 0` con este diagnóstico: de las 62
+    // sueltas de los 9 chunks, madera hay UNA —2,3280 kg—, la mente se la come
+    // atando la caña en el tick 23, y en todo lo que abría caminando no aparecía
+    // otra. **Era cierto, y la mitad del porqué era el paseo**: el `explore` del
+    // mundo caminaba un ciclo cerrado de 8 celdas, así que «lo que abrió
+    // caminando» eran siempre los mismos chunks.
     //
-    // Se afirman las DOS mitades, porque juntas son el diagnóstico: el decreto
-    // TIENE madera, y a los 400 ticks NO QUEDA NINGUNA suelta. Lo que hay que
-    // decidir arriba es si un bioma que siembra una sola madera por chunk es un
-    // bioma donde se puede hacer fuego — y eso es del oráculo (ver el 11).
+    // Con el rumbo arreglado (dura 16 ticks, número 35 de la sección 5 de
+    // `como-se-trabaja.md`) la única vuelta de deambular que el ancla permite
+    // abre chunks NUEVOS, y a los 400 ticks hay madera del dios en el piso otra
+    // vez. No se clava el cuánto —depende del camino, o sea de la mente— sino
+    // las dos mitades que son el diagnóstico nuevo: el decreto de los 9 chunks
+    // sigue teniendo UNA madera (la que la caña se come), y caminar derecho
+    // TRAE MÁS. La pared (7) del fuego dejó de ser «no hay leña alrededor» y
+    // pasó a ser «la leña está a una caminata» — que es del planificador, no
+    // del oráculo.
     const maderaDecretada = porSustancia.get('madera') ?? 0;
     const maderaEnElPiso = delDios.filter((s) => s.includes('[madera]')).length;
     expect(maderaDecretada).toBeGreaterThan(0);
-    expect(maderaEnElPiso).toBe(0);
+    expect(maderaEnElPiso).toBeGreaterThan(0);
     MEDIDO.set(
       'la leña',
       `el dios decreta ${String(decretadas)} cuerpos sueltos en los 9 chunks de la parada y \`stepWorld\` ` +

@@ -675,7 +675,17 @@ describe('el banco de la escalera', () => {
     // aflojo: la unica que se movio esta en el `it.fails` de abajo.
   }, 600_000)
 
-  it.fails('EL PISO DE D1 SE MOVIÓ · 74,0% → 69,4%, y lo movió el mundo, no la escalera', () => {
+  it('EL PISO DE D1 VOLVIÓ · 69,4% → 85,9%: el ancla del fondo convierte paseo en `seguir`', () => {
+    // ─── ERA UN `it.fails` Y LO CERRÓ EL ANCLA, no un ajuste del umbral ──────
+    //
+    // La fila «HOY» de la tabla de abajo medía 69,4% y el piso pide 0,7: quedó
+    // rojo con el número al lado, como corresponde. El ancla del fondo
+    // (`hayAncla` + `yaDeambulePor` en `src/escalera.ts`) lo dio vuelta SIN tocar
+    // el 0,7: la criatura de la orilla, con el pozo a la vista, deambula una vez
+    // por meta y después espera — y una espera de 8 ticks son 7 ticks de `seguir`
+    // por cada decisión de D5. Medido hoy: **D1 85,9% · D5 13,9%** (era 69,4% y
+    // 30,4%). El paseo que D5 le robaba a D1 era exactamente la diferencia.
+    //
     // ─── QUÉ DECÍA ESTE CRITERIO Y POR QUÉ IMPORTA ─────────────────────────
     //
     // «El grueso NO cae en D4. Si esto se cayera, la mente costaría 8 ms por
@@ -718,13 +728,13 @@ describe('el banco de la escalera', () => {
     // otras cosas y decide de cero un poco más seguido (D5 sube lo mismo que D1
     // baja: +4,5 contra −4,6).
     //
-    // ─── POR QUÉ VA EN ROJO Y NO SE AFLOJA EL UMBRAL ───────────────────────
+    // ─── EL UMBRAL NUNCA SE TOCÓ, y ésa es la moraleja ─────────────────────
     //
-    // Porque 0,7 era «un piso puesto abajo de las dos escenas medidas» y hoy una de
-    // las dos está abajo. Bajarlo a 0,69 para que dé verde sería exactamente
-    // «ablandar el criterio por cuenta propia», que es lo que este proyecto tiene
-    // escrito que no se hace. Queda rojo con el número al lado hasta que se decida
-    // si el piso se re-ancla o si el reparto vuelve.
+    // Cuando esto midió 69,4% la salida barata era bajar el piso a 0,69 «porque
+    // lo movió el mundo». No se hizo, quedó rojo con el número al lado, y el
+    // rojo hizo su trabajo: señaló una conducta cara de verdad —el fondo
+    // paseando— que el ancla arregló por diseño. Un umbral que se afloja no
+    // señala nada nunca.
     const orilla = correr(laEscenaDelDocumento(), 'ana', TICKS)
     expect(orilla.peldanos.D1 / orilla.ticks).toBeGreaterThan(0.7)
   }, 600_000)

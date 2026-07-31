@@ -5,9 +5,11 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: 2026-07-30, al cerrar el **tramo N** (la aritmética del
-primer fuego: qué se puede encender y qué se puede comer, medido). El resultado
-que manda está en el **punto 0 de la sección 6** y es una decisión del usuario.
+Última actualización: 2026-07-30, al cerrar el **tramo Ñ** (el ancla del fondo y
+el rumbo del `explore`: el punto 9 de la sección 6, cerrado en dos mitades). El
+resultado que manda sigue siendo el **punto 0 de la sección 6** —el Hito 5 cerró
+con 3 de 6 y 3 aceptados—, y el tramo Ñ acercó la canónica al techo: muere en el
+18.150 de 20.000, ya sin gastar nada en pasearse.
 
 ---
 
@@ -146,8 +148,8 @@ tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 | la cadena de la caña | **CUMPLE** | 7 eslabones en el plan, **6 vuelos** contra el mundo (el `ir` al pozo lo poda el tramo L: ya estaba al lado): tira la caña en el tick **48**, el pescado entra a la mano en el **108** |
 | `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,947 ms/tick contra una ventana de 50) — y la partida termina con **120 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
 | p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE — ACEPTADO por el usuario; con el tanque canónico es IMPOSIBLE, ver el punto 0 de la sección 6** | el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **6244** de 20.000 con **0 bocados** (era el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
-| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE — ACEPTADO por el usuario · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **10/20, 10/20 y 8/20** |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE — ACEPTADO por el usuario; con el tanque canónico es IMPOSIBLE, ver el punto 0 de la sección 6** | el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **18.150** de 20.000 con **0 bocados**, pegada al techo aritmético de quieta (18.235) — el ancla del fondo (punto 9) le sacó el paseo, así que ya no se muere de caminar: se muere del fósforo, puro (era el 6244, y antes el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
+| emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE — ACEPTADO por el usuario · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **8/20, 8/20 y 7/20** (con el ancla del punto 9; era 10/20, 10/20 y 8/20: la que espera al lado del pozo pisa menos situaciones de fuego) |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
 
@@ -480,21 +482,23 @@ decisión sobre la cota del mundo.
    `it.fails` con la medición nueva en `perceive/tests/ataque-a-la-costura.test.ts`.
 8. **68 `it.fails`**, repartidos: mind 21, world 15, physics 13, perceive 7, juez 5,
    plan 5, oracle 1, skills 1. Cada uno tiene su porqué medido al lado.
-9. **`explorar` sigue caminando un ciclo cerrado de 8 celdas** — la 1 de 15 innatas
-   que no logra su contrato. **Y NO SE ARREGLA EN `intencionExplorar`: se probó, anda,
-   y rompe dos logros** (número 35 de la sección 5 de `como-se-trabaja.md`).
-   - la reparación medida —rumbo que dura 16 ticks, sacado de los bits ALTOS de una
-     avalancha— lleva la exploración de 3 celdas de distancia y 8 distintas en 100
-     ticks a **44 y 96**, y mueve sólo el tercero de los cuatro hashes del Hito 2;
-   - pero el diagnóstico 10 pasa de llegar viva a los 20.000 a **morir en el 9482**,
-     y la contraprueba del eslabón regalado a morir en el **18.971**;
-   - y el motivo NO es que explorar se encarezca —cobra `COSTO_POR_CELDA` igual dando
-     vueltas que caminando derecho— sino **el viaje de vuelta**: la criatura se aleja
-     y tiene que volver al pozo y al fuego (`ir(pozo:-12:-3)` ×31 contra una guarda
-     de 10). **El ciclo cerrado era un ancla.**
-   - o sea que el arreglo es de `@anima/mind` y no del mundo: **que no explore cuando
-     tiene una meta al alcance**. Hacer las dos cosas en el mismo tramo es lo que
-     falta, y el orden importa: primero la mente, después el mundo.
+9. ~~`explorar` sigue caminando un ciclo cerrado de 8 celdas~~ **CERRADO en dos
+   mitades, mente primero y mundo después** (número 35 de la sección 5 de
+   `como-se-trabaja.md`, que tiene la historia entera con el intento revertido en
+   el medio). El ancla del fondo vive en `mind/src/escalera.ts` (`hayAncla` +
+   `yaDeambulePor`: deambular es UNA herramienta por meta, no un bucle) y el rumbo
+   del mundo dura 16 ticks y sale de los bits altos de una avalancha. Lo que
+   compró, todo medido: `explorar` cierra su contrato (44 celdas de distancia y 96
+   distintas en 100 ticks, era 3 y 8; **15 de 15 innatas**), la escena buena con
+   tres manos **cumple el criterio (2) por primera vez con la cadena de verdad**,
+   la pendiente del gasto cayó de 2,89× a 1,02× el vivir, y el piso de D1 volvió
+   (69,4% → 85,9%). Y el banco caro del juez se corrió entero con la conducta
+   nueva y dio **exit 0, 121/121, SIN re-clavar nada** — sus tests afirmaban
+   mecanismos y no números sueltos—: la canónica sube de 37,9% a **52,2%** del
+   presupuesto (muere en el 18.150, pegada al techo de quieta de 18.235: ya no se
+   muere de caminar, se muere del fósforo), el control del tanque lleno sube de
+   91,4% a **100%**, y el veredicto de la emergencia queda igual: **0 de 9 contra
+   2 de 9**, con la situación canónica en 8/20, 8/20 y 7/20.
 
 ### Lo que se cerró en el tramo L, para que nadie lo vuelva a buscar
 

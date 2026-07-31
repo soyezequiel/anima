@@ -1991,6 +1991,56 @@ function huellaDeTexto(s: string): number {
   return h
 }
 
+/**
+ * Cuántos ticks dura un rumbo antes de que la criatura doble.
+ *
+ * No es un número redondo elegido a ojo: **un rumbo tiene que durar lo que tarda
+ * en sacarte del radio que ya estás viendo.** `explorar` barre un disco de radio
+ * 6 alrededor (`skills/src/innatas/explorar.ts`), o sea 12 celdas de diámetro;
+ * con una celda por tick, doblar antes de 12 ticks es volver a mirar lo mismo.
+ * 16 es el primer múltiplo de dos que pasa ese piso.
+ */
+const TICKS_POR_RUMBO = 16
+
+/**
+ * Revuelve dos enteros en uno. Avalancha entera —xor, desplazamiento y `imul`—,
+ * la misma que `oracle/src/bioma.ts` usa para el ruido de valor, y por la misma
+ * razón: todas sus operaciones tienen semántica exacta en ECMAScript.
+ *
+ * ─── POR QUÉ HACE FALTA, Y ES EL MISMO BUG DOS VECES ────────────────────────
+ *
+ * El rumbo de `explore` salía de `(tick + huellaDeTexto(id)) % 8`, y la suma de
+ * los ocho rumbos es exactamente (0,0): el índice avanzaba de a uno por tick, así
+ * que cada ocho ticks la criatura volvía al punto de partida. Ocho celdas, y el
+ * neto cero por muchos `maxTicks` que se le dieran.
+ *
+ * Y la reparación obvia —darle persistencia al rumbo con
+ * `huellaDeTexto(`${id}#${bloque}`) % 8`— **repite el bug con otra cara**, cosa
+ * que se midió antes de escribirla. FNV-1a termina en `h = (h ^ c) · primo`, así
+ * que cambiar sólo el ÚLTIMO carácter por los dígitos 0..7 deja los tres bits
+ * BAJOS recorriendo una permutación de 0..7: ocho bloques consecutivos vuelven a
+ * dar los ocho rumbos y vuelven a sumar cero. Se vio en que los 403 actores del
+ * barrido daban todos el mismo número, y en que con bloques de 50 ticks los 400
+ * ticks terminaban en el origen.
+ *
+ * La lección, que vale más que este arreglo: **los bits bajos de un hash sobre
+ * sufijos consecutivos no son azar, son una cuenta.** Acá se revuelve el bloque
+ * con el id y se leen los tres bits ALTOS.
+ *
+ * Y LA OTRA MITAD DE LA HISTORIA está en `@anima/mind`: la primera vez que este
+ * arreglo se aplicó, dos logros del criterio se cayeron —el ciclo cerrado hacía
+ * de ANCLA accidental y la criatura, al explorar de verdad, pagaba el viaje de
+ * vuelta al pozo—. Por eso el ancla es hoy una decisión de la escalera
+ * (`hayAncla` en `mind/src/escalera.ts`) y este arreglo recién pudo entrar
+ * después de aquélla. Número 35 de la sección 5 de `como-se-trabaja.md`.
+ */
+function revuelto(a: number, b: number): number {
+  let h = a ^ Math.imul(b | 0, 0x27d4eb2d)
+  h = Math.imul(h ^ (h >>> 15), 0x85ebca6b)
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35)
+  return (h ^ (h >>> 16)) >>> 0
+}
+
 function intencionExplorar(d: Borrador, a: Actor, i: Intent & { k: 'explore' }): void {
   const mio = cuerpoDe(d, a)
   if (mio === undefined) {
@@ -2001,7 +2051,12 @@ function intencionExplorar(d: Borrador, a: Actor, i: Intent & { k: 'explore' }):
     d.events.push({ k: 'espero', by: a.id })
     return
   }
-  const r = OCHO_RUMBOS[(d.tick + huellaDeTexto(a.id)) % OCHO_RUMBOS.length]!
+  // El rumbo DURA `TICKS_POR_RUMBO` y sale de los bits altos de la avalancha.
+  // Las dos mitades importan y ninguna alcanza sola: sin persistencia no se sale
+  // del radio que ya se ve, y sin la avalancha los bloques consecutivos vuelven a
+  // recorrer los ocho rumbos y a sumar cero (ver `revuelto`).
+  const bloque = Math.floor(d.tick / TICKS_POR_RUMBO)
+  const r = OCHO_RUMBOS[revuelto(huellaDeTexto(a.id), bloque) >>> 29]!
   const destino = { x: mio.at.x + r.x, y: mio.at.y + r.y }
   if (!enRango(destino)) {
     rechazo(d, i, 'fuera-de-rango')

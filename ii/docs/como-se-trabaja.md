@@ -488,6 +488,31 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    que no funcione. Y el arreglo de verdad no es del mundo: es que la mente no
    explore cuando tiene una meta al alcance.
 
+   **(4) RESUELTO EN DOS MITADES, mente primero y mundo después.** El ancla es hoy
+   una decisión de la escalera (`hayAncla` + el cerrojo `yaDeambulePor` en
+   `mind/src/escalera.ts`): con comida o un fuego a la vista y sin meta en curso,
+   el fondo espera; con meta en curso deambula UNA vez por meta —es la herramienta
+   que desbloquea un gap— y si esa vuelta no cambió la respuesta, espera. El
+   cerrojo se limpia cuando un paso de plan aterriza bien (el mundo se movió), y
+   NO con los aterrizajes de fondo: el esperar anclado aterriza bien cada 8 ticks
+   y limpiarlo con eso re-armaría el paseo. **Sin el cerrojo el ancla no salvaba
+   nada, medido: el diagnóstico 10 moría en el 9482 igual**, porque después del
+   primer bocado la meta vive casi siempre.
+
+   Con las dos mitades puestas, lo que se movió (todo medido, `mind` 307/307):
+   - el diagnóstico 10 y la contraprueba del eslabón regalado **vuelven a llegar
+     vivas**, y la escena buena con tres manos pasa de morir en el 5744 a
+     **cumplir el criterio (2)** con 116,7 de aliento de sobra — la primera vez
+     con la cadena de verdad. La no-monotonía de las manos quedó más cruda:
+     viva contra muerta en el 361;
+   - la pendiente del gasto cayó de 2,89× a **1,02×** el costo de vivir (el
+     paseo ERA el 65% del gasto), y el piso de D1 del banco de la escalera pasó
+     de 69,4% —un `it.fails` que nadie ablandó— a **85,9%**;
+   - `explorar` cierra su contrato: 44 celdas de distancia y 96 distintas en
+     100 ticks (era 3 y 8), y las 15 innatas quedan 15/15;
+   - y el diag 7 cambió de signo: caminar derecho TRAE madera a la vista (2
+     sueltas en el piso a los 400 ticks donde antes quedaba 0).
+
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
 apagada (96 y 21 → 0 y 0), la pérdida muda de una suelta (ahora hay evento

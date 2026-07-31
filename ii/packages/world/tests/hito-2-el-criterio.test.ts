@@ -422,14 +422,27 @@ describe('el mismo hash en dos motores de JavaScript — PENDIENTE, y qué falta
     // ahora gasta `0,34 × 10/20` = 0,17 en vez de 0,5. Si alguno de los otros tres
     // se hubiera movido, el cambio no sería el que se declaró.
     //
+    // ─── Y CUÁL SE MOVIÓ AL REPARAR EL RUMBO DE `explore` ──────────────────
+    //
+    // OTRA VEZ SÓLO EL TERCERO, y van cuatro veces que este bloque contesta lo
+    // mismo, que es exactamente para lo que existe. `intencionExplorar` dejó de
+    // elegir el rumbo con `(tick + huella(id)) % 8` —que recorría los ocho rumbos
+    // y sumaba (0,0)— y ahora lo sostiene 16 ticks; ver `revuelto` en
+    // `world/src/step.ts`. Eso mueve DÓNDE terminan las criaturas en diez ticks y
+    // nada más: el mundo inicial se arma igual, el catálogo no cambió, y las
+    // INTENCIONES tampoco —el journal guarda `{k:'explore', maxTicks}` y eso es lo
+    // mismo antes y después—. Que la cadena del journal no se mueva y el estado sí
+    // es la forma más corta de decir que cambió la conducta y no la interfaz.
+    //
     //   el tercero, antes del ADR II-0009: ac45c6b97f3cc082
     //   el tercero, antes del ADR II-0011: 74e1a1910bbf5042
     //   el tercero, con el segundo a 1,0:  7c1eda07e25a1c3c
+    //   el tercero, con el ciclo cerrado:  aed17455a077126a
     const s = partida()
     expect(hashWorldState(s)).toMatchInlineSnapshot(`"be714c54e109f8c5"`)
     expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"37e26e82459ff975"`)
     const tras10 = correr(partida(), 9, 10, 4, 1000)
-    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"aed17455a077126a"`)
+    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"2e0d8d97551f5482"`)
     expect(tras10.journal.chain).toMatchInlineSnapshot(`"63fbe8efeeee7f54"`)
   })
 })

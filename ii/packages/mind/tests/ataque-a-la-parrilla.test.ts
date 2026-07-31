@@ -253,6 +253,12 @@ function correrConMente(w: WorldState, n: number): Corrida {
       if (p.state.actors.has('ana')) ultimo = previo
       else murioEn = t
     }
+    // SE CORTA EN LA MUERTE. Todo lo que esta función devuelve —los vuelos, la
+    // cuenta, el tick de la muerte y el último aliento— queda escrito cuando la
+    // criatura cae; los ticks que siguen mueven el mundo y nadie los lee. En el
+    // bloque de las manos, la de seis muere en el 361 de 20.000 (la de tres,
+    // desde el ancla del fondo, llega viva y corre entera).
+    if (murioEn >= 0) break
   }
   if (abierto !== undefined) vuelos.push({ ...abierto, despues: previo })
   return { vuelos, cuenta, murioEn, alientoFinal: murioEn < 0 ? previo : ultimo }
@@ -848,19 +854,32 @@ describe('4 · lo que cuesta el fuego contra lo que rinde el bocado, en la misma
     expect(dFrota + dEspera + dTraga).toBeLessThan(-500)
   })
 
-  it('20.000 TICKS: un bocado, muere en el 5744, y CON MÁS MANOS MUERE ANTES', () => {
+  it('20.000 TICKS: con tres manos LLEGA VIVA, y con más manos muere en el 361', () => {
     // ─── LA NO-MONOTONÍA, QUE ES LA QUE DELATA EL SIGNO ────────────────────
     //
     // Con tres manos la criatura enciende UNA vez y se queda con el tizón apagado en
     // la mano —`lena1`, 0,024 kg, `rigidity` 0,3, `fuelEnergy` 0—, así que las tres
     // manos quedan tomadas (la caña, el tizón y un pescado crudo) y no puede levantar
     // ninguna de las otras tres leñas de 0,40 kg que siguen en el suelo. Nunca vuelve
-    // a encender, y eso la deja viva hasta el 5744.
+    // a encender.
     //
-    // Con seis manos SÍ puede, enciende tres veces, y se muere en el 574. Un recurso
-    // MÁS le acorta la vida diez veces, y eso no es un bug de la mente: es la cuenta
-    // del bloque de arriba haciéndose visible. Cuando una capacidad extra empeora el
-    // resultado, lo que está mal es el signo de la actividad que habilita.
+    // ─── Y LA DE TRES AHORA LLEGA VIVA, que es el ancla del fondo cobrando ──
+    //
+    // Este título decía «muere en el 5744». De qué se moría estaba medido al lado,
+    // en el 6/6 del criterio: no del fuego sino del PASEO — el fondo deambulaba y
+    // las patas eran el 65% del gasto. Con el ancla (`hayAncla` + `yaDeambulePor`
+    // en `mind/src/escalera.ts`, número 35 de la sección 5) la criatura del tizón
+    // espera al lado de su pozo en vez de pasearse, y el mismo tanque que antes
+    // duraba 5744 ticks ahora cubre los 20.000 con 116,7 de sobra: **la escena
+    // buena cumple el criterio (2) por primera vez con la cadena de verdad**, un
+    // bocado y todo.
+    //
+    // Con seis manos SÍ puede volver a encender, enciende dos veces, y se muere en
+    // el 361. Un recurso MÁS convierte una viva en una muerta, y eso no es un bug
+    // de la mente: es la cuenta del bloque de arriba haciéndose visible. Cuando una
+    // capacidad extra empeora el resultado, lo que está mal es el signo de la
+    // actividad que habilita — y la no-monotonía quedó MÁS cruda que antes, no
+    // menos: era 5744 contra 574, ahora es viva contra 361.
     const filas: string[] = ['manos │ frotar │ poner │ tragar │ murió en │ aliento final']
     const porManos = new Map<number, Corrida>()
     for (const cap of [3, 6]) {
@@ -880,15 +899,17 @@ describe('4 · lo que cuesta el fuego contra lo que rinde el bocado, en la misma
     const tres = porManos.get(3)
     const seis = porManos.get(6)
     if (tres === undefined || seis === undefined) throw new Error('faltó una de las dos corridas')
-    // Con tres manos: cocina UNA vez en veinte mil ticks.
+    // Con tres manos: cocina UNA vez en veinte mil ticks…
     expect(tres.cuenta.get('poner') ?? 0).toBe(1)
     expect((tres.cuenta.get('tragar') ?? 0) + (tres.cuenta.get('comer') ?? 0)).toBe(1)
-    // Y no llega: el criterio (2) sigue sin cumplirse en la escena buena.
-    expect(tres.murioEn).toBeGreaterThan(0)
-    expect(tres.murioEn).toBeLessThan(20_000)
-    // La no-monotonía, que es el hallazgo: más manos, más fuegos, menos vida.
+    // …y LLEGA: anclada, el criterio (2) se cumple en la escena buena.
+    expect(tres.murioEn).toBe(-1)
+    expect(tres.alientoFinal).toBeGreaterThan(100)
+    // La no-monotonía, que es el hallazgo: más manos, más fuegos, y la que podía
+    // volver a encender es la que se muere — adentro del primer 2% de la partida.
     expect(seis.cuenta.get('frotar') ?? 0).toBeGreaterThan(tres.cuenta.get('frotar') ?? 0)
-    expect(seis.murioEn).toBeLessThan(tres.murioEn / 5)
+    expect(seis.murioEn).toBeGreaterThan(0)
+    expect(seis.murioEn).toBeLessThan(20_000 / 50)
   }, 300_000)
 })
 

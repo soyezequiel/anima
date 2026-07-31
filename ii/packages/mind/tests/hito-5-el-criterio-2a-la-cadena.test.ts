@@ -771,38 +771,37 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
         `— salió del agua en 0,25 y se le pudre en la mano\n`,
     );
 
-    // Camina, y por eso gasta de más: la pendiente tiene que estar por ENCIMA del
-    // costo de respirar. Los bordes son anchos a propósito —es reloj de mundo, no
-    // de máquina, pero el largo de cada `explorar` depende de dónde la deje— y lo
-    // que se afirma es el hecho, no el decimal.
+    // ─── LA PENDIENTE VOLVIÓ A 1,0× — Y ESTA VEZ SE SABE QUÉ DEJÓ DE HACER ──
     //
-    // **Y el PISO es lo que caza el bucle**: si algún día la pendiente vuelve a
-    // 1,00× esto se pone rojo, y esa vez hay que preguntar qué dejó de hacer y no
-    // festejar. La versión anterior de este bloque afirmaba exactamente lo
-    // contrario (`>= porTick × 0,99` y `< porTick × 1,3`) y por eso el bucle pasó
-    // en verde.
+    // Este bloque decía «si algún día la pendiente vuelve a 1,00× esto se pone
+    // rojo, y esa vez hay que preguntar qué dejó de hacer y no festejar». Pasó, y
+    // la pregunta tiene respuesta con nombre: **dejó de PASEARSE**, por el ancla
+    // del fondo (`hayAncla` + `yaDeambulePor` en `src/escalera.ts`, número 35 de
+    // la sección 5 de `como-se-trabaja.md`). Con el pescado en la mano y el pozo
+    // a la vista, el fondo deambula UNA vez por meta y después espera anclada;
+    // medido acá: 0,01729/tick contra 0,01700 de sólo vivir, o sea 1,02×.
     //
-    // ─── Y EL TECHO SUBIÓ DE 2,5 A 3,5, que NO es aflojarlo ────────────────
+    // No es el bucle viejo volviendo, y las dos firmas se distinguen: el bucle de
+    // la caña repetía `aplicar(extraccion)` sin caminar (y lo cazan las guardas
+    // de despegues del CRITERIO, `< 10`); el ancla despega `esperar` — la banda
+    // de abajo va acompañada de la afirmación de que la espera EXISTE.
     //
-    // El usuario bajó `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a 0,34 (tramo M), o sea que
-    // **el denominador de esta razón se dividió por 2,94 y lo que gastan las patas
-    // no se movió**. La razón pasó de 1,64× a 2,89× sin que la criatura cambie una
-    // sola decisión: es la misma caminata contra un respirar más barato.
-    //
-    // Por eso, además de la banda, se afirma lo que NO depende de la constante: los
-    // gramos por tick que se van EN PATAS. Ése es el número que mide la conducta, y
-    // el que hay que mirar si algún día esto vuelve a moverse.
-    expect(pendiente).toBeGreaterThan(porTick * 1.3);
-    expect(pendiente).toBeLessThan(porTick * 3.5);
+    // Y la banda vieja (1,3×–3,5×) no se borra de la historia: era la medición
+    // del régimen que pagaba las patas, y es el régimen que el ancla vino a
+    // cortar. Si esto sube de 1,3× de nuevo, lo que volvió es el paseo.
+    expect(pendiente).toBeGreaterThan(porTick * 0.95);
+    expect(pendiente).toBeLessThan(porTick * 1.3);
     const enPatas = pendiente - porTick;
-    expect(enPatas).toBeGreaterThan(0.02);
-    expect(enPatas).toBeLessThan(0.05);
+    expect(enPatas).toBeLessThan(0.005);
+    // La espera anclada existe de verdad en la corrida: no es que no decide nada.
+    const espero = [...r.cuenta].some(([k]) => k.startsWith('esperar'));
+    expect(espero, 'la pendiente es 1,0× pero nadie despegó esperar').toBe(true);
     // Y el pescado sigue ahí, cada vez más podrido, esperando un fuego que no llega.
     expect(podrido).toBeGreaterThan(0.25);
     MEDIDO.set(
       'deambular',
       `gasta ${pendiente.toFixed(5)}/tick contra ${porTick.toFixed(5)} de sólo vivir (${(pendiente / porTick).toFixed(2)}×): ` +
-        `con el pescado en la mano y sin vía al fuego cae a las conductas de fondo, que CAMINAN`,
+        `anclada al pozo, deambula una vez por meta y espera (era 2,89×: el fondo se pagaba en patas)`,
     );
   }, 300_000);
 });

@@ -916,9 +916,20 @@ describe('5. qué más se puede mutar de la vista', () => {
 // ═══ 6. LO QUE SÍ SE REPRODUJO ═══════════════════════════════════════════════
 
 describe('6. los números del tramo, medidos de nuevo', () => {
-  it('el `explore` del mundo recorre OCHO celdas y vuelve al origen: confirmado', () => {
-    // El `it.fails` de `las-quince.test.ts` lo dice y es exacto. Acá queda el
-    // recorrido entero, que es el dato que hace falta para el ADR.
+  it('CERRADO · el `explore` del mundo ya no vuelve al origen cada ocho ticks', () => {
+    // ─── ESTE BLOQUE AFIRMABA EL BUG, y queda el recorrido viejo escrito ────
+    //
+    // Decía «recorre OCHO celdas y vuelve al origen: confirmado», y clavaba
+    // `distintas === 8`, `camino[7] === '0,0'` y `camino[15] === '0,0'`. Era
+    // exacto: `intencionExplorar` sumaba los ocho rumbos, que dan (0,0). El
+    // recorrido de entonces, para que el número viejo no se pierda:
+    //
+    //   -1,1 -2,1 -3,0 -3,-1 -2,-2 -1,-2 0,-1 0,0   (y repetido tres veces)
+    //
+    // Ahora el rumbo dura `TICKS_POR_RUMBO = 16` ticks y sale de los bits altos de
+    // una avalancha, así que en 24 ticks hay a lo sumo dos rumbos y el ciclo no
+    // cierra. El porqué del 16 y por qué la reparación obvia repetía el bug están
+    // en `las-quince.test.ts` y al lado de `revuelto` en `world/src/step.ts`.
     const p = new Partida(conElla([], { stamina: 9000 }))
     p.volar(
       'ella',
@@ -936,10 +947,14 @@ describe('6. los números del tramo, medidos de nuevo', () => {
     }
     const distintas = new Set(camino).size
     console.log(`\n─── el explore del mundo, 24 ticks ───\n${camino.join(' ')}\nceldas distintas: ${String(distintas)}\n`)
-    expect(distintas).toBe(8)
-    // La suma de los ocho rumbos es exactamente (0,0): por eso el ciclo cierra.
-    expect(camino[7]).toBe('0,0')
-    expect(camino[15]).toBe('0,0')
+    // Clavado en el número nuevo, no aflojado a «> 8»: es lo que el mundo hace hoy.
+    expect(distintas).toBe(24)
+    // Y las dos que afirmaban el ciclo, dadas vuelta: en los ticks donde antes
+    // estaba de vuelta en el origen, ahora no está.
+    expect(camino[7]).not.toBe('0,0')
+    expect(camino[15]).not.toBe('0,0')
+    // Ni una sola celda repetida en 24 ticks: con dos rumbos rectos no puede haber.
+    expect(distintas).toBe(camino.length)
   })
 
   it('`explore` pone en la mesa EXACTAMENTE `maxTicks` intenciones', () => {

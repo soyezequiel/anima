@@ -147,6 +147,7 @@ import {
   plan,
   resolverCuerpo,
 } from '@anima/plan'
+import { HZ_DE_REFERENCIA } from '@anima/physics'
 import type { Frontera, GoalNode, Predicado, PredicateSignature, Ref, Step } from '@anima/plan'
 import type { Where } from '@anima/skills'
 import { CONTRATO_HUIR_DEL_DOLOR } from '@anima/skills/innatas'
@@ -269,6 +270,21 @@ const TICKS_DE_FONDO = PERMANENCIA_EN_TICKS
 
 /** Lo que se junta cuando lo que duele es el frío: algo que arda. */
 const ALGO_QUE_ARDE: Where = Object.freeze([{ q: 'fuelEnergy', op: '>', v: 0 }]) as Where
+
+/** Lo que hace de un lugar un lugar: comida (el pozo es un cuerpo con calorías). */
+const ALGO_QUE_ALIMENTA: Where = Object.freeze([{ q: 'calories', op: '>', v: 0 }]) as Where
+
+/** Y lo otro que ancla: un fuego encendido, que costó carísimo y no se abandona. */
+const ALGO_QUE_ARDE_YA: Where = Object.freeze([{ q: 'emitsPower', op: '>', v: 0 }]) as Where
+
+/**
+ * Cuánto espera la criatura anclada, en SEGUNDOS de mundo: los mismos
+ * `TICKS_DE_FONDO` ticks del deambular, a la frecuencia de referencia. La espera
+ * tiene que durar lo que dura cualquier conducta de fondo y por la misma razón
+ * (ver `TICKS_DE_FONDO`): más larga le tapa la vista a la próxima decisión, más
+ * corta gasta un tick de escalera por cada tick de mundo.
+ */
+const SEGUNDOS_DE_ANCLA = TICKS_DE_FONDO / HZ_DE_REFERENCIA
 
 /** La firma vacía: «esto no lo pidió ningún predicado». Es la del nodo terminal. */
 const SIN_META: PredicateSignature = ''
@@ -436,6 +452,23 @@ export interface EstadoDeLaEscalera {
    */
   mientrasTantoYaHecho: string | undefined
   /**
+   * POR QUÉ META YA SE DEAMBULÓ, estando anclada. Es el cerrojo que convierte el
+   * deambular-con-meta de un bucle en UNA herramienta: la primera vez que la
+   * rueda cae en deambular con una meta en curso y un ancla a la vista, se
+   * deambula —el paisaje puede cambiar la respuesta—; las siguientes, para la
+   * MISMA meta, se espera anclada. Es la misma forma que `mientrasTantoYaHecho`
+   * y por el mismo motivo: «esto ya lo intenté PARA ESTA META y la meta sigue
+   * igual» no es un contador, es una firma.
+   *
+   * Sin este cerrojo el ancla no salvaba nada, y está medido: el diagnóstico 10
+   * moría en el tick 9482 CON el ancla puesta, porque después del primer bocado
+   * la criatura queda con hambre, la meta vive casi siempre, y el deambular con
+   * meta la paseaba hasta la muerte igual. La cuenta que manda: deambular cuesta
+   * ~0,067/tick contra 0,017 de esperar, o sea que pasearse sin encontrar es
+   * morirse 4× más rápido.
+   */
+  yaDeambulePor: PredicateSignature | undefined
+  /**
    * CUÁNTOS PASOS YA CUMPLIDOS NO SE DESPEGARON, en toda la vida de esta mente.
    *
    * No es telemetría de adorno: es el número que dice si el portón de despegue
@@ -464,6 +497,7 @@ export function nuevoEstado(): EstadoDeLaEscalera {
     bocadoQueFallo: undefined,
     fondosQueFallaron: 0,
     mientrasTantoYaHecho: undefined,
+    yaDeambulePor: undefined,
     salteados: 0,
   }
 }
@@ -496,6 +530,11 @@ export function aterrizar(e: EstadoDeLaEscalera, ok: boolean, rindio?: string): 
     // el bocado que había fallado vuelve a estar sobre la mesa.
     e.fondosQueFallaron = 0
     e.bocadoQueFallo = undefined
+    // Y si lo que aterrizó fue UN PASO DE PLAN, el mundo se movió de verdad: el
+    // deambular vuelve a estar disponible para la meta en curso. Un aterrizaje
+    // de fondo NO limpia el cerrojo —el esperar anclado aterriza bien cada ocho
+    // ticks, y limpiarlo con eso sería re-armar el paseo que el cerrojo corta—.
+    if (!e.deFondo) e.yaDeambulePor = undefined
     // ─── Y SI ERA EL ÚLTIMO PASO DE UN PLAN, LA META SE CONSIGUIÓ ──────────
     //
     // «El último» se lee del propio estado y no de un contador: D1 saca el paso
@@ -593,7 +632,7 @@ export function decidir(
     if (d4 !== undefined) return d4
   }
 
-  return elFondo(e, n)
+  return elFondo(v, e, n)
 }
 
 /** Si ya se gastó el presupuesto de búsqueda de este tick. Ver `decidir`. */
@@ -1167,7 +1206,37 @@ function laBusqueda(v: VistaDeLaMente, e: EstadoDeLaEscalera, o: MenteOptions): 
  */
 const ORDEN_DE_FONDO = ['guarecerse', 'juntar', 'deambular'] as const
 
-function elFondo(e: EstadoDeLaEscalera, n: NeedVector): Decision {
+/**
+ * ¿HAY UN ANCLA A LA VISTA? Comida —el pozo es un cuerpo con calorías— o un
+ * fuego encendido. El propio cuerpo no cuenta: la carne propia tiene calorías y
+ * sin ese filtro toda criatura estaría anclada a sí misma (es el mismo `soyYo`
+ * que `comer` tuvo que aprender).
+ *
+ * ─── POR QUÉ EXISTE, y viene de una medición y no de una intuición ──────────
+ *
+ * El deambular de fondo se apoyaba, sin que nadie lo supiera, en un BUG del
+ * mundo: `explore` caminaba un ciclo cerrado de 8 celdas que sumaba (0,0), así
+ * que deambular era gratis en distancia — la criatura «exploraba» sin irse nunca
+ * de al lado de su pozo. El día que el rumbo se arregló (dura 16 ticks y sale de
+ * los bits altos de una avalancha), la exploración pasó de 8 celdas distintas a
+ * 96 en 100 ticks… y DOS logros del criterio se cayeron: el diagnóstico 10 pasó
+ * de llegar viva a los 20.000 a morir en el 9482, y la contraprueba del eslabón
+ * regalado a morir en el 18.971. No porque explorar se encareciera —cobra
+ * `COSTO_POR_CELDA` igual dando vueltas que caminando derecho— sino por EL VIAJE
+ * DE VUELTA: la criatura se alejaba y tenía que volver al pozo y al fuego
+ * (`ir(pozo:-12:-3)` ×31 contra una guarda de 10). El número 35 de la sección 5
+ * de `como-se-trabaja.md` tiene la historia entera.
+ *
+ * O sea que el ancla no es una optimización: es la conducta que el bug
+ * PROVEÍA POR ACCIDENTE, escrita ahora como decisión. Una criatura que sabe
+ * dónde comer no tiene nada que buscar, y caminar es el 65% de su gasto.
+ */
+function hayAncla(v: VistaDeLaMente): boolean {
+  if (v.see(ALGO_QUE_ALIMENTA).some((b) => b.id !== v.self.id)) return true
+  return v.see(ALGO_QUE_ARDE_YA).some((b) => b.id !== v.self.id)
+}
+
+function elFondo(v: VistaDeLaMente, e: EstadoDeLaEscalera, n: NeedVector): Decision {
   const pesos = [n.refugio, n.calor, n.energia]
   let pedida = 2
   for (let k = 0; k < 2; k++) {
@@ -1194,19 +1263,45 @@ function elFondo(e: EstadoDeLaEscalera, n: NeedVector): Decision {
 
   const porQue = e.metaEnCurso ?? SIN_META
   const cual = ORDEN_DE_FONDO[i]
+
+  // ─── EL ANCLA: la criatura que sabe dónde comer no se pasea, espera ───────
+  //
+  // Sólo la rama del deambular: las otras dos filas de la rueda piden cosas
+  // concretas y no alejan a nadie. Y con una meta en curso el deambular sigue
+  // siendo LA HERRAMIENTA que desbloquea un gap («la vista cambia, y la próxima
+  // búsqueda de la MISMA meta encuentra») — pero es una herramienta y no un
+  // bucle: se usa UNA vez por meta (`yaDeambulePor`). Si esa vuelta no cambió la
+  // respuesta, la criatura anclada espera; pasearse sin encontrar cuesta 4× lo
+  // que esperar y es exactamente de lo que se murió el diagnóstico 10.
+  let anclada = false
+  if (cual === 'deambular' && hayAncla(v)) {
+    const meta = e.metaEnCurso
+    if (meta === undefined) {
+      anclada = true
+    } else if (e.yaDeambulePor === meta) {
+      anclada = true
+    } else {
+      e.yaDeambulePor = meta
+    }
+  }
+
   const conducta: Intencion =
     cual === 'guarecerse'
       ? { k: 'guarecerse', porQue: `la noche viene (refugio ${dosDecimales(n.refugio)})` }
       : cual === 'juntar'
         ? { k: 'juntar', que: ALGO_QUE_ARDE, cuantos: 1, porQue }
-        : { k: 'explorar', maxTicks: TICKS_DE_FONDO, porQue }
+        : anclada
+          ? { k: 'esperar', segundos: SEGUNDOS_DE_ANCLA, porQue }
+          : { k: 'explorar', maxTicks: TICKS_DE_FONDO, porQue }
 
   const porque =
     cual === 'guarecerse'
       ? `de fondo: me guarezco (refugio ${dosDecimales(n.refugio)})`
       : cual === 'juntar'
         ? `de fondo: junto algo que arda (calor ${dosDecimales(n.calor)})`
-        : `de fondo: deambulo ${String(TICKS_DE_FONDO)} ticks (energía ${dosDecimales(n.energia)})`
+        : anclada
+          ? `de fondo: espero anclada (hay dónde comer y nada que buscar)`
+          : `de fondo: deambulo ${String(TICKS_DE_FONDO)} ticks (energía ${dosDecimales(n.energia)})`
 
   // `entregar` NUNCA devuelve `undefined` para una conducta: `elFondo` es el
   // último peldaño y su tipo de retorno lo dice. Ver la decisión 2 de `tipos.ts`.

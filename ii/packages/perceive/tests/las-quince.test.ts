@@ -329,29 +329,46 @@ describe('(a) las quince innatas contra `stepWorld`', () => {
 // y su hueco quedó CERRADO abajo, con la tabla vieja escrita al lado de la nueva
 // y con lo que el 14/15 no dice: el contrato dura un tick.
 describe('el que no logra su contrato, y el que pasó a lograrlo', () => {
-  it.fails('EL `explore` DEL MUNDO NO LLEGA A NINGUNA PARTE: es un ciclo cerrado de 8 celdas', () => {
-    // POR QUÉ SIGUE ABIERTO: el hueco está en `@anima/world`, no en la costura, y
-    // es aritmético. `intencionExplorar` (`world/src/step.ts`) elige el rumbo con
+  it('CERRADO · el `explore` del mundo ya no es un ciclo cerrado: el rumbo DURA y sale del radio', () => {
+    // ─── LO QUE ERA, PORQUE ES LA MITAD DE LO QUE ENSEÑA ────────────────────
+    //
+    // Era un `it.fails` y decía «EL `explore` DEL MUNDO NO LLEGA A NINGUNA PARTE».
+    // `intencionExplorar` elegía el rumbo con
     // `OCHO_RUMBOS[(tick + huellaDeTexto(actorId)) % 8]`, y **la suma de los ocho
     // rumbos es exactamente (0,0)**: (1,0)+(1,1)+(0,1)+(-1,1)+(-1,0)+(-1,-1)+
-    // (0,-1)+(1,-1). Como el índice avanza de a uno por tick, cada ocho ticks la
-    // criatura vuelve al punto de partida. Medido: el recorrido de 20 ticks es
-    // `-1,1 -2,1 -3,0 -3,-1 -2,-2 -1,-2 0,-1 0,0` repetido dos veces y media.
+    // (0,-1)+(1,-1). Como el índice avanzaba de a uno por tick, cada ocho ticks la
+    // criatura volvía al punto de partida. Medido entonces: el recorrido de 20
+    // ticks era `-1,1 -2,1 -3,0 -3,-1 -2,-2 -1,-2 0,-1 0,0` repetido dos veces y
+    // media. OCHO celdas, por mucho `maxTicks` que se le diera.
     //
-    // O sea que `explore` visita OCHO CELDAS y nunca sale de ahí, por mucho
-    // `maxTicks` que se le dé. El propio archivo del mundo dice que es
-    // «deliberadamente pobre» y que la exploración con memoria y frontera es de
-    // otro hito; lo que no dice —y es lo que este número agrega— es que el neto
-    // es cero, o sea que no explora NADA.
+    // ─── Y LA REPARACIÓN OBVIA ERA EL MISMO BUG CON OTRA CARA ───────────────
     //
-    // Y toca el primer criterio del Hito 5 de frente: «con hambre y un río a la
-    // vista» se salva porque el río está a la vista, pero cualquier cosa que haya
-    // que ir a buscar más allá del radio de percepción es inalcanzable.
+    // El `it.fails` pedía «que el rumbo tenga PERSISTENCIA —el mismo durante N
+    // ticks—». Escrito de la forma directa, `huellaDeTexto(`${id}#${bloque}`) % 8`,
+    // **vuelve a sumar cero**: FNV-1a termina en `h = (h ^ c) · primo`, así que
+    // cambiar sólo el último carácter por los dígitos 0..7 deja los tres bits BAJOS
+    // recorriendo una permutación de 0..7, y ocho bloques consecutivos vuelven a dar
+    // los ocho rumbos. Se barrieron 403 actores antes de escribir una línea de `src`
+    // y se vio en que los 403 daban EL MISMO número. La lección está al lado de
+    // `revuelto` en `world/src/step.ts`: **los bits bajos de un hash sobre sufijos
+    // consecutivos no son azar, son una cuenta.**
     //
-    // QUÉ HARÍA FALTA: que el rumbo tenga PERSISTENCIA —el mismo durante N ticks—
-    // o que salga de una frontera de lo no visitado. Es `intencionExplorar` en
-    // `world/src/step.ts`, y como cambia la conducta del mundo, cambia el hash de
-    // toda partida guardada: pide su ADR.
+    // ─── LO QUE HAY AHORA, Y POR QUÉ 16 ────────────────────────────────────
+    //
+    // El rumbo dura `TICKS_POR_RUMBO = 16` ticks y sale de los bits ALTOS de una
+    // avalancha entera. El 16 no es redondo por gusto: `explorar` barre un disco de
+    // radio 6, o sea 12 celdas de diámetro, y a una celda por tick doblar antes de
+    // 12 es volver a mirar lo mismo. Es el primer múltiplo de dos que pasa ese piso.
+    //
+    // Y EL ARREGLO NO PUDO ENTRAR SOLO: la primera vez que se aplicó, dos logros
+    // del criterio se cayeron, porque el ciclo cerrado hacía de ANCLA accidental
+    // —la criatura «exploraba» sin alejarse nunca de su pozo—. El ancla es hoy una
+    // decisión de la mente (`hayAncla` en `mind/src/escalera.ts`) y este cierre
+    // vino después de aquélla. Número 35 de la sección 5 de `como-se-trabaja.md`.
+    //
+    // Las dos mitades se afirman abajo, y ninguna alcanza sola: **alejarse** y
+    // **pisar terreno nuevo**. Un rumbo fijo para siempre alejaría más y exploraría
+    // peor; por eso la segunda no es decoración.
     const p = new Partida(conElla([], { stamina: 900 }))
     p.volar(
       'ella',
@@ -361,9 +378,26 @@ describe('el que no logra su contrato, y el que pasó a lograrlo', () => {
       },
       undefined,
     )
-    p.avanzar(100)
+
+    // Se avanza de a un tick para poder contar las celdas DISTINTAS: el contrato de
+    // `explorar` es encontrar, y lo que hace encontrar es cubrir, no alejarse.
+    const pisadas = new Set<string>()
+    for (let t = 0; t < 100; t += 1) {
+      p.avanzar(1)
+      const c = p.state.bodies.get('ella-cuerpo')!.at
+      pisadas.add(`${String(c.x)},${String(c.y)}`)
+    }
     const at = p.state.bodies.get('ella-cuerpo')!.at
-    expect(Math.max(Math.abs(at.x), Math.abs(at.y)), 'cien ticks explorando y no se alejó').toBeGreaterThan(10)
+    const lejos = Math.max(Math.abs(at.x), Math.abs(at.y))
+    console.log(
+      `\n─── EXPLORAR, CIEN TICKS ───\n` +
+        `  se alejó ${String(lejos)} celdas y pisó ${String(pisadas.size)} distintas (antes: 3 y 8)\n`,
+    )
+
+    expect(lejos, 'cien ticks explorando y no se alejó').toBeGreaterThan(10)
+    // LA QUE FALTABA. Con el ciclo cerrado esto medía 8 y ninguna cantidad de
+    // ticks lo movía; es la afirmación que distingue «explorar» de «ir y volver».
+    expect(pisadas.size, 'cien ticks explorando y pisó siempre las mismas celdas').toBeGreaterThan(50)
   })
 
   it('CERRADO · con una vara LIVIANA la fricción sí llega al punto de ignición', () => {
