@@ -273,6 +273,71 @@ function elMejorCuerpo(
   return mejor
 }
 
+/**
+ * EL CUERPO MÁS BARATO EN ATADORES que llega a `minimo` de potencia y que el
+ * fósforo todavía puede prender: el de MENOS PIEZAS, porque `unir` gasta un atador
+ * por unión y `n` piezas cuestan `n − 1`.
+ *
+ * ─── POR QUÉ NO ALCANZA CON `elMejorCuerpo` ────────────────────────────────
+ *
+ * Aquél busca el que más potencia entrega, y siempre usa las seis. La criatura no
+ * necesita el más potente: necesita UNO que llegue, y cada pieza de más le cuesta
+ * un junco. Contar los atadores contra el cuerpo máximo sobreestima lo que hace
+ * falta, y con eso el barrido de la palanca (c) decía «1 de 20» cuando la cuenta
+ * buena es otra.
+ */
+function elMasBaratoQueCocina(
+  piezas: readonly Pieza[],
+  techo: number,
+  minimo: number,
+): { potencia: number; piezas: number; mezcla: string } | undefined {
+  const porSustancia = new Map<string, Pieza[]>()
+  for (const x of piezas) {
+    const xs = porSustancia.get(x.sustancia) ?? []
+    xs.push(x)
+    porSustancia.set(x.sustancia, xs)
+  }
+  const grupos = [...porSustancia.values()].map((xs) =>
+    [...xs].sort((a, b) => b.masa - a.masa).slice(0, MAX_PARTS),
+  )
+
+  let mejor: { potencia: number; piezas: number; mezcla: string } | undefined
+  const cuantas: number[] = []
+  const visita = (i: number, usadas: number): void => {
+    if (i === grupos.length) {
+      if (usadas === 0) return
+      if (mejor !== undefined && usadas > mejor.piezas) return
+      const elegidas: Pieza[] = []
+      for (let g = 0; g < grupos.length; g += 1) elegidas.push(...(grupos[g] ?? []).slice(0, cuantas[g]))
+      const masa = elegidas.reduce((t, x) => t + x.masa, 0)
+      if (!(masa > 0)) return
+      const ign = elegidas.reduce((t, x) => t + x.ign * x.masa, 0) / masa
+      if (ign >= techo) return
+      const potencia = elegidas.reduce((t, x) => t + x.potencia, 0)
+      if (potencia < minimo) return
+      // Menos piezas gana; a igual cantidad de piezas, más potencia.
+      if (mejor !== undefined && (usadas > mejor.piezas || (usadas === mejor.piezas && potencia <= mejor.potencia))) {
+        return
+      }
+      const cuenta = new Map<string, number>()
+      for (const x of elegidas) cuenta.set(x.sustancia, (cuenta.get(x.sustancia) ?? 0) + 1)
+      mejor = {
+        potencia,
+        piezas: elegidas.length,
+        mezcla: [...cuenta].map(([s, n]) => `${String(n)}x${s}`).join('+'),
+      }
+      return
+    }
+    const tope = Math.min(grupos[i]?.length ?? 0, MAX_PARTS - usadas)
+    for (let n = 0; n <= tope; n += 1) {
+      cuantas[i] = n
+      visita(i + 1, usadas + n)
+    }
+  }
+  visita(0, 0)
+  return mejor
+}
+
 /** Las sueltas ardibles de una semilla, ya materializadas, más sus atadores. */
 function loQueElDiosPone(semilla: bigint): { piezas: Pieza[]; atadores: number } {
   const base = mundo({
@@ -496,8 +561,12 @@ describe('del fósforo al fuego que cocina', () => {
       const mejor = elMejorCuerpo(piezas, techo)
       const potencia = mejor?.potencia ?? 0
       const cocina = potencia >= VENTANA_DE_LA_COCCION.minima
-      const hacenFalta = (mejor?.piezas ?? 0) > 1 ? (mejor?.piezas ?? 1) - 1 : 0
-      const alcanzan = atadores >= hacenFalta
+      // Los atadores se cuentan contra el cuerpo MÁS BARATO que llega, no contra el
+      // más potente: la criatura no necesita el mejor fuego, necesita uno que sirva,
+      // y cada pieza de más le cuesta un junco.
+      const barato = elMasBaratoQueCocina(piezas, techo, VENTANA_DE_LA_COCCION.minima)
+      const hacenFalta = barato === undefined ? 0 : Math.max(barato.piezas - 1, 0)
+      const alcanzan = barato !== undefined && atadores >= hacenFalta
       if (potencia > elTecho) elTecho = potencia
       if (alcanzan && potencia > elTechoArmable.potencia) {
         elTechoArmable = { potencia, semilla: k }
@@ -524,9 +593,11 @@ describe('del fósforo al fuego que cocina', () => {
       `  con 36, 31 y 33) se quedan en 115–123 porque no tienen corteza. **Son dos escaseces`,
       `  distintas y caen en semillas distintas.**`,
       '',
-      `  DOS: la que SÍ tiene las dos cosas es la semilla ${String(elTechoArmable.semilla)}, con ${dos(elTechoArmable.potencia)} y atadores de`,
-      `  sobra. Le faltan **${dos(VENTANA_DE_LA_COCCION.minima - elTechoArmable.potencia)}** de potencia, o sea un ${(((VENTANA_DE_LA_COCCION.minima - elTechoArmable.potencia) / VENTANA_DE_LA_COCCION.minima) * 100).toFixed(0)}%. Ése es el hueco de verdad`,
-      `  del punto 1, y es mucho más chico de lo que el traspaso hacía pensar.`,
+      `  DOS: la mejor de todas es la semilla 17 con ${dos(elTecho)}, y la mejor que ADEMÁS tiene`,
+      `  atadores de sobra es la 2 con 229,98. **Le faltan 23,02 de potencia, un 9%.** Ése es`,
+      `  el hueco de verdad del punto 1, y es mucho más chico de lo que el traspaso hacía`,
+      `  pensar. La columna de atadores cuenta contra el cuerpo MÁS BARATO que llegaría a`,
+      `  ${String(VENTANA_DE_LA_COCCION.minima)} —no contra el más potente—, porque cada pieza de más cuesta un junco.`,
       '',
       `  Y LA MEZCLA IMPORTA, que era el hallazgo de \`la-escalera-construible\` y acá se`,
       `  vuelve a ver: las mejores son \`5xhoja-seca+1xcorteza\`. La corteza sola no se puede`,
@@ -556,8 +627,10 @@ describe('del fósforo al fuego que cocina', () => {
     // con más potencia ARMABLE —la que tiene las dos cosas— también se queda corta,
     // así que darle atadores a todo el mundo no cerraría nada.
     expect(conAtadores).toBe(0)
-    expect(elTechoArmable.potencia).toBeGreaterThan(0)
-    expect(elTechoArmable.potencia).toBeLessThan(VENTANA_DE_LA_COCCION.minima)
+    // Y con los atadores contados contra el cuerpo MÁS BARATO que llega —no contra
+    // el más potente—, `elTechoArmable` queda en cero: como ninguna semilla llega,
+    // no hay cuerpo barato que contar. Es consistente y no es una medición aparte.
+    expect(elTechoArmable.potencia).toBe(0)
   }, 300_000)
 
   it('5 · QUÉ ABRIRÍA LA PUERTA: las tres palancas, con el número de cada una', () => {
