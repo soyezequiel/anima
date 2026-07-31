@@ -9,6 +9,25 @@
 // elegido —el usuario todavía no eligió ninguno y comprometerlo acá sería
 // decidirlo de costado—. Dibuja cuadrados y círculos a propósito.
 //
+// ─── LO QUE LA PRIMERA VERSIÓN HIZO MAL, Y ES EL MOTIVO DE LA SEGUNDA ──────
+//
+// El usuario la miró y no entendió nada: «la mascota se movió muy rápido». Tenía
+// razón, y el número explica el porqué entero: **la partida son 441 ticks y toda
+// la acción pasa en los primeros 65**. Después vienen 400 ticks donde no se mueve
+// nadie —el mundo corriendo solo, que es justamente el punto del gate— y al final
+// la vuelta. A cuadro fijo eso es un borrón de dos segundos, dieciséis segundos de
+// nada, y otro borrón.
+//
+// Las tres reparaciones, y ninguna es «más lento»:
+//
+//   1. **el mundo NARRA lo que hace**. Cada tick trae los eventos de `stepWorld`
+//      traducidos a una frase. Sin eso, ver moverse un círculo blanco no dice si
+//      levantó algo, si ató algo o si le rebotó una intención;
+//   2. **se puede saltar lo que no pasa nada**. Un tick es «interesante» si tuvo
+//      eventos, y el reproductor va de interesante a interesante. Los 400 ticks
+//      muertos se vuelven los seis en los que la obra pescó;
+//   3. **se para en cada hito**, para poder leer.
+//
 // ─── POR QUÉ ES UN TEST Y NO UN SCRIPT ─────────────────────────────────────
 //
 // Por dos razones y las dos son de este repositorio. La primera es que los
@@ -35,13 +54,12 @@ import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
-import { buildSeedPhysics, qualityOf, type Physics } from '@anima/physics'
+import { HZ_DE_REFERENCIA, buildSeedPhysics, qualityOf, type Body, type Physics } from '@anima/physics'
 
 import { crearDios, decretoDe, type EstadoDelDios } from '../src/dios.js'
 import { aplicarDelta, deltaEntre, escenaDe, escenaHash, type Escena } from '../src/escena.js'
 import { apply, goTo, place, take, type Intent } from '../src/intent.js'
-import { mapaDeActores, mapaDeCuerpos, stepWorld, type WorldState } from '../src/step.js'
-import { HZ_DE_REFERENCIA } from '@anima/physics'
+import { mapaDeActores, mapaDeCuerpos, stepWorld, type SimEvent, type WorldState } from '../src/step.js'
 import { actor, criatura, cuerpo, enElPiso } from './mundo-minimo.js'
 
 const PHYS: Physics = buildSeedPhysics()
@@ -100,12 +118,57 @@ function escenaInicial(): WorldState {
   }
 }
 
+// ─── La narración ───────────────────────────────────────────────────────────
+//
+// ─── QUÉ SE CUENTA Y QUÉ NO, Y LA LÍNEA IMPORTA ────────────────────────────
+//
+// Se cuenta lo que CAMBIA el mundo: levantar, soltar, desplegar, nacer, terminar
+// un proceso, y los rechazos. NO se cuenta `movio`, aunque sea el evento más
+// frecuente de lejos: con una línea por paso, la narración serían cuatrocientas
+// veces «caminó una celda» y las seis que importan se perderían adentro.
+//
+// Que caminó se ve en el mapa, que es donde corresponde verlo.
+
+/** Una frase por evento que valga contarse, o `undefined` si no vale. */
+function narrar(e: SimEvent, obra: string | undefined): string | undefined {
+  switch (e.k) {
+    case 'tomo':
+      return `levanta «${e.what}»`
+    case 'solto':
+      return e.what === obra ? 'deja la obra sobre el pozo' : `suelta «${e.what}»`
+    case 'puso':
+      return `apoya «${e.what}»`
+    case 'nacio':
+      // `by` es quién lo hizo nacer, y acá distingue las dos cosas que pueden
+      // pasar: la criatura terminando una unión, o LA OBRA sacando del pozo sin
+      // que nadie aplique nada — que es el corazón del caso de aceptación.
+      return e.by === obra ? `la obra atrapa «${e.id}»` : `de lo que ató sale «${e.id}»`
+    case 'proceso':
+      return e.completo ? `termina de aplicar «${e.process}»` : undefined
+    case 'rechazada':
+      return `el mundo rechazó «${e.que}»: ${e.por}`
+    case 'comio':
+      return `come «${e.what}»`
+    default:
+      return undefined
+  }
+}
+
 // ─── La partida que se graba ────────────────────────────────────────────────
 
-interface Grabacion {
-  readonly cuadros: readonly Escena[]
-  readonly hitos: readonly { readonly tick: number; readonly que: string }[]
+interface Cuadro {
+  readonly e: Escena
+  /** Lo que pasó DURANTE este tick, en castellano. Vacío casi siempre. */
+  readonly dice: readonly string[]
 }
+
+interface Grabacion {
+  readonly cuadros: readonly Cuadro[]
+  readonly hitos: readonly { readonly tick: number; readonly que: string }[]
+  readonly obra: string
+}
+
+const CUERPO_VACIO: Body = { id: '', form: 'vara', parts: [], joints: [], state: {} }
 
 /**
  * Los seis pasos de la historia del gate, grabando UN CUADRO POR TICK.
@@ -116,11 +179,20 @@ interface Grabacion {
  */
 function grabar(): Grabacion {
   let w = escenaInicial()
-  const cuadros: Escena[] = [escenaDe(w, O.parada, RADIO)]
+  let obra: string | undefined
+  const cuadros: Cuadro[] = [{ e: escenaDe(w, O.parada, RADIO), dice: [] }]
   const hitos: { tick: number; que: string }[] = []
-  const avanzar = (is: readonly Intent[]): void => {
-    w = stepWorld(w, is).state
-    cuadros.push(escenaDe(w, O.parada, RADIO))
+
+  const avanzar = (is: readonly Intent[]): readonly SimEvent[] => {
+    const r = stepWorld(w, is)
+    w = r.state
+    const dice: string[] = []
+    for (const ev of r.events) {
+      const linea = narrar(ev, obra)
+      if (linea !== undefined) dice.push(linea)
+    }
+    cuadros.push({ e: escenaDe(w, O.parada, RADIO), dice })
+    return r.events
   }
   const marcar = (que: string): void => {
     hitos.push({ tick: w.tick, que })
@@ -128,33 +200,29 @@ function grabar(): Grabacion {
 
   avanzar([take({ by: 'ana', seq: 0 }, 'vara')])
   avanzar([take({ by: 'ana', seq: 0 }, 'hebra')])
-  marcar('junta la vara y la hebra')
+  marcar('1 · junta una vara y una hebra')
 
   const atar = apply({ by: 'ana', seq: 0 }, PHYS, 'union', [
     { name: 'binder', body: 'hebra' },
     { name: 'a', body: 'vara' },
   ])
   if (atar === undefined) throw new Error('el catálogo no tiene `union`')
-  let obra: string | undefined
   for (let t = 0; t < 60 && obra === undefined; t++) {
-    const r = stepWorld(w, [{ ...atar, seq: t }])
-    w = r.state
-    cuadros.push(escenaDe(w, O.parada, RADIO))
-    for (const e of r.events) if (e.k === 'nacio') obra = e.id
+    for (const ev of avanzar([{ ...atar, seq: t }])) if (ev.k === 'nacio') obra = ev.id
   }
   if (obra === undefined) throw new Error('no salió ningún ensamble')
-  const cuerpoObra = w.bodies.get(obra)
-  marcar(`ata las dos: sale una obra con catch ${qualityOf(cuerpoObra?.body ?? { id: '', form: 'vara', parts: [], joints: [], state: {} }, 'catch', PHYS).toFixed(4)}`)
+  const enganche = qualityOf(w.bodies.get(obra)?.body ?? CUERPO_VACIO, 'catch', PHYS)
+  marcar(`2 · las ata: sale una obra con catch ${enganche.toFixed(4)} que nadie programó`)
 
   avanzar([place({ by: 'ana', seq: 0 }, obra, O.pozo)])
-  marcar('la deja sobre el pozo')
+  marcar('3 · la deja puesta sobre el pozo')
 
   for (let t = 0; t < 12; t++) avanzar([goTo({ by: 'ana', seq: t }, LEJOS, 0)])
-  marcar('se va')
+  marcar('4 · se va caminando')
 
   for (let t = 0; t < 400; t++) avanzar([])
   const capturado = w.desplegados.get(obra)?.captura ?? []
-  marcar(`el mundo corrió solo: la obra retuvo ${String(capturado.length)}`)
+  marcar(`5 · el mundo corrió 400 ticks sin nadie: la obra retuvo ${String(capturado.length)}`)
 
   const pieza = capturado[0]
   const donde = pieza === undefined ? undefined : w.bodies.get(pieza)?.at
@@ -165,69 +233,98 @@ function grabar(): Grabacion {
       avanzar([goTo({ by: 'ana', seq: t }, donde, 1)])
     }
     avanzar([take({ by: 'ana', seq: 0 }, pieza)])
-    marcar('vuelve y se lleva lo que atrapó')
+    marcar('6 · vuelve y se lleva lo que la obra atrapó')
   }
 
-  return { cuadros, hitos }
+  return { cuadros, hitos, obra }
 }
 
 // ─── El archivo ─────────────────────────────────────────────────────────────
 
 /** Cuadro 0 entero, y de ahí en más sólo lo que cambió. */
-function comprimir(cuadros: readonly Escena[]): string {
-  const primero = cuadros[0]
+function comprimir(g: Grabacion): string {
+  const primero = g.cuadros[0]?.e
   if (primero === undefined) throw new Error('grabación vacía')
-  const deltas = cuadros.slice(1).map((b, i) => deltaEntre(cuadros[i] as Escena, b))
+  const deltas = g.cuadros.slice(1).map((c, i) => deltaEntre(g.cuadros[i]?.e as Escena, c.e))
   return JSON.stringify({
     inicial: { ...primero, cuerpos: [...primero.cuerpos] },
     deltas,
+    dice: g.cuadros.map((c) => c.dice),
+    hitos: g.hitos,
+    obra: g.obra,
+    pozo: O.pozo,
   })
 }
 
 function paginaDe(g: Grabacion): string {
-  const datos = comprimir(g.cuadros)
   return `<!doctype html>
 <meta charset="utf-8">
 <title>Anima II — visor de descarte</title>
 <style>
- :root { color-scheme: dark; --tinta: #e8e6e1; --fondo: #14161a; --tenue: #8b8f98; }
+ :root { color-scheme: dark; --tinta:#e8e6e1; --fondo:#14161a; --tenue:#8b8f98;
+         --oro:#d4b96a; --linea:#262a31; }
+ * { box-sizing:border-box }
  body { margin:0; background:var(--fondo); color:var(--tinta);
-        font:14px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
- header { padding:12px 16px; border-bottom:1px solid #262a31; }
- h1 { font-size:14px; margin:0 0 4px; font-weight:600; letter-spacing:.02em; }
- p  { margin:0; color:var(--tenue); font-size:12px; }
- main { display:flex; flex-wrap:wrap; gap:16px; padding:16px; align-items:flex-start; }
- canvas { background:#0d0f12; border:1px solid #262a31; image-rendering:pixelated;
-          max-width:100%; height:auto; }
- #lado { min-width:260px; flex:1 1 260px; }
- #mandos { display:flex; gap:8px; align-items:center; padding:0 16px 8px; }
- input[type=range] { flex:1; }
- button { background:#1d2128; color:var(--tinta); border:1px solid #333944;
-          border-radius:4px; padding:4px 10px; cursor:pointer; font:inherit; }
- button:hover { background:#252a33; }
- table { border-collapse:collapse; font-size:12px; width:100%; }
- td { padding:1px 8px 1px 0; vertical-align:top; }
- td:first-child { color:var(--tenue); white-space:nowrap; }
- .hito { color:#c8b273; }
- h2 { font-size:12px; margin:14px 0 4px; color:var(--tenue); font-weight:600;
-      text-transform:uppercase; letter-spacing:.06em; }
+        font:14px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace }
+ header { padding:12px 16px 10px; border-bottom:1px solid var(--linea) }
+ h1 { font-size:13px; margin:0 0 3px; font-weight:600; letter-spacing:.02em }
+ header p { margin:0; color:var(--tenue); font-size:11.5px }
+ #paso { padding:14px 16px; border-bottom:1px solid var(--linea); background:#181b20 }
+ #paso b { display:block; font-size:17px; color:var(--oro); font-weight:600; line-height:1.35 }
+ #paso small { display:block; margin-top:4px; color:var(--tenue); font-size:12px; min-height:1.4em }
+ #mandos { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 16px;
+           border-bottom:1px solid var(--linea) }
+ #barra { flex:1 1 220px; min-width:160px }
+ #reloj { color:var(--tenue); font-size:12px; white-space:nowrap }
+ main { display:flex; flex-wrap:wrap; gap:18px; padding:16px; align-items:flex-start }
+ canvas { background:#0d0f12; border:1px solid var(--linea); image-rendering:pixelated;
+          max-width:100%; height:auto }
+ #lado { min-width:280px; flex:1 1 280px }
+ button { background:#1d2128; color:var(--tinta); border:1px solid #333944; border-radius:4px;
+          padding:4px 10px; cursor:pointer; font:inherit; font-size:12.5px }
+ button:hover { background:#252a33 }
+ button.on { background:#2f3644; border-color:#4a5568 }
+ label { font-size:12px; color:var(--tenue); display:flex; align-items:center; gap:5px; cursor:pointer }
+ h2 { font-size:11px; margin:16px 0 5px; color:var(--tenue); font-weight:600;
+      text-transform:uppercase; letter-spacing:.07em }
+ table { border-collapse:collapse; font-size:12px; width:100% }
+ td { padding:1px 8px 1px 0; vertical-align:top }
+ td:first-child { color:var(--tenue); white-space:nowrap }
+ .ya { color:var(--oro) }
+ .chip { font-size:11.5px; padding:3px 8px }
+ #hitos { display:flex; gap:6px; flex-wrap:wrap; padding:0 16px 10px }
+ #leyenda { display:grid; grid-template-columns:auto 1fr; gap:2px 10px; font-size:11.5px;
+            color:var(--tenue); margin-top:4px }
+ #leyenda i { font-style:normal; color:var(--tinta) }
+ #diario { font-size:12px; max-height:170px; overflow:auto; border:1px solid var(--linea);
+           border-radius:4px; padding:6px 8px; background:#101317 }
+ #diario div { color:var(--tenue) }
+ #diario div.nuevo { color:var(--tinta) }
 </style>
 <header>
  <h1>Ánima II · visor de descarte</h1>
  <p>No es la UI del Hito 12. Dibuja cuadrados a propósito: el estilo gráfico todavía no se eligió.
-    Todo lo que se ve sale de <code>escenaDe()</code>, que es función pura del estado.</p>
+    Todo sale de <code>escenaDe()</code>, función pura del estado, y el archivo viaja por deltas.</p>
 </header>
+<div id="paso"><b id="titulo"></b><small id="sub"></small></div>
 <div id="mandos">
- <button id="play">▶</button>
+ <button id="play">▶ reproducir</button>
+ <button id="atras">◀</button>
+ <button id="adelante">▶|</button>
  <input type="range" id="barra" min="0" value="0">
  <span id="reloj"></span>
+ <button class="chip" data-vel="500">lento</button>
+ <button class="chip on" data-vel="250">normal</button>
+ <button class="chip" data-vel="80">rápido</button>
+ <label><input type="checkbox" id="saltar" checked> saltar lo que no pasa nada</label>
+ <label><input type="checkbox" id="parar" checked> parar en cada paso</label>
 </div>
+<div id="hitos"></div>
 <main>
- <canvas id="lienzo" width="600" height="600"></canvas>
+ <canvas id="lienzo" width="620" height="620"></canvas>
  <div id="lado"></div>
 </main>
-<script id="datos" type="application/json">${datos}</script>
-<script id="hitos" type="application/json">${JSON.stringify(g.hitos)}</script>
+<script id="datos" type="application/json">${comprimir(g)}</script>
 <script>
 ${VISOR_JS}
 </script>
@@ -246,13 +343,16 @@ ${VISOR_JS}
  * de \`forma\`, el tono de \`materiales\`, el anillo de estar desplegado y el número
  * de adentro de \`captura\`. Es el ADR II-0017 aplicado con un pincel: lo que la
  * física no modela, la pantalla no lo afirma.
+ *
+ * Y lo único que se agrega encima del estado son AYUDAS DE LECTURA, marcadas como
+ * tales: la estela de por dónde vino la criatura, y el parpadeo de lo que cambió
+ * en este tick —que sale del delta, o sea del mismo dato—.
  */
 const VISOR_JS = String.raw`
 const D = JSON.parse(document.getElementById('datos').textContent)
-const HITOS = JSON.parse(document.getElementById('hitos').textContent)
 
 // Reconstruir la escena N aplicando los deltas. Es la MISMA operación que
-// \`aplicarDelta\` del motor, y por eso el emisor afirma que las dos coinciden.
+// ` + '`aplicarDelta`' + ` del motor, y por eso el emisor afirma que las dos coinciden.
 function reconstruir () {
   const out = []
   let e = { ...D.inicial, cuerpos: new Map(D.inicial.cuerpos) }
@@ -272,10 +372,48 @@ function reconstruir () {
 }
 
 const CUADROS = reconstruir()
+const DICE = D.dice
+const HITOS = D.hitos
 const LADO = 2 * D.inicial.radio + 1
 const lienzo = document.getElementById('lienzo')
 const g = lienzo.getContext('2d')
 const PX = Math.floor(lienzo.width / LADO)
+
+const TICKS_DE_HITO = new Set(HITOS.map((h) => h.tick))
+
+/** Dónde está la criatura en el cuadro ` + '`i`' + `. */
+function dondeEsta (i) {
+  const e = CUADROS[i]
+  const a = e.actores[0]
+  const c = a && e.cuerpos.get(a.body)
+  return c ? c.d.at : null
+}
+
+/**
+ * LOS CUADROS QUE VALE LA PENA MOSTRAR. Es lo que arregla el ritmo.
+ *
+ * Tres clases, y las tres hacen falta:
+ *
+ *   · los que NARRAN algo — levantar, atar, desplegar, pescar;
+ *   · los que la CRIATURA SE MOVIÓ. Sin éstos, «se va caminando» sería un salto
+ *     de doce celdas en un cuadro: se teletransporta y no se entiende que se fue;
+ *   · los ticks de HITO, para que el reproductor pueda parar ahí.
+ *
+ * Lo que queda afuera son los cuatrocientos ticks en los que el mundo corre solo
+ * y nadie se mueve — que es justamente lo que hacía que la primera versión fuera
+ * un borrón de dos segundos y dieciséis de nada.
+ */
+const INTERESANTES = (() => {
+  const out = []
+  let previo = null
+  for (let i = 0; i < CUADROS.length; i++) {
+    const aca = dondeEsta(i)
+    const camino = previo && aca && (previo.x !== aca.x || previo.y !== aca.y)
+    if (DICE[i].length > 0 || camino || TICKS_DE_HITO.has(CUADROS[i].tick)) out.push(i)
+    previo = aca
+  }
+  return out
+})()
 
 /** Un tono estable por material. Es hash, no gusto: el mismo junco es el mismo color. */
 function tono (s) {
@@ -284,7 +422,22 @@ function tono (s) {
   return h % 360
 }
 
-function pintar (e) {
+/** Por dónde vino la criatura en los últimos cuadros. AYUDA DE LECTURA, no estado. */
+function estela (i) {
+  const out = []
+  for (let k = Math.max(0, i - 14); k <= i; k++) {
+    const e = CUADROS[k]
+    const a = e.actores[0]
+    const c = a && e.cuerpos.get(a.body)
+    if (c) out.push(c.d.at)
+  }
+  return out
+}
+
+function pintar (i) {
+  const e = CUADROS[i]
+  const cambiaron = new Set((D.deltas[i - 1] || { cambiaron: [], entraron: [] }).cambiaron.map((x) => x[0])
+    .concat((D.deltas[i - 1] || { entraron: [] }).entraron.map((x) => x[0])))
   g.fillStyle = '#0d0f12'
   g.fillRect(0, 0, lienzo.width, lienzo.height)
   const x0 = e.foco.x - e.radio
@@ -293,11 +446,10 @@ function pintar (e) {
   for (const c of e.celdas) {
     const cx = (c.at.x - x0) * PX
     const cy = (c.at.y - y0) * PX
-    // Azul por humedad, rojo por calor sobre el ambiente, gris si nada.
     const calor = Math.max(0, Math.min(1, (c.temperature - 15) / 300))
-    const r = Math.round(24 + calor * 190)
-    const b = Math.round(24 + c.wet * 150)
-    const v = Math.round(26 + c.wet * 60 + calor * 60)
+    const r = Math.round(22 + calor * 190)
+    const b = Math.round(26 + c.wet * 155)
+    const v = Math.round(28 + c.wet * 62 + calor * 55)
     g.fillStyle = 'rgb(' + r + ',' + v + ',' + b + ')'
     g.fillRect(cx, cy, PX, PX)
     if (c.sheltered > 0.01) {
@@ -306,71 +458,139 @@ function pintar (e) {
     }
   }
 
-  g.strokeStyle = 'rgba(255,255,255,.05)'
-  for (let i = 0; i <= LADO; i++) {
-    g.beginPath(); g.moveTo(i * PX, 0); g.lineTo(i * PX, LADO * PX); g.stroke()
-    g.beginPath(); g.moveTo(0, i * PX); g.lineTo(LADO * PX, i * PX); g.stroke()
+  g.strokeStyle = 'rgba(255,255,255,.05)'; g.lineWidth = 1
+  for (let k = 0; k <= LADO; k++) {
+    g.beginPath(); g.moveTo(k * PX, 0); g.lineTo(k * PX, LADO * PX); g.stroke()
+    g.beginPath(); g.moveTo(0, k * PX); g.lineTo(LADO * PX, k * PX); g.stroke()
   }
 
-  const cuerpoDeActor = new Set(e.actores.map((a) => a.body))
+  // El pozo, marcado: sin esto «la deja sobre el pozo» no se puede ver.
+  const px = (D.pozo.x - x0) * PX, py = (D.pozo.y - y0) * PX
+  g.strokeStyle = 'rgba(120,190,255,.55)'; g.setLineDash([4, 3]); g.lineWidth = 1.5
+  g.strokeRect(px + 2, py + 2, PX - 4, PX - 4); g.setLineDash([])
+
+  // La estela. Ayuda de lectura: no es estado del mundo.
+  const rastro = estela(i)
+  g.strokeStyle = 'rgba(240,237,230,.30)'; g.lineWidth = 2
+  g.beginPath()
+  rastro.forEach((p, k) => {
+    const cx = (p.x - x0) * PX + PX / 2, cy = (p.y - y0) * PX + PX / 2
+    if (k === 0) g.moveTo(cx, cy); else g.lineTo(cx, cy)
+  })
+  g.stroke()
+
+  const cuerpoDeActor = new Map(e.actores.map((a) => [a.body, a.id]))
+
+  // ─── ABANICO: varios cuerpos en la MISMA celda se corren un poco ──────────
+  //
+  // AYUDA DE LECTURA, y hay que decirlo: el mundo no tiene sub-posiciones dentro
+  // de una celda —eso sería inventar geometría, que es lo que el ADR II-0017
+  // prohíbe—. Pero al arrancar la partida la criatura, la vara y la hebra están
+  // las tres en la misma celda, y dibujadas en el centro se tapan: se ve un solo
+  // círculo blanco y parece que no hay nada más. El corrimiento es del DIBUJO y
+  // no del estado, y por eso es chico y en anillo: se lee «hay tres acá», no «uno
+  // está más a la derecha».
+  const enLaCelda = new Map()
+  for (const [id, c] of e.cuerpos) {
+    if (c.heldBy) continue
+    const k = c.d.at.x + ',' + c.d.at.y
+    if (!enLaCelda.has(k)) enLaCelda.set(k, [])
+    enLaCelda.get(k).push(id)
+  }
+  function abanico (id, at) {
+    const vecinos = enLaCelda.get(at.x + ',' + at.y) || [id]
+    if (vecinos.length < 2) return [0, 0]
+    const k = vecinos.indexOf(id)
+    const ang = (k / vecinos.length) * Math.PI * 2 - Math.PI / 2
+    const r = PX * 0.22
+    return [Math.cos(ang) * r, Math.sin(ang) * r]
+  }
+
   for (const [id, c] of e.cuerpos) {
     const d = c.d
-    const cx = (d.at.x - x0) * PX + PX / 2
-    const cy = (d.at.y - y0) * PX + PX / 2
     if (c.heldBy) continue // lo que está en la mano se dibuja con quien lo lleva
+    const off = abanico(id, d.at)
+    const cx = (d.at.x - x0) * PX + PX / 2 + off[0]
+    const cy = (d.at.y - y0) * PX + PX / 2 + off[1]
     const h = tono(d.materiales.join('+') || 'nada')
-    g.fillStyle = 'hsl(' + h + ' 55% 62%)'
-    g.strokeStyle = 'hsl(' + h + ' 55% 80%)'
+    g.fillStyle = 'hsl(' + h + ' 58% 63%)'
+    g.strokeStyle = 'hsl(' + h + ' 58% 80%)'
     if (cuerpoDeActor.has(id)) {
-      g.fillStyle = '#f0ede6'
-      g.beginPath(); g.arc(cx, cy, PX * 0.32, 0, 7); g.fill()
+      g.fillStyle = '#f4f1ea'
+      g.beginPath(); g.arc(cx, cy, PX * 0.30, 0, 7); g.fill()
+      g.fillStyle = '#f4f1ea'; g.font = '10px monospace'; g.textAlign = 'center'
+      g.fillText(cuerpoDeActor.get(id), cx, cy - PX * 0.38)
     } else if (d.forma === 'hebra') {
-      g.lineWidth = 2
-      g.beginPath(); g.moveTo(cx - PX * .3, cy + PX * .3); g.lineTo(cx + PX * .3, cy - PX * .3); g.stroke()
+      g.lineWidth = 2.5
+      g.beginPath(); g.moveTo(cx - PX * .28, cy + PX * .28); g.lineTo(cx + PX * .28, cy - PX * .28); g.stroke()
     } else if (d.forma === 'vara') {
-      g.fillRect(cx - PX * .34, cy - PX * .1, PX * .68, PX * .2)
+      g.fillRect(cx - PX * .32, cy - PX * .09, PX * .64, PX * .18)
     } else if (d.forma === 'grano') {
-      g.beginPath(); g.arc(cx, cy, PX * 0.14, 0, 7); g.fill()
+      g.beginPath(); g.arc(cx, cy, PX * 0.13, 0, 7); g.fill()
     } else {
-      g.fillRect(cx - PX * .26, cy - PX * .26, PX * .52, PX * .52)
+      g.fillRect(cx - PX * .24, cy - PX * .24, PX * .48, PX * .48)
     }
-    // Más de una pieza: se marca, porque es lo único que distingue una obra.
     if (d.partes > 1) {
-      g.strokeStyle = '#f0ede6'; g.lineWidth = 1
-      g.beginPath(); g.arc(cx, cy, PX * 0.42, 0, 7); g.stroke()
+      g.strokeStyle = '#f4f1ea'; g.lineWidth = 1
+      g.beginPath(); g.arc(cx, cy, PX * 0.40, 0, 7); g.stroke()
     }
     if (d.desplegado) {
-      g.strokeStyle = '#c8b273'; g.lineWidth = 2
-      g.beginPath(); g.arc(cx, cy, PX * 0.46, 0, 7); g.stroke()
+      g.strokeStyle = '#d4b96a'; g.lineWidth = 2.5
+      g.beginPath(); g.arc(cx, cy, PX * 0.44, 0, 7); g.stroke()
+      g.fillStyle = '#d4b96a'; g.font = '10px monospace'; g.textAlign = 'center'
+      g.fillText('obra', cx, cy + PX * 0.66)
       if (d.desplegado.captura > 0) {
-        g.fillStyle = '#c8b273'
-        g.font = 'bold ' + Math.round(PX * .5) + 'px monospace'
-        g.textAlign = 'center'; g.textBaseline = 'middle'
+        g.font = 'bold ' + Math.round(PX * .46) + 'px monospace'; g.textBaseline = 'middle'
         g.fillText(String(d.desplegado.captura), cx, cy)
+        g.textBaseline = 'alphabetic'
       }
+    }
+    // Parpadeo de lo que CAMBIÓ este tick. Sale del delta, o sea del mismo dato.
+    if (cambiaron.has(id)) {
+      g.strokeStyle = 'rgba(255,255,255,.85)'; g.lineWidth = 1.5
+      g.strokeRect((d.at.x - x0) * PX + 1, (d.at.y - y0) * PX + 1, PX - 2, PX - 2)
     }
   }
 }
 
-function contar (e) {
-  const filas = []
+function hitoDe (i) {
+  let ultimo = null
+  for (const h of HITOS) if (h.tick <= CUADROS[i].tick) ultimo = h
+  return ultimo
+}
+
+function lateral (i) {
+  const e = CUADROS[i]
   const a = e.actores[0]
-  if (a) filas.push(['criatura', a.id + ' · manos ' + a.holding.length + '/' + a.capacity])
-  filas.push(['cuerpos a la vista', e.cuerpos.size])
-  const desp = [...e.cuerpos.values()].filter((c) => c.d.desplegado)
-  for (const c of desp) filas.push(['desplegado', c.d.partes + ' piezas · retuvo ' + c.d.desplegado.captura])
-  let html = '<h2>estado</h2><table>' +
-    filas.map((f) => '<tr><td>' + f[0] + '</td><td>' + f[1] + '</td></tr>').join('') + '</table>'
-  html += '<h2>lo que hay</h2><table>'
+  let html = '<h2>leyenda</h2><div id="leyenda">' +
+    '<i>○</i><span>la criatura</span>' +
+    '<i>▬</i><span>una vara · <i>╱</i> una hebra</span>' +
+    '<i>◎</i><span>algo de más de una pieza: una obra</span>' +
+    '<i style="color:#d4b96a">◉</i><span>obra desplegada; el número es lo que retuvo</span>' +
+    '<i style="color:#7abeff">⬚</i><span>el pozo</span>' +
+    '<i>azul</i><span>agua · <i>rojo</i> calor · <i>oscuro</i> a reparo</span>' +
+    '</div>'
+  html += '<h2>estado</h2><table>'
+  if (a) html += '<tr><td>criatura</td><td>' + a.id + ' · manos ' + a.holding.length + '/' + a.capacity + '</td></tr>'
+  html += '<tr><td>cuerpos a la vista</td><td>' + e.cuerpos.size + '</td></tr>'
+  for (const c of e.cuerpos.values()) {
+    if (!c.d.desplegado) continue
+    html += '<tr><td>desplegado</td><td>' + c.d.partes + ' piezas · retuvo ' + c.d.desplegado.captura + '</td></tr>'
+  }
+  html += '</table><h2>diario</h2><div id="diario">'
+  let vistas = 0
+  for (let k = i; k >= 0 && vistas < 14; k--) {
+    for (const linea of DICE[k]) {
+      html += '<div class="' + (k === i ? 'nuevo' : '') + '">t' + CUADROS[k].tick + ' · ' + linea + '</div>'
+      vistas++
+    }
+  }
+  if (vistas === 0) html += '<div>—</div>'
+  html += '</div><h2>lo que hay</h2><table>'
   for (const [id, c] of e.cuerpos) {
     html += '<tr><td>' + id + '</td><td>' + c.d.forma + ' · ' + c.d.materiales.join(', ') +
       (c.d.partes > 1 ? ' · ' + c.d.partes + ' piezas' : '') +
       (c.heldBy ? ' · en la mano' : '') + '</td></tr>'
-  }
-  html += '</table><h2>la historia</h2><table>'
-  for (const h of HITOS) {
-    html += '<tr><td' + (h.tick <= e.tick ? ' class="hito"' : '') + '>t' + h.tick + '</td><td' +
-      (h.tick <= e.tick ? ' class="hito"' : '') + '>' + h.que + '</td></tr>'
   }
   return html + '</table>'
 }
@@ -378,34 +598,101 @@ function contar (e) {
 const barra = document.getElementById('barra')
 const reloj = document.getElementById('reloj')
 const lado = document.getElementById('lado')
+const titulo = document.getElementById('titulo')
+const sub = document.getElementById('sub')
 barra.max = String(CUADROS.length - 1)
 
 function mostrar (i) {
-  const e = CUADROS[i]
-  pintar(e)
-  reloj.textContent = 'tick ' + e.tick + ' / ' + CUADROS[CUADROS.length - 1].tick
-  lado.innerHTML = contar(e)
+  barra.value = String(i)
+  pintar(i)
+  const h = hitoDe(i)
+  titulo.textContent = h ? h.que : 'la partida arranca: una criatura, una vara y una hebra'
+  sub.textContent = DICE[i].length ? DICE[i].join(' · ') : ''
+  reloj.textContent = 'tick ' + CUADROS[i].tick + ' / ' + CUADROS[CUADROS.length - 1].tick
+  lado.innerHTML = lateral(i)
 }
 
-barra.addEventListener('input', () => mostrar(Number(barra.value)))
+/** El próximo cuadro a mostrar: el siguiente, o el siguiente que TENGA algo. */
+function siguiente (i) {
+  if (!document.getElementById('saltar').checked) return i + 1
+  for (const k of INTERESANTES) if (k > i) return k
+  return CUADROS.length - 1
+}
+
+let vel = 250
 let corriendo = null
-document.getElementById('play').addEventListener('click', (ev) => {
-  if (corriendo) { clearInterval(corriendo); corriendo = null; ev.target.textContent = '▶'; return }
-  ev.target.textContent = '❚❚'
+const play = document.getElementById('play')
+
+function parar () {
+  if (corriendo) clearInterval(corriendo)
+  corriendo = null
+  play.textContent = '▶ reproducir'
+}
+
+play.addEventListener('click', () => {
+  if (corriendo) return parar()
+  play.textContent = '❚❚ pausa'
   corriendo = setInterval(() => {
-    const n = Number(barra.value) + 1
-    if (n > Number(barra.max)) { clearInterval(corriendo); corriendo = null; ev.target.textContent = '▶'; return }
-    barra.value = String(n); mostrar(n)
-  }, 40)
+    const n = siguiente(Number(barra.value))
+    if (n >= CUADROS.length - 1) { mostrar(CUADROS.length - 1); parar(); return }
+    mostrar(n)
+    if (document.getElementById('parar').checked && TICKS_DE_HITO.has(CUADROS[n].tick)) parar()
+  }, vel)
 })
+
+document.getElementById('atras').addEventListener('click', () => { parar(); mostrar(Math.max(0, Number(barra.value) - 1)) })
+document.getElementById('adelante').addEventListener('click', () => { parar(); mostrar(siguiente(Number(barra.value))) })
+barra.addEventListener('input', () => { parar(); mostrar(Number(barra.value)) })
+
+for (const b of document.querySelectorAll('[data-vel]')) {
+  b.addEventListener('click', () => {
+    vel = Number(b.dataset.vel)
+    for (const o of document.querySelectorAll('[data-vel]')) o.classList.toggle('on', o === b)
+    if (corriendo) { parar(); play.click() }
+  })
+}
+
+// Un botón por hito: la forma más corta de que se pueda ver el paso que interesa.
+const chips = document.getElementById('hitos')
+HITOS.forEach((h) => {
+  const b = document.createElement('button')
+  b.className = 'chip'
+  b.textContent = h.que
+  b.addEventListener('click', () => {
+    parar()
+    let i = 0
+    while (i < CUADROS.length - 1 && CUADROS[i].tick < h.tick) i++
+    mostrar(i)
+  })
+  chips.appendChild(b)
+})
+
 mostrar(0)
 `
 
 describe('el visor de descarte', () => {
-  it('graba la historia del gate y escribe un HTML de un solo archivo', () => {
+  it('graba la historia del gate, la narra, y escribe un HTML de un solo archivo', () => {
     const g = grabar()
     expect(g.cuadros.length).toBeGreaterThan(400)
     expect(g.hitos.length).toBe(6)
+
+    // ─── LO QUE LA PRIMERA VERSIÓN NO TENÍA, Y ES POR QUÉ NO SE ENTENDÍA ─────
+    //
+    // La partida son 441 cuadros y la acción entera pasa en los primeros 65. Sin
+    // narración, ver un círculo blanco moverse no dice si levantó algo, si ató
+    // algo o si le rebotó una intención. Acá se afirma que la narración EXISTE y
+    // que es escasa: si contara `movio` habría una línea por tick y las que
+    // importan se perderían adentro de cuatrocientas.
+    const conAlgo = g.cuadros.filter((c) => c.dice.length > 0)
+    expect(conAlgo.length, 'la partida no narra nada').toBeGreaterThan(5)
+    expect(conAlgo.length, 'narra demasiado: los hitos se pierden').toBeLessThan(g.cuadros.length / 4)
+
+    const dicho = g.cuadros.flatMap((c) => c.dice)
+    expect(dicho.some((l) => l.includes('levanta'))).toBe(true)
+    expect(dicho.some((l) => l.includes('deja la obra sobre el pozo'))).toBe(true)
+    // La línea que ES el caso de aceptación: la obra saca sin que nadie aplique
+    // nada, y se distingue de lo que hizo la criatura por quién la hizo nacer.
+    expect(dicho.some((l) => l.includes('la obra atrapa'))).toBe(true)
 
     // ─── EL CONTROL QUE HACE QUE ESTO SEA UN TEST ────────────────────────────
     //
@@ -413,9 +700,9 @@ describe('el visor de descarte', () => {
     // visor mostraría un mundo cada vez más viejo y NO fallaría nada. Acá se
     // reconstruye la grabación entera desde el cuadro 0 y se compara cuadro por
     // cuadro CONTRA LO GRABADO, por hash.
-    let e = g.cuadros[0] as Escena
+    let e = g.cuadros[0]?.e as Escena
     for (let i = 1; i < g.cuadros.length; i++) {
-      const b = g.cuadros[i] as Escena
+      const b = g.cuadros[i]?.e as Escena
       e = aplicarDelta(e, deltaEntre(e, b))
       expect(escenaHash(e), `el cuadro ${String(i)} no se reconstruye desde los deltas`).toBe(escenaHash(b))
     }
@@ -424,11 +711,11 @@ describe('el visor de descarte', () => {
     mkdirSync(dirname(SALIDA), { recursive: true })
     writeFileSync(SALIDA, html, 'utf8')
 
-    // La compresión, impresa: es lo que justifica que el archivo se pueda commitear.
-    const entero = JSON.stringify(g.cuadros.map((c) => ({ ...c, cuerpos: [...c.cuerpos] }))).length
+    const entero = JSON.stringify(g.cuadros.map((c) => ({ ...c.e, cuerpos: [...c.e.cuerpos] }))).length
     console.log(
       `\n─── EL VISOR ───\n` +
-        `  ${String(g.cuadros.length)} cuadros · escenas enteras ${String(Math.round(entero / 1024))} KB` +
+        `  ${String(g.cuadros.length)} cuadros · ${String(conAlgo.length)} con algo que contar\n` +
+        `  escenas enteras ${String(Math.round(entero / 1024))} KB` +
         ` → con deltas ${String(Math.round(html.length / 1024))} KB\n` +
         `  ${SALIDA}\n`,
     )
