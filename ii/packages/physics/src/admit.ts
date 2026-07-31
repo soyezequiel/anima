@@ -235,6 +235,10 @@ export type Codigo =
   | 'confianza-autodeclarada'
   | 'promesa-derivada'
   | 'transferencia-eterna'
+  // regla 4 — el plano (Gate 5→6): las cotas del ensamble y la forma del grafo
+  | 'partes-fuera-de-cota'
+  | 'juntas-fuera-de-cota'
+  | 'junta-reflexiva'
   // regla 5 — ciclos
   | 'ciclo-rentable'
   | 'ciclo-con-aporte'

@@ -156,7 +156,7 @@ todo lo demás pase.
 
 | # | estado | dónde se mide |
 |---|---|---|
-| 1 `BlueprintDefinition` canónico | **no empezado** — el tipo no existe | — |
+| 1 `BlueprintDefinition` canónico | **CUMPLE** (tramo C) | `physics/tests/el-plano-es-canonico.test.ts` |
 | 2 overlay aislado por sesión | **CUMPLE** | `plan/tests/el-catalogo-es-una-vista.test.ts`, bloque (2) |
 | 3 publicación de capacidades | **CUMPLE** para esquemas; falta para planos | ídem, bloque (3) |
 | 4 sin mutación global | **CUMPLE**, con guardián de texto en los DOS paquetes | ídem, bloque (4) + `mind/tests/el-catalogo-llega-a-la-mente.test.ts` |
@@ -164,15 +164,61 @@ todo lo demás pase.
 | 6 separar construir de usar | **la mitad**: `CatalogCapability.clase` los separa en el dato; nadie los juzga todavía | `plan/src/catalogo.ts` |
 | 7 dos partidas no se contaminan | **CUMPLE** | `el-catalogo-es-una-vista`, bloque (7) |
 | 8 guardar y restaurar | **no empezado**; `registryDigest` es la pieza que lo va a comparar | — |
-| 9 cambio de física invalida sellos | **no empezado** | — |
+| 9 cambio de física invalida sellos | **la mitad del plano CUMPLE**: la revisión lleva `physicsVersion` adentro del hash, así que subir la versión produce otra revisión. Faltan los sellos de habilidades | `el-plano-es-canonico`, bloque (c) |
 | 10 mismo journal, mismo catálogo | **no empezado** | — |
 | 11 descriptor visual | **no empezado** | — |
 | 12 sin nombres especiales | **no aplica todavía**: no hay trampa | — |
 
-**Van 3 de 12 cumpliendo y 1 a medias**, y los tres que cumplen son exactamente
-los que no dependen de que exista `BlueprintDefinition`. Lo que el tramo A cerró
-es **la deuda 1** —la costura del catálogo hasta la mente, sección 6— y con eso
-el planificador y la mente dejaron de estar atados a un singleton.
+**Van 4 de 12 cumpliendo y 3 a medias.** Los tres primeros los cerró el tramo A
+—la deuda 1, la costura del catálogo hasta la mente— y el cuarto es el plano, del
+tramo C.
+
+### El plano, tramo C · 2026-07-31
+
+`BlueprintDefinition` existe, vive en **`@anima/physics`** y su puerta es
+`definirPlano(candidato, phys)`, que devuelve una definición o un `Verdict` con
+razones citables — nunca lanza, porque del otro lado hay un modelo y a un modelo
+hay que decirle qué corregir.
+
+**Por qué en `@anima/physics` y no en `@anima/skills`, donde estaba el
+placeholder.** Porque el grafo real de paquetes es
+`physics → oracle → world → skills → plan`, o sea que el `Blueprint` de
+`skills/src/tipos.ts` está **arriba del mundo**, que es justamente quien lo tiene
+que construir. Y porque la puerta es `admit()` y `admit()` vive acá: un candidato
+del modelo se valida igual que una `Substance` que propone el oráculo. Que el tipo
+viva en la física no quiere decir que el modelo escriba física (ADR II-0001): un
+candidato es DATO que la puerta juzga.
+
+**Tres decisiones de forma, y las tres son la misma idea del tramo A:**
+
+1. **No hay `id` aparte de la revisión.** La identidad sale del contenido, igual
+   que el `catalogEpoch`. Un id estable con revisiones numeradas encima pediría un
+   linaje, y el gate no tiene ninguna operación que lo use.
+2. **No hay nombre.** Meterlo obligaría a elegir entre que renombrar produzca otra
+   revisión, o que dos planos iguales con nombres distintos compartan revisión y
+   el nombre quede ambiguo. Nombrar es de la vista, y la vista es derivada
+   (ADR II-0017). De paso, esquiva el punto 12 entero.
+3. **`physicsVersion` va adentro del hash.** Un plano dice «algo con
+   `rigidity >= 0,5`» y qué significa ese número lo dice la física. Subir la
+   versión produce otra revisión, que es literalmente lo que «invalidar el sello»
+   quiere decir.
+
+**Y el punto 12 queda resuelto por la FORMA del dato:** una pieza se describe con
+`QualityTest` —cualidad, operador, número— así que **no hay dónde escribir
+«junco»**. No es un validador que alguien tenga que acordarse de correr.
+
+**La línea honesta de la normalización, escrita para que nadie la descubra a los
+golpes.** Se normaliza todo lo que es orden de escritura: el orden de las piezas,
+el de las juntas, el de las cláusulas de una pieza, y de qué lado de una junta
+quedó cada rol. **No se normalizan los nombres de rol**: decidir que `costilla-a`
+y `varilla-1` son el mismo plano pide isomorfismo de grafos con etiquetas. Se
+eligió el lado conservador, y el precio se dice en una frase — un duplicado se
+puede registrar dos veces y eso cuesta memoria; dos planos distintos colapsando en
+la misma revisión costaría correctitud.
+
+**Lo que el tramo C todavía NO hizo:** el `Blueprint` placeholder de
+`skills/src/tipos.ts` sigue siendo `{ id, at }` y `place` la sigue rechazando el
+mundo con `'no-implementado'`. Construir es el punto 5 y es la pieza que sigue.
 
 ---
 
