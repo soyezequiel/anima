@@ -414,3 +414,65 @@ un pozo del que se pueda pescar.
 
 Medido: `@anima/lang` **37 tests**, suite entera **2735**, typecheck limpio en los
 diez paquetes.
+
+### Tramo E — los tres relojes y el criterio, corrido
+
+El cronómetro **entra por parámetro**, porque `performance.` está prohibido en
+`src/` y un paquete determinista que lee el reloj del sistema deja de dar el
+mismo resultado dos veces. Es la misma solución que `perceive/src/bucle.ts` ya
+usa para `ticksPerdidos`.
+
+Y `Reloj.resumen()` devuelve **`undefined` sin muestras, no un resumen de
+ceros**, por una trampa que este proyecto ya cobró: `ticksPerdidos` por omisión
+no puede subir —su mitad interesante se mide contra un reloj que
+`PartidaOptions` deja en `undefined`— así que su cero no dice «llegamos a
+horario», dice **«nadie miró»**.
+
+#### EL VEREDICTO, con `ANIMA_BANCO=1` · exit 0
+
+```
+── EL CORPUS: 77 frases ──
+  orden-con-objeto  25 · respuesta-corta 12 · orden-simple 10 · pregunta 8
+  referencia 7 · identidad 4 · temporal 4 · negativa 3 · compuesta 2 · condicional 2
+  ── con faltas de ortografía: 27
+  ── del historial de chat REAL: 5
+  ── FALTAN PARA 200: 123
+
+(1) 77 frases · 0 sin respuesta
+(4) acuse p50 0,031 ms · p95 0,088 ms · ventana del tick 50 ms
+
+── MENSAJE → PRIMER MOVIMIENTO ──
+  apagado          p50    0.05 ms   p95    1.52 ms   máx    2.97 ms
+  colgado          p50    0.06 ms   p95    1.29 ms   máx    2.12 ms
+  EN EL CAMINO     p50   20.07 ms   p95   21.22 ms   máx   21.93 ms   ← el control
+```
+
+**El control positivo es la tercera fila y va afirmado ANTES que la comparación.**
+Un test que compara dos p95, los encuentra iguales y da verde es exactamente el
+cero que sale de no tener qué medir. La corrida «en el camino» pone al proveedor
+antes del acuse a propósito y tiene que dar peor; si no da peor, el arnés no ve
+al proveedor y la comparación de al lado no vale nada.
+
+Y el proveedor simulado quema **20 ms** contra los **900 de TTFT** que la tabla
+del documento le da a uno real: el control es 45× más suave que la realidad.
+
+#### Estado de los cinco puntos
+
+| # | qué pide | estado |
+|---|---|---|
+| **1** | ninguna frase devuelve «nada» | **CUMPLE** sobre 77 · 0 sin respuesta |
+| **2** | proveedor colgado = mismo p95 | **CUMPLE** con su control positivo (1,29 contra 1,52, y 21,22 el control) |
+| **3** | p95 < 150 ms | **CUMPLE** con holgura de 100× |
+| **4** | acuse en el mismo frame | **CUMPLE por mecanismo**: `leer` es sincrónica y el guardián de la regla 2 prohíbe `await` en todo `src/` |
+| **5** | `consistenciaDelPrimerGesto ≥ 0,85` | **NO MEDIDO.** El acumulador existe (`Consistencia`), y nada lo alimenta |
+
+**Lo que falta, dicho con el número:**
+
+1. **123 frases** para llegar a 200. Las 77 que hay son las que las mediciones
+   dejaron citadas con archivo y línea, o sea las verificables una por una. El
+   resto es extracción, no invención — y el barrido que las iba a traer quedó
+   cortado a mitad de camino.
+2. **El punto 5 no está medido**, y no es un olvido: comparar el primer gesto con
+   la conducta final pide correr la mente sobre ticks, y `@anima/lang` no depende
+   de `@anima/mind` ni tiene por qué. El acumulador está escrito para que quien
+   corra esa partida sólo tenga que llamarlo.
