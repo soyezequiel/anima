@@ -5,12 +5,25 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: **2026-07-31**, con los **tramos A, B y C del Gate 5→6**
-cerrados: la costura del catálogo llega hasta la mente —**la deuda 1 del gate está
-pagada**—, una frontera armada con otro catálogo se descarta y se replantea (ver
-el final de la sección 0·bis), y **`BlueprintDefinition` existe** en
-`@anima/physics`, canónico y versionado, con `definirPlano()` de puerta. Van
-**4 de los 12 puntos** del gate cumpliendo y 3 a medias. Antes de eso, el gate decidido y escrito
+Última actualización: **2026-07-31**, con los **tramos A, B, C y C·bis del Gate
+5→6** cerrados: la costura del catálogo llega hasta la mente —**la deuda 1 del
+gate está pagada**—, una frontera armada con otro catálogo se descarta y se
+replantea (ver el final de la sección 0·bis), **`BlueprintDefinition` existe** en
+`@anima/physics` con `definirPlano()` de puerta, y el **C·bis midió `unir` antes
+de diseñar la obra**: el mundo ya sabe construir un plano, y la medición encontró
+cinco huecos en el plano recién escrito. Van **4 de los 12 puntos** del gate
+cumpliendo y 3 a medias.
+
+> **LA REGLA 1 SE PAGÓ SOLA OTRA VEZ, y es lo más útil del día.** Antes de
+> diseñar un mecanismo de obra —proyecto con sitio, roles que se llenan, obra que
+> se materializa— se midió si el mundo ya lo hacía. Lo hace: cada `union` es una
+> acción suelta y cada paso intermedio es un cuerpo legal. Lo que sí encontró la
+> medición son **cinco huecos en el `BlueprintDefinition` escrito esa misma
+> mañana**, todos verdes porque ningún test había intentado construir nada. El
+> detalle está en la sección «El tramo C·bis» de
+> [`gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md), y el que más
+> se repite en este proyecto: **la cota que manda no es `MAX_PARTS`, es la
+> HONDURA** — un árbol de cuatro piezas ya toca `MAX_ASSEMBLY_DEPTH`. Antes de eso, el gate decidido y escrito
 (sección 0·bis, y el criterio entero en
 [`gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md)), y antes el
 **tramo Ñ** (el ancla del fondo y el rumbo del `explore`: el punto 9 de la
@@ -141,7 +154,7 @@ capacidades físicas disponibles en ese nivel.*
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2539 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+**Nueve paquetes, 2553 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
 nueve typechecks limpios.** Corridos enteros al cerrar el tramo C del gate, mirando
 el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
@@ -166,7 +179,7 @@ otra máquina, hay que pushear antes.
 
 | paquete | qué es | tests |
 |---|---|---:|
-| `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables, **`BlueprintDefinition`** | 632 |
+| `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables, **`BlueprintDefinition`** | 646 |
 | `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 561 (+1 skipped) |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |

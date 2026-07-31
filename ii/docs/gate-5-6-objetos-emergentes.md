@@ -220,6 +220,52 @@ la misma revisión costaría correctitud.
 `skills/src/tipos.ts` sigue siendo `{ id, at }` y `place` la sigue rechazando el
 mundo con `'no-implementado'`. Construir es el punto 5 y es la pieza que sigue.
 
+### El tramo C·bis: medir `unir` antes de diseñar la obra
+
+El impulso, al llegar al punto 5, era diseñar un mecanismo de obra: un proyecto
+con sitio, roles que se llenan de a uno, materialización al completarse. **Antes
+de escribir una línea de eso se aplicó la regla 1 del repositorio** —«medir el
+catálogo no es medir el mundo: antes de cambiar el mundo para desbloquear algo,
+medí si ya está desbloqueado»— y la medición está en
+`physics/tests/lo-que-cuesta-armar-un-plano.test.ts`, diez bloques.
+
+**La buena noticia: el mundo YA sabe construir un plano.** Cada `union` es una
+acción suelta, cada paso intermedio es un cuerpo legal que se puede soltar y
+retomar, y la obra a medias no es un estado especial. «Construcción incremental»
+no pide un mecanismo nuevo — pide un `BuildSkill` que encadene uniones.
+
+**Y la mala: la medición encontró CUATRO huecos en el `BlueprintDefinition` que
+el tramo C había escrito esa misma mañana.** Los cuatro estaban verdes porque
+ningún test había intentado construir nada.
+
+| lo medido | lo que rompía |
+|---|---|
+| `unir(a,b,binder)` **consume el atador**: no queda como parte, sólo su sustancia queda escrita en la junta | el plano lo declaraba como pieza y lo contaba contra `MAX_PARTS` |
+| una obra de N piezas gasta **N−1 atadores**: seis piezas son ONCE cuerpos | el plano declaraba un rol `atadura` sin decir cuántos cuerpos |
+| las juntas son **piezas − 1, siempre** — de más es un ciclo que `union` no sabe armar, de menos son dos obras | `definirPlano` aceptaba cualquier cantidad |
+| la cota que manda **no es `MAX_PARTS` sino la HONDURA**: un árbol de CUATRO piezas armado como dos pares ya mide 3, que es `MAX_ASSEMBLY_DEPTH` exacto | `definirPlano` no la miraba |
+
+**Y uno más, que salió de que un test se pusiera verde por el motivo
+equivocado:** un plano con siete piezas y CERO juntas se aceptaba —cero juntas
+para cero piezas cierra la cuenta— y describía una pila de materia suelta.
+
+**La reparación no agregó ni un campo**, y ésa es la parte que vale. «Pieza» y
+«atador» dejaron de ser algo que el plano declara y pasaron a **derivarse del
+uso**: un rol que aparece como `a` o `b` de una junta es pieza y cuenta contra
+`MAX_PARTS`; uno que aparece sólo como `binder` se consume y no cuenta. Cuántos
+cuerpos hace falta de un atador tampoco se declara: es cuántas juntas lo nombran.
+
+Y el caso de la caña —donde `unir(a, undefined, binder)` deja el atador ADENTRO,
+con la punta suelta que hace el aparejo— se dice sin campo nuevo: **el `binder` de
+la junta es uno de sus propios extremos**.
+
+**La topología, que es el hallazgo más filoso.** `unir` siempre agrega la junta
+`{ a: 0, b: base }`: quién queda atado a quién **no lo elige el que ata**.
+Encadenar de a una pieza da una ESTRELLA; uniendo dos obras se consigue un árbol.
+O sea que cualquier ÁRBOL es construible eligiendo el orden de las uniones, pero
+**no se puede pedir una junta suelta entre dos piezas de una obra ya armada**. El
+plano puede declarar la forma; el `BuildSkill` tiene que encontrar el orden.
+
 ---
 
 ## 5 · Lo que ya existe y lo que falta, verificado contra el código

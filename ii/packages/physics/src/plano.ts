@@ -36,7 +36,7 @@
 // dos partidas comparten el plano sin compartir mundo — que es lo que hace
 // posible la herencia del Hito 10.
 
-import { MAX_JOINTS, MAX_PARTS } from './body.js'
+import { MAX_ASSEMBLY_DEPTH, MAX_JOINTS, MAX_PARTS } from './body.js'
 import { specOf } from './quality.js'
 import type { QualityId } from './quality.js'
 import type { QualityTest } from './process.js'
@@ -65,9 +65,35 @@ export interface BlueprintPart {
  * `a` y `b` NO se distinguen: `union` los trata como el mismo rol material y lo
  * que los une es el `binder`. La forma canónica los ordena.
  *
- * El `binder` es **una pieza más del plano**, no un aparte. Un plano cuyo binder
- * no está declarado se construye a medias y nadie se entera hasta que `union`
- * pide un cuerpo que nadie fue a buscar.
+ * Los tres son ROLES DECLARADOS del plano. Un plano cuyo binder no está
+ * declarado se construye a medias y nadie se entera hasta que `union` pide un
+ * cuerpo que nadie fue a buscar.
+ *
+ * ─── QUÉ ES UN ROL DE ATADOR, Y SE MIDIÓ ────────────────────────────────────
+ *
+ * `unir(a, b, binder)` **consume el binder**: la obra queda con las partes de
+ * `a` y `b`, y del atador sobrevive sólo su sustancia, escrita en la junta. Está
+ * medido en `tests/lo-que-cuesta-armar-un-plano.test.ts`, bloque (1).
+ *
+ * De ahí sale la regla que este módulo aplica y que NO hay que declarar:
+ *
+ *   · un rol que aparece como `a` o `b` en alguna junta es una **pieza**, queda
+ *     adentro de la obra y cuenta contra `MAX_PARTS`;
+ *   · un rol que aparece SÓLO como `binder` es un **atador**, se consume, y no
+ *     cuenta contra `MAX_PARTS`.
+ *
+ * Y cuántos CUERPOS hace falta juntar de un rol de atador tampoco se declara:
+ * es cuántas juntas lo nombran, porque `union` gasta uno por unión. Una obra de
+ * seis piezas son once cuerpos —seis y cinco—, y eso está en la tabla que
+ * imprime el bloque (2) de la misma medición.
+ *
+ * ─── Y EL CASO DE LA CAÑA, que es por qué esto no es un campo aparte ────────
+ *
+ * `unir(a, undefined, binder)` es el otro modo: ahí el atador SOBREVIVE como
+ * parte, atado de un solo lado, con la punta suelta que hace la caña. En este
+ * modelo eso se dice sin ningún campo nuevo: **el `binder` de la junta es uno de
+ * sus propios extremos**. Si `binder === a` o `binder === b`, ese rol es pieza y
+ * atador a la vez, que es exactamente lo que la caña es.
  */
 export interface BlueprintJoint {
   readonly a: string
@@ -161,11 +187,14 @@ function revisar(c: BlueprintCandidate): Razones {
   if (c.parts.length === 0) {
     puesta('sin-roles', 'el plano no declara ninguna pieza: no hay obra que levantar')
   }
-  if (c.parts.length > MAX_PARTS) {
+  // La cota se le aplica a las PIEZAS y no a los roles declarados: un rol que
+  // sólo ata se consume y no queda en la obra. Ver `BlueprintJoint`.
+  const piezas = piezasDe(c)
+  if (piezas.size > MAX_PARTS) {
     puesta(
       'partes-fuera-de-cota',
-      `el plano declara ${String(c.parts.length)} piezas y el ensamble admite ${String(MAX_PARTS)}`,
-      { encontrado: c.parts.length, cota: MAX_PARTS },
+      `el plano deja ${String(piezas.size)} piezas en la obra y el ensamble admite ${String(MAX_PARTS)}`,
+      { encontrado: piezas.size, cota: MAX_PARTS },
     )
   }
   if (c.joints.length > MAX_JOINTS) {
@@ -203,7 +232,159 @@ function revisar(c: BlueprintCandidate): Razones {
     }
   }
 
+  // ─── LAS TRES QUE SALIERON DE MEDIR `unir`, y ninguna estaba ──────────────
+  //
+  // `tests/lo-que-cuesta-armar-un-plano.test.ts` midió que cada `union` agrega
+  // EXACTAMENTE una pieza y EXACTAMENTE una junta. De ahí salen las tres, y las
+  // tres describen planos que se aceptaban y no se podían construir.
+  if (out.length === 0 && c.parts.length > 0) {
+    for (const r of rolesSinUsar(c, piezas)) {
+      puesta('rol-desconocido', `el plano declara «${r}» y ninguna junta lo nombra: es una pieza suelta`, { rol: r })
+    }
+
+    // (1) Una obra de N piezas tiene N−1 juntas y ni una más ni una menos. De
+    //     más sería un ciclo, que `union` no sabe armar; de menos, dos obras.
+    const esperadas = piezas.size === 0 ? 0 : piezas.size - 1
+    if (c.joints.length !== esperadas) {
+      puesta(
+        'juntas-fuera-de-cota',
+        `el plano declara ${String(c.joints.length)} juntas para ${String(piezas.size)} piezas, y una obra las tiene PIEZAS − 1 = ${String(esperadas)}`,
+        { encontrado: c.joints.length, cota: esperadas },
+      )
+    }
+
+    // (2) Y tiene que ser UNA sola obra. Con la cuenta justa pero desconectado,
+    //     lo que el plano describe son dos obras y un ciclo.
+    if (c.joints.length === esperadas && !esConexo(c, piezas)) {
+      puesta(
+        'juntas-fuera-de-cota',
+        'las juntas del plano no conectan todas las piezas: lo que describe son dos obras, no una',
+        { encontrado: c.joints.length, cota: esperadas },
+      )
+    }
+
+    // (3) La cota que manda no es cuántas piezas hay sino QUÉ TAN HONDA es la
+    //     obra, y se toca antes de lo que uno cree: un árbol de cuatro piezas
+    //     armado como dos pares ya mide 3, que es el techo exacto.
+    if (c.joints.length === esperadas && esConexo(c, piezas)) {
+      const d = hondura(c, piezas)
+      if (d > MAX_ASSEMBLY_DEPTH) {
+        puesta(
+          'partes-fuera-de-cota',
+          `la obra que describe el plano tiene hondura ${String(d)} y el ensamble admite ${String(MAX_ASSEMBLY_DEPTH)}`,
+          { encontrado: d, cota: MAX_ASSEMBLY_DEPTH },
+        )
+      }
+    }
+  }
+
   return out
+}
+
+/**
+ * LAS PIEZAS: los roles que quedan adentro de la obra.
+ *
+ * Un rol que aparece como `a` o `b` de alguna junta es pieza. Uno que aparece
+ * sólo como `binder` se consume. El caso degenerado —un plano de una sola pieza
+ * y ninguna junta— no tiene juntas de donde leerlo, así que la única parte
+ * declarada ES la pieza.
+ */
+function piezasDe(c: BlueprintCandidate): ReadonlySet<string> {
+  if (c.joints.length === 0) return new Set(c.parts.length === 1 ? c.parts.map((p) => p.rol) : [])
+  const out = new Set<string>()
+  for (const j of c.joints) {
+    out.add(j.a)
+    out.add(j.b)
+  }
+  return out
+}
+
+/**
+ * Roles declarados que ninguna junta nombra. Materia que nadie va a usar.
+ *
+ * Sin `if (joints.length === 0) return []`, que fue como estuvo escrito y dejaba
+ * pasar el caso más tonto: un plano con siete piezas y CERO juntas se aceptaba
+ * como válido —cero juntas para cero piezas cierra la cuenta— y describía una
+ * pila de materia suelta. Lo encontró el test de la cota de piezas al ponerse
+ * verde por el motivo equivocado.
+ */
+function rolesSinUsar(c: BlueprintCandidate, piezas: ReadonlySet<string>): readonly string[] {
+  const usados = new Set<string>(piezas)
+  for (const j of c.joints) usados.add(j.binder)
+  return c.parts.map((p) => p.rol).filter((r) => !usados.has(r))
+}
+
+/** Vecinos de cada pieza según las juntas. La obra es el grafo de esto. */
+function vecinosDe(c: BlueprintCandidate, piezas: ReadonlySet<string>): ReadonlyMap<string, readonly string[]> {
+  const m = new Map<string, string[]>()
+  for (const p of piezas) m.set(p, [])
+  for (const j of c.joints) {
+    m.get(j.a)?.push(j.b)
+    m.get(j.b)?.push(j.a)
+  }
+  return m
+}
+
+/** Si todas las piezas cuelgan de la misma obra. */
+function esConexo(c: BlueprintCandidate, piezas: ReadonlySet<string>): boolean {
+  if (piezas.size <= 1) return true
+  const vecinos = vecinosDe(c, piezas)
+  const arranque = [...piezas][0]
+  if (arranque === undefined) return true
+  return alcanzadosDesde(arranque, vecinos).size === piezas.size
+}
+
+/**
+ * LA HONDURA: el camino más largo de la obra, contado en juntas.
+ *
+ * Es el diámetro del árbol, y se calcula con dos barridos —el clásico— porque un
+ * árbol de seis nodos no justifica nada más listo y porque tiene que dar el mismo
+ * número que `assemblyDepthOf` del cuerpo ya armado.
+ */
+function hondura(c: BlueprintCandidate, piezas: ReadonlySet<string>): number {
+  if (piezas.size <= 1) return 0
+  const vecinos = vecinosDe(c, piezas)
+  const arranque = [...piezas].sort(comparaTexto)[0]
+  if (arranque === undefined) return 0
+  const lejano = elMasLejano(arranque, vecinos)
+  return elMasLejano(lejano.rol, vecinos).saltos
+}
+
+function alcanzadosDesde(desde: string, vecinos: ReadonlyMap<string, readonly string[]>): ReadonlySet<string> {
+  const vistos = new Set<string>([desde])
+  const cola = [desde]
+  while (cola.length > 0) {
+    const x = cola.shift()
+    if (x === undefined) break
+    for (const y of vecinos.get(x) ?? []) {
+      if (vistos.has(y)) continue
+      vistos.add(y)
+      cola.push(y)
+    }
+  }
+  return vistos
+}
+
+/** El nodo más lejano y a cuántas juntas. El desempate es por texto: determinismo. */
+function elMasLejano(
+  desde: string,
+  vecinos: ReadonlyMap<string, readonly string[]>,
+): { readonly rol: string; readonly saltos: number } {
+  const dist = new Map<string, number>([[desde, 0]])
+  const cola = [desde]
+  let mejor = { rol: desde, saltos: 0 }
+  while (cola.length > 0) {
+    const x = cola.shift()
+    if (x === undefined) break
+    const d = dist.get(x) ?? 0
+    if (d > mejor.saltos || (d === mejor.saltos && comparaTexto(x, mejor.rol) < 0)) mejor = { rol: x, saltos: d }
+    for (const y of [...(vecinos.get(x) ?? [])].sort(comparaTexto)) {
+      if (dist.has(y)) continue
+      dist.set(y, d + 1)
+      cola.push(y)
+    }
+  }
+  return mejor
 }
 
 function revisarClausula(t: QualityTest, rol: string, puesta: Puesta): void {

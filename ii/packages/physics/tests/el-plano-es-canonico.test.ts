@@ -47,7 +47,7 @@ import { describe, expect, it } from 'vitest'
 
 import { buildSeedPhysics } from '../src/index.js'
 import { MAX_JOINTS, MAX_PARTS } from '../src/body.js'
-import { definirPlano, type BlueprintCandidate } from '../src/plano.js'
+import { definirPlano, type BlueprintCandidate, type BlueprintPart } from '../src/plano.js'
 import type { Physics } from '../src/index.js'
 
 const PHYS: Physics = buildSeedPhysics()
@@ -182,18 +182,42 @@ describe('(b) un cambio de contenido cambia la revisión', () => {
     expect(revisionDe(tocado)).not.toBe(revisionDe(CANDIDATO))
   })
 
-  it('sacar una junta', () => {
-    const tocado: BlueprintCandidate = { ...CANDIDATO, joints: CANDIDATO.joints.slice(1) }
-    expect(revisionDe(tocado)).not.toBe(revisionDe(CANDIDATO))
+  it('una obra de tres piezas no es la misma que una de cuatro', () => {
+    // Antes esto decía «sacar una junta», y sacar una junta ya no da otro plano:
+    // da un plano INVÁLIDO, porque deja una pieza suelta. Es la primera de las
+    // consecuencias de haber medido `unir` — ver el bloque (e).
+    const tres: BlueprintCandidate = {
+      parts: CANDIDATO.parts.filter((p) => p.rol !== 'paño'),
+      joints: CANDIDATO.joints.filter((j) => j.a !== 'paño' && j.b !== 'paño'),
+    }
+    expect(revisionDe(tres)).not.toBe(revisionDe(CANDIDATO))
   })
 
-  it('cambiar el `binder` de una junta', () => {
-    const conOtro: BlueprintCandidate = {
-      parts: [...CANDIDATO.parts, { rol: 'atadura-2', pide: [{ q: 'tensile', op: '>=', v: 0.3 }] }],
-      joints: CANDIDATO.joints.map((j, i) => (i === 0 ? { ...j, binder: 'atadura-2' } : j)),
+  it('cambiar QUÉ ATADOR usa cada junta', () => {
+    // Los dos declaran los mismos seis roles y usan los dos atadores, así que los
+    // dos son construibles: lo único que cambia es con cuál se ata cada junta. Y
+    // eso es contenido, porque la junta se queda con la sustancia del atador.
+    const dosAtadores: readonly BlueprintPart[] = [
+      ...CANDIDATO.parts,
+      { rol: 'atadura-2', pide: [{ q: 'tensile', op: '>=', v: 0.3 }] },
+    ]
+    const uno: BlueprintCandidate = {
+      parts: dosAtadores,
+      joints: [
+        { a: 'costilla-a', b: 'costilla-b', binder: 'atadura' },
+        { a: 'costilla-b', b: 'costilla-c', binder: 'atadura-2' },
+        { a: 'costilla-c', b: 'paño', binder: 'atadura' },
+      ],
     }
-    const mismasPartes: BlueprintCandidate = { ...conOtro, joints: CANDIDATO.joints }
-    expect(revisionDe(conOtro)).not.toBe(revisionDe(mismasPartes))
+    const elOtro: BlueprintCandidate = {
+      parts: dosAtadores,
+      joints: [
+        { a: 'costilla-a', b: 'costilla-b', binder: 'atadura-2' },
+        { a: 'costilla-b', b: 'costilla-c', binder: 'atadura' },
+        { a: 'costilla-c', b: 'paño', binder: 'atadura' },
+      ],
+    }
+    expect(revisionDe(elOtro)).not.toBe(revisionDe(uno))
   })
 })
 
@@ -262,15 +286,90 @@ describe('(e) la puerta rechaza, y dice por qué', () => {
     expect(razonesDe({ parts: [], joints: [] })).toContain('sin-roles')
   })
 
-  it('más de `MAX_PARTS` piezas', () => {
+  it('más de `MAX_PARTS` PIEZAS — y son las piezas, no los roles declarados', () => {
+    // Una estrella de `MAX_PARTS + 1` piezas: cada una atada a la primera, con un
+    // atador. Los roles declarados son ocho y las PIEZAS son siete, y la cota se
+    // le aplica a las siete. Medido en `lo-que-cuesta-armar-un-plano`: el atador
+    // se consume y no queda en la obra.
+    const n = MAX_PARTS + 1
     const muchas: BlueprintCandidate = {
-      parts: Array.from({ length: MAX_PARTS + 1 }, (_, i) => ({
+      parts: [
+        ...Array.from({ length: n }, (_, i) => ({
+          rol: `p${String(i)}`,
+          pide: [{ q: 'rigidity', op: '>=', v: 0.5 } as const],
+        })),
+        { rol: 'at', pide: [{ q: 'tensile', op: '>=', v: 0.3 }] },
+      ],
+      joints: Array.from({ length: n - 1 }, (_, i) => ({ a: 'p0', b: `p${String(i + 1)}`, binder: 'at' })),
+    }
+    expect(razonesDe(muchas)).toContain('partes-fuera-de-cota')
+  })
+
+  it('y un rol de ATADOR no cuenta contra esa cota: `MAX_PARTS` piezas más su atador entra', () => {
+    // El control con el signo al revés, y el que prueba que la cota mira lo que
+    // tiene que mirar. Sin él, «cuenta los roles declarados» pasaría el test de
+    // arriba igual.
+    const justas: BlueprintCandidate = {
+      parts: [
+        ...Array.from({ length: MAX_PARTS }, (_, i) => ({
+          rol: `p${String(i)}`,
+          pide: [{ q: 'rigidity', op: '>=', v: 0.5 } as const],
+        })),
+        { rol: 'at', pide: [{ q: 'tensile', op: '>=', v: 0.3 }] },
+      ],
+      joints: Array.from({ length: MAX_PARTS - 1 }, (_, i) => ({
+        a: 'p0',
+        b: `p${String(i + 1)}`,
+        binder: 'at',
+      })),
+    }
+    expect(razonesDe(justas)).toEqual([])
+  })
+
+  it('piezas declaradas que ninguna junta nombra: materia que nadie va a usar', () => {
+    // El hueco que encontró el test de arriba al ponerse verde por el motivo
+    // equivocado: siete piezas y CERO juntas cerraba la cuenta —cero juntas para
+    // cero piezas— y describía una pila de materia suelta.
+    const sueltas: BlueprintCandidate = {
+      parts: Array.from({ length: 3 }, (_, i) => ({
         rol: `p${String(i)}`,
         pide: [{ q: 'rigidity', op: '>=', v: 0.5 } as const],
       })),
       joints: [],
     }
-    expect(razonesDe(muchas)).toContain('partes-fuera-de-cota')
+    expect(razonesDe(sueltas)).toContain('rol-desconocido')
+  })
+
+  it('la cuenta de las juntas: una obra de N piezas tiene N−1, ni una más', () => {
+    // Cada `union` agrega exactamente una pieza y exactamente una junta, así que
+    // de más sería un ciclo —que `union` no sabe armar— y de menos, dos obras.
+    const conCiclo: BlueprintCandidate = {
+      ...CANDIDATO,
+      joints: [...CANDIDATO.joints, { a: 'paño', b: 'costilla-a', binder: 'atadura' }],
+    }
+    expect(razonesDe(conCiclo)).toContain('juntas-fuera-de-cota')
+  })
+
+  it('y una obra HONDA de pocas piezas tampoco entra', () => {
+    // La cota que manda no es cuántas piezas hay sino qué tan honda es la obra, y
+    // se toca antes de lo que uno cree. Medido: un árbol de cuatro piezas armado
+    // como dos pares ya mide 3, que es el techo exacto — así que una cadena de
+    // cinco, que mide 4, no se puede construir.
+    const cadena: BlueprintCandidate = {
+      parts: [
+        ...Array.from({ length: 5 }, (_, i) => ({
+          rol: `p${String(i)}`,
+          pide: [{ q: 'rigidity', op: '>=', v: 0.5 } as const],
+        })),
+        { rol: 'at', pide: [{ q: 'tensile', op: '>=', v: 0.3 }] },
+      ],
+      joints: Array.from({ length: 4 }, (_, i) => ({
+        a: `p${String(i)}`,
+        b: `p${String(i + 1)}`,
+        binder: 'at',
+      })),
+    }
+    expect(razonesDe(cadena)).toContain('partes-fuera-de-cota')
   })
 
   it('más de `MAX_JOINTS` juntas', () => {
