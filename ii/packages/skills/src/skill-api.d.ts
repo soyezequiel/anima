@@ -276,9 +276,20 @@ export interface Clock {
  *
  * El plano de verdad existe y no es esto: es `BlueprintDefinition`, en
  * `@anima/physics`, canónico y versionado, y NO lleva el sitio adentro (ADR
- * II-0015). Acá no se re-exporta porque una habilidad no necesita conocerlo: lo
- * único que le llega es una revisión, que es texto.
+ * II-0015).
+ *
+ * ─── Y DE ÉL VIAJA UNA SOLA COSA: LAS JUNTAS ───────────────────────────────
+ *
+ * La definición entera NO se re-exporta, porque una habilidad no la necesita: no
+ * valida planos —eso ya pasó en `definirPlano`— ni los sella. Lo que sí necesita
+ * quien CONSTRUYE es la forma: qué se ata con qué y con qué se ata. Sin eso no
+ * puede elegir el orden de las uniones, que es su único trabajo.
+ *
+ * Se re-exporta el tipo de la física y no se declara uno gemelo, por lo mismo que
+ * `QualityId` o `Cell`: dos listas de la misma idea mantenidas por separado
+ * divergen sin que nada falle.
  */
+export type { BlueprintJoint } from '@anima/physics';
 /**
  * Lo que el mundo devuelve al `yield`.
  *

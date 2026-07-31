@@ -965,11 +965,46 @@ describe('(f) un programa mal tipado se rechaza en menos de 250 ms sin viaje al 
 // ─── El inventario, para que el criterio no se pueda declarar a ojo ─────────
 
 describe('el inventario del Hito 4', () => {
-  it('las quince innatas existen como archivos, y son quince', () => {
+  it('las quince innatas del Hito 4 existen como archivos, y cada archivo de mas esta nombrado', () => {
+    // ─── POR QUE ESTO YA NO CUENTA HASTA QUINCE ──────────────────────────────
+    //
+    // Contaba `archivos.length === 15`, y era exacto mientras quince fuera todo lo
+    // que habia. El Gate 5-6 agrego `construir` —el `BuildSkill` del ADR II-0023—
+    // y el criterio del Hito 4 no se puede leer como «nunca va a haber una
+    // dieciseis»: lo que afirma es que **las quince estan**.
+    //
+    // La reparacion NO afloja el guardian, lo aprieta: antes contaba, ahora NOMBRA
+    // los diecisiete archivos uno por uno. Una innata que se borre se ve, una que
+    // aparezca sin anotar tambien, y las dos cosas antes pasaban si el numero
+    // cerraba.
+    const DEL_HITO_4 = [
+      'aplicar-proceso.ts',
+      'comer.ts',
+      'deshilachar.ts',
+      'esperar.ts',
+      'explorar.ts',
+      'frotar.ts',
+      'guarecerse.ts',
+      'huir-del-dolor.ts',
+      'ir.ts',
+      'juntar.ts',
+      'poner.ts',
+      'seguir-orden-de-movimiento.ts',
+      'sostener.ts',
+      'tantear.ts',
+      'unir.ts',
+    ]
+    /** Lo que llego despues, con el hito que lo trajo. */
+    const DESPUES = ['construir.ts']
+
     const archivos = readdirSync(INNATAS_DIR)
       .filter((f) => f.endsWith('.ts'))
       .filter((f) => !['index.ts', 'contrato.ts', 'comun.ts'].includes(f))
-    expect(archivos.length).toBe(15)
+      .sort()
+
+    expect(DEL_HITO_4.length).toBe(15)
+    for (const f of DEL_HITO_4) expect(archivos, `falta la innata ${f}`).toContain(f)
+    expect(archivos).toEqual([...DEL_HITO_4, ...DESPUES].sort())
   })
 
   it('las quince se montan sin que ninguna toque un global prohibido', () => {

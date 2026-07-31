@@ -43,7 +43,9 @@ const vista = (m: Mundito, id: string): BodyView => {
 // ─── El catálogo ─────────────────────────────────────────────────────────────
 
 describe('el catálogo de las quince', () => {
-  it('son quince, y son las que el documento nombra', () => {
+  it('las quince del Hito 4 son las que el documento nombra, en su orden', () => {
+    // La lista se afirma ENTERA y en orden. Lo que llegó después va abajo, con su
+    // hito al lado: sin eso, un contrato nuevo entraría sin que nadie lo mire.
     expect(INNATAS.map((c) => c.nombre)).toEqual([
       'ir',
       'explorar',
@@ -60,6 +62,9 @@ describe('el catálogo de las quince', () => {
       'guarecerse',
       'esperar',
       'seguir-orden-de-movimiento',
+      // Gate 5-6, ADR II-0023: el `BuildSkill`. No es del Hito 4 y por eso va al
+      // final y anotada — el orden de las quince de arriba es historia.
+      'construir',
     ])
   })
 

@@ -841,6 +841,7 @@ function emitirObra(
     revision: e.revision,
     roles: m.roles,
     cuantos: e.cuantos,
+    juntas: e.juntas,
     porQue: m.establece,
     rinde: m.rinde,
   })

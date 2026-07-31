@@ -264,6 +264,47 @@ function revisar(c: BlueprintCandidate): Razones {
       )
     }
 
+    // (4) UN ATADOR QUE ADEMÁS ES PIEZA SÓLO PUEDE SER UNA PUNTA, y esto salió de
+    //     escribir el constructor y verlo fallar. Es la quinta del mismo tipo que
+    //     las tres de arriba: un plano que se aceptaba y no se puede armar.
+    //
+    //     ─── LA DEMOSTRACIÓN, Y ES CORTA ─────────────────────────────────────
+    //
+    //     `unir(A, B, atador)` deja la parte 0 de A en el índice 0, o sea que la
+    //     CABEZA del ensamble es la del cuerpo izquierdo. Y cuando el atador es
+    //     uno de los propios extremos de la junta —el caso de la caña— la unión va
+    //     sin `b`, el atador no puede ir de izquierda (`unir(x, undefined, x)` no
+    //     es nada), así que **la cabeza queda en el otro extremo**.
+    //
+    //     Ahora supongamos que ese rol tiene una segunda junta. Para atarla tiene
+    //     que ser cabeza de su ensamble, y después de su propia junta no lo es.
+    //     Antes, sí lo es —está suelto— pero entonces al atar la segunda deja de
+    //     ser un cuerpo aparte, y su propia junta lo necesita SUELTO para usarlo de
+    //     atador. Las dos no pueden pasar, en ningún orden.
+    //
+    //     Medido: el plano de cuatro roles donde la aguja ata a zeta y además
+    //     cuelga de tres se aceptaba acá, y el constructor fallaba con «el atador
+    //     «aguja» no sirve: madera con liana no cumple lo que binder pide» — un
+    //     mensaje de tres niveles más abajo que el problema.
+    if (c.joints.length === esperadas && esConexo(c, piezas)) {
+      const grado = new Map<string, number>()
+      for (const j of c.joints) {
+        grado.set(j.a, (grado.get(j.a) ?? 0) + 1)
+        grado.set(j.b, (grado.get(j.b) ?? 0) + 1)
+      }
+      for (const j of c.joints) {
+        if (j.binder !== j.a && j.binder !== j.b) continue
+        const g = grado.get(j.binder) ?? 0
+        if (g > 1) {
+          puesta(
+            'atador-que-no-es-punta',
+            `«${j.binder}» ata su propia junta y ademas es pieza en ${String(g)} juntas: para atar la suya tiene que estar suelto y para las otras tiene que estar adentro de la obra, y las dos no pasan a la vez`,
+            { rol: j.binder, encontrado: g, cota: 1 },
+          )
+        }
+      }
+    }
+
     // (3) La cota que manda no es cuántas piezas hay sino QUÉ TAN HONDA es la
     //     obra, y se toca antes de lo que uno cree: un árbol de cuatro piezas
     //     armado como dos pares ya mide 3, que es el techo exacto.

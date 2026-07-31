@@ -244,6 +244,9 @@ export type Codigo =
   // puede estar bien atada con la pieza equivocada adentro.
   | 'obra-no-es-el-plano'
   | 'pieza-no-cumple'
+  // Y la quinta que salio de escribir el constructor: un rol que ata su propia
+  // junta y ademas es pieza en otra. Ver la demostracion en `plano.ts`.
+  | 'atador-que-no-es-punta'
   // regla 5 — ciclos
   | 'ciclo-rentable'
   | 'ciclo-con-aporte'

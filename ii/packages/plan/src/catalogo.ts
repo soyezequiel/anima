@@ -288,6 +288,7 @@ export function esquemaDeObra(
     revision: def.revision,
     roleHints: pedidosDelPlano(def),
     cuantos: cuantosCuerpos(def),
+    juntas: def.joints,
     segundos,
   }
 }

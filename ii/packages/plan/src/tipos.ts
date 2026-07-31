@@ -25,7 +25,7 @@
 //      Así el planificador se puede testear sin sandbox, sin combustible y sin
 //      mundo — con una vista de mentira alcanza.
 
-import type { LeyId, ProcessId, QualityId, QualityTest } from '@anima/physics'
+import type { BlueprintJoint, LeyId, ProcessId, QualityId, QualityTest } from '@anima/physics'
 import type {
   BodyId,
   BodyView,
@@ -365,6 +365,23 @@ export interface EsquemaDeObra extends EsquemaComun {
    * tercios de lo que necesita y el fallo aparece recién en la tercera unión.
    */
   readonly cuantos: Readonly<Record<RoleName, number>>
+  /**
+   * LA FORMA DE LA OBRA: qué se ata con qué, y con qué se ata.
+   *
+   * Viaja porque **quien construye la necesita**. El plano vive en
+   * `@anima/physics` y una habilidad no lo puede ir a buscar —corre en un
+   * sandbox sin imports— así que la forma tiene que llegarle adentro del paso.
+   *
+   * Que esté acá NO quiere decir que `@anima/plan` valide planos: eso es
+   * `definirPlano`, en la física, y ya pasó cuando la revisión se calculó. Esto
+   * es transporte.
+   *
+   * Y no es redundante con `cuantos`: `cuantos` es la CUENTA —cuántos cuerpos hay
+   * que ir a buscar, que es lo que el planificador necesita para saber si entra en
+   * las manos— y esto es la TOPOLOGÍA, que es lo que quien ata necesita para saber
+   * en qué orden. Los dos salen del mismo plano y contestan preguntas distintas.
+   */
+  readonly juntas: readonly BlueprintJoint[]
 }
 
 /**
@@ -604,6 +621,8 @@ export type Step =
       readonly revision: string
       readonly roles: Readonly<Record<RoleName, Ref>>
       readonly cuantos: Readonly<Record<RoleName, number>>
+      /** Qué se ata con qué. Es lo que la habilidad necesita para elegir el orden. */
+      readonly juntas: readonly BlueprintJoint[]
       readonly porQue: PredicateSignature
       readonly rinde?: GoalId
     }

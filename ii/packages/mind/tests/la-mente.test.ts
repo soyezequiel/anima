@@ -811,31 +811,52 @@ describe('un `Ref` que no resuelve es «el plan envejeció», no un error', () =
     ).toBeUndefined()
   })
 
-  // ─── EL PASO QUE EL PLAN SABE PEDIR Y NADIE SABE CORRER ───────────────────
+  // ─── EL PASO QUE VIAJA HASTA UNA HABILIDAD ────────────────────────────────
   //
-  // `armar` entró con `EsquemaDeObra` (ADR II-0023) y cerró el punto 3 del Gate
-  // 5-6: el planificador emite un paso con la revisión exacta y los roles del plano
-  // ligados. **Del otro lado no hay nadie todavía**: falta la innata `construir`,
-  // que es la fragua del Hito 8.
+  // `armar` entro con `EsquemaDeObra` (ADR II-0023) y es el unico paso del catalogo
+  // cuyo destinatario no es el mundo sino una habilidad: `construir`, la innata 16.
   //
-  // Se afirma acá y no se deja implícito porque un `undefined` sin test se
-  // convierte en un olvido: el día que la innata exista, este bloque se pone rojo y
-  // hay que venir a cambiarlo, que es exactamente lo que tiene que pasar.
-  it('`armar` se PLANIFICA y no DESPEGA: la innata que lo corre todavía no existe', () => {
-    const p = new Partida(conElla())
+  // Este bloque estuvo escrito al reves —afirmando que NO se podia traducir— desde
+  // que el planificador supo emitirlo hasta que la innata existio. Se puso rojo
+  // solo el dia que se escribio la habilidad, que es exactamente para lo que estaba.
+  it('`armar` se traduce a la innata `construir` cuando los roles resuelven', () => {
+    const p = new Partida(conElla([enElPiso(cuerpo('vara', 'madera', 0.5), { x: 1, y: 0 }), enElPiso(cuerpo('hebra', 'liana', 0.2), { x: 2, y: 0 })]))
+    const v = vistaDe(p, 'ella')
+    const t = aHabilidad(
+      {
+        k: 'armar',
+        revision: 'aaaaaaaabbbbbbbb',
+        roles: { brazo: { k: 'id', id: 'vara' }, hebra: { k: 'id', id: 'hebra' } },
+        cuantos: { brazo: 1, hebra: 1 },
+        juntas: [{ a: 'brazo', b: 'hebra', binder: 'hebra' }],
+        porQue: 'reach>=5',
+      },
+      v,
+    )
+    expect(t).toBeDefined()
+    // El nombre lleva la revision cortada: es lo que aparece en la traza del juez,
+    // y sin ella dos obras distintas se leerian igual.
+    expect(t?.nombre).toBe('armar(aaaaaaaa)')
+  })
+
+  it('y NO se traduce si le falta un cuerpo: armar a medias es peor que no armar', () => {
+    // `unir` no tiene inversa, asi que las piezas que ya se ataron no se recuperan.
+    // Por eso los roles se resuelven TODOS antes de traducir, y un solo `Ref` que no
+    // resuelva tira el paso entero — que es lo que «el plan envejecio» significa.
+    const p = new Partida(conElla([enElPiso(cuerpo('vara', 'madera', 0.5), { x: 1, y: 0 })]))
     const v = vistaDe(p, 'ella')
     expect(
       aHabilidad(
         {
           k: 'armar',
           revision: 'aaaaaaaabbbbbbbb',
-          roles: { brazo: { k: 'id', id: 'vara' } },
-          cuantos: { brazo: 1 },
+          roles: { brazo: { k: 'id', id: 'vara' }, hebra: { k: 'id', id: 'la-que-no-esta' } },
+          cuantos: { brazo: 1, hebra: 1 },
+          juntas: [{ a: 'brazo', b: 'hebra', binder: 'hebra' }],
           porQue: 'reach>=5',
         },
         v,
       ),
-      'ya existe quien corre `armar`: sacale el `undefined` a `aHabilidad` y borrá este test',
     ).toBeUndefined()
   })
 

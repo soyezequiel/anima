@@ -119,6 +119,7 @@ import { SEED_PROCESS_IDS } from '@anima/skills'
 import {
   aplicarProceso,
   comer,
+  construir,
   deshilachar,
   esperar,
   explorar,
@@ -290,26 +291,28 @@ export function aHabilidad(i: Intencion, v: VistaDelPlan, rindes?: Rindes): Trad
       return traduccion(`sostener(${corto(i.que)})`, (ctx) => sostener(ctx, args))
     }
 
-    // ─── ARMAR UNA OBRA: EL PASO QUE EL PLAN SABE PEDIR Y NADIE SABE CORRER ──
+    // ─── ARMAR UNA OBRA ─────────────────────────────────────────────────────
     //
-    // `EsquemaDeObra` cerro el punto 3 del Gate 5-6: el planificador ya emite un
-    // paso `armar` con la revision exacta y los roles del plano ligados. Lo que
-    // falta del otro lado es la HABILIDAD que lo ejecute — el `BuildSkill` del
-    // ADR II-0015, que encuentra el orden de las uniones y las encadena.
+    // El paso del ADR II-0023, y el unico del catalogo cuyo destinatario no es el
+    // mundo sino una HABILIDAD. El plan dice QUE obra y con QUE cuerpos; la
+    // habilidad encuentra el ORDEN de las uniones, que es lo que decide la forma.
     //
-    // Se contesta `undefined` y no se lanza, que es lo que esta rama significa en
-    // todas las demas: «este paso no se puede volar hoy». La consecuencia es
-    // exacta y esta medida en su test: un plan con `armar` se planifica y no
-    // despega. Es mejor que las dos alternativas —no poder planificarlo, que era
-    // el estado anterior, o lanzar en el medio del tick de las 5000 criaturas—.
-    //
-    // Escribir la innata `construir` es lo que sigue, y es territorio de la fragua
-    // del Hito 8: la habilidad recibe el `BlueprintDefinition`, elige una raiz,
-    // arma el subarbol de cada hijo y ata el hijo al padre. La regla esta MEDIDA
-    // en `physics/tests/el-orden-de-las-uniones-realiza-el-plano.test.ts` — once
-    // lineas, sin busqueda— asi que lo que falta es la costura, no el algoritmo.
-    case 'armar':
-      return undefined
+    // Los roles se resuelven TODOS antes de traducir: si falta uno, el plan
+    // envejecio y se contesta `undefined` como en cualquier otro paso. Armar a
+    // medias seria peor que no armar — `unir` no tiene inversa, asi que las piezas
+    // que ya se ataron no se recuperan.
+    case 'armar': {
+      const cuerpos: Record<string, BodyView> = {}
+      for (const rol of Object.keys(i.roles).sort((x, y) => (x < y ? -1 : x > y ? 1 : 0))) {
+        const ref = i.roles[rol]
+        if (ref === undefined) return undefined
+        const cuerpo = resolverCuerpo(ref, v, rindes)
+        if (cuerpo === undefined) return undefined
+        cuerpos[rol] = cuerpo
+      }
+      const args = { juntas: i.juntas, roles: cuerpos }
+      return traduccion(`armar(${i.revision.slice(0, 8)})`, (ctx) => construir(ctx, args), i.rinde)
+    }
 
     // ─── EL PASO QUE NO PIDE NADA, Y ES EL QUE HACE QUE SE COCINE ────────────
     //
