@@ -485,20 +485,39 @@ aditivas** —se solapan entre sí y con hitos que ya están planificados—:
 
 ## 10 · Lo que sigue sin saberse
 
-1. **¿Dónde vive la captura?** Estado autoritativo, sí — ¿en el cuerpo del
-   dispositivo, en el `Stock`, o en una tabla del mundo indexada por dispositivo?
-   Las tres cierran el hash; sólo una hace fácil la competencia entre dos
-   dispositivos sobre el mismo stock.
-2. **¿Qué destino nuevo admite `drawFromStock`?** Un tercer valor del `into`
-   actual, o un `Yield` nuevo. Toca `admit()`, y `admit()` es la puerta.
+> **TRES DE LAS SEIS SE CERRARON el 2026-07-31**, decididas por el usuario con las
+> opciones y sus precios delante. Las que quedan son las tres que **no se deciden,
+> se miden** — y por eso siguen abiertas: contestarlas de palabra sería inventar
+> un número.
+
+1. ~~**¿Dónde vive la captura?**~~ **CERRADO: en una tabla de `WorldState`
+   indexada por dispositivo** ([ADR II-0020](decisions/II-0020-la-captura-vive-en-una-tabla-del-mundo.md)).
+   Es la única de las tres que no obliga a ningún tipo a decir algo que no es:
+   `Body` sigue siendo materia y `Stock` sigue siendo el inventario del dios. La
+   competencia se resuelve recorriendo la tabla en orden de id. El precio elegido:
+   levantar la trampa no se lleva la captura gratis — la entrada tiene que seguir
+   al cuerpo, y eso pide su test.
+2. ~~**¿Qué destino nuevo admite `drawFromStock`?**~~ **CERRADO: un tercer valor
+   de `into`**, no un `Yield` nuevo (mismo ADR). Es el mismo hecho con otro
+   destino, y todo `switch` sobre `into` se pone rojo al compilar, que es lo que
+   impide que un consumidor se olvide en silencio.
 3. **¿El overlay se indexa por firma, como `SCHEMA_INDEX`, o por capacidad?** El
    punto 3 del criterio dice «publicación de capacidades», y el índice de hoy es
-   por firma exacta de predicado.
+   por firma exacta de predicado. **Sigue abierta a propósito:** el tramo A la
+   dejó sin contestar de costado —la vista publica listas y el único índice por
+   firma se arma en `@anima/mind`— porque indexar es una optimización y pide una
+   medición con un overlay de tamaño real.
 4. **¿Cuánto cuesta `PlannerCatalogView` por tick?** El precalculado de la mente
    existe porque parsear ocho firmas por candidato y por tick era caro. Con
    overlay hay que re-medirlo, y es punto del Hito 11.
-5. **¿Qué invalida el `catalogEpoch`, exactamente?** Promover invalida; ¿revocar
-   también?, ¿adoptar de una herencia?
+5. ~~**¿Qué invalida el `catalogEpoch`, exactamente?**~~ **CERRADO, y la pregunta
+   estaba mal planteada** ([ADR II-0021](decisions/II-0021-el-overlay-de-una-partida-solo-crece.md)).
+   El epoch se deriva del contenido desde el tramo A, así que no hay lista de
+   operaciones que alguien pueda olvidarse de actualizar. Lo que había que decidir
+   era lo de abajo: **el overlay de una partida sólo CRECE**. Promover y heredar
+   agregan; revocar existe entre partidas y no saca nada de la partida en curso.
+   El motivo: nada que un plan esté usando puede desaparecerle abajo, y el caso de
+   los pasos YA EN VUELO no tiene respuesta todavía.
 6. **El costo de un dispositivo autónomo por tick.** Cero medición: si hay veinte
    trampas desplegadas, el mundo las recorre todas.
 
@@ -512,4 +531,6 @@ aditivas** —se solapan entre sí y con hitos que ya están planificados—:
 - [ADR II-0017](decisions/II-0017-el-descriptor-visual-no-es-fisica.md) — el descriptor visual no es física
 - [ADR II-0018](decisions/II-0018-el-catalogo-es-core-mas-overlay-por-sesion.md) — el catálogo es core más overlay por sesión
 - [ADR II-0019](decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md) — el Gate 5→6 no reabre el Hito 5
+- [ADR II-0020](decisions/II-0020-la-captura-vive-en-una-tabla-del-mundo.md) — la captura vive en una tabla del mundo, y el pozo entrega ahí por un tercer `into`
+- [ADR II-0021](decisions/II-0021-el-overlay-de-una-partida-solo-crece.md) — el overlay de una partida sólo crece: revocar es entre partidas
 - [`../../docs/architecture/remake-anima-ii.md`](../../docs/architecture/remake-anima-ii.md) — el plan de construcción entero
