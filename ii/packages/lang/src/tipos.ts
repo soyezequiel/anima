@@ -190,6 +190,20 @@ export interface ClausulaLeida {
   readonly verbo?: VerboId
   /** Sobre qué. Sirve para el acuse y para el `bindeaSlot` del paso siguiente. */
   readonly objetos: readonly Denota[]
+  /**
+   * QUIÉN LA LEYÓ.
+   *
+   * `'local'` siempre, salvo que `revisar()` de `consulta.ts` la haya corregido
+   * con lo que contestó un modelo. No es telemetría de adorno: es lo que hace
+   * medible el punto 3 del criterio —«con el proveedor contestando la cobertura
+   * SUBE»— sin tener que correr dos veces y restar.
+   *
+   * Y es lo que permite ver la tentación que el ADR II-0024 anota: con el modelo
+   * disponible, la salida barata para cada frase que no se entiende es mandarla
+   * al modelo en vez de arreglar el léxico. Si esta columna se llena, el léxico
+   * se está oxidando.
+   */
+  readonly leidaPor: 'local' | 'modelo'
   /** `'despues'` la ata a la anterior; `'y'` la deja suelta (orden parcial). */
   readonly liga: 'y' | 'despues'
   readonly bindeaSlot?: string

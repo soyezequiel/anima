@@ -1549,15 +1549,18 @@ La definición, la construcción y el uso **se juzgan y se promueven por separad
 
 **Aviso honesto:** "pescar existe como verbo el día que existe el proceso `extraccion`" es falso. El lexema de `extraccion` es *extraer*; *pescar* es extraer fauna de un cuerpo de agua con un aparejo. El puente entre castellano rioplatense conversacional y nombres de procesos físicos es conocimiento humano que hay que escribir: **una tabla de alias de composición**, chica pero real, y hay que presupuestarla.
 
-**Verificable:** corpus versionado de **200 frases reales en castellano rioplatense** (se saca hoy del historial de chat del repo actual, que existe) con su lectura esperada. Y la puerta del hito **no es un porcentaje de comprensión, es un invariante de camino**:
+**Verificable:** corpus versionado de **frases reales en castellano rioplatense**, todas con su archivo de origen y **ninguna corregida ni inventada**. Y la puerta del hito **no es un porcentaje de comprensión, es un invariante de camino**, con **tres** corridas del mismo corpus:
 
-1. con el proveedor **apagado**, las 200 frases producen acuse y primer movimiento — **ninguna devuelve «nada»**;
-2. con el proveedor **colgado** —responde a los 30 s, o nunca— las mismas 200 dan **el mismo p95**: la diferencia entre las dos corridas tiene que ser ruido, no una cola;
-3. p95 de mensaje a primer movimiento **< 150 ms** en las dos corridas;
-4. el acuse aparece en el **mismo frame** que el mensaje;
-5. `consistenciaDelPrimerGesto ≥ 0.85` con el proveedor apagado.
+1. con el proveedor **apagado**, todas producen acuse y primer movimiento — **ninguna devuelve «nada»**;
+2. con el proveedor **colgado** —responde a los 30 s, o nunca— **el mismo p95**: la diferencia entre las dos corridas tiene que ser ruido, no una cola;
+3. con el proveedor **contestando**, la **cobertura sube** y el p95 del primer movimiento **no se mueve**;
+4. p95 de mensaje a primer movimiento **< 150 ms** en las tres;
+5. el acuse aparece en el **mismo frame** que el mensaje;
+6. `consistenciaDelPrimerGesto ≥ 0.85` con el proveedor apagado.
 
-La 2 es la que hace trabajo de verdad, y es la única que un LLM en el camino crítico no puede pasar de ninguna manera. Las otras cuatro ya estaban.
+La 2 y la 3 son las que hacen trabajo, y son un par: **la 2 sola se cumple desconectando el proveedor**. Sin la 3, el criterio mide que el modelo no estorbe y no mide que sirva — que es un piso correcto y no es un hito.
+
+> **Y el «200» se fue, que era la otra herencia del mundo sin modelo.** Ese número medía cobertura por enumeración, que es lo único que se puede hacer cuando el léxico escrito a mano es el único lector. Ver la enmienda del [ADR II-0024](../../ii/docs/decisions/II-0024-el-piso-del-chat-no-es-sin-llm-es-sin-espera.md). Además su premisa era falsa: el historial de chat del repo **tiene nueve mensajes**, no doscientos; el corpus de verdad son los tests de Ánima I (~187 frases). Y ninguna se genera con el modelo — un corpus escrito por un modelo mide el lector contra frases que inventó otro modelo.
 
 **La cobertura sin red se mide, no se elige.** El `≥80% resueltas sin red` era un número puesto a dedo **antes de tener el corpus**, y no hay forma de saber hoy si 80 es exigente o regalado. Pasa a regirse por la regla que la sección de latencia ya fija para todo lo demás —*presupuestos, no mediciones*—: la primera corrida del corpus establece la línea base y **el build falla si baja**. Lo que el hito exige no es entender el 80%; es **no colgarse nunca del proveedor para acusar y arrancar**.
 

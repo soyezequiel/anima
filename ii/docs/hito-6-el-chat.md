@@ -39,23 +39,43 @@ sin forma de medirse es una intención.
 
 | # | Qué hay que demostrar | Cómo se mide |
 |---|---|---|
-| **1** | **Ninguna de las 200 frases devuelve «nada»** con el proveedor apagado: todas producen acuse y primer movimiento | corpus versionado × una corrida, contando las que salen sin intención |
-| **2** | **Con el proveedor COLGADO —responde a los 30 s, o nunca— el p95 es el mismo** que con el proveedor apagado | dos corridas del mismo corpus; la diferencia tiene que ser ruido, no una cola |
-| **3** | **p95 de mensaje a primer movimiento < 150 ms** en las dos corridas | `msHastaPrimerMovimiento`, p50 y p95 |
-| **4** | **El acuse aparece en el mismo frame que el mensaje** | el acuse no cuesta un tick: se afirma por MECANISMO, no por cronómetro |
-| **5** | **`consistenciaDelPrimerGesto ≥ 0.85`** con el proveedor apagado | primer gesto coherente con la conducta final / órdenes totales |
+| **1** | **Ninguna frase del corpus devuelve «nada»** con el proveedor apagado | una corrida, contando las que salen sin intención |
+| **2** | **Con el proveedor COLGADO —30 s, o nunca— el p95 es el mismo** que apagado | dos corridas; la diferencia tiene que ser ruido, no una cola |
+| **3** | **Con el proveedor CONTESTANDO, la cobertura SUBE** y el p95 no se mueve | tercera corrida; se cuentan las cláusulas que llegan a una meta |
+| **4** | **p95 de mensaje a primer movimiento < 150 ms** en las tres | `msHastaPrimerMovimiento`, p50 y p95 |
+| **5** | **El acuse aparece en el mismo frame que el mensaje** | se afirma por MECANISMO, no por cronómetro |
+| **6** | **`consistenciaDelPrimerGesto ≥ 0.85`** con el proveedor apagado | primer gesto coherente con la conducta final / órdenes totales |
 
 Y **la cobertura sin red no es un punto del criterio**: es una línea base. La
 primera corrida del corpus la fija y el build falla si baja. El porqué está en el
 ADR II-0024 § 2 — el `≥80%` original se eligió antes de tener el corpus.
 
-### El punto 2 es el que hace el trabajo, y conviene decir por qué
+### El 2 y el 3 son un PAR, y separarlos fue un error
 
-Los puntos 1, 3, 4 y 5 ya estaban escritos antes del ADR y **los cuatro se
-cumplen trivialmente si uno prohíbe el modelo**. El punto 2 es el único que sigue
-significando algo cuando el modelo está permitido: es la afirmación de que el
-proveedor **no está en el camino**, y no se puede satisfacer con un proveedor
-rápido ni con una caché caliente.
+La primera versión de esta tabla tenía cinco puntos y **el 3 no estaba**. El
+agujero sólo se ve cuando se juntan dos de los otros:
+
+> **Los cinco puntos se cumplían igual con el proveedor DESCONECTADO.** El punto
+> 2 —«colgado da el mismo p95»— es trivialmente verde si el proveedor no existe.
+
+O sea que el criterio medía que el modelo **no estorbe** y no medía que **sirva**.
+Es un piso correcto y no es un hito. Ver la enmienda del
+[ADR II-0024](decisions/II-0024-el-piso-del-chat-no-es-sin-llm-es-sin-espera.md).
+
+### Y el «corpus de 200 frases» también se fue
+
+Era la otra herencia del mundo sin modelo. Ese número medía **cobertura por
+enumeración**, que es lo único que se puede hacer cuando el léxico escrito a mano
+es el único lector.
+
+Además su premisa era falsa: decía que las 200 salen «del historial de chat del
+repo actual, que existe» y **el historial tiene nueve mensajes**, cuatro de ellos
+briefings de un desarrollador. Lo que sí es verdad, y nadie lo había escrito, es
+que **los tests de Ánima I son el corpus** (~187 frases).
+
+**Ninguna se inventa, ni con modelo ni sin él.** Un corpus generado por un modelo
+mide el lector contra frases que inventó otro modelo — peor que medirlo contra los
+tests, que al menos los escribió una persona.
 
 **Su control positivo es obligatorio.** Un test que compara dos p95 y los
 encuentra iguales tiene que probar primero que sabe verlos distintos: se corre
@@ -476,3 +496,89 @@ del documento le da a uno real: el control es 45× más suave que la realidad.
    la conducta final pide correr la mente sobre ticks, y `@anima/lang` no depende
    de `@anima/mind` ni tiene por qué. El acumulador está escrito para que quien
    corra esa partida sólo tenga que llamarlo.
+
+### Tramo F — por dónde entra el modelo, y el punto 3
+
+El ADR II-0024 decía que el modelo entra por la confianza y que **«la puerta ya
+existe»**. Existía como NÚMERO —`leer()` devuelve confianza desde el primer
+tramo— y **no como hueco**: no había por dónde enchufar nada. Este tramo lo
+construye, y de paso destapa que el criterio medía la mitad.
+
+#### La forma se la dictan tres restricciones que no se negocian entre sí
+
+1. **el acuse sale en el mismo frame**, así que `leer()` no puede esperar a nadie;
+2. **la regla 2 prohíbe `await`/`async` en todo `src/`**, con guardián puesto;
+3. **el proveedor no está en el camino del primer movimiento**.
+
+Las tres juntas dejan exactamente una salida: **este paquete no llama al modelo,
+lo DESCRIBE.** `leer()` devuelve la lectura y, si la confianza quedó baja, una
+`Consulta`: qué preguntaría, con qué vocabulario, con qué firmas para elegir y con
+qué llave de caché. Qué se hace con eso es del llamador, que sí puede esperar.
+Cuando la respuesta vuelve —un tick después, treinta segundos después, o nunca—
+`revisar()` produce una lectura nueva.
+
+**No es un patrón inventado para la ocasión.** Es el mismo que
+`perceive/src/bucle.ts` usa para el reloj de pared: necesita saber si un tick
+llegó tarde, que es tiempo del sistema, y **no lo llama, lo recibe**. La frontera
+con el mundo asincrónico es el llamador, no el paquete.
+
+#### Lo que el modelo puede contestar, y nada más
+
+**Firmas de predicado, elegidas de una lista que va en la consulta.** No texto
+libre: si contestara texto habría que volver a parsearlo, y el problema de
+parsear castellano es justamente el que se está resolviendo — con el agravante de
+que el segundo texto no lo escribió una persona.
+
+Y aun así se validan una por una contra `interpretar`, que es el mismo lector que
+usa la mente. Es el ADR II-0001 aplicado acá: **el modelo propone, el código local
+dispone.**
+
+#### EL PUNTO 3, medido
+
+```
+── COBERTURA DEL CORPUS ──
+  sin proveedor .... 10/80 = 13%
+  con proveedor .... 24/80 = 30%   (14 cláusulas las leyó el modelo)
+```
+
+El modelo simulado tiene una tabla de nueve pistas y es chico **a propósito**: no
+está para ser bueno, está para que la corrida con proveedor exista y se pueda
+comparar. Uno que acertara todo mediría el simulador, no el enganche.
+
+Y lo que el modelo leyó **queda marcado** (`leidaPor: 'modelo'`). No es telemetría
+de adorno: es la tentación que el propio ADR anota —con el modelo disponible, la
+salida barata para cada frase que no se entiende es mandarla al modelo en vez de
+arreglar el léxico—. Si esa columna crece, el léxico se está oxidando.
+
+#### El invariante, con su control positivo
+
+> **`revisar` nunca empeora una lectura.**
+
+Si la respuesta no valida —llave vencida, firma ilegible, índice que no existe o
+que ni es entero— devuelve **el mismo objeto**, para que quien llame pueda
+comparar por identidad. Y no toca lo que el lector local sí supo leer: si la
+lectura local llegó a una meta, esa meta la produjo el léxico de este mundo y vale
+más que una propuesta de afuera.
+
+Un invariante sin control positivo es una intención, así que hay un barrido que le
+manda basura a propósito:
+
+```
+  77 frases × 4 clases de basura · 0 empeoradas
+```
+
+#### Y dos cosas que NO se consultan
+
+- **`entendida`** — ya hay algo que hacer, y preguntar costaría plata para
+  confirmar lo que se sabe.
+- **`sin-camino`**, y es la decisión menos obvia: ahí el problema no es la lectura
+  sino el mundo. Se entendió perfecto y ningún esquema lo establece, así que
+  preguntarle al modelo cómo se dice no arregla nada. Eso es del Hito 8, que
+  escribe la habilidad que falta.
+
+#### Una corrección sobre el corpus, que estaba en la dirección equivocada
+
+El tramo anterior decía «faltan 123 frases para las 200». **Ese número ya no
+existe**: el 200 se fue con la enmienda. Lo que queda es terminar de extraer las
+~110 frases reales que el barrido midió y este archivo todavía no transcribió — y
+sigue sin poder inventarse ninguna.

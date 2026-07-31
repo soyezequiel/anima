@@ -381,6 +381,7 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
       ...(verbo === undefined ? {} : { verbo }),
       objetos,
       polaridad,
+      leidaPor: 'local',
       porque: porqueDe(grado, firma, verbo, cubiertos, vistos),
     })
   }

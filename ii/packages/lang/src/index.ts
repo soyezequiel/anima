@@ -9,6 +9,7 @@
 //   objetivos.ts   el puente a `goalGraph`, que era el extremo sin conectar
 //   falta.ts       las CUATRO clases de lo que falta, que hoy son una sola
 //   relojes.ts     los tres, con el cronómetro entrando por parámetro
+//   consulta.ts    por dónde entra el modelo: se DESCRIBE, no se llama
 //   alias.ts       el PUENTE, que es conocimiento humano y por eso vive aparte
 //
 // Se re-exporta con `export *` y no con una lista a mano, por la misma razón que
@@ -28,4 +29,5 @@ export * from './leer.js'
 export * from './objetivos.js'
 export * from './falta.js'
 export * from './relojes.js'
+export * from './consulta.js'
 export * from './alias.js'

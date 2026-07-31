@@ -132,3 +132,75 @@ convierte «le hablás y hace» en «le hablás y piensa».
 
 - [`../../../docs/architecture/remake-anima-ii.md`](../../../docs/architecture/remake-anima-ii.md) — el Hito 6 y las dos tablas de latencia
 - [ADR II-0019](II-0019-el-gate-5-6-no-reabre-el-hito-5.md) — el criterio del proveedor apagado, que este ADR no toca
+
+---
+
+## Enmienda · 2026-07-31, el mismo día
+
+**Este ADR se aplicó a medias y hay que decirlo acá, no en otro archivo.**
+
+La decisión de arriba reescribió el `≥80% resueltas sin red` y **dejó intacto el
+«corpus de 200 frases»**. Los dos números venían del mismo lugar y sólo uno se
+revisó.
+
+**De dónde salía el 200.** De un mundo donde el léxico escrito a mano era el
+**único** lector. Sin modelo, la única forma de saber si el sistema entiende
+castellano es **enumerar**: doscientos casos con su lectura esperada, y si pasan
+180 se declara que entiende. El tamaño del corpus ERA la medida de la cobertura.
+
+Con el modelo permitido eso deja de tener sentido, y por la misma razón por la
+que el `80%` la perdió: el corpus dejó de ser un examen de vocabulario. Lo que
+tiene que probar ahora es otra cosa, y es más chica en una dimensión y más grande
+en otra.
+
+### Lo que el corpus tiene que probar ahora
+
+| antes | ahora |
+|---|---|
+| **200 frases** con su lectura esperada | **las frases reales que haya**, todas citadas con archivo de origen |
+| ≥80% resueltas sin red | la cobertura sin red es **línea base** (ya estaba en § 2) |
+| — | **una tercera corrida: proveedor que SÍ contesta**, y la cobertura tiene que SUBIR |
+
+La fila nueva es la que faltaba, y su ausencia dejaba un agujero grande:
+
+> **Los cinco puntos del criterio se cumplen igual con el proveedor
+> desconectado.** El punto 2 —«colgado da el mismo p95»— es trivialmente verde si
+> el proveedor no existe.
+
+O sea que el criterio, tal como quedó escrito arriba, **mide que el modelo no
+estorbe y no mide que sirva**. Es un piso correcto y no es un hito.
+
+### Y la consecuencia sobre el corpus, dicha con el número
+
+Se fue a buscar las 200 y **el criterio original era falso en su premisa**: decía
+que salen «del historial de chat del repo actual, que existe», y el historial
+tiene **nueve** mensajes, cuatro de los cuales son briefings de un desarrollador.
+Lo que sí es verdad, y nadie lo había escrito, es que **los tests de Ánima I son
+el corpus**: ~187 frases distintas de cuidador.
+
+**Ninguna se inventa, ni con modelo ni sin él.** Un corpus generado por un modelo
+mide el lector contra frases que inventó otro modelo, que es peor que medirlo
+contra los tests —esos al menos los escribió una persona— y es exactamente el
+vicio que la medición ya encontró: las 128 frases de los tests están en
+castellano perfecto y el único usuario de verdad escribió «construi una
+ahoguera».
+
+**El modelo entra en el PRODUCTO, no en el dato de prueba.** Es la misma frontera
+que el ADR II-0001 traza para las habilidades: el modelo propone, el código local
+dispone.
+
+### Y por dónde entra, que era lo que faltaba construir
+
+El § 3 de arriba dice que el modelo entra por la confianza y que la puerta «ya
+existe». Existía como NÚMERO y no como HUECO: `readFast` devuelve confianza y no
+había forma de enchufarle nada. Eso se construye en el mismo tramo que esta
+enmienda, con la única forma que respeta las tres restricciones a la vez —el
+acuse sincrónico, la regla 2 sin `await` en `src/`, y el proveedor fuera del
+camino—:
+
+**`leer()` devuelve la lectura y, si la confianza es baja, una `Consulta`.** Lo
+que pasa con esa consulta es del llamador, que sí puede esperar. Cuando la
+respuesta vuelve, `revisar(lectura, respuesta)` produce una lectura nueva.
+
+Es la misma solución que `perceive/src/bucle.ts` usa para el reloj de pared: **la
+frontera con el mundo asincrónico es el llamador, no el paquete.**
