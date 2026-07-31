@@ -481,7 +481,20 @@ decisión sobre la cota del mundo.
 8. **68 `it.fails`**, repartidos: mind 21, world 15, physics 13, perceive 7, juez 5,
    plan 5, oracle 1, skills 1. Cada uno tiene su porqué medido al lado.
 9. **`explorar` sigue caminando un ciclo cerrado de 8 celdas** — la 1 de 15 innatas
-   que no logra su contrato.
+   que no logra su contrato. **Y NO SE ARREGLA EN `intencionExplorar`: se probó, anda,
+   y rompe dos logros** (número 35 de la sección 5 de `como-se-trabaja.md`).
+   - la reparación medida —rumbo que dura 16 ticks, sacado de los bits ALTOS de una
+     avalancha— lleva la exploración de 3 celdas de distancia y 8 distintas en 100
+     ticks a **44 y 96**, y mueve sólo el tercero de los cuatro hashes del Hito 2;
+   - pero el diagnóstico 10 pasa de llegar viva a los 20.000 a **morir en el 9482**,
+     y la contraprueba del eslabón regalado a morir en el **18.971**;
+   - y el motivo NO es que explorar se encarezca —cobra `COSTO_POR_CELDA` igual dando
+     vueltas que caminando derecho— sino **el viaje de vuelta**: la criatura se aleja
+     y tiene que volver al pozo y al fuego (`ir(pozo:-12:-3)` ×31 contra una guarda
+     de 10). **El ciclo cerrado era un ancla.**
+   - o sea que el arreglo es de `@anima/mind` y no del mundo: **que no explore cuando
+     tiene una meta al alcance**. Hacer las dos cosas en el mismo tramo es lo que
+     falta, y el orden importa: primero la mente, después el mundo.
 
 ### Lo que se cerró en el tramo L, para que nadie lo vuelva a buscar
 

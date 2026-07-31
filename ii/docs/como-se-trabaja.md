@@ -153,7 +153,7 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los treinta y cuatro números corregidos, y la regla que dejó cada uno
+## 5 · Los treinta y cinco números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
@@ -451,6 +451,42 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    → **REGLA: antes de aceptar una premisa del proyecto, fijate si es del catálogo o
    del decreto.** Las dos se enuncian igual («el mundo no tiene X») y sólo una se
    arregla sin discutir constantes.
+
+35. **«`explorar` camina un ciclo cerrado de 8 celdas; arreglarlo es de una línea»** —
+   la reparación es de una línea y ANDA, y aun así **se revirtió**, porque lo que
+   destapó vale más que ella. Van tres cosas.
+
+   **(1) La reparación obvia repite el bug con otra cara.** El hueco pedía «que el
+   rumbo tenga PERSISTENCIA», y escrito de la forma directa —
+   `huellaDeTexto(`${id}#${bloque}`) % 8`— **vuelve a sumar (0,0)**: FNV-1a termina
+   en `h = (h ^ c) · primo`, así que cambiar sólo el último carácter por los dígitos
+   0..7 deja los tres bits BAJOS recorriendo una permutación de 0..7, y ocho bloques
+   consecutivos dan otra vez los ocho rumbos. Se barrieron 403 actores antes de
+   escribir una línea de `src` y se vio en que **los 403 daban el mismo número**.
+   → **REGLA: los bits bajos de un hash sobre sufijos consecutivos no son azar, son
+   una cuenta.** Si vas a usar un hash como dado, revolvé y leé los bits altos —y
+   barré la población antes de creerle, que una dispersión de cero se ve a simple
+   vista.
+
+   **(2) Con la avalancha y un rumbo que dura 16 ticks, anda:** de 3 celdas de
+   distancia y **8 distintas** en 100 ticks a **44 y 96**. Y sólo movió el TERCERO
+   de los cuatro hashes del Hito 2 —el estado tras diez ticks—, que es la firma
+   correcta: cambió la conducta, no el mundo inicial, ni el catálogo, ni las
+   intenciones.
+
+   **(3) Y ROMPE DOS LOGROS, así que se revirtió.** En `@anima/mind`: el
+   diagnóstico 10 —«con el tanque lleno y leña seca cocina, come y llega viva a los
+   20.000»— pasa a **morir en el tick 9482**, y la contraprueba del eslabón regalado
+   pasa a morir en el **18.971**; más cuatro clavados. Y **no es que explorar se haya
+   encarecido**: `intencionExplorar` cobra `COSTO_POR_CELDA` lo mismo dando vueltas
+   que caminando derecho. Lo que aparece es **el viaje de vuelta** — la criatura se
+   va lejos y tiene que volver a su pozo y a su fuego: `ir(pozo:-12:-3)` se repite
+   **31 veces** donde la guarda permite menos de 10.
+   → **REGLA: un bug que «no hace nada» puede estar sosteniendo un resultado.** El
+   ciclo cerrado no era gratis: era un ANCLA que mantenía a la criatura al lado de
+   sus cosas. Antes de arreglar algo que parece inerte, preguntate qué se apoya en
+   que no funcione. Y el arreglo de verdad no es del mundo: es que la mente no
+   explore cuando tiene una meta al alcance.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
