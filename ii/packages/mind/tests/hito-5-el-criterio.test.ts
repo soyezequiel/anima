@@ -313,7 +313,7 @@
 // El cuadro «EL HITO 5, MEDIDO» sale de `hito-5-el-cuadro.test.ts`, que espera a que
 // los seis anoten lo suyo. Ver `./el-cuadro.ts`.
 
-import { readdirSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { HZ_DE_REFERENCIA } from '@anima/physics';
@@ -343,12 +343,28 @@ const MEDIDO = cuaderno('0-1-3');
 
 const PAQUETES = fileURLToPath(new URL('../../', import.meta.url));
 
+/**
+ * LOS PAQUETES DE `ii/`, y sólo los paquetes.
+ *
+ * Un directorio bajo `ii/packages/` NO es necesariamente un paquete: alcanza con
+ * correr `npx` una vez parado ahí para que aparezca un `node_modules/` con la
+ * caché de vitest adentro, y los dos criterios de abajo enumeraban el directorio
+ * a secas. Reventaban con `ENOENT: ii/packages/node_modules/package.json` — un
+ * rojo del criterio de corte del proyecto causado por una caché.
+ *
+ * El filtro es tener `package.json`, que es lo que hace paquete a un paquete.
+ */
+function paquetesDeII(): readonly string[] {
+  return readdirSync(PAQUETES, { withFileTypes: true })
+    .filter((d) => d.isDirectory())
+    .map((d) => d.name)
+    .filter((n) => existsSync(`${PAQUETES}${n}/package.json`))
+    .sort();
+}
+
 describe('(0) el proveedor apagado: no hay con qué llamar a un modelo', () => {
   it('los siete paquetes de `ii/` no dependen de NADA que no sea `ii/`', () => {
-    const nombres = readdirSync(PAQUETES, { withFileTypes: true })
-      .filter((d) => d.isDirectory())
-      .map((d) => d.name)
-      .sort();
+    const nombres = paquetesDeII();
     const ajenas: string[] = [];
     const filas: string[] = [];
     for (const n of nombres) {
@@ -390,10 +406,8 @@ describe('(0) el proveedor apagado: no hay con qué llamar a un modelo', () => {
     ];
     const hallazgos: string[] = [];
     let archivos = 0;
-    for (const paquete of readdirSync(PAQUETES, { withFileTypes: true }).filter((d) =>
-      d.isDirectory(),
-    )) {
-      for (const f of fuentesDe(`${PAQUETES}${paquete.name}/src`)) {
+    for (const paquete of paquetesDeII()) {
+      for (const f of fuentesDe(`${PAQUETES}${paquete}/src`)) {
         archivos += 1;
         const limpio = sinComentarios(readFileSync(f, 'utf8')).replace(
           /typeof\s+import\s*\(/g,
@@ -401,7 +415,7 @@ describe('(0) el proveedor apagado: no hay con qué llamar a un modelo', () => {
         );
         for (const [nombre, re] of PROHIBIDO) {
           if (re.test(limpio))
-            hallazgos.push(`${paquete.name}/${f.slice(f.lastIndexOf('/') + 1)}: ${nombre}`);
+            hallazgos.push(`${paquete}/${f.slice(f.lastIndexOf('/') + 1)}: ${nombre}`);
         }
       }
     }

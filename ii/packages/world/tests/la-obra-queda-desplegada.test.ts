@@ -41,7 +41,7 @@ import { describe, expect, it } from 'vitest'
 import { buildSeedPhysics, type Physics } from '@anima/physics'
 
 import { place, take, type Intent } from '../src/intent.js'
-import { hashWorldState } from '../src/mundo.js'
+import { hashWorldState, restoreWorld, worldSlots } from '../src/mundo.js'
 import { stepWorld, type WorldState } from '../src/step.js'
 import { actor, criatura, cuerpo, enElPiso, enLaMano, mundo } from './mundo-minimo.js'
 
@@ -223,5 +223,57 @@ describe('(e) la tabla se recorre por ID, no por orden de llegada', () => {
     s = corre(s, place({ by: 'yo', seq: 0 }, 'z-obra', SITIO))
     s = corre(s, place({ by: 'yo', seq: 0 }, 'a-obra', { x: 0, y: 1 }))
     expect([...s.desplegados.keys()]).toEqual(['a-obra', 'z-obra'])
+  })
+})
+
+// ─── (f) Guardar y restaurar ────────────────────────────────────────────────
+
+describe('(f) guardar y restaurar conserva la obra Y SU REVISIÓN EXACTA', () => {
+  // Es el punto 8 del criterio del gate, y la parte que importa es la de la
+  // revisión: sin ella, una partida cargada tiene una trampa que funciona y NADIE
+  // sabe de qué plano salió — o sea que el juez no le puede atribuir el resultado
+  // a nada y la herencia del Hito 10 no tiene qué heredar.
+  //
+  // La ida y vuelta se hace por JSON A PROPÓSITO, y no clonando objetos: un
+  // guardado de verdad pasa por texto, y ahí es donde un `Map` se convierte en
+  // `{}` en silencio y un `bigint` lanza. Es el mismo camino que usan los ataques
+  // al fuego.
+  const REVISION = 'a1b2c3d4e5f60718'
+
+  function idaYVuelta(w: WorldState): WorldState {
+    const crudo = JSON.parse(JSON.stringify([...worldSlots(w)])) as [string, unknown][]
+    return restoreWorld(new Map(crudo))
+  }
+
+  it('la obra vuelve, con su sitio y con su revisión', () => {
+    const puesta = corre(escena(), place(QUIEN, 'obra', SITIO, REVISION))
+    const vuelta = idaYVuelta(puesta)
+    expect(vuelta.desplegados.get('obra')?.at).toEqual(SITIO)
+    expect(vuelta.desplegados.get('obra')?.revision).toBe(REVISION)
+  })
+
+  it('y el HASH es el mismo: guardar y cargar no es otra partida', () => {
+    // El control que hace valioso al anterior. Comparar campo por campo se olvida
+    // del campo que alguien agregue mañana; el hash mira todo.
+    const puesta = corre(escena(), place(QUIEN, 'obra', SITIO, REVISION))
+    expect(hashWorldState(idaYVuelta(puesta))).toBe(hashWorldState(puesta))
+  })
+
+  it('una obra SIN revisión también vuelve, y sin inventarle una', () => {
+    // El mundo no exige procedencia para dejar poner algo: una obra armada a mano
+    // no salió de ningún plano. Lo que no puede pasar es que la restauración le
+    // invente una clave, porque eso movería el hash.
+    const puesta = corre(escena(), place(QUIEN, 'obra', SITIO))
+    const vuelta = idaYVuelta(puesta)
+    expect(vuelta.desplegados.get('obra')).toBeDefined()
+    expect(vuelta.desplegados.get('obra')?.revision).toBeUndefined()
+    expect(hashWorldState(vuelta)).toBe(hashWorldState(puesta))
+  })
+
+  it('y un mundo SIN obras desplegadas vuelve igual que siempre', () => {
+    // El control de compatibilidad: el campo nuevo no puede cambiarle el guardado
+    // a una partida que no lo usa.
+    const w = corre(escena())
+    expect(hashWorldState(idaYVuelta(w))).toBe(hashWorldState(w))
   })
 })

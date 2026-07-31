@@ -163,13 +163,13 @@ todo lo demás pase.
 | 5 construcción incremental e idempotente | **la mitad CUMPLE** (tramo D): desplegar es idempotente y la obra no se muda. Construir ya era incremental por `unir` y falta el `BuildSkill` que encadene | `world/tests/la-obra-queda-desplegada.test.ts` |
 | 6 separar construir de usar | **la mitad**: `CatalogCapability.clase` los separa en el dato; nadie los juzga todavía | `plan/src/catalogo.ts` |
 | 7 dos partidas no se contaminan | **CUMPLE** | `el-catalogo-es-una-vista`, bloque (7) |
-| 8 guardar y restaurar | **la vía existe** (tramo D): una ranura `desplegado:<id>` por obra, con su revisión adentro, que se escribe y se restaura. Falta el test de ida y vuelta | `world/src/mundo.ts` |
+| 8 guardar y restaurar | **CUMPLE** (tramo D·ter): una ranura `desplegado:<id>` por obra, y la ida y vuelta por JSON devuelve el sitio, la revisión y el MISMO hash | `world/tests/la-obra-queda-desplegada.test.ts`, bloque (f) |
 | 9 cambio de física invalida sellos | **la mitad del plano CUMPLE**: la revisión lleva `physicsVersion` adentro del hash, así que subir la versión produce otra revisión. Faltan los sellos de habilidades | `el-plano-es-canonico`, bloque (c) |
 | 10 mismo journal, mismo catálogo | **no empezado** | — |
 | 11 descriptor visual | **no empezado** | — |
-| 12 sin nombres especiales | **no aplica todavía**: no hay trampa | — |
+| 12 sin nombres especiales | **CUMPLE** (tramo D·ter): 90 fuentes de producción barridos, cero infracciones — y no es sólo el grep: lo que hace que un cuerpo retenga es `catch > 0`, una cualidad derivada | `world/tests/sin-nombres-especiales.test.ts` |
 
-**Van 4 de 12 cumpliendo y 3 a medias.** Los tres primeros los cerró el tramo A
+**Van 7 de 12 cumpliendo y 3 a medias.** Los tres primeros los cerró el tramo A
 —la deuda 1, la costura del catálogo hasta la mente— y el cuarto es el plano, del
 tramo C.
 
@@ -333,6 +333,35 @@ almacenado, no contención geométrica»—: lo que retiene no es una jaula, es 
 lista.
 
 **Tres cosas que salieron de rojos, y las tres valen:**
+
+### El tramo D·ter: los dos puntos que se cerraban con tests
+
+**Punto 8 — guardar y restaurar conserva la revisión exacta. CUMPLE.** La ida y
+vuelta se hace **por JSON a propósito** y no clonando objetos: un guardado de
+verdad pasa por texto, y ahí es donde un `Map` se convierte en `{}` en silencio.
+Vuelve el sitio, vuelve la revisión, y el **hash es el mismo** — que es el control
+que hace valioso al resto, porque comparar campo por campo se olvida del campo que
+alguien agregue mañana.
+
+**Punto 12 — no hay nombres especiales. CUMPLE.** 90 fuentes de producción
+barridos, cero infracciones, con el guardián calcado del de la emergencia del
+Hito 1. Busca ocho formas —castellano, inglés, guión, guión bajo— normalizando
+acentos y mayúsculas, ignora los comentarios (explicar qué es una trampa para
+peces es lo que hay que hacer) y **tiene su propio control de que sabe encontrar
+lo que busca**.
+
+Pero lo que de verdad cierra el punto 12 no es el grep: es que **lo que hace que
+un cuerpo retenga sea `catch > 0`**, una cualidad derivada de la geometría. El
+grep cuida que nadie agregue el atajo después.
+
+**Y un rojo que no era del gate y valía igual.** Los dos criterios del proveedor
+apagado del Hito 5 enumeraban `ii/packages/` dando por sentado que todo directorio
+ahí es un paquete. Alcanza con correr `npx` una vez parado ahí para que aparezca
+un `node_modules/` con la caché de vitest y los dos revienten con `ENOENT` — un
+rojo del criterio de corte del proyecto causado por una caché. Ahora filtran por
+tener `package.json`, que es lo que hace paquete a un paquete.
+
+---
 
 1. **`retirarUno` re-ancla la reposición.** El pozo con aparato quedó en 44 contra
    45 sin él, con TRES piezas retenidas — no 42. Sacar no sólo baja la población:
