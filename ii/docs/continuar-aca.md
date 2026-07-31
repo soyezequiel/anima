@@ -135,6 +135,17 @@ conecte; si no pasa, el plan se para acá y se revisa antes de gastar en la frag
 > los dos últimos son **el mismo problema y no dos**: el fuego más barato del mundo
 > sale 645,5 de aliento y la criatura arranca con 310. Ver el punto 0 de la sección 6.
 >
+> **Y ESO ÚLTIMO YA NO ES CIERTO (tramo N).** El fósforo más barato del mundo sale
+> **244,65** y la criatura sigue arrancando con 310: **lo paga**. La pared
+> aritmética se cayó al subir la eficiencia de `friccion` de 0,35 a 0,85, que fue
+> la salida (c) y la eligió el usuario. Los dos criterios siguen en rojo y por otro
+> motivo, que hay que leer aparte: **la corrida canónica sigue muriendo en el
+> 18.150 con CERO bocados**, exactamente igual que antes. La aritmética dejó de
+> estar en contra y la mente no cruza la puerta — el `plan()` contesta `gap` con
+> `emitsPower<410&emitsPower>=253`, o sea que **falta MATERIA**: una vara del
+> tamaño justo en una celda seca. Eso es del dios y del punto 1, no de una
+> constante. Ver el punto 0 de la sección 6, reescrito.
+>
 > **OJO CON LA CUENTA, que ya viajó mal.** El traspaso anterior decía «van 4 de 6»
 > sumando los tres que cumplen MÁS el p99 aceptado. Mezclar «cumple» con «no cumple
 > pero está aceptado» en un solo número deja de distinguir justo lo que hay que
@@ -150,7 +161,7 @@ tramo L, o sea **sobre el mundo que el dios decreta y ningún arnés planta**.
 | la cadena de la caña | **CUMPLE** | 7 eslabones en el plan, **6 vuelos** contra el mundo (el `ir` al pozo lo poda el tramo L: ya estaba al lado): tira la caña en el tick **48**, el pescado entra a la mano en el **108** |
 | `ticksPerdidos === 0` | **CUMPLE, con una condición escrita** | **0** en 20.000 ticks con reloj de pared (0,947 ms/tick contra una ventana de 50) — y la partida termina con **120 cuerpos**, o sea que no recorre mundo. Una que camina derecho llega a 23.353 cuerpos y a 74 ms/tick a los 10.000, o sea que cruza la ventana ADENTRO de los 20.000 |
 | p99 < 5 ms con 5000 cuerpos | **NO cumple — ACEPTADO por el usuario** | **30,94 ms** (6,2×) corriendo `@anima/world` solo · **36,13 ms** (7,2×) en la corrida de los nueve paquetes, que es CONTENCIÓN y no regresión · guarda verde en 45 ms |
-| **sobrevive 20.000 ticks sola** | **NO CUMPLE — ACEPTADO por el usuario; con el tanque canónico es IMPOSIBLE, ver el punto 0 de la sección 6** | el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **18.150** de 20.000 con **0 bocados**, pegada al techo aritmético de quieta (18.235) — el ancla del fondo (punto 9) le sacó el paseo, así que ya no se muere de caminar: se muere del fósforo, puro (era el 6244, y antes el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
+| **sobrevive 20.000 ticks sola** | **NO CUMPLE — ACEPTADO por el usuario. YA NO ES IMPOSIBLE (tramo N): el fósforo sale 244,65 contra un tanque de 310 y la criatura LO PAGA. Lo que la frena hoy es MATERIA, no aritmética — sigue muriendo en el 18.150 con 0 bocados y el `plan()` contesta `gap` de `emitsPower`. Ver el punto 0 de la sección 6** | lo de abajo es la medición con la eficiencia en 0,35: el fuego más barato del mundo sale **645,5** y la criatura arranca con **310**, y sin fuego no hay comida que pague: crudo no conviene NINGUNA de las seis sustancias con calorías que el dios decreta. Canónica (tanque 310): muere en el **18.150** de 20.000 con **0 bocados**, pegada al techo aritmético de quieta (18.235) — el ancla del fondo (punto 9) le sacó el paseo, así que ya no se muere de caminar: se muere del fósforo, puro (era el 6244, y antes el 3802). Con el tanque lleno: **LLEGA VIVA — y con 0 bocados**, o sea que aguanta sin comer y el criterio pide comer. Con el eslabón REGALADO: **LLEGA VIVA con 64 bocados** (era: come 68 y muere en el 12.847). Con tanque lleno + leña seca: **LLEGA VIVA habiendo cocinado y comido**, la primera vez en el proyecto |
 | emergencia: ≥4 de 10 en 20 partidas | **NO CUMPLE — ACEPTADO por el usuario · 2 de 9 con el tanque lleno** | **0 de 9** contra **0 de 9** del azar, sin umbrales tocados, con el tanque de 310. **Con el tanque de 1000 son 2 de 9** y la corrida pasa a ser interpretable — ver el punto 2 de la sección 6, que se dio vuelta. Situación en la canónica: **8/20, 8/20 y 7/20** (con el ancla del punto 9; era 10/20, 10/20 y 8/20: la que espera al lado del pozo pisa menos situaciones de fuego) |
 
 ### Lo que falta para el criterio de sobrevivir YA NO ES EL `gap`: ES LA ARITMÉTICA
@@ -321,7 +332,58 @@ decisión sobre la cota del mundo.
 
 ## 6 · Qué está abierto, en orden de importancia
 
-0. **DECIDIDO POR EL USUARIO: EL HITO 5 CIERRA CON EL CRITERIO (5) Y EL (6) EN
+0. **REABIERTO Y MOVIDO (tramo N): LA PARED ARITMÉTICA SE CAYÓ, Y LO QUE QUEDA ES
+   MATERIA.** Todo lo que sigue en este punto describe el mundo con la eficiencia
+   de `friccion` en **0,35**, y hoy está en **0,85**. Se deja entero porque el
+   razonamiento sigue valiendo y porque las tres salidas descartadas lo siguen
+   estando por los mismos motivos; lo que cambió son los números y cuál se eligió.
+
+   **LO QUE PASÓ, en cuatro renglones:**
+
+   | lo medido | con 0,35 | con 0,85 |
+   |---|---|---|
+   | el fósforo más barato del mundo | 645,50 | **244,65** (de `madera-dura`) |
+   | con qué arranca la criatura | 310 | 310 |
+   | ¿lo puede pagar? (SOLVENCIA, `C < T`) | **NO**, por 2,08× | **SÍ**, con 44,20 de margen |
+   | ¿un fuego se paga con lo que cocina? (`G > C`) | NO, por 1,24× | **SÍ**, 1,96× |
+
+   **Y LA CORRIDA CANÓNICA NO SE MOVIÓ UN TICK: sigue muriendo en el 18.150 con
+   CERO bocados.** Ésa es la noticia importante del tramo y hay que leerla junta
+   con la de arriba: la aritmética dejó de estar en contra y la mente **no cruza
+   la puerta**. El `plan()` sigue contestando `gap` con
+   `emitsPower<410&emitsPower>=253` — le falta un cuerpo del tamaño justo en una
+   celda seca. **Lo que bloquea el criterio (5) hoy es MATERIA, y es el punto 1
+   de esta misma lista** (la escalera, el atador y de dónde siembra el dios).
+
+   La cuenta entera, con su método y sus seis bloques, está en
+   `world/tests/la-cuenta-de-los-veinte-mil.test.ts`, y el porqué del 0,85 —con la
+   ventana entera y el techo que le pone el guardián de la conservación— en el
+   encabezado de `FRICCION` (`physics/src/process.ts`).
+
+   **LO QUE ESA CALIBRACIÓN SE LLEVÓ PUESTO, dicho porque son deudas y no
+   detalles:**
+   - el **control negativo del leño** de `plan/tests/los-esquemas-contra-el-mundo`
+     dejó de controlar y quedó en `it.fails`: con el tanque lleno que el arnés
+     regala, el leño de 1 kg llega a 455,89 °C. Lo arregla una vara más pesada en
+     el arnés (el borde está en 1,30 kg);
+   - la **meseta de la vara** de `world/tests/el-tiempo-no-depende-del-tick` dejó
+     de coincidir a nueve decimales entre las cuatro frecuencias: se corren 2,33 °C
+     (0,38%), porque la criatura ahora sigue frotando en el segundo 12 y el `drive`
+     le tira la vara encendida hacia abajo. Lo arreglaría una escena donde la mano
+     SUELTE la vara después de encenderla;
+   - la **estrategia de leña** volvió a ser decorativa en `oracle/presupuesto`: el
+     fuego sostenido pasó de deber en 19 de 100 a dar positivo en las cien. Era el
+     aporte del tramo M.
+
+   Y UNA COPIA VIVA: `EFICIENCIA_DE_FROTAR = 0.35` en `mind/tests/el-criterio.ts`
+   no se enteró del cambio. Nadie la usa hoy —`2b-las-paredes` dejó de importarla y
+   lee el proceso— pero el que la importe se va a comer un mundo que no existe.
+
+   ---
+
+   **LO QUE SIGUE ES EL PUNTO 0 ANTERIOR, con la eficiencia en 0,35.**
+
+   **DECIDIDO POR EL USUARIO: EL HITO 5 CIERRA CON EL CRITERIO (5) Y EL (6) EN
    ROJO ACEPTADO.** De las cuatro salidas que se le presentaron eligió la cuarta —
    aceptarlo y marcarlo—, después de que la primera se implementara, se midiera y no
    cerrara. **Ningún umbral se movió.** Los dos criterios quedan con `it.fails` y la
@@ -392,7 +454,9 @@ decisión sobre la cota del mundo.
      de 4020. Es exactamente la corrida «control» que ya mide 2 de 9 en el juez.
    - **(c) bajar el precio de frotar** (`eficiencia`, hoy 0,35). Es calibración pura
      y estaba descartada por el guardián de la conservación; hay que re-medir la
-     ventana antes de proponer un número.
+     ventana antes de proponer un número. **← ÉSTA SE ELIGIÓ Y SE HIZO en el tramo
+     N: 0,35 → 0,85. La ventana se re-midió y el guardián no la descartaba, la
+     acotaba en 1,00. Ver arriba.**
    - **(d) aceptarlo y marcarlo.** El criterio (5) queda con `it.fails` y el porqué
      medido al lado, igual que el p99.
 

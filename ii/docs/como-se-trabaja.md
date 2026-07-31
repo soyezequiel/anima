@@ -202,7 +202,7 @@ más importante que la velocidad.
 
 ---
 
-## 5 · Los treinta y seis números corregidos, y la regla que dejó cada uno
+## 5 · Los treinta y ocho números corregidos, y la regla que dejó cada uno
 
 Esto es lo más caro de las sesiones anteriores y lo que más fácil se pierde. **Cinco
 fueron conclusiones enteras que estaban mal y que ya habían viajado a
@@ -585,6 +585,62 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    identidad del motor (`r.body !== c.body`, `yaMirados`, `tagsDe`) quedaban en
    cero sin que nada se pusiera rojo. Reparado con una guarda exacta y afirmado en
    `physics/tests/el-cuerpo-quieto-sigue-siendo-el-mismo.test.ts`.
+
+37. **«Un fuego devuelve el 3,7% de lo que cuesta: ~25 a 1 en contra»** — falso, y
+   por 20×. Es **1,24 a 1**. El 25 a 1 dividía el precio de un fuego por lo que deja
+   UN bocado, y un fuego no cocina un bocado: cocina los que le entran mientras
+   dura, que son 32. Del mismo párrafo salían otros dos números igual de rotos:
+   «le faltan ~673 de aliento» (son **30** — el 673 se midió con la criatura
+   paseándose y el ancla del fondo se llevó el 65% del gasto, y nadie volvió a hacer
+   la resta) y «bajar la fricción estaba descartado» (pedía llevar la eficiencia a
+   **0,729**, que cabe abajo del techo de 1,00 que pone el guardián de la
+   conservación).
+   → **REGLA: antes de dividir dos números, preguntá si están en la misma unidad.**
+   Los tres errores son el mismo: un gasto por tick de un régimen viejo contra un
+   tanque de hoy; el precio de un fuego contra la comida de un bocado; una cota
+   sobre el tanque contra otra cota sobre el mismo tanque. Ninguno era un error de
+   medición — los tres números estaban bien medidos y mal comparados.
+
+   Y de rehacer esa cuenta salieron tres cosas más:
+   - **hay DOS desigualdades y manda la que nadie había escrito.** Con T el tanque,
+     L el costo de vivir, N los ticks del criterio, C el fósforo y G lo que el fuego
+     devuelve: (i) que no llegue quieta es `T < N·L`, (ii) SOLVENCIA es `C < T` y
+     (iii) RENTABILIDAD es `T − C + G ≥ N·L`. De (i)+(ii) sale **`C < T < N·L`**: el
+     fuego tiene que costar menos que el presupuesto de vida entero, y eso es una
+     cota sobre C sola. Manda ésa, porque **una criatura que se muere frotando nunca
+     llega a enterarse de si el fuego era rentable**. Y de (i)+(iii) sale `G > C`,
+     donde T y L **se cancelan**: eso mata la salida de «subir el tanque» por
+     álgebra y sin medir nada, porque (i) es una cota de ARRIBA sobre el mismo
+     tanque que (ii) querría subir;
+   - **más brasa no es más comida.** El barrido de masas destapó que la relación no
+     es monótona: 1,7 kg cocina 32 pescados y 1,8 kg no cocina NINGUNO —el pescado
+     se convierte en `residuo-mineral-de-pescado` sin cruzar la ventana—. Publicar
+     una sola masa habría publicado el número equivocado en cualquiera de los dos
+     sentidos. → **REGLA: si vas a publicar «el mejor X», barré X. No lo elijas.**
+   - **el fósforo no tiene por qué ser de madera.** `friccion` pide `rigidity >= 0,5`
+     y nada más; nadie había barrido el catálogo con esa reja. Pasan cinco
+     sustancias y arden dos, y `madera-dura` sale 8% más barata que `madera`. Ayudó
+     y no alcanzó, pero el supuesto llevaba tramos escrito a mano en la medición.
+
+38. **Una calibración que abarata algo rompe los tests que medían la POBREZA.** Subir
+   la eficiencia de `friccion` de 0,35 a 0,85 puso rojos 27 pines en nueve paquetes,
+   y no todos son «actualizar el número»: **cinco eran afirmaciones que decían “no se
+   puede” y pasaron a decir “sí se puede”**, y tres eran controles que dejaron de
+   controlar. Los tres, dichos porque son la parte cara:
+   - un **control negativo** cuyo mecanismo era «se queda sin tanque» deja de
+     controlar cuando el tanque alcanza (`plan/los-esquemas-contra-el-mundo`, el leño
+     de 1 kg). Quedó en `it.fails` con la afirmación entera;
+   - un **punto de muestreo** elegido bajo la premisa «para entonces ya convergió» se
+     rompe cuando la criatura vive más (`world/el-tiempo-no-depende-del-tick`: a los
+     12 s la mano sigue encima, y no hay punto más tardío porque la vara se apaga);
+   - una **distinción** que el tramo anterior había comprado se puede perder sin que
+     nadie la nombre (`oracle/presupuesto`: la estrategia de leña volvió a ser
+     decorativa).
+   → **REGLA: cuando muevas una constante, listá qué tests medían la ESCASEZ que esa
+   constante producía.** Los que sólo cambian de número son los baratos; los que
+   medían una imposibilidad hay que dar vuelta con lo que decían escrito al lado, y
+   los que medían una distinción hay que revisarlos por si se quedaron mudos. Un
+   pin que se actualiza sin leer qué afirmaba es un guardián que se apaga en silencio.
 
 **Y lo que el adversario SÍ acertó y está reparado o escrito:** el determinismo (19),
 el solapamiento del banco contra una suelta (2 de 20 → 0 de 20), la conservación
