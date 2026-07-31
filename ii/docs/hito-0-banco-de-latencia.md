@@ -93,3 +93,24 @@ La otra mitad del Hito 0 sigue pendiente, y es la que puede matar el plan:
 
 Los tres necesitan código que todavía no existe. Éste no lo necesitaba, y por eso
 se hizo primero.
+
+---
+
+## Contratos que deben revalidarse por la extensión de objetos emergentes
+
+**El Hito 0 sigue cerrado y ninguna medición de arriba cambia.** Esto es lo que
+hay que *registrar para el futuro*, porque el
+[Gate 5→6](gate-5-6-objetos-emergentes.md) lo va a necesitar y el banco es el
+lugar donde este proyecto aprendió a no construir sobre fe:
+
+- **candidato de plano fijo para CI** — el gate se demuestra **sin proveedor**,
+  así que el candidato es un archivo versionado del repo, como los 28 borradores;
+- **normalización canónica** — dos candidatos que dicen lo mismo escrito distinto
+  tienen que normalizar al mismo `BlueprintDefinition`;
+- **hashes deterministas** — sobre la definición normalizada, nunca sobre el
+  texto;
+- **fixtures independientes del proveedor** — ninguna medición del gate puede
+  depender de una respuesta viva.
+
+El detalle está en la [sección 7 del
+gate](gate-5-6-objetos-emergentes.md#7--contratos-que-deben-revalidarse-por-la-extensión-de-objetos-emergentes).

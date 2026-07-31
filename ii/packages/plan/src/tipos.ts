@@ -38,6 +38,8 @@ import type {
   WhereCell,
 } from '@anima/skills'
 
+import type { PlannerCatalogView } from './catalogo.js'
+
 export type { WhereCell }
 
 // ─── Lo que el planificador ve ───────────────────────────────────────────────
@@ -779,6 +781,18 @@ export interface NodoAbierto {
  */
 export interface OpcionesDePlan {
   readonly esquemas?: readonly ConstructionSchema[]
+  /**
+   * EL CATÁLOGO COMO VISTA EXPLÍCITA, con su core y su overlay de sesión.
+   *
+   * Es la puerta del Gate 5→6 y la que va a usar la mente. Gana sobre
+   * `esquemas`, que queda como la escotilla de laboratorio que siempre fue: una
+   * lista pelada de filas, sin identidad ni procedencia.
+   *
+   * El `import type` es a propósito y no un descuido: `catalogo.ts` importa
+   * `ConstructionSchema` de este archivo, así que un import de VALOR sería un
+   * ciclo en tiempo de ejecución. Un import de tipo se borra al compilar.
+   */
+  readonly catalogo?: PlannerCatalogView
 }
 
 export type PlanResult =

@@ -53,11 +53,33 @@ El detalle, con los números y lo que falta, está en
 |---|---|
 | **nueve paquetes** | 2424 tests verdes (+1 `todo`) · nueve typechecks limpios · 68 `it.fails` anotados |
 | [Traspaso del Hito 5](docs/continuar-aca.md) | **empezá por acá** |
+| [Gate 5→6 · objetos emergentes](docs/gate-5-6-objetos-emergentes.md) | **lo que viene después del Hito 5, y antes del 6** |
 | [Las diez secuencias](docs/hito-5-las-diez-secuencias.md) | el criterio de emergencia, cerrado antes de medirlo |
 | [Inventario de ADRs](docs/inventario-adrs.md) | **86 de 86 triados** · 55 portar, 18 revisar, 10 obsoleto, 3 revertido |
 | [Escalera de capacidades](docs/escalera-capacidades.md) | 20 capacidades, 28 borradores contra la API |
 | [Huecos medidos](docs/huecos-medidos.md) | 4 pases: 112 → 71 → 64 (a mano) → **84** (emitido) |
-| [Decisiones](docs/decisions/) | **14 ADRs propios** (II-0001 a II-0014) |
+| [Decisiones](docs/decisions/) | **19 ADRs propios** (II-0001 a II-0019) |
+
+### El orden de acá en adelante
+
+```
+terminar el Hito 5 actual
+  → Gate técnico de objetos emergentes   ← docs/gate-5-6-objetos-emergentes.md
+    → Hitos 6–11
+      → Hito 12 (UI presentable: el mapa es la vista principal)
+        → Hitos post-UI de física abierta (13–16)
+```
+
+**El Gate 5→6 no reabre el Hito 5** ([ADR II-0019](docs/decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md)):
+el Hito 5 está ~80% implementado y termina con su alcance actual. Lo único que
+tiene que preservar es **una costura de compatibilidad** — el planificador y la
+mente no pueden quedar atados a un catálogo global imposible de reemplazar. El
+caso de aceptación del gate es **«fabricá una trampa para peces»**, sin trampa
+precargada y **sin ningún nombre especial en producción**.
+
+**Los Hitos 0 a 4 siguen cerrados.** Lo que ganan es una sección de *contratos que
+deben revalidarse por la extensión de objetos emergentes*, que vive en la sección
+7 del documento del gate. Ninguna medición se borra.
 
 ### Hito 0 — el banco · las cuatro piezas medidas, ninguna mató el plan
 
@@ -116,6 +138,15 @@ tasas**, tipos nominales distintos —sumar una tasa a una magnitud no compila, 
 eso lo verifica `tsc`— con `aplicar()` como única puerta entre las dos; y el nodo
 `{ k: 'substance' }` en `QualityExpr`, con el que `heatCapacity` se declara como
 cualquier otra derivada y queda **una sola forma de preguntar si algo se guarda**.
+
+> **Contratos a revalidar por la extensión de objetos emergentes** (el Hito 1
+> sigue cerrado; esto es lo que la extensión va a estirar): límites de partes,
+> juntas y profundidad (`MAX_PARTS = 6`, `MAX_JOINTS = 8`,
+> `MAX_ASSEMBLY_DEPTH = 3`) · cualidades derivadas · **affordance genérica de
+> retención o captura pasiva**, que hoy no existe · rechazo de soluciones que
+> dependan del nombre del objeto. **Todavía no se agrega geometría, ni aberturas,
+> ni peces físicos.** Ver la sección 7 del
+> [Gate 5→6](docs/gate-5-6-objetos-emergentes.md#7--contratos-que-deben-revalidarse-por-la-extensión-de-objetos-emergentes).
 
 ### Hito 2 — `@anima/world` · [`docs/hito-2-el-mundo.md`](docs/hito-2-el-mundo.md)
 

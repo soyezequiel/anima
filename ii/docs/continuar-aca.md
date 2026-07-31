@@ -5,11 +5,104 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: 2026-07-30, al cerrar el **tramo Ñ** (el ancla del fondo y
-el rumbo del `explore`: el punto 9 de la sección 6, cerrado en dos mitades). El
-resultado que manda sigue siendo el **punto 0 de la sección 6** —el Hito 5 cerró
-con 3 de 6 y 3 aceptados—, y el tramo Ñ acercó la canónica al techo: muere en el
-18.150 de 20.000, ya sin gastar nada en pasearse.
+Última actualización: **2026-07-31**, con el **tramo A del Gate 5→6** cerrado: la
+costura del catálogo llega hasta la mente y **la deuda 1 del gate está pagada**
+(ver el final de la sección 0·bis). Antes de eso, el gate decidido y escrito
+(sección 0·bis, y el criterio entero en
+[`gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md)), y antes el
+**tramo Ñ** (el ancla del fondo y el rumbo del `explore`: el punto 9 de la
+sección 6, cerrado en dos mitades). El resultado que manda sigue siendo el
+**punto 0 de la sección 6** —el Hito 5 cerró con 3 de 6 y 3 aceptados—, y el tramo
+Ñ acercó la canónica al techo: muere en el 18.150 de 20.000, ya sin gastar nada en
+pasearse.
+
+---
+
+## 0·bis · EL ORDEN DEL PROYECTO, decidido el 2026-07-31
+
+Va acá arriba porque cambia qué hay que hacer después de este archivo, y porque
+lo primero que va a querer hacer alguien que lea la sección 6 es meter todo lo
+nuevo adentro del Hito 5. **No.**
+
+```
+terminar el Hito 5 actual
+  → Gate técnico de objetos emergentes   ← gate-5-6-objetos-emergentes.md
+    → Hitos 6–11
+      → Hito 12 (UI presentable)
+        → Hitos post-UI de física abierta (13–16)
+```
+
+**EL HITO 5 TERMINA CON SU ALCANCE ACTUAL.** Está ~80% implementado y su criterio
+de cierre —los seis puntos, con 3 que cumplen y 3 en rojo aceptado— **no se
+amplía**. No se le agregan planos, ni persistencia de catálogo, ni dispositivos
+autónomos. **Nada de lo nuevo obliga a rehacer trabajo terminado**
+([ADR II-0019](decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md)).
+
+**LO ÚNICO QUE EL HITO 5 TIENE QUE CUIDAR ES UNA COSTURA**, y está medida:
+
+| mitad | estado | dónde |
+|---|---|---|
+| `plan()` acepta un catálogo inyectado | **YA ESTÁ**: `OpcionesDePlan.esquemas` reemplaza la tabla entera | `plan/src/regresion.ts:2133` |
+| la mente se lo pasa | **NO**: llama `plan(g, v, presupuesto, e.frontera)` sin opciones | `mind/src/escalera.ts:1429` |
+| la mente precalcula precios | **AL CARGAR EL MÓDULO**, desde `SCHEMA_INDEX` | `mind/src/oportunidades.ts` (`LO_QUE_CUESTA_ESTABLECER`) |
+
+Lo que el Hito 5 tiene que hacer con esto: **nada, salvo no empeorarlo** — no
+agregar lectores nuevos de `SCHEMA_INDEX` en tiempo de carga. Llevar la vista
+hasta la mente es **deuda del gate**.
+
+> ### CERRADO — tramo A del gate, 2026-07-31. La tabla de arriba ya no describe el árbol
+>
+> Se deja entera porque es el diagnóstico del que salió el trabajo. Hoy las tres
+> filas están en verde y hay una cuarta que la tabla no tenía:
+>
+> | mitad | hoy |
+> |---|---|
+> | `plan()` acepta un catálogo | **`OpcionesDePlan.catalogo`**, una `PlannerCatalogView` con identidad, y `esquemas` queda como escotilla de laboratorio |
+> | la mente se lo pasa | **SÍ**: `plan(g, v, presupuesto, e.frontera, { catalogo })`, y también a D3 |
+> | la mente precalcula precios | **por `catalogEpoch`**, no al cargar (`mind/src/catalogo.ts`, `porEpoch`) |
+> | **y eran CUATRO lectores, no uno** | tres desatados; el de `creencias.ts` lee el core **a propósito** y el porqué está escrito arriba de `delEsquema` |
+>
+> **Y ahora hay un guardián de texto en los dos paquetes** que se pone rojo si
+> aparece un lector nuevo de `ESQUEMAS`/`SCHEMA_INDEX`. Es lo que faltaba: la
+> deuda creció a cuatro sitios justamente porque agregar el quinto no rompía nada.
+>
+> Lo que NO se hizo, para que nadie lo dé por hecho: **una frontera con otro
+> `catalogEpoch` todavía no se descarta.** El epoch está en la vista, pero
+> `Frontera` no lo lleva y `plan()` no lo compara.
+
+### Las trece decisiones de producto, que NO se vuelven a preguntar
+
+1. Antes de la UI, Ánima inventa objetos y habilidades **dentro de una física
+   fija escrita por humanos**.
+2. El caso de aceptación es **«fabricá una trampa para peces»**.
+3. La trampa **no está precargada**.
+4. Es un **dispositivo autónomo desplegado sobre un `Stock`**.
+5. Se la puede dejar, alejarse, volver y **retirar la captura**.
+6. Los peces **no se mueven** en esta primera versión.
+7. La captura es **estado autoritativo almacenado**, no contención geométrica.
+8. **Ningún `kind`, receta, skill ni caso especial** llamado `fish-trap`,
+   `trampa-para-peces` ni equivalente, en producción.
+9. La **física genérica** de despliegue, retención e interacción con stocks la
+   escriben humanos.
+10. Ánima inventa **el plano, los materiales, la construcción y el uso**.
+11. La **UI se construye después del Hito 11**.
+12. Después de la UI se amplía la física hacia «crear cualquier objeto».
+13. Las **skins con IA quedan fuera de Ánima II 1.0**.
+
+Y la regla que reemplaza a la promesa vieja: **no se promete «cualquier cosa»**.
+Se dice así: *Ánima puede crear cualquier artefacto cuya estructura,
+construcción, uso y efectos puedan representarse y comprobarse con las
+capacidades físicas disponibles en ese nivel.*
+
+### Los cinco ADRs propios que salieron de esto
+
+| ADR | qué fija |
+|---|---|
+| [II-0015](decisions/II-0015-el-plano-no-es-el-esquema-de-construccion.md) | `BlueprintCandidate` **no entra a `SCHEMA_INDEX`**; cinco piezas separadas |
+| [II-0016](decisions/II-0016-un-dispositivo-desplegado-retiene-sobre-un-stock.md) | dispositivo desplegado sobre un stock; la captura es **estado**, no geometría |
+| [II-0017](decisions/II-0017-el-descriptor-visual-no-es-fisica.md) | el descriptor visual es **vista derivada**, con `renderDescriptorHash` |
+| [II-0018](decisions/II-0018-el-catalogo-es-core-mas-overlay-por-sesion.md) | catálogo **core + biblioteca + overlay**, y `PlannerCatalogView` |
+| [II-0019](decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md) | el gate **no reabre** el Hito 5 |
 
 ---
 
@@ -26,20 +119,25 @@ con 3 de 6 y 3 aceptados—, y el tramo Ñ acercó la canónica al techo: muere 
 4. [`docs/architecture/remake-anima-ii.md`](../../docs/architecture/remake-anima-ii.md)
    — la arquitectura. La sección del **Hito 5** (cerca de la línea 1452) es el
    criterio de corte del proyecto.
-5. [`ii/docs/decisions/`](decisions/) — **14 ADRs propios**. Los que más pesan hoy:
+5. [`ii/docs/gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md) —
+   **qué viene después del Hito 5 y antes del 6**, con las trece decisiones de
+   producto fijadas, el criterio de doce puntos y los contratos que los Hitos 0–4
+   van a tener que revalidar. Se lee una vez, como `como-se-trabaja.md`.
+6. [`ii/docs/decisions/`](decisions/) — **19 ADRs propios**. Los que más pesan hoy:
    II-0001 (encender no es una acción), II-0007 (el tick es un parámetro),
    II-0008 (el tiempo va en segundos), II-0009 (el hambre mata), II-0010 (frotar
    no relaja), II-0011 (arder libera calor), II-0012 (el presupuesto del plan va
    en expansiones), II-0013 (el veneno se cobra al tragar), **II-0014 (el decreto
-   manda sobre la celda, y el mundo narra lo que el dios pone)**.
+   manda sobre la celda, y el mundo narra lo que el dios pone)**, y los cinco del
+   gate: **II-0015 a II-0019** (ver la sección 0·bis).
 
 ---
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2456 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
-nueve typechecks limpios.** Corridos enteros al cerrar el tramo N, mirando el exit
-code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
+**Nueve paquetes, 2506 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+nueve typechecks limpios.** Corridos enteros al cerrar el tramo A del gate, mirando
+el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
 dos cohortes del banco de la mente se reparten en cinco tandas desde el tramo Ñ,
 ver la sección 2 de `como-se-trabaja.md`). En la rama
@@ -62,16 +160,23 @@ otra máquina, hay que pushear antes.
 
 | paquete | qué es | tests |
 |---|---|---:|
-| `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables | 605 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 550 (+1 skipped) |
+| `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables | 607 |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 561 (+1 skipped) |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
-| `@anima/plan` | `SCHEMA_INDEX`, `goalGraph()`, `plan()` anytime, **la poda de lo ya hecho** | 295 (+1 todo) |
-| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, **el portón de despegue** | 302 |
-| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 121 |
+| `@anima/plan` | **el catálogo como vista**, `goalGraph()`, `plan()` anytime, la poda de lo ya hecho | 312 (+1 todo) |
+| `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, el portón de despegue | 317 |
+| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 126 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
+
+> **OJO CON ESTA TABLA: llegó al tramo A con cinco números viejos y nadie lo
+> notó.** Decía 2456 y el árbol daba 2479 ANTES de tocar nada — `physics` 605→607,
+> `world` 550→561, `plan` 295→295, `mind` 302→307, `juez` 121→126—, o sea que
+> venía arrastrando el conteo de dos tramos atrás. Los 27 que agregó este tramo
+> (17 en `plan`, 10 en `mind`) son la única diferencia que este tramo explica.
+> **Un conteo de tests es una medición y se re-mide, no se hereda.**
 
 > **La suite tarda 287 s y no 790, y ni una corrida se acortó.** Se repartió el
 > mismo trabajo en más ARCHIVOS, que es la única unidad que vitest paraleliza:
@@ -740,6 +845,9 @@ decisión sobre la cota del mundo.
 > (el Ánima I original sigue andando al lado, en `packages/` y `apps/`).
 > Leé `ii/docs/continuar-aca.md` entero antes de hacer nada: es el traspaso, y trae
 > el estado, el método, las decisiones tomadas y los veinte números que ya se
-> corrigieron. Después seguí por donde dice la sección 6.
+> corrigieron. **La sección 0·bis manda sobre el orden del trabajo**: el Hito 5
+> termina con el alcance que tiene, y lo que sigue es el Gate 5→6
+> (`ii/docs/gate-5-6-objetos-emergentes.md`). Lo que quede abierto del Hito 5 está
+> en la sección 6.
 > Usá workflows con agentes en paralelo sobre archivos disjuntos. Commiteá cuando
 > un tramo esté verde y verificado, sin pushear.

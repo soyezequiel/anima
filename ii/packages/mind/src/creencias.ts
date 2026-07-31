@@ -125,7 +125,7 @@
 // es una decisión sobre el contrato compartido, no sobre este archivo.
 
 import { baseRoleName, specOf } from '@anima/physics'
-import { AGUA_FRANCA, ESQUEMAS, procesoDe } from '@anima/plan'
+import { AGUA_FRANCA, CATALOGO_CORE, procesoDe } from '@anima/plan'
 import type { Where } from '@anima/skills'
 
 import type {
@@ -153,9 +153,32 @@ export interface Umbral {
   readonly de: string
 }
 
-/** Lo que un ESQUEMA le pide a un rol. El umbral que la criatura necesitaría cumplir. */
+/**
+ * Lo que un ESQUEMA le pide a un rol. El umbral que la criatura necesitaría cumplir.
+ *
+ * ─── LEE EL CORE, Y ESO NO ES DEUDA DEL GATE 5→6 ────────────────────────────
+ *
+ * Los otros tres lectores del catálogo que había en `@anima/mind` dejaron de ser
+ * constantes de módulo y ahora siguen al `catalogEpoch`. Éste NO, y es a
+ * propósito. Dos motivos, y el segundo es el que decide:
+ *
+ *   · **un overlay agrega, no reemplaza.** `esquemasDe` concatena core y
+ *     capacidades; ninguna fila del core se puede ir, así que la de `catch>0`
+ *     que se busca acá siempre está y este `throw` no lo puede disparar una
+ *     partida;
+ *   · **las claves de contexto quedarían atadas al catálogo.** `CUANTAS_FORMAS`
+ *     y `SIN_CUERPO` se derivan de `RASGOS.length`, o sea que si los rasgos
+ *     siguieran al epoch, TODO lo aprendido antes de un registro quedaría en
+ *     cubetas que ya no nombran nada. La memoria de afordancias es lo que la
+ *     criatura sabe del mundo, y el mundo no cambia porque ella aprenda a
+ *     construir algo.
+ *
+ * Lo que sí cambió es de dónde lo lee: por `CATALOGO_CORE.coreSchemas` y no por
+ * la constante suelta, para que «el core es lo único que se lee acá» sea una
+ * afirmación del código y no del comentario.
+ */
 function delEsquema(firma: string, rol: string, q: QualityId): Umbral {
-  for (const e of ESQUEMAS) {
+  for (const e of CATALOGO_CORE.coreSchemas) {
     if (e.establishes !== firma) continue
     for (const t of e.roleHints[rol] ?? []) {
       if (t.q === q) return { v: t.v, estricto: t.op === '>', de: `esquema «${firma}», rol \`${rol}\`` }

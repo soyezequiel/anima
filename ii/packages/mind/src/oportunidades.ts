@@ -208,7 +208,17 @@
 
 import { HZ_DE_REFERENCIA, specOf, TAGS } from '@anima/physics'
 import type { Predicado, PredicateSignature } from '@anima/plan'
-import { AGUA_FRANCA, firmaDe, implica, interpretar, SCHEMA_INDEX, textoDe } from '@anima/plan'
+import {
+  AGUA_FRANCA,
+  CATALOGO_CORE,
+  esquemasDe,
+  firmaDe,
+  implica,
+  interpretar,
+  textoDe,
+  type ConstructionSchema,
+  type PlannerCatalogView,
+} from '@anima/plan'
 import type { BodyView, Cell, Where, WhereCell } from '@anima/skills'
 import { CONTRATO_COMER, disco, distancia } from '@anima/skills/innatas'
 import {
@@ -219,6 +229,7 @@ import {
   STAMINA_POR_CALORIA,
 } from '@anima/world'
 
+import { porEpoch } from './catalogo.js'
 import { contextoDe } from './creencias.js'
 import {
   caloriasDelPeorDeTag,
@@ -421,24 +432,50 @@ export function valorDe(p: number, sat: number, costo: number): number {
  * valor, que es un número como cualquier otro. El que envenena es el
  * `Infinity` de VALOR, y de ése se encarga el piso.
  */
-export function costoEstimado(v: VistaDeLaMente, id: string): number {
+export function costoEstimado(
+  v: VistaDeLaMente,
+  id: string,
+  catalogo: PlannerCatalogView = CATALOGO_CORE,
+): number {
   const corte = id.lastIndexOf('#')
   const lugar = corte < 0 ? id : id.slice(0, corte)
   const tag = corte < 0 ? undefined : id.slice(corte + 1)
   const d = distanciaAlLugar(v, lugar)
   if (d === undefined) return Number.POSITIVE_INFINITY
-  return costoDe(d, tag)
+  return costoDe(d, tag, catalogo)
 }
 
 /** La cuenta, ya resuelto el lugar. Es lo que comparte `opportunities`. */
-function costoDe(d: number, tag: string | undefined): number {
-  return d * ALIENTO_POR_CELDA + (tag === undefined ? 0 : alientoDeConseguir(tag))
+function costoDe(d: number, tag: string | undefined, catalogo: PlannerCatalogView): number {
+  return d * ALIENTO_POR_CELDA + (tag === undefined ? 0 : alientoDeConseguir(tag, catalogo))
 }
+
+/**
+ * EL ÍNDICE POR FIRMA EXACTA, armado a partir de la vista y no leído del módulo.
+ *
+ * Es el reemplazo de `SCHEMA_INDEX` para esta pregunta, y se arma acá y no en
+ * `@anima/plan` por lo que el gate dejó abierto: **la pregunta 3 —«¿el overlay se
+ * indexa por firma o por capacidad?»— no está decidida**, así que publicar un
+ * índice desde el planificador sería tomarla de costado. El único que hoy
+ * necesita buscar por firma exacta es esta cuenta; cuando se decida, se sube.
+ *
+ * Se agrupa igual que lo hacía `construirIndice`: dos filas que establecen lo
+ * mismo caen en la misma entrada y el que las lee elige.
+ */
+const indiceDe = porEpoch((c: PlannerCatalogView): ReadonlyMap<string, readonly ConstructionSchema[]> => {
+  const m = new Map<string, ConstructionSchema[]>()
+  for (const e of esquemasDe(c)) {
+    const ya = m.get(e.establishes)
+    if (ya === undefined) m.set(e.establishes, [e])
+    else ya.push(e)
+  }
+  return m
+})
 
 /**
  * Lo que cuesta pasar de «estoy al lado» a «lo tengo».
  *
- * Sale del esquema, no de la intuición: `SCHEMA_INDEX` dice qué proceso deja
+ * Sale del esquema, no de la intuición: el catálogo dice qué proceso deja
  * `holding(tag:…)` establecido y cuántos segundos tarda. Si hay más de una fila
  * se toma la MÁS BARATA, que es lo mismo que hace la regresión —saca de la cola
  * el nodo de menor costo—; si no hay ninguna, el tag se consigue con la mano y
@@ -450,8 +487,8 @@ function costoDe(d: number, tag: string | undefined): number {
  * cazar. El día que la fragua escriba un proceso que deje otra cosa en la mano,
  * entra en el índice y esta cuenta lo usa sin que nadie la toque.
  */
-function alientoDeConseguir(tag: string): number {
-  const filas = SCHEMA_INDEX.get(metaDe(tag))
+function alientoDeConseguir(tag: string, catalogo: PlannerCatalogView): number {
+  const filas = indiceDe(catalogo).get(metaDe(tag))
   let mejor: number | undefined
   for (const f of filas ?? []) {
     // Un `segundos` que no es finito no es un costo: es una fila rota. Se saltea
@@ -684,30 +721,43 @@ const ALIENTO_DE_UN_BOCADO =
 
 /**
  * LO QUE CADA ESQUEMA DEL PLANIFICADOR SABE DEJAR ESTABLECIDO, ya interpretado y
- * con su precio en segundos, calculado UNA vez al cargar.
+ * con su precio en segundos, calculado UNA vez POR CATÁLOGO.
  *
- * Se calcula al cargar y no por tick porque `SCHEMA_INDEX` es una constante de
- * `@anima/plan`. Y se guarda INTERPRETADO —no la firma en texto— porque la
- * pregunta que hay que hacerle es de implicación y no de igualdad: un esquema que
- * deje `digestibility >= 0,85` cubre un pedido de `digestibility > 0,78`, y
- * compararlos por texto haría preciar como «no hay forma» algo que el catálogo
- * sabe hacer. Parsear las ocho firmas una vez por rescate y por tick sería el
- * peldaño D3 pagando un `replace` de expresión regular por candidato.
+ * Sigue sin calcularse por tick, y ése es el motivo de que exista: parsear las
+ * firmas una vez por rescate y por tick sería el peldaño D3 pagando un `replace`
+ * de expresión regular por candidato. Y se guarda INTERPRETADO —no la firma en
+ * texto— porque la pregunta que hay que hacerle es de implicación y no de
+ * igualdad: un esquema que deje `digestibility >= 0,85` cubre un pedido de
+ * `digestibility > 0,78`, y compararlos por texto haría preciar como «no hay
+ * forma» algo que el catálogo sabe hacer.
+ *
+ * ─── LO QUE CAMBIÓ CON EL GATE 5→6 ──────────────────────────────────────────
+ *
+ * Decía «se calcula al cargar porque `SCHEMA_INDEX` es una constante de
+ * `@anima/plan`», y el propio gate señaló esa frase como la que deja de ser
+ * cierta el día que hay overlay de sesión. Ahora la llave es el `catalogEpoch`:
+ * se recalcula cuando el catálogo cambia y no más seguido que eso. Sin esto, una
+ * capacidad que la criatura inventara se cotizaría con el precio del core, o sea
+ * como si no existiera, y D3 la ordenaría última para siempre.
  */
-const LO_QUE_CUESTA_ESTABLECER: readonly { readonly p: Predicado; readonly segundos: number }[] =
-  ((): readonly { readonly p: Predicado; readonly segundos: number }[] => {
+const preciosDe = porEpoch(
+  (c: PlannerCatalogView): readonly { readonly p: Predicado; readonly segundos: number }[] => {
     const out: { readonly p: Predicado; readonly segundos: number }[] = []
-    for (const [firma, filas] of SCHEMA_INDEX) {
-      const p = interpretar(firma)
+    for (const f of esquemasDe(c)) {
+      // `interpretar(f.establishes)` y no `interpretar(firmaDe(…))`: es lo que
+      // esta tabla hacía cuando recorría `SCHEMA_INDEX`, cuyas llaves son el
+      // `establishes` crudo. `escalera.ts` sí normaliza con `firmaDe`, y esa
+      // asimetría es anterior a este tramo — se deja igual para que la conducta
+      // no se mueva por un cambio de plomería.
+      const p = interpretar(f.establishes)
       if (p === undefined) continue
-      for (const f of filas) {
-        // Un `segundos` que no es finito no es un precio: es una fila rota, y se
-        // saltea en vez de contaminar la cuenta con un `NaN` que después no ordena.
-        if (Number.isFinite(f.segundos)) out.push({ p, segundos: f.segundos })
-      }
+      // Un `segundos` que no es finito no es un precio: es una fila rota, y se
+      // saltea en vez de contaminar la cuenta con un `NaN` que después no ordena.
+      if (Number.isFinite(f.segundos)) out.push({ p, segundos: f.segundos })
     }
     return out
-  })()
+  },
+)
 
 /**
  * Cuánto aliento cuesta que ALGUIEN establezca esto, o un tick si nadie sabe.
@@ -717,9 +767,9 @@ const LO_QUE_CUESTA_ESTABLECER: readonly { readonly p: Predicado; readonly segun
  * compra es que una meta que cuesta un fuego no se ordene igual que una que
  * cuesta agacharse.
  */
-export function alientoDelEsquema(p: Predicado): number {
+export function alientoDelEsquema(p: Predicado, catalogo: PlannerCatalogView = CATALOGO_CORE): number {
   let mejor: number | undefined
-  for (const e of LO_QUE_CUESTA_ESTABLECER) {
+  for (const e of preciosDe(catalogo)) {
     if (!implica(e.p, p)) continue
     if (mejor === undefined || e.segundos < mejor) mejor = e.segundos
   }
@@ -901,6 +951,7 @@ export function opportunities(
   m: AffordanceMemory,
   n: NeedVector,
   ganchos: GanchosDeOportunidad = {},
+  catalogo: PlannerCatalogView = CATALOGO_CORE,
 ): readonly Opportunity[] {
   const sat = ganchos.sat ?? satisfaccion
   const ctxDe = ganchos.ctxDe ?? contextoDe
@@ -935,7 +986,7 @@ export function opportunities(
       if (interpretar(meta) === undefined) continue
       const β = m.belief(ctx, tag)
       const p = media(β)
-      const valor = valorDe(p, s, costoDe(l.d, tag))
+      const valor = valorDe(p, s, costoDe(l.d, tag, catalogo))
       // ─── LA MISMA APUESTA, PERO PIDIENDO QUE SE PUEDA COMER ──────────────
       //
       // Va acá adentro y no en una función aparte porque es LA MISMA creencia
@@ -952,7 +1003,7 @@ export function opportunities(
       const comestible = metaComestibleDe(tag)
       const pc = comestible === undefined ? undefined : interpretar(comestible)
       if (comestible !== undefined && pc !== undefined) {
-        const valorC = valorDe(p, s, costoDe(l.d, tag) + alientoDelEsquema(pc))
+        const valorC = valorDe(p, s, costoDe(l.d, tag, catalogo) + alientoDelEsquema(pc, catalogo))
         if (Number.isFinite(valorC)) {
           out.push({
             meta: comestible,

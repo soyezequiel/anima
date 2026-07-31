@@ -137,21 +137,24 @@
 // se limpia y se vuelve a la que la necesidad pide.
 
 import {
-  ESQUEMAS,
+  CATALOGO_CORE,
   EXPANSIONES_POR_TICK,
   cumple,
+  esquemasDe,
   firmaDe,
   implica,
   interpretar,
   pasoYaEstaHecho,
   plan,
   resolverCuerpo,
+  type PlannerCatalogView,
 } from '@anima/plan'
 import { HZ_DE_REFERENCIA } from '@anima/physics'
 import type { Frontera, GoalNode, Predicado, PredicateSignature, Ref, Step } from '@anima/plan'
 import type { Where } from '@anima/skills'
 import { CONTRATO_HUIR_DEL_DOLOR } from '@anima/skills/innatas'
 
+import { porEpoch } from './catalogo.js'
 import { necesidades } from './necesidades.js'
 import { opportunities } from './oportunidades.js'
 import type {
@@ -190,25 +193,32 @@ const CALOR_QUE_DUELE = ((): number => {
   )
 })()
 
-// ─── El vocabulario del catálogo, leído UNA vez al cargar ───────────────────
+// ─── El vocabulario del catálogo, leído UNA vez POR CATÁLOGO ────────────────
 
 /**
  * TODO LO QUE LA TABLA DE ESQUEMAS SABE DEJAR ESTABLECIDO, ya interpretado.
  *
- * Se calcula al cargar y no por tick porque no cambia nunca: `ESQUEMAS` es una
- * constante de `@anima/plan` y `esquemasQueAportan` —el único lugar donde la
- * regresión decide qué esquema aplica a una cláusula— **no recibe la vista**. O
- * sea que «este predicado tiene esquema» es una propiedad de la tabla y no del
- * mundo, y por eso se puede contestar sin correr una búsqueda.
+ * Sigue sin calcularse por tick, y por el mismo motivo de siempre:
+ * `esquemasQueAportan` —el único lugar donde la regresión decide qué esquema
+ * aplica a una cláusula— **no recibe la vista**, o sea que «este predicado tiene
+ * esquema» es una propiedad de la TABLA y no del mundo, y se puede contestar sin
+ * correr una búsqueda.
+ *
+ * Lo que cambió con el Gate 5→6 es la otra mitad de la frase vieja. Decía «no
+ * cambia nunca: `ESQUEMAS` es una constante de `@anima/plan`», y eso deja de ser
+ * cierto el día que hay overlay de sesión: **una capacidad registrada agrega
+ * predicados establecibles**, y un vocabulario clavado al cargar vetaría como
+ * imposible una meta que la criatura acaba de aprender a cumplir. Ahora se
+ * recalcula cuando cambia el `catalogEpoch` y no más seguido que eso.
  */
-const LO_QUE_SE_SABE_ESTABLECER: readonly Predicado[] = ((): readonly Predicado[] => {
+const vocabularioDe = porEpoch((c: PlannerCatalogView): readonly Predicado[] => {
   const out: Predicado[] = []
-  for (const e of ESQUEMAS) {
+  for (const e of esquemasDe(c)) {
     const p = interpretar(firmaDe(e.establishes))
     if (p !== undefined) out.push(p)
   }
   return out
-})()
+})
 
 /**
  * Si algún `establishes` del catálogo es CONJUNTIVO, o sea que `interpretar` no
@@ -225,7 +235,9 @@ const LO_QUE_SE_SABE_ESTABLECER: readonly Predicado[] = ((): readonly Predicado[
  * dos errores posibles, dejar pasar una meta imposible cuesta una búsqueda por
  * tick, y vetar una meta posible cuesta que la criatura no la persiga NUNCA.
  */
-const HAY_ESTABLECIDAS_QUE_NO_SE_LEEN = LO_QUE_SE_SABE_ESTABLECER.length !== ESQUEMAS.length
+const hayEstablecidasQueNoSeLeen = porEpoch(
+  (c: PlannerCatalogView): boolean => vocabularioDe(c).length !== esquemasDe(c).length,
+)
 
 /**
  * SI NINGUNA CADENA DE ESQUEMAS PUEDE ESTABLECER ESTA META, NI HOY NI NUNCA.
@@ -246,13 +258,13 @@ const HAY_ESTABLECIDAS_QUE_NO_SE_LEEN = LO_QUE_SE_SABE_ESTABLECER.length !== ESQ
  * un mundo sin nada rígido igual no sale. De ese caso se sigue encargando
  * `plan()`, que es quien mira el paisaje.
  */
-export function sinVocabulario(meta: PredicateSignature): boolean {
-  if (HAY_ESTABLECIDAS_QUE_NO_SE_LEEN) return false
+export function sinVocabulario(meta: PredicateSignature, catalogo: PlannerCatalogView = CATALOGO_CORE): boolean {
+  if (hayEstablecidasQueNoSeLeen(catalogo)) return false
   const p = interpretar(meta)
   // Una firma que el intérprete no lee no la puede establecer nadie: no hay con
   // qué compararla. `planificar` la tira igual, con motivo; acá se evita tomarla.
   if (p === undefined) return true
-  for (const q of LO_QUE_SE_SABE_ESTABLECER) if (implica(q, p)) return false
+  for (const q of vocabularioDe(catalogo)) if (implica(q, p)) return false
   return true
 }
 
@@ -1087,7 +1099,10 @@ function lasOportunidades(
   const m = o.memoria
   if (m === undefined) return undefined
   const ver = o.oportunidades ?? opportunities
-  const ops = ver(v, m, n)
+  // El catálogo viaja hasta D3 porque el PRECIO de una meta sale de la tabla de
+  // esquemas: una capacidad registrada en esta partida cambia lo que cuesta
+  // conseguir algo, y con un precio del core la mente ordenaría mal.
+  const ops = ver(v, m, n, {}, o.catalogo ?? CATALOGO_CORE)
 
   if (e.porQuien === 'D3' && e.metaEnCurso !== undefined) {
     for (const x of ops) {
@@ -1120,7 +1135,7 @@ function lasOportunidades(
   let mejor: Opportunity | undefined
   for (const x of ops) {
     if (x.bocado === undefined) {
-      if (sinVocabulario(x.meta)) continue
+      if (sinVocabulario(x.meta, o.catalogo)) continue
       if (yaEstaCumplida(x.meta, v, e)) continue
     } else if (x.bocado.id === e.bocadoQueFallo) continue
     mejor = x
@@ -1375,7 +1390,7 @@ function tomarMeta(
   // sabe cumplir NO SE TOMA, en vez de quedar en curso tapando todo lo demás. La
   // criatura no se hace la sorda —D3 sigue corriendo abajo— pero tampoco se
   // queda parada esperando un esquema que nadie va a escribir en esta partida.
-  if (sinVocabulario(meta)) return undefined
+  if (sinVocabulario(meta, o.catalogo)) return undefined
   olvidarPlan(e)
   e.metaEnCurso = meta
   e.valorEnCurso = valor
@@ -1426,7 +1441,11 @@ function planificar(
   penso.si = true
   const g: GoalNode = { id: 'meta', goal: p, after: [], porque }
   const presupuesto = o.presupuesto ?? EXPANSIONES_POR_TICK
-  const r = plan(g, v, presupuesto, e.frontera)
+  // LA VISTA DEL CATÁLOGO VIAJA HASTA ACÁ, y ésta es la mitad de la costura que
+  // el Gate 5→6 anotó como faltante: `plan()` aceptaba una tabla inyectada desde
+  // el tramo anterior y la mente lo llamaba pelado, o sea que lo que la criatura
+  // inventara nunca habría llegado al planificador.
+  const r = plan(g, v, presupuesto, e.frontera, { catalogo: o.catalogo ?? CATALOGO_CORE })
 
   switch (r.k) {
     case 'plan':

@@ -224,9 +224,38 @@ Y dos decisiones que no son código: **el alcance de `ctx.memory`** (si es por h
 
 `heard(): readonly Utterance[]` con polaridad, y `'vetoed'` en `StepResult.status`. **Y el cuidador como cuerpo**: un `Body` con tag de agente y `Placement`, con presencia atada a la pestaña abierta. Es barato y es lo único que sostiene la mitad emotiva del producto; hoy el documento no le dedica un párrafo al avatar del jugador.
 
-### Diferido, con nombre (Hito 12+)
+### Gate 5→6 — objetos emergentes dentro de una física fija
+
+Entre el Hito 5 y el Hito 6, y **sin ampliar el criterio del Hito 5**. Lo que esta
+escalera le aporta al gate son dos cosas medidas acá:
+
+- **la superficie de INVOCACIÓN sigue sin medirse.** Es el punto 4 de la auditoría
+  de completitud —«quién construye `args`»— y con planos emergentes se vuelve más
+  grande: además de qué cuerpo llena un rol, ahora hay que decir **qué revisión de
+  qué plano** se está construyendo. El gate lo cierra con `BuildSkill`, que
+  construye **una revisión exacta**;
+- **`place(bp: Blueprint)` está en la superficie desde el H4 y el mundo la
+  rechaza** con `'no-implementado'`. El `Blueprint` de hoy son dos campos
+  (`{ id, at }`). Reemplazarlo es trabajo del gate, y el `BlueprintDefinition`
+  **no lleva el sitio adentro**.
+
+Ver [`gate-5-6-objetos-emergentes.md`](gate-5-6-objetos-emergentes.md).
+
+### Hito 12 — la UI presentable
+
+**El mapa es la vista principal**, la criatura se mueve visiblemente, y todo objeto
+del área visible aparece. Lo que esta escalera aporta: **ningún objeto puede quedar
+sin dibujar por no tener arte**. El descriptor visual es procedural, determinista y
+derivado del estado ([ADR II-0017](decisions/II-0017-el-descriptor-visual-no-es-fisica.md)).
+
+### Diferido, con nombre (post-UI, Hitos 13–16)
 
 `'smoke'` como campo extensivo con `poweredBy` desde `fuelEnergy` + ley de advección; corriente como campo vectorial (no cabe en `QualityId`); fauna como cuerpos con conducta + ley de daño + `afilar`. **Esto hay que decírselo al usuario antes de empezar**, igual que el techo del requisito 1: las tres son cosas que va a pedir el primer día.
+
+**Y ahora tienen hito.** La corriente y la fauna son el **Hito 16**; la geometría
+que haría falta para que una trampa contenga de verdad es el **Hito 14**, después
+de un spike. **La primera trampa no depende de ninguno de los dos**: su captura es
+estado autoritativo, no contención geométrica.
 
 ---
 
@@ -253,6 +282,12 @@ Y dos decisiones que no son código: **el alcance de `ctx.memory`** (si es por h
 **Hito 9 — deja de ser una lista de verbos.** Ver la sección siguiente.
 
 **Hito 11 — suma un invariante económico nuevo:** ninguna habilidad promovida puede contener un literal numérico en el rango de las perillas de la física. *Motivo:* el test estrella del Hito 1 —«una sustancia nueva del oráculo se comporta sin fila propia»— **sigue pasando en la física y se cae en la habilidad**, y nadie lo va a notar porque el test mide el motor.
+
+**Y el plan gana cuatro cosas más, decididas el 2026-07-31** (ver el
+[Gate 5→6](gate-5-6-objetos-emergentes.md)): un **gate técnico entre el Hito 5 y
+el 6** para objetos emergentes; el **Hito 12 de UI después del Hito 11**, partido
+en 12A/12B/12C; los **Hitos 13 a 16** de física abierta, después de la UI; y la
+regla de que **el Hito 5 termina con su alcance actual** — el gate no lo reabre.
 
 ---
 

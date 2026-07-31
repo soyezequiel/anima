@@ -17,6 +17,15 @@ la segunda tanda usó esa puerta exactamente una vez, en la secuencia 1, con el
 motivo escrito. Esta tercera no la usa: lo que cambió no es un detector, es el
 mundo que se creía conocer.
 
+> **Y UNA ACLARACIÓN DE ALCANCE, agregada el 2026-07-31.** Esta lista **no se
+> amplía** con los objetos emergentes. El Hito 5 termina con el alcance que tiene
+> —incluido este criterio de emergencia— y la trampa para peces, los planos, el
+> registry y el descriptor visual son el
+> [Gate 5→6](gate-5-6-objetos-emergentes.md), que va **después**. Agregarle
+> secuencias a esta lista ahora sería mover el criterio de corte después de
+> haberlo medido, que es exactamente lo que las siete reglas de la sección 1
+> prohíben.
+
 **LO PRIMERO, PORQUE CAMBIA TODO LO DEMÁS:** hay **nueve** y no seis. Con nueve,
 el criterio publicado «al menos 4 de las 10» **vuelve a valer con el mismo
 número**: el 4 absoluto y el 40% proporcional (3,6 → 4) caen en el mismo lugar,

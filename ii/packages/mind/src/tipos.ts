@@ -28,7 +28,7 @@
 //      índice del tick: no-determinismo con cara de heurística.
 
 import type { QualityId } from '@anima/physics'
-import type { PredicateSignature, Ref, Step, VistaDelPlan } from '@anima/plan'
+import type { PlannerCatalogView, PredicateSignature, Ref, Step, VistaDelPlan } from '@anima/plan'
 import type { ActorId, BodyId, BodyView, Clock, SelfView } from '@anima/skills'
 
 // ─── Necesidades ─────────────────────────────────────────────────────────────
@@ -272,7 +272,22 @@ export interface MenteOptions {
     v: VistaDeLaMente,
     m: AffordanceMemory,
     n: NeedVector,
+    ganchos?: unknown,
+    catalogo?: PlannerCatalogView,
   ) => readonly Opportunity[]
+  /**
+   * EL CATÁLOGO DE ESTA PARTIDA: core inmutable más el overlay de la sesión.
+   *
+   * Por omisión, `CATALOGO_CORE` — que es lo que la criatura sabe hacer de
+   * fábrica y es exactamente lo que la mente usaba antes, así que el default no
+   * cambia ninguna conducta.
+   *
+   * Va acá y no en `VistaDeLaMente` a propósito: la vista es lo que la criatura
+   * **ve** y el catálogo es lo que **sabe hacer**. `MenteOptions` ya es la bolsa
+   * de lo segundo —lleva `memoria`, que es lo aprendido— y mezclarlo con la
+   * percepción haría que un test de paisaje tuviera que hablar del catálogo.
+   */
+  readonly catalogo?: PlannerCatalogView
 }
 
 // ─── Los números de la escalera ──────────────────────────────────────────────

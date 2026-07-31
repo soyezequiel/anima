@@ -314,6 +314,23 @@ y acá no hay estado que escribir).
 
 ---
 
+## Contratos que deben revalidarse por la extensión de objetos emergentes
+
+**El Hito 3 sigue cerrado y sus seis criterios siguen medidos.** Lo que el
+[Gate 5→6](gate-5-6-objetos-emergentes.md) le va a exigir revalidar son cuatro
+cosas, y las cuatro son la misma preocupación con distinta ropa: **un dispositivo
+que saca de un pozo sin que nadie lo pida tiene la forma exacta de una bomba de
+materia** — o sea, el riesgo 4 del documento de arquitectura.
+
+- **stock** y **reposición**, con extracción autónoma encima;
+- **presupuesto calórico** por chunk: el techo se cobra hoy en `draw`, y hay que
+  verificar que se siga cobrando cuando el que saca es un dispositivo;
+- **competencia entre dispositivos sobre el mismo stock**, con orden canónico;
+- y el invariante económico de `presupuesto.test.ts` —**sin trabajo la energía
+  neta acumulada es negativa**— releído con dispositivos desplegados: dejar una
+  trampa **es** trabajo, y el arnés tiene que poder distinguirlo del carroñero
+  ingenuo.
+
 ## Lo que quedó abierto
 
 1. **El nivel de agua de los biomas acuáticos.** Mediana 846 en un campo donde el

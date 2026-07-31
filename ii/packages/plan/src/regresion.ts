@@ -120,7 +120,8 @@ import { baseRoleName, isOptionalRole, specOf } from '@anima/physics'
 import type { BodyId, BodyView, Cell, Where, WhereCell } from '@anima/skills'
 import { distancia } from '@anima/skills/innatas'
 
-import { ESQUEMAS, claveDeVia, procesoDe } from './esquemas.js'
+import { CATALOGO_CORE, esquemasDe } from './catalogo.js'
+import { claveDeVia, procesoDe } from './esquemas.js'
 import { cumple, cumpleCuerpo, firmaDe, implica, interpretar, textoDe } from './predicado.js'
 import { resolver } from './referencias.js'
 import type {
@@ -2119,9 +2120,15 @@ function comparaMuertos(a: RamaMuerta, b: RamaMuerta): number {
  * viene, es lo que devolvió un `parcial` de un tick anterior: la búsqueda sigue
  * desde ahí y el resultado es EL MISMO que el de una corrida sin cortes.
  *
- * `opciones.esquemas` reemplaza la tabla entera. Existe para dos preguntas que
- * no se pueden hacer de otra manera: «¿el orden de la tabla cambia el plan?» y
- * «¿qué `gap` sale si le falta una fila?».
+ * `opciones.catalogo` es la vista explícita del Gate 5→6: core inmutable más el
+ * overlay de ESTA sesión, con su identidad. Es por donde entra lo que la criatura
+ * inventó y es lo que le va a pasar la mente.
+ *
+ * `opciones.esquemas` reemplaza la tabla entera y queda como la escotilla de
+ * laboratorio que siempre fue, para dos preguntas que no se pueden hacer de otra
+ * manera: «¿el orden de la tabla cambia el plan?» y «¿qué `gap` sale si le falta
+ * una fila?». Si vienen las dos, gana el catálogo: tiene identidad y la lista
+ * pelada no.
  */
 export function plan(
   g: GoalNode,
@@ -2130,7 +2137,19 @@ export function plan(
   frontera?: Frontera,
   opciones?: OpcionesDePlan,
 ): PlanResult {
-  const todos = opciones?.esquemas ?? ESQUEMAS
+  // Un solo lugar donde se resuelve QUÉ TABLA se usa, y el caso por omisión sale
+  // de la VISTA del core y no de `ESQUEMAS`: ésa es la puerta que el Gate 5→6
+  // cierra, y no tiene una segunda.
+  //
+  // La escotilla de laboratorio se toma tal cual, sin envolverla en una vista, y
+  // es a propósito: sellar una vista cuesta serializar y hashear la tabla entera,
+  // y `plan()` se llama por tick. Envolverla le cobraría ese precio a cada
+  // corrida del banco para producir una identidad que nadie mira — la lista
+  // pelada no tiene procedencia y ése es justamente su punto.
+  const todos =
+    opciones?.catalogo !== undefined
+      ? esquemasDe(opciones.catalogo)
+      : (opciones?.esquemas ?? esquemasDe(CATALOGO_CORE))
 
   const abiertos: NodoAbierto[] =
     frontera === undefined

@@ -62,6 +62,17 @@ export {
   esquemasPara,
   procesoDe,
 } from './esquemas.js'
+// El catálogo como VISTA, que es la puerta del Gate 5→6: core inmutable más el
+// overlay de la sesión, con identidad. Sale del paquete porque lo que tiene que
+// dejar de leer `SCHEMA_INDEX` es `@anima/mind`, y para eso necesita con qué.
+export {
+  CATALOGO_CORE,
+  catalogoDe,
+  conOverlay,
+  esquemasDe,
+  type CatalogCapability,
+  type PlannerCatalogView,
+} from './catalogo.js'
 export { goalGraph, orden, type Lectura } from './objetivos.js'
 // `pasoYaEstaHecho` sale del paquete a propósito, y no es un detalle interno que
 // se escapó: la mente necesita hacerse LA MISMA pregunta en el momento de

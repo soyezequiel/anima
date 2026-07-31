@@ -365,6 +365,31 @@ miente sobre si una habilidad terminó envenena la grilla entera.
 
 ---
 
+## 3·bis. Contratos que deben revalidarse por la extensión de objetos emergentes
+
+**El Hito 4 sigue cerrado y sus seis criterios siguen medidos.** Lo que hay que
+**planificar** para el [Gate 5→6](gate-5-6-objetos-emergentes.md):
+
+- **reemplazo del `Blueprint` placeholder.** Hoy es `{ id, at }` en
+  `skills/src/tipos.ts`, y la intención `place` la rechaza el mundo con
+  `'no-implementado'`. El `BlueprintDefinition` que lo reemplaza es **canónico,
+  inmutable, versionado y NO lleva el sitio adentro**
+  ([ADR II-0015](decisions/II-0015-el-plano-no-es-el-esquema-de-construccion.md));
+- **construcción o colocación por slots**, con **revisión exacta** e
+  **idempotencia** (ADR 0034 de Ánima I, ya portado a este hito);
+- **`BuildSkill` y `UseSkill` como piezas separadas**: construir algo no demuestra
+  que funcione, y el juez los evalúa aparte;
+- **percepción con datos autoritativos**: lo que la criatura ve de un dispositivo
+  sale del estado del mundo, no de una lectura geométrica.
+
+**Y una advertencia que vale más que las cuatro:** `covering` e `inside` **no son
+contención física**. El `arrangement` `inside` se evalúa hoy como «tiene algo
+encima o lo sostiene alguien» (`world/src/step.ts`). Leerlo como contención sería
+inventar geometría que la física no modela — y la geometría autoritativa es el
+Hito 14, después de un spike.
+
+---
+
 ## 4. Lo que quedó abierto, y no es del sandbox
 
 Estos son huecos del **mundo** y de la **superficie**, encontrados escribiendo las

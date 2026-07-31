@@ -1325,6 +1325,32 @@ Queda en el modelo solo lo genuinamente semántico o creativo: inventar una ley,
 
 Estimaciones honestas para una persona trabajando con Claude, a tiempo completo. **Total realista: 7 a 9 meses.** El grueso no es escribir código: es calibrar once leyes acopladas para que los tres ejemplos salgan **y nada más se rompa**.
 
+> **ESE «7 a 9 meses» ES UN PRONÓSTICO HISTÓRICO Y SE CONSERVA COMO TAL.** Se
+> escribió antes de que existieran los objetos emergentes, y **no incluía**: la
+> UI, los objetos emergentes, los dispositivos autónomos, la geometría, los
+> procesos físicos nuevos ni la fauna materializada. **No se calcula un total
+> nuevo sin base.** Las cifras de este plan se clasifican en tres —**medición
+> existente**, **ROM con confianza** y **desconocido pendiente de spike**— y la
+> clase va escrita al lado del número. Las referencias ROM están en la sección
+> [«Presupuesto, clasificado»](#presupuesto-clasificado), y **no son aditivas**.
+
+> **EL ORDEN OBLIGATORIO, después del Hito 5.** El caso de aceptación decidido
+> —«fabricá una trampa para peces», sin trampa precargada— obliga a intercalar un
+> **gate técnico** entre el Hito 5 y el Hito 6, y a poner la UI **después** del
+> Hito 11:
+>
+> ```
+> terminar el Hito 5 actual
+>   → Gate técnico de objetos emergentes
+>     → Hitos 6–11
+>       → Hito 12 (UI presentable)
+>         → Hitos post-UI de física abierta (13–16)
+> ```
+>
+> El gate **no reabre el Hito 5**, que está ~80% implementado y termina con su
+> alcance actual ([ADR II-0019](../../ii/docs/decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md)).
+> Los hitos históricos **no se renumeran todavía**.
+
 ---
 
 ### Hito 0 — El banco de latencia (1 semana)
@@ -1465,6 +1491,56 @@ Arnés que mide, sobre un mundo falso: p50/p99 de tick con 5000 cuerpos, costo d
 
 **Se puede mostrar:** ésta es la demo. Una criatura viva que resuelve el hambre inventando una caña, sin IA y sin espera. Si el LLM nunca se conecta, ya hay producto.
 
+> **EL ALCANCE DE ESTE HITO NO SE AMPLÍA.** Está ~80% implementado y termina con
+> los seis criterios de arriba. **No se le agregan** planos, persistencia de
+> catálogo ni dispositivos autónomos al criterio de cierre: todo eso es el gate
+> de abajo. Lo único que el Hito 5 tiene que cuidar es **una costura de
+> compatibilidad** — el planificador y la mente no pueden quedar
+> arquitectónicamente atados a un catálogo global imposible de reemplazar.
+> Medido: `plan()` **ya la tiene** (`OpcionesDePlan.esquemas` reemplaza la tabla
+> entera), la **mente no** (llama a `plan()` sin opciones y precalcula precios
+> desde `SCHEMA_INDEX` al cargar el módulo). **La mitad que falta es deuda del
+> Gate 5→6, no motivo para reiniciar el Hito 5.**
+
+---
+
+### Gate 5→6 — Objetos emergentes dentro de una física fija **(gate técnico obligatorio)**
+
+*También «extensión técnica posterior al Hito 5». Lleva número de puerta y no de hito para que quede dicho que **no reabre el Hito 5**. El criterio completo vive en [`ii/docs/gate-5-6-objetos-emergentes.md`](../../ii/docs/gate-5-6-objetos-emergentes.md).*
+
+**Empieza cuando el Hito 5 termina, y termina antes de que empiece el Hito 6.**
+
+**Qué demuestra:** que Ánima puede inventar objetos y habilidades **dentro de una física fija escrita por humanos**, antes de que exista la UI. El caso de aceptación es **«fabricá una trampa para peces»**, con la trampa **sin precargar**: un dispositivo autónomo desplegado sobre un `Stock`, que la criatura deja, del que se aleja, al que vuelve y del que retira la captura. Los peces **no se mueven** en esta versión y la captura es **estado autoritativo almacenado, no contención geométrica** ([ADR II-0016](../../ii/docs/decisions/II-0016-un-dispositivo-desplegado-retiene-sobre-un-stock.md)). La física genérica de despliegue, retención e interacción con stocks **la escriben humanos**; Ánima inventa **el plano, los materiales, la construcción y el uso**.
+
+**El modelo de planos, que es la decisión estructural del gate** ([ADR II-0015](../../ii/docs/decisions/II-0015-el-plano-no-es-el-esquema-de-construccion.md)). `BlueprintCandidate` **no se inserta en `SCHEMA_INDEX`**. Se separan cinco piezas:
+
+```
+BlueprintCandidate   propuesta no confiable
+BlueprintDefinition  estructura canónica, inmutable y versionada; NO contiene el sitio
+ConstructionSchema   causalidad física: procesos y leyes
+BuildSkill           construye una revisión exacta
+UseSkill             usa la obra y demuestra su función
+```
+
+La definición, la construcción y el uso **se juzgan y se promueven por separado**. Y el catálogo pasa a ser **core inmutable + biblioteca adoptada + overlay versionado de la sesión**, sin ningún `Map` global mutable compartido por partidas ([ADR II-0018](../../ii/docs/decisions/II-0018-el-catalogo-es-core-mas-overlay-por-sesion.md)). El planificador recibe una vista explícita —`PlannerCatalogView { coreSchemas, buildCapabilities, skillCapabilities, catalogEpoch, registryDigest }`— y **una frontera creada con otro `catalogEpoch` se descarta y se replantea**.
+
+**Verificable, con un candidato de plano FIJO y sin proveedor:**
+
+1. `BlueprintDefinition` canónico y versionado
+2. registro en un **overlay aislado por sesión**
+3. **publicación de capacidades** al planificador
+4. **ausencia de mutación global** de `SCHEMA_INDEX`
+5. construcción **incremental e idempotente**
+6. **separación entre construir y usar**
+7. **dos partidas no se contaminan**
+8. guardar y restaurar **conserva la revisión exacta**
+9. un **cambio de física invalida** los sellos correspondientes
+10. el **mismo journal produce el mismo mundo y el mismo catálogo**
+11. existe un **descriptor visual procedural determinista**
+12. **no hay nombres especiales** para la trampa en producción — no puede existir un `kind`, receta, skill ni caso especial llamado `fish-trap`, `trampa-para-peces` ni equivalente
+
+**Se puede mostrar:** una criatura que fabrica algo que nadie programó, lo deja funcionando y vuelve a buscar lo que atrapó.
+
 ---
 
 ### Hito 6 — El chat, sin LLM (2-3 semanas)
@@ -1477,6 +1553,13 @@ Arnés que mide, sobre un mundo falso: p50/p99 de tick con 5000 cuerpos, costo d
 
 **Se puede mostrar:** el producto completo del requisito 1, sin IA. Le hablás y hace.
 
+> **Suma del caso de aceptación.** El chat tiene que **transformar «fabricá una
+> trampa para peces» en un objetivo funcional sin nombrar la solución**: el
+> resultado se expresa como **captura autónoma y recuperable**, no como un objeto
+> con nombre. Y tiene que **informar qué falta** distinguiendo las cuatro clases
+> —plano, habilidad, proceso o física— y **mostrar progreso sin detener el
+> cuerpo**.
+
 ---
 
 ### Hito 7 — El juez (2-3 semanas)
@@ -1486,6 +1569,16 @@ Arnés que mide, sobre un mundo falso: p50/p99 de tick con 5000 cuerpos, costo d
 **Verificable:** una habilidad que solo funciona donde la corrigieron no promueve; una de pesca se juzga en mundos con río y nunca saca un 0% falso; un contrato insintetizable devuelve `injuzgable` y no siembra regresiones; una precondición espuria se borra por ablación; bajar un número de la física invalida los sellos que dependen de él.
 
 **Se puede mostrar:** el panel del juez. Por qué una habilidad es estable y otra no, con los mundos donde falló.
+
+> **Suma del caso de aceptación, y es la mitad que hoy no existe.** El juez evalúa
+> **por separado**: plano · construcción · uso · utilidad. **Construir algo no
+> demuestra que funcione**, y un `BuildSkill` verde con `UseSkill` rojo es un
+> resultado legítimo, no un error del arnés.
+>
+> Los mundos adversos que el banco tiene que incluir: **stock vacío ·
+> ubicación incorrecta · materiales alternativos · dispositivo roto · dos
+> dispositivos compitiendo · restauración a mitad del ciclo · mundos reservados ·
+> ausencia de nombres especiales**.
 
 ---
 
@@ -1499,6 +1592,20 @@ Más el **carril de mejora**: cola de mejora con los cuatro disparadores determi
 
 **Se puede mostrar:** aprender algo nuevo en vivo, con el mundo corriendo todo el tiempo.
 
+> **Suma del caso de aceptación.** La fragua deja de producir un archivo y produce
+> un paquete:
+>
+> ```
+> BlueprintCandidate + BuildSkillCandidate + UseSkillCandidate
+>   + dependencias + capacidades publicadas
+> ```
+>
+> Con **cuarentena**, **reparaciones limitadas**, **máximo de consultas**,
+> **aplicación en frontera de tick**, **digest base esperado** y **rechazo si el
+> catálogo cambió**. Y un lint más: **prohibido copiar constantes físicas dentro
+> de las skills** — un literal de calibración adentro de una habilidad es un sello
+> que `physicsVersion` no puede invalidar.
+
 ---
 
 ### Hito 9 — La biblioteca semilla (2 semanas)
@@ -1511,6 +1618,12 @@ Cuarenta a sesenta habilidades escritas y **promovidas a estable de fábrica**: 
 
 **Se puede mostrar:** la demo definitiva.
 
+> **Suma del caso de aceptación.** La biblioteca guarda **planos promovidos**,
+> **revisiones históricas referenciadas** y **pares build/use**, con **índice por
+> efectos y no por nombres**, y con la **separación core / biblioteca / sesión**
+> explícita. **La biblioteca semilla no incluye la trampa reservada**: si viniera
+> de fábrica, el caso de aceptación dejaría de medir nada.
+
 ---
 
 ### Hito 10 — Crónica y herencia (2 semanas)
@@ -1521,6 +1634,18 @@ Cuarenta a sesenta habilidades escritas y **promovidas a estable de fábrica**: 
 
 **Se puede mostrar:** dos generaciones. La segunda sabe lo que la primera aprendió.
 
+> **Suma del caso de aceptación.** Aparece el **journal de catálogo** con el
+> **manifiesto exacto del registry**, y los cuatro gestos —**promoción,
+> activación, revocación y adopción**— quedan registrados. Del lado de la obra:
+> **proyecto, sitio, revisión y progreso**. Y tres reglas: **aislamiento entre
+> saves**, **herencia provisional con revalidación perezosa**, y **conservación de
+> las revisiones referenciadas** (borrar una revisión que un save menciona rompe
+> el replay).
+>
+> **No se serializan generadores ni fronteras.** Al cargar, **se replanifica de
+> forma idempotente**: es el ADR 0009 de Ánima I —«la actividad en vuelo no se
+> guarda»— aplicado también al catálogo.
+
 ---
 
 ### Hito 11 — Calibración y presupuestos como test (4+ semanas, y después continuo)
@@ -1530,6 +1655,125 @@ Barrido de rangos, detección de ciclos rentables como puerta, tests de propieda
 **Verificable:** el build falla si cualquiera de esos números empeora contra la línea base registrada; 100 partidas automatizadas de 20.000 ticks sin violar ningún invariante económico y sin superar el techo de consultas.
 
 **Este hito no es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo,** y es la única forma de que "velocidad es el requisito número uno" siga siendo verdad dentro de seis meses.
+
+> **Suma del caso de aceptación.** Ocho números más: **costo del registry ·
+> crecimiento del planner · replay con promociones · rendimiento de dispositivos
+> autónomos · consumo de consultas · benchmark del proveedor · invalidación física
+> · estabilidad económica de múltiples dispositivos**.
+>
+> Y una separación que no se negocia: **CI determinista, benchmark real y E2E de
+> navegador corren aparte**. Mezclarlos es cómo un banco de 500 s termina adentro
+> de la suite compartida y nadie la corre más — ya pasó dos veces en este
+> proyecto. **No se permiten reintentos ilimitados.**
+
+---
+
+### Hito 12 — La UI presentable
+
+*Va **después del Hito 11**. Se divide en subhitos, sin cambiar la numeración principal.*
+
+**El modelo de experiencia es el de Ánima I y se conserva entero:**
+
+- **el mapa es la vista principal**;
+- la criatura **aparece dentro del mundo**;
+- **se mueve y actúa visiblemente**;
+- los **cuerpos, objetos, obras y dispositivos del área visible aparecen en el mapa**;
+- el mapa **se actualiza en tiempo real**;
+- **el chat acompaña al mapa y no lo reemplaza**;
+- las acciones y construcciones **se ven mientras ocurren**.
+
+**No se fija acá ningún estilo gráfico, paleta ni distribución**: el usuario todavía no los eligió.
+
+#### Hito 12A — El view model
+
+Datos de mapa · criatura · cuerpos · objetos · relaciones · obras · dispositivos · **deltas deterministas** · **descriptor visual canónico** · **`renderDescriptorHash`** · **fallback procedural**.
+
+#### Hito 12B — La vertical visible
+
+Nueve cosas, y son la definición de «presentable»:
+
+1. ver el mapa
+2. ver la criatura moviéndose
+3. ver **todos** los objetos del área visible
+4. escribir una orden en el chat
+5. recibir **acuse inmediato**
+6. observar progreso y acciones
+7. inspeccionar la criatura
+8. inspeccionar cuerpos y obras
+9. cerrar y reabrir **sin perder la sesión**
+
+#### Hito 12C — Los objetos emergentes en pantalla
+
+Siete estados que hay que poder mostrar: **objeto sin sprite específico · obra incompleta · objeto terminado · dispositivo desplegado · dispositivo con captura · catálogo de planos · la misma representación coherente en mapa, inventario y catálogo**. **El fallback es obligatorio.**
+
+La representación inicial es **procedural y esquemática**, derivada de: **forma · materiales · partes · juntas · progreso · estado desplegado · captura almacenada**. **No inventa posiciones, orientaciones, aberturas ni contención que la física no modele** ([ADR II-0017](../../ii/docs/decisions/II-0017-el-descriptor-visual-no-es-fisica.md)).
+
+```
+mismo snapshot + misma versión del descriptor + mismos datos estructurales
+    → mismo renderDescriptorHash
+```
+
+**Quedan fuera del hash:** textos localizados, nombres narrativos, skins, íconos generados, raster, hover, selección, animaciones y cosmética. **Las skins con IA son post-1.0 y nunca pueden bloquear el render.**
+
+---
+
+## Después del Hito 12 — la física se abre
+
+**No se promete «cualquier cosa».** La definición que se usa, y es la que hay que decirle al usuario:
+
+> **Ánima puede crear cualquier artefacto cuya estructura, construcción, uso y
+> efectos puedan representarse y comprobarse con las capacidades físicas
+> disponibles en ese nivel.**
+
+### Hito 13 — Procesos físicos propuestos por Ánima
+
+Hasta acá la física es **fija y humana**. Desde acá, Ánima puede **proponer procesos nuevos**, y la distinción entre las dos cosas se mantiene escrita.
+
+Propuesta de `Process` · **roles seguros** · `admit()` · conservación · `poweredBy` · **verificación de `establishes`** · cuarentena · límites de aplicación · **invalidación por `physicsVersion`** · **prohibición de automatismos globales provisionales** · replay y revalidación.
+
+### Hito 14 — Geometría física autoritativa
+
+**Después de un spike**, porque hoy no hay base para estimarlo: posiciones internas · orientación · puntos de unión · contorno · volumen · huella · aberturas · **paso según tamaño** · contención · contenido · daños localizados.
+
+**Física, juez, percepción y renderer comparten la misma geometría.** Dos geometrías es cómo se llega a que la pantalla afirme una cosa y el mundo otra.
+
+### Hito 15 — Objetos físicos abiertos
+
+Integra `BlueprintDefinition` + procesos admitidos + `BuildSkill` + `UseSkill` + geometría canónica + juez + persistencia + representación gráfica.
+
+El objeto tiene que: **no estar precargado · originarse desde el chat · declarar qué capacidades faltan · construir solamente las piezas ausentes · funcionar en mundos reservados · sobrevivir guardado y herencia · no depender de su nombre · verse según su estado real**.
+
+### Hito 16 — Fauna y agentes físicos
+
+**Separado a propósito, y la primera trampa no depende de este hito**: peces materializados · movimiento · corriente · colisiones · entrada y salida · contención física · daño · reconciliación entre entidades y stocks.
+
+---
+
+## Pruebas
+
+**CI determinista.** Candidato fijo · sin proveedor · mundos y semillas fijos · overlay · construcción · uso · replay · invalidación · descriptor · aislamiento entre sesiones.
+
+**Benchmark real — propuesta inicial, PENDIENTE DE LÍNEA BASE.** Ninguno de estos números está medido; son el diseño del experimento: 30 episodios · 10 mundos reservados · 3 intentos por mundo · máximo 3 rondas · máximo 6 consultas · máximo 120 s · máximo provisional de US$ 1 por episodio · éxito mínimo provisional de 21/30 · ningún mundo con 0/3 · cero violaciones de invariantes.
+
+**E2E de navegador.** Proveedor controlado o respuesta grabada · mensaje en ticks definidos · mismo journal · comparar `worldHash`, `registryDigest` y `renderDescriptorHash` · comprobar movimiento visible · comprobar **todos** los objetos del área visible · fallback visual obligatorio.
+
+---
+
+## Presupuesto, clasificado
+
+Los **7 a 9 meses** del encabezado son **pronóstico histórico**. No incluían UI, objetos emergentes, dispositivos autónomos, geometría, procesos físicos nuevos ni fauna materializada. **No se calcula un total nuevo sin base.**
+
+Toda cifra se clasifica: **medición existente** (se corrió, tiene arnés y exit code) · **ROM con confianza** (orden de magnitud, con la confianza declarada) · **desconocido pendiente de spike**.
+
+**Referencias ROM, NO ADITIVAS** — se solapan entre sí y con hitos ya planificados:
+
+| trabajo | ROM | confianza |
+|---|---|---|
+| aparejo activo | 3–7 días | alta |
+| dispositivo autónomo | 5–9 semanas | media-baja |
+| vertical registry/build/replay | 6–9 semanas | media-baja |
+| promoción, persistencia y herencia completas | 15–24 semanas, con solapamiento en H7–H10 | baja |
+| fauna y geometría completa | 4–8 meses | muy baja |
 
 ---
 

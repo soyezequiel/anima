@@ -505,6 +505,26 @@ violaciones.**
 
 ---
 
+## Contratos que deben revalidarse por la extensión de objetos emergentes
+
+**El Hito 2 sigue cerrado y ninguna medición de este documento cambia.** Lo que
+sigue es lo que el [Gate 5→6](gate-5-6-objetos-emergentes.md) va a estirar, anotado
+ahora para que la revalidación no se descubra a los golpes.
+
+`WorldState`, **hashes**, **snapshots** y **replay** tienen que seguir cerrando con
+**cuatro campos nuevos adentro**: **estado desplegado**, **stock asociado**,
+**próximo intento** y **captura almacenada**
+([ADR II-0016](decisions/II-0016-un-dispositivo-desplegado-retiene-sobre-un-stock.md)).
+
+Y dos garantías más, que son las que este hito ya sabe defender:
+
+- **orden determinista entre dispositivos.** Dos trampas sobre el mismo stock no
+  se pueden resolver por orden de llegada. Es literalmente el agujero que el
+  ataque al propio determinismo encontró con los empates de `seq`, y va a volver
+  con otra cara;
+- **consumo reproducible de RNG.** Y sin excepción: **mirar, pensar o renderizar
+  nunca consume RNG** — lo tercero es nuevo y entra con el Hito 12.
+
 ## Lo que queda abierto
 
 **1. El rendimiento, y es de `@anima/physics`.** Está arriba con los números y la

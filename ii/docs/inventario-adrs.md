@@ -24,7 +24,41 @@ Contra la lectura ingenua de que un remake tira todo: **55 de 86 se portan**.
 El comportamiento ganado peleando contra un LLM real es casi todo el valor del
 proyecto viejo, y sobrevive.
 
+## Los ADRs propios de Ánima II
+
+Diecinueve, en [`decisions/`](decisions/). Los cinco últimos salieron del
+[Gate 5→6](gate-5-6-objetos-emergentes.md) y son los que hay que leer antes de
+tocar planos, catálogo o UI:
+
+| ADR | Título | Dónde pega |
+|---|---|---|
+| [II-0015](decisions/II-0015-el-plano-no-es-el-esquema-de-construccion.md) | El plano no es el esquema de construcción, y ninguno de los dos es la habilidad | Gate 5→6 · H7 · H8 · H9 |
+| [II-0016](decisions/II-0016-un-dispositivo-desplegado-retiene-sobre-un-stock.md) | Un dispositivo desplegado retiene sobre un stock, y la captura es estado | Gate 5→6 · revalida H2, H3, H4 |
+| [II-0017](decisions/II-0017-el-descriptor-visual-no-es-fisica.md) | El descriptor visual es una vista derivada, no física | Gate 5→6 · H12A · H12C |
+| [II-0018](decisions/II-0018-el-catalogo-es-core-mas-overlay-por-sesion.md) | El catálogo es core inmutable más overlay por sesión | Gate 5→6 · H8 · H10 · H11 |
+| [II-0019](decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md) | Los objetos emergentes son una puerta entre el Hito 5 y el 6 | el orden del plan entero |
+
 ## Reparto por hito
+
+**Los ADRs de Ánima I que el Gate 5→6 vuelve a poner sobre la mesa** —no cambian
+de estado ni de hito, pero hay que releerlos antes de escribir el registry, y por
+eso están juntos acá—:
+
+| ADR | Por qué lo toca el gate |
+|---|---|
+| 0018 | Ánima inventa recetas y el mundo decide si son posibles: es el eje del caso de aceptación |
+| 0024 | describir no es poder — la propuesta pasa por la misma puerta que la de la criatura |
+| 0027 | `revertido`: crear una interacción nueva es escribir una ley, y eso es el Hito 13, no el gate |
+| 0031 | lo complejo se deriva de lo simple, por encadenado sobre `establishes` y con costo derivado |
+| 0032 | lo grande es una obra: `place` y el plano como esquema declarado. Hoy `place` está rechazada |
+| 0034 | obras por tandas y colocación **idempotente**: es el punto 5 del criterio del gate |
+| 0049 | la obra tiene un sitio — y por eso el `BlueprintDefinition` **no** lo lleva adentro |
+| 0056 | el catálogo de sus obras, dibujado y derivado del mundo: engancha con el descriptor visual |
+| 0059 | terminar el programa no es terminar la obra: una obra sin materia se **suspende** |
+| 0063 | `revertido`: el glifo procedural sale en el acto y la glosa bonita es cola cero |
+| 0076 | el catálogo sobrevive al mundo: es la capa «biblioteca adoptada» |
+| 0080 | los mapas son pruebas de aceptación: el vocabulario del planteo **no puede nombrar la solución** |
+| 0086 | catálogo de lo que sabe hacer + plan efímero: la forma que `PlannerCatalogView` tiene que respetar |
 
 | Hito | ADRs | Cuántos |
 |---|---|---|
