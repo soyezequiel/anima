@@ -158,20 +158,60 @@ todo lo demás pase.
 |---|---|---|
 | 1 `BlueprintDefinition` canónico | **CUMPLE** (tramo C) | `physics/tests/el-plano-es-canonico.test.ts` |
 | 2 overlay aislado por sesión | **CUMPLE** | `plan/tests/el-catalogo-es-una-vista.test.ts`, bloque (2) |
-| 3 publicación de capacidades | **CUMPLE** para esquemas; falta para planos | ídem, bloque (3) |
+| 3 publicación de capacidades | **NO CUMPLE para planos, y ya no es una sospecha: está medido.** Para esquemas cumple. La fila del plano entra al catálogo, mueve el `catalogEpoch` y el planificador la alcanza — y la rechaza, porque un `ConstructionSchema` es UNA aplicación de UN proceso y armar un plano son N−1 uniones. Pide una tercera clase de esquema cuyo paso sea «correr esta habilidad» (Hito 8) | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (3), con su `it.fails` |
 | 4 sin mutación global | **CUMPLE**, con guardián de texto en los DOS paquetes | ídem, bloque (4) + `mind/tests/el-catalogo-llega-a-la-mente.test.ts` |
 | 5 construcción incremental e idempotente | **la mitad CUMPLE** (tramo D): desplegar es idempotente y la obra no se muda. Construir ya era incremental por `unir` y falta el `BuildSkill` que encadene | `world/tests/la-obra-queda-desplegada.test.ts` |
-| 6 separar construir de usar | **la mitad**: `CatalogCapability.clase` los separa en el dato; nadie los juzga todavía | `plan/src/catalogo.ts` |
+| 6 separar construir de usar | **CUMPLE** (tramo F). `capacidadDe` no deja publicar un sello vencido, y el caso que lo hace significar algo es el asimétrico: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar. Los dos catálogos ni siquiera comparten digest | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (6) |
 | 7 dos partidas no se contaminan | **CUMPLE** | `el-catalogo-es-una-vista`, bloque (7) |
 | 8 guardar y restaurar | **CUMPLE** (tramo D·ter): una ranura `desplegado:<id>` por obra, y la ida y vuelta por JSON devuelve el sitio, la revisión y el MISMO hash | `world/tests/la-obra-queda-desplegada.test.ts`, bloque (f) |
-| 9 cambio de física invalida sellos | **la mitad del plano CUMPLE**: la revisión lleva `physicsVersion` adentro del hash, así que subir la versión produce otra revisión. Faltan los sellos de habilidades | `el-plano-es-canonico`, bloque (c) |
-| 10 mismo journal, mismo catálogo | **no empezado** | — |
+| 9 cambio de física invalida sellos | **CUMPLE, por dos caminos independientes** (tramo F): `selloVigente` rechaza con el MISMO código que `admit()` ya usa, y la revisión lleva la versión adentro del hash, así que el mismo candidato contra otra física es otro plano y el sello viejo apunta a nada. Las dos clases mueren juntas y el catálogo vuelve al core pelado | `physics/tests/la-obra-es-el-plano.test.ts` bloque (6) + `construir-y-usar-se-publican-aparte` bloque (9) |
+| 10 mismo journal, mismo catálogo | **CUMPLE** (tramo G): una sola crónica append-only con dos lectores. Queda un hueco marcado —`CronicaDe` no dice contra qué FÍSICA se corrió— con su `it.fails` y su porqué | `mind/tests/el-mismo-journal-da-el-mismo-catalogo.test.ts` |
 | 11 descriptor visual | **CUMPLE** (tramo D·quater): vista derivada, siete claves y ni una más, con `renderDescriptorHash` | `world/tests/el-descriptor-visual.test.ts` |
 | 12 sin nombres especiales | **CUMPLE** (tramo D·ter): 90 fuentes de producción barridos, cero infracciones — y no es sólo el grep: lo que hace que un cuerpo retenga es `catch > 0`, una cualidad derivada | `world/tests/sin-nombres-especiales.test.ts` |
 
-**Van 8 de 12 cumpliendo y 3 a medias.** Los tres primeros los cerró el tramo A
-—la deuda 1, la costura del catálogo hasta la mente— y el cuarto es el plano, del
-tramo C.
+**Van 10 de 12 cumpliendo, 1 a medias (el 5) y 1 con el hueco medido y nombrado
+(el 3).** Y esa última línea es el resultado que más vale del día: el punto 3 pasó
+de «falta para planos» —una frase— a una frase del planificador y una clase de
+esquema que hay que escribir.
+
+### El tramo G: el catálogo sale de la crónica
+
+**Punto 10 — CUMPLE.** Una sola lista append-only con **dos lectores**:
+
+```
+crónica (append-only, un solo orden)
+   ├── stepWorld ......... pliega las intenciones  → WorldState
+   └── catalogoHasta ..... pliega los registros    → PlannerCatalogView
+```
+
+**Por qué no adentro de `WorldState`**, que es lo primero que uno piensa: el grafo
+es `physics → oracle → world → skills → plan`, o sea que el mundo está **debajo**
+del planificador. Guardar un `ConstructionSchema` adentro del mundo abre una
+flecha que el diagrama no tiene, y traería puesto que el `worldHash` dependa del
+catálogo — con eso, registrar una capacidad movería la huella de una partida en la
+que no pasó nada físico. Hay un test que afirma que no la mueve.
+
+**Por qué no una crónica aparte:** dos archivos append-only son dos relojes, y dos
+relojes es cómo se llega a «el catálogo del tick 400 con el mundo del tick 380».
+
+**La convención del tick es la MISMA del journal del mundo** —`tick: t` se consume
+durante `t`— así que `catalogoHasta(base, c, d.tick)` es el compañero exacto de
+`replay(j, { tick: d.tick, state }, step)`, sin sumar ni restar uno. Está afirmado
+que correrse un tick cambia el catálogo: eso no daría un error, daría un plan
+coherente y equivocado.
+
+**Y lo que se journalea es la DECISIÓN, no la evidencia:** el renglón lleva la
+capacidad entera y no el sello. Reproducir no vuelve a juzgar —el juez pudo haber
+cambiado— sino que vuelve a llegar al mismo lado. Es la misma razón por la que el
+journal guarda intenciones y no estados.
+
+**El hueco que quedó marcado:** `CronicaDe` guarda `hz` y `semilla` y **no la
+versión de física**. Hace falta por el mismo argumento con el que entró la semilla
+—un registro lleva una revisión, y una revisión lleva la versión adentro del
+hash— así que cargar la misma crónica contra otra física da un catálogo cuyas
+revisiones no corresponden a ningún plano, sin causa visible. Es barato (un campo
+y un chequeo, y no mueve ninguna cadena porque `de` no entra en el eslabón) y toca
+el journal del Hito 2, que tiene criterio publicado propio.
 
 ### El plano, tramo C · 2026-07-31
 
