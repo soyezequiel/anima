@@ -105,6 +105,7 @@ function mundo(
       { id: ANA, body: `${ANA}-cuerpo`, holding: [...(o.enMano ?? [])], capacity: 6, permits: 'irreversible' },
     ]),
     cells: new Map<CellKey, CellState>(),
+    desplegados: new Map(),
     nextId: 1,
   }
   return o.dios === undefined ? base : { ...base, dios: o.dios }

@@ -109,6 +109,7 @@ export function mundo(i: MundoInput = {}): WorldState {
     bodies: mapaDeCuerpos(i.bodies ?? []),
     actors: mapaDeActores(i.actors ?? []),
     cells: new Map(),
+    desplegados: new Map(),
     nextId: 1,
   }
 }

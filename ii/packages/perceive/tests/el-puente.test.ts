@@ -365,15 +365,35 @@ describe('la tabla del puente, caso por caso', () => {
     expect(emisiones).toBe(1)
   })
 
-  it('`place` da `rejected` con `no-implementado`, que es lo que el mundo contesta', () => {
-    const p = new Partida(conElla([]))
+  it('`place` DEJA LA OBRA PUESTA, y ya no contesta `no-implementado`', () => {
+    // Decía «`place` da `rejected` con `no-implementado`, que es lo que el mundo
+    // contesta», y tomaba un `Blueprint` de dos campos. El tramo D del Gate 5→6
+    // lo implementó y el tramo C·bis le cambió el sentido: `place` no construye
+    // un plano, DESPLIEGA un cuerpo ya armado (ADR II-0022). Construir sigue
+    // siendo `apply('union', …)` encadenado.
+    const p = new Partida(conElla([enElPiso('obra', 'madera', 1, 0, 0)], { holding: ['obra'] }))
     let visto: StepResult | undefined
     correr(p, function* (ctx) {
-      visto = yield ctx.place({ id: 'choza', at: { x: 1, y: 0 } })
+      const obra = ctx.self.holding[0]!
+      visto = yield ctx.place(obra, { x: 1, y: 0 })
+      return { ok: true }
+    })
+    expect(visto?.status, JSON.stringify(visto)).not.toBe('rejected')
+    expect(p.state.desplegados.get('obra')?.at).toEqual({ x: 1, y: 0 })
+  })
+
+  it('y lo que NO se tiene no se despliega: el rechazo sigue teniendo nombre', () => {
+    // El control con el signo al revés. Sin él, un `place` que contestara que sí
+    // a cualquier cosa pasaría el bloque de arriba igual.
+    const p = new Partida(conElla([enElPiso('obra', 'madera', 1, 3, 3)]))
+    let visto: StepResult | undefined
+    correr(p, function* (ctx) {
+      const obra = ctx.see([])[0]!
+      visto = yield ctx.place(obra, { x: 1, y: 0 })
       return { ok: true }
     })
     expect(visto?.status).toBe('rejected')
-    expect(visto?.por).toBe('no-implementado')
+    expect(visto?.por).toBe('no-lo-tiene')
   })
 })
 

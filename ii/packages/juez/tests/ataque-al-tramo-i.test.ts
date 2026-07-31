@@ -476,7 +476,8 @@ describe('(3) el `roleFilters: portable<=0` que estuvo sobre el pozo: el hallazg
         { id: 'ana', body: 'ana-cuerpo', holding: [cana.id], capacity: 3, permits: 'irreversible' },
       ]),
       cells: new Map(),
-      nextId: 1,
+      desplegados: new Map(),
+    nextId: 1,
       dios,
     }
     const banco = idDePozo(o.cx, o.cy)

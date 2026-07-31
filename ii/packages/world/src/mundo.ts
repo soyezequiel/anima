@@ -51,7 +51,8 @@ import { hashWorld } from './hash.js'
 import type { WorldHash } from './hash.js'
 import type { Intent } from './intent.js'
 import type { Slots } from './snapshot.js'
-import type { Actor, CellState, WorldBody, WorldState } from './step.js'
+import type { BodyId } from './intent.js'
+import type { Actor, CellState, Desplegado, WorldBody, WorldState } from './step.js'
 import { mapaDeActores, mapaDeCuerpos, stepWorld } from './step.js'
 
 // ─── El hash del mundo ───────────────────────────────────────────────────────
@@ -106,6 +107,23 @@ export function hashWorldState(s: WorldState): WorldHash {
     bodies: s.bodies,
     actors: s.actors,
     cells: s.cells,
+    // LAS OBRAS DESPLEGADAS ENTRAN AL HASH, y tienen que entrar por el mismo
+    // motivo que el dios: qué quedó puesto y dónde es estado del mundo, no de una
+    // vista. Sin esto, dos réplicas podrían divergir en el tick 400 —una con la
+    // trampa puesta y la otra no— y el hash diría que son la misma partida hasta
+    // el final. Es el contrato del Hito 2 revalidado con el estado nuevo adentro,
+    // que es lo que el Gate 5→6 anotó como obligación en su sección 7.
+    //
+    // ─── Y ENTRA SÓLO SI HAY ALGUNA, exactamente como el dios ────────────────
+    //
+    // La clave se OMITE cuando la tabla está vacía, y no es una optimización: es
+    // la misma regla que la línea de abajo ya tenía escrita —«`hashWorld` saltea
+    // las claves ausentes, así que el hash de un mundo sin dios no se mueve ni un
+    // bit»—. Sin esto, agregar el campo movía la huella de TODA partida del repo,
+    // incluidas las publicadas en los tests del Hito 2 y la de 2000 ticks, que
+    // fue lo que pasó al escribirlo de la forma obvia. Un guardado viejo tiene
+    // que seguir valiendo mientras nadie despliegue nada.
+    ...(s.desplegados.size === 0 ? {} : { desplegados: s.desplegados }),
     // EL DIOS ENTRA AL HASH, y tiene que entrar: el estado del dado, lo que queda
     // en cada pozo y lo que cada chunk ya entregó son estado del mundo, no de una
     // caché. Dos mundos gemelos que tiraron el dado distinta cantidad de veces no
@@ -144,6 +162,19 @@ export const PREFIJO_SUSTANCIA = 'sustancia:'
 export const PREFIJO_CUERPO = 'cuerpo:'
 export const PREFIJO_ACTOR = 'actor:'
 export const PREFIJO_CELDA = 'celda:'
+/**
+ * UNA RANURA POR OBRA DESPLEGADA, y no una sola con la tabla entera.
+ *
+ * Es el mismo criterio que los cuerpos y las celdas, y por el mismo motivo: una
+ * cadena de deltas guarda lo que CAMBIÓ, y con una ranura única cualquier trampa
+ * que avance un tick reescribiría la tabla completa. Con una por obra, veinte
+ * dispositivos desplegados y uno que captura dan un delta de uno.
+ *
+ * Y es lo que hace cierto el punto 8 del Gate 5→6 —«guardar y restaurar conserva
+ * la revisión exacta»—: la revisión del plano viaja adentro de la ranura del
+ * dispositivo del que salió.
+ */
+export const PREFIJO_DESPLEGADO = 'desplegado:'
 export const RANURA_MUNDO = 'mundo'
 export const RANURA_CUALIDADES = 'cualidades'
 /**
@@ -196,6 +227,7 @@ export function worldSlots(s: WorldState): Slots<unknown> {
   for (const [id, c] of s.bodies) out.set(PREFIJO_CUERPO + id, c)
   for (const [id, a] of s.actors) out.set(PREFIJO_ACTOR + id, a)
   for (const [k, c] of s.cells) out.set(PREFIJO_CELDA + String(k), c)
+  for (const [id, x] of s.desplegados) out.set(PREFIJO_DESPLEGADO + id, x)
   return out
 }
 
@@ -243,6 +275,7 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
   const bodies: WorldBody[] = []
   const actors: Actor[] = []
   const celdas: [CellKey, CellState][] = []
+  const desplegadas: [BodyId, Desplegado][] = []
 
   // Las claves se recorren ORDENADAS, y no en el orden del `Map`: las ranuras
   // pueden venir de una cadena de deltas, o sea del orden en que se escribieron,
@@ -259,10 +292,17 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
       if (!Number.isSafeInteger(clave)) throw new RangeError(`clave de celda inválida: ${k}`)
       celdas.push([clave, v as CellState])
     }
+    else if (k.startsWith(PREFIJO_DESPLEGADO)) {
+      desplegadas.push([k.slice(PREFIJO_DESPLEGADO.length), v as Desplegado])
+    }
   }
 
   const cells = new Map<CellKey, CellState>()
   for (const [clave, c] of celdas.sort((a, b) => a[0] - b[0])) cells.set(clave, c)
+
+  // Las claves ya vinieron ordenadas del barrido de arriba, así que la tabla sale
+  // en orden de id — que es el orden con el que el mundo la tiene que recorrer.
+  const desplegados = new Map<BodyId, Desplegado>(desplegadas)
 
   // El dios vuelve por su propia puerta y con los `Map` REARMADOS: un guardado
   // que pasó por JSON trae los stocks como objeto plano y no como `Map`, y un
@@ -278,6 +318,7 @@ export function restoreWorld(slots: Slots<unknown>): WorldState {
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores(actors),
     cells,
+    desplegados,
     ...(dios === undefined ? {} : { dios }),
   }
 }

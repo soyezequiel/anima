@@ -266,11 +266,19 @@ export interface Clock {
     /** La duración del día completo, en segundos. */
     readonly dayLength: number;
 }
-/** ADR 0032 de Ánima I: lo grande es una obra, no un bloque. */
-export interface Blueprint {
-    readonly id: string;
-    readonly at: Cell;
-}
+/**
+ * ─── SE FUE EL PLACEHOLDER `Blueprint` ─────────────────────────────────────
+ *
+ * Era `{ id, at }` y lo tomaba `Ctx.place`, con el sentido «levantá este plano
+ * acá». El tramo C·bis del Gate 5→6 midió que eso no se sostiene —armar un plano
+ * son N−1 uniones encadenadas, y cuando algo se puede desplegar el plano YA se
+ * realizó— así que `place` pasó a tomar un CUERPO (ADR II-0022).
+ *
+ * El plano de verdad existe y no es esto: es `BlueprintDefinition`, en
+ * `@anima/physics`, canónico y versionado, y NO lleva el sitio adentro (ADR
+ * II-0015). Acá no se re-exporta porque una habilidad no necesita conocerlo: lo
+ * único que le llega es una revisión, que es texto.
+ */
 /**
  * Lo que el mundo devuelve al `yield`.
  *
@@ -424,8 +432,24 @@ export interface Ctx {
     }): Intent;
     /** Soltar es soltar. `put` es elegir dónde. */
     drop(b: BodyView): Intent;
-    /** ADR 0032 de Ánima I: lo grande es una obra, no un bloque. */
-    place(bp: Blueprint): Intent;
+    /**
+     * DEJAR UNA OBRA PUESTA Y FUNCIONANDO. No construye nada ([ADR II-0022]).
+     *
+     * Tomaba un `Blueprint` —`{ id, at }`— y significaba «levantá este plano acá».
+     * El tramo C·bis del Gate 5→6 midió que eso no se sostiene: armar un plano son
+     * N−1 uniones encadenadas —once cuerpos para una obra de seis piezas— y cuando
+     * algo se puede desplegar el plano YA se realizó. Lo que hay en la mano es un
+     * cuerpo.
+     *
+     * Construir sigue siendo `apply('union', …)` encadenado, y que no tenga verbo
+     * propio es correcto: uno nuevo tendría que justificar qué hace que `union` ya
+     * no haga.
+     *
+     * `revision`, si se pasa, es de qué plano salió. El mundo no la usa para nada:
+     * la anota, porque el juez necesita a qué plano atribuirle un resultado y
+     * porque guardar y restaurar tiene que conservarla.
+     */
+    place(b: BodyView, at: Cell, revision?: string): Intent;
     apply<P extends SeedProcessId>(p: P, roles: RolesOf<P>): Intent;
     /**
      * `maxTicks` en TICKS y no en segundos, a diferencia de `wait`: es un

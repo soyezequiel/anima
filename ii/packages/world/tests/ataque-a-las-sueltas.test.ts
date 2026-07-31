@@ -99,6 +99,7 @@ function escena(o: { desde?: Placement; semilla?: bigint; sembrados?: readonly n
         { id: 'a0', body: 'a0-cuerpo', holding: [], capacity: 6, permits: 'irreversible' },
       ]),
       cells: new Map(),
+      desplegados: new Map(),
       nextId: 1,
       dios,
     },

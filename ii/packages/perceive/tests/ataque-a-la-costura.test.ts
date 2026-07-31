@@ -144,6 +144,7 @@ function enLaOrilla(o: Orilla, extra: readonly WorldBody[] = [], aparejo = cana(
     ]),
     actors: mapaDeActores([actor('ana', { holding: [aparejo.id], capacity: 3 })]),
     cells: new Map(),
+    desplegados: new Map(),
     nextId: 1,
     dios: o.dios,
   }
@@ -1053,6 +1054,7 @@ function elCampamento(masaDeLaVara = VARA_QUE_COCINA, yesca: SubstanceId = 'hoja
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores([actor('ana', { holding: ['cana', 'va', 'vb'], capacity: 6 })]),
     cells: new Map(),
+    desplegados: new Map(),
     nextId: 1,
     dios: ORILLA.dios,
   }

@@ -437,6 +437,7 @@ function montar(e: EsquemaDeProceso): Puesta {
       { id: ANA, body: `${ANA}-cuerpo`, holding: enMano, capacity: 6, permits: 'irreversible' },
     ]),
     cells: new Map<CellKey, CellState>(),
+    desplegados: new Map(),
     nextId: 1,
   }
   return {
@@ -910,6 +911,7 @@ function montarLey(e: EsquemaDeLey, sustancia: string): PuestaDeLey {
     bodies: mapaDeCuerpos(cuerpos),
     actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
     cells: new Map<CellKey, CellState>(),
+    desplegados: new Map(),
     nextId: 1,
   }
   return {
@@ -1614,7 +1616,8 @@ describe('la matriz de los tres fuegos por los tres lugares: lo que cocina es la
       bodies: mapaDeCuerpos([{ body: criatura(ANA, 1000), at: otra }, ...cuerpos]),
       actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
       cells: new Map<CellKey, CellState>(),
-      nextId: 1,
+      desplegados: new Map(),
+    nextId: 1,
     }
     let pico = 0
     let enVentana = 0
@@ -1722,7 +1725,8 @@ describe('el fuego de contacto se apaga: qué cocina igual y qué no', () => {
       ]),
       actors: mapaDeActores([{ id: ANA, body: `${ANA}-cuerpo`, holding: [], capacity: 6, permits: 'irreversible' }]),
       cells: new Map<CellKey, CellState>(),
-      nextId: 1,
+      desplegados: new Map(),
+    nextId: 1,
     }
     // Cuatro veces el `mientras` de la fila: darle exactamente `mientras` mediría
     // «no entró en el presupuesto», y lo que hay que distinguir es «tarda más» de

@@ -159,7 +159,25 @@ export type Intent =
       readonly process: ProcessId
       readonly roles: readonly RoleBinding[]
     })
-  | (IntentBase & { readonly k: 'place'; readonly blueprint: string; readonly at: Placement })
+  /**
+   * DESPLEGAR UNA OBRA YA ARMADA. No construye nada ([ADR II-0022]).
+   *
+   * Decía `blueprint: string` y significaba «levantá este plano acá». El tramo
+   * C·bis del Gate 5→6 midió que eso no se sostiene: construir un plano son N−1
+   * uniones encadenadas, y cuando algo se puede desplegar el plano YA se realizó.
+   * Lo que hay en la mano es un cuerpo, y `what` es ese cuerpo — el mismo nombre
+   * de campo que usan `take`, `drop`, `put` y `eat`, porque es lo mismo.
+   *
+   * `revision`, si viene, es de qué plano salió. No se usa para construir: se
+   * anota, porque el punto 8 del gate pide que guardar y restaurar conserve la
+   * revisión exacta y el juez necesita a qué plano atribuirle un resultado.
+   */
+  | (IntentBase & {
+      readonly k: 'place'
+      readonly what: BodyId
+      readonly at: Placement
+      readonly revision?: string
+    })
 
 // ─── El compromiso, que lo declara el mundo ──────────────────────────────────
 
@@ -341,8 +359,11 @@ export function eat(w: Quien, what: BodyId): Intent {
   return { k: 'eat', by: w.by, seq: w.seq, commitment: COMMITMENT_OF.eat, what }
 }
 
-export function place(w: Quien, blueprint: string, at: Placement): Intent {
-  return { k: 'place', by: w.by, seq: w.seq, commitment: COMMITMENT_OF.place, blueprint, at }
+export function place(w: Quien, what: BodyId, at: Placement, revision?: string): Intent {
+  const base = { k: 'place', by: w.by, seq: w.seq, commitment: COMMITMENT_OF.place, what, at } as const
+  // Un `revision: undefined` explícito viajaría hasta el hash como una clave más,
+  // igual que el `covering` de `put`. Misma razón, misma forma.
+  return revision === undefined ? base : { ...base, revision }
 }
 
 /**

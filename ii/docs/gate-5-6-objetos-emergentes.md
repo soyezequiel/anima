@@ -160,10 +160,10 @@ todo lo demás pase.
 | 2 overlay aislado por sesión | **CUMPLE** | `plan/tests/el-catalogo-es-una-vista.test.ts`, bloque (2) |
 | 3 publicación de capacidades | **CUMPLE** para esquemas; falta para planos | ídem, bloque (3) |
 | 4 sin mutación global | **CUMPLE**, con guardián de texto en los DOS paquetes | ídem, bloque (4) + `mind/tests/el-catalogo-llega-a-la-mente.test.ts` |
-| 5 construcción incremental | **no empezado** | — |
+| 5 construcción incremental e idempotente | **la mitad CUMPLE** (tramo D): desplegar es idempotente y la obra no se muda. Construir ya era incremental por `unir` y falta el `BuildSkill` que encadene | `world/tests/la-obra-queda-desplegada.test.ts` |
 | 6 separar construir de usar | **la mitad**: `CatalogCapability.clase` los separa en el dato; nadie los juzga todavía | `plan/src/catalogo.ts` |
 | 7 dos partidas no se contaminan | **CUMPLE** | `el-catalogo-es-una-vista`, bloque (7) |
-| 8 guardar y restaurar | **no empezado**; `registryDigest` es la pieza que lo va a comparar | — |
+| 8 guardar y restaurar | **la vía existe** (tramo D): una ranura `desplegado:<id>` por obra, con su revisión adentro, que se escribe y se restaura. Falta el test de ida y vuelta | `world/src/mundo.ts` |
 | 9 cambio de física invalida sellos | **la mitad del plano CUMPLE**: la revisión lleva `physicsVersion` adentro del hash, así que subir la versión produce otra revisión. Faltan los sellos de habilidades | `el-plano-es-canonico`, bloque (c) |
 | 10 mismo journal, mismo catálogo | **no empezado** | — |
 | 11 descriptor visual | **no empezado** | — |
@@ -265,6 +265,39 @@ Encadenar de a una pieza da una ESTRELLA; uniendo dos obras se consigue un árbo
 O sea que cualquier ÁRBOL es construible eligiendo el orden de las uniones, pero
 **no se puede pedir una junta suelta entre dos piezas de una obra ya armada**. El
 plano puede declarar la forma; el `BuildSkill` tiene que encontrar el orden.
+
+### El tramo D: la obra queda puesta, y el mundo lo sabe
+
+`place` dejó de contestar `'no-implementado'`. Y dejó de significar lo que
+parecía: toma un **cuerpo**, no una revisión ([ADR II-0022]), porque cuando algo
+se puede desplegar el plano ya se realizó. Construir sigue siendo
+`apply('union', …)` encadenado y no necesita verbo propio.
+
+| pieza | dónde |
+|---|---|
+| `WorldState.desplegados`, una tabla por id de cuerpo | `world/src/step.ts` |
+| `intencionDesplegar`, con la idempotencia ANTES del chequeo de manos | ídem |
+| `take` retira la entrada — la tabla no junta fantasmas | ídem |
+| la tabla entra al hash, y **sólo si no está vacía** | `world/src/mundo.ts` |
+| una ranura `desplegado:<id>` por obra, con la revisión adentro | ídem |
+| `Ctx.place(b, at, revision?)` y el placeholder `Blueprint` borrado | `skills/src/ctx.ts`, `perceive/src/contexto.ts` |
+
+**Dos cosas que el árbol enseñó al ponerse rojo, y las dos valen más que el
+código:**
+
+1. **Una clave ausente no mueve el hash, y esa regla ya estaba escrita.** Meter
+   `desplegados` al hash de la forma obvia movió la huella de TODA partida del
+   repo, incluidas las publicadas del Hito 2 y la de 2000 ticks. La línea de al
+   lado —la del dios— ya decía por qué no debe pasar. Se omite cuando la tabla
+   está vacía, y un guardado viejo sigue valiendo mientras nadie despliegue nada.
+2. **La idempotencia va ANTES del chequeo de tenencia.** Una obra ya desplegada
+   no está en la mano de nadie, así que mirar las manos primero convertía el
+   segundo `place` en un `'no-lo-tiene'` en vez de un no-op.
+
+Y un rechazo que quedó a propósito: **desplegar en la celda donde uno está parado
+se rechaza con `celda-ocupada`**, en vez de correr la obra a la celda libre más
+cercana como hace `drop`. El sitio es el que se pidió (ADR 0049 de Ánima I): una
+obra que se muda sola deja media choza abandonada en el sitio anterior.
 
 ---
 
@@ -625,4 +658,5 @@ aditivas** —se solapan entre sí y con hitos que ya están planificados—:
 - [ADR II-0019](decisions/II-0019-el-gate-5-6-no-reabre-el-hito-5.md) — el Gate 5→6 no reabre el Hito 5
 - [ADR II-0020](decisions/II-0020-la-captura-vive-en-una-tabla-del-mundo.md) — la captura vive en una tabla del mundo, y el pozo entrega ahí por un tercer `into`
 - [ADR II-0021](decisions/II-0021-el-overlay-de-una-partida-solo-crece.md) — el overlay de una partida sólo crece: revocar es entre partidas
+- [ADR II-0022](decisions/II-0022-place-despliega-un-cuerpo-no-construye-un-plano.md) — `place` despliega un cuerpo ya armado, y no construye un plano
 - [`../../docs/architecture/remake-anima-ii.md`](../../docs/architecture/remake-anima-ii.md) — el plan de construcción entero

@@ -123,6 +123,7 @@ function partida(): WorldState {
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores(actores),
     cells,
+    desplegados: new Map(),
     nextId: 1,
   }
 }

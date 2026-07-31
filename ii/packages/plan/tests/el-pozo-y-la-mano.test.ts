@@ -222,6 +222,7 @@ function escena(o: {
       { id: ANA, body: `${ANA}-cuerpo`, holding: ['cana', ...extras.map((b) => b.id)], capacity: 6, permits: 'irreversible' },
     ]),
     cells: new Map<CellKey, CellState>(),
+    desplegados: new Map(),
     nextId: 1,
     dios: or.dios,
   }

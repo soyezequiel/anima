@@ -5,8 +5,12 @@ conversación anterior**, pueda seguir sin volver a descubrir lo que ya se
 descubrió. Lo que estaba en la memoria personal de la cuenta anterior se bajó
 acá, porque la memoria es por cuenta y no viaja.
 
-Última actualización: **2026-07-31**, con los **tramos A, B, C y C·bis del Gate
-5→6** cerrados: la costura del catálogo llega hasta la mente —**la deuda 1 del
+Última actualización: **2026-07-31**, con los **tramos A, B, C, C·bis y D del
+Gate 5→6** cerrados. El D: **`place` dejó de contestar `'no-implementado'`** y
+pasó a significar otra cosa —despliega un CUERPO ya armado, no construye un plano
+(ADR II-0022)—, con la tabla `WorldState.desplegados`, su ranura de guardado y su
+entrada al hash. Van **5 de los 12 puntos** del gate cumpliendo o a medias por
+encima de la mitad. Y antes: la costura del catálogo llega hasta la mente —**la deuda 1 del
 gate está pagada**—, una frontera armada con otro catálogo se descarta y se
 replantea (ver el final de la sección 0·bis), **`BlueprintDefinition` existe** en
 `@anima/physics` con `definirPlano()` de puerta, y el **C·bis midió `unir` antes
@@ -140,13 +144,13 @@ capacidades físicas disponibles en ese nivel.*
    **qué viene después del Hito 5 y antes del 6**, con las trece decisiones de
    producto fijadas, el criterio de doce puntos y los contratos que los Hitos 0–4
    van a tener que revalidar. Se lee una vez, como `como-se-trabaja.md`.
-6. [`ii/docs/decisions/`](decisions/) — **21 ADRs propios**. Los que más pesan hoy:
+6. [`ii/docs/decisions/`](decisions/) — **22 ADRs propios**. Los que más pesan hoy:
    II-0001 (encender no es una acción), II-0007 (el tick es un parámetro),
    II-0008 (el tiempo va en segundos), II-0009 (el hambre mata), II-0010 (frotar
    no relaja), II-0011 (arder libera calor), II-0012 (el presupuesto del plan va
    en expansiones), II-0013 (el veneno se cobra al tragar), **II-0014 (el decreto
    manda sobre la celda, y el mundo narra lo que el dios pone)**, y los cinco del
-   gate: **II-0015 a II-0021** (ver la sección 0·bis), con II-0020 (la captura vive
+   gate: **II-0015 a II-0022** (ver la sección 0·bis), con II-0020 (la captura vive
    en una tabla del mundo) y II-0021 (el overlay de una partida sólo crece) ya
    decididos por el usuario.
 
@@ -154,8 +158,8 @@ capacidades físicas disponibles en ese nivel.*
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2553 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
-nueve typechecks limpios.** Corridos enteros al cerrar el tramo C del gate, mirando
+**Nueve paquetes, 2565 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+nueve typechecks limpios.** Corridos enteros al cerrar el tramo D del gate, mirando
 el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
 dos cohortes del banco de la mente se reparten en cinco tandas desde el tramo Ñ,
@@ -180,10 +184,10 @@ otra máquina, hay que pushear antes.
 | paquete | qué es | tests |
 |---|---|---:|
 | `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables, **`BlueprintDefinition`** | 646 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj | 561 (+1 skipped) |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj, **las obras desplegadas** | 572 (+1 skipped) |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
-| `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 120 |
+| `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 121 |
 | `@anima/plan` | **el catálogo como vista**, `goalGraph()`, `plan()` anytime, la poda de lo ya hecho | 319 (+1 todo) |
 | `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, el portón de despegue | 318 |
 | `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 126 |

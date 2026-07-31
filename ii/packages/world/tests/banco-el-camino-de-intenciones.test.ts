@@ -304,6 +304,7 @@ function mundoDeCriaturas(actores: number): MundoConCriaturas {
       bodies: mapaDeCuerpos(bodies),
       actors: mapaDeActores(acts),
       cells: new Map<number, CellState>(),
+      desplegados: new Map(),
       nextId: 1,
     },
     ids,

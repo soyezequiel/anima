@@ -219,6 +219,7 @@ function mundoCorrido(bodies: readonly WorldBody[], actors: readonly Actor[], ph
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores(actors),
     cells: new Map(),
+    desplegados: new Map(),
     nextId: 1,
   }
 }

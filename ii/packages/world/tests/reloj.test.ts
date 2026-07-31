@@ -169,14 +169,27 @@ describe('la forma del día', () => {
 // ─── (b) DERIVADO: cero campos nuevos, cero hash nuevo ──────────────────────
 
 describe('el reloj es derivado y no guardado', () => {
-  it('no hay un campo de reloj en `WorldState`: son los mismos siete de siempre', () => {
+  it('no hay un campo de reloj en `WorldState`: son los mismos OCHO de siempre', () => {
     // El guardián de la decisión. Un reloj guardado es una SEGUNDA copia del
     // tick, y dos copias del mismo hecho se desincronizan. Si alguien agrega
     // `phase` al estado, este test lo dice antes de que el hash se mueva.
+    //
+    // ─── EL OCTAVO ES `desplegados`, y este test HIZO SU TRABAJO ────────────
+    //
+    // Eran siete hasta el tramo D del Gate 5→6, que agregó la tabla de obras
+    // puestas (ADR II-0020). El guardián se puso rojo, que es exactamente para lo
+    // que existe: un campo del estado del mundo no entra sin que alguien lo mire.
+    // Se actualiza a mano y con el nombre escrito, no aflojando el `toEqual`.
+    //
+    // Y la otra mitad del rojo se arregló del lado del hash y no de acá: el campo
+    // se OMITE del `hashWorldState` cuando la tabla está vacía, igual que el
+    // dios, así que la huella de una partida sin obras desplegadas no se movió ni
+    // un bit. Ver `hashWorldState` en `src/mundo.ts`.
     expect([...Object.keys(mundo({}))].sort()).toEqual([
       'actors',
       'bodies',
       'cells',
+      'desplegados',
       'hz',
       'nextId',
       'phys',

@@ -216,6 +216,7 @@ function mundoDe(cuerpos: readonly Body[], phys?: Physics): WorldState {
     bodies,
     actors: new Map(),
     cells: new Map<number, CellState>(),
+    desplegados: new Map(),
     nextId: 1,
   }
 }

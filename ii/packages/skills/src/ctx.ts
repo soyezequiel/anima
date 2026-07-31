@@ -14,7 +14,6 @@
 // mezclar listas de imports. Ver `banco/emitir-skill-api.mjs`.
 
 import type {
-  Blueprint,
   BodyView,
   Cell,
   CellQuality,
@@ -132,8 +131,24 @@ export interface Ctx {
   /** Soltar es soltar. `put` es elegir dónde. */
   drop(b: BodyView): Intent
 
-  /** ADR 0032 de Ánima I: lo grande es una obra, no un bloque. */
-  place(bp: Blueprint): Intent
+  /**
+   * DEJAR UNA OBRA PUESTA Y FUNCIONANDO. No construye nada ([ADR II-0022]).
+   *
+   * Tomaba un `Blueprint` —`{ id, at }`— y significaba «levantá este plano acá».
+   * El tramo C·bis del Gate 5→6 midió que eso no se sostiene: armar un plano son
+   * N−1 uniones encadenadas —once cuerpos para una obra de seis piezas— y cuando
+   * algo se puede desplegar el plano YA se realizó. Lo que hay en la mano es un
+   * cuerpo.
+   *
+   * Construir sigue siendo `apply('union', …)` encadenado, y que no tenga verbo
+   * propio es correcto: uno nuevo tendría que justificar qué hace que `union` ya
+   * no haga.
+   *
+   * `revision`, si se pasa, es de qué plano salió. El mundo no la usa para nada:
+   * la anota, porque el juez necesita a qué plano atribuirle un resultado y
+   * porque guardar y restaurar tiene que conservarla.
+   */
+  place(b: BodyView, at: Cell, revision?: string): Intent
 
   apply<P extends SeedProcessId>(p: P, roles: RolesOf<P>): Intent
 

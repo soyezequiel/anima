@@ -236,6 +236,7 @@ function mundo(o: { capacity: number; at: Placement; cuerpos: readonly WorldBody
       { id: ANA, body: CUERPO_DE_ANA, holding: o.enMano ?? [], capacity: o.capacity, permits: 'irreversible' },
     ]),
     cells: new Map<CellKey, CellState>(),
+    desplegados: new Map(),
     nextId: 1,
   }
 }

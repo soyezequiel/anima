@@ -364,6 +364,7 @@ export function escenaDe(o: Orilla, stamina: number): Escena {
     bodies: mapaDeCuerpos(cuerpos),
     actors: mapaDeActores([actor('ana')]),
     cells: new Map(),
+    desplegados: new Map(),
     nextId: 1,
     dios: o.dios,
   }

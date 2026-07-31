@@ -49,7 +49,6 @@ import {
   relojDe,
 } from '@anima/world'
 import type {
-  Blueprint,
   BodyView,
   Cell,
   CellQuality,
@@ -461,8 +460,12 @@ export class Contexto {
         return yo.#intencion(i)
       },
       drop: (b: BodyView): Intent => yo.#intencion({ k: 'drop', what: b.id }),
-      place: (bp: Blueprint): Intent =>
-        yo.#intencion({ k: 'place', blueprint: bp.id, at: bp.at }),
+      place: (b: BodyView, at: Cell, revision?: string): Intent =>
+        yo.#intencion(
+          revision === undefined
+            ? { k: 'place', what: b.id, at }
+            : { k: 'place', what: b.id, at, revision },
+        ),
       apply: <P extends SeedProcessId>(p: P, roles: RolesOf<P>): Intent => {
         const rs: RoleBinding[] = []
         for (const [name, b] of Object.entries(roles as Record<string, BodyView | undefined>)) {

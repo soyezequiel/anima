@@ -58,6 +58,7 @@ function mundo(bodies: readonly WorldBody[], actors: readonly Actor[], nextId = 
     bodies: mapaDeCuerpos(bodies),
     actors: mapaDeActores(actors),
     cells: new Map<number, CellState>(),
+    desplegados: new Map(),
     nextId,
   }
 }

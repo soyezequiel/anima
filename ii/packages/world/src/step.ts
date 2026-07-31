@@ -142,6 +142,32 @@ export interface WorldBody {
   readonly covering?: BodyId
 }
 
+/**
+ * UNA OBRA DESPLEGADA: dejó de ser carga y pasó a ser un dispositivo puesto.
+ *
+ * Hoy tiene los dos campos que el tramo D necesita. Los otros tres que el
+ * [ADR II-0016] declara —stock asociado, próximo intento y captura almacenada—
+ * entran cuando entre la retención pasiva, que pide el destino nuevo de
+ * `drawFromStock` y por lo tanto pasa por `admit()`. No se declaran vacíos ahora:
+ * un campo que nadie llena es un campo que el hash igual cuenta.
+ */
+export interface Desplegado {
+  /**
+   * EL SITIO. Se elige al desplegar y NO se muda: es el ADR 0049 de Ánima I
+   * portado —«retomar una obra es seguir la misma, no empezar otra al lado»—, y
+   * por eso un segundo `place` sobre lo mismo no la teletransporta.
+   */
+  readonly at: Placement
+  /**
+   * De qué revisión de plano salió, si quien la desplegó lo dijo.
+   *
+   * Opcional y no obligatorio porque una obra puede haber sido armada a mano, sin
+   * plano: el mundo no exige procedencia para dejar poner algo. Lo que sí hace es
+   * conservarla cuando la hay, que es lo que piden el punto 8 del gate y el juez.
+   */
+  readonly revision?: string
+}
+
 /** Un proceso en curso. Es una de las dos cosas que un actor arrastra de un tick al otro. */
 export interface Activity {
   readonly process: ProcessId
@@ -271,6 +297,31 @@ export interface WorldState {
    * Ver el punto 3 del encabezado de `dios.ts`.
    */
   readonly cells: ReadonlyMap<CellKey, CellState>
+  /**
+   * LAS OBRAS DESPLEGADAS, por el id del cuerpo que las es.
+   *
+   * ─── POR QUÉ UNA TABLA APARTE Y NO UN CAMPO DE `WorldBody` ────────────────
+   *
+   * Es el [ADR II-0020], y de las tres formas posibles ésta es la única que no
+   * obliga a ningún tipo a decir algo que no es: `Body` es materia física —masa,
+   * partes, juntas— y `Stock` es el inventario de lo que el dios decretó. Una
+   * obra desplegada es una RELACIÓN entre las dos cosas, y una relación entre dos
+   * tablas vive en una tercera.
+   *
+   * ─── EL ORDEN ES POR ID, Y NO ES UN DETALLE DE ESTILO ─────────────────────
+   *
+   * Dos dispositivos sobre el mismo pozo no se pueden resolver por orden de
+   * llegada: es exactamente el agujero que el ataque al determinismo del Hito 2
+   * ya encontró una vez con `seq`, y hace que dos réplicas del mismo mundo dejen
+   * de ser la misma partida. El mapa se mantiene ordenado por clave.
+   *
+   * ─── EL PRECIO ELEGIDO, dicho y no escondido ──────────────────────────────
+   *
+   * Levantar la obra NO se lleva la captura gratis: la entrada tiene que seguir
+   * al cuerpo, y por eso `take` la retira. La forma que lo hacía gratis era la
+   * que ensuciaba `Body`.
+   */
+  readonly desplegados: ReadonlyMap<BodyId, Desplegado>
   /** El contador de ids. No hay azar en el mundo: los nombres también se cuentan. */
   readonly nextId: number
   /**
@@ -886,9 +937,17 @@ interface Borrador {
   bodies: Map<BodyId, WorldBody>
   actors: Map<ActorId, Actor>
   cells: Map<CellKey, CellState>
+  /** Las obras puestas. Ver `Desplegado` y el ADR II-0020. */
+  desplegados: Map<BodyId, Desplegado>
   nextId: number
   /** Si cambió el juego de ids, el mapa hay que volver a ordenarlo al salir. */
   reordenar: boolean
+  /**
+   * Lo mismo para las obras: el orden de la tabla es por ID y no por llegada,
+   * porque dos dispositivos sobre el mismo pozo resueltos por orden de llegada
+   * son el agujero de determinismo que el Hito 2 ya encontró con `seq`.
+   */
+  reordenarDesplegados: boolean
   /** Adentro del tick los eventos están SIN FIRMAR: la firma la pone `firmar`. */
   events: SimEventSinFirmar[]
   /**
@@ -1005,8 +1064,10 @@ function abrir(s: WorldState): Borrador {
     bodies: new Map(s.bodies),
     actors: new Map(s.actors),
     cells: new Map(s.cells),
+    desplegados: new Map(s.desplegados),
     nextId: s.nextId,
     reordenar: false,
+    reordenarDesplegados: false,
     events: [],
     gastado: undefined,
     decretado: undefined,
@@ -1093,6 +1154,8 @@ function diosDeSalida(d: Borrador): EstadoDelDios | undefined {
 
 function cerrar(d: Borrador): StepOutcome {
   const bodies = d.reordenar ? mapaDeCuerpos([...d.bodies.values()]) : d.bodies
+  // Mismo criterio que `bodies`: si el juego de claves cambió, se reordena por id.
+  const desplegados = d.reordenarDesplegados ? mapaOrdenado([...d.desplegados]) : d.desplegados
   const dios = diosDeSalida(d)
   return {
     state: {
@@ -1102,6 +1165,7 @@ function cerrar(d: Borrador): StepOutcome {
       bodies,
       actors: d.actors,
       cells: d.cells,
+      desplegados,
       nextId: d.nextId,
       ...(dios === undefined ? {} : { dios }),
     },
@@ -2097,6 +2161,13 @@ function intencionTomar(d: Borrador, a: Actor, i: Intent & { k: 'take' }): void 
     return
   }
   const mio = cuerpoDe(d, a)
+  // LEVANTAR UNA OBRA LA DESPLIEGA AL REVÉS, y hay que hacerlo acá y no confiar
+  // en que nadie levante un dispositivo: sin esto la tabla se llena de fantasmas
+  // —entradas de obras que ya nadie tiene puestas— que el mundo igual recorrería
+  // todos los ticks y que el hash igual contaría. Es el precio elegido en el ADR
+  // II-0020: la entrada tiene que SEGUIR AL CUERPO, y ésta es una de las dos
+  // puntas de esa costura.
+  if (d.desplegados.delete(i.what)) d.reordenarDesplegados = true
   // Al levantar algo se sueltan sus relaciones espaciales: lo que estaba apoyado
   // sobre otra cosa deja de estarlo, y lo que tapaba deja de tapar. Arrastrar la
   // relación en la mano haría que la criatura tape una fogata desde el otro lado
@@ -2140,6 +2211,53 @@ function intencionSoltar(d: Borrador, a: Actor, i: Intent & { k: 'drop' }): void
   }
   soltar(d, a, i.what, donde)
   d.events.push({ k: 'solto', by: a.id, what: i.what, at: donde })
+}
+
+/**
+ * DESPLEGAR UNA OBRA: dejarla puesta y funcionando ([ADR II-0022]).
+ *
+ * No construye nada, y eso salió de una medición y no de una preferencia: armar
+ * un plano son N−1 uniones encadenadas, así que cuando algo se puede desplegar el
+ * plano YA se realizó y lo que hay en la mano es un cuerpo. Ver el tramo C·bis en
+ * `physics/tests/lo-que-cuesta-armar-un-plano.test.ts`.
+ *
+ * ─── LA IDEMPOTENCIA VA PRIMERO, ANTES DE MIRAR LAS MANOS ──────────────────
+ *
+ * Una obra ya desplegada NO está en la mano de nadie, así que el chequeo de
+ * tenencia la rechazaría con `'no-lo-tiene'` y el segundo `place` sería un error
+ * en vez de un no-op. El punto 5 del criterio pide idempotencia, y esto es lo que
+ * la hace: desplegar dos veces deja UNA obra, en el sitio de la primera.
+ *
+ * Que no se mude es el ADR 0049 de Ánima I portado: retomar una obra es seguir la
+ * misma, no empezar otra al lado.
+ */
+function intencionDesplegar(d: Borrador, a: Actor, i: Intent & { k: 'place' }): void {
+  if (d.desplegados.has(i.what)) return
+
+  if (!a.holding.includes(i.what)) {
+    rechazo(d, i, 'no-lo-tiene')
+    return
+  }
+  const mio = cuerpoDe(d, a)
+  if (mio === undefined) {
+    rechazo(d, i, 'cuerpo-desconocido')
+    return
+  }
+  if (!enRango(i.at) || chebyshev(mio.at, i.at) > 1) {
+    rechazo(d, i, 'fuera-de-rango')
+    return
+  }
+  if (estorbo(d, i.at, i.what, d.phys) !== undefined) {
+    rechazo(d, i, 'celda-ocupada')
+    return
+  }
+
+  soltar(d, a, i.what, i.at)
+  // `revision` sólo si vino: un `undefined` explícito viajaría al hash como una
+  // clave más y dos mundos idénticos darían huellas distintas.
+  d.desplegados.set(i.what, i.revision === undefined ? { at: i.at } : { at: i.at, revision: i.revision })
+  d.reordenarDesplegados = true
+  d.events.push({ k: 'solto', by: a.id, what: i.what, at: i.at })
 }
 
 function intencionPoner(d: Borrador, a: Actor, i: Intent & { k: 'put' }): void {
@@ -3057,10 +3175,7 @@ function despachar(d: Borrador, a: Actor, i: Intent): void {
       intencionAplicar(d, a, i)
       return
     case 'place':
-      // Las obras son el ADR 0032 de Ánima I y no existen todavía en Ánima II.
-      // Rechazar con nombre es mejor que fingir: una habilidad que las use se
-      // entera hoy, no el día que alguien note que no pasaba nada.
-      rechazo(d, i, 'no-implementado')
+      intencionDesplegar(d, a, i)
       return
   }
 }

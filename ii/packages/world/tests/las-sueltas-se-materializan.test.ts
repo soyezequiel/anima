@@ -99,6 +99,7 @@ function escena(o: { desde?: Placement; cuantas?: number; semilla?: bigint } = {
       bodies: mapaDeCuerpos(cuerpos),
       actors: mapaDeActores(actores),
       cells: new Map(),
+      desplegados: new Map(),
       nextId: 1,
       dios,
     },

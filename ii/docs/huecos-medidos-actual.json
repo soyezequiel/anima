@@ -57,7 +57,7 @@
    "archivos": 2
   },
   {
-   "falta": "Object literal may only specify known properties, and 'blueprint' does not exist in type 'Blueprint'.",
+   "falta": "Expected 2-3 arguments, but got 1.",
    "archivos": 2
   },
   {

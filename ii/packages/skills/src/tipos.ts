@@ -304,11 +304,19 @@ export interface Clock {
   readonly dayLength: number
 }
 
-/** ADR 0032 de Ánima I: lo grande es una obra, no un bloque. */
-export interface Blueprint {
-  readonly id: string
-  readonly at: Cell
-}
+/**
+ * ─── SE FUE EL PLACEHOLDER `Blueprint` ─────────────────────────────────────
+ *
+ * Era `{ id, at }` y lo tomaba `Ctx.place`, con el sentido «levantá este plano
+ * acá». El tramo C·bis del Gate 5→6 midió que eso no se sostiene —armar un plano
+ * son N−1 uniones encadenadas, y cuando algo se puede desplegar el plano YA se
+ * realizó— así que `place` pasó a tomar un CUERPO (ADR II-0022).
+ *
+ * El plano de verdad existe y no es esto: es `BlueprintDefinition`, en
+ * `@anima/physics`, canónico y versionado, y NO lleva el sitio adentro (ADR
+ * II-0015). Acá no se re-exporta porque una habilidad no necesita conocerlo: lo
+ * único que le llega es una revisión, que es texto.
+ */
 
 // ─── Resultados ─────────────────────────────────────────────────────────────
 

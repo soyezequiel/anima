@@ -160,6 +160,7 @@ function mundoConRio(o: Orilla, aparejo: Body, stamina = 1000): WorldState {
     ]),
     actors: mapaDeActores([actor('ana', { holding: [aparejo.id], capacity: 3 })]),
     cells: new Map(),
+    desplegados: new Map(),
     nextId: 1,
     dios: o.dios,
   }
@@ -705,6 +706,7 @@ describe('lo que cuesta tener al dios adentro del tick', () => {
         bodies: mapaDeCuerpos(cuerpos),
         actors: mapaDeActores(actores),
         cells: new Map(),
+        desplegados: new Map(),
         nextId: 1,
       }
       return dios === undefined ? base : { ...base, dios }

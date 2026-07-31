@@ -99,6 +99,7 @@ export function mundo(i: MundoInput = {}): WorldState {
     bodies: mapaDeCuerpos(i.bodies ?? []),
     actors: mapaDeActores(i.actors ?? []),
     cells,
+    desplegados: new Map(),
     nextId: 1,
   }
   return i.dios === undefined ? base : { ...base, dios: i.dios }
