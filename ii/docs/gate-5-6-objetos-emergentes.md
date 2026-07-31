@@ -158,7 +158,7 @@ todo lo demás pase.
 |---|---|---|
 | 1 `BlueprintDefinition` canónico | **CUMPLE** (tramo C) | `physics/tests/el-plano-es-canonico.test.ts` |
 | 2 overlay aislado por sesión | **CUMPLE** | `plan/tests/el-catalogo-es-una-vista.test.ts`, bloque (2) |
-| 3 publicación de capacidades | **CUMPLE** (tramo H). Se abrió con una medición y se cerró con una **tercera clase de `ConstructionSchema`**: `EsquemaDeObra`, cuyo paso final no es `apply` sino `armar`. El planificador emite `ir · sostener · … · armar` con la revisión exacta adentro. Queda un límite medido y marcado: un rol que necesita DOS cuerpos no se puede planificar todavía | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (3) |
+| 3 publicación de capacidades | **CUMPLE, con las dos mitades** (tramos H e I). El planificador emite `ir · sostener · … · armar` con la revisión adentro (`EsquemaDeObra`), y la innata `construir` lo ejecuta contra el mundo real: el árbol de tres piezas en 51 ticks, confirmado por `realizaElPlano`. Queda un límite medido y marcado: un rol que necesita DOS cuerpos no se puede planificar todavía | `plan/tests/construir-y-usar-se-publican-aparte.test.ts` + `perceive/tests/construir-arma-el-plano.test.ts` |
 | 4 sin mutación global | **CUMPLE**, con guardián de texto en los DOS paquetes | ídem, bloque (4) + `mind/tests/el-catalogo-llega-a-la-mente.test.ts` |
 | 5 construcción incremental e idempotente | **la mitad CUMPLE** (tramo D): desplegar es idempotente y la obra no se muda. Construir ya era incremental por `unir` y falta el `BuildSkill` que encadene | `world/tests/la-obra-queda-desplegada.test.ts` |
 | 6 separar construir de usar | **CUMPLE** (tramo F). `capacidadDe` no deja publicar un sello vencido, y el caso que lo hace significar algo es el asimétrico: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar. Los dos catálogos ni siquiera comparten digest | `plan/tests/construir-y-usar-se-publican-aparte.test.ts`, bloque (6) |
@@ -618,11 +618,54 @@ quedaba ninguna hebra libre para la segunda atadura — **verde, y la criatura a
 una junta y se quedaba parada**. Ahora se rechaza con el rol y el número adelante.
 Levantarlo pide `Record<RoleName, readonly Ref[]>`, y eso toca la búsqueda entera.
 
-**Y del otro lado no hay nadie todavía.** `aHabilidad` contesta `undefined` para
-`armar`: el plan se planifica y no despega. Escribir la innata `construir` es lo
-que sigue, y el algoritmo ya está medido —once líneas, sin búsqueda— en
-`physics/tests/el-orden-de-las-uniones-realiza-el-plano.test.ts`. Lo que falta es
-la costura, no la idea.
+### El tramo I: la innata que arma, y la quinta trampa del plano
+
+**El punto 3 tiene sus dos mitades.** `construir` es la innata 16 y el `BuildSkill`
+del ADR II-0015: recibe la forma del plano y los cuerpos ligados, y encuentra el
+orden de las uniones. Contra el mundo de verdad —con `union` tardando un segundo y
+las manos contando— arma el árbol de tres piezas en **51 ticks**, y
+`realizaElPlano` confirma que la obra ES el plano.
+
+La caña también, y con lo que importa: `catch > 0`. La habilidad decide **leyendo
+el plano** si la unión va con `b` o sin `b`, y ésa es la diferencia entre una caña
+y un palo atado a otro palo.
+
+#### El hallazgo, y salió de escribir el constructor y verlo fallar
+
+Midiendo dónde queda la **cabeza** de un ensamble:
+
+```
+unir(vara, undefined, hebra)  →  parts: madera, liana   (cabeza: la vara)
+unir(eso, otra, atador)       →  juntas: 0-1, 0-2       (siguió siendo la vara)
+```
+
+`unir` deja la parte 0 del cuerpo **izquierdo** en el índice 0. De ahí sale el
+invariante del que depende el armador —**la cabeza de cada subárbol tiene que ser
+su raíz**— y de ahí sale la **quinta** del mismo tipo que las cuatro del tramo
+C·bis:
+
+> un rol que ata su propia junta y **además** es pieza en otra **no se puede
+> armar**, y `definirPlano` lo aceptaba.
+
+**La demostración es corta.** Cuando el atador es uno de los extremos, la unión va
+sin `b` y el atador no puede ir de izquierda —`unir(x, undefined, x)` no es nada—
+así que la cabeza queda en el **otro** extremo. Para atar su segunda junta ese rol
+tendría que ser cabeza, y después de la suya no lo es; antes sí, pero entonces al
+atar la segunda deja de ser un cuerpo suelto y su propia junta lo necesita suelto.
+Las dos no pasan en ningún orden.
+
+**La reparación no fue en el constructor.** Un plano que no se puede armar no tiene
+que llegar hasta ahí: se rechaza en `definirPlano` con `atador-que-no-es-punta`. Y
+el control que hace que la guarda valga: **la caña sigue pasando** — lo que se
+prohíbe no es que el atador sea extremo, es que además tenga otra junta.
+
+#### Las dos puntas coinciden, y eso no es casualidad
+
+El planificador rechaza con «necesita 5 cuerpos y la capacidad es N» y la habilidad
+con «no me entran las piezas en las manos», los dos **antes de atar nada**. Si la
+habilidad fuera más permisiva que el plan habría conocimiento perdido; si fuera
+menos, habría planes verdes que se rompen a mitad de camino — y `unir` no tiene
+inversa, así que lo que se ató queda atado.
 
 #### El vertical, en el mundo de verdad
 

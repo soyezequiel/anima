@@ -91,10 +91,19 @@ Levantarlo pide `Record<RoleName, readonly Ref[]>`, y eso toca la búsqueda ente
 `candidatosPara`, el orden por rol más apretado, la frontera. Tiene su `it.fails`
 con este número en `plan/tests/construir-y-usar-se-publican-aparte.test.ts`.
 
-**Y del otro lado no hay nadie todavía.** `aHabilidad` contesta `undefined` para
-`armar`: el plan se planifica y **no despega**. Escribir la innata `construir` es
-lo que sigue y es la fragua del Hito 8 — el algoritmo ya está medido (once líneas,
-sin búsqueda), así que lo que falta es la costura y no la idea.
+**Y del otro lado ya hay alguien.** La innata `construir` existe y `aHabilidad` la
+llama. Lo que quedó de escribirla es una regla del PLANO que nadie había visto:
+
+> un rol que ata su propia junta y además es pieza en otra **no se puede armar**.
+
+Sale del mismo hecho medido: `unir` deja la cabeza del ensamble en el cuerpo
+izquierdo, y cuando el atador es uno de los extremos no puede ir de izquierda, así
+que la cabeza queda en el otro. Para atar su segunda junta ese rol tendría que ser
+cabeza y no lo es; antes de la suya sí, pero entonces deja de estar suelto y su
+propia junta lo necesita suelto.
+
+Se rechaza en `definirPlano` con `atador-que-no-es-punta` y **no** en el
+constructor: un plano que no se puede armar no tiene que llegar hasta ahí.
 
 ## Enlaces
 
