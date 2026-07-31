@@ -324,7 +324,7 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-07-31</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>6</b> etapas listas · <b>1</b> en curso · <b>6</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>7</b> etapas listas · <b>0</b> en curso · <b>6</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
@@ -334,33 +334,33 @@ p { margin: 0; }
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
     <div class="barra" role="img" aria-label="54 por ciento avanzado">
-      <div class="tramo si" style="width:44.30%"></div>
-      <div class="tramo medio" style="width:9.70%"></div>
+      <div class="tramo si" style="width:54.43%"></div>
+      <div class="tramo medio" style="width:0.00%"></div>
     </div>
     <div class="leyenda">
-      <span class="l-si">terminado · 17,5 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 3,8</span>
-      <span class="l-no">por delante · 18,2</span>
+      <span class="l-si">terminado · 21,5 de 39,5 semanas</span>
+      <span class="l-medio">en curso · 0,0</span>
+      <span class="l-no">por delante · 18,0</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>El punto 3 cerró sus dos mitades: el gate quedó en 11 de 12</h2>
-    <p class="detalle">Lo que le faltaba al punto 3 era «¿quién ejecuta el plan de armar?», y ya lo había dicho el propio planificador: hacía falta una tercera clase de esquema. Entró EsquemaDeObra (ADR II-0023), con un paso final que no es `apply` sino `armar` — el primero del catálogo que le pide algo a una HABILIDAD y no al mundo. Y esa habilidad ya existe: la innata 16, `construir`, arma el árbol de tres piezas contra el mundo de verdad en 51 ticks, con `realizaElPlano` confirmando que la obra ES el plano. Escribirla encontró una QUINTA trampa del plano —un rol que ata su propia junta y además es pieza en otra no se puede armar, y `definirPlano` la aceptaba— ya cerrada. Y el mismo día se le pasó un adversario al trabajo completo: 18 agentes con 5 lentes distintos, cada hallazgo refutado antes de creerle. Sobrevivieron 7, los 7 arreglados: dos eran bugs de verdad (un rol llamado `__proto__` envenenaba una cuenta; un plano sin juntas daba un plan verde con COSTO CERO) y cinco eran tests que afirmaban menos de lo que decía su nombre.</p>
+    <h2>LOS DOCE PUNTOS CUMPLEN — el Gate 5→6 cerró entero</h2>
+    <p class="detalle">Entró `usar`, la innata 17 y el UseSkill del ADR II-0015: delgada a propósito, y no es `poner` con otro nombre —`put` deja un cuerpo apoyado, `place` lo deja DESPLEGADO, y el mundo los trata distinto—. Antes de caminar hasta el sitio le pregunta al cuerpo cuánto engancha (catch), y si da cero no va: no sabe qué es una trampa, le pregunta a la geometría. Con eso el punto 5 cerró sus TRES mitades, medidas contra las habilidades y no contra intenciones escritas a mano: avanza de a una unión sin dejar un estado a mitad de camino, la masa se conserva al cortar la construcción, y desplegar dos veces es un no-op. Y la historia entera —atar la vara y la hebra, dejarla puesta, que el mundo la haga trabajar sola 60 ticks— ya corre con las dos habilidades de verdad, no con intenciones a mano. El gate empezó con 3 de 12 el mismo día y terminó con los doce.</p>
     <ol>
-      <li>Sólo queda el punto 5 a medias. OJO: su fila en el doc del gate no se actualizó después de que el BuildSkill se escribiera — puede ser texto viejo, vale la pena que lo mires vos.</li>
-      <li>Un límite marcado y no bloqueante: un rol que necesita DOS cuerpos todavía no se puede planificar (la regresión liga un cuerpo por rol). Tiene su it.fails con el número.</li>
-      <li>La HONDURA sigue esperando: una cadena de 5 piezas no arma aunque 5 entren en MAX_PARTS, porque el camino mide 4 contra un techo de 3.</li>
+      <li>El gate no reabre el Hito 5, y ahora tampoco queda nada pendiente propio: lo que sigue en el orden del plan es el Hito 6 — el chat, con el criterio ya reescrito (ADR II-0024).</li>
+      <li>Un límite marcado y no bloqueante que sigue abierto: un rol que necesita DOS cuerpos todavía no se puede planificar (la regresión liga un cuerpo por rol). Tiene su it.fails con el número.</li>
+      <li>La HONDURA sigue esperando al día que alguien retome objetos más grandes: una cadena de 5 piezas no arma aunque 5 entren en MAX_PARTS, porque el camino mide 4 contra un techo de 3.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2691</div>
+        <div class="dato-valor">2698</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 627+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 131</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 627+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138</div>
       </div>
       <div class="dato">
         <div class="dato-valor">9 de 9</div>
@@ -370,22 +370,22 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">69</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">re-contado ahora, mismo total que la vez pasada (se cerraron algunos, se abrió el del rol de dos cuerpos) · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1</div>
+        <div class="dato-nota">re-contado ahora, mismo total que la vez pasada · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">23</div>
+        <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">re-contado ahora, +1 desde la vez pasada · nuevo: II-0023, armar una obra es la tercera clase de esquema</div>
+        <div class="dato-nota">re-contado ahora, +1 · II-0024, el piso del chat no es «sin LLM» es «sin espera». Es el primero que AFLOJA un criterio escrito, y dice qué se apretó a cambio</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">22</div>
+        <div class="dato-valor">0</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — el usuario pushea solo. Subieron 6 desde la última vez</div>
+        <div class="dato-nota">rama anima-2 — HEAD y origin/anima-2 coinciden exacto: todo pusheado</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">3 archivos</div>
-        <div class="dato-etiqueta">sin commitear</div>
-        <div class="dato-nota">los mismos tests de physics de tres actualizaciones atrás, SIGUEN sin entrar</div>
+        <div class="dato-valor">limpio</div>
+        <div class="dato-etiqueta">árbol de trabajo</div>
+        <div class="dato-nota">los 3 tests de physics que venían arrastrándose desde hace tres actualizaciones ya entraron</div>
       </div>
   </section>
 
@@ -528,17 +528,17 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa medio">
+      <article class="etapa si">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">Gate</span>
             <h3>Gate 5→6 — objetos emergentes</h3>
-            <span class="chip medio">En curso</span>
+            <span class="chip si">Listo</span>
           </div>
           <p class="frase">Fabricar una trampa para peces que no está precargada, dejarla trabajando sola y volver a retirar la captura.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">11<span class="barra-diagonal">/</span>12</span><span class="semanas">4 sem</span></div>
-        <p class="nota">Van 11 cumpliendo y 1 a medias (el 5), tal cual dice el doc del gate. El punto 12 no lo cumple un grep, lo cumple la física — con un palo pelado la misma partida no saca ni un pez.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">12<span class="barra-diagonal">/</span>12</span><span class="semanas">4 sem</span></div>
+        <p class="nota">LOS DOCE CUMPLEN, tal cual dice el doc del gate. El punto 12 no lo cumple un grep, lo cumple la física — con un palo pelado la misma partida no saca ni un pez. Y ahora hay dos habilidades distintas, construir y usar, para lo que antes era una sola pregunta abierta.</p>
         <details class="criterios">
           <summary>12 criterios</summary>
           <ul>
@@ -546,8 +546,8 @@ p { margin: 0; }
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · registro en un overlay aislado por sesión</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · publicación de capacidades al planificador, con las dos mitades: el planificador emite ir·sostener·…·armar con la revisión adentro (EsquemaDeObra), y la innata construir lo ejecuta contra el mundo real, confirmado por realizaElPlano. Queda un límite marcado: un rol que necesita DOS cuerpos no se puede planificar todavía</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · sin mutación global de SCHEMA_INDEX, con guardián de texto en los dos paquetes</span></li>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>5 · construcción incremental e idempotente: desplegar ya es idempotente; falta el BuildSkill que encadene uniones</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · separar construir de usar: capacidadDe no deja publicar un sello vencido. Caso asimétrico medido: una obra bien construida cuyo uso no se demostró publica capacidad de construir y NINGUNA de usar</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>5 · construcción incremental e idempotente, con sus TRES mitades medidas contra las habilidades: avanza de a una unión sin dejar estado a mitad de camino; la masa se conserva al cortar la construcción; desplegar dos veces es un no-op</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · separar construir de usar, con las dos EJECUTADAS: construir y usar son dos habilidades distintas, con contratos y compromisos distintos — usar es la segunda irreversible del catálogo después de comer, porque desplegar arranca una máquina</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>7 · dos partidas no se contaminan</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>8 · guardar y restaurar conserva la revisión exacta, y el hash es el mismo</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>9 · un cambio de física invalida los sellos, por dos caminos independientes: el sello vencido se rechaza con el mismo código que admit() ya usa, y la revisión del plano lleva la física adentro del hash</span></li>
@@ -563,17 +563,18 @@ p { margin: 0; }
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H6</span>
-            <h3>El chat, sin LLM</h3>
+            <h3>El chat, que no espera al proveedor</h3>
             <span class="chip no">No empezado</span>
           </div>
-          <p class="frase">Le hablás en castellano rioplatense y hace, sin llamar a ningún modelo.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>3</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">Trae una deuda escrita de antemano: el puente entre el castellano hablado y los nombres de procesos físicos es una tabla de alias que hay que escribir a mano y presupuestar.</p>
+          <p class="frase">Le hablás en castellano rioplatense y se mueve antes de que termines de leer tu propia frase.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>4</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">El criterio cambió antes de arrancar (ADR II-0024): el piso no es «sin LLM», es «sin espera». El «≥80% sin red» era un número puesto a dedo antes de tener el corpus y medía la variable equivocada — se cumple con un chat que tarda dos segundos y se incumple con uno instantáneo que entiende el 79%. Lo que NO cambia es la deuda escrita de antemano: el puente entre el castellano hablado y los nombres de procesos físicos es una tabla de alias que hay que escribir a mano, y el modelo no la ahorra.</p>
         <details class="criterios">
-          <summary>3 criterios</summary>
+          <summary>4 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>corpus de 200 frases reales con su lectura esperada, ≥80% resueltas sin red</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>p95 de mensaje a primer movimiento &lt; 150 ms con el proveedor apagado</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>corpus de 200 frases reales con su lectura esperada. La cobertura sin red no es una puerta: la primera corrida fija la línea base y de ahí no baja</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>con el proveedor COLGADO —responde a los 30 s, o nunca— las 200 frases dan el mismo p95 que con el proveedor apagado. Es el punto que un modelo en el camino crítico no puede pasar de ninguna manera</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>p95 de mensaje a primer movimiento &lt; 150 ms en las dos corridas, y el acuse en el mismo frame que el mensaje</span></li>
           <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>transformar «fabricá una trampa para peces» en un objetivo funcional SIN nombrar la solución</span></li>
           </ul>
         </details>
@@ -755,7 +756,7 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina, contra el ÁRBOL DE TRABAJO — que tiene 3 archivos sin commitear, los mismos de hace tres actualizaciones.</p>
+      <p>Re-verificado en esta máquina. El árbol de trabajo está LIMPIO por primera vez en varias actualizaciones, y HEAD coincide exacto con origin/anima-2 (se hizo git fetch para confirmarlo).</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
@@ -764,22 +765,22 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 2691 pasan, 0 fallan — coincide exacto con lo citado en b500fc0</span>
+        <span class="resultado">exit 0 · 2698 pasan, 0 fallan — coincide exacto con lo citado en eda7104</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
-        <span class="resultado">69 llamadas reales, mismo total que la vez pasada</span>
+        <span class="resultado">69 llamadas reales, sin cambios</span>
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
-        <span class="resultado">23 ADRs, +1 (II-0023)</span>
+        <span class="resultado">23 ADRs, sin cambios</span>
       </div>
       <div class="corrida si">
-        <code>git log origin/anima-2..HEAD</code>
-        <span class="resultado">22 commits sin pushear</span>
+        <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
+        <span class="resultado">0 commits sin pushear — todo subido</span>
       </div>
     </div>
-    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia. El commit 82163a8 lo declara en exit 0, 126 de 126, y el commit siguiente (el adversario) no lo volvió a correr.</p>
+    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia. El commit eda7104 (el que cerró el gate) lo declara en exit 0, 126 de 126, 238 s.</p>
   </section>
 
   <section class="seccion">

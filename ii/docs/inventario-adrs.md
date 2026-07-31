@@ -41,6 +41,7 @@ tocar planos, catálogo o UI:
 | [II-0021](decisions/II-0021-el-overlay-de-una-partida-solo-crece.md) | El overlay de una partida sólo crece: revocar es entre partidas | Gate 5→6 · H7 · H10 · refina II-0018 |
 | [II-0022](decisions/II-0022-place-despliega-un-cuerpo-no-construye-un-plano.md) | `place` despliega un cuerpo ya armado, y no construye un plano | Gate 5→6 · revalida H2, H4 · sale de una medición |
 | [II-0023](decisions/II-0023-armar-una-obra-es-la-tercera-clase-de-esquema.md) | Armar una obra es la tercera clase de esquema, y su paso corre una habilidad | Gate 5→6 punto 3 · toca `@anima/plan` y `@anima/mind` · sale de una medición |
+| [II-0024](decisions/II-0024-el-piso-del-chat-no-es-sin-llm-es-sin-espera.md) | El piso del chat no es «sin LLM», es «sin espera» | H6 · reescribe su criterio · toca el presupuesto económico de H8 |
 
 ## Reparto por hito
 
