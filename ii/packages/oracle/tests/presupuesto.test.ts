@@ -2787,7 +2787,14 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     // es una `const` de un test de OTRO paquete, así que ningún import lo trae. Si
     // el arnés del Hito 5 cambia el tanque, el borde de abajo de la ventana se
     // mueve y este archivo tiene que enterarse.
-    const arnes = fileURLToPath(new URL('../../juez/tests/hito-5-la-emergencia.test.ts', import.meta.url))
+    //
+    // Y SE ENTERÓ DE UNA MUDANZA, que también es su trabajo: las constantes
+    // vivían en `hito-5-la-emergencia.test.ts` y el tramo Ñ las mudó a
+    // `el-banco-de-la-mente.ts` (el banco se repartió en tandas, mismo patrón que
+    // `azar.ts`). Este guardián se puso rojo con el archivo viejo —«expected null
+    // not to be null»— que es exactamente lo que tiene que hacer un grep sobre un
+    // fuente que se movió: fallar ruidoso, no leer un número de otro lado.
+    const arnes = fileURLToPath(new URL('../../juez/tests/el-banco-de-la-mente.ts', import.meta.url))
     const fuente = readFileSync(arnes, 'utf8')
     const m = /const TANQUE = ([0-9.]+)/.exec(fuente)
     expect(m).not.toBeNull()
