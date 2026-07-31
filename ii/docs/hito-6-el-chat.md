@@ -320,3 +320,97 @@ hasta que una criatura sale a perseguir un predicado inexistente.
 
 Medido: `@anima/lang` **28 tests**, y la suite entera **2726** (eran 2698),
 typecheck limpio en los diez paquetes.
+
+### Tramo D — la costura soldada, y las cuatro clases de lo que falta
+
+Antes de este tramo, medido: **cero llamadas a `goalGraph` en producción** y **un
+solo sitio** que construía un `GoalNode` —un literal de una línea en
+`mind/src/escalera.ts:1452`, con `after: []` y sin `binds`—. O sea que el
+planificador sabía leer un `binds` y la mente nunca le mandaba uno: la costura
+estaba partida en dos y las dos mitades ya estaban escritas.
+
+**Corrido de punta a punta contra la escena canónica del Hito 5**, sin ninguna
+intención escrita a mano:
+
+```
+── DE LA FRASE AL PLAN ──
+  hacé fuego                     1 nodo(s)  ir·sostener·deshilachar·frotar
+  pescá algo                     1 nodo(s)  ir·sostener·ir·sostener·unir·ir·aplicar
+  conseguí comida                1 nodo(s)  ir·sostener·ir·sostener·unir·ir·aplicar
+  fabricá una trampa para peces  1 nodo(s)  sostener·ir·sostener·unir
+  construi una ahoguera          1 nodo(s)  ir·sostener·deshilachar·frotar
+  andá al río                    0 nodo(s)  — «ir» no lleva a un estado del mundo que yo sepa nombrar
+  traé un palo                   1 nodo(s)  — holding(tag:fibroso)
+  xyzzy plugh                    0 nodo(s)  — no reconocí ningún pedido en esa parte
+```
+
+**«Fabricá una trampa para peces» es cuatro pasos que nadie escribió**, y la
+palabra «trampa» no aparece en ninguno: el plan lo armó la regresión sobre
+`catch>0`. Y «construi una ahoguera», mal escrita, da exactamente el mismo plan
+que «hacé fuego».
+
+#### El `bindeaSlot` no se adivina nunca
+
+El campo **no se valida en ninguna parte**, ni por tipos ni por nombre, y falla
+de dos formas opuestas. Medido sobre la meta de asar, con una fogata a la vista:
+
+| qué se pasó | qué salió |
+|---|---|
+| `slot: 'comida'` (el correcto) | plan de **5 pasos** |
+| sin `binds` | plan de **12 pasos**: vuelve a pescar de cero |
+| `slot: 'este-rol-no-existe'` | **idéntico byte a byte** al de sin `binds` |
+| `slot: 'fuego'` | plan **verde de 10 pasos** poniendo la comida encima del pescado |
+
+El primero vale siete pasos. El tercero se evapora en silencio. El cuarto sale
+verde pidiendo un disparate. **Así que este paquete sólo liga cuando el par
+(firma, slot) está en una tabla escrita a mano y medida.** Perder una ligadura
+cuesta siete pasos; poner la equivocada manda a la criatura a hacer algo absurdo
+con cara de éxito.
+
+#### Y una cláusula NEGADA no se convierte en objetivo
+
+`GoalNode` no tiene signo. Convertir «no hagas fuego» en la meta `emitsPower>0`
+mandaría a la criatura a hacer exactamente lo que le prohibieron. Se descarta
+diciéndolo: *«lo que me pediste que NO haga lo entendí, pero todavía no sé
+guardarme una prohibición»*. Es lo único honesto que se puede hacer hoy — una
+restricción es otra cosa que un objetivo y este sistema no tiene dónde ponerla.
+
+#### Las cuatro clases, distinguiéndose
+
+```
+── QUÉ FALTA ──
+  holding(tag:liquido)   proceso    «no hay ninguna ley en este mundo que lleve a eso»
+  emitsPower>0           habilidad  «sé cómo se hace, pero acá y ahora no me dan las cosas»
+  jointCount>=3          plano      «sé atar cosas, pero no sé qué forma tiene lo que me pedís»
+  magnetismo>=1          fisica     «eso no existe en este mundo: no sé ni cómo se llamaría»
+```
+
+El orden de las preguntas va **de abajo hacia arriba**: primero si la materia
+existe, después si hay ley, después si alguien sabe correrla, y al final si falta
+la forma. Al revés daría respuestas prolijas y falsas —«te falta un plano» cuando
+lo que falta es una sustancia que el mundo no tiene—, que es la peor de las
+cuatro porque manda al cuidador a intentar algo imposible.
+
+**Tres rojos lo corrigieron, y los tres eran míos:**
+
+1. **`jointCount` no es una `QualityId`.** Es una función de la forma del cuerpo,
+   y el catálogo cerrado de `quality.ts` no la tiene. La primera versión la
+   pasaba con un `as QualityId` y el portón de la física la clasificaba como
+   `fisica` — la respuesta que le dice al cuidador que no hay nada que hacer.
+2. **Para las firmas de la forma, «¿hay una ley que establezca ESTA firma?» es la
+   pregunta equivocada.** `union` declara `freeStrandEnds>=1`, `reach>=2` y
+   `catch>0`, y **no declara `jointCount`** — así que la respuesta salía «no hay
+   ninguna ley que dé esa forma», que es falsa: atar es exactamente hacer juntas.
+   La pregunta correcta es **¿existe alguna ley que ensamble?**
+3. **`holding(tag:liquido)` es `proceso`, no `habilidad`.** El agua existe y es
+   líquida, así que la materia está; lo que no hay es ninguna ley que la ponga en
+   una mano. Decir «falta que alguien escriba el cómo» mandaría al cuidador a
+   esperar a la fragua por algo que la fragua no puede resolver.
+
+Y un cuarto que era del arnés y también tenía razón: **«pescá algo» daba `gap`
+porque el pozo estaba en tierra seca.** El esquema de `extraccion` lleva
+`cellHints: { source: [wet >= AGUA_FRANCA] }`, o sea que un pozo sin agua no es
+un pozo del que se pueda pescar.
+
+Medido: `@anima/lang` **37 tests**, suite entera **2735**, typecheck limpio en los
+diez paquetes.
