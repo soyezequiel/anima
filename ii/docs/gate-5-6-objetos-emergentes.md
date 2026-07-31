@@ -363,6 +363,38 @@ tener `package.json`, que es lo que hace paquete a un paquete.
 
 ---
 
+### El tramo E: la historia entera, corrida
+
+**El «se puede mostrar» del gate ya ocurre**, y está en
+`world/tests/la-historia-entera.test.ts`. Los seis pasos en una sola partida, sin
+arneses que salteen ninguno:
+
+```
+  1-2 · junta una vara y una hebra
+  3   · las ata → sale una obra de 2 piezas con catch 0,1500
+  4   · la deja sobre el pozo
+  5   · se va: queda a 6 celdas
+      · el mundo corre 400 ticks sin nadie → retuvo 3 piezas
+  6   · vuelve y se lleva una
+```
+
+**Por qué existe aparte de los otros archivos**, que ya probaban cada pieza: por
+el número 1 de los corregidos de este repo —**medir el catálogo no es medir el
+mundo**—. Cinco piezas que pasan sus tests no son una historia que ocurre.
+
+Y el segundo bloque afirma que la historia es **reproducible**: dos corridas dan
+el mismo `worldHash` **y** el mismo `renderDescriptorHash`. Con dispositivos que
+sacan del mismo dado que la criatura, ahí es justo donde una divergencia se
+escondería.
+
+Lo que este archivo NO usa, y es la mitad del punto: no hay `kind`, no hay receta,
+no hay nada llamado trampa. Lo único que hace que la obra pesque es que su `catch`
+dé mayor que cero. **Tampoco hay mente**: las intenciones se emiten a mano. Que la
+criatura DECIDA hacer esto es del Hito 5 y de la fragua; que el mundo lo PERMITA
+es del gate, y es lo que se mide acá.
+
+---
+
 ### El tramo D·quater: el descriptor visual
 
 **Punto 11 — CUMPLE.** El gate lo exige **aunque la UI no exista todavía**, y ése
@@ -409,10 +441,29 @@ estado.
    notaba porque nada dependía todavía del tick de despliegue. Se puso rojo solo al
    entrar este sistema. Ahora van los dos en el mismo tick y con dos actores —un
    actor no emite dos intenciones en un tick, la segunda sale `ya-actuo`—.
-3. **`fibra` no existe como sustancia.** El fixture de la obra la usaba y `catch`
-   daba cero, así que el dispositivo no sacaba nada y el sistema parecía roto. Con
-   `liana` da 0,15. Vale mirarlo aparte: `physics/tests/mundo-de-prueba.ts` arma su
-   `CANA` con esa misma sustancia inexistente, o sea que esa caña no es una caña.
+3. **`fibra` no existe EN LA SEMILLA.** El fixture de la obra la usaba contra
+   `buildSeedPhysics()` y `catch` daba cero, así que el dispositivo no sacaba nada
+   y el sistema parecía roto. Con `liana` da 0,15.
+
+   > **CORRECCIÓN, medida el 2026-07-31.** La sospecha que seguía a esto —que
+   > `physics/tests/mundo-de-prueba.ts` arma su `CANA` con la misma sustancia
+   > inexistente y por lo tanto «esa caña no es una caña»— **es falsa**. Ese
+   > archivo escribe su PROPIO catálogo y `fibra` está adentro: contra `mundo()`,
+   > `CANA` mide `catch` 0,15 y `CANA_CON_ANZUELO` 0,55. Es una caña.
+   >
+   > Y la simetría es el punto: contra `mundo()`, una `CANA` de `liana` mide 0.
+   > **El error nunca fue la sustancia, fue cruzar un cuerpo con el catálogo
+   > equivocado**, y eso no falla — `qualityOf` devuelve 0 en silencio.
+   >
+   > Barriendo los fixtures de los ocho paquetes con ese criterio aparece **un
+   > solo caso real**: `physics/tests/lo-que-cuesta-armar-un-plano.test.ts`, que
+   > importa `cuerpo`/`parte` de `mundo-de-prueba.ts` pero arma la física con
+   > `buildSeedPhysics()`. Su atador de `fibra` ataba con `strength` 0 y sus diez
+   > tests seguían verdes, porque miden la FORMA de la obra —partes, juntas,
+   > topología— y la forma sale igual con un atador fantasma. Arreglado a `liana`
+   > (`tensile` 0,72 · `cohesion` 0,62 · `strength` 0,69), más un bloque (0) que se
+   > pone rojo si el par cuerpo↔catálogo se vuelve a cruzar mal. El guard vive en
+   > `materiaFantasma`, en `mundo-de-prueba.ts`.
 
 ---
 

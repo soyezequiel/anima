@@ -160,7 +160,7 @@ capacidades físicas disponibles en ese nivel.*
 
 ## 1 · Dónde está el proyecto
 
-**Nueve paquetes, 2597 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
+**Nueve paquetes, 2599 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
 nueve typechecks limpios.** Corridos enteros al cerrar el tramo D del gate, mirando
 el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
 `ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
@@ -186,7 +186,7 @@ otra máquina, hay que pushear antes.
 | paquete | qué es | tests |
 |---|---|---:|
 | `@anima/physics` | materia, 12 leyes, `admit()`, 4 procesos aplicables, **`BlueprintDefinition`** | 646 |
-| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj, **las obras desplegadas que trabajan solas** | 604 (+1 skipped) |
+| `@anima/world` | el árbitro determinista, `stepWorld`, metabolismo, reloj, **las obras desplegadas que trabajan solas** | 606 (+1 skipped) |
 | `@anima/oracle` | el dios perezoso, biomas, pozos, libro calórico | 270 |
 | `@anima/skills` | el sandbox y las 15 innatas | 193 |
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 121 |
