@@ -67,12 +67,28 @@ export {
 // dejar de leer `SCHEMA_INDEX` es `@anima/mind`, y para eso necesita con qué.
 export {
   CATALOGO_CORE,
+  capacidadDe,
   catalogoDe,
   conOverlay,
   esquemasDe,
+  pedidosDelPlano,
   type CatalogCapability,
   type PlannerCatalogView,
+  type Publicada,
 } from './catalogo.js'
+// El catálogo de una partida SALE DE LA CRÓNICA (punto 10 del gate): una sola
+// lista append-only con dos lectores, `stepWorld` para el mundo y `catalogoHasta`
+// para el catálogo. Sale del paquete porque quien tiene el journal en la mano es
+// `@anima/mind`, que está arriba de los dos.
+export {
+  catalogoDeLaCronica,
+  catalogoHasta,
+  esRegistro,
+  registrar,
+  sinRegistros,
+  type RegistroDeCatalogo,
+  type RenglonDeCronica,
+} from './cronica.js'
 export { goalGraph, orden, type Lectura } from './objetivos.js'
 // `pasoYaEstaHecho` sale del paquete a propósito, y no es un detalle interno que
 // se escapó: la mente necesita hacerse LA MISMA pregunta en el momento de
