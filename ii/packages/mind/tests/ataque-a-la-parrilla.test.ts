@@ -826,7 +826,7 @@ describe('4 · lo que cuesta el fuego contra lo que rinde el bocado, en la misma
     expect(precio).toBeGreaterThan(calCocido * 25)
   })
 
-  it('LA CORRIDA DE VERDAD: −561,99 por el fuego, +19,84 por el bocado', () => {
+  it('LA CORRIDA DE VERDAD: −231,23 por el fuego, +19,84 por el bocado', () => {
     const r = correrConMente(conLenaSeca(1000), 700)
     const frota = r.vuelos.find((v) => v.nombre.startsWith('frotar'))
     const espera = r.vuelos.find((v) => v.nombre.startsWith('esperar'))
@@ -845,16 +845,27 @@ describe('4 · lo que cuesta el fuego contra lo que rinde el bocado, en la misma
       `  ${' '.repeat(70)}────────────`,
       `  ${' '.repeat(70)}${num(dFrota + dEspera + dTraga)}`,
     ])
-    // El fuego se lleva más de la mitad del tanque lleno.
-    expect(dFrota).toBeLessThan(-500)
-    // El bocado devuelve menos del 4% de eso.
+    // ─── EL FUEGO PASÓ DE MEDIO TANQUE A UN CUARTO, Y EL SIGNO NO CAMBIÓ ───
+    //
+    // Esto decía «el fuego se lleva más de la mitad del tanque lleno» y lo afirmaba
+    // con `dFrota < -500`: eran −561,99. Con la eficiencia de `friccion` en 0,85
+    // (tramo N) son **−231,23**, o sea el 23% del tanque. Se afirma la banda de los
+    // dos lados —menos de medio tanque, más de cien— porque lo que este bloque mide
+    // es la PROPORCIÓN entre lo que el fuego cuesta y lo que el bocado devuelve, y
+    // esa proporción sigue siendo la misma historia con otro número.
+    expect(dFrota).toBeGreaterThan(-500)
+    expect(dFrota).toBeLessThan(-100)
+    // El bocado devuelve menos del 10% de eso. Era menos del 5%, y no subió porque
+    // el bocado rinda más: sube porque el fuego bajó. El bocado no se movió.
     expect(dTraga).toBeGreaterThan(0)
-    expect(dTraga).toBeLessThan(-dFrota * 0.05)
-    // Y la cadena entera es negativa por más de quinientos.
-    expect(dFrota + dEspera + dTraga).toBeLessThan(-500)
+    expect(dTraga).toBeLessThan(-dFrota * 0.1)
+    // Y LA CADENA ENTERA SIGUE SIENDO NEGATIVA, que es lo que el bloque vino a
+    // decir: encender, esperar y comer deja a la criatura peor que si no hubiera
+    // hecho nada. Abaratar el fuego 2,43× no dio vuelta el signo, lo acercó.
+    expect(dFrota + dEspera + dTraga).toBeLessThan(-100)
   })
 
-  it('20.000 TICKS: con tres manos LLEGA VIVA, y con más manos muere en el 361', () => {
+  it('20.000 TICKS: con tres manos LLEGA VIVA, y con más manos muere en el 1210', () => {
     // ─── LA NO-MONOTONÍA, QUE ES LA QUE DELATA EL SIGNO ────────────────────
     //
     // Con tres manos la criatura enciende UNA vez y se queda con el tizón apagado en
@@ -906,10 +917,17 @@ describe('4 · lo que cuesta el fuego contra lo que rinde el bocado, en la misma
     expect(tres.murioEn).toBe(-1)
     expect(tres.alientoFinal).toBeGreaterThan(100)
     // La no-monotonía, que es el hallazgo: más manos, más fuegos, y la que podía
-    // volver a encender es la que se muere — adentro del primer 2% de la partida.
+    // volver a encender es la que se muere.
+    //
+    // EL TICK SE CORRIÓ DEL 361 AL 1210 CON LA EFICIENCIA EN 0,85 (tramo N), y el
+    // hallazgo NO se movió ni un poco: la de tres manos llega viva a los 20.000 y la
+    // de seis se muere en el primer 6% de la partida. Abaratar el fuego 2,43× le
+    // compró 849 ticks a la que se mata encendiendo, y sigue matándose. **Eso es lo
+    // que quiere decir que el problema sea el SIGNO y no el precio**: mover el
+    // precio corre el tick de la muerte y no la cambia de lado.
     expect(seis.cuenta.get('frotar') ?? 0).toBeGreaterThan(tres.cuenta.get('frotar') ?? 0)
     expect(seis.murioEn).toBeGreaterThan(0)
-    expect(seis.murioEn).toBeLessThan(20_000 / 50)
+    expect(seis.murioEn).toBeLessThan(20_000 / 10)
   }, 300_000)
 })
 

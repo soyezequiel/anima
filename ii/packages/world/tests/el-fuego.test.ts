@@ -180,13 +180,19 @@ describe('frotar lleva la vara a 375 °C en 2,40 s, a cualquier frecuencia', () 
 describe('encender se paga por MASA, y por eso se enciende con yesca', () => {
   it('el costo medido es `heatCapacity × ΔT / eficiencia`, y la tabla', () => {
     // `heatCapacity` es EXTENSIVA, así que el precio de subir un cuerpo ΔT grados
-    // es `heatCapacity × ΔT` de energía y `heatCapacity × ΔT / 0,35` de `stamina`.
-    // Con un tanque de arranque de 500 y un techo de catálogo de 1000, eso separa
-    // lo que se puede encender de lo que no — sin que ninguna regla diga «la
-    // yesca prende y el leño no».
+    // es `heatCapacity × ΔT` de energía y `heatCapacity × ΔT / eficiencia` de
+    // `stamina`. Con un tanque de arranque de 500 y un techo de catálogo de 1000,
+    // eso separa lo que se puede encender de lo que no — sin que ninguna regla diga
+    // «la yesca prende y el leño no».
+    //
+    // LA EFICIENCIA PASÓ DE 0,35 A 0,85 (tramo N) y toda esta tabla bajó con ella,
+    // en la misma razón porque es el único factor que cambió. El porqué está en el
+    // encabezado de `FRICCION` y la ventana en
+    // `la-cuenta-de-los-veinte-mil.test.ts`, bloque 6; el corto es que con 0,35 la
+    // criatura del criterio (5) no podía encender NADA.
     const w = elBanco(1, 20)
     const efic = eficienciaDeFrotar(w)
-    expect(efic).toBe(0.35)
+    expect(efic).toBe(0.85)
 
     const filas: string[] = []
     const esperado: number[] = []
@@ -204,7 +210,11 @@ describe('encender se paga por MASA, y por eso se enciende con yesca', () => {
       )
     }
     // Los cuatro números de la tabla del ADR II-0010, clavados.
-    expect(esperado).toEqual([141.43, 276.86, 1384.29, 2768.57])
+    // Los cuatro con 0,35 eran [141,43 · 276,86 · 1384,29 · 2768,57], y bajaron
+    // todos en la misma razón (0,35/0,85 = 0,4118) porque la eficiencia es el único
+    // factor que se movió: la tabla del ADR II-0010 sigue diciendo lo mismo sobre la
+    // MASA, que es lo que vino a decir.
+    expect(esperado).toEqual([58.24, 114, 570, 1140])
 
     // Y MEDIDO EN EL MUNDO, no sólo despejado: lo que la criatura gasta de verdad
     // es el precio térmico más lo que cuesta estar viva los 2,40 s que tarda.
@@ -215,10 +225,16 @@ describe('encender se paga por MASA, y por eso se enciende con yesca', () => {
     // grados que faltan los pone la llama gratis. Encender pasó de costar 352,71
     // a costar 282,17 para la vara de 0,2 kg, y el techo de lo que se puede
     // encender con un tanque de 1000 subió de 0,55 kg a algo más de 0,6.
+    //
+    // Y CON LA EFICIENCIA EN 0,85 ESE TECHO SE FUE A ~1,7 kg: la vara de 0,2 sale
+    // 116,02 y la de 1 kg —que era LA que no se podía encender, y de donde salía
+    // «se enciende con yesca y no con leños»— sale 576,82 y SÍ entra en un tanque
+    // lleno. La frase sigue valiendo para la criatura del criterio (5), que arranca
+    // con 310, y dejó de valer para una con el tanque lleno. Está medido abajo.
     const medidas: string[] = []
     const empujadoHasta = 15 + (120 / 20) * 48
     expect(empujadoHasta).toBe(303)
-    for (const m of [0.2, 0.4, 0.5, 0.55, 0.6]) {
+    for (const m of [0.2, 0.4, 0.5, 0.55, 0.6, 1]) {
       const r = frotarHasta375(m, 20)
       const termico = (m * 1.7 * (empujadoHasta - 15)) / efic
       const vivir = (48 / 20) * COSTO_VIVIR_POR_SEGUNDO
@@ -228,12 +244,19 @@ describe('encender se paga por MASA, y por eso se enciende con yesca', () => {
           `  (${termico.toFixed(2)} de calor + ${vivir.toFixed(2)} de vivir)`,
       )
     }
-    // Y a 1 kg ya no alcanza: el tanque tiene techo 1000 y hacen falta 1401.
-    const noLlega = frotarHasta375(1, 20)
+    // ─── EL BORDE SE CORRIÓ DE 1 kg A ~1,8 kg, Y SIGUE EXISTIENDO ──────────
+    //
+    // Acá decía «y a 1 kg ya no alcanza: el tanque tiene techo 1000 y hacen falta
+    // 1401», y lo afirmaba con `Number.isNaN(noLlega.pasos)`. Con la eficiencia en
+    // 0,85 el kilo sale 576,82 y entra, así que el borde se busca donde HOY está:
+    // 1,8 kg pide 1038,1 y no entra. Lo que el bloque afirma no es el número, es que
+    // el borde EXISTA — que es lo que hace que encender sea una decisión y no un
+    // trámite—, y sigue existiendo.
+    const noLlega = frotarHasta375(1.8, 20)
     expect(Number.isNaN(noLlega.pasos)).toBe(true)
     expect(noLlega.pico).toBeLessThan(375)
     medidas.push(
-      `  madera    1 kg → NO LLEGA: se queda en ${noLlega.pico.toFixed(2)} °C con el tanque vacío`,
+      `  madera  1.8 kg → NO LLEGA: se queda en ${noLlega.pico.toFixed(2)} °C con el tanque vacío`,
     )
     log([
       '══ (b) EL PRECIO DE ENCENDER, POR MASA ════════════════════════════════',
@@ -246,19 +269,24 @@ describe('encender se paga por MASA, y por eso se enciende con yesca', () => {
 
   it('documentado · los «48 de stamina» del comentario de `FRICCION` no son reproducibles', () => {
     // El comentario decía «se comen 48 de `stamina`». Con la cuenta que el mundo
-    // cobra hoy —`heatCapacity × ΔT / 0,35`— 48 corresponden a una vara de 27
+    // cobra hoy —`heatCapacity × ΔT / eficiencia`— 48 corresponden a una vara de 67
     // gramos. El número es anterior a que `heatCapacity` entrara en el precio.
     // Queda medido acá para que nadie lo busque de nuevo.
+    //
+    // Los dos números tenían el 0,35 COPIADO y se movieron con la calibración del
+    // tramo N; ahora la eficiencia se lee del mundo, que es de donde tendría que
+    // haber salido siempre. Con 0,35 eran 27 gramos y 1748,57.
     const w = elBanco(1, 20)
-    const masaQueCostaria48 = (48 * 0.35) / (1.7 * 360)
-    expect(masaQueCostaria48).toBeLessThan(0.03)
-    // La vara de 1 kg del comentario cuesta 1748,57, o sea 1,75 tanques llenos.
-    const deVerdad = (qualityOf(cuerpo('x', 'madera', 1), 'heatCapacity', w.phys) * 360) / 0.35
-    expect(Number(deVerdad.toFixed(2))).toBe(1748.57)
+    const efic = eficienciaDeFrotar(w)
+    const masaQueCostaria48 = (48 * efic) / (1.7 * 360)
+    expect(masaQueCostaria48).toBeLessThan(0.07)
+    // La vara de 1 kg del comentario cuesta 720, o sea 0,72 tanques llenos.
+    const deVerdad = (qualityOf(cuerpo('x', 'madera', 1), 'heatCapacity', w.phys) * 360) / efic
+    expect(Number(deVerdad.toFixed(2))).toBe(720)
     log([
       '══ LOS 48 DEL COMENTARIO ══════════════════════════════════════════════',
       `  48 de stamina alcanzan para una vara de ${(masaQueCostaria48 * 1000).toFixed(1)} gramos.`,
-      `  La de 1 kg que el comentario nombra cuesta ${deVerdad.toFixed(2)}, o sea 1,75 tanques.`,
+      `  La de 1 kg que el comentario nombra cuesta ${deVerdad.toFixed(2)}, o sea ${(deVerdad / 1000).toFixed(2)} tanques.`,
     ])
   })
 })
@@ -371,12 +399,19 @@ describe('la cadena: la vara prende la yesca, la yesca prende el leño, el leño
     // siguiente, TODO vuelve al ambiente», y el pescado se quedaba en 0,513 contra
     // los 0,85 que el banco hermano llama «cocido».
     //
-    // La criatura se sigue muriendo —ahora a los 3,45 s, porque encender le sale
-    // más barato y por lo tanto frota menos tiempo antes de agotarse— pero el
-    // fuego que dejó hecho sigue ahí, y el pescado llega a 0,950. Es el criterio
-    // (d) del ADR II-0011: cocinar sin que nadie frote.
+    // La criatura se sigue muriendo —pero el fuego que dejó hecho sigue ahí, y el
+    // pescado llega a 0,950. Es el criterio (d) del ADR II-0011: cocinar sin que
+    // nadie frote.
+    //
+    // EL SEGUNDO EN QUE SE MUERE SE MOVIÓ DE 3,45 A 8,35, Y ES POR LA CALIBRACIÓN.
+    // Con la eficiencia de `friccion` en 0,85 (tramo N) frotar cuesta 2,43× menos,
+    // así que el mismo tanque de 1000 le dura 2,42× más frotando. No aguanta más
+    // porque coma: aguanta más porque el fuego salió más barato, y eso es
+    // exactamente lo que la calibración vino a comprar. El texto viejo decía «a los
+    // 3,55 s la criatura agota los 1000 de `stamina`, deja de frotar y se muere; el
+    // tick siguiente, TODO vuelve al ambiente», y el pescado se quedaba en 0,513.
     const c = correrLaCadena(20)
-    expect(c.murioEn).toBeCloseTo(3.45, 6)
+    expect(c.murioEn).toBeCloseTo(8.35, 6)
     expect(c.digestibilidad).toBeGreaterThanOrEqual(0.85)
     // 0,9456 en los doce segundos que corre la cadena; con sesenta llega al techo
     // de 0,95 que la ley 5 declara. Contra 0,513 antes del ADR II-0011.

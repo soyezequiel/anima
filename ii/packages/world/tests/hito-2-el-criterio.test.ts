@@ -438,11 +438,27 @@ describe('el mismo hash en dos motores de JavaScript — PENDIENTE, y qué falta
     //   el tercero, antes del ADR II-0011: 74e1a1910bbf5042
     //   el tercero, con el segundo a 1,0:  7c1eda07e25a1c3c
     //   el tercero, con el ciclo cerrado:  aed17455a077126a
+    //
+    // ─── Y ESTA VEZ SE MOVIERON TRES DE LOS CUATRO, Y ESO ESTÁ BIEN ────────
+    //
+    // La eficiencia de `friccion` pasó de 0,35 a 0,85 (tramo N), y eso NO es una
+    // constante del metabolismo como las anteriores: **está adentro del catálogo de
+    // procesos**, o sea adentro de la física. Así que se movieron
+    //
+    //   · `hashPhysics`      37e26e82459ff975 → 735e3041135c9d9a   la física cambió
+    //   · el mundo INICIAL   be714c54e109f8c5 → 5a033b2a5dbceeb3   lo arrastra: el
+    //                        estado del mundo lleva su física adentro
+    //   · el mundo a los 10  2e0d8d97551f5482 → 49cb5179a8115b44   por lo mismo
+    //
+    // y NO se movió la cadena del journal, que es la que importa: `63fbe8...` sigue
+    // igual. Las INTENCIONES son las mismas, o sea que cambió el mundo y no la
+    // interfaz. Que este bloque distinga «se movió el tercero solo» de «se movieron
+    // tres» sin que nadie se lo explique es exactamente para lo que existe.
     const s = partida()
-    expect(hashWorldState(s)).toMatchInlineSnapshot(`"be714c54e109f8c5"`)
-    expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"37e26e82459ff975"`)
+    expect(hashWorldState(s)).toMatchInlineSnapshot(`"5a033b2a5dbceeb3"`)
+    expect(hashPhysics(s.phys)).toMatchInlineSnapshot(`"735e3041135c9d9a"`)
     const tras10 = correr(partida(), 9, 10, 4, 1000)
-    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"2e0d8d97551f5482"`)
+    expect(hashWorldState(tras10.fin)).toMatchInlineSnapshot(`"49cb5179a8115b44"`)
     expect(tras10.journal.chain).toMatchInlineSnapshot(`"63fbe8efeeee7f54"`)
   })
 })

@@ -1896,19 +1896,29 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // despeja de `@anima/physics` y en `perceive/tests/ataque-a-la-costura.test.ts`
     // se MIDE corriendo `stepWorld`.
     //
-    // ─── EL NÚMERO SE MOVIÓ, Y SE MOVIÓ POR LA MITAD QUE NO ES FÍSICA ──────
+    // ─── EL NÚMERO SE MOVIÓ DOS VECES, POR LAS DOS MITADES DISTINTAS ───────
     //
-    // Los dos daban **659,8629**. Hoy dan **658,2789**, y la diferencia son
-    // exactamente 1,584 = 2,4 s × (1,0 − 0,34): el precio del fuego tiene dos
-    // sumandos y sólo uno es térmico.
+    // El precio del fuego tiene DOS sumandos y sólo uno es térmico, y cada perilla
+    // que se movió tocó uno solo. Las dos veces, en orden:
     //
-    //   térmico  657,4629  heatCapacity × ΔT / eficiencia — NO se movió ni un dígito
-    //   vivir      2,4000 → 0,8160  los 2,4 s de frotar, a 1,0/s y ahora a 0,34/s
-    //   TOTAL    659,8629 → 658,2789
+    //   1) bajó `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a 0,34 (tramo M)
+    //        térmico  657,4629  NO se movió ni un dígito
+    //        vivir      2,4000 → 0,8160   los 2,4 s de frotar
+    //        TOTAL    659,8629 → 658,2789
     //
-    // Que el térmico no se mueva es lo que hay que leer: bajar el costo de vivir no
-    // abarató el fuego, le sacó el 0,24% que no era del fuego. Todo lo que este
-    // archivo concluye de acá para abajo se movió por otro lado, y no por éste.
+    //   2) subió la eficiencia de `friccion` de 0,35 a 0,85 (tramo N)
+    //        térmico  657,4629 → 270,7200   heatCapacity × ΔT / eficiencia
+    //        vivir      0,8160  NO se movió
+    //        TOTAL    658,2789 → 271,5360
+    //
+    // Y ES EL MISMO RENGLÓN CONTANDO LA HISTORIA DE LOS DOS LADOS: la primera vez
+    // el térmico quieto decía «bajar el costo de vivir no abarató el fuego, le sacó
+    // el 0,24% que no era del fuego»; la segunda, el sumando de vivir quieto dice
+    // que esta vez SÍ se abarató el fuego y nada más. Cada perilla en su columna.
+    //
+    // El porqué de la segunda está en el encabezado de `FRICCION` y medido en
+    // `world/tests/la-cuenta-de-los-veinte-mil.test.ts`: con 0,35 la criatura del
+    // criterio (5) no podía encender NADA.
     const vara: Body = {
       id: 'v',
       form: 'vara',
@@ -1926,11 +1936,15 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
         `económico ·   térmico ${PRECIO_DEL_FUEGO.termico.toFixed(4)} (= heatCapacity × ΔT / ${String(EL_DRIVE_DE_FROTAR.efficiency)}) + vivir ${(PRECIO_DEL_FUEGO.segundos * COSTO_VIVIR_POR_SEGUNDO).toFixed(4)} durante ${PRECIO_DEL_FUEGO.segundos.toFixed(2)} s\n` +
         `económico ·   TOTAL ${PRECIO_DEL_FUEGO.precio.toFixed(4)} de stamina, contra un tanque que topa en 1000`,
     )
-    expect(Number(PRECIO_DEL_FUEGO.precio.toFixed(4))).toBe(658.2789)
+    expect(Number(PRECIO_DEL_FUEGO.precio.toFixed(4))).toBe(271.536)
     // Y el térmico clavado aparte, que es la parte que NINGUNA perilla del
     // metabolismo puede mover: si mañana se vuelve a tocar el costo de vivir, este
     // renglón tiene que seguir igual o lo que cambió no fue el costo de vivir.
-    expect(Number(PRECIO_DEL_FUEGO.termico.toFixed(4))).toBe(657.4629)
+    expect(Number(PRECIO_DEL_FUEGO.termico.toFixed(4))).toBe(270.72)
+    // Y la mitad de vivir, que es la que la eficiencia NO puede mover: mismo
+    // argumento con los papeles cambiados. Con los dos renglones clavados, mover
+    // cualquiera de las dos perillas dice cuál se movió sin tener que despejarlo.
+    expect(Number((PRECIO_DEL_FUEGO.segundos * COSTO_VIVIR_POR_SEGUNDO).toFixed(4))).toBe(0.816)
 
     // Y LA VARA BARATA NO SIRVE, que es lo que este bloque agrega. Los 282,17 de
     // una vara de 0,2 kg —el número con el que el `it.fails` de
@@ -1939,9 +1953,11 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // se queda en `digestibility` 0,3800, o sea crudo. Encender y cocinar son dos
     // umbrales distintos y hay un factor de 2,34 entre ellos.
     const barata = precioDeEncender(0.2, 'madera')
-    // 282,1714 con el costo de vivir en 1,0; los 1,584 de diferencia son los mismos
-    // 2,4 s de frotar, porque los dos fuegos frotan los mismos 48 pasos.
-    expect(Number(barata.precio.toFixed(4))).toBe(280.5874)
+    // 282,1714 con el costo de vivir en 1,0 y 280,5874 con 0,34; los 1,584 de esa
+    // primera diferencia eran los mismos 2,4 s de frotar, porque los dos fuegos
+    // frotan los mismos 48 pasos. Con la eficiencia en 0,85 se mueve la otra mitad,
+    // la térmica, y queda en 116,016.
+    expect(Number(barata.precio.toFixed(4))).toBe(116.016)
     expect(PRECIO_DEL_FUEGO.precio / barata.precio).toBeGreaterThan(2.3)
     console.log(
       `económico ·   la vara de 0,2 kg cuesta ${barata.precio.toFixed(2)} y NO cocina (el pescado se queda en 0,3800): ` +
@@ -1980,8 +1996,15 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
         `económico ·   cocinar una pieza de 1 kg paga ${deUnKilo.toFixed(2)} de stamina → ${String(porFuegoUnKilo)} por fuego (el adversario, con el fuego de un tick, midió 332; sin el veneno, 145)\n` +
         `económico ·   cocinar una pieza de ${String(unfx(MASA_DE_UNA_PIEZA))} kg paga ${LO_QUE_PAGA_UNA_PIEZA.toFixed(2)} → ${String(porFuego)} por fuego (sin el veneno eran 73)`,
     )
-    expect(porFuegoUnKilo).toBe(67)
-    expect(porFuego).toBe(34)
+    // ─── LOS DOS BAJARON A LA MITAD, Y NO ES DEL BOCADO ────────────────────
+    //
+    // Eran 67 y 34, y hoy son 28 y 14. Lo que un bocado paga NO se movió —9,95 la
+    // pieza de 1 kg y 19,89 la de 2, los mismos de antes—: lo que bajó es el
+    // numerador, o sea el fuego, porque la eficiencia de `friccion` pasó de 0,35 a
+    // 0,85 (tramo N, ver el encabezado de `FRICCION`). Es la misma división con el
+    // divisor quieto, y por eso los dos cocientes se movieron en la misma razón.
+    expect(porFuegoUnKilo).toBe(28)
+    expect(porFuego).toBe(14)
 
     // Y LO QUE ESO SIGNIFICA EN UNA PARTIDA, que es donde el número se vuelve
     // accionable: la criatura COMÚN saca entre `min` y `max` piezas en los 1000
@@ -2157,7 +2180,20 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // `toBe(91)`, y antes de eso era un `it.fails` con `toBeGreaterThan(0)`. Hoy
     // ninguna partida termina debiendo: es el mismo renglón cerrando el círculo.
     expect(negativas).toBe(0)
-    expect(Number(e.min.toFixed(1))).toBe(25.8)
+    // ─── LA HOLGURA SE MULTIPLICÓ POR DIECISÉIS, Y HAY QUE SABER POR QUÉ ────
+    //
+    // Era 25,8 y es 412,6. No mejoró la partida: se abarató el fuego. La eficiencia
+    // de `friccion` pasó de 0,35 a 0,85 (tramo N) y el fuego bajó de 658,28 a
+    // 271,54, así que la partida más flaca dejó de estar al filo. Es exactamente el
+    // margen que el bloque de arriba llama `holgura`, visto después de restar.
+    //
+    // Y LO QUE ESO NO QUIERE DECIR: no quiere decir que el criterio (5) del Hito 5
+    // se cumpla. Acá se modela una criatura que pesca sin fallar los 1000 segundos y
+    // cocina todo lo que saca. La cuenta de la criatura de verdad —que arranca con
+    // 310 y no con el tanque lleno— está en
+    // `world/tests/la-cuenta-de-los-veinte-mil.test.ts`, y ahí el fuego sigue
+    // costando 244,65 contra un tanque de 310.
+    expect(Number(e.min.toFixed(1))).toBe(412.6)
     // Y la que menos margen tiene lo tiene POSITIVO, que es la forma fuerte de
     // decirlo: no son 99 y una cola, son las cien del mismo lado.
     expect(e.min).toBeGreaterThan(0)
@@ -2693,18 +2729,41 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     //   99 de 100 .............. con el veneno del cocido cobrado, debía 636,3
     //    0 de 100 .............. con el costo de vivir en 0,34, la más flaca SOBRA
     //                           23,7 — y eso es lo que la calibración compró
+    //    0 de 100 .............. con la eficiencia de frotar en 0,85, sobra 410,5
+    //
+    // El último renglón es de OTRA perilla y hay que leerlo aparte: no es que las
+    // partidas rindan más, es que el fuego bajó de 658,28 a 271,54 (tramo N). La
+    // holgura de la más flaca se multiplicó por diecisiete y nadie pescó un pescado
+    // más.
     //
     // Que sean las cien es lo que hace que la ventana contenga al número vigente:
     // con una sola que debiera, seguiría siendo una cola y no un intervalo.
     expect(hornada.filter((x) => x <= 0).length).toBe(0)
-    expect(Number(eHornada.min.toFixed(1))).toBe(23.7)
-    // Y LO QUE APARECIÓ AL DARSE VUELTA, que es el aporte nuevo del bloque: **la
-    // estrategia pasó a decidir**. Con el 1,0 las dos estrategias de leña daban
-    // negativo y daba igual cuál se eligiera; con 0,34 la hornada cierra en las cien
-    // y el fuego SOSTENIDO sigue debiendo en 19 de 100. Antes la elección era
-    // decorativa; ahora separa vivir de morirse.
-    expect(eSostenido.min).toBeLessThan(0)
-    expect((netos.get('sostenido') as number[]).filter((x) => x <= 0).length).toBe(19)
+    expect(Number(eHornada.min.toFixed(1))).toBe(410.5)
+    // ─── LA ESTRATEGIA DECIDIÓ DURANTE UN TRAMO, Y VOLVIÓ A NO DECIDIR ──────
+    //
+    // Este bloque decía, y era su aporte: «**la estrategia pasó a decidir**. Con el
+    // 1,0 las dos estrategias de leña daban negativo y daba igual cuál se eligiera;
+    // con 0,34 la hornada cierra en las cien y el fuego SOSTENIDO sigue debiendo en
+    // 19 de 100. Antes la elección era decorativa; ahora separa vivir de morirse».
+    // Lo afirmaba con `eSostenido.min < 0` y `19 de 100`.
+    //
+    // Se dio vuelta otra vez, y esta vez para atrás: con la eficiencia de `friccion`
+    // en 0,85 (tramo N) el fuego bajó de 658,28 a 271,54 y **el sostenido pasó a dar
+    // positivo en las cien**, con la más flaca en +135,33. La elección volvió a ser
+    // decorativa, y eso es un COSTO de esa calibración, no un logro: la única
+    // decisión económica que el mundo le hacía tomar a la criatura dejó de tener
+    // consecuencia.
+    //
+    // Se afirma la dirección nueva y no se afloja el guardián, que sigue siendo el
+    // mismo: mide si las dos estrategias se distinguen. Si mañana el fuego vuelve a
+    // encarecerse, esto se pone rojo y la nota de arriba dice qué mirar. Y queda
+    // afirmado también que el sostenido sigue siendo el PEOR de los dos —eso no lo
+    // borró la calibración—, que es lo que impide que este bloque se vuelva mudo.
+    const netosSostenido = netos.get('sostenido') as number[]
+    expect(eSostenido.min).toBeGreaterThan(0)
+    expect(netosSostenido.filter((x) => x <= 0).length).toBe(0)
+    expect(eSostenido.min).toBeLessThan(eHornada.min)
   })
 
   it('LA VENTANA ENTERA DE `COSTO_VIVIR_POR_SEGUNDO`, con sus DOS bordes y no uno', async () => {
@@ -2777,8 +2836,22 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     // 0,3100 el criterio (2) se cumple sin comer. Las dos cosas tienen que doler.
     expect(COSTO_VIVIR_POR_SEGUNDO).toBeLessThan(arriba)
     expect(COSTO_VIVIR_POR_SEGUNDO).toBeGreaterThan(abajo)
-    // Los dos bordes clavados, con la misma regla que el resto del archivo.
-    expect(Number(arriba.toFixed(3))).toBe(0.364)
+    // ─── EL BORDE DE ARRIBA SE FUE AL DOBLE, Y EL DE ABAJO NO SE MOVIÓ ──────
+    //
+    // Era 0,364 y es 0,750. La ventana pasó de 1,174× de ancho a 2,42×, y la razón
+    // es de una sola perilla: la eficiencia de `friccion` pasó de 0,35 a 0,85
+    // (tramo N), el precio térmico del fuego bajó de 657,46 a 270,72 y con un fuego
+    // más barato el mundo se banca que vivir cueste más.
+    //
+    // Y EL DE ABAJO NI SE ENTERÓ, que es lo que hay que leer: sale de `310 / 1000 s`
+    // y no toca el fuego por ningún lado. Los dos bordes miden criterios distintos y
+    // se movió el que tenía que moverse.
+    //
+    // LO QUE ESTO ABRE Y NO SE VA A USAR SIN EL USUARIO: el 0,34 vigente sigue
+    // adentro y con más aire que antes, así que NO hay nada que recalibrar acá. Lo
+    // dejo dicho porque una ventana que se ensancha invita a mover el número del
+    // medio, y ése no es un movimiento que este tramo haya medido.
+    expect(Number(arriba.toFixed(3))).toBe(0.75)
     expect(Number(abajo.toFixed(3))).toBe(0.31)
   })
 

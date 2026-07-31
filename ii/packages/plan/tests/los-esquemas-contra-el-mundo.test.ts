@@ -1409,13 +1409,37 @@ describe('el control negativo: las dos condiciones que hacen andar las filas', (
     expect(r.medicion.ok).toBe(false)
   })
 
-  it('`temperature>=400` con un leño en vez de yesca no queda establecido, y el aliento dice por qué', () => {
+  it.fails('`temperature>=400` con un leño en vez de yesca no queda establecido, y el aliento dice por qué — ROJO DECLARADO: el leño AHORA entra', () => {
     // El `heatCapacity <= 0,9` de la fila de `friccion` no es decoración: el precio
     // del `drive` es `heatCapacity × ΔT / eficiencia` de `stamina`, y `heatCapacity`
     // es EXTENSIVA. Dando vuelta el hint —pidiendo el cuerpo MÁS pesado en vez del
     // más liviano— el banco elige la vara de 1 kg y la criatura se queda sin tanque
     // antes de llegar. De ahí sale la yesca, y no de una regla que diga «la yesca
     // prende y el leño no».
+    //
+    // ─── Y ESTE CONTROL NEGATIVO DEJÓ DE CONTROLAR, MEDIDO ─────────────────
+    //
+    // La eficiencia de `friccion` pasó de 0,35 a 0,85 (tramo N). Con eso el leño de
+    // 1 kg **llega a 455,89 °C y le sobran 423,18 de aliento de 1000**: la condición
+    // `temperature>=400` QUEDA ESTABLECIDA y las dos afirmaciones de abajo —que hay
+    // rechazos por `actor-desconocido`, o sea que se murió frotando, y que la
+    // medición da `false`— son las dos falsas.
+    //
+    // LO QUE ESO SÍ Y NO QUIERE DECIR:
+    //   · NO quiere decir que el `heatCapacity <= 0,9` de la fila sobre: sigue
+    //     valiendo para la criatura del criterio (5), que arranca con 310 y no con
+    //     el tanque lleno. Con 310 el leño de 1 kg (770 de precio) la mata igual.
+    //   · SÍ quiere decir que esta ESCENA ya no puede mostrarlo, porque le regala
+    //     el tanque lleno y el cuerpo más pesado que tiene es de 1 kg.
+    //
+    // QUÉ LO ARREGLA, para el que vuelva: una vara más pesada en la escena (a 0,85
+    // el borde está en 1,30 kg) o darle a la criatura el tanque del criterio. Las
+    // dos son cambios del arnés y no de la fila, y no entran en este tramo: mover
+    // el tanque de `correr()` mueve las diez filas de la tabla a la vez.
+    //
+    // Queda con la afirmación ENTERA y sin aflojar una coma, que es la regla de la
+    // casa para un hueco: el día que la escena crezca, esto pasa a verde y el
+    // `it.fails` se vuelve rojo pidiendo que lo borren.
     const r = correrConRed(mutante('temperature>=400', { a: [{ q: 'heatCapacity', op: '>=', v: 1 }], b: [], actor: [] }))
     expect(r.error).toBeUndefined()
     const leno = r.w?.bodies.get('a')

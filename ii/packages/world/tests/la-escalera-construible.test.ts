@@ -399,12 +399,25 @@ describe('la escalera construible', () => {
     )
     log(filas)
 
-    // LA AFIRMACIÓN DEL BLOQUE, y es sobre el criterio y no sobre la física: el
-    // escalón cero cuesta más que el tanque entero de la corrida canónica. Ningún
-    // trabajo sobre el planificador puede darlo vuelta.
+    // ─── LA AFIRMACIÓN DEL BLOQUE SE DIO VUELTA, Y ÉSE ERA EL PUNTO ────────
+    //
+    // Decía `piso > TANQUE_CANONICO` y su comentario decía: «el escalón cero cuesta
+    // más que el tanque entero de la corrida canónica. Ningún trabajo sobre el
+    // planificador puede darlo vuelta». Era cierto: 645,50 contra 310.
+    //
+    // Y no lo dio vuelta el planificador, lo dio vuelta el mundo. La eficiencia de
+    // `friccion` pasó de 0,35 a 0,85 (tramo N) porque esta misma medición mostró que
+    // con 0,35 el criterio (5) era aritméticamente imposible; el porqué del número
+    // está en el encabezado de `FRICCION` y la ventana entera en
+    // `la-cuenta-de-los-veinte-mil.test.ts`, bloque 6.
+    //
+    // Hoy el escalón cero sale **265,80** y el tanque canónico LO PAGA, con 44,20 de
+    // margen. Sigue siendo el mismo guardián y aprieta el mismo par: si el fuego se
+    // vuelve a encarecer por encima del tanque, esto se pone rojo y lo que hay que
+    // releer es el bloque 3 de la cuenta.
     expect(arriba).toBeGreaterThan(0)
     expect(abajo).toBe(-1)
-    expect(piso).toBeGreaterThan(TANQUE_CANONICO)
+    expect(piso).toBeLessThan(TANQUE_CANONICO)
     expect(piso).toBeLessThan(TANQUE_LLENO)
     // Nada del catálogo prende más fácil que lo que esta semilla ya ofrece, así que
     // 645,5 es el piso del MUNDO. Sin esto, la tabla mediría una parada.

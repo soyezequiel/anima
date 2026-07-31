@@ -68,7 +68,16 @@ describe('nada sube gratis', () => {
     // son los 6 por tick con los que el documento la calibró. Ahora frotar sube
     // la madera de 15 a 375 °C en tres segundos a cualquier frecuencia.
     expect(drive.porSegundo).toBe(120)
-    expect(drive.poweredBy).toEqual({ from: 'actor', q: 'stamina', efficiency: 0.35 })
+    // La eficiencia pasó de 0,35 a 0,85 (tramo N). El porqué entero está en el
+    // encabezado de `FRICCION`, y el corto es que con 0,35 la criatura del
+    // criterio (5) no podía encender NADA: el fósforo más barato del mundo sale
+    // 594,14 y ella arranca con 310. La ventana está medida en
+    // `world/tests/la-cuenta-de-los-veinte-mil.test.ts`, bloque 6.
+    //
+    // Este `expect` no es el guardián de la conservación —ése es el bloque de
+    // arriba, `efficiency <= 1`, y no se tocó—: es el pin de la calibración, y
+    // está para que mover el número sea una decisión y no un descuido.
+    expect(drive.poweredBy).toEqual({ from: 'actor', q: 'stamina', efficiency: 0.85 })
   })
 
   it('frotar cuesta stamina, que es conservada', () => {

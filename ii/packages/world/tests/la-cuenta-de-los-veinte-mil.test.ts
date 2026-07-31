@@ -25,6 +25,22 @@
 //     única de las salidas que ataca la desigualdad que manda, y pide llevar la
 //     eficiencia de 0,35 a **0,729**, que cabe abajo de 1.
 //
+// ─── Y DESPUÉS EL USUARIO ELIGIÓ LA (c), ASÍ QUE ESTE ARCHIVO CAMBIÓ DE PAPEL ─
+//
+// La eficiencia de `friccion` está hoy en **0,85** (el porqué del número, en el
+// encabezado de `FRICCION`). Con eso las dos desigualdades del bloque 3 SE
+// CUMPLEN —el fósforo sale 244,6 contra un tanque de 310, y un fuego devuelve
+// 521,86 contra 265,80— y **el criterio (5) dejó de ser aritméticamente
+// imposible**.
+//
+// Tres de las afirmaciones de acá abajo se dieron vuelta al hacerlo, y las tres
+// tienen escrito al lado qué decían: son las mismas guardias mirando los mismos
+// números, y si alguien encarece el fuego se ponen rojas de nuevo.
+//
+// LO QUE ESTO NO DICE: no dice que el criterio se cumpla. Dice que la aritmética
+// dejó de estar en contra. Lo que queda —encender, cocinar y comer diecisiete
+// veces— es trabajo de la mente y se mide en `@anima/mind` y `@anima/juez`.
+//
 // Cuatro bloques, en el orden en que se contestan:
 //
 //   1. EL HUECO. Cuánto aliento le falta para llegar a los 20.000. Es el número
@@ -410,12 +426,20 @@ describe('la cuenta de los veinte mil', () => {
     // Cocinar da vuelta el signo del bocado: eso es lo que sí funciona.
     expect(crudo).toBeLessThan(0)
     expect(mejor.total).toBeGreaterThan(0)
-    // Y LAS DOS AFIRMACIONES DEL BLOQUE. La primera es la que este bloque vino a
-    // buscar sin saberlo: el fuego que la criatura puede pagar no cocina.
+    // LA PRIMERA AFIRMACIÓN, y es la que este bloque vino a buscar sin saberlo: el
+    // fuego que la criatura puede pagar NO COCINA. Eso no lo movió la calibración y
+    // es lo que obliga a la escalera: se enciende chico y se propaga a grande.
     expect(laCocina(vara).cocido).toBeUndefined()
-    // La segunda: ni siquiera regalándole el mejor fuego del barrido, encendido,
-    // lo que devuelve paga el fósforo.
-    expect(mejor.total).toBeLessThan(costo)
+    // ─── Y LA SEGUNDA SE DIO VUELTA, QUE ES EL TRAMO ENTERO ────────────────
+    //
+    // Decía `expect(mejor.total).toBeLessThan(costo)` —«ni regalándole el mejor
+    // fuego, lo que devuelve paga el fósforo»— y con la eficiencia de `friccion` en
+    // 0,35 era 521,86 contra 645,50. Con 0,85 el fósforo bajó a 265,80 y **un fuego
+    // pasó a pagarse casi el doble**: la rentabilidad dejó de ser el problema.
+    //
+    // Sigue siendo el mismo guardián, mirando el mismo cociente: si alguien vuelve a
+    // encarecer el fuego, esto se pone rojo y hay que releer el bloque 3.
+    expect(mejor.total).toBeGreaterThan(costo)
   }, 300_000)
 
   it('3 · LAS DOS DESIGUALDADES: manda la SOLVENCIA (C < T), y el tanque se cancela', () => {
@@ -504,34 +528,58 @@ describe('la cuenta de los veinte mil', () => {
       '',
       `  hoy:  C = ${dos(c)}   T = ${String(TANQUE_CANONICO)}   N · L = ${dos(presupuestoDeVida)}   ` +
         `G = ${dos(g)} (el mejor fuego del barrido, REGALADO encendido)`,
-      `        solvencia    C < T      →  ${dos(c)} < ${String(TANQUE_CANONICO)}   FALSO por ${(c / TANQUE_CANONICO).toFixed(2)}×  ← la que manda`,
-      `        rentabilidad G > C      →  ${dos(g)} > ${dos(c)}   FALSO por ${(c / g).toFixed(2)}×`,
+      `        solvencia    C < T      →  ${dos(c)} < ${String(TANQUE_CANONICO)}   ` +
+        `${c < TANQUE_CANONICO ? `SE CUMPLE, con ${dos(TANQUE_CANONICO - c)} de margen` : `FALSO por ${(c / TANQUE_CANONICO).toFixed(2)}×`}  ← la que manda`,
+      `        rentabilidad G > C      →  ${dos(g)} > ${dos(c)}   ` +
+        `${g > c ? `SE CUMPLE, con ${(g / c).toFixed(2)}× de margen` : `FALSO por ${(c / g).toFixed(2)}×`}`,
       '',
-      '  qué le pediría cada salida al mundo:',
+      '  la eficiencia de `friccion` es la palanca que baja C, y es la que se movió:',
+      `   eficiencia HOY ................ ${efHoy.toFixed(2)}  (era 0,35)`,
+      `   la que la solvencia pide ...... ${efParaSolvente.toFixed(3)}  ← la que manda`,
+      `   la que la rentabilidad pide ... ${efParaRentable.toFixed(3)}`,
+      `   → ${efHoy >= efQueHariaFalta ? 'ALCANZA' : `FALTA: pide ${efQueHariaFalta.toFixed(3)}`}` +
+        `${efQueHariaFalta > 1 ? ' — y sería imposible: saldría más calor del que entra trabajo' : ''}`,
+      '',
+      '  y las otras tres salidas, para que quede escrito por qué NO eran ésta:',
       `   (b) subir el tanque .......... NO CIERRA POR ÁLGEBRA: (i) es una cota de ARRIBA sobre el mismo`,
       `                                  tanque. Con 1000 llega viva y con 0 bocados: cumple (iii) rompiendo (i).`,
-      `   (c) bajar el precio de frotar . eficiencia ${efHoy.toFixed(2)} → ${efQueHariaFalta.toFixed(3)}` +
-        `${efQueHariaFalta > 1 ? '  ← IMPOSIBLE: saldría más calor del que entra trabajo' : '  ← CABE ABAJO DE 1: es calibración, no otro mundo'}`,
-      `                                  (rentabilidad pide ${efParaRentable.toFixed(3)}; solvencia pide ${efParaSolvente.toFixed(3)}: manda la segunda)`,
       `   (c′) que un fuego cocine más .. ${String(bocadosQueHarianFalta)} bocados por fuego = ` +
-        `${String(ticksDeFuegoQueHarianFalta)} ticks (el mejor de hoy dura ${String(mejor.ticksDeFuego)} y da ${String(mejor.bocados)})` +
-        `${ticksDeFuegoQueHarianFalta < CRITERIO_TICKS ? '  ← entra en los 20.000' : '  ← no entra'}`,
-      `                                  PERO NO ALCANZA SOLA: sube G y no baja C, y la que manda es C.`,
+        `${String(ticksDeFuegoQueHarianFalta)} ticks (el mejor de hoy dura ${String(mejor.ticksDeFuego)} y da ${String(mejor.bocados)})`,
+      `                                  NO ALCANZABA SOLA: sube G y no baja C, y la que manda es C.`,
       `   (b′) subir lo que rinde una caloría × ${factorDeCalorias.toFixed(2)}: el pescado CRUDO pasa a dar ` +
         `${dos(crudoConEseFactor)}` +
         `${crudoConEseFactor > 0 ? '  ← ROMPE el guardián del riesgo 4' : '  ← el guardián del riesgo 4 AGUANTA'}`,
-      `                                  Y TAMPOCO ALCANZA SOLA, por lo mismo: sube G, no baja C.`,
+      `                                  Y TAMPOCO SOLA, por lo mismo: sube G, no baja C.`,
       '',
       `  (a·bis) comida cruda que haya que TRABAJAR no entra en esta tabla porque no pasa por C.`,
       `  Contra lo que juega es contra el hueco del bloque 1: ${dos(presupuestoDeVida - TANQUE_CANONICO)}.`,
     ])
 
-    // LA AFIRMACIÓN: hoy no se cumple ninguna de las dos.
-    expect(g).toBeLessThan(c)
-    expect(c).toBeGreaterThan(TANQUE_CANONICO)
+    // ─── LAS DOS AFIRMACIONES SE DIERON VUELTA, Y ÉSE ES EL RESULTADO ───────
+    //
+    // Decían `g < c` y `c > TANQUE_CANONICO`, o sea las dos desigualdades sin
+    // cumplir, y la tabla de arriba las publicaba «FALSO por 1,24×» y «FALSO por
+    // 2,08×». Con la eficiencia de `friccion` en 0,85 (tramo N, ver el encabezado de
+    // `FRICCION`) las dos se cumplen:
+    //
+    //   solvencia    C < T   →  265,80 < 310      con 44,20 de margen
+    //   rentabilidad G > C   →  521,86 > 265,80   con 1,96× de margen
+    //
+    // O sea que **el criterio (5) dejó de ser aritméticamente imposible**. Lo que
+    // queda no es aritmética: es que la mente encienda, cocine y coma diecisiete
+    // veces, y eso se mide en `@anima/mind` y en `@anima/juez`, no acá.
+    //
+    // Siguen siendo los mismos dos guardianes y aprietan el mismo par de números:
+    // si alguien encarece el fuego o achica el tanque, esto se pone rojo con la
+    // tabla al lado diciendo por cuánto.
+    expect(g).toBeGreaterThan(c)
+    expect(c).toBeLessThan(TANQUE_CANONICO)
     // Y que la que manda sea la solvencia y no la rentabilidad: es lo que decide
-    // en qué orden se mira todo lo de arriba.
+    // en qué orden se mira todo lo de arriba, y no lo movió la calibración —las dos
+    // eficiencias que pide cada condición se escalan juntas—.
     expect(efParaSolvente).toBeGreaterThan(efParaRentable)
+    // La que manda ya está cumplida: la eficiencia vigente le llega.
+    expect(efHoy).toBeGreaterThanOrEqual(efQueHariaFalta)
     // ─── Y ACÁ EL BLOQUE ME CORRIGIÓ LA SEGUNDA AFIRMACIÓN ──────────────────
     //
     // Decía `expect(efQueHariaFalta).toBeGreaterThan(1)`, escrito para publicar
@@ -584,7 +632,7 @@ describe('la cuenta de los veinte mil', () => {
       `  y el dios no siembra ninguna (medido en \`hay-comida-sin-fuego.test.ts\`, bloque 3).`,
       '',
       `  LO QUE ESTO DICE: la salida (a·bis) —comida cruda que haya que TRABAJAR— no pelea`,
-      `  contra los 645,5 del fósforo. Pelea contra ${dos(hueco)}, y la tapa con un par de kilos.`,
+      `  contra el precio del fósforo. Pelea contra ${dos(hueco)}, y la tapa con un par de kilos.`,
       '',
       `  Y el tamaño importa menos de lo que parece: el hueco es de UN dígito de bocados, así`,
       `  que la técnica no tiene que ser rentable, sólo tiene que existir UNA VEZ en 20.000 ticks.`,
@@ -668,22 +716,30 @@ describe('la cuenta de los veinte mil', () => {
     filas.push(
       '',
       `  EL FÓSFORO MÁS BARATO DEL MUNDO ES DE ${laBarata.toUpperCase()}: ${piso.toFixed(1)} de aliento.`,
-      `  contra el tanque de ${String(TANQUE_CANONICO)}: ${piso < TANQUE_CANONICO ? 'LO PAGA' : `no lo paga, por ${(piso / TANQUE_CANONICO).toFixed(2)}×`}`,
+      `  contra el tanque de ${String(TANQUE_CANONICO)}: ${piso < TANQUE_CANONICO ? `LO PAGA, y le sobran ${(TANQUE_CANONICO - piso).toFixed(1)}` : `no lo paga, por ${(piso / TANQUE_CANONICO).toFixed(2)}×`}`,
       '',
       `  y con la eficiencia PERFECTA que el guardián de la conservación permite (1,00, en`,
-      `  \`physics/tests/process.test.ts\`) ese mismo fósforo saldría ${(piso * eficienciaDeFrotar()).toFixed(1)}:`,
-      `  ${piso * eficienciaDeFrotar() < TANQUE_CANONICO ? 'ahí SÍ entra en el tanque' : 'ni así entra'}.`,
+      `  \`physics/tests/process.test.ts\`) ese mismo fósforo saldría ${(piso * eficienciaDeFrotar()).toFixed(1)}.`,
     )
     log(filas)
 
     expect(Number.isFinite(piso)).toBe(true)
-    // El piso del mundo no puede ser MÁS CARO que el que ya se publicó con madera:
-    // si esta tabla diera algo peor, estaría midiendo mal.
-    expect(piso).toBeLessThanOrEqual(645.51)
-    // Y la noticia del bloque, dicha como afirmación: cambiar de sustancia AYUDA y
-    // NO ALCANZA. Si algún día alcanzara, el criterio se cerraría sin tocar ninguna
-    // constante y este `expect` sería lo que lo avisa.
-    expect(piso).toBeGreaterThan(TANQUE_CANONICO)
+    // El piso del mundo no puede ser MÁS CARO que lo que sale de madera, que es lo
+    // único que la medición vieja miraba: si esta tabla diera algo peor, estaría
+    // midiendo mal.
+    const conMadera = costoDeEncender(
+      cuerpo('vara', 'madera', varaQueDeVerdadPrende(cuerpo('o', objetivo.s, 0.3))),
+      p,
+    )
+    expect(piso).toBeLessThanOrEqual(conMadera)
+    // ─── Y ESTA AFIRMACIÓN SE DIO VUELTA CON LA CALIBRACIÓN ────────────────
+    //
+    // Decía `piso > TANQUE_CANONICO` —«cambiar de sustancia ayuda un 8% y NO
+    // alcanza»— con el piso en 594,1 contra un tanque de 310, y escrito al lado
+    // estaba que «el día que alcanzara, el criterio se cerraría y este `expect` es
+    // lo que lo avisa». Avisó: con la eficiencia en 0,85 el fósforo de `madera-dura`
+    // sale 244,6 y **el tanque de la corrida canónica lo paga**.
+    expect(piso).toBeLessThan(TANQUE_CANONICO)
   }, 300_000)
 
   it('6 · LA VENTANA DE LA EFICIENCIA: qué valores cierran el criterio y con qué fuego', () => {
@@ -772,5 +828,10 @@ describe('la cuenta de los veinte mil', () => {
     // la criatura. Si esto se pusiera rojo, la salida (c) estaría muerta y habría
     // que volver al bloque 3 a elegir otra.
     expect(elMinimoQueCierra).toBeLessThanOrEqual(1)
+    // Y QUE EL VALOR VIGENTE CAIGA ADENTRO, que es lo que hace de este bloque un
+    // guardián y no una tabla: el 0,85 se eligió de acá —le deja 65,35 de aliento
+    // después de encender contra los 12,93 del borde— y si alguien lo baja abajo del
+    // borde, esto se pone rojo con la ventana entera impresa al lado.
+    expect(eficienciaDeFrotar()).toBeGreaterThanOrEqual(elMinimoQueCierra)
   }, 300_000)
 })

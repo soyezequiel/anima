@@ -30,7 +30,7 @@ import {
   UNION,
   type Process,
 } from '../src/process.js'
-import { seg } from '../src/fixed.js'
+import { HZ_DE_REFERENCIA, seg } from '../src/fixed.js'
 import type { Substance } from '../src/substance.js'
 
 const phys = buildSeedPhysics()
@@ -568,16 +568,33 @@ describe('no-dominancia: la última puerta del almuerzo gratis', () => {
     // `version` e invalida los sellos, no proponer un clon.
     const drive = FRICCION.effects[0]
     if (drive?.k !== 'drive') throw new Error('friccion tiene que traer un drive')
+    // ─── LOS DOS NÚMEROS SE DERIVAN, Y ANTES ESTABAN COPIADOS ───────────────
+    //
+    // Decían `6.667` y `17.143` clavados, y el segundo es `6 / 0,35`: se puso
+    // rojo el día que la eficiencia de `friccion` pasó a 0,85 (tramo N). El
+    // número no estaba mal, estaba COPIADO — que es el vicio que este mismo
+    // archivo persigue en otros lados—. Ahora los dos salen del proceso.
+    //
+    // El `6` es el empuje POR PASO: 120 grados por segundo a la frecuencia de
+    // referencia. Y el precio por unidad es ese empuje dividido la eficiencia,
+    // que es exactamente lo que hace que una eficiencia MÁS ALTA sea MÁS BARATA.
+    const efDeFriccion = drive.poweredBy?.efficiency ?? 1
+    const EF_DEL_CLON = 0.9
+    // Y la premisa del bloque, afirmada en vez de supuesta: el clon tiene que ser
+    // MÁS BARATO que `friccion`, si no la puerta no tendría por qué rechazarlo y
+    // este test estaría verde sin medir nada.
+    expect(EF_DEL_CLON).toBeGreaterThan(efDeFriccion)
     const barata = plantilla('frotar-barato', {
       roles: FRICCION.roles,
-      effects: [{ ...drive, poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.9 } }],
+      effects: [{ ...drive, poweredBy: { from: 'actor', q: 'stamina', efficiency: EF_DEL_CLON } }],
       establishes: FRICCION.establishes,
     })
+    const porPaso = drive.porSegundo / HZ_DE_REFERENCIA
     const r = razonPorCodigo(admit(barata, phys), 'dominancia')
     expect(r.proceso).toBe('friccion')
     expect(r.q).toBe('stamina')
-    expect(r.encontrado).toBeCloseTo(6.667, 3)
-    expect(r.cota).toBeCloseTo(17.143, 3)
+    expect(r.encontrado).toBeCloseTo(porPaso / EF_DEL_CLON, 3)
+    expect(r.cota).toBeCloseTo(porPaso / efDeFriccion, 3)
   })
 
   it('pero una técnica que pide MÁS no domina a nadie', () => {

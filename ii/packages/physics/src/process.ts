@@ -205,8 +205,58 @@ export function unknownRoleRefs(p: Process): readonly string[] {
  * para esta misma vara. Mientras un `drive` está activo, ninguna ley que relaje
  * esa cualidad la mueve en contra.
  *
- * La eficiencia 0.35 es lo que hace que no sea una máquina de movimiento
- * perpetuo: sale menos calor del que entra en trabajo.
+ * La eficiencia es lo que hace que no sea una máquina de movimiento perpetuo:
+ * sale menos calor del que entra en trabajo. Que sea MENOR QUE UNO es la regla, y
+ * la afirma `physics/tests/process.test.ts` para todos los `drive` del catálogo.
+ * Cuánto menor es calibración, y lo de abajo es de dónde salió el número.
+ *
+ * ─── POR QUÉ 0.85 Y NO 0.35, Y QUÉ SE MIDIÓ ANTES DE MOVERLO ────────────────
+ *
+ * Con 0.35 la criatura del criterio (5) del Hito 5 NO PUEDE ENCENDER NADA: el
+ * fósforo más barato del mundo sale 594,14 de aliento y ella arranca con 310. Y
+ * eso no es un problema del planificador ni de la mente: es aritmética, y ninguna
+ * cantidad de trabajo aguas arriba lo da vuelta.
+ *
+ * La cuenta entera está en `world/tests/la-cuenta-de-los-veinte-mil.test.ts`, y lo
+ * que ordena la decisión es que el criterio pide TRES cosas a la vez —con T el
+ * tanque, L el costo de vivir, N los 20.000 ticks, C el fósforo y G lo que un
+ * fuego devuelve en comida mientras dura—:
+ *
+ *   (i)   que NO llegue quieta  ...........  T < N · L
+ *   (ii)  SOLVENCIA: que pueda pagarlo  ...  C < T
+ *   (iii) RENTABILIDAD: que después llegue   T − C + G ≥ N · L
+ *
+ * (i)+(ii) dan `C < T < N · L`: **el primer fuego tiene que costar menos que el
+ * presupuesto de vida entero**, y eso es una cota sobre C sola. Manda ésa, y no la
+ * rentabilidad: una criatura que se muere frotando nunca llega a enterarse de si
+ * el fuego era rentable. Y de paso mata la salida de «subir el tanque», porque
+ * (i) es una cota de ARRIBA sobre el mismo tanque que (ii) querría subir.
+ *
+ * El costo TÉRMICO del fósforo —`heatCapacity × ΔT`, lo que NO depende de esta
+ * constante— es 207,95, así que el precio es 207,95 / eficiencia. La ventana,
+ * medida con el tanque de 310 y el presupuesto de vida de 340:
+ *
+ *   eficiencia │ el fósforo │ ¿lo paga? │ le queda │ bocados que tiene que cocinar
+ *         0.35 │     594,14 │        NO │  −284,14 │ 39
+ *         0.70 │     297,07 │        sí │    12,93 │ 21   ← la solvencia se abre acá
+ *         0.85 │     244,65 │        sí │    65,35 │ 17   ← éste
+ *         1.00 │     207,95 │        sí │   102,05 │ 15
+ *
+ * SE ELIGIÓ 0.85 Y NO EL BORDE: en 0,70 la criatura queda con 12,93 de aliento
+ * después de encender, que es margen de nada. Con 0,85 le quedan 65,35 y los 17
+ * bocados entran holgados en un fuego de 1,7 kg —el barrido mide 32— y justos en
+ * uno de 1,25, que mide 18.
+ *
+ * Y NO SE ELIGIÓ 1.00 aunque el guardián lo permita: con la eficiencia perfecta la
+ * frase de arriba —«sale menos calor del que entra en trabajo»— se vuelve un
+ * tecnicismo. Con 0,85 se pierde el 15% del trabajo, que es una pérdida que se
+ * puede señalar.
+ *
+ * LO QUE ESTE NÚMERO NO COMPRA, dicho para que nadie lo lea de más: ni con el
+ * motor perfecto que el guardián permite el criterio baja de QUINCE bocados. El
+ * fuego es caro incluso en el mejor mundo legal, y lo que esta constante abre es
+ * la puerta, no el camino: cocinar diecisiete veces sigue siendo trabajo de la
+ * mente y se mide en `@anima/mind` y `@anima/juez`.
  */
 export const FRICCION: Process = {
   id: 'friccion',
@@ -225,7 +275,7 @@ export const FRICCION: Process = {
       on: 'a',
       toward: 400,
       porSegundo: 120,
-      poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 },
+      poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.85 },
     },
   ],
   establishes: ['temperature>=400'],

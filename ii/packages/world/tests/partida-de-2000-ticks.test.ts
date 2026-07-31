@@ -493,9 +493,24 @@ describe('una partida de 2000 ticks', () => {
     // decenas.
     //
     //   3f82bbd9dd7a3128  (con el costo de vivir en 0,34, con los mismos 11.192)
-    expect(r.hashFinal).toBe('3f82bbd9dd7a3128')
+    //
+    // ─── Y OTRA VEZ, CON LA MISMA FIRMA, POR LA OTRA PERILLA ───────────────
+    //
+    // La eficiencia de `friccion` pasó de 0,35 a 0,85 (tramo N, decisión del
+    // usuario después de que `world/tests/la-cuenta-de-los-veinte-mil.test.ts`
+    // midiera que con 0,35 el criterio (5) era aritméticamente imposible). Una de
+    // las ocho criaturas frota, así que su `stamina` entra al hash con otro número
+    // desde el primer checkpoint.
+    //
+    // Y LA FIRMA ES LA MISMA, verificada renglón por renglón: eventos 11.192,
+    // violaciones 97, sustancias 31 y cuerpos 30 — todos idénticos. Cambió una
+    // cuenta, no una decisión. Si frotar más barato hubiera hecho que alguien
+    // prendiera algo que antes no prendía, los eventos se moverían por decenas.
+    //
+    //   9e16b485a27cd10c  (con la eficiencia en 0,85, con los mismos 11.192)
+    expect(r.hashFinal).toBe('9e16b485a27cd10c')
     expect(r.checkpoints.join(' ')).toBe(
-      '17a60f5bdab7aef8 b3cedd98b63504ed 5cff6ea6fb6071d7 912aac38c41f426b e405ba67022e85cc a7592ab51c1f04d8 d914b00af0714d69 3b5d5558be606d0f cb8e0ace4eba2bcb 986249f2efa43edd 3f82bbd9dd7a3128',
+      '595e262539cd4436 0f82f2ac486a9719 d4cf02c28a1f5c43 ce4581e4443ecd77 791ac1abaa864a90 2bdc1f892e22c55c 8e956f6ef99f205d 3fe8594cae28819b 6d51bd5a822260df 1168cea6be88ed91 9e16b485a27cd10c',
     )
     expect(r.eventos).toBe(11192)
     expect(r.sustancias).toBe(31)

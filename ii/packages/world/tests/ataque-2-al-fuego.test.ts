@@ -333,24 +333,47 @@ describe('(c) el fuego YA NO se apaga por soltar: se apaga por quedarse sin comb
 
     // Y lo que eso le hace a un banco: con «el tanque a infinito», la criatura de
     // `banco()` se muere igual, y el pico de la vara sale del techo económico.
+    // ─── ESTE BLOQUE MEDÍA UNA MUERTE Y LA MUERTE DEJÓ DE PASAR ────────────
+    //
+    // Medía el paso en que la criatura se moría frotando sin parar, con un techo de
+    // bucle de 400, y su historia estaba escrita en tres renglones:
+    //
+    //   174 → 183   el ADR II-0011 le agregó la llama al camino: llegar a 375 °C
+    //               pasó de 3,00 s a 2,40 s y arriba de `toward` el drive gasta menos
+    //   183 → 195   `COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34: cada paso deja de
+    //               cobrar 0,05 y cobra 0,017. Los pagó el metabolismo, no el fuego
+    //
+    // Con la eficiencia de `friccion` en 0,85 (tramo N) **no se muere más**: ni en
+    // 400 pasos, ni en 1000, ni en 20.000. Y no es que frotar salga gratis, es que
+    // dejó de ser lo que manda: una vez que la vara prendió, la llama la sostiene
+    // arriba del `toward` y el drive sólo paga el pedacito que la separa de los 400.
+    // Con ese pedacito 2,43× más barato, el gasto dominante pasó a ser vivir, y
+    // vivir a 0,017 por paso tarda 58.823 pasos en vaciar un tanque de 1000.
+    //
+    // Así que el bloque mide lo que sigue estando: **el tanque BAJA**. Que baje es
+    // lo que prueba que el 1e9 escrito no existe adentro del mundo, que es el título.
+    // La muerte era una ilustración de eso, y la ilustración se venció.
     let v = banco(0.2, 20)
+    const PASOS = 1_000
     let murioEn = Number.NaN
-    for (let n = 1; n <= 400 && Number.isNaN(murioEn); n++) {
+    for (let n = 1; n <= PASOS && Number.isNaN(murioEn); n++) {
       const i = apply({ by: 'dina', seq: n }, v.phys, 'friccion', ROLES)
       const r = stepWorld(v, i === undefined ? [] : [i])
       v = r.state
       if (r.events.some((e) => e.k === 'murio')) murioEn = n
     }
-    // 183 y no 174: llegar a los 375 °C pasó de 3,00 s a 2,40 s (el ADR II-0011
-    // le agregó la llama al camino) y arriba de `toward` el `drive` gasta menos.
-    // Y 195 y no 183: `COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34, o sea que cada
-    // paso deja de cobrar 0,05 y cobra 0,017. Son 12 pasos (0,6 s) de fricción de
-    // regalo, y no los pagó el fuego: los pagó el metabolismo.
-    expect(murioEn).toBe(195)
+    const queda = leer(v, 'dina-cuerpo', 'stamina')
+    // Sigue viva, y eso es NUEVO: se afirma para que el día que vuelva a morirse
+    // acá, alguien tenga que venir a leer los tres renglones de arriba.
+    expect(Number.isNaN(murioEn)).toBe(true)
+    // Y EL TANQUE BAJÓ, que es lo que el título afirma: el 1e9 no existe.
+    expect(queda).toBeLessThan(1000)
+    expect(queda).toBeGreaterThan(0)
     log([
       '══ EL TANQUE QUE NO ES INFINITO ═══════════════════════════════════════',
       `  se escribió 1e9 de stamina y qualityOf devuelve ${leer(w, 'dina-cuerpo', 'stamina').toFixed(2)} desde el tick 0`,
-      `  frotando sin parar, la criatura se muere en el paso ${String(murioEn)} (${(murioEn / 20).toFixed(2)} s)`,
+      `  frotando sin parar ${String(PASOS)} pasos (${(PASOS / 20).toFixed(0)} s) le quedan ${queda.toFixed(2)} de 1000`,
+      `  y NO se muere: con la eficiencia en 0,85 el gasto que manda pasó a ser vivir (era el paso 195)`,
       '  cualquier banco DEL MUNDO que crea estar midiendo el techo térmico',
       '  está midiendo el económico: el techo térmico sólo se puede medir sobre `paso()`',
     ])

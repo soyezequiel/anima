@@ -355,11 +355,27 @@ describe('frente 1 · las funciones que dice llamar existen, y la única constan
     // frotar, que con `COSTO_VIVIR_POR_SEGUNDO` en 0,34 salen 0,816 en vez de 2,40.
     // Lo TÉRMICO —que es casi todo el precio— no se movió ni un decimal, y eso es lo
     // que hay que ver acá: bajar el costo de vivir no abarató encender.
-    expect(precio).toBeCloseTo(700.2446, 3)
-    // El techo con 310 cae por debajo de la madera más liviana que siembra
-    // `agua-dulce` (0,3 kg, `bioma.ts:295`): no hay UNA pieza que esa criatura
-    // pueda encender frotando.
-    expect(techoCon310).toBeLessThan(0.3)
+    //
+    // ─── Y AHORA SÍ SE ABARATÓ ENCENDER: 288,816 ──────────────────────────
+    //
+    // La eficiencia de `friccion` pasó de 0,35 a 0,85 (tramo N). Esta vez se movió
+    // lo TÉRMICO —699,4286 → 288,000— y no el peaje de vivir, que sigue en 0,816.
+    // Es el mismo par de sumandos que arriba, contado desde el otro lado, y las dos
+    // notas juntas son la historia entera del precio del fuego en este proyecto.
+    expect(precio).toBeCloseTo(288.816, 3)
+    // ─── Y EL HALLAZGO DE ESTE BLOQUE SE DIO VUELTA ────────────────────────
+    //
+    // Decía `techoCon310 < 0,3`: «el techo con 310 cae por debajo de la madera más
+    // liviana que siembra `agua-dulce` (0,3 kg), o sea que no hay UNA pieza que esa
+    // criatura pueda encender frotando». Con 0,85 el techo pasa a **1,074 kg** y esa
+    // madera de 0,3 entra con margen de sobra: la criatura del criterio ya puede
+    // encender lo que el dios le pone al lado.
+    //
+    // Lo que el bloque encontró NO era este número, y por eso sigue teniendo sentido
+    // abajo: era que **el contra-detector no mira el tanque**. Ese hueco no se
+    // arregló —sigue usando el techo de 1000— y lo que cambió es que hoy la
+    // diferencia entre los dos tanques muerde en otra masa.
+    expect(techoCon310).toBeGreaterThan(0.3)
 
     // Y el juez no se entera: el mismo mundo con 310 y con 1000 contesta igual.
     // La vara pesa 0,71 kg —adentro del techo de 0,7132 por 3 gramos— y por eso el

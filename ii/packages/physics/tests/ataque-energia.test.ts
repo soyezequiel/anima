@@ -509,7 +509,10 @@ const FROTAR_PARA_LA_BATERIA = proceso('frotar-para-la-bateria', {
     { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 50 }] },
   ],
   arrangement: { k: 'held' },
-  effects: [{ ...DRIVE_DE_FRICCION, poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 } }],
+  // Sin `poweredBy` propio: hereda el de `friccion`, que es de lo que este clon es
+  // un clon. Estaba escrito `efficiency: 0.35` a mano, o sea copiando el valor de
+  // la calibración, y se puso rojo cuando pasó a 0,85 (tramo N).
+  effects: [DRIVE_DE_FRICCION],
   establishes: ['temperature>=400'],
 })
 
@@ -628,15 +631,21 @@ const FROTAR_LA_MONTANIA = proceso('frotar-la-montania', {
     { name: 'actor', where: [{ q: 'stamina', op: '>=', v: 1 }] },
   ],
   arrangement: { k: 'held' },
-  effects: [{ ...DRIVE_DE_FRICCION, poweredBy: { from: 'actor', q: 'stamina', efficiency: 0.35 } }],
+  // Igual que el clon de arriba: hereda el `poweredBy` de `friccion` en vez de
+  // copiar el número. Y acá importa el DOBLE, porque el bloque de abajo afirma que
+  // la razón entre los dos precios es exactamente 5000 —la masa y nada más—: con
+  // la eficiencia copiada, esa razón se ensuciaba con el cociente de eficiencias
+  // en cuanto la calibración se moviera, y eso es lo que pasó.
+  effects: [DRIVE_DE_FRICCION],
   establishes: ['temperature>=400'],
 })
 
 describe('agujero 8 · poweredBy no tiene cierre dimensional', () => {
   it('el proceso entra sin una sola razón', () => {
     // Esto no está marcado como pendiente porque el proceso, leído solo, es
-    // legal: declara su fuente, es conservada, la eficiencia es 0.35. Lo que
-    // está mal es el PRECIO, y eso se ve en el test de abajo.
+    // legal: declara su fuente, es conservada, y la eficiencia es la de
+    // `friccion`, que el guardián de la conservación deja pasar. Lo que está mal
+    // es el PRECIO, y eso se ve en el test de abajo.
     expect(codigos(admit(FROTAR_LA_MONTANIA, phys))).toEqual([])
   })
 

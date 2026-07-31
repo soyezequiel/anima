@@ -421,15 +421,32 @@ describe('(2) la economía del fuego: la mente lo cotiza 27,6× barato', () => {
     )
     log(filas)
 
-    // (a) NINGUNA pieza que se pueda encender frotando llega a la ventana de la
-    //     cocción. La que emite más de las que se encienden se queda corta, y las
-    //     que llegarían a la potencia se comen el tanque entero antes de prender.
-    for (const e of barrido) {
-      if (!e.llegoAEmitir) continue
-      expect(e.emitsPower).toBeLessThan(POTENCIA_QUE_COCINA_LO_CARNOSO.minima)
-    }
-    // (b) el fuego más barato cuesta más de diez pescados.
-    expect(masBarato.costo / netoDeUno).toBeGreaterThan(10)
+    // ─── (a) SE DIO VUELTA, Y ES EL TRAMO N ────────────────────────────────
+    //
+    // Decía: «NINGUNA pieza que se pueda encender frotando llega a la ventana de la
+    // cocción. La que emite más de las que se encienden se queda corta, y las que
+    // llegarían a la potencia se comen el tanque entero antes de prender», y lo
+    // afirmaba con `emitsPower < POTENCIA_QUE_COCINA_LO_CARNOSO.minima` para todas.
+    //
+    // Con la eficiencia de `friccion` en 0,85 la vara de 0,9 kg sale 519,22 —entra
+    // en un tanque de 1000— y emite 270,29 contra una ventana que arranca en 253:
+    // **enciende Y cocina**. Es la primera pieza del proyecto que hace las dos
+    // cosas. La tabla de arriba lo muestra fila por fila.
+    //
+    // Se afirma que EXISTE al menos una, que es la forma fuerte, y se sigue
+    // afirmando que no todas llegan —si todas llegaran, la ventana no estaría
+    // separando nada y el bloque se habría vuelto mudo—.
+    const enciendenYCocinan = barrido.filter(
+      (e) => e.llegoAEmitir && e.emitsPower >= POTENCIA_QUE_COCINA_LO_CARNOSO.minima,
+    )
+    expect(enciendenYCocinan.length).toBeGreaterThan(0)
+    expect(enciendenYCocinan.length).toBeLessThan(barrido.filter((e) => e.llegoAEmitir).length)
+    // (b) el fuego más barato QUE COCINA cuesta más de treinta pescados. Era «más de
+    //     diez» sobre el más barato que EMITE, y ése hoy sale 4,9 pescados — pero no
+    //     cocina, así que comparar contra él dejó de decir nada. La comparación que
+    //     decide es contra el que sirve.
+    const masBaratoQueCocina = enciendenYCocinan.reduce((a, b) => (a.costo <= b.costo ? a : b))
+    expect(masBaratoQueCocina.costo / netoDeUno).toBeGreaterThan(30)
     // (c) y la mente lo cotiza en el `mientras` de la fila de ley y nada más: no
     //     ve el fuego, ve el rato que hay que esperar al lado del fuego.
     //
@@ -443,9 +460,15 @@ describe('(2) la economía del fuego: la mente lo cotiza 27,6× barato', () => {
     //     que `alientoDelEsquema` calcula de verdad.
     expect(cotizado).toBeCloseTo(COSTO_VIVIR_POR_SEGUNDO * SEGUNDOS_DE_COCCION, 10)
     // Y el error de la mente pasó de 9,5× a 27,6× por el mismo motivo: lo que se
-    // abarató es el segundo de espera, no el fuego. El piso queda en 20, holgado
-    // abajo de los 27,6 medidos y muy arriba del 9 de antes.
-    expect(masBarato.costo / cotizado).toBeGreaterThan(20)
+    // abarató es el segundo de espera, no el fuego.
+    //
+    // Y AHORA BAJÓ A 88,5× CONTRA EL FUEGO QUE SIRVE. Con la eficiencia en 0,85 el
+    // fuego más barato que EMITE cotiza 11,5× arriba de lo que la mente cree, y el
+    // más barato que COCINA, 101,8×. El error de la mente no se arregló ni un poco
+    // —sigue cotizando el rato de espera y no el fuego— y lo único que se movió es
+    // el número contra el que se lo compara. Se afirma contra el que sirve, por lo
+    // mismo que en (b).
+    expect(masBaratoQueCocina.costo / cotizado).toBeGreaterThan(50)
   })
 
   /**

@@ -275,7 +275,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     );
   }, 300_000);
 
-  it('DIAGNÓSTICO 9 · EL FUEGO MÁS BARATO CUESTA MÁS QUE EL TANQUE QUE LA ESCENA LE DA: 485 contra 310', () => {
+  it('DIAGNÓSTICO 9 · LA PARED SE CAYÓ: el fuego más barato costaba 485 contra 310 y ahora sale 199,89 — y PRENDE', () => {
     // ─── LA PARED QUE NO ES DE MATERIA NI DE HUMEDAD: ES DE PLATA ──────────
     //
     // La ventana de potencia del contacto empieza en 105,42, y para llegar ahí hace
@@ -295,14 +295,36 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
     // Esto NO se arregla en la mente y hay que decirlo: o la eficiencia de frotar
     // sube, o el tanque de la escena sube, o la ventana del contacto baja. Las tres
     // son decisiones de otro y ninguna se toma acá.
+    //
+    // ─── Y LA PRIMERA DE LAS TRES SE TOMÓ: LA EFICIENCIA SUBIÓ ─────────────
+    //
+    // De 0,35 a 0,85 (tramo N), después de que
+    // `world/tests/la-cuenta-de-los-veinte-mil.test.ts` midiera que con 0,35 el
+    // criterio (5) era aritméticamente imposible. La yesca más chica que cocina
+    // pasó de costar **485,45** a **199,88**, y la escena le da 310: **ahora la
+    // paga**. Todo lo que este bloque dice sobre la mente sigue igual; lo que
+    // cambió es el mundo, que era donde estaba dicho que había que cambiarlo.
+    //
+    // Y LA EFICIENCIA YA NO SE COPIA. Se leía de `EFICIENCIA_DE_FROTAR` en
+    // `./el-criterio.ts`, que es una `const` con el 0,35 escrito a mano: no se
+    // enteró del cambio y dejó a este bloque midiendo un mundo que no existe. Ahora
+    // sale del proceso, que es de donde tendría que haber salido siempre.
+    //
+    // OJO, LA COPIA SIGUE AHÍ: `EFICIENCIA_DE_FROTAR` en `./el-criterio.ts` sigue
+    // diciendo 0,35 y nadie más la usa hoy. Queda escrito acá para que el próximo
+    // que la importe sepa que miente.
     const p = new Partida(conLenaSeca(310), { vigilar: true });
     const lena = p.state.bodies.get('lena0');
     if (lena === undefined) throw new Error('la escena no tiene leña');
     // Los tres números que la cuenta usa, VERIFICADOS contra el motor.
     expect(qualityOf(lena.body, 'ignitionPoint', p.state.phys)).toBe(IGNICION_MADERA);
     expect(qualityOf(lena.body, 'heatCapacity', p.state.phys)).toBeCloseTo(0.4 * CALOR_ESPECIFICO_MADERA, 10);
+    const drive = p.state.phys.processes.get('friccion')?.effects[0];
+    if (drive?.k !== 'drive' || drive.poweredBy === undefined) throw new Error('friccion cambió de forma');
+    const eficiencia = drive.poweredBy.efficiency;
+    expect(eficiencia).not.toBe(EFICIENCIA_DE_FROTAR);
     const cuestaLaMasChica =
-      (YESCA_MAS_CHICA * CALOR_ESPECIFICO_MADERA * (IGNICION_MADERA - AMBIENTE)) / EFICIENCIA_DE_FROTAR;
+      (YESCA_MAS_CHICA * CALOR_ESPECIFICO_MADERA * (IGNICION_MADERA - AMBIENTE)) / eficiencia;
 
     const m = new Mente({ actor: 'ana', memoria: new Creencias() });
     const mentes = new Map([['ana', m]]);
@@ -351,7 +373,7 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
       `\n─── LO QUE CUESTA PRENDER EL FUEGO MÁS CHICO QUE COCINA ───\n` +
         `  la yesca más chica de la ventana del contacto: ${YESCA_MAS_CHICA.toFixed(7)} kg de madera\n` +
         `  heatCapacity ${(YESCA_MAS_CHICA * CALOR_ESPECIFICO_MADERA).toFixed(6)} · ` +
-        `ΔT ${String(IGNICION_MADERA - AMBIENTE)} · eficiencia ${String(EFICIENCIA_DE_FROTAR)}\n` +
+        `ΔT ${String(IGNICION_MADERA - AMBIENTE)} · eficiencia ${String(eficiencia)} (la copia de \`el-criterio.ts\` dice ${String(EFICIENCIA_DE_FROTAR)})\n` +
         `  → cuesta ${cuestaLaMasChica.toFixed(2)} de aliento, y la escena del documento le da 310\n` +
         `  medido con una de 0,40 kg: ${porTickDeFrotar.toFixed(4)} por tick × ${String(ticksFrotando)} ticks, ` +
         `murió en el ${String(murioEn)} y la leña no pasó de ${hastaDonde.toFixed(2)} °C de ${String(IGNICION_MADERA)}\n` +
@@ -359,15 +381,23 @@ describe('(2) sobrevive 20.000 ticks sola', () => {
         `  ARNÉS DE INVARIANTES: ${String(p.violaciones.length)} estados ilegales\n`,
     );
 
-    // La cuenta, dicha como afirmación: el fuego más barato que cocina cuesta MÁS
-    // que el tanque entero con el que la escena arranca.
-    expect(cuestaLaMasChica).toBeGreaterThan(310);
-    // Y en el mundo pasa exactamente eso: frotó, se quedó sin aliento y se murió con
-    // la leña tibia.
-    expect(murioEn).toBeGreaterThan(0);
-    expect(murioEn).toBeLessThan(200);
-    expect(hastaDonde).toBeLessThan(IGNICION_MADERA);
-    expect(porTickDeFrotar).toBeGreaterThan(10);
+    // ─── LAS TRES AFIRMACIONES DE LA PARED SE DIERON VUELTA ────────────────
+    //
+    // Decían, y era la pared entera: `cuestaLaMasChica > 310`, `murioEn` entre 0 y
+    // 200, y `hastaDonde < IGNICION_MADERA` — o sea «frotó, se quedó sin aliento y
+    // se murió con la leña tibia, a 169,67 °C de los 300». Con la eficiencia en
+    // 0,85 la yesca más chica cuesta 199,88 contra los 310 que la escena le da:
+    // **la pared se cayó**, y se cayó por donde el propio bloque decía que había
+    // que empujarla.
+    //
+    // Se afirma la dirección nueva y con la misma función de guardián: si el fuego
+    // se vuelve a encarecer por encima del tanque de la escena, esto se pone rojo y
+    // lo que hay que releer es la nota de arriba.
+    expect(cuestaLaMasChica).toBeLessThan(310);
+    // Y en el mundo pasa exactamente eso: NO se muere frotando, y la leña cruza.
+    expect(murioEn).toBe(-1);
+    expect(hastaDonde).toBeGreaterThanOrEqual(IGNICION_MADERA);
+    expect(porTickDeFrotar).toBeGreaterThan(0);
     // Y la escena era legal: la leña está en celdas distintas.
     expect(p.violaciones, p.violaciones.slice(0, 3).join(' | ')).toEqual([]);
     MEDIDO.set(

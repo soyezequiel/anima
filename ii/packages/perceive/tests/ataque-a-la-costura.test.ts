@@ -1304,7 +1304,15 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
     // 0,51, o sea −0,99). 1,584 + 0,99 = 2,574, que es exactamente lo que se movió:
     // la parte TÉRMICA —657,4629— no se movió ni un decimal, porque el fuego no se
     // abarató, se abarató estar vivo mientras se lo hace.
-    expect(Number((staminaAlNacer - staminaAlEncender).toFixed(4))).toBe(658.7889)
+    //
+    // ─── Y AHORA SÍ SE ABARATÓ EL FUEGO, QUE ES LA OTRA MITAD ──────────────
+    //
+    // 658,7889 → 272,046. La eficiencia de `friccion` pasó de 0,35 a 0,85 (tramo N,
+    // ver el encabezado de `FRICCION`), y esta vez lo que se movió es la parte
+    // TÉRMICA —657,4629 → 270,72— y no la de vivir. Es el mismo par de sumandos
+    // contado desde el otro lado, y sigue coincidiendo con `@anima/oracle` hasta la
+    // cuarta cifra: 271,536 de allá más el 0,51 de vivir los 1,5 s de pescar.
+    expect(Number((staminaAlNacer - staminaAlEncender).toFixed(4))).toBe(272.046)
     expect(staminaAlFinal - staminaAlNacer).toBeLessThan(0)
     expect(staminaAlFinal).toBeGreaterThan(0)
     // ─── EL BOCADO DEVUELVE MENOS DESDE EL ADR II-0013 ────────────────────
@@ -1352,7 +1360,7 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
   // los 2,4 segundos de frotar cobrados al precio nuevo de estar vivo (2,40 →
   // 0,816), y que la resta sea LA MISMA para las cuatro masas es la prueba de que
   // la parte térmica —que es la que depende de la masa— no la tocó nadie.
-  it('EL PRECIO DEL FUEGO QUE COCINA: 658,28 y no 280,59, con la tabla', () => {
+  it('EL PRECIO DEL FUEGO QUE COCINA: 271,54 y no 116,02, con la tabla', () => {
     // ─── EL NÚMERO QUE `@anima/oracle` NO PUEDE MEDIR ─────────────────────
     //
     // `oracle/tests/presupuesto.test.ts` despeja el precio de encender de la
@@ -1387,19 +1395,27 @@ describe('7. la cadena entera por la costura: pescar, encender, cocinar y comer'
       medido.get(m) as { costo: number; digestibilidad: number }
     // Los cuatro, clavados. El de 0,47 es el que `@anima/oracle` usa de perilla.
     // Ver la nota de arriba: los cuatro bajaron 1,584 con `COSTO_VIVIR_POR_SEGUNDO`
-    // en 0,34 (eran 282,1714 · 645,8743 · 659,8629 · 701,8286).
-    expect(Number(de(0.2).costo.toFixed(4))).toBe(280.5874)
+    // en 0,34 (eran 282,1714 · 645,8743 · 659,8629 · 701,8286), y volvieron a bajar
+    // —esta vez la parte térmica, en la razón 0,35/0,85— con la eficiencia de
+    // `friccion` en 0,85 (tramo N): 280,5874 · 644,2903 · 658,2789 · 700,2446 pasaron
+    // a los de acá abajo.
+    //
+    // Y LA DIGESTIBILIDAD DE LOS CUATRO NO SE MOVIÓ, que es lo que hay que leer: el
+    // umbral de lo que COCINA sigue estando entre 0,46 y 0,47 kg de vara. Se abarató
+    // llegar; no cambió a dónde hay que llegar.
+    expect(Number(de(0.2).costo.toFixed(4))).toBe(116.016)
     expect(de(0.2).digestibilidad).toBeCloseTo(0.38, 6)
-    expect(Number(de(0.46).costo.toFixed(4))).toBe(644.2903)
+    expect(Number(de(0.46).costo.toFixed(4))).toBe(265.776)
     expect(de(0.46).digestibilidad).toBeLessThan(0.85)
-    expect(Number(de(0.47).costo.toFixed(4))).toBe(658.2789)
+    expect(Number(de(0.47).costo.toFixed(4))).toBe(271.536)
     expect(de(0.47).digestibilidad).toBeCloseTo(0.95, 6)
-    expect(Number(de(0.5).costo.toFixed(4))).toBe(700.2446)
+    expect(Number(de(0.5).costo.toFixed(4))).toBe(288.816)
     // El factor entre los dos umbrales, que es el que hay que tener en la cabeza.
-    // Era 2,339 y ahora es 2,346: el peaje de vivir el frotar era una parte más
-    // gorda del fuego barato que del caro, así que sacarlo SEPARA los dos umbrales
-    // en vez de acercarlos. El factor de 2,3 largos se banca el cambio de constante.
-    expect(de(0.47).costo / de(0.2).costo).toBeCloseTo(2.346, 3)
+    // Era 2,339, después 2,346 y ahora 2,340: el peaje de vivir el frotar era una
+    // parte más gorda del fuego barato que del caro, así que sacarlo SEPARABA los
+    // dos umbrales; abaratar la parte térmica los vuelve a juntar, porque deja al
+    // peaje pesando más. El factor de 2,3 largos se banca las dos constantes.
+    expect(de(0.47).costo / de(0.2).costo).toBeCloseTo(2.34, 2)
   }, 300_000)
 
   it('COCINAR NO ES RIVAL: un fuego cocina todo lo que se le ponga encima, al mismo precio', () => {
@@ -1665,12 +1681,15 @@ describe('8. la leña, medida contra `stepWorld`', () => {
     // 0,46 el pescado se queda en 0,7461 y en 0,47 llega a 0,95 — no hay pendiente
     // suave que permita negociar el precio.
     //
-    // EL UMBRAL NO SE MOVIÓ Y EL PRECIO SÍ: bajar `COSTO_VIVIR_POR_SEGUNDO` de 1,0
-    // a 0,34 le sacó 1,584 al precio (era 659,8629) y dejó los 0,47 kg donde
-    // estaban, que es lo que había que confirmar — la masa que cocina la decide la
-    // ley 3 y no el hambre.
+    // EL UMBRAL NO SE MOVIÓ Y EL PRECIO SÍ, DOS VECES: bajar
+    // `COSTO_VIVIR_POR_SEGUNDO` de 1,0 a 0,34 le sacó 1,584 al precio (era
+    // 659,8629), y subir la eficiencia de `friccion` de 0,35 a 0,85 (tramo N) le
+    // sacó la parte térmica y lo dejó en 271,536. Los 0,47 kg siguen donde estaban
+    // en las dos, que es lo que había que confirmar: **la masa que cocina la decide
+    // la ley 3, y ni el hambre ni el precio de frotar la mueven.** Es el mismo
+    // barrido de a un centésimo contestando lo mismo con otras dos constantes.
     expect(primeraQueCocina).toBe(0.47)
-    expect(Number(precioDeLaPrimera.toFixed(4))).toBe(658.2789)
+    expect(Number(precioDeLaPrimera.toFixed(4))).toBe(271.536)
     // 30 s eran de sobra con siete cuerpos en la escena; con el decreto
     // materializado son ~90 y el barrido tarda cuatro veces más. Ver la nota del
     // bloque 7: los números no se movieron, se movió el reloj.

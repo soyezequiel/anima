@@ -496,7 +496,12 @@ describe('(e) el puente de la yesca: `deshilachar` fabrica cosas livianas', () =
     const tanque = specOf(empuje.poweredBy.q).range[1]
     const promete = 400
     const techo = (tanque * empuje.poweredBy.efficiency) / (promete - T_AMBIENTE)
-    expect(techo).toBeCloseTo(0.909091, 6)
+    // Era 0,909091 con la eficiencia de `friccion` en 0,35 y es 2,207792 con 0,85
+    // (tramo N): el techo de lo que un tanque lleno puede llevar hasta los 400 °C
+    // subió de 909 gramos a 2,2 kg. Lo que el bloque afirma no es el número sino la
+    // relación de abajo —que `TECHO_DE_YESCA` entre debajo del techo—, y esa se
+    // sostiene con más aire que antes.
+    expect(techo).toBeCloseTo(2.207792, 6)
     expect(TECHO_DE_YESCA).toBeLessThanOrEqual(techo)
   })
 

@@ -95,7 +95,7 @@ import {
   type Process,
   type Role,
 } from '../src/process.js'
-import { seg } from '../src/fixed.js'
+import { HZ_DE_REFERENCIA, seg } from '../src/fixed.js'
 import { SUSTANCIAS_SEMILLA } from '../src/data/sustancias.js'
 
 const phys = buildSeedPhysics()
@@ -706,6 +706,16 @@ describe('agujero G · la reparación del precio cuenta la masa garantizada, no 
     // La subestimación que queda, y sigue siendo declarada: cobrar por el máximo del
     // RANGO —diez mil— mataría a `friccion`, cuyo rol no acota nada, y `friccion` es
     // el primer fuego de la partida.
-    expect(saldoDeclarado(FRICCION, 'stamina', phys)).toBeCloseTo(-6 / 0.35, 6)
+    //
+    // El `0,35` estaba copiado y se puso rojo cuando la eficiencia pasó a 0,85
+    // (tramo N). Lo que este bloque mide es la CUENTA —empuje por paso dividido la
+    // eficiencia, por UNA unidad de masa— y no el valor de la calibración, así que
+    // los dos factores se leen del proceso.
+    const drive = FRICCION.effects.find((e) => e.k === 'drive')
+    if (drive?.k !== 'drive' || drive.poweredBy === undefined) {
+      throw new Error('friccion cambió de forma')
+    }
+    const porUnidad = drive.porSegundo / HZ_DE_REFERENCIA / drive.poweredBy.efficiency
+    expect(saldoDeclarado(FRICCION, 'stamina', phys)).toBeCloseTo(-porUnidad, 6)
   })
 })
