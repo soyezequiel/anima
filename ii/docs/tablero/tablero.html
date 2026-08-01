@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ánima II — tablero (61%)</title>
+<title>Ánima II — tablero (64%)</title>
 <style>*,*::before,*::after{box-sizing:border-box}
 :root {
   color-scheme: light dark;
@@ -329,46 +329,45 @@ p { margin: 0; }
     <p class="sub">Cuerpo, materia y vara — el remake que vive en ii/</p>
     <p class="tesis">Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.</p>
     <div class="sello">
-      <span>Actualizado <b>2026-07-31</b></span>
+      <span>Actualizado <b>2026-08-01</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>8</b> etapas listas · <b>0</b> en curso · <b>5</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>8</b> etapas listas · <b>1</b> en curso · <b>4</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">61%</span>
+      <span class="cifra">64%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="61 por ciento avanzado">
+    <div class="barra" role="img" aria-label="64 por ciento avanzado">
       <div class="tramo si" style="width:60.76%"></div>
-      <div class="tramo medio" style="width:0.00%"></div>
+      <div class="tramo medio" style="width:3.16%"></div>
     </div>
     <div class="leyenda">
       <span class="l-si">terminado · 24,0 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 0,0</span>
-      <span class="l-no">por delante · 15,5</span>
+      <span class="l-medio">en curso · 1,3</span>
+      <span class="l-no">por delante · 14,3</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>Los hitos 8 a 11, reescritos en la moneda nueva: el barrido que el ADR II-0024 se debía</h2>
-    <p class="detalle">El Hito 6 aflojó un criterio, y los hitos de más adelante seguían escritos como si el modelo no existiera. Se barrieron el 7 al 16: el juez no se toca, y hay tres arreglos. El más grande es «cero llamadas al modelo», que los Hitos 9 y 10 pedían textual — y NO se reemplazó por otro número: se preguntó primero para qué estaba. El párrafo que justifica el Hito 9 habla todo de tiempo (80 ms), o sea que contar llamadas era la forma de medir la espera MIENTRAS toda llamada bloqueaba. Desde el Hito 6 dejaron de ser lo mismo, así que la frase se parte en las dos cosas que tenía pegadas: la fragua dormida (binaria, y es lo que la biblioteca semilla compra) y el reloj (que es lo que el usuario siente). Además el presupuesto del Hito 8 pasó a tener DOS consumidores con urgencias distintas —la fragua puede tardar 14 s, el chat no— y el Hito 11 hereda tres relojes que ya existen con línea base, en vez de inventarlos. Todo escrito como tercera enmienda del ADR II-0024, para que no se redescubra hito por hito. Lo anterior, que sigue valiendo: los seis puntos del criterio del Hito 6 cumplían, pero la DESCRIPCIÓN del hito nombra seis piezas y sólo tres estaban escritas. Medido antes de escribir código: `resolveReference` de Ánima I no había que portarlo, `plan/src/referencias.ts` YA ES un resolutor con las mismas decisiones. Lo que de verdad faltaba eran dos cosas, y ninguna es resolver: detectar cuándo una frase señala («traé un palo» y «traé EL palo» se leían igual) y acordarse de qué se nombró (`lastMentioned`/`lastUsed`, memoria de la CHARLA, no del mundo). La memoria guarda IDS y no nombres —medido: el mismo cuerpo pasa de «pescado crudo» a «pescado asado», así que un resolutor por nombre pierde «el pescado» apenas se cocina—. Y entraron el canal de habla (separado del tick de verdad: `habla.ts` no tiene ni un import), el tercer reloj (una afirmación propia se corrigió sola: `msHastaAccionPertinente` no da segundos, da UN TICK — los segundos son del caso frío del Hito 8, que todavía no existe), y narrar el progreso por lo que la criatura HIZO y no por una estimación de lo que va a hacer.</p>
+    <h2>Hito 7, tramos A-B-C: el juez arranca, y dos guardianes que no estaban planeados</h2>
+    <p class="detalle">El criterio del hito se escribio ANTES, con cinco mediciones, y tiene SIETE puntos y no seis: el septimo lo obligo la medicion. El sello de una habilidad se invalida cuando cambia la fisica, pero no depende de los numeros -- depende de un entero escrito a mano, PHYSICS_VERSION, que nunca se movio mientras FRICCION.efficiency iba de 0,35 a 0,85. Un proceso sellado con una y con la otra tiene el mismo sello. Se midio si hacia falta un guardian nuevo, porque la respuesta barata era &quot;ya lo cubre la huella de conducta&quot;: no lo cubre, y la evidencia no es un razonamiento sino que el commit que movio la eficiencia toco 20 archivos y la huella no esta entre ellos. Lo que sorprende es la otra mitad: los tests SI atraparon el cambio en veinte archivos con numeros clavados. Lo unico que sobrevivio callado fue el sello, justo la cosa inventada para eso. Quedaron 591 numeros sellados y el rojo dice cual se movio. Despues nacio @anima/judge (el nombre Verdict ya estaba tomado tres veces, asi que va Veredicto) con los cuatro grados: injuzgable es que no se pudo ARMAR un mundo, inconcluso es que se armo y no decide. Y se midio si &quot;insintetizable&quot; era una categoria real: si, porque el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14), asi que un contrato que pida toxicity&gt;=0.6 no se puede juzgar en ningun mundo. Las 17 innatas son todas sintetizables, o sea que el sujeto del punto 3 hay que fabricarlo -- pero apoyado en un techo medido, no en un numero inventado.</p>
     <ol>
-      <li>`Predicado` no distingue «que exista X» de «que vos hagas X»: es existencial. Por eso «fabrica una trampa» puede estar cumplida antes de empezar, y ahora eso se DICE (grado `ya-esta`) en vez de descartarse en silencio.</li>
-      <li>La ligadura diferida no tiene ejecutor: {k:rinde, de:g1} nombra un nodo hermano y `Mente.#rindes` se vacia en cada plan. Por eso las clausulas van de a una y `ligaduraPerdida` cuenta lo que cuesta: siete pasos de plan por ligadura.</li>
-      <li>Lo que sigue en el orden del plan es el Hito 7 — el juez. Es el único de los diez que vienen al que el Hito 6 no le movió una coma.</li>
-      <li>Y una que el Hito 8 tiene que decidir y nadie decidió: con qué prioridad se descarta cuando la fragua y el chat compiten por la misma cuota. Son dos consumidores con urgencias distintas y el presupuesto se escribió para uno.</li>
+      <li>Tramo D: el banco de mundos (puntos 1, 2 y 6). Medido: hoy hay TRES copias del constructor de mundos en arneses de test (lang, mind, perceive) y ninguna en src, y el juez del Hito 8 corre en produccion y no en un test.</li>
+      <li>HUECO ABIERTO con su it.fails y su numero: el sello depende de los 591 numeros de la fisica y los procesos semilla solo LEEN 7 cualidades. 84x de mas. Un sello de friccion muere porque se movio la toxicidad del agua. Elegido a ojos abiertos (decision D3): la dependencia por numero es la salida cara.</li>
+      <li>Y una que el Hito 8 tiene que decidir y nadie decidio: con que prioridad se descarta cuando la fragua y el chat compiten por la misma cuota. Son dos consumidores con urgencias distintas y el presupuesto se escribio para uno.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2785</div>
+        <div class="dato-valor">2804</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · emergencia 126 · perceive 138 · lang 83. TERCERA VEZ SEGUIDA que el commit cita uno más de lo medido acá (2757/2756, 2769/2768, 2786/2785) — vale la pena mirar qué test se cuenta distinto</div>
+        <div class="dato-nota">re-corrido y confirmado, ii:test exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · lang 83 · judge 14. Esta vez el numero del commit SE MIDIO antes de escribirlo: las tres veces anteriores citaba uno de mas</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10 de 10</div>
@@ -383,7 +382,7 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">10</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">@anima/lang depende de physics, plan, skills, world, oracle, mind y perceive; nadie depende de el</div>
+        <div class="dato-nota">nace @anima/judge (el juez de habilidades) y @anima/juez se renombro a @anima/emergencia, que es lo que ES: el detector de secuencias del Hito 5. Tener judge y juez conviviendo era una hora perdida garantizada</div>
       </div>
       <div class="dato">
         <div class="dato-valor">69</div>
@@ -393,12 +392,12 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">II-0024 con DOS enmiendas, las dos del mismo dia y las dos porque el usuario pregunto para que servia un numero</div>
+        <div class="dato-nota">II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision, para que no se redescubra hito por hito</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">0</div>
+        <div class="dato-valor">3</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — HEAD y origin/anima-2 coinciden exacto: todo pusheado</div>
+        <div class="dato-nota">rama anima-2 — los tres tramos del Hito 7. El usuario pushea solo</div>
       </div>
   </section>
 
@@ -600,22 +599,27 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa medio">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H7</span>
             <h3>El juez</h3>
-            <span class="chip no">No empezado</span>
+            <span class="chip medio">En curso</span>
           </div>
           <p class="frase">Decidir si una habilidad recién escrita es estable, con mundos adversos que ella no vio.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">OJO: @anima/emergencia ya existe con 126 tests, pero es el detector de secuencias de emergencia del Hito 5, no el juez de este hito. Son dos cosas con el mismo nombre.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>7</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">El criterio se escribio ANTES de tocar codigo, con cinco mediciones, y dos de ellas dieron vuelta el trabajo. RESUELTO: @anima/juez era el detector de secuencias del Hito 5 y se renombro a @anima/emergencia; el nombre `juez` describia lo que hace ESTE hito. Y el punto 7 no estaba en el documento: lo obligo la medicion del sello.</p>
         <details class="criterios">
-          <summary>2 criterios</summary>
+          <summary>7 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una habilidad que sólo funciona donde la corrigieron no promueve</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>el juez evalúa por separado plano, construcción, uso y utilidad</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una habilidad que solo funciona donde la corrigieron no promueve</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una de pesca se juzga en mundos con rio y nunca saca un 0% falso</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>un contrato insintetizable devuelve `injuzgable` y no siembra regresiones — y &quot;insintetizable&quot; resulto ser una categoria REAL: el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14)</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una precondicion espuria se borra por ablacion — el dato ya existe: 17 contratos con `precondiciones` escritas como candidatas</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>bajar un numero de la fisica invalida los sellos, con el guardian de los 591 numeros. La dependencia POR NUMERO queda como hueco medido: los procesos leen 7 cualidades y el sello es sensible a 591, 84x de mas</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>el juez evalua por separado plano, construccion, uso y utilidad — los cuatro cargos y los cuatro grados estan escritos; falta que corran contra mundos</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>PUNTO 7, que el documento de arquitectura NO tenia: cambiar un numero de la fisica sin subir PHYSICS_VERSION se pone rojo. Daba verde, y ya habia pasado (0,35 → 0,85 sin tocar la version)</span></li>
           </ul>
         </details>
         </div>
@@ -776,7 +780,7 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Los números vienen de la corrida contra el árbol del commit aba6f03 (las cuatro piezas de la descripción del Hito 6) y NO se re-corrieron: el barrido de los hitos 8 a 11 no tocó una línea de código, sólo documentos. Árbol limpio y todo pusheado en aba6f03.</p>
+      <p>Re-verificado al cerrar el tramo C del Hito 7: pnpm ii:test exit 0 y pnpm ii:typecheck limpio, mirando el exit code. Arbol de trabajo limpio.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">

@@ -20,24 +20,23 @@
   "artifactUrl": "https://claude.ai/code/artifact/a8badcf1-8c50-4e29-b4e3-668ce387fe15",
   "proyecto": "Ánima II",
   "subtitulo": "Cuerpo, materia y vara — el remake que vive en ii/",
-  "actualizado": "2026-07-31",
+  "actualizado": "2026-08-01",
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "Los hitos 8 a 11, reescritos en la moneda nueva: el barrido que el ADR II-0024 se debía",
-    "detalle": "El Hito 6 aflojó un criterio, y los hitos de más adelante seguían escritos como si el modelo no existiera. Se barrieron el 7 al 16: el juez no se toca, y hay tres arreglos. El más grande es «cero llamadas al modelo», que los Hitos 9 y 10 pedían textual — y NO se reemplazó por otro número: se preguntó primero para qué estaba. El párrafo que justifica el Hito 9 habla todo de tiempo (80 ms), o sea que contar llamadas era la forma de medir la espera MIENTRAS toda llamada bloqueaba. Desde el Hito 6 dejaron de ser lo mismo, así que la frase se parte en las dos cosas que tenía pegadas: la fragua dormida (binaria, y es lo que la biblioteca semilla compra) y el reloj (que es lo que el usuario siente). Además el presupuesto del Hito 8 pasó a tener DOS consumidores con urgencias distintas —la fragua puede tardar 14 s, el chat no— y el Hito 11 hereda tres relojes que ya existen con línea base, en vez de inventarlos. Todo escrito como tercera enmienda del ADR II-0024, para que no se redescubra hito por hito. Lo anterior, que sigue valiendo: los seis puntos del criterio del Hito 6 cumplían, pero la DESCRIPCIÓN del hito nombra seis piezas y sólo tres estaban escritas. Medido antes de escribir código: `resolveReference` de Ánima I no había que portarlo, `plan/src/referencias.ts` YA ES un resolutor con las mismas decisiones. Lo que de verdad faltaba eran dos cosas, y ninguna es resolver: detectar cuándo una frase señala («traé un palo» y «traé EL palo» se leían igual) y acordarse de qué se nombró (`lastMentioned`/`lastUsed`, memoria de la CHARLA, no del mundo). La memoria guarda IDS y no nombres —medido: el mismo cuerpo pasa de «pescado crudo» a «pescado asado», así que un resolutor por nombre pierde «el pescado» apenas se cocina—. Y entraron el canal de habla (separado del tick de verdad: `habla.ts` no tiene ni un import), el tercer reloj (una afirmación propia se corrigió sola: `msHastaAccionPertinente` no da segundos, da UN TICK — los segundos son del caso frío del Hito 8, que todavía no existe), y narrar el progreso por lo que la criatura HIZO y no por una estimación de lo que va a hacer.",
+    "titulo": "Hito 7, tramos A-B-C: el juez arranca, y dos guardianes que no estaban planeados",
+    "detalle": "El criterio del hito se escribio ANTES, con cinco mediciones, y tiene SIETE puntos y no seis: el septimo lo obligo la medicion. El sello de una habilidad se invalida cuando cambia la fisica, pero no depende de los numeros -- depende de un entero escrito a mano, PHYSICS_VERSION, que nunca se movio mientras FRICCION.efficiency iba de 0,35 a 0,85. Un proceso sellado con una y con la otra tiene el mismo sello. Se midio si hacia falta un guardian nuevo, porque la respuesta barata era \"ya lo cubre la huella de conducta\": no lo cubre, y la evidencia no es un razonamiento sino que el commit que movio la eficiencia toco 20 archivos y la huella no esta entre ellos. Lo que sorprende es la otra mitad: los tests SI atraparon el cambio en veinte archivos con numeros clavados. Lo unico que sobrevivio callado fue el sello, justo la cosa inventada para eso. Quedaron 591 numeros sellados y el rojo dice cual se movio. Despues nacio @anima/judge (el nombre Verdict ya estaba tomado tres veces, asi que va Veredicto) con los cuatro grados: injuzgable es que no se pudo ARMAR un mundo, inconcluso es que se armo y no decide. Y se midio si \"insintetizable\" era una categoria real: si, porque el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14), asi que un contrato que pida toxicity>=0.6 no se puede juzgar en ningun mundo. Las 17 innatas son todas sintetizables, o sea que el sujeto del punto 3 hay que fabricarlo -- pero apoyado en un techo medido, no en un numero inventado.",
     "proximosPasos": [
-      "`Predicado` no distingue «que exista X» de «que vos hagas X»: es existencial. Por eso «fabrica una trampa» puede estar cumplida antes de empezar, y ahora eso se DICE (grado `ya-esta`) en vez de descartarse en silencio.",
-      "La ligadura diferida no tiene ejecutor: {k:rinde, de:g1} nombra un nodo hermano y `Mente.#rindes` se vacia en cada plan. Por eso las clausulas van de a una y `ligaduraPerdida` cuenta lo que cuesta: siete pasos de plan por ligadura.",
-      "Lo que sigue en el orden del plan es el Hito 7 — el juez. Es el único de los diez que vienen al que el Hito 6 no le movió una coma.",
-      "Y una que el Hito 8 tiene que decidir y nadie decidió: con qué prioridad se descarta cuando la fragua y el chat compiten por la misma cuota. Son dos consumidores con urgencias distintas y el presupuesto se escribió para uno."
+      "Tramo D: el banco de mundos (puntos 1, 2 y 6). Medido: hoy hay TRES copias del constructor de mundos en arneses de test (lang, mind, perceive) y ninguna en src, y el juez del Hito 8 corre en produccion y no en un test.",
+      "HUECO ABIERTO con su it.fails y su numero: el sello depende de los 591 numeros de la fisica y los procesos semilla solo LEEN 7 cualidades. 84x de mas. Un sello de friccion muere porque se movio la toxicidad del agua. Elegido a ojos abiertos (decision D3): la dependencia por numero es la salida cara.",
+      "Y una que el Hito 8 tiene que decidir y nadie decidio: con que prioridad se descarta cuando la fragua y el chat compiten por la misma cuota. Son dos consumidores con urgencias distintas y el presupuesto se escribio para uno."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2785",
-      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · emergencia 126 · perceive 138 · lang 83. TERCERA VEZ SEGUIDA que el commit cita uno más de lo medido acá (2757/2756, 2769/2768, 2786/2785) — vale la pena mirar qué test se cuenta distinto"
+      "valor": "2804",
+      "nota": "re-corrido y confirmado, ii:test exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · lang 83 · judge 14. Esta vez el numero del commit SE MIDIO antes de escribirlo: las tres veces anteriores citaba uno de mas"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -52,7 +51,7 @@
     {
       "etiqueta": "paquetes",
       "valor": "10",
-      "nota": "@anima/lang depende de physics, plan, skills, world, oracle, mind y perceive; nadie depende de el"
+      "nota": "nace @anima/judge (el juez de habilidades) y @anima/juez se renombro a @anima/emergencia, que es lo que ES: el detector de secuencias del Hito 5. Tener judge y juez conviviendo era una hora perdida garantizada"
     },
     {
       "etiqueta": "it.fails abiertos",
@@ -62,12 +61,12 @@
     {
       "etiqueta": "ADRs propios",
       "valor": "24",
-      "nota": "II-0024 con DOS enmiendas, las dos del mismo dia y las dos porque el usuario pregunto para que servia un numero"
+      "nota": "II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision, para que no se redescubra hito por hito"
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "0",
-      "nota": "rama anima-2 — HEAD y origin/anima-2 coinciden exacto: todo pusheado"
+      "valor": "3",
+      "nota": "rama anima-2 — los tres tramos del Hito 7. El usuario pushea solo"
     }
   ],
   "etapas": [
@@ -347,19 +346,39 @@
       "id": "H7",
       "nombre": "El juez",
       "enUnaFrase": "Decidir si una habilidad recién escrita es estable, con mundos adversos que ella no vio.",
-      "estado": "pendiente",
+      "estado": "en-curso",
       "semanas": 2.5,
       "puntos": [
         {
           "estado": "no",
-          "texto": "una habilidad que sólo funciona donde la corrigieron no promueve"
+          "texto": "una habilidad que solo funciona donde la corrigieron no promueve"
         },
         {
           "estado": "no",
-          "texto": "el juez evalúa por separado plano, construcción, uso y utilidad"
+          "texto": "una de pesca se juzga en mundos con rio y nunca saca un 0% falso"
+        },
+        {
+          "estado": "si",
+          "texto": "un contrato insintetizable devuelve `injuzgable` y no siembra regresiones — y \"insintetizable\" resulto ser una categoria REAL: el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14)"
+        },
+        {
+          "estado": "no",
+          "texto": "una precondicion espuria se borra por ablacion — el dato ya existe: 17 contratos con `precondiciones` escritas como candidatas"
+        },
+        {
+          "estado": "si",
+          "texto": "bajar un numero de la fisica invalida los sellos, con el guardian de los 591 numeros. La dependencia POR NUMERO queda como hueco medido: los procesos leen 7 cualidades y el sello es sensible a 591, 84x de mas"
+        },
+        {
+          "estado": "medio",
+          "texto": "el juez evalua por separado plano, construccion, uso y utilidad — los cuatro cargos y los cuatro grados estan escritos; falta que corran contra mundos"
+        },
+        {
+          "estado": "si",
+          "texto": "PUNTO 7, que el documento de arquitectura NO tenia: cambiar un numero de la fisica sin subir PHYSICS_VERSION se pone rojo. Daba verde, y ya habia pasado (0,35 → 0,85 sin tocar la version)"
         }
       ],
-      "nota": "OJO: @anima/emergencia ya existe con 126 tests, pero es el detector de secuencias de emergencia del Hito 5, no el juez de este hito. Son dos cosas con el mismo nombre."
+      "nota": "El criterio se escribio ANTES de tocar codigo, con cinco mediciones, y dos de ellas dieron vuelta el trabajo. RESUELTO: @anima/juez era el detector de secuencias del Hito 5 y se renombro a @anima/emergencia; el nombre `juez` describia lo que hace ESTE hito. Y el punto 7 no estaba en el documento: lo obligo la medicion del sello."
     },
     {
       "id": "H8",
@@ -484,7 +503,7 @@
     }
   ],
   "verificacion": {
-    "cuando": "Los números vienen de la corrida contra el árbol del commit aba6f03 (las cuatro piezas de la descripción del Hito 6) y NO se re-corrieron: el barrido de los hitos 8 a 11 no tocó una línea de código, sólo documentos. Árbol limpio y todo pusheado en aba6f03.",
+    "cuando": "Re-verificado al cerrar el tramo C del Hito 7: pnpm ii:test exit 0 y pnpm ii:typecheck limpio, mirando el exit code. Arbol de trabajo limpio.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
