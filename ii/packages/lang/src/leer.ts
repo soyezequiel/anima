@@ -46,6 +46,8 @@ import { PUENTE } from './alias.js'
 import { emparejar } from './emparejar.js'
 import { lexicoDe } from './lexico.js'
 import { polaridadDe } from './polaridad.js'
+import { MemoriaDeLaCharla, aRef, referenciaDe, sinEnclitico } from './referencias.js'
+import type { ClaseDeReferencia } from './referencias.js'
 import { tokenizar } from './normalizar.js'
 import type {
   ClausulaLeida,
@@ -286,6 +288,14 @@ export interface OpcionesDeLectura {
   readonly yaEstaCumplida?: (firma: string) => boolean
   /** Bajo esto no se compromete conducta, se compromete gesto. Por omisión 0,5. */
   readonly umbral?: number
+  /**
+   * LO QUE SE NOMBRÓ ANTES EN LA CHARLA.
+   *
+   * Sin esto, «comé eso» no tiene a qué apuntar y sale por `orientacion` — que
+   * es correcto y es lo que pasa en la primera frase de una conversación. Quien
+   * mantenga una charla se guarda una y se la pasa siempre la misma.
+   */
+  readonly memoria?: MemoriaDeLaCharla
 }
 
 const UMBRAL_POR_OMISION = 0.5
@@ -366,7 +376,32 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
     let cubiertos = 0
     let suma = 0
     let vistos = 0
+    // La referencia se busca ANTES de emparejar, por lo mismo que la polaridad:
+    // «traelo» es un verbo con objeto, y si se empareja primero se pierde el
+    // enclítico. `conoceElVerbo` mira el léxico para que «pelo» no cuente.
+    let clase: ClaseDeReferencia = 'ninguna'
+    for (let i = 0; i < trozo.tokens.length && clase === 'ninguna'; i++) {
+      clase = referenciaDe(trozo.tokens, i, (p) => lex.entradas.has(p))
+    }
     for (let i = 0; i < trozo.tokens.length; ) {
+      // Un verbo con enclítico —«traelo»— no está en el léxico tal cual, así que
+      // se prueba también su raíz. Sin esto, «traelo» era una palabra
+      // desconocida y la frase entera caía a `no-entendida`.
+      const raiz = sinEnclitico(trozo.tokens[i] ?? '')
+      if (raiz !== undefined && lex.entradas.has(raiz) && !lex.entradas.has(trozo.tokens[i] ?? '')) {
+        const e = lex.entradas.get(raiz)
+        if (e !== undefined) {
+          for (const d of e.denota) {
+            if (d.k === 'verbo' && verbo === undefined) verbo = d.id
+            else objetos.push(d)
+          }
+          cubiertos++
+          suma += 0.9
+          vistos++
+          i++
+          continue
+        }
+      }
       const m = emparejar(lex, trozo.tokens, i)
       if (m === undefined) {
         i++
@@ -406,6 +441,17 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
       liga: trozo.liga,
       ...(verbo === undefined ? {} : { verbo }),
       objetos,
+      ...(clase === 'ninguna'
+        ? {}
+        : {
+            referencia: {
+              clase,
+              ...(() => {
+                const r = opciones.memoria === undefined ? undefined : aRef(clase, opciones.memoria)
+                return r === undefined ? {} : { ref: r }
+              })(),
+            },
+          }),
       polaridad,
       leidaPor: 'local',
       porque: porqueDe(grado, firma, verbo, cubiertos, vistos),

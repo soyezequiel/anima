@@ -35,8 +35,8 @@
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2769",
-      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · juez 126 · lang 66"
+      "valor": "2768",
+      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 66. El commit citaba 2769; van dos actualizaciones seguidas con esa diferencia de 1, sin investigar"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -65,8 +65,8 @@
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "18",
-      "nota": "rama anima-2 — el usuario pushea solo"
+      "valor": "19",
+      "nota": "rama anima-2 — el usuario pushea solo. Re-verificado con git fetch"
     }
   ],
   "etapas": [
@@ -479,7 +479,7 @@
     }
   ],
   "verificacion": {
-    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 0395840 (el adversario de 48 agentes). Árbol de trabajo limpio.",
+    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit aa68d49 (el corpus cerrado en 82 y el Hito 6 marcado hecho). Árbol de trabajo limpio.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
@@ -488,7 +488,7 @@
       },
       {
         "cmd": "pnpm ii:test",
-        "resultado": "exit 0 · 2756 pasan, 0 fallan — el commit 0395840 citaba 2757, un test de diferencia sin investigar",
+        "resultado": "exit 0 · 2768 pasan, 0 fallan — el commit aa68d49 citaba 2769, un test de diferencia sin investigar (segunda vez seguida)",
         "ok": true
       },
       {
@@ -503,11 +503,11 @@
       },
       {
         "cmd": "git fetch && git log origin/anima-2..HEAD",
-        "resultado": "9 commits sin pushear",
+        "resultado": "19 commits sin pushear",
         "ok": true
       }
     ],
-    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit 0395840 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez."
+    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit aa68d49 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez."
   },
   "decisionesQueEsperan": [
     {

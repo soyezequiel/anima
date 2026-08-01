@@ -1211,3 +1211,101 @@ después están los tres cerrados:
 5. **El CLI cuesta 14 s y US$ 0,0158 por frase.** Para la fragua del Hito 8 está
    bien; para un chat no. La sonda directa dio 4 s, así que el grueso es arranque
    del CLI — el camino HTTP tiene que ser otro.
+
+### Tramo P — las cuatro piezas de la descripción que faltaban
+
+Los seis puntos del criterio cumplían, pero la **descripción** del hito nombra
+seis piezas y sólo tres estaban. Éstas son las otras.
+
+#### `resolveReference`, que no era un puerto sino una FUSIÓN
+
+Se midió antes de escribir una línea y el resultado dio vuelta el trabajo:
+**`plan/src/referencias.ts` YA ES un resolutor** —`Ref` de cinco formas,
+`resolver`/`resolverCuerpo`/`resolverTodos`, el más cercano con desempate por id,
+`undefined` en vez de fantasma— con las mismas decisiones que el de Ánima I
+tomaría. Portar el otro encima habría dejado **dos resolutores que pueden
+contestar distinto sobre el mismo mundo**.
+
+Lo que faltaba eran dos cosas y **ninguna es resolver**:
+
+1. **detectar que una frase señala.** «Traé un palo» y «traé EL palo» son dos
+   pedidos distintos y se leían igual. Ahora se distinguen `definida`,
+   `demostrativa` y `pronominal` («traeLO»).
+2. **acordarse de qué se nombró.** Es el `lastMentioned`/`lastUsed` que el
+   resolutor de Ánima I daba por sentado y que **en `ii/` no produce nadie** —
+   porque es memoria de la CHARLA, y la charla es este paquete.
+
+```
+  «comé eso» → {"k":"id","id":"suelta:-6:-7:0"} → suelta:-6:-7:0
+```
+
+El `Ref` sale de acá y **lo resuelve el de `@anima/plan`**, contra la vista de hoy.
+
+**Y las tres que NO se portaron, cada una con su medición:**
+
+- **`kind`** no existe ni puede (punto 12 del Gate). Los `tags` son **7 clases
+  para 30 sustancias**: no separan palo de junco de liana.
+- **`name`** es peor, porque **no es un identificador**: medido, el mismo cuerpo
+  pasa de «pescado crudo» a «pescado asado». Un resolutor por nombre deja de
+  encontrar «el pescado» **en cuanto se cocina**.
+- **`manhattan`** no existe en `ii/`, y no se transcribe: la métrica del proyecto
+  es Chebyshev, y dos métricas contra el mismo `within` es el bug que aparece en
+  la grilla como «a veces no llega».
+
+Por eso la memoria guarda **ids**, que es lo único que no miente.
+
+Y el enclítico trajo un arreglo de yapa: «traelo» no estaba en el léxico, así que
+la frase entera caía a `no-entendida`. Ahora se prueba la raíz — con el portón de
+que la raíz **sea** un verbo, o «pelo» y «solo» serían pedidos con objeto.
+
+#### El canal de habla, y qué quiere decir «separado»
+
+**Que nada del tick lo toca.** Si `habla.ts` se borrara entero, la criatura haría
+exactamente lo mismo — sólo que en silencio. Eso es lo que hace cierto el «cuesta
+0 en el camino de acción» del documento, y **se afirma leyendo el fuente**: el
+módulo no tiene **ni un `import`**, así que no puede tocar el tick ni por
+accidente. El guardián de la regla 2 no lo vería, porque importar el mundo no
+está prohibido.
+
+**Y no es `ctx.say`.** Ése es el habla de la HABILIDAD, adentro del aislamiento;
+se midió que ningún `src/` lo lee. No está roto: es de otra capa. La habilidad
+dice «me quedo acá» mientras corre; el chat dice «dale, voy» antes de que nada
+corra. Mezclarlos habría metido el acuse adentro del aislamiento, que es donde no
+puede estar — ahí no llega hasta que algo despega.
+
+Cuatro clases —`acuse`, `aviso`, `progreso`, `listo`— porque una UI las pinta
+distinto y porque **el criterio mide sólo el acuse**: el resto puede tardar.
+
+#### El tercer reloj, y una afirmación mía que corrigió su propia salida
+
+`msHastaAccionPertinente` estaba escrito y **no lo alimentaba nadie**. Ahora sí:
+
+```
+── msHastaAccionPertinente ──
+  hacé fuego                          1 ticks = 0.1 s
+  pescá algo                          1 ticks = 0.1 s
+  fabricá una trampa para peces    sin acción pertinente (la meta ya está cumplida)
+  asá el pescado                      1 ticks = 0.1 s
+```
+
+**Escribí que tenía que dar segundos y da un tick.** Los «segundos» que el
+documento le pone son del **caso frío** —cuando la habilidad no existe y la
+fragua tiene que escribirla, 6 a 25 s— **y ese caso no existe hasta el Hito 8**.
+Hoy todas las habilidades existen, así que apenas se pone la meta el primer paso
+del plan ya es pertinente.
+
+Lo que sí queda afirmado es la distinción real: uno mide **milisegundos de
+cómputo** y el otro **ticks de mundo**. Con su control: sin orden del cuidador,
+**D2 no despega ni una vez en 300 ticks**, así que el reloj queda vacío — y
+`resumen()` devuelve `undefined` en vez de un resumen de ceros, que es la
+diferencia entre «tardó 0» y «nadie miró».
+
+#### Narrar el progreso
+
+Las dos mitades ya estaban —el cuerpo no se detiene, y el `nearest` del `gap` es
+todo `reversible`— y **faltaba decirlo**. `narrarElGap` nombra cuántos pasos sí se
+pueden dar y qué traba; `narrarProgreso` narra **por lo que la criatura HIZO, no
+por lo que va a hacer**: un «ya casi» que sale de una estimación convierte una
+espera en una mentira.
+
+Medido: `@anima/lang` **83 tests**, suite entera **2786**, typecheck limpio.

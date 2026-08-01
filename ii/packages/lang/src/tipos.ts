@@ -47,6 +47,8 @@
  */
 
 import type { ProcessId, SubstanceId } from '@anima/physics'
+import type { Ref as RefDePlan } from '@anima/plan'
+import type { ClaseDeReferencia } from './referencias.js'
 
 // ─── Lo que una palabra quiere decir ────────────────────────────────────────
 
@@ -197,6 +199,14 @@ export interface ClausulaLeida {
   readonly verbo?: VerboId
   /** Sobre qué. Sirve para el acuse y para el `bindeaSlot` del paso siguiente. */
   readonly objetos: readonly Denota[]
+  /**
+   * SI LA FRASE SEÑALA ALGO, y qué tan fuerte.
+   *
+   * «Traé un palo» y «traé EL palo» son dos pedidos distintos y hasta este
+   * tramo se leían igual. El `Ref` —cuando se puede armar— lo resuelve
+   * `@anima/plan` contra la vista de hoy; acá sólo se dice a qué apunta.
+   */
+  readonly referencia?: { readonly clase: ClaseDeReferencia; readonly ref?: RefDePlan }
   /**
    * QUIÉN LA LEYÓ.
    *

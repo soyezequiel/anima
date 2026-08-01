@@ -8,6 +8,8 @@
 //   leer.ts        la función del hito: nunca falla, nunca devuelve vacío
 //   objetivos.ts   el puente a `goalGraph`, que era el extremo sin conectar
 //   encargo.ts     varias cláusulas, mandadas de a una — el canal lleva UNA
+//   referencias.ts «el tronco», «eso», «traelo» — y la memoria de la charla
+//   habla.ts       el canal de habla, separado del camino de accion
 //   falta.ts       las CUATRO clases de lo que falta, que hoy son una sola
 //   relojes.ts     los tres, con el cronómetro entrando por parámetro
 //   consulta.ts    por dónde entra el modelo: se DESCRIBE, no se llama
@@ -29,6 +31,8 @@ export * from './emparejar.js'
 export * from './leer.js'
 export * from './objetivos.js'
 export * from './encargo.js'
+export * from './referencias.js'
+export * from './habla.js'
 export * from './falta.js'
 export * from './relojes.js'
 export * from './consulta.js'

@@ -358,9 +358,9 @@ p { margin: 0; }
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2769</div>
+        <div class="dato-valor">2768</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · juez 126 · lang 66</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 66. El commit citaba 2769; van dos actualizaciones seguidas con esa diferencia de 1, sin investigar</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10 de 10</div>
@@ -388,9 +388,9 @@ p { margin: 0; }
         <div class="dato-nota">II-0024 con DOS enmiendas, las dos del mismo dia y las dos porque el usuario pregunto para que servia un numero</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">18</div>
+        <div class="dato-valor">19</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — el usuario pushea solo</div>
+        <div class="dato-nota">rama anima-2 — el usuario pushea solo. Re-verificado con git fetch</div>
       </div>
   </section>
 
@@ -767,7 +767,7 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 0395840 (el adversario de 48 agentes). Árbol de trabajo limpio.</p>
+      <p>Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit aa68d49 (el corpus cerrado en 82 y el Hito 6 marcado hecho). Árbol de trabajo limpio.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
@@ -776,7 +776,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 2756 pasan, 0 fallan — el commit 0395840 citaba 2757, un test de diferencia sin investigar</span>
+        <span class="resultado">exit 0 · 2768 pasan, 0 fallan — el commit aa68d49 citaba 2769, un test de diferencia sin investigar (segunda vez seguida)</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
@@ -788,10 +788,10 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">9 commits sin pushear</span>
+        <span class="resultado">19 commits sin pushear</span>
       </div>
     </div>
-    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit 0395840 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez.</p>
+    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit aa68d49 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez.</p>
   </section>
 
   <section class="seccion">
