@@ -187,7 +187,7 @@ capacidades físicas disponibles en ese nivel.*
 **Nueve paquetes, 2599 tests verdes (+1 `skipped` en `world`, +1 `todo` en `plan`),
 nueve typechecks limpios.** Corridos enteros al cerrar el tramo D del gate, mirando
 el exit code: `pnpm ii:test` **0** y `pnpm ii:typecheck` **0**, y además
-`ANIMA_BANCO=1 pnpm --filter @anima/juez test` **0** (126 de 126, en **311 s**: las
+`ANIMA_BANCO=1 pnpm --filter @anima/emergencia test` **0** (126 de 126, en **311 s**: las
 dos cohortes del banco de la mente se reparten en cinco tandas desde el tramo Ñ,
 ver la sección 2 de `como-se-trabaja.md`). En la rama
 `anima-2`, **ninguno pusheado** — el usuario pushea solo. Si la sesión nueva es en
@@ -200,12 +200,12 @@ otra máquina, hay que pushear antes.
 > actualizados con el viejo anotado al lado. **Dos `it.fails` se dieron vuelta y hoy
 > son `it`**: la contraprueba de la despensa y el diagnóstico 10.
 
-> **Y HAY UN VERDE QUE NO ES EL DE `pnpm ii:test`.** `@anima/juez` tiene una
+> **Y HAY UN VERDE QUE NO ES EL DE `pnpm ii:test`.** `@anima/emergencia` tiene una
 > aserción que sólo se evalúa con `ANIMA_BANCO=1`, y **estaba roja desde antes del
 > tramo L** mientras el traspaso publicaba el veredicto de la emergencia como si
 > nada (número 22 de la sección 5 de `como-se-trabaja.md`). Está reparada. La regla
 > que dejó: **el veredicto de la emergencia se publica MIRANDO el exit code de
-> `ANIMA_BANCO=1 pnpm --filter @anima/juez test`**, no el de la suite normal.
+> `ANIMA_BANCO=1 pnpm --filter @anima/emergencia test`**, no el de la suite normal.
 
 | paquete | qué es | tests |
 |---|---|---:|
@@ -216,7 +216,7 @@ otra máquina, hay que pushear antes.
 | `@anima/perceive` | LA COSTURA mundo↔habilidades, `Partida`, `ticksPerdidos` | 121 |
 | `@anima/plan` | **el catálogo como vista**, `goalGraph()`, `plan()` anytime, la poda de lo ya hecho | 319 (+1 todo) |
 | `@anima/mind` | necesidades, creencias β, `opportunities()`, escalera D0–D5, el portón de despegue | 318 |
-| `@anima/juez` | el detector de secuencias de emergencia, **externo a propósito** | 126 |
+| `@anima/emergencia` | el detector de secuencias de emergencia, **externo a propósito** | 126 |
 
 Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
 
@@ -231,7 +231,7 @@ Comandos: `pnpm ii:test` · `pnpm ii:typecheck` · bancos con `ANIMA_BANCO=1`.
 > mismo trabajo en más ARCHIVOS, que es la única unidad que vitest paraleliza:
 > `hito-5-el-criterio.test.ts` (146 s de los 148 de `@anima/mind`) quedó en siete
 > pedazos con el cuadro «EL HITO 5, MEDIDO» saliendo entero igual, y los dos
-> controles del azar de `@anima/juez` (510 s de 536, corridos DOS veces por dos
+> controles del azar de `@anima/emergencia` (510 s de 536, corridos DOS veces por dos
 > archivos distintos) los corren cinco «tandas» en paralelo. Los cinco tests de
 > las tandas son los +5 de la cuenta de arriba. Las tablas se compararon renglón
 > por renglón antes y después. Ver la sección 2·bis de
@@ -433,7 +433,7 @@ decidieron. Van acá arriba porque cambian cómo se lee todo lo de abajo.
    **`COSTO_VIVIR_POR_SEGUNDO` bajó de 1,0 a 0,34**, el centro de la ventana medida
    `(0,3100 ; 0,3637)`.
 2. **EL CONTROL DEL AZAR quedó gateado** detrás de `ANIMA_BANCO=1`. Medido antes y
-   después: `@anima/juez` pasó de **167,6 s a 34,6 s** y sigue verde con la variable
+   después: `@anima/emergencia` pasó de **167,6 s a 34,6 s** y sigue verde con la variable
    (**685 s, 121 de 121**).
 3. **EL UMBRAL DE LA EMERGENCIA es 4 DE 9**, el absoluto y no la proporción. Está
    escrito en el encabezado de `juez/tests/hito-5-la-emergencia.test.ts` y en el

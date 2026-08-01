@@ -69,7 +69,7 @@ plano y seguí con lo demás mientras. **Ojo con dos trampas ya mordidas:**
 - si el comando termina en `| tail -60`, el conteo por paquete se pierde y sólo
   queda el último. Y `$?` después de un pipe es el del `tail`, no el de `pnpm`.
 
-El banco caro (`ANIMA_BANCO=1 pnpm --filter @anima/juez test`, unos 311 s) **no
+El banco caro (`ANIMA_BANCO=1 pnpm --filter @anima/emergencia test`, unos 311 s) **no
 hace falta** para actualizar el tablero. Si no lo corrés, decilo en
 `verificacion.sinCorrer`.
 

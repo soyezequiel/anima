@@ -256,7 +256,7 @@ export function unknownRoleRefs(p: Process): readonly string[] {
  * motor perfecto que el guardián permite el criterio baja de QUINCE bocados. El
  * fuego es caro incluso en el mejor mundo legal, y lo que esta constante abre es
  * la puerta, no el camino: cocinar diecisiete veces sigue siendo trabajo de la
- * mente y se mide en `@anima/mind` y `@anima/juez`.
+ * mente y se mide en `@anima/mind` y `@anima/emergencia`.
  */
 export const FRICCION: Process = {
   id: 'friccion',

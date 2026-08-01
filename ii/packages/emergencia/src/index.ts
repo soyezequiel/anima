@@ -1,4 +1,4 @@
-// ─── @anima/juez ─────────────────────────────────────────────────────────────
+// ─── @anima/emergencia ─────────────────────────────────────────────────────────────
 //
 // EL DETECTOR AUTOMÁTICO DE SECUENCIAS del criterio de emergencia del Hito 5.
 //

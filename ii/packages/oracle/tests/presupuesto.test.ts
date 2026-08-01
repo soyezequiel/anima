@@ -2125,7 +2125,7 @@ describe('5. lo que cuesta el fuego que cocina (ADR II-0011)', () => {
     // se modela una criatura que pesca sin fallar los 1000 segundos y cocina todo lo
     // que saca, no una mente decidiendo. Lo que este bloque afirma es que **la
     // aritmética dejó de estar en contra**, y eso es una condición necesaria y nada
-    // más. La suficiencia se mide en `@anima/mind` y en `@anima/juez`, contra el
+    // más. La suficiencia se mide en `@anima/mind` y en `@anima/emergencia`, contra el
     // mundo que corre.
     //
     // Y la regla del archivo sigue igual, aunque ahora el resultado sea el cómodo:

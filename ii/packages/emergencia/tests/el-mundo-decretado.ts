@@ -200,7 +200,7 @@ function umbralDelRol(p: Process, rol: string, q: string): number {
  * Es la MISMA que usa el dios para juzgar si un chunk es jugable: `formaDeLoSuelto`
  * de `@anima/oracle` (`resolubilidad.ts`), que corre adentro de `decretarChunk`
  * antes de sembrar la garantía. Se reconstruye acá y no se importa porque
- * `@anima/juez` no depende de `@anima/oracle` —el juez depende del motor y del
+ * `@anima/emergencia` no depende de `@anima/oracle` —el juez depende del motor y del
  * mundo, y agregarle una dependencia pide un `pnpm install` que este tramo no
  * hace—.
  *

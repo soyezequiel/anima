@@ -39,7 +39,7 @@
 //
 // LO QUE ESTO NO DICE: no dice que el criterio se cumpla. Dice que la aritmética
 // dejó de estar en contra. Lo que queda —encender, cocinar y comer diecisiete
-// veces— es trabajo de la mente y se mide en `@anima/mind` y `@anima/juez`.
+// veces— es trabajo de la mente y se mide en `@anima/mind` y `@anima/emergencia`.
 //
 // Cuatro bloques, en el orden en que se contestan:
 //
@@ -567,7 +567,7 @@ describe('la cuenta de los veinte mil', () => {
     //
     // O sea que **el criterio (5) dejó de ser aritméticamente imposible**. Lo que
     // queda no es aritmética: es que la mente encienda, cocine y coma diecisiete
-    // veces, y eso se mide en `@anima/mind` y en `@anima/juez`, no acá.
+    // veces, y eso se mide en `@anima/mind` y en `@anima/emergencia`, no acá.
     //
     // Siguen siendo los mismos dos guardianes y aprietan el mismo par de números:
     // si alguien encarece el fuego o achica el tanque, esto se pone rojo con la

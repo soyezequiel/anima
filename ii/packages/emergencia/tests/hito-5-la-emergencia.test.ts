@@ -8,7 +8,7 @@
 //    registradas por UN DETECTOR AUTOMÁTICO DE SECUENCIAS, no por observación.»
 //
 // La lista está cerrada en `ii/docs/hito-5-las-diez-secuencias.md` y tiene NUEVE
-// entradas; el detector es `@anima/juez`, escrito sin ver la mente. Este archivo
+// entradas; el detector es `@anima/emergencia`, escrito sin ver la mente. Este archivo
 // es la corrida: veinte partidas, una criatura con su `Mente`, un mundo decretado
 // por el dios, y el juez escuchando tick a tick.
 //

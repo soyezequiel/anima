@@ -20,7 +20,7 @@ suite. Medido paquete por paquete, con `pnpm --filter @anima/X test`:
 
 | paquete | tardaba | tarda |
 |---|---:|---:|
-| `@anima/juez` | 536 s | **139 s** |
+| `@anima/emergencia` | 536 s | **139 s** |
 | `@anima/mind` | 148 s | **41 s** |
 | `@anima/world` | 81 s | 30 s |
 | `@anima/perceive` | 43 s | 43 s |
@@ -36,7 +36,7 @@ SUMA: pasó de ~790 s a **287 s**.
 > cuántos ARCHIVOS está repartido el mismo trabajo, porque **la unidad de
 > paralelismo de vitest es el archivo** y un archivo de 146 s ocupa un núcleo y
 > deja quince mirando. Las tablas de salida se compararon renglón por renglón
-> antes y después: la de `@anima/juez` sale idéntica, y en `@anima/mind` lo único
+> antes y después: la de `@anima/emergencia` sale idéntica, y en `@anima/mind` lo único
 > que se mueve son los µs de los bancos, que se movían igual de una corrida a la
 > otra. El mapa del corte está en `mind/tests/el-criterio.ts` y en el bloque «EL
 > CONTROL, REPARTIDO ENTRE ARCHIVOS» de `juez/tests/azar.ts`.
@@ -75,7 +75,7 @@ Tres reglas, y la primera vale más que las otras dos juntas:
 > **CERRADO en el tramo M: el control del azar YA está gateado**, y lo decidió el
 > usuario. Corría 20 × 20.000 dos veces sin `ANIMA_BANCO=1` mientras el banco de la
 > mente ya se acortaba a 3 × 2.000, y ésa era la asimetría. Medido antes y después:
-> `pnpm --filter @anima/juez test` pasó de **167,6 s a 34,6 s** (4,8×) y sigue verde
+> `pnpm --filter @anima/emergencia test` pasó de **167,6 s a 34,6 s** (4,8×) y sigue verde
 > con la variable puesta (**685 s, 121 de 121**). Lo que cambió de la suite normal
 > está escrito arriba de `PARTIDAS_DEL_CONTROL` en `juez/tests/azar.ts`: el veredicto
 > sigue saliendo de la corrida en serio, `cuentan === []` se sigue afirmando siempre
@@ -327,7 +327,7 @@ todavía se está calentando y no cruzó su `denaturesAt`—, así que la innata
    `juez/tests/hito-5-la-emergencia.test.ts` y al traspaso. Medido con
    `ANIMA_BANCO=1`: 264.776 de 400.000 ticks.
    → **REGLA: un porcentaje de la muestra corta no se cita como el del banco.**
-22. **`@anima/juez` estaba ROJO con `ANIMA_BANCO=1` y el traspaso lo publicaba como
+22. **`@anima/emergencia` estaba ROJO con `ANIMA_BANCO=1` y el traspaso lo publicaba como
    el veredicto del criterio.** La aserción era `vividos / presupuesto > 0,9`, salida
    de aquel 81,0%, y vive detrás de `if (!MIDIENDO_EN_SERIO) return`: la suite normal
    corre TRES partidas y nunca la evalúa. Medido sobre el árbol de HEAD, o sea ANTES

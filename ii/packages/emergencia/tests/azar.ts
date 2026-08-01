@@ -198,10 +198,10 @@ export function partidaAlAzar(
 // veces —una por cada concesión—, mientras el banco de la mente contra el que se
 // lo compara ya se acortaba a 3 × 2.000 sin la variable. La asimetría estaba
 // medida y anotada como abierta: la suite normal pagaba ~140 s de los ~170 que
-// tardaba `@anima/juez` para tener al lado un número que sólo se cita cuando se
+// tardaba `@anima/emergencia` para tener al lado un número que sólo se cita cuando se
 // mide en serio.
 //
-// MEDIDO ANTES DE TOCARLO, dos corridas de `pnpm --filter @anima/juez test`:
+// MEDIDO ANTES DE TOCARLO, dos corridas de `pnpm --filter @anima/emergencia test`:
 // **172,5 s** y **167,6 s**, exit 0 las dos, con los dos controles marcando 66 y
 // 79 s. Con `ANIMA_BANCO=1`: **658 s**.
 //
@@ -244,7 +244,7 @@ export function loQueLeToca(desde: number, cuantas: number): number {
 //
 // ─── EL NÚMERO QUE MOTIVA TODO ESTO ────────────────────────────────────────
 //
-// Medido con `pnpm --filter @anima/juez test`: el paquete tardaba **536 s**, y
+// Medido con `pnpm --filter @anima/emergencia test`: el paquete tardaba **536 s**, y
 // **510 de esos 536 son estos dos controles** —247 s el de sin fuego y 263 el del
 // fuego regalado, 20 partidas de 20.000 ticks cada uno—. Y peor: los corrían DOS
 // archivos, `hito-5-la-emergencia.test.ts` y `ataque-al-detector.test.ts`, o sea

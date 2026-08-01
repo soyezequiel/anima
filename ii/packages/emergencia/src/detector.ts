@@ -8,7 +8,7 @@
 //
 // Porque el documento de arquitectura pide un juez EXTERNO, y lo argumenta:
 // «“aparece un cuarto comportamiento que nadie diseñó” evaluado por el autor de
-// las tablas no es un test». `@anima/juez` NO DEPENDE DE `@anima/mind` EN RUNTIME
+// las tablas no es un test». `@anima/emergencia` NO DEPENDE DE `@anima/mind` EN RUNTIME
 // —sus `dependencies` son dos, `@anima/physics` y `@anima/world`, y nada más—, y
 // `src/` tiene prohibido nombrarla: lo vigila `tests/ataque-determinismo.test.ts`
 // leyendo el directorio, así que un módulo nuevo entra solo. El juez mira el mundo

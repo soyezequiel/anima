@@ -42,7 +42,7 @@ pusheado** — el usuario pushea solo, no pushees vos.
 
 ## LO PRIMERO, y no arranques por otro lado
 
-**`ANIMA_BANCO=1 pnpm --filter @anima/juez test` está ROJO: 1 test de 121.** No está
+**`ANIMA_BANCO=1 pnpm --filter @anima/emergencia test` está ROJO: 1 test de 121.** No está
 identificado cuál. Eso es el camino caro del juez —20 partidas × 20.000 ticks— y es
 donde sale el veredicto del criterio de emergencia, así que **cualquier número que
 publiques sobre ese criterio antes de repararlo no vale**.
@@ -140,7 +140,7 @@ la escalera da 42. La cuenta cierra el día que la mente sepa encender por escal
 
 ## Por dónde empezar
 
-1. Identificá y reparás el rojo de `ANIMA_BANCO=1` en `@anima/juez`.
+1. Identificá y reparás el rojo de `ANIMA_BANCO=1` en `@anima/emergencia`.
 2. Medí si hay atador a la vista en las semillas donde está la materia de la escalera.
 3. Enseñale la escalera al planificador y a la mente.
 4. Re-medí los dos criterios y **presentá los números crudos**, sin ajustar umbrales.

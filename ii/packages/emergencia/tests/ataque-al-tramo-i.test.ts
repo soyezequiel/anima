@@ -120,7 +120,7 @@ const CELDAS_DE_LADO = 16
 /**
  * EL UMBRAL DE `portable`, DESPEJADO ACÁ Y NO IMPORTADO DE `@anima/plan`.
  *
- * `@anima/juez` no depende de `@anima/plan` —y no se le agrega una dependencia
+ * `@anima/emergencia` no depende de `@anima/plan` —y no se le agrega una dependencia
  * para escribir un ataque—, así que el número se saca del MISMO lugar del que lo
  * saca la reparación: la expresión derivada de `portable` en el catálogo. Si el
  * catálogo la cambiara, este archivo se entera igual que el otro.

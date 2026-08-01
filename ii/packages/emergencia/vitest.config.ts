@@ -1,4 +1,4 @@
-// La única configuración de vitest de `@anima/juez`, y es de UNA cosa.
+// La única configuración de vitest de `@anima/emergencia`, y es de UNA cosa.
 //
 // `tests/el-azar-global.ts` borra lo que las cinco tandas del control del azar se
 // pasan por disco. Tiene que correr en el proceso principal y antes de que arranque

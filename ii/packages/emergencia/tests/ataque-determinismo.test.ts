@@ -217,7 +217,7 @@ describe('la regla 2, sobre todo `src/`', () => {
     // El ataque al tramo I mide si la reparación del `source` deja a la MENTE sin
     // banco para pescar, y esa pregunta no se puede contestar sin correr la mente:
     // «el planificador no elige este cuerpo» es una afirmación sobre `@anima/plan`,
-    // y `@anima/juez` no lo tiene ni lo puede tener. Lo que sí puede es poner la
+    // y `@anima/emergencia` no lo tiene ni lo puede tener. Lo que sí puede es poner la
     // mente de verdad en la orilla y contar si la caña sale. Igual que el banco de
     // la emergencia, el archivo importa la mente para ARMAR la partida; el juez
     // —`src/`— sigue sin poder nombrarla, y eso lo vigila el PRIMER test de este

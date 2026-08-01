@@ -37,7 +37,7 @@
     {
       "etiqueta": "tests verdes",
       "valor": "2785",
-      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 83. TERCERA VEZ SEGUIDA que el commit cita uno más de lo medido acá (2757/2756, 2769/2768, 2786/2785) — vale la pena mirar qué test se cuenta distinto"
+      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · emergencia 126 · perceive 138 · lang 83. TERCERA VEZ SEGUIDA que el commit cita uno más de lo medido acá (2757/2756, 2769/2768, 2786/2785) — vale la pena mirar qué test se cuenta distinto"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -359,7 +359,7 @@
           "texto": "el juez evalúa por separado plano, construcción, uso y utilidad"
         }
       ],
-      "nota": "OJO: @anima/juez ya existe con 126 tests, pero es el detector de secuencias de emergencia del Hito 5, no el juez de este hito. Son dos cosas con el mismo nombre."
+      "nota": "OJO: @anima/emergencia ya existe con 126 tests, pero es el detector de secuencias de emergencia del Hito 5, no el juez de este hito. Son dos cosas con el mismo nombre."
     },
     {
       "id": "H8",
@@ -512,7 +512,7 @@
         "ok": true
       }
     ],
-    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. Es un banco distinto del de @anima/lang."
+    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. Es un banco distinto del de @anima/lang."
   },
   "decisionesQueEsperan": [
     {
