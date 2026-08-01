@@ -94,6 +94,27 @@ export interface Costo {
 export const NADA: Costo = { consultas: 0, milesimas: 0 }
 
 /**
+ * DE LO QUE EL PROVEEDOR COBRA A LO QUE ESTE CONTADOR GUARDA.
+ *
+ * Los clientes informan en dólares con decimales —el del Hito 6 mide **US$
+ * 0,0158 por frase**— y acá se guarda en milésimas ENTERAS, por el motivo que
+ * está escrito arriba de `Costo`: un flotante acumulado a lo largo de una sesión
+ * deriva.
+ *
+ * **Redondea PARA ARRIBA**, y no es simetría: media milésima que se pierde en
+ * cada consulta se pierde mil veces en mil consultas, y siempre para el mismo
+ * lado. Un contador que subestima es peor que uno que sobreestima — el que
+ * subestima deja pasar el gasto que venía a medir.
+ *
+ * Así que `0,0158` sale **16** y no 15. La consulta más barata imaginable cuenta
+ * como 1, nunca como 0: algo que se pidió, se pidió.
+ */
+export function deUsd(usd: number, consultas = 1): Costo {
+  const m = usd * 1000
+  return { consultas, milesimas: usd > 0 ? Math.max(1, Math.ceil(m)) : 0 }
+}
+
+/**
  * Un techo. `Infinity` en cualquiera de los dos campos quiere decir «no frena».
  *
  * `Infinity` y no `undefined` para que la aritmética de `queda` y `puedo` sea

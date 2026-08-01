@@ -44,7 +44,20 @@ import { lexicoDe } from '../src/lexico.js'
 import { objetivosDe } from '../src/objetivos.js'
 import { EncargoEnCurso, encargoDe } from '../src/encargo.js'
 import { revisar } from '../src/consulta.js'
+import { deUsd, sinLimite } from '@anima/llm'
 import { costoDeLaUltima, fraseDeLaLinea, preguntarle, transporteElegido } from './proveedor.js'
+
+/**
+ * EL CONTADOR DE LA SESIÓN — Hito 8, tramo A, enchufado acá.
+ *
+ * `sinLimite()` porque lo decidió el usuario: la criatura y el chat consultan
+ * todo lo que quieran. Lo único que este objeto hace es **contar**, que es lo
+ * que el plan avisa que hace falta desde temprano: *«si no se diseña temprano,
+ * la factura decide la arquitectura por vos»*.
+ *
+ * Hasta este renglón el contador existía y **no lo alimentaba nadie**.
+ */
+const PRESUPUESTO = sinLimite()
 import { actor, criatura, enElPiso, laOrilla, mundo } from '../../mind/tests/mundo.js'
 
 const QUIEN = 'ana'
@@ -398,10 +411,18 @@ function detalle(
     console.log(`     consulta     ${String(consulta.clausulas.length)} clausula(s) · llave ${consulta.llave}`)
     console.log(`                  ${String(consulta.firmas.length)} firmas ofrecidas · ${String(consulta.vocabulario.length)} palabras de vocabulario`)
     const c = costoDeLaUltima()
+    if (c !== undefined) PRESUPUESTO.gastar('chat', deUsd(c.usd))
     console.log(
       `     modelo       ${transporteElegido()} · ${msDelModelo === undefined ? 'no se llamo' : `${R(msDelModelo)} ms`}` +
         (c === undefined ? '' : ` · ${c.modelo} · US$ ${c.usd.toFixed(4)}`),
     )
+    const g = PRESUPUESTO.gastado('chat')
+    if (g.consultas > 0) {
+      console.log(
+        `     la sesion    ${String(g.consultas)} consulta(s) · ${String(g.milesimas)} milesimas ` +
+          `(US$ ${(g.milesimas / 1000).toFixed(3)})`,
+      )
+    }
   }
   const p = objetivosDe(final)
   console.log(`     objetivos    ${String(p.nodos.length)} nodo(s) · ${String(p.descartes.length)} descarte(s)`)

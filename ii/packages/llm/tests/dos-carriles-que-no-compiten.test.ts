@@ -15,7 +15,7 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Presupuesto, sinLimite, SIN_LIMITE, TECHO_DE_CI } from '../src/presupuesto.js'
+import { deUsd, Presupuesto, sinLimite, SIN_LIMITE, TECHO_DE_CI } from '../src/presupuesto.js'
 import type { Carril, Cuota } from '../src/presupuesto.js'
 
 const una = { consultas: 1, milesimas: 16 }
@@ -53,6 +53,31 @@ ${p.informe()}`)
     // techo, así que el camino que usa el juego es el mismo que prueba CI.
     expect(SIN_LIMITE.fragua.consultas).toBe(Infinity)
     expect(sinLimite().queda('chat').milesimas).toBe(Infinity)
+  })
+})
+
+describe('DE DÓLARES A MILÉSIMAS — lo que el proveedor cobra, guardado sin derivar', () => {
+  it('el número medido del Hito 6 entra entero', () => {
+    // US$ 0,0158 por frase, medido con Claude. Sale 16 y no 15: redondea para
+    // arriba, porque media milésima que se pierde en cada consulta se pierde mil
+    // veces en mil consultas, y siempre para el mismo lado.
+    expect(deUsd(0.0158)).toEqual({ consultas: 1, milesimas: 16 })
+  })
+
+  it('un contador que SUBESTIMA es peor que uno que sobreestima', () => {
+    // El que subestima deja pasar el gasto que venía a medir. Lo más barato
+    // imaginable cuenta como 1, nunca como 0: algo que se pidió, se pidió.
+    expect(deUsd(0.0000001).milesimas).toBe(1)
+    expect(deUsd(0).milesimas).toBe(0)
+  })
+
+  it('y mil consultas acumuladas no derivan', () => {
+    // La razón de que sean enteras. Con flotantes, mil sumas de 0,0158 dan
+    // 15,800000000000226 y el error crece con la sesión.
+    const p = sinLimite()
+    for (let i = 0; i < 1000; i++) p.gastar('chat', deUsd(0.0158))
+    expect(p.gastado('chat').milesimas).toBe(16000)
+    expect(Number.isInteger(p.gastado('chat').milesimas)).toBe(true)
   })
 })
 

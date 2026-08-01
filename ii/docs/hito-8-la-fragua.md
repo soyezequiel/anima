@@ -451,8 +451,56 @@ Un typo que la puerta ya corrigió **no es un concepto que falte**, y mandarlo
 confundiría al modelo con un problema que ya no existe. Medido en su test:
 `ticksToNightfall` figura antes de reparar y no figura después.
 
-### Tramo E — el cliente por HTTP
+### Tramo E — el contador come · CERRADO a medias, y se dice cuál
 
-*(lo que sigue)* — mudar `lang/demo/proveedor.ts` a `@anima/llm` y cambiarle el
-camino. Está medido: **14 s por consulta con el CLI, de los cuales ~10 son
-arranque de proceso**; la sonda directa dio 4 s.
+**La mudanza del cliente NO se hizo, y el porqué es una medición del intento.**
+
+Se movió `lang/demo/proveedor.ts` a `@anima/llm/demo/` y ahí apareció el
+problema: **el cliente importa `Consulta`, que es la forma del CHAT**. Con la
+mudanza tal cual, `@anima/llm` pasaría a depender de `@anima/lang` — la flecha
+al revés, y la fragua tiene otra forma (`Encargo`).
+
+O sea que mudarlo bien **no es mover un archivo: es partirlo en dos**, el
+transporte por un lado y la forma del chat por el otro. Son 398 líneas de código
+de red que anda —es lo que corre `hablarle --claude`— y reescribirlas de apuro
+es la mejor forma de romper lo único que hoy habla con un modelo. **Se devolvió
+a su lugar.**
+
+> **Y hay una decisión de producto adentro, que conviene ver antes:**
+>
+> | transporte | tarda | ¿pide credencial? |
+> |---|---|---|
+> | `claude` (CLI, hoy) | **14 s** | no — usa la sesión de la máquina |
+> | `anthropic` (HTTP) | **~4 s** | **sí, `ANTHROPIC_API_KEY`** |
+>
+> Los diez segundos cuestan una clave.
+
+#### Lo que SÍ entró: el contador dejó de estar en ayunas
+
+El tramo A dejó un contador que **no alimentaba nadie**. Ahora el chat le
+informa lo que gastó, y para eso hizo falta una pieza que faltaba:
+
+**`deUsd(usd)`** — de lo que el proveedor cobra a lo que el contador guarda. Los
+clientes informan en dólares con decimales (**US$ 0,0158 por frase**, medido) y
+acá se guarda en **milésimas enteras**, porque un flotante acumulado a lo largo
+de una sesión deriva: mil sumas de `0.0158` dan `15,800000000000226`.
+
+Y **redondea para arriba**, que no es simetría:
+
+> media milésima que se pierde en cada consulta se pierde mil veces en mil
+> consultas, y **siempre para el mismo lado**. Un contador que subestima es peor
+> que uno que sobreestima — el que subestima deja pasar el gasto que venía a
+> medir.
+
+Así que `0,0158` cuenta **16** y no 15, y la consulta más barata imaginable
+cuenta 1 y nunca 0: algo que se pidió, se pidió.
+
+> **Verificado hasta donde se puede sin gastar plata.** Con `--falso` el camino
+> se recorre entero —el modelo contesta— pero **no cobra nada, así que no hay qué
+> contar**, y eso es correcto. Ver el renglón en vivo pide una consulta paga.
+
+### Tramo F — partir el cliente en dos
+
+*(lo que sigue)* — el transporte por un lado (genérico, lo usan el chat y la
+fragua) y la forma del chat por el otro. Recién ahí la mudanza es segura, y
+recién ahí tiene sentido agregar el transporte HTTP.

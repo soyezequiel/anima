@@ -276,6 +276,9 @@ importers:
 
   ii/packages/lang:
     dependencies:
+      '@anima/llm':
+        specifier: workspace:*
+        version: link:../llm
       '@anima/mind':
         specifier: workspace:*
         version: link:../mind

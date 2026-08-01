@@ -24,49 +24,44 @@
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "El Hito 7 CIERRA: el juez, con los siete puntos y las cuatro piezas de la descripcion",
-    "detalle": "El juez decide si una habilidad recien escrita es estable o tuvo suerte. Cierra con dos sujetos y no uno: una HABILIDAD con un objetivo delante, y un DISPOSITIVO desplegado sobre un pozo -- el segundo hizo falta porque cuatro de los ocho mundos adversos hablan de stocks y ubicaciones, y la escena de una habilidad son dos cuerpos sin dios. Y es el que destrabo el cargo `utilidad`: para una habilidad \"sirve\" era una pregunta sin con-respecto-a-que; para un aparejo hay un numero y se llama captura. El aparejo desplegado es LO PRIMERO DEL PROYECTO QUE PROMUEVE. Lo que mas se repitio en el hito fue el verde por omision: el sello estaba escrito y probado y nunca disparaba (la eficiencia de frotar fue de 0,35 a 0,85 sin que nadie subiera la version), el juez le creia a la habilidad en vez de verificar su promesa contra el mundo, y hasta mis propias sondas salieron verdes por no correr ninguna ley. Cada hallazgo dejo su control positivo.",
+    "titulo": "Hito 8, tramos A-D: la fragua tiene presupuesto, puerta, reparación y memoria de lo que falló",
+    "detalle": "Cuatro paquetes nuevos en cuatro tramos: `@anima/llm` (el presupuesto de dos carriles — fragua y chat con cuota separada, para que ninguno mate de hambre al otro), `@anima/forge` con la puerta (el typecheck de ranura fija que rechaza una candidata SIN gastar una consulta: 47 ms contra 6-25 s de un viaje al modelo, ~140×), las reparaciones (arregla typos localmente — 7 de 71 errores medidos contra un corpus real de 28 habilidades escritas a mano) y el punto 9 (`encargo.ts`: una candidata que falla le describe al segundo intento QUÉ pidió que no existe, sin decirle DÓNDE para que no memorice el mundo en vez de aprender la habilidad). Un giro del usuario a mitad de camino: sacó los tanques de consultas —\"quiero que sea ilimitado\"— y quedó separado el tope (apagado por defecto, lo enciende sólo el test de regresión de CI) de la medición (el contador, que sigue activo siempre). Y otro pedido del usuario agregó el punto 9 entero, que el criterio heredado no tenía.",
     "proximosPasos": [
-      "Sigue el Hito 8: la fragua. Y arranca con una decision que nadie tomo: con que prioridad se descarta cuando la fragua y el chat compiten por la misma cuota.",
-      "HUECO MEDIDO: el sello depende de los 591 numeros de la fisica y los procesos semilla solo LEEN 7. 84x de mas. Tiene su it.fails.",
-      "HUECO MEDIDO: el juez no puede invocar una habilidad sin saber sus argumentos -- hoy los trae quien acusa. Del Hito 8 en adelante la fragua produce el paquete entero, args incluidos."
+      "Tramo E, la otra mitad del punto 9: mudar el cliente de la demo a HTTP en @anima/llm, para poder correr candidatas reales y medir la mejora en los mundos RESERVADOS (si mejora sólo en los que le contaron, memorizó).",
+      "Puntos 1 y 2 completos: hoy la puerta y la reparación están medidas por separado contra un corpus escrito a mano; falta el K=2 corriendo candidatas de un modelo de verdad.",
+      "Puntos 3, 5, 6 y 7 sin empezar: abortar a mitad de un parche, ticksPerdidos, el carril de mejora y el duelo contra la titular."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2871",
-      "nota": "medido antes de escribirlo, ii:test exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · lang 83 · judge 81"
+      "valor": "2916",
+      "nota": "re-corrido y confirmado, exit 0, coincide EXACTO con lo citado · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · judge 81 · lang 83 · oracle 270 · emergencia 126 · skills 193 · perceive 138 · forge 28 · llm 17"
     },
     {
       "etiqueta": "typechecks limpios",
-      "valor": "10 de 10",
-      "nota": "re-verificado ahora, exit 0"
-    },
-    {
-      "etiqueta": "ANIMA_BANCO=1",
-      "valor": "exit 0",
-      "nota": "el criterio del Hito 6 con sus tres corridas y su control positivo"
+      "valor": "12 de 12",
+      "nota": "re-verificado ahora, exit 0 · nacieron @anima/llm y @anima/forge"
     },
     {
       "etiqueta": "paquetes",
-      "valor": "10",
-      "nota": "@anima/judge cierra el Hito 7 con dos sujetos: una habilidad con un objetivo delante, y un dispositivo desplegado sobre un pozo"
+      "valor": "12",
+      "nota": "re-verificado ahora, +2 desde la vez pasada · @anima/llm (presupuesto) y @anima/forge (puerta + reparación + punto 9), los dos del Hito 8"
     },
     {
       "etiqueta": "it.fails abiertos",
       "valor": "70",
-      "nota": "re-contado ahora, +1 desde la vez pasada · el hueco del tramo E: el juez no puede invocar una habilidad sin saber sus argumentos"
+      "nota": "re-contado ahora, sin cambios desde la vez pasada"
     },
     {
       "etiqueta": "ADRs propios",
       "valor": "24",
-      "nota": "re-contado ahora, sin cambios · II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision"
+      "nota": "re-contado ahora, sin cambios"
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "9",
-      "nota": "rama anima-2 — el Hito 7 entero. El usuario pushea solo"
+      "valor": "1",
+      "nota": "rama anima-2 — re-verificado con git fetch. El usuario pushea solo"
     }
   ],
   "etapas": [
@@ -392,23 +387,47 @@
       "id": "H8",
       "nombre": "La fragua y el carril de mejora",
       "enUnaFrase": "Acá recién entra el LLM a escribir código: habilidades nuevas mientras el mundo sigue corriendo.",
-      "estado": "pendiente",
+      "estado": "en-curso",
       "semanas": 4.5,
       "puntos": [
         {
           "estado": "no",
-          "texto": "matar la conexión a mitad de un parche no deja el mundo inconsistente"
+          "texto": "1 · dado el gap «conseguir alimento de un cuerpo de agua», al menos una de dos candidatas compila sin reparación: existe la puerta que lo mide (47 ms/candidata) pero falta el K=2 corriendo candidatas de un modelo de verdad"
+        },
+        {
+          "estado": "medio",
+          "texto": "2 · al menos una compila con reparación: reparar.ts arregla la clase typo (7 de 71 errores medidos), mecanismo construido y testeado en aislado — falta correrlo contra el flujo real de candidatas"
         },
         {
           "estado": "no",
-          "texto": "ticksPerdidos === 0 durante todo el episodio"
+          "texto": "3 · matar la conexión a mitad de un parche no deja el mundo inconsistente"
+        },
+        {
+          "estado": "si",
+          "texto": "4 · el episodio no supera N consultas: el contador de dos carriles lo garantiza como PUERTA y no como aviso, con un test de regresión que lo enciende en CI"
         },
         {
           "estado": "no",
-          "texto": "con la cuota agotada, la cola no dispara ni una consulta"
+          "texto": "5 · ticksPerdidos === 0 durante todo el episodio"
+        },
+        {
+          "estado": "no",
+          "texto": "6 · una habilidad degradada a propósito entra en la cola y se re-forja en el fondo (el carril de mejora)"
+        },
+        {
+          "estado": "no",
+          "texto": "7 · una candidata peor no reemplaza nada y queda archivada como regresión (el duelo contra la titular)"
+        },
+        {
+          "estado": "si",
+          "texto": "8 · con la cuota agotada, la cola no dispara ni una consulta: es el núcleo del tramo A, con su control (un tanque compartido deja que un carril mate de hambre al otro)"
+        },
+        {
+          "estado": "medio",
+          "texto": "9 · una candidata que falla alimenta a la siguiente, que mejora en los mundos que no le contaron: hecha la mitad sin red (dice QUÉ faltó y por qué, nunca DÓNDE — ningún id de mundo entra al paquete, por construcción); falta mudar el cliente a HTTP y medir la mejora en los mundos reservados"
         }
       ],
-      "nota": "Con el Hito 6 ya consultando al modelo, el presupuesto pasa a tener DOS consumidores con urgencias distintas —la fragua puede tardar 14 s, el chat no— y con qué prioridad se descarta cuando compiten es lo primero que hay que decidir acá. Y \"HTTP con streaming\" dejó de ser preferencia: el puente por CLI mide 14 s y US$ 0,0158 por frase (~10 s son arranque de proceso), y lo que migra a @anima/llm es el CLIENTE que ya está escrito en demo/proveedor.ts, no la frontera."
+      "nota": "Nacieron dos paquetes: @anima/llm (el presupuesto) y @anima/forge (la puerta, la reparación, el punto 9). El usuario sacó los tanques de consultas a mitad de camino —\"quiero que sea ilimitado\"— y quedó separado el TOPE (apagado por defecto, lo enciende sólo CI) de la MEDICIÓN (el contador, siempre activo): la misma regla que ya costó tres veces en el Hito 6, no reemplazar un número por otro sin preguntar para qué servía. El punto 9 entero lo agregó el usuario preguntando algo que el criterio heredado no cubría: si una candidata mala puede servir de contexto para la siguiente en vez de empezar de cero."
     },
     {
       "id": "H9",
@@ -514,21 +533,21 @@
     }
   ],
   "verificacion": {
-    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 4487190 (tramo E del Hito 7: la ablación). Árbol de trabajo limpio.",
+    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit a554a0d (tramo D del Hito 8: el punto 9). Árbol de trabajo limpio.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
-        "resultado": "exit 0 · 10 de 10 proyectos",
+        "resultado": "exit 0 · 12 de 12 proyectos, incluidos @anima/llm y @anima/forge",
         "ok": true
       },
       {
         "cmd": "pnpm ii:test",
-        "resultado": "exit 0 · 2823 pasan, 0 fallan — coincide EXACTO con lo citado en 4487190",
+        "resultado": "exit 0 · 2916 pasan, 0 fallan — coincide EXACTO con lo citado en a554a0d",
         "ok": true
       },
       {
         "cmd": "grep it.fails ii/packages",
-        "resultado": "70 llamadas reales, +1",
+        "resultado": "70 llamadas reales, sin cambios",
         "ok": true
       },
       {
@@ -538,7 +557,7 @@
       },
       {
         "cmd": "git fetch && git log origin/anima-2..HEAD",
-        "resultado": "4 commits sin pushear",
+        "resultado": "1 commit sin pushear",
         "ok": true
       }
     ],

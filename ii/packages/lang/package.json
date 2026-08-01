@@ -19,7 +19,8 @@
     "@anima/mind": "workspace:*",
     "@anima/perceive": "workspace:*",
     "@anima/world": "workspace:*",
-    "@anima/oracle": "workspace:*"
+    "@anima/oracle": "workspace:*",
+    "@anima/llm": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

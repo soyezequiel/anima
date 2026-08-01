@@ -1,4 +1,4 @@
-<title>Ánima II — tablero (67%)</title>
+<title>Ánima II — tablero (71%)</title>
 <style>
 :root {
   color-scheme: light dark;
@@ -324,73 +324,68 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-08-01</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>9</b> etapas listas · <b>0</b> en curso · <b>4</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>9</b> etapas listas · <b>1</b> en curso · <b>3</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">67%</span>
+      <span class="cifra">71%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="67 por ciento avanzado">
+    <div class="barra" role="img" aria-label="71 por ciento avanzado">
       <div class="tramo si" style="width:67.09%"></div>
-      <div class="tramo medio" style="width:0.00%"></div>
+      <div class="tramo medio" style="width:3.80%"></div>
     </div>
     <div class="leyenda">
       <span class="l-si">terminado · 26,5 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 0,0</span>
-      <span class="l-no">por delante · 13,0</span>
+      <span class="l-medio">en curso · 1,5</span>
+      <span class="l-no">por delante · 11,5</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>El Hito 7 CIERRA: el juez, con los siete puntos y las cuatro piezas de la descripcion</h2>
-    <p class="detalle">El juez decide si una habilidad recien escrita es estable o tuvo suerte. Cierra con dos sujetos y no uno: una HABILIDAD con un objetivo delante, y un DISPOSITIVO desplegado sobre un pozo -- el segundo hizo falta porque cuatro de los ocho mundos adversos hablan de stocks y ubicaciones, y la escena de una habilidad son dos cuerpos sin dios. Y es el que destrabo el cargo `utilidad`: para una habilidad &quot;sirve&quot; era una pregunta sin con-respecto-a-que; para un aparejo hay un numero y se llama captura. El aparejo desplegado es LO PRIMERO DEL PROYECTO QUE PROMUEVE. Lo que mas se repitio en el hito fue el verde por omision: el sello estaba escrito y probado y nunca disparaba (la eficiencia de frotar fue de 0,35 a 0,85 sin que nadie subiera la version), el juez le creia a la habilidad en vez de verificar su promesa contra el mundo, y hasta mis propias sondas salieron verdes por no correr ninguna ley. Cada hallazgo dejo su control positivo.</p>
+    <h2>Hito 8, tramos A-D: la fragua tiene presupuesto, puerta, reparación y memoria de lo que falló</h2>
+    <p class="detalle">Cuatro paquetes nuevos en cuatro tramos: `@anima/llm` (el presupuesto de dos carriles — fragua y chat con cuota separada, para que ninguno mate de hambre al otro), `@anima/forge` con la puerta (el typecheck de ranura fija que rechaza una candidata SIN gastar una consulta: 47 ms contra 6-25 s de un viaje al modelo, ~140×), las reparaciones (arregla typos localmente — 7 de 71 errores medidos contra un corpus real de 28 habilidades escritas a mano) y el punto 9 (`encargo.ts`: una candidata que falla le describe al segundo intento QUÉ pidió que no existe, sin decirle DÓNDE para que no memorice el mundo en vez de aprender la habilidad). Un giro del usuario a mitad de camino: sacó los tanques de consultas —&quot;quiero que sea ilimitado&quot;— y quedó separado el tope (apagado por defecto, lo enciende sólo el test de regresión de CI) de la medición (el contador, que sigue activo siempre). Y otro pedido del usuario agregó el punto 9 entero, que el criterio heredado no tenía.</p>
     <ol>
-      <li>Sigue el Hito 8: la fragua. Y arranca con una decision que nadie tomo: con que prioridad se descarta cuando la fragua y el chat compiten por la misma cuota.</li>
-      <li>HUECO MEDIDO: el sello depende de los 591 numeros de la fisica y los procesos semilla solo LEEN 7. 84x de mas. Tiene su it.fails.</li>
-      <li>HUECO MEDIDO: el juez no puede invocar una habilidad sin saber sus argumentos -- hoy los trae quien acusa. Del Hito 8 en adelante la fragua produce el paquete entero, args incluidos.</li>
+      <li>Tramo E, la otra mitad del punto 9: mudar el cliente de la demo a HTTP en @anima/llm, para poder correr candidatas reales y medir la mejora en los mundos RESERVADOS (si mejora sólo en los que le contaron, memorizó).</li>
+      <li>Puntos 1 y 2 completos: hoy la puerta y la reparación están medidas por separado contra un corpus escrito a mano; falta el K=2 corriendo candidatas de un modelo de verdad.</li>
+      <li>Puntos 3, 5, 6 y 7 sin empezar: abortar a mitad de un parche, ticksPerdidos, el carril de mejora y el duelo contra la titular.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2871</div>
+        <div class="dato-valor">2916</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">medido antes de escribirlo, ii:test exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · lang 83 · judge 81</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0, coincide EXACTO con lo citado · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · judge 81 · lang 83 · oracle 270 · emergencia 126 · skills 193 · perceive 138 · forge 28 · llm 17</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">10 de 10</div>
+        <div class="dato-valor">12 de 12</div>
         <div class="dato-etiqueta">typechecks limpios</div>
-        <div class="dato-nota">re-verificado ahora, exit 0</div>
+        <div class="dato-nota">re-verificado ahora, exit 0 · nacieron @anima/llm y @anima/forge</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">exit 0</div>
-        <div class="dato-etiqueta">ANIMA_BANCO=1</div>
-        <div class="dato-nota">el criterio del Hito 6 con sus tres corridas y su control positivo</div>
-      </div>
-      <div class="dato">
-        <div class="dato-valor">10</div>
+        <div class="dato-valor">12</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">@anima/judge cierra el Hito 7 con dos sujetos: una habilidad con un objetivo delante, y un dispositivo desplegado sobre un pozo</div>
+        <div class="dato-nota">re-verificado ahora, +2 desde la vez pasada · @anima/llm (presupuesto) y @anima/forge (puerta + reparación + punto 9), los dos del Hito 8</div>
       </div>
       <div class="dato">
         <div class="dato-valor">70</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">re-contado ahora, +1 desde la vez pasada · el hueco del tramo E: el juez no puede invocar una habilidad sin saber sus argumentos</div>
+        <div class="dato-nota">re-contado ahora, sin cambios desde la vez pasada</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">re-contado ahora, sin cambios · II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision</div>
+        <div class="dato-nota">re-contado ahora, sin cambios</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">9</div>
+        <div class="dato-valor">1</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — el Hito 7 entero. El usuario pushea solo</div>
+        <div class="dato-nota">rama anima-2 — re-verificado con git fetch. El usuario pushea solo</div>
       </div>
   </section>
 
@@ -619,23 +614,29 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa medio">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H8</span>
             <h3>La fragua y el carril de mejora</h3>
-            <span class="chip no">No empezado</span>
+            <span class="chip medio">En curso</span>
           </div>
           <p class="frase">Acá recién entra el LLM a escribir código: habilidades nuevas mientras el mundo sigue corriendo.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>3</span><span class="semanas">4,5 sem</span></div>
-        <p class="nota">Con el Hito 6 ya consultando al modelo, el presupuesto pasa a tener DOS consumidores con urgencias distintas —la fragua puede tardar 14 s, el chat no— y con qué prioridad se descarta cuando compiten es lo primero que hay que decidir acá. Y &quot;HTTP con streaming&quot; dejó de ser preferencia: el puente por CLI mide 14 s y US$ 0,0158 por frase (~10 s son arranque de proceso), y lo que migra a @anima/llm es el CLIENTE que ya está escrito en demo/proveedor.ts, no la frontera.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">2<span class="barra-diagonal">/</span>9</span><span class="semanas">4,5 sem</span></div>
+        <p class="nota">Nacieron dos paquetes: @anima/llm (el presupuesto) y @anima/forge (la puerta, la reparación, el punto 9). El usuario sacó los tanques de consultas a mitad de camino —&quot;quiero que sea ilimitado&quot;— y quedó separado el TOPE (apagado por defecto, lo enciende sólo CI) de la MEDICIÓN (el contador, siempre activo): la misma regla que ya costó tres veces en el Hito 6, no reemplazar un número por otro sin preguntar para qué servía. El punto 9 entero lo agregó el usuario preguntando algo que el criterio heredado no cubría: si una candidata mala puede servir de contexto para la siguiente en vez de empezar de cero.</p>
         <details class="criterios">
-          <summary>3 criterios</summary>
+          <summary>9 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>matar la conexión a mitad de un parche no deja el mundo inconsistente</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>ticksPerdidos === 0 durante todo el episodio</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>con la cuota agotada, la cola no dispara ni una consulta</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>1 · dado el gap «conseguir alimento de un cuerpo de agua», al menos una de dos candidatas compila sin reparación: existe la puerta que lo mide (47 ms/candidata) pero falta el K=2 corriendo candidatas de un modelo de verdad</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>2 · al menos una compila con reparación: reparar.ts arregla la clase typo (7 de 71 errores medidos), mecanismo construido y testeado en aislado — falta correrlo contra el flujo real de candidatas</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>3 · matar la conexión a mitad de un parche no deja el mundo inconsistente</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · el episodio no supera N consultas: el contador de dos carriles lo garantiza como PUERTA y no como aviso, con un test de regresión que lo enciende en CI</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>5 · ticksPerdidos === 0 durante todo el episodio</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>6 · una habilidad degradada a propósito entra en la cola y se re-forja en el fondo (el carril de mejora)</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>7 · una candidata peor no reemplaza nada y queda archivada como regresión (el duelo contra la titular)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>8 · con la cuota agotada, la cola no dispara ni una consulta: es el núcleo del tramo A, con su control (un tanque compartido deja que un carril mate de hambre al otro)</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>9 · una candidata que falla alimenta a la siguiente, que mejora en los mundos que no le contaron: hecha la mitad sin red (dice QUÉ faltó y por qué, nunca DÓNDE — ningún id de mundo entra al paquete, por construcción); falta mudar el cliente a HTTP y medir la mejora en los mundos reservados</span></li>
           </ul>
         </details>
         </div>
@@ -775,20 +776,20 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 4487190 (tramo E del Hito 7: la ablación). Árbol de trabajo limpio.</p>
+      <p>Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit a554a0d (tramo D del Hito 8: el punto 9). Árbol de trabajo limpio.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
         <code>pnpm ii:typecheck</code>
-        <span class="resultado">exit 0 · 10 de 10 proyectos</span>
+        <span class="resultado">exit 0 · 12 de 12 proyectos, incluidos @anima/llm y @anima/forge</span>
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 2823 pasan, 0 fallan — coincide EXACTO con lo citado en 4487190</span>
+        <span class="resultado">exit 0 · 2916 pasan, 0 fallan — coincide EXACTO con lo citado en a554a0d</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
-        <span class="resultado">70 llamadas reales, +1</span>
+        <span class="resultado">70 llamadas reales, sin cambios</span>
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
@@ -796,7 +797,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">4 commits sin pushear</span>
+        <span class="resultado">1 commit sin pushear</span>
       </div>
     </div>
     <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. Es un banco distinto del de @anima/lang.</p>
