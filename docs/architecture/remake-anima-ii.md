@@ -1603,6 +1603,26 @@ La 2 y la 3 son las que hacen trabajo, y son un par: **la 2 sola se cumple desco
 
 Más el **carril de mejora**: cola de mejora con los cuatro disparadores deterministas, `K=6` solo en este carril, duelo contra la titular en sus propios mundos, hot-swap en frontera de fase, tope de dos rondas por habilidad.
 
+> **LO QUE EL HITO 6 DEJÓ SOBRE LA MESA DE ESTE HITO, y son tres cosas medidas.**
+>
+> 1. **El presupuesto tiene DOS consumidores, no uno.** Estaba pensado para la
+>    fragua, que se usa poco. Desde el Hito 6 el chat también consulta, se usa
+>    mucho más y tiene **otra urgencia**: la fragua puede tardar catorce segundos
+>    y el chat no. Con qué prioridad se descarta cuando los dos compiten por la
+>    misma cuota **no está decidido**, y es lo primero que hay que escribir acá.
+>    Ya estaba anotado como deuda en «Lo que sí se paga» del
+>    [ADR II-0024](../../ii/docs/decisions/II-0024-el-piso-del-chat-no-es-sin-llm-es-sin-espera.md).
+> 2. **«HTTP con streaming» dejó de ser preferencia y pasó a ser un número.** El
+>    puente del Hito 6 anda por el CLI y midió **14 s y US$ 0,0158 por frase**,
+>    de los cuales ~10 s son **arranque del proceso**: la sonda directa dio 4 s.
+>    O sea que el camino HTTP no compra estilo, compra 10 segundos.
+> 3. **Ya hay un cliente de proveedor escrito, y está fuera de `src/` a
+>    propósito.** `lang/demo/proveedor.ts` habla con Claude, Codex y OpenAI, y
+>    vive en `demo/` porque la regla 2 prohíbe `await` en los `src/`. Este hito
+>    es el que le da casa: lo que migra a `@anima/llm` es el cliente, **no** la
+>    frontera —`consultaDe()`/`revisar()` se quedan en `@anima/lang`, que es
+>    donde el paquete describe la consulta sin poder esperarla.
+
 **Verificable:** dado el gap "conseguir alimento de un cuerpo de agua", al menos una de dos candidatas compila sin reparación y al menos una compila con reparación; matar la conexión a mitad de un parche no deja el mundo inconsistente; el episodio completo no supera N consultas (test de presupuesto en CI); `ticksPerdidos === 0` durante todo el episodio. Del carril de mejora: una habilidad degradada a propósito entra en la cola, se re-forja en el fondo y la candidata ganadora reemplaza a la titular sin perder un tick; una candidata peor no reemplaza nada y queda archivada como regresión; con la cuota agotada, la cola no dispara ni una consulta.
 
 **Se puede mostrar:** aprender algo nuevo en vivo, con el mundo corriendo todo el tiempo.
@@ -1629,7 +1649,9 @@ Cuarenta a sesenta habilidades escritas y **promovidas a estable de fábrica**: 
 
 **Por qué es un hito y no un detalle:** es la reparación de producto más importante del corpus entero, y las tres críticas la pidieron. El caso frío son 6-25 s, y los tres ejemplos del usuario son por definición primeras veces. Con biblioteca semilla, **la demo del pescado es caso caliente (80 ms)** y el caso frío queda para la cosa que el usuario invente en vivo — que es exactamente cuando la gente acepta que la máquina piense.
 
-**Verificable:** las tres historias del usuario corren en camino caliente de punta a punta, con cero llamadas al modelo.
+**Verificable:** las tres historias del usuario corren en camino caliente de punta a punta: **la fragua no se despierta ni una vez** —cero consultas suyas, que es exactamente lo que la biblioteca compra— y el **reloj** del primer movimiento no se mueve contra la línea base del Hito 6. El chat sí puede consultar al modelo; desde el [ADR II-0024](../../ii/docs/decisions/II-0024-el-piso-del-chat-no-es-sin-llm-es-sin-espera.md) eso no cuesta espera.
+
+> **Decía «con cero llamadas al modelo», y era la moneda vieja.** El párrafo de acá arriba justifica el hito hablando **todo** de tiempo —«el caso frío son 6-25 s», «la demo del pescado es caso caliente (80 ms)»—, así que lo que el criterio defendía eran los 80 ms. Contar llamadas era la forma de medirlos **mientras toda llamada bloqueaba**. Desde el Hito 6 dejaron de ser lo mismo, y la frase se parte en las dos cosas que tenía pegadas: la fragua dormida (binaria, y es el mérito de la biblioteca) y el reloj (que es lo que el usuario siente). Ver la tercera enmienda del [ADR II-0024](../../ii/docs/decisions/II-0024-el-piso-del-chat-no-es-sin-llm-es-sin-espera.md).
 
 **Se puede mostrar:** la demo definitiva.
 
@@ -1645,7 +1667,7 @@ Cuarenta a sesenta habilidades escritas y **promovidas a estable de fábrica**: 
 
 `@anima/store`: journal append-only con snapshots por delta en IndexedDB fuera del tick, caché de contratos persistente, herencia (biblioteca + procesos + ledger + regresiones + gaps abiertos) con re-validación **perezosa y priorizada**.
 
-**Verificable:** replay de 20.000 ticks reproduce el hash exacto **y re-ejecuta las habilidades comparando la traza**; cerrar y reabrir la pestaña a mitad de una obra no pierde el mundo y la habilidad converge; una heredera arranca con la biblioteca completa y ninguna credencial regalada; **una segunda vida resuelve "pescá" en menos de 100 ms con cero llamadas al modelo**.
+**Verificable:** replay de 20.000 ticks reproduce el hash exacto **y re-ejecuta las habilidades comparando la traza**; cerrar y reabrir la pestaña a mitad de una obra no pierde el mundo y la habilidad converge; una heredera arranca con la biblioteca completa y ninguna credencial regalada; **una segunda vida resuelve "pescá" en menos de 100 ms sin despertar la fragua**.
 
 **Se puede mostrar:** dos generaciones. La segunda sabe lo que la primera aprendió.
 
@@ -1668,6 +1690,26 @@ Cuarenta a sesenta habilidades escritas y **promovidas a estable de fábrica**: 
 Barrido de rangos, detección de ciclos rentables como puerta, tests de propiedad económicos, y la suite de rendimiento en CI: `msHastaPrimerMovimiento` p50/p95, `msHastaAcciónPertinente`, `consistenciaDelPrimerGesto`, tasa de escalada por peldaño, viajes al modelo por operación, combustible por habilidad, y crecimiento del costo por tick a lo largo de 50.000 ticks.
 
 **Verificable:** el build falla si cualquiera de esos números empeora contra la línea base registrada; 100 partidas automatizadas de 20.000 ticks sin violar ningún invariante económico y sin superar el techo de consultas.
+
+> **TRES DE ESOS RELOJES YA EXISTEN Y YA TIENEN LÍNEA BASE.** Están en
+> `lang/src/relojes.ts` desde el Hito 6, corriendo sobre el corpus. Este hito no
+> los inventa: los **hereda**, los extiende al resto del sistema y les pone el
+> guardián de CI.
+>
+> | reloj | línea base del Hito 6 |
+> |---|---|
+> | `msHastaPrimerMovimiento` | p95 **1,35 ms** apagado contra **1,22 ms** colgado, con el control en 21,15 |
+> | `consistenciaDelPrimerGesto` | **1,00**, con su control positivo |
+> | `msHastaAccionPertinente` | **1 tick** |
+>
+> **Y el último número aclara cuándo empieza a valer su presupuesto.** La
+> sección de latencia lo define bien —*«frío: segundos»*— y lo que faltaba decir
+> es la consecuencia: **el caso frío no existe hasta el Hito 8**, porque hasta
+> que haya fragua toda habilidad ya está escrita. Medido en el Hito 6 da **1
+> tick**, indistinguible de `msHastaPrimerMovimiento`, y eso **no es una
+> regresión**: es que el reloj todavía no tiene nada que medir. Su presupuesto
+> propio arranca con la fragua, y la línea base contra la que este hito lo
+> compara hay que tomarla **ahí**, no en el Hito 6.
 
 **Este hito no es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo,** y es la única forma de que "velocidad es el requisito número uno" siga siendo verdad dentro de seis meses.
 

@@ -250,3 +250,77 @@ no existe. Está anotado en vez de disimulado.
 
 Pasó tres veces seguidas con el mismo criterio: el `80%`, el `200`, y el `110`.
 Las tres veces la corrección la hizo el usuario preguntando lo mismo.
+
+---
+
+## Tercera enmienda · 2026-07-31, cerrado el Hito 6
+
+**Esta decisión no era del Hito 6 sola, y los hitos de más adelante seguían
+escritos en la moneda vieja.** La pregunta que lo abrió: *«¿hay que actualizar
+los planes a partir del H7 por cómo se actualizó el H6?»*
+
+Se barrieron los hitos 7 a 16. **El Hito 7 —el juez— no se toca.** Los otros
+tres arreglos van abajo, y los tres son la misma forma de error que las tres
+correcciones anteriores: **una frase que era verdad cuando se escribió, en un
+mundo donde el modelo no existía todavía**. Ninguno es un diseño equivocado; son
+fechas de vencimiento.
+
+### 1 · Hitos 9 y 10 — «cero llamadas al modelo» se parte en dos
+
+Los dos criterios lo decían textual, y es el pensamiento sin-LLM otra vez: desde
+este ADR el chat **consulta por diseño**, así que una historia que arranca con
+una frase no tiene cero llamadas. Tiene cero llamadas **que hagan esperar**.
+
+**Para qué estaba, que es lo que hay que preguntar antes de tocarlo.** El
+párrafo que justifica el Hito 9 habla **todo** de tiempo: «el caso frío son
+6-25 s», «la demo del pescado es caso caliente (80 ms)». Lo que el criterio
+defendía eran los 80 ms. Contar llamadas era la forma de medirlos **mientras
+toda llamada bloqueaba** — con llamada = espera, contar una es medir la otra.
+
+Por eso no se reemplaza por otro número: la frase tenía **dos afirmaciones
+pegadas** y las dos son ciertas por separado.
+
+| lo que sobrevive | cómo se dice |
+|---|---|
+| la fragua no se despierta — es lo que la biblioteca semilla compra, y es binario | «cero consultas **de la fragua**» |
+| el camino caliente sigue caliente — es lo que el usuario siente | el **reloj**, contra la línea base del Hito 6 |
+
+El Hito 10 es más barato: **ya tiene el número** («menos de 100 ms»), así que
+sólo cambia «con cero llamadas al modelo» por «sin despertar la fragua».
+
+### 2 · Hito 8 — el presupuesto tenía un consumidor y ahora tiene dos
+
+Ya estaba anotado arriba, en «Lo que sí se paga», y no había llegado al hito. Se
+escribió allá, con lo que el Hito 6 midió:
+
+- **dos consumidores con urgencias distintas** — la fragua puede tardar catorce
+  segundos, el chat no. La política de descarte cuando compiten **no está
+  decidida**;
+- **«HTTP con streaming» dejó de ser preferencia**: el puente por CLI mide
+  14 s y US$ 0,0158 por frase, y ~10 s son arranque de proceso (la sonda directa
+  dio 4 s);
+- **el cliente ya está escrito** en `lang/demo/proveedor.ts`, fuera de `src/`
+  porque la regla 2 prohíbe `await` ahí. Lo que migra a `@anima/llm` es **el
+  cliente**; `consultaDe()`/`revisar()` se quedan en `@anima/lang`.
+
+### 3 · Hito 11 — tres relojes que ya existen, y una definición corregida
+
+`msHastaPrimerMovimiento`, `consistenciaDelPrimerGesto` y
+`msHastaAccionPertinente` viven en `lang/src/relojes.ts` con línea base corrida.
+El Hito 11 los listaba como si fuera a inventarlos: los **hereda**.
+
+Y el tercero aclara **cuándo** empieza a valer su presupuesto. El documento lo
+define bien —«frío: segundos»— y lo que faltaba es la consecuencia: **el caso
+frío no existe hasta que haya fragua**. Medido en el Hito 6 da **un tick**, y
+eso no es una regresión: es que el reloj todavía no tiene nada que medir. Su
+línea base se toma en el Hito 8, no antes.
+
+### La regla de la segunda enmienda, aplicada hacia adelante
+
+> Cuando saques un número de un criterio, volvé a preguntar para qué estaba.
+
+Acá se usó **antes** de romper nada, y por eso el resultado no fue reemplazar el
+criterio del Hito 9: fue descubrir que decía dos cosas y separarlas. **Una
+decisión que afloja un criterio hay que barrerla por los hitos que vienen el día
+que se cierra el suyo** — si no, el que llegue al Hito 9 dentro de seis meses la
+va a redescubrir con el criterio en la mano.
