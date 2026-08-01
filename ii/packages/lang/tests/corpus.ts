@@ -35,12 +35,25 @@
  * un lector calibrado sólo contra ellas está calibrado contra alguien que no
  * existe.
  *
- * ─── EL ESTADO HONESTO DE ESTE ARCHIVO ──────────────────────────────────────
+ * ─── ESTE CORPUS ESTÁ CERRADO, y conviene decir por qué ─────────────────────
  *
- * **No son 200 todavía.** Las que están acá son las que las mediciones dejaron
- * citadas con archivo y línea, o sea las verificables una por una. Completar
- * hasta 200 es extraer el resto de los barridos, no inventar — y hasta que eso
- * pase, el criterio del hito corre sobre este número y lo dice.
+ * Primero fue «faltan 123 para 200». Después el 200 se fue con la enmienda del
+ * ADR II-0024, y quedó «faltan ~110 de las que hay en el repo» — que es el mismo
+ * pensamiento con otro número, y lo dijo el usuario: **si hay modelo, ¿para qué
+ * más frases?**
+ *
+ * Tiene razón. Lo que el corpus tiene que probar hoy es esto y nada más:
+ *
+ *   · que ninguna entrada deje al lector en blanco  (punto 1)
+ *   · que las tres corridas de p95 comparen lo mismo  (puntos 2 y 3)
+ *
+ * Para las dos, la cantidad no importa. Lo que importa es que estén las FORMAS,
+ * y sumar veinte «traé X» a las 25 que ya hay no prueba nada nuevo.
+ *
+ * **Lo único que se agregó fue de las formas flacas** —condicional, negativa—
+ * porque ésas sí son las difíciles: `Predicado` no tiene dónde poner una
+ * condición ni una prohibición, así que son las que se rompen. Y la compuesta
+ * queda flaca igual, con dos: **el repo no tiene más**, y no se inventan.
  */
 
 export interface FraseDelCorpus {
@@ -153,6 +166,19 @@ export const CORPUS: readonly FraseDelCorpus[] = [
   { texto: 'buscá algo para comer', deDonde: 'docs/architecture/remake-anima-ii.md:787', forma: 'orden-con-objeto' },
   { texto: 'andá a pescar al río', deDonde: 'docs/architecture/remake-anima-ii.md:114', forma: 'referencia' },
   { texto: 'traé el tronco', deDonde: 'docs/architecture/remake-anima-ii.md:1243', forma: 'referencia' },
+
+  // ── LAS FORMAS FLACAS, engordadas a propósito ────────────────────────────
+  //
+  // El corpus tenía 2 condicionales y 3 negativas de 77 frases, y **son las
+  // difíciles**: `Predicado` no tiene dónde poner una condición ni una
+  // prohibición, así que son las que más se rompen y las que menos muestra
+  // tenían. Éstas salieron de barrer el repo buscando esas formas, no de
+  // inventarlas.
+  { texto: 'cuando sea de noche, traé una resina', deDonde: 'packages/agent-core/src/agent.ts:4988', forma: 'condicional' },
+  { texto: 'cuando tengas dos troncos, construí una fogata', deDonde: 'packages/model-providers/tests/codex.test.ts:574', forma: 'condicional' },
+  { texto: 'cuando tengas dos troncos, quedate quieta', deDonde: 'packages/agent-core/tests/temporal-goals.test.ts:222', forma: 'condicional' },
+  { texto: 'antes de N segundos', deDonde: 'packages/model-providers/src/codex.ts:1794', forma: 'temporal' },
+  { texto: 'mantenete lejos', deDonde: 'packages/model-providers/src/codex.ts:1725', forma: 'negativa' },
 
   // ── Y LOS BORDES, que no son frases pero llegan por el mismo canal ───────
   //

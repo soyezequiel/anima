@@ -1134,3 +1134,80 @@ encargos sueltos, y el `binds` que dice «el de la cláusula anterior» se va co
 acuerdo cuál: lo busco de nuevo»*. Recuperarlo es la salida (a).
 
 Medido: `@anima/lang` **66 tests**, suite entera **2769**, typecheck limpio.
+
+### Tramo O — el corpus se cierra, y la regla que deja
+
+**«¿Para qué hacen falta 110 frases más si ya tenemos LLM?»** Lo preguntó el
+usuario y no tengo con qué defenderlo.
+
+El error es de forma y no de número: cuando la enmienda del ADR sacó el «200», no
+volví a preguntar **para qué sirve el corpus** — puse otra cifra en su lugar. Es
+el mismo pensamiento con otro traje, y **pasó tres veces con el mismo criterio**:
+el `80%`, el `200`, y el `110`. Las tres veces la corrección la hizo el usuario
+preguntando lo mismo.
+
+> **La regla que deja:** cuando saques un número de un criterio, volvé a
+> preguntar **para qué estaba**. No lo reemplaces por otro número.
+
+#### Para qué sirve el corpus, ahora que está escrito
+
+| antes | ahora |
+|---|---|
+| probar cobertura de comprensión | eso lo hace el modelo |
+| — | **que ninguna entrada deje al lector en blanco** (punto 1) |
+| — | **que las tres corridas de p95 comparen lo mismo** (puntos 2 y 3) |
+
+Para las dos que quedan **la cantidad no importa**: importan las FORMAS.
+
+#### Lo único que se agregó
+
+Las **flacas**. El corpus tenía 2 condicionales y 3 negativas de 77, y son las
+difíciles — `Predicado` no tiene dónde poner una condición ni una prohibición.
+
+```
+── EL CORPUS: 82 frases ──
+  orden-con-objeto  25 · respuesta-corta 12 · orden-simple 10 · pregunta 8
+  referencia 7 · condicional 5 · temporal 5 · identidad 4 · negativa 4 · compuesta 2
+  ── con faltas de ortografía: 27
+  ── del historial de chat REAL: 5
+```
+
+Condicional 2 → 5, negativa 3 → 4, temporal 4 → 5. Todas de barrer el repo con
+esas formas; ninguna inventada.
+
+**Y la compuesta queda flaca igual, con dos.** No se completó a propósito: el repo
+no tiene más órdenes compuestas de verdad, y una inventada mediría contra un
+usuario que no existe. Va anotado en vez de disimulado.
+
+---
+
+## ESTADO FINAL DEL HITO 6
+
+**Los seis puntos del criterio cumplen**, y los tres pendientes que quedaban
+después están los tres cerrados:
+
+| | qué era | cómo cerró |
+|---|---|---|
+| 1 | «tres metas hacen lo mismo» | **no era del planificador**: una ya estaba cumplida y otra no tiene esquema. Nació el grado `ya-esta` |
+| 2 | órdenes de varias cláusulas | `Encargo`, que manda de a una y avanza cuando el mundo cumple |
+| 3 | el corpus | **cerrado en 82**, con las formas flacas engordadas |
+
+### Lo que queda abierto, medido y con su número
+
+1. **`Predicado` no distingue «que exista X» de «que vos hagas X».** Es
+   existencial. Para la trampa se podría pedir `holding(tag:…, catch>0)` —tenerla
+   en la mano sí es sobre la criatura— pero eso exige elegir un tag y elegirlo a
+   ojo sería inventar.
+2. **La ligadura diferida no tiene ejecutor.** `{k:'rinde', de:'g1'}` nombra un
+   nodo hermano y `Mente.#rindes` se vacía en cada plan nuevo. Por eso el encargo
+   manda de a una en vez de entregarle el grafo a la mente, y por eso
+   `ligaduraPerdida` cuenta lo que se pierde: siete pasos de plan por ligadura.
+3. **`Predicado` no puede hablar del lugar.** «Andá al río» sale por
+   `orientacion` y no por meta.
+4. **La misma frase le puede dar dos metas distintas al modelo.** Medido en vivo
+   con Claude: «tengo hambre» dio `holding(tag:carnoso)` una vez y la versión
+   cocida otra. El replay no se rompe —la crónica guarda el objetivo ya
+   parseado— pero decirle dos veces lo mismo puede dar dos conductas.
+5. **El CLI cuesta 14 s y US$ 0,0158 por frase.** Para la fragua del Hito 8 está
+   bien; para un chat no. La sonda directa dio 4 s, así que el grueso es arranque
+   del CLI — el camino HTTP tiene que ser otro.

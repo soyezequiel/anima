@@ -1,4 +1,4 @@
-<title>Ánima II — tablero (60%)</title>
+<title>Ánima II — tablero (61%)</title>
 <style>
 :root {
   color-scheme: light dark;
@@ -324,68 +324,73 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-07-31</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>7</b> etapas listas · <b>1</b> en curso · <b>5</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>8</b> etapas listas · <b>0</b> en curso · <b>5</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">60%</span>
+      <span class="cifra">61%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="60 por ciento avanzado">
-      <div class="tramo si" style="width:54.43%"></div>
-      <div class="tramo medio" style="width:5.63%"></div>
+    <div class="barra" role="img" aria-label="61 por ciento avanzado">
+      <div class="tramo si" style="width:60.76%"></div>
+      <div class="tramo medio" style="width:0.00%"></div>
     </div>
     <div class="leyenda">
-      <span class="l-si">terminado · 21,5 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 2,2</span>
-      <span class="l-no">por delante · 15,8</span>
+      <span class="l-si">terminado · 24,0 de 39,5 semanas</span>
+      <span class="l-medio">en curso · 0,0</span>
+      <span class="l-no">por delante · 15,5</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>Un adversario de 48 agentes revisó el Hito 6 entero, y encontró un bug de verdad</h2>
-    <p class="detalle">El hallazgo grande: `revisar()` (la función que procesa lo que contesta el modelo) podía producir un estado que `leer()` nunca produciría por su cuenta — 62 lecturas coladas como «entendida» con una firma que ningún esquema del mundo puede alcanzar. Le faltaban dos portones: exigir que la firma sea una de las que la Consulta ofreció, y graduar el resultado en vez de asignarle 'entendida' a mano. Un modelo no inventa un disparate obvio, inventa algo que PARECE una firma válida — y eso es justo lo que los dos portones nuevos cazan: 0 coladas con ellos puestos, 62 sin. Aparte, dos guardianes de calidad no guardaban lo que decían guardar (uno no bajaba a subcarpetas, el otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada en un commit, un comentario Y el documento del hito resultó ser FALSA, medida contra los 65.536 puntos de código del BMP: la regex de acentos con marcas crudas hace exactamente lo mismo que la escapada, sólo que un humano no puede revisarla mirándola.</p>
+    <h2>El Hito 6 cierra: le hablas y hace, con Claude o sin nadie</h2>
+    <p class="detalle">Nace `@anima/lang`. Le escribis en castellano y la criatura hace: «hace fuego» le sale deshilachar, frotar y unir, y «fabrica una trampa para peces» sale como `catch&gt;0` sin nombrar la solucion en ningun paso. El modelo entra por la confianza y NO por el camino: el paquete no lo llama, lo DESCRIBE — devuelve una `Consulta` y el llamador, que si puede esperar, decide. Probado con Claude de verdad (haiku): el acuse a 1,05 ms, el modelo a 14 s, y la criatura pescando. Y probado tambien contra un proveedor que se cae: Codex sin cuota tardo 5787 ms y no aporto nada, y la criatura siguio con lo suyo — que es el punto 2 del criterio medido contra algo real y no contra una simulacion. Se puede probar a mano: `pnpm --filter @anima/lang hablarle --claude`.</p>
     <ol>
-      <li>El punto 6 (consistenciaDelPrimerGesto &gt;= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya está escrito.</li>
-      <li>Terminar de extraer las ~110 frases reales que el barrido midió y el corpus todavía no transcribió. Ninguna se inventa, ni con modelo ni sin él.</li>
-      <li>Dos huecos medidos que son de @anima/plan y no del lenguaje: Predicado no puede hablar del LUGAR y 6 de sus 7 holding(tag:X) terminan en gap.</li>
+      <li>`Predicado` no distingue «que exista X» de «que vos hagas X»: es existencial. Por eso «fabrica una trampa» puede estar cumplida antes de empezar, y ahora eso se DICE (grado `ya-esta`) en vez de descartarse en silencio.</li>
+      <li>La ligadura diferida no tiene ejecutor: {k:rinde, de:g1} nombra un nodo hermano y `Mente.#rindes` se vacia en cada plan. Por eso las clausulas van de a una y `ligaduraPerdida` cuenta lo que cuesta: siete pasos de plan por ligadura.</li>
+      <li>Y dos numeros para el Hito 8: el CLI cuesta 14 s y US$ 0,0158 por frase (la sonda directa dio 4 s, o sea que el grueso es arranque), y la misma frase le puede dar dos metas distintas al modelo.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2756</div>
+        <div class="dato-valor">2769</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 54. El commit citaba 2757; la diferencia de 1 no se investigó</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · juez 126 · lang 66</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10 de 10</div>
         <div class="dato-etiqueta">typechecks limpios</div>
-        <div class="dato-nota">re-verificado ahora, exit 0 · nueve paquetes + @anima/lang + la app del banco</div>
+        <div class="dato-nota">re-verificado ahora, exit 0</div>
+      </div>
+      <div class="dato">
+        <div class="dato-valor">exit 0</div>
+        <div class="dato-etiqueta">ANIMA_BANCO=1</div>
+        <div class="dato-nota">el criterio del Hito 6 con sus tres corridas y su control positivo</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de él todavía</div>
+        <div class="dato-nota">@anima/lang depende de physics, plan, skills, world, oracle, mind y perceive; nadie depende de el</div>
       </div>
       <div class="dato">
         <div class="dato-valor">69</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">re-contado ahora, sin cambios · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1 · lang 0</div>
+        <div class="dato-nota">el Hito 6 no abrio ninguno: lo que quedo abierto esta escrito con su numero, no marcado con un it.fails</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">re-contado ahora, sin cambios · II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito</div>
+        <div class="dato-nota">II-0024 con DOS enmiendas, las dos del mismo dia y las dos porque el usuario pregunto para que servia un numero</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">9</div>
+        <div class="dato-valor">18</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — el usuario pushea solo. Re-verificado con git fetch</div>
+        <div class="dato-nota">rama anima-2 — el usuario pushea solo</div>
       </div>
   </section>
 
@@ -558,29 +563,30 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa medio">
+      <article class="etapa si">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H6</span>
             <h3>El chat, que no espera al proveedor</h3>
-            <span class="chip medio">En curso</span>
+            <span class="chip si">Listo</span>
           </div>
-          <p class="frase">Le hablás en castellano rioplatense y se mueve antes de que termines de leer tu propia frase.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">8<span class="barra-diagonal">/</span>9</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">El agujero del castellano era más grande de lo que el documento decía: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenía otro agujero, que lo vio el usuario: medía que el modelo no estorbe y no que sirva. Los dos están escritos con su número. Y un adversario de 48 agentes pasó por los tramos A a F y encontró el bug de `revisar` de arriba, más dos guardianes de calidad que no guardaban lo que decían (uno no bajaba a subcarpetas, otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada que resultó FALSA al medirla: la regex de acentos con marcas crudas hace EXACTAMENTE lo mismo que la escapada, un humano simplemente no puede revisarla a simple vista.</p>
+          <p class="frase">Le hablas en castellano y hace, con modelo o sin red, y el acuse nunca espera a nadie.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">10<span class="barra-diagonal">/</span>10</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y CERO verbos de doce. Y el criterio tenia otro agujero que lo vio el usuario: los cinco puntos originales se cumplian con el proveedor DESCONECTADO, o sea que median que el modelo no estorbe y no que sirva. El ADR II-0024 lleva DOS enmiendas y las dos salieron de la misma pregunta: para que estaba ese numero.</p>
         <details class="criterios">
-          <summary>9 criterios</summary>
+          <summary>10 criterios</summary>
           <ul>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · ninguna frase del corpus devuelve «nada»: 77 frases, 0 sin respuesta</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · con el proveedor COLGADO el mismo p95 que apagado: 1,29 ms contra 1,52. El control positivo —el proveedor puesto en el camino a proposito— da 21,15, y va afirmado ANTES que la comparacion: sin el, dos p95 iguales serian un cero que sale de no tener que medir</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · con el proveedor CONTESTANDO la cobertura SUBE: 13% a 30%, 14 clausulas leidas por el modelo. Es el punto que faltaba, y sin el los otros cinco se cumplian con el proveedor desconectado</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · p95 de mensaje a primer movimiento &lt; 150 ms en las tres corridas: sobra 100×</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · ninguna frase del corpus devuelve «nada»: 82 frases reales, todas citadas con archivo de origen, 0 sin respuesta</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · con el proveedor COLGADO el mismo p95 que apagado. El control positivo va afirmado ANTES que la comparacion: sin el, dos p95 iguales serian un cero que sale de no tener que medir</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · con el proveedor CONTESTANDO la cobertura SUBE: 12% a 31%. Es el punto que faltaba, y sin el los otros cinco se cumplian con el proveedor DESCONECTADO</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · p95 de mensaje a primer movimiento &lt; 150 ms: sobra 100×</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>5 · el acuse en el mismo frame, afirmado POR MECANISMO: `leer` es sincronica y el guardian de la regla 2 prohibe `await` en todo `src/`</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>6 · consistenciaDelPrimerGesto &gt;= 0,85: NO MEDIDO. Pide correr la mente sobre ticks; el acumulador ya esta escrito</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el caso de aceptacion: «fabrica una trampa para peces» sale como `catch&gt;0` y da un plan de 4 pasos, sin nombrar la solucion en ninguno</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que hoy eran una sola respuesta</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>`revisar` NUNCA produce un estado que `leer` no podría producir: le faltaban dos portones (firma ofrecida por la Consulta, grado que se gradúa y no se asigna). Con los dos puestos, un barrido de 6 clases de basura da 0 coladas contra 62 sin ellos</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · consistenciaDelPrimerGesto = 1,00 sobre umbral 0,85 — y es un HALLAZGO, no un exito: las ordenes que especulan arrancan todas caminando, y caminar casi nunca esta de mas. Dice que el costo de equivocarse es bajo en este mundo</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el caso de aceptacion: «fabrica una trampa para peces» sale como catch&gt;0 y da un plan de 4 pasos, sin nombrar la solucion en ninguno</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que antes eran una sola respuesta</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>`revisar` NUNCA empeora una lectura: 82 frases × 6 clases de basura, 0 coladas, con control positivo (sin los portones se colarian 62)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>varias clausulas: van de a una y el cursor pasa a la siguiente cuando el mundo cumple la de ahora</span></li>
           </ul>
         </details>
         </div>

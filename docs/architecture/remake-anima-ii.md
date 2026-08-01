@@ -1549,7 +1549,7 @@ La definición, la construcción y el uso **se juzgan y se promueven por separad
 
 **Aviso honesto:** "pescar existe como verbo el día que existe el proceso `extraccion`" es falso. El lexema de `extraccion` es *extraer*; *pescar* es extraer fauna de un cuerpo de agua con un aparejo. El puente entre castellano rioplatense conversacional y nombres de procesos físicos es conocimiento humano que hay que escribir: **una tabla de alias de composición**, chica pero real, y hay que presupuestarla.
 
-**Verificable:** corpus versionado de **frases reales en castellano rioplatense**, todas con su archivo de origen y **ninguna corregida ni inventada**. Y la puerta del hito **no es un porcentaje de comprensión, es un invariante de camino**, con **tres** corridas del mismo corpus:
+**Verificable:** corpus versionado de **frases reales en castellano rioplatense**, todas con su archivo de origen y **ninguna corregida ni inventada**. Lo que se le pide al corpus no es tamaño sino FORMAS: alcanza con que estén representadas las difíciles —condicional, negativa, compuesta, con referencia— porque la comprensión la cubre el modelo y lo que el corpus prueba es que ninguna entrada deje al lector en blanco. Y la puerta del hito **no es un porcentaje de comprensión, es un invariante de camino**, con **tres** corridas del mismo corpus:
 
 1. con el proveedor **apagado**, todas producen acuse y primer movimiento — **ninguna devuelve «nada»**;
 2. con el proveedor **colgado** —responde a los 30 s, o nunca— **el mismo p95**: la diferencia entre las dos corridas tiene que ser ruido, no una cola;

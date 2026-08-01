@@ -204,3 +204,49 @@ respuesta vuelve, `revisar(lectura, respuesta)` produce una lectura nueva.
 
 Es la misma solución que `perceive/src/bucle.ts` usa para el reloj de pared: **la
 frontera con el mundo asincrónico es el llamador, no el paquete.**
+
+---
+
+## Segunda enmienda · 2026-07-31, el mismo día
+
+**El corpus se cierra, y la razón es la misma que las otras dos veces.**
+
+La primera enmienda sacó el «200» y lo reemplazó, sin querer, por «las ~187 que
+hay en el repo». El usuario lo vio: *«¿para qué hacen falta 110 frases más si ya
+tenemos LLM?»*
+
+**No hacen falta.** Y el error es de forma, no de número: al sacar el 200 no
+volví a preguntar **para qué sirve el corpus**, así que puse otra cifra en su
+lugar. Eso es el mismo pensamiento con otro traje.
+
+### Para qué sirve el corpus, ahora que lo escribí
+
+| antes | ahora |
+|---|---|
+| probar cobertura de comprensión | eso lo hace el modelo |
+| — | **que ninguna entrada deje al lector en blanco** (punto 1) |
+| — | **que las tres corridas de p95 comparen lo mismo** (puntos 2 y 3) |
+
+Para las dos que quedan, **la cantidad no importa**. Lo que importa es que estén
+las FORMAS, y sumar veinte «traé X» a las 25 que ya hay no prueba nada nuevo.
+
+### Lo único que se agregó, y por qué ésas
+
+Las **formas flacas**: el corpus tenía 2 condicionales y 3 negativas de 77, y son
+justamente las difíciles — `Predicado` no tiene dónde poner una condición ni una
+prohibición, así que son las que se rompen y las que menos muestra tenían.
+
+Quedó en **82 frases**: condicional 2 → 5, negativa 3 → 4, temporal 4 → 5. Todas
+sacadas de barrer el repo con esas formas, ninguna inventada.
+
+**Y la compuesta queda flaca igual, con dos.** No se completó: el repo no tiene
+más órdenes compuestas de verdad, y una inventada mediría contra un usuario que
+no existe. Está anotado en vez de disimulado.
+
+### La regla que deja, y vale más que el corpus
+
+> Cuando saques un número de un criterio, **volvé a preguntar para qué estaba** —
+> no lo reemplaces por otro número.
+
+Pasó tres veces seguidas con el mismo criterio: el `80%`, el `200`, y el `110`.
+Las tres veces la corrección la hizo el usuario preguntando lo mismo.

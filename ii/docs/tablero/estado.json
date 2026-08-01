@@ -24,44 +24,49 @@
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "Un adversario de 48 agentes revisó el Hito 6 entero, y encontró un bug de verdad",
-    "detalle": "El hallazgo grande: `revisar()` (la función que procesa lo que contesta el modelo) podía producir un estado que `leer()` nunca produciría por su cuenta — 62 lecturas coladas como «entendida» con una firma que ningún esquema del mundo puede alcanzar. Le faltaban dos portones: exigir que la firma sea una de las que la Consulta ofreció, y graduar el resultado en vez de asignarle 'entendida' a mano. Un modelo no inventa un disparate obvio, inventa algo que PARECE una firma válida — y eso es justo lo que los dos portones nuevos cazan: 0 coladas con ellos puestos, 62 sin. Aparte, dos guardianes de calidad no guardaban lo que decían guardar (uno no bajaba a subcarpetas, el otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada en un commit, un comentario Y el documento del hito resultó ser FALSA, medida contra los 65.536 puntos de código del BMP: la regex de acentos con marcas crudas hace exactamente lo mismo que la escapada, sólo que un humano no puede revisarla mirándola.",
+    "titulo": "El Hito 6 cierra: le hablas y hace, con Claude o sin nadie",
+    "detalle": "Nace `@anima/lang`. Le escribis en castellano y la criatura hace: «hace fuego» le sale deshilachar, frotar y unir, y «fabrica una trampa para peces» sale como `catch>0` sin nombrar la solucion en ningun paso. El modelo entra por la confianza y NO por el camino: el paquete no lo llama, lo DESCRIBE — devuelve una `Consulta` y el llamador, que si puede esperar, decide. Probado con Claude de verdad (haiku): el acuse a 1,05 ms, el modelo a 14 s, y la criatura pescando. Y probado tambien contra un proveedor que se cae: Codex sin cuota tardo 5787 ms y no aporto nada, y la criatura siguio con lo suyo — que es el punto 2 del criterio medido contra algo real y no contra una simulacion. Se puede probar a mano: `pnpm --filter @anima/lang hablarle --claude`.",
     "proximosPasos": [
-      "El punto 6 (consistenciaDelPrimerGesto >= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya está escrito.",
-      "Terminar de extraer las ~110 frases reales que el barrido midió y el corpus todavía no transcribió. Ninguna se inventa, ni con modelo ni sin él.",
-      "Dos huecos medidos que son de @anima/plan y no del lenguaje: Predicado no puede hablar del LUGAR y 6 de sus 7 holding(tag:X) terminan en gap."
+      "`Predicado` no distingue «que exista X» de «que vos hagas X»: es existencial. Por eso «fabrica una trampa» puede estar cumplida antes de empezar, y ahora eso se DICE (grado `ya-esta`) en vez de descartarse en silencio.",
+      "La ligadura diferida no tiene ejecutor: {k:rinde, de:g1} nombra un nodo hermano y `Mente.#rindes` se vacia en cada plan. Por eso las clausulas van de a una y `ligaduraPerdida` cuenta lo que cuesta: siete pasos de plan por ligadura.",
+      "Y dos numeros para el Hito 8: el CLI cuesta 14 s y US$ 0,0158 por frase (la sonda directa dio 4 s, o sea que el grueso es arranque), y la misma frase le puede dar dos metas distintas al modelo."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2756",
-      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 54. El commit citaba 2757; la diferencia de 1 no se investigó"
+      "valor": "2769",
+      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · juez 126 · lang 66"
     },
     {
       "etiqueta": "typechecks limpios",
       "valor": "10 de 10",
-      "nota": "re-verificado ahora, exit 0 · nueve paquetes + @anima/lang + la app del banco"
+      "nota": "re-verificado ahora, exit 0"
+    },
+    {
+      "etiqueta": "ANIMA_BANCO=1",
+      "valor": "exit 0",
+      "nota": "el criterio del Hito 6 con sus tres corridas y su control positivo"
     },
     {
       "etiqueta": "paquetes",
       "valor": "10",
-      "nota": "nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de él todavía"
+      "nota": "@anima/lang depende de physics, plan, skills, world, oracle, mind y perceive; nadie depende de el"
     },
     {
       "etiqueta": "it.fails abiertos",
       "valor": "69",
-      "nota": "re-contado ahora, sin cambios · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1 · lang 0"
+      "nota": "el Hito 6 no abrio ninguno: lo que quedo abierto esta escrito con su numero, no marcado con un it.fails"
     },
     {
       "etiqueta": "ADRs propios",
       "valor": "24",
-      "nota": "re-contado ahora, sin cambios · II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito"
+      "nota": "II-0024 con DOS enmiendas, las dos del mismo dia y las dos porque el usuario pregunto para que servia un numero"
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "9",
-      "nota": "rama anima-2 — el usuario pushea solo. Re-verificado con git fetch"
+      "valor": "18",
+      "nota": "rama anima-2 — el usuario pushea solo"
     }
   ],
   "etapas": [
@@ -286,48 +291,52 @@
     {
       "id": "H6",
       "nombre": "El chat, que no espera al proveedor",
-      "enUnaFrase": "Le hablás en castellano rioplatense y se mueve antes de que termines de leer tu propia frase.",
-      "estado": "en-curso",
+      "enUnaFrase": "Le hablas en castellano y hace, con modelo o sin red, y el acuse nunca espera a nadie.",
+      "estado": "hecho",
       "semanas": 2.5,
       "puntos": [
         {
           "estado": "si",
-          "texto": "1 · ninguna frase del corpus devuelve «nada»: 77 frases, 0 sin respuesta"
+          "texto": "1 · ninguna frase del corpus devuelve «nada»: 82 frases reales, todas citadas con archivo de origen, 0 sin respuesta"
         },
         {
           "estado": "si",
-          "texto": "2 · con el proveedor COLGADO el mismo p95 que apagado: 1,29 ms contra 1,52. El control positivo —el proveedor puesto en el camino a proposito— da 21,15, y va afirmado ANTES que la comparacion: sin el, dos p95 iguales serian un cero que sale de no tener que medir"
+          "texto": "2 · con el proveedor COLGADO el mismo p95 que apagado. El control positivo va afirmado ANTES que la comparacion: sin el, dos p95 iguales serian un cero que sale de no tener que medir"
         },
         {
           "estado": "si",
-          "texto": "3 · con el proveedor CONTESTANDO la cobertura SUBE: 13% a 30%, 14 clausulas leidas por el modelo. Es el punto que faltaba, y sin el los otros cinco se cumplian con el proveedor desconectado"
+          "texto": "3 · con el proveedor CONTESTANDO la cobertura SUBE: 12% a 31%. Es el punto que faltaba, y sin el los otros cinco se cumplian con el proveedor DESCONECTADO"
         },
         {
           "estado": "si",
-          "texto": "4 · p95 de mensaje a primer movimiento < 150 ms en las tres corridas: sobra 100×"
+          "texto": "4 · p95 de mensaje a primer movimiento < 150 ms: sobra 100×"
         },
         {
           "estado": "si",
           "texto": "5 · el acuse en el mismo frame, afirmado POR MECANISMO: `leer` es sincronica y el guardian de la regla 2 prohibe `await` en todo `src/`"
         },
         {
-          "estado": "no",
-          "texto": "6 · consistenciaDelPrimerGesto >= 0,85: NO MEDIDO. Pide correr la mente sobre ticks; el acumulador ya esta escrito"
+          "estado": "si",
+          "texto": "6 · consistenciaDelPrimerGesto = 1,00 sobre umbral 0,85 — y es un HALLAZGO, no un exito: las ordenes que especulan arrancan todas caminando, y caminar casi nunca esta de mas. Dice que el costo de equivocarse es bajo en este mundo"
         },
         {
           "estado": "si",
-          "texto": "el caso de aceptacion: «fabrica una trampa para peces» sale como `catch>0` y da un plan de 4 pasos, sin nombrar la solucion en ninguno"
+          "texto": "el caso de aceptacion: «fabrica una trampa para peces» sale como catch>0 y da un plan de 4 pasos, sin nombrar la solucion en ninguno"
         },
         {
           "estado": "si",
-          "texto": "informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que hoy eran una sola respuesta"
+          "texto": "informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que antes eran una sola respuesta"
         },
         {
           "estado": "si",
-          "texto": "`revisar` NUNCA produce un estado que `leer` no podría producir: le faltaban dos portones (firma ofrecida por la Consulta, grado que se gradúa y no se asigna). Con los dos puestos, un barrido de 6 clases de basura da 0 coladas contra 62 sin ellos"
+          "texto": "`revisar` NUNCA empeora una lectura: 82 frases × 6 clases de basura, 0 coladas, con control positivo (sin los portones se colarian 62)"
+        },
+        {
+          "estado": "si",
+          "texto": "varias clausulas: van de a una y el cursor pasa a la siguiente cuando el mundo cumple la de ahora"
         }
       ],
-      "nota": "El agujero del castellano era más grande de lo que el documento decía: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenía otro agujero, que lo vio el usuario: medía que el modelo no estorbe y no que sirva. Los dos están escritos con su número. Y un adversario de 48 agentes pasó por los tramos A a F y encontró el bug de `revisar` de arriba, más dos guardianes de calidad que no guardaban lo que decían (uno no bajaba a subcarpetas, otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada que resultó FALSA al medirla: la regex de acentos con marcas crudas hace EXACTAMENTE lo mismo que la escapada, un humano simplemente no puede revisarla a simple vista."
+      "nota": "El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y CERO verbos de doce. Y el criterio tenia otro agujero que lo vio el usuario: los cinco puntos originales se cumplian con el proveedor DESCONECTADO, o sea que median que el modelo no estorbe y no que sirva. El ADR II-0024 lleva DOS enmiendas y las dos salieron de la misma pregunta: para que estaba ese numero."
     },
     {
       "id": "H7",
