@@ -1559,3 +1559,88 @@ cazando, esta vez disfrazado de número bueno.
 > **Lo que NO está probado** es que mueva la aguja del modelo. Atribuirlo pide
 > varias corridas con la pista y varias sin ella, sobre el mismo pedido — y con
 > un modelo que contesta distinto cada vez, «varias» son bastantes más que dos.
+
+---
+
+## Atribuir la devolución: el experimento pareado, y lo que encontró
+
+La única corrida que había mejorado lo hizo con la devolución **pelada**, así que
+no se podía atribuir. El diseño para atribuir es **pareado**: cada par comparte el
+pedido, el intento 1 fallado y el encargo de la vuelta 2, y difiere en **una sola
+línea** —si lleva la pista o no—.
+
+### Nueve de nueve descartados: la pista no se genera nunca
+
+```
+intento 1..9   NO HAY PISTA — el par no mide nada, se descarta
+
+0 pares medidos, 9 descartados · US$ 0,6731
+NO SE PUEDE ATRIBUIR: ningún par llegó a medirse.
+```
+
+Y la causa, medida en vez de supuesta:
+
+```
+debía llegar   : mal 12 · bien 0 → sin contraste
+debía plantarse: mal 0  · bien 6 → sin contraste
+```
+
+**El fallo del modelo es TOTAL dentro de cada grupo.** La pista necesita
+contraste —fallar en algunos y andar en otros— y el material real no lo tiene: o
+no anda en ninguno, o anda en todos.
+
+> El modo de falla que motivó el mecanismo —«anda con varas y no con mallas»— es
+> un fallo **humano**. Lo escribí yo para probarlo. El modelo no falla así.
+
+### Y el código explicó por qué no andaba en ninguno
+
+```ts
+const levantables = ['madera', 'liana', 'carne', 'piedra', 'hueso']
+const objetivo = bodies.find(b => b.tags.some(t => levantables.includes(t)))
+```
+
+**Usó el vocabulario del encargo como si fueran `tags`.** Le escribíamos «el
+mundo sabe nombrar estas cosas» y concluyó, razonablemente, que eran etiquetas de
+cuerpo. Los tags de verdad son `organico`, `vegetal`, `fibroso`; ésos son nombres
+de **sustancia**. No encontró nada y falló en 1 tick en los doce mundos amables.
+
+La otra candidata de la misma corrida hizo lo contrario: no filtró nada y agarró
+todo. **Los dos modos salen de lo mismo** — el contrato le llegaba en prosa
+(«tenés que fallar cuando no hay nada levantable») y no como dato.
+
+### El arreglo: el contrato viaja en los términos de la API
+
+`Superficie.queVerificar` lleva las precondiciones y lo que establece, derivados
+del mismo `Contrato` que el juez usa para armar el banco — así que **no hay dos
+verdades**: lo que se le pide es exactamente lo que se le mide.
+
+```
+ctx.q(eso, 'portable') >= 1        // antes de intentarlo
+ctx.self.holding.length >= 1       // tiene que ser cierto cuando devolvés done()
+```
+
+Y el vocabulario dejó de mentir sobre qué es: ahora dice **«SUSTANCIAS que
+existen en este mundo (son `substance`, NO son `tags`)»**.
+
+### Lo que movió la aguja, medido
+
+| | antes | después |
+|---|---|---|
+| mundos amables donde llega | **0 de 12** | **12 de 12** |
+| mundos adversos donde se planta | 6 de 6 | **0 de 6** |
+
+Pasó de «no anda nunca» a «anda siempre, incluso donde no debe» — que es el modo
+`mentirosa`, el que el juez ya nombra por su cuenta. Es un extremo mejor que el
+otro y sigue sin promover, que es correcto.
+
+### El estado honesto del punto 9
+
+- **la primera mitad cumple**: lo que falló entra al encargo siguiente, en
+  castellano llano y sin un id de mundo, verificado contra material real;
+- **la segunda no se puede atribuir todavía**, y ya no por el banco: la pista está
+  construida y probada con sus controles, pero **no se dispara con material real**
+  porque el fallo del modelo no es parcial;
+- **lo que sí se midió que mueve la aguja es otra cosa**: darle el contrato como
+  dato. Eso llevó los mundos amables de 0 a 12.
+
+Gastado en este tramo: **US$ 1,07** en 24 candidatas reales.

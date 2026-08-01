@@ -166,6 +166,31 @@ export interface Superficie {
   readonly desde: string
   /** Cuántas candidatas se piden en este viaje. */
   readonly cuantas: number
+  /**
+   * LO QUE LA HABILIDAD TIENE QUE VERIFICAR, en los términos de la API.
+   *
+   * ─── El hallazgo que lo obligó, y es de los caros ─────────────────────────
+   *
+   * Sin esto, el modelo no tiene cómo saber qué es «algo que se pueda levantar»
+   * y lo inventa. Medido contra Claude, dos candidatas de la misma corrida:
+   *
+   *     const levantables = ['madera', 'liana', 'carne', 'piedra', 'hueso']
+   *     bodies.find(b => b.tags.some(t => levantables.includes(t)))
+   *
+   * Usó **el vocabulario del encargo como si fueran `tags`**. Le habíamos escrito
+   * «el mundo sabe nombrar estas cosas» y él concluyó, razonablemente, que eran
+   * etiquetas de cuerpo. Los tags de verdad son `organico`, `vegetal`,
+   * `fibroso`; ésos son nombres de SUSTANCIA. No encontró nada y falló en 1 tick
+   * en los DOCE mundos amables.
+   *
+   * Y la otra candidata hizo lo contrario: no filtró nada y agarró todo, incluso
+   * donde su propio contrato dice que no puede. **Los dos modos de falla salen
+   * de lo mismo** — el contrato llegaba en prosa y no como dato.
+   *
+   * Va como texto ya armado y no como `Contrato` porque quien lo tiene es el
+   * llamador: la misma frontera de siempre.
+   */
+  readonly queVerificar?: readonly string[]
 }
 
 /**
@@ -252,7 +277,7 @@ export function textoDe(e: Encargo, s?: Superficie): string {
           '',
           e.gap,
           '',
-          'El mundo sabe nombrar estas cosas y ninguna otra:',
+          'SUSTANCIAS que existen en este mundo (son `substance`, NO son `tags`):',
           `  ${e.seSabeNombrar.join(' · ')}`,
           '',
           '── LA ÚNICA API QUE EXISTE ──',
@@ -263,6 +288,20 @@ export function textoDe(e: Encargo, s?: Superficie): string {
           '```ts',
           s.api.trimEnd(),
           '```',
+          ...(s.queVerificar === undefined || s.queVerificar.length === 0
+            ? []
+            : [
+                '',
+                '── LO QUE TENÉS QUE VERIFICAR ANTES DE DECIR QUE SÍ ──',
+                '',
+                'No adivines qué sirve mirando nombres ni tags: preguntale a la',
+                'física con `ctx.q`. Esto es lo que se te va a medir:',
+                '',
+                ...s.queVerificar.map((q) => `  ${q}`),
+                '',
+                'Si no se cumple, devolvé `fail`. Decir que sí cuando no se cumple',
+                'es el error que más caro se paga.',
+              ]),
         ]
 
   // El «cómo contestar» va SIEMPRE AL FINAL, y por eso no está adentro de
