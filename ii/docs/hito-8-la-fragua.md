@@ -545,13 +545,36 @@ un archivo fuente va escrita como escape, nunca como byte crudo»*— y la razó
 la del Hito 6: **no se puede revisar lo que no se ve**. Corregido a
 `[̀-ͯ]`, con cero marcas crudas verificadas.
 
-### Tramo G — el transporte HTTP para Claude
+### El transporte HTTP se DESCARTA, y la medición que lo justificaba era floja
 
-*(lo que sigue)*, y con una decisión de producto adentro:
+**Decidido por el usuario: se usa la suscripción de Claude por el CLI, como en
+Ánima I. No hay `ANTHROPIC_API_KEY`.**
 
-| transporte | tarda | ¿pide credencial? |
-|---|---|---|
-| `claude` (CLI, hoy) | **14 s** | no — usa la sesión de la máquina |
-| `anthropic` (HTTP) | **~4 s** | **sí, `ANTHROPIC_API_KEY`** |
+Y antes de tacharlo se preguntó **a quién le dolían los diez segundos**, que es
+la regla del ADR II-0024. La respuesta incomoda:
 
-Los diez segundos cuestan una clave.
+| quién | ¿le duelen los 14 s? |
+|---|---|
+| el **chat** | **no** — el modelo va por el carril lento y **nunca bloquea**. Es todo el ADR II-0024 |
+| la **fragua** | **no** — el caso frío del plan presupuesta **6 a 25 s**, y 14 está adentro |
+
+**«El HTTP compra diez segundos» estaba escrito como si fuera obvio que valían.**
+No hay nadie a quien le duelan: el chat contesta en 1,3 ms por el carril rápido y
+la criatura sigue con lo que sabe mientras la fragua piensa. Lo único que los 14 s
+cambian es que **aprende más lento**, y eso no rompe ningún criterio.
+
+> Queda anotado como el cuarto caso de la misma forma: **un número puesto antes
+> de preguntar para qué servía.** Los otros tres fueron el `80%`, el `200` y el
+> `110` del Hito 6.
+
+Si algún día molestan, la salida que NO pide credencial es **no volver a pagar el
+arranque**: mantener el proceso del CLI vivo entre consultas en vez de abrir uno
+por pregunta. Es más caro de escribir y no hace falta hoy.
+
+### Tramo G — el modelo de mentira de la fragua, y el paquete de candidatas
+
+*(lo que sigue)*. El tramo F dejó dicho cuál es la pieza que falta: **el falso es
+lo único que no se puede hacer genérico**, porque tiene que conocer la forma del
+que pregunta. La fragua necesita el suyo, y con él los puntos 1 y 2 del criterio
+—«al menos una de dos candidatas compila»— se pueden probar **sin gastar un
+centavo**.
