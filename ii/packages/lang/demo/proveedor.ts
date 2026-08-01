@@ -39,10 +39,40 @@ import type { Consulta, RespuestaDelModelo } from '../src/consulta.js'
 
 export type Transporte = 'claude' | 'codex' | 'openai' | 'falso'
 
+/**
+ * QUE PROVEEDOR USAR — por bandera o por variable de entorno, en ese orden.
+ *
+ * La bandera existe porque la variable no es portable y eso rompio el primer
+ * intento del usuario: `ANIMA_LLM=claude pnpm ...` es sintaxis de bash y en
+ * PowerShell da «no se reconoce como nombre de un cmdlet». Ahi hay que escribir
+ * `$env:ANIMA_LLM="claude"; pnpm ...`, que nadie se acuerda.
+ *
+ *     pnpm --filter @anima/lang hablarle --claude "tengo hambre"
+ *     pnpm --filter @anima/lang hablarle --codex  "tengo hambre"
+ *     pnpm --filter @anima/lang hablarle --openai "tengo hambre"
+ *
+ * Un demo que sólo se puede correr en un shell es un demo que la mitad de las
+ * veces no se corre.
+ */
 export function transporteElegido(): Transporte {
+  for (const a of process.argv.slice(2)) {
+    if (a === '--claude') return 'claude'
+    if (a === '--codex') return 'codex'
+    if (a === '--openai') return 'openai'
+    if (a === '--falso') return 'falso'
+  }
   const v = process.env['ANIMA_LLM']
   if (v === 'claude' || v === 'codex' || v === 'openai') return v
   return 'falso'
+}
+
+/** Los argumentos que NO son banderas: la frase. */
+export function fraseDeLaLinea(): string {
+  return process.argv
+    .slice(2)
+    .filter((a) => !a.startsWith('--'))
+    .join(' ')
+    .trim()
 }
 
 /**

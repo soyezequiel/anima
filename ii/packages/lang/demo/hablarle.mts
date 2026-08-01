@@ -43,7 +43,7 @@ import { leer } from '../src/leer.js'
 import { lexicoDe } from '../src/lexico.js'
 import { objetivosDe } from '../src/objetivos.js'
 import { revisar } from '../src/consulta.js'
-import { preguntarle, transporteElegido } from './proveedor.js'
+import { fraseDeLaLinea, preguntarle, transporteElegido } from './proveedor.js'
 import { actor, criatura, enElPiso, laOrilla, mundo } from '../../mind/tests/mundo.js'
 
 const QUIEN = 'ana'
@@ -217,9 +217,9 @@ correr(CALENTAR)
 console.log(`   la criatura ya vivió ${String(CALENTAR)} ticks sola. Está ${donde()}, ${enLaMano()}.`)
 console.log('════════════════════════════════════════════════════════════')
 
-console.log(`   proveedor: ${transporteElegido()}   (ANIMA_LLM=codex|openai|falso)`)
+console.log(`   proveedor: ${transporteElegido()}   (--claude · --codex · --openai · --falso)`)
 
-const deLaLinea = process.argv.slice(2).join(' ').trim()
+const deLaLinea = fraseDeLaLinea()
 if (deLaLinea !== '') {
   await decirle(deLaLinea)
   console.log('')

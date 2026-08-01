@@ -808,8 +808,14 @@ contra una simulación.
 ### Tramo J — con Claude de verdad, y el prompt tímido que no servía
 
 ```bash
-ANIMA_LLM=claude pnpm --filter @anima/lang hablarle "tengo hambre"
+pnpm --filter @anima/lang hablarle --claude "tengo hambre"
 ```
+
+La bandera existe porque la variable de entorno **no es portable**, y eso rompió
+el primer intento: `ANIMA_LLM=claude pnpm ...` es sintaxis de bash y en
+PowerShell da «no se reconoce como nombre de un cmdlet» (ahí va
+`$env:ANIMA_LLM="claude"; pnpm ...`). Un demo que sólo se puede correr en un
+shell es un demo que la mitad de las veces no se corre.
 
 Los argumentos están **copiados de `apps/api/src/claude.ts`**, no inventados:
 `--safe-mode --no-session-persistence --tools "" --effort low`, más `--model
