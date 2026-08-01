@@ -347,20 +347,20 @@ p { margin: 0; }
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>El criterio del Hito 6 medía la mitad, y el usuario lo vio</h2>
-    <p class="detalle">Nace `@anima/lang`, el decimo paquete: de una frase en castellano a un plan de verdad. Hoy «fabrica una trampa para peces» son cuatro pasos que nadie escribio y la palabra «trampa» no aparece en ninguno. PERO el criterio tenia un agujero que solo se ve juntando dos de sus puntos: LOS CINCO SE CUMPLIAN IGUAL CON EL PROVEEDOR DESCONECTADO, porque «colgado da el mismo p95» es trivialmente verde si el proveedor no existe. O sea que media que el modelo NO ESTORBE y no media que SIRVA. Entra un punto 3 —con el proveedor contestando la cobertura SUBE, medido 13% a 30%— y se va el «corpus de 200 frases», que era la otra herencia del mundo sin modelo: ese numero media cobertura por enumeracion, y ademas su premisa era falsa (el historial de chat del repo tiene NUEVE mensajes, no doscientos). Y se construyo por donde entra el modelo, que el ADR daba por hecho y no existia: el paquete no LLAMA al modelo, lo DESCRIBE — `leer()` devuelve una `Consulta` y el llamador, que si puede esperar, decide que hacer con ella.</p>
+    <h2>Un adversario de 48 agentes revisó el Hito 6 entero, y encontró un bug de verdad</h2>
+    <p class="detalle">El hallazgo grande: `revisar()` (la función que procesa lo que contesta el modelo) podía producir un estado que `leer()` nunca produciría por su cuenta — 62 lecturas coladas como «entendida» con una firma que ningún esquema del mundo puede alcanzar. Le faltaban dos portones: exigir que la firma sea una de las que la Consulta ofreció, y graduar el resultado en vez de asignarle 'entendida' a mano. Un modelo no inventa un disparate obvio, inventa algo que PARECE una firma válida — y eso es justo lo que los dos portones nuevos cazan: 0 coladas con ellos puestos, 62 sin. Aparte, dos guardianes de calidad no guardaban lo que decían guardar (uno no bajaba a subcarpetas, el otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada en un commit, un comentario Y el documento del hito resultó ser FALSA, medida contra los 65.536 puntos de código del BMP: la regex de acentos con marcas crudas hace exactamente lo mismo que la escapada, sólo que un humano no puede revisarla mirándola.</p>
     <ol>
-      <li>El punto 6 (consistenciaDelPrimerGesto &gt;= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya esta escrito.</li>
-      <li>Terminar de extraer las ~110 frases reales que el barrido midio y el corpus todavia no transcribio. Ninguna se inventa, ni con modelo ni sin el.</li>
-      <li>Y dos huecos medidos que son de @anima/plan y no del lenguaje: `Predicado` no puede hablar del LUGAR y 6 de sus 7 `holding(tag:X)` terminan en gap.</li>
+      <li>El punto 6 (consistenciaDelPrimerGesto &gt;= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya está escrito.</li>
+      <li>Terminar de extraer las ~110 frases reales que el barrido midió y el corpus todavía no transcribió. Ninguna se inventa, ni con modelo ni sin él.</li>
+      <li>Dos huecos medidos que son de @anima/plan y no del lenguaje: Predicado no puede hablar del LUGAR y 6 de sus 7 holding(tag:X) terminan en gap.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2751</div>
+        <div class="dato-valor">2756</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0 · lang 53 (y ANIMA_BANCO=1 tambien exit 0)</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 54. El commit citaba 2757; la diferencia de 1 no se investigó</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10 de 10</div>
@@ -370,22 +370,22 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">10</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de el todavia</div>
+        <div class="dato-nota">nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de él todavía</div>
       </div>
       <div class="dato">
         <div class="dato-valor">69</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">sin cambios: el Hito 6 no abrio ninguno nuevo</div>
+        <div class="dato-nota">re-contado ahora, sin cambios · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1 · lang 0</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito</div>
+        <div class="dato-nota">re-contado ahora, sin cambios · II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">7</div>
+        <div class="dato-valor">9</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — el usuario pushea solo</div>
+        <div class="dato-nota">rama anima-2 — el usuario pushea solo. Re-verificado con git fetch</div>
       </div>
   </section>
 
@@ -568,7 +568,7 @@ p { margin: 0; }
           </div>
           <p class="frase">Le hablás en castellano rioplatense y se mueve antes de que termines de leer tu propia frase.</p>
           <div class="medidas"><span class="marcador" title="criterios que cumplen">8<span class="barra-diagonal">/</span>9</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenia otro agujero, que lo vio el usuario: media que el modelo no estorbe y no que sirva. Los dos estan escritos con su numero.</p>
+        <p class="nota">El agujero del castellano era más grande de lo que el documento decía: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenía otro agujero, que lo vio el usuario: medía que el modelo no estorbe y no que sirva. Los dos están escritos con su número. Y un adversario de 48 agentes pasó por los tramos A a F y encontró el bug de `revisar` de arriba, más dos guardianes de calidad que no guardaban lo que decían (uno no bajaba a subcarpetas, otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada que resultó FALSA al medirla: la regex de acentos con marcas crudas hace EXACTAMENTE lo mismo que la escapada, un humano simplemente no puede revisarla a simple vista.</p>
         <details class="criterios">
           <summary>9 criterios</summary>
           <ul>
@@ -580,7 +580,7 @@ p { margin: 0; }
           <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>6 · consistenciaDelPrimerGesto &gt;= 0,85: NO MEDIDO. Pide correr la mente sobre ticks; el acumulador ya esta escrito</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el caso de aceptacion: «fabrica una trampa para peces» sale como `catch&gt;0` y da un plan de 4 pasos, sin nombrar la solucion en ninguno</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>informar que falta distinguiendo las CUATRO clases —plano, habilidad, proceso, fisica— que hoy eran una sola respuesta</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>`revisar` NUNCA empeora una lectura, con control positivo: 77 frases × 4 clases de basura, 0 empeoradas</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>`revisar` NUNCA produce un estado que `leer` no podría producir: le faltaban dos portones (firma ofrecida por la Consulta, grado que se gradúa y no se asigna). Con los dos puestos, un barrido de 6 clases de basura da 0 coladas contra 62 sin ellos</span></li>
           </ul>
         </details>
         </div>
@@ -761,16 +761,16 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina. El árbol de trabajo está LIMPIO por primera vez en varias actualizaciones, y HEAD coincide exacto con origin/anima-2 (se hizo git fetch para confirmarlo).</p>
+      <p>Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 0395840 (el adversario de 48 agentes). Árbol de trabajo limpio.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
         <code>pnpm ii:typecheck</code>
-        <span class="resultado">exit 0 · 9 de 9 proyectos</span>
+        <span class="resultado">exit 0 · 10 de 10 proyectos, incluido @anima/lang</span>
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 2698 pasan, 0 fallan — coincide exacto con lo citado en eda7104</span>
+        <span class="resultado">exit 0 · 2756 pasan, 0 fallan — el commit 0395840 citaba 2757, un test de diferencia sin investigar</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
@@ -778,14 +778,14 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
-        <span class="resultado">23 ADRs, sin cambios</span>
+        <span class="resultado">24 ADRs, sin cambios</span>
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">0 commits sin pushear — todo subido</span>
+        <span class="resultado">9 commits sin pushear</span>
       </div>
     </div>
-    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia. El commit eda7104 (el que cerró el gate) lo declara en exit 0, 126 de 126, 238 s.</p>
+    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit 0395840 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez.</p>
   </section>
 
   <section class="seccion">

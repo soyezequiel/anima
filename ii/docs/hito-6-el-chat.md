@@ -686,3 +686,71 @@ cambie por otras dos no muestra nada. Con los seis NUL de `plano.ts` era al rev�
 
 Medido: `@anima/lang` **54 tests**, `ANIMA_BANCO=1` exit 0, `@anima/world` **631**
 (eran 629), suite entera **2757**, typecheck limpio en los diez paquetes.
+
+### Tramo H — se puede probar, y el control dice que hace caso a medias
+
+Dos scripts, y ninguno es un test: no afirman nada y no corren en CI.
+
+```bash
+pnpm --filter @anima/lang hablarle            # interactivo
+pnpm --filter @anima/lang hablarle "hacé fuego"
+pnpm --filter @anima/lang hace-caso           # el control
+```
+
+**`hablarle` corre el camino entero contra un mundo de verdad** —la orilla de la
+semilla 20260727, con dios y con pozo—: lee la frase, saca el acuse en el acto,
+la convierte en meta y se la inyecta a una `Mente` que ya venía viviendo.
+
+```
+  🐾 «dale, voy»   (0.74 ms)
+     entendí: emitsPower>0
+     300 ticks después (15 s del mundo): en (-81,-97) con 160 de aliento
+     hizo: explorar×8 · ir×7 · aplicar×2 · deshilachar×1 · frotar×1 · unir×1
+       41  deshilachar(suelta:-6:-7:0)
+       82  frotar(lo-de-«fuelEnergy>0&…»×suelta:-6:-7:0)
+      131  unir(suelta:-6:-7:1+suelta:-6:-7:0)
+      152  ir(pozo:-6:-6)
+```
+
+Y las que no tienen que andar contestan bien: «traé un palo» acusa *«te entendí,
+pero no sé cómo hacerlo todavía»* con la clase de falta al lado, «andá al río»
+sale por orientación y dice qué le preguntaría al modelo, «no hagas fuego» avisa
+que no sabe guardarse una prohibición.
+
+#### EL CONTROL, y es el que cambia el veredicto
+
+Una lista de actividades **no dice si la orden llegó**: una criatura viva hace
+cosas todo el tiempo. `hace-caso` corre la misma escena desde el mismo tick **sin
+la orden** y compara.
+
+```
+  (SIN ORDEN)                aplicar×2 esperar×22 explorar×1 guarecerse×1 ir×2 juntar×1
+
+  «hacé fuego»       → emitsPower>0
+     aplicar×2 deshilachar×1 esperar×1 explorar×8 frotar×1 guarecerse×1 ir×7 juntar×1 unir×1
+  «fabricá una trampa»  → catch>0
+     aplicar×2 esperar×22 explorar×1 guarecerse×1 ir×2 juntar×1 unir×1
+  «traé un palo»     → holding(tag:fibroso)
+     aplicar×2 esperar×22 explorar×1 guarecerse×1 ir×2 juntar×1 unir×1
+  «pescá algo»       → holding(tag:carnoso)
+     aplicar×2 esperar×22 explorar×1 guarecerse×1 ir×2 juntar×1 unir×1
+  «asá el pescado»   → holding(…cocido)
+     aplicar×2 esperar×1 explorar×15 guarecerse×2 ir×15 juntar×2 unir×1
+```
+
+**Dos de cinco mueven la aguja de verdad.** «Hacé fuego» y «asá el pescado»
+cambian la conducta entera. Las otras tres —trampa, palo, pescado— dan **la misma
+corrida que sin orden, más un `unir`**, y son idénticas entre sí: tres pedidos
+distintos producen la misma conducta, que es la firma de que la meta no está
+mandando.
+
+**Esto NO invalida los seis puntos del criterio**, que miden el camino del
+mensaje y no la obediencia. Es una pregunta nueva, y es la que un usuario hace
+primero. Queda abierta con su medición al lado.
+
+#### Y por qué no se puede pedir «hacé fuego y después pescá»
+
+El único canal externo a la mente es `MenteOptions.drive`, que lleva **una** firma
+de predicado. El orden parcial y las ligaduras que `objetivosDe` sabe producir
+**no tienen por dónde entrar**. `hablarle` manda la primera cláusula y lo dice en
+voz alta.

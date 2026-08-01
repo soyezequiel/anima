@@ -238,6 +238,12 @@ importers:
 
   ii/packages/lang:
     dependencies:
+      '@anima/mind':
+        specifier: workspace:*
+        version: link:../mind
+      '@anima/perceive':
+        specifier: workspace:*
+        version: link:../perceive
       '@anima/physics':
         specifier: workspace:*
         version: link:../physics
@@ -248,6 +254,9 @@ importers:
         specifier: workspace:*
         version: link:../skills
     devDependencies:
+      tsx:
+        specifier: ^4.0.0
+        version: 4.23.1
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

@@ -8,15 +8,20 @@
   },
   "scripts": {
     "test": "vitest run --passWithNoTests",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "hablarle": "tsx demo/hablarle.mts",
+    "hace-caso": "tsx demo/hace-caso.mts"
   },
   "dependencies": {
     "@anima/physics": "workspace:*",
     "@anima/plan": "workspace:*",
-    "@anima/skills": "workspace:*"
+    "@anima/skills": "workspace:*",
+    "@anima/mind": "workspace:*",
+    "@anima/perceive": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
-    "vitest": "^3.0.0"
+    "vitest": "^3.0.0",
+    "tsx": "^4.0.0"
   }
 }

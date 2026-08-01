@@ -24,19 +24,19 @@
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "El criterio del Hito 6 medía la mitad, y el usuario lo vio",
-    "detalle": "Nace `@anima/lang`, el decimo paquete: de una frase en castellano a un plan de verdad. Hoy «fabrica una trampa para peces» son cuatro pasos que nadie escribio y la palabra «trampa» no aparece en ninguno. PERO el criterio tenia un agujero que solo se ve juntando dos de sus puntos: LOS CINCO SE CUMPLIAN IGUAL CON EL PROVEEDOR DESCONECTADO, porque «colgado da el mismo p95» es trivialmente verde si el proveedor no existe. O sea que media que el modelo NO ESTORBE y no media que SIRVA. Entra un punto 3 —con el proveedor contestando la cobertura SUBE, medido 13% a 30%— y se va el «corpus de 200 frases», que era la otra herencia del mundo sin modelo: ese numero media cobertura por enumeracion, y ademas su premisa era falsa (el historial de chat del repo tiene NUEVE mensajes, no doscientos). Y se construyo por donde entra el modelo, que el ADR daba por hecho y no existia: el paquete no LLAMA al modelo, lo DESCRIBE — `leer()` devuelve una `Consulta` y el llamador, que si puede esperar, decide que hacer con ella.",
+    "titulo": "Un adversario de 48 agentes revisó el Hito 6 entero, y encontró un bug de verdad",
+    "detalle": "El hallazgo grande: `revisar()` (la función que procesa lo que contesta el modelo) podía producir un estado que `leer()` nunca produciría por su cuenta — 62 lecturas coladas como «entendida» con una firma que ningún esquema del mundo puede alcanzar. Le faltaban dos portones: exigir que la firma sea una de las que la Consulta ofreció, y graduar el resultado en vez de asignarle 'entendida' a mano. Un modelo no inventa un disparate obvio, inventa algo que PARECE una firma válida — y eso es justo lo que los dos portones nuevos cazan: 0 coladas con ellos puestos, 62 sin. Aparte, dos guardianes de calidad no guardaban lo que decían guardar (uno no bajaba a subcarpetas, el otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada en un commit, un comentario Y el documento del hito resultó ser FALSA, medida contra los 65.536 puntos de código del BMP: la regex de acentos con marcas crudas hace exactamente lo mismo que la escapada, sólo que un humano no puede revisarla mirándola.",
     "proximosPasos": [
-      "El punto 6 (consistenciaDelPrimerGesto >= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya esta escrito.",
-      "Terminar de extraer las ~110 frases reales que el barrido midio y el corpus todavia no transcribio. Ninguna se inventa, ni con modelo ni sin el.",
-      "Y dos huecos medidos que son de @anima/plan y no del lenguaje: `Predicado` no puede hablar del LUGAR y 6 de sus 7 `holding(tag:X)` terminan en gap."
+      "El punto 6 (consistenciaDelPrimerGesto >= 0,85) sigue sin medirse: pide correr la mente sobre ticks y @anima/lang no depende de @anima/mind. El acumulador ya está escrito.",
+      "Terminar de extraer las ~110 frases reales que el barrido midió y el corpus todavía no transcribió. Ninguna se inventa, ni con modelo ni sin él.",
+      "Dos huecos medidos que son de @anima/plan y no del lenguaje: Predicado no puede hablar del LUGAR y 6 de sus 7 holding(tag:X) terminan en gap."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2751",
-      "nota": "re-corrido y confirmado, exit 0 · lang 53 (y ANIMA_BANCO=1 tambien exit 0)"
+      "valor": "2756",
+      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 54. El commit citaba 2757; la diferencia de 1 no se investigó"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -46,22 +46,22 @@
     {
       "etiqueta": "paquetes",
       "valor": "10",
-      "nota": "nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de el todavia"
+      "nota": "nace @anima/lang, el primero desde el Hito 5. Depende de physics, plan y skills; nadie depende de él todavía"
     },
     {
       "etiqueta": "it.fails abiertos",
       "valor": "69",
-      "nota": "sin cambios: el Hito 6 no abrio ninguno nuevo"
+      "nota": "re-contado ahora, sin cambios · mind 20 · world 16 · physics 13 · plan 7 · perceive 6 · juez 5 · skills 1 · oracle 1 · lang 0"
     },
     {
       "etiqueta": "ADRs propios",
       "valor": "24",
-      "nota": "II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito"
+      "nota": "re-contado ahora, sin cambios · II-0024, el piso del chat no es «sin LLM» es «sin espera». El primero que AFLOJA un criterio escrito"
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "7",
-      "nota": "rama anima-2 — el usuario pushea solo"
+      "valor": "9",
+      "nota": "rama anima-2 — el usuario pushea solo. Re-verificado con git fetch"
     }
   ],
   "etapas": [
@@ -324,10 +324,10 @@
         },
         {
           "estado": "si",
-          "texto": "`revisar` NUNCA empeora una lectura, con control positivo: 77 frases × 4 clases de basura, 0 empeoradas"
+          "texto": "`revisar` NUNCA produce un estado que `leer` no podría producir: le faltaban dos portones (firma ofrecida por la Consulta, grado que se gradúa y no se asigna). Con los dos puestos, un barrido de 6 clases de basura da 0 coladas contra 62 sin ellos"
         }
       ],
-      "nota": "El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenia otro agujero, que lo vio el usuario: media que el modelo no estorbe y no que sirva. Los dos estan escritos con su numero."
+      "nota": "El agujero del castellano era más grande de lo que el documento decía: el mundo entiende el 9% de lo que una persona escribe y cero verbos de doce. Y el criterio tenía otro agujero, que lo vio el usuario: medía que el modelo no estorbe y no que sirva. Los dos están escritos con su número. Y un adversario de 48 agentes pasó por los tramos A a F y encontró el bug de `revisar` de arriba, más dos guardianes de calidad que no guardaban lo que decían (uno no bajaba a subcarpetas, otro sólo conocía 2 de 10 clases de bytes invisibles) y una explicación publicada que resultó FALSA al medirla: la regex de acentos con marcas crudas hace EXACTAMENTE lo mismo que la escapada, un humano simplemente no puede revisarla a simple vista."
     },
     {
       "id": "H7",
@@ -470,16 +470,16 @@
     }
   ],
   "verificacion": {
-    "cuando": "Re-verificado en esta máquina. El árbol de trabajo está LIMPIO por primera vez en varias actualizaciones, y HEAD coincide exacto con origin/anima-2 (se hizo git fetch para confirmarlo).",
+    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 0395840 (el adversario de 48 agentes). Árbol de trabajo limpio.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
-        "resultado": "exit 0 · 9 de 9 proyectos",
+        "resultado": "exit 0 · 10 de 10 proyectos, incluido @anima/lang",
         "ok": true
       },
       {
         "cmd": "pnpm ii:test",
-        "resultado": "exit 0 · 2698 pasan, 0 fallan — coincide exacto con lo citado en eda7104",
+        "resultado": "exit 0 · 2756 pasan, 0 fallan — el commit 0395840 citaba 2757, un test de diferencia sin investigar",
         "ok": true
       },
       {
@@ -489,16 +489,16 @@
       },
       {
         "cmd": "ls ii/docs/decisions",
-        "resultado": "23 ADRs, sin cambios",
+        "resultado": "24 ADRs, sin cambios",
         "ok": true
       },
       {
         "cmd": "git fetch && git log origin/anima-2..HEAD",
-        "resultado": "0 commits sin pushear — todo subido",
+        "resultado": "9 commits sin pushear",
         "ok": true
       }
     ],
-    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia. El commit eda7104 (el que cerró el gate) lo declara en exit 0, 126 de 126, 238 s."
+    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit 0395840 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez."
   },
   "decisionesQueEsperan": [
     {
