@@ -194,12 +194,27 @@ describe('ningún carácter de control crudo en las fuentes de producción', () 
 //
 // Una marca combinante no ocupa lugar propio: se pinta **encima del caracter
 // anterior**. Asi que el `U+0300` se dibuja sobre el corchete, el `U+036F` sobre
-// el guion, y la clase de caracteres se lee `[-]` -- una regex que engancha
-// guiones y nada mas. `tsc` la acepta, los tests de esa funcion dan verde
-// mientras nadie le pase un acento, y a ojo el archivo esta bien.
+// el guion, y la clase se LEE `[-]`.
 //
-// Es peor que el NUL en un sentido: el NUL al menos hace que `grep` conteste
-// «Binary file matches» y avise de que algo raro hay. Este no avisa nada.
+// ─── UNA CORRECCION, y es del lado que importa ──────────────────────────────
+//
+// Aca decia que esa clase «engancha guiones y nada mas». ES FALSO, y se midio
+// barriendo los 65.536 puntos de codigo del BMP contra las dos formas:
+//
+//     codepoints donde difieren: 0
+//     la cruda matchea «-»?  false
+//     la cruda matchea «[»?  false
+//
+// La regex cruda hace EXACTAMENTE lo mismo que la escapada. El motor lee las dos
+// marcas como los extremos del rango, igual que leeria los escapes; el dibujo
+// enganya al humano y no al parser.
+//
+// Asi que este guardian NO defiende de un comportamiento distinto: defiende de
+// que **no se pueda revisar**. Quien lee ve `[-]`, tiene que adivinar que hay
+// dos marcas, no puede contarlas, y un diff que las cambie por otras dos no
+// muestra nada. Con los NUL de `plano.ts` era al reves —esos SI cambiaban el
+// hash de todo plano—, y por eso vale decir cual es cual: la regla es la misma y
+// el dano no.
 //
 // --- Como se distingue de una enie legitima --------------------------------
 //
@@ -239,5 +254,77 @@ describe('ninguna marca combinante montada sobre puntuacion', () => {
     expect(MARCA_SUELTA.test('// una caña de pescar')).toBe(false)
     // El escape ESCRITO, que es la forma correcta y la que este archivo usa.
     expect(MARCA_SUELTA.test('const MARCAS = /[\\u0300-\\u036f]/g')).toBe(false)
+  })
+})
+
+// --- LA TERCERA CLASE, y la encontro un adversario del Hito 6 --------------
+//
+// Los dos guardianes de arriba miran los caracteres de CONTROL y las marcas
+// combinantes montadas. Se planto un juego de invisibles en `src/` y **los
+// siete pasaron**:
+//
+//     U+200B  espacio de ancho cero
+//     U+200C  no-juntador de ancho cero
+//     U+200D  juntador de ancho cero
+//     U+2060  juntador de palabras
+//     U+FEFF  espacio sin ruptura de ancho cero (el viejo BOM)
+//     U+00A0  espacio duro
+//     U+200E  marca de izquierda a derecha
+//
+// Los primeros cinco NO OCUPAN LUGAR: se pueden meter adentro de un string, de
+// un comentario o entre dos tokens y el archivo se ve igual. El U+00A0 se ve
+// como un espacio y NO lo es, asi que parte un identificador o rompe una
+// comparacion de texto sin que se note. El U+200E ademas da vuelta el orden en
+// que se dibuja lo que sigue.
+//
+// `tsc` es mudo con los cinco primeros adentro de literales y comentarios —en un
+// identificador si lanza `TS1127`— asi que un string con un U+200B adentro
+// compila, se ve bien, y no es igual al que uno cree que escribio.
+//
+// La regla es la misma de siempre y ahora cubre la familia entera: **un
+// caracter que no se ve va escrito como escape**.
+
+/** Los invisibles que no son de control y que ninguno de los dos de arriba ve. */
+const INVISIBLES: readonly (readonly [cp: number, comoSeLlama: string])[] = [
+  [0x200b, 'espacio de ancho cero'],
+  [0x200c, 'no-juntador de ancho cero'],
+  [0x200d, 'juntador de ancho cero'],
+  [0x200e, 'marca de izquierda a derecha'],
+  [0x200f, 'marca de derecha a izquierda'],
+  [0x2060, 'juntador de palabras'],
+  [0xfeff, 'espacio sin ruptura de ancho cero'],
+  [0x00a0, 'espacio duro'],
+]
+
+describe('ningun caracter invisible que no sea de control', () => {
+  const FUENTES = fuentesDeProduccion()
+
+  it('los `src/` de los paquetes no tienen espacios de ancho cero ni espacios duros', () => {
+    const infracciones: string[] = []
+    for (const f of FUENTES) {
+      const texto = readFileSync(f, 'utf8')
+      for (const [cp, comoSeLlama] of INVISIBLES) {
+        const donde = texto.indexOf(String.fromCharCode(cp))
+        if (donde < 0) continue
+        const linea = texto.slice(0, donde).split('\n').length
+        infracciones.push(
+          `${f.slice(PAQUETES.length)}:${String(linea)} — ${comoSeLlama} (U+${cp.toString(16).toUpperCase().padStart(4, '0')})`,
+        )
+      }
+    }
+    expect(infracciones).toEqual([])
+  })
+
+  it('y el detector detecta: uno de cada clase', () => {
+    // El control positivo. Un guardian de invisibles que no se prueba a si mismo
+    // es el unico que puede estar completamente roto sin que se note.
+    for (const [cp, comoSeLlama] of INVISIBLES) {
+      const carnada = `const s = 'ho${String.fromCharCode(cp)}la'`
+      expect(carnada.includes(String.fromCharCode(cp)), comoSeLlama).toBe(true)
+    }
+    // Y el control negativo: un espacio normal y un salto de linea no infringen.
+    for (const [cp] of INVISIBLES) {
+      expect('const s = 1\n  const t = 2'.includes(String.fromCharCode(cp))).toBe(false)
+    }
   })
 })

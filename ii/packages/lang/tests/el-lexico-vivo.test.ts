@@ -43,18 +43,41 @@ const FRASES: readonly string[] = [
   'atá la vara con la hebra',
 ]
 
-/** Cuántas palabras de la frase caen adentro de alguna entrada del léxico. */
+/**
+ * Cuántas palabras de la frase caen adentro de alguna entrada del léxico.
+ *
+ * ─── LA CUENTA CORREGIDA, y la defendía un comentario equivocado ────────────
+ *
+ * La versión anterior sumaba `e.palabras` en cada índice, y se defendía así:
+ *
+ *     «avanzar de a una sobreestimaría si dos entradas se solapan, y en este
+ *      léxico no se solapan (medido: las 17 multipalabra son todas de
+ *      sustancias distintas)»
+ *
+ * El 17 es correcto y **el peligro que descarta no es el que hay**. No importa
+ * que dos entradas multipalabra se solapen entre sí: importa que **el segundo
+ * token de una entrada multipalabra sea a su vez una entrada**. Y de eso hay
+ * casos adentro de esas mismas 17: «trozo de carne» sumaba 4 sobre 3 porque
+ * «carne» también existe, y «algo de comer» —del puente— llegaba a dar **6
+ * sobre 3 palabras, o sea 200% de cobertura**.
+ *
+ * Los números publicados no se mueven, porque ninguna de las once frases tiene
+ * ninguno de esos casos. Pero eran correctos **de casualidad**, y el comentario
+ * vendía la casualidad como propiedad del léxico.
+ *
+ * Se marcan los índices tocados en vez de sumar, que no puede pasar del 100% ni
+ * por un alias nuevo.
+ */
 function cubiertas(lex: ReturnType<typeof lexicoDe>, frase: string): number {
   const t = tokenizar(frase)
-  let n = 0
+  const tocada = new Array<boolean>(t.length).fill(false)
   for (let i = 0; i < t.length; i++) {
     const e = lex.buscar(t, i)
-    if (e !== undefined) n += e.palabras
-    // No se saltea `i`: se cuenta cobertura de palabras, no de entradas, y una
-    // entrada de dos palabras cubre dos. Avanzar de a una sobreestimaría si dos
-    // entradas se solapan, y en este léxico no se solapan (medido: las 17
-    // multipalabra son todas de sustancias distintas).
+    if (e === undefined) continue
+    for (let j = 0; j < e.palabras && i + j < t.length; j++) tocada[i + j] = true
   }
+  let n = 0
+  for (const b of tocada) if (b) n++
   return n
 }
 
@@ -182,7 +205,7 @@ describe('la lista copiada no se puede desincronizar', () => {
 })
 
 describe('EL AGUJERO, medido antes y después del puente', () => {
-  it('el mundo solo entiende el 15% de once frases reales', () => {
+  it('el mundo solo entiende MENOS DEL 30% de once frases reales', () => {
     let total = 0
     let cubiertasSolas = 0
     let cubiertasConPuente = 0

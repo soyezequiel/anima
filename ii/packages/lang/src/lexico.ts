@@ -24,14 +24,20 @@
  * Se corrieron once frases reales de castellano contra este léxico, el derivado,
  * antes de escribir el puente:
  *
- *     COBERTURA TOTAL: 5/34 palabras (15%)
+ *     COBERTURA TOTAL: 3/34 palabras (9%)
  *     VERBOS: fabricá:no traé:no andá:no comas:no hacé:no juntá:no
- *             pescá:no asá:no dejá:no conseguí:no atá:SÍ caminar:no
+ *             pescá:no asá:no dejá:no conseguí:no atá:no caminar:no
  *
- * **Uno de doce.** Y el que acierta —`atá` → el proceso `union`— acierta por
- * casualidad morfológica: quitarle el acento al voseo y agregarle una `r` da
- * `atar`, que es el lexema del proceso. Con los otros once la misma receta da
- * `comasr` y `caminarr`.
+ * **Cero de doce**, y el número está corregido desde el que se publicó primero.
+ * Aquél decía «uno de doce: `atá` → el proceso `union`», y ese acierto dependía
+ * de un paso que este archivo NO da: desconjugar el voseo quitando el acento y
+ * agregando una `r`. Se descartó midiendo —la misma receta da `comasr`,
+ * `caminarr` y un `hacer` que no es proceso: acierta 1 y ensucia 11— así que
+ * `atá` normalizado da `ata`, el lexema del mundo es `atar`, y no son iguales.
+ *
+ * (La cobertura también bajó de 15% a 9% por dos palabras: `con`, que el barrido
+ * anterior contó como acierto contra un adjetivo, y `peces`, que exige pasar de
+ * plural a singular — trabajo de `emparejar.ts`, no del léxico.)
  *
  * ─── Las tres cosas que el léxico derivado sí trae ──────────────────────────
  *
@@ -139,7 +145,7 @@ export interface AliasCrudo {
  * `PlannerCatalogView` dejó de ser una constante de módulo en el tramo A del
  * Gate 5→6: una constante de módulo es un estado global compartido entre
  * partidas, y dos partidas no se pueden contaminar. Acá además vale para poder
- * medir el léxico **sin** puente, que es como salió el 15%.
+ * medir el léxico **sin** puente, que es como salió el 9%.
  */
 export function lexicoDe(phys: Physics, alias: readonly AliasCrudo[] = []): Lexico {
   const m = new Map<string, EntradaDeLexico>()

@@ -16,9 +16,10 @@
  *
  * Antes de escribir una línea se midió cuánto castellano entiende el mundo por
  * su cuenta: once frases reales contra el léxico que la física trae puesto dan
- * **15% de cobertura, 5 palabras de 34**, y de doce verbos el mundo conoce UNO
- * (`atá` → el proceso `union`). El mundo sabe decir *frotar, atar, deshilachar,
- * sacar*; nadie habla así.
+ * **9% de cobertura, 3 palabras de 34**, y de doce verbos el mundo conoce
+ * **cero**. Sabe decir *frotar, atar, deshilachar, sacar*; nadie habla así.
+ * (El porqué de que el número corregido sea más crudo que el primero publicado
+ * está en el encabezado de `lexico.ts`.)
  *
  * De ahí sale la forma de todo el paquete: **una lectura NUNCA falla**. Tiene
  * grados, y el más bajo sigue siendo una respuesta:

@@ -161,11 +161,15 @@ describe('el corpus', () => {
     for (const [forma, n] of tabla) console.log(`  ${forma.padEnd(20)} ${String(n)}`)
     console.log(`  ── con faltas de ortografía: ${String(conFalta)}`)
     console.log(`  ── del historial de chat REAL: ${String(historial)}`)
-    console.log(`  ── FALTAN PARA 200: ${String(200 - CORPUS.length)}\n`)
+    // Ya NO se imprime «faltan N para 200». Ese numero se fue con la enmienda
+    // del ADR II-0024: media cobertura por ENUMERACION, que es lo unico que se
+    // puede hacer cuando el lexico escrito a mano es el unico lector. Con el
+    // modelo leyendo, lo que importa del corpus es que sea REAL y que tenga las
+    // formas dificiles — no cuantas frases son.
+    console.log('')
 
-    // No están las 200 y el test lo dice en vez de taparlo. Lo que sí se afirma
-    // es lo que hace que el corpus sirva: que tenga las formas difíciles y las
-    // faltas de ortografía, que es donde un lector se rompe.
+    // Lo que se afirma es lo que hace que el corpus sirva: que tenga las formas
+    // difíciles y las faltas de ortografía, que es donde un lector se rompe.
     expect(conFalta).toBeGreaterThanOrEqual(20)
     expect(historial).toBeGreaterThanOrEqual(5)
     expect(formas.size).toBeGreaterThanOrEqual(8)

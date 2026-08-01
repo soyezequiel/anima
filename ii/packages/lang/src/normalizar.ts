@@ -45,11 +45,28 @@
 /**
  * Las marcas combinantes de Unicode, que es lo que NFD deja suelto.
  *
- * **Van escritas como escape y no como el carácter**, y no es cosmético: una
- * marca combinante adentro de una clase de caracteres se dibuja **encima del
- * corchete** y la regex se lee `[-]`. `physics/src/plano.ts` ya cobró esta
- * lección con seis NUL crudos que `grep` contestaba «Binary file matches»; acá
- * es peor, porque el carácter sí se ve — se ve mal, arriba de otro.
+ * **Van escritas como escape y no como el carácter**, y el porqué es más
+ * incómodo de lo que parece.
+ *
+ * Escrita con los caracteres de verdad, la clase se DIBUJA `[-]`: las dos marcas
+ * se pintan encima del corchete y del guión, que es lo que hacen las marcas
+ * combinantes. Y **funciona exactamente igual** — se midió barriendo los 65.536
+ * puntos de código del BMP contra las dos formas:
+ *
+ *     codepoints donde difieren: 0
+ *     la cruda matchea «-»?  false
+ *     la cruda matchea «[»?  false
+ *
+ * O sea que el problema NO es que haga otra cosa. El problema es que **no se
+ * puede revisar**: quien la lee ve `[-]`, tiene que adivinar que ahí hay dos
+ * marcas, y no tiene forma de contarlas ni de saber cuáles son. Un `git diff`
+ * que las cambie por otras dos no muestra nada.
+ *
+ * Es la misma familia que los seis NUL de `physics/src/plano.ts`, con una
+ * diferencia que conviene decir bien: aquéllos **sí** cambiaban el hash de todo
+ * plano, y éstos no cambian nada. La regla es la misma —un carácter que no se ve
+ * va escrito como escape— y la razón es «no se puede revisar», no «hace otra
+ * cosa a escondidas».
  */
 const MARCAS = /[\u0300-\u036f]/g
 

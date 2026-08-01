@@ -181,16 +181,30 @@ const MARCAS = /[̀-ͯ]/g
 ```
 
 Una marca combinante se pinta encima del carácter anterior, así que el `U+0300`
-se dibuja sobre el corchete y el `U+036F` sobre el guión: la clase se lee `[-]`,
-una regex que engancha guiones y nada más. `tsc` la acepta y los tests dan verde
-mientras nadie le pase un acento.
+se dibuja sobre el corchete y el `U+036F` sobre el guión: la clase **se lee**
+`[-]`.
 
-Es la misma enfermedad que los seis NUL de `physics/src/plano.ts` y **peor en un
-sentido**: el NUL al menos hacía que `grep` contestara «Binary file matches». Éste
-no avisa nada. El guardián de bytes invisibles de
-`world/tests/sin-nombres-especiales.test.ts` se amplió con la segunda clase —una
-marca combinante que **no viene detrás de una letra**—, que distingue el bug de
-un `río` o una `caña` legítimos mirando el carácter de antes y nada más.
+**Y acá hay un número corregido, del lado que importa.** Este documento decía que
+esa clase «engancha guiones y nada más». Es falso, y se midió barriendo los
+65.536 puntos de código del BMP contra las dos formas:
+
+```
+  codepoints donde difieren: 0
+  la cruda matchea «-»?  false
+  la cruda matchea «[»?  false
+```
+
+**La regex cruda hace exactamente lo mismo que la escapada.** El motor lee las
+dos marcas como los extremos del rango; el dibujo engaña al humano y no al
+parser. Así que lo que el guardián defiende **no es un comportamiento distinto**:
+es que **no se pueda revisar**. Quien lee ve `[-]`, tiene que adivinar que hay
+dos marcas, no puede contarlas, y un diff que las cambie por otras dos no muestra
+nada.
+
+Con los seis NUL de `physics/src/plano.ts` era al revés —ésos **sí** cambiaban el
+hash de todo plano—, y vale decir cuál es cuál: la regla es la misma y el daño
+no. El guardián se amplió con esta segunda clase —una marca que **no viene detrás
+de una letra**— y con una tercera, los invisibles que no son de control.
 
 Medido: **629 tests en `@anima/world`** (eran 627+1 skipped), verde, o sea que
 ningún `src/` de los diez paquetes tenía una marca montada sobre puntuación.
@@ -456,7 +470,6 @@ horario», dice **«nadie miró»**.
   referencia 7 · identidad 4 · temporal 4 · negativa 3 · compuesta 2 · condicional 2
   ── con faltas de ortografía: 27
   ── del historial de chat REAL: 5
-  ── FALTAN PARA 200: 123
 
 (1) 77 frases · 0 sin respuesta
 (4) acuse p50 0,031 ms · p95 0,088 ms · ventana del tick 50 ms
@@ -582,3 +595,94 @@ El tramo anterior decía «faltan 123 frases para las 200». **Ese número ya no
 existe**: el 200 se fue con la enmienda. Lo que queda es terminar de extraer las
 ~110 frases reales que el barrido midió y este archivo todavía no transcribió — y
 sigue sin poder inventarse ninguna.
+
+### Tramo G — el portón que no estaba, y cinco números corregidos
+
+Un adversario de 48 agentes —seis lentes, cada hallazgo pasado por un escéptico
+antes de creerle— sobre el trabajo de los tramos A a F. Lo que sobrevivió.
+
+#### El grande: `revisar` producía un estado que `leer` no puede producir
+
+`revisar` tenía cuatro portones y le faltaban dos. Medido sobre el corpus:
+
+```
+  consultables 61 · coladas como «entendida» con una firma inalcanzable: 62
+```
+
+Los dos que faltaban:
+
+1. **la firma tiene que ser una de las que se OFRECIERON.** El encabezado del
+   archivo decía —y dice— que el modelo «contesta firmas elegidas de una lista
+   que va en la consulta», y `Consulta.firmas` existe exactamente para eso.
+   **Nadie lo hacía cumplir:** `interpretar` sólo dice que la firma es legible.
+   `toxicity>=1` es legible, no se ofreció nunca, y entraba.
+2. **el grado se GRADÚA, no se asigna.** Escribía `grado: 'entendida'` a secas,
+   sin preguntarle a `sabeElCatalogo` — que es justo el portón que `graduar()`
+   usa en el camino local para separar `entendida` de `sin-camino`.
+
+El segundo es el que rompe el invariante del archivo, y de una forma que el
+barrido de basura **no podía ver**: sus cuatro clases mueren todas en
+`interpretar`. Lo que se cuela es una firma **válida y fuera de lugar**, que es
+exactamente lo que un modelo alucina. Un modelo no escribe `no-es-una-firma`,
+escribe algo que parece.
+
+El barrido ahora tiene **seis** clases y su control positivo:
+
+```
+  77 frases × 6 clases de basura · 0 coladas
+  sin los portones nuevos se colarían 62 cláusulas
+```
+
+#### Los guardianes que no guardaban
+
+- **El de la regla 2 no bajaba a subdirectorios.** `readdirSync(SRC)` de un solo
+  nivel. Se plantó `src/sub/malo.ts` con `Math.random`, `Date.now`,
+  `performance.now`, `localeCompare`, `Math.sqrt`, `2 ** 3` y `async/await`
+  adentro: **verde**. Y en esta base las subcarpetas de `src/` son costumbre
+  (`physics/src/data/`, `skills/src/innatas/`).
+- **El de bytes invisibles veía dos clases y hay diez.** Se le agregaron los ocho
+  que no son de control —ZWSP, ZWNJ, ZWJ, LRM, RLM, WJ, BOM y el espacio duro— y
+  **encontró dos infracciones reales en el acto**, una de ellas deliciosa:
+
+  > `physics/src/admit.ts:2409` es un comentario que explica un ataque de
+  > caracteres invisibles —un id de proceso con un espacio de ancho cero pegado—
+  > **demostrándolo con un espacio de ancho cero de verdad**. El lector tenía que
+  > creerle. Ahora el escape va escrito.
+
+  La otra era mía, en `objetivos.ts`.
+
+#### Y el número corregido que más duele, porque era una explicación entera
+
+El tramo A publicó que la regex de acentos escrita con las marcas crudas «se lee
+`[-]`, una regex que engancha guiones y nada más». **Es falso.** Medido barriendo
+los 65.536 puntos de código del BMP contra las dos formas:
+
+```
+  codepoints donde difieren: 0
+  la cruda matchea «-»?  false
+  la cruda matchea «[»?  false
+```
+
+**La cruda hace exactamente lo mismo que la escapada.** El motor lee las dos
+marcas como los extremos del rango; el dibujo engaña al humano y no al parser.
+
+La regla sobrevive entera y su razón cambia: lo que el guardián defiende **no es
+un comportamiento distinto**, es que **no se pueda revisar**. Quien lee ve `[-]`,
+tiene que adivinar que hay dos marcas, no puede contarlas, y un diff que las
+cambie por otras dos no muestra nada. Con los seis NUL de `plano.ts` era al revés
+—ésos **sí** cambiaban el hash de todo plano— y vale decir cuál es cuál.
+
+#### Los otros cuatro
+
+- **`cubiertas()` sobrecontaba.** Sumaba `e.palabras` en cada índice, así que una
+  palabra que dos entradas se disputan contaba dos veces: «algo de comer» daba
+  **6 sobre 3 palabras, 200% de cobertura**. Los números publicados no se mueven
+  —ninguna de las once frases tiene el caso— pero eran correctos **de
+  casualidad**, y el comentario vendía la casualidad como propiedad del léxico.
+- **El título de un test decía 15% y su propia salida decía 9%.**
+- **Tres encabezados de `src/` seguían publicando «15% de cobertura» y «el mundo
+  conoce UNO de doce verbos»**, los dos ya corregidos a 9% y cero desde el tramo B.
+- **El corpus imprimía «FALTAN PARA 200»** y ese número se fue con la enmienda.
+
+Medido: `@anima/lang` **54 tests**, `ANIMA_BANCO=1` exit 0, `@anima/world` **631**
+(eran 629), suite entera **2757**, typecheck limpio en los diez paquetes.

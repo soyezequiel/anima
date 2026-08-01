@@ -102,7 +102,7 @@ function cobertura(conModelo: boolean): { entendidas: number; total: number; por
       const c = consultaDe(l, lexico, FIRMAS)
       if (c !== undefined) {
         const r = proveedor(c.texto, c.llave, c.clausulas)
-        if (r !== undefined) l = revisar(l, r, lexico)
+        if (r !== undefined) l = revisar(l, r, lexico, { ofrecidas: c.firmas, sabeElCatalogo: OPC.sabeElCatalogo })
       }
     }
     for (const c of l.clausulas) {
@@ -142,7 +142,7 @@ describe('(3) CON EL PROVEEDOR CONTESTANDO, LA COBERTURA SUBE', () => {
     const c = consultaDe(l, lexico, FIRMAS)
     expect(c).toBeDefined()
     const r = proveedor(c!.texto, c!.llave, c!.clausulas)
-    const revisada = revisar(l, r!, lexico)
+    const revisada = revisar(l, r!, lexico, { ofrecidas: c!.firmas, sabeElCatalogo: OPC.sabeElCatalogo })
     expect(revisada.clausulas[0]?.leidaPor).toBe('modelo')
     expect(revisada.clausulas[0]?.firma).toBe('holding(tag:carnoso)')
     console.log(`  «andá al río» → ${String(revisada.clausulas[0]?.porque)}`)
@@ -242,29 +242,83 @@ describe('EL INVARIANTE: `revisar` nunca empeora', () => {
   })
 
   it('el barrido: NINGUNA frase del corpus empeora con basura del modelo', () => {
-    // El control positivo del invariante, sobre el corpus entero y con cuatro
-    // clases de basura a la vez.
-    const basura: readonly string[] = ['', 'no-es-una-firma', 'magnetismo>=1', 'holding(tag:inventado)']
+    // ─── LA QUINTA CLASE, Y ES LA QUE SE COLABA ──────────────────────────────
+    //
+    // Las cuatro primeras mueren todas en `interpretar`, así que este barrido
+    // daba «0 empeoradas» sin haber tocado nunca el agujero de verdad. Un
+    // adversario lo midió: **62 cláusulas del corpus entraban como `entendida`
+    // con una firma inalcanzable**.
+    //
+    // Lo que se colaba es una firma **legible y fuera de lugar** —`toxicity>=1`
+    // es sintaxis perfecta y no se ofreció nunca— que es exactamente la forma
+    // que tiene una alucinación de modelo. La basura evidente no prueba nada
+    // contra un modelo: un modelo no escribe `no-es-una-firma`, escribe algo
+    // que parece.
+    const basura: readonly string[] = [
+      '',
+      'no-es-una-firma',
+      'magnetismo>=1',
+      'holding(tag:inventado)',
+      // LEGIBLE, y jamás ofrecida.
+      'toxicity>=1',
+      // Legible, ofrecida... para otra cosa. El modelo puede confundirse ADENTRO
+      // de la lista, y contra eso no hay portón: es el riesgo que «el modelo
+      // propone» acepta. Lo que sí tiene que pasar es que no suba de grado.
+      'holding(tag:mineral)',
+    ]
     let pisadas = 0
+    const detalle: string[] = []
     for (const f of CORPUS) {
       const antes = leer(f.texto, OPC)
       const k = llaveDe(f.texto, lexico)
+      const c = consultaDe(antes, lexico, FIRMAS)
       for (const firma of basura) {
         const r: RespuestaDelModelo = {
           llave: k,
-          clausulas: antes.clausulas.map((_c, i) => ({ indice: i, firma })),
+          clausulas: antes.clausulas.map((_x, i) => ({ indice: i, firma })),
         }
-        const despues = revisar(antes, r, lexico)
-        for (const [i, c] of despues.clausulas.entries()) {
+        const despues = revisar(antes, r, lexico, {
+          ofrecidas: c?.firmas ?? FIRMAS,
+          sabeElCatalogo: OPC.sabeElCatalogo,
+        })
+        for (const [i, cl] of despues.clausulas.entries()) {
           const a = antes.clausulas[i]
           if (a === undefined) continue
-          if (c.firma !== a.firma || c.grado !== a.grado) pisadas++
+          // «Empeorar» es prometer más de lo que había: pasar a `entendida` con
+          // una firma que el catálogo no establece. Cambiar de firma sin subir
+          // de grado no es empeorar.
+          if (cl.grado === 'entendida' && !OPC.sabeElCatalogo(cl.firma ?? '')) {
+            pisadas++
+            if (detalle.length < 5) detalle.push(`«${f.texto}» ← ${firma}`)
+          }
         }
       }
     }
-    expect(pisadas, `${String(pisadas)} cláusulas empeoradas por basura`).toBe(0)
+    expect(pisadas, `${String(pisadas)} coladas: ${detalle.join(' · ')}`).toBe(0)
     console.log(
-      `  ${String(CORPUS.length)} frases × ${String(basura.length)} clases de basura · 0 empeoradas`,
+      `  ${String(CORPUS.length)} frases × ${String(basura.length)} clases de basura · 0 coladas`,
     )
+  })
+
+  it('y el CONTROL POSITIVO: sin los portones nuevos, se cuelan', () => {
+    // Sin esto, el bloque de arriba es un cero que sale de no tener qué medir —
+    // que es el modo de falla número 20 de `como-se-trabaja.md`. Se corre el
+    // MISMO barrido sin pasarle las opciones, o sea con los cuatro portones
+    // viejos, y tiene que colarse de verdad.
+    let coladas = 0
+    for (const f of CORPUS) {
+      const antes = leer(f.texto, OPC)
+      const r: RespuestaDelModelo = {
+        llave: llaveDe(f.texto, lexico),
+        clausulas: antes.clausulas.map((_x, i) => ({ indice: i, firma: 'toxicity>=1' })),
+      }
+      // Sin `ofrecidas` ni `sabeElCatalogo`: el estado anterior a la reparación.
+      const despues = revisar(antes, r, lexico)
+      for (const cl of despues.clausulas) {
+        if (cl.leidaPor === 'modelo' && !OPC.sabeElCatalogo(cl.firma ?? '')) coladas++
+      }
+    }
+    console.log(`  sin los portones nuevos se colarían ${String(coladas)} cláusulas`)
+    expect(coladas, 'el barrido de arriba no estaría midiendo nada').toBeGreaterThan(20)
   })
 })

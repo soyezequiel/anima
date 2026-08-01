@@ -7,7 +7,7 @@
  * test». Se midió antes de escribir este archivo y el diagnóstico fue peor de lo
  * que ese comentario sugiere:
  *
- *     llamadas a `goalGraph`/`orden` en `ii/*​/src` + apps ........ 0
+ *     llamadas a `goalGraph`/`orden` en los `src/` de los paquetes .... 0
  *     sitios que construyen un GoalNode en producción ............ 1
  *
  * Ese único sitio es un literal de una línea en `mind/src/escalera.ts:1452`, con

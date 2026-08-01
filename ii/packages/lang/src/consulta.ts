@@ -151,13 +151,65 @@ export function consultaDe(l: Lectura, lex: Lexico, firmas: readonly string[]): 
 }
 
 /**
+ * Lo que hace falta para juzgar una respuesta del modelo.
+ *
+ * Los dos campos son opcionales y los dos **deberían pasarse siempre**. Son
+ * opcionales por la misma razón que `OpcionesDeLectura.sabeElCatalogo`: quien
+ * llama no siempre tiene el catálogo a mano, y este archivo prefiere ser
+ * prudente antes que inventarse el dato. Pero lo que se pierde sin ellos está
+ * escrito abajo, portón por portón, y no es poco.
+ */
+export interface OpcionesDeRevision {
+  /**
+   * LAS FIRMAS QUE LA CONSULTA OFRECIÓ. Es `Consulta.firmas`, tal cual.
+   *
+   * Sin esto, el único portón contra una firma inventada es `interpretar`, que
+   * sólo dice que es **sintácticamente legible**. `toxicity>=1` es legible y
+   * nunca se ofreció.
+   */
+  readonly ofrecidas?: readonly string[]
+  /** ¿Algún esquema establece esta firma? El mismo gancho que `leer()` usa. */
+  readonly sabeElCatalogo?: (firma: string) => boolean
+}
+
+/**
  * LA LECTURA CORREGIDA POR EL MODELO.
  *
  * Devuelve **el mismo objeto** `l` cuando la respuesta no aporta nada, y eso es
  * parte del contrato: quien llame puede comparar por identidad para saber si
  * hubo cambio, sin volver a mirar el contenido.
+ *
+ * ─── LOS DOS PORTONES QUE FALTABAN, Y LO QUE COSTARON ───────────────────────
+ *
+ * La primera versión tenía cuatro portones y le faltaban dos. Un adversario lo
+ * midió sobre el corpus:
+ *
+ *     consultables 61 · coladas como «entendida» con una firma inalcanzable: 62
+ *
+ * Los dos que faltaban:
+ *
+ * 1. **la firma tiene que ser UNA DE LAS QUE SE OFRECIERON.** El encabezado de
+ *    este archivo decía —y dice— que el modelo «contesta firmas elegidas de una
+ *    lista que va en la consulta», y `Consulta.firmas` existe exactamente para
+ *    eso. Nadie lo hacía cumplir: `interpretar` sólo dice que la firma es
+ *    legible. `toxicity>=1` es legible, no se ofreció nunca, y entraba.
+ * 2. **el grado se GRADÚA, no se asigna.** Escribía `grado: 'entendida'` a
+ *    secas, sin preguntarle a `sabeElCatalogo` — que es justo el portón que
+ *    `graduar()` usa en el camino local para separar `entendida` de
+ *    `sin-camino`. O sea que `revisar` producía **un estado que `leer` no puede
+ *    producir**: una meta comprometida que ningún esquema establece.
+ *
+ * El segundo es el que rompe el invariante de este archivo, y de una forma que
+ * el barrido de basura no podía ver: sus cuatro clases de basura mueren todas en
+ * `interpretar`. Lo que se cuela es una firma **válida y fuera de lugar**, que es
+ * exactamente lo que un modelo alucina.
  */
-export function revisar(l: Lectura, r: RespuestaDelModelo, lex: Lexico): Lectura {
+export function revisar(
+  l: Lectura,
+  r: RespuestaDelModelo,
+  lex: Lexico,
+  o: OpcionesDeRevision = {},
+): Lectura {
   // 1 · La llave. Una respuesta de otro texto o de otro léxico no aplica.
   if (r.llave !== llaveDe(l.crudo, lex)) return l
 
@@ -171,25 +223,35 @@ export function revisar(l: Lectura, r: RespuestaDelModelo, lex: Lexico): Lectura
     const vieja = nuevas[p.indice]
     if (vieja === undefined) continue
 
-    // 3 · El modelo sólo opina de lo que el lector local no supo leer. Una
-    //     cláusula ya entendida no se toca ni aunque el modelo insista: si la
-    //     lectura local llegó a una meta, esa meta la produjo el léxico de este
-    //     mundo y vale más que una propuesta de afuera.
+    // 3 · El modelo sólo opina de lo que el lector local no supo resolver.
     if (!SE_CONSULTAN.includes(vieja.grado)) continue
 
     // 4 · La firma tiene que ser legible por el mismo lector que usa la mente.
     if (interpretar(p.firma) === undefined) continue
 
+    // 5 · Y tiene que ser una de las que se ofrecieron.
+    if (o.ofrecidas !== undefined && !o.ofrecidas.includes(p.firma)) continue
+
+    // 6 · El grado se GRADÚA con el mismo portón que el camino local. Sin
+    //     catálogo no se puede saber, y entonces no se promete: queda en el
+    //     grado más prudente de los dos.
+    const alcanzable = o.sabeElCatalogo === undefined ? undefined : o.sabeElCatalogo(p.firma)
+    const grado: GradoDeLectura =
+      alcanzable === true ? 'entendida' : alcanzable === false ? 'sin-camino' : 'orientacion'
+
     nuevas[p.indice] = {
       ...vieja,
       firma: p.firma,
-      grado: 'entendida',
+      grado,
       leidaPor: 'modelo',
       // La confianza NO sube a 1: el modelo acertó una firma, no demostró que
       // entendió. Se deja en el umbral, que es el piso de «alcanza para
       // comprometer conducta» y ni un punto más.
       confianza: UMBRAL_DEL_MODELO,
-      porque: `«${p.firma}», que no supe leer sola y el modelo propuso`,
+      porque:
+        grado === 'entendida'
+          ? `«${p.firma}», que no supe leer sola y el modelo propuso`
+          : `el modelo propuso «${p.firma}» y ningún esquema conocido lo establece`,
     }
     cambio = true
   }

@@ -41,7 +41,32 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const SRC = fileURLToPath(new URL('../src/', import.meta.url))
-const FUENTES = readdirSync(SRC).filter((f) => f.endsWith('.ts'))
+
+/**
+ * Los `.ts` de `src/`, RECURSIVO.
+ *
+ * ─── POR QUÉ RECURSIVO, y lo encontró un adversario ─────────────────────────
+ *
+ * La primera versión hacía `readdirSync(SRC).filter(...)`, o sea **un solo
+ * nivel**. Se probó plantando `src/sub/malo.ts` con `Math.random`, `Date.now`,
+ * `performance.now`, `localeCompare`, `Math.sqrt`, `2 ** 3` y `async/await`
+ * adentro: el guardián dio **verde**, y el nombre del test siguió diciendo el
+ * mismo número de fuentes.
+ *
+ * No es hipotético: en esta base las subcarpetas de `src/` son costumbre
+ * —`physics/src/data/`, `skills/src/innatas/`— así que «sobre todo `src/`» era
+ * en realidad «sobre el primer nivel de `src/`».
+ */
+function fuentesDe(dir: string): readonly string[] {
+  const out: string[] = []
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    if (e.isDirectory()) out.push(...fuentesDe(`${dir}${e.name}/`).map((f) => `${e.name}/${f}`))
+    else if (e.name.endsWith('.ts')) out.push(e.name)
+  }
+  return out
+}
+
+const FUENTES = fuentesDe(SRC)
 
 const PROHIBIDOS: readonly (readonly [RegExp, string])[] = [
   [/\bMath\.random\b/, 'el azar del sistema no se puede reproducir'],

@@ -166,7 +166,7 @@ const VERBOS: readonly AliasCrudo[] = [
  *
  * Se exporta como una constante y se pasa por parámetro —no se importa adentro
  * de `lexico.ts`— para poder construir el léxico SIN él, que es como se midió el
- * 15% de cobertura y como se va a volver a medir cuando alguien quiera saber
+ * 9% de cobertura y como se va a volver a medir cuando alguien quiera saber
  * cuánto aporta esta tabla.
  */
 export const PUENTE: readonly AliasCrudo[] = [...METAS, ...VERBOS]

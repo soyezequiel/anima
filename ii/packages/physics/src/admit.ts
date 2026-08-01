@@ -2406,8 +2406,15 @@ function reglaNoDominancia(p: Process, phys: Physics, razones: Razon[]): void {
     if (ticksNuevo > ticksViejo) continue
     const masRapido = ticksNuevo < ticksViejo
 
-    // LA COPIA EXACTA. ATAQUE QUE LA MOTIVÓ: `{...FRICCION, id: 'friccion​'}` con un
-    // espacio de ancho cero pegado al id — carácter por carácter el mismo proceso.
+    // LA COPIA EXACTA. ATAQUE QUE LA MOTIVÓ: `{...FRICCION, id: 'friccion\u200b'}`,
+    // o sea el id con un espacio de ancho cero pegado — carácter por carácter el
+    // mismo proceso.
+    //
+    // El escape va ESCRITO. Acá estaba el carácter de verdad, que es un chiste que
+    // se cuenta solo: un comentario que explica un ataque de caracteres invisibles,
+    // demostrándolo con uno invisible que el lector no puede ver. Tenía que creerle.
+    // Lo encontró el guardián de `world/tests/sin-nombres-especiales.test.ts` el día
+    // que aprendió a buscar esta familia.
     // No es `id-repetido` (el id difiere) y no era `dominancia` (no es más barato:
     // es idéntico), así que la puerta admitía copias ilimitadas de cualquier
     // proceso, cada una con su nodo propio en el grafo de la regla 5 —cuyo
