@@ -18,6 +18,8 @@ import { fileURLToPath } from 'node:url'
 import { crearDios } from '@anima/world'
 import { describe, expect, it } from 'vitest'
 import {
+  aMedioArmar,
+  alBordeDelFuego,
   buscarOrilla,
   correrElBancoDeDispositivo,
   FLEXIBILIDAD_DE_LO_QUEMADO,
@@ -127,7 +129,7 @@ describe('LOS CINCO MUNDOS QUE EL TRAMO G NO PODÍA ESCRIBIR', () => {
           `${(c.mundo.deberiaAtrapar ? 'que saque' : 'que NO saque').padEnd(16)} ${c.comoDebia ? 'sí' : 'NO'}`,
       )
     }
-    expect(cs.length).toBe(6)
+    expect(cs.length).toBe(8)
   })
 
   it('«normal»: saca solo, sin actor', () => {
@@ -162,6 +164,47 @@ describe('LOS CINCO MUNDOS QUE EL TRAMO G NO PODÍA ESCRIBIR', () => {
     expect(ley, 'la ley 4 ya no le pone flexibility 0.02 al residuo').toContain(
       `flexibility: ${String(FLEXIBILIDAD_DE_LO_QUEMADO)}`,
     )
+  })
+
+  it('ESTADIFICADOS · qué compra armar la obra, medido', () => {
+    // El hallazgo del tramo: armar CUESTA `catch` y COMPRA `reach`. La junta
+    // ancla una de las dos puntas de la hebra, así que engancha la mitad — y a
+    // cambio el conjunto llega más lejos, que es lo que `extraccion` pide en su
+    // rol (`reach >= 2`).
+    //
+    // No es un bug ni un incentivo invertido: es un trade-off, y conviene
+    // tenerlo escrito antes de que alguien vea «el suelto pesca más» y lo lea
+    // como que construir no sirve.
+    const q = (b: Body, x: 'catch' | 'reach'): string => qualityOf(b, x, phys).toFixed(3)
+    console.log(`
+  ${'variante'.padEnd(22)} ${'catch'.padStart(7)} ${'reach'.padStart(7)}`)
+    for (const [n, b] of [
+      ['armada (con junta)', obraConPuntas('x')],
+      ['a medio armar', aMedioArmar(obraConPuntas('x'))],
+      ['al borde del fuego', alBordeDelFuego(obraConPuntas('x'), phys)],
+      ['quemada', quemado(obraConPuntas('x'))],
+    ] as const) {
+      console.log(`  ${n.padEnd(22)} ${q(b, 'catch').padStart(7)} ${q(b, 'reach').padStart(7)}`)
+    }
+
+    const armada = obraConPuntas('x')
+    const suelta = aMedioArmar(armada)
+    expect(qualityOf(suelta, 'catch', phys), 'la hebra suelta tiene DOS puntas libres').toBeGreaterThan(
+      qualityOf(armada, 'catch', phys),
+    )
+    expect(qualityOf(suelta, 'reach', phys), 'y a cambio llega menos lejos').toBeLessThan(
+      qualityOf(armada, 'reach', phys),
+    )
+  })
+
+  it('ESTADIFICADOS · «al borde del fuego» sigue pescando, por un pelo', () => {
+    // Y NO mejora: la primera versión de este mundo le subía la flexibilidad a
+    // la madera de 0,4 a 0,8 y el `catch` saltaba de 0,150 a 0,450 — o sea que
+    // el fuego MEJORABA el aparejo, al revés de lo que hace el fuego. El `min`
+    // de `alBordeDelFuego` es lo que lo arregla.
+    const armada = obraConPuntas('x')
+    expect(qualityOf(alBordeDelFuego(armada, phys), 'catch', phys)).toBe(qualityOf(armada, 'catch', phys))
+    expect(cs.find((c) => c.mundo.clase === 'al-borde-del-fuego')?.atrapo).toBeGreaterThan(0)
   })
 
   it('«dos compitiendo»: se REPARTEN, no se duplican', () => {

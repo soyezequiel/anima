@@ -790,7 +790,72 @@ guardián que lee `leyes.ts` y se pone rojo si se mueve.
 
 ---
 
-## 4 · ESTADO: el criterio CIERRA, la descripción NO
+### Tramo I — los mundos estadificados, y el panel · CERRADO
+
+`judge/src/panel.ts` + dos clases nuevas en el banco de dispositivo. El paquete
+cierra en **81 tests**.
+
+#### Estadificados: la obra agarrada A MITAD de algo
+
+Hasta el tramo H había uno solo —`restauracion-a-mitad`, que agarra el CICLO por
+la mitad—. Estos dos agarran a la OBRA:
+
+| clase | qué estado a medias |
+|---|---|
+| `a-medio-armar` | las piezas están, la atadura no |
+| `al-borde-del-fuego` | la hebra chamuscada justo hasta el umbral |
+
+**Y el primero midió algo que no esperaba: armar CUESTA `catch` y COMPRA `reach`.**
+
+```
+variante                 catch   reach
+armada (con junta)       0.150   2.800
+a medio armar            0.300   2.000     ← engancha el DOBLE
+al borde del fuego       0.150   2.800
+quemada                  0.000   2.800
+```
+
+La junta ancla una de las dos puntas de la hebra, así que la obra armada engancha
+la mitad — y a cambio el conjunto llega más lejos, que es lo que `extraccion`
+pide en su rol (`reach >= 2`). **No es un incentivo invertido: es un trade-off**,
+y conviene tenerlo escrito antes de que alguien vea «el suelto pesca más» y lo
+lea como que construir no sirve.
+
+> **Y `al-borde-del-fuego` estaba MAL en su primera versión.** Le ponía `0.8` a
+> todas las partes, o sea que le SUBÍA la flexibilidad a la madera de 0,4 a 0,8:
+> no era «a medio quemar», era «la madera se volvió soga». Se veía en el número
+> —`catch` saltaba de 0,150 a **0,450**, el fuego MEJORABA el aparejo— y es al
+> revés de lo que hace el fuego. Con `min` sólo baja lo que estaba por encima.
+
+#### El panel del juez
+
+`ii/docs/panel-del-juez.html`, **generado por un test**. Es el patrón que el repo
+ya tiene en `ii/docs/visor/partida.html`: un panel escrito a mano queda viejo el
+día que cambia un cargo; uno que sale de un test se pone rojo.
+
+Seis dictámenes para que muestre algo: el aparejo que pesca, la habilidad
+honesta, las dos mentirosas, el palo pelado y un contrato imposible — **los
+cuatro grados aparecen**, y hay un test que lo afirma porque un panel de un solo
+color no muestra nada.
+
+Dos reglas de contenido, las dos con su test:
+
+1. **Los cuatro cargos siempre, aunque tres estén verdes.** El panel existe para
+   que «construye bien y no sirve» no se lea igual que «no lo puede armar».
+2. **Los mundos donde falló, con nombre.** Es la mitad que se olvida: «no
+   promueve» sin el mundo es un veredicto que no se puede contestar.
+
+Y es **determinista** —sin fecha ni nada que cambie solo— para que un `git diff`
+del archivo generado signifique que cambió un veredicto y no que se volvió a
+correr.
+
+> **Se miró, no se dio por bueno.** La primera versión fijaba el color del texto
+> y no el fondo: en un navegador con tema oscuro los títulos quedaban grises
+> sobre negro. Se vio abriéndolo.
+
+---
+
+## 4 · ESTADO: el criterio cierra, y la descripción también
 
 Es el mismo patrón que el Hito 6, y por eso se busca a propósito.
 
@@ -808,19 +873,19 @@ Es el mismo patrón que el Hito 6, y por eso se busca a propósito.
 
 **2837 tests verdes**, `pnpm ii:test` exit 0, `pnpm ii:typecheck` limpio.
 
-### Lo que la DESCRIPCIÓN nombra y todavía no está — cuatro cosas
+### Lo que la DESCRIPCIÓN nombraba — las cuatro, cerradas
 
-1. **«mundos estadificados».** Sigue faltando en general, aunque el tramo H
-   trajo el primero de verdad: `restauracion-a-mitad` **agarra el ciclo por la
-   mitad**, copia el estado entero y sigue. Los otros —media obra armada, algo a
-   medio arder— no están.
+1. ~~«mundos estadificados»~~ — **CERRADO en el tramo I**: `restauracion-a-mitad`
+   (el ciclo por la mitad), `a-medio-armar` y `al-borde-del-fuego` (la obra por
+   la mitad).
 2. ~~Los ocho mundos adversos del caso de aceptación~~ — **CERRADO: 8 de 8**
    (tramos G y H).
 3. **«regresiones con snapshot real».** Se guarda el **id del mundo** (y la
    semilla, en las de dispositivo), no un snapshot. Como el banco es determinista
    el id lo rearma exacto —discutiblemente mejor que un snapshot, que se puede
    quedar viejo— pero **no es lo que dice la descripción**.
-4. **El panel del juez** («se puede mostrar»). No existe.
+4. ~~El panel del juez~~ — **CERRADO en el tramo I**: `ii/docs/panel-del-juez.html`,
+   generado por un test.
 
 ### Y los dos huecos medidos que quedan abiertos
 

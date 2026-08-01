@@ -104,6 +104,8 @@ export type ClaseDeDispositivo =
   | 'stock-vacio'
   | 'ubicacion-incorrecta'
   | 'dispositivo-roto'
+  | 'a-medio-armar'
+  | 'al-borde-del-fuego'
   | 'dos-compitiendo'
   | 'restauracion-a-mitad'
 
@@ -148,6 +150,60 @@ export function quemado(obra: Body): Body {
   return {
     ...obra,
     parts: b.parts.map((p) => ({ ...p, q: { ...(p.q ?? {}), flexibility: FLEXIBILIDAD_DE_LO_QUEMADO } })),
+  } as unknown as Body
+}
+
+/**
+ * EL UMBRAL DE LA HEBRA — `STRAND_FLEXIBILITY` de `physics/src/body.ts:429`.
+ *
+ * Es privado allá, así que se copia con su guardián, igual que el número de lo
+ * quemado. Un cuerpo justo EN el umbral todavía retiene; uno un pelo abajo, no.
+ */
+export const FLEXIBILIDAD_MINIMA_DE_HEBRA = 0.8
+
+/**
+ * MUNDOS ESTADIFICADOS: la obra agarrada A MITAD de algo.
+ *
+ * El documento pide «evaluación jerárquica con **mundos estadificados**» y hasta
+ * el tramo H había uno solo de verdad —`restauracion-a-mitad`, que agarra el
+ * ciclo por la mitad—. Estos dos agarran a la OBRA por la mitad, que es la otra
+ * lectura y la que faltaba:
+ *
+ * | | qué estado a medias |
+ * |---|---|
+ * | `a-medio-armar` | las piezas están, la atadura no |
+ * | `al-borde-del-fuego` | la hebra chamuscada justo hasta el umbral |
+ *
+ * Ninguno es adverso. Son los que separan «funciona» de «funciona porque el
+ * arnés se lo puso perfecto».
+ */
+export function aMedioArmar(obra: Body): Body {
+  return { ...obra, joints: [] } as unknown as Body
+}
+
+/**
+ * LA HEBRA CHAMUSCADA JUSTO HASTA EL UMBRAL, y el `min` no es un detalle.
+ *
+ * La primera versión le PONÍA `0.8` a todas las partes, y eso subía la
+ * flexibilidad de la madera de 0,4 a 0,8: no era «a medio quemar», era «la
+ * madera se volvió soga». Se veía en el número —`catch` saltaba de 0,150 a
+ * 0,450, o sea que el fuego MEJORABA el aparejo— y es al revés de lo que hace
+ * el fuego, que endurece.
+ *
+ * Con `min` sólo BAJA lo que estaba por encima: la hebra queda justo en el
+ * umbral y la madera no se toca. El aparejo sigue pescando, por un pelo.
+ */
+export function alBordeDelFuego(obra: Body, phys: Physics): Body {
+  const b = obra as unknown as { parts: { substance: string; mass: number; q?: Record<string, number> }[] }
+  return {
+    ...obra,
+    parts: b.parts.map((p) => {
+      const suyo = p.q?.['flexibility'] ?? (phys.substances.get(p.substance)?.perUnitMass.flexibility ?? 0)
+      return {
+        ...p,
+        q: { ...(p.q ?? {}), flexibility: Math.min(suyo, FLEXIBILIDAD_MINIMA_DE_HEBRA) },
+      }
+    }),
   } as unknown as Body
 }
 
@@ -305,6 +361,15 @@ export function correrElBancoDeDispositivo(
     meter('dispositivo-roto', cuantoAtrapo(w, roto.id), w.desplegados.has(roto.id), 3)
   }
 
+  // ─── estadificados: la obra a mitad de algo ──────────────────────────────
+  for (const [clase, hecho] of [
+    ['a-medio-armar', aMedioArmar(obra)],
+    ['al-borde-del-fuego', alBordeDelFuego(obra, phys)],
+  ] as const) {
+    const w = corre(desplegar(escena(o, [hecho], phys), hecho.id, o.pozo), TICKS_SOLO)
+    meter(clase, cuantoAtrapo(w, hecho.id), w.desplegados.has(hecho.id), clase === 'a-medio-armar' ? 4 : 5)
+  }
+
   // ─── dos compitiendo ─────────────────────────────────────────────────────
   {
     const otro: Body = { ...obra, id: `${obra.id}-bis` }
@@ -312,7 +377,7 @@ export function correrElBancoDeDispositivo(
     s = desplegar(s, obra.id, o.pozo)
     s = corre(s, 1, [place({ by: EL_ACTOR, seq: 0 }, otro.id, o.pozo)])
     const w = corre(s, TICKS_SOLO)
-    meter('dos-compitiendo', cuantoAtrapo(w, obra.id) + cuantoAtrapo(w, otro.id), w.desplegados.has(obra.id), 4)
+    meter('dos-compitiendo', cuantoAtrapo(w, obra.id) + cuantoAtrapo(w, otro.id), w.desplegados.has(obra.id), 6)
   }
 
   // ─── restauración a mitad del ciclo ──────────────────────────────────────
@@ -332,7 +397,7 @@ export function correrElBancoDeDispositivo(
       },
     ) as WorldState
     const w = corre(copia, TICKS_SOLO / 2)
-    meter('restauracion-a-mitad', cuantoAtrapo(w, obra.id), w.desplegados.has(obra.id), 5)
+    meter('restauracion-a-mitad', cuantoAtrapo(w, obra.id), w.desplegados.has(obra.id), 7)
   }
 
   return out

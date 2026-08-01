@@ -1,0 +1,91 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>El panel del juez — Ánima II</title>
+<style>
+ /* El fondo va explícito: fijar sólo el color del texto deja los títulos grises
+    sobre negro en un navegador con tema oscuro. Se vio mirándolo. */
+ html{background:#fff}
+ body{font:15px/1.6 system-ui,sans-serif;max-width:60rem;margin:2rem auto;padding:0 1rem;color:#222;background:#fff}
+ h1{font-size:1.5rem;margin:0 0 .25rem}
+ .sub{color:#666;margin:0 0 2rem}
+ section{border-top:1px solid #ddd;padding-top:1rem;margin-top:2rem}
+ h2{font-size:1.15rem;display:flex;align-items:center;gap:.5rem}
+ table{border-collapse:collapse;width:100%;margin:.5rem 0}
+ th,td{text-align:left;padding:.35rem .6rem;border-bottom:1px solid #eee;vertical-align:top}
+ th{font-weight:600;color:#666;font-size:.85rem}
+ .cargo{font-weight:600;white-space:nowrap}
+ .num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;color:#666}
+ .por{color:#444}
+ .chip{color:#fff;border-radius:.7rem;padding:.05rem .55rem;font-size:.78rem;white-space:nowrap}
+ .mundos{margin:.25rem 0 0;padding-left:1.2rem}
+ code{background:#f4f4f4;padding:.05rem .3rem;border-radius:.2rem;font-size:.85rem}
+ .ok{color:#2e7d32} .mal{color:#c62828;margin-bottom:.25rem}
+ ul.resumen{list-style:none;padding:0;display:flex;flex-wrap:wrap;gap:.75rem}
+ ul.resumen li{display:flex;align-items:center;gap:.4rem}
+</style>
+<h1>El panel del juez</h1>
+<p class="sub">Por qué una cosa es estable y otra no, con los mundos donde falló.
+Generado por <code>judge/tests/el-panel.test.ts</code> — no se edita a mano.</p>
+<ul class="resumen"><li><a href="#aparejo">aparejo</a> <span class="chip" style="background:#2e7d32">promueve</span></li><li><a href="#sostener">sostener</a> <span class="chip" style="background:#ef6c00">inconcluso</span></li><li><a href="#sobreajustada">sobreajustada</a> <span class="chip" style="background:#c62828">no-promueve</span></li><li><a href="#mentirosa">mentirosa</a> <span class="chip" style="background:#c62828">no-promueve</span></li><li><a href="#palo-pelado">palo-pelado</a> <span class="chip" style="background:#c62828">no-promueve</span></li><li><a href="#pide-lo-imposible">pide-lo-imposible</a> <span class="chip" style="background:#6a1b9a">injuzgable</span></li></ul>
+<section id="aparejo">
+<h2>aparejo <span class="chip" style="background:#2e7d32">promueve</span></h2>
+<table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
+<tbody>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">8/8</td><td class="num">3/3</td><td class="por">catch = 0.150</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">8/8</td><td class="num">3/3</td><td class="por">quedó desplegado en los 7 mundos donde se lo puso sobre el pozo</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">8/8</td><td class="num">3/3</td><td class="por">se quedó quieto en los 3 mundos donde no hay nada que sacar</td></tr>
+<tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">8/8</td><td class="num">3/3</td><td class="por">sacó 3 pieza(s) en 400 ticks, sola</td></tr>
+</tbody></table>
+<p class="ok">Ningún mundo salió distinto de lo que debía.</p>
+</section>
+<section id="sostener">
+<h2>sostener <span class="chip" style="background:#ef6c00">inconcluso</span></h2>
+<table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
+<tbody>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">5/5</td><td class="num">2/2</td><td class="por">se sintetiza con carne/vara</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">5/5</td><td class="num">2/2</td><td class="por">llegó en los 3 amables y se plantó en los 2 adversos</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">5/5</td><td class="num">2/2</td><td class="por">3 de 3 promesas verificadas contra el mundo</td></tr>
+<tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#ef6c00">inconcluso</span></td><td class="num">—</td><td class="num">—</td><td class="por">no hay contra qué: nadie le pide nada a una habilidad hasta que haya objetivos (Hito 8)</td></tr>
+</tbody></table>
+<p class="ok">Ningún mundo salió distinto de lo que debía.</p>
+</section>
+<section id="sobreajustada">
+<h2>sobreajustada <span class="chip" style="background:#c62828">no-promueve</span></h2>
+<table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
+<tbody>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">4/5</td><td class="num">2/2</td><td class="por">se sintetiza con carne/vara</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">4/5</td><td class="num">2/2</td><td class="por">SÓLO FUNCIONA DONDE LE CONVIENE: anduvo en el holgado y falló apenas se apretó</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">4/5</td><td class="num">2/2</td><td class="por">2 de 2 promesas verificadas contra el mundo</td></tr>
+<tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#ef6c00">inconcluso</span></td><td class="num">—</td><td class="num">—</td><td class="por">no hay contra qué: nadie le pide nada a una habilidad hasta que haya objetivos (Hito 8)</td></tr>
+</tbody></table>
+<p class="mal">Mundos donde falló — el id alcanza para rearmarlos, el banco es determinista:</p>
+<ul class="mundos"><li><code>sobreajustada·al-borde·agua/bloque/0.05</code> — se esperaba que llegue</li></ul>
+</section>
+<section id="mentirosa">
+<h2>mentirosa <span class="chip" style="background:#c62828">no-promueve</span></h2>
+<table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
+<tbody>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">4/5</td><td class="num">1/2</td><td class="por">se sintetiza con carne/vara</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">4/5</td><td class="num">1/2</td><td class="por">anduvo en 1 mundo(s) donde su propio contrato dice que no puede</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">4/5</td><td class="num">1/2</td><td class="por">DIJO QUE SÍ Y NO ES CIERTO: yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1</td></tr>
+<tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#ef6c00">inconcluso</span></td><td class="num">—</td><td class="num">—</td><td class="por">no hay contra qué: nadie le pide nada a una habilidad hasta que haya objetivos (Hito 8)</td></tr>
+</tbody></table>
+<p class="mal">Mundos donde falló — el id alcanza para rearmarlos, el banco es determinista:</p>
+<ul class="mundos"><li><code>mentirosa·justo-abajo·tuberculo/vara/20</code> — se esperaba que NO llegue</li></ul>
+</section>
+<section id="palo-pelado">
+<h2>palo-pelado <span class="chip" style="background:#c62828">no-promueve</span></h2>
+<table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
+<tbody>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">—</td><td class="num">—</td><td class="por">su geometría no retiene: catch = 0.000</td></tr>
+</tbody></table>
+<p class="ok">Ningún mundo salió distinto de lo que debía.</p>
+</section>
+<section id="pide-lo-imposible">
+<h2>pide-lo-imposible <span class="chip" style="background:#6a1b9a">injuzgable</span></h2>
+<table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
+<tbody>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#6a1b9a">injuzgable</span></td><td class="num">—</td><td class="num">—</td><td class="por">ninguna materia del catálogo llega a toxicity&gt;=0.6</td></tr>
+</tbody></table>
+<p class="ok">Ningún mundo salió distinto de lo que debía.</p>
+</section>
