@@ -397,8 +397,108 @@ Barre **368 fuentes y 500 rutas**.
 > `como-se-trabaja.md`—. **Queda anotado sin identificar**, que es lo honesto: no
 > se pudo decir cuál era porque no volvió a aparecer.
 
-### Tramo D — el banco de mundos (puntos 1, 2 y 6)
+### Tramo D — el banco de mundos · CERRADO (puntos 1 y 2)
 
-*(lo que sigue)* — de M5: hoy hay tres copias del constructor de mundos en
-arneses de test y ninguna en `src`.
+`judge/src/banco.ts` + `el-banco-sale-del-contrato.test.ts`. El paquete pasa de
+14 a **26 tests**.
+
+#### M5 se quedó corta: son CINCO copias, y dos son idénticas
+
+La cadena está escrita en los encabezados de las propias copias:
+
+```
+world/tests/mundo-minimo.ts
+  → perceive/tests/mundo.ts
+    → plan/tests/los-esquemas-contra-el-mundo.test.ts
+      → mind/tests/mundo.ts
+        → lang/tests/mundo.ts
+```
+
+Y las dos últimas son **idénticas byte a byte en el cuerpo**: cero líneas de
+diferencia sin comentarios. Sólo cambian los encabezados.
+
+**La copia es deliberada y la razón está escrita:**
+
+> los `tests/` de un paquete no se exportan, así que compartirlo exigiría mover
+> el arnés adentro de `src/`, o sea meterle al paquete **un módulo que sólo
+> existe para los tests**.
+
+**Esa razón no aplica al juez, y por eso su banco está en `src/`.** El juez no
+arma mundos para sus tests: los arma para trabajar. Del Hito 8 en adelante la
+fragua le pide un veredicto **con el mundo corriendo**.
+
+> **Y queda un hallazgo aparte, sin tocar:** la objeción **venció**. Ahora existe
+> un consumidor de producción, así que el armado ya podría vivir en
+> `@anima/world/src` y las cinco copias colapsar ahí. No se hizo en este tramo
+> porque churnear cinco paquetes adentro de otro trabajo es cómo se pierde la
+> atribución de un rojo.
+
+#### El punto 2, hecho verificable
+
+> una de pesca se juzga en mundos con río y **nunca saca un 0% falso**
+
+Un banco escrito a mano saca 0% falsos todo el tiempo: el que lo escribe no sabe
+qué necesita la habilidad, le pone mundos donde no puede andar y los cuenta como
+fracasos. **Si los mundos salen del contrato, eso no puede pasar por
+construcción.**
+
+Las cuatro clases, y cada una falla distinto:
+
+| clase | qué le pone delante | qué prueba |
+|---|---|---|
+| `holgado` | materia que cumple con margen | que ande en su casa |
+| `al-borde` | la que cumple por el pelo | que no dependa de un margen |
+| `justo-abajo` | la que NO cumple por el pelo | **que sepa NO andar** |
+| `sin-nada` | ninguna materia | que no invente |
+
+7 de 17 contratos piden materia y sacan 4-5 mundos con **2-3 adversos**: entre
+el 50% y el 60%, holgadamente por encima del 1/3 que pide el criterio. Los otros
+10 sacan **un** mundo no adverso — devolver lista vacía haría que el juez leyera
+«no se pudo armar» y dijera `injuzgable` sobre algo perfectamente juzgable.
+
+#### EL PRIMER BANCO QUE ESTE ARCHIVO PRODUJO TENÍA UN ADVERSARIO FLOJO
+
+Y se vio mirando la salida, no razonando. El `justo-abajo` de `frotar` era
+`raiz/vara`:
+
+```
+frotar pide:  rigidity>=0.5 · moisture<0.45
+raiz/vara  →  rigidity=0.400 · moisture=0.480      ← falla LAS DOS
+```
+
+**Un adversario que rompe dos precondiciones a la vez prueba menos de lo que
+parece:** si la habilidad lo rechaza, no se sabe por cuál. Se cambió a buscar
+uno **por precondición** —que falle ésa y sólo ésa—, que además es exactamente
+la forma que va a pedir la ablación del punto 4.
+
+```
+frotar, ahora:  grano/vara → rigidity=0.350 (falla) · moisture=0.120 (cumple)
+```
+
+**Y la cobertura se mide, no se supone: 8 de 9.** La que no se puede aislar
+queda nombrada — `frotar` / `moisture<0.45`: no hay materia mojada en el catálogo
+que además sea bastante rígida. No es un error del banco, es que el mundo no
+tiene con qué.
+
+#### El cuarto reservado, y por qué no se sortea
+
+Uno de cada cuatro, **empezando por el segundo**. Sin azar porque el banco tiene
+que ser reproducible (regla 2) — un veredicto que no se repite no es un
+veredicto— y empezando por el segundo porque arrancar por el primero reservaría
+siempre el `holgado`, que es el que menos defiende: guardar el mundo fácil no
+guarda nada.
+
+Hay dos tests de determinismo: dos corridas dan el mismo banco id por id, y dar
+vuelta el orden de las sustancias no lo mueve (lo compra el desempate por clave,
+que con umbrales redondos hace falta seguido).
+
+#### El árbol al cerrar
+
+**2816 tests verdes**, `pnpm ii:test` exit 0, `pnpm ii:typecheck` limpio.
+
+### Tramo E — la ablación (punto 4)
+
+*(lo que sigue)* — el dato ya existe (17 contratos con `precondiciones` escritas
+como candidatas, M1) y el banco ya sabe producir el mundo que hace falta: uno que
+viole **una sola** precondición.
 

@@ -15,3 +15,4 @@
 
 export * from './tipos.js'
 export * from './sintetizar.js'
+export * from './banco.js'
