@@ -13,20 +13,23 @@
  * Porque al medirlos aparecieron tres cosas que cambian qué hay que hacer, y
  * ninguna se veía leyendo la lista:
  *
- * **1. Dos ya están, y no en este paquete.** «Mundos reservados» lo cerró el
+ * **1. Dos ya estaban, y no en este paquete.** «Mundos reservados» lo cerró el
  * cuarto reservado del banco (tramo D) y «ausencia de nombres especiales» lo
  * guarda `world/tests/sin-nombres-especiales.test.ts` desde el gate 5→6. Contar
  * como pendiente algo que ya está es la otra cara del verde por omisión.
  *
  * **2. Uno no se puede escribir: el mundo no sabe qué es un dispositivo ROTO.**
  * No hay estado «roto», ni cualidad de integridad, ni nada que `stepWorld`
- * mire. Es una capacidad que falta, no un mundo que falta.
+ * mire. Es una capacidad que falta, no un mundo que falta, y sigue abierto.
  *
- * **3. Y los cinco que quedan no son mundos de este banco: son de OTRO SUJETO.**
- * Hablan de un dispositivo desplegado sobre un pozo —stock, ubicación, dos
- * compitiendo—, y el sujeto del juez hoy es una HABILIDAD con un objetivo
- * delante. Meterlos acá sin cambiar el sujeto daría ocho mundos que no juzgan a
- * nadie.
+ * **3. Y cuatro no eran mundos de este banco: eran de OTRO SUJETO.** Hablan de
+ * un dispositivo desplegado sobre un pozo —stock, ubicación, dos compitiendo,
+ * restauración—, y el sujeto del juez era una HABILIDAD con un objetivo delante.
+ * Meterlos sin cambiar el sujeto habría dado cuatro mundos que no juzgan a nadie.
+ *
+ * > **El tramo H les dio el sujeto** (`src/dispositivo.ts`) y los cuatro
+ * > entraron. Van **7 de 8**; el único que falta es el que pide una capacidad
+ * > del mundo.
  *
  * Este archivo mide las tres cosas contra el árbol, para que la próxima persona
  * no vuelva a leer la lista y crea que son ocho archivos de mundo.
@@ -66,10 +69,10 @@ const LOS_OCHO: readonly Adverso[] = [
     estado: 'falta-capacidad',
     porque: 'el mundo no tiene estado «roto» ni cualidad de integridad: no es un mundo que falta, es una capacidad',
   },
-  { nombre: 'stock vacío', estado: 'falta-sujeto', porque: 'habla de un dispositivo sobre un pozo' },
-  { nombre: 'ubicación incorrecta', estado: 'falta-sujeto', porque: 'habla de dónde se desplegó' },
-  { nombre: 'dos dispositivos compitiendo', estado: 'falta-sujeto', porque: 'dos `Desplegado` sobre el mismo pozo' },
-  { nombre: 'restauración a mitad del ciclo', estado: 'falta-sujeto', porque: 'guardar y cargar con la obra a medio ciclo' },
+  { nombre: 'stock vacío', estado: 'ya-esta', porque: 'la clase `stock-vacio` del banco de dispositivo (tramo H) — con la repoblación CONGELADA, si no no está vacío' },
+  { nombre: 'ubicación incorrecta', estado: 'ya-esta', porque: 'la clase `ubicacion-incorrecta`: el mundo no registra el `Desplegado` en tierra seca' },
+  { nombre: 'dos dispositivos compitiendo', estado: 'ya-esta', porque: 'la clase `dos-compitiendo`: dos aparejos sobre el mismo pozo se REPARTEN, no se duplican' },
+  { nombre: 'restauración a mitad del ciclo', estado: 'ya-esta', porque: 'la clase `restauracion-a-mitad`: se corta el ciclo, se copia el estado entero y se sigue' },
   {
     nombre: 'materiales alternativos',
     estado: 'ya-esta',
@@ -132,26 +135,32 @@ describe('EL QUE NO SE PUEDE ESCRIBIR: no existe «roto»', () => {
   })
 })
 
-describe('LOS CINCO QUE PIDEN OTRO SUJETO, con el número que lo dice', () => {
-  it('`usar` es la habilidad que despliega, y su banco NO habla de pozos', () => {
-    // `usar` es el puente al caso de aceptación: su precondición es `catch>0` y
-    // lo que establece es que la obra quede puesta. Pero el banco que este
-    // paquete le arma sólo le pone materia delante — ni pozo, ni stock, ni un
-    // segundo dispositivo. Ahí está la brecha, medida.
+describe('LOS CUATRO QUE PEDÍAN OTRO SUJETO, y ya lo tienen', () => {
+  it('LA BRECHA QUE HUBO: el banco de una HABILIDAD no habla de pozos', () => {
+    // Se deja medida porque explica por qué hicieron falta dos sujetos y no uno.
+    // `usar` es la habilidad que despliega —precondición `catch>0`— y el banco
+    // que este paquete le arma sólo le pone materia delante: ni pozo, ni stock,
+    // ni un segundo dispositivo.
     const b = bancoDe(CONTRATO_USAR, phys)
-    console.log(`\n    el banco de \`usar\` son ${String(b.length)} mundos:`)
+    console.log(`\n    el banco de la HABILIDAD \`usar\` son ${String(b.length)} mundos de materia suelta:`)
     for (const m of b) console.log(`      ${m.clase.padEnd(12)} ${m.objetivo === undefined ? '(sin materia)' : m.id.split('·')[2] ?? ''}`)
     expect(b.length).toBeGreaterThan(0)
-    // Ningún mundo del banco tiene pozo ni stock: la escena es dos cuerpos.
-    expect(b.every((m) => m.ataca === undefined || typeof m.ataca === 'string')).toBe(true)
   })
 
-  it('y la escena del juez tiene DOS cuerpos: por eso los cinco no entran', () => {
-    // Es la razón concreta, no una opinión: `escena.ts` arma la criatura y el
-    // objetivo, sin dios y sin celdas. Un pozo no cabe ahí sin cambiarla.
-    const f = `${PAQUETES}judge/src/escena.ts`
-    const t = readFileSync(f, 'utf8')
+  it('y la escena de una habilidad tiene DOS cuerpos: por eso no entraban', () => {
+    // La razón concreta, no una opinión: `escena.ts` arma la criatura y el
+    // objetivo, sin dios y sin celdas. Un pozo no cabe ahí.
+    const t = readFileSync(`${PAQUETES}judge/src/escena.ts`, 'utf8')
     expect(t).toContain('cells: new Map()')
     expect(t).not.toContain('dios')
+  })
+
+  it('EL SUJETO NUEVO sí trae dios y pozo, que es lo que los destrabó', () => {
+    const t = readFileSync(`${PAQUETES}judge/src/dispositivo.ts`, 'utf8')
+    expect(t).toContain('crearDios')
+    expect(t).toContain('buscarOrilla')
+    for (const clase of ['stock-vacio', 'ubicacion-incorrecta', 'dos-compitiendo', 'restauracion-a-mitad']) {
+      expect(t, `falta la clase ${clase}`).toContain(clase)
+    }
   })
 })

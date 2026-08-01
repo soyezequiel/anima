@@ -690,6 +690,78 @@ Con su aserción de que la sustancia es **de verdad otra** en los 7 — sin eso 
 clase sería el mismo mundo con otro nombre. El adverso baja de 50% a 40% y sigue
 holgadamente arriba del 1/3.
 
+### Tramo H — el segundo sujeto: un dispositivo desplegado · CERRADO
+
+`judge/src/dispositivo.ts`. El paquete pasa de 55 a **70 tests**.
+
+Es el sujeto del caso de aceptación —**un aparejo que trabaja solo**— y el que
+destraba los cuatro mundos que el tramo G no podía escribir.
+
+#### Lo que este sujeto compra: `utilidad` deja de ser `inconcluso`
+
+Para una habilidad, «sirve» era una pregunta sin con-respecto-a-qué. Para un
+dispositivo hay una respuesta y es un número: **`desplegados.get(id).captura`**.
+
+```
+── aparejo → PROMUEVE ──
+  plano         promueve  [5/5]  catch = 0.150
+  construccion  promueve  [5/5]  quedó desplegado en los 4 mundos donde se lo puso sobre el pozo
+  uso           promueve  [5/5]  se quedó quieto en los 2 mundos donde no hay nada que sacar
+  utilidad      promueve  [5/5]  sacó 3 pieza(s) en 400 ticks, sola
+```
+
+**Es lo primero del proyecto que PROMUEVE.** Con una habilidad como sujeto nada
+podía: `utilidad` salía `inconcluso` y el dictamen toma la peor nota.
+
+Y no hay contrato acá. Un dispositivo no habla: lo único que promete lo dice su
+geometría —`catch > 0`, derivada de las puntas sueltas— y el juez lo lee del
+cuerpo. Es el punto 12 del gate: si declarara lo que hace, habría dónde escribir
+«trampa».
+
+#### TRES ERRORES QUE LOS TESTS AGARRARON, y los tres eran míos
+
+**1 · Vaciar un pozo de la forma obvia NO HACE NADA.** `stockDe` busca el stock
+vivo y **si no lo encuentra cae al DECRETO**, y `dios.stocks` está vacío hasta
+que alguien lo toca —medido: sigue en cero después de tres ticks—. Mapear esa
+lista poniendo `amount: 0` recorre un array vacío. El aparejo sacó **3 piezas de
+un pozo supuestamente agotado** y el test lo agarró.
+
+**2 · Y con el stock vivo en cero seguía sacando UNA, y estaba bien.** El pozo
+repone `perMillePorSegundo = 225`, o sea **4,5 individuos en los 20 segundos** de
+la corrida: el aparejo pescó uno que apareció de verdad.
+
+> **Un pozo que se repuebla no está vacío**, y medir «vacío» sin congelar la
+> reposición mide la tasa de reposición en vez del dispositivo. La corrección no
+> fue aflojar la aserción a «saca menos»: fue construir bien el mundo
+> —`amount: 0` **y** `perMillePorSegundo: 0`— y dejar el cero.
+
+**3 · El cargo `construccion` castigaba al aparejo por un mundo diseñado para
+estar mal.** Miraba los cinco mundos y sacaba «se cayó del despliegue» con los
+cinco comportándose como debían. Medido: en `ubicacion-incorrecta` el mundo **no
+registra el `Desplegado`** —no se puede dejar un aparejo en tierra seca— y eso es
+el resultado correcto de ESE mundo. Ahora mira sólo donde se lo puso sobre el
+pozo, y quien cobra el otro caso es `uso`.
+
+#### Los dos controles que no son adversos
+
+`dos-compitiendo` y `restauracion-a-mitad` no esperan un fracaso: son controles
+de que **el mundo no se rompe**.
+
+| control | medido |
+|---|---|
+| dos aparejos sobre el mismo pozo | uno solo saca 3 · dos juntos sacan **3 entre los dos** — se reparten, no se duplican |
+| cortar el ciclo, copiar el estado y seguir | **3 y 3**: idéntico |
+
+El primero es el que más importa: si dos aparejos sacaran cada uno lo que saca
+uno, el pozo sería una fuente infinita y la economía entera se cae.
+
+#### Los ocho, ahora
+
+**7 de 8.** El único que falta es `dispositivo roto`, y **no es un mundo que
+falta: es una capacidad**. Hay un test que barre el catálogo buscando
+`integr|roto|broken|damag|wear|desgast` y afirma **cero** — ese rojo es el
+disparador el día que alguien la agregue.
+
 ---
 
 ## 4 · ESTADO: el criterio CIERRA, la descripción NO
@@ -712,15 +784,17 @@ Es el mismo patrón que el Hito 6, y por eso se busca a propósito.
 
 ### Lo que la DESCRIPCIÓN nombra y todavía no está — cuatro cosas
 
-1. **«mundos estadificados».** El banco tiene cuatro CLASES derivadas del
-   contrato, que es otro eje. Un mundo estadificado es uno agarrado a mitad de un
-   proceso —media obra armada, algo a medio arder—, y de eso no hay ninguno.
-2. **Los ocho mundos adversos del caso de aceptación** — ver el tramo G, que los
-   midió: van **3 de 8**, y los cinco que faltan no son cinco archivos de mundo.
-3. **«regresiones con snapshot real».** Se guarda el **id del mundo**, no un
-   snapshot. Como el banco es determinista el id lo rearma exacto —discutiblemente
-   mejor que un snapshot, que se puede quedar viejo— pero **no es lo que dice la
-   descripción** y la diferencia importa el día que el banco cambie.
+1. **«mundos estadificados».** Sigue faltando en general, aunque el tramo H
+   trajo el primero de verdad: `restauracion-a-mitad` **agarra el ciclo por la
+   mitad**, copia el estado entero y sigue. Los otros —media obra armada, algo a
+   medio arder— no están.
+2. **Los ocho mundos adversos del caso de aceptación** — van **7 de 8** (tramos
+   G y H). El único que falta, `dispositivo roto`, **no es un mundo: es una
+   capacidad del mundo que no existe**, y tiene su test-disparador.
+3. **«regresiones con snapshot real».** Se guarda el **id del mundo** (y la
+   semilla, en las de dispositivo), no un snapshot. Como el banco es determinista
+   el id lo rearma exacto —discutiblemente mejor que un snapshot, que se puede
+   quedar viejo— pero **no es lo que dice la descripción**.
 4. **El panel del juez** («se puede mostrar»). No existe.
 
 ### Y los dos huecos medidos que quedan abiertos
