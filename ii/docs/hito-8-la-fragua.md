@@ -838,3 +838,348 @@ O sea que un `new Worker(algo.ts)` muere en el primer import. `demo/arranque.mjs
 es el gancho que falta: diez líneas de `registerHooks` que devuelven el `.ts`
 cuando existe al lado del `.js` pedido. **En el navegador no hace falta**: el
 bundler ya resuelve.
+
+---
+
+## Los cinco que faltaban — etapas 1 a 6
+
+Después del tramo H quedaban los puntos **3, 4, 6, 7 y 8**, más el lint del caso
+de aceptación. Se abrieron con un barrido de **diez agentes**: cinco midiendo un
+punto cada uno y cinco adversarios buscando por dónde el criterio propuesto podía
+dar verde sin que el mecanismo funcionara.
+
+**Los cinco adversarios tumbaron los cinco criterios.** `elCriterioAguanta:
+false`, cinco de cinco. Y el diagnóstico coincidía:
+
+> **No son cinco puntos. Son tres mecanismos que no existen, y encima de ellos
+> los cinco puntos.**
+
+| lo que no existía | lo que bloqueaba |
+|---|---|
+| **`instalar`** — ningún camino de escritura de la fragua al mundo | 3, 6, 7 |
+| **la costura `Encargo` → `Candidata`** — nada llamaba al modelo | 4, 8 |
+| **la cola** — cero líneas en todo `ii/` | 6, 8 |
+
+Y dos hallazgos verificados a mano, no tomados de los agentes:
+
+- **ninguna habilidad puede salir `promueve`. Nunca.**
+- **el mundo del juez arrancaba con una violación**, y no era de la fragua.
+
+### Etapa 1 — el registro y la instalación · puntos 3, 6, 7
+
+Medido antes de escribir nada: la frontera del tramo H entera —instrumentar,
+montar, juzgar— dejaba el mundo con **el mismo `hashWorldState`**. No había una
+sola escritura, así que un test que dijera «cortar a mitad no rompe nada» salía
+verde por no haber nada que romper.
+
+#### Una habilidad forjada SÍ cambia el mundo, y encontró el enganche que faltaba
+
+```
+holding  0 → 1
+hash     901678e3300afcd4 → 17312250b1d751bd
+outcome  { ok: true, got: { id: 'palito' } }    en 3 ticks
+```
+
+Pero la primera corrida murió así:
+
+```
+{ k: 'rota', why: 'se le acabó el combustible…', error: { budget: 0 } }
+```
+
+Las quince innatas son funciones planas y no tienen celda; una forjada pasa por
+`instrument()` y **nace con el tanque en cero**. `VueloOptions.cell` ya existía
+desde el Hito 4 y **nadie la había cruzado desde este lado**. Por eso `Instalada`
+lleva la celda: sin ella, una instalación produce una habilidad que muere en su
+primer paso y **parece culpa de la habilidad**.
+
+#### Instalar son DOS escrituras, y la inconsistencia no es del mundo
+
+La habilidad montada y la capacidad publicada. Una capacidad publicada sin
+habilidad detrás es **un plan que la criatura no puede ejecutar**.
+
+`revisarEstado` no la puede ver, y hay que decirlo con el número: `hashWorldState`
+hashea tick, hz, nextId, física, cuerpos, actores, celdas, desplegados y dios.
+**Las habilidades no son estado del mundo.** El invariante es propio.
+
+`instalar` calcula las dos mitades enteras y las asigna juntas — entre esas dos
+líneas no hay `await` ni puede haberlo (regla 2). El control positivo es un
+`RegistroIngenuo` escrito a propósito para poder cortarlo:
+
+```
+ingenuo, cortado:  capacidad-sin-habilidad:agarrarLoQueVeo
+ingenuo, entero:   []            ← o sea que el rojo es EL CORTE
+```
+
+#### El techo del catálogo, medido y no escondido
+
+`ConstructionSchema` tiene **tres** formas y ninguna es «una habilidad que
+establece X»: `proceso` pide un `ProcessId` de una enumeración cerrada, `ley` pide
+un `LeyId` de las doce, `obra` pide un `BlueprintDefinition`.
+
+O sea que una candidata **con plano** se publica, y una habilidad suelta **no**.
+Se instala, se vuela y el mundo cambia, pero el planificador no la puede elegir.
+Eso no es una incoherencia del registro; se cuenta aparte en `sinPublicar`, para
+que el techo sea un número visible.
+
+### Etapa 2 — la costura · puntos 4 y 8
+
+Los dos estaban **inafirmables** por la misma razón, con tres hechos medidos:
+
+```
+un episodio gastaba .................... 0 consultas
+Presupuesto, llamadores fuera de su test  0
+@anima/forge importando @anima/llm ...... 0 líneas
+```
+
+#### El espía cuenta del lado de afuera
+
+Un adversario lo dijo así: *«la cuenta la declara el contado»*. Si el número lo
+reporta el mismo objeto que hace las consultas, el test verifica un campo y no un
+hecho. El que cuenta **envuelve** al modelo y lleva su propio registro.
+
+#### N no se elige: se mide
+
+```
+un episodio = 1 consulta y 32 milésimas
+```
+
+Un viaje alcanza: de las dos candidatas, una compila limpia y la otra compila
+reparada. El test afirma el número **exacto**, no un `<= 40` con margen de 40×.
+
+Su control: con un modelo que **nunca acierta** —dos candidatas irreparables— el
+episodio gasta las tres vueltas. La primera versión del control devolvía `LIMPIA`
+y una rota, y el episodio cortaba en la vuelta 1: **el control «nunca acierta»
+acertaba.** Medido: 1 consulta donde se esperaban 3.
+
+#### Una puerta, no un aviso — y la diferencia está en el tipo
+
+`pedirPermiso` devuelve un `Viaje` **o no lo devuelve**. Quien recibe un
+`no-preguntes` no tiene con qué preguntar aunque quiera.
+
+Las dos ramas de `puedo()` se ejercitan por separado: con `consultas: 0` sale
+`sin-consultas` y con `consultas: Infinity, milesimas: 0` sale `sin-plata`. Sin la
+segunda, la puerta de la plata no se toca nunca.
+
+Y el control que le da sentido a los dos ceros: el mismo episodio, el mismo
+espía, el mismo muñeco, cambiando **una** cosa —el presupuesto— da 1 llamada.
+
+#### El punto 9 cierra del todo: el muñeco MIRA el encargo
+
+Hasta acá el `Encargo` de la vuelta 2 se armaba y **nadie lo leía**.
+
+```
+vuelta 2: hunger,threat  →  agarrarLoQueVeo, esperarQuieta
+```
+
+No es inteligencia: es un `if` sobre `conceptosQueNoExisten`. Y es lo que hay que
+poder afirmar — que la respuesta **depende** del encargo.
+
+### Etapas 3 y 4 — la cola y el duelo · puntos 6 y 7
+
+#### El hallazgo que definió la regla
+
+```
+sostener → inconcluso        frotar → no-promueve
+  plano         promueve       plano         promueve
+  construccion  promueve       construccion  no-promueve
+  uso           promueve       uso           inconcluso
+  utilidad      INCONCLUSO     utilidad      INCONCLUSO
+```
+
+`utilidad` sale `inconcluso` **siempre** y `elPeor()` toma el peor cargo. Lo mejor
+que puede sacar una habilidad es `inconcluso`.
+
+**Un duelo que compare el grado global no puede tener ganador jamás**, y «una
+candidata peor no reemplaza nada» pasaría perfecto con un duelo que no reemplaza
+nunca. Por eso compara **cargo por cargo**, con la regla:
+
+> **domina o no reemplaza** — mejor o igual en todos, estrictamente mejor en al
+> menos uno.
+
+El **empate** no reemplaza porque reemplazar sin ganar nada es puro movimiento.
+**Ganar uno y perder otro** tampoco, y es la más importante: cambiar un rojo por
+otro rojo no es mejorar. Es un orden **parcial** a propósito — uno total obligaría
+a elegir cuánto vale cada cargo, que es el número puesto a dedo que este
+repositorio viene sacando.
+
+El desempate dentro de un cargo son los mundos aprobados. Un adversario pidió
+exactamente el par que lo obliga: **mismo grado en los cuatro cargos, distintos
+aprobados**. Con sólo el grado, ese par empata.
+
+#### La degradada que probé primero NO se degradó
+
+El intento obvio era sacarle el `goTo` a `sostener`, y el duelo dio **empate en
+los cuatro cargos**. Medido: el objetivo de la escena del juez nace a **una**
+celda y `take` funciona desde ahí. El encabezado de la escena dice que el objetivo
+nace al lado *«para que un `goTo` que no funciona no pase desapercibido»* — **y a
+una celda igual pasa desapercibido.** Queda anotado donde se midió.
+
+#### La cola, y su disparador es 1 de 4
+
+`degradada`, con su definición adentro del criterio. Los otros tres —`gap nuevo`,
+`costo alto`, `capacidad prometida y no usada`— piden telemetría de partida que no
+existe, y escribirlos hoy sería escribir tres ramas que nada ejercita.
+
+El orden de los grados **entra por parámetro**: `@anima/judge` depende de
+`@anima/world` y `@anima/perceive`, así que importarlo haría que la fragua
+necesite el mundo para escribir código. Mismo patrón que `ApiTS` en la puerta.
+
+#### Los cuatro controles del punto 6
+
+```
+6a  la degradada entra     ← la MISMA sin degradar NO entra, y una que mejoró tampoco
+6b  se re-forja al fondo   ← el mundo avanzó 159.978 ticks mientras tanto
+6c  la ganadora reemplaza  ← la perdedora NO, y la titular queda
+6d  sin perder un tick     ← 0 con la fragua afuera, 6–8 de 40 adentro
+```
+
+El control de (6d) vive **en ese archivo** y no en otro, que es lo que un
+adversario marcó del tramo H: un cero cuyo control sostiene otra `Partida` en otro
+archivo es otra vez el cero estructural.
+
+```
+K = 6 · forjadas 6 · el mundo avanzó 159.978 ticks · perdidos por la fragua 0
+el reemplazo entero: 3,7 ms de una ventana de 50
+```
+
+#### `Regresion` no sirve para «archivada como regresión»
+
+Guarda un fallo **por mundo**, con su semilla adentro, y lo que hace falta es una
+candidata perdedora entera. Son dos cosas distintas con el mismo nombre en
+castellano. Lo que se archiva es el código y el porqué —que sale de los cargos—
+así que **la semilla del mundo no entra**.
+
+### Etapa 5 — el corte a mitad · punto 3
+
+#### Qué es «medio parche», que no estaba escrito
+
+Dos candidatos: **(a)** a mitad del viaje o de la forja, afuera del hilo del
+mundo; **(b)** entre las dos escrituras de una instalación. Sólo (b) puede
+producir una inconsistencia, y la etapa 1 la cerró por construcción.
+
+#### Mi primera versión del corte no cortaba nada
+
+Era un `for` sincrónico que miraba una bandera entre candidatas, con este
+razonamiento escrito al lado: *«el hilo procesa los mensajes de a uno, así que el
+`cortá` entra cuando el bucle cede el turno»*. **Falso**: un handler sincrónico no
+cede el turno nunca.
+
+```
+antes:    forjadas 6 de 6 · sin forjar 0     ← verde, y sin cortar nada
+después:  forjadas 1 de 6 · sin forjar 5
+```
+
+Sexto verde por omisión del hito, y **éste lo escribí yo**. Lo arregla una línea
+—ceder el turno entre candidatas— y el test lo afirma con `sinForjar > 0`, que era
+el renglón que faltaba.
+
+#### Nadie se enteraba cuando el par se moría
+
+El llamador escuchaba `message` y nada más; el `exit` del worker llegaba y no lo
+leía nadie. *«No deja el mundo inconsistente»* se cumplía por la peor de las
+razones: **el episodio no terminaba nunca**. Un mundo que sigue girando esperando
+una respuesta que no va a llegar no es un mundo consistente, es un mundo colgado —
+y `revisarEstado` no puede ver eso. Con las dos escuchas, matar el hilo termina el
+episodio en **20 ms**.
+
+#### El mundo del juez nacía ilegal, y no era de la fragua
+
+```
+{ k: 'cualidad-fuera-de-rango', body: 'acusada-cuerpo', q: 'stamina', v: 5000 }
+stamina que devuelve qualityOf: 1000
+```
+
+El rango declarado es `[0, 1000]` y la física **satura**: la criatura nunca tuvo
+5000. Los 5000 no compraban nada y a cambio dejaban una violación permanente en
+todo mundo del juez — así que un test del punto 3 escrito como `violaciones === 0`
+**nacía rojo** por algo ajeno, y el que lo viera lo iba a ablandar. Arreglado en el
+origen.
+
+### Etapa 6 — el lint de constantes físicas
+
+#### La medición lo redefinió entero
+
+Tal como el caso de aceptación lo escribe, **no se puede implementar**:
+
+```
+de 27 borradores, cuántos contienen el VALOR de la constante:
+  MAX_ASSEMBLY_DEPTH      3        26      ← es un tres
+  MIN_ENVELOPE_SAMPLES    2        24
+  MAX_EFFICIENCY          1        23
+  ENVELOPE_SLACK          0.5      13
+  HUMEDAD_QUE_APAGA       0.45      4
+  T_AMBIENTE              15        0
+```
+
+**Rechaza 26 de 27 borradores**, porque `1`, `2`, `3` y `0,5` son números.
+
+Pero la cola es oro:
+
+```
+t1  const HUMEDAD_QUE_APAGA = 0.45 // ley 11    ← con NOMBRE Y TODO
+t2  ctx.q(b,'moisture') < 0.45  (×3)            ← el valor pelado
+t3  const OXI_UMBRAL = 0.35                     ← copia renombrada
+t4  const puedoCorrer = aliento > 0.35          ← FALSO POSITIVO
+```
+
+**El `0,45` sólo es una constante física cuando está al lado de `moisture`.** Por
+eso son dos reglas: el **nombre** (cero falsos positivos posibles) y el **valor
+junto a su cualidad**, en la misma línea. Hay un test que afirma que
+`aliento > 0.35` **no** se marca, con nombre y apellido: un lint que marca de más
+no lo lee nadie.
+
+La tabla de qué cualidad calibra cada constante no existe en la física, así que va
+declarada en el lint — **con un guardián** que verifica que cada nombre siga
+existiendo y con el mismo valor. Y los comentarios no son código: un borrador
+tiene la línea `// a mano su compuerta con el literal HUMEDAD_QUE_APAGA`, que es
+alguien **explicando** el problema y no cometiéndolo.
+
+### Un test mío medía la máquina y no la fragua
+
+`ticksPerdidos === 0` pasaba corriendo `forge` solo y fallaba con `pnpm ii:test`
+—doce paquetes peleándose 16 núcleos—: dio **1**. El contador se cuenta contra un
+reloj de **pared**, así que un núcleo ocupado le come una ventana al hilo del
+mundo aunque la fragua esté afuera.
+
+**No se ablandó el criterio: se midió la cantidad correcta.** Lo que los puntos 5
+y 6 afirman es que *la fragua no cuesta ticks*, y eso es una **diferencia** contra
+la línea base de la misma corrida. Si la máquina pierde uno en los dos tramos, el
+delta es 0; si la fragua costara ticks, el delta subiría — y el control lo
+demuestra: adentro del hilo el delta es 6 a 8.
+
+> Y un guardián del repo me agarró de paso: metí un **espacio de ancho cero** en
+> un comentario para esquivar el cierre de un bloque. Es exactamente lo que la
+> regla prohíbe —un carácter invisible va como escape, nunca como byte crudo— y
+> `world/tests/sin-nombres-especiales.test.ts` lo vio.
+
+---
+
+## El estado del criterio
+
+| | qué se afirma | dónde |
+|---|---|---|
+| **1** | al menos una de dos compila sin reparación | `la-linea-entera.test.ts` |
+| **2** | y al menos una compila con reparación | `la-linea-entera.test.ts` |
+| **3** | matar la conexión a mitad no deja el mundo inconsistente | `el-corte-a-mitad.test.ts` |
+| **4** | el episodio no supera N consultas · **N = 1, medido** | `la-costura.test.ts` |
+| **5** | `ticksPerdidos === 0` durante todo el episodio | `el-episodio.test.ts` |
+| **6** | la degradada entra, se re-forja al fondo y la ganadora reemplaza | `el-carril-de-mejora.test.ts` |
+| **7** | una candidata peor no reemplaza nada y queda archivada | `judge/tests/el-duelo.test.ts` |
+| **8** | con la cuota agotada, ni una consulta | `la-costura.test.ts` |
+| **9** | lo que falló alimenta al siguiente, las dos mitades | `la-costura.test.ts` + `el-episodio.test.ts` |
+| **+** | el lint de constantes físicas | `el-lint-de-constantes.test.ts` |
+
+### Lo que queda anotado y NO está hecho
+
+- **La mente no puede elegir una habilidad forjada.** `aHabilidad` es un `switch`
+  cerrado sobre las quince innatas. Se puede volar con `Partida.volar` —está
+  medido— pero el planificador no la nombra. Es el trabajo de los hitos 10 y 11.
+- **El catálogo no tiene fila para una habilidad suelta.** Ver el techo de la
+  etapa 1: `sinPublicar` lo cuenta.
+- **Tres de los cuatro disparadores de la cola** piden telemetría de partida que
+  todavía no existe.
+- **La escena del juez no caza un `goTo` roto**, porque el objetivo nace a una
+  celda y `take` llega igual.
+- **`utilidad` sale `inconcluso` siempre**, y por eso ningún dictamen puede salir
+  `promueve`. El propio juez lo dice: *«no hay contra qué… hasta que haya
+  objetivos»*.
