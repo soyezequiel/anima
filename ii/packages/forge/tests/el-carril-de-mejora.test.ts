@@ -125,6 +125,27 @@ describe('(6a) LA DEGRADADA ENTRA EN LA COLA', () => {
 interface Corrida {
   readonly ticks: number
   readonly ticksPerdidos: number
+  /**
+   * LOS QUE SE PERDIERON **MIENTRAS LA FRAGUA TRABAJABA**, que es lo que el
+   * criterio quiere decir.
+   *
+   * ─── Por qué no alcanza con el absoluto, y está medido ────────────────────
+   *
+   * `ticksPerdidos` se cuenta contra un reloj de PARED. Corriendo este archivo
+   * solo da 0; corriendo `pnpm ii:test` —doce paquetes peleándose 16 núcleos—
+   * dio **1**. O sea que el absoluto mide la máquina y no la fragua: un núcleo
+   * ocupado le come una ventana al hilo del mundo aunque la fragua esté afuera.
+   *
+   * Lo que el punto 6 afirma es que **la fragua no cuesta ticks**, y eso es una
+   * diferencia: se mide cuántos se perdieron ANTES de mandar el trabajo y
+   * cuántos después. Si la máquina pierde uno en los dos tramos, el delta es 0 y
+   * el criterio se cumple. Si la fragua costara ticks, el delta subiría — y el
+   * control de abajo lo demuestra: adentro del hilo, el delta es 8.
+   *
+   * No es un criterio más flojo: es el mismo, medido contra la línea base de la
+   * misma corrida en vez de contra un cero que depende del hardware.
+   */
+  readonly perdidosPorLaFragua: number
   readonly forjados: readonly LoForjado[]
   readonly ms: number
 }
@@ -156,6 +177,11 @@ async function conElHilo(): Promise<Corrida> {
     await respirar()
   }
 
+  // LA LÍNEA BASE: lo que la máquina perdió sola, antes de mandar nada. El
+  // arranque del hilo paga su typecheck frío (428 ms), así que este tramo dura
+  // lo mismo que el que se va a medir.
+  const perdidosAntes = p.informe.ticksPerdidos
+
   const { leerCandidatas } = await import('../src/costura.js')
   const { primerEncargo } = await import('../src/encargo.js')
   const e = primerEncargo('mejorar agarrarLoQueVeo', ['madera'])
@@ -173,7 +199,13 @@ async function conElHilo(): Promise<Corrida> {
   p.avanzar(1)
   ticks++
   await w.terminate()
-  return { ticks, ticksPerdidos: p.informe.ticksPerdidos, forjados: vuelto, ms }
+  return {
+    ticks,
+    ticksPerdidos: p.informe.ticksPerdidos,
+    perdidosPorLaFragua: p.informe.ticksPerdidos - perdidosAntes,
+    forjados: vuelto,
+    ms,
+  }
 }
 
 /** EL CONTROL de (6d): el mismo carril, con la fragua adentro del hilo del mundo. */
@@ -186,6 +218,7 @@ function sinElHilo(): Corrida {
     p.avanzar(1)
     ticks++
   }
+  const perdidosAntes = p.informe.ticksPerdidos
   const t0 = reloj()
   const cs = seisCandidatas()
     .split('```ts')
@@ -201,7 +234,13 @@ function sinElHilo(): Corrida {
     p.avanzar(1)
     ticks++
   }
-  return { ticks, ticksPerdidos: p.informe.ticksPerdidos, forjados, ms }
+  return {
+    ticks,
+    ticksPerdidos: p.informe.ticksPerdidos,
+    perdidosPorLaFragua: p.informe.ticksPerdidos - perdidosAntes,
+    forjados,
+    ms,
+  }
 }
 
 describe('(6b) y (6d) SE RE-FORJA EN EL FONDO, SIN PERDER UN TICK', () => {
@@ -213,7 +252,7 @@ describe('(6b) y (6d) SE RE-FORJA EN EL FONDO, SIN PERDER UN TICK', () => {
         `\n  la fragua tardó ${r.ms.toFixed(0)} ms (${(r.ms / VENTANA_MS).toFixed(0)} ventanas)\n`,
     )
     expect(r.forjados.length).toBe(K_DE_MEJORA)
-    expect(r.ticksPerdidos).toBe(0)
+    expect(r.perdidosPorLaFragua).toBe(0)
     // Y el mundo corrió DE VERDAD: un carril donde el bucle no avanzó tendría
     // cero perdidos por no haber corrido nada.
     expect(r.ticks).toBeGreaterThan(100)

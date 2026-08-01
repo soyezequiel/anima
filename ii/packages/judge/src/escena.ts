@@ -47,8 +47,29 @@ const DONDE_ESO: Placement = { x: 1, y: 0 }
  * miden cuarenta, y una habilidad que falla por quedarse sin aliento en cuarenta
  * ticks estaría midiendo el tanque y no la habilidad. Se le da de sobra a
  * propósito: lo que se juzga es si SABE, no si le alcanza.
+ *
+ * ─── ERA 5000, Y EL MUNDO NACÍA ILEGAL ──────────────────────────────────────
+ *
+ * Medido en la etapa 5 del Hito 8, con `vigilar: true` sobre la escena vacía:
+ *
+ *   violaciones al arrancar: 1
+ *   { k: 'cualidad-fuera-de-rango', body: 'acusada-cuerpo', q: 'stamina', v: 5000 }
+ *   stamina que devuelve `qualityOf`: 1000
+ *
+ * El rango declarado de `stamina` es `[0, 1000]` y la física **satura**: la
+ * criatura nunca tuvo 5000, tenía 1000 y el estado guardaba un número ilegal.
+ * O sea que los 5000 no compraban nada — el tanque de sobra ya eran los 1000— y
+ * a cambio dejaban una violación permanente en todo mundo del juez.
+ *
+ * Duele donde importa: el punto 3 del Hito 8 mide «no deja el mundo
+ * inconsistente» contando violaciones, y un test escrito como
+ * `violaciones === 0` nace ROJO por una razón que no tiene nada que ver con la
+ * conexión. El que lo vea lo va a ablandar, que es lo que la regla 4 prohíbe.
+ *
+ * Es el tope del rango y no un número nuevo: lo que la intención decía —«de
+ * sobra»— sigue siendo verdad, porque más que el tope no hay.
  */
-const ALIENTO = 5000
+const ALIENTO = 1000
 
 function criatura(stamina: number): Body {
   return {

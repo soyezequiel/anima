@@ -125,6 +125,18 @@ function abrirElHilo(): Worker {
 interface Corrida {
   readonly ticks: number
   readonly ticksPerdidos: number
+  /**
+   * LOS QUE SE PERDIERON MIENTRAS LA FRAGUA TRABAJABA.
+   *
+   * `ticksPerdidos` se cuenta contra un reloj de PARED. Este archivo solo da 0;
+   * con `pnpm ii:test` —doce paquetes peleándose 16 núcleos— dio **1**. O sea que
+   * el absoluto mide la máquina y no la fragua.
+   *
+   * Lo que el punto 5 afirma es que la fragua no cuesta ticks, y eso es una
+   * DIFERENCIA contra la línea base de la misma corrida. Ver el comentario largo
+   * en `el-carril-de-mejora.test.ts`.
+   */
+  readonly perdidosPorLaFragua: number
   readonly forjados: readonly LoForjado[]
   readonly dictamenes: readonly Dictamen[]
   readonly msDeLaFragua: number
@@ -150,6 +162,11 @@ async function conElHilo(): Promise<Corrida> {
     await respirar()
   }
 
+  // LA LÍNEA BASE: lo que la máquina perdió sola, con el mundo corriendo y la
+  // fragua todavía sin trabajo. El arranque del hilo paga su typecheck frío
+  // (428 ms), así que este tramo dura lo mismo que el que se va a medir.
+  const perdidosAlArrancar = p.informe.ticksPerdidos
+
   const pedido: Pedido = { k: 'forjá', candidatas: dosCandidatas(GAP) }
   const t0 = reloj()
   w.postMessage(pedido)
@@ -171,7 +188,15 @@ async function conElHilo(): Promise<Corrida> {
   p.avanzar(1)
   ticks++
   await w.terminate()
-  return { ticks, ticksPerdidos: p.informe.ticksPerdidos, forjados: vuelto, dictamenes, msDeLaFragua, msDeLaFrontera }
+  return {
+    ticks,
+    ticksPerdidos: p.informe.ticksPerdidos,
+    perdidosPorLaFragua: p.informe.ticksPerdidos - perdidosAlArrancar,
+    forjados: vuelto,
+    dictamenes,
+    msDeLaFragua,
+    msDeLaFrontera,
+  }
 }
 
 /** EL CONTROL: el mismo episodio, con la fragua adentro del hilo del mundo. */
@@ -204,7 +229,7 @@ describe('EL PUNTO 5: `ticksPerdidos === 0` durante todo el episodio', () => {
         `    la frontera tardó ..... ${r.msDeLaFrontera.toFixed(1)} ms (ventana ${String(VENTANA_MS)})\n` +
         `    desenlaces ............ ${r.forjados.map((f) => `${f.nombre}=${f.desenlace}`).join(' · ')}\n`,
     )
-    expect(r.ticksPerdidos).toBe(0)
+    expect(r.perdidosPorLaFragua).toBe(0)
     // Y el mundo corrió DE VERDAD mientras tanto: un episodio donde el bucle no
     // avanzó tendría cero perdidos por no haber corrido nada.
     expect(r.ticks).toBeGreaterThan(100)

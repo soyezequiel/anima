@@ -20,25 +20,48 @@
  */
 
 import { parentPort } from 'node:worker_threads'
+import type { MessagePort } from 'node:worker_threads'
 import ts from 'typescript'
 import type { Candidata } from '../src/candidata.js'
 import { loQueVaAfuera } from '../src/episodio.js'
 import type { LoForjado } from '../src/episodio.js'
 import { Puerta } from '../src/puerta.js'
 
-/** Lo que se le manda al hilo: las K candidatas de un viaje. */
-export interface Pedido {
-  readonly k: 'forjá'
-  readonly candidatas: readonly Candidata[]
-}
+/** Lo que se le manda al hilo: las K candidatas de un viaje, o el corte. */
+export type Pedido =
+  | { readonly k: 'forjá'; readonly candidatas: readonly Candidata[] }
+  /**
+   * EL CORTE — punto 3 del criterio.
+   *
+   * El criterio nombra `AbortController`, y acá adentro no sirve: un
+   * `AbortSignal` no cruza un `postMessage` —no es clonable— y aunque cruzara,
+   * `forjarUna` es **sincrónica de punta a punta** y no hay dónde escucharlo.
+   *
+   * Lo que sí funciona es lo mismo con otra forma: **una bandera que se mira
+   * entre candidatas**. Es el único instante alcanzable del lado de afuera, y es
+   * suficiente — la unidad de trabajo del hilo es una candidata, no una línea.
+   */
+  | { readonly k: 'cortá' }
 
 /** Lo que contesta. `listo` sale una vez, cuando la puerta ya está tibia. */
 export type Respuesta =
   | { readonly k: 'listo' }
-  | { readonly k: 'forjado'; readonly forjados: readonly LoForjado[] }
+  | {
+      readonly k: 'forjado'
+      readonly forjados: readonly LoForjado[]
+      /** Si se cortó, cuántas quedaron sin forjar. Cero en el camino normal. */
+      readonly sinForjar: number
+    }
 
-const puerto = parentPort
-if (puerto === null) throw new Error('el hilo de la fragua se arrancó sin puerto')
+if (parentPort === null) throw new Error('el hilo de la fragua se arrancó sin puerto')
+
+/**
+ * El puerto, ya verificado y en una constante propia.
+ *
+ * `parentPort` es `MessagePort | null` y el estrechamiento de un `if` no
+ * sobrevive a cruzar un `async`. Una constante local sí.
+ */
+const puerto: MessagePort = parentPort
 
 /**
  * UNA sola puerta para todo el hilo, y es lo que compra los 56 ms.
@@ -62,7 +85,56 @@ puerta.revisar('export const tibia = 1\n')
 const listo: Respuesta = { k: 'listo' }
 puerto.postMessage(listo)
 
+/**
+ * LA BANDERA DEL CORTE, y el `await` que la hace posible.
+ *
+ * ─── La primera versión NO SE PODÍA CORTAR, y está medido ───────────────────
+ *
+ * Era un `for` sincrónico que miraba la bandera entre candidatas, con este
+ * razonamiento escrito al lado: *«el hilo procesa los mensajes de a uno, así que
+ * el `cortá` entra cuando el bucle cede el turno»*. **Falso**: un handler
+ * sincrónico no cede el turno nunca, así que el `cortá` se queda en la cola hasta
+ * que el bucle termina — y para entonces ya no hay nada que cortar.
+ *
+ * Medido: cortando a mitad, `forjadas 6 de 6 · sin forjar 0`. El test pasaba, y
+ * pasaba por no haber cortado nada. Sexto verde por omisión del hito, y éste lo
+ * escribí yo.
+ *
+ * Lo que lo arregla es una línea: **ceder el turno entre candidatas**. Un
+ * `setImmediate` deja que el planificador entregue lo que haya en la cola, y ahí
+ * sí la bandera puede estar prendida.
+ *
+ * Cuesta ~0 contra una candidata de 56 ms, y es legal acá: esto es `demo/`, no
+ * `src/`. La regla 2 prohíbe el `await` en el camino del tick, y este hilo es
+ * justamente el que **no** está en el camino del tick.
+ */
+let cortada = false
+
+const cederElTurno = (): Promise<void> => new Promise((r) => setImmediate(r))
+
 puerto.on('message', (m: Pedido) => {
-  const r: Respuesta = { k: 'forjado', forjados: loQueVaAfuera(m.candidatas, puerta) }
-  puerto.postMessage(r)
+  if (m.k === 'cortá') {
+    cortada = true
+    return
+  }
+  cortada = false
+  void forjar(m.candidatas)
 })
+
+async function forjar(candidatas: readonly Candidata[]): Promise<void> {
+  const forjados: LoForjado[] = []
+  let sinForjar = 0
+  for (const c of candidatas) {
+    // El turno se cede ANTES de mirar la bandera: al revés, la primera candidata
+    // se forjaría siempre porque el `cortá` todavía no tuvo por dónde entrar.
+    await cederElTurno()
+    if (cortada) {
+      sinForjar++
+      continue
+    }
+    forjados.push(...loQueVaAfuera([c], puerta))
+  }
+
+  const r: Respuesta = { k: 'forjado', forjados, sinForjar }
+  puerto.postMessage(r)
+}

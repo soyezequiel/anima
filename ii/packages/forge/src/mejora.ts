@@ -6,8 +6,9 @@
  *
  * ─── Qué había acá antes: cero líneas ───────────────────────────────────────
  *
- * `grep -rn cola ii/packages/*​/src` no daba una sola definición. El punto 6 y el
- * 8 hablan los dos de «la cola» y era el sujeto de una oración que no existía.
+ * Un `grep` de «cola» por los `src/` de todos los paquetes no daba una sola
+ * definición. El punto 6 y el 8 hablan los dos de «la cola» y era el sujeto de
+ * una oración que no existía.
  *
  * ─── EL DISPARADOR, y hoy es UNO SOLO ───────────────────────────────────────
  *
