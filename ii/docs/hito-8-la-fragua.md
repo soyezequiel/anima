@@ -101,6 +101,69 @@ literal de calibración adentro de una habilidad es un sello que
 > copiado adentro de una skill es exactamente lo que ese guardián **no** puede
 > ver, y por eso el lint va aparte.
 
+### Y el punto que el criterio heredado NO tiene, que lo pidió el usuario
+
+> **9** · Una candidata que falla **alimenta a la siguiente**, y la siguiente
+> mejora **en los mundos que no le contaron**.
+
+La pregunta que lo abrió: *«en caso de que el código sea malo, ¿eso entra como
+contexto para el siguiente? Capaz que con un pequeño cambio se lo arregla, en
+vez de crear una habilidad nueva desde cero»*.
+
+**El criterio heredado sólo cubre la mitad barata.** Las «reparaciones
+deterministas» arreglan lo que no compila —falta un tipo, sobra un import— y no
+tocan el caso que importa: **compiló bien y no sirve**. Ahí, hoy, el plan
+empieza de nuevo con una hoja en blanco.
+
+#### El material ya existe, y es el juez
+
+`Dictamen` no dice «no promueve» y listo. Dice cuatro cargos por separado, cada
+uno con su `porque` **en castellano llano**, y las regresiones con el mundo:
+
+```
+construccion  no-promueve   SÓLO FUNCIONA DONDE LE CONVIENE
+uso           promueve      1 de 1 promesas verificadas contra el mundo
+regresión: sostener·al-borde·agua/bloque/0.05  (se esperaba que llegue)
+```
+
+Se escribió así para que un panel lo mostrara sin traducir. Resulta que también
+sirve para lo otro.
+
+#### LA TRAMPA, y el guardián ya estaba puesto
+
+**Si se le cuentan todos los mundos donde falló, aprende los mundos y no la
+habilidad.** Es decirle a alguien las preguntas del recuperatorio: aprueba y no
+sabe más.
+
+Y eso ya está atajado, aunque se haya construido por otro motivo: el juez reserva
+**un cuarto de los mundos y nunca los muestra** (Hito 7, tramo D). El encabezado
+lo dice con estas palabras: *«sin esto, una fragua que ve el banco puede ajustar
+contra él y aprobar sin aprender»*.
+
+#### DECIDIDO: se le cuenta el QUÉ y el PORQUÉ, no el DÓNDE
+
+De los tres niveles posibles:
+
+| nivel | qué se le pasa | por qué no |
+|---|---|---|
+| sólo el **qué** | «no sirve» | no alcanza para arreglar nada |
+| **← el qué y el porqué** | «funciona sólo con la materia que practicaste» | **elegido** |
+| el qué, el porqué y el **dónde** | el mundo exacto, con su materia | el más rápido y el que más lo hace copiar |
+
+**Y los mundos reservados no entran nunca, en ningún nivel.**
+
+#### Cómo se afirma, que es la parte que lo hace un criterio y no una idea
+
+Comparando **dónde** mejoró:
+
+> la segunda candidata tiene que mejorar en los mundos **reservados**, no sólo
+> en los que le contaron.
+
+Si mejora únicamente en los mundos que se le nombraron, **memorizó**, y eso es un
+resultado distinto de «aprendió» — con el mismo verde por delante si nadie los
+separa. Es la misma forma que el control positivo del `al-borde` del Hito 7: dos
+series que desde afuera son idénticas y hay que partirlas por construcción.
+
 ---
 
 ## 2 · La decisión, tomada por el usuario antes de escribir código

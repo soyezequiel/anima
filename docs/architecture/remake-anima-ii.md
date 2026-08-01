@@ -1603,6 +1603,20 @@ La 2 y la 3 son las que hacen trabajo, y son un par: **la 2 sola se cumple desco
 
 Más el **carril de mejora**: cola de mejora con los cuatro disparadores deterministas, `K=6` solo en este carril, duelo contra la titular en sus propios mundos, hot-swap en frontera de fase, tope de dos rondas por habilidad.
 
+> **UN NOVENO PUNTO, pedido por el usuario: la candidata que falla ALIMENTA a la
+> siguiente.** El criterio de arriba sólo cubre la mitad barata — las
+> «reparaciones deterministas» arreglan lo que **no compila**, y no tocan el caso
+> que importa: **compiló bien y no sirve**. Ahí el plan empezaba de nuevo con una
+> hoja en blanco.
+>
+> El material ya existe: el `Dictamen` del Hito 7 trae cuatro cargos con su
+> `porque` en castellano llano y las regresiones con su mundo. **Se le cuenta el
+> QUÉ y el PORQUÉ, no el DÓNDE** —contarle los mundos lo hace aprender los mundos
+> y no la habilidad— y **los mundos reservados no entran nunca**. Se afirma
+> comparando dónde mejoró: **la segunda candidata tiene que mejorar en los mundos
+> reservados**, no sólo en los que le contaron. El detalle, con los tres niveles
+> que se consideraron, en [`hito-8-la-fragua.md`](../../ii/docs/hito-8-la-fragua.md).
+
 > **LO QUE EL HITO 6 DEJÓ SOBRE LA MESA DE ESTE HITO, y son tres cosas medidas.**
 >
 > 1. **El presupuesto tiene DOS consumidores, no uno.** Estaba pensado para la
