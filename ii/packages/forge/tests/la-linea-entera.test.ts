@@ -17,31 +17,34 @@ import ts from 'typescript'
 import { dosCandidatas, laQueInventa } from '../demo/falso.js'
 import { fuentesDe, piezasDe } from '../src/candidata.js'
 import { conceptosDe, loQueFalloDe, otraVuelta, primerEncargo, textoDe } from '../src/encargo.js'
+import { forjarUna } from '../src/forjar.js'
+import type { Desenlace } from '../src/forjar.js'
 import { Puerta } from '../src/puerta.js'
-import { reparar } from '../src/reparar.js'
 import type { Cambio } from '../src/reparar.js'
 
 const GAP = 'conseguir alimento de un cuerpo de agua'
 const VOCABULARIO = ['madera', 'liana', 'carne', 'agua']
 
-type Desenlace = 'compila-sola' | 'compila-reparada' | 'no-se-pudo'
-
-/** La línea, tal como la va a correr la fragua. Devuelve qué pasó y con qué. */
+/**
+ * La línea, tal como la va a correr la fragua.
+ *
+ * **`forjarUna` ya existía y no lo sabía**: lo escribió una sesión anterior, no
+ * estaba exportado del índice y no lo usaba nadie. La primera versión de este
+ * test lo reimplementó entero adentro. Se borró el duplicado y se usa el de
+ * `src/`, que además cuenta los `puertazos` — el costo local en unidades de
+ * 47 ms, que la copia no medía.
+ */
 function porLaLinea(
   fuente: string,
   p: Puerta,
-): { desenlace: Desenlace; cambios: readonly Cambio[]; conceptos: readonly string[] } {
-  const antes = p.revisar(fuente)
-  if (antes.k === 'compila') return { desenlace: 'compila-sola', cambios: [], conceptos: [] }
-
-  const r = reparar(fuente, antes.errores, p)
-  if (r.k === 'sin-arreglo') {
-    return { desenlace: 'no-se-pudo', cambios: [], conceptos: conceptosDe(antes.errores) }
+): { desenlace: Desenlace; cambios: readonly Cambio[]; conceptos: readonly string[]; puertazos: number } {
+  const i = forjarUna(fuente, p)
+  return {
+    desenlace: i.desenlace,
+    cambios: i.cambios,
+    conceptos: conceptosDe(i.erroresQueQuedaron),
+    puertazos: i.puertazos,
   }
-
-  const despues = p.revisar(r.codigo)
-  if (despues.k === 'compila') return { desenlace: 'compila-reparada', cambios: r.cambios, conceptos: [] }
-  return { desenlace: 'no-se-pudo', cambios: r.cambios, conceptos: conceptosDe(despues.errores) }
 }
 
 describe('EL PUNTO 1 Y EL 2, con las dos candidatas de un viaje', () => {
@@ -62,11 +65,11 @@ describe('EL PUNTO 1 Y EL 2, con las dos candidatas de un viaje', () => {
   })
 
   it('AL MENOS UNA compila sin reparación', () => {
-    expect(resultados.some((r) => r.desenlace === 'compila-sola')).toBe(true)
+    expect(resultados.some((r) => r.desenlace === 'limpia')).toBe(true)
   })
 
   it('y AL MENOS UNA compila CON reparación', () => {
-    const conArreglo = resultados.find((r) => r.desenlace === 'compila-reparada')
+    const conArreglo = resultados.find((r) => r.desenlace === 'reparada')
     expect(conArreglo, 'ninguna necesitó reparación: el muñeco no está probando nada').toBeDefined()
     // Y el arreglo es el que se esperaba, no cualquiera: si el corte cambiara y
     // empezara a reemplazar otra cosa, esto se pone rojo.
@@ -94,7 +97,7 @@ describe('EL PUNTO 9: la que inventa un concepto alimenta al segundo intento', (
 
   it('no se puede reparar, y se sabe QUÉ pidió que no existe', () => {
     console.log(`\n  ${r.desenlace} · conceptos: ${r.conceptos.join(', ')}`)
-    expect(r.desenlace).toBe('no-se-pudo')
+    expect(r.desenlace).toBe('rota')
     expect(r.conceptos).toContain('hunger')
   })
 
