@@ -929,3 +929,102 @@ cocida', ...]` — la primera de la lista es la que sale al leer al revés.
 se colaba en la parte liviana sin que el demo pudiera decidir. Ahora es un dato
 (`costoDeLaUltima()`) y lo muestra el detalle. Un módulo que escribe en la
 pantalla de otro no se puede acomodar.
+
+### Tramo L — el punto 6, y las DOS definiciones que hubo que tirar
+
+`consistenciaDelPrimerGesto` es el único punto que quedaba, y el documento de
+arquitectura lo define a medias: da la fórmula —«órdenes donde el primer gesto
+fue coherente con la conducta final / órdenes totales»— y **no dice qué es
+coherente**. Sin eso el número se fabrica: una definición floja da 1,00 siempre y
+una estricta da 0,00, y las dos pasan por medición.
+
+#### La primera definición, y la tabla que la tiró
+
+> *coherente si la habilidad aparece también en los ticks de después.*
+
+```
+  hacé fuego     deshilachar   ✗ desvío
+```
+
+**Falso.** La criatura deshilachó, terminó, y no lo repitió porque no hacía
+falta. Esa definición **penalizaba todo lo que se completa rápido**, que es lo
+contrario de lo que hay que premiar.
+
+#### La que quedó, y es un A/B
+
+> El primer gesto es coherente si **la misma criatura, en la misma escena,
+> sabiendo desde el principio lo que se le pidió, también lo hubiera hecho.**
+
+Se corre la orden **dos veces desde la misma semilla**: una adivinando —el lector
+local y nada más, que es lo que pasa mientras el modelo piensa— y otra con la
+lectura ya corregida desde el tick cero. No depende de que una habilidad se
+repita ni de dónde se corte la ventana.
+
+#### El resultado, y el 1,00 es un HALLAZGO y no un éxito
+
+```
+  las que ESPECULAN ... 1.00  (5 órdenes)   ← el número
+  todas ............... 1.00  (12 órdenes)
+  el umbral del criterio es 0.85
+```
+
+Y **el segundo control fue el que hizo falta**. El primero preguntaba si
+`bailar-un-tango` estaba en la conducta: daba 0 y no probaba nada — que un nombre
+inventado no esté sólo prueba que el `Set` funciona. El que quedó usa una
+especulación que **de verdad diverge**:
+
+```
+  arranca creyendo fuego y hace ......... deshilachar
+  si de verdad era fuego, eso ¿sirve? ... sí
+  si de verdad era comida, ¿sirve? ...... NO
+```
+
+Con eso el 1,00 significa algo. **Y significa esto:** las cinco órdenes que
+especulan arrancan **todas con `ir`**, y caminar está en casi toda conducta de
+este mundo porque para hacer cualquier cosa hay que ir hasta las cosas.
+
+> La especulación no es coherente por astuta. Es coherente porque **cuando el
+> lector local no sabe, la criatura camina**, y caminar casi nunca está de más.
+> Es una propiedad del mundo y del fondo de la escalera, no un mérito del lector.
+
+O sea que el número **no dice «la lectura especulativa acierta»**: dice **«el
+costo de equivocarse es bajo en este mundo»**. El día que el fondo haga algo caro
+o irreversible, este número se mueve y hay que volver a mirarlo.
+
+---
+
+## LOS SEIS PUNTOS CUMPLEN
+
+| # | | |
+|---|---|---|
+| 1 | ninguna frase devuelve «nada» | 77 frases, 0 sin respuesta |
+| 2 | proveedor colgado = mismo p95 | 1,35 vs 1,22 ms · control en 21,15 |
+| 3 | contestando, sube la cobertura | 13% → 30% |
+| 4 | p95 < 150 ms | sobra 100× |
+| 5 | acuse en el mismo frame | por mecanismo |
+| 6 | `consistenciaDelPrimerGesto ≥ 0,85` | **1,00**, con su control positivo |
+
+Más el caso de aceptación entero: «fabricá una trampa para peces» sale como
+`catch>0` sin nombrar la solución, y las cuatro clases de falta se distinguen.
+
+### Y lo que NO cierra, que es lo que el criterio no mide
+
+**«Le hablás y hace» está en 2 de 5.** Los seis puntos miden el camino del
+mensaje —que llegue, que no espere, que no devuelva nada— y **ninguno mide
+obediencia**. El control `hace-caso` la mide y da que tres órdenes distintas
+producen la misma conducta.
+
+Eso no es del lenguaje: la lectura sale bien y la meta llega. Es que el
+planificador y la escalera no las persiguen distinto. Vive en `@anima/plan` y en
+`@anima/mind`, y es lo que hay que atacar antes que nada.
+
+**Y tres cosas más, medidas y anotadas:**
+
+1. **Órdenes de varias cláusulas no se pueden mandar.** El canal a la mente lleva
+   UNA firma; el orden parcial que `objetivosDe` produce no tiene por dónde entrar.
+2. **El corpus está en 77 de las ~187 reales que hay en el repo.** Es extracción,
+   no invención.
+3. **La misma frase le puede dar dos metas distintas al modelo.** Medido en vivo:
+   «tengo hambre» dio `holding(tag:carnoso)` una vez y la versión cocida otra. El
+   replay no se rompe —la crónica guarda el objetivo ya parseado— pero decirle dos
+   veces lo mismo puede dar dos conductas, y **ningún criterio contempla eso**.

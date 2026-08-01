@@ -241,6 +241,9 @@ importers:
       '@anima/mind':
         specifier: workspace:*
         version: link:../mind
+      '@anima/oracle':
+        specifier: workspace:*
+        version: link:../oracle
       '@anima/perceive':
         specifier: workspace:*
         version: link:../perceive
@@ -253,6 +256,9 @@ importers:
       '@anima/skills':
         specifier: workspace:*
         version: link:../skills
+      '@anima/world':
+        specifier: workspace:*
+        version: link:../world
     devDependencies:
       tsx:
         specifier: ^4.0.0

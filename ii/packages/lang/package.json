@@ -17,7 +17,9 @@
     "@anima/plan": "workspace:*",
     "@anima/skills": "workspace:*",
     "@anima/mind": "workspace:*",
-    "@anima/perceive": "workspace:*"
+    "@anima/perceive": "workspace:*",
+    "@anima/world": "workspace:*",
+    "@anima/oracle": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
