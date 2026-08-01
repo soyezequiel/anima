@@ -16,6 +16,8 @@
     "@anima/physics": "workspace:*"
   },
   "devDependencies": {
+    "@anima/judge": "workspace:*",
+    "@anima/perceive": "workspace:*",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }

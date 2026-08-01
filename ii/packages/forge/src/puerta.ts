@@ -13,6 +13,14 @@
  * **~140× más barato.** Así que toda candidata pasa por acá antes de que nadie
  * abra la boca, y la que no compila **no cuesta una consulta**: cuesta 47 ms.
  *
+ * Esta clase, medida sobre el mismo corpus de 27 borradores, da **p50 56 ms ·
+ * p95 105 ms** (tramo H). Antes del tramo H daba **109 / 229**, y el porqué está
+ * abajo, en `OPCIONES`. Lo que queda de diferencia contra el banco no está
+ * explicado: las dos opciones de rigor que el banco pide y ésta no
+ * (`noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`) se probaron y dan
+ * 57 ms — o sea que **no son la diferencia**. Queda anotado como número sin
+ * explicación, que es distinto de no tenerlo.
+ *
  * ─── LA RANURA FIJA, que es la única forma de que salga 47 ms ───────────────
  *
  * No es una optimización elegida: es la diferencia entre cumplir el presupuesto
@@ -89,6 +97,35 @@ const OPCIONES: TS.CompilerOptions = {
   strictNullChecks: true,
   noEmit: true,
   skipLibCheck: true,
+  // ─── LAS DOS LÍNEAS QUE FALTABAN, y no eran de velocidad ──────────────────
+  //
+  // Sin ellas TypeScript carga la librería POR OMISIÓN —que incluye el DOM— y
+  // se auto-incluye todos los `@types/*` que encuentra en `node_modules`.
+  // Medido en el tramo H, con la puerta tal como estaba:
+  //
+  //   con fetch          COMPILA
+  //   con document       COMPILA
+  //   con setTimeout     COMPILA
+  //   con localStorage   COMPILA
+  //   con process        COMPILA
+  //
+  // **Las cinco son las que `aislamiento.ts` prohíbe** en `FORBIDDEN_GLOBALS`.
+  // La puerta las dejaba pasar enteras. No es un agujero de seguridad —el
+  // `shadowScope()` de `mount()` las tapa por alcance léxico y la habilidad
+  // explota al llamarlas— pero **la puerta existe para rechazar sin gastar**, y
+  // una candidata que pide `fetch` se iba entera al montaje y al juez para
+  // fallar allá. Cuesta 56 ms decirle que no acá.
+  //
+  // Y de yapa era la mitad del tiempo: el mismo corpus de 27 borradores pasó de
+  // **p50 109 ms / p95 229** a **p50 56 / p95 105**, que es lo que el banco del
+  // Hito 0 venía midiendo (46 ms) y esta clase no reproducía. El banco tenía las
+  // dos líneas desde el principio, con el comentario puesto —*«sin DOM, como los
+  // paquetes deterministas de ii/»*— y al escribir la puerta no se copiaron.
+  //
+  // > La `d.ts` contra la que se compila ES el prompt. Un `lib` de más es una
+  // > API que el modelo puede usar y que el mundo no tiene.
+  lib: ['lib.es2022.d.ts'],
+  types: [],
 }
 
 /**

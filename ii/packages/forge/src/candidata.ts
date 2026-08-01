@@ -29,6 +29,7 @@
  */
 
 import type { BlueprintDefinition } from '@anima/physics'
+import type { Contrato } from '@anima/skills/innatas'
 
 /**
  * EL CÓDIGO DE UNA HABILIDAD, tal como salió del modelo.
@@ -59,6 +60,28 @@ export interface Candidata {
   readonly plano?: BlueprintDefinition
   readonly construir?: HabilidadCandidata
   readonly usar?: HabilidadCandidata
+  /**
+   * LO QUE LA CANDIDATA DICE QUE HACE — las «capacidades publicadas» del caso
+   * de aceptación.
+   *
+   * ─── Por qué no se puede juzgar sin esto ────────────────────────────────
+   *
+   * Porque `juzgar()` arranca preguntándole al contrato qué mundos hacen falta:
+   * `bancoDe(contrato, phys)` sale de las `precondiciones`, y `establece` es lo
+   * que después se verifica CONTRA EL MUNDO. Sin contrato no hay banco, y sin
+   * banco no hay nada que correr — el juez devolvería `injuzgable` y el
+   * veredicto hablaría del arnés y no de la habilidad.
+   *
+   * ─── Y es lo que hace posible que el juez la BAJE ───────────────────────
+   *
+   * Es la mitad cara del punto 9. Una candidata que compila y no sirve sólo se
+   * puede detectar comparando lo que PROMETIÓ contra lo que dejó cierto. Sin
+   * promesa publicada no hay con qué comparar, y «compiló» pasaría por «anda».
+   *
+   * Es opcional por la misma razón que `plano`: una habilidad puede llegar sin
+   * él, y eso es un resultado —vino incompleta— y no un error del arnés.
+   */
+  readonly contrato?: Contrato
 }
 
 /**

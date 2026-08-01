@@ -43,7 +43,35 @@
  * puedan medir. Una que acertara todo mediría al simulador y no al enganche.
  */
 
+import type { Contrato } from '@anima/skills/innatas'
 import type { Candidata, HabilidadCandidata } from '../src/candidata.js'
+
+/**
+ * LO QUE `esperarQuieta` DICE QUE HACE, y no hace.
+ *
+ * ─── Por qué el muñeco publica una promesa que no cumple ────────────────────
+ *
+ * Porque es el único caso que el tramo G no podía armar: **compila y no sirve**.
+ * Los tres desenlaces de la puerta —limpia, reparada, rota— hablan del
+ * compilador, y ninguno distingue una habilidad que anda de una que no. Eso lo
+ * dice el juez, y el juez necesita una promesa contra la cual medir.
+ *
+ * La promesa es la de `sostener` —*te deja algo en la mano*— y el cuerpo de
+ * `esperarQuieta` no toca nada. Es exactamente la mitad cara del punto 9: sin
+ * contrato publicado, «compiló» pasaría por «anda».
+ *
+ * Los predicados son los de `CONTRATO_SOSTENER`, copiados con intención: es una
+ * promesa que el mundo **sabe** armar —hay materia portátil— así que el banco se
+ * construye y la habilidad corre de verdad. Una promesa imposible daría
+ * `injuzgable` y mediría al sintetizador, no a la candidata.
+ */
+const PROMETE_Y_NO_CUMPLE: Contrato = {
+  nombre: 'esperarQuieta',
+  establece: [{ sujeto: 'yo', q: 'holding', op: '>=', v: 1 }],
+  precondiciones: [{ sujeto: 'el-objetivo', q: 'portable', op: '>=', v: 1 }],
+  cuesta: { segundos: 0, commitment: 'reversible' },
+  huecos: [],
+}
 
 const CABECERA = [
   "import type { Ctx, Intent, Outcome, StepResult } from '../../src/skill-api.js'",
@@ -109,7 +137,7 @@ const CON_CONCEPTO_INVENTADO: HabilidadCandidata = {
  */
 export function dosCandidatas(gap: string, vuelta = 1): readonly Candidata[] {
   return [
-    { gap, vuelta, usar: LIMPIA },
+    { gap, vuelta, usar: LIMPIA, contrato: PROMETE_Y_NO_CUMPLE },
     { gap, vuelta, usar: CON_TYPO },
   ]
 }
@@ -119,4 +147,4 @@ export function laQueInventa(gap: string, vuelta = 1): Candidata {
   return { gap, vuelta, usar: CON_CONCEPTO_INVENTADO }
 }
 
-export { CON_CONCEPTO_INVENTADO, CON_TYPO, LIMPIA }
+export { CON_CONCEPTO_INVENTADO, CON_TYPO, LIMPIA, PROMETE_Y_NO_CUMPLE }

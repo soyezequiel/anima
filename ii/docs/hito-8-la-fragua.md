@@ -640,7 +640,201 @@ entra al catálogo y ocupa lugar.
 > trabajar sobre algo ya evaluado. Evaluarlo antes de revisarlo es exactamente lo
 > que el sandbox del Hito 4 existe para impedir.
 
-### Tramo H — la fragua entera, de punta a punta
+### Tramo H — la fragua entera, de punta a punta · CERRADO (punto 5, y el 9 entero)
 
-*(lo que sigue)* — juntar el encargo, el muñeco, la puerta, la reparación y el
-juez en un episodio, y medir `ticksPerdidos === 0` con el mundo corriendo.
+`forge/src/episodio.ts` + `demo/hilo.ts` + `demo/arranque.mjs`. 46 tests en el
+paquete.
+
+#### El episodio corre, con el mundo corriendo
+
+```
+EL EPISODIO
+  el mundo avanzó ....... 151.344 ticks
+  TICKS PERDIDOS ........ 0
+  la fragua tardó ....... 249 ms (5 ventanas)
+  la frontera tardó ..... 20,9 ms (ventana 50)
+  desenlaces ............ esperarQuieta=limpia · esperarLaNoche=reparada
+```
+
+Y la cadena que se junta es la de todos los tramos anteriores:
+
+```
+el encargo (D) → el muñeco (G) → la puerta (B) → la reparación (C)
+              → montar (Hito 4) → el juez (Hito 7) → el encargo de la vuelta 2 (D)
+```
+
+#### EL HALLAZGO: cortar en rodajas NO alcanza
+
+Es lo que decidió toda la arquitectura del tramo, y salió de medir antes de
+escribir. Una ventana de tick a 20 Hz son **50 ms**:
+
+| pieza | costo medido | ¿entra en la ventana? |
+|---|---|---|
+| el viaje al modelo | 6 a 25 s | **no**, por 120× |
+| la puerta (`revisar`) | p50 56 ms · p95 105 | **no**, por poco y siempre |
+| instrumentar + montar | p50 2,4 ms | sí |
+| juzgar una habilidad | p50 2,9 ms | sí |
+| un tick pelado | 0,02 ms | sí |
+
+Con eso, la fragua entera corrida en el hilo del mundo:
+
+```
+de una sola vez ............ 10 ticks perdidos
+en rodajas, una por hueco ...  7 ticks perdidos
+en OTRO hilo ................  0
+```
+
+**La rodaja más fina que existe es una pasada por la puerta, y una sola pasada ya
+vale una ventana entera.** No hay forma de repartirla, así que no hay forma de
+que la fragua viva en el hilo del mundo. Lo que va afuera no se eligió: es la
+tabla leída de arriba abajo.
+
+#### Y lo que cruza la frontera es TEXTO, porque no queda otra
+
+Una habilidad montada es un objeto con funciones adentro, y **las funciones no
+pasan por un `postMessage`**: el clonado estructurado no las sabe copiar. Así que
+montar y juzgar se hacen del lado del mundo —2,4 y 2,9 ms, entran— y lo que
+vuelve del hilo es lo que ya era texto.
+
+Cae bien con lo que el sandbox del Hito 4 pide: entre que sale del modelo y que
+corre hay tres puertas, y ninguna puede trabajar sobre algo ya evaluado.
+
+#### EL CONTROL, que es lo que le da sentido al cero
+
+Un `ticksPerdidos === 0` no vale nada si nada podía moverlo. El mismo episodio se
+corre dos veces, y el segundo es la prueba de que el contador se mueve **en esta
+corrida, con esta partida y este reloj**:
+
+```
+con la fragua en otro hilo ....  0 ticks perdidos
+con la fragua acá adentro .....  3 ticks perdidos en 40
+```
+
+Son 3 y no 10 porque el control del test corre las **dos** candidatas del viaje y
+la sonda que encontró el hallazgo corría tres. El número que importa no es cuál
+de los dos: es que **no es cero**.
+
+#### El frío se paga DOS veces, y las dos hay que pagarlas antes
+
+| | en frío | tibio |
+|---|---|---|
+| la puerta | 428 ms | 56 ms |
+| instrumentar | ~55 ms | 2,4 ms |
+
+Los 55 ms del montaje se encontraron por accidente: **la frontera del primer
+episodio dio 56,1 ms y la del segundo 6,1**, con la misma línea de código. Con
+una ventana de 50, *la primera habilidad que se instale en la vida de una partida
+se lleva un tick puesto* — y midiendo la del segundo no se ve nunca.
+
+No hay nada que cortar: el costo es de adentro de TypeScript. Lo que sí se elige
+es **cuándo** se paga, y hay un momento en que es gratis: antes de que el bucle
+arranque. Eso es `tibiarElMontaje()`, y el hilo hace lo mismo con la puerta.
+
+> Es la quinta vez en este hito que un verde salía de no haber corrido la mitad
+> interesante. Acá la mitad interesante era *la primera vez*.
+
+### La puerta compilaba contra el DOM
+
+Salió de medir otra cosa. El tramo H preguntó cuánto cuesta la puerta contra una
+ventana y el número no cerraba: **p50 109 ms**, cuando el banco del Hito 0 mide
+**46** para la misma ranura fija, en la misma máquina y sobre el mismo corpus.
+
+La diferencia eran dos líneas que el banco tenía desde el principio —con el
+comentario puesto, *«sin DOM, como los paquetes deterministas de ii/»*— y que al
+escribir la puerta no se copiaron:
+
+```ts
+lib: ['lib.es2022.d.ts'],
+types: [],
+```
+
+Sin ellas TypeScript carga la librería por omisión, que incluye el DOM, y se
+auto-agrega todos los `@types/*` de `node_modules`. Medido con la puerta tal como
+estaba:
+
+```
+con fetch          COMPILA
+con document       COMPILA
+con setTimeout     COMPILA
+con localStorage   COMPILA
+con process        COMPILA
+```
+
+**Las cinco están en `FORBIDDEN_GLOBALS`.** No es un agujero de seguridad —el
+`shadowScope()` de `mount()` las tapa por alcance léxico y la habilidad revienta
+al llamarlas— pero **la puerta existe para rechazar sin gastar**, y una candidata
+que pide `fetch` se iba entera al montaje y al juez para morir allá.
+
+Y hay una razón más, que es la del Hito 6: **la `.d.ts` contra la que se compila
+ES el prompt**. Un `lib` de más es una API que el modelo puede usar y que el mundo
+no tiene.
+
+| | antes | después |
+|---|---|---|
+| p50 / p95 sobre 27 borradores | 109 / 229 ms | **56 / 105 ms** |
+| de 40 globals prohibidos, rechaza | — | **31** |
+| borradores rechazados | 24 de 27 | **24 de 27** |
+
+La última fila es el control que importa: **el cambio no movió qué borrador
+falla**, así que las cuentas del tramo C —el 86%, los 34 conceptos, los 7 typos—
+siguen en pie sin volver a sacarlas.
+
+Los 9 que la puerta no puede tapar son globals **del lenguaje**, no del
+navegador: `Date`, `Intl`, `Promise`, `Function`, `globalThis`,
+`SharedArrayBuffer`, `Atomics`, `WeakRef`, `FinalizationRegistry`. Ningún `lib`
+los saca. A ésos los caza `scanDeterminism` de `aislamiento.ts`, que lee el árbol
+en vez de preguntarle a la librería — y **hoy la fragua no lo llama**. Queda
+anotado con el número al lado: son 9 de 40.
+
+### El punto 9, con la mitad cara: compiló y NO SIRVE
+
+Hasta el tramo G el punto 9 sólo cubría lo barato —lo que no compila—. Lo que el
+usuario pidió era lo otro: *«en caso de que el código sea malo, o sea, que no haga
+lo que debería hacer»*. Eso necesita al juez, y el juez necesita que la candidata
+**publique lo que promete**.
+
+Por eso `Candidata` ganó `contrato`, que son las «capacidades publicadas» del caso
+de aceptación. Sin él, `bancoDe` no tiene de dónde sacar los mundos y todo el
+veredicto sale `injuzgable` — hablaría del arnés y no de la habilidad.
+
+Con él, el muñeco puede armar el caso que el tramo G no podía: una candidata que
+**compila limpia, sin una sola reparación**, y que el juez baja igual:
+
+```
+── esperarQuieta → NO-PROMUEVE ──
+  plano         promueve     se sintetiza con carne/vara
+  construccion  no-promueve  anduvo en 2 mundo(s) donde su propio contrato dice que no puede
+  uso           no-promueve  DIJO QUE SÍ Y NO ES CIERTO: yo:holding>=1
+  utilidad      inconcluso   no hay contra qué: nadie le pide nada a una habilidad todavía
+```
+
+Y eso entra al encargo de la vuelta 2, en castellano llano y **sin un solo id de
+mundo**:
+
+```
+— Intento 2. Lo que pasó con el anterior —
+
+Y esto lo corregí solo, para que no lo vuelvas a escribir igual:
+  ticksToNightfall → secondsToNightfall
+
+Compiló, pero al probarla:
+  construccion: anduvo en 2 mundo(s) donde su propio contrato dice que no puede
+  uso: DIJO QUE SÍ Y NO ES CIERTO: yo:holding>=1
+```
+
+El guardián de la trampa —*si se le cuentan los mundos donde falló, aprende los
+mundos y no la habilidad*— sigue siendo la firma de `loQueFalloDe`, que recibe los
+cargos y nunca el dictamen. Hay un test que recorre las regresiones del dictamen y
+exige que **ninguna semilla aparezca en el texto**.
+
+### La plomería del hilo, dicha porque cuesta explicarla dos veces
+
+`ii/` no tiene paso de compilación: los `package.json` apuntan `exports` directo
+al `.ts` y quien resuelve las extensiones es vitest. Node 24 borra los tipos solo,
+pero **no reescribe `./x.js` a `./x.ts`**, y todo el repositorio importa con `.js`
+porque es lo que pide `moduleResolution` de bundler.
+
+O sea que un `new Worker(algo.ts)` muere en el primer import. `demo/arranque.mjs`
+es el gancho que falta: diez líneas de `registerHooks` que devuelven el `.ts`
+cuando existe al lado del `.js` pedido. **En el navegador no hace falta**: el
+bundler ya resuelve.
