@@ -103,10 +103,53 @@ export type ClaseDeDispositivo =
   | 'normal'
   | 'stock-vacio'
   | 'ubicacion-incorrecta'
+  | 'dispositivo-roto'
   | 'dos-compitiendo'
   | 'restauracion-a-mitad'
 
-export const ADVERSAS_DE_DISPOSITIVO: readonly ClaseDeDispositivo[] = ['stock-vacio', 'ubicacion-incorrecta']
+export const ADVERSAS_DE_DISPOSITIVO: readonly ClaseDeDispositivo[] = [
+  'stock-vacio',
+  'ubicacion-incorrecta',
+  'dispositivo-roto',
+]
+
+/**
+ * LA FLEXIBILIDAD DE LO QUEMADO — y no es un número elegido acá.
+ *
+ * Es el que la **ley 4** le escribe al residuo cuando algo arde
+ * (`physics/src/leyes.ts:1499`, `flexibility: 0.02`). Se copia en vez de
+ * inventarse uno, y hay un guardián que lee ese archivo y se pone rojo si el
+ * número se mueve: si la ley cambiara, este mundo estaría rompiendo un aparejo
+ * de una forma que el mundo ya no produce.
+ */
+export const FLEXIBILIDAD_DE_LO_QUEMADO = 0.02
+
+/**
+ * EL APAREJO QUEMADO, y por qué esto ES «dispositivo roto» sin inventar nada.
+ *
+ * El mundo no tiene estado «roto» —se midió: no hay cualidad de integridad, ni
+ * desgaste, ni nada que `stepWorld` mire— y la conclusión rápida fue que este
+ * mundo no se podía escribir. **Estaba mal.**
+ *
+ * Lo único que hace retener a un cuerpo es `catch > 0`, que sale de
+ * `freeStrandEnds`, que sólo cuenta las partes con `flexibility >= 0.8`. Y la
+ * ley 4 le pone **0,02** a lo que arde. Medido, con el umbral exacto:
+ *
+ *   hebra con flexibility 0.80   →  catch 0.150
+ *   hebra con flexibility 0.79   →  catch 0.000   ← dejó de pescar
+ *
+ * O sea que **un aparejo al que se le quema la hebra deja de pescar**, y nadie
+ * programó «roto»: sale de la geometría, igual que el punto 12 del gate.
+ *
+ * Se queman TODAS las partes y no sólo las hebras, porque un fuego no elige.
+ */
+export function quemado(obra: Body): Body {
+  const b = obra as unknown as { parts: { q?: Record<string, number> }[] }
+  return {
+    ...obra,
+    parts: b.parts.map((p) => ({ ...p, q: { ...(p.q ?? {}), flexibility: FLEXIBILIDAD_DE_LO_QUEMADO } })),
+  } as unknown as Body
+}
 
 export interface MundoDeDispositivo {
   readonly id: string
@@ -252,6 +295,16 @@ export function correrElBancoDeDispositivo(
     meter('ubicacion-incorrecta', cuantoAtrapo(w, obra.id), w.desplegados.has(obra.id), 2)
   }
 
+  // ─── dispositivo roto ────────────────────────────────────────────────────
+  // El mismo aparejo con las hebras quemadas. Sobre el mismo pozo lleno, así
+  // que lo único que cambia es él: si igual saca algo, `catch` no era lo que
+  // hacía el trabajo. Ver `quemado()`.
+  {
+    const roto = quemado(obra)
+    const w = corre(desplegar(escena(o, [roto], phys), roto.id, o.pozo), TICKS_SOLO)
+    meter('dispositivo-roto', cuantoAtrapo(w, roto.id), w.desplegados.has(roto.id), 3)
+  }
+
   // ─── dos compitiendo ─────────────────────────────────────────────────────
   {
     const otro: Body = { ...obra, id: `${obra.id}-bis` }
@@ -259,7 +312,7 @@ export function correrElBancoDeDispositivo(
     s = desplegar(s, obra.id, o.pozo)
     s = corre(s, 1, [place({ by: EL_ACTOR, seq: 0 }, otro.id, o.pozo)])
     const w = corre(s, TICKS_SOLO)
-    meter('dos-compitiendo', cuantoAtrapo(w, obra.id) + cuantoAtrapo(w, otro.id), w.desplegados.has(obra.id), 3)
+    meter('dos-compitiendo', cuantoAtrapo(w, obra.id) + cuantoAtrapo(w, otro.id), w.desplegados.has(obra.id), 4)
   }
 
   // ─── restauración a mitad del ciclo ──────────────────────────────────────
@@ -279,7 +332,7 @@ export function correrElBancoDeDispositivo(
       },
     ) as WorldState
     const w = corre(copia, TICKS_SOLO / 2)
-    meter('restauracion-a-mitad', cuantoAtrapo(w, obra.id), w.desplegados.has(obra.id), 4)
+    meter('restauracion-a-mitad', cuantoAtrapo(w, obra.id), w.desplegados.has(obra.id), 5)
   }
 
   return out

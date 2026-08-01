@@ -18,18 +18,22 @@
  * guarda `world/tests/sin-nombres-especiales.test.ts` desde el gate 5→6. Contar
  * como pendiente algo que ya está es la otra cara del verde por omisión.
  *
- * **2. Uno no se puede escribir: el mundo no sabe qué es un dispositivo ROTO.**
- * No hay estado «roto», ni cualidad de integridad, ni nada que `stepWorld`
- * mire. Es una capacidad que falta, no un mundo que falta, y sigue abierto.
+ * **2. Uno parecía imposible y no lo era: «dispositivo roto».** El mundo no
+ * tiene estado «roto», ni cualidad de integridad, ni nada que `stepWorld` mire
+ * —sigue sin tenerla, y hay un test acá abajo que lo afirma—. La conclusión
+ * rápida fue que este mundo no se podía escribir. **Estaba mal.**
+ *
+ * La ley 4 le pone `flexibility: 0.02` al residuo de lo que arde, y
+ * `freeStrandEnds` —lo único que da `catch`— sólo cuenta partes con `>= 0.80`.
+ * O sea que **un aparejo al que se le quema la hebra deja de pescar**, y nadie
+ * programó «roto»: es el punto 12 del gate otra vez.
  *
  * **3. Y cuatro no eran mundos de este banco: eran de OTRO SUJETO.** Hablan de
  * un dispositivo desplegado sobre un pozo —stock, ubicación, dos compitiendo,
  * restauración—, y el sujeto del juez era una HABILIDAD con un objetivo delante.
  * Meterlos sin cambiar el sujeto habría dado cuatro mundos que no juzgan a nadie.
  *
- * > **El tramo H les dio el sujeto** (`src/dispositivo.ts`) y los cuatro
- * > entraron. Van **7 de 8**; el único que falta es el que pide una capacidad
- * > del mundo.
+ * > **El tramo H les dio el sujeto** (`src/dispositivo.ts`). Van **8 de 8**.
  *
  * Este archivo mide las tres cosas contra el árbol, para que la próxima persona
  * no vuelva a leer la lista y crea que son ocho archivos de mundo.
@@ -37,10 +41,11 @@
 
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { buildSeedPhysics } from '@anima/physics'
+import { buildSeedPhysics, qualityOf } from '@anima/physics'
 import { CONTRATO_SOSTENER, CONTRATO_USAR } from '@anima/skills/innatas'
 import { describe, expect, it } from 'vitest'
 import { bancoDe } from '../src/banco.js'
+import { quemado } from '../src/dispositivo.js'
 
 const phys = buildSeedPhysics()
 const PAQUETES = fileURLToPath(new URL('../../', import.meta.url))
@@ -66,8 +71,8 @@ const LOS_OCHO: readonly Adverso[] = [
   },
   {
     nombre: 'dispositivo roto',
-    estado: 'falta-capacidad',
-    porque: 'el mundo no tiene estado «roto» ni cualidad de integridad: no es un mundo que falta, es una capacidad',
+    estado: 'ya-esta',
+    porque: 'la clase `dispositivo-roto`: la ley 4 le pone flexibility 0,02 a lo que arde y freeStrandEnds exige 0,80',
   },
   { nombre: 'stock vacío', estado: 'ya-esta', porque: 'la clase `stock-vacio` del banco de dispositivo (tramo H) — con la repoblación CONGELADA, si no no está vacío' },
   { nombre: 'ubicación incorrecta', estado: 'ya-esta', porque: 'la clase `ubicacion-incorrecta`: el mundo no registra el `Desplegado` en tierra seca' },
@@ -125,13 +130,31 @@ describe('LOS DOS QUE YA ESTÁN, verificados y no afirmados', () => {
   })
 })
 
-describe('EL QUE NO SE PUEDE ESCRIBIR: no existe «roto»', () => {
-  it('ninguna cualidad del catálogo habla de integridad', () => {
-    // Si mañana alguien agrega `integrity` o equivalente, este test se pone rojo
-    // y el mundo «dispositivo roto» pasa a ser escribible. Es el disparador.
+describe('«DISPOSITIVO ROTO»: no existe el estado «roto», y el mundo lo rompe igual', () => {
+  it('el catálogo NO tiene ninguna cualidad de integridad', () => {
+    // Sigue siendo cierto, y por eso la primera lectura fue que este mundo no se
+    // podía escribir. **Estaba mal:** «roto» no necesita una cualidad propia.
     const sospechosas = phys.qualities.filter((q) => /integr|roto|broken|damag|wear|desgast/i.test(q.id))
     console.log(`\n    cualidades que hablan de integridad: ${String(sospechosas.length)}`)
     expect(sospechosas).toEqual([])
+  })
+
+  it('y sin embargo un aparejo quemado deja de pescar — sale de la GEOMETRÍA', () => {
+    // La ley 4 le pone `flexibility: 0.02` al residuo de lo que arde, y
+    // `freeStrandEnds` —lo único que da `catch`— sólo cuenta partes con 0,80.
+    // Nadie programó «roto»: es el punto 12 del gate otra vez.
+    const conHebra = {
+      id: 'x',
+      form: 'vara',
+      parts: [
+        { substance: 'madera', mass: 0.5, q: {} },
+        { substance: 'liana', mass: 0.2, q: {} },
+      ],
+      joints: [{ a: 0, b: 1, via: 'liana', strength: 0.4 }],
+      state: {},
+    }
+    expect(qualityOf(conHebra as never, 'catch', phys)).toBeGreaterThan(0)
+    expect(qualityOf(quemado(conHebra as never), 'catch', phys)).toBe(0)
   })
 })
 

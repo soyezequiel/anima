@@ -13,9 +13,17 @@
 
 import { buildSeedPhysics, qualityOf } from '@anima/physics'
 import type { Body } from '@anima/physics'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { crearDios } from '@anima/world'
 import { describe, expect, it } from 'vitest'
-import { buscarOrilla, correrElBancoDeDispositivo, juzgarDispositivo } from '../src/dispositivo.js'
+import {
+  buscarOrilla,
+  correrElBancoDeDispositivo,
+  FLEXIBILIDAD_DE_LO_QUEMADO,
+  juzgarDispositivo,
+  quemado,
+} from '../src/dispositivo.js'
 import type { Dictamen } from '../src/tipos.js'
 
 const phys = buildSeedPhysics()
@@ -107,7 +115,7 @@ describe('EL DICTAMEN DE UN APAREJO QUE PESCA', () => {
   })
 })
 
-describe('LOS CUATRO MUNDOS QUE EL TRAMO G NO PODÍA ESCRIBIR', () => {
+describe('LOS CINCO MUNDOS QUE EL TRAMO G NO PODÍA ESCRIBIR', () => {
   const o = buscarOrilla(crearDios(SEMILLA), phys)
   const cs = correrElBancoDeDispositivo(obraConPuntas('aparejo'), o!, phys)
 
@@ -119,7 +127,7 @@ describe('LOS CUATRO MUNDOS QUE EL TRAMO G NO PODÍA ESCRIBIR', () => {
           `${(c.mundo.deberiaAtrapar ? 'que saque' : 'que NO saque').padEnd(16)} ${c.comoDebia ? 'sí' : 'NO'}`,
       )
     }
-    expect(cs.length).toBe(5)
+    expect(cs.length).toBe(6)
   })
 
   it('«normal»: saca solo, sin actor', () => {
@@ -135,6 +143,25 @@ describe('LOS CUATRO MUNDOS QUE EL TRAMO G NO PODÍA ESCRIBIR', () => {
     // El `Desplegado` resuelve contra qué pozo trabaja AL DESPLEGAR. Puesto en
     // la orilla no resuelve ninguno, así que no puede sacar nada.
     expect(cs.find((c) => c.mundo.clase === 'ubicacion-incorrecta')?.atrapo).toBe(0)
+  })
+
+  it('«dispositivo roto»: el aparejo quemado no pesca', () => {
+    // Y NO es un mundo inventado: la ley 4 le pone `flexibility: 0.02` a lo que
+    // arde, y `freeStrandEnds` --lo unico que da `catch`-- exige 0,80. Un
+    // aparejo al que se le quema la hebra deja de retener sin que nadie
+    // programe «roto». Sobre el MISMO pozo lleno, así que lo único que cambia
+    // es él.
+    expect(cs.find((c) => c.mundo.clase === 'dispositivo-roto')?.atrapo).toBe(0)
+    expect(qualityOf(quemado(obraConPuntas('q')), 'catch', phys)).toBe(0)
+  })
+
+  it('y el número de lo quemado sale de la LEY, no de acá', () => {
+    // El guardián: si la ley 4 cambiara ese número, este mundo estaría
+    // rompiendo un aparejo de una forma que el mundo ya no produce.
+    const ley = readFileSync(fileURLToPath(new URL('../../physics/src/leyes.ts', import.meta.url)), 'utf8')
+    expect(ley, 'la ley 4 ya no le pone flexibility 0.02 al residuo').toContain(
+      `flexibility: ${String(FLEXIBILIDAD_DE_LO_QUEMADO)}`,
+    )
   })
 
   it('«dos compitiendo»: se REPARTEN, no se duplican', () => {

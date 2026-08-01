@@ -755,12 +755,38 @@ de que **el mundo no se rompe**.
 El primero es el que más importa: si dos aparejos sacaran cada uno lo que saca
 uno, el pozo sería una fuente infinita y la economía entera se cae.
 
-#### Los ocho, ahora
+#### El octavo: «dispositivo roto» parecía imposible y no lo era
 
-**7 de 8.** El único que falta es `dispositivo roto`, y **no es un mundo que
-falta: es una capacidad**. Hay un test que barre el catálogo buscando
-`integr|roto|broken|damag|wear|desgast` y afirma **cero** — ese rojo es el
-disparador el día que alguien la agregue.
+El usuario dijo: *«en este mundo no habrá dispositivos rotos»*. Antes de sacar un
+punto del criterio se aplicó la regla del ADR II-0024 —**preguntar para qué
+estaba**— y la medición dio vuelta la premisa.
+
+**El mundo ya rompe dispositivos, y nadie lo programó.** La ley 4 le escribe
+`flexibility: 0.02` al residuo de lo que arde (`leyes.ts:1499`), y
+`freeStrandEnds` —lo único que da `catch`— sólo cuenta partes con `>= 0.80`.
+Medido, con el umbral exacto:
+
+```
+hebra con flexibility 0.80   →  catch 0.150
+hebra con flexibility 0.79   →  catch 0.000   ← dejó de pescar
+hebra con flexibility 0.02   →  catch 0.000   ← lo que la ley 4 le pone a lo quemado
+```
+
+Así que no era «no existe»: era «no lo modelamos como mecánica», **y el mundo lo
+produce igual, por el fuego**. Con la medición delante el usuario eligió
+agregarlo, y salió en diez líneas porque el mecanismo ya estaba en la física.
+
+> **Y MI PRIMERA SONDA DIJO LO CONTRARIO.** Corrió el aparejo al fuego, bajo el
+> agua y a la intemperie, y `catch` quedó clavado en 0,150 en los tres. Era falso,
+> y lo delató **el control que le puse a la propia sonda**: `charred 0` después de
+> 60 s a 800 °C, o sea que `paso()` no había corrido ni una ley. La sonda estaba
+> verde por no hacer nada — la tercera vez en este hito que un control positivo
+> salva la conclusión.
+
+El número de lo quemado **no se eligió acá**: se copia de la ley, y hay un
+guardián que lee `leyes.ts` y se pone rojo si se mueve.
+
+**Los ocho: 8 de 8.**
 
 ---
 
@@ -788,9 +814,8 @@ Es el mismo patrón que el Hito 6, y por eso se busca a propósito.
    trajo el primero de verdad: `restauracion-a-mitad` **agarra el ciclo por la
    mitad**, copia el estado entero y sigue. Los otros —media obra armada, algo a
    medio arder— no están.
-2. **Los ocho mundos adversos del caso de aceptación** — van **7 de 8** (tramos
-   G y H). El único que falta, `dispositivo roto`, **no es un mundo: es una
-   capacidad del mundo que no existe**, y tiene su test-disparador.
+2. ~~Los ocho mundos adversos del caso de aceptación~~ — **CERRADO: 8 de 8**
+   (tramos G y H).
 3. **«regresiones con snapshot real».** Se guarda el **id del mundo** (y la
    semilla, en las de dispositivo), no un snapshot. Como el banco es determinista
    el id lo rearma exacto —discutiblemente mejor que un snapshot, que se puede
