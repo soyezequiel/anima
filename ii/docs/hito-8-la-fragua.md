@@ -1183,3 +1183,127 @@ demuestra: adentro del hilo el delta es 6 a 8.
 - **`utilidad` sale `inconcluso` siempre**, y por eso ningún dictamen puede salir
   `promueve`. El propio juez lo dice: *«no hay contra qué… hasta que haya
   objetivos»*.
+
+---
+
+## Los puntos 1 y 2, contra el modelo de verdad
+
+Se corrieron contra **Claude Haiku por el CLI de la suscripción**, que es el
+transporte que el usuario eligió. `forge/demo/con-el-modelo.ts`.
+
+### El punto 1 cumple con creces
+
+Cinco viajes de K=2 con el gap del criterio:
+
+```
+10 candidatas · limpias 10 · reparadas 0 · rotas 0 · US$ 0,3767
+```
+
+### El punto 2 no podía pasar, y el motivo importa
+
+**La IA dejó de equivocarse.** No porque la reparación falle —el corpus y el
+muñeco la prueban— sino porque su premisa se cayó: el criterio suponía que el
+modelo escribe código que hay que reparar, y con la superficie delante no lo
+hace.
+
+Los 24 de 27 borradores que no compilaban **se escribieron sin la API en el
+prompt**. El corpus medía un mundo que ya no existe.
+
+### Cómo se forzó, y es un caso REAL
+
+La idea la puso el usuario: *«si la IA lo hace bien, podríamos forzar un error»*.
+
+No pidiéndole que escriba mal —eso mediría si obedece— sino **dándole un manual
+con un nombre viejo**: se le manda `ticksToNightfall` donde la API de verdad dice
+`secondsToNightfall`. El modelo escribe bien contra el manual que le dimos, la
+puerta compila contra el de verdad, y la diferencia es exactamente el typo que la
+reparación arregla.
+
+**Y es lo que pasa el día que la API cambia y el prompt queda viejo.**
+
+#### El primer intento del control NO controló nada
+
+Corrió con el gap del criterio —pescar— y dio **6 de 6 limpias igual**. Obvio una
+vez visto: `secondsToNightfall` es el reloj, y pescar no mira el reloj. Se
+corrompió un nombre que ese pedido no usa nunca.
+
+El nombre salía del corpus (29 apariciones, el error más frecuente) pero esa
+frecuencia era sobre 28 borradores de todo tipo, no sobre ése. **Un control que
+corrompe algo que el sujeto no toca no controla nada.**
+
+Con un pedido que no se puede escribir sin mirar el reloj —«ponerse a cubierto
+antes de que caiga la noche»—:
+
+```
+refugioOportunista    limpia
+refugioEstrategico    reparada    ticksToNightfall → secondsToNightfall
+constructor           rota        liana, madera
+vagabundo             reparada    ticksToNightfall → secondsToNightfall (×2)
+
+4 candidatas · limpias 1 · reparadas 2 · rotas 1 · US$ 0,1604
+```
+
+> **Se dice con todas las letras:** el punto 1 se afirma con el gap del criterio;
+> el punto 2 se afirma con **otro gap y un manual envejecido a propósito**, porque
+> con el del criterio el modelo no falla. Lo que queda probado es lo que el punto
+> quería saber —*la reparación arregla salida real de un modelo sin volver a
+> preguntarle*— y no la letra del enunciado.
+
+Y de yapa, el punto 9 se disparó solo contra material real: `constructor` usó las
+palabras del vocabulario (`liana`, `madera`) como si fueran nombres de la API, y
+la vuelta 2 se las cuenta.
+
+## Tres cosas que sólo se encontraron pagando
+
+### 1 · El encargo no era un prompt
+
+Se le mandó el encargo pelado —167 caracteres— y **no escribió una línea de
+código**. Leyó «escribí una habilidad» como una tarea de Claude Code:
+
+```
+Necesito ver la habilidad que escribiste. Déjame explorar el proyecto.
+<function_calls><name>Glob</name>…
+¿Dónde escribiste esa habilidad? ¿En qué archivo está?
+
+candidatas parseadas: 0 · US$ 0,008
+```
+
+Faltaban las tres cosas que un prompt tiene y una nota no: el **marco**, la
+**superficie** y la **forma de la respuesta**. Lo incómodo es que `puerta.ts` ya
+lo decía hace seis tramos —*«la superficie contra la que se compila ES el
+prompt»*— y nadie la había puesto adentro.
+
+### 2 · El molde sin import da código sin import
+
+Con la superficie puesta, las dos candidatas salieron `rota` por lo mismo:
+
+```
+2304: Cannot find name 'Ctx' / 'Intent' / 'Outcome' / 'StepResult'
+```
+
+**El modelo copia el molde exacto.** Escribió `yield ctx.goTo(...)` y
+`ctx.see([...])` bien; le faltaba la línea de arriba, y la línea de arriba es
+responsabilidad del que da el molde.
+
+### 3 · La regex del nombre cortaba en la primera eñe
+
+```
+export function* pescarConCaña   →   nombre leído: "pescarConCa"
+```
+
+Y un nombre cortado no es un nombre feo: `mount()` busca esa clave en los exports
+y no la encuentra, así que la habilidad **compila, pasa la puerta y falla tres
+pasos más adelante**. El prompt de este repositorio está en castellano, o sea que
+las eñes no son el caso raro: son el esperado.
+
+## Dos números del plan que dejaron de ser ciertos
+
+| | escrito | medido ahora |
+|---|---|---|
+| costo por candidata | US$ 0,0158 | **US$ 0,038** (2,4×) |
+| un viaje al modelo | 6 a 25 s | **46 a 111 s** |
+
+Los dos por lo mismo: el prompt ahora lleva **24 KB de API** adentro. No rompe
+ningún criterio —el chat no espera al modelo y la fragua vive en otro hilo— pero
+son números del plan que ya no son los de la realidad, y el tramo H presupuestó
+con ellos.

@@ -33,17 +33,84 @@ import { forjarUna } from '../src/forjar.js'
 import { Puerta } from '../src/puerta.js'
 
 const GAP = 'conseguir alimento de un cuerpo de agua'
+
+/**
+ * EL PEDIDO DEL CONTROL, y por qué NO es el del criterio.
+ *
+ * El primer intento de forzar el error corrió con el gap del criterio —pescar— y
+ * el manual viejo no mordió: **6 de 6 salieron limpias igual**. El motivo, obvio
+ * una vez visto: `secondsToNightfall` es el reloj, y pescar no mira el reloj. Se
+ * corrompió un nombre que este pedido no usa nunca.
+ *
+ * El nombre viejo sale del corpus —29 apariciones, el error más frecuente— pero
+ * la frecuencia era sobre 28 borradores de TODO tipo, no sobre éste. Un control
+ * que corrompe algo que el sujeto no toca no controla nada.
+ *
+ * Así que el control cambia de pedido: uno que **no se puede escribir sin mirar
+ * el reloj**. El criterio sigue midiéndose con el suyo; esto mide la REPARACIÓN,
+ * que es otra cosa.
+ */
+const GAP_DEL_RELOJ = 'ponerse a cubierto antes de que caiga la noche'
 const VOCABULARIO = ['madera', 'liana', 'carne', 'agua', 'piedra', 'hueso']
 const K = 2
 
 const API = readFileSync(fileURLToPath(new URL('../../skills/src/skill-api.d.ts', import.meta.url)), 'utf8')
-const SUPERFICIE: Superficie = { api: API, desde: '../../src/skill-api.js', cuantas: K }
 
+/**
+ * EL MANUAL VIEJO — el control positivo del punto 2, y es un caso REAL.
+ *
+ * ─── El problema ────────────────────────────────────────────────────────────
+ *
+ * El punto 2 pide «al menos una candidata compila CON reparación», y medido
+ * contra Claude: **10 de 10 salen limpias**. La reparación no tiene nada que
+ * reparar, así que el punto no se puede afirmar esperando a que el modelo se
+ * equivoque.
+ *
+ * ─── Cómo se fuerza sin hacer trampa ────────────────────────────────────────
+ *
+ * No pidiéndole al modelo que escriba mal —eso mediría si obedece— sino
+ * **dándole un manual con un nombre viejo**. El modelo escribe bien contra el
+ * manual que le dimos; la puerta compila contra el manual de verdad; y la
+ * diferencia entre los dos es exactamente el typo que la reparación arregla.
+ *
+ * Y no es un caso inventado: **es lo que pasa el día que la API cambia y el
+ * prompt quedó viejo.** Un `secondsToNightfall` que ayer se llamaba
+ * `ticksToNightfall` es la forma más común de romper a un modelo sin que nadie
+ * se entere.
+ *
+ * El nombre no se eligió al azar: `ticksToNightfall` es **el error más frecuente
+ * del corpus de 28 borradores, con 29 apariciones**, y está a siete letras del
+ * correcto — adentro del corte de la reparación.
+ */
+const VIEJO = 'ticksToNightfall'
+const NUEVO = 'secondsToNightfall'
+
+function conElManualViejo(api: string): string {
+  return api.split(NUEVO).join(VIEJO)
+}
+
+const forzar = process.argv.includes('--manual-viejo')
 const cuantas = Number(process.argv.find((a) => a.startsWith('--vueltas='))?.split('=')[1] ?? '1')
 const puerta = new Puerta(ts)
 puerta.revisar('export const tibia = 1\n')
 
-console.log(`\ntransporte: ${transporteElegido()} · ${String(cuantas)} viaje(s) de K=${String(K)}\n`)
+/**
+ * LA SUPERFICIE QUE SE MANDA, que con `--manual-viejo` NO es la que compila.
+ *
+ * Es toda la gracia del control: la puerta sigue compilando contra
+ * `skill-api.d.ts` de verdad, sin enterarse de nada.
+ */
+const SUPERFICIE: Superficie = {
+  api: forzar ? conElManualViejo(API) : API,
+  desde: '../../src/skill-api.js',
+  cuantas: K,
+}
+
+console.log(
+  `\ntransporte: ${transporteElegido()} · ${String(cuantas)} viaje(s) de K=${String(K)}` +
+    (forzar ? `\nMANUAL VIEJO: se le manda «${VIEJO}» donde la API de verdad dice «${NUEVO}»` : '') +
+    '\n',
+)
 
 let limpias = 0
 let reparadas = 0
@@ -51,7 +118,7 @@ let rotas = 0
 let usd = 0
 
 for (let v = 1; v <= cuantas; v++) {
-  const e = primerEncargo(GAP, VOCABULARIO)
+  const e = primerEncargo(forzar ? GAP_DEL_RELOJ : GAP, VOCABULARIO)
   const prompt = textoDe(e, SUPERFICIE)
   const t0 = Date.now()
   const salida = await preguntarTexto(prompt, 180_000)

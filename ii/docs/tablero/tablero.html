@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ánima II — tablero (77%)</title>
+<title>Ánima II — tablero (78%)</title>
 <style>*,*::before,*::after{box-sizing:border-box}
 :root {
   color-scheme: light dark;
@@ -337,17 +337,17 @@ p { margin: 0; }
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">77%</span>
+      <span class="cifra">78%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="77 por ciento avanzado">
+    <div class="barra" role="img" aria-label="78 por ciento avanzado">
       <div class="tramo si" style="width:67.09%"></div>
-      <div class="tramo medio" style="width:9.49%"></div>
+      <div class="tramo medio" style="width:10.76%"></div>
     </div>
     <div class="leyenda">
       <span class="l-si">terminado · 26,5 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 3,8</span>
-      <span class="l-no">por delante · 9,3</span>
+      <span class="l-medio">en curso · 4,3</span>
+      <span class="l-no">por delante · 8,8</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
@@ -357,9 +357,9 @@ p { margin: 0; }
     <h2>Hito 8 cerrado en mecanismos: la criatura escribe una habilidad, la instala y el mundo cambia</h2>
     <p class="detalle">Ocho tramos (A–H) y seis etapas más. Lo que la fragua hace hoy, de punta a punta y sin gastar un centavo: arma un encargo, pide candidatas, las typechequea afuera del hilo del mundo, repara los typos sola, monta la ganadora **en la frontera de un tick** y la vuela — medido, una habilidad forjada agarra un palito y el hash del mundo se mueve. El hallazgo que ordenó la arquitectura entera es del tramo H: **cortar la fragua en rodajas no alcanza**, porque la rodaja más fina que existe —una pasada por la puerta, 56 ms— ya vale una ventana de tick entera. Así que la fragua vive en otro hilo, y lo único que cruza es TEXTO: una habilidad montada tiene funciones adentro y las funciones no pasan por un postMessage. Los últimos cinco puntos se abrieron con diez agentes —cinco midiendo, cinco atacando— y los cinco adversarios tumbaron los cinco criterios propuestos: no eran cinco puntos, eran TRES MECANISMOS QUE NO EXISTÍAN (instalar, la costura al modelo, la cola) y encima de ellos los cinco puntos.</p>
     <ol>
-      <li>Los tres puntos que están a medias necesitan UNA corrida con el modelo de verdad (Claude por el CLI, ~US$ 0,016 por candidata): los puntos 1 y 2 hoy están probados contra el muñeco, y el 9 tiene la mitad de «mejora en los mundos que no le contaron» sin medir.</li>
+      <li>Lo único que le falta al Hito 8 es la segunda mitad del punto 9: medir que la re-forja mejora EN LOS MUNDOS RESERVADOS del juez, que es lo que separa aprender de memorizar.</li>
       <li>Hito 9 — la escalera de capacidades. Su criterio ya está corregido para que la fragua no se despierte ni una vez.</li>
-      <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las quince innatas. Se puede volar, pero el planificador no la nombra. Es H10 y H11.</li>
+      <li>La mente no puede ELEGIR una habilidad forjada: aHabilidad es un switch cerrado sobre las quince innatas. Se puede volar, pero el planificador no la nombra. Es H10 y H11.</li>
     </ol>
   </section>
 
@@ -630,20 +630,20 @@ p { margin: 0; }
             <span class="chip medio">En curso</span>
           </div>
           <p class="frase">Acá recién entra el LLM a escribir código: habilidades nuevas mientras el mundo sigue corriendo.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">6<span class="barra-diagonal">/</span>9</span><span class="semanas">4,5 sem</span></div>
-        <p class="nota">Ocho tramos y seis etapas. Lo que más enseñó fue lo que NO estaba: los puntos 3, 6 y 7 hablaban de reemplazar algo y no había ningún camino de escritura de la fragua al mundo —la frontera dejaba el mundo con el mismo hash—; los puntos 4 y 8 contaban consultas de un episodio que gastaba cero por construcción; y «la cola» era el sujeto de dos puntos y cero líneas de código. Se cazaron SEIS verdes por omisión, y el sexto lo escribió el mismo modelo que escribió el resto: un corte que miraba una bandera «entre candidatas» con un handler sincrónico, que no cede el turno nunca. Daba 6 de 6 forjadas y 0 cortadas, en verde. La regla del hito quedó en una frase: un cero cuyo control vive en otro archivo y sostiene otra Partida es otra vez el cero estructural.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">8<span class="barra-diagonal">/</span>9</span><span class="semanas">4,5 sem</span></div>
+        <p class="nota">Ocho tramos y seis etapas. Lo que más enseñó fue lo que NO estaba: los puntos 3, 6 y 7 hablaban de reemplazar algo y no había ningún camino de escritura de la fragua al mundo —la frontera dejaba el mundo con el mismo hash—; los puntos 4 y 8 contaban consultas de un episodio que gastaba cero por construcción; y «la cola» era el sujeto de dos puntos y cero líneas de código. Se cazaron SEIS verdes por omisión, y el sexto lo escribió el mismo modelo que escribió el resto: un corte que miraba una bandera «entre candidatas» con un handler sincrónico, que no cede el turno nunca. Daba 6 de 6 forjadas y 0 cortadas, en verde. La regla del hito quedó en una frase: un cero cuyo control vive en otro archivo y sostiene otra Partida es otra vez el cero estructural. Y los puntos 1 y 2 se cerraron contra el modelo de verdad: el 1 con creces (10 de 10 limpias) y el 2 sólo forzando el error, porque su premisa --que el modelo escribe codigo que hay que reparar-- se cayo el dia que la API entro al prompt. Los 24 de 27 borradores que no compilaban se escribieron SIN la superficie delante.</p>
         <details class="criterios">
           <summary>9 criterios</summary>
           <ul>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>1 · al menos una de dos candidatas compila sin reparación: la cañería corre entera y la afirma un test, pero contra el MUÑECO. Lo que falta es una corrida con el modelo de verdad, y el propio `forjar.ts` lo dice: «lo que este archivo no puede probar es que el modelo real produzca una candidata buena y una casi buena»</span></li>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>2 · y al menos una compila con reparación: mismo caso. La reparación arregla el typo medido (`ticksToNightfall` → `secondsToNightfall`, el error más frecuente del corpus con 29 apariciones) y el desenlace `reparada` está afirmado — contra el muñeco</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · al menos una de dos candidatas compila sin reparación: MEDIDO contra Claude Haiku por el CLI, cinco viajes de K=2 con el gap del criterio — 10 candidatas, 10 limpias, 0 rotas (US$ 0,3767)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · y al menos una compila con reparación: la IA dejó de equivocarse (10 de 10 limpias), así que el punto se afirma FORZANDO el error de la única forma honesta — dándole un manual con un nombre viejo (ticksToNightfall donde la API dice secondsToNightfall), que es lo que pasa el día que la API cambia y el prompt queda viejo. Medido: 4 candidatas, 2 reparadas con ese cambio exacto</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · matar la conexión a mitad no deja el mundo inconsistente: instalar son DOS escrituras y se asignan juntas; el control positivo es un instalador ingenuo escrito para poder cortarlo, que deja `capacidad-sin-habilidad`. Y lo que estaba roto de verdad: nadie se enteraba cuando el par se moría, así que el episodio no terminaba NUNCA. Hoy termina en 20 ms</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · el episodio no supera N consultas · N = 1, MEDIDO (1 consulta y 32 milésimas). Lo cuenta un espía que envuelve al modelo, no el objeto que las hace: «la cuenta la declara el contado» era el agujero. Su control: con un modelo que nunca acierta, el episodio gasta las 3 vueltas</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>5 · ticksPerdidos === 0 durante todo el episodio, con el mundo avanzando 151.344 ticks al lado. El control que le da sentido: la misma fragua adentro del hilo del mundo pierde 3 de 40</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · la degradada entra en la cola, se re-forja en el fondo (K=6) y la ganadora reemplaza sin perder un tick — el reemplazo entero sale 3,7 ms de una ventana de 50. Cuatro afirmaciones, cuatro controles: la sana NO entra, el mundo corrió 159.978 ticks, la perdedora no reemplaza, y adentro del hilo se pierden 6 a 8</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>7 · una candidata peor no reemplaza nada y queda archivada: el duelo compara CARGO POR CARGO y no el grado global, porque ningún dictamen de habilidad puede salir `promueve` (utilidad sale inconcluso siempre y elPeor toma el peor). La regla es domina-o-no-reemplaza: un empate o un ganar-uno-perder-otro dejan a la titular</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>8 · con la cuota agotada, ni una consulta: el presupuesto es una PUERTA y la diferencia está en el tipo — `pedirPermiso` devuelve un viaje o NO LO DEVUELVE. Las dos ramas se ejercitan por separado (sin-consultas y sin-plata) y el control es la misma corrida con cuota, que da 1</span></li>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>9 · una candidata que falla alimenta a la siguiente: las DOS mitades están hechas —la barata (no compila → qué concepto inventó) y la cara (compiló y no sirve → los cargos del juez en castellano llano)— y el guardián impide que entre un solo id de mundo. Falta la segunda mitad del enunciado: medir que la siguiente mejora EN LOS MUNDOS RESERVADOS, que es lo que separa aprender de memorizar</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>9 · una candidata que falla alimenta a la siguiente: las DOS mitades hechas y disparadas contra material REAL —una candidata usó las palabras del vocabulario como si fueran API y la vuelta 2 se las cuenta— y el guardián impide que entre un id de mundo. Falta la segunda mitad del enunciado: medir que la siguiente mejora EN LOS MUNDOS RESERVADOS, que es lo que separa aprender de memorizar</span></li>
           </ul>
         </details>
         </div>
@@ -806,8 +806,12 @@ p { margin: 0; }
         <code>git log origin/anima-2..HEAD</code>
         <span class="resultado">0 commits sin pushear</span>
       </div>
+      <div class="corrida si">
+        <code>ANIMA_LLM=claude … con-el-modelo.ts</code>
+        <span class="resultado">19 candidatas reales contra Claude Haiku · 17 limpias, 2 reparadas, 1 rota · US$ 0,80 en total</span>
+      </div>
     </div>
-    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá. Y lo que NO se corrió nunca: una candidata del modelo de verdad — los puntos 1, 2 y 9 están medidos contra el muñeco, que es determinista y gratis, y la corrida real cuesta plata.</p>
+    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá. Lo que SÍ se corrió y antes no: el modelo de verdad, 19 candidatas por US$ 0,80.</p>
   </section>
 
   <section class="seccion">
