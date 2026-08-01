@@ -499,8 +499,59 @@ cuenta 1 y nunca 0: algo que se pidió, se pidió.
 > se recorre entero —el modelo contesta— pero **no cobra nada, así que no hay qué
 > contar**, y eso es correcto. Ver el renglón en vivo pide una consulta paga.
 
-### Tramo F — partir el cliente en dos
+### Tramo F — el cliente, partido en dos · CERRADO
 
-*(lo que sigue)* — el transporte por un lado (genérico, lo usan el chat y la
-fragua) y la forma del chat por el otro. Recién ahí la mudanza es segura, y
-recién ahí tiene sentido agregar el transporte HTTP.
+El archivo de 398 líneas se partió por donde correspondía, y el corte lo eligió
+la medición del tramo E, no una preferencia:
+
+```
+@anima/llm/demo/transporte    prompt (texto) → respuesta (texto). No sabe de nadie.
+lang/demo/proveedor           `Consulta` → prompt, y texto → `RespuestaDelModelo`
+forge (cuando toque)          `Encargo` → prompt, y texto → candidata
+```
+
+> **Un transporte que conoce la forma del que pregunta sirve para uno solo.**
+
+Y lo que **no** cambió es la frontera del Hito 6: `@anima/lang` produce una
+`Consulta` —un DATO— y el demo la manda. El paquete sigue sin poder esperar a
+nadie, que es todo el punto del ADR II-0024.
+
+#### Lo único que NO se pudo hacer genérico, y es interesante cuál
+
+El modelo **falso**. Los otros tres transportes sólo mueven texto, pero uno de
+mentira **tiene que conocer la forma del que pregunta para poder contestarle** —
+sus nueve pistas mapean palabras a *firmas*, que son del chat.
+
+Así que se quedó del lado del chat, y el transporte genérico devuelve
+`undefined` cuando el transporte es `falso`. Quien quiera un modelo de mentira se
+lo arma con su propia forma; la fragua va a necesitar el suyo.
+
+#### Verificado antes y después, porque era el riesgo del tramo
+
+Son 398 líneas de código de red **que anda**, y es lo único que hoy habla con un
+modelo. El demo del chat se corrió antes y después y da lo mismo:
+
+```
+acuse        1.10 ms
+  [0] entendida     modelo holding(tag:carnoso)  (era orientacion)
+consulta     1 clausula(s) · llave 1499188753:3645494122
+```
+
+#### Y una regla del repo que rompí al escribirlo
+
+El `porFalso` quedó con **marcas combinantes crudas** en su regex de
+normalización. El repo lo prohíbe con todas las letras —*«una marca combinante en
+un archivo fuente va escrita como escape, nunca como byte crudo»*— y la razón es
+la del Hito 6: **no se puede revisar lo que no se ve**. Corregido a
+`[̀-ͯ]`, con cero marcas crudas verificadas.
+
+### Tramo G — el transporte HTTP para Claude
+
+*(lo que sigue)*, y con una decisión de producto adentro:
+
+| transporte | tarda | ¿pide credencial? |
+|---|---|---|
+| `claude` (CLI, hoy) | **14 s** | no — usa la sesión de la máquina |
+| `anthropic` (HTTP) | **~4 s** | **sí, `ANTHROPIC_API_KEY`** |
+
+Los diez segundos cuestan una clave.

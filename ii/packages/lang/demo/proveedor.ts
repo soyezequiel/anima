@@ -1,26 +1,27 @@
 /**
- * EL PROVEEDOR — lo único de todo esto que habla con el mundo de afuera.
+ * EL PROVEEDOR DEL CHAT — la forma de `Consulta`, y nada de red.
  *
- * Vive en `demo/` y no en `src/` a propósito, y no es una cuestión de orden: en
- * `src/` **no puede vivir**. La regla 2 prohíbe `await` y `async` en todo `src/`,
- * hay un guardián que lo hace cumplir, y una llamada de red sin `await` no
- * existe. Que el proveedor no entre al paquete no es una limitación: es la forma
- * que el ADR II-0024 le dio al hito.
+ * ─── QUÉ SE FUE DE ACÁ, y por qué ───────────────────────────────────────────
  *
- * `@anima/lang` produce una `Consulta` —un DATO— y este archivo la manda. Cuando
- * llega el Hito 8 esto se muda a `@anima/llm` con más cosas (caché, presupuesto,
- * `AbortController`, streaming) y la firma no cambia.
+ * Este archivo tenía adentro **las dos cosas**: cómo hablar con un modelo
+ * (`spawn`, `fetch`, timeouts, costo) y cómo se le habla **al modelo del chat**
+ * (el prompt de firmas, el JSON de cláusulas).
  *
- * ─── Los tres transportes ───────────────────────────────────────────────────
+ * El Hito 8 quiso mudarlo entero a `@anima/llm` y no se pudo: **el transporte
+ * habría arrastrado a `Consulta`**, que es la forma del chat, y `@anima/llm`
+ * habría terminado dependiendo de `@anima/lang` — la flecha al revés. La fragua
+ * pregunta con otra forma (`Encargo`) y necesita el mismo transporte.
  *
- *     ANIMA_LLM=claude   `claude --print`, con la sesión del CLI de la máquina
- *     ANIMA_LLM=codex    `codex exec`, con la cuenta de ChatGPT del usuario
- *     ANIMA_LLM=openai   HTTP, con `OPENAI_API_KEY` del entorno
- *     ANIMA_LLM=falso    un modelo de mentira, para probar el enchufe sin gastar
+ * Así que se partió por donde correspondía:
  *
- * **Este archivo nunca ve una credencial.** El transporte `codex` usa la sesión
- * que el CLI ya tiene abierta en `~/.codex`, y el `openai` lee una variable de
- * entorno que pone el usuario. No hay nada que escribir acá.
+ *   `@anima/llm/demo/transporte`  prompt (texto) → respuesta (texto)
+ *   ESTE archivo                  `Consulta` → prompt, y texto → `RespuestaDelModelo`
+ *
+ * **Un transporte que conoce la forma del que pregunta sirve para uno solo.**
+ *
+ * Lo que NO cambió es la frontera del Hito 6: `@anima/lang` produce una
+ * `Consulta` —un DATO— y esto la manda. El paquete sigue sin poder esperar a
+ * nadie, que es todo el punto del ADR II-0024.
  *
  * ─── Lo que se le pide al modelo, y lo que NO ───────────────────────────────
  *
@@ -30,62 +31,20 @@
  *
  * Y lo que conteste pasa igual por los seis portones de `revisar()`, incluido el
  * que verifica que la firma esté en la lista que se le ofreció. **El modelo
- * propone, el código local dispone** — un modelo que alucine una firma de más no
- * llega a ninguna criatura.
+ * propone, el código local dispone.**
  */
 
-import { spawn } from 'node:child_process'
+import { loQueNoEsBandera, preguntarTexto, transporteElegido } from '@anima/llm/demo/transporte.js'
 import type { Consulta, RespuestaDelModelo } from '../src/consulta.js'
 
-export type Transporte = 'claude' | 'codex' | 'openai' | 'falso'
-
-/**
- * QUE PROVEEDOR USAR — por bandera o por variable de entorno, en ese orden.
- *
- * La bandera existe porque la variable no es portable y eso rompio el primer
- * intento del usuario: `ANIMA_LLM=claude pnpm ...` es sintaxis de bash y en
- * PowerShell da «no se reconoce como nombre de un cmdlet». Ahi hay que escribir
- * `$env:ANIMA_LLM="claude"; pnpm ...`, que nadie se acuerda.
- *
- *     pnpm --filter @anima/lang hablarle --claude "tengo hambre"
- *     pnpm --filter @anima/lang hablarle --codex  "tengo hambre"
- *     pnpm --filter @anima/lang hablarle --openai "tengo hambre"
- *
- * Un demo que sólo se puede correr en un shell es un demo que la mitad de las
- * veces no se corre.
- */
-/**
- * LO QUE COSTO LA ULTIMA CONSULTA, si el transporte lo dice.
- *
- * Es un dato y no un `console.log`, y el cambio no es cosmetico: antes este
- * archivo IMPRIMIA `[modelo haiku · US$ 0.0149]` desde adentro, o sea que se
- * colaba en la parte liviana del demo sin que el demo pudiera decidir. Un modulo
- * que escribe en la pantalla de otro no se puede acomodar.
- */
-let ultimoCosto: { modelo: string; usd: number } | undefined
-export function costoDeLaUltima(): { modelo: string; usd: number } | undefined {
-  return ultimoCosto
-}
-
-export function transporteElegido(): Transporte {
-  for (const a of process.argv.slice(2)) {
-    if (a === '--claude') return 'claude'
-    if (a === '--codex') return 'codex'
-    if (a === '--openai') return 'openai'
-    if (a === '--falso') return 'falso'
-  }
-  const v = process.env['ANIMA_LLM']
-  if (v === 'claude' || v === 'codex' || v === 'openai') return v
-  return 'falso'
-}
+// El demo del chat los usa tal cual; se re-exportan para no obligarlo a saber
+// que ahora viven en otro paquete.
+export { costoDeLaUltima, transporteElegido } from '@anima/llm/demo/transporte.js'
+export type { Transporte } from '@anima/llm/demo/transporte.js'
 
 /** Los argumentos que NO son banderas: la frase. */
 export function fraseDeLaLinea(): string {
-  return process.argv
-    .slice(2)
-    .filter((a) => !a.startsWith('--'))
-    .join(' ')
-    .trim()
+  return loQueNoEsBandera()
 }
 
 /**
@@ -187,167 +146,15 @@ export function leerRespuesta(salida: string, llave: string): RespuestaDelModelo
 }
 
 /**
- * `claude --print`, con los mismos argumentos que Ánima I usa en
- * `apps/api/src/claude.ts` — no los inventé, están copiados de ahí.
- *
- * ─── Los cuatro argumentos que importan ─────────────────────────────────────
- *
- *     --safe-mode                sin CLAUDE.md, sin plugins, sin hooks, sin MCP
- *     --no-session-persistence   no deja sesión guardada
- *     --tools ""                 sin herramientas: puro prompt → respuesta
- *     --model haiku              ver abajo
- *
- * Los tres primeros son de higiene: esta consulta no tiene por qué ver el
- * proyecto ni dejar rastro. El cuarto es de PLATA, y está medido: sin `--model`
- * el CLI usa Opus y una sola frase costó **US$ 0,024**. Con Haiku sale ~40×
- * menos, y la tarea es elegir una fila de una lista de doce — el «modelo chico
- * que corrige la lectura» del documento de arquitectura, que es literalmente
- * este caso.
- *
- * Se puede pisar con `ANIMA_LLM_MODELO`.
- *
- * ─── La respuesta viene envuelta ────────────────────────────────────────────
- *
- * `--output-format json` devuelve un sobre con `duration_ms`, `usage`, `cost` y
- * el texto del modelo adentro de `result` —ESCAPADO—, así que buscar
- * `"clausulas"` sobre la salida cruda no engancha nada: en el sobre dice
- * `{\"clausulas\"`. Hay que abrir el sobre primero.
- */
-function porClaude(prompt: string, llave: string, timeoutMs: number): Promise<RespuestaDelModelo | undefined> {
-  const modelo = process.env['ANIMA_LLM_MODELO'] ?? 'haiku'
-  const args = [
-    '--print',
-    '--output-format',
-    'json',
-    '--safe-mode',
-    '--no-session-persistence',
-    '--tools',
-    '""',
-    '--effort',
-    'low',
-    '--model',
-    modelo,
-  ]
-  return new Promise((resolve) => {
-    const child = spawn(`claude ${args.join(' ')}`, { shell: true, windowsHide: true })
-    let out = ''
-    let err = ''
-    let listo = false
-    const cerrar = (r: RespuestaDelModelo | undefined): void => {
-      if (listo) return
-      listo = true
-      clearTimeout(t)
-      resolve(r)
-    }
-    const t = setTimeout(() => {
-      child.kill()
-      console.log('     [el proveedor no contestó a tiempo — y el cuerpo ya se movió]')
-      cerrar(undefined)
-    }, timeoutMs)
-    child.stdout.on('data', (d: Buffer) => (out += d.toString()))
-    child.stderr.on('data', (d: Buffer) => (err += d.toString()))
-    child.on('error', () => cerrar(undefined))
-    child.on('close', () => {
-      // El sobre. Si no se puede abrir, se prueba con la salida cruda: un CLI que
-      // cambie de formato no tiene por qué tirar todo abajo.
-      let texto = out
-      let costo: number | undefined
-      try {
-        const sobre = JSON.parse(out.slice(out.indexOf('{'))) as {
-          result?: unknown
-          is_error?: unknown
-          total_cost_usd?: unknown
-        }
-        if (sobre.is_error === true) {
-          console.log(`     [claude contestó con error]`)
-          cerrar(undefined)
-          return
-        }
-        if (typeof sobre.result === 'string') texto = sobre.result
-        if (typeof sobre.total_cost_usd === 'number') costo = sobre.total_cost_usd
-      } catch {
-        if (err.trim() !== '') console.log(`     [claude: ${err.trim().slice(0, 120)}]`)
-      }
-      ultimoCosto = costo === undefined ? undefined : { modelo, usd: costo }
-      cerrar(leerRespuesta(texto, llave))
-    })
-    child.stdin.end(prompt)
-  })
-}
-
-/** `codex exec`, tal como lo llama Ánima I: shell, porque en Windows es un .cmd. */
-function porCodex(prompt: string, llave: string, timeoutMs: number): Promise<RespuestaDelModelo | undefined> {
-  return new Promise((resolve) => {
-    const child = spawn('codex exec --skip-git-repo-check -', {
-      shell: true,
-      windowsHide: true,
-    })
-    let out = ''
-    let err = ''
-    let listo = false
-    const cerrar = (r: RespuestaDelModelo | undefined): void => {
-      if (listo) return
-      listo = true
-      clearTimeout(t)
-      resolve(r)
-    }
-    const t = setTimeout(() => {
-      child.kill()
-      console.log('     [el proveedor no contestó a tiempo — y el cuerpo ya se movió]')
-      cerrar(undefined)
-    }, timeoutMs)
-    child.stdout.on('data', (d: Buffer) => (out += d.toString()))
-    child.stderr.on('data', (d: Buffer) => (err += d.toString()))
-    child.on('error', () => cerrar(undefined))
-    child.on('close', () => {
-      if (/usage limit|quota/i.test(out + err)) {
-        console.log('     [el proveedor dijo que no hay cuota]')
-        cerrar(undefined)
-        return
-      }
-      cerrar(leerRespuesta(out, llave))
-    })
-    child.stdin.end(prompt)
-  })
-}
-
-/** HTTP directo. La clave sale del entorno y este archivo no la mira. */
-async function porOpenAI(prompt: string, llave: string, timeoutMs: number): Promise<RespuestaDelModelo | undefined> {
-  const clave = process.env['OPENAI_API_KEY']
-  if (clave === undefined || clave === '') {
-    console.log('     [ANIMA_LLM=openai pero no hay OPENAI_API_KEY en el entorno]')
-    return undefined
-  }
-  const corte = AbortSignal.timeout(timeoutMs)
-  try {
-    const r = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${clave}` },
-      body: JSON.stringify({
-        model: process.env['ANIMA_LLM_MODELO'] ?? 'gpt-4o-mini',
-        temperature: 0,
-        messages: [{ role: 'user', content: prompt }],
-      }),
-      signal: corte,
-    })
-    if (!r.ok) {
-      console.log(`     [el proveedor contestó ${String(r.status)}]`)
-      return undefined
-    }
-    const j = (await r.json()) as { choices?: { message?: { content?: string } }[] }
-    return leerRespuesta(j.choices?.[0]?.message?.content ?? '', llave)
-  } catch {
-    console.log('     [el proveedor no contestó a tiempo — y el cuerpo ya se movió]')
-    return undefined
-  }
-}
-
-/**
  * UN MODELO DE MENTIRA, para probar el enchufe sin gastar cuota.
  *
  * Nueve pistas y nada más. **No está para ser bueno**, está para que el camino
  * exista y se pueda comparar contra el de sin proveedor. Uno que acertara todo
  * mediría el simulador y no el enganche.
+ *
+ * Vive acá y no en el transporte a propósito: un modelo de mentira **tiene que
+ * conocer la forma del que pregunta** para poder contestarle, así que es lo
+ * único de los cuatro transportes que no puede ser genérico.
  */
 const PISTAS: readonly (readonly [string, string])[] = [
   ['rio', 'holding(tag:carnoso)'],
@@ -389,10 +196,7 @@ export async function preguntarle(
   c: Consulta,
   timeoutMs = 30_000,
 ): Promise<RespuestaDelModelo | undefined> {
-  const t = transporteElegido()
-  if (t === 'falso') return porFalso(c)
-  const prompt = promptDe(c)
-  if (t === 'claude') return porClaude(prompt, c.llave, timeoutMs)
-  if (t === 'codex') return porCodex(prompt, c.llave, timeoutMs)
-  return porOpenAI(prompt, c.llave, timeoutMs)
+  if (transporteElegido() === 'falso') return porFalso(c)
+  const texto = await preguntarTexto(promptDe(c), timeoutMs)
+  return texto === undefined ? undefined : leerRespuesta(texto, c.llave)
 }
