@@ -244,6 +244,9 @@ importers:
       '@anima/physics':
         specifier: workspace:*
         version: link:../physics
+      '@anima/plan':
+        specifier: workspace:*
+        version: link:../plan
       '@anima/skills':
         specifier: workspace:*
         version: link:../skills
@@ -254,6 +257,9 @@ importers:
       '@anima/perceive':
         specifier: workspace:*
         version: link:../perceive
+      '@anima/world':
+        specifier: workspace:*
+        version: link:../world
       typescript:
         specifier: ^5.6.0
         version: 5.9.3

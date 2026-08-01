@@ -126,6 +126,57 @@ const CON_CONCEPTO_INVENTADO: HabilidadCandidata = {
 }
 
 /**
+ * LA QUE TOCA EL MUNDO — y es la que hace instalable a todo lo demás.
+ *
+ * ─── Por qué hizo falta una cuarta ──────────────────────────────────────────
+ *
+ * Las tres de arriba cubren los tres desenlaces de la PUERTA —compila, compila
+ * reparada, no compila— y ninguna hace nada: las tres devuelven `done()` en la
+ * primera línea. Alcanzaba mientras lo único que se medía era el compilador.
+ *
+ * Deja de alcanzar en el momento en que hay que probar que instalar sirve de
+ * algo. Medido con las tres viejas: la partida corre, la habilidad vuela, y el
+ * mundo queda idéntico. Un test de instalación con esas candidatas es un test que
+ * no puede ponerse rojo.
+ *
+ * Ésta agarra lo primero portátil que ve. Medido, montada y volada en una
+ * `Partida` de verdad: `holding 0 → 1`, hash `901678e3300afcd4 → 17312250b1d751bd`,
+ * y `outcome { ok: true, got: { id: 'palito' } }` en 3 ticks.
+ *
+ * ─── Y encontró el enganche que faltaba ─────────────────────────────────────
+ *
+ * La primera corrida murió con `OutOfFuel` y `budget: 0` en el primer paso: una
+ * habilidad instrumentada **nace con el tanque vacío** y `Partida.volar` sólo lo
+ * recarga si le pasan la celda por `VueloOptions.cell`. Las quince innatas son
+ * funciones planas y no tienen celda, así que nadie había cruzado esa ranura
+ * desde este lado. Ver el encabezado de `registro.ts`.
+ */
+const CABECERA_LARGA = [
+  "import type { BodyView, Ctx, Intent, Outcome, StepResult } from '../../src/skill-api.js'",
+  "import { done, fail } from '../../src/skill-api.js'",
+  '',
+].join('\n')
+
+const AGARRAR_LO_QUE_VEO = `${CABECERA_LARGA}export function* agarrarLoQueVeo(ctx: Ctx): Generator<Intent, Outcome, StepResult> {
+  ctx.phase('agarrar-lo-que-veo')
+  const cerca: BodyView[] = []
+  for (const b of ctx.see([])) {
+    if (b.id === ctx.self.id) continue
+    if (b.heldBy !== undefined) continue
+    if (ctx.q(b, 'portable') < 1) continue
+    cerca.push(b)
+  }
+  const que = cerca[0]
+  if (que === undefined) return fail('no veo nada que se pueda agarrar')
+  const irA = yield ctx.goTo(que, { within: 1 })
+  if (irA.status !== 'arrived') return fail('no llegue')
+  const t = yield ctx.take(que)
+  if (t.status === 'done') return done(que)
+  return fail('no lo pude tomar')
+}
+`
+
+/**
  * LAS DOS QUE EL CRITERIO PIDE POR VIAJE.
  *
  * > «al menos una de dos candidatas compila sin reparación y al menos una
@@ -147,4 +198,4 @@ export function laQueInventa(gap: string, vuelta = 1): Candidata {
   return { gap, vuelta, usar: CON_CONCEPTO_INVENTADO }
 }
 
-export { CON_CONCEPTO_INVENTADO, CON_TYPO, LIMPIA, PROMETE_Y_NO_CUMPLE }
+export { AGARRAR_LO_QUE_VEO, CON_CONCEPTO_INVENTADO, CON_TYPO, LIMPIA, PROMETE_Y_NO_CUMPLE }

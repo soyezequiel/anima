@@ -13,11 +13,13 @@
   "dependencies": {
     "@anima/llm": "workspace:*",
     "@anima/skills": "workspace:*",
-    "@anima/physics": "workspace:*"
+    "@anima/physics": "workspace:*",
+    "@anima/plan": "workspace:*"
   },
   "devDependencies": {
     "@anima/judge": "workspace:*",
     "@anima/perceive": "workspace:*",
+    "@anima/world": "workspace:*",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"
   }
