@@ -20,6 +20,7 @@ import type { Contrato } from '@anima/skills/innatas'
 import { describe, expect, it } from 'vitest'
 import type { Sujeto } from '../src/ablacion.js'
 import { EL_ACTOR } from '../src/escena.js'
+import { bancoDe } from '../src/banco.js'
 import { juzgar } from '../src/juzgar.js'
 import type { Dictamen } from '../src/tipos.js'
 
@@ -138,9 +139,27 @@ describe('LA SOBREAJUSTADA: sólo funciona donde la corrigieron (punto 1)', () =
     expect(c?.porque).toContain('SÓLO FUNCIONA DONDE LE CONVIENE')
   })
 
-  it('y deja regresión del mundo donde se cayó', () => {
-    expect(d.regresiones.length).toBeGreaterThan(0)
-    expect(d.regresiones[0]?.semilla).toContain('al-borde')
+  it('y deja regresión de CADA mundo donde se cayó, no de uno', () => {
+    // ─── Esta aserción cambió con el banco grande, y para mejor ────────────
+    //
+    // Antes decía `regresiones[0].semilla` contiene 'al-borde', que era frágil:
+    // afirmaba CUÁL mundo salió primero, no la propiedad. Con el banco de 5
+    // mundos había un solo `holgado` y era justamente el que esta habilidad
+    // tiene aprendido, así que en su casa aprobaba.
+    //
+    // Con cuatro por clase deja de aprobar ahí: hoy caen 2 `holgado` y 2
+    // `al-borde`. O sea que el banco grande **la caza en más lugares**, que es
+    // exactamente para lo que se agrandó.
+    const clases = d.regresiones.map((r) => r.semilla.split('·')[1] ?? '')
+    console.log(`
+    regresiones por clase: ${clases.join(', ')}`)
+    expect(d.regresiones.length).toBeGreaterThan(1)
+    // `al-borde` es la clase que caza al sobreajuste: cumple por el pelo, así
+    // que una habilidad que depende de su margen se cae ahí.
+    expect(clases).toContain('al-borde')
+    // Y toda regresión nombra un mundo del banco de verdad, no una etiqueta.
+    const ids = new Set(bancoDe(CONTRATO_SOSTENER, phys).map((m) => m.id))
+    for (const r of d.regresiones) expect(ids.has(r.semilla), `${r.semilla} no está en el banco`).toBe(true)
   })
 
   it('EL CONTRASTE: la honesta pasa el mismo banco', () => {

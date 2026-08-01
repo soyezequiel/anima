@@ -148,14 +148,40 @@ describe('el banco de las 17', () => {
 })
 
 describe('el cuarto reservado', () => {
-  it('existe, y NO es el mundo fácil', () => {
+  it('existe, es UNA MUESTRA DE TODAS LAS CLASES, y nunca el mundo más fácil', () => {
+    // ─── Esta aserción se ENDURECIÓ, y por una medición ────────────────────
+    //
+    // Antes decía «el reservado NO es `holgado`», que con el banco viejo era
+    // verdad y no probaba nada: la reserva era `i % 4 === 1` sobre una lista
+    // ordenada por clase, así que con cinco mundos caía SIEMPRE en el índice 1
+    // —`al-borde`— en los tres contratos que tienen banco de materia.
+    //
+    // O sea que la fragua veía cuatro clases enteras y de la quinta nada. Eso no
+    // es una muestra: es una clase escondida, y una habilidad que sólo falla al
+    // borde del umbral quedaba invisible en la devolución.
+    //
+    // Hoy se reserva uno DENTRO de cada clase, así que lo que se afirma es más
+    // fuerte: toda clase con más de un mundo aporta un reservado, y el PRIMERO
+    // del banco —el holgado de más margen, el mundo más fácil que hay— no se
+    // reserva nunca.
     const frotar = INNATAS.find((c) => c.nombre === 'frotar') as Contrato
     const b = bancoDe(frotar, phys)
     const reservados = b.filter((m) => m.reservado)
+    console.log(`\n    ${String(b.length)} mundos · reservados: ${reservados.map((m) => m.clase).join(', ')}`)
+
     expect(reservados.length).toBeGreaterThan(0)
-    // Reservar siempre el `holgado` sería guardar el mundo que menos defiende.
-    expect(reservados.some((m) => m.clase === 'holgado')).toBe(false)
-    console.log(`\n    reservado: ${reservados.map((m) => m.clase).join(', ')}`)
+    expect(b[0]?.reservado, 'el mundo más fácil de todos tiene que mostrarse').toBe(false)
+
+    const cuantasPorClase = new Map<string, number>()
+    for (const m of b) cuantasPorClase.set(m.clase, (cuantasPorClase.get(m.clase) ?? 0) + 1)
+    const conVarios = [...cuantasPorClase].filter(([, n]) => n > 1).map(([c]) => c)
+    for (const clase of conVarios) {
+      expect(
+        reservados.some((m) => m.clase === clase),
+        `la clase «${clase}» no tiene ningún mundo reservado: vuelve el sesgo`,
+      ).toBe(true)
+    }
+    expect(conVarios.length).toBeGreaterThan(1)
   })
 
   it('lo que se le muestra a la fragua NO es el banco entero', () => {

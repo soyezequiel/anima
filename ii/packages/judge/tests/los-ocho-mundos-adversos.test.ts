@@ -106,8 +106,13 @@ describe('LOS DOS QUE YA ESTÁN, verificados y no afirmados', () => {
     const b = bancoDe(CONTRATO_SOSTENER, phys)
     const r = b.filter((m) => m.reservado)
     expect(r.length).toBeGreaterThan(0)
-    // Y no reserva el fácil, que sería reservar por reservar.
-    expect(r.some((m) => m.clase === 'holgado')).toBe(false)
+    // Y no reserva EL MÁS FÁCIL —el primero del banco, el holgado de más
+    // margen— que sería reservar por reservar. La aserción cambió de «ningún
+    // holgado» a «el primero no»: hoy se reserva uno por clase a propósito, y
+    // el porqué está en `reservarUnCuarto`.
+    expect(b[0]?.reservado).toBe(false)
+    // Y es una muestra de varias clases, no una clase escondida.
+    expect(new Set(r.map((m) => m.clase)).size).toBeGreaterThan(1)
   })
 
   it('«materiales alternativos»: hay otra sustancia, y es OTRA', () => {

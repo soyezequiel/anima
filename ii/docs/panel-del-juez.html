@@ -42,9 +42,9 @@ Generado por <code>judge/tests/el-panel.test.ts</code> — no se edita a mano.</
 <h2>sostener <span class="chip" style="background:#ef6c00">inconcluso</span></h2>
 <table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
 <tbody>
-<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">5/5</td><td class="num">2/2</td><td class="por">se sintetiza con carne/vara</td></tr>
-<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">5/5</td><td class="num">2/2</td><td class="por">llegó en los 3 amables y se plantó en los 2 adversos</td></tr>
-<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">5/5</td><td class="num">2/2</td><td class="por">3 de 3 promesas verificadas contra el mundo</td></tr>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">18/18</td><td class="num">6/6</td><td class="por">se sintetiza con carne/vara</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">18/18</td><td class="num">6/6</td><td class="por">llegó en los 12 amables y se plantó en los 6 adversos</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">18/18</td><td class="num">6/6</td><td class="por">12 de 12 promesas verificadas contra el mundo</td></tr>
 <tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#ef6c00">inconcluso</span></td><td class="num">—</td><td class="num">—</td><td class="por">no hay contra qué: nadie le pide nada a una habilidad hasta que haya objetivos (Hito 8)</td></tr>
 </tbody></table>
 <p class="ok">Ningún mundo salió distinto de lo que debía.</p>
@@ -53,25 +53,25 @@ Generado por <code>judge/tests/el-panel.test.ts</code> — no se edita a mano.</
 <h2>sobreajustada <span class="chip" style="background:#c62828">no-promueve</span></h2>
 <table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
 <tbody>
-<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">4/5</td><td class="num">2/2</td><td class="por">se sintetiza con carne/vara</td></tr>
-<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">4/5</td><td class="num">2/2</td><td class="por">SÓLO FUNCIONA DONDE LE CONVIENE: anduvo en el holgado y falló apenas se apretó</td></tr>
-<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">4/5</td><td class="num">2/2</td><td class="por">2 de 2 promesas verificadas contra el mundo</td></tr>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">14/18</td><td class="num">6/6</td><td class="por">se sintetiza con carne/vara</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">14/18</td><td class="num">6/6</td><td class="por">SÓLO FUNCIONA DONDE LE CONVIENE: anduvo en el holgado y falló apenas se apretó</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">14/18</td><td class="num">6/6</td><td class="por">8 de 8 promesas verificadas contra el mundo</td></tr>
 <tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#ef6c00">inconcluso</span></td><td class="num">—</td><td class="num">—</td><td class="por">no hay contra qué: nadie le pide nada a una habilidad hasta que haya objetivos (Hito 8)</td></tr>
 </tbody></table>
 <p class="mal">Mundos donde falló — el id alcanza para rearmarlos, el banco es determinista:</p>
-<ul class="mundos"><li><code>sobreajustada·al-borde·agua/bloque/0.05</code> — se esperaba que llegue</li></ul>
+<ul class="mundos"><li><code>sobreajustada·holgado·tuberculo/vara/0.05</code> — se esperaba que llegue</li><li><code>sobreajustada·holgado·tuberculo/malla/0.05</code> — se esperaba que llegue</li><li><code>sobreajustada·al-borde·agua/bloque/0.05</code> — se esperaba que llegue</li><li><code>sobreajustada·al-borde·agua/filete/0.05</code> — se esperaba que llegue</li></ul>
 </section>
 <section id="mentirosa">
 <h2>mentirosa <span class="chip" style="background:#c62828">no-promueve</span></h2>
 <table><thead><tr><th>cargo</th><th>veredicto</th><th>mundos</th><th>adversos</th><th>por qué</th></tr></thead>
 <tbody>
-<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">4/5</td><td class="num">1/2</td><td class="por">se sintetiza con carne/vara</td></tr>
-<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">4/5</td><td class="num">1/2</td><td class="por">anduvo en 1 mundo(s) donde su propio contrato dice que no puede</td></tr>
-<tr><td class="cargo">uso</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">4/5</td><td class="num">1/2</td><td class="por">DIJO QUE SÍ Y NO ES CIERTO: yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1</td></tr>
+<tr><td class="cargo">plano</td><td><span class="chip" style="background:#2e7d32">promueve</span></td><td class="num">13/18</td><td class="num">1/6</td><td class="por">se sintetiza con carne/vara</td></tr>
+<tr><td class="cargo">construccion</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">13/18</td><td class="num">1/6</td><td class="por">anduvo en 5 mundo(s) donde su propio contrato dice que no puede</td></tr>
+<tr><td class="cargo">uso</td><td><span class="chip" style="background:#c62828">no-promueve</span></td><td class="num">13/18</td><td class="num">1/6</td><td class="por">DIJO QUE SÍ Y NO ES CIERTO: yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1, yo:holding&gt;=1</td></tr>
 <tr><td class="cargo">utilidad</td><td><span class="chip" style="background:#ef6c00">inconcluso</span></td><td class="num">—</td><td class="num">—</td><td class="por">no hay contra qué: nadie le pide nada a una habilidad hasta que haya objetivos (Hito 8)</td></tr>
 </tbody></table>
 <p class="mal">Mundos donde falló — el id alcanza para rearmarlos, el banco es determinista:</p>
-<ul class="mundos"><li><code>mentirosa·justo-abajo·tuberculo/vara/20</code> — se esperaba que NO llegue</li></ul>
+<ul class="mundos"><li><code>mentirosa·justo-abajo·tuberculo/vara/20</code> — se esperaba que NO llegue</li><li><code>mentirosa·justo-abajo·tuberculo/malla/20</code> — se esperaba que NO llegue</li><li><code>mentirosa·justo-abajo·tuberculo/hebra/20</code> — se esperaba que NO llegue</li><li><code>mentirosa·justo-abajo·tuberculo/grano/20</code> — se esperaba que NO llegue</li><li><code>mentirosa·justo-abajo·tuberculo/filete/20</code> — se esperaba que NO llegue</li></ul>
 </section>
 <section id="palo-pelado">
 <h2>palo-pelado <span class="chip" style="background:#c62828">no-promueve</span></h2>

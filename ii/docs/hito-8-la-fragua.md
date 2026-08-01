@@ -1376,3 +1376,92 @@ había juzgado algo forjado**.
 
 `Sujeto.cell` es opcional, así que sin celda el comportamiento es exactamente el
 de antes: las quince innatas y los 92 tests del Hito 7 no se enteran.
+
+---
+
+## El banco del juez, agrandado
+
+Lo pidió el usuario para destrabar la segunda mitad del punto 9. **Dos cosas
+estaban mal, y la segunda era peor que la primera.**
+
+### Lo medido antes de tocar nada
+
+```
+mundos por contrato   5, igual con 1 precondición que con 3
+materia disponible    540 candidatos (30 sustancias × 6 formas × 3 masas) — se usaban 3
+costo                 0,77 ms por mundo
+el reservado          SIEMPRE `al-borde`, en sostener, frotar y comer
+```
+
+### El reservado era una clase escondida, no una muestra
+
+La reserva era `i % 4 === 1` sobre una lista **ordenada por clase**, así que con
+cinco mundos caía siempre en el índice 1. La fragua veía cuatro clases enteras y
+de la quinta, nada.
+
+Eso no es reservar un cuarto: es esconder una clase. Una habilidad que sólo falla
+al borde del umbral quedaba invisible en la devolución.
+
+### Lo que hay ahora
+
+| | antes | ahora |
+|---|---|---|
+| mundos | 5 | **18** |
+| adversos | 2 (40%) | **6 (33,3%)** |
+| mostrados | 4 | **14** |
+| reservados | 1, siempre `al-borde` | **4, uno por clase** |
+| costo | 3,8 ms | ~14 ms (ventana: 50) |
+
+`POR_CLASE = 4` sale de dos cosas: el tiempo —0,77 ms por mundo contra una
+ventana de tick de 50— y que **cuatro es lo mínimo para que la reserva de un
+cuarto rinda un representante por clase**.
+
+### El 1/3 adverso lo rompí, y el guardián lo agarró
+
+El primer intento dio **5 adversos de 17 = 29,4%**, contra el criterio del Hito 7
+que exige un tercio. No se tocó el test: se corrigió el banco, y el número dejó de
+elegirse — se **deriva** de la exigencia. Con `a` amables y `sin-nada` aportando
+uno, los `justo-abajo` tienen que ser al menos `a/2 − 1`.
+
+### Y el banco grande CAZA MÁS
+
+La habilidad sobreajustada del Hito 7 —la que sólo funciona donde la
+corrigieron— dejaba **una** regresión. Ahora deja cuatro:
+
+```
+regresiones por clase: holgado, holgado, al-borde, al-borde
+```
+
+Con un solo `holgado` en el banco, y siendo ése justamente el que ella tiene
+aprendido, **aprobaba en su casa**. Con cuatro, no.
+
+### Tres tests se endurecieron, ninguno se ablandó
+
+- «el reservado no es `holgado`» → **toda clase con más de un mundo aporta un
+  reservado, y el primero del banco no se reserva nunca**;
+- «`regresiones[0]` contiene al-borde» → **más de una regresión, la clase que caza
+  el sobreajuste está entre ellas, y toda regresión nombra un mundo del banco de
+  verdad**;
+- el 1/3 quedó igual, y es el que atajó mi error.
+
+### El punto 9, re-medido con el banco grande
+
+```
+VUELTA 1  agarrarLevantable      mostrados 9/14 · reservados 3/4
+          irBuscandoLevantable   mostrados 5/14 · reservados 1/4
+
+guardián: 18 ids de mundo en el banco · 0 aparecen en el encargo ✔
+
+VUELTA 2  agarrar                mostrados 5/14 · reservados 1/4
+
+¿mejoró en los mundos que NO le contaron?  no
+```
+
+**Ahora la pregunta se puede contestar, y la respuesta sigue siendo que no.** La
+diferencia con la corrida anterior es toda: `3/4` contra `1/4` entre dos
+candidatas de la misma vuelta es una señal, no una moneda. El banco discrimina.
+
+Lo que queda del punto 9 dejó de ser «no se puede medir» y pasó a ser **«la
+devolución no alcanza»**: lo único que se le dice al modelo es *«no llegó en 12
+mundos donde sí había»*, que no le dice qué arreglar. Eso sí es un problema de la
+fragua, y se puede trabajar.

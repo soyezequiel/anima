@@ -129,7 +129,13 @@ async function unaVuelta(prompt: string): Promise<{ juzgadas: readonly Juzgada[]
       puertazos: i.puertazos,
     })
     if (i.desenlace === 'rota') {
-      console.log(`    ${f.nombre.padEnd(28)} NO COMPILA`)
+      // Los errores VAN: un «no compila» sin el motivo no se puede diagnosticar,
+      // y el modelo contesta distinto cada vez — la corrida que falla puede no
+      // repetirse.
+      const porque = i.erroresQueQuedaron
+        .slice(0, 3)
+        .map((e) => `      ${String(e.codigo)} ${e.mensaje.slice(0, 74)}`)
+      console.log([`    ${f.nombre.padEnd(28)} NO COMPILA`, ...porque].join('\n'))
       continue
     }
     const skill = montar(i.codigo, f.nombre)

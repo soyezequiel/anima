@@ -107,6 +107,37 @@ export interface MundoDelBanco {
   readonly deberiaCumplir: boolean
 }
 
+/**
+ * CUÁNTOS MUNDOS POR CLASE, y por qué dejó de ser uno.
+ *
+ * ─── Las dos mediciones que lo obligaron ────────────────────────────────────
+ *
+ * **1. El banco daba 5 mundos y 1 reservado.** El Hito 8 quiso afirmar que una
+ * candidata re-forjada *«mejora en los mundos que no le contaron»* —lo que separa
+ * aprender de memorizar— y no se pudo: con UN solo mundo reservado, el resultado
+ * `1/1 → 0/1` es una moneda. No lo arregla correrlo más veces; diez corridas dan
+ * diez monedas.
+ *
+ * **2. Y el reservado era SIEMPRE `al-borde`.** Peor que el tamaño. La reserva
+ * era `i % 4 === 1` sobre una lista ordenada por clase, así que en los tres
+ * contratos medidos —sostener, frotar, comer— caía en el mismo índice y en la
+ * misma clase. La fragua veía todas las clases menos ésa. Un cuarto reservado que
+ * es siempre la misma clase no es una muestra: es una clase escondida.
+ *
+ * ─── Por qué CUATRO, y de dónde sale la materia ─────────────────────────────
+ *
+ * Materia sobra: el catálogo da **540 candidatos** por contrato (30 sustancias ×
+ * 6 formas × 3 masas) y el banco usaba 3. Lo que acota no es la materia, es el
+ * tiempo: **0,77 ms por mundo**, medido. Con 4 por clase el banco queda en ~17
+ * mundos y ~13 ms — adentro de la ventana de tick de 50 ms, que es el techo que
+ * el Hito 8 le puso a todo lo que corre del lado del mundo.
+ *
+ * Cuatro es además lo que hace que **la reserva de un cuarto rinda un mundo por
+ * clase**: con menos, alguna clase se queda sin representante reservado y vuelve
+ * el sesgo de arriba.
+ */
+export const POR_CLASE = 4
+
 const FORMAS: readonly string[] = ['vara', 'hebra', 'filete', 'malla', 'bloque', 'grano']
 const MASAS: readonly number[] = [0.05, 1, 20]
 
@@ -199,8 +230,13 @@ export function bancoDe(c: Contrato, phys: Physics): readonly MundoDelBanco[] {
   fallan.sort(porMargen)
 
   const out: MundoDelBanco[] = []
+  // Ninguna materia entra dos veces, aunque califique para dos clases: un mundo
+  // repetido infla la cuenta sin probar nada nuevo, y el criterio del Hito 7 mira
+  // `corrida.mundos`.
+  const yaEsta = new Set<string>()
   const meter = (clase: ClaseDeMundo, e: { b: Body; k: string } | undefined, ataca?: string): void => {
-    if (e === undefined) return
+    if (e === undefined || yaEsta.has(e.k)) return
+    yaEsta.add(e.k)
     out.push({
       id: `${c.nombre}·${clase}·${e.k}`,
       clase,
@@ -212,10 +248,12 @@ export function bancoDe(c: Contrato, phys: Physics): readonly MundoDelBanco[] {
     })
   }
 
-  // El holgado es el de MÁS margen y el al-borde el de menos, los dos cumpliendo.
+  // El holgado son los de MÁS margen y el al-borde los de MENOS, todos cumpliendo.
+  // Se toman de las dos puntas de la misma lista ordenada, y el `yaEsta` impide
+  // que se pisen cuando `cumplen` es corta.
   const holgado = cumplen[cumplen.length - 1]
-  meter('holgado', holgado)
-  if (cumplen.length > 1) meter('al-borde', cumplen[0])
+  for (let i = 0; i < POR_CLASE; i++) meter('holgado', cumplen[cumplen.length - 1 - i])
+  for (let i = 0; i < POR_CLASE; i++) meter('al-borde', cumplen[i])
 
   // MATERIALES ALTERNATIVOS — uno de los ocho mundos del caso de aceptación, y
   // el único de los ocho que entra en el sujeto actual (los otros hablan de un
@@ -229,18 +267,38 @@ export function bancoDe(c: Contrato, phys: Physics): readonly MundoDelBanco[] {
   // azar: la que más margen tiene es la que menos excusa deja.
   if (holgado !== undefined) {
     const sustanciaDelHolgado = holgado.k.split('/')[0]
-    for (let i = cumplen.length - 1; i >= 0; i--) {
+    // Una por SUSTANCIA distinta, no las N de más margen: si se tomaran por
+    // margen a secas saldrían cuatro formas de la misma sustancia, y este mundo
+    // existe justamente para cazar a la que se aprendió el material.
+    const vistas = new Set<string>([sustanciaDelHolgado ?? ''])
+    for (let i = cumplen.length - 1; i >= 0 && vistas.size <= POR_CLASE; i--) {
       const e = cumplen[i]
-      if (e !== undefined && e.k.split('/')[0] !== sustanciaDelHolgado) {
-        meter('alternativo', e)
-        break
-      }
+      const sus = e?.k.split('/')[0]
+      if (e === undefined || sus === undefined || vistas.has(sus)) continue
+      vistas.add(sus)
+      meter('alternativo', e)
     }
   }
 
-  // UN `justo-abajo` POR PRECONDICIÓN: materia que falle ÉSA y ninguna otra.
-  // Ver el porqué en el comentario de `MundoDelBanco.ataca`.
+  // ─── CUÁNTOS ADVERSOS, y el número sale del CRITERIO ─────────────────────
+  //
+  // El Hito 7 exige que el banco sea **1/3 adverso**, y eso no es una
+  // preferencia: un banco que no ataca no distingue una habilidad de una que
+  // devuelve `ok` siempre. Con `POR_CLASE = 4` el primer intento de agrandar el
+  // banco lo rompió —5 adversos de 17, o sea 29,4%— y el guardián lo agarró.
+  //
+  // Así que no se elige: se deriva. Si hay `a` amables y `sin-nada` aporta uno,
+  // los `justo-abajo` tienen que ser al menos `a/2 − 1` para que
+  // `adversos / total >= 1/3`.
+  const amables = out.length
+  const adversosQueFaltan = Math.max(1, Math.ceil(amables / 2) - 1)
+
+  // UN `justo-abajo` POR PRECONDICIÓN, y de a vueltas: materia que falle ÉSA y
+  // ninguna otra. Ver el porqué en el comentario de `MundoDelBanco.ataca`. Se
+  // reparte en ronda entre las precondiciones en vez de vaciar la primera, para
+  // que un contrato de tres no quede con tres adversarios de la misma.
   const yaPuesto = new Set<string>()
+  const porPrecondicion: { clave: string; lista: { b: Body; m: number; k: string }[] }[] = []
   for (const p of pide) {
     const clave = `${p.q}${p.op}${String(p.v)}`
     const soloEsta = fallan.filter((e) => {
@@ -255,11 +313,26 @@ export function bancoDe(c: Contrato, phys: Physics): readonly MundoDelBanco[] {
       }
       return rompeEsta
     })
-    const elegido = soloEsta[soloEsta.length - 1]
-    if (elegido !== undefined && !yaPuesto.has(elegido.k)) {
+    porPrecondicion.push({ clave, lista: soloEsta })
+  }
+
+  // La ronda. Los que MENOS les falta primero: el que roza el umbral es el que
+  // más aprieta, pero uno solo deja pasar a la que memorizó justo esa materia.
+  let puestos = 0
+  for (let vuelta = 0; puestos < adversosQueFaltan; vuelta++) {
+    let algunoEntro = false
+    for (const { clave, lista } of porPrecondicion) {
+      if (puestos >= adversosQueFaltan) break
+      const elegido = lista[lista.length - 1 - vuelta]
+      if (elegido === undefined || yaPuesto.has(elegido.k)) continue
       yaPuesto.add(elegido.k)
       meter('justo-abajo', elegido, clave)
+      puestos++
+      algunoEntro = true
     }
+    // Se acabó la materia que ataca de a una. Mejor un banco más chico que un
+    // bucle infinito, y el guardián del 1/3 se va a quejar si no alcanzó.
+    if (!algunoEntro) break
   }
 
   // Y si NINGUNA precondición se puede violar aislada, se cae al adversario
@@ -281,15 +354,39 @@ export function bancoDe(c: Contrato, phys: Physics): readonly MundoDelBanco[] {
 }
 
 /**
- * EL CUARTO RESERVADO, elegido por posición y no por sorteo.
+ * EL CUARTO RESERVADO, uno de cada cuatro DENTRO DE CADA CLASE.
  *
- * Sin azar porque el banco tiene que ser reproducible (regla 2), y **uno de cada
- * cuatro empezando por el segundo** porque empezar por el primero reservaría
- * siempre el `holgado`, que es el menos informativo: guardar el mundo fácil no
- * defiende de nada.
+ * ─── La versión anterior escondía una clase entera, y está medido ───────────
+ *
+ * Era `i % 4 === 1` sobre la lista completa. La lista sale ordenada por clase
+ * —holgado, al-borde, alternativo, justo-abajo, sin-nada— así que con cinco
+ * mundos el índice 1 es **siempre `al-borde`**. Medido sobre los tres contratos
+ * que tienen banco de materia: sostener, frotar y comer, los tres reservaban
+ * `al-borde` y nada más.
+ *
+ * O sea que la fragua veía cuatro de las cinco clases **completas** y de la
+ * quinta no veía nada. Eso no es una muestra: es una clase escondida, y una
+ * habilidad que sólo falla al borde del umbral queda invisible en la devolución.
+ *
+ * ─── Lo que hay ahora ───────────────────────────────────────────────────────
+ *
+ * Se cuenta el índice **adentro de cada clase**, así que el reservado es una
+ * muestra de TODAS: con `POR_CLASE = 4` sale uno por clase.
+ *
+ * Sigue sin azar —el banco tiene que ser reproducible, regla 2— y sigue
+ * empezando por el segundo de cada clase por el motivo de siempre: el primero de
+ * `holgado` es el mundo más fácil que hay, y guardarlo no defiende de nada.
+ *
+ * Una clase con un solo mundo —`sin-nada`— no aporta reservado, y es correcto:
+ * no hay dos, así que reservarlo sería esconder el único.
  */
 function reservarUnCuarto(ms: readonly MundoDelBanco[]): readonly MundoDelBanco[] {
-  return ms.map((m, i) => ({ ...m, reservado: i % 4 === 1 }))
+  const vistosPorClase = new Map<ClaseDeMundo, number>()
+  return ms.map((m) => {
+    const i = vistosPorClase.get(m.clase) ?? 0
+    vistosPorClase.set(m.clase, i + 1)
+    return { ...m, reservado: i % 4 === 1 }
+  })
 }
 
 /** Lo que el juez le puede mostrar a la fragua. El resto es el cuarto reservado. */
