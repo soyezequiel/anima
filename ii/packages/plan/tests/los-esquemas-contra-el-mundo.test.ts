@@ -2072,7 +2072,7 @@ describe('las condiciones del `source` de `extraccion`, medidas contra el banco 
     // del otro: descarta ADEMÁS todo cuerpo de menos de 8 kg, y los bancos que el
     // dios decreta casi siempre pesan menos. Once de las veinte partidas del banco
     // de la emergencia se quedaban sin un solo banco elegible, y en esas once la
-    // criatura no tiraba la caña una sola vez (`juez/tests/ataque-al-tramo-i.test.ts`,
+    // criatura no tiraba la caña una sola vez (`emergencia/tests/ataque-al-tramo-i.test.ts`,
     // bloque 3). Los dos `it` de arriba de este mismo `describe` siguen midiendo lo
     // que de esa condición ERA cierto —el escalón separa el banco de su pieza, y el
     // mundo rechaza el `take` con `no-portable`—, así que lo único que hace falta

@@ -104,7 +104,7 @@ export const PESCADO_EN_LA_MANO = 109;
  * `abrirChunk`), así que la siembra a mano dejó de ser un rodeo y pasó a ser una
  * MENTIRA: la escena tendría la materia dos veces —la del arnés en la celda que
  * eligió el arnés, y la del dios corrida a la de al lado por la ley 8—. El juez
- * ya hizo esta misma corrección en `juez/tests/el-mundo-decretado.ts`.
+ * ya hizo esta misma corrección en `emergencia/tests/el-mundo-decretado.ts`.
  *
  * ─── LO QUE QUEDA PLANTADO, Y SU PORQUÉ ────────────────────────────────────
  *

@@ -104,7 +104,7 @@ function rigidezQuePideFrotar(): number {
  * Lo que cuesta llevar un cuerpo desde el ambiente hasta su ignición.
  *
  * Es la misma cuenta de `la-escalera-de-la-yesca.test.ts`, y da 1384,2 por kilo de
- * madera. `juez/tests/ataque-al-detector.test.ts` mide 1398,857 por kilo CORRIENDO
+ * madera. `emergencia/tests/ataque-al-detector.test.ts` mide 1398,857 por kilo CORRIENDO
  * el mundo con una criatura frotando: la diferencia son los 14,7 de vivir los 2,4 s
  * que tarda el frotar. Los dos números están bien y miden cosas distintas; acá se
  * usa el térmico porque lo que se compara es el precio de la MATERIA.

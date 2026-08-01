@@ -435,7 +435,7 @@ const SEGUNDOS_DE_PARTIDA = TICKS / HZ
 /**
  * EL TANQUE DE ARRANQUE DEL CRITERIO, copiado con su ruta y con guardián.
  *
- * Es una `const` de `juez/tests/hito-5-la-emergencia.test.ts`, o sea de un test de
+ * Es una `const` de `emergencia/tests/hito-5-la-emergencia.test.ts`, o sea de un test de
  * otro paquete: ningún import lo trae. Entra acá porque es el borde de ABAJO de la
  * ventana del costo de vivir —abajo de `TANQUE / SEGUNDOS_DE_PARTIDA` la criatura
  * llega a los 20.000 ticks sin comer— y sin él la ventana parece arrancar en cero.
@@ -2867,7 +2867,7 @@ describe('6. la economía con la leña cobrada: ¿era el mismo problema?', () =>
     // `azar.ts`). Este guardián se puso rojo con el archivo viejo —«expected null
     // not to be null»— que es exactamente lo que tiene que hacer un grep sobre un
     // fuente que se movió: fallar ruidoso, no leer un número de otro lado.
-    const arnes = fileURLToPath(new URL('../../juez/tests/el-banco-de-la-mente.ts', import.meta.url))
+    const arnes = fileURLToPath(new URL('../../emergencia/tests/el-banco-de-la-mente.ts', import.meta.url))
     const fuente = readFileSync(arnes, 'utf8')
     const m = /const TANQUE = ([0-9.]+)/.exec(fuente)
     expect(m).not.toBeNull()

@@ -9,7 +9,7 @@
 //
 // El original es `mind/tests/mundo.ts`, que a su vez ya era la tercera copia
 // (`world/tests/mundo-minimo.ts` -> `perceive/tests/mundo.ts` ->
-// `plan/tests/los-esquemas-contra-el-mundo.ts`). Si alguna divergiera, la que
+// `plan/tests/los-esquemas-contra-el-mundo.test.ts`). Si alguna divergiera, la que
 // manda es la de `@anima/world`.
 
 import type { Body, FormId, Physics, QualityVector } from '@anima/physics'

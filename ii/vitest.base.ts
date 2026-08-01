@@ -31,8 +31,8 @@
 //
 // El paralelismo por archivo, el pool de forks y el aislamiento de módulos
 // quedan en sus valores por omisión: son justamente lo que hace que repartir un
-// banco en cinco archivos sirva para algo (ver `juez/tests/azar.ts` y
-// `juez/tests/el-banco-de-la-mente.ts`).
+// banco en cinco archivos sirva para algo (ver `emergencia/tests/azar.ts` y
+// `emergencia/tests/el-banco-de-la-mente.ts`).
 
 import { defineConfig } from 'vitest/config'
 

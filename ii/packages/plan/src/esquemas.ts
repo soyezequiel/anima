@@ -1399,7 +1399,7 @@ export const ESQUEMAS: readonly ConstructionSchema[] = [
   // casi siempre pesan menos que eso. El precio publicado —«le regala al río las
   // últimas 2 piezas de 45, un 4,4%»— salía de UNA semilla, la del banco de 129,9150
   // kg del test de esquemas. Sobre las VEINTE que juega el banco de la emergencia
-  // (`juez/tests/ataque-al-tramo-i.test.ts`, bloque 3):
+  // (`emergencia/tests/ataque-al-tramo-i.test.ts`, bloque 3):
   //
   //     partidas sin UN SOLO banco elegible          11 de 20
   //     de esas once, partidas con alguna tirada      0 de 11

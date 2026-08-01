@@ -500,7 +500,7 @@ describe('el que no logra su contrato, y el que pasó a lograrlo', () => {
     // banco: la vara de 3 kg que la habilidad emblema usaba.
     //
     // QUÉ HARÍA FALTA: o que un tanque de `stamina` pueda pasar de 1000
-    // (`physics/src/data/cualidades.ts`, el rango de `stamina`), o que el fuego se
+    // (`physics/src/quality.ts`, el rango de `stamina`), o que el fuego se
     // pueda hacer por partes —encender una yesca liviana y pasarle el fuego al
     // leño, que es lo que la cadena de `world/tests/el-fuego.test.ts` hace y que
     // sólo cierra el día que el fuego sobreviva a la mano que lo hizo—. Lo segundo

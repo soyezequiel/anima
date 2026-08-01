@@ -3,7 +3,7 @@
 // procesos, el dios— sin escribir cuarenta líneas de armado en cada uno.
 //
 // Es la TERCERA copia del mismo armado —`world/tests/mundo-minimo.ts` →
-// `perceive/tests/mundo.ts` → `plan/tests/los-esquemas-contra-el-mundo.ts` → ésta—
+// `perceive/tests/mundo.ts` → `plan/tests/los-esquemas-contra-el-mundo.test.ts` → ésta—
 // y la copia es deliberada por la razón que el segundo escribió: los `tests/` de
 // un paquete no se exportan, así que compartirlo exigiría mover el arnés adentro
 // de `src/`, o sea meterle al paquete un módulo que sólo existe para los tests.

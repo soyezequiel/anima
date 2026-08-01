@@ -240,7 +240,7 @@ export interface EsquemaComun {
    * casi todo lo demás: descarta CUALQUIER cuerpo de menos de 8 kg, y los bancos
    * que el dios decreta son casi siempre más chicos que eso. Medido sobre las
    * veinte semillas que juega el banco de la emergencia
-   * (`juez/tests/ataque-al-tramo-i.test.ts`, bloque 3):
+   * (`emergencia/tests/ataque-al-tramo-i.test.ts`, bloque 3):
    *
    *     partidas SIN UN SOLO banco elegible          11 de 20
    *     de esas once, partidas con alguna tirada      0 de 11

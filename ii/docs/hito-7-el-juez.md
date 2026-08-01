@@ -265,7 +265,140 @@ se movió la toxicidad del agua. Es el precio elegido a ojos abiertos: la
 dependencia por número es la salida cara y espera al día que un sello
 sobreviviente valga lo que cuesta.
 
-### Tramo C — `@anima/judge` nace: el vocabulario del veredicto
+### Tramo C — `@anima/judge` nace · CERRADO (punto 3, y la mitad del 6)
 
-*(lo que sigue)*
+El paquete **once**. Depende de `physics`, `skills` y `world`; nadie depende de él.
+10 tests, typecheck limpio.
+
+#### M7 · `Verdict` ya estaba tomado TRES veces
+
+`physics/src/admit.ts:280` (¿esta física es legal?), `skills/src/tipos.ts:367`
+(¿esta intención salió?) y su copia en `skill-api.d.ts`. Un cuarto que quisiera
+decir «¿esta habilidad es estable?» sería la clase de nombre que hace que alguien
+importe el equivocado y **el tipo cierre igual**. Va en castellano, como todo
+`@anima/lang`: **`Veredicto`**.
+
+#### Los cuatro grados, y los dos que se confunden
+
+`promueve` y `no-promueve` no necesitan defensa. Los otros dos parecen el mismo
+«no sé» y son **responsabilidades distintas**:
+
+| grado | qué pasó | culpa de |
+|---|---|---|
+| `injuzgable` | no se pudo ARMAR un mundo donde probarla | el **contrato** |
+| `inconcluso` | se armaron, se corrieron, y el resultado no decide | el **banco** |
+
+Manda sobre qué hacer después, que es para lo único que sirve un veredicto: un
+`injuzgable` se arregla tocando el contrato y un `inconcluso` corriendo más
+mundos. Y de ahí sale el punto 3: **un `injuzgable` no siembra regresiones**
+porque nunca corrió nada.
+
+#### M8 · ¿«insintetizable» es una categoría real? SÍ, y el motivo son los techos
+
+Primero se volcaron los 17 contratos. **Las 17 son sintetizables**, o sea que las
+innatas **no sirven de ejemplo** de `injuzgable` — el sujeto del punto 3 hay que
+fabricarlo. Pero no se inventa: se apoya en un techo **medido** del catálogo.
+
+| cualidad intensiva | techo real |
+|---|---|
+| `decay` | 0,14 |
+| `toxicity` | 0,55 |
+| `sharpness` | 0,85 |
+| `rigidity` · `toughness` · `footing` | 0,98 |
+
+Un contrato que pida `toxicity >= 0.6` **no se puede juzgar**: no existe materia
+tan venenosa. Son **15 cualidades intensivas** con techo por debajo de su rango
+declarado.
+
+> **Y la tabla excluye a propósito `temperature` y `oxygen`**, que en la sonda dan
+> 0,000. No son techos del mundo: son del arnés — el cuerpo nace frío y `oxygen`
+> es de la celda. Publicarlas habría vendido un límite de la medición como si
+> fuera del catálogo. El filtro es mecánico: entra lo que alguna sustancia declara
+> en su `perUnitMass`, más lo derivado de eso.
+
+#### DOS ERRORES MÍOS QUE LA MEDICIÓN VOLTEÓ, y los dos valen más que el resultado
+
+**1 · Di por sentado que `catch>0` sería insintetizable.** El razonamiento venía
+de una frase real de `process.ts` —«sin punta libre no hay `catch`»— leída como
+si hablara de todos los casos. Habla de la caña armada. `freeStrandEnds` le da
+**dos puntas libres a toda parte flexible sin juntas**: una hebra suelta ya
+engancha, y `catch>0` sale eligiendo `savia`.
+
+**2 · La primera medición probó cada precondición POR SEPARADO** y publicó «8 de
+8 se eligen». Está mal: `unir` pide `flexibility>=0.8` **y** `tensile>=0.3` sobre
+**el mismo cuerpo**, y dos conjuntos no vacíos pueden no cruzarse. El sintetizador
+hace la conjunción, y el resultado es el que justifica la corrección:
+
+```
+flexibility>=0.8 sola     savia
+tensile>=0.3 sola         raiz-dura
+LAS DOS JUNTAS            liana      ← una tercera que ninguna búsqueda individual devolvía
+```
+
+Si `liana` no existiera, `unir` sería injuzgable **y la primera medición habría
+dicho que todo bien**.
+
+#### Y dos cosas que se respetaron en vez de romper
+
+- **`src/innatas/` no se re-exporta desde `@anima/skills`** y es deliberado: «la
+  frontera entre la caja y lo que corre adentro de la caja» tiene que verse en
+  los imports. Había una puerta lateral —`@anima/skills/innatas`— dejada abierta
+  «para el día que alguien las necesite». Se entró por ahí.
+- **El guardián de la regla 2 recorre subdirectorios.** El de `@anima/lang` no lo
+  hacía y un `src/sub/` entero quedaba sin mirar. Y trae su control positivo, que
+  es la lección del tramo B: un detector verde por no haber nada que encontrar no
+  prueba que sepa encontrar.
+
+#### Y UN GUARDIÁN QUE NO ESTABA PLANEADO, porque rompí el árbol en el tramo A
+
+La suite entera encontró que **`@anima/oracle` estaba roja desde el renombre**, y
+la causa es que **mi medición del tramo A estaba incompleta**. Dijo «18
+menciones, ninguna un `import`» y con eso se declaró contenido. Pero
+`presupuesto.test.ts` no importaba el paquete viejo: **le leía un archivo por
+ruta relativa**.
+
+```ts
+const arnes = fileURLToPath(new URL('../../juez/tests/el-banco-de-la-mente.ts', …))
+```
+
+Ni `@anima/juez` ni `packages/juez/` aparecen ahí, así que las dos búsquedas
+dieron limpio y el árbol quedó roto **dos commits**. Y había **nueve más en
+comentarios**: no rompían nada, pero mandaban al que las leyera a un directorio
+que ya no existe.
+
+De ahí salió `judge/tests/las-rutas-cruzadas-existen.test.ts`: toda mención de
+`<paquete>/src/…` o `<paquete>/tests/…` en cualquier fuente de `ii/packages/`,
+**venga de código o de prosa**, tiene que apuntar a un archivo que exista.
+
+**La prosa entra a propósito, y es lo que lo hace valer:** un comentario que dice
+«esto está medido en tal archivo» es una afirmación verificable, y una que apunta
+a la nada es peor que ninguna — manda a buscar una evidencia que no está donde
+dice.
+
+**En su primera corrida encontró tres rotas más, ajenas a este hito:**
+
+| dónde | apuntaba a | era |
+|---|---|---|
+| `lang/tests/mundo.ts` | `plan/tests/los-esquemas-contra-el-mundo.ts` | le faltaba `.test` |
+| `mind/tests/mundo.ts` | ídem | ídem |
+| `perceive/tests/las-quince.test.ts` | `physics/src/data/cualidades.ts` | es `physics/src/quality.ts` |
+
+Barre **368 fuentes y 500 rutas**.
+
+#### El estado del árbol al cerrar el tramo
+
+**2804 tests verdes** en diez paquetes (+1 `skipped`, +1 `todo`),
+`pnpm ii:test` **exit 0**, `pnpm ii:typecheck` limpio.
+
+> **Y una corrida intermedia dio un rojo en `@anima/world` que NO se reprodujo.**
+> Corriendo el paquete solo: 631 verdes, cero fallas; y la suite entera dio exit 0
+> dos veces seguidas después. Es un flake, y el repo ya tiene documentada esa
+> clase —aserciones de reloj de pared bajo contención, en la sección 2·bis de
+> `como-se-trabaja.md`—. **Queda anotado sin identificar**, que es lo honesto: no
+> se pudo decir cuál era porque no volvió a aparecer.
+
+### Tramo D — el banco de mundos (puntos 1, 2 y 6)
+
+*(lo que sigue)* — de M5: hoy hay tres copias del constructor de mundos en
+arneses de test y ninguna en `src`.
 

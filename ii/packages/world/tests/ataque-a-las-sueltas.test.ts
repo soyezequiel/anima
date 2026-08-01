@@ -544,7 +544,7 @@ describe('(3) la celda ocupada: cuántas violaciones aparecen de verdad', () => 
     //
     // MEDIDO, semillas `20260728n + n` para n en 0..19, 120 ticks de caminata cada
     // una (el arnés del juez usa otra lista y llega al mismo 2 de 20 desde otro
-    // lado, con su `it.fails` en `juez/tests/hito-5-la-emergencia.test.ts`):
+    // lado, con su `it.fails` en `emergencia/tests/hito-5-la-emergencia.test.ts`):
     //
     //     2 / 20 semillas con violación
     //     20260740 · pozo:6:0 y suelta:6:0:3 en (98,0)
