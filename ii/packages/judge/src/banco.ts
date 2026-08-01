@@ -69,7 +69,7 @@ import type { Body, Physics, QualityId } from '@anima/physics'
 import type { Contrato, Predicado } from '@anima/skills/innatas'
 import { cumpleElPredicado } from './sintetizar.js'
 
-export type ClaseDeMundo = 'holgado' | 'al-borde' | 'justo-abajo' | 'sin-nada'
+export type ClaseDeMundo = 'holgado' | 'al-borde' | 'alternativo' | 'justo-abajo' | 'sin-nada'
 
 /** Las dos que atacan. Ver la tabla del encabezado. */
 export const ADVERSAS: readonly ClaseDeMundo[] = ['justo-abajo', 'sin-nada']
@@ -213,8 +213,30 @@ export function bancoDe(c: Contrato, phys: Physics): readonly MundoDelBanco[] {
   }
 
   // El holgado es el de MÁS margen y el al-borde el de menos, los dos cumpliendo.
-  meter('holgado', cumplen[cumplen.length - 1])
+  const holgado = cumplen[cumplen.length - 1]
+  meter('holgado', holgado)
   if (cumplen.length > 1) meter('al-borde', cumplen[0])
+
+  // MATERIALES ALTERNATIVOS — uno de los ocho mundos del caso de aceptación, y
+  // el único de los ocho que entra en el sujeto actual (los otros hablan de un
+  // dispositivo sobre un pozo; ver `los-ocho-mundos-adversos.test.ts`).
+  //
+  // Otra SUSTANCIA que cumple lo mismo. No es adverso —la habilidad tiene que
+  // andar— pero es el mundo que discrimina: una habilidad que se aprendió el
+  // material en vez de la propiedad se cae acá y en ningún otro lado.
+  //
+  // Se elige la de más margen entre las que no son la del holgado, y no una al
+  // azar: la que más margen tiene es la que menos excusa deja.
+  if (holgado !== undefined) {
+    const sustanciaDelHolgado = holgado.k.split('/')[0]
+    for (let i = cumplen.length - 1; i >= 0; i--) {
+      const e = cumplen[i]
+      if (e !== undefined && e.k.split('/')[0] !== sustanciaDelHolgado) {
+        meter('alternativo', e)
+        break
+      }
+    }
+  }
 
   // UN `justo-abajo` POR PRECONDICIÓN: materia que falle ÉSA y ninguna otra.
   // Ver el porqué en el comentario de `MundoDelBanco.ataca`.

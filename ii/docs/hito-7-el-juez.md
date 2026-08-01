@@ -632,6 +632,64 @@ tramo.
 > lo dice en vez de disimularlo. Los dos mentirosos se caen igual, que es lo que
 > el criterio pide.
 
+### Tramo G — los ocho mundos adversos, medidos · 3 de 8
+
+`los-ocho-mundos-adversos.test.ts`. El paquete pasa de 47 a **55 tests**.
+
+**Este tramo es una MEDICIÓN antes que ocho mundos**, y el porqué es que al
+medirlos aparecieron tres cosas que la lista no dejaba ver:
+
+```
+✓ mundos reservados                el cuarto reservado del banco, tramo D
+✓ ausencia de nombres especiales   world/tests/sin-nombres-especiales.test.ts
+✓ materiales alternativos          la clase `alternativo`, nueva en este tramo
+⊘ dispositivo roto                 el mundo no sabe qué es «roto»
+· stock vacío                      habla de un dispositivo sobre un pozo
+· ubicación incorrecta             habla de dónde se desplegó
+· dos dispositivos compitiendo     dos `Desplegado` sobre el mismo pozo
+· restauración a mitad del ciclo   guardar y cargar con la obra a medio ciclo
+```
+
+**1 · Dos ya estaban, y no en este paquete.** Contarlos como pendientes es la
+otra cara del verde por omisión. Y no se afirman: se **verifican** — el guardián
+de nombres especiales se lee del disco, porque uno que se borró deja el renglón
+en verde si sólo se mira el nombre.
+
+**2 · Uno no se puede escribir.** El mundo no tiene estado «roto», ni cualidad de
+integridad, ni nada que `stepWorld` mire. **No es un mundo que falta, es una
+capacidad.** Hay un test que barre el catálogo buscando `integr|roto|broken|
+damag|wear|desgast` y afirma **cero** — el día que alguien agregue una, ese rojo
+es el disparador para escribir el mundo.
+
+**3 · Los cuatro que quedan piden otro SUJETO, no otro mundo.** Hablan de un
+dispositivo desplegado sobre un pozo, y el sujeto del juez hoy es una habilidad
+con un objetivo delante. La razón está medida, no opinada: `escena.ts` arma dos
+cuerpos, `cells: new Map()` y **sin dios**, y hay un test que lo lee del archivo.
+Meterlos sin cambiar el sujeto daría cuatro mundos que no juzgan a nadie.
+
+> `usar` es el puente al caso de aceptación —precondición `catch>0`, establece
+> que la obra quede puesta— y su banco hoy son 5 mundos de materia suelta, sin un
+> pozo a la vista.
+
+#### Lo que sí entró: materiales alternativos
+
+Es el único de los ocho que cabe en el sujeto actual. **Otra sustancia que cumple
+lo mismo**, y no es adversa: la habilidad tiene que andar. Es el mundo que
+discrimina a la que se aprendió el material en vez de la propiedad.
+
+| contrato | holgado | alternativo |
+|---|---|---|
+| `juntar` · `sostener` | tuberculo | tendon |
+| `comer` | grasa | medula |
+| `unir` | liana | piel |
+| `deshilachar` | tendon | cuero |
+| `frotar` | pedernal | piedra |
+| `usar` | tendon | savia |
+
+Con su aserción de que la sustancia es **de verdad otra** en los 7 — sin eso la
+clase sería el mismo mundo con otro nombre. El adverso baja de 50% a 40% y sigue
+holgadamente arriba del 1/3.
+
 ---
 
 ## 4 · ESTADO: el criterio CIERRA, la descripción NO
@@ -657,11 +715,8 @@ Es el mismo patrón que el Hito 6, y por eso se busca a propósito.
 1. **«mundos estadificados».** El banco tiene cuatro CLASES derivadas del
    contrato, que es otro eje. Un mundo estadificado es uno agarrado a mitad de un
    proceso —media obra armada, algo a medio arder—, y de eso no hay ninguno.
-2. **Los ocho mundos adversos del caso de aceptación**: stock vacío · ubicación
-   incorrecta · materiales alternativos · dispositivo roto · dos dispositivos
-   compitiendo · restauración a mitad del ciclo · mundos reservados · ausencia de
-   nombres especiales. **Hay cero de los ocho.** Los cuatro que hay atacan las
-   precondiciones, que es un eje distinto y no los reemplaza.
+2. **Los ocho mundos adversos del caso de aceptación** — ver el tramo G, que los
+   midió: van **3 de 8**, y los cinco que faltan no son cinco archivos de mundo.
 3. **«regresiones con snapshot real».** Se guarda el **id del mundo**, no un
    snapshot. Como el banco es determinista el id lo rearma exacto —discutiblemente
    mejor que un snapshot, que se puede quedar viejo— pero **no es lo que dice la

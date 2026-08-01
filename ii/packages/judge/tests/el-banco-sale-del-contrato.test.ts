@@ -65,6 +65,33 @@ describe('el banco de las 17', () => {
     expect(mirados).toBeGreaterThan(0)
   })
 
+  it('MATERIALES ALTERNATIVOS: la otra materia es de verdad OTRA', () => {
+    // Uno de los ocho mundos del caso de aceptación. Sin esta aserción la clase
+    // es decorativa: si `alternativo` cayera en la misma sustancia que
+    // `holgado`, sería el mismo mundo con otro nombre y no discriminaría nada.
+    console.log(`\n  ${'contrato'.padEnd(16)} holgado          alternativo`)
+    let conAlternativo = 0
+    for (const c of INNATAS) {
+      if (pideMateria(c).length === 0) continue
+      const b = bancoDe(c, phys)
+      const h = b.find((m) => m.clase === 'holgado')
+      const a = b.find((m) => m.clase === 'alternativo')
+      const sh = h?.id.split('·')[2]?.split('/')[0]
+      const sa = a?.id.split('·')[2]?.split('/')[0]
+      console.log(`  ${c.nombre.padEnd(16)} ${(sh ?? '—').padEnd(16)} ${sa ?? '— (no hay otra)'}`)
+      if (a !== undefined) {
+        conAlternativo++
+        expect(sa, `${c.nombre}: el alternativo repite la sustancia del holgado`).not.toBe(sh)
+        // Y tiene que CUMPLIR: no es un adversario, es el que discrimina a la
+        // habilidad que se aprendió el material en vez de la propiedad.
+        expect(a.deberiaCumplir).toBe(true)
+        expect(a.adverso).toBe(false)
+      }
+    }
+    console.log(`\n  contratos con material alternativo: ${String(conAlternativo)}`)
+    expect(conAlternativo).toBeGreaterThan(0)
+  })
+
   it('CUÁNTAS precondiciones consiguen un adversario que las viole A ELLAS SOLAS', () => {
     // El primer banco que este archivo produjo tenía un `justo-abajo` para
     // `frotar` que fallaba las DOS precondiciones a la vez, y eso prueba menos
