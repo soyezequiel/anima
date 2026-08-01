@@ -275,6 +275,19 @@ export function sinLimite(): Presupuesto {
  * episodio de la fragua —de eso se trata el hito— así que esto es un punto de
  * partida generoso, no una medición. La primera corrida de verdad lo va a mover,
  * igual que la línea base de cobertura del chat (ADR II-0024, § 2).
+ *
+ * ─── YA SE MIDIÓ, y el 40 se queda igual ────────────────────────────────────
+ *
+ * Un episodio de la fragua sale **1 consulta y 32 milésimas** (etapa 2 del Hito
+ * 8, `forge/tests/la-costura.test.ts`, contado por un espía que envuelve al
+ * modelo). Con eso, `<= 40` es un margen de 40× que no se puede poner rojo — o
+ * sea que **este techo no es el guardián del punto 4**.
+ *
+ * El guardián del punto 4 afirma el número exacto y vive al lado de la medición.
+ * Éste se queda como lo que de verdad es: la cota de una SESIÓN entera de CI, que
+ * son muchos episodios y todavía no se midió cuántos. Bajarlo a 1 rompería el
+ * primer test que corra dos episodios, y no protegería nada que el otro no
+ * proteja mejor.
  */
 export const TECHO_DE_CI: Readonly<Record<Carril, Cuota>> = {
   fragua: { consultas: 40, milesimas: 4000 },

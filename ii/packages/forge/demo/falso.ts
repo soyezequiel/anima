@@ -45,6 +45,7 @@
 
 import type { Contrato } from '@anima/skills/innatas'
 import type { Candidata, HabilidadCandidata } from '../src/candidata.js'
+import type { Encargo } from '../src/encargo.js'
 
 /**
  * LO QUE `esperarQuieta` DICE QUE HACE, y no hace.
@@ -126,6 +127,24 @@ const CON_CONCEPTO_INVENTADO: HabilidadCandidata = {
 }
 
 /**
+ * La segunda irreparable, para el control del episodio que nunca acierta.
+ *
+ * `threat` está en la misma lista de 34 conceptos que el mundo no tiene. Es otra
+ * y no la misma repetida para que las dos candidatas del viaje sean distintas —
+ * un viaje que devuelve dos veces lo mismo mediría el parser, no la fragua.
+ */
+const CON_OTRO_CONCEPTO: HabilidadCandidata = {
+  nombre: 'huirDeLaAmenaza',
+  fuente: `${CABECERA}export function* huirDeLaAmenaza(ctx: Ctx): Generator<Intent, Outcome, StepResult> {
+  ctx.phase('huir-de-la-amenaza')
+  const t = ctx.self.threat
+  if (t > 0.5) return done()
+  return done()
+}
+`,
+}
+
+/**
  * LA QUE TOCA EL MUNDO — y es la que hace instalable a todo lo demás.
  *
  * ─── Por qué hizo falta una cuarta ──────────────────────────────────────────
@@ -198,4 +217,77 @@ export function laQueInventa(gap: string, vuelta = 1): Candidata {
   return { gap, vuelta, usar: CON_CONCEPTO_INVENTADO }
 }
 
-export { AGARRAR_LO_QUE_VEO, CON_CONCEPTO_INVENTADO, CON_TYPO, LIMPIA, PROMETE_Y_NO_CUMPLE }
+/**
+ * EL MUÑECO CONTESTANDO COMO CONTESTA UN MODELO — Hito 8, etapa 2.
+ *
+ * ─── Por qué hizo falta, y lo dijo un adversario ────────────────────────────
+ *
+ * Hasta acá el muñeco era `dosCandidatas(gap)`: una función pura que devolvía
+ * los mismos dos literales **mirara lo que mirara**. Eso deja dos agujeros, y los
+ * dos son del criterio:
+ *
+ *   · no hay ningún punto donde se gaste una consulta, así que los puntos 4 y 8
+ *     cuentan ceros estructurales;
+ *   · **el `Encargo` de la vuelta 2 se tiraba a la basura**. El punto 9 armaba el
+ *     mensaje con lo que falló y después nadie lo leía, así que «la siguiente
+ *     mejora» no se podía afirmar.
+ *
+ * Esto contesta TEXTO, con bloques cercados, que es lo que un modelo produce. Lo
+ * parsea `leerCandidatas` en `src/costura.ts`, y ahí sí hay una costura que se
+ * puede contar.
+ *
+ * ─── Y MIRA EL ENCARGO, que es la mitad que faltaba del punto 9 ─────────────
+ *
+ * En la vuelta 1 devuelve las dos de siempre. En la vuelta 2, **si el encargo
+ * dice que el intento anterior pidió algo que el mundo no tiene**, cambia de
+ * estrategia y devuelve la que sí toca el mundo.
+ *
+ * No es inteligencia: es un `if` sobre `conceptosQueNoExisten`. Y es exactamente
+ * lo que hay que poder afirmar — que la respuesta DEPENDE del encargo — porque
+ * un muñeco que contesta igual siempre no prueba que el mensaje llegue.
+ */
+function cercado(fuente: string): string {
+  return ['```ts', fuente.trimEnd(), '```', ''].join('\n')
+}
+
+export function responderComoModelo(e: Encargo): string {
+  const aprendio = e.loQueFallo.conceptosQueNoExisten.length > 0
+
+  // El texto de alrededor está a propósito: los CLI del Hito 6 escriben
+  // encabezado y razonamiento antes del bloque, y `leerCandidatas` tiene que
+  // sobrevivir a eso. Un muñeco que devolviera sólo el bloque limpio probaría
+  // un parser que no es el que va a correr.
+  const cabeza = aprendio
+    ? `Entendido: ${e.loQueFallo.conceptosQueNoExisten.join(', ')} no existe en este mundo.\nVoy con lecturas que sí están.\n`
+    : `Ahí van dos ideas para: ${e.gap}\n`
+
+  const cuerpo = aprendio
+    ? [cercado(AGARRAR_LO_QUE_VEO), cercado(LIMPIA.fuente)]
+    : [cercado(LIMPIA.fuente), cercado(CON_TYPO.fuente)]
+
+  return `${cabeza}\n${cuerpo.join('\n')}\nEso es todo.\n`
+}
+
+/**
+ * EL QUE NUNCA ACIERTA Y NUNCA APRENDE. Es el control de dos cosas a la vez.
+ *
+ * De que la vuelta 2 de `responderComoModelo` cambia **por el encargo** —éste
+ * recibe el mismo encargo y no cambia— y de que el episodio sabe volver a
+ * preguntar: sin un modelo que falle, «una consulta alcanzó» y «no sabe pedir
+ * otra» se ven igual.
+ *
+ * Las DOS candidatas tienen que ser irreparables. La primera versión devolvía
+ * `LIMPIA` y una rota, y el episodio cortaba en la vuelta 1 con `sirven: 1` —o
+ * sea que el control «nunca acierta» acertaba—. Medido: 1 consulta donde se
+ * esperaban 3.
+ */
+export function responderSiempreIgual(e: Encargo): string {
+  return [
+    cercado(CON_CONCEPTO_INVENTADO.fuente),
+    cercado(CON_OTRO_CONCEPTO.fuente),
+    `(vuelta ${String(e.vuelta)})`,
+    '',
+  ].join('\n')
+}
+
+export { AGARRAR_LO_QUE_VEO, CON_CONCEPTO_INVENTADO, CON_OTRO_CONCEPTO, CON_TYPO, LIMPIA, PROMETE_Y_NO_CUMPLE }
