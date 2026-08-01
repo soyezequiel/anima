@@ -31,7 +31,7 @@
  */
 
 import { costoDeLaUltima, preguntarTexto, transporteElegido } from '@anima/llm/demo/transporte.js'
-import { correrElBanco } from '@anima/judge'
+import { correrElBanco, loQueTenianEnComun } from '@anima/judge'
 import type { CorridaJuzgada } from '@anima/judge'
 import { buildSeedPhysics } from '@anima/physics'
 import { done, fail, instrument, mount, shadowScope } from '@anima/skills'
@@ -153,16 +153,22 @@ async function unaVuelta(prompt: string): Promise<{ juzgadas: readonly Juzgada[]
     // donde no debe. Es lo que va al encargo de la vuelta siguiente.
     const n = contar(corridas)
     const mal = corridas.filter((c) => !c.comoDebia)
+    // LA DEVOLUCIÓN ACCIONABLE: qué tenían en común los que fallaron, en
+    // propiedades y no en mundos. Antes acá iba una cuenta —«no llegó en 12
+    // mundos»— y el modelo no tenía con qué arreglar nada.
+    const enComun = loQueTenianEnComun(corridas, CONTRATO_SOSTENER, phys)
     const cargos = mal.length === 0
       ? []
       : [
           {
             cargo: 'construccion',
             grado: 'no-promueve',
-            porque:
+            porque: [
               mal.some((c) => c.mundo.adverso)
                 ? `dijo que sí en ${String(mal.filter((c) => c.mundo.adverso).length)} mundo(s) donde no había nada que levantar`
                 : `no llegó en ${String(mal.length)} mundo(s) donde sí había`,
+              ...enComun,
+            ].join('. '),
           },
         ]
     console.log(`    ${f.nombre.padEnd(28)} mostrados ${n.mostrados} · reservados ${n.reservados}`)

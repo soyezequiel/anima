@@ -1465,3 +1465,97 @@ Lo que queda del punto 9 dejó de ser «no se puede medir» y pasó a ser **«la
 devolución no alcanza»**: lo único que se le dice al modelo es *«no llegó en 12
 mundos donde sí había»*, que no le dice qué arreglar. Eso sí es un problema de la
 fragua, y se puede trabajar.
+
+---
+
+## La devolución que se puede usar
+
+El banco agrandado dejó la pregunta medible y la respuesta seguía siendo «no
+mejora». Lo que traba pasó a ser **el mensaje**: al modelo se le decía
+
+```
+construccion: no llegó en 12 mundo(s) que debería resolver
+```
+
+que es una cuenta. No dice **qué tenían en común esos doce**, y sin eso no hay
+con qué arreglar nada.
+
+### Y no se puede arreglar diciendo CUÁLES
+
+Ésa es la trampa del punto 9. La tabla del tramo D ya nombraba el nivel correcto:
+
+| el qué y el porqué | «funciona sólo con la materia que practicaste» | **elegido** |
+
+O sea: **una propiedad, no una lista de mundos**. `judge/src/devolucion.ts` la
+busca.
+
+### Las tres reglas, y las tres salieron de medir
+
+**1 · Se compara DENTRO de cada grupo.** El primer intento comparaba los fallos
+contra los aciertos mezclando amables y adversos, y con `soloVaras` —una que sólo
+sabe agarrar varas— **no separaba nada**: la forma `malla` aparecía entre los que
+fallan (un amable) y entre los que andan (un adverso rechazado bien). Separando
+por `deberiaCumplir`, la misma habilidad da la línea exacta.
+
+**2 · El lado que ANDA tiene que tener valores en ese eje.** Con `mentirosa`
+salían siete separadores, todos ciertos y todos inútiles: su único acierto entre
+los adversos es `sin-nada`, que no tiene materia, así que no había contra qué
+contrastar y todo «separaba».
+
+> La primera versión de esta regla decía otra cosa —*«descartar los que enumeran
+> más de medio eje»*— y estaba mal: con `soloVaras` la pista buena es
+> `mal = {malla, bloque, filete}` contra `bien = {vara}`, tres de cuatro, y la
+> mataba. **Lo que hace vacua a una pista no es cuánto enumera, es contra qué se
+> compara.**
+
+**3 · Primero lo que el contrato NOMBRA.** `portable` está en las precondiciones
+de `sostener`: fallar ahí es fallar en lo que la habilidad misma dijo que
+necesitaba.
+
+### Lo que sale
+
+```
+ANDA sólo con forma = vara, y falla con forma ∈ {bloque, filete, malla}.
+Estás resolviendo un caso, no el problema
+```
+
+La forma positiva va primero a propósito: *«sólo anda con vara»* dice qué mirar;
+*«falla con malla, bloque y filete»* deja la lista para adivinar.
+
+### Los dos controles
+
+- una habilidad **sana** no genera ninguna pista — una devolución que le señala un
+  problema a quien no lo tiene es peor que no tenerla;
+- una cuyo fallo **no es de la materia** tampoco: `mentirosa` falla en 5 mundos y
+  ninguna propiedad los separa. Decirlo así es más honesto que inventarle una
+  correlación, y su cargo igual dice algo accionable por otro camino — nombra el
+  contrato que ella misma publicó.
+
+Y el guardián de siempre, afirmado contra los ids de verdad: **la pista no nombra
+ni un mundo del banco.**
+
+### La corrida contra el modelo NO prueba que esto sirva, y hay que decirlo
+
+```
+VUELTA 1  levantarLocal    5/14 mostrados · 1/4 reservados
+VUELTA 2  levantar         9/14 mostrados · 3/4 reservados
+
+¿mejoró en los que no le contaron?  SÍ
+```
+
+**Pero la devolución de esa corrida no llevó pista.** El `porque` fue
+`no llegó en 12 mundo(s) donde sí había`, pelado: con 12 de 14 fallando, el lado
+que anda queda demasiado chico para que ninguna propiedad separe.
+
+O sea que la vuelta 2 mejoró con **la misma devolución con la que la corrida
+anterior no había mejorado**. Eso es varianza del modelo, no efecto del arreglo —
+y contarlo como éxito sería exactamente el verde por omisión que este hito viene
+cazando, esta vez disfrazado de número bueno.
+
+> **Lo que está probado** es que la pista aparece cuando hay una propiedad que
+> separa, que dice qué arreglar, que no nombra mundos, y que **no aparece** cuando
+> no hay nada que decir. Eso son cinco tests con sus controles.
+>
+> **Lo que NO está probado** es que mueva la aguja del modelo. Atribuirlo pide
+> varias corridas con la pista y varias sin ella, sobre el mismo pedido — y con
+> un modelo que contesta distinto cada vez, «varias» son bastantes más que dos.

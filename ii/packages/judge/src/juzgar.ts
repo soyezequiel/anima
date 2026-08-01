@@ -67,6 +67,7 @@ import { EL_ACTOR } from './escena.js'
 import { mundoConObjetivo } from './escena.js'
 import { sintetizable } from './sintetizar.js'
 import { cumpleElPredicado } from './sintetizar.js'
+import { loQueTenianEnComun } from './devolucion.js'
 import { elPeor, SIN_CORRER } from './tipos.js'
 import type { Cargo, Dictamen, Grado, Regresion, Veredicto } from './tipos.js'
 
@@ -198,6 +199,16 @@ export function juzgar<A>(s: Sujeto<A>, phys: Physics): Dictamen {
   const amables = cs.filter((c) => !c.mundo.adverso)
   const adversos = cs.filter((c) => c.mundo.adverso)
 
+  // ─── QUÉ TENÍAN EN COMÚN LOS QUE FALLARON ────────────────────────────────
+  //
+  // Sin esto el `porque` es una cuenta —«no llegó en 12 mundos»— y el modelo que
+  // lo lee no tiene con qué arreglar nada. Medido contra Claude: la vuelta 2
+  // salía igual que la vuelta 1. Ver `devolucion.ts`.
+  //
+  // Y son PROPIEDADES, no mundos: nombrar los mundos es la trampa del punto 9.
+  const pistas = loQueTenianEnComun(cs, s.acusada.contrato, phys)
+  const enComun = pistas.length === 0 ? '' : `. ${pistas.join('. ')}`
+
   const cargos: Veredicto[] = [
     veredicto('plano', 'promueve', `se sintetiza con ${sint.objetivo.substance}/${sint.objetivo.form}`, cs),
   ]
@@ -213,12 +224,15 @@ export function juzgar<A>(s: Sujeto<A>, phys: Physics): Dictamen {
     veredicto(
       'construccion',
       fallaronAmables.length === 0 && pasaronAdversos.length === 0 ? 'promueve' : 'no-promueve',
+      // La pista va en TODAS las ramas que fallan, y sobre todo en la primera:
+      // «sólo funciona donde le conviene» es el diagnóstico, y la pista dice
+      // CUÁL es ese donde. Sin ella, el modelo lee un reproche sin dirección.
       soloDondeLeConviene
-        ? 'SÓLO FUNCIONA DONDE LE CONVIENE: anduvo en el holgado y falló apenas se apretó'
+        ? `SÓLO FUNCIONA DONDE LE CONVIENE: anduvo en el holgado y falló apenas se apretó${enComun}`
         : pasaronAdversos.length > 0
-          ? `anduvo en ${String(pasaronAdversos.length)} mundo(s) donde su propio contrato dice que no puede`
+          ? `anduvo en ${String(pasaronAdversos.length)} mundo(s) donde su propio contrato dice que no puede${enComun}`
           : fallaronAmables.length > 0
-            ? `no llegó en ${String(fallaronAmables.length)} mundo(s) que debería resolver`
+            ? `no llegó en ${String(fallaronAmables.length)} mundo(s) que debería resolver${enComun}`
             : `llegó en los ${String(amables.length)} amables y se plantó en los ${String(adversos.length)} adversos`,
       cs,
     ),
