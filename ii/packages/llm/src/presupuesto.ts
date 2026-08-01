@@ -1,9 +1,36 @@
 /**
- * EL PRESUPUESTO DE DOS CARRILES — Hito 8, tramo A. Punto 8 del criterio.
+ * EL CONTADOR DE DOS CARRILES — Hito 8, tramo A.
  *
- * > con la **cuota agotada**, la cola **no dispara ni una consulta**
+ * ─── LO PRIMERO: POR DEFECTO NO FRENA NADA ──────────────────────────────────
  *
- * ─── Por qué son DOS carriles y no una cola con prioridades ─────────────────
+ * **Decisión del usuario: la criatura aprende todo lo que quiera.** La cuota
+ * arranca en `SIN_LIMITE` y `puedo()` contesta que sí siempre. Este módulo NO
+ * es una jaula: es un **contador**.
+ *
+ * Y no es que el freno se sacó y quedó el resto: el freno **existe apagado**,
+ * porque el mismo mecanismo con un techo puesto es lo que el criterio pide para
+ * CI —«el episodio completo no supera N consultas»—. Poner un techo es un gesto
+ * de quien corre el test, no del juego.
+ *
+ * ─── QUÉ PROTEGÍA EL LÍMITE, que es lo que hay que conservar ────────────────
+ *
+ * El plan lo dice con todas las letras: *«si no se diseña temprano, **la factura
+ * decide la arquitectura por vos**»*. Y hay un dato duro: **nadie sabe todavía
+ * cuánto sale un episodio de la fragua**. El contador es cómo se averigua; sin
+ * él se averigua por el resumen de la tarjeta.
+ *
+ * Lo que se sacó es el TOPE. Lo que se conservó es la MEDICIÓN, y con ella el
+ * único guardián que importa: que un cambio que multiplique las llamadas —de 8
+ * a 400— se vea en un test y no en la factura.
+ *
+ * ─── Por qué siguen siendo DOS carriles, ahora que no compiten ──────────────
+ *
+ * Ya no es para que uno no mate de hambre al otro: sin tope no hay hambre.
+ * Es porque **«gastamos 3000 milésimas» no dice nada y «la fragua gastó 2800 y
+ * el chat 200» sí**. Los dos consumidores tienen costos por operación muy
+ * distintos, y sumarlos esconde justamente al que se fue de escala.
+ *
+ * ─── El planteo original, que se conserva porque explica de dónde salió ─────
  *
  * Porque los dos consumidores tienen urgencias opuestas y **el presupuesto se
  * escribió para uno solo**. Está anotado desde la tercera enmienda del ADR
@@ -66,6 +93,14 @@ export interface Costo {
 
 export const NADA: Costo = { consultas: 0, milesimas: 0 }
 
+/**
+ * Un techo. `Infinity` en cualquiera de los dos campos quiere decir «no frena».
+ *
+ * `Infinity` y no `undefined` para que la aritmética de `queda` y `puedo` sea
+ * la misma con techo y sin techo: `costo > Infinity` es `false`, así que el
+ * camino sin límite **no es una rama aparte** y no puede divergir del que se
+ * prueba en CI.
+ */
 export interface Cuota {
   readonly consultas: number
   readonly milesimas: number
@@ -172,14 +207,20 @@ export class Presupuesto {
     return g.consultas > t.consultas || g.milesimas > t.milesimas
   }
 
-  /** Un renglón por carril, para el informe de sesión. */
+  /**
+   * Un renglón por carril, para el informe de sesión.
+   *
+   * El techo sale como `—` cuando no hay: `8/Infinity` es ruido, y peor —invita
+   * a leerlo como que hay un tope raro en vez de que no hay ninguno.
+   */
   informe(): string {
+    const techo = (n: number): string => (Number.isFinite(n) ? String(n) : '—')
     return CARRILES.map((c) => {
       const g = this.#gastado[c]
       const t = this.#tope[c]
       return (
-        `${c.padEnd(7)} ${String(g.consultas).padStart(4)}/${String(t.consultas).padEnd(4)} consultas · ` +
-        `${String(g.milesimas).padStart(6)}/${String(t.milesimas).padEnd(6)} milésimas · ` +
+        `${c.padEnd(7)} ${String(g.consultas).padStart(5)} / ${techo(t.consultas).padEnd(6)} consultas · ` +
+        `${String(g.milesimas).padStart(6)} / ${techo(t.milesimas).padEnd(6)} milésimas · ` +
         `${String(this.#negados[c])} negadas`
       )
     }).join('\n')
@@ -187,18 +228,34 @@ export class Presupuesto {
 }
 
 /**
- * UN REPARTO POR DEFECTO, y está escrito para que se pueda discutir.
+ * EL DEFECTO: NO FRENA NADA. Es lo que decidió el usuario.
  *
- * **No es una medición**: es el punto de partida que la primera corrida de
- * verdad va a mover, igual que la línea base de cobertura del chat. Lo único que
- * el criterio afirma es el invariante, no estos números.
- *
- * De dónde salen: el Hito 6 midió **US$ 0,0158 por frase** con el CLI, o sea
- * ~16 milésimas. Cien frases de chat son ~1600. Y la fragua se usa poco pero
- * caro —K=2 candidatas por viaje— así que arranca con menos consultas y más
- * plata por consulta.
+ * La criatura aprende todo lo que quiera y el chat consulta todo lo que quiera.
+ * Lo único que este objeto hace es dejar que el contador cuente.
  */
-export const REPARTO_INICIAL: Readonly<Record<Carril, Cuota>> = {
+export const SIN_LIMITE: Readonly<Record<Carril, Cuota>> = {
+  fragua: { consultas: Infinity, milesimas: Infinity },
+  chat: { consultas: Infinity, milesimas: Infinity },
+}
+
+/** Un presupuesto que no frena. Es el que usa el juego. */
+export function sinLimite(): Presupuesto {
+  return new Presupuesto(SIN_LIMITE)
+}
+
+/**
+ * UN TECHO PARA CI, y **no es un número del juego**.
+ *
+ * El criterio pide que «el episodio completo no supere N consultas», y eso es un
+ * guardián de regresión: si un cambio lleva un episodio de 8 consultas a 400,
+ * tiene que verse en un test y no en la factura.
+ *
+ * **El número está puesto a dedo y se dice.** Nadie midió todavía cuánto sale un
+ * episodio de la fragua —de eso se trata el hito— así que esto es un punto de
+ * partida generoso, no una medición. La primera corrida de verdad lo va a mover,
+ * igual que la línea base de cobertura del chat (ADR II-0024, § 2).
+ */
+export const TECHO_DE_CI: Readonly<Record<Carril, Cuota>> = {
   fragua: { consultas: 40, milesimas: 4000 },
   chat: { consultas: 200, milesimas: 4000 },
 }

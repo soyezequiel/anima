@@ -1,17 +1,21 @@
 /**
- * CUOTAS SEPARADAS — punto 8 del criterio del Hito 8.
+ * EL CONTADOR QUE NO FRENA — Hito 8, tramo A.
  *
- * > con la **cuota agotada**, la cola **no dispara ni una consulta**
+ * **Por defecto no hay límite.** Lo decidió el usuario: la criatura aprende todo
+ * lo que quiera. El primer bloque de abajo es el que afirma eso, y va primero
+ * porque es lo que el juego usa.
  *
- * Y la mitad que la frase no dice, que es la decisión D1: **son dos cuotas**.
- * Lo que estos tests defienden no es un reparto —el reparto es un parámetro y
- * la primera corrida de verdad lo va a mover— sino el invariante:
+ * Los otros bloques prueban el techo, que **existe apagado** y sólo lo enciende
+ * quien corre el test de CI: el criterio pide que «el episodio completo no supere
+ * N consultas», y eso ataja que un cambio lleve un episodio de 8 llamadas a 400
+ * sin que nadie lo note hasta la factura.
  *
- *   ningún carril pasa de lo suyo, y **el tanque de uno no toca al del otro**.
+ * Y siguen siendo DOS carriles aunque ya no compitan: «gastamos 3000 milésimas»
+ * no dice nada y «la fragua gastó 2800 y el chat 200» sí.
  */
 
 import { describe, expect, it } from 'vitest'
-import { Presupuesto, REPARTO_INICIAL } from '../src/presupuesto.js'
+import { Presupuesto, sinLimite, SIN_LIMITE, TECHO_DE_CI } from '../src/presupuesto.js'
 import type { Carril, Cuota } from '../src/presupuesto.js'
 
 const una = { consultas: 1, milesimas: 16 }
@@ -20,7 +24,39 @@ const chico = (n: number): Readonly<Record<Carril, Cuota>> => ({
   chat: { consultas: n, milesimas: 1000 },
 })
 
-describe('EL PUNTO 8: con el tanque en cero no se dispara nada', () => {
+describe('POR DEFECTO NO FRENA NADA — es lo que usa el juego', () => {
+  it('mil consultas seguidas y ninguna se niega', () => {
+    const p = sinLimite()
+    for (let i = 0; i < 1000; i++) {
+      expect(p.puedo('fragua', una).k).toBe('dale')
+      p.gastar('fragua', una)
+    }
+    expect(p.negados('fragua')).toBe(0)
+    expect(p.agotado('fragua')).toBe(false)
+    expect(p.seExcedio('fragua')).toBe(false)
+  })
+
+  it('pero CUENTA, que es lo único que se conservó del límite', () => {
+    // Sin esto no habría forma de saber qué salió un episodio, y el plan avisa:
+    // «si no se diseña temprano, la factura decide la arquitectura por vos».
+    const p = sinLimite()
+    p.gastar('fragua', { consultas: 8, milesimas: 640 })
+    p.gastar('chat', { consultas: 3, milesimas: 48 })
+    console.log(`
+${p.informe()}`)
+    expect(p.gastado('fragua').consultas).toBe(8)
+    expect(p.gastado('chat').milesimas).toBe(48)
+  })
+
+  it('y el camino sin límite NO es una rama aparte', () => {
+    // `Infinity` y no `undefined`: la aritmética es la misma con techo y sin
+    // techo, así que el camino que usa el juego es el mismo que prueba CI.
+    expect(SIN_LIMITE.fragua.consultas).toBe(Infinity)
+    expect(sinLimite().queda('chat').milesimas).toBe(Infinity)
+  })
+})
+
+describe('EL TECHO, que existe APAGADO y lo enciende CI', () => {
   it('la puerta se cierra, y dice por qué', () => {
     const p = new Presupuesto(chico(2))
     expect(p.puedo('fragua', una).k).toBe('dale')
@@ -51,11 +87,11 @@ describe('EL PUNTO 8: con el tanque en cero no se dispara nada', () => {
   })
 })
 
-describe('LA DECISIÓN D1: el tanque de uno NO toca al del otro', () => {
-  it('la fragua agotada deja al chat entero — es el caso que más asustaba', () => {
-    // Con una cola con prioridades, una fragua hambrienta se come el chat o al
-    // revés. Con cuotas separadas eso no puede pasar, y es lo único que la
-    // decisión compra.
+describe('CON techo, los dos carriles son INDEPENDIENTES', () => {
+  it('la fragua agotada deja al chat entero', () => {
+    // Sólo aplica cuando alguien enciende el techo — el juego corre sin él. Vale
+    // igual porque es el modo en que CI corre: un techo por carril no puede
+    // hacer que el guardián de la fragua apague al del chat.
     const p = new Presupuesto(chico(2))
     p.gastar('fragua', { consultas: 2, milesimas: 32 })
     expect(p.agotado('fragua')).toBe(true)
@@ -112,9 +148,9 @@ describe('pedir permiso y gastar son DOS gestos', () => {
   })
 })
 
-describe('el reparto es un PARÁMETRO, no una medición', () => {
-  it('el default existe y está declarado como punto de partida', () => {
-    const p = new Presupuesto(REPARTO_INICIAL)
+describe('el techo es un PARÁMETRO, no una medición', () => {
+  it('el techo de CI existe y está declarado como puesto a dedo', () => {
+    const p = new Presupuesto(TECHO_DE_CI)
     console.log(`\n${p.informe()}`)
     // Lo único que se afirma del default es que los dos carriles tienen algo:
     // el número exacto lo va a mover la primera corrida de verdad, igual que la

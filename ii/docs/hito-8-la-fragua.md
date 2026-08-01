@@ -105,11 +105,42 @@ literal de calibración adentro de una habilidad es un sello que
 
 ## 2 · La decisión, tomada por el usuario antes de escribir código
 
-### D1 · CUOTAS SEPARADAS: la fragua y el chat no compiten
+### D1 · SIN LÍMITE, pero con contador
 
-**Decidido: un tanque para cada carril.** Ninguno puede matar de hambre al otro,
-y la política de descarte deja de ser una pregunta: cada uno se descarta contra
-lo suyo.
+**Decidido, en dos pasos y el segundo dio vuelta al primero.**
+
+Primero fueron **cuotas separadas** —un tanque para cada carril— y después el
+usuario sacó los tanques: *«no quiero que tengan tanques, quiero que sea
+ilimitado»*. **La criatura aprende todo lo que quiera.**
+
+Antes de borrar nada se preguntó **qué protegía el límite**, que es la regla del
+ADR II-0024. El plan lo dice con todas las letras:
+
+> si no se diseña temprano, **la factura decide la arquitectura por vos**
+
+Y hay un dato duro: **nadie sabe todavía cuánto sale un episodio de la fragua**.
+El contador es cómo se averigua; sin él se averigua por el resumen de la tarjeta.
+
+Así que se separaron dos cosas que parecían una: **el TOPE se fue, la MEDICIÓN
+se quedó.** El techo existe **apagado**, y sólo lo enciende quien corre el test
+de CI —«el episodio completo no supera N consultas»—, que es un guardián de
+regresión: si un cambio lleva un episodio de 8 llamadas a 400, tiene que verse en
+un test.
+
+**`Infinity` y no `undefined`**, y no es un detalle de estilo: la aritmética es
+la misma con techo y sin techo, así que **el camino que usa el juego es el mismo
+que prueba CI** y no pueden divergir.
+
+#### Y siguen siendo dos carriles, aunque ya no compitan
+
+Ya no es para que uno no mate de hambre al otro —sin tope no hay hambre—. Es
+porque **«gastamos 3000 milésimas» no dice nada y «la fragua gastó 2800 y el chat
+200» sí**. Los dos consumidores tienen costos por operación muy distintos, y
+sumarlos esconde justamente al que se fue de escala.
+
+---
+
+### Lo que la decisión de cuotas separadas decía, y se conserva porque explica el camino
 
 Se descartaron las dos prioridades —«la fragua manda» y «el chat manda»— y las
 dos tenían un argumento real:
