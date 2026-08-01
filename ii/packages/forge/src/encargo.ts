@@ -154,15 +154,123 @@ export function otraVuelta(anterior: Encargo, loQueFallo: LoQueFallo): Encargo {
  * **Lo que este texto NO puede contener, y no por disciplina sino porque el dato
  * no está acá: el nombre de un mundo.** Ver el encabezado.
  */
-export function textoDe(e: Encargo): string {
-  const cabeza = [
-    `Escribí una habilidad para: ${e.gap}`,
-    '',
-    `El mundo sabe nombrar estas cosas y ninguna otra:`,
-    `  ${e.seSabeNombrar.join(' · ')}`,
-  ]
+export interface Superficie {
+  /**
+   * EL `.d.ts` CONTRA EL QUE SE COMPILA, entero.
+   *
+   * `puerta.ts` ya lo decía con estas palabras: *«la superficie contra la que se
+   * compila **ES el prompt**»*. Faltaba que alguien la pusiera adentro.
+   */
+  readonly api: string
+  /** De dónde importarla, tal como la candidata lo tiene que escribir. */
+  readonly desde: string
+  /** Cuántas candidatas se piden en este viaje. */
+  readonly cuantas: number
+}
 
-  if (e.vuelta === 1) return cabeza.join('\n')
+/**
+ * EL ENCARGO SIN SUPERFICIE NO ERA UN PROMPT, y está medido en vivo.
+ *
+ * Se le mandó el encargo pelado a Claude —167 caracteres: el gap y el
+ * vocabulario— y **no escribió una línea de código**. Leyó «escribí una
+ * habilidad» como una tarea de Claude Code y contestó pidiendo herramientas:
+ *
+ *     Necesito ver la habilidad que escribiste. Déjame explorar el proyecto.
+ *     <function_calls><name>Glob</name>…
+ *     ¿Dónde escribiste esa habilidad? ¿En qué archivo está?
+ *
+ *     candidatas parseadas: 0 · US$ 0,008
+ *
+ * Faltaban las tres cosas que un prompt tiene y una nota no: **el marco** (sos
+ * un programador, no tenés herramientas), **la superficie** (los tipos contra
+ * los que va a compilar) y **la forma de la respuesta** (bloques cercados y nada
+ * más).
+ *
+ * La superficie entra por parámetro y no se lee de disco: `@anima/forge` corre
+ * también en el navegador y `src/` no abre archivos. Es la misma frontera de
+ * siempre — el paquete describe, el llamador provee.
+ */
+const MARCO = [
+  'Sos un programador. Escribís una habilidad para una criatura de un juego.',
+  '',
+  'NO tenés herramientas, no podés leer archivos y no hay ningún proyecto que',
+  'explorar: todo lo que necesitás está en este mensaje.',
+]
+
+/**
+ * EL MOLDE DE LA RESPUESTA, Y EL IMPORT VA ADENTRO.
+ *
+ * La primera versión mostraba sólo la firma de la función. Medido en vivo, las
+ * dos candidatas de Claude salieron `rota` por lo mismo:
+ *
+ *     2304: Cannot find name 'Ctx'
+ *     2304: Cannot find name 'Intent'
+ *     2304: Cannot find name 'Outcome'
+ *     2304: Cannot find name 'StepResult'
+ *
+ * **El modelo copia el molde exacto.** Si el molde no tiene el import, el código
+ * no lo tiene. No es que no supiera: escribió `yield ctx.goTo(...)` y
+ * `ctx.see([...])` bien — le faltaba la línea de arriba, y la línea de arriba es
+ * responsabilidad del que da el molde.
+ */
+function comoContestar(cuantas: number, desde: string): readonly string[] {
+  return [
+    '',
+    '── CÓMO CONTESTAR ──',
+    '',
+    `Devolvé ${String(cuantas)} bloques de código y NADA MÁS: sin explicación antes,`,
+    'sin comentario después. Cada bloque ENTERO y con sus dos imports, así:',
+    '',
+    '```ts',
+    `import type { BodyView, Ctx, Intent, Outcome, StepResult } from '${desde}'`,
+    `import { done, fail } from '${desde}'`,
+    '',
+    'export function* nombreDeLaHabilidad(ctx: Ctx): Generator<Intent, Outcome, StepResult> {',
+    "  ctx.phase('lo-que-esta-haciendo')",
+    '  // …',
+    '  return done()',
+    '}',
+    '```',
+    '',
+    `Que las ${String(cuantas)} sean ENFOQUES DISTINTOS, no la misma con otro nombre.`,
+  ]
+}
+
+export function textoDe(e: Encargo, s?: Superficie): string {
+  const cabeza =
+    s === undefined
+      ? [
+          `Escribí una habilidad para: ${e.gap}`,
+          '',
+          `El mundo sabe nombrar estas cosas y ninguna otra:`,
+          `  ${e.seSabeNombrar.join(' · ')}`,
+        ]
+      : [
+          ...MARCO,
+          '',
+          '── LO QUE HAY QUE CONSEGUIR ──',
+          '',
+          e.gap,
+          '',
+          'El mundo sabe nombrar estas cosas y ninguna otra:',
+          `  ${e.seSabeNombrar.join(' · ')}`,
+          '',
+          '── LA ÚNICA API QUE EXISTE ──',
+          '',
+          `Importá de '${s.desde}'. Todo lo que no esté acá abajo NO EXISTE:`,
+          'inventar un nombre es el error más común y no compila.',
+          '',
+          '```ts',
+          s.api.trimEnd(),
+          '```',
+        ]
+
+  // El «cómo contestar» va SIEMPRE AL FINAL, y por eso no está adentro de
+  // `cabeza`: en la vuelta 2 el cuerpo se mete en el medio, y una instrucción
+  // tapada por texto se cumple menos. Misma lección que el prompt del chat.
+  const cola = s === undefined ? [] : comoContestar(s.cuantas, s.desde)
+
+  if (e.vuelta === 1) return [...cabeza, ...cola].join('\n')
 
   const f = e.loQueFallo
   const cuerpo: string[] = ['', `— Intento ${String(e.vuelta)}. Lo que pasó con el anterior —`]
@@ -188,5 +296,5 @@ export function textoDe(e: Encargo): string {
     cuerpo.push('', 'Compiló, pero al probarla:', ...f.cargosQueFallaron.map((c) => `  ${c.cargo}: ${c.porque}`))
   }
 
-  return [...cabeza, ...cuerpo].join('\n')
+  return [...cabeza, ...cuerpo, ...cola].join('\n')
 }

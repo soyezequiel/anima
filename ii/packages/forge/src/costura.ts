@@ -116,7 +116,28 @@ export function pedirPermiso(p: Presupuesto, v: Viaje): Salida {
  * el orden que el tramo B compró.
  */
 const BLOQUE = /```(?:ts|typescript)?\r?\n([\s\S]*?)```/g
-const NOMBRE = /export\s+function\s*\*\s*([A-Za-z_$][\w$]*)/
+
+/**
+ * EL NOMBRE DE LA HABILIDAD, y el juego de caracteres NO es `\w`.
+ *
+ * La primera versión usaba `[A-Za-z_$][\w$]*` y cortaba los nombres en la
+ * primera letra acentuada. Medido en vivo con Claude, que escribió en castellano
+ * porque el encargo está en castellano:
+ *
+ *     export function* pescarConCaña   →   nombre leído: "pescarConCa"
+ *
+ * Y un nombre cortado no es un nombre feo: **`mount()` busca esa clave en los
+ * exports y no la encuentra**, así que la habilidad compila, pasa la puerta y
+ * después no se puede montar. Falla tres pasos más adelante, por algo que pasó
+ * acá.
+ *
+ * JavaScript admite identificadores Unicode desde siempre, y el prompt de este
+ * repositorio está en castellano — o sea que las eñes y los acentos no son un
+ * caso raro, son el caso esperado. `\p{ID_Start}` y `\p{ID_Continue}` son
+ * exactamente las clases que la especificación del lenguaje usa para definir un
+ * identificador, así que no hay que adivinar cuáles entran.
+ */
+const NOMBRE = /export\s+function\s*\*\s*([\p{ID_Start}_$][\p{ID_Continue}_$]*)/u
 
 export function leerCandidatas(salida: string, e: Encargo, k: number = K_POR_VIAJE): readonly Candidata[] {
   const out: Candidata[] = []
