@@ -42,6 +42,8 @@ import { faltaDe } from '../src/falta.js'
 import { leer } from '../src/leer.js'
 import { lexicoDe } from '../src/lexico.js'
 import { objetivosDe } from '../src/objetivos.js'
+import { revisar } from '../src/consulta.js'
+import { preguntarle, transporteElegido } from './proveedor.js'
 import { actor, criatura, enElPiso, laOrilla, mundo } from '../../mind/tests/mundo.js'
 
 const QUIEN = 'ana'
@@ -135,7 +137,7 @@ function contar(hechos: readonly Hecho[]): string {
 }
 
 /** Una frase, de punta a punta. */
-function decirle(frase: string): void {
+async function decirle(frase: string): Promise<void> {
   const t0 = Number(process.hrtime.bigint()) / 1e6
 
   const l = leer(frase, OPC)
@@ -146,26 +148,45 @@ function decirle(frase: string): void {
   const puente = objetivosDe(l)
   if (puente.aviso !== '') console.log(`     ${puente.aviso}`)
 
-  const primera = l.clausulas.find((c) => c.firma !== undefined && c.polaridad === 'afirma')
+  // ─── EL CARRIL LENTO ──────────────────────────────────────────────────────
+  //
+  // Va DESPUÉS del acuse y ANTES de inyectar. El cuerpo ya contestó; lo que pase
+  // acá tarda lo que tarde y no le debe nada a nadie. Si el proveedor no está,
+  // no contesta, tarda de más o dice algo que no se entiende, `revisada` es la
+  // misma lectura y sigue todo igual.
+  let revisada = l
+  const consulta = consultaDe(l, lexico, FIRMAS)
+  if (consulta !== undefined) {
+    const t1 = Number(process.hrtime.bigint()) / 1e6
+    const r = await preguntarle(consulta)
+    const ms = Number(process.hrtime.bigint()) / 1e6 - t1
+    if (r === undefined) {
+      console.log(`     [${transporteElegido()} no aportó nada  (${ms.toFixed(0)} ms)]`)
+    } else {
+      revisada = revisar(l, r, lexico, { ofrecidas: consulta.firmas, sabeElCatalogo: OPC.sabeElCatalogo })
+      const cambio = revisada !== l
+      console.log(
+        `     [${transporteElegido()} contestó en ${ms.toFixed(0)} ms: ${cambio ? r.clausulas.map((x) => x.firma).join(', ') : 'nada que los portones aceptaran'}]`,
+      )
+    }
+  }
+
+  const primera = revisada.clausulas.find((c) => c.firma !== undefined && c.polaridad === 'afirma')
   if (primera?.firma === undefined) {
     // Ninguna cláusula llegó a una meta. El cuerpo NO se detiene: sigue con lo
     // suyo, que es el punto 1 del criterio.
-    console.log(`     ${primera === undefined ? l.clausulas[0]?.porque ?? '' : ''}`)
-    const c = consultaDe(l, lexico, FIRMAS)
-    if (c !== undefined) {
-      console.log(`     [le preguntaría al modelo: ${String(c.clausulas.length)} cláusula(s), llave ${c.llave}]`)
-    }
+    console.log(`     ${revisada.clausulas[0]?.porque ?? ''}`)
     const hechos = correr(60)
     console.log(`     mientras tanto sigue con lo suyo: ${contar(hechos) || 'nada'}`)
     return
   }
 
-  if (l.clausulas.length > 1) {
-    console.log(`     (son ${String(l.clausulas.length)} cláusulas y el canal a la mente lleva UNA: va la primera)`)
+  if (revisada.clausulas.length > 1) {
+    console.log(`     (son ${String(revisada.clausulas.length)} cláusulas y el canal a la mente lleva UNA: va la primera)`)
   }
 
   const falta = faltaDe(primera.firma, phys, catalogo)
-  console.log(`     entendí: ${primera.firma}`)
+  console.log(`     entendí: ${primera.firma}${primera.leidaPor === 'modelo' ? '   ← lo leyó el modelo' : ''}`)
   if (primera.grado === 'sin-camino') {
     console.log(`     pero ${falta.enVozAlta}  [falta: ${falta.clase}]`)
   }
@@ -196,9 +217,11 @@ correr(CALENTAR)
 console.log(`   la criatura ya vivió ${String(CALENTAR)} ticks sola. Está ${donde()}, ${enLaMano()}.`)
 console.log('════════════════════════════════════════════════════════════')
 
+console.log(`   proveedor: ${transporteElegido()}   (ANIMA_LLM=codex|openai|falso)`)
+
 const deLaLinea = process.argv.slice(2).join(' ').trim()
 if (deLaLinea !== '') {
-  decirle(deLaLinea)
+  await decirle(deLaLinea)
   console.log('')
 } else {
   console.log('\nEscribile algo. `salir` para terminar.\n')
@@ -210,7 +233,13 @@ if (deLaLinea !== '') {
       rl.close()
       return
     }
-    if (t !== '') decirle(t)
+    if (t !== '') {
+      void decirle(t).then(() => {
+        console.log('')
+        rl.prompt()
+      })
+      return
+    }
     console.log('')
     rl.prompt()
   })

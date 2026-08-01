@@ -754,3 +754,53 @@ El único canal externo a la mente es `MenteOptions.drive`, que lleva **una** fi
 de predicado. El orden parcial y las ligaduras que `objetivosDe` sabe producir
 **no tienen por dónde entrar**. `hablarle` manda la primera cláusula y lo dice en
 voz alta.
+
+### Tramo I — el proveedor de verdad, enchufado
+
+```bash
+ANIMA_LLM=falso  pnpm --filter @anima/lang hablarle "andá al río"   # por omisión
+ANIMA_LLM=codex  pnpm --filter @anima/lang hablarle "andá al río"   # la cuenta del CLI
+ANIMA_LLM=openai pnpm --filter @anima/lang hablarle "andá al río"   # con OPENAI_API_KEY
+```
+
+**El proveedor vive en `demo/` y no en `src/`, y no es una cuestión de orden: en
+`src/` no puede vivir.** La regla 2 prohíbe `await` en todo `src/`, hay un
+guardián que lo hace cumplir, y una llamada de red sin `await` no existe. Que el
+proveedor quede afuera **no es una limitación: es la forma que el ADR II-0024 le
+dio al hito.**
+
+Lo que se le pide al modelo es **que elija de una lista**: no que escriba un
+predicado, no que devuelva texto libre. Y lo que conteste pasa por los seis
+portones de `revisar()`, incluido el que verifica que la firma esté entre las que
+se le ofrecieron.
+
+#### El lazo entero, corrido
+
+```
+  🐾 «no te entendí del todo, voy tanteando»   (0.61 ms)
+     entendí: holding(tag:carnoso)   ← lo leyó el modelo
+       41  unir(...)   45  ir(pozo:-6:-6)   49  aplicar(extraccion)
+```
+
+El lector local sale por `orientacion` —«andá al río» no es una meta que
+`Predicado` pueda recibir—, el proveedor propone `holding(tag:carnoso)`, los
+portones la aceptan porque estaba ofrecida y el catálogo la establece, y la
+criatura va al pozo.
+
+#### Y EL PUNTO 2, demostrado contra un proveedor real que falla
+
+La cuenta de Codex está sin cuota hasta el 5 de agosto. **Eso resultó ser la
+mejor prueba disponible:**
+
+```
+   proveedor: codex
+  🐾 «no te entendí del todo, voy tanteando»   (0.78 ms)
+     [el proveedor dijo que no hay cuota]
+     [codex no aportó nada  (5787 ms)]
+     mientras tanto sigue con lo suyo: aplicar×2 · ir×1
+```
+
+**El acuse salió a los 0,78 ms. El proveedor tardó 5787 y no aportó nada. La
+criatura siguió con lo suyo.** Es el punto 2 del criterio —«con el proveedor
+colgado, el mismo p95»— medido contra un proveedor de verdad que se cae, y no
+contra una simulación.
