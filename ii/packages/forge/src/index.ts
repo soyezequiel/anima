@@ -10,3 +10,4 @@
  */
 
 export * from './puerta.js'
+export * from './reparar.js'

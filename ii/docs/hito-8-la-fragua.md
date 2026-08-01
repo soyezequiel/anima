@@ -320,6 +320,78 @@ llamador provee.** `Puerta` ahora recibe la API de TypeScript por constructor.
 > módulo. **Van con su guardián**: un test los compara contra la API de verdad,
 > para que no deriven en silencio si TypeScript los renumera.
 
-### Tramo C — las reparaciones
+### Tramo C — las reparaciones · CERRADO
 
-*(lo que sigue)* — y ya se sabe por dónde empezar: el 86%.
+`judge`… no: `forge/src/reparar.ts`. 7 tests más, 21 en el paquete.
+
+#### De dónde sale el nombre correcto, con las dos fuentes MEDIDAS
+
+**1. El mensaje de error: NO sirve.** De los 71 errores de esa clase, **cero**
+traen «Did you mean». Se contó antes de descartarlo.
+
+**2. El servicio: SÍ.** `getCompletionsAtPosition` en la posición del error
+devuelve los nombres legales ahí — es lo mismo que le muestra a un editor:
+
+```
+ticksToNightfall  →  dayLength · phase · secondsToNightfall
+```
+
+Y la tercera que **no** se eligió: copiar los catálogos al lado de los de
+`@anima/physics`. Es la duplicación que queda vieja en silencio, lo mismo que el
+guardián del sello del Hito 7 existe para atajar. **El compilador no puede quedar
+viejo respecto de sí mismo.**
+
+#### EL EMBUDO, y corrige una afirmación mía del tramo B
+
+Dije que el 86% era «un solo error con tres caras». **Esa lectura era mía y
+estaba de más.** Medido escalón por escalón:
+
+```
+errores de la clase   71
+con nombre extraído   66     ← 5 no son nombres: son formas de objeto
+con candidatos        44
+dentro del corte       7     ← sólo éstos son typos
+```
+
+#### «INVENTÓ UN NOMBRE» SON DOS COSAS, y sólo una se repara acá
+
+| | ejemplo | ¿hay algo parecido? |
+|---|---|---|
+| **un typo** | `ticksToNightfall` → `secondsToNightfall` | sí, a 7 letras |
+| **un concepto que el mundo no tiene** | `hunger` · `stock` · `smoke` · `threat` | **no, porque no existe la cosa** |
+
+**34 conceptos contra 7 typos.** La lista entera sale por consola:
+
+```
+abort · afilar · ahumar · arrastrar · behind · buoyancy · cavar · charred ·
+combustion · cost · covers · cubrir · estimate · flow · fuelEnergy · give ·
+heard · hunger · isNight · mass · mine · needs · perceptionRadius · presence ·
+project · qualifies · raining · sheltered · smoke · stock · threat ·
+velocityOf · wet · wetAt
+```
+
+Los conceptos **no se pueden reparar localmente por definición**: no hay «el
+nombre correcto» cerca porque no hay nada cerca. Y son exactamente el material
+del **punto 9** —la candidata que falla alimenta a la siguiente—: lo que hay que
+contarle al modelo es que pidió una cosa que no existe.
+
+> **El trabajo se reparte solo.** La puerta arregla los typos gratis; los
+> conceptos inventados son lo que va al segundo intento. No hacen falta diez
+> reparaciones: hacen falta una y un buen mensaje.
+
+#### EL CORTE, que es lo que impide reparar mal
+
+Un tercio del nombre, con piso de 2. Con un corte grande `'wet'` matchea
+`'catch'` y la reparación **inventa una conducta distinta en vez de arreglar un
+typo**. Tiene su test.
+
+**Prefiere no reparar antes que reparar mal:** una candidata que no compila
+cuesta 47 ms; una que compila y hace otra cosa cuesta un viaje al juez y un
+veredicto equivocado.
+
+Y el test que lo cuida por el otro lado: **`empeoraron === 0`**. Una reparación
+que convierte un error en dos es peor que no reparar.
+
+### Tramo D — el cliente, y el punto 9
+
+*(lo que sigue)*

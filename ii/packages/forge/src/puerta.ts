@@ -119,6 +119,14 @@ export interface Error {
   readonly mensaje: string
   /** Línea 1-indexada, para citarla. `0` si el error no tiene posición. */
   readonly linea: number
+  /**
+   * El desplazamiento exacto, en caracteres.
+   *
+   * No es para el informe —para eso está `linea`— sino para la reparación:
+   * es lo único con lo que se le puede preguntar al servicio **qué sería válido
+   * en ese punto**. Ver `queSeriaValido`.
+   */
+  readonly inicio: number
 }
 
 export type Veredicto =
@@ -170,6 +178,32 @@ export class Puerta {
   }
 
   /**
+   * QUÉ SERÍA VÁLIDO EN ESTE PUNTO — la materia prima de la reparación.
+   *
+   * ─── Por qué se le pregunta al compilador y no a un catálogo propio ────────
+   *
+   * Porque el 86% de los errores del corpus son **«inventó un nombre que la API
+   * no tiene»** (medido en `la-puerta.test.ts`), y arreglarlos pide saber cuáles
+   * SÍ existen. Hay dos formas de saberlo y una está descartada por medición:
+   *
+   * **1. Que lo diga el mensaje de error.** No lo dice: de los 71 errores de esa
+   * clase en el corpus, **cero** traen «Did you mean». Se contó.
+   *
+   * **2. Que lo diga el servicio.** `getCompletionsAtPosition` sabe exactamente
+   * qué nombres son legales ahí, porque es lo mismo que le muestra a un editor.
+   *
+   * Y hay una tercera que NO se eligió: **copiar los catálogos acá**. Mantener
+   * una lista de cualidades y procesos al lado de la que ya está en
+   * `@anima/physics` es la clase de duplicación que queda vieja en silencio —
+   * exactamente lo que el guardián del sello (Hito 7, tramo B) existe para
+   * atajar. El compilador no puede quedar viejo respecto de sí mismo.
+   */
+  queSeriaValido(inicio: number): readonly string[] {
+    const c = this.#servicio.getCompletionsAtPosition(RANURA, inicio, {})
+    return (c?.entries ?? []).map((e) => e.name)
+  }
+
+  /**
    * ¿ESTO COMPILA?
    *
    * Se piden los sintácticos ANTES que los semánticos y se cortan ahí si hay:
@@ -201,5 +235,6 @@ function aError(d: TS.Diagnostic, ts: ApiTS): Error {
     codigo: d.code,
     mensaje: ts.flattenDiagnosticMessageText(d.messageText, ' '),
     linea,
+    inicio: d.start ?? 0,
   }
 }
