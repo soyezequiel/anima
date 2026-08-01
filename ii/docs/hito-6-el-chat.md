@@ -875,3 +875,57 @@ justo donde una segunda opinión más vale.
   arranque del CLI — el camino HTTP del Hito 8 tiene que ser otro.
 - **El vocabulario es casi todo el prompt**: 120 palabras de 216. Ahí está el
   costo, y es lo primero que hay que recortar.
+
+### Tramo K — el demo, en dos partes que no se mezclan
+
+La salida imprimía coordenadas, ids de cuerpo, firmas de predicado,
+milisegundos, dólares, números de tick y un contador por habilidad,
+**intercalados con lo que la criatura decía**. Sirve para depurar y no se puede
+leer — y lo peor es que tampoco se depuraba bien: lo técnico quedaba escondido
+entre la narración.
+
+Ahora son dos, y `--simple` apaga la segunda. **Nada se pierde: se elige.**
+
+```
+  no te entendí. ¿qué querés que haga?
+  le pregunte a claude: queres comida cocida.  (16 s)
+
+  · ato dos cosas
+  · camino hasta ahi
+  · uso lo que tenia (2 veces)
+  · anduvo mirando
+  · y 31 cosas mas
+
+  ── detalle ────────────────────────────────────────────────
+     acuse        1.06 ms
+     confianza    0.00
+       [0] entendida     modelo holding(…cocido)  (era no-entendida)
+     consulta     1 clausula(s) · llave 1448538915:2710440215
+                  12 firmas ofrecidas · 216 palabras de vocabulario
+     modelo       claude · 16244.60 ms · haiku · US$ 0.0158
+     objetivos    1 nodo(s) · 0 descarte(s)
+     alcanzable   si
+     mundo        tick 40 → 340 · en (-81,-98) con 294 de aliento
+     despegues    38
+  ───────────────────────────────────────────────────────────
+```
+
+#### Decir las firmas en castellano SIN escribir nada nuevo
+
+`alias.ts` mapea «fuego» → `emitsPower>0`. **Darlo vuelta** da `emitsPower>0` →
+«fuego», y sale gratis: es la misma tabla leída en el otro sentido, así que no
+hay una segunda lista que se pueda desincronizar de la primera.
+
+Lo que el puente no nombra se dice como viene, **a propósito**: que se vea la
+firma cruda es la señal de que a esa meta le falta una palabra humana.
+
+Y eso destapó una fila torcida: la meta de lo cocido decía `['cocido',
+'cocinado']`, así que el demo contestaba *«querés cocido»*. Ahora dice `['comida
+cocida', ...]` — la primera de la lista es la que sale al leer al revés.
+
+#### Un módulo que escribía en la pantalla de otro
+
+`proveedor.ts` imprimía `[modelo haiku · US$ 0.0149]` **desde adentro**, así que
+se colaba en la parte liviana sin que el demo pudiera decidir. Ahora es un dato
+(`costoDeLaUltima()`) y lo muestra el detalle. Un módulo que escribe en la
+pantalla de otro no se puede acomodar.

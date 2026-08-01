@@ -86,7 +86,10 @@ const METAS: readonly AliasCrudo[] = [
   // léxico derivado, y son dos cosas: uno describe un cuerpo, el otro pide un
   // estado del mundo.
   {
-    dice: ['cocido', 'cocinado'],
+    // «comida cocida» va PRIMERO y no es un detalle: el puente se lee al reves
+    // para decirle a una persona que entendio, y ahi la primera de la lista es
+    // la que sale. Con `cocido` sola, el demo decia «queres cocido».
+    dice: ['comida cocida', 'cocido', 'cocinado'],
     denota: { k: 'meta', firma: 'holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)' },
   },
 

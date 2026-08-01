@@ -54,6 +54,19 @@ export type Transporte = 'claude' | 'codex' | 'openai' | 'falso'
  * Un demo que sólo se puede correr en un shell es un demo que la mitad de las
  * veces no se corre.
  */
+/**
+ * LO QUE COSTO LA ULTIMA CONSULTA, si el transporte lo dice.
+ *
+ * Es un dato y no un `console.log`, y el cambio no es cosmetico: antes este
+ * archivo IMPRIMIA `[modelo haiku · US$ 0.0149]` desde adentro, o sea que se
+ * colaba en la parte liviana del demo sin que el demo pudiera decidir. Un modulo
+ * que escribe en la pantalla de otro no se puede acomodar.
+ */
+let ultimoCosto: { modelo: string; usd: number } | undefined
+export function costoDeLaUltima(): { modelo: string; usd: number } | undefined {
+  return ultimoCosto
+}
+
 export function transporteElegido(): Transporte {
   for (const a of process.argv.slice(2)) {
     if (a === '--claude') return 'claude'
@@ -255,7 +268,7 @@ function porClaude(prompt: string, llave: string, timeoutMs: number): Promise<Re
       } catch {
         if (err.trim() !== '') console.log(`     [claude: ${err.trim().slice(0, 120)}]`)
       }
-      if (costo !== undefined) console.log(`     [modelo ${modelo} · US$ ${costo.toFixed(4)}]`)
+      ultimoCosto = costo === undefined ? undefined : { modelo, usd: costo }
       cerrar(leerRespuesta(texto, llave))
     })
     child.stdin.end(prompt)

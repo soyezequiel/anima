@@ -43,7 +43,7 @@ import { leer } from '../src/leer.js'
 import { lexicoDe } from '../src/lexico.js'
 import { objetivosDe } from '../src/objetivos.js'
 import { revisar } from '../src/consulta.js'
-import { fraseDeLaLinea, preguntarle, transporteElegido } from './proveedor.js'
+import { costoDeLaUltima, fraseDeLaLinea, preguntarle, transporteElegido } from './proveedor.js'
 import { actor, criatura, enElPiso, laOrilla, mundo } from '../../mind/tests/mundo.js'
 
 const QUIEN = 'ana'
@@ -51,6 +51,8 @@ const QUIEN = 'ana'
 const CALENTAR = 40
 /** Ticks que corre después de cada orden. A 20 Hz son 15 segundos del mundo. */
 const DESPUES = 300
+/** El bloque tecnico de abajo. `--simple` lo apaga; por omision esta puesto. */
+const DETALLE = !process.argv.includes('--simple')
 
 const phys = buildSeedPhysics()
 const lexico = lexicoDe(phys, PUENTE)
@@ -117,108 +119,242 @@ function correr(n: number): readonly Hecho[] {
   return hechos
 }
 
+// ─── DECIRLO EN CASTELLANO ──────────────────────────────────────────────────
+//
+// Todo lo que este archivo imprimia estaba en el idioma de adentro: firmas de
+// predicado, ids de cuerpo, coordenadas, nombres de habilidad. Sirve para
+// depurar y no para leer, y este demo existe para que alguien lea.
+
 /**
- * Cuantas veces hizo cada cosa.
+ * Una firma dicha en castellano, **sacada del puente al reves**.
  *
- * Los `Hecho` llevan el tick y el nombre APARTE. La primera version los guardaba
- * como una linea de texto y despues la volvia a partir, y como la linea arranca
- * con espacios el `split` daba `['', '41', 'deshilachar...']`: contaba los
- * NUMEROS DE TICK como si fueran nombres de habilidad. Volver a parsear lo que
- * uno mismo formateo es el bug mas facil de escribir y el mas dificil de ver.
+ * `alias.ts` mapea «fuego» -> `emitsPower>0`. Darlo vuelta da `emitsPower>0` ->
+ * «fuego», y sale gratis: es la misma tabla leida en el otro sentido, asi que no
+ * hay una segunda lista que se pueda desincronizar de la primera.
+ *
+ * Lo que el puente no nombra se dice como viene. Es feo a proposito: que se vea
+ * la firma cruda es la senal de que a esa meta le falta una palabra humana.
  */
-function contar(hechos: readonly Hecho[]): string {
-  const cuenta = new Map<string, number>()
-  for (const h of hechos) {
-    const nombre = h.nombre.split('(')[0] ?? '?'
-    cuenta.set(nombre, (cuenta.get(nombre) ?? 0) + 1)
+function enCastellano(firma: string): string {
+  for (const a of PUENTE) {
+    if (a.denota.k === 'meta' && a.denota.firma === firma) return a.dice[0] ?? firma
   }
-  const filas = [...cuenta.entries()].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : 1))
-  return filas.map(([n, c]) => `${n}×${String(c)}`).join(' · ')
+  return firma
 }
 
-/** Una frase, de punta a punta. */
+/**
+ * Que hizo, dicho como se lo contarias a alguien.
+ *
+ * Los nombres de habilidad son del motor —`aplicar(extraccion)`, `unir`,
+ * `deshilachar`— y no significan nada afuera. Esta tabla vive en el demo y no en
+ * `src/` porque es NARRACION: el dia que exista la UI del Hito 12 la va a querer
+ * mas rica (con el sujeto adentro, con genero), y una tabla compartida entre un
+ * demo de terminal y una pantalla termina sirviendo mal a las dos.
+ */
+const EN_CRIOLLO: Readonly<Record<string, string>> = {
+  ir: 'camino hasta ahi',
+  sostener: 'agarro algo',
+  juntar: 'junto algo del piso',
+  unir: 'ato dos cosas',
+  deshilachar: 'saco una hebra',
+  frotar: 'froto para hacer fuego',
+  aplicar: 'uso lo que tenia',
+  poner: 'apoyo algo',
+  esperar: 'espero',
+  explorar: 'anduvo mirando',
+  guarecerse: 'se guarecio',
+  comer: 'comio',
+  tragar: 'comio',
+  construir: 'armo algo',
+  usar: 'dejo algo funcionando',
+}
+
+function enCriollo(habilidad: string): string {
+  const base = habilidad.split('(')[0] ?? habilidad
+  return EN_CRIOLLO[base] ?? base
+}
+
+/** Lo que hizo, en orden, sin repetir dos veces seguidas lo mismo. */
+function contar(hechos: readonly Hecho[]): readonly string[] {
+  const out: string[] = []
+  let ultimo = ''
+  let veces = 0
+  const cerrar = (): void => {
+    if (ultimo === '') return
+    out.push(veces > 1 ? `${ultimo} (${String(veces)} veces)` : ultimo)
+  }
+  for (const h of hechos) {
+    const dicho = enCriollo(h.nombre)
+    if (dicho === ultimo) {
+      veces++
+      continue
+    }
+    cerrar()
+    ultimo = dicho
+    veces = 1
+  }
+  cerrar()
+  return out
+}
+
+/**
+ * UNA FRASE, DE PUNTA A PUNTA — en dos partes que no se mezclan.
+ *
+ * ─── Por que dos partes ─────────────────────────────────────────────────────
+ *
+ * La primera version imprimia todo junto: coordenadas, ids de cuerpo, firmas de
+ * predicado, milisegundos, dolares, numeros de tick y un contador por habilidad,
+ * intercalados con lo que la criatura decia. Sirve para depurar y no se puede
+ * leer, y lo peor es que tampoco se depura bien — lo tecnico queda escondido
+ * entre la narracion.
+ *
+ * Asi que van separadas y en este orden:
+ *
+ *   ARRIBA   lo que pasa, en castellano. Sin firmas, sin ids, sin coordenadas.
+ *            Se lee de un vistazo y contesta «que le dije y que hizo».
+ *
+ *   ABAJO    EL DETALLE, detras de una linea. Todo lo que se fue de arriba, y
+ *            mas: los grados de cada clausula, la firma cruda, la llave de
+ *            cache, los ticks exactos, el costo. Es lo que uno mira cuando algo
+ *            no salio como esperaba.
+ *
+ * `--simple` apaga la de abajo. Nada se pierde: se elige.
+ */
 async function decirle(frase: string): Promise<void> {
   const t0 = Number(process.hrtime.bigint()) / 1e6
-
   const l = leer(frase, OPC)
-  // EL ACUSE, en el acto. Antes de mirar el catálogo y antes de planificar.
   const acuseMs = Number(process.hrtime.bigint()) / 1e6 - t0
-  console.log(`\n  🐾 «${l.acuse}»   (${acuseMs.toFixed(2)} ms)`)
+  const tickDelMensaje = tick
 
-  const puente = objetivosDe(l)
-  if (puente.aviso !== '') console.log(`     ${puente.aviso}`)
+  // ── LO QUE CONTESTA, primero y solo. Todo lo demas es explicacion.
+  console.log(`\n  ${l.acuse}`)
 
-  // ─── EL CARRIL LENTO ──────────────────────────────────────────────────────
-  //
-  // Va DESPUÉS del acuse y ANTES de inyectar. El cuerpo ya contestó; lo que pase
-  // acá tarda lo que tarde y no le debe nada a nadie. Si el proveedor no está,
-  // no contesta, tarda de más o dice algo que no se entiende, `revisada` es la
-  // misma lectura y sigue todo igual.
+  // El carril lento: DESPUES del acuse y ANTES de inyectar.
   let revisada = l
+  let msDelModelo: number | undefined
   const consulta = consultaDe(l, lexico, FIRMAS)
+  const quien = transporteElegido()
   if (consulta !== undefined) {
     const t1 = Number(process.hrtime.bigint()) / 1e6
     const r = await preguntarle(consulta)
-    const ms = Number(process.hrtime.bigint()) / 1e6 - t1
+    msDelModelo = Number(process.hrtime.bigint()) / 1e6 - t1
+    const seg = (msDelModelo / 1000).toFixed(0)
     if (r === undefined) {
-      console.log(`     [${transporteElegido()} no aportó nada  (${ms.toFixed(0)} ms)]`)
+      console.log(`  le pregunte a ${quien} y no supo.  (${seg} s)`)
     } else {
-      revisada = revisar(l, r, lexico, { ofrecidas: consulta.firmas, sabeElCatalogo: OPC.sabeElCatalogo })
-      const cambio = revisada !== l
+      revisada = revisar(l, r, lexico, {
+        ofrecidas: consulta.firmas,
+        sabeElCatalogo: OPC.sabeElCatalogo,
+      })
+      const f = revisada.clausulas.find((c) => c.leidaPor === 'modelo')?.firma
       console.log(
-        `     [${transporteElegido()} contestó en ${ms.toFixed(0)} ms: ${cambio ? r.clausulas.map((x) => x.firma).join(', ') : 'nada que los portones aceptaran'}]`,
+        f === undefined
+          ? `  le pregunte a ${quien} y lo que dijo no me servia.  (${seg} s)`
+          : `  le pregunte a ${quien}: queres ${enCastellano(f)}.  (${seg} s)`,
       )
     }
   }
 
   const primera = revisada.clausulas.find((c) => c.firma !== undefined && c.polaridad === 'afirma')
+
   if (primera?.firma === undefined) {
-    // Ninguna cláusula llegó a una meta. El cuerpo NO se detiene: sigue con lo
-    // suyo, que es el punto 1 del criterio.
-    console.log(`     ${revisada.clausulas[0]?.porque ?? ''}`)
     const hechos = correr(60)
-    console.log(`     mientras tanto sigue con lo suyo: ${contar(hechos) || 'nada'}`)
+    const q = contar(hechos)
+    console.log(`  mientras tanto ${q.length === 0 ? 'sigue con lo suyo' : q.join(', ')}.`)
+    detalle(frase, l, revisada, consulta, acuseMs, msDelModelo, hechos, tickDelMensaje, undefined)
     return
   }
 
-  if (revisada.clausulas.length > 1) {
-    console.log(`     (son ${String(revisada.clausulas.length)} cláusulas y el canal a la mente lleva UNA: va la primera)`)
-  }
-
-  const falta = faltaDe(primera.firma, phys, catalogo)
-  console.log(`     entendí: ${primera.firma}${primera.leidaPor === 'modelo' ? '   ← lo leyó el modelo' : ''}`)
+  if (primera.leidaPor === 'local') console.log(`  entendi: ${enCastellano(primera.firma)}.`)
   if (primera.grado === 'sin-camino') {
-    console.log(`     pero ${falta.enVozAlta}  [falta: ${falta.clase}]`)
+    console.log(`  ${faltaDe(primera.firma, phys, catalogo).enVozAlta}.`)
+  }
+  if (revisada.clausulas.length > 1) {
+    console.log('  (me pediste varias cosas y por ahora solo puedo con la primera)')
   }
 
-  // LA INYECCIÓN. `Mente` recibe el drive al construirse, así que una orden
-  // nueva es una mente nueva — con la MISMA memoria, que es lo que hace que no
-  // se olvide de lo que aprendió. Reiniciar el plan en curso es lo correcto:
-  // le acaban de pedir otra cosa.
   const drive: Drive = { meta: primera.firma, peso: 1, desdeTick: tick }
   mente = new Mente({ actor: QUIEN, memoria, drive })
   mentes.set(QUIEN, mente)
 
   const hechos = correr(DESPUES)
-  console.log(`\n     ${String(DESPUES)} ticks después (${String(DESPUES / 20)} s del mundo): ${donde()}, ${enLaMano()}`)
-  console.log(`     hizo: ${contar(hechos) || '(nada: no encontró por dónde)'}`)
-  if (hechos.length > 0) {
-    console.log(`     primeros pasos:`)
-    for (const h of hechos.slice(0, 8)) console.log(`       ${String(h.t).padStart(5)}  ${h.nombre}`)
+  const que = contar(hechos)
+  console.log('')
+  if (que.length === 0) console.log('  no encontro por donde arrancar.')
+  else {
+    for (const q of que.slice(0, 6)) console.log(`  · ${q}`)
+    if (que.length > 6) console.log(`  · y ${String(que.length - 6)} cosas mas`)
   }
+
+  detalle(frase, l, revisada, consulta, acuseMs, msDelModelo, hechos, tickDelMensaje, primera.firma)
 }
+
+/**
+ * EL DETALLE — todo lo que la parte de arriba dejo afuera, y algo mas.
+ *
+ * Lo que esta aca no es «lo mismo con mas decimales»: son las cosas que sirven
+ * cuando algo salio distinto de lo esperado. El grado de cada clausula dice si
+ * el problema fue leer o fue el mundo; la llave dice si la cache aplicaria; los
+ * ticks exactos dicen si la criatura arranco enseguida o tardo.
+ */
+function detalle(
+  frase: string,
+  local: ReturnType<typeof leer>,
+  final: ReturnType<typeof leer>,
+  consulta: ReturnType<typeof consultaDe>,
+  acuseMs: number,
+  msDelModelo: number | undefined,
+  hechos: readonly Hecho[],
+  desdeTick: number,
+  meta: string | undefined,
+): void {
+  if (!DETALLE) return
+  const R = (n: number): string => n.toFixed(2)
+  console.log('\n  ── detalle ────────────────────────────────────────────────')
+  console.log(`     frase        «${frase}»`)
+  console.log(`     acuse        ${R(acuseMs)} ms`)
+  console.log(`     confianza    ${local.confianza.toFixed(2)}`)
+  console.log(`     clausulas    ${String(local.clausulas.length)}`)
+  for (const [i, c] of final.clausulas.entries()) {
+    const antes = local.clausulas[i]
+    const cambio = antes !== undefined && antes.grado !== c.grado ? `  (era ${antes.grado})` : ''
+    console.log(
+      `       [${String(i)}] ${c.grado.padEnd(13)} ${c.leidaPor.padEnd(6)} ${c.firma ?? '—'}${cambio}`,
+    )
+    console.log(`             ${c.porque}`)
+  }
+  if (consulta === undefined) console.log('     consulta     no hizo falta')
+  else {
+    console.log(`     consulta     ${String(consulta.clausulas.length)} clausula(s) · llave ${consulta.llave}`)
+    console.log(`                  ${String(consulta.firmas.length)} firmas ofrecidas · ${String(consulta.vocabulario.length)} palabras de vocabulario`)
+    const c = costoDeLaUltima()
+    console.log(
+      `     modelo       ${transporteElegido()} · ${msDelModelo === undefined ? 'no se llamo' : `${R(msDelModelo)} ms`}` +
+        (c === undefined ? '' : ` · ${c.modelo} · US$ ${c.usd.toFixed(4)}`),
+    )
+  }
+  const p = objetivosDe(final)
+  console.log(`     objetivos    ${String(p.nodos.length)} nodo(s) · ${String(p.descartes.length)} descarte(s)`)
+  for (const d of p.descartes) console.log(`       descarta «${d.crudo}»: ${d.porque}`)
+  if (meta !== undefined) {
+    const f = faltaDe(meta, phys, catalogo)
+    console.log(`     meta         ${meta}`)
+    console.log(`     alcanzable   ${OPC.sabeElCatalogo(meta) ? 'si' : `no · falta ${f.clase}`}`)
+  }
+  console.log(`     mundo        tick ${String(desdeTick)} → ${String(tick)} · ${donde()} · ${enLaMano()}`)
+  console.log(`     despegues    ${String(hechos.length)}`)
+  for (const h of hechos.slice(0, 12)) console.log(`       ${String(h.t).padStart(6)}  ${h.nombre}`)
+  if (hechos.length > 12) console.log(`       ... y ${String(hechos.length - 12)} mas`)
+  console.log('  ───────────────────────────────────────────────────────────')
+}
+
 
 // ─── El bucle ───────────────────────────────────────────────────────────────
 
-console.log('\n══ HABLARLE A LA CRIATURA ══════════════════════════════════')
-console.log(`   mundo: la orilla de la semilla 20260727, pozo en (${String(orilla.pozo.x)},${String(orilla.pozo.y)})`)
-console.log(`   léxico: ${String(lexico.entradas.size)} entradas · catálogo: ${String(FIRMAS.length)} firmas alcanzables`)
+console.log('')
+console.log('  Le hablas a la criatura y hace. `salir` para terminar.')
 correr(CALENTAR)
-console.log(`   la criatura ya vivió ${String(CALENTAR)} ticks sola. Está ${donde()}, ${enLaMano()}.`)
-console.log('════════════════════════════════════════════════════════════')
-
-console.log(`   proveedor: ${transporteElegido()}   (--claude · --codex · --openai · --falso)`)
-
+console.log(`  (vive en la orilla · lee con ${transporteElegido()}${DETALLE ? '' : ' · sin detalle'})`)
 const deLaLinea = fraseDeLaLinea()
 if (deLaLinea !== '') {
   await decirle(deLaLinea)
