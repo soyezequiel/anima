@@ -12,3 +12,4 @@
 export * from './puerta.js'
 export * from './reparar.js'
 export * from './encargo.js'
+export * from './candidata.js'

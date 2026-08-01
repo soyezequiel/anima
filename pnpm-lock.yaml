@@ -241,6 +241,9 @@ importers:
       '@anima/llm':
         specifier: workspace:*
         version: link:../llm
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
       '@anima/skills':
         specifier: workspace:*
         version: link:../skills

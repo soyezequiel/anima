@@ -571,10 +571,76 @@ Si algún día molestan, la salida que NO pide credencial es **no volver a pagar
 arranque**: mantener el proceso del CLI vivo entre consultas en vez de abrir uno
 por pregunta. Es más caro de escribir y no hace falta hoy.
 
-### Tramo G — el modelo de mentira de la fragua, y el paquete de candidatas
+### Tramo G — el muñeco y el paquete · CERRADO (puntos 1, 2 y 9)
 
-*(lo que sigue)*. El tramo F dejó dicho cuál es la pieza que falta: **el falso es
-lo único que no se puede hacer genérico**, porque tiene que conocer la forma del
-que pregunta. La fragua necesita el suyo, y con él los puntos 1 y 2 del criterio
-—«al menos una de dos candidatas compila»— se pueden probar **sin gastar un
-centavo**.
+`forge/src/candidata.ts` + `forge/demo/falso.ts`. 37 tests en el paquete.
+
+#### La línea corre entera, gratis y siempre igual
+
+```
+gap: conseguir alimento de un cuerpo de agua
+
+esperarQuieta      compila-sola       —
+esperarLaNoche     compila-reparada   ticksToNightfall → secondsToNightfall
+comerSiHayHambre   no-se-pudo         hunger
+```
+
+Tres candidatas para los tres desenlaces que la línea sabe distinguir, y cada una
+prueba un punto: la primera el **1** («al menos una compila sin reparación»), la
+segunda el **2** («al menos una compila con reparación») y la tercera el **9**
+(alimenta al segundo intento).
+
+#### Por qué un muñeco, y la segunda razón es la que manda
+
+**1. Probar la línea cuesta plata.** ~14 s y **US$ 0,0158** por candidata del
+modelo de verdad, medidos en el Hito 6. La línea se prueba en cada cambio, para
+siempre.
+
+**2. Y el de verdad contesta distinto cada vez.** Un test que dice «funciona» un
+día y «falla» al otro **sin que nadie tocara nada** dejó de ser un test. El Hito
+6 lo midió en vivo: la misma frase le dio a Claude dos metas distintas.
+
+Hay un test que afirma el determinismo, y otro que afirma que **las dos
+candidatas dan desenlaces DISTINTOS** — un muñeco que devuelve siempre lo mismo
+no prueba nada.
+
+#### Los números del muñeco no se eligieron acá
+
+`ticksToNightfall` es **el error más frecuente del corpus de 28 borradores, con
+29 apariciones**, y `hunger` está en la lista de **34 conceptos que el mundo no
+tiene** que midió el tramo C. El muñeco imita lo que el corpus mostró, no lo que
+a alguien le pareció.
+
+Y `K = 2` tampoco: está en la descripción del hito, y el motivo es económico —
+**dos por el precio de un viaje**, porque lo caro es el viaje.
+
+#### El paquete: tres piezas porque se rompen por separado
+
+```
+BlueprintCandidate + BuildSkillCandidate + UseSkillCandidate
+```
+
+El juez del Hito 7 ya sabe puntuarlas así —sus cargos son `plano ·
+construccion · uso · utilidad`— y su encabezado tiene la frase que lo justifica:
+*«construir algo no demuestra que funcione, y un `BuildSkill` verde con
+`UseSkill` rojo es un resultado legítimo»*. **Un archivo suelto no se puede
+puntuar así.**
+
+**El plano NO se inventa acá:** `BlueprintDefinition` vive en `@anima/physics`
+desde el gate 5→6, con su `revision` sellada, y la candidata lo lleva **tal
+cual**. Dos formas del mismo plano es la duplicación que el guardián del sello
+existe para atajar.
+
+**Y el plano es OPCIONAL, que no es descuido:** las 17 innatas no tienen plano y
+son habilidades igual. Exigirlo obligaría a inventar uno vacío, y un plano vacío
+entra al catálogo y ocupa lugar.
+
+> **El código viaja como TEXTO y no como función.** Entre que sale del modelo y
+> que corre hay tres puertas —typecheck, reparación y sandbox— y ninguna puede
+> trabajar sobre algo ya evaluado. Evaluarlo antes de revisarlo es exactamente lo
+> que el sandbox del Hito 4 existe para impedir.
+
+### Tramo H — la fragua entera, de punta a punta
+
+*(lo que sigue)* — juntar el encargo, el muñeco, la puerta, la reparación y el
+juez en un episodio, y medir `ticksPerdidos === 0` con el mundo corriendo.
