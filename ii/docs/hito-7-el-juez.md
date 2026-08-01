@@ -577,15 +577,101 @@ pasaría desapercibido si ya estuviera donde tiene que estar.
 
 **2823 tests verdes**, `pnpm ii:test` exit 0, `pnpm ii:typecheck` limpio.
 
-### Lo que queda del Hito 7
+### Tramo F — el veredicto · CERRADO (puntos 1 y 6)
 
-| punto | estado |
+`judge/src/juzgar.ts`. El paquete pasa de 33 a **47 tests**.
+
+**Fue último a propósito.** Un juez que pone notas antes de tener con qué
+medirlas siempre dice que sí.
+
+#### Lo que arregla, y es lo que faltaba de verdad
+
+Hasta acá el juez leía `outcome.ok`, que es **lo que la habilidad dice de sí
+misma**. El cargo `uso` no le cree: agarra el `establece` del contrato —la
+promesa, escrita como dato— y la verifica **contra el mundo que quedó**.
+
+#### Los tres sujetos, y dos son mentirosos fabricados
+
+Un juez que sólo acierta con la habilidad honesta no sirve.
+
+```
+── sostener (honesta) → INCONCLUSO ──
+  plano         promueve     [4/4]  se sintetiza con carne/vara
+  construccion  promueve     [4/4]  llegó en los 2 amables y se plantó en los 2 adversos
+  uso           promueve     [4/4]  2 de 2 promesas verificadas contra el mundo
+  utilidad      inconcluso          no hay contra qué
+
+── mentirosa (dice que sí y no hace nada) → NO-PROMUEVE ──
+  construccion  no-promueve  [3/4]  anduvo en 1 mundo(s) donde su contrato dice que no puede
+  uso           no-promueve  [3/4]  DIJO QUE SÍ Y NO ES CIERTO: yo:holding>=1
+  regresiones: sostener·justo-abajo·tuberculo/vara/20 (que NO llegue)
+
+── sobreajustada (sólo con la materia que practicó) → NO-PROMUEVE ──
+  construccion  no-promueve  [3/4]  SÓLO FUNCIONA DONDE LE CONVIENE
+  uso           promueve     [3/4]  1 de 1 promesas verificadas contra el mundo
+  regresiones: sostener·al-borde·agua/bloque/0.05 (que llegue)
+```
+
+**El punto 1 sale solo del cargo `construccion`** y no necesitó mecanismo
+propio: la diferencia entre el mundo `holgado` y el `al-borde` ES la pregunta.
+Y la sobreajustada muestra el punto 6 en acción: **`uso` verde con
+`construccion` rojo** — tiene razón sobre lo que hizo, y no sirve igual.
+
+#### `utilidad` sale `inconcluso`, y arrastra el dictamen entero
+
+Es el primer productor de ese grado — hasta acá existía como palabra y no lo
+devolvía nadie.
+
+«Sirve» es una pregunta **con respecto a algo**, y ese algo es un objetivo. Hasta
+el Hito 8 nadie le pide nada a una habilidad. Medirlo igual exigiría inventar un
+criterio de utilidad acá adentro, que es lo que este hito viene evitando en cada
+tramo.
+
+> **Consecuencia, y hay que decirla:** con `utilidad` en `inconcluso`, **nada
+> promueve todavía**. El juez está completo para RECHAZAR y no para APROBAR — y
+> lo dice en vez de disimularlo. Los dos mentirosos se caen igual, que es lo que
+> el criterio pide.
+
+---
+
+## 4 · ESTADO: el criterio CIERRA, la descripción NO
+
+Es el mismo patrón que el Hito 6, y por eso se busca a propósito.
+
+### Los siete puntos del criterio
+
+| punto | estado | dónde |
+|---|---|---|
+| 1 · la sobreajustada no promueve | **cumple** | tramo F |
+| 2 · el banco sale del contrato | **cumple** | tramo D |
+| 3 · `injuzgable` sin regresiones | **cumple** | tramos C y F |
+| 4 · ablación | **cumple** | tramo E |
+| 5 · el sello se invalida | **cumple** | tramo B |
+| 6 · los cuatro cargos por separado | **cumple** | tramo F |
+| 7 · la física no cambia sin la versión | **cumple** | tramo B |
+
+**2837 tests verdes**, `pnpm ii:test` exit 0, `pnpm ii:typecheck` limpio.
+
+### Lo que la DESCRIPCIÓN nombra y todavía no está — cuatro cosas
+
+1. **«mundos estadificados».** El banco tiene cuatro CLASES derivadas del
+   contrato, que es otro eje. Un mundo estadificado es uno agarrado a mitad de un
+   proceso —media obra armada, algo a medio arder—, y de eso no hay ninguno.
+2. **Los ocho mundos adversos del caso de aceptación**: stock vacío · ubicación
+   incorrecta · materiales alternativos · dispositivo roto · dos dispositivos
+   compitiendo · restauración a mitad del ciclo · mundos reservados · ausencia de
+   nombres especiales. **Hay cero de los ocho.** Los cuatro que hay atacan las
+   precondiciones, que es un eje distinto y no los reemplaza.
+3. **«regresiones con snapshot real».** Se guarda el **id del mundo**, no un
+   snapshot. Como el banco es determinista el id lo rearma exacto —discutiblemente
+   mejor que un snapshot, que se puede quedar viejo— pero **no es lo que dice la
+   descripción** y la diferencia importa el día que el banco cambie.
+4. **El panel del juez** («se puede mostrar»). No existe.
+
+### Y los dos huecos medidos que quedan abiertos
+
+| hueco | número |
 |---|---|
-| 1 · la sobreajustada no promueve | **falta** |
-| 2 · el banco sale del contrato | cumple (tramo D) |
-| 3 · `injuzgable` sin regresiones | cumple (tramo C) |
-| 4 · ablación | **cumple (tramo E)** |
-| 5 · el sello se invalida | cumple (tramo B) |
-| 6 · los cuatro cargos por separado | a medias: escritos, sin correr contra mundos |
-| 7 · la física no cambia sin la versión | cumple (tramo B) |
+| el sello depende de 591 números y los procesos leen **7** | 84× de más · `it.fails` en `physics` |
+| el juez no sabe los args de una habilidad | los trae quien acusa; la fragua los produce desde el H8 |
 

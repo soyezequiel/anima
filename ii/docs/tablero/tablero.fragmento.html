@@ -1,4 +1,4 @@
-<title>Ánima II — tablero (64%)</title>
+<title>Ánima II — tablero (66%)</title>
 <style>
 :root {
   color-scheme: light dark;
@@ -330,37 +330,37 @@ p { margin: 0; }
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">64%</span>
+      <span class="cifra">66%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="64 por ciento avanzado">
+    <div class="barra" role="img" aria-label="66 por ciento avanzado">
       <div class="tramo si" style="width:60.76%"></div>
-      <div class="tramo medio" style="width:3.16%"></div>
+      <div class="tramo medio" style="width:4.97%"></div>
     </div>
     <div class="leyenda">
       <span class="l-si">terminado · 24,0 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 1,3</span>
-      <span class="l-no">por delante · 14,3</span>
+      <span class="l-medio">en curso · 2,0</span>
+      <span class="l-no">por delante · 13,5</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>Hito 7, tramos A-B-C: el juez arranca, y dos guardianes que no estaban planeados</h2>
-    <p class="detalle">El criterio del hito se escribio ANTES, con cinco mediciones, y tiene SIETE puntos y no seis: el septimo lo obligo la medicion. El sello de una habilidad se invalida cuando cambia la fisica, pero no depende de los numeros -- depende de un entero escrito a mano, PHYSICS_VERSION, que nunca se movio mientras FRICCION.efficiency iba de 0,35 a 0,85. Un proceso sellado con una y con la otra tiene el mismo sello. Se midio si hacia falta un guardian nuevo, porque la respuesta barata era &quot;ya lo cubre la huella de conducta&quot;: no lo cubre, y la evidencia no es un razonamiento sino que el commit que movio la eficiencia toco 20 archivos y la huella no esta entre ellos. Lo que sorprende es la otra mitad: los tests SI atraparon el cambio en veinte archivos con numeros clavados. Lo unico que sobrevivio callado fue el sello, justo la cosa inventada para eso. Quedaron 591 numeros sellados y el rojo dice cual se movio. Despues nacio @anima/judge (el nombre Verdict ya estaba tomado tres veces, asi que va Veredicto) con los cuatro grados: injuzgable es que no se pudo ARMAR un mundo, inconcluso es que se armo y no decide. Y se midio si &quot;insintetizable&quot; era una categoria real: si, porque el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14), asi que un contrato que pida toxicity&gt;=0.6 no se puede juzgar en ningun mundo. Las 17 innatas son todas sintetizables, o sea que el sujeto del punto 3 hay que fabricarlo -- pero apoyado en un techo medido, no en un numero inventado.</p>
+    <h2>Hito 7, tramos D-E: van 5 de 7 puntos, y quedaron dos huecos con su número</h2>
+    <p class="detalle">El banco de mundos (`judge/src/banco.ts`) dejó de armarse a mano: sale del propio contrato de la habilidad, con cuatro clases de mundo por precondición (holgado, al-borde, justo-abajo, sin-nada) para que «nunca saca un 0% falso» sea una propiedad medida y no una promesa. Cobertura medida, no supuesta: 8 de 9 precondiciones se pueden aislar; la que no, queda nombrada con su porqué (no hay materia mojada Y rígida en el catálogo). Con eso cierra el punto 2. Y entró la ablación (`judge/src/ablacion.ts`): mide qué precondición es real corriendo la habilidad en un mundo que sólo viola ESA. El hallazgo del tramo: sintetizar y ablacionar fallan en puntas opuestas — un predicado imposible es el más difícil de sintetizar y el MÁS FÁCIL de ablacionar, porque lo viola el catálogo entero. Cierra el punto 4. Los dos puntos que faltan tienen su causa exacta: el 1 (una habilidad sobreajustada no promueve) y la mitad del 6 (los cuatro cargos corriendo contra mundos de verdad, hoy sólo escritos).</p>
     <ol>
-      <li>Tramo D: el banco de mundos (puntos 1, 2 y 6). Medido: hoy hay TRES copias del constructor de mundos en arneses de test (lang, mind, perceive) y ninguna en src, y el juez del Hito 8 corre en produccion y no en un test.</li>
-      <li>HUECO ABIERTO con su it.fails y su numero: el sello depende de los 591 numeros de la fisica y los procesos semilla solo LEEN 7 cualidades. 84x de mas. Un sello de friccion muere porque se movio la toxicidad del agua. Elegido a ojos abiertos (decision D3): la dependencia por numero es la salida cara.</li>
-      <li>Y una que el Hito 8 tiene que decidir y nadie decidio: con que prioridad se descarta cuando la fragua y el chat compiten por la misma cuota. Son dos consumidores con urgencias distintas y el presupuesto se escribio para uno.</li>
+      <li>Punto 1: que una habilidad que sólo funciona donde la corrigieron no promueva. Todavía no hay mecanismo de promoción.</li>
+      <li>La otra mitad del punto 6: los cuatro cargos (plano, construcción, uso, utilidad) están escritos como tipo pero no corren contra un mundo real todavía.</li>
+      <li>El hueco medido que este tramo no pudo cerrar: el juez no puede invocar una habilidad sin saber sus argumentos — hoy los trae quien acusa, a mano. Del Hito 8 en adelante la fragua produce el paquete entero, args incluidos.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2804</div>
+        <div class="dato-valor">2823</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, ii:test exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · lang 83 · judge 14. Esta vez el numero del commit SE MIDIO antes de escribirlo: las tres veces anteriores citaba uno de mas</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0, coincide EXACTO con lo citado (se rompió la racha de tres desfasajes de 1) · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · emergencia 126 · perceive 138 · lang 83 · judge 33</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10 de 10</div>
@@ -375,22 +375,22 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">10</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">nace @anima/judge (el juez de habilidades) y @anima/juez se renombro a @anima/emergencia, que es lo que ES: el detector de secuencias del Hito 5. Tener judge y juez conviviendo era una hora perdida garantizada</div>
+        <div class="dato-nota">re-verificado ahora, sin cambios · @anima/judge (el juez de habilidades) y @anima/emergencia (ex @anima/juez, el detector de secuencias del Hito 5)</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">69</div>
+        <div class="dato-valor">70</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">el Hito 6 no abrio ninguno: lo que quedo abierto esta escrito con su numero, no marcado con un it.fails</div>
+        <div class="dato-nota">re-contado ahora, +1 desde la vez pasada · el hueco del tramo E: el juez no puede invocar una habilidad sin saber sus argumentos</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision, para que no se redescubra hito por hito</div>
+        <div class="dato-nota">re-contado ahora, sin cambios · II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">3</div>
+        <div class="dato-valor">4</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — los tres tramos del Hito 7. El usuario pushea solo</div>
+        <div class="dato-nota">rama anima-2 — re-verificado con git fetch. El usuario pushea solo</div>
       </div>
   </section>
 
@@ -601,15 +601,15 @@ p { margin: 0; }
             <span class="chip medio">En curso</span>
           </div>
           <p class="frase">Decidir si una habilidad recién escrita es estable, con mundos adversos que ella no vio.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>7</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">El criterio se escribio ANTES de tocar codigo, con cinco mediciones, y dos de ellas dieron vuelta el trabajo. RESUELTO: @anima/juez era el detector de secuencias del Hito 5 y se renombro a @anima/emergencia; el nombre `juez` describia lo que hace ESTE hito. Y el punto 7 no estaba en el documento: lo obligo la medicion del sello.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">5<span class="barra-diagonal">/</span>7</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">El criterio se escribio ANTES de tocar codigo, con cinco mediciones, y dos de ellas dieron vuelta el trabajo. RESUELTO: @anima/juez era el detector de secuencias del Hito 5 y se renombro a @anima/emergencia; el nombre `juez` describia lo que hace ESTE hito. Y el punto 7 no estaba en el documento: lo obligo la medicion del sello. Van 5 de los 7 puntos cumpliendo.</p>
         <details class="criterios">
           <summary>7 criterios</summary>
           <ul>
           <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una habilidad que solo funciona donde la corrigieron no promueve</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una de pesca se juzga en mundos con rio y nunca saca un 0% falso</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una de pesca se juzga en mundos con rio y nunca saca un 0% falso: el banco sale del propio contrato (cuatro clases de mundo por precondición) y la cobertura se midió, 8 de 9 precondiciones aislables</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>un contrato insintetizable devuelve `injuzgable` y no siembra regresiones — y &quot;insintetizable&quot; resulto ser una categoria REAL: el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14)</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una precondicion espuria se borra por ablacion — el dato ya existe: 17 contratos con `precondiciones` escritas como candidatas</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una precondicion espuria se borra por ablacion: corre la habilidad en un mundo que viola SÓLO esa precondición. Hallazgo: sintetizar y ablacionar fallan en puntas opuestas — un predicado imposible es imposible de sintetizar y trivial de ablacionar</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>bajar un numero de la fisica invalida los sellos, con el guardian de los 591 numeros. La dependencia POR NUMERO queda como hueco medido: los procesos leen 7 cualidades y el sello es sensible a 591, 84x de mas</span></li>
           <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>el juez evalua por separado plano, construccion, uso y utilidad — los cuatro cargos y los cuatro grados estan escritos; falta que corran contra mundos</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>PUNTO 7, que el documento de arquitectura NO tenia: cambiar un numero de la fisica sin subir PHYSICS_VERSION se pone rojo. Daba verde, y ya habia pasado (0,35 → 0,85 sin tocar la version)</span></li>
@@ -625,9 +625,9 @@ p { margin: 0; }
             <h3>La fragua y el carril de mejora</h3>
             <span class="chip no">No empezado</span>
           </div>
-          <p class="frase">Acá recién entra el LLM: escribe habilidades nuevas mientras el mundo sigue corriendo.</p>
+          <p class="frase">Acá recién entra el LLM a escribir código: habilidades nuevas mientras el mundo sigue corriendo.</p>
           <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>3</span><span class="semanas">4,5 sem</span></div>
-
+        <p class="nota">Con el Hito 6 ya consultando al modelo, el presupuesto pasa a tener DOS consumidores con urgencias distintas —la fragua puede tardar 14 s, el chat no— y con qué prioridad se descarta cuando compiten es lo primero que hay que decidir acá. Y &quot;HTTP con streaming&quot; dejó de ser preferencia: el puente por CLI mide 14 s y US$ 0,0158 por frase (~10 s son arranque de proceso), y lo que migra a @anima/llm es el CLIENTE que ya está escrito en demo/proveedor.ts, no la frontera.</p>
         <details class="criterios">
           <summary>3 criterios</summary>
           <ul>
@@ -648,11 +648,11 @@ p { margin: 0; }
           </div>
           <p class="frase">Cuarenta a sesenta habilidades de fábrica, para que la demo sea instantánea y no de 6 a 25 segundos.</p>
           <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2 sem</span></div>
-
+        <p class="nota">El criterio decía «cero llamadas al modelo», y era la moneda vieja: desde el Hito 6 el chat SÍ consulta al modelo por diseño. Lo que la frase defendía en realidad eran los 80 ms del camino caliente — contar llamadas era la forma de medirlos mientras toda llamada bloqueaba. Se separó en dos cosas reales: que la fragua no se despierte (binario) y que el reloj no empeore (medido contra el Hito 6). Tercera enmienda del ADR II-0024, sólo documentos: no se re-corrió nada.</p>
         <details class="criterios">
           <summary>2 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>las tres historias del usuario corren en camino caliente, con cero llamadas al modelo</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>las tres historias del usuario corren en camino caliente: la fragua NO SE DESPIERTA ni una vez (cero consultas suyas) y el reloj del primer movimiento no se mueve contra la línea base del Hito 6</span></li>
           <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>la biblioteca NO incluye la trampa reservada — si viniera de fábrica, el caso de aceptación dejaría de medir nada</span></li>
           </ul>
         </details>
@@ -668,12 +668,12 @@ p { margin: 0; }
           </div>
           <p class="frase">Cerrar la pestaña y volver sin perder nada, y que la segunda generación sepa lo que aprendió la primera.</p>
           <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2 sem</span></div>
-
+        <p class="nota">Este salió más barato de corregir: ya tenía el número («menos de 100 ms»), sólo cambió «con cero llamadas al modelo» por «sin despertar la fragua». Misma tercera enmienda del ADR II-0024.</p>
         <details class="criterios">
           <summary>2 criterios</summary>
           <ul>
           <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>replay de 20.000 ticks reproduce el hash exacto y re-ejecuta las habilidades comparando la traza</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una segunda vida resuelve «pescá» en menos de 100 ms con cero llamadas al modelo</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una segunda vida resuelve «pescá» en menos de 100 ms SIN DESPERTAR LA FRAGUA</span></li>
           </ul>
         </details>
         </div>
@@ -688,7 +688,7 @@ p { margin: 0; }
           </div>
           <p class="frase">Que el build falle si algún número empeora. Es lo que hace que «rápido» siga siendo verdad en seis meses.</p>
           <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">4 sem</span></div>
-        <p class="nota">No es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo.</p>
+        <p class="nota">No es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo. Y sale más barato de lo que el documento suponía: los tres relojes que este hito listaba como si fuera a inventarlos ya viven en lang/src/relojes.ts con línea base corrida desde el Hito 6 — este hito los hereda.</p>
         <details class="criterios">
           <summary>2 criterios</summary>
           <ul>
@@ -773,20 +773,20 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado al cerrar el tramo C del Hito 7: pnpm ii:test exit 0 y pnpm ii:typecheck limpio, mirando el exit code. Arbol de trabajo limpio.</p>
+      <p>Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit 4487190 (tramo E del Hito 7: la ablación). Árbol de trabajo limpio.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
         <code>pnpm ii:typecheck</code>
-        <span class="resultado">exit 0 · 10 de 10 proyectos, incluido @anima/lang</span>
+        <span class="resultado">exit 0 · 10 de 10 proyectos</span>
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 2785 pasan, 0 fallan — el commit aba6f03 citaba 2786. TERCERA vez seguida con exactamente 1 de diferencia, sin investigar todavía</span>
+        <span class="resultado">exit 0 · 2823 pasan, 0 fallan — coincide EXACTO con lo citado en 4487190</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
-        <span class="resultado">69 llamadas reales, sin cambios</span>
+        <span class="resultado">70 llamadas reales, +1</span>
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
@@ -794,7 +794,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">0 commits sin pushear — todo subido</span>
+        <span class="resultado">4 commits sin pushear</span>
       </div>
     </div>
     <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. Es un banco distinto del de @anima/lang.</p>
@@ -806,7 +806,7 @@ p { margin: 0; }
       <p>No bloquean el tramo de hoy, pero muerden más adelante. Están acá para que no las descubra alguien a los golpes.</p>
     </header>
     <ul class="deudas">
-        <li>El conteo de tests citado en los commits viene UNO arriba del que da la re-corrida en esta máquina, tres actualizaciones seguidas (2757/2756, 2769/2768, 2786/2785). Nunca es un fallo — siempre exit 0 — pero la diferencia es demasiado consistente para ser casualidad y nadie la investigó todavía.</li>
+        <li>El conteo de tests citado en los commits vino UNO arriba del medido acá en tres actualizaciones seguidas (2757/2756, 2769/2768, 2786/2785) y se rompió en la cuarta (2823 = 2823, exacto). Nunca fue un fallo — siempre exit 0 — así que probablemente era ruido de entorno y no una causa estructural. Se deja anotado por si vuelve a aparecer.</li>
         <li>La promesa de un establishes se VENCE y nadie lo sabe: la criatura se niega a comer lo que ella misma cocinó a los 300 s.</li>
         <li>El mundo no le pide NADA al que hace de parrilla: 10 g de hoja sostienen 2 kg de pescado. El día que se cierre, la parrilla es lo primero que se rompe.</li>
         <li>Cocinar no es un proceso, y el planificador lo sufre: secar, carbonizar y cocinar tienen todos la forma «poné esto acá y esperá».</li>
