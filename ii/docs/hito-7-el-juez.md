@@ -205,7 +205,67 @@ línea del hito, para que el renombre no se mezcle con trabajo nuevo.
 scripts de la raíz filtran por glob, así que no hubo lista que actualizar.
 Verde antes y después: **126 de 126**, 17 archivos, 77,5 s.
 
-### Tramo B — el guardián del sello (puntos 5 y 7)
+### Tramo B — el guardián del sello · CERRADO (puntos 5 y 7)
 
-*(en curso)*
+`physics/tests/el-sello-no-se-acuerda-solo.test.ts`, 5 tests.
+
+**Primero se midió si el guardián hacía falta**, porque la respuesta barata era
+«ya lo cubre `huella-de-conducta.test.ts`». **No lo cubre**, y la evidencia no es
+un razonamiento: el commit `d825a69` —el que movió la eficiencia— tocó **20
+archivos**, cuatro de ellos de `physics/tests`, y `huella-de-conducta` **no está
+entre ellos**. El motivo es estructural: esa huella corre `paso()`, y `paso()` no
+lee los números de un proceso — `leyes.ts` los menciona una sola vez y es para
+transportarlos.
+
+> **Y conviene decir la otra mitad, porque es la que sorprende: los tests SÍ
+> atraparon el cambio.** Veinte archivos con números clavados se pusieron rojos y
+> hubo que arreglarlos a mano. Lo único que sobrevivió callado fue **el sello**,
+> que es justo la cosa que se inventó para esto.
+
+**Qué quedó.** Los **591 números** de la física semilla, con su ruta y ordenados,
+sellados en `el-sello-sellado.ts`. Si se mueve alguno, rojo, y **dice cuál**:
+
+```
+SE MOVIÓ UN NÚMERO DE LA FÍSICA Y «PHYSICS_VERSION» SIGUE EN 1.
+MOVIDOS (1):
+  processes.friccion.effects[0].poweredBy.efficiency: 0.84999999999999998 → 0.83999999999999997
+```
+
+Cuatro decisiones que valen su renglón:
+
+1. **Números y nada más.** La prosa no entra. Este repo tiene encabezados
+   enormes que cambian todo el tiempo, y un guardián que se pone rojo cuando
+   alguien arregla una coma está desactivado en dos semanas.
+2. **Los dos rojos dicen cosas distintas** —«no subiste la versión» contra
+   «subiste la versión, falta re-sellar»— y los dos son rojos a propósito: toda
+   recalibración pide un gesto humano deliberado.
+3. **`toPrecision(17)`, no `String()`.** Un guardián que no distingue dos doubles
+   distintos no ataja una recalibración fina.
+4. **Las cualidades se indexan por `id`, no por posición.** Venían en un array y
+   eran las únicas que se sellaban por orden: mover una fila en `quality.ts`
+   habría dado un rojo falso. Hay un test que da vuelta las tres familias.
+
+**Y hay un control positivo, que es la lección de M2 aplicada a este archivo.**
+El guardián pasa hoy porque la física no cambió, o sea que **no prueba nada**
+sobre si sabría atajar un cambio. El control mueve la eficiencia de vuelta a 0,35
+—el número real que se movió sin que nadie lo notara— y afirma que el detector ve
+**exactamente uno**.
+
+**El hueco que la decisión D3 deja, con su número medido** (`it.fails` en el
+mismo archivo):
+
+| | |
+|---|---|
+| cualidades que los cuatro procesos semilla LEEN | **7** (`catch`, `flexibility`, `mass`, `reach`, `rigidity`, `stamina`, `tensile`) |
+| números a los que su sello es SENSIBLE | **591** |
+| de más | **84×** |
+
+O sea que un sello de `friccion` —que sólo mira rigidez y aliento— muere porque
+se movió la toxicidad del agua. Es el precio elegido a ojos abiertos: la
+dependencia por número es la salida cara y espera al día que un sello
+sobreviviente valga lo que cuesta.
+
+### Tramo C — `@anima/judge` nace: el vocabulario del veredicto
+
+*(lo que sigue)*
 
