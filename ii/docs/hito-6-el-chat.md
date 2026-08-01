@@ -1088,3 +1088,49 @@ Lo que queda de verdad es más chico y más preciso: **`Predicado` no distingue
 «que exista X» de «que vos hagas X»**. Para el caso de la trampa se podría pedir
 `holding(tag:…, catch>0)` —tenerla en la mano, que sí es sobre la criatura— pero
 eso exige elegir un tag, y elegirlo a ojo sería inventar. Queda medido y abierto.
+
+### Tramo N — varias cláusulas, mandadas de a una
+
+«Hacé fuego y después pescá algo» no se podía pedir: el canal a la mente lleva
+**una** firma. Había dos salidas y no son equivalentes.
+
+**(a) Que la mente sepa recibir un grafo.** Es la buena, y es grande: hay que
+tocar `Drive`, el peldaño D2, y —sobre todo— **resolver el `Ref` del `binds`, que
+hoy no lo puede resolver nadie**. Está medido desde el Gate: `{k:'rinde',
+de:'g1'}` nombra un nodo hermano y `Mente.#rindes` se vacía en cada plan nuevo,
+porque sus llaves son firmas de contenido intra-plan. Un grafo entregado a la
+mente se caería en el tercer paso con un `Ref` sin resolver.
+
+**(b) Que alguien afuera mande de a una.** Es la que se hizo. No toca
+`@anima/mind` ni `@anima/plan`, no inventa un ejecutor que no existe, y usa **dos
+cosas que ya estaban escritas y sin usar**: `orden()` —el orden topológico
+estable de `@anima/plan`, que hasta hoy no llamaba nadie— y el gancho
+`yaEstaCumplida` que el tramo anterior había agregado para otra cosa.
+
+#### Cómo avanza, y por qué así
+
+No con un temporizador ni contando ticks: **avanza cuando la meta en curso está
+cumplida**. Es la misma pregunta que `tomarMeta` le hace a cada meta antes de
+tomarla, así que las dos capas coinciden por construcción y no por casualidad.
+
+```
+── EL ENCARGO, CORRIDO ──
+     40  pasa a «emitsPower>0»  (1 de 2)
+    129  pasa a «holding(tag:carnoso)»  (2 de 2)
+    215  terminó el encargo
+  2 de 2 metas hechas
+```
+
+**Con su control:** la misma escena con UNA meta clavada, y D2 persigue una sola.
+Sin eso, «pasó a la segunda» podría ser la criatura haciendo lo suyo.
+
+#### Lo que se pierde, contado en vez de disimulado
+
+**La ligadura diferida.** «Pescá algo y después asá EL PESCADO» se parte en dos
+encargos sueltos, y el `binds` que dice «el de la cláusula anterior» se va con
+él. Vale **siete pasos de plan** (medido en el tramo D: 5 contra 12).
+
+`Encargo.ligaduraPerdida` lo cuenta, y el demo lo dice: *«de "el pescado" no me
+acuerdo cuál: lo busco de nuevo»*. Recuperarlo es la salida (a).
+
+Medido: `@anima/lang` **66 tests**, suite entera **2769**, typecheck limpio.

@@ -42,6 +42,7 @@ import { faltaDe } from '../src/falta.js'
 import { leer } from '../src/leer.js'
 import { lexicoDe } from '../src/lexico.js'
 import { objetivosDe } from '../src/objetivos.js'
+import { EncargoEnCurso, encargoDe } from '../src/encargo.js'
 import { revisar } from '../src/consulta.js'
 import { costoDeLaUltima, fraseDeLaLinea, preguntarle, transporteElegido } from './proveedor.js'
 import { actor, criatura, enElPiso, laOrilla, mundo } from '../../mind/tests/mundo.js'
@@ -100,6 +101,8 @@ let memoria = new Creencias()
 let mente = new Mente({ actor: QUIEN, memoria })
 const mentes = new Map([[QUIEN, mente]])
 let tick = 0
+/** El encargo en curso, si el ultimo pedido tenia varias clausulas. */
+let encargo: EncargoEnCurso | undefined
 
 /**
  * Donde esta parada, y con cuanto aliento.
@@ -133,6 +136,21 @@ interface Hecho {
 function correr(n: number): readonly Hecho[] {
   const hechos: Hecho[] = []
   for (let k = 0; k < n; k++) {
+    // El encargo se mira ANTES del tick: si la meta de ahora ya esta cumplida,
+    // la criatura tiene que arrancar la siguiente en este tick y no en el que
+    // viene.
+    if (encargo !== undefined) {
+      const quiere = encargo.ahora(yaEstaCumplida)
+      if (quiere === undefined) {
+        hechos.push({ t: tick, nombre: 'listo(el encargo entero)' })
+        encargo = undefined
+      } else if (quiere !== mente.estado.metaEnCurso && quiere !== ultimaMetaPuesta) {
+        ultimaMetaPuesta = quiere
+        hechos.push({ t: tick, nombre: `sigue-con(${String(encargo.hechas + 1)}-de-${String(encargo.total)})` })
+        mente = new Mente({ actor: QUIEN, memoria, drive: { meta: quiere, peso: 1, desdeTick: tick } })
+        mentes.set(QUIEN, mente)
+      }
+    }
     const antes = mente.despegues
     vivir(partida, mentes, 1)
     tick++
@@ -140,6 +158,9 @@ function correr(n: number): readonly Hecho[] {
   }
   return hechos
 }
+
+/** La ultima meta que se le puso a la mente, para no reconstruirla cada tick. */
+let ultimaMetaPuesta: string | undefined
 
 // ─── DECIRLO EN CASTELLANO ──────────────────────────────────────────────────
 //
@@ -175,6 +196,8 @@ function enCastellano(firma: string): string {
  */
 const EN_CRIOLLO: Readonly<Record<string, string>> = {
   ir: 'camino hasta ahi',
+  listo: 'listo, termine todo lo que me pediste',
+  'sigue-con': 'paso a lo siguiente que me pediste',
   sostener: 'agarro algo',
   juntar: 'junto algo del piso',
   unir: 'ato dos cosas',
@@ -300,11 +323,27 @@ async function decirle(frase: string): Promise<void> {
     detalle(frase, l, revisada, consulta, acuseMs, msDelModelo, [], tickDelMensaje, primera.firma)
     return
   }
-  if (revisada.clausulas.length > 1) {
-    console.log('  (me pediste varias cosas y por ahora solo puedo con la primera)')
+
+  // ─── EL ENCARGO, si son varias ───────────────────────────────────────────
+  //
+  // El canal a la mente lleva UNA firma, asi que las clausulas van de a una y el
+  // cursor pasa a la siguiente cuando el mundo cumple la de ahora. El porque de
+  // mandar de a una en vez de ensenarle el grafo a la mente esta en el
+  // encabezado de `src/encargo.ts`: la ligadura diferida no tiene ejecutor.
+  const e = encargoDe(revisada)
+  encargo = e.metas.length > 1 ? new EncargoEnCurso(e) : undefined
+  if (encargo !== undefined) {
+    console.log(`  son ${String(e.metas.length)} cosas, voy en orden.`)
+    if (e.ligaduraPerdida > 0) {
+      console.log(`  (de «el pescado» no me acuerdo cual: lo busco de nuevo)`)
+    }
   }
 
   const drive: Drive = { meta: primera.firma, peso: 1, desdeTick: tick }
+  // Se anota como puesta ANTES de correr: si no, el cursor la ve «distinta de la
+  // ultima» en el primer tick y anuncia «paso a lo siguiente» sin haber
+  // arrancado nada.
+  ultimaMetaPuesta = primera.firma
   mente = new Mente({ actor: QUIEN, memoria, drive })
   mentes.set(QUIEN, mente)
 

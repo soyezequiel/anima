@@ -7,6 +7,7 @@
 //   emparejar.ts   exacto · plural · una edición de tolerancia
 //   leer.ts        la función del hito: nunca falla, nunca devuelve vacío
 //   objetivos.ts   el puente a `goalGraph`, que era el extremo sin conectar
+//   encargo.ts     varias cláusulas, mandadas de a una — el canal lleva UNA
 //   falta.ts       las CUATRO clases de lo que falta, que hoy son una sola
 //   relojes.ts     los tres, con el cronómetro entrando por parámetro
 //   consulta.ts    por dónde entra el modelo: se DESCRIBE, no se llama
@@ -27,6 +28,7 @@ export * from './polaridad.js'
 export * from './emparejar.js'
 export * from './leer.js'
 export * from './objetivos.js'
+export * from './encargo.js'
 export * from './falta.js'
 export * from './relojes.js'
 export * from './consulta.js'
