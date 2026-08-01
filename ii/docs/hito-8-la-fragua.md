@@ -257,4 +257,69 @@ decisión de producto, no una de implementación.
 
 ## 3 · Los tramos
 
-*(se escriben cuando D1 esté decidida)*
+### Tramo A — el contador de dos carriles · CERRADO
+
+Nace `@anima/llm`. **Sin límite por decisión del usuario**, pero el contador
+queda: el tope se fue, la medición no. `Infinity` y no `undefined` para que el
+camino que usa el juego sea el mismo que prueba CI. 17 tests.
+
+### Tramo B — LA PUERTA · CERRADO
+
+Nace `@anima/forge` con `src/puerta.ts`: el typecheck de ranura fija que rechaza
+una candidata **sin gastar una consulta**. 14 tests.
+
+El orden lo mandó el número: **47 ms contra 6-25 s, ~140×**. Toda candidata pasa
+por acá antes de que nadie abra la boca.
+
+#### Se midió contra un corpus que YA EXISTÍA
+
+No se inventó nada: `skills/borradores/` tiene **28 habilidades escritas a mano**
+para medir si la API alcanzaba. Son candidatas de verdad, escritas por alguien
+que intentaba que compilaran — que es lo que la fragua va a recibir del modelo.
+
+```
+28 borradores · compilan 3 · fallan 25 · 83 errores
+
+TS2339   29   Property 'ticksToNightfall' does not exist on type 'Clock'
+TS2322   22   Type '"wet"' is not assignable to type 'QualityId'
+TS2345   20   Argument of type '"combustion"' is not assignable to 'SeedProcessId'
+```
+
+#### EL HALLAZGO: los tres errores más comunes son EL MISMO error
+
+**86% de los errores son «inventó un nombre que la API no tiene»** — una
+propiedad, una cualidad, un proceso. Tres vocabularios **cerrados** y un solo
+modo de fallar.
+
+Eso **cambia el diseño de las «diez reparaciones deterministas»** que el criterio
+pide: no son diez reglas sueltas. La dominante es UNA sola —«ese nombre no
+existe, acá está el catálogo»— aplicada a distintos catálogos. **Escribir diez
+antes de esta medición habría repartido el esfuerzo al revés**, que es
+exactamente el vicio del `80%`, el `200` y el `110` del Hito 6.
+
+> Y la cuenta **no es la que decía la auditoría vieja**: `escalera-capacidades.md`
+> dice 112 errores y hoy salen 83. No se copió el número, se corrió. Queda dicho
+> que son dos y cuál es el de hoy.
+
+#### EL GUARDIÁN DEL HITO 5 ME FRENÓ, Y TENÍA RAZÓN
+
+`@anima/forge` nació con `typescript` en `dependencies`, y el criterio del Hito 5
+dice que **ningún paquete de `ii/` depende en runtime de nada que no sea `ii/`**.
+El guardián lo agarró en la suite entera.
+
+**No se aflojó el test.** Su propio comentario ya había previsto el caso —*«
+`typescript` y `vitest` son `devDependencies` y no entran acá»*— y el patrón
+estaba resuelto en `@anima/skills`: `ApiTS = typeof import('typescript')` es un
+import **de TIPO**, que TypeScript borra, y el objeto real lo pone quien llama.
+
+Es la misma frontera que el Hito 6 fijó para el modelo: **el paquete describe, el
+llamador provee.** `Puerta` ahora recibe la API de TypeScript por constructor.
+
+> El precio: los tres enums (`ES2022`, `ESNext`, `Bundler`) quedan escritos como
+> enteros, porque viven en el objeto que se recibe y `OPCIONES` es constante de
+> módulo. **Van con su guardián**: un test los compara contra la API de verdad,
+> para que no deriven en silencio si TypeScript los renumera.
+
+### Tramo C — las reparaciones
+
+*(lo que sigue)* — y ya se sabe por dónde empezar: el 86%.
