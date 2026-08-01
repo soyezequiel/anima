@@ -143,7 +143,11 @@ export function correrElBanco<A>(s: Sujeto<A>, phys: Physics): readonly CorridaJ
       const p = mundoConObjetivo(m, phys)
       const args = s.argsDe(p)
       if (args !== undefined) {
-        const v = p.volar(EL_ACTOR, s.skill, args)
+        // La celda, igual que en `correrEn`. Ver `Sujeto.cell`.
+        const v =
+          s.cell === undefined
+            ? p.volar(EL_ACTOR, s.skill, args)
+            : p.volar(EL_ACTOR, s.skill, args, { cell: s.cell })
         let t = 0
         while (!v.terminado && t < 40) {
           p.tick()

@@ -357,7 +357,7 @@ p { margin: 0; }
     <h2>Hito 8 cerrado en mecanismos: la criatura escribe una habilidad, la instala y el mundo cambia</h2>
     <p class="detalle">Ocho tramos (A–H) y seis etapas más. Lo que la fragua hace hoy, de punta a punta y sin gastar un centavo: arma un encargo, pide candidatas, las typechequea afuera del hilo del mundo, repara los typos sola, monta la ganadora **en la frontera de un tick** y la vuela — medido, una habilidad forjada agarra un palito y el hash del mundo se mueve. El hallazgo que ordenó la arquitectura entera es del tramo H: **cortar la fragua en rodajas no alcanza**, porque la rodaja más fina que existe —una pasada por la puerta, 56 ms— ya vale una ventana de tick entera. Así que la fragua vive en otro hilo, y lo único que cruza es TEXTO: una habilidad montada tiene funciones adentro y las funciones no pasan por un postMessage. Los últimos cinco puntos se abrieron con diez agentes —cinco midiendo, cinco atacando— y los cinco adversarios tumbaron los cinco criterios propuestos: no eran cinco puntos, eran TRES MECANISMOS QUE NO EXISTÍAN (instalar, la costura al modelo, la cola) y encima de ellos los cinco puntos.</p>
     <ol>
-      <li>Lo único que le falta al Hito 8 es la segunda mitad del punto 9: medir que la re-forja mejora EN LOS MUNDOS RESERVADOS del juez, que es lo que separa aprender de memorizar.</li>
+      <li>Lo único que le falta al Hito 8 sólo es medible con un banco más grande: el de «sostener» da 5 mundos y 1 reservado, y con uno solo «mejoró en los que no le contaron» es una moneda. Es una decisión sobre el juez, no sobre la fragua.</li>
       <li>Hito 9 — la escalera de capacidades. Su criterio ya está corregido para que la fragua no se despierte ni una vez.</li>
       <li>La mente no puede ELEGIR una habilidad forjada: aHabilidad es un switch cerrado sobre las quince innatas. Se puede volar, pero el planificador no la nombra. Es H10 y H11.</li>
     </ol>
@@ -631,7 +631,7 @@ p { margin: 0; }
           </div>
           <p class="frase">Acá recién entra el LLM a escribir código: habilidades nuevas mientras el mundo sigue corriendo.</p>
           <div class="medidas"><span class="marcador" title="criterios que cumplen">8<span class="barra-diagonal">/</span>9</span><span class="semanas">4,5 sem</span></div>
-        <p class="nota">Ocho tramos y seis etapas. Lo que más enseñó fue lo que NO estaba: los puntos 3, 6 y 7 hablaban de reemplazar algo y no había ningún camino de escritura de la fragua al mundo —la frontera dejaba el mundo con el mismo hash—; los puntos 4 y 8 contaban consultas de un episodio que gastaba cero por construcción; y «la cola» era el sujeto de dos puntos y cero líneas de código. Se cazaron SEIS verdes por omisión, y el sexto lo escribió el mismo modelo que escribió el resto: un corte que miraba una bandera «entre candidatas» con un handler sincrónico, que no cede el turno nunca. Daba 6 de 6 forjadas y 0 cortadas, en verde. La regla del hito quedó en una frase: un cero cuyo control vive en otro archivo y sostiene otra Partida es otra vez el cero estructural. Y los puntos 1 y 2 se cerraron contra el modelo de verdad: el 1 con creces (10 de 10 limpias) y el 2 sólo forzando el error, porque su premisa --que el modelo escribe codigo que hay que reparar-- se cayo el dia que la API entro al prompt. Los 24 de 27 borradores que no compilaban se escribieron SIN la superficie delante.</p>
+        <p class="nota">Ocho tramos y seis etapas. Lo que más enseñó fue lo que NO estaba: los puntos 3, 6 y 7 hablaban de reemplazar algo y no había ningún camino de escritura de la fragua al mundo —la frontera dejaba el mundo con el mismo hash—; los puntos 4 y 8 contaban consultas de un episodio que gastaba cero por construcción; y «la cola» era el sujeto de dos puntos y cero líneas de código. Se cazaron SEIS verdes por omisión, y el sexto lo escribió el mismo modelo que escribió el resto: un corte que miraba una bandera «entre candidatas» con un handler sincrónico, que no cede el turno nunca. Daba 6 de 6 forjadas y 0 cortadas, en verde. La regla del hito quedó en una frase: un cero cuyo control vive en otro archivo y sostiene otra Partida es otra vez el cero estructural. Y los puntos 1 y 2 se cerraron contra el modelo de verdad: el 1 con creces (10 de 10 limpias) y el 2 sólo forzando el error, porque su premisa --que el modelo escribe codigo que hay que reparar-- se cayo el dia que la API entro al prompt. Los 24 de 27 borradores que no compilaban se escribieron SIN la superficie delante. El punto 9 se corrio contra el modelo y dio NEGATIVO, pero por algo estructural: con UN solo mundo reservado no se puede distinguir aprender de tener suerte. Y de paso salio que EL JUEZ NO PODIA JUZGAR UNA HABILIDAD FORJADA --correrEn volaba sin celda y la habilidad moria con OutOfFuel budget:0--, que es la ranura gemela de la que la fragua ya habia cruzado en su registro.</p>
         <details class="criterios">
           <summary>9 criterios</summary>
           <ul>
@@ -643,7 +643,7 @@ p { margin: 0; }
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · la degradada entra en la cola, se re-forja en el fondo (K=6) y la ganadora reemplaza sin perder un tick — el reemplazo entero sale 3,7 ms de una ventana de 50. Cuatro afirmaciones, cuatro controles: la sana NO entra, el mundo corrió 159.978 ticks, la perdedora no reemplaza, y adentro del hilo se pierden 6 a 8</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>7 · una candidata peor no reemplaza nada y queda archivada: el duelo compara CARGO POR CARGO y no el grado global, porque ningún dictamen de habilidad puede salir `promueve` (utilidad sale inconcluso siempre y elPeor toma el peor). La regla es domina-o-no-reemplaza: un empate o un ganar-uno-perder-otro dejan a la titular</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>8 · con la cuota agotada, ni una consulta: el presupuesto es una PUERTA y la diferencia está en el tipo — `pedirPermiso` devuelve un viaje o NO LO DEVUELVE. Las dos ramas se ejercitan por separado (sin-consultas y sin-plata) y el control es la misma corrida con cuota, que da 1</span></li>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>9 · una candidata que falla alimenta a la siguiente: las DOS mitades hechas y disparadas contra material REAL —una candidata usó las palabras del vocabulario como si fueran API y la vuelta 2 se las cuenta— y el guardián impide que entre un id de mundo. Falta la segunda mitad del enunciado: medir que la siguiente mejora EN LOS MUNDOS RESERVADOS, que es lo que separa aprender de memorizar</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>9 · una candidata que falla alimenta a la siguiente: la primera mitad CUMPLE contra material real y el guardián de la trampa aguanta (5 ids de mundo en el banco, 0 aparecen en el encargo de la vuelta 2). La segunda mitad --que mejore EN LOS MUNDOS RESERVADOS-- NO ES MEDIBLE con el banco que hay: el de sostener tiene 5 mundos y 1 reservado, así que el resultado se decide con UNA moneda. No lo arregla la plata: hace falta un banco más grande, y eso es una decisión sobre el juez</span></li>
           </ul>
         </details>
         </div>
@@ -810,6 +810,10 @@ p { margin: 0; }
         <code>ANIMA_LLM=claude … con-el-modelo.ts</code>
         <span class="resultado">19 candidatas reales contra Claude Haiku · 17 limpias, 2 reparadas, 1 rota · US$ 0,80 en total</span>
       </div>
+      <div class="corrida si">
+        <code>ANIMA_LLM=claude … el-punto-9.ts</code>
+        <span class="resultado">2 vueltas juzgadas contra Claude · guardián OK (0 de 5 ids filtrados) · mejora en reservados: NO, y el banco es demasiado chico para decidirlo · US$ 0,1463</span>
+      </div>
     </div>
     <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá. Lo que SÍ se corrió y antes no: el modelo de verdad, 19 candidatas por US$ 0,80.</p>
   </section>
@@ -820,11 +824,11 @@ p { margin: 0; }
       <p>No bloquean el tramo de hoy, pero muerden más adelante. Están acá para que no las descubra alguien a los golpes.</p>
     </header>
     <ul class="deudas">
+        <li>El cuarto reservado del juez es DEMASIADO CHICO para medir aprendizaje: el banco de sostener da 5 mundos y 1 reservado. La segunda mitad del punto 9 del Hito 8 no se puede afirmar ni negar con eso.</li>
         <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las quince innatas. Se puede volar con Partida.volar —medido— pero el planificador no la nombra. Es el trabajo de H10 y H11.</li>
         <li>El catálogo no tiene fila para una habilidad suelta: ConstructionSchema tiene tres formas —proceso, ley y obra— y ninguna es «una habilidad que establece X». Se instala y se vuela, pero no se publica. `sinPublicar` lo cuenta.</li>
         <li>La escena del juez no caza un `goTo` roto: el objetivo nace a UNA celda y `take` llega igual, así que sacarle el movimiento a una habilidad da empate en los cuatro cargos. Su propio encabezado dice que nace al lado justamente para que eso no pase.</li>
         <li>`utilidad` sale `inconcluso` siempre —«no hay contra qué hasta que haya objetivos»— y por eso ningún dictamen puede salir `promueve`. Todo comparador que mire el grado global empata.</li>
-        <li>El sello de la física depende de 591 números cuando los procesos leen 7 (84×), con su it.fails y la medición al lado. Y tres de los cuatro disparadores de la cola piden telemetría de partida que todavía no existe.</li>
     </ul>
   </section>
 

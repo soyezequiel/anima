@@ -1307,3 +1307,72 @@ Los dos por lo mismo: el prompt ahora lleva **24 KB de API** adentro. No rompe
 ningún criterio —el chat no espera al modelo y la fragua vive en otro hilo— pero
 son números del plan que ya no son los de la realidad, y el tramo H presupuestó
 con ellos.
+
+---
+
+## El punto 9, la mitad que faltaba — y el resultado es NEGATIVO
+
+   > Una candidata que falla alimenta a la siguiente, y la siguiente mejora **en
+   > los mundos que no le contaron**.
+
+Corrido contra Claude, dos vueltas de K=2 (`forge/demo/el-punto-9.ts`):
+
+```
+── VUELTA 1 ──
+  agarrar            mostrados 2/4 · reservados 1/1
+  levantarMaterial   mostrados 2/4 · reservados 1/1
+
+la que peor anduvo: agarrar
+  construccion: dijo que sí en 2 mundo(s) donde no había nada que levantar
+
+guardián: 5 ids de mundo en el banco · 0 aparecen en el encargo ✔
+
+── VUELTA 2 ──
+  coger              mostrados 2/4 · reservados 0/1
+  buscarYCoger       mostrados 2/4 · reservados 0/1
+
+¿mejoró en los mundos que NO le contaron?  NO      US$ 0,1463
+```
+
+### Lo que SÍ quedó probado
+
+- **el juez corre habilidades forjadas** (ver abajo, hubo que arreglarlo);
+- **el guardián de la trampa aguanta contra material real**: 5 ids de mundo en el
+  banco, **0 aparecen** en el encargo de la vuelta 2.
+
+### Y por qué la pregunta NO se puede contestar con este banco
+
+El banco de `CONTRATO_SOSTENER` tiene **5 mundos, de los cuales 1 es reservado**
+(`i % 4 === 1`). O sea que «mejoró en los reservados» se decide con **un solo
+mundo**: el resultado `1/1 → 0/1` es una moneda, no una señal.
+
+**Ninguna cantidad de plata arregla eso.** Con un mundo reservado no se puede
+distinguir aprender de tener suerte, y correrlo diez veces sólo daría diez
+monedas. Lo que hace falta es un banco más grande — y eso es una decisión de
+producto sobre el juez, no un ajuste del prompt.
+
+> Así que el punto 9 queda **a medias, con la causa medida**: la primera mitad
+> cumple y está probada contra material real; la segunda **no es medible con el
+> banco que hay**. Poner verde acá sería exactamente el verde por omisión que
+> este hito viene cazando, con la diferencia de que este ya lo vimos.
+
+## El juez no podía juzgar una habilidad forjada
+
+Salió al correr lo de arriba: la candidata compiló, se montó, y el juez explotó.
+
+```
+OutOfFuel: se agotaron 0 unidades adentro de una función común
+  at until (…)          ← el callback de `ctx.explore`
+  at correrEn (ablacion.ts:101)
+```
+
+`correrEn` volaba **sin celda**. Para las quince innatas está bien —son funciones
+planas, sin instrumentar, sin tanque— pero una habilidad que salió del modelo pasa
+por `instrument()` y **nace con el tanque en cero**.
+
+Es la **misma ranura** que `Partida.volar` ya tenía y que la fragua cruzó en su
+registro (etapa 1). El juez tenía el agujero gemelo y no se veía **porque nunca
+había juzgado algo forjado**.
+
+`Sujeto.cell` es opcional, así que sin celda el comportamiento es exactamente el
+de antes: las quince innatas y los 92 tests del Hito 7 no se enteran.

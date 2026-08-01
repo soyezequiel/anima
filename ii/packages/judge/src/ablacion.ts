@@ -50,7 +50,7 @@
 
 import type { Physics } from '@anima/physics'
 import { Partida } from '@anima/perceive'
-import type { Skill } from '@anima/skills'
+import type { FuelCell, Skill } from '@anima/skills'
 import { bancoDe } from './banco.js'
 import type { MundoDelBanco } from './banco.js'
 import { mundoConObjetivo, EL_ACTOR } from './escena.js'
@@ -69,6 +69,29 @@ export interface Sujeto<A> {
    * ni largar, así que no cuenta.
    */
   readonly argsDe: (p: Partida) => A | undefined
+  /**
+   * EL TANQUE, cuando la acusada viene de la fragua.
+   *
+   * ─── El juez no podía juzgar una habilidad forjada, y está medido ─────────
+   *
+   * `correrEn` volaba sin celda, y para las quince innatas eso está bien: son
+   * funciones planas, sin instrumentar, y no tienen tanque. Pero una habilidad
+   * que salió del modelo pasa por `instrument()` y **nace con el tanque en
+   * cero**, así que muere en el primer paso:
+   *
+   *     OutOfFuel: se agotaron 0 unidades adentro de una función común
+   *       at until (…)  ← el callback de `ctx.explore`
+   *       at correrEn (ablacion.ts:101)
+   *
+   * Salió al correr el punto 9 contra Claude: la candidata compiló, se montó, y
+   * el juez explotó al correrla. Es la MISMA ranura que `Partida.volar` ya tenía
+   * y que la fragua cruzó en su registro — el juez tenía el agujero gemelo y no
+   * se veía porque nunca había juzgado algo forjado.
+   *
+   * Opcional a propósito: sin celda, el comportamiento es exactamente el de
+   * antes, así que las quince innatas y todos los tests del Hito 7 no se enteran.
+   */
+  readonly cell?: FuelCell
 }
 
 export type Desenlace = 'llego' | 'fallo' | 'no-se-pudo-largar' | 'se-colgo'
@@ -95,7 +118,9 @@ export function correrEn<A>(s: Sujeto<A>, m: MundoDelBanco, phys: Physics): Corr
   const args = s.argsDe(p)
   if (args === undefined) return { mundo: m.id, desenlace: 'no-se-pudo-largar', ticks: 0 }
 
-  const v = p.volar(EL_ACTOR, s.skill, args)
+  // La celda viaja si la hay. Ver `Sujeto.cell`: sin esto, una habilidad forjada
+  // muere en su primer paso con `OutOfFuel` y parece culpa de ella.
+  const v = s.cell === undefined ? p.volar(EL_ACTOR, s.skill, args) : p.volar(EL_ACTOR, s.skill, args, { cell: s.cell })
   let t = 0
   while (!v.terminado && t < TOPE_DE_TICKS) {
     p.tick()
