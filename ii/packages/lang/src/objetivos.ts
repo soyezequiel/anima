@@ -102,6 +102,10 @@ function porQueNoVa(c: ClausulaLeida): string | undefined {
     // No debería pasar —hay un test que lo impide— y si pasa, se dice.
     return `entendí «${c.firma}» y el planificador no sabe leerla`
   }
+  if (c.grado === 'ya-esta') {
+    // No es un fracaso y por eso el texto no se disculpa: es la respuesta.
+    return 'eso ya está, así que no salgo a buscarlo'
+  }
   if (c.polaridad === 'niega') {
     return 'lo que me pediste que NO haga lo entendí, pero todavía no sé guardarme una prohibición'
   }

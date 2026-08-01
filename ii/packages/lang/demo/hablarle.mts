@@ -32,8 +32,8 @@
 
 import { createInterface } from 'node:readline'
 import { buildSeedPhysics, qualityOf } from '@anima/physics'
-import { ESQUEMAS, catalogoDe } from '@anima/plan'
-import { Partida } from '@anima/perceive'
+import { ESQUEMAS, catalogoDe, cumple, interpretar } from '@anima/plan'
+import { Contexto, Partida } from '@anima/perceive'
 import { Creencias, Mente, vivir } from '@anima/mind'
 import type { Drive } from '@anima/mind'
 import { PUENTE } from '../src/alias.js'
@@ -59,7 +59,29 @@ const lexico = lexicoDe(phys, PUENTE)
 const catalogo = catalogoDe(ESQUEMAS)
 const ESTABLECIBLES = new Set(ESQUEMAS.map((e) => e.establishes))
 const FIRMAS = [...ESTABLECIBLES]
-const OPC = { phys, lexico, sabeElCatalogo: (f: string): boolean => ESTABLECIBLES.has(f) }
+/**
+ * ¿EL MUNDO YA CUMPLE ESTA FIRMA?
+ *
+ * Se pregunta contra la vista de AHORA, no contra una foto: la respuesta cambia
+ * a cada tick, y contestar con la de hace veinte seria peor que no contestar.
+ */
+function yaEstaCumplida(firma: string): boolean {
+  const pr = interpretar(firma)
+  if (pr === undefined) return false
+  const v = new Contexto(partida.proyeccion, {
+    actor: QUIEN,
+    rng: partida.dado.tirar,
+    lugares: partida.lugares,
+  }).ctx
+  return cumple(pr, v)
+}
+
+const OPC = {
+  phys,
+  lexico,
+  sabeElCatalogo: (f: string): boolean => ESTABLECIBLES.has(f),
+  yaEstaCumplida,
+}
 
 const orilla = laOrilla()
 // La escena canónica del Hito 5: la criatura parada en la orilla, con el tanque
@@ -268,6 +290,15 @@ async function decirle(frase: string): Promise<void> {
   if (primera.leidaPor === 'local') console.log(`  entendi: ${enCastellano(primera.firma)}.`)
   if (primera.grado === 'sin-camino') {
     console.log(`  ${faltaDe(primera.firma, phys, catalogo).enVozAlta}.`)
+  }
+  // `ya-esta` y `sin-camino` NO se inyectan: la primera porque no hay nada que
+  // perseguir y la segunda porque el viaje no termina. Antes se inyectaban las
+  // dos y la criatura seguia con lo suyo mientras el demo decia «dale, voy».
+  if (primera.grado !== 'entendida') {
+    const q = contar(correr(60))
+    console.log(`  mientras tanto ${q.length === 0 ? 'sigue con lo suyo' : q.join(', ')}.`)
+    detalle(frase, l, revisada, consulta, acuseMs, msDelModelo, [], tickDelMensaje, primera.firma)
+    return
   }
   if (revisada.clausulas.length > 1) {
     console.log('  (me pediste varias cosas y por ahora solo puedo con la primera)')

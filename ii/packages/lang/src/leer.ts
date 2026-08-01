@@ -270,6 +270,20 @@ export interface OpcionesDeLectura {
   readonly lexico?: Lexico
   /** ¿Algún esquema establece esta firma? Sin esto no se distingue el sin-camino. */
   readonly sabeElCatalogo?: (firma: string) => boolean
+  /**
+   * ¿EL MUNDO YA LA CUMPLE?
+   *
+   * Existe por una medición incómoda: «fabricá una trampa para peces» sale como
+   * `catch>0`, y `Predicado` es **existencial** — dice «que haya algo que
+   * atrape», no «que vos hagas uno». Con algo así a la vista, la meta ya está
+   * cumplida, y la mente la descarta **con razón**: perseguir lo que ya tenés te
+   * deja parado.
+   *
+   * Lo que estaba mal no era el descarte: era que **nadie lo decía**. Desde
+   * afuera se ve exactamente igual que «no me hace caso». Medido sobre la escena
+   * canónica en el tick 40: `catch>0` y `reach>=2` ya están cumplidas.
+   */
+  readonly yaEstaCumplida?: (firma: string) => boolean
   /** Bajo esto no se compromete conducta, se compromete gesto. Por omisión 0,5. */
   readonly umbral?: number
 }
@@ -282,6 +296,7 @@ function graduar(
   confianza: number,
   umbral: number,
   sabeElCatalogo: ((f: string) => boolean) | undefined,
+  yaEstaCumplida: ((f: string) => boolean) | undefined,
 ): GradoDeLectura {
   // Sin nada reconocido, ni orientación hay.
   if (firma === undefined && verbo === undefined) return 'no-entendida'
@@ -290,7 +305,9 @@ function graduar(
   if (firma === undefined) return 'orientacion'
   // Con meta pero con la lectura floja, tampoco se compromete conducta.
   if (confianza < umbral) return 'orientacion'
-  // Y con meta firme, la pregunta es si alguien sabe llegar.
+  // Y con meta firme van DOS preguntas, en este orden. Primero si ya está: no
+  // tiene sentido contestar «no sé cómo» sobre algo que el mundo ya cumple.
+  if (yaEstaCumplida !== undefined && yaEstaCumplida(firma)) return 'ya-esta'
   if (sabeElCatalogo !== undefined && !sabeElCatalogo(firma)) return 'sin-camino'
   return 'entendida'
 }
@@ -313,6 +330,8 @@ function acusar(cs: readonly ClausulaLeida[]): string {
   switch (peor.grado) {
     case 'entendida':
       return cs.length > 1 ? 'dale, arranco por lo primero' : 'dale, voy'
+    case 'ya-esta':
+      return 'eso ya está. ¿querés otra cosa?'
     case 'sin-camino':
       return 'te entendí, pero no sé cómo hacerlo todavía'
     case 'orientacion':
@@ -370,7 +389,14 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
     // frase se entiende perfecto.
     const confianza = vistos === 0 ? 0 : suma / vistos
     const firma = verbo === undefined ? firmaSuelta(objetos) : componer(opciones.phys, verbo, objetos)
-    const grado = graduar(firma, verbo, confianza, umbral, opciones.sabeElCatalogo)
+    const grado = graduar(
+      firma,
+      verbo,
+      confianza,
+      umbral,
+      opciones.sabeElCatalogo,
+      opciones.yaEstaCumplida,
+    )
 
     clausulas.push({
       crudo: trozo.tokens.join(' '),
@@ -416,6 +442,8 @@ function porqueDe(
   switch (grado) {
     case 'entendida':
       return `«${String(firma)}», ${cobertura}`
+    case 'ya-esta':
+      return `entendí «${String(firma)}» y el mundo ya lo cumple`
     case 'sin-camino':
       return `entendí «${String(firma)}» y ningún esquema conocido lo establece`
     case 'orientacion':

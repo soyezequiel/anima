@@ -27,6 +27,7 @@
  * | grado | qué quiere decir | qué se hace con eso |
  * |---|---|---|
  * | `entendida` | hay un predicado y el catálogo sabe establecerlo | va a `plan()` como meta |
+ * | `ya-esta` | se entendió y **el mundo ya lo cumple** | se dice, y no se persigue |
  * | `sin-camino` | se entendió y NINGÚN esquema lo establece | se acusa y se dice qué falta |
  * | `orientacion` | no se entendió del todo, pero sí hacia DÓNDE mirar | se emite un gesto reversible |
  * | `no-entendida` | ni eso | se pregunta, y el cuerpo sigue con lo suyo |
@@ -152,7 +153,12 @@ export interface Lexico {
  * grados comprometen una conducta. Los otros dos comprometen un gesto, que es
  * reversible y barato de equivocar.
  */
-export type GradoDeLectura = 'entendida' | 'sin-camino' | 'orientacion' | 'no-entendida'
+export type GradoDeLectura =
+  | 'entendida'
+  | 'ya-esta'
+  | 'sin-camino'
+  | 'orientacion'
+  | 'no-entendida'
 
 /**
  * Qué clase de cosa falta cuando algo no se puede hacer.

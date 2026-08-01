@@ -18,6 +18,7 @@ import { describe, expect, it } from 'vitest'
 import { PUENTE, PUENTE_METAS } from '../src/alias.js'
 import { leer } from '../src/leer.js'
 import { lexicoDe } from '../src/lexico.js'
+import { objetivosDe } from '../src/objetivos.js'
 
 const phys = buildSeedPhysics()
 const lexico = lexicoDe(phys, PUENTE)
@@ -222,5 +223,51 @@ describe('lo que NO se puede pedir, y se dice', () => {
     const c = leer('pescá algo', OPC).clausulas[0]
     expect(c?.firma).toBe('holding(tag:carnoso)')
     expect(c?.grado).toBe('entendida')
+  })
+})
+
+describe('lo que YA ESTÁ se dice, no se persigue en silencio', () => {
+  // ─── DE DÓNDE SALE ESTE GRADO ────────────────────────────────────────────
+  //
+  // De medir por qué «fabricá una trampa para peces» no hacía nada. La orden
+  // llegaba bien y la mente la DESCARTABA, con razón: `Predicado` es
+  // existencial, así que `catch>0` quiere decir «que haya algo que atrape a la
+  // vista» y no «que vos hagas uno». Medido sobre la escena canónica en el
+  // tick 40, `catch>0` y `reach>=2` ya están cumplidas.
+  //
+  // Descartar una meta cumplida es CORRECTO —perseguir lo que ya tenés te deja
+  // parado, y `tomarMeta` lo dice en su comentario—. Lo que estaba mal es que
+  // nadie lo decía: desde afuera se ve exactamente igual que «no me hace caso».
+  const yaEsta = (f: string): boolean => f === 'catch>0'
+  const CON_MUNDO = { ...OPC, yaEstaCumplida: yaEsta }
+
+  it('la misma frase cambia de grado según el mundo, y sólo por eso', () => {
+    const sin = leer('fabricá una trampa para peces', OPC).clausulas[0]
+    const con = leer('fabricá una trampa para peces', CON_MUNDO).clausulas[0]
+    expect(sin?.grado).toBe('entendida')
+    expect(con?.grado).toBe('ya-esta')
+    // La firma NO cambia: lo que cambió es el mundo, no la lectura.
+    expect(con?.firma).toBe(sin?.firma)
+  })
+
+  it('y el acuse lo dice en vez de prometer', () => {
+    const l = leer('fabricá una trampa para peces', CON_MUNDO)
+    expect(l.acuse).toContain('ya está')
+    // El control: la misma frase sin el mundo puesto promete.
+    expect(leer('fabricá una trampa para peces', OPC).acuse).toBe('dale, voy')
+  })
+
+  it('no se convierte en objetivo, y el aviso no se disculpa', () => {
+    const p = objetivosDe(leer('fabricá una trampa para peces', CON_MUNDO))
+    expect(p.nodos.length).toBe(0)
+    expect(p.descartes[0]?.porque).toContain('ya está')
+  })
+
+  it('y lo que NO está cumplido sigue yendo', () => {
+    // El control de que el portón no se comió todo: con el mismo gancho puesto,
+    // una meta que no está cumplida sale `entendida` y llega a nodo.
+    const l = leer('hacé fuego', CON_MUNDO)
+    expect(l.clausulas[0]?.grado).toBe('entendida')
+    expect(objetivosDe(l).nodos.length).toBe(1)
   })
 })

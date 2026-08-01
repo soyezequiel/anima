@@ -1028,3 +1028,63 @@ planificador y la escalera no las persiguen distinto. Vive en `@anima/plan` y en
    «tengo hambre» dio `holding(tag:carnoso)` una vez y la versión cocida otra. El
    replay no se rompe —la crónica guarda el objetivo ya parseado— pero decirle dos
    veces lo mismo puede dar dos conductas, y **ningún criterio contempla eso**.
+
+### Tramo M — por qué tres órdenes hacían lo mismo, y no era lo que yo decía
+
+Estaba anotado como «tres metas distintas producen la misma conducta, y eso vive
+en `@anima/plan`». **Falso.** Se midió leyendo el peldaño que decidió cada tick:
+
+```
+  emitsPower>0           D2:157  D3:141   ← la orden manda
+  catch>0                D2:  0  D3:299   ← la orden NUNCA manda
+  holding(tag:fibroso)   D2:  0  D3:299   ← tampoco
+```
+
+Y las dos que nunca mandan lo hacen **por causas distintas**:
+
+- **`holding(tag:fibroso)`** no está en `ESQUEMAS`, así que `sinVocabulario` la
+  frena. Correcto, y `lang` ya lo decía: sale `sin-camino`. Lo que estaba mal era
+  **mi demo**, que la inyectaba igual.
+- **`catch>0` ya estaba cumplida.** Medido sobre la escena canónica en el tick
+  40: `catch>0` y `reach>=2` dan `cumple → true`.
+
+#### El hallazgo: `Predicado` es EXISTENCIAL
+
+`catch>0` quiere decir **«que haya algo que atrape a la vista»**, no «que vos
+hagas uno». Con algo así cerca, «fabricá una trampa para peces» es una meta que
+el mundo ya cumple, y `tomarMeta` la descarta **con razón** — su propio
+comentario lo dice: perseguir lo que ya tenés te deja parado tapándole el paso a
+lo que sí tiene trabajo detrás.
+
+**Descartarla está bien. Lo que estaba mal es que nadie lo decía.** Desde afuera
+se ve exactamente igual que «no me hace caso».
+
+#### El grado nuevo
+
+`GradoDeLectura` gana `ya-esta`, y `leer()` gana un gancho —`yaEstaCumplida`—
+simétrico con el que ya tenía para el catálogo. Ninguno de los dos vive adentro:
+el paquete no toca el mundo, y quien llama tiene el dato.
+
+```
+  «fabricá una trampa para peces»
+  eso ya está. ¿querés otra cosa?
+  mientras tanto camino hasta ahi, uso lo que tenia (2 veces).
+```
+
+La firma **no cambia** —sigue siendo `catch>0`— y lo afirma un test: lo que
+cambió es el mundo, no la lectura. Y el aviso del puente no se disculpa: *«eso ya
+está, así que no salgo a buscarlo»* no es un fracaso, es la respuesta.
+
+**Y el demo dejó de inyectar lo que no es `entendida`.** Antes mandaba también
+`ya-esta` y `sin-camino`, y por eso decía «dale, voy» mientras la criatura seguía
+con lo suyo.
+
+#### Lo que esto reordena de la lista de pendientes
+
+«Tres metas hacen lo mismo» **se cierra**, y no era un problema del planificador:
+era una meta cumplida, una meta sin esquema, y un demo que inyectaba las dos.
+
+Lo que queda de verdad es más chico y más preciso: **`Predicado` no distingue
+«que exista X» de «que vos hagas X»**. Para el caso de la trampa se podría pedir
+`holding(tag:…, catch>0)` —tenerla en la mano, que sí es sobre la criatura— pero
+eso exige elegir un tag, y elegirlo a ojo sería inventar. Queda medido y abierto.
