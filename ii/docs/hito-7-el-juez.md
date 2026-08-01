@@ -496,9 +496,96 @@ que con umbrales redondos hace falta seguido).
 
 **2816 tests verdes**, `pnpm ii:test` exit 0, `pnpm ii:typecheck` limpio.
 
-### Tramo E — la ablación (punto 4)
+### Tramo E — la ablación · CERRADO (punto 4)
 
-*(lo que sigue)* — el dato ya existe (17 contratos con `precondiciones` escritas
-como candidatas, M1) y el banco ya sabe producir el mundo que hace falta: uno que
-viole **una sola** precondición.
+`judge/src/ablacion.ts` + `judge/src/escena.ts`. El paquete pasa de 26 a **33
+tests**.
+
+#### Las dos piezas ya estaban, y las dos se escribieron ANTICIPANDO esto
+
+1. **El dato.** El encabezado de `contrato.ts`: *«el juez del Hito 7 hace ablación
+   de precondiciones. Una precondición escrita en prosa dentro de un comentario
+   no se puede ablacionar. Escrita acá, sí.»*
+2. **El mundo.** El `justo-abajo` por precondición del tramo D. Ese aislamiento
+   no era un lujo — sin él no se puede atribuir el resultado.
+
+Y hasta el sujeto se ofreció solo. `sostener`, sobre su heurística de qué soltar:
+
+> Es una heurística escrita a mano, o sea exactamente el tipo de decisión que
+> **el juez del Hito 7 tendría que ablacionar**.
+
+#### Los dos controles, sobre la misma habilidad y la misma máquina
+
+`sostener` **chequea su precondición en código** —`if (ctx.q(args.que,'portable')
+< 1) return fail(…)`— así que el control negativo tiene la respuesta conocida de
+antemano. Y antes de ablacionar nada se mide que la habilidad **corra**, porque
+si no todo lo demás mide aire:
+
+```
+holgado      tuberculo/vara/1     → llegó en 3 ticks
+justo-abajo  tuberculo/vara/20    → falló en 1 tick     (20 kg: portable < 1)
+
+portable>=1   la usa    · no llegó en ninguno de los mundos que la violan
+moisture<0.9  ESPURIA   · LLEGÓ en agua/vara: no la estaba usando
+```
+
+El positivo se fabrica: `moisture<0.9` no aparece en una sola línea de
+`sostener.ts`. La ablación la encuentra **y no marca la de verdad** — un
+ablacionador que marca todo no ablaciona.
+
+#### EL ERROR QUE ESTE TRAMO DEJÓ ESCRITO: sintetizar y ablacionar fallan en puntas OPUESTAS
+
+Escribí un test esperando que `toxicity>=0.6` diera «NO SE PROBÓ», razonando que
+el catálogo llega a 0,55 y por lo tanto no hay con qué. **Esa cuenta vale para
+sintetizar, no para ablacionar.** Son la operación inversa:
+
+| | busca materia que… | falla cuando… |
+|---|---|---|
+| sintetizar | **cumpla** el predicado | nadie llega — `toxicity>=0.6` |
+| ablacionar | **lo viole** | nadie lo viola — `toxicity>=0` |
+
+Un predicado imposible es el **más fácil** de ablacionar: lo viola el catálogo
+entero. Los dos casos quedaron como tests y el error quedó escrito, porque es la
+clase de simetría falsa que se cuela sola.
+
+#### Y lo que NO se pudo probar se DICE
+
+Una precondición sin mundo aislado sale **«NO SE PROBÓ»**, no «no espuria».
+Declarar buena algo que nunca se corrió es el verde por omisión que este hito
+viene encontrando en todos lados — el sello del tramo B, el guardián del C, el
+detector del D. Acá se distingue por construcción.
+
+#### El hueco medido que este tramo no puede cerrar
+
+**El juez no puede invocar una habilidad sin saber sus argumentos.** `sostener`
+pide `{ que: BodyView }`, `frotar` pide otra cosa, y no hay en el árbol ningún
+esquema que lo diga: los args viven en el tipo de TypeScript, que en tiempo de
+corrida no existe.
+
+Así que los trae quien acusa (`Sujeto.argsDe`). **No es una comodidad de prueba:
+es la frontera real del hito.** Del Hito 8 en adelante la fragua produce el
+paquete entero y ahí los args son parte de lo forjado.
+
+#### Y la escena es POBRE a propósito
+
+Dos cuerpos: la criatura y el objetivo, a una celda. Un mundo con veinte cuerpos
+alrededor le da a la habilidad veinte formas de acertar por accidente, y el
+veredicto deja de hablar de ella. A una celda y no encima porque un `goTo` roto
+pasaría desapercibido si ya estuviera donde tiene que estar.
+
+#### El árbol al cerrar
+
+**2823 tests verdes**, `pnpm ii:test` exit 0, `pnpm ii:typecheck` limpio.
+
+### Lo que queda del Hito 7
+
+| punto | estado |
+|---|---|
+| 1 · la sobreajustada no promueve | **falta** |
+| 2 · el banco sale del contrato | cumple (tramo D) |
+| 3 · `injuzgable` sin regresiones | cumple (tramo C) |
+| 4 · ablación | **cumple (tramo E)** |
+| 5 · el sello se invalida | cumple (tramo B) |
+| 6 · los cuatro cargos por separado | a medias: escritos, sin correr contra mundos |
+| 7 · la física no cambia sin la versión | cumple (tramo B) |
 

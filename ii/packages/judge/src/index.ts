@@ -16,3 +16,5 @@
 export * from './tipos.js'
 export * from './sintetizar.js'
 export * from './banco.js'
+export * from './escena.js'
+export * from './ablacion.js'

@@ -238,6 +238,9 @@ importers:
 
   ii/packages/judge:
     dependencies:
+      '@anima/perceive':
+        specifier: workspace:*
+        version: link:../perceive
       '@anima/physics':
         specifier: workspace:*
         version: link:../physics
