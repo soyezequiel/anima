@@ -1,4 +1,4 @@
-<title>Ánima II — tablero (66%)</title>
+<title>Ánima II — tablero (67%)</title>
 <style>
 :root {
   color-scheme: light dark;
@@ -324,43 +324,43 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-08-01</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>8</b> etapas listas · <b>1</b> en curso · <b>4</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>9</b> etapas listas · <b>0</b> en curso · <b>4</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">66%</span>
+      <span class="cifra">67%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="66 por ciento avanzado">
-      <div class="tramo si" style="width:60.76%"></div>
-      <div class="tramo medio" style="width:4.97%"></div>
+    <div class="barra" role="img" aria-label="67 por ciento avanzado">
+      <div class="tramo si" style="width:67.09%"></div>
+      <div class="tramo medio" style="width:0.00%"></div>
     </div>
     <div class="leyenda">
-      <span class="l-si">terminado · 24,0 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 2,0</span>
-      <span class="l-no">por delante · 13,5</span>
+      <span class="l-si">terminado · 26,5 de 39,5 semanas</span>
+      <span class="l-medio">en curso · 0,0</span>
+      <span class="l-no">por delante · 13,0</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>Hito 7, tramos D-E: van 5 de 7 puntos, y quedaron dos huecos con su número</h2>
-    <p class="detalle">El banco de mundos (`judge/src/banco.ts`) dejó de armarse a mano: sale del propio contrato de la habilidad, con cuatro clases de mundo por precondición (holgado, al-borde, justo-abajo, sin-nada) para que «nunca saca un 0% falso» sea una propiedad medida y no una promesa. Cobertura medida, no supuesta: 8 de 9 precondiciones se pueden aislar; la que no, queda nombrada con su porqué (no hay materia mojada Y rígida en el catálogo). Con eso cierra el punto 2. Y entró la ablación (`judge/src/ablacion.ts`): mide qué precondición es real corriendo la habilidad en un mundo que sólo viola ESA. El hallazgo del tramo: sintetizar y ablacionar fallan en puntas opuestas — un predicado imposible es el más difícil de sintetizar y el MÁS FÁCIL de ablacionar, porque lo viola el catálogo entero. Cierra el punto 4. Los dos puntos que faltan tienen su causa exacta: el 1 (una habilidad sobreajustada no promueve) y la mitad del 6 (los cuatro cargos corriendo contra mundos de verdad, hoy sólo escritos).</p>
+    <h2>El Hito 7 CIERRA: el juez, con los siete puntos y las cuatro piezas de la descripcion</h2>
+    <p class="detalle">El juez decide si una habilidad recien escrita es estable o tuvo suerte. Cierra con dos sujetos y no uno: una HABILIDAD con un objetivo delante, y un DISPOSITIVO desplegado sobre un pozo -- el segundo hizo falta porque cuatro de los ocho mundos adversos hablan de stocks y ubicaciones, y la escena de una habilidad son dos cuerpos sin dios. Y es el que destrabo el cargo `utilidad`: para una habilidad &quot;sirve&quot; era una pregunta sin con-respecto-a-que; para un aparejo hay un numero y se llama captura. El aparejo desplegado es LO PRIMERO DEL PROYECTO QUE PROMUEVE. Lo que mas se repitio en el hito fue el verde por omision: el sello estaba escrito y probado y nunca disparaba (la eficiencia de frotar fue de 0,35 a 0,85 sin que nadie subiera la version), el juez le creia a la habilidad en vez de verificar su promesa contra el mundo, y hasta mis propias sondas salieron verdes por no correr ninguna ley. Cada hallazgo dejo su control positivo.</p>
     <ol>
-      <li>Punto 1: que una habilidad que sólo funciona donde la corrigieron no promueva. Todavía no hay mecanismo de promoción.</li>
-      <li>La otra mitad del punto 6: los cuatro cargos (plano, construcción, uso, utilidad) están escritos como tipo pero no corren contra un mundo real todavía.</li>
-      <li>El hueco medido que este tramo no pudo cerrar: el juez no puede invocar una habilidad sin saber sus argumentos — hoy los trae quien acusa, a mano. Del Hito 8 en adelante la fragua produce el paquete entero, args incluidos.</li>
+      <li>Sigue el Hito 8: la fragua. Y arranca con una decision que nadie tomo: con que prioridad se descarta cuando la fragua y el chat compiten por la misma cuota.</li>
+      <li>HUECO MEDIDO: el sello depende de los 591 numeros de la fisica y los procesos semilla solo LEEN 7. 84x de mas. Tiene su it.fails.</li>
+      <li>HUECO MEDIDO: el juez no puede invocar una habilidad sin saber sus argumentos -- hoy los trae quien acusa. Del Hito 8 en adelante la fragua produce el paquete entero, args incluidos.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2823</div>
+        <div class="dato-valor">2871</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido y confirmado, exit 0, coincide EXACTO con lo citado (se rompió la racha de tres desfasajes de 1) · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · emergencia 126 · perceive 138 · lang 83 · judge 33</div>
+        <div class="dato-nota">medido antes de escribirlo, ii:test exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · lang 83 · judge 81</div>
       </div>
       <div class="dato">
         <div class="dato-valor">10 de 10</div>
@@ -375,7 +375,7 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">10</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">re-verificado ahora, sin cambios · @anima/judge (el juez de habilidades) y @anima/emergencia (ex @anima/juez, el detector de secuencias del Hito 5)</div>
+        <div class="dato-nota">@anima/judge cierra el Hito 7 con dos sujetos: una habilidad con un objetivo delante, y un dispositivo desplegado sobre un pozo</div>
       </div>
       <div class="dato">
         <div class="dato-valor">70</div>
@@ -388,9 +388,9 @@ p { margin: 0; }
         <div class="dato-nota">re-contado ahora, sin cambios · II-0024 con TRES enmiendas; la tercera barre los hitos 8 a 11 con la misma decision</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">4</div>
+        <div class="dato-valor">9</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — re-verificado con git fetch. El usuario pushea solo</div>
+        <div class="dato-nota">rama anima-2 — el Hito 7 entero. El usuario pushea solo</div>
       </div>
   </section>
 
@@ -592,27 +592,29 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa medio">
+      <article class="etapa si">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H7</span>
             <h3>El juez</h3>
-            <span class="chip medio">En curso</span>
+            <span class="chip si">Listo</span>
           </div>
           <p class="frase">Decidir si una habilidad recién escrita es estable, con mundos adversos que ella no vio.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">5<span class="barra-diagonal">/</span>7</span><span class="semanas">2,5 sem</span></div>
-        <p class="nota">El criterio se escribio ANTES de tocar codigo, con cinco mediciones, y dos de ellas dieron vuelta el trabajo. RESUELTO: @anima/juez era el detector de secuencias del Hito 5 y se renombro a @anima/emergencia; el nombre `juez` describia lo que hace ESTE hito. Y el punto 7 no estaba en el documento: lo obligo la medicion del sello. Van 5 de los 7 puntos cumpliendo.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">9<span class="barra-diagonal">/</span>9</span><span class="semanas">2,5 sem</span></div>
+        <p class="nota">El criterio se escribio ANTES, con cinco mediciones, y dos dieron vuelta el trabajo. El hito cierra con los SIETE puntos del criterio (el septimo lo obligo la medicion del sello) y las cuatro piezas de la descripcion. Lo primero del proyecto que PROMUEVE es el aparejo desplegado: con una habilidad como sujeto nada podia, porque `utilidad` salia `inconcluso`. Quedan dos huecos medidos y escritos, ninguno del criterio.</p>
         <details class="criterios">
-          <summary>7 criterios</summary>
+          <summary>9 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una habilidad que solo funciona donde la corrigieron no promueve</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una de pesca se juzga en mundos con rio y nunca saca un 0% falso: el banco sale del propio contrato (cuatro clases de mundo por precondición) y la cobertura se midió, 8 de 9 precondiciones aislables</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>un contrato insintetizable devuelve `injuzgable` y no siembra regresiones — y &quot;insintetizable&quot; resulto ser una categoria REAL: el catalogo tiene techos (toxicity llega a 0,55, decay a 0,14)</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una precondicion espuria se borra por ablacion: corre la habilidad en un mundo que viola SÓLO esa precondición. Hallazgo: sintetizar y ablacionar fallan en puntas opuestas — un predicado imposible es imposible de sintetizar y trivial de ablacionar</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>bajar un numero de la fisica invalida los sellos, con el guardian de los 591 numeros. La dependencia POR NUMERO queda como hueco medido: los procesos leen 7 cualidades y el sello es sensible a 591, 84x de mas</span></li>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>el juez evalua por separado plano, construccion, uso y utilidad — los cuatro cargos y los cuatro grados estan escritos; falta que corran contra mundos</span></li>
-          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>PUNTO 7, que el documento de arquitectura NO tenia: cambiar un numero de la fisica sin subir PHYSICS_VERSION se pone rojo. Daba verde, y ya habia pasado (0,35 → 0,85 sin tocar la version)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una habilidad que solo funciona donde la corrigieron no promueve — sale del cargo `construccion`, sin mecanismo propio: es la diferencia entre el mundo holgado y el al-borde</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el banco sale del CONTRATO y no de la mano de nadie, con 4-5 clases de mundo por precondicion. Por eso «nunca saca un 0% falso» es una propiedad y no una promesa</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>un contrato insintetizable devuelve `injuzgable` y NO siembra regresiones. Y «insintetizable» resulto categoria real: el catalogo tiene techos (toxicity 0,55)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>una precondicion espuria se borra por ablacion, con sus dos controles sobre la misma habilidad. Cobertura de aislamiento medida: 8 de 9</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>bajar un numero de la fisica invalida los sellos: guardian sobre los 591 numeros, que dice CUAL se movio. La dependencia por numero queda como hueco medido (84x de mas)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>los CUATRO cargos por separado (plano · construccion · uso · utilidad), y el cargo `uso` verifica la promesa CONTRA EL MUNDO en vez de creerle al `outcome.ok`</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>PUNTO 7, que el documento no tenia: cambiar la fisica sin subir PHYSICS_VERSION se pone rojo. Daba verde, y ya habia pasado (0,35 → 0,85)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>los OCHO mundos adversos del caso de aceptacion: 8 de 8, con DOS sujetos (una habilidad con objetivo, y un dispositivo desplegado sobre un pozo)</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>el panel del juez: ii/docs/panel-del-juez.html, generado por un test para que no se pueda pudrir</span></li>
           </ul>
         </details>
         </div>
