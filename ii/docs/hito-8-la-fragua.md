@@ -392,6 +392,67 @@ veredicto equivocado.
 Y el test que lo cuida por el otro lado: **`empeoraron === 0`**. Una reparación
 que convierte un error en dos es peor que no reparar.
 
-### Tramo D — el cliente, y el punto 9
+### Tramo D — el punto 9 · CERRADO (la mitad que no pide red)
 
-*(lo que sigue)*
+`forge/src/encargo.ts`. 28 tests en el paquete.
+
+**El tramo se partió en dos y esta es la mitad que se puede probar entera sin
+red.** La otra —mudar el cliente y pasarlo a HTTP, que compra los 10 s de
+arranque de proceso— va aparte, porque mezclar una decisión de diseño con una
+mudanza esconde a las dos.
+
+#### La frontera es la del Hito 6 y no se rehace
+
+`@anima/lang` ya lo resolvió: el paquete **describe** la consulta como dato y el
+llamador —que sí puede esperar— la manda. Su `Consulta` lleva adentro el
+vocabulario del que el modelo puede elegir, y el porqué vale igual acá: *«el
+catálogo es core más overlay por sesión; un prompt con una lista fija le
+ofrecería al modelo metas que esta partida no puede alcanzar»*.
+
+#### Lo que el segundo intento dice, y por qué no es «falló, probá de nuevo»
+
+El tramo C midió que hay **dos clases de fallo y sólo una llega hasta acá**:
+
+| clase | cuántas | quién la resuelve |
+|---|---|---|
+| un **typo** | 7 | la reparación, gratis. **No llega al modelo** |
+| un **concepto que el mundo no tiene** | 34 | **esto** |
+
+Así que el mensaje dice **qué pidió que no existe** —que es lo único que la
+primera vuelta no podía saber— más lo que la puerta ya corrigió sola, para que no
+lo vuelva a escribir igual.
+
+Y **sólo los cargos que fallaron**: contarle los verdes le pide al modelo que
+adivine cuál arreglar.
+
+#### EL GUARDIÁN, y es estructural en vez de un filtro
+
+La decisión era «el QUÉ y el PORQUÉ, no el DÓNDE». Al escribirlo apareció que eso
+se puede garantizar **por construcción**:
+
+> **`loQueFalloDe` recibe los CARGOS, no el dictamen.**
+
+Un `Dictamen` trae `regresiones`, y ahí adentro está `semilla`, que **es el id
+del mundo**. Si la función recibiera el dictamen entero, filtrar sería una
+disciplina que alguien puede olvidar en el próximo cambio. **Pidiendo sólo los
+cargos, el dato del mundo no entra al paquete.**
+
+Es la misma forma que el `CanalDeHabla` del Hito 6 —que no tiene un solo import
+para que no pueda tocar el tick— llevada a un tipo de argumento.
+
+Su test le pasa un dictamen con las regresiones bien visibles y afirma que **ni
+un pedazo de un id** (`al-borde`, `stock-vacio`, `agua/bloque`, `20260727`)
+aparece en el texto. Y trae su control, porque si no pasaría por no haber ids en
+ningún lado.
+
+#### Un detalle que cambia el mensaje: los conceptos salen de DESPUÉS de reparar
+
+Un typo que la puerta ya corrigió **no es un concepto que falte**, y mandarlo
+confundiría al modelo con un problema que ya no existe. Medido en su test:
+`ticksToNightfall` figura antes de reparar y no figura después.
+
+### Tramo E — el cliente por HTTP
+
+*(lo que sigue)* — mudar `lang/demo/proveedor.ts` a `@anima/llm` y cambiarle el
+camino. Está medido: **14 s por consulta con el CLI, de los cuales ~10 son
+arranque de proceso**; la sonda directa dio 4 s.
