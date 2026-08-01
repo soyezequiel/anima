@@ -31,7 +31,7 @@ Tres cosas que este hito **no** hace, dichas ahora para que nadie las busque:
 
 ---
 
-## 1 · El criterio, en cinco puntos
+## 1 · El criterio, en seis puntos
 
 Sale del documento de arquitectura (§ Hito 6) tal como quedó después del ADR
 II-0024. Cada punto tiene su forma de medirse escrita al lado, porque un criterio
