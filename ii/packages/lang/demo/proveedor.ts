@@ -13,6 +13,7 @@
  *
  * ─── Los tres transportes ───────────────────────────────────────────────────
  *
+ *     ANIMA_LLM=claude   `claude --print`, con la sesión del CLI de la máquina
  *     ANIMA_LLM=codex    `codex exec`, con la cuenta de ChatGPT del usuario
  *     ANIMA_LLM=openai   HTTP, con `OPENAI_API_KEY` del entorno
  *     ANIMA_LLM=falso    un modelo de mentira, para probar el enchufe sin gastar
@@ -36,11 +37,11 @@
 import { spawn } from 'node:child_process'
 import type { Consulta, RespuestaDelModelo } from '../src/consulta.js'
 
-export type Transporte = 'codex' | 'openai' | 'falso'
+export type Transporte = 'claude' | 'codex' | 'openai' | 'falso'
 
 export function transporteElegido(): Transporte {
   const v = process.env['ANIMA_LLM']
-  if (v === 'codex' || v === 'openai') return v
+  if (v === 'claude' || v === 'codex' || v === 'openai') return v
   return 'falso'
 }
 
@@ -67,22 +68,62 @@ export function promptDe(c: Consulta): string {
     'Lo que el mundo sabe nombrar, por si ayuda a entender de qué habla:',
     `  ${c.vocabulario.slice(0, 120).join(', ')}`,
     '',
+    'Elegí el estado que MEJOR sirva a lo que la persona quiere, aunque no sea',
+    'literal: si pide comida, el estado es tenerla en la mano.',
+    '',
     'CONTESTÁ SÓLO CON UN JSON, sin markdown y sin comentarios, de esta forma:',
     '  {"clausulas":[{"indice":0,"firma":"<una de las de arriba, textual>"}]}',
     '',
-    'Si ninguna de las de arriba es lo que se pidió, contestá {"clausulas":[]}.',
-    'Es mejor no contestar que contestar algo parecido.',
+    'Sólo contestá {"clausulas":[]} si NINGUNA de las de arriba acerca a lo pedido.',
   ].join('\n')
 }
 
 /** El JSON que el modelo tenía que devolver, sacado de lo que sea que devolvió. */
 export function leerRespuesta(salida: string, llave: string): RespuestaDelModelo | undefined {
-  // Se busca de atrás para adelante: los CLI escriben encabezados y razonamiento
-  // antes del mensaje final, y el último objeto con la forma correcta es el que
-  // vale. Un `JSON.parse` sobre la salida entera falla siempre.
-  const candidatos = [...salida.matchAll(/\{[\s\S]*?"clausulas"[\s\S]*?\}\s*\}|\{[\s\S]*?"clausulas"\s*:\s*\[\s*\]\s*\}/g)]
+  // ─── SE CUENTAN LAS LLAVES, no se adivina con un regex ────────────────────
+  //
+  // La primera versión buscaba con
+  // `/\{[\s\S]*?"clausulas"[\s\S]*?\}\s*\}/` y fallaba con la respuesta
+  // correcta: `{"clausulas":[{"indice":0,"firma":"..."}]}` termina en `}` `]`
+  // `}`, y ese `]` del medio rompe el `\}\s*\}`. O sea que el proveedor
+  // contestaba bien y el demo decía «no aportó nada».
+  //
+  // Un objeto JSON no se reconoce con una expresión regular —el anidamiento no
+  // es regular— así que se cuenta: desde cada `{`, se avanza sumando y restando
+  // llaves hasta cerrar, salteando las que están adentro de un string.
+  const candidatos: string[] = []
+  for (let i = 0; i < salida.length; i++) {
+    if (salida[i] !== '{') continue
+    let hondo = 0
+    let enTexto = false
+    let escapado = false
+    for (let j = i; j < salida.length; j++) {
+      const c = salida[j]
+      if (escapado) {
+        escapado = false
+        continue
+      }
+      if (c === '\\') {
+        escapado = true
+        continue
+      }
+      if (c === '"') enTexto = !enTexto
+      if (enTexto) continue
+      if (c === '{') hondo++
+      else if (c === '}') {
+        hondo--
+        if (hondo === 0) {
+          const trozo = salida.slice(i, j + 1)
+          if (trozo.includes('"clausulas"')) candidatos.push(trozo)
+          break
+        }
+      }
+    }
+  }
+  // De atrás para adelante: los CLI escriben encabezados y razonamiento antes del
+  // mensaje final, y el último objeto con la forma correcta es el que vale.
   for (let i = candidatos.length - 1; i >= 0; i--) {
-    const crudo = candidatos[i]?.[0]
+    const crudo = candidatos[i]
     if (crudo === undefined) continue
     try {
       const v = JSON.parse(crudo) as { clausulas?: unknown }
@@ -100,6 +141,95 @@ export function leerRespuesta(salida: string, llave: string): RespuestaDelModelo
     }
   }
   return undefined
+}
+
+/**
+ * `claude --print`, con los mismos argumentos que Ánima I usa en
+ * `apps/api/src/claude.ts` — no los inventé, están copiados de ahí.
+ *
+ * ─── Los cuatro argumentos que importan ─────────────────────────────────────
+ *
+ *     --safe-mode                sin CLAUDE.md, sin plugins, sin hooks, sin MCP
+ *     --no-session-persistence   no deja sesión guardada
+ *     --tools ""                 sin herramientas: puro prompt → respuesta
+ *     --model haiku              ver abajo
+ *
+ * Los tres primeros son de higiene: esta consulta no tiene por qué ver el
+ * proyecto ni dejar rastro. El cuarto es de PLATA, y está medido: sin `--model`
+ * el CLI usa Opus y una sola frase costó **US$ 0,024**. Con Haiku sale ~40×
+ * menos, y la tarea es elegir una fila de una lista de doce — el «modelo chico
+ * que corrige la lectura» del documento de arquitectura, que es literalmente
+ * este caso.
+ *
+ * Se puede pisar con `ANIMA_LLM_MODELO`.
+ *
+ * ─── La respuesta viene envuelta ────────────────────────────────────────────
+ *
+ * `--output-format json` devuelve un sobre con `duration_ms`, `usage`, `cost` y
+ * el texto del modelo adentro de `result` —ESCAPADO—, así que buscar
+ * `"clausulas"` sobre la salida cruda no engancha nada: en el sobre dice
+ * `{\"clausulas\"`. Hay que abrir el sobre primero.
+ */
+function porClaude(prompt: string, llave: string, timeoutMs: number): Promise<RespuestaDelModelo | undefined> {
+  const modelo = process.env['ANIMA_LLM_MODELO'] ?? 'haiku'
+  const args = [
+    '--print',
+    '--output-format',
+    'json',
+    '--safe-mode',
+    '--no-session-persistence',
+    '--tools',
+    '""',
+    '--effort',
+    'low',
+    '--model',
+    modelo,
+  ]
+  return new Promise((resolve) => {
+    const child = spawn(`claude ${args.join(' ')}`, { shell: true, windowsHide: true })
+    let out = ''
+    let err = ''
+    let listo = false
+    const cerrar = (r: RespuestaDelModelo | undefined): void => {
+      if (listo) return
+      listo = true
+      clearTimeout(t)
+      resolve(r)
+    }
+    const t = setTimeout(() => {
+      child.kill()
+      console.log('     [el proveedor no contestó a tiempo — y el cuerpo ya se movió]')
+      cerrar(undefined)
+    }, timeoutMs)
+    child.stdout.on('data', (d: Buffer) => (out += d.toString()))
+    child.stderr.on('data', (d: Buffer) => (err += d.toString()))
+    child.on('error', () => cerrar(undefined))
+    child.on('close', () => {
+      // El sobre. Si no se puede abrir, se prueba con la salida cruda: un CLI que
+      // cambie de formato no tiene por qué tirar todo abajo.
+      let texto = out
+      let costo: number | undefined
+      try {
+        const sobre = JSON.parse(out.slice(out.indexOf('{'))) as {
+          result?: unknown
+          is_error?: unknown
+          total_cost_usd?: unknown
+        }
+        if (sobre.is_error === true) {
+          console.log(`     [claude contestó con error]`)
+          cerrar(undefined)
+          return
+        }
+        if (typeof sobre.result === 'string') texto = sobre.result
+        if (typeof sobre.total_cost_usd === 'number') costo = sobre.total_cost_usd
+      } catch {
+        if (err.trim() !== '') console.log(`     [claude: ${err.trim().slice(0, 120)}]`)
+      }
+      if (costo !== undefined) console.log(`     [modelo ${modelo} · US$ ${costo.toFixed(4)}]`)
+      cerrar(leerRespuesta(texto, llave))
+    })
+    child.stdin.end(prompt)
+  })
 }
 
 /** `codex exec`, tal como lo llama Ánima I: shell, porque en Windows es un .cmd. */
@@ -219,5 +349,7 @@ export async function preguntarle(
   const t = transporteElegido()
   if (t === 'falso') return porFalso(c)
   const prompt = promptDe(c)
-  return t === 'codex' ? porCodex(prompt, c.llave, timeoutMs) : porOpenAI(prompt, c.llave, timeoutMs)
+  if (t === 'claude') return porClaude(prompt, c.llave, timeoutMs)
+  if (t === 'codex') return porCodex(prompt, c.llave, timeoutMs)
+  return porOpenAI(prompt, c.llave, timeoutMs)
 }

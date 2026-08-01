@@ -804,3 +804,68 @@ mejor prueba disponible:**
 criatura siguió con lo suyo.** Es el punto 2 del criterio —«con el proveedor
 colgado, el mismo p95»— medido contra un proveedor de verdad que se cae, y no
 contra una simulación.
+
+### Tramo J — con Claude de verdad, y el prompt tímido que no servía
+
+```bash
+ANIMA_LLM=claude pnpm --filter @anima/lang hablarle "tengo hambre"
+```
+
+Los argumentos están **copiados de `apps/api/src/claude.ts`**, no inventados:
+`--safe-mode --no-session-persistence --tools "" --effort low`, más `--model
+haiku`. Los tres primeros son higiene —esta consulta no tiene por qué ver el
+proyecto ni dejar rastro—; el cuarto es **plata, y está medido**: sin `--model`
+el CLI usa Opus y una sola frase costó **US$ 0,024**.
+
+#### El lazo entero, con un modelo de verdad
+
+```
+  🐾 «no te entendí. ¿qué querés que haga?»   (1.05 ms)
+     [modelo haiku · US$ 0.0158]
+     [claude contestó en 14005 ms: holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)]
+     entendí: holding(…cocido)   ← lo leyó el modelo
+       41  unir(...)   45  ir(pozo:-6:-6)   49  aplicar(extraccion)
+```
+
+**El acuse a 1,05 ms, el modelo a 14 segundos, y la criatura pescando.** Y la
+firma que eligió es mejor que la obvia: pidió comida **cocida**, no cruda.
+
+#### EL PROMPT TÍMIDO, que es el hallazgo del tramo
+
+La primera versión terminaba con «es mejor no contestar que contestar algo
+parecido». Suena prudente. Medido con Haiku, contestaba `{"clausulas":[]}` **a
+todo** — incluido «tengo hambre», que tiene `holding(tag:carnoso)` en la lista y
+a un renglón de distancia.
+
+Cambiado por «elegí el que mejor sirva aunque no sea literal», la misma frase y
+el mismo modelo eligen la firma correcta.
+
+**Animarlo es barato PORQUE LOS PORTONES EXISTEN.** `revisar()` verifica que la
+firma esté en la lista ofrecida y que el catálogo la establezca. Sin esos
+portones un prompt así sería temerario; con ellos, la timidez sólo cuesta
+respuestas.
+
+#### Y la medición que contesta la pregunta del puente
+
+Con el puente puesto, **el modelo casi nunca llega a opinar**:
+
+| frase | con puente | sin puente |
+|---|---|---|
+| «juntá leña» | `sin-camino` → **no se consulta** | se consulta |
+| «tengo hambre» | se consulta | se consulta |
+| «quiero comer pescado asado» | **entendida**, gratis | se consulta |
+| «traé un palo largo» | **entendida** (`reach>=2`), gratis | se consulta |
+| «andá al río» | `orientacion` → se consulta | se consulta |
+
+**El puente gana dos de cinco gratis y bloquea una.** La que bloquea es «juntá
+leña», y no por el puente en sí sino por la regla de que `sin-camino` no se
+consulta — que es donde el lector local está **confiadamente equivocado**, o sea
+justo donde una segunda opinión más vale.
+
+#### Dos números que hay que decir antes del Hito 8
+
+- **14 segundos y US$ 0,0158 por frase** con el CLI. Para una fragua que se usa
+  poco está bien; para un chat no. La sonda directa dio 4 s, así que el grueso es
+  arranque del CLI — el camino HTTP del Hito 8 tiene que ser otro.
+- **El vocabulario es casi todo el prompt**: 120 palabras de 216. Ahí está el
+  costo, y es lo primero que hay que recortar.
