@@ -292,6 +292,15 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
+  ii/packages/llm:
+    devDependencies:
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
   ii/packages/mind:
     dependencies:
       '@anima/perceive':
