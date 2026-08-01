@@ -24,19 +24,19 @@
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "El Hito 6 cierra: le hablas y hace, con Claude o sin nadie",
-    "detalle": "Nace `@anima/lang`. Le escribis en castellano y la criatura hace: «hace fuego» le sale deshilachar, frotar y unir, y «fabrica una trampa para peces» sale como `catch>0` sin nombrar la solucion en ningun paso. El modelo entra por la confianza y NO por el camino: el paquete no lo llama, lo DESCRIBE — devuelve una `Consulta` y el llamador, que si puede esperar, decide. Probado con Claude de verdad (haiku): el acuse a 1,05 ms, el modelo a 14 s, y la criatura pescando. Y probado tambien contra un proveedor que se cae: Codex sin cuota tardo 5787 ms y no aporto nada, y la criatura siguio con lo suyo — que es el punto 2 del criterio medido contra algo real y no contra una simulacion. Se puede probar a mano: `pnpm --filter @anima/lang hablarle --claude`.",
+    "titulo": "El Hito 6 termina de cerrar: las cuatro piezas de la descripción que faltaban",
+    "detalle": "Los seis puntos del criterio ya cumplían, pero la DESCRIPCIÓN del hito nombra seis piezas y sólo tres estaban escritas. Medido antes de escribir código: `resolveReference` de Ánima I no había que portarlo, `plan/src/referencias.ts` YA ES un resolutor con las mismas decisiones. Lo que de verdad faltaba eran dos cosas, y ninguna es resolver: detectar cuándo una frase señala («traé un palo» y «traé EL palo» se leían igual) y acordarse de qué se nombró (`lastMentioned`/`lastUsed`, memoria de la CHARLA, no del mundo). La memoria guarda IDS y no nombres —medido: el mismo cuerpo pasa de «pescado crudo» a «pescado asado», así que un resolutor por nombre pierde «el pescado» apenas se cocina—. Y entraron el canal de habla (separado del tick de verdad: `habla.ts` no tiene ni un import), el tercer reloj (una afirmación propia se corrigió sola: `msHastaAccionPertinente` no da segundos, da UN TICK — los segundos son del caso frío del Hito 8, que todavía no existe), y narrar el progreso por lo que la criatura HIZO y no por una estimación de lo que va a hacer.",
     "proximosPasos": [
       "`Predicado` no distingue «que exista X» de «que vos hagas X»: es existencial. Por eso «fabrica una trampa» puede estar cumplida antes de empezar, y ahora eso se DICE (grado `ya-esta`) en vez de descartarse en silencio.",
       "La ligadura diferida no tiene ejecutor: {k:rinde, de:g1} nombra un nodo hermano y `Mente.#rindes` se vacia en cada plan. Por eso las clausulas van de a una y `ligaduraPerdida` cuenta lo que cuesta: siete pasos de plan por ligadura.",
-      "Y dos numeros para el Hito 8: el CLI cuesta 14 s y US$ 0,0158 por frase (la sonda directa dio 4 s, o sea que el grueso es arranque), y la misma frase le puede dar dos metas distintas al modelo."
+      "Con el Hito 6 cerrado del todo, lo que sigue en el orden del plan es el Hito 7 — el juez."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2768",
-      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 66. El commit citaba 2769; van dos actualizaciones seguidas con esa diferencia de 1, sin investigar"
+      "valor": "2785",
+      "nota": "re-corrido y confirmado, exit 0 · physics 674 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · juez 126 · perceive 138 · lang 83. TERCERA VEZ SEGUIDA que el commit cita uno más de lo medido acá (2757/2756, 2769/2768, 2786/2785) — vale la pena mirar qué test se cuenta distinto"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -65,8 +65,8 @@
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "19",
-      "nota": "rama anima-2 — el usuario pushea solo. Re-verificado con git fetch"
+      "valor": "0",
+      "nota": "rama anima-2 — HEAD y origin/anima-2 coinciden exacto: todo pusheado"
     }
   ],
   "etapas": [
@@ -334,9 +334,13 @@
         {
           "estado": "si",
           "texto": "varias clausulas: van de a una y el cursor pasa a la siguiente cuando el mundo cumple la de ahora"
+        },
+        {
+          "estado": "si",
+          "texto": "las cuatro piezas de la DESCRIPCION del hito que el criterio numerado no exigía pero el documento sí nombraba: memoria de qué se señaló (IDs, no nombres — un nombre deja de servir en cuanto el cuerpo cambia), canal de habla separado del tick (habla.ts no importa nada del mundo), el tercer reloj (ticks de mundo, no ms de cómputo), y narrar el progreso por lo que la criatura YA HIZO"
         }
       ],
-      "nota": "El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y CERO verbos de doce. Y el criterio tenia otro agujero que lo vio el usuario: los cinco puntos originales se cumplian con el proveedor DESCONECTADO, o sea que median que el modelo no estorbe y no que sirva. El ADR II-0024 lleva DOS enmiendas y las dos salieron de la misma pregunta: para que estaba ese numero."
+      "nota": "El agujero del castellano era mas grande de lo que el documento decia: el mundo entiende el 9% de lo que una persona escribe y CERO verbos de doce. Y el criterio tenia otro agujero que lo vio el usuario: los cinco puntos originales se cumplian con el proveedor DESCONECTADO, o sea que median que el modelo no estorbe y no que sirva. El ADR II-0024 lleva DOS enmiendas y las dos salieron de la misma pregunta: para que estaba ese numero. Y una vez que el criterio numerado cerró, quedó otra brecha: la DESCRIPCIÓN del hito nombraba seis piezas y sólo tres estaban — ya están las seis."
     },
     {
       "id": "H7",
@@ -479,7 +483,7 @@
     }
   ],
   "verificacion": {
-    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit aa68d49 (el corpus cerrado en 82 y el Hito 6 marcado hecho). Árbol de trabajo limpio.",
+    "cuando": "Re-verificado en esta máquina, contra el árbol tal como quedó tras el commit aba6f03 (las cuatro piezas de la descripción del Hito 6). Árbol de trabajo limpio, y todo pusheado.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
@@ -488,7 +492,7 @@
       },
       {
         "cmd": "pnpm ii:test",
-        "resultado": "exit 0 · 2768 pasan, 0 fallan — el commit aa68d49 citaba 2769, un test de diferencia sin investigar (segunda vez seguida)",
+        "resultado": "exit 0 · 2785 pasan, 0 fallan — el commit aba6f03 citaba 2786. TERCERA vez seguida con exactamente 1 de diferencia, sin investigar todavía",
         "ok": true
       },
       {
@@ -503,11 +507,11 @@
       },
       {
         "cmd": "git fetch && git log origin/anima-2..HEAD",
-        "resultado": "19 commits sin pushear",
+        "resultado": "0 commits sin pushear — todo subido",
         "ok": true
       }
     ],
-    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. El commit aa68d49 declara @anima/lang con ANIMA_BANCO=1 en exit 0, que es el banco de este hito y no el del juez."
+    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/juez test) no se corrió acá: tarda unos 311 s y es el que publica el veredicto de la emergencia del Hito 5. Es un banco distinto del de @anima/lang."
   },
   "decisionesQueEsperan": [
     {
@@ -528,10 +532,10 @@
     }
   ],
   "deudasAbiertas": [
+    "El conteo de tests citado en los commits viene UNO arriba del que da la re-corrida en esta máquina, tres actualizaciones seguidas (2757/2756, 2769/2768, 2786/2785). Nunca es un fallo — siempre exit 0 — pero la diferencia es demasiado consistente para ser casualidad y nadie la investigó todavía.",
     "La promesa de un establishes se VENCE y nadie lo sabe: la criatura se niega a comer lo que ella misma cocinó a los 300 s.",
     "El mundo no le pide NADA al que hace de parrilla: 10 g de hoja sostienen 2 kg de pescado. El día que se cierre, la parrilla es lo primero que se rompe.",
     "Cocinar no es un proceso, y el planificador lo sufre: secar, carbonizar y cocinar tienen todos la forma «poné esto acá y esperá».",
-    "El costo de un dispositivo autónomo por tick: cero medición. Si hay veinte trampas desplegadas, el mundo las recorre todas.",
-    "¿El overlay se indexa por firma o por capacidad? Abierta a propósito: indexar es una optimización y pide una medición con un overlay de tamaño real."
+    "El costo de un dispositivo autónomo por tick: cero medición. Si hay veinte trampas desplegadas, el mundo las recorre todas."
   ]
 }
