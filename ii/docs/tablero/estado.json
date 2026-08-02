@@ -24,18 +24,19 @@
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "Hito 8 cerrado en mecanismos: la criatura escribe una habilidad, la instala y el mundo cambia",
-    "detalle": "Ocho tramos (A–H) y seis etapas más. Lo que la fragua hace hoy, de punta a punta y sin gastar un centavo: arma un encargo, pide candidatas, las typechequea afuera del hilo del mundo, repara los typos sola, monta la ganadora **en la frontera de un tick** y la vuela — medido, una habilidad forjada agarra un palito y el hash del mundo se mueve. El hallazgo que ordenó la arquitectura entera es del tramo H: **cortar la fragua en rodajas no alcanza**, porque la rodaja más fina que existe —una pasada por la puerta, 56 ms— ya vale una ventana de tick entera. Así que la fragua vive en otro hilo, y lo único que cruza es TEXTO: una habilidad montada tiene funciones adentro y las funciones no pasan por un postMessage. Los últimos cinco puntos se abrieron con diez agentes —cinco midiendo, cinco atacando— y los cinco adversarios tumbaron los cinco criterios propuestos: no eran cinco puntos, eran TRES MECANISMOS QUE NO EXISTÍAN (instalar, la costura al modelo, la cola) y encima de ellos los cinco puntos.",
+    "titulo": "El Hito 9 cerró — y enchufar la costura destapó que el vocabulario estaba escrito a mano",
+    "detalle": "Los cinco puntos del Hito 9 cumplen, y el criterio se había reescrito ANTES de tocar código: el «40 a 60 habilidades» no corresponde a esta arquitectura (siete de las doce capacidades YA SON una innata, tres son procesos, una es una cadena). Lo único que faltaba de verdad era la costura entre la mente y la fragua, y ahí aparecieron dos cosas. La primera: el «cero consultas» salía del CORTE de la corrida, no de la biblioteca — dejándola correr los 300 ticks son 22 consultas reales, todas de cocinar sin fuego, o sea del rojo aceptado del Hito 5. La segunda es más grande: al escribir la mitad que completa el pedido apareció que EL VOCABULARIO NO SE ARMABA EN NINGÚN LADO. Estaba escrito a mano en los tres demos, seis nombres contra los treinta que la física tiene, y escondía 24 — entre ellas `pescado` y `junco`, que son justo las dos que la caña usa. Le pedíamos al modelo una habilidad para pescar en un mundo donde le habíamos dicho que el pescado y el junco no existen.",
     "proximosPasos": [
-      "El punto 9 quedó donde se puede dejar: su primera mitad cumple y la segunda tiene la causa medida. Lo que sigue de verdad es el Hito 9.",
-      "La mente no puede ELEGIR una habilidad forjada: aHabilidad es un switch cerrado sobre las quince innatas. Se puede volar, pero el planificador no la nombra. Es H10 y H11."
+      "La decisión de física del Hito 5 (el hueco de 23,02 de potencia) ya no es sólo un rojo aceptado: es lo que bloquea las 22 consultas que la criatura SÍ quiere hacer, y lo único que separa al Hito 10 de tener material real.",
+      "Falta medir con plata si al modelo le alcanza una firma pelada (`catch>0&reach>=2`). Lo único probado contra un modelo de verdad es la PROSA, y por eso `encargoDe` acepta una prosa opcional adelante. Hasta que se mida, es una apuesta escrita.",
+      "La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar (medido), pero el planificador no la nombra. Es H10 y H11."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests verdes",
-      "valor": "2992",
-      "nota": "re-corrido acá, exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · judge 92 · forge 90 · lang 83 · llm 20"
+      "valor": "3006",
+      "nota": "re-corrido acá y confirmado, exit 0 · physics 679 · world 631+1 skipped · mind 338 · plan 337+1 todo · oracle 270 · skills 193 · perceive 138 · emergencia 126 · judge 97 · forge 94 · lang 83 · llm 20"
     },
     {
       "etiqueta": "typechecks limpios",
@@ -45,12 +46,12 @@
     {
       "etiqueta": "paquetes",
       "valor": "12",
-      "nota": "re-verificado ahora, sin cambios · @anima/forge creció de la puerta al episodio entero"
+      "nota": "re-verificado acá, sin cambios · el Hito 9 no agregó ninguno: enchufó la costura y arregló el vocabulario"
     },
     {
       "etiqueta": "it.fails abiertos",
       "valor": "70",
-      "nota": "re-contado ahora, sin cambios desde la vez pasada"
+      "nota": "re-contado ahora, sin cambios"
     },
     {
       "etiqueta": "ADRs propios",
@@ -59,8 +60,8 @@
     },
     {
       "etiqueta": "commits sin pushear",
-      "valor": "0",
-      "nota": "rama anima-2 — re-verificado. El usuario autorizó y se pushearon los 12"
+      "valor": "2",
+      "nota": "rama anima-2 — re-verificado acá. El usuario pushea solo"
     }
   ],
   "etapas": [
@@ -431,20 +432,32 @@
     {
       "id": "H9",
       "nombre": "La biblioteca semilla",
-      "enUnaFrase": "Cuarenta a sesenta habilidades de fábrica, para que la demo sea instantánea y no de 6 a 25 segundos.",
-      "estado": "pendiente",
+      "enUnaFrase": "No cuarenta habilidades: dieciocho innatas que ya cubren casi todo, y probar que la fragua se queda dormida cuando alcanzan.",
+      "estado": "hecho",
       "semanas": 2,
       "puntos": [
         {
-          "estado": "no",
-          "texto": "las tres historias del usuario corren en camino caliente: la fragua NO SE DESPIERTA ni una vez (cero consultas suyas) y el reloj del primer movimiento no se mueve contra la línea base del Hito 6"
+          "estado": "si",
+          "texto": "1 · la historia (c) —pescar— se planifica de punta a punta SIN UN SOLO gap: el planificador emite la cadena entera (ir·sostener·ir·sostener·unir·ir·aplicar ×2), pescado en la mano en el tick 108"
         },
         {
-          "estado": "no",
-          "texto": "la biblioteca NO incluye la trampa reservada — si viniera de fábrica, el caso de aceptación dejaría de medir nada"
+          "estado": "si",
+          "texto": "2 · el reloj del primer movimiento no se mueve contra la línea base del Hito 6: tick 0, sin cambios"
+        },
+        {
+          "estado": "si",
+          "texto": "3 · EL CONTROL: sacándole al catálogo el esquema que la historia usa (catch>0 por unir), la misma corrida SÍ reporta un gap — sin esto, «no hay gaps» sería el verde por omisión de M1 con otra cara"
+        },
+        {
+          "estado": "si",
+          "texto": "4 · la fragua no se despierta, afirmado con un ESPÍA sobre la costura nueva (MenteOptions.costura) y no con un grep. Corrida completa de 300 ticks: 0 consultas PARA LA META DE LA HISTORIA (c); 22 consultas reales existen, pero todas son de la historia (b) —cocinar sin fuego— bloqueada por el rojo aceptado del Hito 5"
+        },
+        {
+          "estado": "si",
+          "texto": "5 · la biblioteca no trae la trampa reservada — hoy no hay biblioteca, así que no hay dónde que se cuele"
         }
       ],
-      "nota": "El criterio decía «cero llamadas al modelo», y era la moneda vieja: desde el Hito 6 el chat SÍ consulta al modelo por diseño. Lo que la frase defendía en realidad eran los 80 ms del camino caliente — contar llamadas era la forma de medirlos mientras toda llamada bloqueaba. Se separó en dos cosas reales: que la fragua no se despierte (binario) y que el reloj no empeore (medido contra el Hito 6). Tercera enmienda del ADR II-0024, sólo documentos: no se re-corrió nada."
+      "nota": "El criterio se reescribió ANTES de tocar código, con cinco mediciones. La mayor: el «40 a 60» no corresponde a esta arquitectura — de las doce capacidades que el hito nombraba, siete YA SON una innata (encender=frotar, atar=unir…), tres son PROCESOS (datos de física, no habilidades), una es una cadena (pescar) y una no existe (guardar). Con 18 innatas casi no hace falta escribir nada nuevo. Los puntos 1, 2 y 5 cumplen por ARQUITECTURA —nada de esto está enchufado todavía, así que es fácil que sean ciertos sin que signifiquen nada—; el 3 y el 4 son los que de verdad distinguen «la biblioteca alcanza» de «nadie preguntó», y los dos tienen su control real medido. Las historias (a) y (b) —carbón y pescado asado— NO entran en este criterio a propósito: están bloqueadas por la decisión de física del Hito 5 que el usuario no tomó, y meterlas acá taparía de quién es esa deuda. Y el arreglo del punto 4 destapó lo otro: el vocabulario del encargo NO SE ARMABA EN NINGÚN LADO, estaba escrito a mano en los tres demos con seis nombres contra los treinta de la física. No decía cosas de más —eso el encabezado de `Encargo` ya lo temía—: ESCONDÍA 24 de 30, y entre ellas `pescado` y `junco`, las dos que la caña usa. Ahora sale de `vocabularioDe(phys)` con su control positivo (otra física, otro vocabulario) y las dos mitades de la costura se tocan en un test que agarra EL GAP DE VERDAD de la corrida ablacionada y lo convierte en un encargo con las 30. Lo que NO está medido y va dicho: que al modelo le alcance una firma pelada. La única forma probada con plata es la prosa."
     },
     {
       "id": "H10",
@@ -532,7 +545,7 @@
     }
   ],
   "verificacion": {
-    "cuando": "Re-verificado en esta máquina contra el árbol tal como quedó tras e0aec13 (el Hito 8 escrito). Árbol de trabajo limpio y todo pusheado.",
+    "cuando": "Re-verificado en esta máquina contra el árbol tal como quedó tras 17d4a15 (el vocabulario sale de la física). Sólo el tablero queda sin commitear.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
@@ -541,7 +554,7 @@
       },
       {
         "cmd": "pnpm ii:test",
-        "resultado": "exit 0 · 2992 pasan, 0 fallan",
+        "resultado": "exit 0 · 3006 pasan, 0 fallan",
         "ok": true
       },
       {
@@ -555,8 +568,8 @@
         "ok": true
       },
       {
-        "cmd": "git log origin/anima-2..HEAD",
-        "resultado": "0 commits sin pushear",
+        "cmd": "git fetch && git log origin/anima-2..HEAD",
+        "resultado": "2 commits sin pushear",
         "ok": true
       },
       {
@@ -568,9 +581,19 @@
         "cmd": "ANIMA_LLM=claude … atribuir-la-devolucion.ts",
         "resultado": "9 de 9 pares descartados: la pista no se genera con material real. Y el contrato como dato llevó los mundos amables de 0/12 a 12/12 · US$ 1,07 en 24 candidatas",
         "ok": true
+      },
+      {
+        "cmd": "el espía de la costura, 300 ticks",
+        "resultado": "0 consultas para pescar (historia c) · 22 consultas reales, todas por cocinar sin fuego (historia b), bloqueada por el Hito 5",
+        "ok": true
+      },
+      {
+        "cmd": "vocabularioDe(buildSeedPhysics()) contra la lista escrita a mano",
+        "resultado": "30 sustancias contra 6 · ninguna inventada y 24 ESCONDIDAS (80%), entre ellas pescado y junco, las dos de la caña",
+        "ok": true
       }
     ],
-    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá. Lo que SÍ se corrió y antes no: el modelo de verdad, 19 candidatas por US$ 0,80."
+    "sinCorrer": "El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá."
   },
   "decisionesQueEsperan": [
     {

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ánima II — tablero (78%)</title>
+<title>Ánima II — tablero (83%)</title>
 <style>*,*::before,*::after{box-sizing:border-box}
 :root {
   color-scheme: light dark;
@@ -331,42 +331,43 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-08-01</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>9</b> etapas listas · <b>1</b> en curso · <b>3</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>10</b> etapas listas · <b>1</b> en curso · <b>2</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">78%</span>
+      <span class="cifra">83%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="78 por ciento avanzado">
-      <div class="tramo si" style="width:67.09%"></div>
+    <div class="barra" role="img" aria-label="83 por ciento avanzado">
+      <div class="tramo si" style="width:72.15%"></div>
       <div class="tramo medio" style="width:10.76%"></div>
     </div>
     <div class="leyenda">
-      <span class="l-si">terminado · 26,5 de 39,5 semanas</span>
+      <span class="l-si">terminado · 28,5 de 39,5 semanas</span>
       <span class="l-medio">en curso · 4,3</span>
-      <span class="l-no">por delante · 8,8</span>
+      <span class="l-no">por delante · 6,8</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>Hito 8 cerrado en mecanismos: la criatura escribe una habilidad, la instala y el mundo cambia</h2>
-    <p class="detalle">Ocho tramos (A–H) y seis etapas más. Lo que la fragua hace hoy, de punta a punta y sin gastar un centavo: arma un encargo, pide candidatas, las typechequea afuera del hilo del mundo, repara los typos sola, monta la ganadora **en la frontera de un tick** y la vuela — medido, una habilidad forjada agarra un palito y el hash del mundo se mueve. El hallazgo que ordenó la arquitectura entera es del tramo H: **cortar la fragua en rodajas no alcanza**, porque la rodaja más fina que existe —una pasada por la puerta, 56 ms— ya vale una ventana de tick entera. Así que la fragua vive en otro hilo, y lo único que cruza es TEXTO: una habilidad montada tiene funciones adentro y las funciones no pasan por un postMessage. Los últimos cinco puntos se abrieron con diez agentes —cinco midiendo, cinco atacando— y los cinco adversarios tumbaron los cinco criterios propuestos: no eran cinco puntos, eran TRES MECANISMOS QUE NO EXISTÍAN (instalar, la costura al modelo, la cola) y encima de ellos los cinco puntos.</p>
+    <h2>El Hito 9 cerró — y enchufar la costura destapó que el vocabulario estaba escrito a mano</h2>
+    <p class="detalle">Los cinco puntos del Hito 9 cumplen, y el criterio se había reescrito ANTES de tocar código: el «40 a 60 habilidades» no corresponde a esta arquitectura (siete de las doce capacidades YA SON una innata, tres son procesos, una es una cadena). Lo único que faltaba de verdad era la costura entre la mente y la fragua, y ahí aparecieron dos cosas. La primera: el «cero consultas» salía del CORTE de la corrida, no de la biblioteca — dejándola correr los 300 ticks son 22 consultas reales, todas de cocinar sin fuego, o sea del rojo aceptado del Hito 5. La segunda es más grande: al escribir la mitad que completa el pedido apareció que EL VOCABULARIO NO SE ARMABA EN NINGÚN LADO. Estaba escrito a mano en los tres demos, seis nombres contra los treinta que la física tiene, y escondía 24 — entre ellas `pescado` y `junco`, que son justo las dos que la caña usa. Le pedíamos al modelo una habilidad para pescar en un mundo donde le habíamos dicho que el pescado y el junco no existen.</p>
     <ol>
-      <li>El punto 9 quedó donde se puede dejar: su primera mitad cumple y la segunda tiene la causa medida. Lo que sigue de verdad es el Hito 9.</li>
-      <li>La mente no puede ELEGIR una habilidad forjada: aHabilidad es un switch cerrado sobre las quince innatas. Se puede volar, pero el planificador no la nombra. Es H10 y H11.</li>
+      <li>La decisión de física del Hito 5 (el hueco de 23,02 de potencia) ya no es sólo un rojo aceptado: es lo que bloquea las 22 consultas que la criatura SÍ quiere hacer, y lo único que separa al Hito 10 de tener material real.</li>
+      <li>Falta medir con plata si al modelo le alcanza una firma pelada (`catch&gt;0&amp;reach&gt;=2`). Lo único probado contra un modelo de verdad es la PROSA, y por eso `encargoDe` acepta una prosa opcional adelante. Hasta que se mida, es una apuesta escrita.</li>
+      <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar (medido), pero el planificador no la nombra. Es H10 y H11.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">2992</div>
+        <div class="dato-valor">3006</div>
         <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido acá, exit 0 · physics 679 · world 631+1 skipped · plan 337+1 todo · mind 333 · oracle 270 · skills 193 · perceive 138 · emergencia 126 · judge 92 · forge 90 · lang 83 · llm 20</div>
+        <div class="dato-nota">re-corrido acá y confirmado, exit 0 · physics 679 · world 631+1 skipped · mind 338 · plan 337+1 todo · oracle 270 · skills 193 · perceive 138 · emergencia 126 · judge 97 · forge 94 · lang 83 · llm 20</div>
       </div>
       <div class="dato">
         <div class="dato-valor">13 de 13</div>
@@ -376,12 +377,12 @@ p { margin: 0; }
       <div class="dato">
         <div class="dato-valor">12</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">re-verificado ahora, sin cambios · @anima/forge creció de la puerta al episodio entero</div>
+        <div class="dato-nota">re-verificado acá, sin cambios · el Hito 9 no agregó ninguno: enchufó la costura y arregló el vocabulario</div>
       </div>
       <div class="dato">
         <div class="dato-valor">70</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">re-contado ahora, sin cambios desde la vez pasada</div>
+        <div class="dato-nota">re-contado ahora, sin cambios</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
@@ -389,9 +390,9 @@ p { margin: 0; }
         <div class="dato-nota">re-contado ahora, sin cambios</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">0</div>
+        <div class="dato-valor">2</div>
         <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — re-verificado. El usuario autorizó y se pushearon los 12</div>
+        <div class="dato-nota">rama anima-2 — re-verificado acá. El usuario pushea solo</div>
       </div>
   </section>
 
@@ -647,22 +648,25 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa si">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H9</span>
             <h3>La biblioteca semilla</h3>
-            <span class="chip no">No empezado</span>
+            <span class="chip si">Listo</span>
           </div>
-          <p class="frase">Cuarenta a sesenta habilidades de fábrica, para que la demo sea instantánea y no de 6 a 25 segundos.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2 sem</span></div>
-        <p class="nota">El criterio decía «cero llamadas al modelo», y era la moneda vieja: desde el Hito 6 el chat SÍ consulta al modelo por diseño. Lo que la frase defendía en realidad eran los 80 ms del camino caliente — contar llamadas era la forma de medirlos mientras toda llamada bloqueaba. Se separó en dos cosas reales: que la fragua no se despierte (binario) y que el reloj no empeore (medido contra el Hito 6). Tercera enmienda del ADR II-0024, sólo documentos: no se re-corrió nada.</p>
+          <p class="frase">No cuarenta habilidades: dieciocho innatas que ya cubren casi todo, y probar que la fragua se queda dormida cuando alcanzan.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">5<span class="barra-diagonal">/</span>5</span><span class="semanas">2 sem</span></div>
+        <p class="nota">El criterio se reescribió ANTES de tocar código, con cinco mediciones. La mayor: el «40 a 60» no corresponde a esta arquitectura — de las doce capacidades que el hito nombraba, siete YA SON una innata (encender=frotar, atar=unir…), tres son PROCESOS (datos de física, no habilidades), una es una cadena (pescar) y una no existe (guardar). Con 18 innatas casi no hace falta escribir nada nuevo. Los puntos 1, 2 y 5 cumplen por ARQUITECTURA —nada de esto está enchufado todavía, así que es fácil que sean ciertos sin que signifiquen nada—; el 3 y el 4 son los que de verdad distinguen «la biblioteca alcanza» de «nadie preguntó», y los dos tienen su control real medido. Las historias (a) y (b) —carbón y pescado asado— NO entran en este criterio a propósito: están bloqueadas por la decisión de física del Hito 5 que el usuario no tomó, y meterlas acá taparía de quién es esa deuda. Y el arreglo del punto 4 destapó lo otro: el vocabulario del encargo NO SE ARMABA EN NINGÚN LADO, estaba escrito a mano en los tres demos con seis nombres contra los treinta de la física. No decía cosas de más —eso el encabezado de `Encargo` ya lo temía—: ESCONDÍA 24 de 30, y entre ellas `pescado` y `junco`, las dos que la caña usa. Ahora sale de `vocabularioDe(phys)` con su control positivo (otra física, otro vocabulario) y las dos mitades de la costura se tocan en un test que agarra EL GAP DE VERDAD de la corrida ablacionada y lo convierte en un encargo con las 30. Lo que NO está medido y va dicho: que al modelo le alcance una firma pelada. La única forma probada con plata es la prosa.</p>
         <details class="criterios">
-          <summary>2 criterios</summary>
+          <summary>5 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>las tres historias del usuario corren en camino caliente: la fragua NO SE DESPIERTA ni una vez (cero consultas suyas) y el reloj del primer movimiento no se mueve contra la línea base del Hito 6</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>la biblioteca NO incluye la trampa reservada — si viniera de fábrica, el caso de aceptación dejaría de medir nada</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · la historia (c) —pescar— se planifica de punta a punta SIN UN SOLO gap: el planificador emite la cadena entera (ir·sostener·ir·sostener·unir·ir·aplicar ×2), pescado en la mano en el tick 108</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · el reloj del primer movimiento no se mueve contra la línea base del Hito 6: tick 0, sin cambios</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · EL CONTROL: sacándole al catálogo el esquema que la historia usa (catch&gt;0 por unir), la misma corrida SÍ reporta un gap — sin esto, «no hay gaps» sería el verde por omisión de M1 con otra cara</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · la fragua no se despierta, afirmado con un ESPÍA sobre la costura nueva (MenteOptions.costura) y no con un grep. Corrida completa de 300 ticks: 0 consultas PARA LA META DE LA HISTORIA (c); 22 consultas reales existen, pero todas son de la historia (b) —cocinar sin fuego— bloqueada por el rojo aceptado del Hito 5</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>5 · la biblioteca no trae la trampa reservada — hoy no hay biblioteca, así que no hay dónde que se cuele</span></li>
           </ul>
         </details>
         </div>
@@ -782,7 +786,7 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina contra el árbol tal como quedó tras e0aec13 (el Hito 8 escrito). Árbol de trabajo limpio y todo pusheado.</p>
+      <p>Re-verificado en esta máquina contra el árbol tal como quedó tras 17d4a15 (el vocabulario sale de la física). Sólo el tablero queda sin commitear.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
@@ -791,7 +795,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 2992 pasan, 0 fallan</span>
+        <span class="resultado">exit 0 · 3006 pasan, 0 fallan</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
@@ -802,8 +806,8 @@ p { margin: 0; }
         <span class="resultado">24 ADRs, sin cambios</span>
       </div>
       <div class="corrida si">
-        <code>git log origin/anima-2..HEAD</code>
-        <span class="resultado">0 commits sin pushear</span>
+        <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
+        <span class="resultado">2 commits sin pushear</span>
       </div>
       <div class="corrida si">
         <code>ANIMA_LLM=claude … con-el-modelo.ts</code>
@@ -813,8 +817,16 @@ p { margin: 0; }
         <code>ANIMA_LLM=claude … atribuir-la-devolucion.ts</code>
         <span class="resultado">9 de 9 pares descartados: la pista no se genera con material real. Y el contrato como dato llevó los mundos amables de 0/12 a 12/12 · US$ 1,07 en 24 candidatas</span>
       </div>
+      <div class="corrida si">
+        <code>el espía de la costura, 300 ticks</code>
+        <span class="resultado">0 consultas para pescar (historia c) · 22 consultas reales, todas por cocinar sin fuego (historia b), bloqueada por el Hito 5</span>
+      </div>
+      <div class="corrida si">
+        <code>vocabularioDe(buildSeedPhysics()) contra la lista escrita a mano</code>
+        <span class="resultado">30 sustancias contra 6 · ninguna inventada y 24 ESCONDIDAS (80%), entre ellas pescado y junco, las dos de la caña</span>
+      </div>
     </div>
-    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá. Lo que SÍ se corrió y antes no: el modelo de verdad, 19 candidatas por US$ 0,80.</p>
+    <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá.</p>
   </section>
 
   <section class="seccion">
