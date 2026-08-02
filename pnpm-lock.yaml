@@ -353,6 +353,9 @@ importers:
         specifier: workspace:*
         version: link:../world
     devDependencies:
+      '@anima/forge':
+        specifier: workspace:*
+        version: link:../forge
       '@anima/oracle':
         specifier: workspace:*
         version: link:../oracle

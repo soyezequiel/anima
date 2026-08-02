@@ -215,7 +215,82 @@ habría sido el séptimo verde por omisión del proyecto.
 
 ---
 
-## 5 · Lo que NO hubo que construir
+## 5 · La otra mitad de la costura, y el hallazgo que destapó
+
+El pedido de la mente sale **a propósito sin el vocabulario**, porque la mente no
+tiene la física de esta partida. Al ir a escribir la mitad que lo completa,
+apareció esto:
+
+**El vocabulario no se armaba en ningún lado.** Estaba escrito a mano en los tres
+demos del Hito 8:
+
+```
+const VOCABULARIO = ['madera','liana','carne','agua','piedra','hueso']
+```
+
+Contra la física de la semilla, que tiene **treinta** sustancias:
+
+```
+inventadas (que no existen) .............. ninguna
+ESCONDIDAS (que existen y no se decían) .. 24 de 30, el 80%
+y entre ellas ............................ pescado · junco
+```
+
+`pescado` y `junco` son **las dos que la historia de la caña usa**: la caña es
+`madera+junco` y del pozo sale `pescado`. O sea que se le pedía al modelo una
+habilidad para pescar en un mundo donde le habíamos dicho que el pescado y el
+junco no existen.
+
+El encabezado de `Encargo.seSabeNombrar` ya temía el riesgo por un lado —*«una
+lista fija le ofrecería al modelo cosas que esta partida no tiene»*—; lo que pasó
+fue **el otro**, que es peor porque no da error: le esconde lo que sí tiene.
+
+### Lo que se construyó
+
+| | dónde | qué hace |
+|---|---|---|
+| `vocabularioDe(phys)` | `forge/src/costura.ts` | los nombres de la materia de ESTA partida |
+| `encargoDe(pedido, phys)` | idem | completa el aviso de la mente y devuelve un `Encargo` |
+| `PedidoDeLaMente` | idem | la forma del aviso, escrita de nuevo — la fragua no puede importar la mente |
+
+Con su control positivo: **otra física da otro vocabulario**, así que no puede
+volver a ser una constante disfrazada.
+
+### Y las dos mitades ahora se tocan
+
+`mind/tests/el-pedido-llega-a-la-fragua.test.ts` corre la ablación, agarra el gap
+de verdad, y lo convierte en un encargo:
+
+```
+el gap ................ catch>0&reach>=2
+la meta ............... holding(tag:carnoso)
+sustancias que viajan . 30
+```
+
+La línea que hace el trabajo es una anotación de tipo: `PedidoALaFragua` de la
+mente asignado a un `PedidoDeLaMente` de la fragua. Son dos declaraciones de la
+misma forma escritas en dos paquetes que no se pueden importar, y sin un llamador
+que vea los dos lados se irían separando en silencio.
+
+`@anima/forge` entra en `mind` como **devDependency**, no como dependencia de
+producción: el hito mide justamente que la fragua no se despierte en una partida
+normal. Que la unión viva en un test es su estado real hoy — la pieza existe,
+está probada, y ponerla en producción es el Hito 10.
+
+### Lo que NO está medido, y va dicho
+
+La única forma de pedido probada contra un modelo de verdad es **la prosa**
+(«conseguir alimento de un cuerpo de agua», los tres demos del Hito 8). Que una
+firma pelada como `catch>0&reach>=2` le alcance al modelo **no se midió**, y
+medirlo cuesta plata. Por eso `encargoDe` acepta una prosa opcional que va
+adelante: quien la tenga no paga la apuesta.
+
+Y los números publicados del Hito 8 se midieron con la lista de seis, así que los
+demos arreglados ya no los reproducen clavados.
+
+---
+
+## 6 · Lo que NO hubo que construir
 
 El índice por efectos (`SCHEMA_INDEX`), la separación core / biblioteca / sesión
 (`coreSchemas` + overlay, gate 5→6), y las cuarenta habilidades (M3).

@@ -26,7 +26,8 @@ import { costoDeLaUltima, preguntarTexto, transporteElegido } from '@anima/llm/d
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { leerCandidatas } from '../src/costura.js'
+import { buildSeedPhysics } from '@anima/physics'
+import { leerCandidatas, vocabularioDe } from '../src/costura.js'
 import { conceptosDe, elSiguienteEncargo, primerEncargo, textoDe } from '../src/index.js'
 import type { Superficie } from '../src/encargo.js'
 import { forjarUna } from '../src/forjar.js'
@@ -51,7 +52,18 @@ const GAP = 'conseguir alimento de un cuerpo de agua'
  * que es otra cosa.
  */
 const GAP_DEL_RELOJ = 'ponerse a cubierto antes de que caiga la noche'
-const VOCABULARIO = ['madera', 'liana', 'carne', 'agua', 'piedra', 'hueso']
+/**
+ * EL VOCABULARIO SALE DE LA FÍSICA, y acá estuvo escrito a mano hasta el Hito 9.
+ *
+ * Decía `['madera','liana','carne','agua','piedra','hueso']`: seis nombres contra
+ * los treinta que la física tiene, y **escondía `pescado` y `junco`**, que son los
+ * dos que la caña usa. Medido y con su guardián en
+ * `tests/el-vocabulario-de-esta-partida.test.ts`.
+ *
+ * HAY QUE DECIRLO: los números publicados del Hito 8 se midieron con la lista
+ * vieja, así que esta corrida ya no los reproduce clavados.
+ */
+const VOCABULARIO = vocabularioDe(buildSeedPhysics())
 const K = 2
 
 const API = readFileSync(fileURLToPath(new URL('../../skills/src/skill-api.d.ts', import.meta.url)), 'utf8')

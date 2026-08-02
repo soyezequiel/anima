@@ -19,6 +19,7 @@
     "@anima/world": "workspace:*"
   },
   "devDependencies": {
+    "@anima/forge": "workspace:*",
     "@anima/oracle": "workspace:*",
     "typescript": "^5.6.0",
     "vitest": "^3.0.0"

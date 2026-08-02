@@ -38,9 +38,10 @@
 
 import { deUsd } from '@anima/llm'
 import type { Costo, Motivo, Presupuesto } from '@anima/llm'
+import type { Physics } from '@anima/physics'
 import type { Candidata, HabilidadCandidata } from './candidata.js'
 import type { Encargo } from './encargo.js'
-import { textoDe } from './encargo.js'
+import { primerEncargo, textoDe } from './encargo.js'
 
 /**
  * CUÁNTAS CANDIDATAS POR VIAJE.
@@ -79,6 +80,107 @@ export interface Viaje {
  */
 export function viajeDe(e: Encargo, k: number = K_POR_VIAJE): Viaje {
   return { encargo: e, texto: textoDe(e), k, costo: deUsd(USD_POR_CANDIDATA * k, 1) }
+}
+
+// ─── LA OTRA MITAD DE LA COSTURA: DE UN PEDIDO DE LA MENTE A UN ENCARGO ─────
+//
+// El Hito 9 construyó el lado de allá —`MenteOptions.costura`, que avisa cuando
+// el plan no llega— y ese aviso sale A PROPÓSITO INCOMPLETO: no trae el
+// vocabulario, porque la mente no tiene la física de esta partida (lo único que
+// alcanza es una constante de módulo con la física DE FÁBRICA). Esto es el lado
+// de acá, el que lo completa.
+//
+// ─── LO QUE SE MIDIÓ ANTES DE ESCRIBIR ESTAS TREINTA LÍNEAS ────────────────
+//
+// El vocabulario no se armaba en ningún lado. Estaba **escrito a mano** en los
+// tres demos, con seis nombres:
+//
+//     const VOCABULARIO = ['madera','liana','carne','agua','piedra','hueso']
+//
+// Contra la física de la semilla, que tiene TREINTA:
+//
+//     inventadas (que no existen) ........... ninguna
+//     ESCONDIDAS (que existen y no se decían) ... 24 de 30, el 80%
+//
+// Y entre las escondidas están **`pescado` y `junco`**, que son exactamente las
+// dos que la historia de la caña usa: la caña es `madera+junco` y lo que se saca
+// del pozo es `pescado`. O sea que se le pedía al modelo una habilidad para
+// pescar en un mundo donde le habíamos dicho que el pescado y el junco no
+// existen.
+//
+// El encabezado de `Encargo.seSabeNombrar` ya avisaba el riesgo por un lado —«una
+// lista fija le ofrecería al modelo cosas que esta partida no tiene»—; lo que
+// pasó fue el otro, que es peor porque no da error: le esconde lo que sí tiene.
+
+/**
+ * EL AVISO DE LA MENTE, ENTRA COMO FORMA Y NO COMO TIPO IMPORTADO.
+ *
+ * Es `PedidoALaFragua` de `@anima/mind`, escrito de nuevo acá por la misma razón
+ * que `CargoDelJuez` en `registro.ts`: **`@anima/mind` depende del mundo**
+ * (`@anima/world`, `@anima/perceive`), e importarlo haría que la fragua necesite
+ * un mundo para escribir código, que es al revés de lo que este paquete es.
+ *
+ * Son cuatro campos de texto y un número; si alguno cambia de nombre allá, el
+ * llamador —que ve los dos lados— no compila. Es la misma garantía que el
+ * precedente y no más que ésa.
+ */
+export interface PedidoDeLaMente {
+  /** La firma que no se supo establecer, p. ej. `catch>0&reach>=2`. */
+  readonly gap: string
+  /** Para qué se la quería. */
+  readonly meta: string
+  /** Lo que el planificador contestó, en sus palabras. */
+  readonly porQue: string
+  readonly tick: number
+}
+
+/**
+ * CÓMO SE LLAMA LA MATERIA DE ESTA PARTIDA. Las treinta, no seis.
+ *
+ * ─── NO SE ORDENA, Y ES UNA DECISIÓN ────────────────────────────────────────
+ *
+ * `phys.substances` es un `Map` y su orden es el de declaración, que ya es
+ * determinista y además está AGRUPADO POR SENTIDO —primero lo que se come, después
+ * los materiales, al final los minerales—. Ordenarlo alfabéticamente lo mezclaría
+ * (`agua` al lado de `arcilla`) sin comprar nada: el determinismo ya estaba.
+ *
+ * ─── Y NO SE FILTRA POR LO QUE HAY EN EL MAPA, TAMPOCO ──────────────────────
+ *
+ * La tentación es mandar sólo las sustancias de las que hay un cuerpo cerca. No:
+ * el renglón del prompt dice «el mundo sabe nombrar estas cosas», y eso es el
+ * catálogo de materia posible, no el inventario de lo que se ve. Una habilidad
+ * escrita hoy tiene que seguir siendo válida cuando la criatura camine dos
+ * chunks. Filtrar por el paisaje ataría el código al momento en que se escribió.
+ */
+export function vocabularioDe(phys: Physics): readonly string[] {
+  return [...phys.substances.keys()]
+}
+
+/**
+ * EL PEDIDO DE LA MENTE, COMPLETADO CON LA MATERIA DE ESTA PARTIDA.
+ *
+ * `enCastellano` es opcional y va primero cuando está, y la razón es de honestidad
+ * sobre lo medido: **la única forma de pedido que se probó con un modelo de verdad
+ * es la prosa** —«conseguir alimento de un cuerpo de agua», los tres demos del
+ * Hito 8—. Que una firma pelada como `catch>0&reach>=2` le alcance al modelo
+ * NO ESTÁ MEDIDO, y medirlo cuesta plata. Así que la firma va igual —es el dato
+ * exacto, y sus cualidades son las mismas que el modelo consulta con `ctx.q`—
+ * pero quien tenga la prosa a mano la pone adelante y no paga la apuesta.
+ *
+ * La meta y el porqué del planificador van adentro del mismo bloque porque los
+ * tres contestan preguntas distintas y ninguno se deduce de los otros: la firma
+ * dice QUÉ falta, la meta PARA QUÉ, y el porqué dice qué se intentó y por dónde
+ * se cortó — que es lo que evita que el modelo proponga el camino ya descartado.
+ */
+export function encargoDe(p: PedidoDeLaMente, phys: Physics, enCastellano?: string): Encargo {
+  const bloque = [
+    ...(enCastellano === undefined ? [] : [enCastellano, '']),
+    `«${p.gap}»`,
+    '',
+    `Se quería para: «${p.meta}»`,
+    `Y el planificador se cortó acá: ${p.porQue}`,
+  ].join('\n')
+  return primerEncargo(bloque, vocabularioDe(phys))
 }
 
 export type Salida =

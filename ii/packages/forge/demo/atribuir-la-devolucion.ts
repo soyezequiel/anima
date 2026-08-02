@@ -41,7 +41,7 @@ import { CONTRATO_SOSTENER } from '@anima/skills/innatas'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
-import { leerCandidatas } from '../src/costura.js'
+import { leerCandidatas, vocabularioDe } from '../src/costura.js'
 import { elSiguienteEncargo, primerEncargo, textoDe } from '../src/index.js'
 import type { Encargo, Superficie } from '../src/encargo.js'
 import { forjarUna } from '../src/forjar.js'
@@ -58,7 +58,18 @@ const GAP = [
   '  · y cuando decís que sí, tiene que ser cierto: algo en la mano',
 ].join('\n')
 
-const VOCABULARIO = ['madera', 'liana', 'carne', 'agua', 'piedra', 'hueso']
+/**
+ * EL VOCABULARIO SALE DE LA FÍSICA, y acá estuvo escrito a mano hasta el Hito 9.
+ *
+ * Decía `['madera','liana','carne','agua','piedra','hueso']`: seis nombres contra
+ * los treinta que la física tiene, y **escondía `pescado` y `junco`**, que son los
+ * dos que la caña usa. Medido y con su guardián en
+ * `tests/el-vocabulario-de-esta-partida.test.ts`.
+ *
+ * HAY QUE DECIRLO: los números publicados del Hito 8 se midieron con la lista
+ * vieja, así que esta corrida ya no los reproduce clavados.
+ */
+const VOCABULARIO = vocabularioDe(phys)
 const K = 2
 const API = readFileSync(fileURLToPath(new URL('../../skills/src/skill-api.d.ts', import.meta.url)), 'utf8')
 /**
