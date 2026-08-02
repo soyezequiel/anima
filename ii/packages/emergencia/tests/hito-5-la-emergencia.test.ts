@@ -500,6 +500,7 @@
 // lado, que es el idioma con el que este repositorio ya dejó abiertos el techo del
 // tick, los diez huecos de `admit()` y el criterio (2) del Hito 5.
 
+import { readdirSync, readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 
 import {
@@ -1043,6 +1044,177 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(new Set(b.corridas.map((c) => c.semilla)).size).toBe(cuantas)
     for (const c of b.corridas) expect(c.veredicto.filas.length).toBe(SECUENCIAS.length)
   }, 600_000)
+
+  /**
+   * ¿ESTE TEXTO ESCRIBE LA LÍNEA BASE?
+   *
+   * Sale a una función con nombre por una sola razón, y es la que lo hace
+   * correcto: **así se le puede dar carnada**. Mientras la expresión vivía suelta
+   * adentro del `filter`, la única forma de saber si mordía era confiar en que
+   * estuviera bien escrita — y dos veces no lo estuvo. Ver la carnada abajo.
+   *
+   * Pide las DOS cosas: que haya una llamada de escritura, y que el texto nombre
+   * la línea base. Nombrar la función sin llamarla no cuenta, y escribir otro
+   * archivo tampoco.
+   */
+  const escribeLaBase = (c: string): boolean =>
+    /\b(?:writeFileSync|appendFileSync|createWriteStream)\s*\(/.test(c) && /linea-base/.test(c)
+
+  /**
+   * EL FUENTE SIN COMENTARIOS, y hace falta por lo mismo que en `ataque-determinismo`.
+   *
+   * Ese guardián ya lo había resuelto y lo dice con estas palabras: *«este paquete
+   * EXPLICA por qué `Math.exp` está prohibido […] y explicarlo no puede ser la
+   * infracción»*. Acá pasó exactamente eso: el comentario que explica qué busca el
+   * detector **contiene lo que el detector busca**, así que el archivo se acusaba
+   * a sí mismo por haberse documentado.
+   *
+   * Es la tercera vuelta del mismo problema en este mismo detector, y las tres son
+   * la misma frase: **un detector de texto también lee el texto que habla de él**.
+   */
+  const sinComentarios = (c: string): string =>
+    c
+      .split('\n')
+      .filter((l) => {
+        const t = l.trimStart()
+        return !t.startsWith('//') && !t.startsWith('*') && !t.startsWith('/*')
+      })
+      .join('\n')
+
+  // ═══ HITO 11 · puntos 1, 2 y 3 — LA LÍNEA BASE, DEFENDIDA ═══════════════
+  //
+  // La medición que define el Hito 11 es una división: **626 números se imprimen
+  // en los tests de `ii/` y UNO se guardaba** en un archivo que un test compare.
+  // Éste es el segundo, y va acá y no en un archivo aparte por una razón de
+  // costo: `canonico()` memoiza el banco, y un archivo nuevo de vitest corre en
+  // otro worker — o sea que volvería a jugar las partidas de 20.000 ticks.
+  //
+  // ─── POR QUÉ ESTE NÚMERO Y NO OTRO ────────────────────────────────────────
+  //
+  // Porque es el que más costó y el que menos defendido estaba. En el Hito 10 se
+  // tocó el corazón de la mente DOS veces —la costura de las creencias y el peso
+  // del testimonio— y la única forma que había de saber que la conducta no se
+  // había movido fue abrir la salida de una corrida vieja y **compararla a ojo**.
+  // Los 3032 tests daban verde con la conducta movida o sin mover: ninguno miraba
+  // el hash.
+
+  it('(Hito 11 · 1) los hashes del banco canónico son los de la línea base', async () => {
+    const b = await canonico()
+    const base = JSON.parse(readFileSync(new URL('./linea-base.json', import.meta.url), 'utf8')) as {
+      hashesDelBancoCanonico: { hashes: Record<string, string>; medidoEl: string }
+    }
+    const guardados = base.hashesDelBancoCanonico.hashes
+    const ahora = Object.fromEntries(b.corridas.map((c) => [String(c.semilla), c.hash]))
+
+    // Se comparan SÓLO las semillas que están en los dos lados, y es a propósito:
+    // sin `ANIMA_BANCO=1` el banco juega 3 y con él juega 20. Exigir las 20
+    // siempre haría que la corrida corta fallara por no haber jugado, que es una
+    // clase de rojo que no dice nada.
+    const comunes = Object.keys(guardados).filter((s) => s in ahora)
+    const movidos = comunes.filter((s) => guardados[s] !== ahora[s])
+
+    console.log(
+      `
+─── LA LÍNEA BASE DEL BANCO ───
+` +
+        `  medida el ............. ${base.hashesDelBancoCanonico.medidoEl}
+` +
+        `  semillas guardadas .... ${String(Object.keys(guardados).length)}
+` +
+        `  jugadas en esta corrida ${String(Object.keys(ahora).length)}
+` +
+        `  comparadas ............ ${String(comunes.length)}
+` +
+        `  movidas ............... ${movidos.length === 0 ? 'ninguna' : movidos.join(', ')}
+`,
+    )
+
+    // La guarda de que la comparación compara algo: si `comunes` fuera cero,
+    // «ninguna movida» sería el cero por omisión más barato del archivo.
+    expect(comunes.length, 'no se comparó ni una semilla: la línea base no cubre lo que se jugó').toBeGreaterThan(0)
+    for (const s of comunes) {
+      expect(
+        ahora[s],
+        `LA CONDUCTA DE LA SEMILLA ${s} SE MOVIÓ. Si el cambio es a propósito, hay que editar ` +
+          `tests/linea-base.json A MANO y escribir en su campo «porQue» qué lo movió y por qué está bien`,
+      ).toBe(guardados[s])
+    }
+  }, 600_000)
+
+  it('(Hito 11 · 2) EL CONTROL: con la línea base corrompida, la comparación SÍ se pone roja', async () => {
+    // Sin esto, «ninguna movida» no diría si la comparación compara o si compara
+    // dos cosas que siempre son iguales. Se corrompe la copia EN MEMORIA y no el
+    // archivo: un control que edita el archivo del que depende el test de arriba
+    // es un control que puede dejar el árbol roto si falla en el medio.
+    const b = await canonico()
+    const ahora = Object.fromEntries(b.corridas.map((c) => [String(c.semilla), c.hash]))
+    const corrompida = { ...ahora }
+    const primera = Object.keys(corrompida)[0] as string
+    corrompida[primera] = 'deadbeefdeadbeef'
+
+    const movidos = Object.keys(corrompida).filter((s) => corrompida[s] !== ahora[s])
+    console.log(`  con un hash cambiado a mano, la comparación reporta: ${movidos.join(', ')}`)
+    expect(movidos).toEqual([primera])
+  }, 600_000)
+
+  it('(Hito 11 · 3) subir una línea base exige editarla a mano: nada la escribe sola', () => {
+    // Es la mitad del mecanismo que no es código, y la que `skills/tests/linea-base.json`
+    // ya declaraba desde el Hito 4: *«Para subir este numero hay que editarlo a
+    // mano y decir por que»*. Un archivo que se actualiza solo no defiende nada,
+    // sólo registra lo último que pasó.
+    //
+    // Se afirma por MECANISMO y no por disciplina: ningún fuente ni test de este
+    // paquete escribe el archivo.
+    const fuentes = [
+      ...readdirSync(new URL('../src/', import.meta.url)).map((f) => `../src/${f}`),
+      ...readdirSync(new URL('./', import.meta.url)).map((f) => `./${f}`),
+    ].filter((f) => f.endsWith('.ts'))
+    const escriben = fuentes.filter((f) =>
+      escribeLaBase(sinComentarios(readFileSync(new URL(f, import.meta.url), 'utf8'))),
+    )
+    console.log(`  fuentes que escriben la línea base: ${escriben.length === 0 ? 'ninguno' : escriben.join(', ')}`)
+    expect(escriben).toEqual([])
+
+    // ─── LA CARNADA, Y ESTE DETECTOR LA NECESITÓ DOS VECES ─────────────────
+    //
+    // La PRIMERA versión buscaba la palabra `writeFileSync` suelta y **se
+    // detectaba a sí misma**: el nombre está adentro de la propia expresión, así
+    // que acusaba al archivo que la define. Se cambió por la LLAMADA.
+    //
+    // La SEGUNDA salió VERDE POR OMISIÓN, y es peor: el `\b` del borde de palabra
+    // quedó escrito en el archivo como un **carácter de retroceso de verdad** —un
+    // byte 0x08— así que la expresión buscaba algo que no existe en ningún fuente
+    // y no matcheaba NADA. «Ninguno escribe» era cierto porque el detector estaba
+    // roto, y la suite entera dio verde igual.
+    //
+    // Por eso el detector se prueba a sí mismo antes de que su cero signifique
+    // algo. Es la misma regla que este proyecto aplica a todo lo demás y que acá
+    // faltaba: por cada cero, un control que lo hace subir.
+    // ─── Y LA CARNADA VA PARTIDA EN DOS, que es la tercera vuelta ──────────
+    //
+    // Escrita entera, la carnada **hace que el detector acuse a este archivo**:
+    // un fuente que contiene `writeFileSync(` y la palabra `linea-base` es
+    // exactamente lo que el detector busca, y no le importa que sea el texto de
+    // un test. Partido en dos, el archivo no contiene la secuencia en ningún
+    // lado y la carnada se arma recién en memoria.
+    //
+    // Es la misma clase de problema que las otras dos vueltas: **un detector de
+    // texto también lee el texto que lo prueba**. Queda escrito porque es fácil
+    // de repetir.
+    const escritura = 'write' + 'FileSync'
+    const anexo = 'append' + 'FileSync'
+    expect(escribeLaBase(`${escritura}("linea-base.json", x)`), 'el detector no muerde').toBe(true)
+    expect(escribeLaBase(`${anexo} ( "tests/linea-base.json" )`), 'no muerde con espacios').toBe(true)
+    // Y no muerde donde no tiene que: nombrar la función no es llamarla, y
+    // llamarla sobre otro archivo no es escribir la línea base.
+    expect(escribeLaBase(`// nunca uses ${escritura} sobre linea-base`), 'muerde una mención').toBe(false)
+    expect(escribeLaBase(`${escritura}(otraCosa)`), 'muerde otro archivo').toBe(false)
+    // Y el archivo lleva la regla adentro, para el que lo abra sin este test.
+    const base = JSON.parse(readFileSync(new URL('./linea-base.json', import.meta.url), 'utf8')) as {
+      comoSeSube: string
+    }
+    expect(base.comoSeSube).toContain('A MANO')
+  })
 
   it.fails('EL CRITERIO DE CORTE: al menos 4 de las 9 — aparecieron 0 · ACEPTADO ROJO', async () => {
     // ─── ACEPTADO ROJO, Y CON LA CAUSA MEDIDA ARRIBA DE LA MENTE ───────────

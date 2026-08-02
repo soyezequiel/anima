@@ -1,0 +1,14 @@
+{
+  "queEsEsto": "LA LÍNEA BASE DE ESTE PAQUETE. Cada número de acá lo defiende un test; el resto de los números del árbol sólo se imprimen. Ver el Hito 11.",
+  "comoSeSube": "A MANO, y con el porqué escrito en el campo `porQue` de la entrada que se toca. Nada escribe este archivo automáticamente, y ésa es la mitad del mecanismo: un archivo que se actualiza solo no defiende nada, sólo registra lo último que pasó.",
+  "hashesDelBancoCanonico": {
+    "queEs": "El hash de la partida entera de cada semilla del banco canónico: 20.000 ticks de mundo, con la mente decidiendo. Si uno se mueve, ALGO CAMBIÓ LA CONDUCTA de la criatura — no importa qué test siga verde.",
+    "porQue": "Se tocó el corazón de la mente dos veces en el Hito 10 (la costura de creencias y el peso del testimonio) y la única forma que había de saber que la conducta no se había movido era comparar A OJO contra la salida de una corrida vieja. Esto es esa comparación, hecha por la máquina.",
+    "medidoEl": "2026-08-01, tras e0fd4a3, con pnpm ii:test exit 0",
+    "hashes": {
+      "20260728": "ff52ece07f295f9d",
+      "20260729": "9af862b37ee3e676",
+      "20260730": "ca3e9aab69408ade"
+    }
+  }
+}

@@ -65,6 +65,7 @@ import { buildSeedPhysics } from '@anima/physics'
 import { ESQUEMAS } from '@anima/plan'
 import { Partida } from '@anima/perceive'
 import { Creencias, Mente, vivir } from '@anima/mind'
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { PUENTE } from '../src/alias.js'
 import { consultaDe, llaveDe, revisar } from '../src/consulta.js'
@@ -260,6 +261,29 @@ describe('(6) la consistencia del primer gesto', () => {
       `  todas ............... ${t === undefined ? 'sin muestras' : t.toFixed(2)}  (${String(todas.total)} órdenes)   ← el que se vería mejor`,
     )
     console.log(`  el umbral del criterio es ${String(UMBRAL)}\n`)
+
+    // ─── HITO 11 · LA LÍNEA BASE, Y VA ANTES DEL `if` ─────────────────────
+    //
+    // Antes este número sólo se afirmaba con `ANIMA_BANCO=1`, o sea que la suite
+    // normal lo imprimía y nadie lo comparaba — el caso exacto que el Hito 11
+    // vino a cerrar. Se compara SIEMPRE porque es determinista: es una fracción
+    // de decisiones y no toca ningún reloj.
+    const base = JSON.parse(readFileSync(new URL('./linea-base.json', import.meta.url), 'utf8')) as {
+      consistenciaDelPrimerGesto: { valor: number; ordenesQueEspeculan: number }
+    }
+    const lb = base.consistenciaDelPrimerGesto
+    console.log(`  línea base: ${lb.valor.toFixed(2)} sobre ${String(lb.ordenesQueEspeculan)} órdenes que especulan`)
+    expect(
+      conApuesta.total,
+      `cambió CUÁNTAS órdenes especulan (${String(lb.ordenesQueEspeculan)} → ${String(conApuesta.total)}). ` +
+        'El número de arriba se calcula sobre otra muestra, así que no es comparable: hay que editar ' +
+        'tests/linea-base.json A MANO y decir por qué',
+    ).toBe(lb.ordenesQueEspeculan)
+    expect(
+      v,
+      `la consistencia del primer gesto se movió de ${lb.valor.toFixed(2)}. Si es a propósito, ` +
+        'hay que editar tests/linea-base.json A MANO y escribir por qué',
+    ).toBe(lb.valor)
 
     if (!MIDIENDO_EN_SERIO) return
     expect(conApuesta.total, 'ninguna orden especuló: el número no mide nada').toBeGreaterThan(2)

@@ -1,0 +1,27 @@
+{
+  "queEsEsto": "LA LÍNEA BASE DE ESTE PAQUETE. Cada número de acá lo defiende un test; el resto de los números del árbol sólo se imprimen. Ver el Hito 11.",
+  "comoSeSube": "A MANO, y con el porqué escrito en el campo `porQue` de la entrada que se toca. Nada escribe este archivo automáticamente, y ésa es la mitad del mecanismo: un archivo que se actualiza solo no defiende nada, sólo registra lo último que pasó.",
+  "queNOentraAca": "LOS NÚMEROS DE RELOJ DE PARED. `msHastaPrimerMovimiento` mide milisegundos de CÓMPUTO (p95 1,35 ms en el Hito 6) y su valor depende de cuánta CPU haya libre. Defenderlo desde la suite determinista haría que un rojo pueda venir de la carga de la máquina, que es exactamente lo que el punto 4 del Hito 11 viene a separar — y que ya está pasando con `forge/tests/el-episodio.test.ts`. Va al banco de rendimiento, que corre aparte.",
+  "consistenciaDelPrimerGesto": {
+    "queEs": "De las órdenes que ESPECULAN —donde la criatura arranca a moverse antes de saber el plan entero—, qué fracción de primeros gestos resultó coherente con lo que habría hecho sabiendo todo. Es determinista: no toca ningún reloj.",
+    "porQue": "Estaba medido desde el Hito 6 y sólo se afirmaba con ANIMA_BANCO=1, o sea que la suite normal lo imprimía y nadie lo comparaba. Y su propio test advierte que el 1,00 es un HALLAZGO y no un éxito: dice que en este mundo equivocarse al especular sale barato, porque casi todo empieza caminando.",
+    "medidoEl": "2026-08-02, sobre 5 órdenes que especulan de 12",
+    "valor": 1.0,
+    "ordenesQueEspeculan": 5,
+    "ordenesTotales": 12
+  },
+  "ticksHastaLoPertinente": {
+    "queEs": "Cuántos TICKS DE MUNDO pasan desde que se le da una orden hasta el primer despegue que sale de esa meta y no del fondo de la escalera. En ticks y no en milisegundos: es tiempo del mundo, y no depende de la máquina.",
+    "porQue": "Es el tercer reloj del Hito 6, y su línea base vivía en prosa adentro del documento de arquitectura. Ningún test la leía, así que un cambio que lo llevara de 1 tick a 40 no ponía nada rojo.",
+    "medidoEl": "2026-08-02",
+    "porOrden": {
+      "hacé fuego": 1,
+      "pescá algo": 1,
+      "asá el pescado": 1
+    },
+    "sinAccionPertinente": [
+      "fabricá una trampa para peces"
+    ],
+    "porQueEsaSaleAparte": "`catch>0` YA ESTÁ CUMPLIDA en esa escena, así que la mente la descarta con razón. Una meta cumplida no tiene acción pertinente que medir, y contarla como «tardó infinito» sería mentir."
+  }
+}

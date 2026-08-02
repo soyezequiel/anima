@@ -159,13 +159,55 @@ pertinente.
 
 ---
 
-## 3 · Lo que hay que construir
+## 2 bis · Lo construido: puntos 1, 2 y 3
 
-1. **El archivo de líneas base y su lector**, generalizando el patrón que
-   `skills/tests/linea-base.json` ya prueba.
-2. **La separación de los tests de reloj de pared**, empezando por el rojo real
-   de M9.
-3. **Las cien partidas**, fuera del job de CI, con su control.
+De **1 archivo de línea base** a **3**, y de **1 número defendido** a **6**.
+
+| dónde | qué defiende |
+|---|---|
+| `skills/tests/linea-base.json` | los 84 errores del corpus (existía desde el Hito 4) |
+| `emergencia/tests/linea-base.json` | **los tres hashes del banco canónico** |
+| `lang/tests/linea-base.json` | `consistenciaDelPrimerGesto` y `ticksHastaLoPertinente` (3 órdenes) |
+
+### El hash del banco es el que más costó y el que menos defendido estaba
+
+En el Hito 10 se tocó el corazón de la mente **dos veces**, y la única forma que
+había de saber que la conducta no se había movido fue abrir la salida de una
+corrida vieja y **compararla a ojo**. Los 3032 tests daban verde con la conducta
+movida o sin mover: ninguno miraba el hash.
+
+Ahora lo mira uno, con su control. La guarda va dentro de
+`hito-5-la-emergencia.test.ts` y no en un archivo aparte por costo: `canonico()`
+memoiza el banco, y un archivo nuevo de vitest corre en otro worker — o sea que
+volvería a jugar las partidas de 20.000 ticks.
+
+### Y uno de los tres relojes NO puede entrar
+
+`msHastaPrimerMovimiento` mide **milisegundos de cómputo**, así que su valor
+depende de cuánta CPU haya libre. Defenderlo desde la suite determinista haría
+que un rojo pueda venir de la carga de la máquina — que es el punto 4 de este
+mismo hito, y que ya está pasando. Queda dicho **adentro del archivo de línea
+base**, en un campo `queNOentraAca`, para el que lo abra sin leer esto.
+
+Los otros dos sí son deterministas: uno es una fracción de decisiones y el otro
+se cuenta en ticks de mundo.
+
+### El detector del punto 3 se detectaba a sí mismo
+
+La primera versión buscaba la palabra `writeFileSync` en los fuentes del paquete
+y acusaba **al archivo que la define**, porque el nombre está adentro de su propia
+expresión. Busca la LLAMADA —`writeFileSync(`— y por eso no puede volver a
+pasar: después del nombre viene una barra invertida y no un paréntesis.
+
+---
+
+## 3 · Lo que queda por construir
+
+1. **La separación de los tests de reloj de pared** (punto 4), empezando por el
+   rojo real de M9 — `forge/tests/el-episodio.test.ts`.
+2. **Las cien partidas** (puntos 5 y 6), fuera del job de CI, con su control.
+3. **Más números al archivo**: quedan 620 y pico imprimiéndose. Los tres que
+   entraron son los que más costaba defender, no todos los que hay.
 
 Lo que **no** hay que construir: la puerta de ciclos rentables (M6), los
 invariantes económicos (M7), ni el techo de consultas (M5) — aunque a ése hay
