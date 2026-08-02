@@ -43,7 +43,7 @@ export {
   satisfaccionDe,
   TANQUE_DE_ALIENTO,
 } from './necesidades.js'
-export { Creencias, contextoDe, INSTINTO } from './creencias.js'
+export { Creencias, contextoDe, INSTINTO, type CreenciaVolcada } from './creencias.js'
 export {
   opportunities,
   costoEstimado,

@@ -55,3 +55,11 @@ export {
   type VueloOptions,
 } from './vuelo.js'
 export { Partida, type Informe, type PartidaOptions, type RelojDePared } from './bucle.js'
+export {
+  compararVuelos,
+  comoSeLee,
+  hashTrace,
+  porQueDivergen,
+  type Divergencia,
+  type VueloAnotado,
+} from './reejecucion.js'

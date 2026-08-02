@@ -462,6 +462,8 @@ export function correr(
      * creerle.
      */
     mente?: Pick<MenteOptions, 'catalogo' | 'costura'>;
+    /** Anotar cada vuelo que aterriza con el hash de su traza. Hito 10, punto 2. */
+    anotarVuelos?: boolean;
   } = {},
 ): Corrida {
   // ─── `vigilar: true`, Y NO ES DECORACIÓN ──────────────────────────────────
@@ -478,10 +480,11 @@ export function correr(
   //
   // Son las cinco preguntas que un estado contesta solo. La sexta —conservación—
   // no se puede encender con dios todavía: ver `PartidaOptions.vigilar`.
+  const anotarVuelos = o.anotarVuelos ?? false;
   const p =
     o.reloj === true
-      ? new Partida(w, { vigilar: true, reloj: () => Number(process.hrtime.bigint()) / 1e6 })
-      : new Partida(w, { vigilar: true });
+      ? new Partida(w, { vigilar: true, anotarVuelos, reloj: () => Number(process.hrtime.bigint()) / 1e6 })
+      : new Partida(w, { vigilar: true, anotarVuelos });
   const m = new Mente({ actor: quien, memoria: new Creencias(), ...o.mente });
   const mentes = new Map([[quien, m]]);
   const volados: string[] = [];

@@ -724,7 +724,11 @@ export class Mente {
       return
     }
     this.#tropiezo = undefined
-    p.volar(this.actor, t.correr, undefined)
+    // El `nombre` no lo mira el mundo ni entra en ninguna decisión: es para que
+    // una divergencia de traza se pueda leer. Sin él, `compararVuelos`
+    // (`@anima/perceive`) dice «el tercer vuelo de ana» en vez de
+    // «`unir(vara+hebra)`». Ver `VueloOptions.nombre`.
+    p.volar(this.actor, t.correr, undefined, { nombre: t.nombre })
     // Después de `volar` y no antes: si lanzara —el actor ya tiene algo vivo, o
     // sea que el corte de arriba no cortó— el contador diría que despegó algo que
     // no despegó, y ese número es el denominador de todo informe de cobertura.

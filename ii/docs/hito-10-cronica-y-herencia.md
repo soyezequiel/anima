@@ -172,17 +172,92 @@ mostrando que la corrida sin plantar sí pasa.
 
 ---
 
-## 3 · Lo que hay que construir
+## 2 bis · Lo que se construyó, y lo que apareció al construirlo
 
-1. **`@anima/store`** — el paquete que no existe. Journal append-only con
-   snapshots por delta, fuera del tick. Es el grueso de las dos semanas.
-2. **El replay que corre la habilidad** — hoy replaya intenciones (M2). Necesita
-   volver a montar la habilidad y comparar su traza contra la original.
-3. **La herencia** — con lo heredado entrando `provisional` (M6) y las creencias
-   viajando, que es el hueco que el Hito 5 dejó escrito.
+### Puntos 1, 2 y 3 — CUMPLEN
 
-Lo que **no** hay que construir: la traza (M4), el vocabulario de confianza (M6),
-y el replay del mundo (M2, primera mitad — cumple desde el Hito 2).
+| | |
+|---|---|
+| **1** | 20.000 ticks, 80.000 intenciones, 21 checkpoints. Correrla: **741 ms**. Replayarla: **502 ms** |
+| | Su control: sacándole **una** intención del medio, el replay corta — y corta **adentro** (tick 300), no en el tick 0 |
+| **2** | `Partida.anotarVuelos` + `compararVuelos`. La historia de la caña, dos veces: **14 vuelos, cero divergencias** |
+| **3** | **El control que muerde**, y es el punto entero del hito |
+
+El control del punto 3, medido:
+
+```
+hash del mundo, corrida 1 ... 2fbe8bea86d9848f
+hash del mundo, corrida 2 ... 2fbe8bea86d9848f
+¿el hash lo vio? ............ NO. Son idénticos
+traza, corrida 1 ............ e7e5eab6d04a51f0
+traza, corrida 2 ............ 81bf1a2f44b98767
+¿la traza lo vio? ........... SÍ
+```
+
+Una habilidad con una fuente de no-determinismo adentro deja el mundo **bit por
+bit idéntico** y la traza distinta. Eso es exactamente lo que M2 decía que el
+replay del journal no puede ver, y ahora se ve.
+
+> El primer control que escribí cortaba en el tick 0 — o sea **antes de entrar
+> al bucle**. Probaba que el primer hash se compara y nada más. Corregido: ahora
+> el journal arranca igual y se le saca una intención del medio, así que los
+> primeros checkpoints tienen que pasar y el corte tiene que caer adentro. El
+> test lo exige con un número.
+
+### Punto 4 — CUMPLE
+
+`@anima/store`, el paquete que no existía. **Es el primer paquete de `ii/` donde
+`await` es legal**, con su guardián propio diciéndolo en voz alta: la regla 2
+protege al *tick*, y guardar no pasa por el tick.
+
+```
+cortado en el tick ..... 60
+hash antes ............. igual
+hash después ........... igual
+la restaurada pescó .... 48 ticks después del corte, o sea en el 108
+```
+
+**108 es exactamente el tick de la corrida sin cortar.** La obra converge, y no
+porque el vuelo sobreviva —no sobrevive, ADR 0009— sino porque la criatura
+restaurada vuelve a planificar y llega al mismo lugar.
+
+### Punto 6 — BLOQUEADO, y la causa estaba escrita desde el Hito 5
+
+El guardado de creencias funciona y está probado con su control (no duplica el
+instinto: `a` da `instinto + 2` y no `2·instinto + 2`). Pero **vuelca cero**
+después de sesenta ticks de vida real, y no es un bug del volcado:
+
+> `AffordanceMemory` tiene `observe(ctx, rinde, ok)` y acá **no se lo llama
+> nunca** […] una criatura que pesca sesenta veces sigue informando `n = 0`.
+> — `mind/src/mente.ts`, desde el Hito 5, con su `it.fails`
+
+**La mente nunca le devuelve evidencia a las creencias.** Así que la herencia
+hereda cero, y el punto 6 —«la segunda vida llega en menos ticks»— no se puede
+medir todavía. Es el mismo patrón que la pista del juez del Hito 8: mecanismo
+bien construido que no se dispara con material real.
+
+La reparación **no es de este hito**: es de `escalera.ts` —cargarle a la meta de
+dónde salió— y toca el corazón de la mente, que es lo que el criterio del Hito 5
+mide en 20.000 ticks. Es una decisión del usuario, no una tarea.
+
+El cero se afirma con un `expect`, no se esconde: el día que la escalera empiece
+a observar, ese test se pone rojo y obliga a mirar el punto 6.
+
+---
+
+## 3 · Lo que queda por construir
+
+1. **El punto 5** — la heredera con la biblioteca completa y **ninguna credencial
+   regalada**: lo heredado entra `provisional` (M6) y se vuelve a ganar la vara en
+   su mundo. El vocabulario ya está; falta el gesto.
+2. **El adaptador de IndexedDB** — veinte líneas contra la interfaz `Deposito`,
+   y no se puede correr en la suite: node no tiene IndexedDB. Necesita el arnés
+   de navegador que el Hito 2 ya tiene anotado como pendiente.
+3. **El punto 6**, cuando la mente empiece a observar. No es trabajo de este
+   hito: ver arriba.
+
+Lo que **no** hubo que construir: la traza (M4), el vocabulario de confianza (M6),
+y el replay del mundo (M2, primera mitad — cumplía desde el Hito 2).
 
 ---
 

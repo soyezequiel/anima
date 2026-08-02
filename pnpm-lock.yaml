@@ -451,6 +451,34 @@ importers:
         specifier: ^3.0.0
         version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
 
+  ii/packages/store:
+    dependencies:
+      '@anima/mind':
+        specifier: workspace:*
+        version: link:../mind
+      '@anima/physics':
+        specifier: workspace:*
+        version: link:../physics
+      '@anima/world':
+        specifier: workspace:*
+        version: link:../world
+    devDependencies:
+      '@anima/perceive':
+        specifier: workspace:*
+        version: link:../perceive
+      '@anima/plan':
+        specifier: workspace:*
+        version: link:../plan
+      '@anima/skills':
+        specifier: workspace:*
+        version: link:../skills
+      typescript:
+        specifier: ^5.6.0
+        version: 5.9.3
+      vitest:
+        specifier: ^3.0.0
+        version: 3.2.7(@types/node@24.13.3)(tsx@4.23.1)
+
   ii/packages/world:
     dependencies:
       '@anima/oracle':

@@ -547,6 +547,21 @@ interface Cajon {
 
 const NINGUN_TAG: readonly string[] = Object.freeze([])
 
+/**
+ * UN CASILLERO VOLCADO, en datos planos que aguantan el viaje por JSON.
+ *
+ * Ver `Creencias.volcar` para por qué el prior sólo viaja cuando lo puso el
+ * modelo, y para el error que eso evita.
+ */
+export interface CreenciaVolcada {
+  readonly ctx: ContextKey
+  readonly rinde: string
+  readonly exitos: number
+  readonly fracasos: number
+  /** Sólo cuando el prior NO es de fábrica: el que puso el modelo. */
+  readonly prior?: { readonly a: number; readonly b: number }
+}
+
 export class Creencias implements AffordanceMemory {
   readonly #cajones = new Map<ContextKey, Cajon>()
 
@@ -652,6 +667,76 @@ export class Creencias implements AffordanceMemory {
   /** De dónde salió el prior de un casillero. Para el «por qué» y para los tests. */
   origenDe(ctx: ContextKey, rinde: string): 'nadie' | 'instinto' | 'modelo' {
     return this.#cajones.get(ctx)?.cuentas.get(rinde)?.por ?? 'nadie'
+  }
+
+  /**
+   * LO QUE ESTA CRIATURA VIVIÓ, en datos planos y sin el instinto adentro.
+   *
+   * ─── POR QUÉ NO VUELCA EL PRIOR, Y ES LA LÍNEA ENTERA ───────────────────────
+   *
+   * Porque **el constructor ya siembra el instinto**: una `Creencias` nueva nace
+   * con `INSTINTO` puesto. Si esto volcara `belief()` —que es el posterior, o sea
+   * prior más evidencia— y del otro lado se cargara sobre una criatura recién
+   * nacida, el instinto se contaría DOS VECES, y cada guardado y restaurado lo
+   * volvería a duplicar. Una criatura que se guarda diez veces terminaría con un
+   * instinto diez veces más terco que el de fábrica, sin haber visto nada.
+   *
+   * Así que se vuelca **sólo lo propio**: los éxitos y los fracasos que ella
+   * contó. El prior lo pone el constructor de la heredera, que es de quien tiene
+   * que ser.
+   *
+   * Lo que sí viaja aparte es el ORIGEN de los priors que NO son de fábrica —los
+   * que puso el modelo con `seed(..., 'modelo')`—, porque ésos no los reconstruye
+   * ningún constructor y perderlos sería perder lo que el cuidador enseñó.
+   *
+   * ─── Y POR QUÉ ES UN ARREGLO Y NO UN OBJETO ────────────────────────────────
+   *
+   * Una `ContextKey` lleva `|` y `:` adentro (`agua|mc--e`, `celda:3,4`) y usarla
+   * de clave de objeto la hace pasar por `JSON.parse`, que no garantiza el orden
+   * de las claves. El orden acá es estable —`contextos()` ordena— y un arreglo lo
+   * conserva, que es lo que hace que dos volcados de la misma memoria sean el
+   * mismo texto.
+   */
+  volcar(): readonly CreenciaVolcada[] {
+    const out: CreenciaVolcada[] = []
+    for (const ctx of this.contextos()) {
+      const cajon = this.#cajones.get(ctx)
+      if (cajon === undefined) continue
+      for (const rinde of cajon.tags) {
+        const c = cajon.cuentas.get(rinde)
+        if (c === undefined) continue
+        // Lo que no aporta nada no viaja: un casillero con el prior de fábrica y
+        // cero observaciones es exactamente lo que la heredera ya va a tener.
+        if (c.exitos === 0 && c.fracasos === 0 && c.por !== 'modelo') continue
+        out.push(
+          c.por === 'modelo'
+            ? { ctx, rinde, exitos: c.exitos, fracasos: c.fracasos, prior: { a: c.prior.a, b: c.prior.b } }
+            : { ctx, rinde, exitos: c.exitos, fracasos: c.fracasos },
+        )
+      }
+    }
+    return out
+  }
+
+  /**
+   * CARGA LO VOLCADO ENCIMA DE LO QUE HAY. No reemplaza: suma.
+   *
+   * Es una decisión y no una comodidad. La heredera nace con su instinto y
+   * después recibe el testimonio de la anterior, que es exactamente el orden del
+   * ADR 0009 —*«la heredera recibe testimonio, no hechos»*—. Reemplazar borraría
+   * el instinto de fábrica en los casilleros heredados, y la heredera arrancaría
+   * peor que una recién nacida en todo lo que su antecesora tocó poco.
+   */
+  cargar(volcado: readonly CreenciaVolcada[]): void {
+    for (const v of volcado) {
+      const c = this.#cuenta(v.ctx, v.rinde)
+      if (v.prior !== undefined) {
+        c.prior = { a: v.prior.a, b: v.prior.b }
+        c.por = 'modelo'
+      }
+      c.exitos += v.exitos
+      c.fracasos += v.fracasos
+    }
   }
 
   #cuenta(ctx: ContextKey, rinde: string): Cuenta {

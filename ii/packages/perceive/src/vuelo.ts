@@ -100,6 +100,16 @@ export interface VueloOptions {
   readonly maxStalls?: number
   readonly cell?: FuelCell
   readonly saved?: SavedSkillState
+  /**
+   * CÓMO SE LLAMA ESTO, para quien después tenga que leer una divergencia.
+   *
+   * No participa de ninguna decisión y el mundo no lo ve. Existe porque
+   * `Partida.volar` recibe una FUNCIÓN —la mente le pasa una clausura con los
+   * argumentos ya adentro— y una clausura no se puede nombrar desde afuera. Sin
+   * esto, una divergencia de traza dice «el tercer vuelo de ana» y con esto dice
+   * «`unir(vara+hebra)`». Ver `reejecucion.ts`.
+   */
+  readonly nombre?: string
 }
 
 /**
@@ -113,6 +123,8 @@ export class Vuelo<A> {
   readonly run: SkillRun<A>
   readonly ctx: Contexto
   readonly by: ActorId
+  /** Lo que dijo quien lo puso a volar. Vacío si no dijo nada. Ver `VueloOptions.nombre`. */
+  readonly nombre: string
   #pendiente: Repeticion | undefined
   /** El resultado que le toca al próximo avance del generador. */
   #aEntregar: StepResult | undefined
@@ -124,6 +136,7 @@ export class Vuelo<A> {
   constructor(skill: Skill<A>, ctx: Contexto, args: A, o: VueloOptions) {
     this.ctx = ctx
     this.by = o.by
+    this.nombre = o.nombre ?? ''
     const opciones = {
       by: o.by,
       ...(o.fuelPerStep === undefined ? {} : { fuelPerStep: o.fuelPerStep }),

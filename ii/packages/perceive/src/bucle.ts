@@ -91,12 +91,14 @@ import {
   stepWorld,
 } from '@anima/world'
 import type { Skill } from '@anima/skills'
+import { hashTrace } from '@anima/skills'
 import type { WorldRng } from '@anima/oracle'
 import { dadoDelMundo, type DadoDelMundo } from '@anima/oracle'
 
 import { Contexto } from './contexto.js'
 import { IndiceDelTick } from './indice.js'
 import { LibroDeLugares, dondeEsta } from './lugares.js'
+import type { VueloAnotado } from './reejecucion.js'
 import { Proyeccion } from './vista.js'
 import { Vuelo, type VueloOptions } from './vuelo.js'
 
@@ -165,6 +167,20 @@ export interface PartidaOptions {
    * de criterio y las del juez, que tienen ~130 cuerpos.
    */
   readonly vigilar?: boolean
+  /**
+   * ANOTAR CADA VUELO QUE ATERRIZA, con el hash de su traza. Hito 10, puntos 2 y 3.
+   *
+   * Apagada por omisión y barata cuando está encendida: un `hashTrace` por vuelo
+   * TERMINADO, no por tick. La corrida del criterio del Hito 5 son 20.000 ticks y
+   * unos cientos de vuelos.
+   *
+   * Lo que compra está medido en el criterio del Hito 10 (M2): el replay del
+   * journal replaya INTENCIONES, así que una habilidad con una fuente de
+   * no-determinismo adentro lo pasa sin despeinarse porque nunca corre. Esto es
+   * lo único que mira lo que la habilidad HIZO, y ve una clase de divergencia
+   * que el hash del mundo no puede ver: una fase no toca ningún cuerpo.
+   */
+  readonly anotarVuelos?: boolean
 }
 
 /** El informe de una corrida. Todo número que el criterio del Hito 5 nombra sale de acá. */
@@ -318,6 +334,20 @@ export class Partida {
   /** Ver `PartidaOptions.vigilar`. Apagada por omisión, y el informe lo dice. */
   readonly #vigilar: boolean
   readonly #violaciones: { tick: number; v: Violacion }[] = []
+  /** Ver `PartidaOptions.anotarVuelos`. */
+  readonly #anotarVuelos: boolean
+  readonly #anotados: VueloAnotado[] = []
+  /**
+   * Los vuelos que ya se anotaron, por identidad del objeto.
+   *
+   * Es un `WeakSet` y no una bandera adentro de `Vuelo` porque anotar es asunto
+   * de la partida y no del vuelo: un `Vuelo` volado a mano, fuera de una
+   * `Partida`, no tiene por qué cargar con un campo que nadie le escribe. Y por
+   * identidad y no por `(tick, actor)` porque un actor puede aterrizar dos
+   * vuelos distintos en el mismo tick — el segundo despega en el mismo tick en
+   * que el primero terminó (decisión 3 de la escalera).
+   */
+  readonly #yaAnotados = new WeakSet<object>()
   /** El instante en que terminó el tick anterior. Sólo con reloj de pared. */
   #ultimoFin: number | undefined
   /** Cuánto tiempo de pared se debe, en milisegundos. Saturado en cero: ver el encabezado. */
@@ -338,6 +368,7 @@ export class Partida {
     }
     this.#reloj = o.reloj
     this.#vigilar = o.vigilar ?? false
+    this.#anotarVuelos = o.anotarVuelos ?? false
     // El tick 0 también se mira: un mundo que ENTRA roto no lo rompió ningún tick,
     // y descubrirlo en el tick 1 haría culpar al paso equivocado.
     if (this.#vigilar) this.#anotarViolaciones(this.#state)
@@ -517,7 +548,52 @@ export class Partida {
       }
       v.resolver(events, this.#proy)
     }
+
+    // 7. ANOTAR LO QUE ATERRIZÓ. Va al final del tick y no adentro del bucle de
+    //    arriba, porque un vuelo puede terminar en la fase 6 (`resolver`) o
+    //    haberse abortado antes; mirar el estado final es el único lugar donde
+    //    los dos caminos ya pasaron. Ver `PartidaOptions.anotarVuelos`.
+    if (this.#anotarVuelos) this.#anotarLosQueAterrizaron()
     return events
+  }
+
+  /**
+   * Los vuelos terminados que todavía no se anotaron, en orden canónico de actor.
+   *
+   * El orden importa y es el de `#vuelos`, que es orden de inserción — el mismo
+   * que la fase 1 usa para juntar intenciones. Dos corridas del mismo mundo
+   * insertan en el mismo orden, así que la lista de anotados es comparable
+   * posición por posición, que es lo que `compararVuelos` necesita.
+   */
+  #anotarLosQueAterrizaron(): void {
+    for (const [a, v] of this.#vuelos) {
+      if (!v.terminado || this.#yaAnotados.has(v)) continue
+      this.#yaAnotados.add(v)
+      this.#anotados.push({
+        tick: this.#state.tick,
+        actor: a,
+        nombre: v.nombre,
+        traza: hashTrace(v.run.trace),
+        pasos: v.run.steps,
+        ok: v.outcome?.ok ?? false,
+      })
+    }
+  }
+
+  /**
+   * QUÉ VOLÓ Y QUÉ DEJÓ CADA VUELO, para comparar dos corridas.
+   *
+   * Vacío cuando `anotarVuelos` no está puesta, y eso NO quiere decir «no voló
+   * nada»: quiere decir «no se miró». Es el mismo cero ambiguo que `violaciones`
+   * resuelve con `vigilada`, y acá se resuelve igual con `anotandoVuelos`.
+   */
+  get vuelosAnotados(): readonly VueloAnotado[] {
+    return this.#anotados
+  }
+
+  /** ¿Se estuvo anotando? Sin esto, `vuelosAnotados: []` sería un cero ambiguo. */
+  get anotandoVuelos(): boolean {
+    return this.#anotarVuelos
   }
 
   /**
