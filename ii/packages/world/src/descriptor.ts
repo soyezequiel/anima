@@ -35,7 +35,8 @@
 // Y la regla del mundo que esto no puede romper: **mirar, pensar o renderizar
 // nunca consume RNG**. Este archivo es función pura del estado.
 
-import type { FormId, SubstanceId } from '@anima/physics'
+import { dominantPart, estadoVisibleDe, porteDe } from '@anima/physics'
+import type { BandaDeEstado, Body, FormId, Physics, Porte, SubstanceId } from '@anima/physics'
 
 import { hashWorld } from './hash.js'
 import type { WorldHash } from './hash.js'
@@ -48,8 +49,13 @@ import type { Desplegado, WorldState } from './step.js'
  * Entra en el hash a propósito: dos clientes con distinta versión del descriptor
  * dibujan cosas distintas del mismo mundo, y el E2E tiene que verlo. Es lo mismo
  * que `physicsVersion` para los sellos.
+ *
+ * **2 — el Hito 12.** Entraron `nucleo`, `atadores`, `estado`, `porte` y
+ * `podrido`. Los cinco son estado del mundo que ninguna vista publicaba, y sin
+ * ellos el dibujo mentía por omisión: un leño ardiendo y uno frío eran el mismo
+ * descriptor, y un guijarro y un peñasco también.
  */
-export const VERSION_DEL_DESCRIPTOR = 1
+export const VERSION_DEL_DESCRIPTOR = 2
 
 /**
  * LO QUE HAY QUE SABER DE UN CUERPO PARA DIBUJARLO, y nada más.
@@ -74,12 +80,51 @@ export interface RenderDescriptor {
    */
   readonly materiales: readonly SubstanceId[]
   /**
+   * DE QUÉ ES LA PARTE QUE MANDA — la de más masa (`dominantPart`).
+   *
+   * Está aunque sea redundante con `materiales`, y es lo que hace que el color
+   * de una cosa y su nombre no se puedan contradecir: `nameOf` llama «madera con
+   * liana» a lo que tiene más madera, y el dibujo tiene que pintarlo de madera.
+   * Derivarlo en la pantalla obligaría a mandarle las masas, o sea a publicar el
+   * cuerpo entero.
+   */
+  readonly nucleo: SubstanceId
+  /**
    * CUÁNTAS PIEZAS Y CUÁNTAS JUNTAS. Es el «progreso» de la lista del ADR: una
    * obra a medio armar tiene menos de las dos, y eso es todo lo que el mundo sabe
    * de su progreso — no hay proyecto de obra con un total al que compararse.
    */
   readonly partes: number
   readonly juntas: number
+  /**
+   * CON QUÉ SE ATÓ CADA JUNTA, en el orden de las juntas del cuerpo.
+   *
+   * `length` es siempre `juntas`, y hay un test que lo afirma. Éste es el único
+   * campo del descriptor que NO está ordenado ni deduplicado, y la excepción es
+   * a propósito: el dibujo pinta el nudo i-ésimo con el color del atador
+   * i-ésimo, así que barajarlo cambiaría qué se ve. Deduplicarlo perdería
+   * exactamente lo que hace falta — con cinco juntas y dos atadores distintos,
+   * un conjunto ya no dice cuál nudo es de cuál.
+   *
+   * El dato existía desde el Hito 1 (`Joint.via`) y ninguna vista lo leyó nunca.
+   */
+  readonly atadores: readonly SubstanceId[]
+  /**
+   * QUÉ SE LE VE: ardiendo, chamuscado, mojado, crudo… Sale de
+   * `estadoVisibleDe`, la misma función que le pone los adjetivos al nombre, así
+   * que la pantalla y el nombre no pueden decir cosas distintas.
+   *
+   * Es una BANDA y no la temperatura, para que el hash cambie cuando cambia lo
+   * que se ve y no cada tick en que el fuego sube un grado.
+   */
+  readonly estado: BandaDeEstado
+  /**
+   * EL TAMAÑO, en cuatro bandas. Lo que este campo arregla, dicho con nombre: sin
+   * él un guijarro y un peñasco de la misma sustancia se dibujaban idénticos.
+   */
+  readonly porte: Porte
+  /** Sólo si lo está. `decay` es ortogonal a la banda: un asado se pudre igual. */
+  readonly podrido?: true
   /**
    * SI ESTÁ PUESTO Y FUNCIONANDO, y cuánto retuvo.
    *
@@ -98,21 +143,32 @@ export interface RenderDescriptor {
  * está lo interesante. No hay rama que devuelva `undefined` ni que pida arte.
  */
 export function descriptorDe(
-  b: { readonly body: { readonly form: FormId; readonly parts: readonly { readonly substance: SubstanceId }[]; readonly joints: readonly unknown[] }; readonly at: Placement },
+  b: { readonly body: Body; readonly at: Placement },
+  phys: Physics,
   desplegado?: Desplegado,
 ): RenderDescriptor {
   const materiales = [...new Set(b.body.parts.map((p) => p.substance))].sort(comparaTexto)
+  const { banda, podrido } = estadoVisibleDe(b.body, phys)
   const base: RenderDescriptor = {
     v: VERSION_DEL_DESCRIPTOR,
     at: b.at,
     forma: b.body.form,
     materiales,
+    nucleo: dominantPart(b.body).substance,
     partes: b.body.parts.length,
     juntas: b.body.joints.length,
+    atadores: b.body.joints.map((j) => j.via),
+    estado: banda,
+    porte: porteDe(b.body, phys),
   }
-  // La clave sólo si hay algo que decir: un `desplegado: undefined` explícito
-  // viajaría al hash como una clave más. Misma razón que en `place` y en el dios.
-  return desplegado === undefined ? base : { ...base, desplegado: { captura: desplegado.captura.length } }
+  // Las claves opcionales sólo si hay algo que decir: un `podrido: undefined`
+  // explícito viajaría al hash como una clave más, y con eso un mundo entero de
+  // cosas sanas hashearía distinto que antes de que existiera la putrefacción.
+  // Misma razón que en `place` y en el dios.
+  const conEstado = podrido ? { ...base, podrido: true as const } : base
+  return desplegado === undefined
+    ? conEstado
+    : { ...conEstado, desplegado: { captura: desplegado.captura.length } }
 }
 
 /** Sin `localeCompare`: el orden no puede depender del idioma del cliente. */
@@ -123,13 +179,20 @@ function comparaTexto(a: string, b: string): number {
 /**
  * TODOS LOS DESCRIPTORES DE UN MUNDO, por id de cuerpo y en orden de id.
  *
- * `phys` no se usa hoy y no está en la firma por eso mismo: el descriptor sale
- * del CUERPO y del estado desplegado, no del catálogo. Si algún día hiciera falta
- * —una forma que dependa de una cualidad derivada— entra como parámetro y se ve.
+ * ─── LA FÍSICA SÍ ENTRA, Y ESTE COMENTARIO ERA LA PROFECÍA ─────────────────
+ *
+ * Acá decía: *«`phys` no se usa hoy y no está en la firma por eso mismo… Si
+ * algún día hiciera falta —una forma que dependa de una cualidad derivada—
+ * entra como parámetro y se ve»*. Ese día fue el Hito 12: el estado y el porte
+ * salen de cualidades, y las cualidades salen del catálogo.
+ *
+ * `descriptoresDe` no cambió de firma igual, porque `WorldState` ya lleva su
+ * `phys` adentro. El único que la pide explícita es `descriptorDe`, que recibe
+ * un cuerpo suelto y no tiene de dónde sacarla.
  */
 export function descriptoresDe(s: WorldState): ReadonlyMap<BodyId, RenderDescriptor> {
   const out = new Map<BodyId, RenderDescriptor>()
-  for (const [id, c] of s.bodies) out.set(id, descriptorDe(c, s.desplegados.get(id)))
+  for (const [id, c] of s.bodies) out.set(id, descriptorDe(c, s.phys, s.desplegados.get(id)))
   return out
 }
 

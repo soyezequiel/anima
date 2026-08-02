@@ -62,12 +62,16 @@ git log origin/anima-2..HEAD --oneline | wc -l
 ```
 
 La suite entera (`pnpm ii:test`) tarda unos 5 minutos: corrantela en segundo
-plano y seguí con lo demás mientras. **Ojo con dos trampas ya mordidas:**
+plano y seguí con lo demás mientras. **Ojo con tres trampas ya mordidas:**
 
 - vitest escribe códigos de color entre `Tests` y el número, así que un
   `grep "Tests +[0-9]+"` no matchea nada. Va con `FORCE_COLOR=0 NO_COLOR=1`;
 - si el comando termina en `| tail -60`, el conteo por paquete se pierde y sólo
-  queda el último. Y `$?` después de un pipe es el del `tail`, no el de `pnpm`.
+  queda el último. Y `$?` después de un pipe es el del `tail`, no el de `pnpm`;
+- si hay un paquete roto (algo sin commitear, por ejemplo), `pnpm ii:test` FRENA
+  ahí y no corre los paquetes que vienen después (`ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL`).
+  Un cuadro parcial se puede leer como «todo lo demás está verde» cuando en
+  realidad no se corrió. Para ver el resto: `pnpm --no-bail --filter "./ii/**" run test`.
 
 El banco caro (`ANIMA_BANCO=1 pnpm --filter @anima/emergencia test`, unos 311 s) **no
 hace falta** para actualizar el tablero. Si no lo corrés, decilo en

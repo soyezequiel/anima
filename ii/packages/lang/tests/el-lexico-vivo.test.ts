@@ -168,6 +168,43 @@ describe('la lista copiada no se puede desincronizar', () => {
       fileURLToPath(new URL('../../physics/src/body.ts', import.meta.url)),
       'utf8',
     )
+    // ─── DE DÓNDE SE LEEN AHORA, Y POR QUÉ CAMBIÓ EL LUGAR ─────────────────
+    //
+    // Antes salían todos de los `out.push(...)` de `adjectivesOf`, porque la
+    // función era una cascada de umbrales que empujaba literales. Al partirse en
+    // dos —`estadoVisibleDe` decide la banda, `adjectivesOf` la traduce con
+    // género— los adjetivos se mudaron al TIPO, y este guardián pasó a encontrar
+    // tres donde antes veía nueve.
+    //
+    // No falló por un adjetivo faltante: falló por su propia cota mínima, que
+    // está justamente para esto. Un scraper que se queda mirando el lugar viejo
+    // no da rojo, da verde: no encuentra nada y no tiene nada que reprochar.
+    //
+    // Así que ahora lee las dos mitades, que juntas son la lista entera:
+    //
+    //   1. la unión `BandaDeEstado`, que es la fuente de verdad de los estados;
+    //   2. los literales de `out.push(...)`, que es donde vive lo que la
+    //      traducción agrega por su cuenta: `podrido`, que es ortogonal a la
+    //      banda, y las dos formas que no concuerdan en género.
+    const union = fuente.slice(fuente.indexOf('export type BandaDeEstado'))
+    // El corte va con `\r?\n` y no con `'\n\n'`, y hay una historia: este archivo
+    // se guarda con finales CRLF, así que `'\n\n'` no aparece NUNCA y el corte se
+    // iba hasta el final del archivo. El guardián se puso rojo pidiendo que el
+    // léxico tuviera entradas «temperature», «ignitionPoint» y «fuelEnergy» —o
+    // sea, exactamente el defecto contra el que su propio comentario advierte.
+    // Es el mismo `\r` que ya había mordido al detector de relojes del Hito 11.
+    const corte = union.search(/\r?\n\r?\n/)
+    const bloque = corte > 0 ? union.slice(0, corte) : union
+    const bandas = [...bloque.matchAll(/'([^']+)'/g)]
+      .map((m) => m[1] ?? '')
+      // `sin-marca` no es un adjetivo: es «no hay nada que decir de esto», y
+      // `adjectivesOf` no lo empuja. Pedirle al léxico una entrada «sin marca»
+      // sería exigir de más, que es cómo se enseña a ignorar un guardián.
+      .filter((s) => s !== 'sin-marca')
+      // El guión es de la banda; el nombre la quiere con espacios, y así entra al
+      // léxico. Lo dice `adjectivesOf` en su comentario.
+      .map((s) => s.replace(/-/g, ' '))
+
     const cuerpo = fuente.slice(fuente.indexOf('function adjectivesOf'))
     const hasta = cuerpo.indexOf('\nfunction ')
     const texto = hasta > 0 ? cuerpo.slice(0, hasta) : cuerpo
@@ -182,7 +219,7 @@ describe('la lista copiada no se puede desincronizar', () => {
     // versión filtraba por línea y seguía trayendo `'moisture'` y `'decay'`,
     // porque `} else if (qualityOf(b, 'moisture', phys) >= 0.6) out.push(...)`
     // tiene las dos cosas en el mismo renglón.
-    const lemas = texto
+    const empujados = texto
       .split('\n')
       .flatMap((l) => {
         const i = l.indexOf('out.push(')
@@ -191,6 +228,12 @@ describe('la lista copiada no se puede desincronizar', () => {
       })
       .filter((s) => s !== 'm' && s !== 'f')
 
+    const lemas = [...new Set([...bandas, ...empujados])]
+
+    // Ocho bandas más `podrido`. La cota no bajó al partirse la función, y ése es
+    // el punto: si mañana alguien vuelve a mover los adjetivos de lugar, este
+    // número se pone rojo antes de que el guardián se quede mirando una pared.
+    expect(bandas.length).toBeGreaterThanOrEqual(8)
     expect(lemas.length).toBeGreaterThanOrEqual(9)
     const faltan = lemas.filter((l) => !SOLO_MUNDO.entradas.has(clave(l)))
     expect(faltan, `en body.ts y no en el léxico: ${faltan.join(', ')}`).toEqual([])

@@ -27,7 +27,7 @@
   "copiasDeLaPuerta": {
     "queEs": "Cuántos paquetes tienen su copia de `tests/reloj-de-pared.ts`.",
     "porQue": "Es una copia y no un import porque ningún paquete de `ii/` depende de otro para sus tests, y dos constantes no justifican estrenar esa dependencia. El precio de copiar es la deriva, y por eso el test compara las líneas `export const` de todas las copias y exige que sean idénticas.",
-    "medidoEl": "2026-08-02, al bajar las doce aserciones: forge, perceive, plan, skills, world.",
-    "cuantas": 5
+    "medidoEl": "2026-08-02, al bajar las doce aserciones: forge, perceive, plan, skills, world. SUBIDO A SEIS el mismo día: `@anima/dibujo` estrenó la suya al escribir el banco del dibujo (`tests/banco-el-cuadro.test.ts`), que mide cuánto sale pintar un cuadro y por lo tanto lee el reloj de pared. Es exactamente el caso para el que la puerta existe: el número se imprime siempre y se afirma sólo con ANIMA_RELOJ=1.",
+    "cuantas": 6
   }
 }

@@ -1,0 +1,25 @@
+{
+  "name": "@anima/sprites",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/servidor.ts"
+  },
+  "scripts": {
+    "dev": "vite-node src/main.ts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@anima/dibujo": "workspace:*",
+    "@anima/physics": "workspace:*",
+    "@anima/world": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^3.0.0",
+    "vite-node": "^3.0.0"
+  }
+}

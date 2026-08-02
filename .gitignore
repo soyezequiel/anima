@@ -19,3 +19,8 @@ test-results/
 
 # Trazas de misiones: salida generada, pesada y reproducible (pnpm mission).
 apps/missions/traces/
+
+# El baul del deposito de sprites hace un respaldo antes de reescribir: es
+# estado de runtime, no contenido. El `sprites.json` SI se versiona — son once
+# dibujos que costaron consultas de verdad.
+ii/apps/sprites/datos/*.viejos

@@ -33,6 +33,9 @@
 // `Map` recorrido en orden de inserción produciría dos escenas distintas del
 // mismo mundo según cómo se armó, y el `escenaHash` dejaría de significar algo.
 
+import { qualityOf } from '@anima/physics'
+import type { Duracion, ProcessId } from '@anima/physics'
+
 import { hashWorld } from './hash.js'
 import type { WorldHash } from './hash.js'
 import { descriptorDe } from './descriptor.js'
@@ -40,7 +43,7 @@ import type { RenderDescriptor } from './descriptor.js'
 import { celdaDecretada } from './dios.js'
 import { keyOfCell } from './cell.js'
 import { CELDA_POR_OMISION, shelteredDe } from './step.js'
-import type { ActorId, BodyId, Placement } from './intent.js'
+import type { ActorId, BodyId, Placement, RoleBinding } from './intent.js'
 import type { CellState, WorldState } from './step.js'
 
 /**
@@ -49,7 +52,7 @@ import type { CellState, WorldState } from './step.js'
  * Entra en el hash por lo mismo que la del descriptor: dos clientes con distinta
  * versión ven cosas distintas del mismo mundo, y el E2E tiene que verlo.
  */
-export const VERSION_DE_LA_ESCENA = 1
+export const VERSION_DE_LA_ESCENA = 2
 
 /**
  * UNA CELDA DEL MAPA. Las tres que se guardan más `sheltered`, que es derivada.
@@ -88,20 +91,155 @@ export interface CuerpoEnEscena {
 }
 
 /**
+ * LO QUE LA CRIATURA TIENE ENTRE MANOS AHORA. `Activity` recortada, y el recorte
+ * es la decisión.
+ *
+ * ─── LO QUE NO ESTÁ, Y ES LO PRIMERO QUE UNO ESCRIBIRÍA ────────────────────
+ *
+ * **El total no está.** Una barra de progreso necesita «lleva 0,6 de 1 segundo»,
+ * y acá sólo está el 0,6. El 1 vive en el proceso —`Process.completion.at`— y
+ * quien dibuja ya recibe la `Physics` entera, así que lo busca por id. Copiarlo
+ * acá sería duplicar un número que ya existe, con la única consecuencia posible
+ * de que un día quede viejo respecto del catálogo que lo define.
+ *
+ * Y hay un caso que lo confirma en vez de ser una preferencia: `completion` es
+ * OPCIONAL. `friccion` no la declara —frotar no termina, termina la criatura—,
+ * así que ese proceso no tiene barra: tiene «en curso». Que la pantalla decida
+ * eso mirando el catálogo es lo correcto; que la escena publique un total
+ * inventado para esos casos sería violar la regla 2.
+ *
+ * **El nombre tampoco.** `Process.lexeme.nombre` diría «atar» y sería cómodo,
+ * pero es texto, y la regla 3 de este archivo lo prohíbe: dos clientes con
+ * distinto idioma verían escenas distintas del mismo mundo y `escenaHash`
+ * dejaría de comparar nada. Va el id; la palabra la pone quien dibuja.
+ */
+export interface ActividadEnEscena {
+  readonly proceso: ProcessId
+  /**
+   * QUÉ CUERPO LLENA QUÉ ROL, entero y no como lista de ids.
+   *
+   * Mandar sólo los `BodyId` sería más corto y perdería cuál es cuál: con los
+   * nombres, la pantalla puede resaltar la liana y la vara que la acción está
+   * tocando y saber cuál es el atador. Ya viene en orden canónico —el mundo lo
+   * normaliza una vez con `ordenarRoles`—, así que no hay que reordenar acá.
+   */
+  readonly roles: readonly RoleBinding[]
+  /** Cuántos SEGUNDOS DE MUNDO lleva, no cuántos ticks (ADR II-0008). */
+  readonly segundos: Duracion
+}
+
+/**
+ * UNA ESPERA ABIERTA. `Espera` sin el `seq`.
+ *
+ * El `seq` correlaciona la intención que abrió la espera con el evento que la
+ * cierra ticks después: es del protocolo entre la mente y el mundo, no del mundo
+ * visible. Una pantalla que lo recibiera no tendría qué hacer con él, y estaría
+ * en el hash de la escena obligando a que dos clientes coincidan en un número de
+ * secuencia que no se ve.
+ */
+export interface EsperaEnEscena {
+  readonly segundos: Duracion
+  readonly pedido: Duracion
+}
+
+/**
  * QUIÉN ES LA CRIATURA, en lo que se puede mostrar.
  *
  * `permits` NO está: es la cuarentena de una habilidad candidata, o sea de la
- * fragua, no del mundo visible. `doing` y `esperando` tampoco, y eso sí es una
- * decisión con precio: la barra de progreso de «observar progreso y acciones»
- * (punto 6 de la vertical del Hito 12B) va a necesitarlos. Se dejan afuera hasta
- * que exista quien los dibuje, porque publicarlos ahora fijaría su forma sin una
- * sola medición de qué hace falta mostrar.
+ * fragua, no del mundo visible.
+ *
+ * ─── POR QUÉ `haciendo` Y `esperando` SON DOS CAMPOS Y NO UNO ──────────────
+ *
+ * Para la pantalla son la misma barra, así que unificarlos se ve tentador. Pero
+ * en el mundo son cosas distintas —una consume, la otra sólo deja pasar el
+ * tiempo— y **nada en el tipo garantiza que no coexistan**: son dos campos
+ * opcionales de `Actor` que se limpian por caminos separados. Unificarlos acá
+ * obligaría a elegir cuál gana cuando hay los dos, y eso es inventar una regla
+ * que el mundo no tiene (regla 2). Que la pantalla los junte en una sola barra si
+ * quiere: ésa sí es una decisión de dibujo.
+ *
+ * ─── Y EL PRECIO, QUE NO ES EL TAMAÑO ──────────────────────────────────────
+ *
+ * `segundos` cambia en CADA TICK mientras hay algo en curso. Hasta acá un actor
+ * entraba al delta sólo al cambiar `holding` o `capacity`, o sea casi nunca; a
+ * partir de ahora viaja entero en cada tick que la criatura esté haciendo algo.
+ *
+ * Medido en `banco-el-delta-de-actores`, con una criatura y 400 ticks:
+ *
+ *   - en un mundo vivo, la lista de actores pasa de viajar en el **2,2%** de los
+ *     ticks al **27,5%**, y cuesta 53 bytes por tick;
+ *   - en el techo —frotar, que no declara `completion`— pasa al **90,2%** y
+ *     cuesta **206 bytes por tick**, o sea 4,1 kB/s a 20 Hz.
+ *
+ * Y el techo es 90 y no 100 por una razón del mundo y no del protocolo: a los 359
+ * ticks la criatura se queda sin aliento y suelta. Para reponerlo hay que dejar
+ * las piedras y comer, así que no existe la partida que esté ocupada siempre.
+ *
+ * Con esos números la lista sigue viajando entera. El día que no alcance, lo que
+ * cambia es cómo se manda —deltas propios para los actores— y no qué se publica.
  */
 export interface ActorEnEscena {
   readonly id: ActorId
   readonly body: BodyId
   readonly holding: readonly BodyId[]
   readonly capacity: number
+  /**
+   * EL ALIENTO. `stamina` del cuerpo de la criatura, cruda.
+   *
+   * ─── POR QUÉ ACÁ Y NO EN EL DESCRIPTOR DEL CUERPO ──────────────────────
+   *
+   * `stamina` es una cualidad del CUERPO, así que el lugar obvio parecía el
+   * `RenderDescriptor`. Dos razones para que no:
+   *
+   *   - el descriptor publica BANDAS y no números —`estado`, `porte`— y la razón
+   *     está escrita en `body.ts`: para que el hash no cambie porque una gota de
+   *     agua se evaporó. Meterle un número que se mueve solo rompería eso para
+   *     los 30 cuerpos de una escena, no para uno;
+   *   - el aliento sólo significa algo en quien actúa. `qualityOf` es total y le
+   *     daría `0` a una piedra, así que publicarlo en el descriptor sería un
+   *     campo que dice cero en el 99% de los cuerpos.
+   *
+   * ─── Y EL MÁXIMO NO VA, POR LO MISMO QUE NO VA EL TOTAL DE LA BARRA ─────
+   *
+   * Una barra de vida necesita «600 de 1000», y el 1000 no es del actor: es el
+   * `range` que `stamina` declara en el catálogo de cualidades. No es decorativo
+   * —comer se recorta contra él, que es por qué una criatura llena rechaza lo que
+   * una flaca acepta— y quien dibuja ya tiene la `Physics`, así que lo lee de ahí.
+   *
+   * ─── VA EN ENTEROS, Y ESO SE DECIDIÓ MIDIENDO ──────────────────────────
+   *
+   * La primera versión publicaba la `stamina` cruda, con el argumento de que
+   * redondear es una decisión de presentación. El banco la desarmó en una
+   * corrida:
+   *
+   *   - el aliento crudo escribe hasta **18 caracteres** —`3999.9999999999995`,
+   *     que es lo que queda de restarle una fracción a otra— por tick y por
+   *     actor, y ninguno de esos catorce decimales se ve en una barra;
+   *   - peor: el metabolismo drena aliento en CADA tick, así que la lista de
+   *     actores pasaba a viajar en el **100%** de los cuadros. No cuando la
+   *     criatura hace algo: siempre.
+   *
+   * En enteros escribe cuatro caracteres y el actor sólo entra al delta cuando el
+   * número que se ve cambia de verdad. La resolución que se pierde no existe en
+   * pantalla: `stamina` va de 0 a 1000, o sea mil escalones para una barra que en
+   * el mejor de los casos mide cien píxeles.
+   *
+   * Y no contradice «redondear es presentación», que era el argumento bueno: lo
+   * que lo hacía peligroso era que **cada cliente** redondeara por su cuenta.
+   * Redondeando acá hay una sola verdad, y entra al hash como cualquier otra.
+   *
+   * Es la misma disciplina que ya usan `estado` y `porte` en el descriptor —no
+   * viaja el número, viaja lo que se ve— sólo que con mil escalones en vez de
+   * cuatro. `Math.trunc` y no `Math.round`: truncar no puede hacer que un aliento
+   * de 0,4 se muestre como 1, o sea que una criatura acabada nunca se ve viva.
+   *
+   * Sin `?`: todo actor tiene cuerpo y todo cuerpo tiene `stamina`, aunque sea
+   * cero. Un cero acá es información —esta criatura no puede más—, no una
+   * ausencia.
+   */
+  readonly aliento: number
+  readonly haciendo?: ActividadEnEscena
+  readonly esperando?: EsperaEnEscena
 }
 
 /** LO QUE HAY QUE SABER PARA DIBUJAR UN MUNDO, y nada más. */
@@ -185,14 +323,38 @@ export function escenaDe(s: WorldState, foco: Placement, radio: number): Escena 
     if (b.heldBy !== undefined) rel.heldBy = b.heldBy
     if (b.supportedBy !== undefined) rel.supportedBy = b.supportedBy
     if (b.covering !== undefined) rel.covering = b.covering
-    cuerpos.set(id, { d: descriptorDe(b, s.desplegados.get(id)), ...rel })
+    cuerpos.set(id, { d: descriptorDe(b, s.phys, s.desplegados.get(id)), ...rel })
   }
 
   const actores: ActorEnEscena[] = []
   for (const id of [...s.actors.keys()].sort(comparaTexto)) {
     const a = s.actors.get(id)
     if (a === undefined) continue
-    actores.push({ id: a.id, body: a.body, holding: [...a.holding], capacity: a.capacity })
+    // Las claves opcionales sólo si hay algo que decir, por lo mismo que las
+    // relaciones de un cuerpo: con `exactOptionalPropertyTypes` un
+    // `haciendo: undefined` explícito no es lo mismo que no tener la clave, y al
+    // hash viaja como una clave más.
+    const enCurso: { haciendo?: ActividadEnEscena; esperando?: EsperaEnEscena } = {}
+    if (a.doing !== undefined) {
+      enCurso.haciendo = { proceso: a.doing.process, roles: [...a.doing.roles], segundos: a.doing.segundos }
+    }
+    if (a.esperando !== undefined) {
+      enCurso.esperando = { segundos: a.esperando.segundos, pedido: a.esperando.pedido }
+    }
+    // El cuerpo se busca en `s.bodies` y no en los `cuerpos` de arriba: ésos son
+    // los que ENTRAN EN EL ENCUADRE, y un actor puede estar fuera del radio y
+    // seguir siendo un actor de este mundo. Sin cuerpo el aliento es cero, que es
+    // lo mismo que dice `qualityOf` de un cuerpo sin `stamina`.
+    const suCuerpo = s.bodies.get(a.body)
+    const aliento = suCuerpo === undefined ? 0 : Math.trunc(qualityOf(suCuerpo.body, 'stamina', s.phys))
+    actores.push({
+      id: a.id,
+      body: a.body,
+      holding: [...a.holding],
+      capacity: a.capacity,
+      aliento,
+      ...enCurso,
+    })
   }
 
   return { v: VERSION_DE_LA_ESCENA, tick: s.tick, foco, radio, celdas, cuerpos, actores }

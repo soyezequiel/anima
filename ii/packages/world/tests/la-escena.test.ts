@@ -199,12 +199,28 @@ describe('(c) las tres relaciones que el mundo guarda, y ni una más', () => {
     }
   })
 
-  it('la criatura publica id, cuerpo, manos y capacidad — y NO `permits`', () => {
+  it('la criatura publica id, cuerpo, manos, capacidad y aliento — y NO `permits`', () => {
     // `permits` es la cuarentena de una habilidad candidata, o sea de la fragua, no
     // del mundo visible. Que no esté es una decisión, no un olvido.
+    //
+    // `haciendo` y `esperando` TAMPOCO están acá, y por la misma razón que una
+    // vara suelta no lleva `heldBy`: sin nada que decir, la clave no viaja. Un
+    // `undefined` explícito entraría al hash como una clave más.
     const e = escena(base())
     expect(e.actores.length).toBe(1)
-    expect(Object.keys(e.actores[0] ?? {}).sort()).toEqual(['body', 'capacity', 'holding', 'id'])
+    expect(Object.keys(e.actores[0] ?? {}).sort()).toEqual(['aliento', 'body', 'capacity', 'holding', 'id'])
+  })
+
+  it('EL ALIENTO VA EN ENTEROS, y el máximo no viaja: lo tiene el catálogo', () => {
+    // Los catorce decimales de una resta de flotantes no se ven en ninguna barra,
+    // y hacían que la lista de actores viajara en el 100% de los ticks porque el
+    // metabolismo drena en todos. Medido en `banco-el-delta-de-actores`.
+    const w = mundo({ phys: PHYS, bodies: [enElPiso(criatura('yo', 617.4), CENTRO)], actors: [actor('yo')] })
+    expect(escena(w).actores[0]?.aliento).toBe(617)
+
+    // Y el 1000 de la barra sale de acá, no de la escena: es el `range` que
+    // `stamina` declara, y comer se recorta contra él.
+    expect(PHYS.qualities.find((q) => q.id === 'stamina')?.range[1]).toBe(1000)
   })
 })
 

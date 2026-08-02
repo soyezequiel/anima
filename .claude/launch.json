@@ -54,6 +54,16 @@
         "dev"
       ],
       "port": 5180
+    },
+    {
+      "name": "juego",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@anima/juego",
+        "dev"
+      ],
+      "port": 5170
     }
   ]
 }

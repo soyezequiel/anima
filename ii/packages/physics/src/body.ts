@@ -533,7 +533,16 @@ export function nameOf(b: Body, phys: Physics): string {
   return adjs.length === 0 ? head : `${head} ${adjs.join(' ')}`
 }
 
-function dominantPart(b: Body): Part {
+/**
+ * LA PARTE QUE MANDA: la de más masa, y con empate gana el índice más chico.
+ *
+ * Se exporta desde el Hito 12 y por un motivo que conviene dejar escrito: **el
+ * color de un cuerpo tiene que salir de la misma parte que su nombre**. Con
+ * `parts[0]` —que es lo que uno escribe sin pensarlo— una caña de 0,9 kg de
+ * madera atada con 0,05 de liana se llamaría «madera con liana» y saldría color
+ * liana, porque la hebra suele agregarse primera.
+ */
+export function dominantPart(b: Body): Part {
   let best = b.parts[0]!
   let bestMass = massOf(best)
   for (let i = 1; i < b.parts.length; i++) {
@@ -560,34 +569,140 @@ function otherSubstanceName(b: Body, core: SubstanceId, phys: Physics): string |
   return phys.substances.get(best.substance)?.lexeme.nombre ?? best.substance
 }
 
+// ─── EL ESTADO VISIBLE: una banda, y DOS lectores ───────────────────────────
+//
+// Existe por una regla que el Hito 12 destapó: **el dibujo y el nombre no se
+// pueden contradecir**. Si la pantalla decide «esto se ve ardiendo» con un
+// umbral suyo y `nameOf` decide «esto se llama chamuscado» con otro, el jugador
+// lee dos cosas distintas de la misma cosa y ninguna de las dos está mal.
+//
+// La reparación no es sincronizar dos tablas de umbrales: es que haya UNA y dos
+// lectores, que es el mismo movimiento que el catálogo del gate 5→6 (una sola
+// lista append-only, dos lectores). Acá el productor es `estadoVisibleDe` y los
+// lectores son `adjectivesOf` —que la traduce a castellano con género— y el
+// `RenderDescriptor` del Hito 12 —que la publica para que el dibujo la pinte—.
+//
+// ─── POR QUÉ ES UNA BANDA Y NO EL NÚMERO ────────────────────────────────────
+//
+// Porque el descriptor entra a `renderDescriptorHash`, y una cualidad continua
+// haría que el hash cambiara **en cada tick en que el fuego sube un grado**. Con
+// eso, comparar dos corridas por el hash del dibujo dejaría de significar «se
+// dibuja igual» y pasaría a significar «está exactamente a la misma temperatura»,
+// que es otra cosa y ya la mide `worldHash`. La banda cambia cuando cambia lo
+// que se VE, que es exactamente lo que la tercera capa del E2E tiene que vigilar.
+//
+// El orden de la cascada es el que ya tenía `adjectivesOf` y no se toca: arder
+// gana sobre estar quemado, quemado sobre chamuscado, y la cocción sólo se
+// pregunta en lo que alimenta.
+
 /**
- * Como mucho dos adjetivos: uno de fuego-o-cocción y uno de estado. Un nombre
- * de seis adjetivos no lo lee nadie, y el nombre existe para que la criatura y
- * el cuidador hablen de la misma cosa.
+ * LO QUE SE VE DE UN CUERPO, en una palabra. `sin-marca` es «nada que decir» y
+ * es el caso normal: una piedra no está ni cruda ni mojada ni ardiendo.
+ *
+ * Se llama así y no `entero` a propósito: `entero` se lee como un adjetivo y
+ * alguien lo iba a mandar al nombre. Éste no se puede confundir con uno.
  */
-function adjectivesOf(b: Body, phys: Physics, gender: 'm' | 'f'): string[] {
-  const out: string[] = []
+export type BandaDeEstado =
+  | 'ardiendo'
+  | 'consumido'
+  | 'quemado'
+  | 'chamuscado'
+  | 'asado'
+  | 'a-medio-cocinar'
+  | 'crudo'
+  | 'mojado'
+  | 'sin-marca'
+
+/**
+ * `podrido` va aparte de la banda porque es ORTOGONAL: un pescado puede estar
+ * asado y podrido a la vez, y la cascada de arriba elige una sola cosa.
+ */
+export interface EstadoVisible {
+  readonly banda: BandaDeEstado
+  readonly podrido: boolean
+}
+
+/** La única lectura de umbrales de estado que hay en el proyecto. */
+export function estadoVisibleDe(b: Body, phys: Physics): EstadoVisible {
   const temperature = qualityOf(b, 'temperature', phys)
   const ignition = qualityOf(b, 'ignitionPoint', phys)
   const charred = qualityOf(b, 'charred', phys)
   const nutrition = qualityOf(b, 'nutrition', phys)
+  const podrido = qualityOf(b, 'decay', phys) >= 0.5
 
-  if (ignition > 0 && temperature >= ignition) out.push('ardiendo')
-  else if (charred >= 0.8) out.push(agree(seConsumio(b, phys) ? 'consumido' : 'quemado', gender))
-  else if (charred >= 0.25) out.push(agree('chamuscado', gender))
+  let banda: BandaDeEstado = 'sin-marca'
+  if (ignition > 0 && temperature >= ignition) banda = 'ardiendo'
+  else if (charred >= 0.8) banda = seConsumio(b, phys) ? 'consumido' : 'quemado'
+  else if (charred >= 0.25) banda = 'chamuscado'
   else if (nutrition > 0) {
     // Solo lo que alimenta se dice crudo o asado. La madera no está cruda, y no
     // hace falta ningún tag ni ninguna lista de comestibles para saberlo: le
     // basta con tener `nutrition` en cero, que es una cualidad conservada y
     // ninguna ley la puede subir.
     const dig = qualityOf(b, 'digestibility', phys)
-    if (dig >= 0.85) out.push(agree('asado', gender))
-    else if (dig <= 0.45) out.push(agree('crudo', gender))
-    else out.push('a medio cocinar')
-  } else if (qualityOf(b, 'moisture', phys) >= 0.6) out.push(agree('mojado', gender))
+    banda = dig >= 0.85 ? 'asado' : dig <= 0.45 ? 'crudo' : 'a-medio-cocinar'
+  } else if (qualityOf(b, 'moisture', phys) >= 0.6) banda = 'mojado'
 
-  if (qualityOf(b, 'decay', phys) >= 0.5) out.push(agree('podrido', gender))
+  return { banda, podrido }
+}
+
+/**
+ * Como mucho dos adjetivos: uno de fuego-o-cocción y uno de estado. Un nombre
+ * de seis adjetivos no lo lee nadie, y el nombre existe para que la criatura y
+ * el cuidador hablen de la misma cosa.
+ *
+ * Los umbrales ya no están acá: los tiene `estadoVisibleDe`. Esto es la mitad
+ * que traduce, y es la única que sabe de género.
+ */
+function adjectivesOf(b: Body, phys: Physics, gender: 'm' | 'f'): string[] {
+  const { banda, podrido } = estadoVisibleDe(b, phys)
+  const out: string[] = []
+  // `ardiendo` es un gerundio y no concuerda: `agree` lo dejaría en «ardienda».
+  // `a-medio-cocinar` lleva el guión porque es una banda y no una frase; el
+  // nombre la quiere con espacios.
+  if (banda === 'ardiendo') out.push('ardiendo')
+  else if (banda === 'a-medio-cocinar') out.push('a medio cocinar')
+  else if (banda !== 'sin-marca') out.push(agree(banda, gender))
+
+  if (podrido) out.push(agree('podrido', gender))
   return out
+}
+
+// ─── EL PORTE: el tamaño, en bandas, y por qué el tamaño estaba prohibido ────
+//
+// `escena.ts` lista entre lo que NO se publica «sin tamaño de dibujo», y tenía
+// razón con lo que quería decir: **la pantalla no puede inventar cuán grande se
+// dibuja algo**. Pero de ahí se seguía algo que nadie quiso: un guijarro y un
+// peñasco de la misma sustancia y la misma forma se dibujaban idénticos, y la
+// masa es estado del mundo, no cosmética.
+//
+// La salida es la misma que con el estado: **no viaja el número, viaja la
+// banda**. Así el hash no cambia porque una gota de agua se evaporó, y el
+// dibujo igual puede decir que un leño no es una astilla.
+//
+// ─── DE DÓNDE SALEN LOS TRES CORTES ─────────────────────────────────────────
+//
+// De la materia que el dios efectivamente decreta, no de una escala redonda.
+// Medido en el catálogo semilla y en las veinte semillas del arranque:
+//
+//   hoja-seca sembrada .......... 0,10 – 0,20 kg   → menudo
+//   la vara del primer fósforo ... 0,47 – 0,62 kg   → chico
+//   la madera que el dios suelta . 2,33 – 2,90 kg   → mediano
+//   el leño de la escalera ....... 8,00 kg          → grande
+//
+// Cada banda tiene habitantes reales, que es la única prueba de que una escala
+// no es decorativa. Los cortes van por factor cuatro para que la banda de arriba
+// nunca sea «todo lo demás».
+
+export type Porte = 'menudo' | 'chico' | 'mediano' | 'grande'
+
+/** El tamaño en una palabra. Total: todo cuerpo tiene porte. */
+export function porteDe(b: Body, phys: Physics): Porte {
+  const m = qualityOf(b, 'mass', phys)
+  if (m < 0.25) return 'menudo'
+  if (m < 1) return 'chico'
+  if (m < 4) return 'mediano'
+  return 'grande'
 }
 
 /**

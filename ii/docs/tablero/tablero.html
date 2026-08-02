@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ánima II — tablero (94%)</title>
+<title>Ánima II — tablero (98%)</title>
 <style>*,*::before,*::after{box-sizing:border-box}
 :root {
   color-scheme: light dark;
@@ -331,56 +331,59 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-08-02</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>11</b> etapas listas · <b>2</b> en curso · <b>0</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>12</b> etapas listas · <b>1</b> en curso · <b>0</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">94%</span>
+      <span class="cifra">98%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="94 por ciento avanzado">
-      <div class="tramo si" style="width:76.85%"></div>
-      <div class="tramo medio" style="width:16.67%"></div>
+    <div class="barra" role="img" aria-label="98 por ciento avanzado">
+      <div class="tramo si" style="width:86.98%"></div>
+      <div class="tramo medio" style="width:10.76%"></div>
     </div>
     <div class="leyenda">
-      <span class="l-si">terminado · 30,4 de 39,5 semanas</span>
-      <span class="l-medio">en curso · 6,6</span>
-      <span class="l-no">por delante · 2,6</span>
+      <span class="l-si">terminado · 34,4 de 39,5 semanas</span>
+      <span class="l-medio">en curso · 4,3</span>
+      <span class="l-no">por delante · 0,9</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>El usuario tomó la decisión de física, y el hueco se movió de la materia al plan</h2>
-    <p class="detalle">La primera entrada de «decisiones que esperan» se cerró: el usuario eligió la opción (c) del hueco de 23,02 de potencia. `hoja-seca` pasa de sembrarse en 0,01–0,08 kg a 0,10–0,20 —la media, 0,15, cae sobre los 0,1485 que el test había medido— y NO SE TOCÓ UNA SOLA LEY: es la tabla de biomas, que es del dios. El cuerpo que cocina se puede armar ahora en 11 de 20 semillas contra 0 de 20, y la potencia del mejor cuerpo pasó de 239 a 527 contra una ventana de 253. PERO LA CRIATURA SIGUE CON CERO BOCADOS: la materia está y lo que falta es que la MENTE sepa juntar seis yescas y atarlas, que es exactamente el trabajo que el registro tenía anotado para cuando esta decisión se tomara. O sea que la decisión no cerró el rojo del Hito 5: le cambió la causa, de «falta materia» a «falta plan» — de necesitar una decisión tuya a ser trabajo. Y de paso apareció la escasez que estaba tapada: se puede armar el cuerpo en 11 semillas y hay atadores para armarlo en 5, porque `unir` gasta un atador por unión. También es del dios y no de la ley.</p>
+    <h2>El Hito 11 cierra sus seis puntos, y de rebote se cazó un bug real del Hito 5</h2>
+    <p class="detalle">El Hito 11 (calibración y presupuestos como test) terminó sus tres puntos que faltaban el mismo día, y ninguno salió como estaba escrito. El detector de tests-que-miden-el-reloj-de-pared estaba mal medido en las DOS direcciones —eran 16 aserciones en 9 archivos, no 6 en 3— y el peor bug fue de verdad sutil: en JavaScript el `.` de una expresión regular no matchea `\r`, así que sobre un archivo con fin de línea de Windows el detector devolvía cero sin fallar en ningún lado, dando un número plausible en vez de un error. Corregido, y con eso el punto 4 cierra: la puerta `ANIMA_RELOJ=1` ya se abre en CI, en un job aparte que serializa SÓLO los paquetes que la necesitan. Y las cien partidas del punto 5 destaparon un bug de verdad: la criatura se agarraba A SÍ MISMA como si fuera un objeto para juntar, y quedaba pegada — 33 de 100 partidas. El usuario eligió la reparación que protege a las quince innatas y a lo que escriba el modelo (una guarda del mundo, no un parche de una habilidad), y bajó a 0 sin mover ninguna otra cuenta. Efecto colateral medido: la criatura vive más tiempo porque deja de gastar en un acto que el mundo le iba a negar siempre.</p>
     <ol>
-      <li>ENSEÑARLE A LA MENTE A JUNTAR MASA: seis yescas, cinco uniones, un fardo. Es lo único que separa a la criatura de cocinar, y ahora que la materia está es trabajo y no una decisión.</li>
-      <li>El Hito 11 va 4 de 6: faltan las cien partidas con su control, y bajar los 6 relojes de pared que quedan (están contados y congelados).</li>
-      <li>La puerta de ANIMA_RELOJ existe y NADIE LA ABRE EN CI: esos números están separados pero todavía no se corren en ningún lado.</li>
+      <li>ENSEÑARLE A LA MENTE A JUNTAR MASA sigue siendo lo único que falta para que la criatura cocine: la materia está, el plan que la junte no. Es trabajo, no una decisión.</li>
+      <li>Nueva decisión que espera: los atadores. Se puede armar el cuerpo que cocina en 11 de 20 semillas, pero sólo hay atadores para armarlo en 5.</li>
+      <li>`solidos-solapados` sigue en 15 de 100 partidas — es el decreto que siembra en la celda del pozo, ya nombrado desde el Hito 5, y no es de este tramo.</li>
+      <li>SIN COMMITEAR: el trabajo del Hito 12 creció — ahora son TRES apps nuevas (dibujo, sprites, juego) más cambios al descriptor visual. Sigue sin contar como hecho.</li>
+      <li>SIN ARREGLAR, dos actualizaciones seguidas: @anima/lang tiene 1 falla real (adjectivesOf desincronizado de body.ts, 3 contra 9 esperados). No es flake — reproduce aislado las dos veces que se corrió.</li>
+      <li>NUEVA FALLA: @anima/sprites, 4 de 9. El depósito HTTP compartido de dibujos rechaza un alta que debería entrar (422 en vez de 201) y no deduplica por clave (dos altas de lo mismo dan 201 y 201, no 201 y 200). Confirmado que no es contaminación entre corridas.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">3042</div>
+        <div class="dato-valor">3166 de 3176</div>
         <div class="dato-etiqueta">tests</div>
-        <div class="dato-nota">re-corrido acá, exit 0, cero fallos · physics 679 · world 633+1 skipped · mind 342 · plan 337+1 todo · oracle 270 · skills 193 · perceive 142 · emergencia 129 · judge 97 · forge 97 · lang 87 · llm 20 · store 16</div>
+        <div class="dato-nota">cuadro completo (corrido sin el bail por defecto de pnpm, que frenaba en el primer roto): 5 fallas (sprites 4, lang 1), 4 skipped, 1 todo. Los otros 11 paquetes verdes: llm 20 · physics 679 · oracle 270 · world 639 · dibujo 108 · skills 193 · plan 337 · perceive 142 · judge 97 · forge 99 · mind 342 · store 16 · emergencia 133</div>
       </div>
       <div class="dato">
         <div class="dato-valor">14 de 14</div>
         <div class="dato-etiqueta">typechecks limpios</div>
-        <div class="dato-nota">re-verificado acá, exit 0</div>
+        <div class="dato-nota">re-verificado acá, exit 0, con TODO el trabajo sin commitear adentro (incluida la app juego, nueva desde la vez pasada)</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">13</div>
+        <div class="dato-valor">14</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">re-contado acá · @anima/store lo agregó el Hito 10</div>
+        <div class="dato-nota">re-contado acá, sin cambios · @anima/dibujo sigue siendo el único paquete nuevo; juego y sprites son apps, no paquetes</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">69</div>
+        <div class="dato-valor">65</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
         <div class="dato-nota">re-contado acá, sin cambios</div>
       </div>
@@ -390,9 +393,9 @@ p { margin: 0; }
         <div class="dato-nota">re-contado acá, sin cambios</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">3 sin pushear</div>
+        <div class="dato-valor">creció: +app juego</div>
         <div class="dato-etiqueta">sin commitear</div>
-        <div class="dato-nota">el árbol de trabajo queda limpio. El usuario pushea solo</div>
+        <div class="dato-nota">0 commits sin pushear. El Hito 12 ahora son TRES apps sin commitear (dibujo, sprites, juego) más los cambios al descriptor visual — nada de esto cuenta como hecho</div>
       </div>
   </section>
 
@@ -696,26 +699,26 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa medio">
+      <article class="etapa si">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H11</span>
             <h3>Calibración y presupuestos como test</h3>
-            <span class="chip medio">En curso</span>
+            <span class="chip si">Listo</span>
           </div>
           <p class="frase">Que el build falle si algún número empeora. Es lo que hace que «rápido» siga siendo verdad en seis meses.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>6</span><span class="semanas">4 sem</span></div>
-        <p class="nota">El criterio se escribió con nueve mediciones y la más útil es una división: 626 números se imprimen en los tests de ii/ y UNO se guardaba. Este hito no es «medir más», es convertir 626 números que se IMPRIMEN en un puñado que se DEFIENDEN. Tres cosas que el plan pedía YA ESTABAN —el mecanismo de línea base (desde el Hito 4, con su regla escrita adentro del propio archivo), la puerta de ciclos rentables y los invariantes económicos— y dos mediciones lo corrigieron: los tres relojes del Hito 6 tenían línea base EN PROSA y ningún test los leía (un cambio que llevara el p95 de 1,35 a 90 ms no ponía nada rojo), y el TECHO_DE_CI existe pero su propio comentario dice que no puede morder. El punto 4 va antes que el 5 a propósito: una suite donde un rojo puede venir de la carga de la máquina entrena a todos a re-correr y seguir, y a partir de ahí ningún guardián protege nada. Y uno de los tres relojes NO puede entrar a la línea base determinista: `msHastaPrimerMovimiento` mide milisegundos de cómputo, así que su valor depende de cuánta CPU haya libre — queda dicho adentro del propio archivo, en un campo `queNOentraAca`.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">6<span class="barra-diagonal">/</span>6</span><span class="semanas">4 sem</span></div>
+        <p class="nota">El criterio se escribió con nueve mediciones y la más útil es una división: 626 números se imprimen en los tests de ii/ y UNO se guardaba. Este hito no es «medir más», es convertir 626 números que se IMPRIMEN en un puñado que se DEFIENDEN. El punto 4 va antes que el 5 a propósito: una suite donde un rojo puede venir de la carga de la máquina entrena a todos a re-correr y seguir, y a partir de ahí ningún guardián protege nada — y el caso ya estaba en el árbol (forge/tests/el-episodio.test.ts, 6/6 sola y 1 roto con el paquete entero en paralelo), no fue un ejemplo de laboratorio. El punto 5 encontró de rebote un bug real de Hito 5 (la criatura se toma a sí misma como objeto) que estaba escrito y medido desde hacía tiempo y esperaba justo esto: una decisión del usuario. Sigue abierta la otra mitad de esa familia, `solidos-solapados` en 15 de 100 partidas, que no es de este tramo.</p>
         <details class="criterios">
           <summary>6 criterios</summary>
           <ul>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · hay un ARCHIVO DE LÍNEAS BASE que un test lee: de 1 archivo a 3 y de 1 número defendido a 6. El que más costaba es el hash del banco de 20.000 ticks — antes de esto, saber si la conducta se había movido era comparar A OJO contra una corrida vieja</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · EL CONTROL: corrompiendo la línea base en memoria, la comparación se pone roja y dice cuál se movió. Y no es teórico: el guardián se puso rojo solo el mismo día, con la decisión de física</span></li>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · subir una línea base exige editarla a mano con el porqué escrito, afirmado POR MECANISMO: ningún fuente escribe el archivo. El detector necesitó tres vueltas —se acusó a sí mismo, después un `\b` quedó escrito como un byte de retroceso y no matcheaba NADA (verde por omisión), después el comentario que lo explicaba contenía lo que buscaba— y ahora se prueba con carnada antes de que su cero signifique algo</span></li>
-          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>4 · los tests de RELOJ DE PARED separados de la suite determinista: no era un test, eran OCHO archivos en SEIS paquetes. Los 3 de la fragua pasaron por la puerta `ANIMA_RELOJ` —el número no se afloja, se muda: en la suite determinista se sigue imprimiendo y se afirma lo estructural— y los 6 que quedan están contados y congelados en una línea base que sólo puede bajar. LO QUE FALTA: nadie abre esa puerta en CI todavía</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>5 · cien partidas de 20.000 ticks sin violar un invariante económico ni pasar el techo de consultas — fuera del job de CI: son ~25 minutos contra un `timeout-minutes: 20`</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>6 · EL CONTROL del 5: una partida con un invariante roto a propósito SÍ se reporta</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · los tests de RELOJ DE PARED separados de la suite determinista. Primero se re-midió el detector mismo: no eran 6, eran 16 aserciones en 9 archivos —acusaba de más y de menos a la vez, y el peor bug fue que un `.` de regex no matchea `\r`, así que sobre fin de línea de Windows el detector daba cero sin fallar—. Corregido: se bajaron 13, quedan 3 (razones entre dos mediciones de la misma corrida, imposibles de separar del todo). Y `ANIMA_RELOJ=1` YA SE ABRE EN CI: hace falta serializar (el paralelismo de archivos de vitest da falsos rojos) pero NO todo — un test de otro paquete necesita ese paralelismo para juntar lo que miden sus hermanos, así que el job nuevo serializa sólo los 5 paquetes con la puerta y el resto sigue en el CI de siempre</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>5 · cien partidas de 20.000 ticks sin violar un invariante económico ni pasar el techo de consultas: corridas 100 de 100, dos veces (antes y después de una guarda del mundo), 0 violaciones económicas las dos veces. El techo de consultas se reescribió con la medición: no es un total (exploraría 145× más rápido de lo escrito) sino dos cotas que sí pueden explotar, huecos distintos y consultas por tick</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>6 · EL CONTROL del 5: una partida con un invariante roto a propósito SÍ se reporta. Y de yapa encontró uno de verdad —`inventario-inconsistente`, la criatura agarrándose a sí misma, 33 de 100 partidas—, que el usuario decidió reparar con una guarda del mundo (no de una habilidad sola) y que bajó a 0 sin mover ninguna otra cuenta</span></li>
           </ul>
         </details>
         </div>
@@ -795,20 +798,20 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina contra el árbol tal como quedó tras 7f37310 (la decisión de física). Árbol limpio salvo este tablero.</p>
+      <p>SIN COMMITS NUEVOS, segunda vez seguida (HEAD sigue en 0925443). El árbol de trabajo sin commitear del Hito 12 creció (sumó la app juego) y la falla real en @anima/lang de la vez pasada SIGUE sin arreglar, re-verificada aislada. Nada de esto cuenta como hecho en las etapas de abajo.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
         <code>pnpm ii:typecheck</code>
-        <span class="resultado">exit 0 · 14 de 14 proyectos</span>
+        <span class="resultado">exit 0 · 14 de 14 proyectos (con el trabajo sin commitear adentro)</span>
       </div>
-      <div class="corrida si">
+      <div class="corrida rojo">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 3042 pasan, 0 fallan</span>
+        <span class="resultado">2 fallas reales, verificadas cada una sola: @anima/lang sigue con adjectivesOf (3 contra 9, sin arreglar) y @anima/sprites suma 4 de 9 (depósito HTTP: 422 en vez de 201, y no deduplica por clave). Relanzada entera para tener el resto del cuadro</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
-        <span class="resultado">69 llamadas reales, sin cambios</span>
+        <span class="resultado">65 llamadas reales, −4</span>
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
@@ -816,7 +819,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">3 commits sin pushear</span>
+        <span class="resultado">0 commits sin pushear</span>
       </div>
       <div class="corrida si">
         <code>ANIMA_LLM=claude … con-el-modelo.ts</code>
@@ -856,7 +859,7 @@ p { margin: 0; }
         <li>Las creencias SÓLO PUEDEN SUBIR: no se anota el fracaso, así que la criatura no se puede desengañar de un lugar que dejó de rendir. Es una decisión escrita y es lo que hace que la herencia no compre ticks.</li>
         <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar —medido— pero el planificador no la nombra.</li>
         <li>Ninguna partida registra una capacidad en el catálogo, así que no hay biblioteca que heredar ni que promover. Es lo que deja a medias el punto 5 del Hito 10.</li>
-        <li>Seis archivos de test todavía afirman contra el RELOJ DE PARED en la suite determinista. Están contados, nombrados y congelados: perceive ×3, skills ×1, world ×2.</li>
+        <li>Quedan 3 archivos que afirman contra el RELOJ DE PARED (eran 16 en 9 archivos, mal contados; bajaron 13). Los 3 son RAZONES entre dos mediciones de la misma corrida y no se pueden aislar del todo — están en la línea base con su porqué.</li>
     </ul>
   </section>
 
