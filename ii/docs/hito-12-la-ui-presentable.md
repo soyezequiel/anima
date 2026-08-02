@@ -890,3 +890,81 @@ La lección, que es la del propio punto: **pedir una cantidad era inventar un
 número**. Lo que había que hacer era preguntarle al juego cuántos hay. Hoy el HUD
 publica «a la vista» y el spec afirma que barrer el mapa a click encuentra
 exactamente ésos — que es lo que «ver todos los objetos» quiere decir.
+
+---
+
+## 5 · LOS TRES PENDIENTES DE PANTALLA, Y EL QUE NO ERA DE PANTALLA
+
+### La firma cruda — cerrado
+
+El panel mostraba `holding(tag:carnoso,toxicity<0.0528)`. El puente de `alias.ts`
+traduce metas por tabla, y **ese `0,0528` no lo escribió nadie**: sale de
+`mordidaDe` en `@anima/mind` —es cuánto veneno le conviene tragar, y depende de lo
+vacío que tenga el tanque, por eso una criatura llena rechaza lo que una flaca
+acepta— así que cambia a cada tick. Una tabla necesitaría una fila por número.
+
+`lang/src/decir.ts` lo arma leyendo el predicado: las partes son enumeraciones
+CERRADAS de la física (7 tags, 29 cualidades), así que darles palabra es traducir
+un catálogo y no adivinar. Hoy se lee **«tener algo carnoso y poco venenoso»**,
+verificado en vivo.
+
+Dos decisiones que quedaron escritas:
+
+- **el número no se dice.** Es lo que se lee de reojo mientras pasa el mundo, y el
+  umbral exacto no agrega nada; de paso, el panel deja de cambiar de texto en cada
+  tick. Quien lo necesite tiene la firma cruda, que sigue existiendo;
+- **cada cualidad tiene dos palabras, no una.** El comparador da vuelta el
+  sentido: `toxicity>0.5` es «venenoso» y `toxicity<0.05` es «poco venenoso».
+
+Y una frontera que no era la que parecía: `catch>0` se interpreta como CUALIDAD y
+no como geometría, porque `catch` también está en el catálogo cerrado de
+cualidades derivadas. Se descubrió con un test que esperaba «que atrape» y recibió
+`catch>`. La función mira las dos tablas: dónde vive un nombre es cosa de la
+física, y esto sólo traduce.
+
+### La distribución — cerrado
+
+El panel tenía **nueve secciones apiladas con el mismo peso**, y las primeras eran
+controles que se tocan una vez. Con `flex-wrap`, una ventana angosta mandaba el
+panel entero debajo del mapa: para escribir una orden había que scrollear, y
+mientras escribías no veías qué hacía la criatura.
+
+Ahora es `grid`: la columna se mantiene al costado mientras entre y **el mapa es
+lo que se achica**; abajo de 760 px se apila con el panel PRIMERO. Zoom, dibujos,
+la partida y el diagnóstico van en `<details>` plegados. El canvas lleva
+`max-width` porque el zoom le pone un ancho fijo en píxeles y el ×4 desbordaba la
+página entera.
+
+**Esto no se puede verificar mirando, y se intentó.** Achicando la ventana del
+navegador incrustado la captura se veía angosta y la página seguía creyendo que
+medía 980 px: el `@media` no se estaba ejercitando y la pantalla parecía correcta
+por la razón equivocada. Va con `setViewportSize` en Playwright —cuatro specs
+nuevos— que es lo único que cambia el viewport de verdad.
+
+### Las órdenes sin camino — MEDIDO, y NO era escribir una fila
+
+Acá el registro anterior decía: *«se arregla escribiendo los esquemas que faltan
+en `@anima/plan`, no tocando el chat»*. La primera mitad es falsa y conviene
+dejarlo escrito con la medición al lado.
+
+Lo medido, en este orden:
+
+1. el drive `holding(tag:fibroso)` **se descarta**: la mente vuelve a su meta
+   propia y ni siquiera lo intenta;
+2. `ESQUEMAS` tiene 13 filas y **una establece `holding(tag:carnoso)`**, así que la
+   forma de meta no es el problema. Esa fila es `extraccion` — o sea PESCAR;
+3. el planificador ya sabe emitir un paso `sostener` («agarrá eso») y lo usa para
+   llenar roles, pero **ningún esquema declara que agarrar establezca una meta**;
+4. la salida barata parecía ser `deshilachar` —produce hebras, que son fibrosas—
+   y no sirve: `split` deja al hijo **en el suelo**, no en la mano (`world/src/
+   step.ts`, caso `'split'`). Un esquema que prometiera `holding(...)` por ahí
+   estaría mintiendo.
+
+O sea que lo que falta no es una fila sino **una clase de esquema que hoy no
+existe**: «esto se consigue agarrando lo que ya hay». No es `EsquemaDeProceso`
+—no hay proceso—, ni ley, ni obra. Toca el planificador, su regresión y la
+escalera, y es una decisión de arquitectura, no una entrada de catálogo.
+
+Queda sin hacer y con el diagnóstico completo. Lo barato que sí se hizo mientras
+tanto: la caja de texto **avisa de entrada** cuáles órdenes tienen camino, en vez
+de dejar que el jugador lo descubra probando.

@@ -6,19 +6,34 @@
     <style>
       :root { color-scheme: dark; --tenue: #8b8f98; --linea: #262a31; }
       * { box-sizing: border-box; }
+      /* ─── GRID Y NO FLEX-WRAP, Y ES LA REPARACIÓN DEL PUNTO 4 ─────────────
+         Con `flex-wrap`, una ventana angosta mandaba el panel ENTERO debajo del
+         mapa: para escribir una orden había que scrollear, y mientras escribías
+         no veías lo que la criatura hacía. Con grid, la columna del panel se
+         mantiene al costado mientras entre, y el mapa es lo que se achica. */
       body {
         margin: 0; padding: 20px; background: #14161a; color: #e8e6e1;
         font: 13px/1.6 ui-monospace, 'Cascadia Code', Consolas, monospace;
-        display: flex; gap: 22px; align-items: flex-start; flex-wrap: wrap;
+        display: grid; gap: 22px; align-items: start;
+        grid-template-columns: minmax(0, 1fr) 290px;
+      }
+      /* Debajo de esto no entran dos columnas ni achicando: recién ahí se apila,
+         y el panel va PRIMERO — lo que se usa es hablarle y mirar a la criatura,
+         no el mapa, que igual sigue abajo. */
+      @media (max-width: 760px) {
+        body { grid-template-columns: minmax(0, 1fr); }
+        aside { order: -1; }
       }
       h1 { font-size: 14px; margin: 0 0 3px; font-weight: 600; }
       p.sub { margin: 0 0 14px; color: var(--tenue); font-size: 11.5px; max-width: 52ch; }
-      canvas { border: 1px solid var(--linea); border-radius: 8px; display: block; image-rendering: pixelated; }
-      /* El `max-width` no es cosmética: sin él, cuando la ventana es angosta y el
-         panel cae DEBAJO del mapa, `flex` le da todo el ancho y la barra de
-         aliento se estira a 730 px. Una barra así de larga no se lee como una
-         medida, se lee como una línea de separación. */
-      aside { min-width: 230px; max-width: 290px; }
+      /* `max-width` en el canvas: el zoom le pone un ancho fijo en px (ver
+         `lienzo.ts`), y sin esto un zoom ×4 desborda la ventana y aparece scroll
+         horizontal en toda la página. */
+      canvas {
+        border: 1px solid var(--linea); border-radius: 8px; display: block;
+        image-rendering: pixelated; max-width: 100%; height: auto;
+      }
+      aside { min-width: 0; }
       .mandos { display: flex; gap: 6px; margin: 0 0 16px; }
       button {
         background: #1d2128; color: #e8e6e1; border: 1px solid #333944; border-radius: 4px;
@@ -57,6 +72,15 @@
       .charla .vos { color: #e8e6e1; }
       .charla .vos::before { content: '› '; color: var(--tenue); }
       .charla .ella { color: #93b9d6; padding-left: 11px; }
+      details { margin-top: 16px; border-top: 1px solid var(--linea); padding-top: 10px; }
+      summary {
+        cursor: pointer; list-style: none; color: var(--tenue); font-size: 10.5px;
+        text-transform: uppercase; letter-spacing: .07em; font-weight: 600;
+      }
+      summary::-webkit-details-marker { display: none; }
+      summary::before { content: '▸ '; }
+      details[open] > summary::before { content: '▾ '; }
+      details h2:first-of-type { margin-top: 12px; }
     </style>
   </head>
   <body>
@@ -69,31 +93,20 @@
     </div>
 
     <aside>
-      <h2>Velocidad</h2>
+      <!-- ─── EL ORDEN ES LA REPARACIÓN, Y SALE DE QUÉ SE MIRA CUÁNTO ────────
+           El panel tenía nueve secciones apiladas con el mismo peso, y las tres
+           primeras eran controles que se tocan una vez —zoom, dibujos— mientras
+           que hablarle y ver a la criatura son lo que se hace todo el tiempo.
+           En una ventana angosta eso significaba scrollear para escribir.
+
+           Ahora: pausa arriba porque decide si el mundo corre, después lo que se
+           usa, y lo que se toca una vez o sirve para depurar va PLEGADO. -->
       <div class="mandos">
         <button data-vel="0" class="on">pausa</button>
         <button data-vel="1">×1</button>
         <button data-vel="4">×4</button>
         <button data-vel="16">×16</button>
       </div>
-
-      <h2>Zoom</h2>
-      <div class="mandos">
-        <button data-zoom="1">×1</button>
-        <button data-zoom="2" class="on">×2</button>
-        <button data-zoom="3">×3</button>
-        <button data-zoom="4">×4</button>
-      </div>
-
-      <h2>Dibujos</h2>
-      <div class="mandos">
-        <button id="dibujar">dibujar uno con Codex</button>
-        <button id="dibujar-prueba">de prueba</button>
-      </div>
-      <p class="sub" style="margin:-10px 0 14px">
-        <b>Codex</b> dibuja de a uno: cada uno es una consulta de tu cuenta. El botón
-        <b>de prueba</b> usa una fórmula —bandas diagonales— para ejercitar el ciclo sin gastar nada.
-      </p>
 
       <h2>Hablarle</h2>
       <form id="charla" autocomplete="off">
@@ -131,34 +144,58 @@
         <dt>estado</dt><dd id="mirado-estado">—</dd>
       </dl>
 
-      <h2>El mundo</h2>
-      <dl>
-        <dt>tick</dt><dd id="tick">0</dd>
-        <dt>cuerpos</dt><dd id="cuerpos">0</dd>
-        <dt>a la vista</dt><dd id="a-la-vista">0</dd>
-        <dt>fase</dt><dd id="fase">—</dd>
-        <dt>ticks perdidos</dt><dd id="perdidos">0</dd>
-      </dl>
+      <details id="ver-y-dibujar">
+        <summary>Ver y dibujar</summary>
+        <h2>Zoom</h2>
+        <div class="mandos">
+          <button data-zoom="1">×1</button>
+          <button data-zoom="2" class="on">×2</button>
+          <button data-zoom="3">×3</button>
+          <button data-zoom="4">×4</button>
+        </div>
+        <h2>Dibujos</h2>
+        <div class="mandos">
+          <button id="dibujar">dibujar uno con Codex</button>
+          <button id="dibujar-prueba">de prueba</button>
+        </div>
+        <p class="sub" style="margin:-10px 0 6px">
+          <b>Codex</b> dibuja de a uno: cada uno es una consulta de tu cuenta. El botón
+          <b>de prueba</b> usa una fórmula —bandas diagonales— para ejercitar el ciclo sin gastar nada.
+        </p>
+      </details>
 
-      <h2>La pantalla</h2>
-      <dl>
-        <dt>cuadro</dt><dd id="cuadro">—</dd>
-        <dt>dibujos que faltan</dt><dd id="faltan">—</dd>
-        <dt>depósito</dt><dd id="deposito">buscando…</dd>
-        <dt>último surtido</dt><dd id="surtido">—</dd>
-      </dl>
+      <details id="la-partida">
+        <summary>La partida</summary>
+        <dl>
+          <dt>guardado en</dt><dd id="guardado">—</dd>
+        </dl>
+        <div class="mandos" style="margin-top:9px">
+          <button id="olvidar">empezar de cero</button>
+        </div>
+        <p class="sub" style="margin:-10px 0 6px; font-size:11px">
+          Se guarda sola cada pocos segundos, en este navegador. Cerrás la pestaña y
+          volvés donde estabas — con lo que la criatura aprendió.
+        </p>
+      </details>
 
-      <h2>La partida</h2>
-      <dl>
-        <dt>guardado en</dt><dd id="guardado">—</dd>
-      </dl>
-      <div class="mandos" style="margin-top:9px">
-        <button id="olvidar">empezar de cero</button>
-      </div>
-      <p class="sub" style="margin:-10px 0 0; font-size:11px">
-        Se guarda sola cada pocos segundos, en este navegador. Cerrás la pestaña y
-        volvés donde estabas — con lo que la criatura aprendió.
-      </p>
+      <details id="diagnostico">
+        <summary>Diagnóstico</summary>
+        <h2>El mundo</h2>
+        <dl>
+          <dt>tick</dt><dd id="tick">0</dd>
+          <dt>cuerpos</dt><dd id="cuerpos">0</dd>
+          <dt>a la vista</dt><dd id="a-la-vista">0</dd>
+          <dt>fase</dt><dd id="fase">—</dd>
+          <dt>ticks perdidos</dt><dd id="perdidos">0</dd>
+        </dl>
+        <h2>La pantalla</h2>
+        <dl>
+          <dt>cuadro</dt><dd id="cuadro">—</dd>
+          <dt>dibujos que faltan</dt><dd id="faltan">—</dd>
+          <dt>depósito</dt><dd id="deposito">buscando…</dd>
+          <dt>último surtido</dt><dd id="surtido">—</dd>
+        </dl>
+      </details>
 
       <div class="aviso">
         La pestaña abierta <b>avanza la partida real</b>. Antes de irte a hacer otra cosa,

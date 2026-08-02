@@ -33,7 +33,7 @@ import { Contexto } from '@anima/perceive'
 import type { Partida } from '@anima/perceive'
 import { Creencias, Mente } from '@anima/mind'
 import { ESQUEMAS, cumple, interpretar } from '@anima/plan'
-import { EncargoEnCurso, PUENTE, encargoDe, leer, lexicoDe } from '@anima/lang'
+import { EncargoEnCurso, PUENTE, encargoDe, enPalabras, leer, lexicoDe } from '@anima/lang'
 import type { Lexico } from '@anima/lang'
 
 /** Una línea de la charla. `ella` es la criatura. */
@@ -61,18 +61,30 @@ export interface EnCurso {
 }
 
 /**
- * LO QUE EL PUENTE SABE DECIR AL REVÉS.
+ * UNA META EN CASTELLANO, con dos intentos y en este orden.
  *
- * `alias.ts` mapea «fuego» → `emitsPower>0`; leído en el otro sentido da la
- * palabra humana de una firma, y sale gratis porque es la misma tabla. Lo que el
- * puente no nombra se muestra crudo **a propósito**: ver una firma en pantalla es
- * la señal de que a esa meta le falta una palabra.
+ *   1. **el puente**, que mapea «fuego» ↔ `emitsPower>0`. Leído al revés da el
+ *      nombre humano, sale gratis y da la palabra corta y linda. Es exacto;
+ *   2. **armar la frase leyendo el predicado**, para todo lo demás.
+ *
+ * El segundo existe porque el panel llegó a mostrar esto tal cual:
+ *
+ *     holding(tag:carnoso,toxicity<0.0528) (suya)
+ *
+ * y no se arreglaba agregando una fila: **el `0,0528` lo calcula la criatura en
+ * el momento** —es cuánto veneno le conviene tragar, y depende de lo vacío que
+ * tenga el tanque— así que cambia a cada tick. Una tabla necesitaría una fila por
+ * número posible. Hoy eso se lee «tener algo carnoso y poco venenoso».
+ *
+ * Si los dos fallan sale la firma cruda, y eso se deja a propósito: verla en
+ * pantalla es la señal de que a esa meta le falta una palabra.
  */
 export function enCastellano(firma: string): string {
   for (const a of PUENTE) {
     if (a.denota.k === 'meta' && a.denota.firma === firma) return a.dice[0] ?? firma
   }
-  return firma
+  const p = interpretar(firma)
+  return p === undefined ? firma : enPalabras(p)
 }
 
 const ESTABLECIBLES = new Set(ESQUEMAS.map((e) => e.establishes))

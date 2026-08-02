@@ -20,6 +20,10 @@ async function tick(page: Page): Promise<number> {
 async function abrir(page: Page): Promise<void> {
   await page.goto('/')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
+  // «La partida» va plegada: es de las que se tocan una vez. Los `toHaveText` de
+  // abajo leen igual —Playwright no exige visibilidad para leer texto— pero el
+  // botón de borrar sí hay que descubrirlo, igual que lo haría el jugador.
+  await page.locator('#la-partida > summary').click()
 }
 
 /**
