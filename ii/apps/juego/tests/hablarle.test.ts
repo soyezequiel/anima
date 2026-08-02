@@ -108,23 +108,25 @@ describe('hablarle a la criatura desde el juego', () => {
     expect(o.enCurso?.meta).toBe(perseguía)
   })
 
-  it('UNA ORDEN QUE SE ENTIENDE Y NO SE SABE HACER lo dice, y no es un defecto de la app', () => {
-    // Medido: «traé un palo» se lee perfecto y sale como `holding(tag:fibroso)`,
-    // pero **ningún esquema de `@anima/plan` establece esa firma**, así que la
-    // escalera no tiene por dónde empezar. Las metas con camino son pocas —fuego,
-    // trampa, cocción— y el acuse distingue los dos casos, que es para lo que se
-    // diseñó: «dale, voy» contra «te entendí, pero no sé cómo hacerlo todavía».
+  it('«TRAÉ UN PALO» YA TIENE CAMINO, y este test decía lo contrario', () => {
+    // ─── EL DÍA QUE ESTE TEST PIDIÓ QUE LO VINIERAN A CAMBIAR ──────────────
     //
-    // Está acá y no en `@anima/lang` porque lo que se afirma es la COMBINACIÓN de
-    // los dos paquetes, que es lo que el jugador ve. Y el día que alguien escriba
-    // el esquema que falta, este test se pone rojo y hay que venir a borrarlo.
-    const { p, o } = partidaNueva()
+    // Decía: «"traé un palo" se lee perfecto y sale como `holding(tag:fibroso)`,
+    // pero ningún esquema de @anima/plan establece esa firma, así que la escalera
+    // no tiene por dónde empezar». Y cerraba pidiendo que el día que alguien
+    // escribiera lo que faltaba, se viniera a borrarlo. Es hoy.
+    //
+    // Lo que faltaba no era un esquema: era la vía más corta a «tenerlo» —caminar
+    // hasta algo que ya lo cumple y agarrarlo—, que no es proceso, ni ley, ni
+    // obra, y por eso vive como caso base de la regresión. Ver `agarrarLoQueYaHay`
+    // en `plan/src/regresion.ts`.
+    //
+    // Y el acuse tuvo que aprenderlo aparte: preguntaba si algún ESQUEMA
+    // establecía la firma, así que decía «no sé cómo» sobre algo que el
+    // planificador ya sabía hacer. Ver `esUnTenerlo` en `src/ordenes.ts`.
+    const { o } = partidaNueva()
     o.decir('traé un palo')
-    expect(o.registro[1]?.texto).toContain('no sé cómo')
-
-    correr(p, o, 40)
-    // Y sigue con lo suyo, sin fingir que obedece.
-    expect(o.enCurso?.de).toBe('ella')
+    expect(o.registro[1]?.texto).toBe('dale, voy')
   })
 
   it('el puente traduce la firma a una palabra, y lo que no nombra se ve crudo', () => {

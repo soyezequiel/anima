@@ -1057,3 +1057,45 @@ una caña y pescar.
 - que la mente le dé valor a una meta que sólo se resuelve agarrando;
 - y decidir qué hacer con el pozo: o `BodyView` aprende a decir que algo es una
   fuente, o la vía de agarrar pide algo más que `portable`.
+
+### «Agarrar», cerrado — dos de las tres piezas
+
+El segundo intento entró. Lo que cambió respecto del primero es **de dónde salen
+las condiciones**: del mundo, publicadas como hechos, en vez de deducidas.
+
+**Las dos exclusiones, y las dos las puso una corrida:**
+
+1. **una fuente no se agarra.** `stockDe` reconoce un pozo comparando su id con el
+   del chunk donde está, así que **un pozo que se mueve deja de ser un pozo**: la
+   criatura se llevaría el río y lo destruiría. `BodyView.esFuente` lo publica con
+   la misma cuenta que usa el mundo;
+2. **una criatura tampoco.** Con la primera exclusión puesta, el vuelo quedó
+   anotado tal cual: `ir(beto-cuerpo) → sostener(beto-cuerpo)`. Salió a levantar a
+   la otra criatura, que es de carne, pesa poco y estaba a tres celdas.
+   `BodyView.esDeAlguien` lo publica leyendo `WorldState.actors`.
+
+Ninguna de las dos es un «tipo de objeto» por la ventana: las dos publican algo
+que el mundo ya guarda. La alternativa —deducirlo del id, `pozo:-6:-6` empieza con
+«pozo» y `beto-cuerpo` termina con «-cuerpo»— es leer la clase de una cosa de su
+nombre, que es exactamente el error que `tags` vino a reparar.
+
+**El acuse tuvo que aprenderlo aparte.** Preguntaba si algún ESQUEMA establecía la
+firma, así que decía «no sé cómo» sobre algo que el planificador ya sabía hacer.
+Hoy «traé un palo» contesta **«dale, voy»**.
+
+**Tres tests que decían lo contrario, actualizados con su historia:**
+
+- `mind/tests/ataque-a-la-mente.test.ts` afirmaba que de los tres tags que la
+  mente puede querer, `plan()` sabía conseguir **uno solo**, y que subir el
+  presupuesto 62× no movía la aguja. Ahora los tres tienen plan;
+- el test de vitest y el spec de Playwright que usaban «traé un palo» como ejemplo
+  de lo que no se sabe hacer. El primero pedía en su propio comentario que lo
+  vinieran a borrar el día que esto se cerrara.
+
+**Lo que falta: la tercera pieza.** La mente todavía no elige la meta — el `drive`
+del cuidador pierde contra el hambre, así que la criatura contesta «dale, voy» y
+sigue con lo suyo. Eso vive en la escalera (`mind/src/escalera.ts`) y es la
+próxima sesión.
+
+Verificado: suite completa de `ii/` en verde, 14 typechecks limpios, 16 de 16 en
+Playwright, y el criterio del Hito 5 con su plan canónico sin moverse.

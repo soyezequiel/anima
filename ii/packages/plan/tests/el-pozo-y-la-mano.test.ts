@@ -74,6 +74,7 @@ import {
   crearDios,
   decretoDe,
   eat,
+  chunkCoord,
   idDePozo,
   mapaDeActores,
   mapaDeCuerpos,
@@ -232,7 +233,7 @@ function escena(o: {
 // ─── La vista, que es la superficie de verdad y no un atajo ─────────────────
 
 function vistaDeCuerpo(c: WorldBody): BodyView {
-  return {
+  const v: { -readonly [K in keyof BodyView]: BodyView[K] } = {
     id: c.body.id,
     at: c.at,
     name: nameOf(c.body, PHYS),
@@ -242,6 +243,13 @@ function vistaDeCuerpo(c: WorldBody): BodyView {
     madeByMe: c.body.madeBy === ANA,
     joints: c.body.joints.map((j) => ({ a: j.a, b: j.b, strength: j.strength })),
   }
+  // Y ESTO TAMBIEN LO HACE `perceive/src/vista.ts`, con la misma cuenta que
+  // `stockDe`: un cuerpo es el pozo de su chunk si su id es el que `idDePozo`
+  // genera para donde esta. Se agrego cuando la superficie aprendio a decirlo, y
+  // este arnes tuvo que seguirla — sin esto el planificador ve un banco como una
+  // cosa cualquiera y planifica llevarselo en la mano.
+  if (c.body.id === idDePozo(chunkCoord(c.at.x), chunkCoord(c.at.y))) v.esFuente = true
+  return v
 }
 
 /**

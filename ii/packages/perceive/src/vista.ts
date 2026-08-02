@@ -98,7 +98,24 @@ import type {
   WorldBody,
   WorldState,
 } from '@anima/world'
+import { chunkCoord, idDePozo } from '@anima/world'
 import type { BodyView, JointView, SelfView } from '@anima/skills'
+
+/**
+ * ¿ESTE CUERPO ES UN BANCO DEL QUE SE SACA?
+ *
+ * La cuenta es la de `stockDe` en `world/src/step.ts`, copiada a propósito y no
+ * aproximada: un cuerpo es el pozo de su chunk si su id es el que `idDePozo`
+ * genera para las coordenadas donde ESTÁ. Preguntarlo distinto sería una
+ * superficie que dice que sí y un mundo que contesta `sin-pozo`.
+ *
+ * Sin dios no hay decreto y por lo tanto no hay pozos: los mundos de test que no
+ * lo traen contestan que no, que es la verdad ahí.
+ */
+function esUnaFuente(s: WorldState, c: WorldBody): boolean {
+  if (s.dios === undefined) return false
+  return c.body.id === idDePozo(chunkCoord(c.at.x), chunkCoord(c.at.y))
+}
 
 import { IndiceDelTick, RADIO_DE_PERCEPCION } from './indice.js'
 
@@ -207,6 +224,19 @@ export class Proyeccion {
       madeByMe: c.body.madeBy === quien,
       joints,
     }
+    // ─── ESTO ES UNA FUENTE, y se pregunta con la MISMA regla que el mundo ────
+    //
+    // `stockDe` decide que un cuerpo es un pozo comparando su id con el del chunk
+    // donde está, así que acá se hace la misma cuenta y no una parecida. Dos
+    // definiciones de «esto es un banco» serían una superficie que dice que sí y
+    // un mundo que contesta `sin-pozo`.
+    //
+    // Sólo se pone cuando es verdad: un `esFuente: false` explícito no agrega
+    // nada y ensucia todas las vistas, que son miles por tick.
+    if (esUnaFuente(this.state, c)) v.esFuente = true
+    // De alguien: `actors` dice qué cuerpo es de quién, y se pregunta ahí en vez
+    // de mirarle el id. Ver `BodyView.esDeAlguien`.
+    if (this.indice.esDeAlgunActor(c.body.id)) v.esDeAlguien = true
     if (c.heldBy !== undefined) v.heldBy = c.heldBy
     if (hondo < PROFUNDIDAD_DE_APOYO) {
       if (c.supportedBy !== undefined) {

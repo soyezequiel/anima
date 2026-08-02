@@ -135,11 +135,18 @@ test('5 · recibir acuse inmediato', async ({ page }) => {
   expect(await tick(page), 'el mundo avanzó: esto no prueba que el acuse sea inmediato').toBe(antes)
 })
 
-test('5b · y lo que entiende pero no sabe hacer lo dice, en vez de fingir', async ({ page }) => {
+test('5b · «traé un palo» también tiene camino, y este spec decía lo contrario', async ({ page }) => {
+  // Este spec afirmaba que la criatura contestaba «no sé cómo» a «traé un palo»,
+  // y era verdad: ningún esquema establecía `holding(tag:fibroso)`. Lo que
+  // faltaba no era un esquema sino la vía más corta a «tenerlo» —caminar hasta
+  // algo que ya lo cumple y agarrarlo—, que vive como caso base de la regresión.
+  //
+  // Queda como spec y no se borra porque lo que mide sigue siendo lo mismo: que
+  // el acuse diga la verdad sobre si conoce un camino. Sólo cambió la verdad.
   await abrir(page)
   await page.locator('#orden').fill('traé un palo')
   await page.locator('#orden').press('Enter')
-  await expect(page.locator('#registro .ella')).toContainText('no sé cómo')
+  await expect(page.locator('#registro .ella')).toHaveText('dale, voy')
 })
 
 test('6 · observar progreso y acciones', async ({ page }) => {

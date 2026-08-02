@@ -115,9 +115,22 @@ export class IndiceDelTick {
    * guarda sólo la dirección de ida.
    */
   #tapadoPor: Map<BodyId, BodyId> | undefined
+  /** Los cuerpos que son de alguien. Ver `BodyView.esDeAlguien`. */
+  #deActores: Set<BodyId> | undefined
 
   constructor(state: WorldState) {
     this.state = state
+  }
+
+  /**
+   * ¿ESTE CUERPO ES DE UNA CRIATURA?
+   *
+   * Perezoso como todo lo de esta clase: un tick donde nadie pregunta no arma el
+   * conjunto. Son dos o tres actores, así que la pasada es de las baratas.
+   */
+  esDeAlgunActor(id: BodyId): boolean {
+    this.#deActores ??= new Set<BodyId>([...this.state.actors.values()].map((a) => a.body))
+    return this.#deActores.has(id)
   }
 
   /**

@@ -1704,6 +1704,13 @@ function expandir(
     return { k: 'nodos', nodos: [{ ...nodo, falta: '', marcos: [] }] }
   }
 
+  // ── AGARRAR LO QUE YA HAY, que es la vía más corta a «tenerlo» ───────────
+  //
+  // Va ANTES de regresar y **no en lugar de**: el nodo que sale compite por costo
+  // con los de las demás vías, que es cómo elige esta búsqueda. Ver
+  // `agarrarLoQueYaHay`.
+  const directo = clausulas === undefined ? undefined : agarrarLoQueYaHay(nodo, clausulas, v)
+
   // ── ¿Lo cumple algo que veo? ─────────────────────────────────────────────
   if (nodo.marcos.length > 0 && clausulas !== undefined) {
     const tope = nodo.marcos[nodo.marcos.length - 1]
@@ -1724,12 +1731,131 @@ function expandir(
       }
       const cerrado = cerrar({ ...nodo, marcos }, v.self.capacity)
       if ('rechazo' in cerrado) return morir(nodo, v, todos, clausulas, cerrado.rechazo)
-      return { k: 'nodos', nodos: [cerrado] }
+      return { k: 'nodos', nodos: directo === undefined ? [cerrado] : [directo, cerrado] }
     }
   }
 
-  return regresar(nodo, g, v, todos, clausulas)
+  const regresado = regresar(nodo, g, v, todos, clausulas)
+  if (directo === undefined) return regresado
+  // Con el directo en la mano, una regresión que murió NO mata la rama: hay plan.
+  // Su `RamaMuerta` se pierde y es correcto — el `gap` es lo que la criatura NO
+  // puede hacer, y esto lo puede hacer.
+  return regresado.k === 'nodos'
+    ? { k: 'nodos', nodos: [directo, ...regresado.nodos] }
+    : { k: 'nodos', nodos: [directo] }
 }
+
+/**
+ * LA VÍA MÁS CORTA A «TENERLO»: caminar hasta algo que ya lo cumple y agarrarlo.
+ *
+ * ─── POR QUÉ ESTO NO ES UNA FILA DE `ESQUEMAS` ─────────────────────────────
+ *
+ * Porque no hay proceso, ni ley, ni obra: agarrar no transforma nada. Las tres
+ * clases de `ConstructionSchema` contestan «con qué se fabrica esto», y acá la
+ * respuesta es «no se fabrica, ya existe». Es un caso base de la regresión, del
+ * mismo orden que la regla 6 —«lo que ya se cumple no se planifica»— sólo que un
+ * paso más lejos: lo que se cumpliría con estirar la mano.
+ *
+ * ─── EL DEFECTO QUE HABÍA, Y SE VEÍA DESDE AFUERA ──────────────────────────
+ *
+ * `holding(tag:carnoso)` tenía UNA vía declarada —`extraccion`, o sea pescar— así
+ * que para comer la criatura armaba una caña **siempre**, aunque tuviera un
+ * pescado a un paso. Y `holding(tag:fibroso)` no tenía ninguna: «traé un palo» se
+ * leía perfecto y el planificador contestaba que ningún esquema la establece.
+ *
+ * ─── LAS DOS CONDICIONES, Y LAS DOS LAS PUSO UNA MEDICIÓN ──────────────────
+ *
+ *   1. **`portable`**, porque es lo que el mundo exige para dejar levantar algo
+ *      (`no-portable`). Sin ella el plan sale verde y se cae al ejecutarlo;
+ *   2. **que no sea una fuente**, y ésta costó un intento entero. La primera
+ *      versión pedía sólo `portable` y se dio por buena midiendo que «el pozo no
+ *      es portable». **Es falso**: los bancos que el dios decreta pesan casi
+ *      siempre menos de 8 kg. Con la meta pelada `holding(tag:carnoso)`, el plan
+ *      pasaba a ser *llevate el banco de pescado en la mano* — y eso no es sólo
+ *      raro: `stockDe` reconoce un pozo comparando su id con el del chunk donde
+ *      está, así que **un pozo que se mueve deja de ser un pozo**. La criatura se
+ *      llevaría el río y lo destruiría.
+ *
+ * `BodyView.esFuente` es lo que hace contestable la segunda, y existe por esto.
+ *
+ * ─── LO QUE ESTO NO ROMPE, MEDIDO ──────────────────────────────────────────
+ *
+ * El criterio del Hito 5 pasa igual y su plan canónico no se mueve: la meta que
+ * la mente persigue de verdad es `holding(tag:carnoso,toxicity<0.0528)`, y ningún
+ * cuerpo agarrable de esa escena la cumple. La cadena de siete eslabones se
+ * ejercita igual. Donde sí cambia el plan es en la contraprueba del propio
+ * criterio —`conRegalo` con cien pescados cocidos al alcance— y ahí es correcto.
+ */
+function agarrarLoQueYaHay(
+  nodo: NodoAbierto,
+  clausulas: readonly Predicado[],
+  v: VistaDelPlan,
+): NodoAbierto | undefined {
+  // ─── SÓLO LA META, NUNCA UN ROL — Y LA PRIMERA VERSIÓN NO LO DISTINGUÍA ───
+  //
+  // Un nodo con marcos abiertos NO busca la meta: busca el cuerpo que llena un
+  // rol, y para eso está el bloque de «¿lo cumple algo que veo?», que lo LIGA al
+  // marco en vez de cerrar el plan.
+  //
+  // La primera versión miraba la meta RAÍZ y decidía con eso mientras usaba las
+  // cláusulas del nodo ACTUAL. Con una meta raíz `sostiene`, cualquier
+  // subobjetivo intermedio se cerraba como plan terminado apenas hubiera algo
+  // levantable a la vista. Cuatro guardas de `la-cocina` que esperaban `gap`
+  // pasaron a devolver `plan`, y el plan era mentira.
+  if (nodo.marcos.length > 0) return undefined
+  // Y lo que falta tiene que ser UN «tenerlo» y nada más: `sostiene` ya lleva sus
+  // condiciones adentro, así que uno acompañado de otra cláusula pide algo más
+  // que tenerlo en la mano.
+  const sola = clausulas.length === 1 ? clausulas[0] : undefined
+  if (sola === undefined || sola.k !== 'sostiene') return undefined
+
+  // `cumpleCuerpo` ya sabe contestar un `sostiene` sobre un cuerpo —mira `b.tags`
+  // y las condiciones, las dos sobre el mismo— así que la cláusula viaja tal cual.
+  const cuerpo = elegirCuerpo([sola, SE_PUEDE_LEVANTAR], SIN_EXTRA, v, nodo.enMano, nodo.gastados)
+  // Ni una fuente ni una criatura. Las dos exclusiones las puso una corrida y no
+  // un razonamiento: con la primera faltando, el plan era llevarse el banco de
+  // pescado; con la segunda, `ir(beto-cuerpo) → sostener(beto-cuerpo)`, o sea
+  // salir a levantar a la otra criatura porque es de carne y pesa poco.
+  if (cuerpo === undefined || cuerpo.esFuente === true || cuerpo.esDeAlguien === true) return undefined
+
+  const ref: Ref = { k: 'id', id: cuerpo.id }
+  return {
+    falta: '',
+    camino: [
+      ...nodo.camino,
+      { k: 'ir', a: ref, within: 1, porQue: nodo.falta },
+      { k: 'sostener', que: ref, porQue: nodo.falta },
+    ],
+    profundidad: 0,
+    costo: nodo.costo + SEGUNDOS_DE_AGARRAR,
+    marcos: [],
+    enMano: [...nodo.enMano, cuerpo.id],
+    gastados: nodo.gastados,
+  }
+}
+
+/**
+ * Lo que el mundo exige para dejar levantar algo, dicho como predicado.
+ *
+ * `portable` es derivada y vale 1 o 0 según si la masa pasa un tope; se pide `>0`
+ * y no `>=1` porque el umbral lo decide la física y esto sólo pregunta de qué
+ * lado está.
+ */
+const SE_PUEDE_LEVANTAR: Predicado = { k: 'cualidad', test: { q: 'portable', op: '>', v: 0 } }
+
+/**
+ * LO QUE CUESTA AGARRAR, y por qué no es cero.
+ *
+ * Un `take` lo resuelve el mundo en un tick, así que el costo honesto es un tick
+ * de la frecuencia de referencia. Cero sería más simple y estaría mal: con costo
+ * cero esta vía empata con «ya está cumplido» y ganaría cualquier desempate por
+ * accidente en vez de ganar por barata.
+ *
+ * Y barata es: armar una caña son 1 s de `union` más 1,5 s de `extraccion`, o sea
+ * cincuenta veces esto. Es lo que hace que agarrar el pescado que está al lado le
+ * gane a pescarlo, y que pescar siga ganando cuando no hay ninguno.
+ */
+const SEGUNDOS_DE_AGARRAR = 0.05
 
 /**
  * El marco del linaje al que este pedido DOMINA, si hay alguno.

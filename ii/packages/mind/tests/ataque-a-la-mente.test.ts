@@ -268,15 +268,28 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
     }
     console.log('\n─── QUÉ CONTESTA `plan()` PARA CADA TAG QUE EL INSTINTO PUEDE QUERER ───\n' + filas.join('\n') + '\n')
 
-    // Lo único que se sabe conseguir es la comida del pozo.
-    expect(veredicto.get(`carnoso@${String(EXPANSIONES_POR_TICK)}`)).toBe('plan')
-    expect(veredicto.get('carnoso@4000')).toBe('plan')
-    // Las otras dos son `gap` con `nearest` vacío, y subir el presupuesto 62× no
-    // las mueve: no es una búsqueda que se cortó, es un vocabulario que no las tiene.
-    expect(veredicto.get(`vegetal@${String(EXPANSIONES_POR_TICK)}`)).toBe('gap')
-    expect(veredicto.get('vegetal@4000')).toBe('gap')
-    expect(veredicto.get(`fibroso@${String(EXPANSIONES_POR_TICK)}`)).toBe('gap')
-    expect(veredicto.get('fibroso@4000')).toBe('gap')
+    // ─── ESTE BLOQUE DECÍA LO CONTRARIO, Y EL HUECO SE CERRÓ ────────────────
+    //
+    // Hasta el Hito 12 esto afirmaba que de los tres tags **`plan()` sabía
+    // conseguir uno solo**, y que subir el presupuesto 62× no movía la aguja
+    // porque no era una búsqueda cortada sino «un vocabulario que no las tiene».
+    // Era verdad y era grave: la mente podía querer cinco cosas y el planificador
+    // sabía llegar a una.
+    //
+    // Lo que faltaba no era una fila del catálogo: era **la vía más corta a
+    // "tenerlo"**, o sea caminar hasta algo que ya lo cumple y agarrarlo. No es un
+    // proceso, ni una ley, ni una obra —agarrar no transforma nada—, así que vive
+    // como caso base de la regresión. Ver `agarrarLoQueYaHay` en
+    // `plan/src/regresion.ts`, que además cuenta las dos condiciones que necesitó
+    // y por qué la segunda costó un intento entero.
+    //
+    // El renglón de `carnoso` NO cambió, y eso importa: sigue habiendo plan, y en
+    // la escena del criterio sigue siendo el de la caña. Lo que se agregó compite
+    // por costo, no reemplaza.
+    for (const tag of ['carnoso', 'vegetal', 'fibroso']) {
+      expect(veredicto.get(`${tag}@${String(EXPANSIONES_POR_TICK)}`), `«${tag}» al presupuesto normal`).toBe('plan')
+      expect(veredicto.get(`${tag}@4000`), `«${tag}» con presupuesto de sobra`).toBe('plan')
+    }
   })
 
   /**

@@ -235,6 +235,55 @@ export interface BodyView {
   /** El dual: qué lo está tapando a él, si algo. */
   readonly coveredBy?: BodyView
   readonly joints: readonly JointView[]
+  /**
+   * ESTO ES UNA FUENTE: un banco del que se saca, no una cosa que se lleva.
+   *
+   * ─── POR QUÉ HACE FALTA, Y ES UN BUG QUE SE PUEDE VER ──────────────────────
+   *
+   * El mundo decide que un cuerpo es un pozo comparando su id con el del chunk
+   * donde está (`stockDe`, en `world/src/step.ts`). O sea que **un pozo que
+   * alguien levanta y se lleva deja de coincidir con su chunk y deja de ser un
+   * pozo**: la criatura se lleva el río en la mano y lo destruye.
+   *
+   * Y no es hipotético: los bancos que el dios decreta pesan casi siempre menos
+   * de 8 kg, así que `portable` da 1 y cualquier regla que diga «agarrá algo
+   * carnoso» los elige — están, además, más cerca que el pescado que producen.
+   *
+   * ─── POR QUÉ ESTO NO ES UN «TIPO DE OBJETO» POR LA VENTANA ────────────────
+   *
+   * Porque no lo inventa la superficie: **es un hecho que el mundo ya guarda**. El
+   * decreto del dios tiene `pozo.stock`, y tener stock es lo que hace que
+   * `drawFromStock` pueda sacar algo. Publicarlo es decir lo que hay, no
+   * clasificar.
+   *
+   * La alternativa era que quien mira dedujera «esto es un pozo» del id —
+   * `pozo:-6:-6` empieza con «pozo»— y ése es exactamente el error que `tags` vino
+   * a reparar: leer la clase de una cosa de su nombre. La ley 4 ya demostró lo que
+   * cuesta.
+   *
+   * Ausente quiere decir «no es una fuente», que es el caso de todo lo que no sea
+   * un banco decretado. Es opcional y no obligatorio para que un `BodyView`
+   * escrito a mano —los fixtures de los tests— no tenga que declararlo.
+   */
+  readonly esFuente?: boolean
+  /**
+   * ESTE CUERPO ES DE ALGUIEN: una criatura, no una cosa.
+   *
+   * Se descubrió igual que `esFuente` y en la misma tanda: con una regla de
+   * «agarrá algo carnoso», la criatura salió a **levantar a la otra criatura**.
+   * Beto es de carne, pesa poco y estaba a tres celdas, así que cumplía la meta
+   * mejor que cualquier pescado. El vuelo quedó anotado tal cual:
+   * `ir(beto-cuerpo) → sostener(beto-cuerpo)`.
+   *
+   * El mundo ya tiene la guarda de UNO MISMO —«la criatura se agarraba a sí misma
+   * y el mundo la dejaba»— y ésta es su hermana: la que falta para los demás.
+   *
+   * Y tampoco es un tipo de objeto: `WorldState.actors` dice qué cuerpo es de
+   * quién, así que esto publica un hecho que el mundo ya guarda. La alternativa
+   * —deducirlo del sufijo `-cuerpo` del id— es leer la clase de una cosa de su
+   * nombre, que es el error que `tags` vino a reparar.
+   */
+  readonly esDeAlguien?: boolean
 }
 
 /**

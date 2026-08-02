@@ -89,6 +89,24 @@ export function enCastellano(firma: string): string {
 
 const ESTABLECIBLES = new Set(ESQUEMAS.map((e) => e.establishes))
 
+/**
+ * «TENERLO» SIEMPRE TIENE CAMINO, aunque ningún esquema lo establezca.
+ *
+ * El acuse distingue «dale, voy» de «te entendí, pero no sé cómo hacerlo
+ * todavía», y para eso pregunta si algún ESQUEMA establece la firma. Eso dejó de
+ * alcanzar: el planificador aprendió una vía que no es un esquema —caminar hasta
+ * algo que ya cumple la meta y agarrarlo, ver `agarrarLoQueYaHay`— así que
+ * «traé un palo» tenía plan y el acuse seguía diciendo que no sabía.
+ *
+ * Lo que se afirma acá es lo que el planificador puede intentar, no que vaya a
+ * encontrar algo: si no hay ningún palo a la vista no va a poder, y eso se ve
+ * cuando no pasa nada. Es la misma honestidad que el resto del acuse — dice si
+ * entendió y si conoce un camino, no si va a salir bien.
+ */
+function esUnTenerlo(firma: string): boolean {
+  return interpretar(firma)?.k === 'sostiene'
+}
+
 export class Ordenes {
   readonly #partida: Partida
   readonly #quien: string
@@ -174,7 +192,7 @@ export class Ordenes {
     const l = leer(dicho, {
       phys: this.#partida.state.phys,
       lexico: this.#lexico,
-      sabeElCatalogo: (f) => ESTABLECIBLES.has(f),
+      sabeElCatalogo: (f) => ESTABLECIBLES.has(f) || esUnTenerlo(f),
       yaEstaCumplida: this.#yaEstaCumplida,
     })
     this.#registro.push({ de: 'ella', texto: l.acuse })
