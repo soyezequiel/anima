@@ -1169,3 +1169,35 @@ es la que hace que la segunda signifique algo:
 Lo que sigue faltando, ahora sí por lo que el registro decía: **nadie dibujó
 todavía esas claves**. Pero ya se piden, que es lo que hacía falta para poder
 pedirlas al modelo.
+
+### Las dos claves de lado 12, dibujadas — y el renglón que faltaba en el prompt
+
+Con el inventario pidiéndolas, las claves chicas que el juego necesita son dos:
+`vara/madera/12` y `vara/liana/12`, o sea **las dos piezas de la caña**.
+
+Se pidieron a Codex (`gpt-5.6-luna`) y el resultado fue asimétrico, que es lo que
+lo hizo diagnosticable:
+
+| clave | intentos | qué pasó |
+|---|---|---|
+| `vara/liana/12` | **1** | entró limpia |
+| `vara/madera/12` | 3 fallidos | uno por conteo (11 filas de 12) y **dos por la regla 4, con el mismo número**: «80% de la tinta es sombra y el contorno es sólo 48%» |
+
+La primera lectura fue que la puerta estaba mal calibrada a lado 12. **La liana la
+desmintió**: pasó al primer intento con la misma puerta y el mismo lado.
+
+Lo que fallaba era el prompt, y sólo para figuras GRUESAS. El párrafo de escala
+decía «quedate con la silueta, el contorno entero en 2 y una celda de luz» y **no
+decía qué hacer con el resto**. Con una figura fina alcanza —casi todo es
+contorno— pero con una gruesa a lado chico el modelo pinta todo de 2, y entonces
+choca contra la regla que exige que la sombra no se pase mucho de su propio
+contorno. La instrucción a medias se contradecía con la puerta.
+
+El renglón que lo cerró:
+
+> TODO LO QUE NO SEA CONTORNO VA EN 1. El 2 es el borde, no el relleno: si pintás
+> de 2 el adentro, no queda volumen, queda una mancha.
+
+Con eso puesto, `vara/madera/12` entró al primer intento. **El depósito quedó en
+13 dibujos**, y la caña es la primera cosa compuesta del juego con arte del modelo
+en sus dos piezas.

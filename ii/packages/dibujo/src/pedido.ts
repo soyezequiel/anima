@@ -348,7 +348,20 @@ export function encargoDe(clave: ClaveDeSprite, phys: Physics): Encargo | undefi
       : `\nOJO: los dos dibujos de referencia son de 24×24 y vos dibujás a ${String(p.lado)}×${String(p.lado)}.\n` +
         'A este tamaño no entra ningún detalle de una celda: tirá los accidentes y\n' +
         'quedate con la silueta, el contorno entero en 2 y una celda de luz\n' +
-        'arriba-izquierda.\n'
+        'arriba-izquierda.\n' +
+        // ─── ESTE RENGLÓN LO PIDIERON TRES RECHAZOS MEDIDOS ─────────────────
+        //
+        // El párrafo de arriba decía «el contorno entero en 2» y NO decía qué
+        // hacer con el resto. Con una figura fina eso alcanza —casi todo es
+        // contorno— pero con una gruesa a lado chico el modelo pinta TODO de 2.
+        //
+        // Medido pidiendo `vara/madera/12` a Codex: rechazada dos veces por la
+        // regla 4 con el mismo número, «80% de la tinta es sombra y el contorno
+        // es sólo 48%», mientras `vara/liana/12` —que es fina— entraba al primer
+        // intento. No era la puerta mal calibrada a lado 12: era una instrucción
+        // a medias que se contradecía con ella.
+        'TODO LO QUE NO SEA CONTORNO VA EN 1. El 2 es el borde, no el relleno: si\n' +
+        'pintás de 2 el adentro, no queda volumen, queda una mancha.\n'
 
   const prompt = `${EL_OFICIO}
 ════════════════════════════════════════════════════════════════════════
