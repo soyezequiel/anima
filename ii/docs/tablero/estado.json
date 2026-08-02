@@ -20,38 +20,38 @@
   "artifactUrl": "https://claude.ai/code/artifact/a8badcf1-8c50-4e29-b4e3-668ce387fe15",
   "proyecto": "Ánima II",
   "subtitulo": "Cuerpo, materia y vara — el remake que vive en ii/",
-  "actualizado": "2026-08-01",
+  "actualizado": "2026-08-02",
   "rama": "anima-2",
   "enUnaFrase": "Una criatura que resuelve el hambre inventando herramientas, dentro de una física fija, sin llamar a ningún modelo.",
   "ahora": {
-    "titulo": "El Hito 10 cierra con 6,5 de 7, y su punto estrella dio NEGATIVO",
-    "detalle": "Se puede cerrar la pestaña a mitad de atar la caña, volver, y la criatura replanifica sola y pesca en el tick 108 — el mismo que si nunca la hubieras cerrado. Apareció `@anima/store`, el primer paquete donde `await` es legal (la regla 2 protege al TICK, y guardar no pasa por el tick). Y el replay dejó de mirar sólo el mundo: ahora RE-EJECUTA las habilidades y compara su traza, que caza una clase entera de divergencia que el hash del mundo no puede ver —dos corridas con distintas fases dejan el mundo bit por bit idéntico—. De paso se cerró un hueco abierto desde el Hito 5: la mente NUNCA le devolvía evidencia a las creencias, así que la criatura pescaba y no se acordaba. Ahora sí, y eso destrabó el punto 6… que dio NEGATIVO: la heredera llega al pescado en el tick 108, exactamente igual que una que arranca de cero. La herencia no compra un solo tick, y la causa está medida: lo único que aprende es que el agua rinde, y eso YA lo creía por instinto. Y el tercer número de la propuesta original que se cae al medirlo: el tope de confianza heredada del ADR 0009 (0,65) está POR DEBAJO del instinto de fábrica (0,75) en 4 de 5 filas, o sea que aplicarlo dejaría a la heredera peor que una recién nacida.",
+    "titulo": "El usuario tomó la decisión de física, y el hueco se movió de la materia al plan",
+    "detalle": "La primera entrada de «decisiones que esperan» se cerró: el usuario eligió la opción (c) del hueco de 23,02 de potencia. `hoja-seca` pasa de sembrarse en 0,01–0,08 kg a 0,10–0,20 —la media, 0,15, cae sobre los 0,1485 que el test había medido— y NO SE TOCÓ UNA SOLA LEY: es la tabla de biomas, que es del dios. El cuerpo que cocina se puede armar ahora en 11 de 20 semillas contra 0 de 20, y la potencia del mejor cuerpo pasó de 239 a 527 contra una ventana de 253. PERO LA CRIATURA SIGUE CON CERO BOCADOS: la materia está y lo que falta es que la MENTE sepa juntar seis yescas y atarlas, que es exactamente el trabajo que el registro tenía anotado para cuando esta decisión se tomara. O sea que la decisión no cerró el rojo del Hito 5: le cambió la causa, de «falta materia» a «falta plan» — de necesitar una decisión tuya a ser trabajo. Y de paso apareció la escasez que estaba tapada: se puede armar el cuerpo en 11 semillas y hay atadores para armarlo en 5, porque `unir` gasta un atador por unión. También es del dios y no de la ley.",
     "proximosPasos": [
-      "El Hito 11 tiene su criterio escrito con nueve mediciones y NADA implementado. La medición que lo define: 626 números se imprimen en los tests de ii/ y UNO se guarda en un archivo que un test compare.",
-      "Y ya tiene su primer caso real en el árbol: forge/tests/el-episodio.test.ts mide contra el reloj de pared y falla cuando vitest corre los 13 archivos del paquete en paralelo; sola pasa 6 de 6.",
-      "La decisión de física del Hito 5 (el hueco de 23,02 de potencia) sigue esperando, y ahora también es lo que impide que la herencia compre algo: sin fracasos anotados y sin fuego, la criatura no puede aprender nada que contradiga su instinto."
+      "ENSEÑARLE A LA MENTE A JUNTAR MASA: seis yescas, cinco uniones, un fardo. Es lo único que separa a la criatura de cocinar, y ahora que la materia está es trabajo y no una decisión.",
+      "El Hito 11 va 4 de 6: faltan las cien partidas con su control, y bajar los 6 relojes de pared que quedan (están contados y congelados).",
+      "La puerta de ANIMA_RELOJ existe y NADIE LA ABRE EN CI: esos números están separados pero todavía no se corren en ningún lado."
     ]
   },
   "salud": [
     {
       "etiqueta": "tests",
-      "valor": "3032",
-      "nota": "re-corrido acá, exit 0, cero fallos · physics 679 · world 633+1 skipped · mind 342 · plan 337+1 todo · oracle 270 · skills 193 · perceive 142 · emergencia 126 · judge 97 · forge 94 · lang 83 · llm 20 · store 16"
+      "valor": "3042",
+      "nota": "re-corrido acá, exit 0, cero fallos · physics 679 · world 633+1 skipped · mind 342 · plan 337+1 todo · oracle 270 · skills 193 · perceive 142 · emergencia 129 · judge 97 · forge 97 · lang 87 · llm 20 · store 16"
     },
     {
       "etiqueta": "typechecks limpios",
       "valor": "14 de 14",
-      "nota": "re-verificado acá, exit 0 · uno más: @anima/store"
+      "nota": "re-verificado acá, exit 0"
     },
     {
       "etiqueta": "paquetes",
       "valor": "13",
-      "nota": "re-contado acá · el Hito 10 agregó @anima/store, el primero donde `await` es legal"
+      "nota": "re-contado acá · @anima/store lo agregó el Hito 10"
     },
     {
       "etiqueta": "it.fails abiertos",
       "valor": "69",
-      "nota": "re-contado acá · uno menos: el hueco de «la criatura no aprende» se cerró y su it.fails pasó a ser un test común"
+      "nota": "re-contado acá, sin cambios"
     },
     {
       "etiqueta": "ADRs propios",
@@ -60,8 +60,8 @@
     },
     {
       "etiqueta": "sin commitear",
-      "valor": "5 sin pushear",
-      "nota": "el árbol de trabajo queda limpio; son 5 commits en anima-2 esperando. El usuario pushea solo"
+      "valor": "3 sin pushear",
+      "nota": "el árbol de trabajo queda limpio. El usuario pushea solo"
     }
   ],
   "etapas": [
@@ -223,7 +223,7 @@
           "texto": "emergencia: 0 de 9 con el tanque canónico, 2 de 9 con el tanque lleno. El umbral es 4. Aceptado"
         }
       ],
-      "nota": "CUMPLEN 3 DE 6, y el hito cierra con los otros 3 en rojo aceptado — cada uno con su it.fails y su causa medida. No se mezclan en un solo número: «cumple» y «no cumple pero está aceptado» son cosas distintas. Y los dos últimos rojos eran el mismo problema: sin fuego no hay comida. La pared aritmética se cayó en el tramo N (el fósforo bajó de 645,50 a 244,65 contra un tanque de 310), pero la corrida canónica no se movió un tick. Lo que la frena ahora es MATERIA, no aritmética."
+      "nota": "CUMPLEN 3 DE 6, y el hito cierra con los otros 3 en rojo aceptado — cada uno con su it.fails y su causa medida. No se mezclan en un solo número: «cumple» y «no cumple pero está aceptado» son cosas distintas. Y los dos últimos rojos eran el mismo problema: sin fuego no hay comida. La pared aritmética se cayó en el tramo N (el fósforo bajó de 645,50 a 244,65 contra un tanque de 310), pero la corrida canónica no se movió un tick. Lo que la frena ahora es MATERIA, no aritmética. ── ACTUALIZADO EL 2026-08-02: la pared de MATERIA se cayó con la decisión (c) del usuario —el cuerpo que cocina se puede armar en 11 de 20 semillas contra 0 de 20— y los tres rojos SIGUEN ROJOS: la criatura muere en el 18.150 con 0 bocados igual. Lo que cambió es la causa: ya no falta materia, falta que la MENTE sepa juntar seis yescas y atarlas. El rojo pasó de necesitar una decisión del usuario a ser trabajo."
     },
     {
       "id": "Gate",
@@ -505,20 +505,20 @@
       "semanas": 4,
       "puntos": [
         {
-          "estado": "no",
-          "texto": "1 · hay un ARCHIVO DE LÍNEAS BASE que un test lee, con los relojes del Hito 6 adentro. Hoy: 626 console.log en los tests de ii/ y UN solo archivo de línea base, leído por UN test"
+          "estado": "si",
+          "texto": "1 · hay un ARCHIVO DE LÍNEAS BASE que un test lee: de 1 archivo a 3 y de 1 número defendido a 6. El que más costaba es el hash del banco de 20.000 ticks — antes de esto, saber si la conducta se había movido era comparar A OJO contra una corrida vieja"
         },
         {
-          "estado": "no",
-          "texto": "2 · EL CONTROL: empeorando a mano cualquiera de esos números, el test se pone rojo y dice cuál"
+          "estado": "si",
+          "texto": "2 · EL CONTROL: corrompiendo la línea base en memoria, la comparación se pone roja y dice cuál se movió. Y no es teórico: el guardián se puso rojo solo el mismo día, con la decisión de física"
         },
         {
-          "estado": "no",
-          "texto": "3 · y subir una línea base exige editarla a mano con el porqué escrito — es la regla que `skills/tests/linea-base.json` YA declara desde el Hito 4, generalizada"
+          "estado": "si",
+          "texto": "3 · subir una línea base exige editarla a mano con el porqué escrito, afirmado POR MECANISMO: ningún fuente escribe el archivo. El detector necesitó tres vueltas —se acusó a sí mismo, después un `\\b` quedó escrito como un byte de retroceso y no matcheaba NADA (verde por omisión), después el comentario que lo explicaba contenía lo que buscaba— y ahora se prueba con carnada antes de que su cero signifique algo"
         },
         {
-          "estado": "no",
-          "texto": "4 · los tests que miden contra el RELOJ DE PARED están separados de la suite determinista. Ya hay un caso real en el árbol: `forge/tests/el-episodio.test.ts` pasa 6 de 6 sola y falla con los 13 archivos del paquete en paralelo"
+          "estado": "medio",
+          "texto": "4 · los tests de RELOJ DE PARED separados de la suite determinista: no era un test, eran OCHO archivos en SEIS paquetes. Los 3 de la fragua pasaron por la puerta `ANIMA_RELOJ` —el número no se afloja, se muda: en la suite determinista se sigue imprimiendo y se afirma lo estructural— y los 6 que quedan están contados y congelados en una línea base que sólo puede bajar. LO QUE FALTA: nadie abre esa puerta en CI todavía"
         },
         {
           "estado": "no",
@@ -529,7 +529,7 @@
           "texto": "6 · EL CONTROL del 5: una partida con un invariante roto a propósito SÍ se reporta"
         }
       ],
-      "nota": "El criterio se escribió con nueve mediciones y la más útil es una división: 626 números medidos y UNO guardado. Este hito no es «medir más», es convertir 626 números que se IMPRIMEN en un puñado que se DEFIENDEN. Tres cosas que el plan pedía YA ESTÁN: el mecanismo de línea base (existe desde el Hito 4, con su regla escrita adentro del propio archivo), la puerta de ciclos rentables (`admit.ts` los rechaza por nombre) y los invariantes económicos (se verifican replayando el diario). Y dos mediciones corrigen el plan: los tres relojes del Hito 6 tienen línea base EN PROSA y ningún test los lee —un cambio que lleve el p95 de 1,35 a 90 ms no pone nada rojo—, y el TECHO_DE_CI existe pero su propio comentario dice que no puede morder (40 contra 1,032 medido). El punto 4 va antes que el 5 a propósito: una suite donde un rojo puede venir de la carga de la máquina entrena a todos a re-correr y seguir, y a partir de ahí ningún guardián protege nada."
+      "nota": "El criterio se escribió con nueve mediciones y la más útil es una división: 626 números se imprimen en los tests de ii/ y UNO se guardaba. Este hito no es «medir más», es convertir 626 números que se IMPRIMEN en un puñado que se DEFIENDEN. Tres cosas que el plan pedía YA ESTABAN —el mecanismo de línea base (desde el Hito 4, con su regla escrita adentro del propio archivo), la puerta de ciclos rentables y los invariantes económicos— y dos mediciones lo corrigieron: los tres relojes del Hito 6 tenían línea base EN PROSA y ningún test los leía (un cambio que llevara el p95 de 1,35 a 90 ms no ponía nada rojo), y el TECHO_DE_CI existe pero su propio comentario dice que no puede morder. El punto 4 va antes que el 5 a propósito: una suite donde un rojo puede venir de la carga de la máquina entrena a todos a re-correr y seguir, y a partir de ahí ningún guardián protege nada. Y uno de los tres relojes NO puede entrar a la línea base determinista: `msHastaPrimerMovimiento` mide milisegundos de cómputo, así que su valor depende de cuánta CPU haya libre — queda dicho adentro del propio archivo, en un campo `queNOentraAca`."
     },
     {
       "id": "H12",
@@ -581,7 +581,7 @@
     }
   ],
   "verificacion": {
-    "cuando": "Re-verificado en esta máquina contra el árbol tal como quedó tras e0fd4a3 (los puntos 5 y 7 del Hito 10). Árbol limpio salvo este tablero.",
+    "cuando": "Re-verificado en esta máquina contra el árbol tal como quedó tras 7f37310 (la decisión de física). Árbol limpio salvo este tablero.",
     "comandos": [
       {
         "cmd": "pnpm ii:typecheck",
@@ -590,12 +590,12 @@
       },
       {
         "cmd": "pnpm ii:test",
-        "resultado": "exit 0 · 3032 pasan, 0 fallan",
+        "resultado": "exit 0 · 3042 pasan, 0 fallan",
         "ok": true
       },
       {
         "cmd": "grep it.fails ii/packages",
-        "resultado": "69 llamadas reales — una menos que antes",
+        "resultado": "69 llamadas reales, sin cambios",
         "ok": true
       },
       {
@@ -605,7 +605,7 @@
       },
       {
         "cmd": "git fetch && git log origin/anima-2..HEAD",
-        "resultado": "5 commits sin pushear",
+        "resultado": "3 commits sin pushear",
         "ok": true
       },
       {
@@ -630,7 +630,12 @@
       },
       {
         "cmd": "los seis hashes del banco de 20 semillas, antes y después de tocar la mente",
-        "resultado": "IDÉNTICOS: ff52ece0 · 9af862b3 · ca3e9aab · b084d22a · 9e47235a · ec9d4dbf. La conducta de los 20.000 ticks no se movió ni un bit — y se comparó A MANO, porque ningún test guarda esos hashes",
+        "resultado": "IDÉNTICOS en las dos veces que se tocó la mente. Y con la decisión de física, la 20260730 SÍ se movió (ca3e9aab → a6292d19) y el guardián nuevo la cazó: se subió a mano con el porqué",
+        "ok": true
+      },
+      {
+        "cmd": "la decisión (c): cinco rangos probados antes de fijar 0,10–0,20",
+        "resultado": "0,05–0,10 y 0,06–0,12 no mueven nada · 0,08–0,15 apenas · desde 0,10–0,20 se estabiliza en 11/20 armable y 5/20 con atadores, y subir a 0,12–0,20 no compra una semilla más",
         "ok": true
       }
     ],
@@ -638,13 +643,13 @@
   },
   "decisionesQueEsperan": [
     {
-      "titulo": "Cómo cerrar el hueco de 23,02 de potencia",
-      "porQue": "Es lo único que separa a la criatura de encender un fuego que cocine, y con eso caen dos de los tres rojos del Hito 5.",
+      "titulo": "Los atadores: se puede armar el cuerpo en 11 semillas y hay con qué en 5",
+      "porQue": "Es la escasez que estaba tapada por el hueco de potencia, y ahora es la que queda. `unir` gasta un atador por unión, así que un cuerpo de seis piezas gasta cinco. Es del dios y no de la ley, igual que la que se acaba de decidir.",
       "opciones": [
-        "(a) subir MAX_PARTS de 6 a 16 — cierra en 8 de 20 semillas con las piezas que ya hay, pero es una constante de la física y toca unir en todo el mundo",
-        "(c) piezas más gordas — cada hoja-seca tendría que pesar 0,1485 kg y hoy vienen de 0,077. Es del oráculo, no de la ley, y no toca unir"
+        "Sembrar más liana en los biomas que ya la tienen — es la misma clase de cambio que la (c) que acaba de funcionar, y no toca ninguna ley.",
+        "Dejarlo: 5 de 20 semillas alcanza para que la mente aprenda a armar el fardo, y recién ahí se sabrá si la escasez muerde de verdad en una partida."
       ],
-      "descartado": "(b) un fósforo más caliente. Medido: el mejor cuerpo armable no se mueve ni un decimal."
+      "descartado": "Bajar el atador por unión. Sale de `unir` y es una ley, no una perilla del dios."
     },
     {
       "titulo": "COSTO_POR_CELDA y la velocidad de locomoción",
@@ -655,10 +660,10 @@
     }
   ],
   "deudasAbiertas": [
-    "Las creencias SÓLO PUEDEN SUBIR: no se anota el fracaso, así que la criatura no se puede desengañar de un lugar que dejó de rendir. Es una decisión escrita —una meta se abandona por razones que no dicen nada del lugar— y es lo que hace que la herencia no compre ticks. Cuál abandono ES evidencia en contra tiene respuesta medible y sin medir.",
-    "La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar —medido— pero el planificador no la nombra. Es H10 y H11… y sigue abierto.",
-    "Ninguna partida registra una capacidad en el catálogo, así que no hay biblioteca que heredar ni que promover. Es lo que deja a medias el punto 5 del Hito 10 y lo que haría significar algo al journal de catálogo.",
-    "El adaptador de IndexedDB no se puede correr en la suite: node no lo tiene. Necesita el arnés de navegador que el Hito 2 tiene anotado como pendiente desde entonces.",
-    "La pista del juez está construida y probada, pero no se dispara con material real: el fallo del modelo es total dentro de cada grupo y la pista necesita contraste."
+    "LA MENTE NO SABE JUNTAR MASA: seis yescas, cinco uniones, un fardo. Es lo único que separa a la criatura de cocinar ahora que la materia está, y es trabajo — no una decisión.",
+    "Las creencias SÓLO PUEDEN SUBIR: no se anota el fracaso, así que la criatura no se puede desengañar de un lugar que dejó de rendir. Es una decisión escrita y es lo que hace que la herencia no compre ticks.",
+    "La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar —medido— pero el planificador no la nombra.",
+    "Ninguna partida registra una capacidad en el catálogo, así que no hay biblioteca que heredar ni que promover. Es lo que deja a medias el punto 5 del Hito 10.",
+    "Seis archivos de test todavía afirman contra el RELOJ DE PARED en la suite determinista. Están contados, nombrados y congelados: perceive ×3, skills ×1, world ×2."
   ]
 }
