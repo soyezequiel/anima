@@ -3,12 +3,12 @@
   "comoSeSube": "A MANO, y con el porqué escrito en el campo `porQue` de la entrada que se toca. Nada escribe este archivo automáticamente, y ésa es la mitad del mecanismo: un archivo que se actualiza solo no defiende nada, sólo registra lo último que pasó.",
   "hashesDelBancoCanonico": {
     "queEs": "El hash de la partida entera de cada semilla del banco canónico: 20.000 ticks de mundo, con la mente decidiendo. Si uno se mueve, ALGO CAMBIÓ LA CONDUCTA de la criatura — no importa qué test siga verde.",
-    "porQue": "Se tocó el corazón de la mente dos veces en el Hito 10 (la costura de creencias y el peso del testimonio) y la única forma que había de saber que la conducta no se había movido era comparar A OJO contra la salida de una corrida vieja. Esto es esa comparación, hecha por la máquina.",
-    "medidoEl": "2026-08-01, tras e0fd4a3, con pnpm ii:test exit 0",
+    "porQue": "Se tocó el corazón de la mente dos veces en el Hito 10 (la costura de creencias y el peso del testimonio) y la única forma que había de saber que la conducta no se había movido era comparar A OJO contra la salida de una corrida vieja. Esto es esa comparación, hecha por la máquina. ── SUBIDO A MANO EL 2026-08-02, y es la primera vez que este guardián se usa para lo que existe. El usuario tomó la decisión (c) del hueco de 23,02 de potencia: `hoja-seca` pasó de sembrarse en 0,01–0,08 kg a 0,10–0,20 (media 0,15, contra los 0,1485 medidos como necesarios). Es la tabla de biomas del oráculo, no una ley. De las tres semillas del banco canónico, DOS no se movieron —ff52ece0 y 9af862b3 siguen idénticas— y la 20260730 sí: pasó de ca3e9aab69408ade a a6292d19669b02c8. Tiene sentido y está medido: es la semilla con más sueltas de las tres (153 contra 90 y 95), así que es la que más materia nueva recibe. Lo que NO cambió en ninguna de las tres: la criatura sigue con `bocados 0`. La materia ya está —el mundo puede armar el cuerpo que cocina en 11 de 20 semillas contra 0 de 20 antes— y lo que falta ahora es que la MENTE sepa juntar seis yescas y atarlas, que es el trabajo que `continuar-aca.md` ya tenía anotado para cuando esta decisión se tomara.",
+    "medidoEl": "2026-08-02, tras la decisión (c) del usuario sobre el hueco de potencia",
     "hashes": {
       "20260728": "ff52ece07f295f9d",
       "20260729": "9af862b37ee3e676",
-      "20260730": "ca3e9aab69408ade"
+      "20260730": "a6292d19669b02c8"
     }
   }
 }

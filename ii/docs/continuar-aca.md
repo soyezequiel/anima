@@ -665,7 +665,46 @@ decisión sobre la cota del mundo.
    - **(c) piezas más gordas** — cada `hoja-seca` tendría que pesar 0,1485 kg y hoy
      vienen de ~0,077. Es del oráculo, no de la ley, y no toca `unir`.
 
-   Quedan la (a) y la (c), y son decisión del usuario.
+   **DECIDIDO EL 2026-08-02: EL USUARIO ELIGIÓ LA (c).**
+
+   `hoja-seca` pasó de sembrarse en 0,01–0,08 kg a **0,10–0,20** en los cuatro
+   biomas que la siembran (`oracle/src/bioma.ts`). La media, 0,15, cae sobre los
+   0,1485 que este mismo bloque había medido. **No se tocó una sola ley**: es la
+   tabla de biomas, que es del dios.
+
+   Se probaron cinco rangos antes de fijar ése, y el criterio fue el más chico que
+   cerrara: 0,05–0,10 y 0,06–0,12 no mueven nada (6/20 armable, 1/20 con
+   atadores), 0,08–0,15 apenas (7/20 y 2/20), y desde 0,10–0,20 se estabiliza en
+   11/20 y 5/20 — subir a 0,12–0,20 no compra ni una semilla mas.
+
+   **LO QUE CERRO:**
+
+   | | antes | ahora |
+   |---|---|---|
+   | el cuerpo que cocina se puede ARMAR | 0/20 | **11/20** |
+   | potencia del mejor cuerpo (ventana: 253) | 239,36 | **527,59** |
+
+   **LO QUE NO CERRO, Y ES LO QUE SIGUE.** La criatura **sigue con `bocados 0`**
+   en el banco canonico. La materia esta; lo que falta es que la MENTE sepa juntar
+   seis yescas y atarlas — que es exactamente el trabajo que este mismo punto tenia
+   anotado abajo. O sea que la decision no resolvio el Hito 5: **movio el problema
+   de la materia al plan**, que es donde tiene arreglo.
+
+   **Y APARECIO LA ESCASEZ QUE ESTABA TAPADA:** se puede armar el cuerpo en 11 de
+   20 y **hay atadores para armarlo en 5**. `unir` gasta un atador por union y un
+   cuerpo de seis piezas gasta cinco. No es un rojo nuevo — es el mismo de siempre,
+   que antes quedaba escondido detras de uno mas grande. Es del dios, no de la ley.
+
+   **CUATRO TESTS SE DIERON VUELTA Y NINGUNO SE AFLOJO**, cada uno con su numero
+   nuevo y el porque escrito: los bloques 4 y 5 de `del-fosforo-al-fuego-que-cocina`,
+   el bloque 6 de `la-escalera-de-la-yesca` (que era la pintura exacta del hueco) y
+   `celdasBuenas` de `las-seis-que-dicen-el-mundo`, que paso de 32 a 33.
+
+   Y uno se corrigio a si mismo: estaba escrito que el fosforo caliente «no mueve
+   el techo ni un decimal». Con la materia nueva **si lo mueve** (525,32 → 543,69),
+   porque aquella medicion era de un mundo sin con que armar nada. La conclusion no
+   cambia y ahora se afirma mas fuerte: no que no cambie nada, sino que **lo que
+   cambia no compra una sola semilla**.
 
    ---
 

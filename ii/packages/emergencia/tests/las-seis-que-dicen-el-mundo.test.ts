@@ -284,8 +284,19 @@ describe('las seis filas que dicen EL MUNDO, sobre el mundo que ahora SÍ existe
     // son lo que el dios decreta hoy con estas veinte semillas y lo que
     // `abrirChunk` materializa de eso. El día que cambien, esto se pone rojo y
     // alguien tiene que volver a mirar de quién es el cero de la entrada 7.
+    // ─── Y SE MOVIÓ, QUE ES PARA LO QUE ESTABA CLAVADO ─────────────────────
+    //
+    // `celdasBuenas` pasó de **32 a 33** con la decisión (c) del usuario sobre el
+    // hueco de potencia: `hoja-seca` se siembra ahora en 0,10–0,20 kg en vez de
+    // 0,01–0,08. Una celda más del vecindario ofrece la cadena entera.
+    //
+    // Se volvió a mirar lo que este bloque pide que se mire, y **la conclusión no
+    // cambia: sale reforzada**. Los otros tres números están intactos —5, 5 y 5—
+    // así que lo que se movió es cuánta oferta hay, no a cuántas semillas les
+    // llega ni cuán cerca está. El cero de la entrada 7 sigue sin ser del mundo:
+    // ahora el mundo ofrece un poco más y la criatura sigue sin ir.
     expect(conBarrido).toBe(5)
-    expect(celdasBuenas).toBe(32)
+    expect(celdasBuenas).toBe(33)
     expect(laMasCerca).toBe(5)
     expect(conApilado).toBe(5)
     // Y lo que de verdad importa del bloque, dicho como aserción y no como prosa:

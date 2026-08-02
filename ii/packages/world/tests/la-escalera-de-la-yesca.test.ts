@@ -499,14 +499,26 @@ describe('la escalera de la yesca', () => {
     )
     log(filas)
 
-    // Conserva la misma población del bloque 5 y afirma el mecanismo que acaba
-    // de aparecer: aunque el total llegue al kilo, ninguna de estas semillas
-    // puede meter un kilo de piezas de 77 g en UN cuerpo legal.
+    // ─── ESTE `toBeLessThan` ERA LA PINTURA DEL HUECO, Y SE DIO VUELTA ─────
+    //
+    // Decía: «aunque el total llegue al kilo, ninguna de estas semillas puede
+    // meter un kilo de piezas de 77 g en UN cuerpo legal». Era cierto y era el
+    // mecanismo entero del problema — con `MAX_PARTS` en 6, seis piezas de 77 g
+    // son 0,462 kg y hacía falta casi el doble.
+    //
+    // **El usuario tomó la decisión (c)**: `hoja-seca` pasó a sembrarse en
+    // 0,10–0,20 kg (media 0,15, contra los 0,1485 que estaba medido que hacían
+    // falta). No se tocó `MAX_PARTS` ni ninguna ley: es la tabla de biomas del
+    // oráculo. Ahora las seis piezas más grandes SÍ llegan —1,154 kg medido— y lo
+    // que este bloque afirma es lo contrario de lo que afirmaba.
+    //
+    // El número no se aflojó: se dio vuelta porque el mundo cambió, y queda
+    // vigilando el mismo mecanismo desde el otro lado.
     expect(relevantes).toHaveLength(6)
     for (const inventario of relevantes) {
       const yescas = inventario.recursos.filter((r) => r.sustancia === 'hoja-seca')
       expect(masa(yescas)).toBeGreaterThanOrEqual(YESCA_QUE_ALCANZA)
-      expect(masaMayorN(yescas, MAX_PARTS)).toBeLessThan(YESCA_QUE_ALCANZA)
+      expect(masaMayorN(yescas, MAX_PARTS)).toBeGreaterThanOrEqual(YESCA_QUE_ALCANZA)
     }
   })
 

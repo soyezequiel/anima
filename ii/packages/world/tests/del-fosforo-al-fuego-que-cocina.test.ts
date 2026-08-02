@@ -606,31 +606,47 @@ describe('del fósforo al fuego que cocina', () => {
       '',
       `  LO QUE ESTA TABLA NO CUENTA, y juega a favor: las piezas están DESPARRAMADAS`,
       `  —caminar hasta cada una cuesta— y la humedad de la celda sube el punto de`,
-      `  ignición. Es una COTA DE ARRIBA, así que el 0/20 es firme: en el mundo de verdad`,
-      `  es peor, no mejor.`,
+      `  ignición. Es una COTA DE ARRIBA, así que el número es firme por el lado`,
+      `  optimista: en el mundo de verdad es peor, no mejor.`,
     )
     log(filas)
 
-    // ─── LA AFIRMACIÓN, Y SE ESCRIBIÓ AL REVÉS ─────────────────────────────
+    // ─── ESTA AFIRMACIÓN SE ESCRIBIÓ DOS VECES, Y LAS DOS SE DIERON VUELTA ──
     //
-    // Este bloque se escribió con `expect(cocinan).toBeGreaterThan(0)`, esperando
-    // que la materia existiera y que la cota fuera el atador. Da CERO, y con la
-    // búsqueda mixta completa —la misma que `la-escalera-construible` tuvo que
-    // aprender a hacer—, así que el cero no es de haber buscado poco.
-    expect(cocinan).toBe(0)
-    // Y el número que dice de qué tamaño es lo que falta. Si algún día esto pasa de
-    // 253, el criterio (5) queda a tiro y hay que venir a borrar el `it.fails` de la
-    // mente.
-    expect(elTecho).toBeGreaterThan(VENTANA_DE_LA_COCCION.minima / 2)
-    expect(elTecho).toBeLessThan(VENTANA_DE_LA_COCCION.minima)
-    // Y LA COTA DEL TRASPASO, RE-MEDIDA: el atador no es lo que frena. La semilla
-    // con más potencia ARMABLE —la que tiene las dos cosas— también se queda corta,
-    // así que darle atadores a todo el mundo no cerraría nada.
-    expect(conAtadores).toBe(0)
-    // Y con los atadores contados contra el cuerpo MÁS BARATO que llega —no contra
-    // el más potente—, `elTechoArmable` queda en cero: como ninguna semilla llega,
-    // no hay cuerpo barato que contar. Es consistente y no es una medición aparte.
-    expect(elTechoArmable.potencia).toBe(0)
+    // Primero decía `toBeGreaterThan(0)`, esperando que la materia existiera y
+    // que la cota fuera el atador. Dio CERO, y se corrigió a `toBe(0)`.
+    //
+    // Y AHORA DA ONCE. **El usuario tomó la decisión (c)**: `hoja-seca` pasó de
+    // sembrarse en 0,01–0,08 kg a 0,10–0,20, que es la media de 0,15 contra los
+    // 0,1485 que este mismo bloque había medido como necesarios. No se tocó una
+    // sola ley: es la tabla de biomas del oráculo.
+    //
+    // El techo del mejor cuerpo armable pasó de **239,36 a 527,59**, o sea que no
+    // quedó al filo de los 253: los pasa por 2,1×. Y hay que decir lo que NO
+    // cambia: **el atador sigue siendo la otra escasez**, y cae en semillas
+    // distintas — se puede ARMAR en 11 de 20 y hay atadores para armarlo en 5.
+    expect(cocinan).toBeGreaterThan(0)
+    // El número que dice de qué tamaño era lo que faltaba, ahora del otro lado de
+    // la ventana. Se afirma que PASA los 253 y no un valor exacto: lo que este
+    // bloque vigila es el mecanismo, no el decimal de una tabla de biomas.
+    expect(elTecho).toBeGreaterThan(VENTANA_DE_LA_COCCION.minima)
+    // ─── Y ACÁ ESTÁ EL DATO QUE LA DECISIÓN (c) NO CERRÓ ───────────────────
+    //
+    // El atador NO era la cota cuando no había materia —esa fue la corrección del
+    // tramo N·bis— y ahora que la materia está, **pasa a ser la cota que queda**:
+    //
+    //     se puede ARMAR el cuerpo que cocina .......... 11 de 20
+    //     hay atadores para armarlo .................... 5 de 20
+    //
+    // Los dos números son de la misma corrida. `unir` gasta un atador por unión,
+    // así que un cuerpo de seis piezas gasta cinco, y eso es lo que seis de esas
+    // once semillas no tienen. No es un rojo nuevo: es la MISMA escasez de siempre,
+    // que antes quedaba tapada por una más grande.
+    expect(conAtadores).toBeGreaterThan(0)
+    expect(conAtadores).toBeLessThan(cocinan)
+    // Y el cuerpo más barato que llega ya existe, así que su potencia dejó de ser
+    // cero. Se afirma que pasa la ventana, no un decimal de la tabla de biomas.
+    expect(elTechoArmable.potencia).toBeGreaterThan(VENTANA_DE_LA_COCCION.minima)
   }, 300_000)
 
   it('5 · QUÉ ABRIRÍA LA PUERTA: las tres palancas, con el número de cada una', () => {
@@ -711,10 +727,12 @@ describe('del fósforo al fuego que cocina', () => {
 
     // El techo de hoy, para poder decir cuánto lo mueve cada palanca.
     let techoDeHoy = 0
+    let cocinanSinElCaliente = 0
     for (let k = 0; k < SEMILLAS; k += 1) {
       const { piezas } = loQueElDiosPone(SEMILLA_BASE + BigInt(k))
       const potencia = elMejorCuerpo(piezas, techoHoy)?.potencia ?? 0
       if (potencia > techoDeHoy) techoDeHoy = potencia
+      if (potencia >= VENTANA_DE_LA_COCCION.minima) cocinanSinElCaliente += 1
     }
 
     log([
@@ -763,7 +781,20 @@ describe('del fósforo al fuego que cocina', () => {
     // cambiar la suma. Sin este `expect`, el 2,61 se habría publicado como «la
     // salida barata» y habría mandado a alguien a pagar por nada — que es
     // exactamente el vicio del «~25 a 1» que el tramo N corrigió.
-    expect(cocinanConElCaliente).toBe(0)
-    expect(elTechoCaliente).toBeCloseTo(techoDeHoy, 6)
+    // ─── LAS DOS AFIRMACIONES SE DIERON VUELTA, Y HAY QUE DECIR QUÉ SIGNIFICA ──
+    //
+    // Con la decisión (c) tomada, el fósforo caliente ya no es inútil: el techo
+    // pasa de 525,32 a **543,69**. O sea que **el `toBeCloseTo` de antes medía un
+    // mundo sin materia**: cuando las piezas eran de 77 g, abrir `medula` no movía
+    // nada porque no había con qué armar nada; con piezas de 150 g sí mueve.
+    //
+    // Lo que NO cambia es la conclusión que este bloque vino a dar: **el fósforo
+    // caliente no era la palanca**. Los 253 ya los pasaba sin él —525,32 contra
+    // 253— así que sus 18,37 de más no compran una sola semilla que no cocinara
+    // ya. Eso es lo que se afirma ahora, y es más fuerte que el `toBeCloseTo`:
+    // no que no cambie nada, sino que lo que cambia no alcanza para nada.
+    expect(cocinanConElCaliente).toBeGreaterThan(0)
+    expect(cocinanConElCaliente).toBe(cocinanSinElCaliente)
+    expect(elTechoCaliente).toBeGreaterThan(techoDeHoy)
   }, 300_000)
 })

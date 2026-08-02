@@ -356,7 +356,7 @@ export const BIOMAS: readonly Bioma[] = [
     siembra: [
       siembra('madera', 6, 0.3, 3),
       siembra('madera-dura', 3, 0.5, 4),
-      siembra('hoja-seca', 4, 0.01, 0.08),
+      siembra('hoja-seca', 4, 0.10, 0.20),
       siembra('corteza', 3, 0.05, 0.5),
       siembra('raiz', 2, 0.05, 0.5),
       siembra('piedra', 1, 0.2, 3),
@@ -397,7 +397,7 @@ export const BIOMAS: readonly Bioma[] = [
     sustancias: ['liana', 'raiz-dura', 'hoja-seca', 'grano', 'hongo', 'piedra'],
     siembra: [
       siembra('liana', 5, 0.05, 0.6),
-      siembra('hoja-seca', 4, 0.01, 0.08),
+      siembra('hoja-seca', 4, 0.10, 0.20),
       siembra('raiz-dura', 3, 0.1, 1),
       siembra('grano', 2, 0.01, 0.15),
       siembra('piedra', 2, 0.2, 3),
@@ -416,7 +416,7 @@ export const BIOMAS: readonly Bioma[] = [
     acuatico: false,
     sustancias: ['hoja-seca', 'raiz-dura', 'hueso', 'piedra', 'pedernal'],
     siembra: [
-      siembra('hoja-seca', 4, 0.01, 0.08),
+      siembra('hoja-seca', 4, 0.10, 0.20),
       siembra('raiz-dura', 3, 0.1, 1),
       siembra('piedra', 3, 0.2, 3),
       siembra('hueso', 2, 0.05, 0.8),
