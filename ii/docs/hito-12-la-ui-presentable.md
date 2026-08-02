@@ -1013,3 +1013,47 @@ receta en `regresion.ts`. No es una fila de `ESQUEMAS` sino un caso base del
 planificador —un objetivo `sostiene` con un candidato portable visible se resuelve
 con `ir` + `sostener`—, y eso es cirugía en un archivo de 2400 líneas con mucha
 disciplina encima. Es una sesión aparte, no una cola de ésta.
+
+### El intento de escribir la receta, y por qué se revirtió
+
+Se escribió, se midió y se sacó. El código no quedó; lo que sigue sí, porque es
+lo que hace que el próximo intento no repita el camino.
+
+**Lo que se escribió:** un caso base en `expandir` (`regresion.ts`) que, cuando lo
+que falta es un `sostiene` y hay a la vista un cuerpo portable que lo cumple,
+devuelve un nodo terminal con `ir` + `sostener`. Compite por costo con las demás
+vías en vez de reemplazarlas, y cuesta 0,05 s —un tick— contra los 2,5 s de armar
+una caña y pescar.
+
+**Lo que salió bien, medido:**
+
+- **el criterio del Hito 5 pasa igual, 8 de 8**, y el plan canónico no se movió:
+  `ir → sostener → ir → sostener → unir → ir → aplicar(extraccion)`. La cadena de
+  herramientas se sigue ejercitando, que era la duda que abrió la decisión;
+- 336 de 337 tests de `@anima/plan` en verde.
+
+**Los tres motivos por los que se revirtió**, en orden de importancia:
+
+1. **NO LOGRA EL OBJETIVO.** «traé un palo» sigue contestando *«te entendí, pero no
+   sé cómo hacerlo todavía»*, porque el acuse lo decide `sabeElCatalogo`, que
+   pregunta si algún **esquema** establece la firma — y esta vía no es un esquema.
+   Y la mente tampoco elige la meta: el `drive` sigue perdiendo contra el hambre.
+   O sea que faltan dos piezas más aguas arriba, y sin ellas el cambio no se nota;
+2. **la condición `portable` no alcanzaba, y eso desmiente la medición anterior.**
+   Se había concluido que descartaba el pozo; **el banco que decreta el dios pesa
+   casi siempre menos de 8 kg**, así que es portable y la vía lo agarra. Con la
+   meta pelada `holding(tag:carnoso)` el plan pasa a ser «llevate el banco de
+   pescado en la mano» en vez de pescar de él. Lo cazó
+   `el-pozo-y-la-mano.test.ts`, que quedó sin poder medir lo suyo;
+3. y ese punto 2 **toca un hueco que el proyecto ya tenía nombrado**: el esquema de
+   `extraccion` dice, con todas las letras, que el hueco desaparece *«el día que
+   la superficie sepa decir "esto es un pozo"»*. Mientras `BodyView` no distinga
+   una fuente de un objeto, cualquier regla de agarrar va a poder llevarse el río.
+
+**Lo que hay que hacer la próxima vez, y son tres cosas y no una:**
+
+- que `sabeElCatalogo` —o quien conteste el acuse— sepa que «tenerlo» tiene camino
+  aunque no haya esquema;
+- que la mente le dé valor a una meta que sólo se resuelve agarrando;
+- y decidir qué hacer con el pozo: o `BodyView` aprende a decir que algo es una
+  fuente, o la vía de agarrar pide algo más que `portable`.
