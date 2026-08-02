@@ -19,6 +19,7 @@ import * as API from '../src/ctx.js'
 import { SkillRun, type Step, type WorldCtx } from '../src/ejecutor.js'
 import type { Cell, Intent, Outcome, StepResult } from '../src/ctx.js'
 import { ACTOR, Mundito } from './mundito.js'
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
 
 /**
  * Igual que en los bancos del mundo y del juez: **se imprime siempre, se afirma
@@ -440,9 +441,14 @@ describe(`(a) las quince corren dentro del presupuesto · tick de ${TICK} ms a $
     // entrando en un cuadro.
     const suma = corridas.reduce((n, c) => n + c.peorPaso, 0)
     console.log(
-      `\n  las quince a la vez, cada una en su peor paso: ${suma.toFixed(3)} ms = ${((suma / TICK) * 100).toFixed(1)}% del tick`,
+      `\n  las quince a la vez, cada una en su peor paso: ${suma.toFixed(3)} ms = ${((suma / TICK) * 100).toFixed(1)}% del tick` +
+        `${CONTRA_EL_RELOJ ? '' : ` — ${NO_SE_AFIRMA}`}`,
     )
-    expect(suma).toBeLessThan(TICK)
+    // El `it` de arriba afirma `peorPaso` habilidad por habilidad y lo hace
+    // detrás de `MIDIENDO_EN_SERIO`; éste SUMA esos mismos quince números y los
+    // afirmaba sin ninguna puerta. La misma medición, protegida en un renglón y
+    // desnuda en el de al lado. Ver `./reloj-de-pared.ts`.
+    if (CONTRA_EL_RELOJ) expect(suma).toBeLessThan(TICK)
   })
 
   it('ninguna se acerca a agotar el tanque: no están pensando, están actuando', () => {
@@ -505,11 +511,18 @@ describe('(b) y (c) el corte, medido con reloj contra el cuadro', () => {
       `\n  while(true) en el cuerpo   → ${p1.k} en ${ms1.toFixed(3)} ms (${((ms1 / TICK) * 100).toFixed(1)}% del cuadro)` +
         `\n  while(true) en una función → ${p2.k} en ${ms2.toFixed(3)} ms (${((ms2 / TICK) * 100).toFixed(1)}% del cuadro)`,
     )
+    // LO ESTRUCTURAL, que es lo que el criterio compra y no depende del reloj:
+    // el bucle del cuerpo se SUSPENDE por cede y el de la función se ROMPE por
+    // combustible. Si el corte dejara de existir, esto se cae en cualquier
+    // máquina.
     expect(p1.k).toBe('suspendida')
     expect(p2.k).toBe('rota')
     if (p2.k === 'rota') expect(p2.why).toMatch(/combustible/)
-    expect(ms1).toBeLessThan(TICK)
-    expect(ms2).toBeLessThan(TICK)
+    // Y el «en menos de un cuadro», que es el reloj: ver `./reloj-de-pared.ts`.
+    if (CONTRA_EL_RELOJ) {
+      expect(ms1).toBeLessThan(TICK)
+      expect(ms2).toBeLessThan(TICK)
+    } else console.log(`  el «en menos de un cuadro» ${NO_SE_AFIRMA}`)
   })
 
   const RECURSIVA = `
@@ -536,7 +549,9 @@ describe('(b) y (c) el corte, medido con reloj contra el cuadro', () => {
       expect(paso.phase).toBe('cavar')
       expect(paso.why).toMatch(/recursión sin fondo/)
     }
-    expect(ms).toBeLessThan(TICK)
+    // El «en menos de un cuadro» es el reloj: ver `./reloj-de-pared.ts`.
+    if (CONTRA_EL_RELOJ) expect(ms).toBeLessThan(TICK)
+    else console.log(`  el «en menos de un cuadro» ${NO_SE_AFIRMA}`)
   })
 
   it('(c) EL NÚMERO QUE FALTABA: con el tanque de producción la mata la PILA, no el combustible', () => {

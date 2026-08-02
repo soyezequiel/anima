@@ -42,7 +42,7 @@
  * medición al lado — la física satura, así que los 5000 nunca existieron.
  */
 
-import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj.js'
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
 import { Partida } from '@anima/perceive'
 import { buildSeedPhysics } from '@anima/physics'
 import { CATALOGO_CORE } from '@anima/plan'
@@ -216,7 +216,7 @@ describe('EL PUNTO 3: cortar a mitad', () => {
     // el hilo termina el episodio en menos de lo que tarda el viaje entero
     // —medido arriba, ~400 ms— y sin las escuchas tardaba el tope.
     const r = await unEpisodio('terminate')
-    // Reloj de pared: ver `tests/reloj.ts`.
+    // Reloj de pared: ver `tests/reloj-de-pared.ts`.
     if (CONTRA_EL_RELOJ) expect(r.ms).toBeLessThan(8000)
     else console.log(`    ${r.ms.toFixed(0)} ms ${NO_SE_AFIRMA}`)
     expect(r.comoTermino).not.toBe('se-colgó')

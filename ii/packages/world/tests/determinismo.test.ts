@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import { fixedFromRaw } from '@anima/physics'
 
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
+
 import { CELL_FIELDS, COVER, type Cell, type CellField } from '../src/cell.js'
 import { hashWorld } from '../src/hash.js'
 import {
@@ -217,6 +219,14 @@ describe('el índice no se degrada con la cantidad de cuerpos', () => {
 
     expect(bodyCount(g)).toBe(N)
     expect(gridInvariants(g)).toEqual([])
-    expect(ms).toBeLessThan(1000)
+
+    // ─── Y EL RELOJ, DETRÁS DE SU PUERTA ────────────────────────────────────
+    //
+    // La cota es holguísima —1000 ms para 100.000 mudanzas que miden 145— y aun
+    // así es el reloj de pared: en un runner compartido, una pausa del
+    // recolector o un vecino ruidoso la puede cruzar, y entonces EL archivo de
+    // determinismo se pondría rojo por la máquina. Ver `./reloj-de-pared.ts`.
+    console.log(`  100.000 mudanzas en ${ms.toFixed(1)} ms ${CONTRA_EL_RELOJ ? '' : NO_SE_AFIRMA}`)
+    if (CONTRA_EL_RELOJ) expect(ms).toBeLessThan(1000)
   })
 })

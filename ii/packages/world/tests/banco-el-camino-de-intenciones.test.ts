@@ -161,6 +161,7 @@ import type { Actor, CellState, WorldBody, WorldState } from '../src/step.js'
 import type { Intent } from '../src/intent.js'
 import { keyOfCell } from '../src/cell.js'
 import { bodiesAt, createGrid, placeBody } from '../src/grid.js'
+import { CONTRA_EL_RELOJ } from './reloj-de-pared.js'
 
 // ─── El criterio ─────────────────────────────────────────────────────────────
 
@@ -477,8 +478,14 @@ describe('el camino de intenciones, con criaturas que se mueven de verdad', () =
    * El día que el p99 baje de 5, esto se cae solo por «test esperado fallido que
    * pasó» y hay que borrar el `.fails`. Un criterio que se mueve para dar verde no
    * es un criterio.
+   *
+   * Va detrás de `CONTRA_EL_RELOJ` por lo mismo que su gemelo de
+   * `banco-el-tick.test.ts`: un `it.fails` de reloj tiene el modo de falla DADO
+   * VUELTA —se pone rojo cuando la máquina está DESOCUPADA y el techo se
+   * alcanza— y ese rojo dice «celebrá» cuando en realidad dice «el runner estaba
+   * libre».
    */
-  it.fails(`p99 < ${TECHO_P99_MS} ms con ${CUERPOS} cuerpos y ${CUERPOS} criaturas`, async () => {
+  it.skipIf(!CONTRA_EL_RELOJ).fails(`p99 < ${TECHO_P99_MS} ms con ${CUERPOS} cuerpos y ${CUERPOS} criaturas`, async () => {
     const { s, ids } = mundoDeCriaturas(CUERPOS)
     expect((await perfilar(s, ids, caminatas)).p99).toBeLessThan(TECHO_P99_MS)
   }, 900_000)
@@ -738,8 +745,13 @@ describe('el índice de cuerpos por celda: grid.ts contra uno propio del Borrado
       ].join('\n'),
     )
     /* eslint-enable no-console */
-    expect(grid).toBeGreaterThan(0)
-    expect(mapa).toBeGreaterThan(0)
+    // Lo que estos dos renglones querían decir es «la medición ocurrió», y estaban
+    // diciéndolo con una comparación de tiempos. Un `> 0` sobre un milisegundo se
+    // rompe con la máquina RÁPIDA —si el mínimo de las rondas cae por debajo de la
+    // resolución del reloj, el número es 0 y esto se pone rojo sin que nadie haya
+    // tocado nada—. `isFinite` dice lo mismo y no mira ninguna máquina.
+    expect(Number.isFinite(grid), 'no se midió `grid.ts`').toBe(true)
+    expect(Number.isFinite(mapa), 'no se midió el Map propio').toBe(true)
   }, 300_000)
 
   it('placeBody materializa chunks, y por eso no puede ser el índice del tick', async () => {

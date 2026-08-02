@@ -32,7 +32,7 @@
  * Y sale gratis contra la ventana: un tick pelado son 0,02 ms de los 50.
  */
 
-import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj.js'
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
 import { Partida } from '@anima/perceive'
 import { buildSeedPhysics } from '@anima/physics'
 import type { Skill } from '@anima/skills'
@@ -240,7 +240,7 @@ describe('EL PUNTO 5: `ticksPerdidos === 0` durante todo el episodio', () => {
     // El número NO se afloja: se muda. Acá se sigue imprimiendo y se afirma lo
     // ESTRUCTURAL —que el mundo corrió y que la fragua forjó—, que es cierto con
     // la máquina cargada o libre. El `=== 0` se afirma con `ANIMA_RELOJ=1`.
-    // Ver `tests/reloj.ts`.
+    // Ver `tests/reloj-de-pared.ts`.
     if (CONTRA_EL_RELOJ) expect(r.perdidosPorLaFragua).toBe(0)
     else console.log(`    perdidos por la fragua: ${String(r.perdidosPorLaFragua)} ${NO_SE_AFIRMA}`)
     // Y el mundo corrió DE VERDAD mientras tanto: un episodio donde el bucle no
@@ -264,7 +264,7 @@ describe('EL PUNTO 5: `ticksPerdidos === 0` durante todo el episodio', () => {
       `\n  ${String(cuantos)} pasos en la frontera · ${r.msDeLaFrontera.toFixed(1)} ms de ${String(VENTANA_MS)}` +
         `\n  y el montaje en frío, pagado ANTES de que el mundo arranque: ${MS_DEL_MONTAJE_EN_FRIO.toFixed(1)} ms\n`,
     )
-    // Mismo caso que arriba: milisegundos de pared. Ver `tests/reloj.ts`.
+    // Mismo caso que arriba: milisegundos de pared. Ver `tests/reloj-de-pared.ts`.
     if (CONTRA_EL_RELOJ) expect(r.msDeLaFrontera).toBeLessThan(VENTANA_MS)
     else console.log(`    ${r.msDeLaFrontera.toFixed(1)} ms ${NO_SE_AFIRMA}`)
     // Lo estructural, que se afirma siempre: hay pasos marcados `frontera`.
@@ -277,8 +277,21 @@ describe('EL PUNTO 5: `ticksPerdidos === 0` durante todo el episodio', () => {
     // afirma lo que justifica la existencia de `tibiarElMontaje`: **no es
     // ruido**. Si algún día esto bajara de la décima parte de una ventana, la
     // función sobra y hay que borrarla.
+    //
+    // ─── Y AUN ASÍ ES EL RELOJ DE PARED, Y EN LA DIRECCIÓN INCÓMODA ─────────
+    //
+    // El párrafo de arriba nombra el modo de falla —«una máquina mejor»— y
+    // después afirma exactamente eso, sólo que con más margen. Una cota INFERIOR
+    // sobre un tiempo se rompe cuando la máquina está DESOCUPADA, que es el caso
+    // que nadie mira: el rojo llega diciendo «celebrá, se puede borrar la
+    // función» cuando lo que pasó es que el runner estaba libre.
+    //
+    // Lo encontró el detector de `los-relojes-que-quedan.test.ts` la segunda vez
+    // que se lo escribió. La primera versión decía que la fragua ya estaba
+    // limpia, y la fragua es el paquete donde vive la puerta.
     console.log(`\n  montaje en frío: ${MS_DEL_MONTAJE_EN_FRIO.toFixed(1)} ms · ventana ${String(VENTANA_MS)} ms\n`)
-    expect(MS_DEL_MONTAJE_EN_FRIO).toBeGreaterThan(VENTANA_MS / 10)
+    if (CONTRA_EL_RELOJ) expect(MS_DEL_MONTAJE_EN_FRIO).toBeGreaterThan(VENTANA_MS / 10)
+    else console.log(`    ${NO_SE_AFIRMA}`)
   })
 })
 

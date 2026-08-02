@@ -57,6 +57,7 @@ import { keyOfCell } from '../src/cell.js'
 import { desenlaceDe, mapaDeActores, mapaDeCuerpos, shelteredDe, stepWorld, type WorldState } from '../src/step.js'
 import { segundosDe } from '../src/reloj.js'
 import { actor, criatura, enLaMano, huella } from './mundo-minimo.js'
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
 
 // ─── El banco de pruebas ─────────────────────────────────────────────────────
 
@@ -657,6 +658,25 @@ describe('lo que cuesta tener al dios adentro del tick', () => {
         `tick con dios ${conMs.toFixed(4)} ms · sin dios ${sinMs.toFixed(4)} ms · ` +
         `la costura agrega ${((conMs - sinMs) * 1000).toFixed(1)} µs`,
     )
+    // ─── LO QUE SE AFIRMA SIEMPRE: QUE LA CACHÉ EXISTE ──────────────────────
+    //
+    // El comentario de arriba cuenta cómo este bloque se puso rojo en una corrida
+    // completa y cómo la reparación fue MEDIR MÁS. Medir más achica la ventana de
+    // ruido pero no la cierra: sigue siendo el reloj de pared, y el Hito 11 · 4
+    // dice que eso no vive en la suite determinista.
+    //
+    // Y hay una afirmación mejor que el tiempo para lo que este bloque quiere
+    // probar. Que la caché sirva se ve en el reloj; que la caché EXISTA se ve en
+    // la IDENTIDAD: `decretoDe` memoiza por `(Physics, chunk)`, así que dos
+    // llamadas al mismo chunk tienen que devolver EL MISMO objeto. Si alguien la
+    // saca, esto se cae sin importar cuán ocupada esté la máquina.
+    expect(decretoDe(virgen, phys, 100, 100)).toBe(decretoDe(virgen, phys, 100, 100))
+
+    // ─── Y EL RELOJ, DETRÁS DE SU PUERTA ────────────────────────────────────
+    if (!CONTRA_EL_RELOJ) {
+      console.log(`  ${NO_SE_AFIRMA}`)
+      return
+    }
     // La caché tiene que servir de verdad: si decretar y leer costaran lo mismo,
     // `celdaDe` estaría decretando un chunk por cuerpo y por tick.
     expect(memo).toBeLessThan(decretar / 10)

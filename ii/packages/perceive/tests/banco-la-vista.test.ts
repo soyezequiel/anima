@@ -24,6 +24,7 @@ import type { WorldBody, WorldState } from '@anima/world'
 
 import { IndiceDelTick, Proyeccion, RADIO_DE_PERCEPCION } from '../src/index.js'
 import { actor, criatura, lcg, mundo } from './mundo.js'
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
 
 const CUERPOS = 5000
 const MIRADAS_POR_TICK = 10
@@ -176,8 +177,18 @@ describe('(a) `see()` no puede ser O(cuerpos del mundo)', () => {
     //
     // El presupuesto contra el que se compara ya está repartido: `stepWorld` se
     // lleva el 17,6% (ADR II-0007) y el combustible el 2% (ADR II-0005).
+    // La RAZÓN se queda en la suite determinista, y es una decisión y no un
+    // olvido: son dos `mejorDe(5, …)` sobre el mismo proceso y en la misma
+    // ventana, así que la contención los castiga a los dos parejo. Medido, la
+    // razón da ~10× contra un umbral de 2×: para darla vuelta habría que
+    // encontrar una máquina que ralentice la opción C cinco veces más que la A,
+    // y eso no es carga, es otro programa.
     expect(porTickIndice).toBeLessThan(porTickTodo / 2)
-    expect(porTickIndice).toBeLessThan(5)
+    // El ABSOLUTO no: ése sí es el reloj de pared, y el comentario de arriba
+    // cuenta cómo la medición ya rebotó dos veces el umbral que se había
+    // escrito. Ver `./reloj-de-pared.ts`.
+    if (CONTRA_EL_RELOJ) expect(porTickIndice).toBeLessThan(5)
+    else console.log(`  el absoluto (${porTickIndice.toFixed(3)} ms/tick) ${NO_SE_AFIRMA}`)
   })
 
   it('y el índice se arma UNA vez por tick aunque miren diez veces', () => {

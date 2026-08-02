@@ -34,6 +34,7 @@ import {
 } from '../src/index.js'
 import type { WorldBody, WorldState } from '../src/index.js'
 import { cuerpo, enElPiso, mundo } from './mundo-minimo.js'
+import { CONTRA_EL_RELOJ } from './reloj-de-pared.js'
 
 const MATERIA = ['madera', 'liana', 'pescado', 'corteza', 'hoja', 'piedra', 'hueso', 'junco']
 
@@ -234,8 +235,18 @@ describe('(c) 5000 cuerpos a menos de 4 ms por tick', () => {
    * mejor vara de progreso que tiene este banco: el día que alguien pague el
    * cambio de representación, esto se cae solo por «test esperado fallido que
    * pasó» y hay que borrarlo. Un criterio superado no se tapa: se celebra.
+   *
+   * ─── Y POR QUÉ UN `it.fails` DE RELOJ SE APAGA CON LOS DEMÁS ──────────────
+   *
+   * Porque su modo de falla está DADO VUELTA, y por eso es más traicionero que
+   * el de un test normal. Un `expect` de reloj se pone rojo cuando la máquina
+   * está ocupada; un `it.fails` de reloj se pone rojo cuando la máquina está
+   * DESOCUPADA —los 4 ms se alcanzan, vitest informa «test esperado fallido que
+   * pasó», y el rojo dice «celebrá» cuando en realidad dice «el runner estaba
+   * libre»—. Las dos mitades son la misma cosa: el número depende de la máquina,
+   * así que se mide donde la máquina se mide. Ver `./reloj-de-pared.ts`.
    */
-  it.fails('el criterio VIEJO (4 ms absolutos), como vara de progreso', () => {
+  it.skipIf(!CONTRA_EL_RELOJ).fails('el criterio VIEJO (4 ms absolutos), como vara de progreso', () => {
     expect(msPorTick(mundoGrande(N))).toBeLessThan(TECHO)
   }, 300_000)
 

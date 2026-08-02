@@ -2,18 +2,32 @@
   "queEsEsto": "LA LÍNEA BASE DE ESTE PAQUETE. Cada número de acá lo defiende un test; el resto de los números del árbol sólo se imprimen. Ver el Hito 11.",
   "comoSeSube": "A MANO, y con el porqué escrito al lado. Nada escribe este archivo automáticamente.",
   "relojesSinPuerta": {
-    "queEs": "Cuántos archivos de test de todo `ii/` AFIRMAN contra el reloj de pared sin pasar por la puerta de `tests/reloj.ts`. Son los que pueden ponerse rojos porque la máquina estaba ocupada, no porque el código esté mal.",
-    "porQue": "El plan del Hito 11 pide que el CI determinista y el benchmark real corran aparte, y avisa que mezclarlos «ya pasó dos veces en este proyecto». La tercera estaba en el árbol: `forge/tests/el-episodio.test.ts` pasaba 6 de 6 solo y fallaba con los 13 archivos de su paquete en paralelo. Al medirlo aparecieron OCHO archivos en SEIS paquetes, no uno. Arreglar los ocho de una es una barrida que nadie puede revisar; congelar el número deja que la deuda baje de a poco y no crezca nunca.",
-    "medidoEl": "2026-08-02, con los tres de @anima/forge ya pasados por la puerta. La lista la escribió EL DETECTOR y no la mano: la primera versión de este campo la escribí yo leyendo un grep y decía 5 archivos, dos de ellos equivocados. Un número de línea base que sale de la intuición es exactamente lo que este hito vino a eliminar.",
-    "cuantos": 6,
+    "queEs": "Cuántas ASERCIONES de todo `ii/` afirman sobre un número que salió del reloj de pared sin pasar por una puerta (`CONTRA_EL_RELOJ` o `MIDIENDO_EN_SERIO`). Son las que pueden ponerse rojas porque la máquina estaba ocupada y no porque el código esté mal.",
+    "porQue": "El plan del Hito 11 pide que el CI determinista y el benchmark real corran aparte, y avisa que mezclarlos «ya pasó dos veces en este proyecto». La tercera estaba en el árbol: `forge/tests/el-episodio.test.ts` pasaba 6 de 6 solo y fallaba con los 13 archivos de su paquete en paralelo.",
+    "medidoEl": "2026-08-02. ES LA SEGUNDA MEDICIÓN, y la primera estaba mal en las dos direcciones. Contaba ARCHIVOS con dos expresiones de texto —«toca el reloj» y «afirma algo que se llama como un tiempo»— y sus 6 archivos fallaban así: ACUSABA a `perceive/ataque-a-la-costura` por un `expect(aSesenta, '…10 ms tarde…')` cuyo número sale de un reloj FALSO, y a `perceive/ataque-2-al-sellado`, que sí mide contra el reloj pero ya estaba detrás de `ANIMA_BANCO` —el detector sólo conocía una de las dos puertas—. Y SE PERDÍA la aserción real de ese mismo archivo (`expect(pared).toBeLessThan(2000)`, que no se llama como un tiempo) y tres archivos enteros: `plan/banco-las-referencias`, `world/banco-el-camino-de-intenciones` y `world/hito-5-la-pesca`. El detector nuevo sigue el número desde la lectura del reloj hasta el `expect` en vez de adivinar por el nombre de la variable, y le costó CUATRO correcciones más, todas encontradas por su propio control sobre archivos reales: (1) no seguía los CRONÓMETROS —funciones del archivo que devuelven un número del reloj, como `minMs` o `cronometro`, que es como escriben TODOS los bancos de este árbol—, y sin eso veía 4 de 13; (2) daba por tapada cualquier aserción que tuviera el nombre de una perilla antes, y el patrón de este árbol imprime `NO_SE_AFIRMA` en un `console.log` justo arriba, así que la puerta que veía era el `console.log`; (3) no conocía la puerta escrita a mano (`if (process.env['ANIMA_BANCO'] !== '1') return`); y (4) EL PEOR: en JavaScript el `.` de una expresión regular no matchea `\\r`, así que sobre un archivo con fines de línea de Windows —y el árbol tiene las dos clases mezcladas— el detector devolvía cero manchadas sin fallar en ningún lado. Con las cuatro puestas encontró 16 aserciones en 9 archivos; se bajaron 13 y quedan 3, justificadas abajo. Una de las 16 estaba en `forge/tests/el-episodio.test.ts`, o sea EN EL PAQUETE DONDE VIVE LA PUERTA, que la primera versión daba por limpio.",
+    "cuantos": 3,
     "cuales": [
-      "perceive/tests/ataque-2-al-sellado-y-al-reloj.test.ts",
-      "perceive/tests/ataque-a-la-costura.test.ts",
-      "perceive/tests/banco-la-vista.test.ts",
-      "skills/tests/hito-4-el-criterio.test.ts",
-      "world/tests/banco-el-tick.test.ts",
-      "world/tests/determinismo.test.ts"
+      "perceive/tests/banco-la-vista.test.ts:186",
+      "plan/tests/banco-las-referencias.test.ts:206",
+      "world/tests/hito-5-la-pesca.test.ts:756"
     ],
-    "comoSeBaja": "Envolviendo la aserción en la puerta: `if (CONTRA_EL_RELOJ) expect(...)` y un `console.log` con `NO_SE_AFIRMA` en el else, para que el número se siga viendo. El valor NO se afloja: se muda a la corrida con `ANIMA_RELOJ=1`."
+    "porQueQuedanEsasTres": "Las tres son RAZONES y ninguna es un absoluto: el índice compartido contra recorrer todos los cuerpos (menos de la mitad, medido ~10× contra un umbral de 2×), 625 cuerpos contra 80 (más del doble), y lo que el dios le agrega al tick con 200 actores contra con 1 (menos de 20×, medido ~3×). Una razón entre dos mediciones TOMADAS EN LA MISMA CORRIDA Y LA MISMA VENTANA se lleva casi entera la carga de la máquina: para darla vuelta haría falta una máquina que ralentice un lado varias veces más que el otro, y eso no es contención sino otro programa. Y en las tres, la razón es LO ÚNICO que el bloque afirma —la decisión que cada uno documenta es la comparación y no el milisegundo—, así que gatearlas dejaría tres bloques sin ninguna afirmación. Los absolutos que estaban al lado de las tres sí se gatearon.",
+    "loQueSeBajo": [
+      "perceive/tests/banco-la-vista.test.ts — el absoluto de 5 ms/tick. La razón se queda: ver `porQueQuedaEsa`.",
+      "forge/tests/el-episodio.test.ts — el `MS_DEL_MONTAJE_EN_FRIO > VENTANA_MS / 10`. Es una cota INFERIOR sobre un tiempo, o sea que se rompe con la máquina DESOCUPADA, y el propio comentario nombraba ese modo de falla («una máquina mejor») dos renglones antes de escribir la aserción.",
+      "plan/tests/banco-las-referencias.test.ts — el techo de 41 µs por resolución. La razón chica-contra-grande se queda, por lo mismo.",
+      "skills/tests/hito-4-el-criterio.test.ts — cuatro: la suma de los quince peores pasos y los tres «en menos de un cuadro». El `it` de al lado afirmaba los MISMOS quince números detrás de `MIDIENDO_EN_SERIO`: la misma medición, protegida en un renglón y desnuda en el de al lado.",
+      "world/tests/banco-el-camino-de-intenciones.test.ts y world/tests/banco-el-tick.test.ts — los dos `it.fails` de reloj, con `it.skipIf(!CONTRA_EL_RELOJ)`. Su modo de falla está DADO VUELTA: se ponen rojos cuando la máquina está DESOCUPADA y el techo se alcanza, y ese rojo dice «celebrá» cuando en realidad dice «el runner estaba libre».",
+      "world/tests/determinismo.test.ts — el `ms < 1000` de las 100.000 mudanzas, que miden 145.",
+      "world/tests/banco-el-camino-de-intenciones.test.ts — dos `expect(ms).toBeGreaterThan(0)` que querían decir «la medición ocurrió» y lo decían comparando tiempos. Un `> 0` sobre un milisegundo se rompe con la máquina RÁPIDA: si el mínimo de las rondas cae por debajo de la resolución del reloj, el número es 0. Se reemplazaron por `Number.isFinite`, que dice lo mismo sin mirar ninguna máquina.",
+      "world/tests/hito-5-la-pesca.test.ts — la razón memo/decretar y el `conMs < 1`. Acá el número se reemplazó por algo MEJOR y no sólo por la puerta: que la caché EXISTA se afirma por identidad —`decretoDe` memoiza por `(Physics, chunk)`, así que dos llamadas al mismo chunk devuelven EL MISMO objeto— y eso no depende de ninguna máquina."
+    ],
+    "comoSeBaja": "Envolviendo la aserción en la puerta: `if (CONTRA_EL_RELOJ) expect(...)` y un `console.log` con `NO_SE_AFIRMA` en el else, para que el número se siga viendo. El valor NO se afloja: se muda a la corrida con `ANIMA_RELOJ=1`. Y donde haya una afirmación ESTRUCTURAL que pruebe lo mismo sin mirar el reloj, va ésa y no la puerta."
+  },
+  "copiasDeLaPuerta": {
+    "queEs": "Cuántos paquetes tienen su copia de `tests/reloj-de-pared.ts`.",
+    "porQue": "Es una copia y no un import porque ningún paquete de `ii/` depende de otro para sus tests, y dos constantes no justifican estrenar esa dependencia. El precio de copiar es la deriva, y por eso el test compara las líneas `export const` de todas las copias y exige que sean idénticas.",
+    "medidoEl": "2026-08-02, al bajar las doce aserciones: forge, perceive, plan, skills, world.",
+    "cuantas": 5
   }
 }

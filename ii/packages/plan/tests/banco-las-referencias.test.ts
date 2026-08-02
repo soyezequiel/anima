@@ -42,6 +42,7 @@ import { porCercania } from '@anima/skills/innatas'
 
 import { resolverCuerpo } from '../src/referencias.js'
 import type { Ref, VistaDelPlan } from '../src/tipos.js'
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj-de-pared.js'
 
 const TIPICA = 80
 const PEOR = 625
@@ -177,7 +178,12 @@ describe('el banco de las referencias', () => {
     // 80 cuerpos —la vista típica— es ~2 µs y no hay problema; el problema
     // aparece si la regresión resuelve `donde` adentro del bucle de expansión en
     // vez de una vez por paso emitido.
-    for (const [que, ns] of filas) expect(ns, `la forma «${que}»`).toBeLessThan(41_000)
+    // …y aun así es un ABSOLUTO contra el reloj de pared. Que la cota sea
+    // generosa hace menos probable el rojo por máquina cargada, no imposible: la
+    // vista saturada ya mide 14 de los 41 µs, o sea un tercio del margen gastado
+    // antes de que nadie toque una línea. Ver `./reloj-de-pared.ts`.
+    if (CONTRA_EL_RELOJ) for (const [que, ns] of filas) expect(ns, `la forma «${que}»`).toBeLessThan(41_000)
+    else console.log(`  el techo de 41 µs por resolución ${NO_SE_AFIRMA}`)
     // El techo va DECLARADO y no en el 5 s por omisión de vitest: este `it` corre
     // decenas de miles de resoluciones sobre 625 cuerpos, y con la máquina cargada
     // —dos suites en paralelo— cruza los 5 s y muere por corte, que es un rojo que
