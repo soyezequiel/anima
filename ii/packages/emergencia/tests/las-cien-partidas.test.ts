@@ -168,6 +168,23 @@ describe.skipIf(!LAS_CIEN)(`(Hito 11 · 5) cien partidas de ${String(TICKS)} tic
           consultas: [...gaps.values()].reduce((n, x) => n + x, 0),
           huecos: gaps.size,
         })
+        // ─── EL RENGLÓN DE PROGRESO, Y NO ES ADORNO ──────────────────────────
+        //
+        // Esta corrida tarda veinte minutos y hasta acá no imprimía NADA hasta el
+        // final. Desde afuera, «va por la 12» y «se colgó en la 12» se veían
+        // exactamente igual: un proceso quieto. Y la primera vez que se corrió,
+        // el proceso terminó con exit 1 por un timeout del canal de vitest, o sea
+        // que la sospecha no era paranoia.
+        //
+        // Va una línea por partida, con lo que se necesita para decidir si vale
+        // la pena esperar: cuántas van y qué dio la última.
+        const u = filas[filas.length - 1]
+        console.log(
+          `  ${String(filas.length).padStart(3)}/${String(PARTIDAS)} · ${String(semilla)} · ` +
+            `${String(u?.ticks ?? 0).padStart(5)} ticks · econ ${String(u?.economicas ?? 0)} · ` +
+            `${String(u?.consultas ?? 0).padStart(4)} consultas` +
+            ((u?.estructurales.length ?? 0) === 0 ? '' : ` · ${(u?.estructurales ?? []).join(',')}`),
+        )
       }
 
       const conEconomicas = filas.filter((f) => f.economicas > 0)

@@ -351,3 +351,37 @@ que el criterio nombra —`conservada-aumento`, `conservada-evaporada`,
 `conversion-sin-respaldo`— y **publica la estructural aparte, contada**, en vez de
 dejarla adentro de una cuenta más grande. Que es exactamente lo que este hito
 persigue.
+
+**El usuario tomó la decisión el mismo día** y eligió la guarda del mundo. Lo que
+eso movió está en 4.5.
+
+### 4.5 · Las cien partidas, corridas de los dos lados de la guarda
+
+El punto 5 se corrió entero dos veces, antes y después de la guarda
+`es-uno-mismo`. Son ~17 minutos de máquina cada vez.
+
+| | antes | después |
+|---|---|---|
+| corridas | 100 de 100 | 100 de 100 |
+| ticks totales | 1.088.829 | 1.088.806 |
+| **violaciones ECONÓMICAS** | **0** | **0** |
+| huecos distintos (máx) | 2 · techo 4 | 2 · techo 4 |
+| consultas por tick (máx) | 0,223 · techo 0,25 | 0,223 · techo 0,25 |
+| `inventario-inconsistente` | 33 de 100 | **0** |
+| `solidos-solapados` | 15 de 100 | 15 de 100 |
+
+La guarda se llevó exactamente la clase que apuntaba y no movió ninguna otra
+cuenta. **`solidos-solapados` sigue abierta en 15 de 100 partidas** y no es de
+este tramo: es la del decreto que siembra en la celda del pozo, que
+`hito-5-la-emergencia.test.ts` ya tenía nombrada y medida.
+
+Y dos cosas que el propio criterio obligó a arreglar en el camino, las dos de la
+misma familia que el punto 4:
+
+- **el `it` corría veinte minutos sin devolverle el turno al planificador**, y el
+  canal del worker de vitest se cortaba: los cinco tests en verde y el proceso
+  saliendo con 1 por `Timeout calling "onTaskUpdate"`. Un rojo que no dice nada
+  de lo que se midió. Lo arregla `respirar()`, que ya existía por este motivo;
+- **no imprimía nada hasta el final**, así que desde afuera «va por la 12» y «se
+  colgó en la 12» se veían exactamente igual: un proceso quieto. Ahora hay un
+  renglón por partida.
