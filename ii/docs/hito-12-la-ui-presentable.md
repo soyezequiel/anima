@@ -968,3 +968,48 @@ escalera, y es una decisión de arquitectura, no una entrada de catálogo.
 Queda sin hacer y con el diagnóstico completo. Lo barato que sí se hizo mientras
 tanto: la caja de texto **avisa de entrada** cuáles órdenes tienen camino, en vez
 de dejar que el jugador lo descubra probando.
+
+### La medición de «agarrar», hecha antes de escribir una línea
+
+El usuario eligió la opción 1 —que «agarrar» compita con las demás recetas— **con
+la condición de medir antes si eso rompe la cadena de herramientas del Hito 5**.
+Se midió, y el resultado cambió el diseño de la receta.
+
+**Lo que se midió:** qué hay agarrable alrededor de la criatura en la escena
+canónica del criterio (`laEscenaDelDocumento`), tres ticks después del arranque,
+con sus tags.
+
+| distancia | cuerpo | tags |
+|---|---|---|
+| 1 | `pozo:-6:-6` | **carnoso**, organico |
+| 4 | `suelta:-6:-7:1` | fibroso, organico, vegetal |
+| 5 | `suelta:-6:-7:2` | mineral |
+| 6 | `suelta:-7:-7:3` | organico, vegetal |
+
+**Hay exactamente un cuerpo carnoso al alcance, y es el POZO.** O sea que una
+receta ingenua —«para tener algo carnoso, agarrá algo carnoso»— mandaría a la
+criatura a **levantar el pozo del que se pesca**, que está a una celda. El mundo
+rechaza ese `take` con `no-portable`, así que el plan saldría verde y se caería al
+ejecutarlo, quemando ticks.
+
+Es exactamente el defecto que el esquema de `extraccion` ya tiene documentado con
+otro nombre: el planificador **eligiendo activamente mal** porque el candidato
+malo está más cerca que el bueno.
+
+**De ahí sale la condición que la receta necesita, y no es una excepción:** agarrar
+sólo lo que se puede levantar. `portable` es la misma cualidad con la que el mundo
+decide si un `take` entra, así que pedirla no inventa una regla — copia la que ya
+existe del otro lado.
+
+**Y con esa condición, el criterio del Hito 5 queda intacto:** descartado el pozo,
+en la escena canónica **no queda nada carnoso agarrable**, así que el único camino
+a la comida sigue siendo pescar y la cadena de siete eslabones se sigue
+ejercitando igual. La contraprueba del propio criterio —`conRegalo` con cien
+pescados cocidos al alcance— es donde «agarrar» sí cambiaría el plan, y ahí
+cambiarlo es lo correcto.
+
+**Lo que queda por hacer**, con el diseño ya cerrado por la medición: escribir la
+receta en `regresion.ts`. No es una fila de `ESQUEMAS` sino un caso base del
+planificador —un objetivo `sostiene` con un candidato portable visible se resuelve
+con `ir` + `sostener`—, y eso es cirugía en un archivo de 2400 líneas con mucha
+disciplina encima. Es una sesión aparte, no una cola de ésta.
