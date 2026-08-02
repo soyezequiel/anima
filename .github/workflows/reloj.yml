@@ -1,0 +1,97 @@
+# ═══ LA PUERTA DEL RELOJ DE PARED, ABIERTA — Hito 11 · punto 4 ══════════════
+#
+# El punto 4 del Hito 11 sacó de la suite determinista las aserciones que miden
+# contra el reloj de pared, y las dejó detrás de `ANIMA_RELOJ=1`. La deuda que
+# quedó anotada fue: **la puerta existe y nadie la abre**. Un número que no se
+# corre en ningún lado no defiende nada, y el hito entero se trataba de convertir
+# números que se IMPRIMEN en números que se DEFIENDEN.
+#
+# Esto la abre. Y es un workflow aparte y no un paso más del de siempre, por dos
+# razones medidas:
+#
+# ─── 1 · UN RUNNER COMPARTIDO ES, POR DEFINICIÓN, UNA MÁQUINA OCUPADA ───────
+#
+# Meter estas aserciones en el job que bloquea los PR sería deshacer el punto 4
+# en el mismo commit que lo termina: volverían a poder ponerse rojas por la carga
+# de la máquina, y un rojo así entrena a todo el mundo a re-correr y seguir. A
+# partir de ahí ningún guardián protege nada, que es la frase con la que arranca
+# `ii/packages/forge/tests/reloj-de-pared.ts`.
+#
+# Acá puede ponerse rojo y avisar, sin ser la condición para mergear. Que no
+# bloquee NO quiere decir `continue-on-error`: si se rompe, se rompe y se ve.
+#
+# ─── 2 · Y LOS ARCHIVOS NO PUEDEN CORRER EN PARALELO ────────────────────────
+#
+# Ésta es la parte que hubo que medir y no salía de ningún razonamiento. Con
+# `ANIMA_RELOJ=1 pnpm ii:test` —o sea la puerta abierta pero vitest repartiendo
+# los 53 archivos de `@anima/world` entre los hilos— la corrida se pone ROJA:
+#
+#     expected 1.0979866 to be less than 1
+#
+# Es el tick con el dios adentro, que mide 1,098 ms contra un techo de 1. Con
+# `--no-file-parallelism` el MISMO árbol, en la MISMA máquina, pasa 633 de 633.
+#
+# O sea que la puerta sola no alcanzaba: abrirla sin serializar habría dado un
+# rojo permanente que nadie iba a poder distinguir de una regresión de verdad.
+# Por eso `ii:reloj` es un script propio y no un `ANIMA_RELOJ=1 pnpm ii:test`.
+#
+# ─── 3 · Y NO CORRE TODO EL ÁRBOL, POR ALGO QUE TAMBIÉN HUBO QUE MEDIR ──────
+#
+# La primera versión de `ii:reloj` serializaba los TRECE paquetes, y se puso roja
+# en uno que no tiene ni una aserción de reloj: `mind/tests/hito-5-el-cuadro.test.ts`
+# junta lo que midieron sus cinco hermanos por un canal compartido y espera «90 s
+# sin que llegue nadie nuevo». Serializados, los hermanos no están corriendo, no
+# llega nadie, y el cuadro sale vacío.
+#
+# O sea: hay un test que NECESITA el paralelismo de archivos y otro que necesita
+# que no lo haya. No se pueden serializar los dos, así que se serializan sólo los
+# cinco paquetes que tienen la puerta —los mismos cinco que tienen su copia de
+# `tests/reloj-de-pared.ts`, y esa cuenta está congelada en
+# `forge/tests/linea-base.json` como `copiasDeLaPuerta`—. El resto del árbol ya
+# lo corre el CI de siempre.
+#
+# ─── CUÁNDO CORRE ───────────────────────────────────────────────────────────
+#
+# En `main`, a mano, y una vez por día. NO en cada PR: el número que mide no
+# cambia con el PR sino con el rendimiento del código.
+#
+# Aviso conocido de GitHub Actions: los `schedule` sólo corren en la rama por
+# omisión, así que esto no se ejecuta hasta que el archivo esté en `main`, y se
+# desactivan solos si el repositorio pasa 60 días sin actividad.
+
+name: Reloj de pared
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    # 07:00 UTC = 04:00 en Buenos Aires. La hora no significa nada; lo único que
+    # importa es que no coincida con el CI de siempre.
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  medir:
+    runs-on: ubuntu-latest
+    # Medido en la máquina de desarrollo: 272 s, exit 0, 1404 tests. El techo va
+    # muy por encima a propósito: un runner es más lento y un corte por tiempo
+    # sería un rojo que no dice nada de lo que este job vino a medir.
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # Sin `--no-file-parallelism` esto es rojo permanente. Ver el encabezado.
+      - name: La suite con las aserciones de reloj encendidas
+        run: pnpm ii:reloj
+        env:
+          ANIMA_RELOJ: '1'

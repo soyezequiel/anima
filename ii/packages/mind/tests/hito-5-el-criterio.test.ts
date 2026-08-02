@@ -742,7 +742,14 @@ describe('(3) p99 < 5 ms con 5000 cuerpos: el número ya está medido en `@anima
     // El criterio del Hito 5 sigue clavado como `it.fails` y lo aceptado sigue
     // vigilado en verde. Si el p99 bajara de 5, el `it.fails` se cae solo por
     // «test esperado fallido que pasó», y entonces hay que venir a borrar esto.
-    expect(fuente).toContain('it.fails(`p99 < ${TECHO_P99_MS} ms');
+    //
+    // Desde el punto 4 del Hito 11 el `it.fails` va detrás de la puerta del reloj
+    // de pared, y la cita se actualizó con él. NO es un detalle de forma: un
+    // `it.fails` sobre un tiempo tiene el modo de falla dado vuelta —se pone rojo
+    // cuando la máquina está DESOCUPADA y el techo se alcanza—, así que el «se
+    // cae solo» del párrafo de arriba sólo es verdad corriendo con
+    // `ANIMA_RELOJ=1`. Ver `world/tests/reloj-de-pared.ts`.
+    expect(fuente).toContain('it.skipIf(!CONTRA_EL_RELOJ).fails(`p99 < ${TECHO_P99_MS} ms');
     expect(readFileSync(`${PAQUETES}world/tests/banco-el-tick.test.ts`, 'utf8')).toContain(
       'const MIDIENDO_EN_SERIO',
     );
