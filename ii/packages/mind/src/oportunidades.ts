@@ -1010,6 +1010,10 @@ export function opportunities(
             valor: valorC,
             id: idDeOportunidad(l.lugar, `${tag}+${COLA_DEL_RESCATE}`),
             porque: `${porqueDe(l.nombre, tag, p, β)}, y lo quiero comestible: «${comestible}»`,
+            // El casillero es el MISMO que el de la meta barata: la `p` de que el
+            // río rinda carnoso no depende de si después se cocina. Ver
+            // `Opportunity.deDonde`.
+            deDonde: { ctx, rinde: tag },
           })
         }
       }
@@ -1020,6 +1024,7 @@ export function opportunities(
         valor,
         id: idDeOportunidad(l.lugar, tag),
         porque: porqueDe(l.nombre, tag, p, β),
+        deDonde: { ctx, rinde: tag },
       })
     }
   }

@@ -221,7 +221,38 @@ la restaurada pescó .... 48 ticks después del corte, o sea en el 108
 porque el vuelo sobreviva —no sobrevive, ADR 0009— sino porque la criatura
 restaurada vuelve a planificar y llega al mismo lugar.
 
-### Punto 6 — BLOQUEADO, y la causa estaba escrita desde el Hito 5
+### Punto 6 — DESBLOQUEADO Y MEDIDO, y da NEGATIVO
+
+El hueco de abajo se cerró (ver la sección siguiente), así que el punto 6 se
+pudo medir por primera vez:
+
+```
+lo que la primera aprendió .... agua|mc--e → carnoso, 1 éxito
+primera vida .................. pescó en el tick 108
+segunda CON herencia .......... 108
+segunda SIN herencia .......... 108
+¿la herencia compró ticks? .... NO: llega igual
+```
+
+**La herencia no compra un solo tick**, y el criterio decía exactamente que
+podía salir así: *«puede salir mal de la forma más útil: que dé 108 igual, y
+entonces la herencia no compró nada»*.
+
+Por qué, medido: la primera vida aprende **una** cosa —que el agua rinde
+carnoso— y ese casillero **ya arrancaba con instinto a favor** (`a=1,5 b=0,5`).
+Un éxito sobre un prior que ya apuntaba al río no cambia a dónde va la criatura,
+porque ya iba. La herencia sólo puede comprar ticks cuando lo aprendido
+CONTRADICE al instinto, y para eso hace falta que la criatura se equivoque
+primero — que es justo lo que la asimetría de abajo no deja anotar.
+
+El test lleva su control de que la comparación es justa: **sin herencia, la
+segunda vida reproduce exactamente a la primera** (108 = 108). Sin eso, «llega
+igual» no distinguiría «la herencia no sirve» de «las dos ramas no eran el mismo
+experimento».
+
+### El hueco que lo bloqueaba, cerrado
+
+Estaba escrito desde el Hito 5
 
 El guardado de creencias funciona y está probado con su control (no duplica el
 instinto: `a` da `instinto + 2` y no `2·instinto + 2`). Pero **vuelca cero**
@@ -231,17 +262,32 @@ después de sesenta ticks de vida real, y no es un bug del volcado:
 > nunca** […] una criatura que pesca sesenta veces sigue informando `n = 0`.
 > — `mind/src/mente.ts`, desde el Hito 5, con su `it.fails`
 
-**La mente nunca le devuelve evidencia a las creencias.** Así que la herencia
-hereda cero, y el punto 6 —«la segunda vida llega en menos ticks»— no se puede
-medir todavía. Es el mismo patrón que la pista del juez del Hito 8: mecanismo
-bien construido que no se dispara con material real.
+**La mente nunca le devolvía evidencia a las creencias.** La reparación es la que
+ese mismo comentario pedía: `Opportunity.deDonde` lleva el casillero
+—`opportunities()` ya lo tenía en la mano, porque llama a `belief(ctx, tag)` para
+calcular la `p`— y la escalera se lo guarda en `deDondeSalio` mientras sostiene
+la meta.
 
-La reparación **no es de este hito**: es de `escalera.ts` —cargarle a la meta de
-dónde salió— y toca el corazón de la mente, que es lo que el criterio del Hito 5
-mide en 20.000 ticks. Es una decisión del usuario, no una tarea.
+**Dónde se anota costó una medición.** El primer intento anotaba en
+`aterrizar(e, true)` y daba **cero logros en 200 ticks**. La causa ya estaba
+escrita en el Hito 5: el vuelo que de verdad saca el pescado aterriza con
+`ok:false`, porque la mente lo interrumpe en el mismo tick en que la meta se
+cumple. Se anota donde no se puede leer mal: **cuando D1 ve que el MUNDO dice que
+la meta está cumplida**. No se le cree al `outcome` de la habilidad, se le cree
+al estado — la misma regla con la que el Hito 5 arregló su contador de pescas.
 
-El cero se afirma con un `expect`, no se esconde: el día que la escalera empiece
-a observar, ese test se pone rojo y obliga a mirar el punto 6.
+**Sólo se anota el éxito, y es una decisión.** Lo simétrico sería anotar un
+fracaso cada vez que una meta se abandona, y no es simétrico: se abandona por
+razones que no dicen nada del lugar —apareció algo mejor, se acabó el aliento—.
+Contarlas todas como «el río no rinde» enseñaría lo contrario de lo que pasó, y
+con volumen. El costo va dicho: **hoy las creencias sólo pueden subir**, así que
+la criatura no se puede desengañar de un lugar que dejó de rendir. Ese caso llega
+cuando un pozo se agota, y ahí hay con qué medirlo.
+
+> Y de paso el `it.fails` que pinchaba el hueco tenía un número viejo: se llamaba
+> «pesca **doce** veces y sigue diciendo n=0», y hoy son **dos** — medido también
+> sobre el árbol sin la reparación. Un `it.fails` esconde cuál de sus líneas
+> falla, así que el 12 se quedó escrito mientras el mundo cambiaba abajo.
 
 ---
 

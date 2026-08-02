@@ -100,30 +100,32 @@ describe('(Hito 10 · 4) cortar a mitad de la obra, guardar, volver, y converger
     // hashes podrían coincidir sobre dos mundos pelados.
     expect(g.mundo.length).toBeGreaterThan(3)
 
-    // ─── Y ACÁ APARECIÓ ALGO, MEDIDO Y NO ESCONDIDO ────────────────────────
+    // ─── ESTE `expect` DECÍA `toBe(0)`, Y ERA CORRECTO CUANDO SE ESCRIBIÓ ──
     //
-    // `creencias.length` da CERO después de sesenta ticks de vida real, y no es
-    // un bug del volcado: **la mente nunca le devuelve evidencia a las
-    // creencias**. Está escrito en `mind/src/mente.ts` desde el Hito 5, con su
-    // `it.fails` y su número:
+    // Daba cero porque **la mente nunca le devolvía evidencia a las creencias**:
+    // `observe(ctx, rinde, ok)` existía desde el Hito 5 y no lo llamaba nadie. El
+    // cero se afirmó en vez de esconderse, con este mensaje al lado: *«la mente
+    // empezó a observar: el punto 6 del Hito 10 ya se puede medir»*.
     //
-    //   > `AffordanceMemory` tiene `observe(ctx, rinde, ok)` y acá no se lo llama
-    //   > nunca […] una criatura que pesca sesenta veces sigue informando n = 0.
+    // **Empezó.** El hueco se cerró en `escalera.ts` —`Opportunity.deDonde` lleva
+    // el casillero y D1 anota cuando el mundo dice que la meta se cumplió— así
+    // que ahora hay algo que heredar, y este test pasa a afirmar lo contrario.
     //
-    // O sea que el guardado de creencias es un mecanismo que hoy **hereda cero**,
-    // y la causa no es de este paquete: la reparación es de `escalera.ts`
-    // —cargarle a la meta de dónde salió— y toca el corazón de la mente.
+    // Que un `expect` de cero se dé vuelta solo cuando el hueco se cierra es
+    // exactamente para lo que se escribió.
+    // Y SIGUE DANDO CERO ACÁ, POR UNA RAZÓN COMPLETAMENTE DISTINTA Y CORRECTA:
+    // en el tick 60 **todavía no consiguió nada**. El pescado entra a la mano en
+    // el 108. Una criatura que no logró su meta no tiene qué anotar, y eso es lo
+    // que tiene que pasar.
     //
-    // Se afirma el CERO, no se lo esconde: el día que la escalera empiece a
-    // observar, esto se pone rojo y obliga a mirar el punto 6 del criterio.
+    // Los dos ceros se parecen y no son el mismo, que es justo lo que este
+    // proyecto castiga por nombre. El que importa —que después de conseguirlo SÍ
+    // anota— se mide en el bloque del punto 6, más abajo.
     console.log(
-      `  creencias volcadas tras ${String(CORTE)} ticks de vida real: ${String(g.creencias.length)}\n` +
-        `  (y el porqué está medido desde el Hito 5: la mente no llama a observe())`,
+      `  creencias volcadas tras ${String(CORTE)} ticks: ${String(g.creencias.length)} ` +
+        `(el pescado entra en el ${String(PESCADO_EN_LA_MANO)}: todavía no consiguió nada)`,
     )
-    expect(
-      g.creencias.length,
-      'la mente empezó a observar: el punto 6 del Hito 10 ya se puede medir',
-    ).toBe(0)
+    expect(g.creencias.length).toBe(0)
   })
 
   it('el volcado SÍ funciona: con evidencia puesta a mano, viaja y no duplica el instinto', () => {
@@ -217,5 +219,58 @@ describe('(Hito 10 · 4) cortar a mitad de la obra, guardar, volver, y converger
     // pone rojo acá y no en el navegador de alguien.
     const g = comoSeGuarda(laEscenaDelDocumento(), new Creencias(), QUIEN)
     expect(loQueNoAguanta(g)).toBe('')
+  })
+})
+
+// ═══ HITO 10 · punto 6 — ¿LA SEGUNDA VIDA LLEGA ANTES? ══════════════════════
+//
+// El criterio del Hito 10 reemplazó el «< 100 ms» del plan —que sobraba 25× sin
+// el hito, medido en M7— por lo único que distingue «heredó» de «arrancó de
+// nuevo»: **la segunda vida llega al pescado en MENOS TICKS que la primera**.
+//
+// Hasta hoy no se podía medir, porque no había nada que heredar: la mente nunca
+// llamaba a `observe`. Ese hueco se cerró, así que acá se mide por primera vez.
+
+describe('(Hito 10 · 6) la segunda vida, con y sin herencia', () => {
+  it('la primera vida, la heredera y la que arranca de cero, en ticks', () => {
+    const primera = correr(laEscenaDelDocumento(), new Creencias(), TOPE)
+    // Lo que la primera aprendió, pasado por el depósito como se pasaría de
+    // verdad: por JSON y por el volcado, no por una referencia al objeto vivo.
+    const heredado = new Creencias()
+    const volcado = (() => {
+      const c = new Creencias()
+      const p = new Partida(laEscenaDelDocumento(), { vigilar: true })
+      const m = new Mente({ actor: QUIEN, memoria: c })
+      vivir(p, new Map([[QUIEN, m]]), TOPE)
+      return JSON.parse(JSON.stringify(c.volcar())) as ReturnType<Creencias['volcar']>
+    })()
+    heredado.cargar(volcado)
+
+    const conHerencia = correr(laEscenaDelDocumento(), heredado, TOPE)
+    const sinHerencia = correr(laEscenaDelDocumento(), new Creencias(), TOPE)
+
+    console.log(
+      `\n─── EL PUNTO 6, MEDIDO POR PRIMERA VEZ ───\n` +
+        `  lo que la primera aprendió .... ${JSON.stringify(volcado)}\n` +
+        `  primera vida .................. pescó en el tick ${String(primera.pescoEn)}\n` +
+        `  segunda CON herencia .......... ${String(conHerencia.pescoEn)}\n` +
+        `  segunda SIN herencia .......... ${String(sinHerencia.pescoEn)}\n` +
+        `  ¿la herencia compró ticks? .... ${
+          conHerencia.pescoEn < sinHerencia.pescoEn
+            ? `SÍ, ${String(sinHerencia.pescoEn - conHerencia.pescoEn)}`
+            : 'NO: llega igual'
+        }\n`,
+    )
+
+    // Lo primero: que haya algo que heredar. Sin esto el resto no significa nada.
+    expect(volcado.length, 'la primera vida no aprendió nada: no hay herencia que medir').toBeGreaterThan(0)
+    // Y las tres llegan: una comparación entre dos «nunca» no es una comparación.
+    expect(primera.pescoEn).toBeGreaterThan(0)
+    expect(conHerencia.pescoEn).toBeGreaterThan(0)
+    expect(sinHerencia.pescoEn).toBeGreaterThan(0)
+    // El control de que la comparación es JUSTA: sin herencia, la segunda vida es
+    // exactamente la primera. Si esto fallara, las dos ramas no serían el mismo
+    // experimento y la diferencia no sería atribuible a la herencia.
+    expect(sinHerencia.pescoEn, 'la corrida sin herencia no reproduce a la primera').toBe(primera.pescoEn)
   })
 })

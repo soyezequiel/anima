@@ -158,7 +158,9 @@ import { porEpoch } from './catalogo.js'
 import { necesidades } from './necesidades.js'
 import { opportunities } from './oportunidades.js'
 import type {
+  AffordanceMemory,
   Conducta,
+  ContextKey,
   Decision,
   Intencion,
   MenteOptions,
@@ -321,6 +323,20 @@ export interface EstadoDeLaEscalera {
   metaEnCurso: PredicateSignature | undefined
   /** Con cuánto ganó la meta en curso. La otra mitad de la histéresis. */
   valorEnCurso: number
+  /**
+   * DE QUÉ CASILLERO DE CREENCIAS SALIÓ LA META EN CURSO.
+   *
+   * Es la reparación que el hueco del Hito 5 pedía con estas palabras: *«que
+   * `Opportunity` viaje hasta la `Decision` —o que la escalera se guarde de qué
+   * oportunidad salió la meta en curso»*. Se guarda acá, que es la segunda de las
+   * dos formas y la barata: son dos strings por meta, no una oportunidad entera.
+   *
+   * `undefined` cuando la meta no salió de una apuesta —una orden del cuidador
+   * (D2) no tiene casillero detrás— y ahí no se anota nada. Anotar el éxito de
+   * una orden contra un casillero inventado sería peor que no anotar: le
+   * enseñaría a la criatura que el río rinde porque alguien le dijo que pescara.
+   */
+  deDondeSalio: { readonly ctx: ContextKey; readonly rinde: string } | undefined
   /** De qué peldaño salió la meta. Sin esto el margen mezcla escalas (decisión 5). */
   porQuien: Peldano | undefined
   /** Lo que falta hacer del plan, en orden de ejecución. */
@@ -498,6 +514,7 @@ export function nuevoEstado(): EstadoDeLaEscalera {
     desdeTick: 0,
     metaEnCurso: undefined,
     valorEnCurso: 0,
+    deDondeSalio: undefined,
     porQuien: undefined,
     pasosPendientes: [],
     enVuelo: undefined,
@@ -591,6 +608,7 @@ function olvidarMeta(e: EstadoDeLaEscalera): void {
   e.metaEnCurso = undefined
   e.metaDeLaFrontera = undefined
   e.valorEnCurso = 0
+  e.deDondeSalio = undefined
   e.porQuien = undefined
   e.cortes = 0
   e.mientrasTantoYaHecho = undefined
@@ -619,7 +637,7 @@ export function decidir(
   const d0 = elReflejo(v, e)
   if (d0 !== undefined) return d0
 
-  const d1 = continuar(v, e)
+  const d1 = continuar(v, e, o.memoria)
   if (d1 !== undefined) return d1
 
   // Desde acá para abajo NO HAY NADA VOLANDO: D1 devuelve `seguir` mientras lo
@@ -743,9 +761,45 @@ function grados(x: number): string {
  *     resolver contra la vista de HOY. Un plan es una hipótesis y `@anima/plan`
  *     ya lo dice en su decisión 1 («un plan no puede guardar un `BodyView`»).
  */
-function continuar(v: VistaDeLaMente, e: EstadoDeLaEscalera): Decision | undefined {
+function continuar(v: VistaDeLaMente, e: EstadoDeLaEscalera, memoria?: AffordanceMemory): Decision | undefined {
   const meta = e.metaEnCurso
   if (meta !== undefined && yaEstaCumplida(meta, v, e)) {
+    // ─── ACÁ SE LE DEVUELVE LA EVIDENCIA A LAS CREENCIAS ──────────────────
+    //
+    // Es el cierre del hueco que el Hito 5 dejó escrito y medido: `observe`
+    // existía desde el principio y **nadie lo llamaba, porque no sabía con qué**.
+    // Ahora sí: `deDondeSalio` trae el casillero del que salió la apuesta.
+    //
+    // ─── Y VA ACÁ Y NO EN `aterrizar`, QUE ES DONDE LO PUSE PRIMERO ───────
+    //
+    // Porque medido, `aterrizar(e, true)` NO SE ENTERA de la pesca. El propio
+    // Hito 5 lo había escrito: *«el vuelo que de verdad sacó el pescado aterriza
+    // con `ok:false` —"ya tengo «holding(tag:carnoso)»: corto lo que estaba
+    // haciendo"—, porque la mente lo interrumpe en el mismo tick en que la meta
+    // se cumple»*. Con la anotación en el aterrizaje daba **cero logros en 200
+    // ticks** y la criatura seguía sin aprender.
+    //
+    // El único lugar que no se puede leer mal es éste: **el mundo dice que la
+    // meta está cumplida**. No se le cree al `outcome` de la habilidad, se le
+    // cree al estado — que es la misma regla con la que el Hito 5 arregló su
+    // contador de pescas y con la que el juez mide el cargo `uso`.
+    //
+    // ─── SÓLO SE ANOTA EL ÉXITO, Y HAY QUE DECIR POR QUÉ ──────────────────
+    //
+    // Lo simétrico sería anotar un fracaso cada vez que una meta se abandona sin
+    // conseguirse, y **no es simétrico**: una meta se abandona por muchas razones
+    // que no dicen nada del casillero —apareció algo mejor, otro se llevó la
+    // vara, se acabó el aliento—. Contar todas ésas como «el río no rinde»
+    // enseñaría lo contrario de lo que pasó, y con volumen: los abandonos son
+    // mucho más frecuentes que los logros.
+    //
+    // Cuál de esos abandonos ES evidencia en contra tiene respuesta medible y
+    // todavía sin medir, así que se deja abierta en vez de adivinarla. El costo
+    // de la asimetría también va dicho: las creencias sólo pueden subir, o sea
+    // que hoy la criatura no se puede desengañar de un lugar que dejó de rendir.
+    // Ese caso llega cuando un pozo se agota, y ahí hay con qué medirlo.
+    const d = e.deDondeSalio
+    if (memoria !== undefined && d !== undefined) memoria.observe(d.ctx, d.rinde, true)
     const habia = e.enVuelo !== undefined
     olvidarMeta(e)
     // El corte se informa; la meta ya no está, así que el tick que viene la
@@ -1184,7 +1238,7 @@ function lasOportunidades(
   if (mejor.meta === e.metaEnCurso) return undefined
   if (!puedeCambiar(e, 'D3', mejor.valor)) return undefined
 
-  return tomarMeta(v, e, o, 'D3', mejor.meta, mejor.valor, mejor.porque, penso)
+  return tomarMeta(v, e, o, 'D3', mejor.meta, mejor.valor, mejor.porque, penso, mejor.deDonde)
 }
 
 // ─── D4 · la búsqueda anytime ────────────────────────────────────────────────
@@ -1384,6 +1438,7 @@ function tomarMeta(
   valor: number,
   porque: string,
   penso: Pensado,
+  deDonde?: { readonly ctx: ContextKey; readonly rinde: string },
 ): Decision | undefined {
   // NO SE PERSIGUE LO QUE YA SE TIENE, y el portón va acá y no en D1: D1 mira la
   // meta EN CURSO, y una meta que llega cumplida no llegó a estar en curso nunca.
@@ -1404,6 +1459,10 @@ function tomarMeta(
   olvidarPlan(e)
   e.metaEnCurso = meta
   e.valorEnCurso = valor
+  // De qué casillero salió, para poder anotarle el resultado cuando termine. Va
+  // acá y no en `planificar` porque es de la META y no del plan: un plan que se
+  // rompe y se rehace sigue persiguiendo la misma apuesta.
+  e.deDondeSalio = deDonde
   e.porQuien = quien
   e.desdeTick = e.tick
   e.cortes = 0

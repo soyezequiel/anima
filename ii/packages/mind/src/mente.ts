@@ -666,6 +666,9 @@ export class Mente {
     // `EstadoDeLaEscalera.conseguido`). El último paso de un plan casi nunca
     // anuncia llave, porque nadie de más abajo lo iba a nombrar, y es justo ése
     // el que cierra la meta.
+    // La memoria viaja hasta acá para que el logro se pueda anotar contra el
+    // casillero del que salió la apuesta. Ver `EstadoDeLaEscalera.deDondeSalio`:
+    // es el cierre del hueco que este mismo archivo declaraba en su punto 6.
     aterrizar(this.#e, ok, rindio)
   }
 

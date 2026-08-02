@@ -133,6 +133,30 @@ export interface Opportunity {
    * no para que la busque nadie. Ver `losBocados` en `oportunidades.ts`.
    */
   readonly bocado?: Bocado
+  /**
+   * DE DÓNDE SALIÓ ESTA APUESTA: el casillero de creencias que la sostiene.
+   *
+   * ─── POR QUÉ ESTE CAMPO EXISTE, y no es una comodidad ───────────────────────
+   *
+   * Porque sin él **la mente nunca le devolvía evidencia a las creencias**. El
+   * hueco estuvo escrito y medido desde el Hito 5, con su `it.fails`:
+   *
+   *   > `AffordanceMemory.observe(ctx, rinde, ok)` existe y esta mente no lo
+   *   > llama nunca, porque **no sabe con qué llamarlo** […] MEDIDO: la corrida
+   *   > saca doce pescados del mismo banco y `cuantasVeces` sigue dando 0.
+   *
+   * Una criatura que pescaba doce veces informaba la misma confianza que antes de
+   * pescar por primera vez. Aprender era imposible por falta de un dato, no por
+   * falta de un mecanismo: `observe` estaba escrito desde el principio.
+   *
+   * El dato es éste. `opportunities()` YA tiene las dos mitades cuando arma la
+   * fila —llama a `m.belief(ctx, tag)` para calcular la `p`— así que acá no se
+   * calcula nada nuevo: se deja de tirar lo que ya estaba en la mano.
+   *
+   * Opcional porque los bocados no salen de un casillero: `losBocados` mira lo
+   * que hay en la mano y no apuesta a nada.
+   */
+  readonly deDonde?: { readonly ctx: ContextKey; readonly rinde: string }
 }
 
 // ─── La escalera ─────────────────────────────────────────────────────────────

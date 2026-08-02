@@ -890,35 +890,99 @@ describe('un `Ref` que no resuelve es «el plan envejeció», no un error', () =
   })
 })
 
-// ─── (7) EL HUECO QUE ESTE TRAMO NO CIERRA ──────────────────────────────────
+// ─── (7) EL HUECO QUE ESTE TRAMO ABRIÓ, Y QUE EL HITO 10 CERRÓ ─────────────
 
-describe('lo que la mente NO hace todavía', () => {
-  it.fails('LA CRIATURA NO APRENDE DE LO QUE LE PASA: pesca doce veces y sigue diciendo n=0', () => {
-    // POR QUÉ SIGUE ABIERTO: `AffordanceMemory.observe(ctx, rinde, ok)` existe y
-    // esta mente no lo llama nunca, porque **no sabe con qué llamarlo**. Para
-    // anotar «el pozo rindió carnoso» hacen falta la `ContextKey` del pozo y el
-    // tag, y lo que viaja de D3 hasta acá es la FIRMA DEL PREDICADO
-    // (`holding(tag:carnoso)`) y un `porque` en prosa. De la firma sale el tag
-    // —está adentro del texto— pero no sale de qué cuerpo salió la oportunidad, y
-    // sin el cuerpo no hay contexto: `contextoDe` necesita un id.
+describe('la criatura aprende de lo que le pasa', () => {
+  it('CERRADO: consigue lo que apostó y lo anota contra el casillero del que salió la apuesta', () => {
+    // ─── ESTE BLOQUE ERA UN `it.fails`, Y DECÍA ESTO ───────────────────────
     //
-    // MEDIDO: la corrida de abajo saca doce pescados del mismo banco y
-    // `cuantasVeces` sobre `agua|mc--e → carnoso` sigue dando 0, o sea que la
-    // criatura informa la misma confianza que tenía antes de pescar por primera
-    // vez — `p=0,75, n=0` en el primer tick y `p=0,75, n=0` en el último.
+    //   «LA CRIATURA NO APRENDE DE LO QUE LE PASA: pesca doce veces y sigue
+    //    diciendo n=0»
     //
-    // QUÉ HARÍA FALTA: que `Opportunity` viaje hasta la `Decision` —o que la
-    // escalera se guarde de qué oportunidad salió la meta en curso— para que
-    // quien aterriza el último paso del plan pueda anotar el éxito contra su
-    // contexto. Es una reparación de `escalera.ts` y de `tipos.ts`, no de
-    // `mente.ts`: por eso el hueco se mide acá y se arregla allá.
+    // El porqué que llevaba escrito era exacto: `observe(ctx, rinde, ok)` existía
+    // desde el principio y la mente **no sabía con qué llamarlo**. De la firma
+    // del predicado sale el tag, pero no sale de qué cuerpo salió la oportunidad,
+    // y sin cuerpo no hay contexto.
+    //
+    // La reparación es la que ese mismo comentario pedía: `Opportunity.deDonde`
+    // lleva el casillero —`opportunities()` ya lo tenía en la mano, porque llama a
+    // `belief(ctx, tag)` para calcular la `p`— y la escalera se lo guarda en
+    // `deDondeSalio` mientras sostiene la meta.
+    //
+    // ─── Y DÓNDE SE ANOTA COSTÓ UNA MEDICIÓN ──────────────────────────────
+    //
+    // El primer intento anotaba en `aterrizar(e, true)` y daba **cero logros en
+    // 200 ticks**. La causa ya estaba escrita en el Hito 5: el vuelo que de verdad
+    // saca el pescado aterriza con `ok:false`, porque la mente lo interrumpe en el
+    // mismo tick en que la meta se cumple. Se anota donde no se puede leer mal:
+    // cuando D1 ve que **el mundo** dice que la meta está cumplida.
+    //
+    // ─── LO QUE EL NÚMERO VIEJO PEDÍA MAL ─────────────────────────────────
+    //
+    // El `it.fails` esperaba `n === pescas`, o sea doce. **Es la pregunta
+    // equivocada**, y se ve ahora que el mecanismo anda: la criatura CONSIGUE la
+    // meta una vez —cuando el pescado entra a la mano— y las once extracciones que
+    // siguen son de OTRA meta, la de comerlo sin envenenarse, que no se cumple
+    // nunca porque no hay fuego. Cuántas veces voló una habilidad no es cuántas
+    // veces se consiguió lo que se quería.
     const memoria = new Creencias()
     const r = correr(laEscenaDelDocumento(), 'ana', 400, memoria)
     const pescas = r.volados.filter((l) => l.endsWith('aplicar(extraccion)')).length
-    expect(pescas).toBeGreaterThanOrEqual(10)
     const ctx = contextoDe(vistaDe(r.partida, 'ana'), 'pozo:-6:-6')
     expect(ctx).toBe('agua|mc--e')
-    expect(cuantasVeces(memoria.belief(ctx, 'carnoso')), 'las pescas que la criatura recuerda').toBe(pescas)
+    const n = cuantasVeces(memoria.belief(ctx, 'carnoso'))
+    console.log(
+      `
+─── LA CRIATURA APRENDE ───
+` +
+        `  extracciones que voló ....... ${String(pescas)}
+` +
+        `  metas conseguidas y anotadas  ${String(n)}
+` +
+        `  lo que quedó en el casillero  ${JSON.stringify(memoria.volcar())}
+`,
+    )
+    // ─── Y EL «DOCE» DEL TÍTULO VIEJO TAMPOCO ERA CIERTO YA ────────────────
+    //
+    // El `it.fails` se llamaba «pesca doce veces y sigue diciendo n=0» y su
+    // primera línea pedía `pescas >= 10`. Medido hoy sobre esta escena: **son
+    // dos**. Y no lo movió esta reparación — se midió con el árbol sin ella,
+    // guardando los cambios aparte, y también da dos.
+    //
+    // Un `it.fails` esconde CUÁL de sus líneas falla, así que el 12 se quedó
+    // escrito mientras el mundo cambiaba abajo. Es el precio de pinchar un hueco
+    // con un test que falla entero, y va dicho acá para el próximo.
+    expect(pescas).toBeGreaterThan(0)
+    // Lo que cierra el hueco: dejó de ser cero.
+    expect(n, 'la criatura sigue sin acordarse de lo que consiguió').toBeGreaterThan(0)
+    // Y lo que se anota es EL CASILLERO DEL QUE SALIÓ LA APUESTA, no cualquiera.
+    expect(memoria.volcar().some((x) => x.ctx === ctx && x.rinde === 'carnoso')).toBe(true)
+  })
+
+  it('EL CONTROL: sin conseguir nada, no se anota nada', () => {
+    // Sin esto, «n > 0» podría salir de que `observe` se llame en cualquier lado.
+    // Una criatura que no consigue su meta no aprende, y eso también es correcto.
+    const memoria = new Creencias()
+    const antes = memoria.volcar().length
+    correr(laEscenaDelDocumento(), 'ana', 12, memoria)
+    console.log(`  a los 12 ticks todavía no consiguió nada: ${String(memoria.volcar().length)} anotaciones`)
+    expect(memoria.volcar().length).toBe(antes)
+  })
+
+  it('y NO SE ANOTA EL FRACASO, que es una decisión y no un olvido', () => {
+    // La meta de comer sin envenenarse no se cumple nunca en esta escena —no hay
+    // fuego, que es el rojo aceptado del Hito 5— y aun así NO deja un fracaso en
+    // el casillero. El porqué está entero en `escalera.ts`: una meta se abandona
+    // por muchas razones que no dicen nada del lugar, y contarlas todas como «el
+    // río no rinde» enseñaría lo contrario de lo que pasó.
+    //
+    // El costo va dicho: hoy las creencias sólo pueden subir. El día que un pozo
+    // se agote va a hacer falta medir cuál abandono ES evidencia en contra.
+    const memoria = new Creencias()
+    correr(laEscenaDelDocumento(), 'ana', 400, memoria)
+    const conFracasos = memoria.volcar().filter((x) => x.fracasos > 0)
+    console.log(`  casilleros con fracasos anotados: ${String(conFracasos.length)}`)
+    expect(conFracasos).toEqual([])
   })
 })
 
