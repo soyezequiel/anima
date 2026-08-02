@@ -138,13 +138,84 @@ decisión se tome.
 
 ---
 
-## 3 · Lo que hay que construir
+## 3 · Lo que se construyó
 
-1. **El espía de la costura** — que la fragua no se despierte tiene que poder
-   contarse, y hoy se afirma leyendo `package.json`.
-2. **El catálogo de la historia (c)** completo y promovido, con la separación
-   core / biblioteca / sesión explícita.
-3. **La ablación del catálogo** — poder sacarle un esquema para el punto 3.
+Tres cosas, y son poco código porque casi todo ya estaba.
 
-Lo que **no** hay que construir: el índice por efectos, la separación de capas, y
-cuarenta habilidades.
+### 1 · El espía de la costura
+
+`MenteOptions.costura` (`mind/src/tipos.ts`) y **una línea** en `escalera.ts`,
+adentro del `case 'gap'`. Ese `case` es el lugar exacto que el contrato de
+`PlanResult` viene nombrando desde el gate 5→6:
+
+> El Hito 8 lee esto y le pide a la fragua un proceso nuevo.
+
+Nadie lo leía. Ahora quien quiera escuchar recibe un `PedidoALaFragua` —qué
+firma faltó, para qué meta, en qué tick, y el porqué del planificador— y **no
+espera respuesta**: no hay un `await` en `src/`, así que la mente describe el
+pedido y quien puede esperar lo manda. Es la frontera del ADR II-0024, la misma
+que el Hito 6 y el tramo H del Hito 8.
+
+Lo que el pedido NO trae es el vocabulario (`seSabeNombrar` del `Encargo`),
+porque **la mente no ve la física**. Inventárselo sería adivinar, y el Hito 8 ya
+pagó ese error por el otro lado.
+
+### 2 · La corrida de la historia (c), con el catálogo entero
+
+`mind/tests/hito-9-la-biblioteca-semilla.test.ts`, sobre el mismo arnés del
+Hito 5 (`correr`, que ahora acepta que le cambien el catálogo y la costura).
+
+### 3 · La ablación
+
+`catalogoDe(ESQUEMAS.filter(...))`, y **cuál esquema se saca no fue obvio**:
+
+- **La ablación obvia no sirve.** Sacar el esquema de la META
+  —`holding(tag:carnoso)` por `extraccion`— hace que `sinVocabulario` vete la
+  meta de antemano: la criatura no la intenta nunca, no hay `gap`, y el control
+  diría «el espía no anda» cuando lo que pasó es que nadie pidió nada.
+- **El que sirve es el del medio**: `catch>0` por `union`, el puente que
+  convierte una vara en caña. La meta sigue teniendo vocabulario, la mente
+  planifica, y se estrella contra un sub-objetivo que nadie sabe cumplir.
+
+---
+
+## 4 · Lo que se midió, y cómo cambió el punto 4
+
+| | con el catálogo entero | **sin el puente `catch>0`** |
+|---|---|---|
+| primer movimiento | tick **0** | tick 0 |
+| pescado en la mano | tick **108** | **nunca** |
+| eslabones | ir · sostener · ir · sostener · **unir** · ir · aplicar(extraccion) ×2 | se queda dando vueltas |
+| consultas a la fragua **para la caña** | **0** | **2**, y las dos nombran `catch>0` |
+
+### El punto 4 salía verde por el corte, no por la biblioteca
+
+La primera versión del test cortaba la corrida en cuanto el pescado llegaba y
+afirmaba «cero consultas». Verde. Dejándola correr los 300 ticks:
+
+```
+consultas a la fragua en 300 ticks ...... 22
+todas por el mismo hueco ................ emitsPower<410 & emitsPower>=253
+y todas para la misma meta .............. holding(tag:carnoso,toxicity<0.0528)
+```
+
+**Ninguna es de la historia (c).** Las 22 son de la historia (b) —comer el
+pescado sin envenenarse, que pide cocinarlo, que pide fuego— y el fuego es el
+rojo aceptado del Hito 5, que espera una decisión de física del usuario.
+
+Así que el punto 4 quedó afirmado como se puede afirmar de verdad: **cero
+consultas PARA LA META DE LA HISTORIA (c)**, con las otras contadas, nombradas e
+impresas al lado, y con un `expect` que se pone rojo si alguna vez aparece ahí un
+hueco que no sea el fuego. Un `toBe(0)` que necesitaba el corte para ser cierto
+habría sido el séptimo verde por omisión del proyecto.
+
+> Y de yapa: es la primera medición de **cada cuánto despertaría a la fragua un
+> mundo de verdad** — 22 pedidos en 300 ticks, todos por lo mismo. Eso es dato
+> para el Hito 10, no para éste.
+
+---
+
+## 5 · Lo que NO hubo que construir
+
+El índice por efectos (`SCHEMA_INDEX`), la separación core / biblioteca / sesión
+(`coreSchemas` + overlay, gate 5→6), y las cuarenta habilidades (M3).

@@ -57,7 +57,7 @@ import type { WorldBody, WorldState } from '@anima/world';
 import { Contexto, Partida } from '@anima/perceive';
 import { Creencias } from '../src/creencias.js';
 import { Mente, vivir } from '../src/mente.js';
-import type { VistaDeLaMente } from '../src/tipos.js';
+import type { MenteOptions, VistaDeLaMente } from '../src/tipos.js';
 import { PHYS, actor, criatura, cuerpo, enElPiso, laOrilla, mundo } from './mundo.js';
 import type { Orilla } from './mundo.js';
 /** El único número que se afirma contra el reloj del sistema. Ver el encabezado. */
@@ -451,6 +451,17 @@ export function correr(
       cocinoEn: number;
       comioEn: number;
     }) => boolean;
+    /**
+     * LO QUE SE LE CAMBIA A LA MENTE, sin tocar el resto del arnés.
+     *
+     * Lo pide el Hito 9 y son exactamente dos cosas: `catalogo` —para poder
+     * CORRER LA MISMA HISTORIA CON UN ESQUEMA MENOS, que es el control del
+     * punto 3— y `costura` —el espía que cuenta si la fragua se despierta—.
+     * Sin esto, las dos mediciones tendrían que escribir su propio bucle de
+     * ticks, y un segundo bucle es un segundo mundo al que después hay que
+     * creerle.
+     */
+    mente?: Pick<MenteOptions, 'catalogo' | 'costura'>;
   } = {},
 ): Corrida {
   // ─── `vigilar: true`, Y NO ES DECORACIÓN ──────────────────────────────────
@@ -471,7 +482,7 @@ export function correr(
     o.reloj === true
       ? new Partida(w, { vigilar: true, reloj: () => Number(process.hrtime.bigint()) / 1e6 })
       : new Partida(w, { vigilar: true });
-  const m = new Mente({ actor: quien, memoria: new Creencias() });
+  const m = new Mente({ actor: quien, memoria: new Creencias(), ...o.mente });
   const mentes = new Map([[quien, m]]);
   const volados: string[] = [];
   const nombres: string[] = [];

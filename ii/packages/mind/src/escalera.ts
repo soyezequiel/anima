@@ -1476,6 +1476,16 @@ function planificar(
     case 'gap': {
       e.frontera = undefined
       e.metaDeLaFrontera = undefined
+      // ─── LA COSTURA CON LA FRAGUA ────────────────────────────────────────
+      //
+      // Va ANTES del `nearest.length === 0`, y no es un detalle: un hueco sin
+      // nada que hacer mientras tanto es el que MÁS hay que forjar, y ponerlo
+      // después haría que justo ése no se pidiera nunca.
+      //
+      // No espera respuesta y no puede fallar el tick: quien escucha se lleva
+      // un dato y hace lo suyo en otro hilo (Hito 8, `episodio.ts`). Ver
+      // `PedidoALaFragua`.
+      o.costura?.({ gap: r.missing, meta, porQue: r.why, tick: e.tick })
       if (r.nearest.length === 0) return undefined
       // EL MISMO «MIENTRAS TANTO» NO SE HACE DOS VECES PARA LA MISMA META. Ver
       // `EstadoDeLaEscalera.mientrasTantoYaHecho`: no es «la misma decisión N

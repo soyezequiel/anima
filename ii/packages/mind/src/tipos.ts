@@ -288,6 +288,52 @@ export interface MenteOptions {
    * percepción haría que un test de paisaje tuviera que hablar del catálogo.
    */
   readonly catalogo?: PlannerCatalogView
+  /**
+   * LA COSTURA CON LA FRAGUA: a quién se le avisa cuando el plan no llega.
+   *
+   * Ver `PedidoALaFragua`. Por omisión no hay nadie escuchando, y eso es lo
+   * correcto para el Hito 9: la biblioteca semilla tiene que alcanzar SOLA.
+   */
+  readonly costura?: (p: PedidoALaFragua) => void
+}
+
+/**
+ * LO QUE LA MENTE LE PEDIRÍA A LA FRAGUA, cuando el catálogo no alcanza.
+ *
+ * ─── POR QUÉ ESTE DATO EXISTE, y no es una comodidad de test ────────────────
+ *
+ * `PlanResult.gap` dice, escrito en su propio contrato desde el gate 5→6:
+ * *«El Hito 8 lee esto y le pide a la fragua un proceso nuevo»*. **Nadie lo
+ * leía así.** Medido en el Hito 9 (M1): ningún `package.json` de `ii/` declara
+ * `@anima/forge`, o sea que «la fragua no se despierta ni una vez» era cierto
+ * porque no había por dónde despertarla — el verde por omisión otra vez.
+ *
+ * Esto es ese por dónde, y es lo único que hace que la afirmación se pueda
+ * poner ROJA: quien escucha cuenta, y si alguna vez cuenta uno, la biblioteca
+ * no alcanzó.
+ *
+ * ─── LO QUE NO TRAE, Y ES A PROPÓSITO: EL VOCABULARIO ───────────────────────
+ *
+ * `Encargo` de `@anima/forge` pide `seSabeNombrar` —los nombres de sustancia
+ * que esta partida tiene— y acá no está, porque **la mente no ve la física**:
+ * `VistaDeLaMente` es lo que la criatura percibe, no el catálogo de materia del
+ * mundo. Inventarle una lista sería adivinar, y el Hito 8 ya pagó ese error una
+ * vez en el otro sentido (el modelo usó el vocabulario del encargo como si
+ * fueran `tags`).
+ *
+ * Es la misma frontera del ADR II-0024: **el paquete DESCRIBE, el llamador
+ * completa y manda**. Quien tenga la `Physics` arma el `Encargo` con esto
+ * adentro; acá no hay un `await` ni una credencial ni un nombre de mundo.
+ */
+export interface PedidoALaFragua {
+  /** La firma que no se supo establecer. Es el `gap` del `Encargo`. */
+  readonly gap: PredicateSignature
+  /** Para qué se la quería. Sin esto, el pedido no se puede priorizar. */
+  readonly meta: PredicateSignature
+  /** Lo que el planificador contestó, en sus palabras. */
+  readonly porQue: string
+  /** En qué tick de esta partida se pidió. */
+  readonly tick: number
 }
 
 // ─── Los números de la escalera ──────────────────────────────────────────────

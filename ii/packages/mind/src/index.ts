@@ -23,6 +23,7 @@ export type {
   MenteOptions,
   NeedVector,
   Opportunity,
+  PedidoALaFragua,
   Peldano,
   VistaDeLaMente,
 } from './tipos.js'
