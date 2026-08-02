@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ánima II — tablero (83%)</title>
+<title>Ánima II — tablero (88%)</title>
 <style>*,*::before,*::after{box-sizing:border-box}
 :root {
   color-scheme: light dark;
@@ -331,68 +331,68 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-08-01</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>10</b> etapas listas · <b>1</b> en curso · <b>2</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>11</b> etapas listas · <b>2</b> en curso · <b>0</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
   <section class="avance" aria-label="Avance general">
     <div class="cifra-fila">
-      <span class="cifra">83%</span>
+      <span class="cifra">88%</span>
       <span class="cifra-pie">del plan que tiene estimación</span>
     </div>
-    <div class="barra" role="img" aria-label="83 por ciento avanzado">
-      <div class="tramo si" style="width:72.15%"></div>
+    <div class="barra" role="img" aria-label="88 por ciento avanzado">
+      <div class="tramo si" style="width:76.85%"></div>
       <div class="tramo medio" style="width:10.76%"></div>
     </div>
     <div class="leyenda">
-      <span class="l-si">terminado · 28,5 de 39,5 semanas</span>
+      <span class="l-si">terminado · 30,4 de 39,5 semanas</span>
       <span class="l-medio">en curso · 4,3</span>
-      <span class="l-no">por delante · 6,8</span>
+      <span class="l-no">por delante · 4,9</span>
     </div>
     <p class="aclaracion">Las semanas son las estimaciones del propio plan y pesan cada etapa. Los 2 bloques sin estimación quedan afuera de esta cuenta a propósito: el plan dice que no se calcula un total nuevo sin base.</p>
   </section>
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>El Hito 9 cerró — y enchufar la costura destapó que el vocabulario estaba escrito a mano</h2>
-    <p class="detalle">Los cinco puntos del Hito 9 cumplen, y el criterio se había reescrito ANTES de tocar código: el «40 a 60 habilidades» no corresponde a esta arquitectura (siete de las doce capacidades YA SON una innata, tres son procesos, una es una cadena). Lo único que faltaba de verdad era la costura entre la mente y la fragua, y ahí aparecieron dos cosas. La primera: el «cero consultas» salía del CORTE de la corrida, no de la biblioteca — dejándola correr los 300 ticks son 22 consultas reales, todas de cocinar sin fuego, o sea del rojo aceptado del Hito 5. La segunda es más grande: al escribir la mitad que completa el pedido apareció que EL VOCABULARIO NO SE ARMABA EN NINGÚN LADO. Estaba escrito a mano en los tres demos, seis nombres contra los treinta que la física tiene, y escondía 24 — entre ellas `pescado` y `junco`, que son justo las dos que la caña usa. Le pedíamos al modelo una habilidad para pescar en un mundo donde le habíamos dicho que el pescado y el junco no existen.</p>
+    <h2>El Hito 10 cierra con 6,5 de 7, y su punto estrella dio NEGATIVO</h2>
+    <p class="detalle">Se puede cerrar la pestaña a mitad de atar la caña, volver, y la criatura replanifica sola y pesca en el tick 108 — el mismo que si nunca la hubieras cerrado. Apareció `@anima/store`, el primer paquete donde `await` es legal (la regla 2 protege al TICK, y guardar no pasa por el tick). Y el replay dejó de mirar sólo el mundo: ahora RE-EJECUTA las habilidades y compara su traza, que caza una clase entera de divergencia que el hash del mundo no puede ver —dos corridas con distintas fases dejan el mundo bit por bit idéntico—. De paso se cerró un hueco abierto desde el Hito 5: la mente NUNCA le devolvía evidencia a las creencias, así que la criatura pescaba y no se acordaba. Ahora sí, y eso destrabó el punto 6… que dio NEGATIVO: la heredera llega al pescado en el tick 108, exactamente igual que una que arranca de cero. La herencia no compra un solo tick, y la causa está medida: lo único que aprende es que el agua rinde, y eso YA lo creía por instinto. Y el tercer número de la propuesta original que se cae al medirlo: el tope de confianza heredada del ADR 0009 (0,65) está POR DEBAJO del instinto de fábrica (0,75) en 4 de 5 filas, o sea que aplicarlo dejaría a la heredera peor que una recién nacida.</p>
     <ol>
-      <li>La decisión de física del Hito 5 (el hueco de 23,02 de potencia) ya no es sólo un rojo aceptado: es lo que bloquea las 22 consultas que la criatura SÍ quiere hacer, y lo único que separa al Hito 10 de tener material real.</li>
-      <li>Falta medir con plata si al modelo le alcanza una firma pelada (`catch&gt;0&amp;reach&gt;=2`). Lo único probado contra un modelo de verdad es la PROSA, y por eso `encargoDe` acepta una prosa opcional adelante. Hasta que se mida, es una apuesta escrita.</li>
-      <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar (medido), pero el planificador no la nombra. Es H10 y H11.</li>
+      <li>El Hito 11 tiene su criterio escrito con nueve mediciones y NADA implementado. La medición que lo define: 626 números se imprimen en los tests de ii/ y UNO se guarda en un archivo que un test compare.</li>
+      <li>Y ya tiene su primer caso real en el árbol: forge/tests/el-episodio.test.ts mide contra el reloj de pared y falla cuando vitest corre los 13 archivos del paquete en paralelo; sola pasa 6 de 6.</li>
+      <li>La decisión de física del Hito 5 (el hueco de 23,02 de potencia) sigue esperando, y ahora también es lo que impide que la herencia compre algo: sin fracasos anotados y sin fuego, la criatura no puede aprender nada que contradiga su instinto.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">3006</div>
-        <div class="dato-etiqueta">tests verdes</div>
-        <div class="dato-nota">re-corrido acá y confirmado, exit 0 · physics 679 · world 631+1 skipped · mind 338 · plan 337+1 todo · oracle 270 · skills 193 · perceive 138 · emergencia 126 · judge 97 · forge 94 · lang 83 · llm 20</div>
+        <div class="dato-valor">3032</div>
+        <div class="dato-etiqueta">tests</div>
+        <div class="dato-nota">re-corrido acá, exit 0, cero fallos · physics 679 · world 633+1 skipped · mind 342 · plan 337+1 todo · oracle 270 · skills 193 · perceive 142 · emergencia 126 · judge 97 · forge 94 · lang 83 · llm 20 · store 16</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">13 de 13</div>
+        <div class="dato-valor">14 de 14</div>
         <div class="dato-etiqueta">typechecks limpios</div>
-        <div class="dato-nota">re-verificado ahora, exit 0</div>
+        <div class="dato-nota">re-verificado acá, exit 0 · uno más: @anima/store</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">12</div>
+        <div class="dato-valor">13</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">re-verificado acá, sin cambios · el Hito 9 no agregó ninguno: enchufó la costura y arregló el vocabulario</div>
+        <div class="dato-nota">re-contado acá · el Hito 10 agregó @anima/store, el primero donde `await` es legal</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">70</div>
+        <div class="dato-valor">69</div>
         <div class="dato-etiqueta">it.fails abiertos</div>
-        <div class="dato-nota">re-contado ahora, sin cambios</div>
+        <div class="dato-nota">re-contado acá · uno menos: el hueco de «la criatura no aprende» se cerró y su it.fails pasó a ser un test común</div>
       </div>
       <div class="dato">
         <div class="dato-valor">24</div>
         <div class="dato-etiqueta">ADRs propios</div>
-        <div class="dato-nota">re-contado ahora, sin cambios</div>
+        <div class="dato-nota">re-contado acá, sin cambios</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">2</div>
-        <div class="dato-etiqueta">commits sin pushear</div>
-        <div class="dato-nota">rama anima-2 — re-verificado acá. El usuario pushea solo</div>
+        <div class="dato-valor">5 sin pushear</div>
+        <div class="dato-etiqueta">sin commitear</div>
+        <div class="dato-nota">el árbol de trabajo queda limpio; son 5 commits en anima-2 esperando. El usuario pushea solo</div>
       </div>
   </section>
 
@@ -671,42 +671,51 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa rojo">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H10</span>
             <h3>Crónica y herencia</h3>
-            <span class="chip no">No empezado</span>
+            <span class="chip rojo">Cerrado con rojo aceptado</span>
           </div>
           <p class="frase">Cerrar la pestaña y volver sin perder nada, y que la segunda generación sepa lo que aprendió la primera.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">2 sem</span></div>
-        <p class="nota">Este salió más barato de corregir: ya tenía el número («menos de 100 ms»), sólo cambió «con cero llamadas al modelo» por «sin despertar la fragua». Misma tercera enmienda del ADR II-0024.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">5<span class="barra-diagonal">/</span>7</span><span class="semanas">2 sem</span></div>
+        <p class="nota">El criterio se reescribió ANTES de tocar código, con siete mediciones, y dos lo dieron vuelta: el «&lt; 100 ms» sobraba 25× medido HOY en una primera vida sin nada guardado (3,96 ms), y el replay del journal replaya INTENCIONES, así que una habilidad con no-determinismo adentro lo pasaba sin despeinarse porque nunca corre. De paso se cerró un hueco abierto desde el Hito 5 —la mente nunca le devolvía evidencia a las creencias— y eso destrabó el punto 6, que dio negativo. El rojo del 6 es de los buenos: el criterio decía con todas las letras que podía salir así, y salió. Lo que la herencia necesita para comprar algo es que la criatura aprenda algo que CONTRADIGA su instinto, y para eso tiene que poder equivocarse — hoy sólo se anotan los aciertos, que es una decisión escrita con su costo al lado: las creencias sólo pueden subir. Y un tercer número de la propuesta original se cayó al medirlo: el tope de confianza heredada del ADR 0009 (0,65) está por debajo del instinto de fábrica (0,75) en 4 de 5 filas.</p>
         <details class="criterios">
-          <summary>2 criterios</summary>
+          <summary>7 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>replay de 20.000 ticks reproduce el hash exacto y re-ejecuta las habilidades comparando la traza</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>una segunda vida resuelve «pescá» en menos de 100 ms SIN DESPERTAR LA FRAGUA</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>1 · el replay de 20.000 ticks reproduce el hash exacto: 80.000 intenciones, 21 checkpoints, 741 ms de corrida y 502 ms de replay. Con su control, y el primero que escribí NO controlaba —cortaba en el tick 0, antes de entrar al bucle—: ahora se le saca UNA intención del medio y el corte cae adentro, en el tick 300</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>2 · y RE-EJECUTA las habilidades comparando la traza: `Partida.anotarVuelos` + `compararVuelos`. Contra material real —la historia de la caña, no un ejemplo de laboratorio— 14 vuelos anotados, todos con nombre, cero divergencias</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>3 · EL CONTROL, y es el punto entero del hito: una habilidad con no-determinismo adentro deja el mundo BIT POR BIT IDÉNTICO (2fbe8bea86d9848f las dos veces) y la traza distinta. Es la clase de divergencia que el replay del journal no puede ver por más ticks que corra, porque replaya intenciones y la habilidad nunca vuelve a correr</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>4 · cortar a mitad de la obra y volver no pierde el mundo, y la obra CONVERGE: cortado en el tick 60, el hash vuelve igual y la criatura restaurada replanifica y pesca en el 108 — el mismo tick que sin cortar. Y no porque el vuelo sobreviva (no sobrevive, ADR 0009) sino porque vuelve a planificar</span></li>
+          <li class="punto medio"><span class="punto-marca" aria-label="a medias">◐</span><span>5 · ninguna credencial regalada: la mitad del CONOCIMIENTO cumple, con dos garantías y su control —la heredera nunca queda más segura que su antecesora (0,8889 &lt; 0,9286), el testimonio vale menos que verlo uno mismo, y RESTAURAR no descuenta (0,9286 = 0,9286)—. La mitad de la BIBLIOTECA no se puede medir: ninguna partida registra una sola capacidad todavía, así que guardarla sería guardar una lista vacía</span></li>
+          <li class="punto rojo"><span class="punto-marca" aria-label="rojo aceptado">!</span><span>6 · la segunda vida NO llega en menos ticks: 108 con herencia, 108 sin ella, 108 la primera. La herencia no compra un solo tick, y la causa está medida: la criatura aprende UNA cosa —que el agua rinde carnoso— y ese casillero YA arrancaba con instinto a favor (0,75). Un dato que confirma lo que ya creías no te cambia el rumbo. Con su control de que la comparación es justa: sin herencia, la segunda vida reproduce EXACTAMENTE a la primera</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>7 · en las dos vidas la fragua no se despierta: 0 de 22 consultas POR LA META DE LA CAÑA, contando por meta y no el total como enseñó el Hito 9 —el total no es cero y nunca lo fue, son las 22 de cocinar sin fuego—. Con la guarda de que el espía contó 22, así que las listas vacías no son el cero de «nadie miró»</span></li>
           </ul>
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa medio">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H11</span>
             <h3>Calibración y presupuestos como test</h3>
-            <span class="chip no">No empezado</span>
+            <span class="chip medio">En curso</span>
           </div>
           <p class="frase">Que el build falle si algún número empeora. Es lo que hace que «rápido» siga siendo verdad en seis meses.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>2</span><span class="semanas">4 sem</span></div>
-        <p class="nota">No es opcional: es donde se paga el precio de haber elegido emergencia sobre catálogo. Y sale más barato de lo que el documento suponía: los tres relojes que este hito listaba como si fuera a inventarlos ya viven en lang/src/relojes.ts con línea base corrida desde el Hito 6 — este hito los hereda.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">0<span class="barra-diagonal">/</span>6</span><span class="semanas">4 sem</span></div>
+        <p class="nota">El criterio se escribió con nueve mediciones y la más útil es una división: 626 números medidos y UNO guardado. Este hito no es «medir más», es convertir 626 números que se IMPRIMEN en un puñado que se DEFIENDEN. Tres cosas que el plan pedía YA ESTÁN: el mecanismo de línea base (existe desde el Hito 4, con su regla escrita adentro del propio archivo), la puerta de ciclos rentables (`admit.ts` los rechaza por nombre) y los invariantes económicos (se verifican replayando el diario). Y dos mediciones corrigen el plan: los tres relojes del Hito 6 tienen línea base EN PROSA y ningún test los lee —un cambio que lleve el p95 de 1,35 a 90 ms no pone nada rojo—, y el TECHO_DE_CI existe pero su propio comentario dice que no puede morder (40 contra 1,032 medido). El punto 4 va antes que el 5 a propósito: una suite donde un rojo puede venir de la carga de la máquina entrena a todos a re-correr y seguir, y a partir de ahí ningún guardián protege nada.</p>
         <details class="criterios">
-          <summary>2 criterios</summary>
+          <summary>6 criterios</summary>
           <ul>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>100 partidas de 20.000 ticks sin violar ningún invariante económico</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>CI determinista, benchmark real y E2E de navegador corren APARTE. Mezclarlos ya pasó dos veces</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>1 · hay un ARCHIVO DE LÍNEAS BASE que un test lee, con los relojes del Hito 6 adentro. Hoy: 626 console.log en los tests de ii/ y UN solo archivo de línea base, leído por UN test</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>2 · EL CONTROL: empeorando a mano cualquiera de esos números, el test se pone rojo y dice cuál</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>3 · y subir una línea base exige editarla a mano con el porqué escrito — es la regla que `skills/tests/linea-base.json` YA declara desde el Hito 4, generalizada</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>4 · los tests que miden contra el RELOJ DE PARED están separados de la suite determinista. Ya hay un caso real en el árbol: `forge/tests/el-episodio.test.ts` pasa 6 de 6 sola y falla con los 13 archivos del paquete en paralelo</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>5 · cien partidas de 20.000 ticks sin violar un invariante económico ni pasar el techo de consultas — fuera del job de CI: son ~25 minutos contra un `timeout-minutes: 20`</span></li>
+          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>6 · EL CONTROL del 5: una partida con un invariante roto a propósito SÍ se reporta</span></li>
           </ul>
         </details>
         </div>
@@ -786,20 +795,20 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>Re-verificado en esta máquina contra el árbol tal como quedó tras 17d4a15 (el vocabulario sale de la física). Sólo el tablero queda sin commitear.</p>
+      <p>Re-verificado en esta máquina contra el árbol tal como quedó tras e0fd4a3 (los puntos 5 y 7 del Hito 10). Árbol limpio salvo este tablero.</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
         <code>pnpm ii:typecheck</code>
-        <span class="resultado">exit 0 · 13 de 13 proyectos</span>
+        <span class="resultado">exit 0 · 14 de 14 proyectos</span>
       </div>
       <div class="corrida si">
         <code>pnpm ii:test</code>
-        <span class="resultado">exit 0 · 3006 pasan, 0 fallan</span>
+        <span class="resultado">exit 0 · 3032 pasan, 0 fallan</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
-        <span class="resultado">70 llamadas reales, sin cambios</span>
+        <span class="resultado">69 llamadas reales — una menos que antes</span>
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
@@ -807,7 +816,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">2 commits sin pushear</span>
+        <span class="resultado">5 commits sin pushear</span>
       </div>
       <div class="corrida si">
         <code>ANIMA_LLM=claude … con-el-modelo.ts</code>
@@ -825,6 +834,10 @@ p { margin: 0; }
         <code>vocabularioDe(buildSeedPhysics()) contra la lista escrita a mano</code>
         <span class="resultado">30 sustancias contra 6 · ninguna inventada y 24 ESCONDIDAS (80%), entre ellas pescado y junco, las dos de la caña</span>
       </div>
+      <div class="corrida si">
+        <code>los seis hashes del banco de 20 semillas, antes y después de tocar la mente</code>
+        <span class="resultado">IDÉNTICOS: ff52ece0 · 9af862b3 · ca3e9aab · b084d22a · 9e47235a · ec9d4dbf. La conducta de los 20.000 ticks no se movió ni un bit — y se comparó A MANO, porque ningún test guarda esos hashes</span>
+      </div>
     </div>
     <p class="aclaracion">El banco caro (ANIMA_BANCO=1 pnpm --filter @anima/emergencia test, ~311 s) no se corrió acá.</p>
   </section>
@@ -835,11 +848,11 @@ p { margin: 0; }
       <p>No bloquean el tramo de hoy, pero muerden más adelante. Están acá para que no las descubra alguien a los golpes.</p>
     </header>
     <ul class="deudas">
-        <li>La pista del juez está construida y probada, pero no se dispara con material real: el fallo del modelo es total dentro de cada grupo —no anda en ninguno o anda en todos— y la pista necesita contraste. El modo «anda con varas y no con mallas» resultó ser un fallo humano, no del modelo.</li>
-        <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las quince innatas. Se puede volar con Partida.volar —medido— pero el planificador no la nombra. Es el trabajo de H10 y H11.</li>
-        <li>El catálogo no tiene fila para una habilidad suelta: ConstructionSchema tiene tres formas —proceso, ley y obra— y ninguna es «una habilidad que establece X». Se instala y se vuela, pero no se publica. `sinPublicar` lo cuenta.</li>
-        <li>La escena del juez no caza un `goTo` roto: el objetivo nace a UNA celda y `take` llega igual, así que sacarle el movimiento a una habilidad da empate en los cuatro cargos. Su propio encabezado dice que nace al lado justamente para que eso no pase.</li>
-        <li>`utilidad` sale `inconcluso` siempre —«no hay contra qué hasta que haya objetivos»— y por eso ningún dictamen puede salir `promueve`. Todo comparador que mire el grado global empata.</li>
+        <li>Las creencias SÓLO PUEDEN SUBIR: no se anota el fracaso, así que la criatura no se puede desengañar de un lugar que dejó de rendir. Es una decisión escrita —una meta se abandona por razones que no dicen nada del lugar— y es lo que hace que la herencia no compre ticks. Cuál abandono ES evidencia en contra tiene respuesta medible y sin medir.</li>
+        <li>La mente no puede ELEGIR una habilidad forjada: `aHabilidad` es un switch cerrado sobre las innatas. Se puede volar con Partida.volar —medido— pero el planificador no la nombra. Es H10 y H11… y sigue abierto.</li>
+        <li>Ninguna partida registra una capacidad en el catálogo, así que no hay biblioteca que heredar ni que promover. Es lo que deja a medias el punto 5 del Hito 10 y lo que haría significar algo al journal de catálogo.</li>
+        <li>El adaptador de IndexedDB no se puede correr en la suite: node no lo tiene. Necesita el arnés de navegador que el Hito 2 tiene anotado como pendiente desde entonces.</li>
+        <li>La pista del juez está construida y probada, pero no se dispara con material real: el fallo del modelo es total dentro de cada grupo y la pista necesita contraste.</li>
     </ul>
   </section>
 
