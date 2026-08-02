@@ -708,6 +708,70 @@ decisión sobre la cota del mundo.
 
    ---
 
+   ---
+
+   ### JUNTAR MASA: medido hasta el fondo, y frenado por una invariante
+
+   **Medido el 2026-08-02**, preguntándole al planificador por el fuego que cocina
+   sobre la escena del documento y con la materia nueva:
+
+   ```
+   missing = fuelEnergy>=18 & heatCapacity<=0.9 & ignitionPoint<=400
+           & mass>=0,3507 & moisture<0.45 & rigidity>=0.5
+   ```
+
+   **Cinco de esas seis cláusulas las cumple una pieza suelta de yesca**: son
+   propiedades de la sustancia y vienen puestas. La sexta no, y es la única de las
+   seis que ningún esquema del catálogo sabe fabricar: **la masa**. Verificado:
+   `grep "establishes: 'mass"` sobre `esquemas.ts` da cero.
+
+   **LA FILA QUE FALTA, escrita y probada:**
+
+   ```ts
+   esquema(`mass>=${y.masaMin}`, 'union', {
+     a: [{ q: 'mass', op: '>=', v: y.masaMin / 2 }],
+     b: [{ q: 'mass', op: '>=', v: y.masaMin / 2 }],
+     binder: [{ q: 'flexibility', op: '>=', v: 0.8 }],
+   })
+   ```
+
+   Con ella puesta, el gap cambia de «ningún esquema conocido establece
+   `mass>=0,3507`» a «`mass>=0,3507` **sí tiene esquema**, y por sí solo no
+   alcanza». O sea: la fila es correcta y el planificador la reconoce.
+
+   **Y ACÁ SE FRENÓ, CONTRA UNA INVARIANTE QUE TIENE UNA MEDICIÓN DETRÁS.**
+
+   `los-esquemas-contra-el-mundo.test.ts` afirma, con su consecuencia medida en el
+   mundo:
+
+   > ningún esquema de `union` nombra el rol opcional `b`, **y por eso hay caña**
+
+   El motivo: `unir(a, b, binder)` con `b` lleno **consume el atador en la
+   atadura**, y el cuerpo resultante tiene `catch = 0`. Sin `b`, el atador
+   sobrevive con una punta suelta, y esa punta es lo único que da `catch` — o sea
+   que es lo único que hace que la caña pesque.
+
+   Juntar masa necesita `b` sí o sí: hay que atar piezas ENTRE ELLAS. Así que la
+   fila nueva rompe esa invariante y cuatro tests con ella.
+
+   **LO QUE HAY QUE DECIDIR, y por eso está acá y no hecho.** La invariante parece
+   estar escrita más ancha de lo que su medición sostiene: lo que la medición
+   prueba es que **una fila que promete una PUNTA LIBRE** (`catch>0`,
+   `freeStrandEnds>=1`) no puede nombrar `b`. Una fila que promete MASA no promete
+   ninguna punta, así que nombrarlo no le quita nada a la caña — las dos filas
+   tienen `establishes` distintos y la regresión no las confunde.
+
+   Re-escribir la invariante como «ninguna fila que establece una geometría de
+   punta libre nombra `b`» conserva entera la protección medida y deja pasar el
+   fardo. **Pero es cambiarle el alcance a una regla que se escribió con un número
+   detrás, y eso lo mira el usuario antes de que alguien lo toque.**
+
+   Son cuatro tests: la invariante de la tabla, la del mundo, la evidencia de
+   `PUENTES` (la fila nueva no sale de ningún `establishes`, así que necesita su
+   medición citada) y el conteo de `el-pozo-y-la-mano`.
+
+   ---
+
    **LO QUE SIGUE ES EL PUNTO 1 ANTERIOR.**
 
    **LA ESCALERA CONSTRUIBLE EXISTE; LO QUE FALTA ES EL ATADOR Y ENSEÑARLA.** El
