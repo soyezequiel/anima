@@ -409,6 +409,29 @@ export type Motivo =
    * decisiones OPUESTAS, que es el mismo criterio con el que la extracción tiene
    * cuatro finales: «esto no alimenta» se arregla buscando otra cosa, y «ése sos
    * vos» no se arregla nunca — ninguna cantidad de hambre lo vuelve una jugada.
+   *
+   * ─── Y DESDE EL 2026-08-02, TAMBIÉN PARA `take` ────────────────────────────
+   *
+   * El mismo agujero estaba abierto una puerta más allá, y esta vez se veía en
+   * cada partida del banco: `juntar` filtra candidatos por «no lo tengo en la
+   * mano», «nadie lo sostiene» y «portable >= 1», y el cuerpo de la propia
+   * criatura pasa los tres —su `portable` vale 1,0000—. Y `tomar` chequeaba cinco
+   * cosas y ninguna era ésta.
+   *
+   * El estado que salía es ilegal y lo dice el propio arnés del mundo:
+   *
+   *     inventario-inconsistente · «ana/ana-cuerpo: se lleva a sí misma»
+   *     1868 veces en 2000 ticks, desde el tick 133 hasta la muerte
+   *
+   * Y el daño no era sólo el renglón: el propio cuerpo ocupaba UNA MANO DE TRES,
+   * así que con una cosa más la criatura ya no podía agarrar nada.
+   *
+   * LA REPARACIÓN VA ACÁ Y NO EN `juntar`, y es una decisión del usuario tomada
+   * el 2026-08-02 con las dos opciones medidas delante. El filtro de la habilidad
+   * arregla esa habilidad; la guarda del mundo arregla las OCHO innatas que
+   * agarran y todas las que el modelo escriba después. Que una habilidad mal
+   * escrita no pueda ensuciar el estado es el punto entero de que el modelo
+   * escriba sólo habilidades.
    */
   | 'es-uno-mismo'
   | 'no-implementado'
@@ -2169,6 +2192,20 @@ function intencionExplorar(d: Borrador, a: Actor, i: Intent & { k: 'explore' }):
 }
 
 function intencionTomar(d: Borrador, a: Actor, i: Intent & { k: 'take' }): void {
+  // ─── «ÉSE SOS VOS» VA ARRIBA DE TODO ────────────────────────────────────────
+  //
+  // Antes que existir, antes que estar a mano y antes que ser portable, igual que
+  // en `comer`. Y por la misma razón que allá: `aMano` contesta `true` para el
+  // propio cuerpo —Chebyshev 0 contra sí mismo— así que ninguna de las cinco
+  // guardas de abajo lo iba a atajar nunca. El porqué entero está en el
+  // comentario de `es-uno-mismo`, arriba, con el número que lo encontró.
+  //
+  // Se compara contra `a.body` y no contra `cuerpoDe(d, a)` porque el actor lleva
+  // el id de su cuerpo puesto: es la misma comparación, sin buscar en el mapa.
+  if (i.what === a.body) {
+    rechazo(d, i, 'es-uno-mismo')
+    return
+  }
   const c = d.bodies.get(i.what)
   if (c === undefined) {
     rechazo(d, i, 'cuerpo-desconocido')

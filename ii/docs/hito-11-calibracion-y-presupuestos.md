@@ -248,15 +248,106 @@ ahora ... 6 archivos — los 3 de @anima/forge pasaron por la puerta
 
 ## 3 · Lo que queda por construir
 
-1. **Las cien partidas** (puntos 5 y 6), fuera del job de CI, con su control.
-2. **Bajar los 6 relojes que quedan**, uno por uno. Están contados, nombrados y
-   congelados: `perceive` ×3, `skills` ×1, `world` ×2.
-3. **Más números al archivo**: quedan 620 y pico imprimiéndose. Los que entraron
+1. **Más números al archivo**: quedan 620 y pico imprimiéndose. Los que entraron
    son los que más costaba defender, no todos los que hay.
-4. **Un job de CI aparte** que corra `ANIMA_RELOJ=1`. Hoy la puerta existe y
-   nadie la abre en CI, así que esos números no se afirman en ningún lado —
-   están separados pero todavía no corridos, y hay que decirlo.
 
 Lo que **no** hay que construir: la puerta de ciclos rentables (M6), los
 invariantes económicos (M7), ni el techo de consultas (M5) — aunque a ése hay
 que apretarle el número.
+
+---
+
+## 4 · El 2026-08-02: los puntos 4, 5 y 6, y las cuatro cosas que la medición dio vuelta
+
+Los tres que quedaban se cerraron el mismo día, y ninguno salió como estaba
+escrito acá arriba. Va lo que cambió, con el número que lo cambió.
+
+### 4.1 · «bajar los 6 relojes» — eran 16, y la lista de 6 estaba mal
+
+El punto 2 de la lista de arriba decía «están contados, nombrados y congelados:
+`perceive` ×3, `skills` ×1, `world` ×2». **Los seis estaban mal, en las dos
+direcciones a la vez.** El detector contaba ARCHIVOS con dos expresiones de
+texto —«toca el reloj» y «afirma algo que se llama como un tiempo»—:
+
+- **acusaba de más.** `perceive/ataque-a-la-costura` entraba por
+  `expect(aSesenta, '…10 ms tarde…').toBe(20)`: los «ms» están en el MENSAJE y el
+  número sale de un reloj FALSO, `() => 60`. Y `perceive/ataque-2-al-sellado`, que
+  sí mide contra el reloj, **ya estaba detrás de `ANIMA_BANCO`** — el detector
+  conocía una sola de las dos puertas del árbol;
+- **se perdía de menos.** En ese mismo archivo, `expect(pared).toBeLessThan(2000)`
+  sí es el reloj de pared y no lo contaba, porque la variable no se llama `ms`.
+
+El detector nuevo sigue el número desde la lectura hasta el `expect`, y le costó
+**cinco correcciones, todas encontradas por su propio control**. La peor:
+
+> En JavaScript el `.` de una expresión regular **no matchea `\r`**. Sobre un
+> archivo con fines de línea de Windows —y el árbol tiene las dos clases
+> mezcladas— `=\s*(.*)$` no matchea nunca y el detector devolvía cero manchadas
+> sin fallar en ningún lado. No daba cero: daba un número plausible.
+
+Con las cinco puestas: **16 aserciones en 9 archivos**. Se bajaron 13. Quedan 3,
+las tres RAZONES entre dos mediciones de la misma corrida, con su porqué escrito
+en `forge/tests/linea-base.json`.
+
+Y una de las 16 estaba en `forge/tests/el-episodio.test.ts` — **el paquete donde
+vive la puerta**, que la versión vieja daba por limpio.
+
+### 4.2 · «un job que corra `ANIMA_RELOJ=1`» — la puerta sola no alcanzaba
+
+Abrirla con `ANIMA_RELOJ=1 pnpm ii:test` da **rojo**:
+
+```
+expected 1.0979866 to be less than 1
+```
+
+Es el tick con el dios adentro contra su techo de 1 ms. Con
+`--no-file-parallelism` el mismo árbol en la misma máquina pasa 633 de 633. O sea
+que **serializar es parte de la puerta y no un detalle del job**: sin eso, abrirla
+habría dado un rojo permanente que nadie iba a poder distinguir de una regresión.
+De ahí sale `pnpm ii:reloj`, y el workflow `.github/workflows/reloj.yml`, aparte
+del que bloquea los PR porque un runner compartido es por definición una máquina
+ocupada.
+
+### 4.3 · El techo de consultas era 145 veces más chico que lo que pasa
+
+Este documento citaba «22 consultas en una partida» del Hito 9 y el techo se
+escribió en 40. Medido acá, con el observador `costura` sobre partidas enteras:
+
+```
+semilla 20260728 → 3204 consultas en 17955 ticks · 2 huecos distintos
+semilla 20260729 → 3243 consultas en 18114 ticks · 2 huecos distintos
+semilla 20260730 → 3258 consultas en 18170 ticks · 2 huecos distintos
+```
+
+**Y 3198 de las 3204 son el MISMO hueco**: `emitsPower<410&emitsPower>=253`, el
+fuego que cocina. La mente choca contra la misma pared cada cinco o seis ticks y
+vuelve a preguntar, porque nada recuerda que ya preguntó.
+
+Por eso el techo no es un total —un total sería un techo sobre cuántos ticks
+vivió la criatura— sino dos números que sí pueden explotar: **huecos DISTINTOS**
+(4 contra 2 medidos) y **consultas POR TICK** (0,25 contra 0,179). Los dos se
+cruzan con un cambio de conducta chico y verosímil.
+
+### 4.4 · La violación que aparece en cada partida, y que NO la encontró este hito
+
+El punto 5 se topó con esto:
+
+```
+1868 × inventario-inconsistente   en 2000 ticks
+  { actor: 'ana', body: 'ana-cuerpo', por: 'se lleva a sí misma' }
+```
+
+La criatura se agarra a sí misma en el tick 133 y no se suelta más. **Y ya estaba
+encontrado**: el mecanismo entero, con sus dos reparaciones posibles, está en el
+`it.fails` de `emergencia/tests/hito-5-la-emergencia.test.ts` («Y ESE MUNDO **NO**
+ERA LEGAL») y en `mind/tests/ataque-a-la-mente.test.ts` §3. Sigue abierto porque
+la reparación que corresponde —la guarda en `intencionTomar`, que arregla las
+quince habilidades y las que escriba el modelo, y no sólo `juntar`— **mueve el
+motor y por lo tanto pide la decisión del usuario**.
+
+Lo que este hito agrega son dos cosas y ninguna es el hallazgo: el número sobre
+CIEN partidas en vez de veinte, y que el punto 5 se afirma sobre las tres clases
+que el criterio nombra —`conservada-aumento`, `conservada-evaporada`,
+`conversion-sin-respaldo`— y **publica la estructural aparte, contada**, en vez de
+dejarla adentro de una cuenta más grande. Que es exactamente lo que este hito
+persigue.

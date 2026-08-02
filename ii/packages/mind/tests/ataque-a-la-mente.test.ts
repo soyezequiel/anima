@@ -646,7 +646,7 @@ describe('§2 · la rueda de D5, que era un ciclo de dos', () => {
    * cuenta honesta, y es la misma que hace cualquier animal que sale a buscar: la
    * alternativa no es vivir más, es morirse quieto sin haber mirado.
    */
-  it('REPARADO · en el páramo camina: 33 celdas y una racha quieta de 7, contra 25 y 3.992', () => {
+  it('REPARADO · en el páramo camina, y desde la guarda del mundo AGUANTA los 20.000', () => {
     const r = correr(paramo(0, 1000), 20000)
 
     console.log(
@@ -671,17 +671,37 @@ describe('§2 · la rueda de D5, que era un ciclo de dos', () => {
     expect(r.rachaQuieta).toBeLessThan(50)
     expect(r.quietos / r.ticks).toBeLessThan(0.4)
     expect(r.celdas).toBeGreaterThan(30)
-    // LO QUE CUESTA: caminar gasta, y en un páramo no rinde. Muere antes que la
-    // que se quedaba quieta, y eso es un dato del mundo y no un defecto de la mente.
+    // ─── ACÁ DECÍA «MUERE ANTES QUE LA QUIETA», Y DEJÓ DE SER CIERTO ────────
     //
-    // El testigo dejó de ser el 16.823 clavado y pasa a DERIVARSE, que es lo que el
-    // tramo M obligó a hacer: aquel número era «lo que duraba la quieta» con vivir
-    // en 1,0. Con 0,34 la quieta llegaría a 58.823 ticks y ésta muere en 18.742, o
-    // sea que la brecha se abrió en vez de cerrarse. Escrito así, la próxima vez que
-    // alguien mueva el costo de vivir el testigo se mueve solo.
+    // Decía: «caminar gasta, y en un páramo no rinde; muere antes que la que se
+    // quedaba quieta, y eso es un dato del mundo y no un defecto de la mente», y
+    // afirmaba `muerta > 10.000` con el 18.742 medido.
+    //
+    // La guarda `es-uno-mismo` de `intencionTomar` (2026-08-02) lo dio vuelta.
+    // Medido en este mismo archivo, con y sin la guarda, misma semilla:
+    //
+    //                              sin guarda      con guarda
+    //     murió en ............... 18.742          NUNCA (aguanta los 20.000)
+    //     celdas por tick ........ 0,59            0,50
+    //     ticks sin moverse ...... 27,3%           38,5%
+    //     despegues de cada clase  1.704           1.539
+    //
+    // EL MECANISMO, y hay que decirlo porque no es «ahora camina mejor»: antes,
+    // `juntar` se llevaba el propio cuerpo a la mano en el primer intento y daba
+    // por cumplido su pedido, así que el diente siguiente de la rueda salía a
+    // `explorar` — que camina—. Ahora el mundo le dice que no, `juntar` no
+    // completa, y esos ticks NO caminan. Camina menos, y en un páramo caminar es
+    // el gasto. Vive 6,7% más porque hace 15% menos de camino.
+    //
+    // O sea que no es una mejora de la mente: es que se le sacó un gasto que
+    // pagaba por un acto ilegal. Y deja algo abierto y dicho: `juntar` ahora gira
+    // en falso 1.539 veces, pidiendo algo que el mundo le va a negar siempre.
     const loQueDuraQuieta = (1000 / COSTO_VIVIR_POR_SEGUNDO) * HZ_DE_REFERENCIA
-    expect(r.muerta).toBeGreaterThan(10000)
-    expect(r.muerta).toBeLessThan(loQueDuraQuieta)
+    expect(r.muerta, 'volvió a morirse adentro de los 20.000: el gasto del páramo cambió').toBe(-1)
+    // Y el testigo derivado se conserva, que es lo que el tramo M obligó a hacer:
+    // si llegara a morir, tiene que ser antes de lo que dura la quieta. Escrito
+    // así, la próxima vez que alguien mueva el costo de vivir se mueve solo.
+    expect(r.ticks).toBeLessThan(loQueDuraQuieta)
   })
 
   /**
@@ -738,10 +758,24 @@ describe('§3 · el `juntar` de D5 le mete su propio cuerpo en la mano', () => {
    * `juntar` filtra con un `Where`, que es una lista de pruebas sobre CUALIDADES:
    * `[{ q: 'fuelEnergy', op: '>', v: 0 }]`. **«No soy yo» no es una cualidad**, así
    * que la mente no tiene con qué escribir ese filtro — el `ALGO_QUE_ARDE` de
-   * `escalera.ts` no puede excluirse a sí misma. La reparación es de
-   * `skills/src/innatas/juntar.ts` (que ya excluye `heldBy !== undefined` y podría
-   * excluir `ctx.self`) o del mundo, que podría rechazar `take` sobre el propio
-   * cuerpo. Queda `it.fails` abajo con esta medición.
+   * `escalera.ts` no puede excluirse a sí misma.
+   *
+   * ─── CERRADO EL 2026-08-02, Y NO ACÁ ───────────────────────────────────────
+   *
+   * Este párrafo decía que la reparación era de `skills/src/innatas/juntar.ts` o
+   * del mundo, y que quedaba un `it.fails` con la medición. **El usuario eligió
+   * el mundo**: `intencionTomar` rechaza con `es-uno-mismo`, arriba de todas sus
+   * otras guardas, igual que `intencionComer` desde el tramo del veneno.
+   *
+   * Por qué ésa y no la de `juntar`, dicho para que no haya que volver a
+   * decidirlo: el filtro de la habilidad arregla esa habilidad, y la guarda del
+   * mundo arregla las OCHO innatas que agarran **y todas las que el modelo
+   * escriba después**. Que una habilidad mal escrita no pueda ensuciar el estado
+   * es el punto entero de que el modelo escriba sólo habilidades.
+   *
+   * Lo que este bloque mide sigue siendo lo mismo y sigue valiendo: que la mente
+   * SÍ le pide a `juntar` su propio cuerpo. Eso no cambió — lo que cambió es que
+   * ahora el mundo dice que no.
    *
    * La escena cambió y hay que decir por qué: antes esto salía en la orilla con el
    * tanque lleno, porque D3 se quedaba pegada a una meta imposible y el tick caía
@@ -750,11 +784,13 @@ describe('§3 · el `juntar` de D5 le mete su propio cuerpo en la mano', () => {
    */
   const elParamoDeNoche = (): Partida => paramo(1980, 1000)
 
-  it('NO REPARADO (es de `juntar`, no de la mente) · se levanta sola y no se suelta', () => {
+  it('CERRADO (lo reparó el mundo, no la mente) · lo pide y no lo consigue', () => {
     const p = elParamoDeNoche()
     const m = new Mente({ actor: 'ana', memoria: new Creencias() })
     const filas: string[] = []
     let primerAgarre = -1
+    /** Cuántas veces el mundo le dijo «ése sos vos». Es la mitad que da sentido al cero. */
+    let rechazosPropios = 0
     for (let t = 0; t < 60; t++) {
       const antes = m.despegues
       m.pensar(p)
@@ -763,17 +799,30 @@ describe('§3 · el `juntar` de D5 le mete su propio cuerpo en la mano', () => {
       if (m.despegues > antes && t < 12) {
         filas.push(`  t=${String(t).padStart(2)} ${(m.ultimoDespegue ?? '?').padEnd(14)} holding=[${h.join(', ')}]`)
       }
-      p.avanzar(1)
+      // `tick()` y no `avanzar(1)` por una sola razón: **`avanzar` se come los
+      // eventos**. Sin reloj de pared las dos son la misma función.
+      for (const e of p.tick()) {
+        if (e.k === 'rechazada' && e.por === 'es-uno-mismo') rechazosPropios += 1
+      }
     }
     const alFinal = [...(p.state.actors.get('ana')?.holding ?? [])]
     console.log(
-      '\n─── LA CRIATURA SE LEVANTA A SÍ MISMA (el páramo de noche) ───\n' +
+      '\n─── LA CRIATURA PIDE SU PROPIO CUERPO, Y EL MUNDO LE DICE QUE NO ───\n' +
         filas.join('\n') +
-        `\n  primer agarre del propio cuerpo: tick ${String(primerAgarre)}\n` +
-        `  en la mano al tick 60: [${alFinal.join(', ')}]\n`,
+        `\n  primer agarre del propio cuerpo: tick ${String(primerAgarre)} (−1 = nunca)\n` +
+        `  rechazos «es-uno-mismo» en 60 ticks: ${String(rechazosPropios)}\n` +
+        `  en la mano al tick 60: [${alFinal.join(', ') || '(vacío)'}]\n`,
     )
-    expect(primerAgarre).toBeGreaterThanOrEqual(0)
-    expect(alFinal).toContain('ana-cuerpo')
+    // Lo que se afirma ahora es al revés de lo que este bloque afirmaba, y las
+    // dos aserciones son la misma medición leída de los dos lados: la mano nunca
+    // tuvo el propio cuerpo, ni en el tick 60 ni en ninguno de los 60.
+    expect(primerAgarre, 'la mano agarró el propio cuerpo en algún tick').toBe(-1)
+    expect(alFinal).not.toContain('ana-cuerpo')
+    // Y la otra mitad, que es la que hace que este cero signifique algo: la mente
+    // SIGUE pidiéndolo. Si dejara de pedirlo, el cero de arriba sería cierto sin
+    // que la guarda del mundo tuviera nada que ver, y este bloque estaría
+    // midiendo otra cosa sin decirlo.
+    expect(rechazosPropios, 'la mente dejó de pedir su propio cuerpo: este test ya no mide la guarda').toBeGreaterThan(0)
   })
 
   /**
@@ -793,7 +842,7 @@ describe('§3 · el `juntar` de D5 le mete su propio cuerpo en la mano', () => {
    * siempre, `juntar` deja una libre, y `union` y `friccion` piden manos libres.
    * Con el propio cuerpo más una cosa más, la criatura ya no puede agarrar nada.
    */
-  it.fails('LO QUE HARÍA FALTA, Y ES DE `@anima/skills`: que `juntar` no levante el propio cuerpo', () => {
+  it('LO QUE HACÍA FALTA, Y LO PUSO EL MUNDO: `juntar` ya no levanta el propio cuerpo', () => {
     const p = elParamoDeNoche()
     const m = new Mente({ actor: 'ana', memoria: new Creencias() })
     for (let t = 0; t < 60; t++) {

@@ -1126,7 +1126,17 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
         `  comparadas ............ ${String(comunes.length)}
 ` +
         `  movidas ............... ${movidos.length === 0 ? 'ninguna' : movidos.join(', ')}
-`,
+` +
+        // ─── Y A QUÉ SE MOVIERON, QUE ES LO QUE FALTABA ─────────────────────
+        //
+        // Este bloque decía CUÁLES se habían movido y no A QUÉ, así que subir la
+        // línea base a mano —que es lo que este guardián existe para obligar—
+        // pedía una segunda corrida entera sólo para leer los valores nuevos. Y
+        // el `expect` de abajo corta en la primera, o sea que ni siquiera con el
+        // rojo alcanzaba: había que ir sacándolos de a uno.
+        //
+        // Un guardián que obliga a un trámite tiene que dejar el trámite hecho.
+        movidos.map((s) => `      ${s}: ${String(guardados[s])} → ${String(ahora[s])}\n`).join(''),
     )
 
     // La guarda de que la comparación compara algo: si `comunes` fuera cero,
@@ -1337,7 +1347,7 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     expect(clases.size).toBeLessThanOrEqual(total)
   }, 600_000)
 
-  it.fails('Y ESE MUNDO **NO** ERA LEGAL: `juntar` levanta el cuerpo de la propia criatura', async () => {
+  it('CERRADO · el mundo ya no deja que `juntar` levante el cuerpo de la propia criatura', async () => {
     // ─── EL AGUJERO QUE ESTA CORRIDA PISÓ, EN SU FORMA MÍNIMA ───────────────
     //
     // La corrida canónica de este archivo mide **estados ilegales de la clase
@@ -1365,13 +1375,22 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
     // O sea que el motor produce un estado que su propio arnés declara ilegal, y no
     // hace falta ninguna semilla afortunada para verlo.
     //
-    // POR QUÉ NO SE ARREGLA ACÁ: el juez no toca `src` de nadie, y menos el de dos
-    // paquetes. Y la reparación tiene dos lugares posibles y no son equivalentes —el
-    // filtro de `juntar` arregla esta habilidad, y la guarda de `intencionTomar`
-    // arregla las quince y las que escriba el modelo—. La segunda es la que
-    // corresponde por el ADR II-0001 (el modelo escribe habilidades, y una habilidad
-    // mal escrita no tiene que poder ensuciar el estado), pero mueve el motor y por
-    // lo tanto pide su decisión.
+    // ─── CERRADO EL 2026-08-02, Y LA DECISIÓN LA TOMÓ EL USUARIO ────────────
+    //
+    // Este bloque decía: «la reparación tiene dos lugares posibles y no son
+    // equivalentes —el filtro de `juntar` arregla esta habilidad, y la guarda de
+    // `intencionTomar` arregla las quince y las que escriba el modelo—; la
+    // segunda corresponde, pero mueve el motor y por lo tanto pide su decisión».
+    //
+    // El usuario eligió **la guarda del mundo**, con las dos opciones medidas
+    // delante. Y no estrenó nada: `comer` ya tenía exactamente esta guarda, con
+    // este motivo —`es-uno-mismo`—, puesta arriba de todo por la misma razón, y
+    // nacida del mismo agujero (la criatura que se comía a sí misma y quedaba de
+    // fantasma inmortal). Hacer lo mismo dos veces seguidas es más barato de
+    // entender que tener la misma regla en dos capas distintas según el caso.
+    //
+    // El `it.fails` de este bloque pasó a `it`: un criterio superado no se tapa.
+    // La aserción de abajo no se tocó — es la misma `toEqual([])` de siempre.
     const w = mundo({
       bodies: [enElPiso(criaturaDeBanco('ana', TANQUE), EN(0, 0))],
       actors: [actorDeBanco('ana', { holding: [] })],
@@ -1385,9 +1404,12 @@ describe('(2) veinte partidas con semillas distintas, cortadas en la muerte', ()
         `  holding después: ${(r.state.actors.get('ana')?.holding ?? []).join(', ') || '(vacío)'}\n` +
         `  violaciones: ${String(v.length)}${v.length === 0 ? '' : ` — ${describir(v[0] as Violacion)}`}\n`,
     )
-    // Y esto es lo que tendría que valer y no vale. Es la MISMA aserción que estaba
-    // arriba en verde, con el mismo `toEqual([])`, movida y no aflojada.
     expect(v.map((x) => x.k)).toEqual([])
+    // Y las dos mitades de que el rechazo sea REAL y no que el `take` se haya
+    // perdido en el camino: sale el rechazo con su motivo, y la mano queda vacía.
+    const rech = r.events.find((e) => e.k === 'rechazada')
+    expect(rech?.k === 'rechazada' ? rech.por : '(no hubo rechazo)').toBe('es-uno-mismo')
+    expect(r.state.actors.get('ana')?.holding ?? []).toEqual([])
   }, 120_000)
 
   it('CERRADO · el banco ya no se materializa encima: al que está parado ahí lo corre', async () => {

@@ -486,6 +486,62 @@ decisión sobre la cota del mundo.
 
 ## 6 · Qué está abierto, en orden de importancia
 
+### 6·0 · LO QUE EL HITO 11 DESTAPÓ EL 2026-08-02, y no es del Hito 11
+
+Cerrando los puntos 4, 5 y 6 aparecieron tres cosas que **no** son del hito y que
+nadie estaba mirando. Van acá arriba porque son las más caras de las abiertas.
+
+1. **LA CRIATURA SE AGARRA A SÍ MISMA — YA ESTABA ENCONTRADO, Y ESPERA UNA
+   DECISIÓN TUYA.** Lo primero que hay que decir es que **esto no lo descubrió el
+   Hito 11**: está entero, con su mecanismo y sus dos reparaciones posibles, en el
+   `it.fails` de `emergencia/tests/hito-5-la-emergencia.test.ts` («Y ESE MUNDO
+   **NO** ERA LEGAL»), y tiene su gemelo en `mind/tests/ataque-a-la-mente.test.ts`
+   §3. Lo que el Hito 11 agrega es el número sobre CIEN partidas en vez de veinte.
+
+   El mecanismo, ya medido allá: `juntar` filtra candidatos por `!enLaMano`,
+   `heldBy === undefined` y `portable >= 1`, y **el cuerpo de la propia criatura
+   pasa los tres** (su `portable` vale 1,0000). Y `intencionTomar` chequea cinco
+   cosas y ninguna es «no te levantes a vos misma».
+
+   ```
+   1868 × inventario-inconsistente   en 2000 ticks
+     { actor: 'ana', body: 'ana-cuerpo', por: 'se lleva a sí misma' }
+   ```
+
+   **POR QUÉ SIGUE ABIERTO, y es lo que hay que leer:** las dos reparaciones no
+   son equivalentes. El filtro de `juntar` arregla esa habilidad; la guarda de
+   `intencionTomar` arregla las quince **y las que escriba el modelo**. La segunda
+   es la que corresponde por el ADR II-0001, y **mueve el motor**, así que la
+   decide el usuario. Está esperando eso, no trabajo.
+
+   Lo que el Hito 11 sí cambió: el punto 5 se afirma sobre las tres clases
+   ECONÓMICAS y **publica ésta aparte, contada**, en vez de dejarla adentro de una
+   cuenta más grande.
+
+2. **LA MENTE PREGUNTA 3200 VECES POR EL MISMO HUECO.** Medido con el observador
+   `costura` sobre partidas enteras: 3204 consultas en 17.955 ticks, y **3198 son
+   el mismo** — `emitsPower<410&emitsPower>=253`, el fuego que cocina. Choca
+   contra la misma pared cada cinco o seis ticks y vuelve a preguntar, porque
+   nada recuerda que ya preguntó. Con la fragua real conectada, eso es plata.
+
+3. **UN DETECTOR PUEDE ESTAR CIEGO POR UN `\r`.** En JavaScript el `.` de una
+   expresión regular no matchea `\r`, así que cualquier detector de este árbol
+   que use `(.*)$` sobre un archivo con fines de línea de Windows lee CERO sin
+   fallar en ningún lado — y el árbol tiene las dos clases mezcladas, así que no
+   da cero: da un número plausible. Ya se lo comió el detector de relojes de
+   pared.
+
+   **Los otros detectores del árbol se revisaron y están limpios**, y la revisión
+   fue por las tres formas que el `\r` rompe y no por olfato: un regex terminado
+   en `$`, un `[^\n]*` usado como «resto de la línea», y un `endsWith` sobre una
+   línea partida. Los siete `$` que hay están sobre nombres de archivo o sobre
+   cadenas calculadas, ninguno sobre una línea de fuente; no hay un solo `[^\n]`
+   fuera del detector de relojes; y todos los `endsWith` son sobre valores del
+   mundo. El único que lee líneas de verdad —`skills/tests/arnes.ts:72`, que
+   parsea la salida de `tsc`— **ya lo tenía resuelto con `trimEnd()`**, o sea que
+   alguien se comió este bicho antes y lo arregló en su lugar sin dejarlo escrito
+   en ningún lado. Ahora está escrito.
+
 0. **REABIERTO Y MOVIDO (tramo N): LA PARED ARITMÉTICA SE CAYÓ, Y LO QUE QUEDA ES
    MATERIA.** Todo lo que sigue en este punto describe el mundo con la eficiencia
    de `friccion` en **0,35**, y hoy está en **0,85**. Se deja entero porque el

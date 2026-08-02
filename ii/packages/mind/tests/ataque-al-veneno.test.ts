@@ -230,10 +230,19 @@ describe('(2) no hay que fabricar la intención: la superficie la sirve', () => 
     expect(v.q(yo as never, 'calories')).toBeGreaterThan(v.q(pez as never, 'calories'))
   })
 
-  it('`juntar({fuelEnergy>0})` se pone el propio cuerpo en la mano, en el primer despegue', () => {
-    // No es una hipótesis: el comentario de `oportunidades.ts:530` lo declara
-    // medido —«primer agarre del propio cuerpo en el tick 2»— y acá se vuelve a
-    // correr, porque un hueco citado no es un hueco medido.
+  it('CERRADO · `juntar({fuelEnergy>0})` lo PIDE, y el mundo se lo niega', () => {
+    // Este bloque afirmaba `holding === ['ana-cuerpo']`, o sea que la criatura se
+    // levantaba a sí misma en el primer despegue. Era cierto, estaba medido —el
+    // comentario de `oportunidades.ts:530` lo declaraba en el tick 2— y dejó de
+    // serlo el 2026-08-02, cuando `intencionTomar` estrenó la guarda
+    // `es-uno-mismo` que `intencionComer` ya tenía desde el tramo del veneno.
+    //
+    // Es el mismo agujero de este archivo, una puerta más allá: allá la criatura
+    // se COMÍA a sí misma y quedaba de fantasma inmortal; acá se AGARRABA a sí
+    // misma y se ocupaba una mano de tres para siempre. La reparación es la
+    // misma, con el mismo motivo de rechazo, y la eligió el usuario entre las dos
+    // que había —el filtro de la habilidad o la guarda del mundo— porque la del
+    // mundo cubre las ocho innatas que agarran y las que escriba el modelo.
     const w = mundo({
       bodies: [enElPiso(criatura('ana', 300), { x: 0, y: 0 })],
       actors: [actor('ana')],
@@ -241,16 +250,27 @@ describe('(2) no hay que fabricar la intención: la superficie la sirve', () => 
     const p = new Partida(w)
     const que: Where = [{ q: 'fuelEnergy', op: '>', v: 0 }]
     const vuelo = p.volar('ana', juntar, { que, cuantos: 1 })
-    p.avanzar(8)
+    let rechazos = 0
+    for (let t = 0; t < 8; t++) {
+      // `tick()` y no `avanzar(8)`: `avanzar` se come los eventos, y el rechazo
+      // ES la medición. Sin reloj de pared las dos son la misma función.
+      for (const e of p.tick()) if (e.k === 'rechazada' && e.por === 'es-uno-mismo') rechazos += 1
+    }
     log([
       '══ (2b) LA MANO ═════════════════════════════════════════════════════',
       `  juntar → ${JSON.stringify(vuelo.outcome)}`,
-      `  en la mano: [${(p.state.actors.get('ana')?.holding ?? []).join(', ')}]`,
+      `  en la mano: [${(p.state.actors.get('ana')?.holding ?? []).join(', ') || '(vacío)'}]`,
+      `  rechazos «es-uno-mismo»: ${String(rechazos)}`,
       '',
-      '  Y `comer` mira `ctx.self.holding` ANTES que lo que ve, «porque no cuesta',
-      '  caminar». O sea que el propio cuerpo no compite con la comida: le gana.',
+      '  `comer` mira `ctx.self.holding` ANTES que lo que ve, «porque no cuesta',
+      '  caminar». Con el propio cuerpo ahí adentro, no competía con la comida:',
+      '  le ganaba. Ahora no llega a entrar.',
     ])
-    expect(p.state.actors.get('ana')?.holding).toEqual(['ana-cuerpo'])
+    // La mano vacía, y el rechazo que la explica. Las dos juntas: sin el segundo,
+    // una mano vacía también sería lo que se ve si `juntar` hubiera dejado de
+    // pedirlo, y este bloque estaría midiendo otra cosa sin decirlo.
+    expect(p.state.actors.get('ana')?.holding ?? []).toEqual([])
+    expect(rechazos, '`juntar` dejó de pedir el propio cuerpo: este test ya no mide la guarda').toBeGreaterThan(0)
   })
 
   it('CON LA PERILLA QUE EL ADR HABILITÓ: `toxicidadTolerada` 0,35, y ahora se come el PESCADO', () => {

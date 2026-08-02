@@ -212,8 +212,22 @@ export interface Corrida {
  * **SE CORTA EN LA MUERTE**, y es lo que el informe necesita para separar «la
  * mente no llega» de «no vivió lo suficiente»: seguir corriendo un mundo sin
  * criatura agrega ticks al denominador y ni una decisión al numerador.
+ *
+ * ─── `costura` — Hito 11 · punto 5 ──────────────────────────────────────────
+ *
+ * Un OBSERVADOR y nada más: se lo llama cada vez que la mente choca contra un
+ * hueco y le pediría algo a la fragua, que es lo que el criterio del Hito 11
+ * llama «consulta». No devuelve nada, no decide nada y la mente no lo mira, así
+ * que pasarlo o no pasarlo no puede mover un tick — y eso no hay que creerlo:
+ * los seis hashes del banco de 20 semillas lo dicen, y su guardián está en
+ * `hito-5-la-emergencia.test.ts`.
  */
-export function correrPartida(semilla: bigint, tanque: number, tope: number): Corrida | undefined {
+export function correrPartida(
+  semilla: bigint,
+  tanque: number,
+  tope: number,
+  costura?: (gap: string, tick: number) => void,
+): Corrida | undefined {
   const o = laOrilla(semilla)
   if (o === undefined) return undefined
 
@@ -225,7 +239,11 @@ export function correrPartida(semilla: bigint, tanque: number, tope: number): Co
   // sobre un mundo que nadie está auditando vale menos que un cero auditado.
   const escena = escenaDe(o, tanque)
   const p = new Partida(escena.state, { vigilar: true })
-  const m = new Mente({ actor: 'ana', memoria: new Creencias() })
+  const m = new Mente(
+    costura === undefined
+      ? { actor: 'ana', memoria: new Creencias() }
+      : { actor: 'ana', memoria: new Creencias(), costura: (pedido) => costura(pedido.gap, pedido.tick) },
+  )
   const d = new Detector()
   // El contrato de alimentación del detector: la primera muestra es el estado
   // INICIAL con la lista de eventos vacía.
