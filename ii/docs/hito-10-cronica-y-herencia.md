@@ -291,16 +291,85 @@ cuando un pozo se agota, y ahí hay con qué medirlo.
 
 ---
 
+### Punto 5 — la mitad del conocimiento CUMPLE; la de la biblioteca no tiene qué medir
+
+El ADR 0009 desarma «ninguna credencial regalada» en dos: el conocimiento entra
+como hipótesis con confianza limitada, y las habilidades entran como candidatas
+que vuelven a ganarse la vara.
+
+**Y el número del ADR no se puede usar.** Pide confianza heredada `≤0,65`.
+Medido sobre esta arquitectura:
+
+```
+filas de instinto de fábrica ................ 5
+medias ...................................... 0,2500 y 0,7500
+las que YA pasan el tope de 0,65 ............ 4 de 5
+```
+
+Una recién nacida **ya está más segura que el tope**. Aplicarlo dejaría a la
+heredera peor que si no hubiera heredado nada. Es el tercer número de la
+propuesta original que dejó de corresponder, después del «40 a 60 habilidades»
+del Hito 9 y del «< 100 ms» de este mismo hito.
+
+Se reemplaza por dos garantías que **sí se pueden poner rojas**:
+
+| | medido |
+|---|---|
+| la heredera nunca queda más segura que su antecesora | 0,8889 contra 0,9286 |
+| el testimonio vale menos que verlo uno mismo | 0,8889 contra 0,9286 |
+| **el control**: restaurar NO descuenta — la misma criatura que vuelve se acuerda entera | 0,9286 = 0,9286 |
+
+El control es el que hace que lo demás signifique algo: sin él, «heredar
+descuenta» no diría si el descuento es del heredar o de pasar por un archivo.
+**Acordarse y que te cuenten son dos operaciones distintas y sólo una descuenta**
+— que es la frase con la que el ADR abre: *«El legado es testimonio, no
+memoria»*.
+
+`PESO_DEL_TESTIMONIO = 0,5`, y de dónde sale va dicho: es el peso más grande que
+todavía deja «lo vi yo» estrictamente por encima de «me lo contaron». **No sale
+de una medición.** Lo que sí está medido es cuán poco margen hay: una vida entera
+produce **una sola observación**, así que con peso 1 lo que le contaron pesaría
+exactamente lo mismo que todo lo que vivió.
+
+**La mitad de la biblioteca no se implementa, y por qué:** medido en el Hito 9 y
+sin cambios, **ninguna partida registra una sola capacidad**. Guardar la
+biblioteca hoy sería guardar una lista vacía, y afirmar «la heredera arrancó con
+la biblioteca completa» sería el verde por omisión más caro que quedaba: cierto
+porque no hay nada. El vocabulario para que entre `provisional` ya está (M6);
+falta el gesto, no el concepto.
+
+### Punto 7 — CUMPLE, reusando el espía del Hito 9
+
+```
+primera vida · por la caña ... 0 de 22 consultas
+heredera     · por la caña ... 0 de 22 consultas
+y lo demás son ............... emitsPower<410 & emitsPower>=253
+```
+
+Se afirma como en el Hito 9 y por la misma razón: **contando las consultas para
+la meta de la historia, no el total**. El total no es cero y nunca lo fue —son
+las 22 de cocinar sin fuego, el rojo aceptado del Hito 5— y un `toBe(0)` sobre el
+total habría necesitado cortar la corrida para ser cierto, que es exactamente el
+error que el Hito 9 cazó.
+
+Con su guarda: **el espía contó 22**, así que las dos listas vacías no son el
+cero de «nadie miró».
+
+---
+
 ## 3 · Lo que queda por construir
 
-1. **El punto 5** — la heredera con la biblioteca completa y **ninguna credencial
-   regalada**: lo heredado entra `provisional` (M6) y se vuelve a ganar la vara en
-   su mundo. El vocabulario ya está; falta el gesto.
+1. **La mitad de la biblioteca del punto 5** — el día que una partida promueva
+   algo. Hoy no hay qué heredar y afirmarlo sería un verde por omisión.
 2. **El adaptador de IndexedDB** — veinte líneas contra la interfaz `Deposito`,
    y no se puede correr en la suite: node no tiene IndexedDB. Necesita el arnés
    de navegador que el Hito 2 ya tiene anotado como pendiente.
-3. **El punto 6**, cuando la mente empiece a observar. No es trabajo de este
-   hito: ver arriba.
+
+Y lo que este hito deja abierto **para el usuario, no para el que siga**: hoy las
+creencias sólo pueden subir. La criatura no se puede desengañar de un lugar que
+dejó de rendir, porque no se anota el fracaso — y por eso la herencia no compra
+ticks (punto 6). Cuál abandono ES evidencia en contra tiene respuesta medible y
+todavía sin medir.
 
 Lo que **no** hubo que construir: la traza (M4), el vocabulario de confianza (M6),
 y el replay del mundo (M2, primera mitad — cumplía desde el Hito 2).

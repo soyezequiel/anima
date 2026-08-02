@@ -20,6 +20,9 @@ export {
   comoSeGuarda,
   comoSeRestaura,
   guardar,
+  heredarDe,
+  loQueHereda,
+  PESO_DEL_TESTIMONIO,
   VERSION_DEL_GUARDADO,
   type Guardado,
 } from './guardar.js'

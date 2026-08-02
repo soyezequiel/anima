@@ -726,16 +726,45 @@ export class Creencias implements AffordanceMemory {
    * ADR 0009 —*«la heredera recibe testimonio, no hechos»*—. Reemplazar borraría
    * el instinto de fábrica en los casilleros heredados, y la heredera arrancaría
    * peor que una recién nacida en todo lo que su antecesora tocó poco.
+   *
+   * ─── `peso`: LA DIFERENCIA ENTRE ACORDARSE Y QUE TE CUENTEN ────────────────
+   *
+   * `peso = 1` es **acordarse**: la misma criatura que cerró la pestaña vuelve a
+   * abrirla. Lo que vivió lo vivió, y no vale menos por haber pasado por un
+   * archivo.
+   *
+   * `peso < 1` es **que te cuenten**: una heredera recibe lo que su antecesora
+   * dice haber visto, y eso no es lo mismo que haberlo visto. Es la frase con la
+   * que el ADR 0009 abre: *«El legado es testimonio, no memoria»*.
+   *
+   * ─── Y EL NÚMERO DEL ADR NO SE PUEDE USAR, MEDIDO ─────────────────────────
+   *
+   * El ADR pide que el conocimiento heredado entre *«con confianza limitada
+   * (≤0.65)»*. Ese número es de Ánima I, donde los priors eran llanos. Acá:
+   *
+   *     filas de instinto de fábrica ................ 5
+   *     medias ...................................... 0,2500 y 0,7500
+   *     las que YA pasan el tope de 0,65 del ADR .... 4 de 5
+   *
+   * **Una recién nacida ya está más segura que el tope.** Aplicarlo dejaría a la
+   * heredera con MENOS confianza que una criatura que no heredó nada, o sea que
+   * el testimonio de su antecesora la haría peor. Es el mismo caso que el «40 a
+   * 60 habilidades» del Hito 9 y el «< 100 ms» del Hito 10: un número de la
+   * propuesta original que dejó de corresponder cuando la arquitectura cambió.
+   *
+   * Lo que sí se puede afirmar, y es lo que el ADR quiere decir, se dice acá en
+   * dos garantías que se pueden poner rojas: **la heredera nunca queda más segura
+   * que su antecesora**, y **el testimonio vale menos que verlo uno mismo**.
    */
-  cargar(volcado: readonly CreenciaVolcada[]): void {
+  cargar(volcado: readonly CreenciaVolcada[], peso = 1): void {
     for (const v of volcado) {
       const c = this.#cuenta(v.ctx, v.rinde)
       if (v.prior !== undefined) {
         c.prior = { a: v.prior.a, b: v.prior.b }
         c.por = 'modelo'
       }
-      c.exitos += v.exitos
-      c.fracasos += v.fracasos
+      c.exitos += v.exitos * peso
+      c.fracasos += v.fracasos * peso
     }
   }
 

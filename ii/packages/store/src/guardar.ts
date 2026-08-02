@@ -119,6 +119,33 @@ export function comoSeRestaura(g: Guardado): { readonly state: WorldState; reado
   return { state: restoreWorld(new Map(g.mundo)), creencias }
 }
 
+/**
+ * CUÁNTO VALE LO QUE TE CONTARON, contra lo que viste vos.
+ *
+ * ─── POR QUÉ ESTE NÚMERO EXISTE, y por qué no es el del ADR ────────────────
+ *
+ * El ADR 0009 pide que el conocimiento heredado entre *«con confianza limitada
+ * (≤0.65)»*, y **ese número no se puede aplicar acá**: 4 de las 5 filas del
+ * instinto de fábrica ya están por encima de 0,65 (`INSTINTO`, medias 0,25 y
+ * 0,75). Aplicarlo dejaría a la heredera menos segura que una recién nacida, o
+ * sea que heredar la haría peor. Ver `Creencias.cargar`.
+ *
+ * ─── DE DÓNDE SALE EL 0,5, Y QUÉ GARANTIZA ────────────────────────────────
+ *
+ * De lo que hay que garantizar, que es lo único que el ADR de verdad pide: **que
+ * el testimonio valga menos que la evidencia propia**. Y hay una medición que
+ * dice cuán poco margen hay: una vida entera de esta criatura produce **UNA sola
+ * observación** (medido en el punto 6 del Hito 10 — consigue su meta una vez).
+ * Con un solo dato por vida, cualquier peso de 1 haría que lo que le contaron
+ * pese exactamente lo mismo que todo lo que vivió.
+ *
+ * La mitad es el peso más grande que todavía deja «lo vi yo» estrictamente por
+ * encima de «me lo contaron», que es la frase del ADR hecha número. No sale de
+ * una medición y **se dice**: es una decisión, y el día que una vida produzca
+ * cien observaciones en vez de una habrá con qué calibrarla.
+ */
+export const PESO_DEL_TESTIMONIO = 0.5
+
 /** La clave de un guardado en el depósito. Una función y no un template suelto: se usa de los dos lados. */
 export function claveDe(quien: string, ranura = 'ultimo'): string {
   return `partida/${quien}/${ranura}`
@@ -146,4 +173,40 @@ export async function cargar(
   const raw = await d.leer(claveDe(quien, ranura))
   if (raw === undefined) return undefined
   return comoSeRestaura(raw as Guardado)
+}
+
+/**
+ * LO QUE LA HEREDERA RECIBE, que NO es lo que la antecesora tenía.
+ *
+ * Es la otra mitad del punto 5 del Hito 10 —«ninguna credencial regalada»— y la
+ * diferencia con `comoSeRestaura` es de una palabra del ADR 0009: *«El legado es
+ * **testimonio**, no memoria»*.
+ *
+ * Restaurar es acordarse: la misma criatura vuelve, y lo que vivió lo vivió.
+ * Heredar es que te cuenten: entra al mismo casillero y **pesa menos**. Ver
+ * `PESO_DEL_TESTIMONIO`.
+ *
+ * ─── EL MUNDO NO SE HEREDA, Y POR ESO ACÁ NO ESTÁ ──────────────────────────
+ *
+ * Una heredera nace en SU mundo, no en el cadáver del anterior. Devolver el
+ * `WorldState` guardado sería revivir la partida de la antecesora con otra
+ * criatura adentro, que es lo contrario de una sucesión. Lo único que cruza de
+ * una vida a la otra es el testimonio.
+ */
+export function loQueHereda(g: Guardado, peso = PESO_DEL_TESTIMONIO): Creencias {
+  if (g.version !== VERSION_DEL_GUARDADO) {
+    throw new RangeError(
+      `este guardado es de la versión ${String(g.version)} y esta build lee la ${String(VERSION_DEL_GUARDADO)}`,
+    )
+  }
+  const c = new Creencias()
+  c.cargar(g.creencias, peso)
+  return c
+}
+
+/** La heredera de lo que haya guardado `quien`. `undefined` si no hay nada. */
+export async function heredarDe(d: Deposito, quien: string, ranura?: string): Promise<Creencias | undefined> {
+  const raw = await d.leer(claveDe(quien, ranura))
+  if (raw === undefined) return undefined
+  return loQueHereda(raw as Guardado)
 }
