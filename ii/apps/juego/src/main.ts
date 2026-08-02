@@ -28,7 +28,9 @@ import {
   DE_FABRICA,
   cargarDeposito,
   depositoHttp,
+  glifoDe,
   mapaDe,
+  pintar,
   spritesEnMemoria,
   surtir,
   type Proveedor,
@@ -336,6 +338,65 @@ function panel(escena: ReturnType<typeof escenaDe>): void {
 }
 
 /**
+ * LO QUE LLEVA EN LA MANO, DIBUJADO — y por qué esto destraba los sprites.
+ *
+ * ─── LA MEDICIÓN QUE LO PIDIÓ ──────────────────────────────────────────────
+ *
+ * El registro decía «faltan los sprites de lado 12 y 8, así que todo objeto de
+ * dos o más piezas se dibuja procedural». Medido sobre 400 ticks del juego: **de
+ * las once claves que se piden, las once son de lado 24**. Ni una de 12 ni de 8.
+ *
+ * No era que se dibujaran mal: es que **no se dibujaban en ningún lado**. En todo
+ * el mundo hay UN cuerpo de varias piezas —la caña que la criatura ata— y está
+ * en la mano; el mapa no dibuja lo que está en una mano (decisión 1 de `mapa.ts`,
+ * y está bien: pintarlo en el suelo diría que está tirado ahí). Con el mapa como
+ * único dibujante, lo compuesto era invisible.
+ *
+ * Así que esto no es un panel más: es el primer lugar donde un objeto de varias
+ * piezas se dibuja. `glifoDe` compone las piezas en una grilla de 24, y a dos
+ * piezas les toca lado 12 — o sea que **las claves de 12 empiezan a pedirse solas
+ * en cuanto la criatura ata algo**.
+ *
+ * Un canvas por objeto y no uno solo con todo: cada uno se escala por CSS a 48
+ * px con `pixelated`, y el buffer sigue midiendo 24 — el mismo truco del mapa,
+ * por la misma razón.
+ */
+function inventario(escena: ReturnType<typeof escenaDe>): void {
+  const actor = escena.actores[0]
+  if (actor === undefined) return
+  const caja = $('inventario')
+  // Se repinta sólo cuando cambia lo que lleva. El contenido de un glifo puede
+  // cambiar igual —llega el sprite del modelo— y eso lo cubre el `data-clave`.
+  const firma = actor.holding.join(',')
+  if (caja.dataset['lleva'] === firma) return
+  caja.dataset['lleva'] = firma
+  caja.replaceChildren()
+
+  for (const id of actor.holding) {
+    const c = escena.cuerpos.get(id)
+    if (c === undefined) continue
+    const px = pintar(glifoDe(c.d, PHYS, 24, sprites))
+    const cv = document.createElement('canvas')
+    cv.width = px.length
+    cv.height = px.length
+    cv.title = `${c.d.forma} de ${c.d.materiales.join(' y ')}`
+    const ctx = cv.getContext('2d')
+    if (ctx === null) continue
+    for (let y = 0; y < px.length; y++) {
+      const fila = px[y]
+      if (fila === undefined) continue
+      for (let x = 0; x < fila.length; x++) {
+        const color = fila[x]
+        if (color === undefined || color === '') continue
+        ctx.fillStyle = color
+        ctx.fillRect(x, y, 1, 1)
+      }
+    }
+    caja.appendChild(cv)
+  }
+}
+
+/**
  * EL REGISTRO DE LA CHARLA. Se repinta entero y sólo cuando creció.
  *
  * Entero porque son unas pocas líneas y un diff acá sería código para ahorrar
@@ -431,6 +492,7 @@ function cuadro(ahora: number): void {
 
   hud(escena)
   panel(escena)
+  inventario(escena)
   charla()
   ultimaEscena = escena
 

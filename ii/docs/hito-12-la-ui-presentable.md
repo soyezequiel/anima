@@ -1135,3 +1135,37 @@ no tenía plan**. Hoy lo tiene, así que la criatura la persigue y la cumple —
 si eso es mejor o peor hay que mirarlo corrida por corrida, no suponerlo.
 
 Es una sesión con foco en `@anima/mind`, no la cola de ésta.
+
+### Los sprites de lado 12 y 8: la premisa estaba mal
+
+El registro decía *«sólo hay sprites de 24, así que todo objeto de dos o más
+piezas se dibuja procedural para siempre»*. Se midió antes de dibujar nada, y la
+primera mitad es cierta y la segunda no explica por qué.
+
+**Medido sobre 400 ticks del juego: de las once claves que se piden, las once son
+de lado 24.** Ni una de 12, ni una de 8. O sea que los sprites chicos no faltaban
+porque nadie los hubiera dibujado — **no se pedían nunca**.
+
+La causa, medida en el mismo tick: **en todo el mundo hay UN cuerpo de varias
+piezas —la caña que la criatura ata— y está en la mano**. El mapa no dibuja lo que
+está en una mano (decisión 1 de `mapa.ts`, y es correcta: pintarlo en el suelo
+diría que está tirado ahí). Con el mapa como único dibujante, lo compuesto era
+invisible.
+
+Así que lo que faltaba no eran dibujos: era **dónde verlos**.
+
+`inventario()` en `apps/juego/src/main.ts` dibuja lo que la criatura lleva, un
+canvas por objeto, con el mismo `glifoDe` del mapa sobre una grilla de 24 — y a
+dos piezas `layout` les da media grilla, o sea **lado 12**. Las claves chicas
+empiezan a pedirse solas en cuanto la criatura ata algo.
+
+`tests/el-inventario-pide-las-piezas.test.ts` afirma las dos mitades, y la primera
+es la que hace que la segunda signifique algo:
+
+- **el control**: corriendo 400 ticks con el mapa solo, el conjunto de lados
+  pedidos es exactamente `['24']`;
+- con el inventario dibujando, aparece el `12`.
+
+Lo que sigue faltando, ahora sí por lo que el registro decía: **nadie dibujó
+todavía esas claves**. Pero ya se piden, que es lo que hacía falta para poder
+pedirlas al modelo.
