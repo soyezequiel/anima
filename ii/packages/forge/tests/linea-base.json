@@ -1,0 +1,19 @@
+{
+  "queEsEsto": "LA LÍNEA BASE DE ESTE PAQUETE. Cada número de acá lo defiende un test; el resto de los números del árbol sólo se imprimen. Ver el Hito 11.",
+  "comoSeSube": "A MANO, y con el porqué escrito al lado. Nada escribe este archivo automáticamente.",
+  "relojesSinPuerta": {
+    "queEs": "Cuántos archivos de test de todo `ii/` AFIRMAN contra el reloj de pared sin pasar por la puerta de `tests/reloj.ts`. Son los que pueden ponerse rojos porque la máquina estaba ocupada, no porque el código esté mal.",
+    "porQue": "El plan del Hito 11 pide que el CI determinista y el benchmark real corran aparte, y avisa que mezclarlos «ya pasó dos veces en este proyecto». La tercera estaba en el árbol: `forge/tests/el-episodio.test.ts` pasaba 6 de 6 solo y fallaba con los 13 archivos de su paquete en paralelo. Al medirlo aparecieron OCHO archivos en SEIS paquetes, no uno. Arreglar los ocho de una es una barrida que nadie puede revisar; congelar el número deja que la deuda baje de a poco y no crezca nunca.",
+    "medidoEl": "2026-08-02, con los tres de @anima/forge ya pasados por la puerta. La lista la escribió EL DETECTOR y no la mano: la primera versión de este campo la escribí yo leyendo un grep y decía 5 archivos, dos de ellos equivocados. Un número de línea base que sale de la intuición es exactamente lo que este hito vino a eliminar.",
+    "cuantos": 6,
+    "cuales": [
+      "perceive/tests/ataque-2-al-sellado-y-al-reloj.test.ts",
+      "perceive/tests/ataque-a-la-costura.test.ts",
+      "perceive/tests/banco-la-vista.test.ts",
+      "skills/tests/hito-4-el-criterio.test.ts",
+      "world/tests/banco-el-tick.test.ts",
+      "world/tests/determinismo.test.ts"
+    ],
+    "comoSeBaja": "Envolviendo la aserción en la puerta: `if (CONTRA_EL_RELOJ) expect(...)` y un `console.log` con `NO_SE_AFIRMA` en el else, para que el número se siga viendo. El valor NO se afloja: se muda a la corrida con `ANIMA_RELOJ=1`."
+  }
+}

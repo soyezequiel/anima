@@ -199,15 +199,63 @@ y acusaba **al archivo que la define**, porque el nombre está adentro de su pro
 expresión. Busca la LLAMADA —`writeFileSync(`— y por eso no puede volver a
 pasar: después del nombre viene una barra invertida y no un paréntesis.
 
+## 2 ter · El punto 4 — no era un test, eran ocho archivos
+
+Medido antes de tocar nada, sobre todo `ii/packages/*/tests`:
+
+```
+archivos que tocan el reloj de pared Y afirman sobre él ... 8
+paquetes involucrados .................................... 6
+```
+
+El rojo que conocíamos era **uno** de esos ocho. Arreglar el que falla hoy y no
+mirar los otros siete habría sido arreglar el síntoma; arreglar los ocho de una
+es una barrida por seis paquetes que nadie puede revisar.
+
+### La puerta
+
+`forge/tests/reloj.ts` — tres líneas y un encabezado. `ANIMA_RELOJ=1` enciende las
+aserciones de reloj; sin él **el número se sigue imprimiendo** y se afirma lo
+estructural, que es cierto con la máquina cargada o libre.
+
+> **El número no se afloja: se muda.** En la suite determinista se imprime con un
+> `(no se afirma acá…)` al lado, para que nadie lo lea como si no existiera.
+
+Y un flag propio, no `ANIMA_BANCO`: ése dice *«esto sale caro»* (20 semillas,
+311 s) y éste dice *«esto mide contra el reloj»*. El episodio de la fragua tarda
+8 segundos —es barato— y aun así su número no se puede afirmar en una máquina
+cargada. Conflatirlos haría que apagar el caro apague también al del reloj.
+
+### Y la deuda se congela en vez de esconderse
+
+`forge/tests/los-relojes-que-quedan.test.ts` cuenta los que quedan y compara
+contra una línea base que **sólo puede bajar**. Es el mecanismo de los puntos 1
+a 3 aplicado a una deuda: no obliga a arreglar todo hoy, y no deja que crezca
+mañana. Un archivo nuevo con una aserción de reloj sin la puerta lo pone rojo.
+
+```
+antes ... 8 archivos, 6 paquetes
+ahora ... 6 archivos — los 3 de @anima/forge pasaron por la puerta
+```
+
+> **La lista la escribió el detector, no la mano.** La primera versión de ese
+> campo la escribí yo leyendo un `grep` y decía 5 archivos, dos de ellos
+> equivocados. Un número de línea base que sale de la intuición es exactamente lo
+> que este hito vino a eliminar — y me lo hice a mí mismo en el mismo archivo
+> donde lo estaba prohibiendo.
+
 ---
 
 ## 3 · Lo que queda por construir
 
-1. **La separación de los tests de reloj de pared** (punto 4), empezando por el
-   rojo real de M9 — `forge/tests/el-episodio.test.ts`.
-2. **Las cien partidas** (puntos 5 y 6), fuera del job de CI, con su control.
-3. **Más números al archivo**: quedan 620 y pico imprimiéndose. Los tres que
-   entraron son los que más costaba defender, no todos los que hay.
+1. **Las cien partidas** (puntos 5 y 6), fuera del job de CI, con su control.
+2. **Bajar los 6 relojes que quedan**, uno por uno. Están contados, nombrados y
+   congelados: `perceive` ×3, `skills` ×1, `world` ×2.
+3. **Más números al archivo**: quedan 620 y pico imprimiéndose. Los que entraron
+   son los que más costaba defender, no todos los que hay.
+4. **Un job de CI aparte** que corra `ANIMA_RELOJ=1`. Hoy la puerta existe y
+   nadie la abre en CI, así que esos números no se afirman en ningún lado —
+   están separados pero todavía no corridos, y hay que decirlo.
 
 Lo que **no** hay que construir: la puerta de ciclos rentables (M6), los
 invariantes económicos (M7), ni el techo de consultas (M5) — aunque a ése hay

@@ -19,6 +19,7 @@
  * misma partida y el mismo material: una con la fragua afuera y otra adentro.
  */
 
+import { CONTRA_EL_RELOJ, NO_SE_AFIRMA } from './reloj.js'
 import { Partida } from '@anima/perceive'
 import { buildSeedPhysics } from '@anima/physics'
 import { CATALOGO_CORE } from '@anima/plan'
@@ -252,7 +253,9 @@ describe('(6b) y (6d) SE RE-FORJA EN EL FONDO, SIN PERDER UN TICK', () => {
         `\n  la fragua tardó ${r.ms.toFixed(0)} ms (${(r.ms / VENTANA_MS).toFixed(0)} ventanas)\n`,
     )
     expect(r.forjados.length).toBe(K_DE_MEJORA)
-    expect(r.perdidosPorLaFragua).toBe(0)
+    // Reloj de pared: ver `tests/reloj.ts` y el punto 4 del Hito 11.
+    if (CONTRA_EL_RELOJ) expect(r.perdidosPorLaFragua).toBe(0)
+    else console.log(`    perdidos por la fragua: ${String(r.perdidosPorLaFragua)} ${NO_SE_AFIRMA}`)
     // Y el mundo corrió DE VERDAD: un carril donde el bucle no avanzó tendría
     // cero perdidos por no haber corrido nada.
     expect(r.ticks).toBeGreaterThan(100)
@@ -325,6 +328,8 @@ describe('(6c) LA GANADORA REEMPLAZA, y la perdedora no', () => {
     const ms = reloj() - t0
 
     console.log(`\n  el reemplazo entero: ${ms.toFixed(1)} ms de una ventana de ${String(VENTANA_MS)}\n`)
-    expect(ms).toBeLessThan(VENTANA_MS)
+    // Reloj de pared: ver `tests/reloj.ts`.
+    if (CONTRA_EL_RELOJ) expect(ms).toBeLessThan(VENTANA_MS)
+    else console.log(`    ${ms.toFixed(1)} ms ${NO_SE_AFIRMA}`)
   })
 })
