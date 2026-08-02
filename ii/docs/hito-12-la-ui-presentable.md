@@ -1099,3 +1099,39 @@ próxima sesión.
 
 Verificado: suite completa de `ii/` en verde, 14 typechecks limpios, 16 de 16 en
 Playwright, y el criterio del Hito 5 con su plan canónico sin moverse.
+
+### La tercera pieza: encontrada, medida, y no entró
+
+Se encontró el punto exacto, se escribió la línea, **se verificó que funciona**, y
+se sacó por radio de impacto. El diagnóstico queda cerrado para la próxima.
+
+**Dónde estaba:** `sinVocabulario` en `mind/src/escalera.ts`. Es la decisión 7 de
+la mente —«no se toma una meta que ningún esquema sabe establecer»— y vetaba la
+orden un piso más arriba que el planificador. Por eso la criatura contestaba «dale,
+voy» y seguía con lo suyo: el plan existía y la mente ni lo pedía.
+
+**La línea:** un `sostiene` no necesita vocabulario. El catálogo dejó de ser la
+lista completa de lo que se puede establecer el día que la regresión aprendió una
+vía que no es un esquema. Preguntarle a la tabla por un `sostiene` es preguntarle
+a la lista equivocada.
+
+Y cae del lado que el propio encabezado de esa función ya había elegido: *«de los
+dos errores posibles, dejar pasar una meta imposible cuesta una búsqueda por tick,
+y vetar una meta posible cuesta que la criatura no la persiga NUNCA»*.
+
+**Funciona, medido:** con la línea puesta, «traé una piedra» da esto en el tick 0
+
+    {"meta":"tener algo mineral","de":"vos"}
+
+y a los quince ticks la piedra está en la mano. La orden entera, de punta a punta.
+
+**Por qué se sacó igual: doce tests de `@anima/mind` cambian de conducta.** No es
+un defecto de la línea — es que la mente pasa a poder querer cosas que antes
+descartaba, y eso mueve corridas largas: la parrilla, el ancla del fondo, las
+paredes del criterio 2b. El más elocuente es el que decía «REPARADO · con el
+tanque lleno toma la meta que SÍ se puede planificar»: describía un bucle de
+12.000 ticks persiguiendo `holding(tag:vegetal)`, que se colgaba **porque esa meta
+no tenía plan**. Hoy lo tiene, así que la criatura la persigue y la cumple — pero
+si eso es mejor o peor hay que mirarlo corrida por corrida, no suponerlo.
+
+Es una sesión con foco en `@anima/mind`, no la cola de ésta.
