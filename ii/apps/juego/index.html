@@ -141,6 +141,50 @@
           linear-gradient(to top, rgba(13, 12, 10, .7) 0%, rgba(13, 12, 10, 0) 24%);
       }
 
+      /* ─── EL ANCLA Y EL GLOBO ─────────────────────────────────────────────
+         El ancla se centra en la celda con `margin` negativo de la mitad de su
+         lado: es un círculo de 11 puesto sobre un punto, no una caja que
+         arranca ahí. Y el halo va con `box-shadow` y no con un segundo borde
+         porque una sombra no ocupa layout — el ancla mide 11 y ocupa 11, así
+         que ubicarla es una cuenta y no una cuenta más un margen. */
+      .ancla {
+        position: absolute; z-index: 1; width: 11px; height: 11px;
+        margin: -6px 0 0 -6px; border-radius: 50%;
+        border: 1px solid var(--senal); box-shadow: 0 0 0 4px rgba(240, 231, 200, .1);
+        pointer-events: none;
+      }
+      /* 278 de ancho con `box-sizing: border-box` son 252 de contenido más 13 de
+         padding a cada lado, que es la medida del diseño escrita al revés. */
+      .globo {
+        position: absolute; z-index: 1; width: 278px; padding: 13px;
+        border-radius: 3px; background: var(--flotante);
+        box-shadow: 0 18px 44px rgba(0, 0, 0, .62), inset 0 1px 0 rgba(236, 231, 221, .08);
+      }
+      .globo .cabeza { display: flex; gap: 11px; align-items: flex-start; }
+      /* 48 y no 44, por lo mismo que la bandeja: el buffer del glifo mide 24 y
+         48 es el doble exacto. Ver el comentario largo en `.mano canvas`. */
+      .globo canvas {
+        width: 48px; height: 48px; flex: none; border-radius: 2px;
+        background: rgba(236, 231, 221, .05);
+      }
+      .globo .dice { min-width: 0; }
+      .globo b { display: block; font: 500 15px/1.3 var(--serif); margin-bottom: 3px;
+                 color: var(--tinta); }
+      .globo .detalle { font-size: 11px; color: var(--tinta-apagada); line-height: 1.55; }
+      .globo .cerrar {
+        margin-left: auto; flex: none; background: transparent; color: var(--tinta-baja);
+        font-size: 14px; line-height: 1; padding: 1px 3px;
+      }
+      .globo .cerrar:hover { background: var(--realce-suave); color: var(--tinta); }
+      .globo .pie {
+        margin: 10px 0 0; padding-top: 9px;
+        border-top: 1px solid rgba(236, 231, 221, .08);
+        font: 400 12.5px/1.5 var(--serif); color: var(--tinta-apagada);
+      }
+      /* Sin pie no va ni la línea: un separador arriba de nada separa el globo
+         de su propio borde de abajo. */
+      .globo .pie:empty { display: none; }
+
       /* Dicho y no dibujado: el diseño no tiene lugar para un encabezado y un
          documento sin `h1` pierde su estructura para quien lo recorre a ciegas. */
       .solo-para-lectores {
@@ -277,8 +321,13 @@
         opacity: 1; visibility: visible; transform: none;
         transition: opacity .11s ease, transform .11s ease, visibility 0s;
       }
+      /* 24 y no 34, que es el mismo criterio que la bandeja y el globo con el
+         signo al revés: el buffer del glifo mide 24, y 34 salía a escala 1,417.
+         Los múltiplos enteros de 24 son 24 y 48; el hover se queda con el chico
+         y el globo con el grande, y eso además DICE cuál es cuál — pasar el
+         mouse es una ojeada, clickear es mirar. */
       .cartel .glifo {
-        width: 34px; height: 34px; flex: none; image-rendering: pixelated;
+        width: 24px; height: 24px; flex: none; image-rendering: pixelated;
         border-radius: 2px; background: rgba(13, 12, 10, .55);
       }
       /* El QUÉ en serif y el detalle en mono, que es la misma regla de toda la
@@ -480,15 +529,6 @@
       .haciendo b { font: 500 19px/1.25 var(--serif); color: var(--tinta); }
       .haciendo span { color: var(--tinta-baja); font: 400 11px var(--mono);
                        font-variant-numeric: tabular-nums; }
-      /* Lo mirado es una frase, no cuatro filas de planilla: «vara de madera ·
-         madera · 1 parte · cruda». Se lee de un vistazo y ocupa la mitad. */
-      .mirado { margin: 0; font-size: 11px; line-height: 1.55; }
-      /* El mismo par que el cartel del mouse —serif para el qué, mono para el
-         detalle—, y a propósito: son la misma cosa dicha en dos lugares. */
-      .mirado b { font: 500 15px/1.3 var(--serif); display: block; color: var(--tinta);
-                  margin-bottom: 2px; }
-      .mirado span { color: var(--tinta-apagada); font-size: 11px; }
-      .mirado span:not(:empty) ~ span:not(:empty)::before { content: ' · '; }
       /* ─── CON QUIÉN ESTÁ HABLANDO: dos luces y su rol ────────────────────
          Lo que decide qué luz va prendida está entero en `con-quien.ts`; acá
          hay tres clases y ninguna condición. Los estados son tres y se
@@ -609,6 +649,7 @@
            `aria-hidden` y `pointer-events:none`: no dice nada y no se toca. -->
       <div id="penumbra" aria-hidden="true"></div>
 
+
       <!-- ─── CON QUIÉN HAY DEL OTRO LADO — ARRIBA A LA IZQUIERDA ────────────
            Sin caja y sin fondo: dos lámparas y sus rótulos sueltos sobre el
            mapa. El contraste ya se lo da el degradado que apaga esa esquina, así
@@ -687,6 +728,52 @@
         <span id="reloj">tick 0</span>
       </div>
 
+      <!-- ─── EL GLOBO DEL CLICK, Y SU ANCLA ─────────────────────────────────
+           Esto era «Lo que miraste», cuatro renglones en el panel de la derecha.
+           El dato es el mismo y la máquina también —`lo-senalado.ts` no cambió
+           una línea de lo que ya decidía—: lo que cambia es DÓNDE aparece la
+           respuesta. Clickeabas una mancha del mapa y leías la respuesta a
+           setecientos píxeles de distancia, así que reconocer una cosa costaba
+           un click y un viaje del ojo. Ahora sale al lado de lo que tocaste.
+
+           El ancla y el globo son dos piezas y hacen cosas distintas: el
+           círculo dice DÓNDE —qué celda estás mirando— y el globo dice QUÉ.
+           Separados porque el globo no puede vivir encima de la celda: taparía
+           justo lo que se quiere ver. Es la misma división que el recuadro y el
+           cartel del hover, y a propósito.
+
+           El ancla es `pointer-events:none` y el globo NO: la × tiene que poder
+           clickearse, y ésa es toda la diferencia.
+
+           ─── Y VAN ÚLTIMOS DE SU CAPA, QUE ES UN BUG QUE SE VIO ─────────────
+
+           El enlace, la ficha, la velocidad y el globo son la misma capa (z:1),
+           así que entre ellos gana el que va DESPUÉS en el marcado. Con el globo
+           escrito antes, el «1.4 s» de la ficha y la barra de progreso se
+           dibujaban ENCIMA del globo: el texto de la criatura atravesando un
+           panel opaco al 96%, que se lee como un defecto de render.
+
+           Van últimos porque el globo es lo único de la capa que sale por un
+           gesto: los otros tres están siempre y él aparece porque preguntaste.
+           Lo que se pide tapa a lo que está. -->
+      <div class="ancla" id="ancla" aria-hidden="true" hidden></div>
+      <div class="globo" id="globo" role="status" hidden>
+        <div class="cabeza">
+          <!-- El dibujo se pone y se saca desde `main.ts`: en una celda vacía no
+               va, porque un recuadro vacío al lado de «nada acá» dibuja el hueco
+               en vez de decirlo. -->
+          <div id="globo-dibujo"></div>
+          <div class="dice">
+            <b id="globo-que"></b>
+            <span class="detalle" id="globo-detalle"></span>
+          </div>
+          <!-- Un `button` y no un `span` con onclick: la × es la única forma de
+               cerrar esto, y con un `span` no hay forma de llegar sin mouse. -->
+          <button type="button" class="cerrar" id="globo-cerrar" aria-label="cerrar">×</button>
+        </div>
+        <p class="pie" id="globo-pie"></p>
+      </div>
+
       <aside id="provisorio">
         <!-- ─── ESTE PANEL ES PROVISORIO Y SE VA ──────────────────────────────
              Lo que queda acá se reparte en los pasos que siguen: «lo que
@@ -707,14 +794,6 @@
         <input id="orden" type="text" placeholder="hacé fuego, armá una trampa…" />
       </form>
       <div class="charla" id="registro"></div>
-
-      <h2>Lo que miraste</h2>
-      <p class="mirado">
-        <b id="mirado-que">hacé click en algo del mapa</b>
-        <span id="mirado-de"></span>
-        <span id="mirado-piezas"></span>
-        <span id="mirado-estado"></span>
-      </p>
 
       <details id="catalogo">
         <summary>Lo que sabe hacer</summary>

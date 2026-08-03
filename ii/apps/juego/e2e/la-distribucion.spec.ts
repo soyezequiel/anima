@@ -188,7 +188,9 @@ test('lo que se toca una vez va plegado, y lo que se usa siempre no', async ({ p
   await expect(page.locator('#aliento-caja')).toBeVisible()
   await expect(page.locator('[data-vel="0"]')).toBeVisible()
   await expect(page.locator('#hace')).toBeVisible()
-  await expect(page.locator('#mirado-que')).toBeVisible()
+  // Y el mapa, que es de dónde sale lo que se mira: «Lo que miraste» dejó de
+  // ser una sección del panel y pasó a ser el globo, que aparece al clickear.
+  await expect(page.locator('#mapa')).toBeVisible()
 
   // Y lo que se toca una vez, plegado: el panel tenía nueve secciones apiladas
   // con el mismo peso, y tres de las primeras eran controles de una sola vez.

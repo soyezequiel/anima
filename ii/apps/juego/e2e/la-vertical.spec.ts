@@ -86,7 +86,7 @@ test('3 · ver todos los objetos del área visible', async ({ page }) => {
   // celda que lo motivó— y no de la distribución. Que algo quede tapado es de
   // la distribución, y lo cuida `la-distribucion.spec.ts`. Por eso se apaga el
   // `pointer-events` de la capa que flota y no se la esconde: el barrido llega
-  // al mapa entero y los nodos que el barrido LEE —`#mirado-que`,
+  // al mapa entero y los nodos que el barrido LEE —el globo del click y
   // `#a-la-vista`— siguen ahí. Esconderlos dejaría al test sin dónde leer.
   //
   // Y no es un gesto fabricado: los clicks siguen siendo clicks de verdad, con
@@ -150,11 +150,13 @@ test('3 · ver todos los objetos del área visible', async ({ page }) => {
   for (let fila = 0; fila < filas; fila++) {
     for (let col = 0; col < columnas; col++) {
       await canvas.click({ position: { x: (col + 0.5) * pasoX, y: (fila + 0.5) * pasoY } })
-      const que = (await page.locator('#mirado-que').textContent()) ?? ''
+      const que = (await page.locator('#globo-que').textContent()) ?? ''
       if (que.startsWith('nada')) continue
       const mas = /y (\d+) más/.exec(que)
       contados += 1 + (mas === null ? 0 : Number(mas[1]))
-      clases.add(`${que.replace(/ \(y \d+ más acá\)/, '')} de ${(await page.locator('#mirado-de').textContent()) ?? ''}`)
+      clases.add(
+        `${que.replace(/ \(y \d+ más acá\)/, '')} · ${(await page.locator('#globo-detalle').textContent()) ?? ''}`,
+      )
     }
   }
 
@@ -257,28 +259,54 @@ test('7 · inspeccionar la criatura', async ({ page }) => {
   await expect(page.locator('#manos')).not.toHaveText('—')
 })
 
+// ─── EL PANEL SE VOLVIÓ UN GLOBO, Y EL PUNTO NO CAMBIÓ ──────────────────
+//
+// Esto leía cuatro nodos del panel de la derecha. Hoy lee el globo, que sale en
+// el lugar del click: es el MISMO dato por la MISMA función —`lo-senalado.ts` no
+// cambió una línea de lo que ya decidía— puesto donde el ojo ya está mirando.
+//
+// Y hay dos cosas que el panel no podía afirmar y éste sí, porque son de estar
+// anclado a un lugar: que aparezca un ancla SOBRE la celda, y que la × cierre.
 test('8 · inspeccionar cuerpos y obras', async ({ page }) => {
   await abrir(page)
   const canvas = page.locator('#mapa')
   const caja = await canvas.boundingBox()
   if (caja === null) throw new Error('el mapa no tiene caja')
 
+  // Antes de clickear no hay globo: aparece porque preguntaste, no de entrada.
+  await expect(page.locator('#globo')).toBeHidden()
+
   // El centro es la criatura: el foco la sigue, así que siempre está ahí.
   await canvas.click({ position: { x: caja.width / 2, y: caja.height / 2 } })
-  await expect(page.locator('#mirado-que')).toContainText('la criatura')
+  await expect(page.locator('#globo-que')).toContainText('la criatura')
   // El material va en el NOMBRE —«carne cruda»— y por eso se pide acá y no en
-  // `#mirado-de`, que ahora sólo se llena cuando el cuerpo tiene tres sustancias
-  // o más: con una o dos, el nombre ya las dice y repetirlas era leer dos veces.
-  await expect(page.locator('#mirado-que')).toContainText('carne')
-  await expect(page.locator('#mirado-piezas')).toContainText('parte')
-  // `forma · porte`. La banda de estado estaba acá y se mudó al nombre: el mundo
-  // llama «carne cruda» a esto, y el panel decía «malla» —la forma geométrica—
-  // con «crudo» en otro renglón.
-  await expect(page.locator('#mirado-estado')).toContainText('·')
+  // el detalle, que sólo nombra las sustancias cuando el cuerpo tiene tres o
+  // más: con una o dos, el nombre ya las dice y repetirlas era leer dos veces.
+  await expect(page.locator('#globo-que')).toContainText('carne')
+  // El detalle son las tres frases seguidas: las piezas y `forma · porte`.
+  await expect(page.locator('#globo-detalle')).toContainText('parte')
+  await expect(page.locator('#globo-detalle')).toContainText('·')
+
+  // ─── Y EL ANCLA CAE SOBRE LA CELDA QUE CLICKEASTE ──────────────────
+  //
+  // Es lo que el panel de la derecha no podía prometer: ahí la respuesta vivía a
+  // setecientos píxeles de la pregunta y no había relación que verificar. Acá esa
+  // relación ES el cambio, así que es lo que hay que cuidar.
+  const marca = await page.locator('#ancla').boundingBox()
+  if (marca === null) throw new Error('el ancla no tiene caja')
+  const CELDA = 28
+  expect(Math.abs(marca.x + marca.width / 2 - (caja.x + caja.width / 2))).toBeLessThan(CELDA)
+  expect(Math.abs(marca.y + marca.height / 2 - (caja.y + caja.height / 2))).toBeLessThan(CELDA)
 
   // Y una celda vacía dice que está vacía, en vez de quedarse con lo anterior:
-  // un panel que no se limpia hace creer que hay algo donde no hay nada.
+  // un globo que no se limpia hace creer que hay algo donde no hay nada. Y su
+  // pie pasa a decir qué suelo es, que es lo único que queda para decir.
   await canvas.click({ position: { x: 4, y: 4 } })
-  const que = await page.locator('#mirado-que').textContent()
+  const que = await page.locator('#globo-que').textContent()
   expect(que === null || que.startsWith('nada') || que.length > 0).toBe(true)
+
+  // ─── LA × LO CIERRA, y es la única forma de sacarlo de la pantalla ──────
+  await page.locator('#globo-cerrar').click()
+  await expect(page.locator('#globo')).toBeHidden()
+  await expect(page.locator('#ancla')).toBeHidden()
 })

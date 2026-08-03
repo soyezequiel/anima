@@ -20,9 +20,10 @@
 //      falla es el del borde derecho, que en pantalla se ve una vez cada diez
 //      hover y en un test se ve siempre.
 
+import { sueloDe } from '@anima/dibujo'
 import { nombreDeLoVisible } from '@anima/physics'
 import type { Physics } from '@anima/physics'
-import type { BodyId, Escena, RenderDescriptor } from '@anima/world'
+import type { BodyId, CeldaEnEscena, Escena, RenderDescriptor } from '@anima/world'
 
 /**
  * EL MÁS GRANDE MANDA. El dios siembra hasta trece cuerpos en una misma celda y
@@ -185,6 +186,63 @@ export interface Punto {
   readonly y: number
 }
 
+// ─── EL PIE DEL GLOBO: LO QUE LA CELDA DICE Y EL CUERPO NO ──────────────────
+//
+// El globo del click tiene un renglón abajo de todo, separado por una línea, y
+// contesta una pregunta que el cuerpo señalado no puede contestar: **qué más hay
+// en esta casilla**. Son dos casos y nunca los dos a la vez.
+//
+// Con algo encima, lo que falta saber es cuántos quedan debajo — el dios siembra
+// hasta trece cuerpos en una celda y el mapa dibuja uno.
+//
+// Y con la celda vacía, lo que queda para decir es EL SUELO. Ahí está lo que
+// hace que este renglón valga la pena y no sea relleno: una celda vacía no es
+// nada, es un lugar donde una chispa prende o donde se apaga, y eso decide dónde
+// se enciende un fuego. Es la única parte del mapa que hoy se ve como color y no
+// se puede leer.
+//
+// ─── LAS TRES FRASES SALEN DE UNA LEY, NO DE UN ADJETIVO ────────────────────
+//
+// Cada implicación es el criterio de la ley que produce ese suelo, dicho en
+// castellano. Ninguna es una impresión:
+//
+//   seco        `wet < 0.45`, que es `HUMEDAD_QUE_APAGA` de la ley 3, o sea que
+//               el suelo se ve seco exactamente donde un fuego NO se apaga;
+//   mojado      el mismo corte del otro lado;
+//   bajo techo  `sheltered > 0`, la oclusión de la ley 12 (ADR II-0002), que es
+//               lo que la mente lee para dejar de necesitar refugio
+//               (`necesidades.ts` multiplica por `1 − sheltered`).
+//
+// `sueloDe` es la MISMA función con la que `@anima/dibujo` pinta la celda, así
+// que el renglón no puede decir «seco» sobre un suelo pintado de mojado. Un
+// umbral propio acá sería la segunda verdad sobre el mismo suelo.
+const LO_QUE_IMPLICA = {
+  seco: 'suelo seco: acá una chispa prende',
+  mojado: 'suelo mojado: acá un fuego se apaga',
+  'bajo-techo': 'bajo techo: acá deja de necesitar refugio',
+} as const
+
+/**
+ * EL RENGLÓN DE ABAJO DEL GLOBO. Vacío cuando no hay nada que agregar, que es el
+ * caso de una celda con UN solo cuerpo: ahí el globo ya lo dijo todo.
+ *
+ * `celda` puede faltar y no es un borde defensivo: el encuadre publica las celdas
+ * que entran en el radio, y se puede clickear el sobrante de media celda que
+ * queda al borde del canvas. Sin cuerpo y sin celda no hay nada que decir.
+ */
+export function piePara(s: Senalado | undefined, celda: CeldaEnEscena | undefined): string {
+  if (s !== undefined) {
+    if (s.mas === 0) return ''
+    return s.mas === 1 ? 'hay uno más debajo, en esta casilla' : `hay ${String(s.mas)} más debajo, en esta casilla`
+  }
+  return celda === undefined ? '' : LO_QUE_IMPLICA[sueloDe(celda)]
+}
+
+/** La celda del encuadre en `at`, o nada si el click cayó afuera. */
+export function celdaEnEscena(e: Escena, at: Punto): CeldaEnEscena | undefined {
+  return e.celdas.find((c) => c.at.x === at.x && c.at.y === at.y)
+}
+
 /** Cuánto se aparta el cartel del puntero, para no quedar abajo del cursor. */
 const APARTE = 16
 /** Y cuánto respeta los bordes de la ventana. */
@@ -201,6 +259,50 @@ const ORILLA = 6
  * El `max` final no es defensivo por las dudas: en una ventana más angosta que
  * el cartel, las dos ramas dan negativo y el texto se corta por la izquierda.
  */
+/** Cuánto se aparta el globo de su ancla, abajo y a la derecha. */
+const APARTE_DEL_ANCLA = 14
+/** Y cuánto respeta los bordes de la pantalla. Es el `8` del diseño. */
+const ORILLA_DEL_GLOBO = 8
+
+/**
+ * DÓNDE VA EL GLOBO DEL CLICK, y por qué NO es la misma cuenta que el cartel.
+ *
+ * Las dos ponen una caja cerca de un punto sin que se salga, y ahí se termina el
+ * parecido. El cartel del mouse **se da vuelta** cuando no entra: se pasa al otro
+ * lado del puntero, porque el puntero se está moviendo y taparle la celda de
+ * abajo sería taparle justo lo que está mirando. El globo **se acota**: se queda
+ * abajo y a la derecha del ancla y se frena contra el borde, porque el ancla es
+ * un lugar elegido y ya está marcada con su círculo — moverlo al otro lado
+ * rompería la relación «esto habla de aquello» que el ancla acaba de establecer.
+ *
+ * ─── LO RESERVADO NO ES UN MARGEN: SON LAS OTRAS CAPAS ─────────────────────
+ *
+ * `reservado.derecha` es lo que ocupa la charla y `reservado.abajo` lo que ocupa
+ * el dock. No alcanza con no salirse de la ventana: un globo que quede DEBAJO del
+ * dock o DETRÁS de la charla está tan perdido como uno que se fue de la pantalla,
+ * y peor, porque el ancla sigue marcando su celda y no se ve nada al lado.
+ *
+ * Los dos números se miden y no se suponen —el dock crece cuando la fila de
+ * chips se envuelve— así que entran por parámetro en vez de vivir acá.
+ */
+export function ubicarElGlobo(
+  ancla: Punto,
+  globo: Caja,
+  ventana: Caja,
+  reservado: { readonly derecha: number; readonly abajo: number },
+): { left: number; top: number } {
+  const tope = (borde: number, reserva: number, lado: number): number =>
+    borde - reserva - lado - ORILLA_DEL_GLOBO
+  // El `max` va afuera del `min` y no al revés: en una ventana más chica que el
+  // globo el tope da negativo, y con el orden invertido el globo se iría por la
+  // izquierda en vez de pegarse a la orilla. Es la misma guarda que el cartel.
+  const acotar = (v: number, t: number): number => Math.max(ORILLA_DEL_GLOBO, Math.min(v, t))
+  return {
+    left: acotar(ancla.x + APARTE_DEL_ANCLA, tope(ventana.ancho, reservado.derecha, globo.ancho)),
+    top: acotar(ancla.y + APARTE_DEL_ANCLA, tope(ventana.alto, reservado.abajo, globo.alto)),
+  }
+}
+
 export function ubicarElCartel(raton: Punto, cartel: Caja, ventana: Caja): { left: number; top: number } {
   const derecha = raton.x + APARTE
   const abajo = raton.y + APARTE

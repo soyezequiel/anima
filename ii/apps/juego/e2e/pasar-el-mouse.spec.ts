@@ -126,14 +126,28 @@ test('el cartel aparece al pasar el mouse, sin clickear nada', async ({ page }) 
   await expect(cartel.locator('b')).not.toBeEmpty()
 })
 
-test('DICE LO MISMO QUE EL PANEL para la misma celda', async ({ page }) => {
+// ─── DICE LO MISMO QUE EL GLOBO, y ahora eso importa MÁS ──────────────────
+//
+// Esto comparaba el cartel del hover contra el panel de la derecha. Hoy lo
+// compara contra el GLOBO del click, y la razón de ser del test no cambió sino
+// que se puso más filosa: los dos aparecen en la MISMA zona de la pantalla, a
+// catorce píxeles uno del otro, así que el día que diverjan se va a ver como que
+// el juego se contradice a sí mismo en el mismo renglón.
+test('DICE LO MISMO QUE EL GLOBO para la misma celda', async ({ page }) => {
   await abrir(page)
   const donde = await buscarAlgo(page, await grillaDelMapa(page))
 
   const delCartel = await page.locator('#cartel b').textContent()
   // El click va exactamente al mismo punto donde está el mouse.
   await page.mouse.click(donde.x, donde.y)
-  await expect(page.locator('#mirado-que')).toHaveText(delCartel ?? '')
+  await expect(page.locator('#globo-que')).toHaveText(delCartel ?? '')
+
+  // ─── Y EL HOVER SE CALLA SOBRE LA CELDA QUE YA TIENE EL GLOBO ──────────
+  //
+  // El mouse quedó donde estaba, o sea sobre la celda anclada. Si el cartel
+  // siguiera prendido, los dos dirían lo mismo apilados a catorce píxeles. El
+  // hover contesta lo que TODAVÍA no preguntaste, y acá ya preguntaste.
+  await expect(page.locator('#cartel')).toBeHidden()
 })
 
 test('en una celda vacía no aparece nada, y salir del mapa lo apaga', async ({ page }) => {

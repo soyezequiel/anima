@@ -47,7 +47,15 @@ import type { ConQuien } from './con-quien.js'
 import { encuadrePara } from './el-encuadre.js'
 import type { Espacio } from './el-encuadre.js'
 import { loQueSeVeDe } from './criatura.js'
-import { describir, firmaDe, loSenaladoEn, ubicarElCartel } from './lo-senalado.js'
+import {
+  celdaEnEscena,
+  describir,
+  firmaDe,
+  loSenaladoEn,
+  piePara,
+  ubicarElCartel,
+  ubicarElGlobo,
+} from './lo-senalado.js'
 import type { Senalado } from './lo-senalado.js'
 import { depositoIndexedDB } from './deposito-indexeddb.js'
 import { Ordenes, enCastellano } from './ordenes.js'
@@ -404,25 +412,147 @@ function celdaEn(x: number, y: number, e: ReturnType<typeof escenaDe>): { x: num
   }
 }
 
+// ─── EL GLOBO SE ANCLA A UNA CELDA, NO A UN PUNTO DE LA PANTALLA ───────────
+//
+// Es la decisión de este tramo y no es obvia hasta que se ve corriendo: el foco
+// sigue a la criatura, así que **el mapa se desliza abajo de un punto quieto**.
+// Guardando el píxel clickeado, el globo empezaría a describir cosas distintas
+// sin que nadie toque nada — clickeás una vara y treinta ticks después el mismo
+// globo habla de un charco.
+//
+// Guardando la CELDA, el globo sigue hablando de lo que tocaste y el ancla se
+// mueve con ella, que es lo que la persona espera de una marca sobre un mapa. Es
+// la misma cuenta que `ubicarLaSenal` hace para el recuadro del hover, y por eso
+// el ancla y el recuadro nunca se desfasan entre sí.
+//
+// Y cuando la celda se va del encuadre, el globo se cierra: un ancla apuntando
+// afuera de la pantalla es una flecha a ninguna parte.
+const pantalla = $('pantalla')
+const ancla = $('ancla')
+const globo = $('globo')
+let anclada: { x: number; y: number } | undefined
+let firmaDelGlobo = ''
+
+function cerrarElGlobo(): void {
+  anclada = undefined
+  firmaDelGlobo = ''
+  ancla.hidden = true
+  globo.hidden = true
+}
+
+$('globo-cerrar').addEventListener('click', cerrarElGlobo)
+
 function mirar(ev: MouseEvent): void {
   const e = ultimaEscena
   if (e === undefined) return
-  const at = celdaEn(ev.clientX, ev.clientY, e)
-  const s = loSenaladoEn(e, at, PHYS)
+  anclada = celdaEn(ev.clientX, ev.clientY, e)
+  // La firma se limpia para forzar el reescrito: se puede clickear dos veces la
+  // misma celda después de cerrar, y con la firma vieja el globo no se rearmaría.
+  firmaDelGlobo = ''
+  refrescarElGlobo()
+}
 
-  if (s === undefined) {
-    // Vacío y no «—»: los cuatro nodos son una sola frase, y un guión en el
-    // medio de una frase es ruido. El CSS pone los separadores entre los que
-    // tienen algo, así que lo que no aplica simplemente no ocupa lugar.
-    $('mirado-que').textContent = `nada en (${String(at.x)}, ${String(at.y)})`
-    for (const id of ['mirado-de', 'mirado-piezas', 'mirado-estado']) $(id).textContent = ''
+/**
+ * EL CENTRO DE UNA CELDA, EN COORDENADAS DE `#pantalla`.
+ *
+ * Contra `#pantalla` y no contra la ventana porque el globo y el ancla son
+ * `position: absolute` adentro de ella. Se restan los dos rectángulos en vez de
+ * usar `offsetLeft`, que mide contra el ancestro posicionado más cercano y
+ * cambiaría de significado el día que alguien le ponga `position` a `#tablero`.
+ */
+function puntoDeLaCelda(celda: { x: number; y: number }, e: ReturnType<typeof escenaDe>): { x: number; y: number } {
+  const p = pantalla.getBoundingClientRect()
+  const c = canvas.getBoundingClientRect()
+  const lado = CELDA * (canvas.clientWidth / canvas.width)
+  return {
+    x: c.left - p.left + (celda.x - e.foco.x + e.radio.x + 0.5) * lado,
+    y: c.top - p.top + (celda.y - e.foco.y + e.radio.y + 0.5) * lado,
+  }
+}
+
+/**
+ * LO QUE EL GLOBO NO PUEDE TAPAR, medido y no supuesto.
+ *
+ * Un globo detrás de la charla está tan perdido como uno fuera de la pantalla, y
+ * peor: el ancla sigue marcando su celda y al lado no hay nada. Hoy lo único que
+ * ocupa la derecha es el panel provisorio; cuando sea la charla y aparezca el
+ * dock, esto sigue dando el número correcto porque lo LEE.
+ *
+ * ─── ABAJO SE RESERVA LA VELOCIDAD, Y NO LA FICHA ENTERA ───────────────────
+ *
+ * El diseño reserva «150 más el alto del dock», y 150 son más o menos la barra
+ * de velocidad más la bandeja. Acá se mide, y se mide hasta la VELOCIDAD y no
+ * más arriba, porque las dos cosas que hay ahí abajo no valen lo mismo:
+ *
+ *   · la ficha es INFORMACIÓN, y vuelve sola en cuanto cerrás el globo. Que un
+ *     panel que pediste tape un rato el aliento es lo que hace un popover;
+ *   · la pausa es un CONTROL, y es el único irrenunciable de la pantalla.
+ *     Taparlo con algo que hay que cerrar primero es encerrar al jugador
+ *     adentro de una respuesta que él pidió.
+ *
+ * Y medido en vez de con el 150 escrito porque el alto de esa barra depende de
+ * la tipografía, que es justo lo que este rediseño cambió.
+ */
+function loReservado(): { derecha: number; abajo: number } {
+  const p = pantalla.getBoundingClientRect()
+  const derecha = document.querySelector('aside')?.getBoundingClientRect()
+  const vel = $('velocidad').getBoundingClientRect()
+  return {
+    derecha: derecha === undefined ? 0 : Math.max(0, p.right - derecha.left),
+    abajo: Math.max(0, p.bottom - vel.top),
+  }
+}
+
+/**
+ * EL GLOBO, EN CADA CUADRO MIENTRAS ESTÉ ABIERTO — y por lo mismo que el cartel.
+ *
+ * El mundo corre abajo: la vara que clickeaste puede empezar a arder, alguien
+ * puede levantarla, o la criatura puede caminar y llevarse el encuadre. Un globo
+ * escrito una sola vez al clickear diría lo que era verdad entonces.
+ */
+function refrescarElGlobo(): void {
+  const celda = anclada
+  const e = ultimaEscena
+  if (celda === undefined || e === undefined) return
+
+  // ¿Se fue del encuadre? La escena publica las celdas que entran, así que
+  // preguntarle a ella es preguntarle a la única fuente que sabe.
+  const cel = celdaEnEscena(e, celda)
+  if (cel === undefined) {
+    cerrarElGlobo()
     return
   }
 
-  $('mirado-que').textContent = s.titulo
-  $('mirado-de').textContent = s.de
-  $('mirado-piezas').textContent = s.piezas
-  $('mirado-estado').textContent = s.comoEs
+  const s = loSenaladoEn(e, celda, PHYS)
+  const pie = piePara(s, cel)
+  const firma = `${firmaDe(s)}|${pie}`
+  if (firma !== firmaDelGlobo) {
+    firmaDelGlobo = firma
+    const dibujo = $('globo-dibujo')
+    dibujo.replaceChildren()
+    if (s !== undefined) dibujo.appendChild(enUnCanvas(s.d, 24))
+    $('globo-que').textContent = s?.titulo ?? `nada en (${String(celda.x)}, ${String(celda.y)})`
+    // Las tres frases seguidas, igual que el cartel: es una línea de lectura y
+    // no una planilla. Las vacías no dejan un separador colgado.
+    $('globo-detalle').textContent = s === undefined ? '' : [s.de, s.piezas, s.comoEs].filter((t) => t !== '').join(' · ')
+    $('globo-pie').textContent = pie
+  }
+
+  const punto = puntoDeLaCelda(celda, e)
+  ancla.style.left = `${String(punto.x)}px`
+  ancla.style.top = `${String(punto.y)}px`
+  ancla.hidden = false
+  globo.hidden = false
+  // Se mide DESPUÉS de escribir y de mostrarlo: un elemento con `hidden` mide
+  // cero, y ubicarlo con esa medida lo pega a la esquina de abajo.
+  const donde = ubicarElGlobo(
+    punto,
+    { ancho: globo.offsetWidth, alto: globo.offsetHeight },
+    { ancho: pantalla.clientWidth, alto: pantalla.clientHeight },
+    loReservado(),
+  )
+  globo.style.left = `${String(donde.left)}px`
+  globo.style.top = `${String(donde.top)}px`
 }
 
 // ─── PASARLE EL MOUSE POR ARRIBA: SABER QUÉ ES SIN TENER QUE CLICKEAR ──────
@@ -562,6 +692,13 @@ conCartel(canvas, () => {
   const e = ultimaEscena
   if (e === undefined) return undefined
   const celda = celdaEn(raton.x, raton.y, e)
+  // ─── Y SE CALLA SOBRE LA CELDA QUE YA TIENE EL GLOBO ────────────────────
+  //
+  // Los dos dicen lo mismo del mismo objeto, así que sobre la celda anclada se
+  // apilarían a catorce píxeles uno del otro contando la misma cosa dos veces.
+  // Callarse ahí es además lo que hace que el par tenga sentido: el hover
+  // contesta lo que TODAVÍA no preguntaste, y sobre esa celda ya preguntaste.
+  if (anclada !== undefined && anclada.x === celda.x && anclada.y === celda.y) return undefined
   const s = loSenaladoEn(e, celda, PHYS)
   return s === undefined ? undefined : { s, celda }
 })
@@ -940,6 +1077,7 @@ function cuadro(ahora: number): void {
   // se desliza— y un cartel que sólo se actualice al mover el mouse mentiría.
   // Cuesta nada cuando nadie está señalando: es un `if` y se va.
   refrescarElCartel()
+  refrescarElGlobo()
 
   // ─── Y el guardado, también entre cuadros ────────────────────────────────
   //

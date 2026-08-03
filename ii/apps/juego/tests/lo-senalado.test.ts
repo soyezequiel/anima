@@ -19,9 +19,17 @@ import { describe, expect, it } from 'vitest'
 import { buildSeedPhysics, nameOf } from '@anima/physics'
 import type { Body } from '@anima/physics'
 import { descriptorDe } from '@anima/world'
-import type { Escena, RenderDescriptor } from '@anima/world'
+import type { CeldaEnEscena, Escena, RenderDescriptor } from '@anima/world'
 
-import { describir, firmaDe, loSenaladoEn, ubicarElCartel } from '../src/lo-senalado.js'
+import {
+  celdaEnEscena,
+  describir,
+  firmaDe,
+  loSenaladoEn,
+  piePara,
+  ubicarElCartel,
+  ubicarElGlobo,
+} from '../src/lo-senalado.js'
 
 const PHYS = buildSeedPhysics()
 
@@ -227,5 +235,106 @@ describe('dónde va el cartel', () => {
     const { left, top } = ubicarElCartel({ x: 170, y: 130 }, CARTEL, chica)
     expect(left).toBeGreaterThanOrEqual(0)
     expect(top).toBeGreaterThanOrEqual(0)
+  })
+})
+
+// ─── EL PIE DEL GLOBO ───────────────────────────────────────────────────────
+//
+// Es el renglón que contesta lo que el cuerpo señalado no puede: cuántos quedan
+// debajo, o —si no hay ninguno— qué suelo es y qué implica.
+//
+// Lo que se protege acá es que las tres frases del suelo SALGAN DE `sueloDe`, la
+// misma función con la que `@anima/dibujo` pinta la celda. Si alguien pone un
+// umbral propio, el globo puede decir «seco» sobre un suelo pintado de mojado y
+// nadie se entera hasta que lo ve.
+
+function celda(wet: number, sheltered = 0): CeldaEnEscena {
+  return { at: { x: 0, y: 0 }, wet, oxygen: 0.21, temperature: 20, sheltered } as CeldaEnEscena
+}
+
+describe('el pie del globo', () => {
+  const unCuerpo = (mas: number) =>
+    describir('x', cuerpo({ at: { x: 0, y: 0 } }), PHYS, { mas, esAgente: false })
+
+  it('CON UN SOLO CUERPO NO DICE NADA: el globo ya lo dijo todo', () => {
+    // Un renglón que diga «hay 0 más» es una línea de separación con texto
+    // adentro. El pie tiene que ganarse su lugar o no estar.
+    expect(piePara(unCuerpo(0), celda(0.1))).toBe('')
+  })
+
+  it('con una pila, cuántos quedan debajo — y en singular cuando es uno', () => {
+    expect(piePara(unCuerpo(1), celda(0.1))).toBe('hay uno más debajo, en esta casilla')
+    expect(piePara(unCuerpo(4), celda(0.1))).toBe('hay 4 más debajo, en esta casilla')
+  })
+
+  it('CON LA CELDA VACÍA DICE EL SUELO, que es lo único que queda para decir', () => {
+    // Y es lo que hace que el pie valga: una celda vacía no es «nada», es un
+    // lugar donde una chispa prende o donde se apaga.
+    expect(piePara(undefined, celda(0.1))).toContain('una chispa prende')
+    expect(piePara(undefined, celda(0.9))).toContain('se apaga')
+    expect(piePara(undefined, celda(0.1, 0.6))).toContain('refugio')
+  })
+
+  it('EL CORTE ES EL DE LA LEY 3 Y NO UN NÚMERO DE ESTA CAPA', () => {
+    // `HUMEDAD_QUE_APAGA` vale 0,45: el suelo se ve mojado EXACTAMENTE donde un
+    // fuego se apaga. Los dos lados del borde, para que el corte no se pueda
+    // mover sin que esto se ponga rojo.
+    expect(piePara(undefined, celda(0.4499))).toContain('prende')
+    expect(piePara(undefined, celda(0.45))).toContain('apaga')
+  })
+
+  it('sin cuerpo y sin celda no inventa nada', () => {
+    // Pasa de verdad: el encuadre publica las celdas del radio y el canvas tiene
+    // media celda de sobra en el borde, así que se puede clickear afuera.
+    expect(piePara(undefined, undefined)).toBe('')
+  })
+
+  it('y la celda se busca en la escena por su lugar', () => {
+    const e = escena([])
+    const conCeldas = { ...e, celdas: [{ ...celda(0.9), at: { x: 2, y: 3 } }] } as unknown as Escena
+    expect(celdaEnEscena(conCeldas, { x: 2, y: 3 })?.wet).toBe(0.9)
+    expect(celdaEnEscena(conCeldas, { x: 9, y: 9 })).toBeUndefined()
+  })
+})
+
+// ─── DÓNDE VA EL GLOBO ──────────────────────────────────────────────────────
+//
+// El cartel del mouse SE DA VUELTA y el globo SE ACOTA, y la diferencia no es de
+// gusto: el ancla es un lugar elegido y ya está marcada con su círculo, así que
+// mandar el globo al otro lado rompería la relación que el ancla acaba de
+// establecer. El cartel no tiene ancla y el puntero se está moviendo.
+describe('dónde va el globo del click', () => {
+  const GLOBO = { ancho: 278, alto: 140 }
+  const VENTANA = { ancho: 1440, alto: 860 }
+  const NADA = { derecha: 0, abajo: 0 }
+
+  it('abajo y a la derecha del ancla, a catorce', () => {
+    expect(ubicarElGlobo({ x: 400, y: 300 }, GLOBO, VENTANA, NADA)).toEqual({ left: 414, top: 314 })
+  })
+
+  it('NO SE DA VUELTA CONTRA EL BORDE: se frena', () => {
+    const { left } = ubicarElGlobo({ x: 1400, y: 300 }, GLOBO, VENTANA, NADA)
+    expect(left).toBe(1440 - 278 - 8)
+    // Y sigue estando a la DERECHA del ancla no sería cierto acá; lo que importa
+    // es que no se fue de la pantalla y que no saltó al otro lado.
+    expect(left + GLOBO.ancho).toBeLessThanOrEqual(1440)
+  })
+
+  it('LA CHARLA Y EL DOCK CUENTAN COMO BORDE, y ése es todo el punto', () => {
+    // Un globo detrás de la charla está tan perdido como uno fuera de la
+    // pantalla, y peor: el ancla sigue marcando su celda y al lado no hay nada.
+    const conCapas = { derecha: 380, abajo: 230 }
+    const { left, top } = ubicarElGlobo({ x: 1400, y: 800 }, GLOBO, VENTANA, conCapas)
+    expect(left + GLOBO.ancho).toBeLessThanOrEqual(1440 - 380)
+    expect(top + GLOBO.alto).toBeLessThanOrEqual(860 - 230)
+  })
+
+  it('EN UNA PANTALLA MÁS CHICA QUE EL GLOBO se pega a la orilla y no se va por izquierda', () => {
+    // El tope da negativo y sin el `max` afuera el globo se iría de la pantalla
+    // por el lado contrario. Es la misma guarda que el cartel.
+    const chica = { ancho: 200, alto: 120 }
+    const { left, top } = ubicarElGlobo({ x: 150, y: 100 }, GLOBO, chica, NADA)
+    expect(left).toBe(8)
+    expect(top).toBe(8)
   })
 })
