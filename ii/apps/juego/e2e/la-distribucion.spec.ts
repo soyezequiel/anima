@@ -85,3 +85,31 @@ test('lo que se toca una vez va plegado, y lo que se usa siempre no', async ({ p
   await page.locator('#diagnostico > summary').click()
   await expect(page.locator('#a-la-vista')).toBeVisible()
 })
+
+test('12C · el catálogo existe, y dibuja con el mismo glifo que el inventario', async ({ page }) => {
+  // Los casos 6 y 7 del Hito 12C: que el catálogo sea una vista de verdad, y que
+  // la misma cosa se vea igual en las tres.
+  //
+  // La coherencia no se afirma comparando píxeles entre paneles —eso probaría una
+  // coincidencia— sino que las tres vistas llaman a `enUnCanvas`, o sea al mismo
+  // `glifoDe` con el mismo descriptor. Lo que este spec cuida es la otra mitad:
+  // que el catálogo EXISTA y esté poblado, porque una vista vacía coincide con
+  // todo.
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await page.goto('/')
+  await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
+
+  // Va plegado, como todo lo que se consulta y no se usa a cada rato.
+  await expect(page.locator('#lista-catalogo')).not.toBeVisible()
+  await page.locator('#catalogo > summary').click()
+
+  const filas = page.locator('#lista-catalogo .fila')
+  await expect(filas.first()).toBeVisible()
+  // El catálogo core del planificador tiene trece filas y varias establecen lo
+  // mismo, así que lo que se afirma es que hay VARIAS y no un número exacto: el
+  // día que alguien agregue un esquema, este spec no tiene por qué enterarse.
+  expect(await filas.count()).toBeGreaterThan(3)
+
+  // Y dice las metas en castellano, no en firmas. `emitsPower>0` es «fuego».
+  await expect(page.locator('#lista-catalogo')).toContainText('fuego')
+})

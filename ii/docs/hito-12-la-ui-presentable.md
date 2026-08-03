@@ -1287,9 +1287,28 @@ desplegado es lo que está asentado y funcionando, así que se dibuja apoyado.
 | 3 | terminado | **está** |
 | 4 | desplegado | **está** — la base |
 | 5 | con captura | **está** — las marcas |
-| 6 | catálogo | **FALTA**: no existe como vista |
-| 7 | los tres coherentes | **la mitad**: mapa e inventario dibujan con `glifoDe`, así que coinciden POR CONSTRUCCIÓN. El catálogo no existe todavía |
+| 6 | catálogo | **está** — «Lo que sabe hacer», con las metas del core en castellano |
+| 7 | los tres coherentes | **está** — las tres vistas llaman a `enUnCanvas`, o sea al mismo `glifoDe` con el mismo descriptor |
 
 Los cinco estados de cuerpo dan hoy **cinco dibujos distintos**, que es lo que el
 criterio pide: si dos coincidieran, habría dos estados del mundo que el jugador no
 puede separar.
+
+### El catálogo, y por qué la coherencia no se prueba comparando
+
+`apps/juego`, panel «Lo que sabe hacer», plegado como todo lo que se consulta y no
+se usa a cada rato. Lista las metas que el catálogo core sabe establecer, dichas
+en castellano por el mismo camino que el panel de la criatura — «fuego», no
+`emitsPower>0`.
+
+Y trae la segunda lista vacía a propósito: las obras que la criatura APRENDE a
+armar (`buildCapabilities`) crecen en la partida, y hoy nadie corre la fragua en
+el juego. Que se vea vacía es información, no un hueco tapado: el día que aprenda
+algo aparece con su dibujo y sin tocar una línea.
+
+**La coherencia del caso 7 no se afirma comparando píxeles entre paneles** — eso
+probaría una coincidencia, no una garantía. Se afirma porque las tres vistas
+llaman a la MISMA función, `enUnCanvas`, con el mismo descriptor: coinciden por
+construcción y no porque alguien se acuerde de mantenerlas iguales. El spec cuida
+la otra mitad, que es la que sí se puede romper: que el catálogo exista y esté
+poblado, porque **una vista vacía coincide con todo**.

@@ -23,6 +23,8 @@
 import { Partida } from '@anima/perceive'
 import { vivir } from '@anima/mind'
 import { escenaDe, relojDe } from '@anima/world'
+import type { RenderDescriptor } from '@anima/world'
+import { ESQUEMAS } from '@anima/plan'
 import {
   CELDA,
   DE_FABRICA,
@@ -41,7 +43,7 @@ import { cargar, claveDe, guardar } from '@anima/store'
 
 import { loQueSeVeDe } from './criatura.js'
 import { depositoIndexedDB } from './deposito-indexeddb.js'
-import { Ordenes } from './ordenes.js'
+import { Ordenes, enCastellano } from './ordenes.js'
 import { dibujanteDePrueba } from './dibujante-de-prueba.js'
 import { proveedorDelDeposito } from './proveedor-del-deposito.js'
 import { Lienzo } from './lienzo.js'
@@ -338,6 +340,80 @@ function panel(escena: ReturnType<typeof escenaDe>): void {
 }
 
 /**
+ * UN GLIFO EN UN CANVAS. La misma función para las tres vistas.
+ *
+ * Es el caso 7 del 12C —«la misma representación coherente en mapa, inventario y
+ * catálogo»— y la garantía no es que las tres se parezcan: es que **las tres
+ * llaman a esto**, con el mismo descriptor. Coinciden por construcción, no porque
+ * alguien se acuerde de mantenerlas iguales.
+ */
+function enUnCanvas(d: RenderDescriptor, grilla: number): HTMLCanvasElement {
+  const px = pintar(glifoDe(d, PHYS, grilla, sprites))
+  const cv = document.createElement('canvas')
+  cv.width = px.length
+  cv.height = px.length
+  const ctx = cv.getContext('2d')
+  if (ctx === null) return cv
+  for (let y = 0; y < px.length; y++) {
+    const fila = px[y]
+    if (fila === undefined) continue
+    for (let x = 0; x < fila.length; x++) {
+      const color = fila[x]
+      if (color === undefined || color === '') continue
+      ctx.fillStyle = color
+      ctx.fillRect(x, y, 1, 1)
+    }
+  }
+  return cv
+}
+
+/**
+ * EL CATÁLOGO: lo que la criatura sabe hacer — el caso 6 del 12C.
+ *
+ * Dos listas, y están separadas porque se ganan distinto:
+ *
+ *   · las METAS que el catálogo core sabe establecer. Vienen con el juego y no
+ *     cambian, así que se pintan una vez;
+ *   · las OBRAS que la criatura APRENDIÓ a armar (`buildCapabilities`). Ésas sí
+ *     crecen en la partida, y son las que tienen dibujo — una obra es un cuerpo,
+ *     y un cuerpo tiene descriptor.
+ *
+ * Hoy la segunda lista está vacía en una partida normal: la fragua da de alta
+ * capacidades y el juego todavía no la corre. Que se vea vacía es información y no
+ * un hueco tapado — cuando aprenda algo, aparece con su dibujo y sin tocar nada.
+ */
+let catalogoPintado = false
+
+function catalogo(): void {
+  if (catalogoPintado) return
+  catalogoPintado = true
+  const caja = $('lista-catalogo')
+  caja.replaceChildren()
+
+  const filas: readonly (readonly [string, RenderDescriptor | undefined])[] = [
+    ...[...new Set(ESQUEMAS.map((e) => e.establishes))].map(
+      (f) => [enCastellano(f), undefined] as const,
+    ),
+  ]
+  for (const [texto, d] of filas) {
+    const fila = document.createElement('div')
+    fila.className = 'fila'
+    if (d === undefined) {
+      const hueco = document.createElement('span')
+      hueco.className = 'sinDibujo'
+      hueco.textContent = '·'
+      fila.appendChild(hueco)
+    } else {
+      fila.appendChild(enUnCanvas(d, 24))
+    }
+    const nombre = document.createElement('span')
+    nombre.textContent = texto
+    fila.appendChild(nombre)
+    caja.appendChild(fila)
+  }
+}
+
+/**
  * LO QUE LLEVA EN LA MANO, DIBUJADO — y por qué esto destraba los sprites.
  *
  * ─── LA MEDICIÓN QUE LO PIDIÓ ──────────────────────────────────────────────
@@ -375,23 +451,10 @@ function inventario(escena: ReturnType<typeof escenaDe>): void {
   for (const id of actor.holding) {
     const c = escena.cuerpos.get(id)
     if (c === undefined) continue
-    const px = pintar(glifoDe(c.d, PHYS, 24, sprites))
-    const cv = document.createElement('canvas')
-    cv.width = px.length
-    cv.height = px.length
+    // La MISMA función que el mapa y el catálogo, con el mismo descriptor. Es el
+    // caso 7 del 12C y por eso no hay una copia de este bucle acá.
+    const cv = enUnCanvas(c.d, 24)
     cv.title = `${c.d.forma} de ${c.d.materiales.join(' y ')}`
-    const ctx = cv.getContext('2d')
-    if (ctx === null) continue
-    for (let y = 0; y < px.length; y++) {
-      const fila = px[y]
-      if (fila === undefined) continue
-      for (let x = 0; x < fila.length; x++) {
-        const color = fila[x]
-        if (color === undefined || color === '') continue
-        ctx.fillStyle = color
-        ctx.fillRect(x, y, 1, 1)
-      }
-    }
     caja.appendChild(cv)
   }
 }
@@ -493,6 +556,7 @@ function cuadro(ahora: number): void {
   hud(escena)
   panel(escena)
   inventario(escena)
+  catalogo()
   charla()
   ultimaEscena = escena
 

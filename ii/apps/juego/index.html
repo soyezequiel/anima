@@ -87,6 +87,15 @@
       .mano { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
       .mano canvas { width: 48px; height: 48px; border-radius: 4px;
                      border: 1px solid var(--linea); background: #1a1d23; }
+      /* El catálogo: una fila por cosa, con su dibujo cuando lo tiene. La
+         miniatura mide lo mismo que la del inventario a propósito — es el mismo
+         `glifoDe` con el mismo dato, y verlo distinto sería el bug que el caso 7
+         del 12C persigue. */
+      .catalogo { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; }
+      .catalogo .fila { display: flex; align-items: center; gap: 8px; }
+      .catalogo canvas { width: 24px; height: 24px; border-radius: 3px;
+                         border: 1px solid var(--linea); background: #1a1d23; flex: none; }
+      .catalogo .sinDibujo { width: 24px; flex: none; color: var(--tenue); text-align: center; }
     </style>
   </head>
   <body>
@@ -150,6 +159,15 @@
         <dt>piezas</dt><dd id="mirado-piezas">—</dd>
         <dt>estado</dt><dd id="mirado-estado">—</dd>
       </dl>
+
+      <details id="catalogo">
+        <summary>Lo que sabe hacer</summary>
+        <p class="sub" style="margin:10px 0 6px; font-size:11px">
+          Las metas que la criatura sabe conseguir, y las obras que aprendió a armar.
+          Es el mismo dibujo que ves en el mapa y en la mano.
+        </p>
+        <div id="lista-catalogo" class="catalogo"></div>
+      </details>
 
       <details id="ver-y-dibujar">
         <summary>Ver y dibujar</summary>
