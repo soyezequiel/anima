@@ -366,6 +366,11 @@ function hud(escena: ReturnType<typeof escenaDe>): void {
   // todos los objetos del área visible»—: sin el segundo, barrer el mapa a click
   // y encontrar tres no distingue «el mapa está vacío» de «se perdieron setenta».
   //
+  // Y el rótulo dice «en el encuadre» y no «a la vista», que es lo que decía:
+  // desde que la charla y el dock FLOTAN sobre el mapa, una parte del encuadre
+  // no se ve. El número no cambió —cuenta lo que la escena publica, que es lo
+  // que el punto 3 necesita— y la palabra sí, porque prometía algo más chico.
+  //
   // No cuenta lo que está en una mano: eso no se dibuja en el suelo (decisión 1
   // de `mapa.ts`), así que no se puede clickear y contarlo mentiría.
   $('a-la-vista').textContent = String([...escena.cuerpos.values()].filter((c) => c.heldBy === undefined).length)
@@ -1089,6 +1094,17 @@ pintarSugerencias()
  * salió** —que se puede ir a buscar al registro— y **quién lo dijo**. Sin eso,
  * «me acuerdo de que hay un pescado en el río» se lee igual si se lo contaron que
  * si lo vio, que es exactamente la confusión que el tramo prohíbe.
+ *
+ * ─── Y VA AL REVÉS, QUE ES LO QUE EL MÓDULO SE LLAMA ───────────────────────
+ *
+ * Desde que esto es el Journal del dock, lo último va ARRIBA. `queRecuerda()`
+ * devuelve en el orden en que las cosas pasaron —que es el orden correcto para
+ * quien lo lee entero— y un panel de 230 px de alto no se lee entero: se le mira
+ * la punta. Con el orden natural, la punta es lo más viejo, o sea la parte que
+ * ya sabés, y hay que scrollear hasta abajo para enterarte de lo que acaba de
+ * pasar. Se invierte una copia y no la lista: `queRecuerda()` la deriva del log
+ * en cada llamada y darla vuelta en el lugar sería tocarle el orden a la vista
+ * de otro.
  */
 let recuerdosPintados = 0
 
@@ -1098,7 +1114,7 @@ function recuerdos(): void {
   recuerdosPintados = ultimo
   const caja = $('lista-recuerdos')
   caja.replaceChildren()
-  for (const r of ordenes.queRecuerda()) {
+  for (const r of [...ordenes.queRecuerda()].reverse()) {
     const fila = document.createElement('div')
     fila.className = 'fila'
     fila.dataset['clase'] = r.clase

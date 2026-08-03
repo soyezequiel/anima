@@ -72,60 +72,56 @@ test('2 · ver la criatura moviéndose', async ({ page }) => {
 
 test('3 · ver todos los objetos del área visible', async ({ page }) => {
 
-  // ─── LO QUE FLOTA SE APARTA PARA MEDIR, Y ES AISLAMIENTO Y NO TRAMPA ────
+  // ─── LA CHARLA SE SACA CON UN GESTO DE VERDAD, Y EL RESTO SE APARTA ─────
   //
-  // Con el mapa ocupando la ventana, todo lo demás FLOTA encima: el panel sobre
-  // el borde derecho, la ficha de la criatura y la velocidad sobre la esquina
-  // de abajo a la izquierda. Un click ahí aterriza en el flotante y Playwright
-  // lo rechaza con razón —esa celda no se puede tocar— y el barrido moría con
-  // «locator.click: timeout».
+  // Con el mapa ocupando la ventana, todo lo demás FLOTA encima y un click ahí
+  // aterriza en el flotante: Playwright lo rechaza con razón —esa celda no se
+  // puede tocar— y el barrido moría con «locator.click: timeout».
   //
-  // Lo que este punto afirma es del MAPA —que ninguna cosa del área visible
-  // quede sin poder inspeccionarse, que es el bug de los trece cuerpos en una
-  // celda que lo motivó— y no de la distribución. Que algo quede tapado es de
-  // la distribución, y lo cuida `la-distribucion.spec.ts`. Por eso se apaga el
-  // `pointer-events` de la capa que flota y no se la esconde: el barrido llega
-  // al mapa entero y los nodos que el barrido LEE —el globo del click y
-  // `#a-la-vista`— siguen ahí. Esconderlos dejaría al test sin dónde leer.
+  // La charla es el que más tapa, y desde el paso 7 se puede sacar SIN TOCAR
+  // NADA: en angosto es un cajón y se cierra con su ×, que es un gesto que hace
+  // el jugador. Eso es lo que este bloque prometía cuando el cajón no existía.
   //
-  // Y no es un gesto fabricado: los clicks siguen siendo clicks de verdad, con
-  // su chequeo de destino. Lo único que cambia es qué hay arriba.
+  // Lo que queda apartado a mano son tres, y no son la misma clase de cosa:
   //
-  // La regla se escribe por EXCLUSIÓN —todo lo que cuelga de `#pantalla` salvo
-  // el mapa y la penumbra— y no enumerando los flotantes. Con una lista, el
-  // dock del paso 6 y la charla del 5 volverían a tapar el barrido y el spec se
-  // caería de nuevo por el mismo motivo, un paso más tarde.
+  //   · LA FICHA y LA VELOCIDAD flotan sobre la esquina de abajo a la izquierda
+  //     en las dos pantallas y no tienen forma de irse;
+  //   · EL GLOBO, que no tapa el mapa: **es la respuesta a la pregunta que este
+  //     barrido acaba de hacer**. Sale a catorce píxeles del click y se queda
+  //     sobre las celdas que siguen, así que un barrido que se bloquee con él
+  //     estaría midiendo su propia salida en vez del mapa. Para una persona esto
+  //     no es un problema —clickeás dos cosas por minuto, no doscientas— y por
+  //     eso el diseño no le pone puerta.
   //
-  // ─── LA FORMA DEFINITIVA DE ESTO ES DEL PASO 7 ──────────────────────────
+  // A los tres se les apaga el `pointer-events` y no se los esconde: el barrido
+  // LEE el globo y `#a-la-vista`, y esconderlos dejaría al test sin dónde leer.
+  // Los clicks siguen siendo clicks con su chequeo de destino; lo único que
+  // cambia es qué hay arriba.
   //
-  // Cuando exista el cajón, en pantalla angosta la charla se CIERRA con un
-  // gesto de verdad. Aun así la ficha y la velocidad van a seguir flotando
-  // sobre la esquina, así que algo de esto queda: lo que el paso 7 permite es
-  // reemplazar la parte de la CHARLA por un gesto real.
-  // ─── Y SE INYECTA CON `addInitScript`, QUE ES LO QUE SOBREVIVE ──────────
-  //
-  // Acá había un `addStyleTag` después de `abrir()`, y este test se puso flaky:
-  // fallaba una de cada dos con «#registro intercepts pointer events» sobre un
-  // mapa cuyo `pointer-events` estaba medido en `none`. La causa no era el
-  // barrido — era que **un `<style>` inyectado se va con la primera recarga**, y
-  // el dev server recarga la página sola cada vez que alguien guarda un archivo.
-  // Con setecientos clicks, el barrido dura quince segundos: tiempo de sobra
-  // para que eso pase en el medio y las últimas doscientas celdas se clickeen
-  // sin el aislamiento puesto.
-  //
-  // `addInitScript` corre en CADA navegación, así que la regla vuelve sola. Y va
-  // antes del `goto`, que es la otra mitad: un script de inicio registrado
-  // después de navegar no corre hasta la próxima.
+  // Y se inyecta con `addInitScript` y no con `addStyleTag`: un `<style>`
+  // inyectado se va con la primera recarga, y el dev server recarga solo cuando
+  // alguien guarda un archivo. Con el barrido durando quince segundos, eso pasa
+  // en el medio y las últimas celdas se clickean sin el aislamiento — que es
+  // exactamente el flake que este test tuvo, «#registro intercepts» sobre un
+  // mapa cuyo `pointer-events` medía `none`.
   await page.addInitScript(() => {
     const poner = (): void => {
       const st = document.createElement('style')
-      st.textContent = '#pantalla > *:not(#tablero):not(#penumbra) { pointer-events: none }'
+      st.textContent = '#ficha, #velocidad, #globo { pointer-events: none }'
       document.head.appendChild(st)
     }
     if (document.head as HTMLElement | null) poner()
     else document.addEventListener('DOMContentLoaded', poner)
   })
+  // Angosto para que el cajón exista, y de paso el encuadre baja de 665 celdas
+  // a 195: el barrido pasa de setecientos clicks a doscientos sin perder nada
+  // —lo que se afirma es COMPLETITUD sobre lo que la escena publique, sea
+  // cuanto sea— y con un tercio del tiempo hay un tercio de ventana para que
+  // una recarga del dev server se meta en el medio.
+  await page.setViewportSize({ width: 900, height: 800 })
   await abrir(page)
+  await page.locator('#cerrar-charla').click()
+  await expect(page.locator('#tirador')).toBeVisible()
 
   const canvas = page.locator('#mapa')
   const caja = await canvas.boundingBox()

@@ -920,6 +920,34 @@
         .lampara.vive i::after { opacity: .5; transform: scale(2); }
         .lampara.buscando i { opacity: .5; }
       }
+
+      /* ─── Y LO QUE EL REDISEÑO AGREGÓ, QUE SE HABÍA QUEDADO AFUERA ─────────
+         Los dos bloques de arriba son de antes de este rediseño y cubren la
+         señal, el cartel y las lámparas. El rediseño sumó cuatro movimientos y
+         ninguno estaba contemplado — o sea que una pantalla que ya se cuidaba
+         de esto dejó de cuidarse, en silencio y en el mismo tramo que la hizo
+         más grande.
+
+         El que más pesa es el TERCERO y no el cajón: prender el modo dev sube la
+         ficha de la criatura y la barra de velocidad unos trescientos píxeles de
+         un saque. Para quien pidió menos movimiento, eso es media pantalla
+         desplazándose por tocar un interruptor.
+
+         Se apagan las transiciones y NO lo que hacen: la charla igual se corre
+         afuera, la ficha igual sube y la perilla igual cambia de lado. Lo que
+         desaparece es el recorrido, no el resultado — que es lo único que
+         `reduce` pide, y lo contrario de esconder la función. */
+      @media (prefers-reduced-motion: reduce) {
+        #charla-columna,
+        .ficha,
+        .velocidad,
+        #modo-dev .riel,
+        #modo-dev .riel i,
+        .barra i,
+        .barra.grande i {
+          transition: none;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1176,7 +1204,15 @@
               <dt>tick</dt><dd id="tick">0</dd>
               <dt>segundos</dt><dd id="segundos">0</dd>
               <dt>fase</dt><dd id="fase">—</dd>
-              <dt>a la vista</dt><dd id="a-la-vista">0</dd>
+              <!-- «en el encuadre» y no «a la vista», que es lo que decía y era
+                   MENTIRA: el número cuenta lo que la escena publica, y una
+                   parte del encuadre queda debajo de la charla y del dock. Con
+                   la charla abierta puede decir 7 y haber 5 que se pueden
+                   tocar. El número está bien y la palabra estaba mal —es lo
+                   más barato de arreglar y lo más fácil de no ver—. Lo que se
+                   PUEDE tocar depende de la distribución, y eso lo cuida
+                   `la-distribucion`, no un contador del diagnóstico. -->
+              <dt>en el encuadre</dt><dd id="a-la-vista">0</dd>
               <dt>cuerpos</dt><dd id="cuerpos">0</dd>
               <dt>ticks perdidos</dt><dd id="perdidos">0</dd>
               <dt>cuadro</dt><dd id="cuadro">—</dd>
