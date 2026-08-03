@@ -361,6 +361,11 @@ function hud(escena: ReturnType<typeof escenaDe>): void {
   $('perdidos').textContent = String(partida.ticksPerdidos)
   $('cuadro').textContent = `${msDelCuadro.toFixed(1)} ms`
   $('fase').textContent = reloj.phase
+  // EL MISMO TICK Y LA MISMA FASE, al lado del botón que los decide. Se
+  // escriben acá y no en otra función a propósito: son dos vistas del mismo
+  // dato y una sola línea que lo produce. Duplicar el nodo es barato; duplicar
+  // de dónde sale el número es cómo se llega a dos relojes que no coinciden.
+  $('reloj').textContent = `tick ${String(s.tick)} · ${reloj.phase}`
   $('faltan').textContent = String(sprites.loQueFalta().length)
 }
 
@@ -725,6 +730,23 @@ function inventario(escena: ReturnType<typeof escenaDe>): void {
   if (caja.dataset['lleva'] === firma) return
   caja.dataset['lleva'] = firma
   caja.replaceChildren()
+
+  // ─── Y CUANDO NO LLEVA NADA SE DICE, EN VEZ DE NO MOSTRAR NADA ───────────
+  //
+  // La bandeja vacía y la bandeja que no existe se ven igual, y no significan lo
+  // mismo: la primera dice «tiene las manos libres» y la segunda dice «no sé».
+  // Con el mapa de fondo la diferencia importa todavía más, porque un hueco sin
+  // texto se lee como que algo no terminó de cargar.
+  //
+  // En itálica y en serif, que es la marca de este proyecto para lo que NO es un
+  // dato del mundo sino una aclaración de la pantalla.
+  if (actor.holding.length === 0) {
+    const vacia = document.createElement('span')
+    vacia.className = 'vacia'
+    vacia.textContent = 'no lleva nada'
+    caja.appendChild(vacia)
+    return
+  }
 
   for (const id of actor.holding) {
     const c = escena.cuerpos.get(id)

@@ -334,18 +334,17 @@
          espaciado y apagado. Lo que tiene que resaltar es el contenido. */
       h2 { font: 500 10.5px var(--mono); margin: 20px 0 7px; color: var(--tinta-apagada);
            text-transform: uppercase; letter-spacing: .16em; }
-      .aviso { margin: 18px 0 0; padding: 7px 10px; border-left: 2px solid var(--linea-fuerte);
-               color: var(--tinta-tenue); font: 400 12.5px/1.5 var(--serif); }
-      .medida { margin: 0 0 11px; }
-      .medida .rotulo { display: flex; justify-content: space-between; gap: 10px;
-                        font-size: 11.5px; margin-bottom: 4px; }
-      .medida .rotulo b { font-weight: 500; }
-      .medida .rotulo span { color: var(--tinta-baja); font-variant-numeric: tabular-nums; }
-      /* Sin borde: el marco de 1 px era un tercio del alto de la barra, así que
+      /* ─── LAS DOS BARRAS SON DISTINTAS, Y LA DIFERENCIA ES INFORMACIÓN ────
+         Sin borde: el marco de 1 px era un tercio del alto de la barra, así que
          lo que se veía era mitad marco. El fondo la define sola y el relleno
-         crece adentro. (El alto definitivo lo fija la ficha, más adelante.) */
-      .barra { height: 6px; background: rgba(236, 231, 221, .08);
-               border-radius: 2px; overflow: hidden; }
+         crece adentro.
+
+         Y miden distinto a propósito. El aliento son 3 px y el progreso 2, con
+         el aliento un poco más claro de fondo: son las dos únicas barras de la
+         pantalla y hay que poder decir cuál es cuál sin leer nada alrededor.
+         Una dice cuánto le queda de vida y la otra cuánto le falta a un paso —
+         confundirlas es leer «se está muriendo» donde dice «va por la mitad». */
+      .barra { height: 2px; background: rgba(236, 231, 221, .08); overflow: hidden; }
       .barra i {
         display: block; height: 100%; width: 0; background: var(--vivo);
         transition: width .2s linear;
@@ -409,9 +408,41 @@
       /* LO QUE LLEVA, DIBUJADO. Ver el comentario de `inventario()` en main.ts:
          hasta acá lo compuesto no se veía en ningún lado, porque el mapa no
          dibuja lo que está en una mano y era el único lugar que dibujaba. */
-      .mano { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
+      /* La bandeja es lo único de la ficha con caja, y el porqué está en el
+         HTML: sin ella, el glifo de lo que lleva se lee igual que uno del
+         suelo. Anillo interior y no `border`, como todo lo que flota. */
+      .bandeja {
+        display: flex; align-items: center; gap: 11px; align-self: flex-start;
+        padding: 7px 11px 7px 9px; border-radius: 3px;
+        background: var(--realce-suave);
+        box-shadow: inset 0 0 0 1px rgba(236, 231, 221, .09);
+      }
+      /* El rótulo de canto: dice qué es la bandeja sin gastar un renglón, y al
+         estar rotado no compite por la lectura con los dibujos que etiqueta. */
+      .bandeja .rotulo {
+        font-size: 9.5px; letter-spacing: .16em; color: var(--tinta-baja);
+        writing-mode: vertical-rl; text-orientation: mixed; transform: rotate(180deg);
+      }
+      /* El `min-height` sostiene el alto de la bandeja cuando no lleva nada: sin
+         él, la caja se desinfla al soltar algo y la ficha entera pega un salto. */
+      /* ─── 48 Y NO 38, Y LA DIFERENCIA ES QUE 48 ES EL DOBLE EXACTO ────────
+         El handoff pide glifos de 38×38 y acá van 48, que es la única parte de
+         esta ficha donde el diseño no se sigue al pie. El motivo es del repo, y
+         el propio handoff dice que en «cómo se pinta un glifo» manda el repo:
+         el buffer del glifo mide 24 —la grilla que el Hito 12 eligió MIDIENDO,
+         la más chica que conserva esbeltez, volumen y poder contar piezas— así
+         que 38 sale a escala 1,583 y 48 sale a 2,000 clavado.
+
+         Con 1,583 y `pixelated`, cada píxel del glifo cae en uno o en dos
+         píxeles de pantalla según dónde le toque: los trazos de un píxel se
+         engordan al azar y una vara de 4 a 1 deja de medir 4 a 1. Es el mismo
+         defecto que `dibujo` ya cazó una vez —«al reducir, la hebra terminaba
+         menos esbelta que la vara»— y cuya salida no fue reducir mejor sino no
+         reducir. Diez píxeles de bandeja cuestan menos que eso. */
+      .mano { display: flex; gap: 9px; flex-wrap: wrap; align-items: center; min-height: 48px; }
       .mano canvas { width: 48px; height: 48px; border-radius: 2px;
                      background: rgba(13, 12, 10, .55); }
+      .mano .vacia { font: 400 13px/1 var(--serif); font-style: italic; color: var(--tinta-baja); }
       /* El catálogo: una fila por cosa, con su dibujo cuando lo tiene. La
          miniatura mide lo mismo que la del inventario a propósito — es el mismo
          `glifoDe` con el mismo dato, y verlo distinto sería el bug que el caso 7
@@ -426,11 +457,24 @@
          gruesa porque es lo primero que se mira, la línea de acción va en el
          cuerpo del texto, y lo que lleva son dibujos. Un panel donde todo mide
          lo mismo obliga a leerlo entero para saber qué importa. */
-      .ficha { margin: 0 0 4px; }
-      .barra.grande { height: 10px; border-radius: 3px; }
+      /* ─── LA FICHA — ABAJO A LA IZQUIERDA, FLOTANDO ───────────────────────
+         Los dos `bottom` son los que el diseño fija y no números redondos: 76
+         para la ficha y 18 para la velocidad, o sea que entre las dos hay el
+         aire justo para que se lean como dos cosas y no como un panel partido.
+
+         `transition: bottom` porque en el paso 6 las dos se corren hacia arriba
+         cuando aparece el dock. Puesta ya para que ese movimiento no nazca
+         siendo un salto. */
+      .ficha {
+        position: absolute; z-index: 1; left: 26px; bottom: 76px;
+        width: min(330px, calc(100% - 52px));
+        display: flex; flex-direction: column; gap: 11px;
+        transition: bottom .2s ease;
+      }
+      .barra.grande { height: 3px; border-radius: 2px; background: rgba(236, 231, 221, .1); }
       .barra.grande i { transition: width .3s linear; }
-      .haciendo { margin: 9px 0 5px; display: flex; justify-content: space-between;
-                  align-items: baseline; gap: 10px; }
+      .haciendo { margin: 0; display: flex; justify-content: space-between;
+                  align-items: baseline; gap: 12px; }
       /* El verbo en serif y grande: es lo segundo que se mira después del
          aliento, y lo que dice no es un dato sino un estado de alguien. */
       .haciendo b { font: 500 19px/1.25 var(--serif); color: var(--tinta); }
@@ -452,12 +496,29 @@
          separa el verde del naranja: el que vive late, el que busca parpadea,
          el que no está se queda quieto y apagado. El color es el segundo
          canal, no el único. */
-      .enlace { margin: 0 0 15px; padding: 8px 10px 7px; background: var(--panel);
-                box-shadow: inset 0 0 0 1px rgba(236, 231, 221, .09); border-radius: 3px;
-                display: flex; flex-direction: column; gap: 3px; }
-      .lampara { margin: 0; display: flex; align-items: center; gap: 9px; font-size: 11px; }
+      /* ─── ARRIBA A LA IZQUIERDA, Y SIN CAJA ───────────────────────────────
+         Tenía fondo, anillo y radio, de cuando vivía apilado en una columna con
+         otras ocho secciones y necesitaba decir dónde empezaba. Sobre el mapa no
+         hace falta: el degradado ya apaga esa esquina, así que el contraste está
+         y un panel alrededor separaría algo de nada.
+
+         Y pasó de dos renglones a UNA FILA. Apilado, los dos nombres formaban
+         una columna y los dos roles otra, o sea una tablita de dos por dos para
+         decir dos cosas. En fila se lee como una frase. */
+      .enlace {
+        position: absolute; z-index: 1; top: 22px; left: 26px;
+        display: flex; flex-direction: column; gap: 5px;
+        max-width: min(460px, calc(100% - 52px));
+      }
+      .enlace .luces { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+      .lampara { margin: 0; display: flex; align-items: center; gap: 9px;
+                 font-size: 11px; letter-spacing: .02em; }
+      /* Los 10 px de más entre un par y el siguiente: con el mismo gap adentro
+         y afuera, «Codex dibuja Claude en espera» se lee como cuatro palabras
+         sueltas en vez de como dos pares. */
+      .lampara + .lampara { margin-left: 10px; }
       .lampara b { font-weight: 500; color: var(--tinta-baja); transition: color .45s ease; }
-      .lampara span { margin-left: auto; color: var(--tinta-tenue); font-size: 11px; }
+      .lampara span { color: var(--tinta-baja); font-size: 11px; }
       .lampara i { position: relative; flex: none; width: 6px; height: 6px; border-radius: 50%;
                    background: var(--linea-fuerte); transition: background-color .45s ease; }
       .lampara[data-quien='codex'] { --luz: var(--vivo); }
@@ -482,9 +543,32 @@
       @keyframes buscar { 0%, 100% { opacity: .22; } 50% { opacity: .85; } }
       .lampara.no i { background: rgba(236, 231, 221, .09); }
       .lampara.no b { color: var(--tinta-tenue); }
-      .enlace .nota { margin: 3px 0 0; color: var(--tinta-tenue);
+      .enlace .nota { margin: 0; color: var(--tinta-tenue);
                       font: 400 12px/1.45 var(--serif); }
       .enlace .nota:empty { display: none; }
+
+      /* ─── LA VELOCIDAD — EL ÚNICO FONDO PROPIO DE LA ESQUINA ──────────────
+         El porqué está en el HTML: la pausa no puede depender de qué celda le
+         toque atrás. El control es SEGMENTADO —un solo bloque con el redondeo
+         afuera y los botones a tope, sin borde ni separación— porque los cuatro
+         son un mismo mando con cuatro posiciones, no cuatro botones que hacen
+         cuatro cosas. Cajitas separadas dirían lo segundo. */
+      .velocidad {
+        position: absolute; z-index: 1; left: 26px; bottom: 18px;
+        display: flex; align-items: center; gap: 14px;
+        padding: 5px 14px 5px 5px; border-radius: 3px;
+        background: rgba(13, 12, 10, .86);
+        transition: bottom .2s ease;
+      }
+      .velocidad .mandos {
+        margin: 0; gap: 0; border-radius: 2px; overflow: hidden;
+        background: rgba(236, 231, 221, .07);
+      }
+      .velocidad button { background: transparent; border-radius: 0; padding: 6px 13px; }
+      .velocidad button:hover { background: var(--realce-suave); }
+      .velocidad button.on { background: var(--realce); color: var(--tinta); }
+      #reloj { font-size: 10.5px; color: var(--tinta-baja); letter-spacing: .06em;
+               white-space: nowrap; }
       /* Quien pidió menos movimiento igual tiene que poder distinguir los tres:
          el anillo queda abierto y quieto, y el que busca a media luz. */
       @media (prefers-reduced-motion: reduce) {
@@ -525,54 +609,27 @@
            `aria-hidden` y `pointer-events:none`: no dice nada y no se toca. -->
       <div id="penumbra" aria-hidden="true"></div>
 
-      <aside id="provisorio">
-        <!-- ─── ESTE PANEL ES PROVISORIO Y SE VA ──────────────────────────────
-             Sus nueve secciones se reparten en los pasos que siguen: las tres
-             cosas de la criatura y las dos luces salen a flotar sobre el mapa
-             (paso 3), «lo que miraste» se vuelve el globo del click (paso 4),
-             «hablarle» pasa a ser la columna de la charla (paso 5) y los cuatro
-             `<details>` se convierten en módulos del dock (paso 6).
-
-             Vive apretado contra la derecha mientras tanto para que la pantalla
-             siga usable, no porque ése sea su lugar. -->
-        <!-- El título dejó de estar en pantalla y no se borró: el diseño no
-             tiene lugar para un encabezado, pero un documento sin `h1` pierde
-             su estructura para quien lo recorre con un lector. Queda dicho y
-             no dibujado, que es distinto de no estar. -->
-        <h1 class="solo-para-lectores">Ánima II</h1>
-
-        <!-- ─── EL ORDEN ES LA REPARACIÓN, Y SALE DE QUÉ SE MIRA CUÁNTO ────────
-           El panel tenía nueve secciones apiladas con el mismo peso, y las tres
-           primeras eran controles que se tocan una vez —zoom, dibujos— mientras
-           que hablarle y ver a la criatura son lo que se hace todo el tiempo.
-           En una ventana angosta eso significaba scrollear para escribir.
-
-           Ahora: pausa arriba porque decide si el mundo corre, después lo que se
-           usa, y lo que se toca una vez o sirve para depurar va PLEGADO. -->
-
-      <!-- ─── CON QUIÉN, ANTES QUE LA PAUSA Y NO DESPUÉS ─────────────────────
-           Va primero aunque la pausa sea lo más importante, y no se contradice:
-           esto no es un control, es el estado de la sesión. Es el renglón que
-           contesta «¿por qué los dibujos se ven así?» y «¿estoy gastando algo?»
-           antes de que alguien toque nada.
+      <!-- ─── CON QUIÉN HAY DEL OTRO LADO — ARRIBA A LA IZQUIERDA ────────────
+           Sin caja y sin fondo: dos lámparas y sus rótulos sueltos sobre el
+           mapa. El contraste ya se lo da el degradado que apaga esa esquina, así
+           que un panel alrededor sólo agregaría un borde para separar algo de
+           nada. Es la primera pieza del rediseño que se lleva su caja puesta.
 
            `aria-live` porque cambia solo: la única forma de enterarse de que una
-           luz se prendió es mirarla, y quien usa un lector de pantalla no puede. -->
-      <div class="enlace" id="enlace" aria-live="polite">
-        <p class="lampara buscando" id="lampara-codex" data-quien="codex">
-          <i></i><b>Codex</b><span id="rol-codex">preguntando…</span>
-        </p>
-        <p class="lampara buscando" id="lampara-claude" data-quien="claude">
-          <i></i><b>Claude</b><span id="rol-claude">preguntando…</span>
-        </p>
-        <p class="nota" id="enlace-nota"></p>
-      </div>
+           luz se prendió es mirarla, y quien usa un lector de pantalla no puede.
 
-      <div class="mandos">
-        <button data-vel="0" class="on">pausa</button>
-        <button data-vel="1">×1</button>
-        <button data-vel="4">×4</button>
-        <button data-vel="16">×16</button>
+           Y el renglón de abajo existe por UN caso: con las dos luces apagadas,
+           una fila que no diga nada más parece una falla. Ver `con-quien.ts`. -->
+      <div class="enlace" id="enlace" aria-live="polite">
+        <div class="luces">
+          <p class="lampara buscando" id="lampara-codex" data-quien="codex">
+            <i></i><b>Codex</b><span id="rol-codex">preguntando…</span>
+          </p>
+          <p class="lampara buscando" id="lampara-claude" data-quien="claude">
+            <i></i><b>Claude</b><span id="rol-claude">preguntando…</span>
+          </p>
+        </div>
+        <p class="nota" id="enlace-nota"></p>
       </div>
 
       <!-- ─── LA FICHA, Y POR QUÉ NO ES UNA PLANILLA ────────────────────────
@@ -581,16 +638,69 @@
            saber cómo estaba la criatura había que LEER doce renglones y decidir
            cuáles importaban.
 
-           Ahora son tres cosas y ninguna lleva etiqueta, porque no la necesita:
-           una barra es un aliento, un verbo es lo que hace, y unos dibujos son lo
-           que lleva. Lo que quedó afuera no se borró: se movió a Diagnóstico, que
-           es donde vive lo que se consulta y no se mira. -->
-      <div class="ficha">
+           Ahora son cuatro cosas, ninguna lleva etiqueta y —salvo la bandeja—
+           NINGUNA LLEVA MARCO. Una caja con borde diría «acá hay un widget»;
+           esto dice «así está ella». La jerarquía la hace el tamaño: la barra
+           de aliento es el objeto más ancho de la pantalla porque es lo primero
+           que se mira, y el verbo va en el cuerpo del texto porque se lee.
+
+           Lo que quedó afuera no se borró: vive en Diagnóstico, que es donde va
+           lo que se consulta y no se mira. -->
+      <div class="ficha" id="ficha">
         <div class="barra grande" id="aliento-caja"><i id="aliento-barra"></i></div>
         <p class="haciendo"><b id="hace">quieta</b><span id="hace-cuanto"></span></p>
         <div class="barra" id="hace-caja"><i id="hace-barra"></i></div>
-        <div class="mano" id="inventario"></div>
+        <!-- ─── LO QUE LLEVA, Y POR QUÉ ESTO SÍ VA ADENTRO DE ALGO ─────────
+             El mapa no dibuja lo que está en una mano (decisión 1 de
+             `mapa.ts`): una vara pintada en la celda diría que está tirada
+             ahí. Pero el glifo del inventario es EL MISMO dibujo al mismo
+             tamaño, así que suelto sobre el fondo se lee igual que uno del
+             suelo. La bandeja es lo que dice «esto lo tiene ella» — no es
+             decoración, es la única marca que distingue tener de haber. -->
+        <div class="bandeja">
+          <span class="rotulo">LLEVA</span>
+          <div class="mano" id="inventario"></div>
+        </div>
       </div>
+
+      <!-- ─── LA VELOCIDAD — LO ÚNICO DE ESTA ZONA CON FONDO PROPIO ──────────
+           La pausa es irrenunciable: una pestaña abierta avanza la partida real
+           y este proyecto ya perdió una generación por mirar el mundo mientras
+           corría. Flotando sobre el mapa pelado, su contraste dependería de qué
+           celda le toque atrás, y «la celda que le tocó» no es una garantía.
+           Por eso lleva su propio fondo y el resto de la esquina no.
+
+           El aviso de cuatro renglones que decía esto mismo salió de la
+           pantalla y se metió en el `title` del botón: se lee una vez y después
+           es ruido. -->
+      <div class="velocidad" id="velocidad">
+        <div class="mandos" role="group" aria-label="velocidad del mundo">
+          <button data-vel="0" class="on" title="Si te vas, pausá: la pestaña abierta avanza la partida.">pausa</button>
+          <button data-vel="1">×1</button>
+          <button data-vel="4">×4</button>
+          <button data-vel="16">×16</button>
+        </div>
+        <!-- El mismo tick y la misma fase que Diagnóstico, escritos por la misma
+             línea de `hud()`. Están en los dos lados porque contestan preguntas
+             distintas: acá es «¿está corriendo y cuánto va?», al lado del botón
+             que lo decide; allá es un dato que se consulta. Una sola fuente. -->
+        <span id="reloj">tick 0</span>
+      </div>
+
+      <aside id="provisorio">
+        <!-- ─── ESTE PANEL ES PROVISORIO Y SE VA ──────────────────────────────
+             Lo que queda acá se reparte en los pasos que siguen: «lo que
+             miraste» se vuelve el globo del click (paso 4), «hablarle» pasa a
+             ser la columna de la charla (paso 5) y los cuatro `<details>` se
+             convierten en módulos del dock (paso 6).
+
+             Vive apretado contra la derecha mientras tanto para que la pantalla
+             siga usable, no porque ése sea su lugar. -->
+        <!-- El título dejó de estar en pantalla y no se borró: el diseño no
+             tiene lugar para un encabezado, pero un documento sin `h1` pierde
+             su estructura para quien lo recorre con un lector. Queda dicho y
+             no dibujado, que es distinto de no estar. -->
+        <h1 class="solo-para-lectores">Ánima II</h1>
 
       <h2>Hablarle</h2>
       <form id="charla" autocomplete="off">
@@ -692,10 +802,6 @@
         </dl>
       </details>
 
-      <!-- El aviso decía lo mismo en cuatro renglones, con una anécdota adentro.
-           Lo que el jugador necesita saber son ocho palabras; el porqué está en el
-           encabezado de `main.ts`, que es donde lo va a buscar quien quiera saberlo. -->
-      <p class="aviso">Si te vas, <b>pausá</b>: la pestaña abierta avanza la partida.</p>
       </aside>
     </div>
 

@@ -73,29 +73,39 @@ test('2 · ver la criatura moviéndose', async ({ page }) => {
 test('3 · ver todos los objetos del área visible', async ({ page }) => {
   await abrir(page)
 
-  // ─── EL PANEL SE APARTA PARA MEDIR, Y ES AISLAMIENTO Y NO TRAMPA ────────
+  // ─── LO QUE FLOTA SE APARTA PARA MEDIR, Y ES AISLAMIENTO Y NO TRAMPA ────
   //
-  // Con el mapa ocupando la ventana, el panel FLOTA sobre su borde derecho, así
-  // que un click ahí aterriza en el panel y Playwright lo rechaza con razón:
-  // esa celda no se puede tocar. El barrido moría con «locator.click: timeout».
+  // Con el mapa ocupando la ventana, todo lo demás FLOTA encima: el panel sobre
+  // el borde derecho, la ficha de la criatura y la velocidad sobre la esquina
+  // de abajo a la izquierda. Un click ahí aterriza en el flotante y Playwright
+  // lo rechaza con razón —esa celda no se puede tocar— y el barrido moría con
+  // «locator.click: timeout».
   //
   // Lo que este punto afirma es del MAPA —que ninguna cosa del área visible
   // quede sin poder inspeccionarse, que es el bug de los trece cuerpos en una
   // celda que lo motivó— y no de la distribución. Que algo quede tapado es de
   // la distribución, y lo cuida `la-distribucion.spec.ts`. Por eso se apaga el
-  // `pointer-events` del panel y no se lo esconde: el barrido llega al mapa
-  // entero y los nodos que el barrido LEE —`#mirado-que`, `#a-la-vista`— siguen
-  // ahí. Esconderlo dejaría al test sin dónde leer la respuesta.
+  // `pointer-events` de la capa que flota y no se la esconde: el barrido llega
+  // al mapa entero y los nodos que el barrido LEE —`#mirado-que`,
+  // `#a-la-vista`— siguen ahí. Esconderlos dejaría al test sin dónde leer.
   //
   // Y no es un gesto fabricado: los clicks siguen siendo clicks de verdad, con
   // su chequeo de destino. Lo único que cambia es qué hay arriba.
   //
+  // La regla se escribe por EXCLUSIÓN —todo lo que cuelga de `#pantalla` salvo
+  // el mapa y la penumbra— y no enumerando los flotantes. Con una lista, el
+  // dock del paso 6 y la charla del 5 volverían a tapar el barrido y el spec se
+  // caería de nuevo por el mismo motivo, un paso más tarde.
+  //
   // ─── LA FORMA DEFINITIVA DE ESTO ES DEL PASO 7 ──────────────────────────
   //
   // Cuando exista el cajón, en pantalla angosta la charla se CIERRA con un
-  // gesto de verdad y el mapa queda destapado entero. Ahí este bloque se
-  // reemplaza por «cerrá la charla y barré», que no necesita tocar nada.
-  await page.addStyleTag({ content: 'aside { pointer-events: none }' })
+  // gesto de verdad. Aun así la ficha y la velocidad van a seguir flotando
+  // sobre la esquina, así que algo de esto queda: lo que el paso 7 permite es
+  // reemplazar la parte de la CHARLA por un gesto real.
+  await page.addStyleTag({
+    content: '#pantalla > *:not(#tablero):not(#penumbra) { pointer-events: none }',
+  })
 
   const canvas = page.locator('#mapa')
   const caja = await canvas.boundingBox()
