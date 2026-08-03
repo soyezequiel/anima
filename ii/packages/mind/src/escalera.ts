@@ -266,6 +266,25 @@ export function sinVocabulario(meta: PredicateSignature, catalogo: PlannerCatalo
   // Una firma que el intérprete no lee no la puede establecer nadie: no hay con
   // qué compararla. `planificar` la tira igual, con motivo; acá se evita tomarla.
   if (p === undefined) return true
+  // ─── «TENERLO» NO NECESITA VOCABULARIO, y esto no lo decide esta función ──
+  //
+  // El catálogo dejó de ser la lista completa de lo que se puede establecer: la
+  // regresión aprendió una vía que NO es un esquema —caminar hasta algo que ya
+  // cumple la meta y agarrarlo, ver `agarrarLoQueYaHay` en
+  // `plan/src/regresion.ts`— y no lo es porque agarrar no transforma nada.
+  // Preguntarle a la tabla por un `sostiene` es preguntarle a la lista
+  // equivocada.
+  //
+  // Se vio desde afuera y es el motivo entero: «traé un palo» se leía perfecto,
+  // el planificador tenía plan, y la criatura contestaba «dale, voy» y seguía con
+  // lo suyo. El veto pasaba acá, un piso más arriba que el plan.
+  //
+  // Y cae del lado que el encabezado de esta función ya había elegido: de los dos
+  // errores posibles, **dejar pasar una meta imposible cuesta una búsqueda por
+  // tick, y vetar una meta posible cuesta que la criatura no la persiga NUNCA**.
+  // Que un `sostiene` se pueda hacer HOY lo sigue contestando `plan()`, que es
+  // quien mira el paisaje.
+  if (p.k === 'sostiene') return false
   for (const q of vocabularioDe(catalogo)) if (implica(q, p)) return false
   return true
 }

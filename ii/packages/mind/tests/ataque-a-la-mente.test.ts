@@ -343,10 +343,30 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
     // la vista, así que la meta se cumple, se suelta, y el tick siguiente D3 elige
     // la que sigue. Lo que este test cuida sigue siendo lo mismo: que la primera
     // sea la planificable y en el tick 0.
-    expect(r.metas.length).toBe(3)
-    expect(r.metas[0]).toBe('0:holding(tag:carnoso)')
+    // ─── Y CRECIÓ A CINCO, PORQUE LA BARATA DEJÓ DE SER IMPOSIBLE ─────────
+    //
+    // La lista de hoy es:
+    //
+    //     0:holding(tag:vegetal) → 4:undefined → 5:holding(tag:carnoso)
+    //                            → 96:undefined → 97:…toxicity<0.0528
+    //
+    // El `0:holding(tag:vegetal)` es la meta que este archivo entero existe para
+    // contar: con el tanque lleno es la que gana la lista de D3, y **se sostenía
+    // 12.000 ticks** porque `plan()` no sabía conseguirla y la escalera no la
+    // soltaba. La reparación de entonces fue vetarla antes de tomarla.
+    //
+    // Hoy no hace falta vetarla: la regresión aprendió a resolver un «tenerlo»
+    // agarrando, así que la criatura la toma en el tick 0 y **la cumple en el 4**.
+    // Cuatro ticks, no doce mil. Y de ahí sigue con la que sigue.
+    //
+    // Lo que este test cuida no cambió y se sigue afirmando abajo: que la cadena
+    // de la caña sale entera y que la criatura llega viva.
+    expect(r.metas.length).toBe(5)
+    expect(r.metas[0]).toBe('0:holding(tag:vegetal)')
     expect(r.metas[1]).toMatch(/^\d+:undefined$/)
-    expect(r.metas[2]).toMatch(/^\d+:holding\(tag:carnoso,toxicity<[\d.]+\)$/)
+    expect(r.metas[2]).toBe('5:holding(tag:carnoso)')
+    expect(r.metas[3]).toMatch(/^\d+:undefined$/)
+    expect(r.metas[4]).toMatch(/^\d+:holding\(tag:carnoso,toxicity<[\d.]+\)$/)
     // Y la hace: la cadena de la caña entera.
     for (const paso of ['ir(vara)', 'sostener(vara)', 'ir(matorral)', 'sostener(matorral)', 'unir(matorral+vara)']) {
       expect(cuenta(r.despegues, paso), paso).toBe(1)

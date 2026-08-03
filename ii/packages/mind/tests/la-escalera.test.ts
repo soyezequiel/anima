@@ -1143,12 +1143,40 @@ describe('requisito 5 · el `gap` se hace y se sigue viviendo', () => {
 // diferencia se lee de la TABLA de esquemas y no del `why` en prosa que trae el
 // `PlanResult`, porque ese texto lo arma otro paquete para otra cosa.
 
+/**
+ * UNA META QUE SIGUE SIN CAMINO, para los tres tests de abajo.
+ *
+ * Los tres usaban `holding(tag:vegetal)` como ejemplo de lo imposible, y dejó de
+ * serlo el día que la regresión aprendió a resolver un «tenerlo» agarrando. Lo
+ * que esos tests miden —que la escalera saltee lo que no se puede y siga— no
+ * cambió: lo único que hacía falta era un ejemplo que siguiera siendo cierto.
+ *
+ * `mass>=1` lo es, y está afirmado dos bloques más arriba en este mismo archivo:
+ * ninguna fila del índice establece masa. No es una cualidad rara elegida para
+ * pasar el test — es la que el propio archivo ya usaba para decir lo mismo.
+ */
+const SIN_CAMINO = 'mass>=1'
+/** La segunda, para el test que necesita que NINGUNA de la lista se pueda. */
+const SIN_CAMINO2 = 'mass>=2'
+
 describe('el vocabulario del catálogo, y qué se puede querer', () => {
   it('lo que ningún esquema establece se reconoce SIN correr una búsqueda', () => {
-    // Las tres metas que el instinto puede querer, contra la tabla.
-    expect(sinVocabulario(metaDe('carnoso'))).toBe(false)
-    expect(sinVocabulario(metaDe('vegetal'))).toBe(true)
-    expect(sinVocabulario(metaDe('fibroso'))).toBe(true)
+    // ─── LAS TRES DABAN DISTINTO, Y AHORA DAN LO MISMO ────────────────────
+    //
+    // Acá `vegetal` y `fibroso` eran `true` —«ningún esquema las establece»— y era
+    // verdad mientras el catálogo fuera la lista completa de lo que se puede
+    // conseguir. Dejó de serlo: la regresión aprendió a resolver un `sostiene`
+    // caminando hasta algo que ya lo cumple y agarrándolo, y eso no es un esquema
+    // porque agarrar no transforma nada (`agarrarLoQueYaHay`, en
+    // `plan/src/regresion.ts`).
+    //
+    // Así que preguntarle a la TABLA por un `holding(...)` es preguntarle a la
+    // lista equivocada, y `sinVocabulario` contesta que no para las tres. Lo que
+    // no cambió es quién decide si se puede HOY: eso lo sigue contestando
+    // `plan()`, que es el que mira el paisaje.
+    for (const tag of ['carnoso', 'vegetal', 'fibroso']) {
+      expect(sinVocabulario(metaDe(tag)), `«${tag}» se puede querer`).toBe(false)
+    }
     // Y las que no son `holding`: `temperature>=400` la establece `friccion`;
     // ninguna fila del índice establece masa (medido en `ataque-al-reves`).
     expect(sinVocabulario('temperature>=400')).toBe(false)
@@ -1187,7 +1215,7 @@ describe('el vocabulario del catálogo, y qué se puede querer', () => {
     const o: MenteOptions = {
       actor: 'yo',
       memoria: MEMORIA_MUDA,
-      oportunidades: () => [oportunidad(metaDe('vegetal'), 9), oportunidad(COMIDA, 1)],
+      oportunidades: () => [oportunidad(SIN_CAMINO, 9), oportunidad(COMIDA, 1)],
     }
     avanzarReloj(e)
     const d = decidir(vistaDe(s), e, o)
@@ -1206,7 +1234,7 @@ describe('el vocabulario del catálogo, y qué se puede querer', () => {
     const o: MenteOptions = {
       actor: 'yo',
       memoria: MEMORIA_MUDA,
-      oportunidades: () => [oportunidad(metaDe('vegetal'), 9), oportunidad(metaDe('fibroso'), 8)],
+      oportunidades: () => [oportunidad(SIN_CAMINO, 9), oportunidad(SIN_CAMINO2, 8)],
     }
     avanzarReloj(e)
     const d = decidir(vistaDe(s), e, o)
@@ -1225,7 +1253,7 @@ describe('el vocabulario del catálogo, y qué se puede querer', () => {
       actor: 'yo',
       memoria: MEMORIA_MUDA,
       oportunidades: () => [oportunidad(COMIDA, 1)],
-      drive: { meta: metaDe('vegetal'), peso: 1, desdeTick: 0 },
+      drive: { meta: SIN_CAMINO, peso: 1, desdeTick: 0 },
     }
     avanzarReloj(e)
     const d = decidir(vistaDe(s), e, o)
