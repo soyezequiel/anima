@@ -19,11 +19,18 @@
 // mundo que quedó y llega al mismo resultado**. Es una promesa más fuerte y más
 // barata: no hay estado a mitad de camino que pueda quedar inconsistente.
 //
-// ─── LO QUE SÍ SE GUARDA SON TRES COSAS, Y LA TERCERA ES LA QUE FALTABA ─────
+// ─── LO QUE SÍ SE GUARDA SON CUATRO COSAS, Y LAS DOS ÚLTIMAS SE AGREGARON ───
 //
 //   el mundo        `worldSlots` / `restoreWorld`, del Hito 2. Ya existía.
 //   el catálogo     el overlay de la sesión. Ya tiene su manifiesto (Gate 5→6).
 //   LAS CREENCIAS   lo que la criatura aprendió — y esto NO existía.
+//   LA CHARLA       de qué estuvieron hablando — y esto tampoco (C1, versión 2).
+//
+// La cuarta es el mismo hueco que la tercera, un nivel más arriba: sin ella, una
+// partida restaurada se acuerda de dónde estaban las cosas y de si le rindieron,
+// y **no de lo que le pediste hace tres turnos**. El log conversacional es lo que
+// el tramo de convergencia hace durable, y el resto de sus capas —episodios,
+// retrieval— se apoyan en él y son de C2.
 //
 // La tercera está escrita como hueco desde el Hito 5, en `mind/src/tipos.ts`:
 //
@@ -37,6 +44,11 @@
 
 import { Creencias } from '@anima/mind'
 import type { CreenciaVolcada } from '@anima/mind'
+// `import type` y no un import normal, y no es estilo: con `verbatimModuleSyntax`
+// la línea entera se borra al compilar, así que este paquete **no gana una arista
+// en tiempo de ejecución**. Sigue valiendo lo que el guardián de al lado exige:
+// guardar es del estado y tiene que poder correr sin una corrida viva.
+import type { Dicho } from '@anima/lang'
 import { restoreWorld, worldSlots } from '@anima/world'
 import type { WorldState } from '@anima/world'
 
@@ -47,11 +59,19 @@ import type { Deposito } from './deposito.js'
  * LA VERSIÓN DEL FORMATO DE GUARDADO.
  *
  * Sube cuando cambia la FORMA de lo que se escribe, no cuando cambia el mundo.
- * Un save de otra versión se rechaza con su número al lado en vez de explotar
- * tres capas más abajo con «no se puede leer la propiedad de undefined», que es
- * el error que hace que nadie sepa que el problema era el formato.
+ * Un save de una versión que esta build no sabe leer se rechaza con su número al
+ * lado en vez de explotar tres capas más abajo con «no se puede leer la propiedad
+ * de undefined», que es el error que hace que nadie sepa que el problema era el
+ * formato.
+ *
+ * ─── LA 2 AGREGÓ LA CHARLA, Y POR ESO HAY MIGRACIÓN Y NO RECHAZO ───────────
+ *
+ * La 1 guardaba el mundo y las creencias. La 2 suma el log conversacional (el C1
+ * de la convergencia). Una partida guardada con la 1 **no se tira**: entra con la
+ * charla vacía, que es exactamente lo que tenía. Rechazarla sería borrarle el
+ * mundo a alguien por una lista que ese guardado nunca pudo tener.
  */
-export const VERSION_DEL_GUARDADO = 1
+export const VERSION_DEL_GUARDADO = 2
 
 /**
  * UNA PARTIDA GUARDADA, en datos planos.
@@ -68,10 +88,40 @@ export interface Guardado {
   /** Lo que la criatura aprendió, sin el instinto adentro. Ver `Creencias.volcar`. */
   readonly creencias: readonly CreenciaVolcada[]
   /**
+   * LA CONVERSACIÓN, entera y en orden — la cuarta ranura, del C1.
+   *
+   * Es `CanalDeHabla.todo`: las cinco clases en una sola lista, cada línea con su
+   * turno. Se guarda por lo mismo que las creencias: **sin esto, reabrir la
+   * pestaña le restaura el mundo a la criatura y le borra de qué estaban
+   * hablando**, y eso se ve como alguien que te vuelve a preguntar lo que acabás
+   * de contestarle.
+   *
+   * Y es lo que hace que la memoria de la charla sea una VISTA y no un segundo
+   * almacén: `memoriaDe()` la deriva de acá.
+   */
+  readonly charla: readonly Dicho[]
+  /**
    * QUIÉN ES. Va guardado porque restaurar sin saber a quién restaurar no sirve,
    * y porque la herencia del punto 5 empieza por acá.
    */
   readonly quien: string
+}
+
+/**
+ * UN GUARDADO VIEJO, AL DÍA. Lanza si es de una versión que nadie sabe leer.
+ *
+ * Una función y no un `if` copiado en los tres lectores: `comoSeRestaura`,
+ * `loQueHereda` y quien venga después tienen que estar de acuerdo sobre qué se
+ * puede leer, o una partida se restaura y no se hereda.
+ */
+function alDia(g: Guardado): Guardado {
+  if (g.version === VERSION_DEL_GUARDADO) return g
+  // La 1 es la que no tenía charla. `?? []` y no `[]` a secas: un guardado a
+  // medio migrar es un dato que existe, y perderlo en silencio sería peor.
+  if (g.version === 1) return { ...g, version: VERSION_DEL_GUARDADO, charla: g.charla ?? [] }
+  throw new RangeError(
+    `este guardado es de la versión ${String(g.version)} y esta build lee la ${String(VERSION_DEL_GUARDADO)}`,
+  )
 }
 
 /**
@@ -81,12 +131,18 @@ export interface Guardado {
  * puede probar sin depósito, y lo que la prueba es lo que importa: que lo que
  * sale AGUANTA el viaje.
  */
-export function comoSeGuarda(state: WorldState, creencias: Creencias, quien: string): Guardado {
+export function comoSeGuarda(
+  state: WorldState,
+  creencias: Creencias,
+  quien: string,
+  charla: readonly Dicho[] = [],
+): Guardado {
   const g: Guardado = {
     version: VERSION_DEL_GUARDADO,
     tick: state.tick,
     mundo: [...worldSlots(state).entries()],
     creencias: [...creencias.volcar()],
+    charla: [...charla],
     quien,
   }
   // ─── LA PUERTA, Y NO ES UN ASSERT DE LUJO ────────────────────────────────
@@ -105,18 +161,21 @@ export function comoSeGuarda(state: WorldState, creencias: Creencias, quien: str
   return g
 }
 
-/** El mundo y las creencias, de vuelta. La habilidad en vuelo NO vuelve: ver el encabezado. */
-export function comoSeRestaura(g: Guardado): { readonly state: WorldState; readonly creencias: Creencias } {
-  if (g.version !== VERSION_DEL_GUARDADO) {
-    throw new RangeError(
-      `este guardado es de la versión ${String(g.version)} y esta build lee la ${String(VERSION_DEL_GUARDADO)}`,
-    )
-  }
+/** Lo restaurado: mundo, creencias y charla. La habilidad en vuelo NO vuelve: ver el encabezado. */
+export interface Restaurado {
+  readonly state: WorldState
+  readonly creencias: Creencias
+  /** El log conversacional. Vacío si el guardado es de la versión 1. */
+  readonly charla: readonly Dicho[]
+}
+
+export function comoSeRestaura(guardado: Guardado): Restaurado {
+  const g = alDia(guardado)
   const creencias = new Creencias()
   // `cargar` SUMA sobre el instinto que el constructor ya puso, y no reemplaza.
   // El porqué está en `Creencias.volcar`: el prior de fábrica es de la heredera.
   creencias.cargar(g.creencias)
-  return { state: restoreWorld(new Map(g.mundo)), creencias }
+  return { state: restoreWorld(new Map(g.mundo)), creencias, charla: g.charla }
 }
 
 /**
@@ -151,25 +210,29 @@ export function claveDe(quien: string, ranura = 'ultimo'): string {
   return `partida/${quien}/${ranura}`
 }
 
-/** Guardar de verdad. Acá SÍ hay un `await`, y por eso este paquete existe. */
+/**
+ * Guardar de verdad. Acá SÍ hay un `await`, y por eso este paquete existe.
+ *
+ * `charla` entró ANTES que `ranura` y no después, aunque `ranura` sea más vieja:
+ * la charla se pasa siempre y la ranura no la pasa nadie (se midió: cero
+ * llamadores en todo el árbol). Un parámetro que se usa siempre detrás de uno que
+ * no se usa nunca obliga a escribir `undefined` en el medio en cada llamada.
+ */
 export async function guardar(
   d: Deposito,
   state: WorldState,
   creencias: Creencias,
   quien: string,
+  charla: readonly Dicho[] = [],
   ranura?: string,
 ): Promise<Guardado> {
-  const g = comoSeGuarda(state, creencias, quien)
+  const g = comoSeGuarda(state, creencias, quien, charla)
   await d.poner(claveDe(quien, ranura), g)
   return g
 }
 
 /** Traer lo guardado. `undefined` cuando no hay nada: no estar es una respuesta. */
-export async function cargar(
-  d: Deposito,
-  quien: string,
-  ranura?: string,
-): Promise<{ readonly state: WorldState; readonly creencias: Creencias } | undefined> {
+export async function cargar(d: Deposito, quien: string, ranura?: string): Promise<Restaurado | undefined> {
   const raw = await d.leer(claveDe(quien, ranura))
   if (raw === undefined) return undefined
   return comoSeRestaura(raw as Guardado)
@@ -193,12 +256,8 @@ export async function cargar(
  * criatura adentro, que es lo contrario de una sucesión. Lo único que cruza de
  * una vida a la otra es el testimonio.
  */
-export function loQueHereda(g: Guardado, peso = PESO_DEL_TESTIMONIO): Creencias {
-  if (g.version !== VERSION_DEL_GUARDADO) {
-    throw new RangeError(
-      `este guardado es de la versión ${String(g.version)} y esta build lee la ${String(VERSION_DEL_GUARDADO)}`,
-    )
-  }
+export function loQueHereda(guardado: Guardado, peso = PESO_DEL_TESTIMONIO): Creencias {
+  const g = alDia(guardado)
   const c = new Creencias()
   c.cargar(g.creencias, peso)
   return c

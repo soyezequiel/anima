@@ -33,6 +33,108 @@
         border: 1px solid var(--linea); border-radius: 8px; display: block;
         image-rendering: pixelated; max-width: 100%; height: auto;
       }
+      /* ─── PASARLE EL MOUSE POR ARRIBA ────────────────────────────────────
+         El porqué está en `main.ts`, arriba de `conCartel`: el mapa son manchas
+         de doce píxeles y saber qué era una costaba un click más un viaje del
+         ojo hasta el panel de la derecha.
+
+         Acá abajo hay dos piezas y hacen cosas distintas: el RECUADRO dice
+         DÓNDE —qué celda estás señalando— y el CARTEL dice QUÉ. Separadas
+         porque el cartel no puede vivir sobre la celda: taparía justo lo que
+         estás mirando. */
+      .mapa-caja { position: relative; display: inline-block; max-width: 100%; }
+      /* ─── CUATRO ESQUINAS Y NO UN MARCO, Y NO ES ESTÉTICA ────────────────
+         El mapa YA dibuja un marco completo alrededor de la celda de la criatura
+         —`marcar()` en `mapa.ts`, color `#f0e7c8`— o sea que un recuadro cerrado
+         acá diría dos cosas distintas con el mismo dibujo: se vio en la primera
+         foto, dos cajas idénticas al lado, una «acá está la criatura» y otra
+         «esto estás señalando». Las esquinas se leen como una mira y no se
+         confunden con nada de lo que el mundo pinta.
+
+         Arranca en la esquina del área dibujada —1px adentro por el borde del
+         canvas— y de ahí lo mueve `transform`. Ver `ubicarLaSenal`. */
+      .senal {
+        position: absolute; top: 1px; left: 1px; pointer-events: none;
+        --marca: #fbf7ea;
+        background:
+          linear-gradient(var(--marca) 0 0) no-repeat 0 0 / 30% 2px,
+          linear-gradient(var(--marca) 0 0) no-repeat 0 0 / 2px 30%,
+          linear-gradient(var(--marca) 0 0) no-repeat 100% 0 / 30% 2px,
+          linear-gradient(var(--marca) 0 0) no-repeat 100% 0 / 2px 30%,
+          linear-gradient(var(--marca) 0 0) no-repeat 0 100% / 30% 2px,
+          linear-gradient(var(--marca) 0 0) no-repeat 0 100% / 2px 30%,
+          linear-gradient(var(--marca) 0 0) no-repeat 100% 100% / 30% 2px,
+          linear-gradient(var(--marca) 0 0) no-repeat 100% 100% / 2px 30%;
+        filter: drop-shadow(0 0 2px #000c);
+        /* La `visibility` con dos duraciones, igual que el cartel y por lo mismo:
+           el recuadro conserva el alto y el ancho de la última celda que marcó,
+           así que apagado sólo con opacidad seguiría siendo una caja de 24 px
+           puesta sobre el mapa para cualquiera que la busque. */
+        opacity: 0; visibility: hidden;
+        transition: opacity .1s ease, visibility 0s .1s;
+      }
+      /* EL DESLIZAMIENTO SÓLO CUANDO YA SE VE, y esto es un bug que se vio: con
+         la transición también en el estado apagado, el recuadro **entraba
+         volando desde la esquina** del mapa la primera vez, porque su posición
+         anterior era «sin mover». Ahora se pone en su celda mientras está
+         apagado —sin transición, o sea instantáneo— y recién ahí se prende.
+         De celda a celda sí se desliza, que es lo que se quería. */
+      .senal.se-ve {
+        opacity: .92; visibility: visible;
+        transition: opacity .1s ease, transform .07s ease-out, visibility 0s;
+      }
+      /* EL ANILLO CORRE UNA SOLA VEZ, al entrar al mapa. De celda a celda el
+         recuadro SE DESLIZA —la transición de arriba— y ésa es la diferencia
+         que se quiere ver: entrar es un evento, moverse es seguir al mouse.
+
+         Va en `::after` y no en `.senal` por una razón mecánica: `transform` lo
+         tiene ocupado la posición, y una animación sobre la misma propiedad
+         mandaría el recuadro a la esquina mientras dura. */
+      .senal::after {
+        content: ''; position: absolute; inset: -3px; border: 1px solid #e8e6e1;
+        border-radius: 4px; opacity: 0;
+      }
+      .senal.se-ve::after { animation: senal-anillo .34s ease-out; }
+      @keyframes senal-anillo {
+        from { opacity: .85; transform: scale(1.4); }
+        to { opacity: 0; transform: scale(1); }
+      }
+      .cartel {
+        position: fixed; left: 0; top: 0; z-index: 20; pointer-events: none;
+        display: flex; align-items: center; gap: 9px; max-width: 250px;
+        padding: 7px 11px 7px 8px; background: #1a1d23f2; border: 1px solid #3a4150;
+        border-radius: 7px; box-shadow: 0 7px 20px #000a;
+        opacity: 0; visibility: hidden; transform: translateY(4px) scale(.97);
+        /* ─── LA `visibility` NO SE INTERPOLA, SE PROGRAMA ─────────────────
+           `opacity: 0` sola no alcanza: un cartel transparente sigue existiendo
+           para el que lo busque —y para un test, que mira `visibility` y no la
+           opacidad—, así que apagado tiene que estar apagado de verdad.
+
+           Y va con dos duraciones distintas a propósito, que es el patrón de
+           siempre para esto: al APARECER cambia en 0s (si entrara en la
+           transición, el primer instante lo reporta todavía escondido y el
+           cartel llega tarde a su propia aparición); al IRSE espera los .11s
+           para que el desvanecido se vea entero antes de desaparecer. */
+        transition: opacity .11s ease, transform .11s ease, visibility 0s .11s;
+      }
+      .cartel.se-ve {
+        opacity: 1; visibility: visible; transform: none;
+        transition: opacity .11s ease, transform .11s ease, visibility 0s;
+      }
+      .cartel .glifo {
+        width: 34px; height: 34px; flex: none; image-rendering: pixelated;
+        border: 1px solid var(--linea); border-radius: 4px; background: #14161a;
+      }
+      .cartel b { display: block; font-weight: 500; font-size: 12px; margin-bottom: 1px; }
+      /* Las tres frases seguidas y separadas por puntos, igual que el panel: son
+         una sola línea de lectura, no una planilla de tres filas. */
+      .cartel span { color: var(--tenue); font-size: 11px; line-height: 1.4; }
+      .cartel span:not(:empty) ~ span:not(:empty)::before { content: ' · '; }
+      @media (prefers-reduced-motion: reduce) {
+        .senal, .cartel { transition: none; }
+        .senal.se-ve::after { animation: none; }
+        .cartel.se-ve { transform: none; }
+      }
       aside { min-width: 0; }
       .mandos { display: flex; gap: 6px; margin: 0 0 16px; }
       button {
@@ -72,6 +174,18 @@
       .charla .vos { color: #e8e6e1; }
       .charla .vos::before { content: '› '; color: var(--tenue); }
       .charla .ella { color: #93b9d6; padding-left: 11px; }
+      /* EL PROGRESO NO ES HABLA, y por eso no se pinta como habla. Explica algo
+         verificable —«voy por la segunda de tres», «agarró una vara de madera»—
+         y el tramo de convergencia pide que no se guarde ni se muestre como una
+         frase del personaje: una tarjeta verde no acredita obediencia. Va
+         apagado y en la misma sangría, que es como se lee una acotación. */
+      .charla .progreso { color: var(--tenue); font-size: 11px; padding-left: 11px; }
+      /* Lo que recuerda: una línea por recuerdo, con su fuente al final. La
+         fuente va en otro color y más chica porque se consulta, no se lee. */
+      .recuerdos { display: flex; flex-direction: column; gap: 4px; font-size: 11.5px; }
+      .recuerdos .fila { display: flex; justify-content: space-between; gap: 10px; }
+      .recuerdos b { font-weight: 500; }
+      .recuerdos .fuente { color: var(--tenue); font-size: 10.5px; white-space: nowrap; }
       details { margin-top: 16px; border-top: 1px solid var(--linea); padding-top: 10px; }
       summary {
         cursor: pointer; list-style: none; color: var(--tenue); font-size: 10.5px;
@@ -113,6 +227,53 @@
       .mirado b { font-weight: 500; display: block; }
       .mirado span { color: var(--tenue); font-size: 11.5px; }
       .mirado span:not(:empty) ~ span:not(:empty)::before { content: ' · '; }
+      /* ─── CON QUIÉN ESTÁ HABLANDO: dos luces y su rol ────────────────────
+         Lo que decide qué luz va prendida está entero en `con-quien.ts`; acá
+         hay tres clases y ninguna condición. Los estados son tres y se
+         distinguen SIN color, que es lo que los hace legibles para quien no
+         separa el verde del naranja: el que vive late, el que busca parpadea,
+         el que no está se queda quieto y apagado. El color es el segundo
+         canal, no el único. */
+      .enlace { margin: 0 0 15px; padding: 8px 10px 7px; background: #171a1f;
+                border: 1px solid var(--linea); border-radius: 6px;
+                display: flex; flex-direction: column; gap: 3px; }
+      .lampara { margin: 0; display: flex; align-items: center; gap: 8px; font-size: 11.5px; }
+      .lampara b { font-weight: 500; color: var(--tenue); transition: color .45s ease; }
+      .lampara span { margin-left: auto; color: #5f646d; font-size: 11px; }
+      .lampara i { position: relative; flex: none; width: 7px; height: 7px; border-radius: 50%;
+                   background: #363d48; transition: background-color .45s ease; }
+      .lampara[data-quien='codex'] { --luz: #6d9e6c; }
+      .lampara[data-quien='claude'] { --luz: #d97757; }
+      /* VIVE: el punto toma color y respira, y cada dos segundos y pico suelta
+         un anillo que se abre y se apaga. Las dos animaciones comparten período
+         a propósito — desfasadas se leen como dos cosas distintas pasando. */
+      .lampara.vive b { color: #e8e6e1; }
+      .lampara.vive i { background: var(--luz); animation: respirar 2.4s ease-in-out infinite; }
+      .lampara.vive i::after { content: ''; position: absolute; inset: -1px; border-radius: 50%;
+                               border: 1px solid var(--luz); animation: latir 2.4s ease-out infinite; }
+      @keyframes respirar {
+        0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--luz) 45%, transparent); }
+        50% { box-shadow: 0 0 7px 1px color-mix(in srgb, var(--luz) 45%, transparent); }
+      }
+      @keyframes latir {
+        0% { transform: scale(1); opacity: .8; }
+        70%, 100% { transform: scale(3.1); opacity: 0; }
+      }
+      /* BUSCANDO: parpadeo gris y rápido. Dura lo que tarde el primer sondeo. */
+      .lampara.buscando i { animation: buscar 1.05s ease-in-out infinite; }
+      @keyframes buscar { 0%, 100% { opacity: .22; } 50% { opacity: .85; } }
+      .lampara.no i { background: #2b313a; }
+      .lampara.no b { color: #5a5f68; }
+      .enlace .nota { margin: 3px 0 0; color: #5f646d; font-size: 10.5px; line-height: 1.45; }
+      .enlace .nota:empty { display: none; }
+      /* Quien pidió menos movimiento igual tiene que poder distinguir los tres:
+         el anillo queda abierto y quieto, y el que busca a media luz. */
+      @media (prefers-reduced-motion: reduce) {
+        .lampara i, .lampara.vive i::after { animation: none; }
+        .lampara.vive i { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--luz) 40%, transparent); }
+        .lampara.vive i::after { opacity: .5; transform: scale(2); }
+        .lampara.buscando i { opacity: .5; }
+      }
     </style>
   </head>
   <body>
@@ -121,8 +282,24 @@
       <p class="sub">
         El mundo corriendo. Nadie plantó nada: lo que hay alrededor es lo que la semilla dice que hay.
       </p>
-      <canvas id="mapa"></canvas>
+      <!-- La caja existe para que el recuadro tenga contra qué posicionarse: es
+           `position: relative` y nada más. El recuadro va adentro y el cartel
+           afuera, porque el cartel es `fixed` y sigue al mouse por la ventana. -->
+      <div class="mapa-caja">
+        <canvas id="mapa"></canvas>
+        <div class="senal" id="senal" aria-hidden="true"></div>
+      </div>
     </div>
+
+    <!-- ─── EL CARTEL DEL MOUSE ────────────────────────────────────────────
+         Vacío en el HTML: lo llena `main.ts` con el mismo glifo que el mapa y
+         las mismas cuatro frases que el panel «Lo que miraste».
+
+         `aria-hidden` y no `role="tooltip"`: esto sólo existe mientras haya un
+         mouse encima, y no hay forma de llegar con el teclado. Anunciarlo sería
+         prometer algo que no se puede alcanzar — el camino accesible al mismo
+         dato es el panel, que se queda escrito. -->
+    <div class="cartel" id="cartel" aria-hidden="true"></div>
 
     <aside>
       <!-- ─── EL ORDEN ES LA REPARACIÓN, Y SALE DE QUÉ SE MIRA CUÁNTO ────────
@@ -133,6 +310,25 @@
 
            Ahora: pausa arriba porque decide si el mundo corre, después lo que se
            usa, y lo que se toca una vez o sirve para depurar va PLEGADO. -->
+
+      <!-- ─── CON QUIÉN, ANTES QUE LA PAUSA Y NO DESPUÉS ─────────────────────
+           Va primero aunque la pausa sea lo más importante, y no se contradice:
+           esto no es un control, es el estado de la sesión. Es el renglón que
+           contesta «¿por qué los dibujos se ven así?» y «¿estoy gastando algo?»
+           antes de que alguien toque nada.
+
+           `aria-live` porque cambia solo: la única forma de enterarse de que una
+           luz se prendió es mirarla, y quien usa un lector de pantalla no puede. -->
+      <div class="enlace" id="enlace" aria-live="polite">
+        <p class="lampara buscando" id="lampara-codex" data-quien="codex">
+          <i></i><b>Codex</b><span id="rol-codex">preguntando…</span>
+        </p>
+        <p class="lampara buscando" id="lampara-claude" data-quien="claude">
+          <i></i><b>Claude</b><span id="rol-claude">preguntando…</span>
+        </p>
+        <p class="nota" id="enlace-nota"></p>
+      </div>
+
       <div class="mandos">
         <button data-vel="0" class="on">pausa</button>
         <button data-vel="1">×1</button>
@@ -178,6 +374,21 @@
           Es el mismo dibujo que ves en el mapa y en la mano.
         </p>
         <div id="lista-catalogo" class="catalogo"></div>
+      </details>
+
+      <!-- ─── LO QUE RECUERDA, Y DE DÓNDE ────────────────────────────────
+           El C2 pide que Ánima pueda CITAR qué recuerda y su fuente. Por eso
+           cada línea trae el turno del que salió y quién lo dijo: sin las dos
+           cosas, «me acuerdo» es indistinguible de «me lo estoy inventando».
+           Y la distinción que más importa se ve de un vistazo: lo que le
+           contaste dice `vos`, lo que vio dice `mundo`. -->
+      <details id="lo-que-recuerda">
+        <summary>Lo que recuerda</summary>
+        <p class="sub" style="margin:10px 0 6px; font-size:11px">
+          De qué hablaron, con el turno del que salió cada cosa. Lo que le contaste
+          <b>no</b> es lo que vio.
+        </p>
+        <div id="lista-recuerdos" class="recuerdos"></div>
       </details>
 
       <details id="ver-y-dibujar">

@@ -55,6 +55,7 @@
 
 import { interpretar } from '@anima/plan'
 import { fnv1a } from './lexico.js'
+import type { Dicho } from './habla.js'
 import type { ClausulaLeida, GradoDeLectura, Lectura, Lexico } from './tipos.js'
 
 /**
@@ -97,6 +98,20 @@ export interface Consulta {
    * cuatro lugares.
    */
   readonly llave: string
+  /**
+   * LA VENTANA RECIENTE DE LA CHARLA — el mismo contexto que recibió la lectura.
+   *
+   * Es el C2 aplicado acá: *«Toda petición cognitiva relevante recibe el mismo
+   * `ConversationContext`. No se mantienen contextos incompatibles para
+   * `dialogue`, `interpret.command` y la fragua»*. Sin esto, el lector local
+   * resuelve «comé eso» con el turno anterior y el modelo lee la frase suelta —
+   * o sea que los dos contestan sobre entradas distintas y la comparación entre
+   * ellos deja de significar algo.
+   *
+   * Va como dato plano y acotado (`CanalDeHabla.ventana`), no el log entero: el
+   * historial durable **no se copia entero a cada prompt**.
+   */
+  readonly contexto: readonly Dicho[]
 }
 
 /**
@@ -133,8 +148,20 @@ export function llaveDe(texto: string, lex: Lexico): string {
  */
 const SE_CONSULTAN: readonly GradoDeLectura[] = ['orientacion', 'no-entendida']
 
-/** La consulta de una lectura, o `undefined` si no hay nada que preguntar. */
-export function consultaDe(l: Lectura, lex: Lexico, firmas: readonly string[]): Consulta | undefined {
+/**
+ * La consulta de una lectura, o `undefined` si no hay nada que preguntar.
+ *
+ * `contexto` entra por parámetro y no se saca de ningún lado: este paquete no
+ * tiene el historial —lo tiene el que llama— y es la misma forma que
+ * `sabeElCatalogo` y `loQuePidio` ya usan. Sin pasarlo, la consulta sale con el
+ * contexto vacío, que es lo que había antes del C2.
+ */
+export function consultaDe(
+  l: Lectura,
+  lex: Lexico,
+  firmas: readonly string[],
+  contexto: readonly Dicho[] = [],
+): Consulta | undefined {
   const flojas: number[] = []
   for (const [i, c] of l.clausulas.entries()) {
     if (SE_CONSULTAN.includes(c.grado)) flojas.push(i)
@@ -147,6 +174,7 @@ export function consultaDe(l: Lectura, lex: Lexico, firmas: readonly string[]): 
     firmas,
     vocabulario: [...lex.entradas.keys()],
     llave: llaveDe(l.crudo, lex),
+    contexto: [...contexto],
   }
 }
 

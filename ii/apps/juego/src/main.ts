@@ -40,8 +40,13 @@ import {
 } from '@anima/dibujo'
 
 import { cargar, claveDe, guardar } from '@anima/store'
+import { quienDijo } from '@anima/lang'
 
+import { conQuien } from './con-quien.js'
+import type { ConQuien } from './con-quien.js'
 import { loQueSeVeDe } from './criatura.js'
+import { describir, firmaDe, loSenaladoEn, ubicarElCartel } from './lo-senalado.js'
+import type { Senalado } from './lo-senalado.js'
 import { depositoIndexedDB } from './deposito-indexeddb.js'
 import { Ordenes, enCastellano } from './ordenes.js'
 import { dibujanteDePrueba } from './dibujante-de-prueba.js'
@@ -55,6 +60,13 @@ const HZ = 20
 const MS_POR_TICK = 1000 / HZ
 /** Cada cuántos cuadros se le pregunta al depósito por lo que falta. */
 const CUADROS_ENTRE_SURTIDOS = 120
+/**
+ * Cada cuántos cuadros se vuelve a preguntar quién hay del otro lado. A 60 Hz
+ * son quince segundos, y el número sale de qué se está mirando: prender o
+ * apagar el depósito es algo que hace una persona a mano, no el mundo. Sondear
+ * más seguido gastaría un viaje por segundo para ver lo mismo.
+ */
+const CUADROS_ENTRE_SONDEOS = 900
 /**
  * Cada cuántos cuadros se guarda la partida. A 60 Hz son unos cinco segundos.
  *
@@ -95,7 +107,14 @@ try {
 
 const { state, parada } = arrancar(SEMILLA)
 const partida = new Partida(guardadoAlArrancar?.state ?? state)
-const ordenes = new Ordenes(partida, QUIEN, PHYS, guardadoAlArrancar?.creencias)
+// Las dos cosas que una partida cargada tiene que recuperar: lo que aprendió y de
+// qué estaban hablando. La segunda entró con el C1 de la convergencia, y sin ella
+// reabrir la pestaña devolvía el mundo y borraba la conversación entera.
+const ordenes = new Ordenes(partida, QUIEN, PHYS, {
+  ...(guardadoAlArrancar === undefined
+    ? {}
+    : { memoria: guardadoAlArrancar.creencias, charla: guardadoAlArrancar.charla }),
+})
 const canvas = $('mapa') as HTMLCanvasElement
 const lienzo = new Lienzo(canvas)
 canvas.style.cursor = 'crosshair'
@@ -112,19 +131,61 @@ const sprites: Sprites = spritesEnMemoria(DE_FABRICA)
 const DONDE_EL_DEPOSITO = 'http://localhost:5190'
 const deposito = depositoHttp(DONDE_EL_DEPOSITO)
 let hayDeposito = false
+let preguntando = false
 
-// `cargarDeposito` devuelve CUÁNTOS entraron y se traga los errores a propósito
-// —un depósito caído no puede apagar el juego—, así que su cero no distingue
-// «está vacío» de «no está». Para eso hace falta preguntarle si vive.
-void fetch(`${DONDE_EL_DEPOSITO}/salud`)
-  .then((r) => (r.ok ? cargarDeposito(sprites, deposito) : Promise.reject(new Error('sin salud'))))
-  .then((cuantos) => {
-    hayDeposito = true
-    $('deposito').textContent = `${String(cuantos)} dibujos`
-  })
-  .catch(() => {
+/**
+ * LAS DOS LUCES, y acá no se decide nada: todo lo que hay que pensar —qué luz,
+ * qué rótulo, qué dice el detalle— está en `con-quien.ts`, que se prueba sin
+ * abrir un navegador. Esto escribe tres clases y dos textos.
+ */
+function pintarEnlace(c: ConQuien): void {
+  for (const [quien, l] of [['codex', c.codex], ['claude', c.claude]] as const) {
+    const caja = $(`lampara-${quien}`)
+    caja.classList.remove('buscando', 'vive', 'no')
+    caja.classList.add(l.luz)
+    caja.title = l.detalle
+    $(`rol-${quien}`).textContent = l.rol
+  }
+  $('enlace-nota').textContent = c.nota
+}
+
+/**
+ * PREGUNTARLE AL DEPÓSITO CÓMO ESTÁ, que ahora son dos cosas de un viaje:
+ * cuántos dibujos tiene y con qué modelos está la máquina que lo corre.
+ *
+ * `cargarDeposito` devuelve CUÁNTOS entraron y se traga los errores a propósito
+ * —un depósito caído no puede apagar el juego—, así que su cero no distingue
+ * «está vacío» de «no está». Por eso el catálogo se pide recién después de que
+ * `/salud` contestó.
+ *
+ * Y se pregunta cada tanto, no una sola vez al abrir. El cambio se paga solo:
+ * antes, levantar el depósito con el juego ya abierto no servía de nada hasta
+ * recargar la página, porque el único intento había pasado y fallado.
+ */
+async function mirarElDeposito(): Promise<void> {
+  if (preguntando) return
+  preguntando = true
+  try {
+    const r = await fetch(`${DONDE_EL_DEPOSITO}/salud`)
+    if (!r.ok) throw new Error(`salud contestó ${String(r.status)}`)
+    const salud: unknown = await r.json()
+    pintarEnlace(conQuien(salud))
+    if (!hayDeposito) {
+      hayDeposito = true
+      $('deposito').textContent = `${String(await cargarDeposito(sprites, deposito))} dibujos`
+    }
+  } catch {
+    // Sin depósito no hay forma de saber qué modelos hay: las dos luces se
+    // apagan juntas y la nota aclara que el juego sigue. Ver `con-quien.ts`.
+    hayDeposito = false
+    pintarEnlace(conQuien(undefined))
     $('deposito').textContent = 'apagado (se juega igual)'
-  })
+  } finally {
+    preguntando = false
+  }
+}
+
+void mirarElDeposito()
 
 /**
  * ARRANCA EN PAUSA, y el guardado automático es lo que lo convirtió en obligación.
@@ -148,6 +209,17 @@ let surtiendo = false
 let guardando = false
 /** El tick del último guardado escrito. `-1` es «todavía ninguno en esta sesión». */
 let guardadoEn = -1
+/**
+ * EL ÚLTIMO TURNO DE CHARLA ESCRITO, y hace falta porque el tick dejó de alcanzar.
+ *
+ * La guarda de abajo era «si el mundo no avanzó, no reescribas»: con la partida
+ * en pausa el estado es el mismo y guardar sería escribir en disco para dejar lo
+ * mismo. Con el log conversacional adentro del guardado **eso dejó de ser
+ * cierto**: hablarle a la criatura en pausa cambia lo que hay que guardar y no
+ * mueve un solo tick, así que tres turnos escritos con el mundo quieto se perdían
+ * enteros al recargar. El guardado tiene dos motivos ahora, y se miran los dos.
+ */
+let charlaGuardadaEn = 0
 
 const botones = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-vel]'))
 for (const b of botones) {
@@ -251,35 +323,31 @@ const ALIENTO_FLACO = 0.15
 // origen del mundo sumando el foco menos el radio.
 let ultimaEscena: ReturnType<typeof escenaDe> | undefined
 
-function celdaDelClick(ev: MouseEvent, e: ReturnType<typeof escenaDe>): { x: number; y: number } {
-  const canvas = ev.currentTarget as HTMLCanvasElement
+/**
+ * DE UN PUNTO DE LA PANTALLA A UNA CELDA DEL MUNDO.
+ *
+ * Toma coordenadas de ventana y no un evento porque el mouse quieto **también
+ * cambia de celda**: el foco sigue a la criatura, así que con el mundo corriendo
+ * el mapa se desliza abajo del puntero. El cuadro vuelve a preguntar con el
+ * último punto conocido, y para eso el evento ya no está.
+ */
+function celdaEn(x: number, y: number, e: ReturnType<typeof escenaDe>): { x: number; y: number } {
   const caja = canvas.getBoundingClientRect()
-  const px = Math.floor(((ev.clientX - caja.left) / caja.width) * canvas.width)
-  const py = Math.floor(((ev.clientY - caja.top) / caja.height) * canvas.height)
+  const px = Math.floor(((x - caja.left) / caja.width) * canvas.width)
+  const py = Math.floor(((y - caja.top) / caja.height) * canvas.height)
   return {
     x: Math.floor(px / CELDA) + e.foco.x - e.radio,
     y: Math.floor(py / CELDA) + e.foco.y - e.radio,
   }
 }
 
-const ORDEN_DE_PORTE = { menudo: 0, chico: 1, mediano: 2, grande: 3 }
-
 function mirar(ev: MouseEvent): void {
   const e = ultimaEscena
   if (e === undefined) return
-  const at = celdaDelClick(ev, e)
+  const at = celdaEn(ev.clientX, ev.clientY, e)
+  const s = loSenaladoEn(e, at, PHYS)
 
-  // Lo que está en una mano no se dibuja en el suelo (decisión 1 de `mapa.ts`),
-  // así que tampoco se puede clickear ahí: sería señalar algo que no está.
-  const ahi = [...e.cuerpos.values()].filter(
-    (c) => c.heldBy === undefined && c.d.at.x === at.x && c.d.at.y === at.y,
-  )
-  // El más grande primero, que es el que se ve encima y por lo tanto el que el
-  // jugador creyó estar tocando.
-  ahi.sort((a, b) => ORDEN_DE_PORTE[b.d.porte] - ORDEN_DE_PORTE[a.d.porte])
-  const c = ahi[0]
-
-  if (c === undefined) {
+  if (s === undefined) {
     // Vacío y no «—»: los cuatro nodos son una sola frase, y un guión en el
     // medio de una frase es ruido. El CSS pone los separadores entre los que
     // tienen algo, así que lo que no aplica simplemente no ocupa lugar.
@@ -288,21 +356,152 @@ function mirar(ev: MouseEvent): void {
     return
   }
 
-  const esAgente = e.actores.some((a) => a.body === [...e.cuerpos.entries()].find(([, v]) => v === c)?.[0])
-  // CUÁNTOS MÁS HAY DEBAJO, y no es un adorno: el dios siembra hasta trece
-  // sueltas en una misma celda, así que mostrar sólo la de arriba haría creer que
-  // ahí hay una cosa donde hay un montón. Se vio barriendo el mapa a click: 225
-  // celdas devolvían dos objetos distintos, y el mapa estaba lleno.
-  const mas = ahi.length - 1
-  $('mirado-que').textContent =
-    (esAgente ? `${c.d.forma} (la criatura)` : c.d.forma) +
-    (mas > 0 ? ` (y ${String(mas)} más acá)` : '')
-  $('mirado-de').textContent = c.d.materiales.join(' · ')
-  $('mirado-piezas').textContent =
-    `${String(c.d.partes)} ${c.d.partes === 1 ? 'parte' : 'partes'}` +
-    (c.d.juntas > 0 ? `, ${String(c.d.juntas)} atada${c.d.juntas === 1 ? '' : 's'}` : '')
-  $('mirado-estado').textContent = `${c.d.estado} · ${c.d.porte}` + (c.d.podrido === true ? ' · podrido' : '')
+  $('mirado-que').textContent = s.titulo
+  $('mirado-de').textContent = s.de
+  $('mirado-piezas').textContent = s.piezas
+  $('mirado-estado').textContent = s.comoEs
 }
+
+// ─── PASARLE EL MOUSE POR ARRIBA: SABER QUÉ ES SIN TENER QUE CLICKEAR ──────
+//
+// El mapa son manchas de color de doce píxeles. Averiguar qué es una mancha
+// costaba **un click y un viaje del ojo** hasta el panel de la derecha, o sea que
+// mirar el mundo era imposible: para reconocer seis cosas había que clickear seis
+// veces y leer seis veces en otro lado.
+//
+// El cartel es lo mismo que ya decía el panel, puesto **donde está el ojo**. No
+// agrega información: baja el costo de pedirla de un click a nada.
+//
+// ─── LAS TRES DECISIONES ───────────────────────────────────────────────────
+//
+//   1. **en una celda vacía no aparece nada.** Un cartel que diga «nada en
+//      (12, 7)» al barrer el mapa parpadearía en las tres cuartas partes del
+//      recorrido, y lo que se busca es lo contrario: que el cartel aparezca sea
+//      la señal de que ahí hay algo;
+//   2. **el click no se toca.** El cartel se va con el mouse, así que no sirve
+//      para comparar dos cosas ni para leer con calma. El panel queda para eso, y
+//      además es lo único de los dos que se puede leer sin un mouse encima;
+//   3. **el mismo dibujo que el mapa.** El cartel muestra el glifo por `glifoDe`,
+//      igual que el inventario y el catálogo (caso 7 del 12C). Un ícono propio
+//      acá sería una cuarta representación de lo mismo, que es exactamente lo que
+//      ese caso persigue.
+const cartel = $('cartel')
+const senal = $('senal')
+
+/**
+ * QUIÉN ESTÁ PIDIENDO EL CARTEL, o nadie. Devuelve qué mostrar y —sólo el mapa—
+ * sobre qué celda va el recuadro.
+ *
+ * Es una función y no un dato porque el mundo se mueve: mientras el puntero está
+ * quieto, lo que hay abajo puede cambiar de celda, empezar a arder o
+ * desaparecer. Preguntar de nuevo en cada cuadro es lo que hace que el cartel
+ * diga la verdad y no lo que era verdad cuando entró el mouse.
+ */
+type Fuente = () => { s: Senalado; celda?: { x: number; y: number } } | undefined
+let fuente: Fuente | undefined
+let raton = { x: 0, y: 0 }
+let firmaDelCartel = ''
+
+function escribirElCartel(s: Senalado): void {
+  cartel.replaceChildren()
+  const dibujo = enUnCanvas(s.d, 24)
+  dibujo.className = 'glifo'
+  cartel.appendChild(dibujo)
+
+  const texto = document.createElement('div')
+  const que = document.createElement('b')
+  que.textContent = s.titulo
+  texto.appendChild(que)
+  for (const linea of [s.de, s.piezas, s.comoEs]) {
+    if (linea === '') continue
+    const span = document.createElement('span')
+    span.textContent = linea
+    texto.appendChild(span)
+  }
+  cartel.appendChild(texto)
+}
+
+/**
+ * EL RECUADRO SOBRE LA CELDA, y por qué se calcula con el ancho en pantalla.
+ *
+ * El canvas mide `lado` píxeles adentro y `lado × zoom` afuera, pero el CSS le
+ * pone `max-width: 100%`: en una ventana angosta el navegador lo achica y el zoom
+ * deja de ser el factor. `offsetWidth / width` es el factor de verdad, cualquiera
+ * sea el motivo por el que la imagen quedó de ese tamaño.
+ */
+function ubicarLaSenal(celda: { x: number; y: number }, e: ReturnType<typeof escenaDe>): void {
+  const factor = canvas.clientWidth / canvas.width
+  const lado = CELDA * factor
+  senal.style.width = `${String(lado)}px`
+  senal.style.height = `${String(lado)}px`
+  // `transform` y no `left`/`top`: el recuadro se desliza de celda en celda y con
+  // posiciones eso es un layout por cuadro; con transform, no toca el layout.
+  senal.style.transform = `translate(${String((celda.x - e.foco.x + e.radio) * lado)}px, ${String((celda.y - e.foco.y + e.radio) * lado)}px)`
+}
+
+function refrescarElCartel(): void {
+  const f = fuente
+  if (f === undefined) return
+  const hay = f()
+  if (hay === undefined) {
+    cartel.classList.remove('se-ve')
+    senal.classList.remove('se-ve')
+    return
+  }
+
+  const firma = firmaDe(hay.s)
+  if (firma !== firmaDelCartel) {
+    firmaDelCartel = firma
+    escribirElCartel(hay.s)
+  }
+  // Se mide DESPUÉS de escribir: el alto depende de cuántas líneas entraron, y
+  // ubicarlo con la medida vieja lo deja saliéndose por abajo justo cuando el
+  // objeto tiene más para contar.
+  const donde = ubicarElCartel(
+    raton,
+    { ancho: cartel.offsetWidth, alto: cartel.offsetHeight },
+    { ancho: window.innerWidth, alto: window.innerHeight },
+  )
+  cartel.style.left = `${String(donde.left)}px`
+  cartel.style.top = `${String(donde.top)}px`
+  cartel.classList.add('se-ve')
+
+  const e = ultimaEscena
+  if (hay.celda !== undefined && e !== undefined) {
+    const yaSeVeia = senal.classList.contains('se-ve')
+    ubicarLaSenal(hay.celda, e)
+    // Leer `offsetWidth` fuerza el cálculo de estilos ACÁ, con el recuadro
+    // todavía apagado. Sin eso, el navegador junta las dos cosas —ponerlo en su
+    // celda y prenderlo— en un solo cambio, y como el estado prendido sí tiene
+    // transición de `transform`, el recuadro entra volando desde la esquina.
+    if (!yaSeVeia) void senal.offsetWidth
+    senal.classList.add('se-ve')
+  } else {
+    senal.classList.remove('se-ve')
+  }
+}
+
+/** Le engancha el cartel a un elemento. `que` contesta qué mostrar. */
+function conCartel(el: HTMLElement, que: Fuente): void {
+  el.addEventListener('mousemove', (ev) => {
+    raton = { x: ev.clientX, y: ev.clientY }
+    fuente = que
+    refrescarElCartel()
+  })
+  el.addEventListener('mouseleave', () => {
+    fuente = undefined
+    cartel.classList.remove('se-ve')
+    senal.classList.remove('se-ve')
+  })
+}
+
+conCartel(canvas, () => {
+  const e = ultimaEscena
+  if (e === undefined) return undefined
+  const celda = celdaEn(raton.x, raton.y, e)
+  const s = loSenaladoEn(e, celda, PHYS)
+  return s === undefined ? undefined : { s, celda }
+})
 
 /**
  * EL PANEL DE LA CRIATURA: los puntos 6 y 7 de la vertical del Hito 12B.
@@ -475,32 +674,103 @@ function inventario(escena: ReturnType<typeof escenaDe>): void {
     // La MISMA función que el mapa y el catálogo, con el mismo descriptor. Es el
     // caso 7 del 12C y por eso no hay una copia de este bucle acá.
     const cv = enUnCanvas(c.d, 24)
-    cv.title = `${c.d.forma} de ${c.d.materiales.join(' y ')}`
+    // El `title` queda: es lo único de esto que llega sin un mouse. El cartel se
+    // le suma porque el nativo tarda un segundo largo en aparecer y no muestra el
+    // dibujo — y acá el dibujo es la mitad de la respuesta.
+    cv.title = describir(id, c.d, PHYS, { mas: 0, esAgente: false }).titulo
+    // Lo que está en la mano no está en ninguna celda del mapa, así que se
+    // describe por el cuerpo. Es el mismo texto que el del mapa, por construcción.
+    //
+    // Se busca el cuerpo de AHORA y no el de este cuadro: el inventario se
+    // repinta sólo cuando cambia lo que lleva, así que una vara que se prende
+    // fuego en la mano seguiría descrita como cruda hasta que la suelte.
+    conCartel(cv, () => {
+      const ahora = ultimaEscena?.cuerpos.get(id)
+      return ahora === undefined
+        ? undefined
+        : { s: describir(id, ahora.d, PHYS, { mas: 0, esAgente: false }) }
+    })
     caja.appendChild(cv)
   }
 }
 
 /**
- * EL REGISTRO DE LA CHARLA. Se repinta entero y sólo cuando creció.
+ * EL REGISTRO DE LA CHARLA. Se pinta lo nuevo y nada más.
  *
- * Entero porque son unas pocas líneas y un diff acá sería código para ahorrar
- * nada; sólo cuando creció porque esto corre en cada cuadro, y reescribir el DOM
- * sesenta veces por segundo mataría la selección de texto del usuario.
+ * Sólo lo nuevo porque esto corre en cada cuadro, y reescribir el DOM sesenta
+ * veces por segundo mataría la selección de texto del usuario.
+ *
+ * ─── Y SE PINTA POR TURNO, NO POR CUÁNTAS LLEVABA ──────────────────────────
+ *
+ * El contador de antes era la CANTIDAD pintada, y con eso alcanzaba mientras la
+ * lista sólo crecía por el final. Con el log durable ya no: al arrancar viene con
+ * líneas adentro, y el canal se recorta por arriba a las cien. Un contador de
+ * posición, en cuanto pasa cualquiera de esas dos cosas, repinta líneas que ya
+ * estaban o se saltea las nuevas. El turno no se mueve nunca, así que «pintar lo
+ * que tenga turno mayor al último pintado» es correcto en los tres casos.
  */
-let dichosPintados = 0
+let ultimoPintado = 0
 
 function charla(): void {
-  const r = ordenes.registro
-  if (r.length === dichosPintados) return
+  const r = ordenes.charla
+  const ultimo = r.at(-1)
+  if (ultimo !== undefined && ultimo.turno === ultimoPintado) return
   const caja = $('registro')
-  for (const d of r.slice(dichosPintados)) {
+  for (const d of r) {
+    if (d.turno <= ultimoPintado) continue
     const p = document.createElement('p')
-    p.className = d.de
+    // Dos clases: QUIÉN lo dijo —que es lo que el CSS ya pintaba— y de QUÉ CLASE
+    // es. El progreso no lleva la de la criatura a propósito: explica algo
+    // verificable y no es una frase suya.
+    p.className = d.clase === 'progreso' ? 'progreso' : `${quienDijo(d.clase)} ${d.clase}`
+    p.dataset['turno'] = String(d.turno)
     p.textContent = d.texto
     caja.appendChild(p)
+    ultimoPintado = d.turno
   }
-  dichosPintados = r.length
   caja.scrollTop = caja.scrollHeight
+}
+
+/**
+ * LO QUE RECUERDA, CON SU FUENTE — el C2 hecho pantalla.
+ *
+ * Se repinta entero y sólo cuando el log creció, por lo mismo que `charla()`: son
+ * pocas líneas y un diff acá sería código para ahorrar nada.
+ *
+ * Lo que se muestra al lado de cada recuerdo no es adorno: **el turno del que
+ * salió** —que se puede ir a buscar al registro— y **quién lo dijo**. Sin eso,
+ * «me acuerdo de que hay un pescado en el río» se lee igual si se lo contaron que
+ * si lo vio, que es exactamente la confusión que el tramo prohíbe.
+ */
+let recuerdosPintados = 0
+
+function recuerdos(): void {
+  const ultimo = ordenes.charla.at(-1)?.turno ?? 0
+  if (ultimo === recuerdosPintados) return
+  recuerdosPintados = ultimo
+  const caja = $('lista-recuerdos')
+  caja.replaceChildren()
+  for (const r of ordenes.queRecuerda()) {
+    const fila = document.createElement('div')
+    fila.className = 'fila'
+    fila.dataset['clase'] = r.clase
+    fila.dataset['procedencia'] = r.procedencia
+
+    const que = document.createElement('span')
+    const clase = document.createElement('b')
+    clase.textContent = `${r.clase} `
+    que.appendChild(clase)
+    que.append(r.texto + (r.veces > 1 ? ` (×${String(r.veces)})` : ''))
+
+    const fuente = document.createElement('span')
+    fuente.className = 'fuente'
+    // El turno con `#` porque es una identidad y no una cuenta: `#7` se puede
+    // buscar en el registro, «7» parece un total.
+    fuente.textContent = `#${r.turnos.join(', #')} · ${r.procedencia}`
+
+    fila.append(que, fuente)
+    caja.appendChild(fila)
+  }
 }
 
 // ─── EMPEZAR DE CERO ───────────────────────────────────────────────────────
@@ -530,6 +800,7 @@ $('charla').addEventListener('submit', (ev) => {
   // aparezca en el mismo frame que el mensaje, y con el mundo en pausa el
   // próximo cuadro podría tardar. `leer()` ya lo dejó en el registro.
   charla()
+  recuerdos()
 })
 
 function cuadro(ahora: number): void {
@@ -551,6 +822,9 @@ function cuadro(ahora: number): void {
       // avanza uno.
       ordenes.antesDelTick(partida.state.tick)
       vivir(partida, ordenes.mentes, 1)
+      // Y DESPUÉS del paso, lo que hizo. El progreso se narra por lo que pasó en
+      // el mundo, así que se mira cuando el mundo ya se movió.
+      ordenes.despuesDelTick()
       acumulado -= MS_POR_TICK
       cuantos++
     }
@@ -579,7 +853,13 @@ function cuadro(ahora: number): void {
   inventario(escena)
   catalogo()
   charla()
+  recuerdos()
   ultimaEscena = escena
+  // El cartel, DESPUÉS de la escena nueva: con el mundo corriendo, lo que está
+  // abajo del puntero quieto cambia solo —el foco sigue a la criatura y el mapa
+  // se desliza— y un cartel que sólo se actualice al mover el mouse mentiría.
+  // Cuesta nada cuando nadie está señalando: es un `if` y se va.
+  refrescarElCartel()
 
   // ─── Y el guardado, también entre cuadros ────────────────────────────────
   //
@@ -587,12 +867,15 @@ function cuadro(ahora: number): void {
   // estado no cambia, y reescribirlo cada cinco segundos sería escribir en disco
   // para dejar exactamente lo mismo.
   cuadros++
-  if (!guardando && cuadros % CUADROS_ENTRE_GUARDADOS === 0 && partida.state.tick !== guardadoEn) {
+  const turnoDeAhora = ordenes.charla.at(-1)?.turno ?? 0
+  const cambio = partida.state.tick !== guardadoEn || turnoDeAhora !== charlaGuardadaEn
+  if (!guardando && cuadros % CUADROS_ENTRE_GUARDADOS === 0 && cambio) {
     guardando = true
     const tick = partida.state.tick
-    void guardar(baul, partida.state, ordenes.memoria, QUIEN)
+    void guardar(baul, partida.state, ordenes.memoria, QUIEN, ordenes.charla)
       .then(() => {
         guardadoEn = tick
+        charlaGuardadaEn = turnoDeAhora
         $('guardado').textContent = `tick ${String(tick)}`
       })
       .catch((e: unknown) => {
@@ -605,6 +888,13 @@ function cuadro(ahora: number): void {
         guardando = false
       })
   }
+
+  // ─── Y quién hay del otro lado, cada tanto ───────────────────────────────
+  //
+  // Por contador de cuadros y no con un `setInterval`, por lo mismo que el
+  // guardado y el surtido: con la pestaña en segundo plano `rAF` se frena, y un
+  // intervalo seguiría pegándole a un depósito que nadie está mirando.
+  if (cuadros % CUADROS_ENTRE_SONDEOS === 0) void mirarElDeposito()
 
   // ─── Y el surtidor, entre cuadros ────────────────────────────────────────
   if (hayDeposito && !surtiendo && cuadros % CUADROS_ENTRE_SURTIDOS === 0 && sprites.loQueFalta().length > 0) {

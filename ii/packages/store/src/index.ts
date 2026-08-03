@@ -6,8 +6,8 @@
 //
 //   deposito   dónde se guarda. Una interfaz de cuatro métodos y una
 //              implementación en memoria; IndexedDB es un adaptador de afuera.
-//   guardar    QUÉ se guarda —el mundo, las creencias— y qué NO: la actividad
-//              en vuelo, que no se serializa y se replanifica al cargar.
+//   guardar    QUÉ se guarda —el mundo, las creencias, la charla— y qué NO: la
+//              actividad en vuelo, que no se serializa y se replanifica al cargar.
 //
 // Es el primer paquete de `ii/` donde `await` es legal, y el porqué está entero
 // en el encabezado de `deposito.ts`: la regla 2 protege al TICK, y guardar no
@@ -25,4 +25,5 @@ export {
   PESO_DEL_TESTIMONIO,
   VERSION_DEL_GUARDADO,
   type Guardado,
+  type Restaurado,
 } from './guardar.js'

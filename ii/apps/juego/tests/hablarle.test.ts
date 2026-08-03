@@ -57,11 +57,15 @@ describe('hablarle a la criatura desde el juego', () => {
 
     // Dos líneas: lo que dijo el jugador y lo que contestó ella. Y la segunda
     // existe ANTES de que el mundo avance, que es lo que pide el criterio.
-    expect(o.registro.length).toBe(2)
-    expect(o.registro[0]).toEqual({ de: 'vos', texto: 'hacé fuego' })
-    expect(o.registro[1]?.texto).toBe('dale, voy')
-    expect(o.registro[1]?.de).toBe('ella')
-    expect(o.registro[1]?.texto.length).toBeGreaterThan(0)
+    //
+    // Las dos salen del MISMO canal desde el C1 de convergencia —antes eran una
+    // lista propia de la app con un `{de:'vos'|'ella'}`— y lo que las distingue
+    // es la clase, que es la que después decide si algo se guarda como habla.
+    expect(o.charla.length).toBe(2)
+    expect(o.charla[0]?.clase).toBe('entrada')
+    expect(o.charla[0]?.texto).toBe('hacé fuego')
+    expect(o.charla[1]?.clase).toBe('acuse')
+    expect(o.charla[1]?.texto).toBe('dale, voy')
   })
 
   it('EL CONTROL NEGATIVO: sin mente, el mundo avanza y la criatura no hace nada', () => {
@@ -103,7 +107,7 @@ describe('hablarle a la criatura desde el juego', () => {
 
     o.decir('xyzzy plugh')
     // Contesta —el acuse siempre sale— pero la meta sigue siendo la de antes.
-    expect(o.registro.at(-1)?.de).toBe('ella')
+    expect(o.charla.at(-1)?.clase).toBe('acuse')
     correr(p, o, 5)
     expect(o.enCurso?.meta).toBe(perseguía)
   })
@@ -126,7 +130,7 @@ describe('hablarle a la criatura desde el juego', () => {
     // planificador ya sabía hacer. Ver `esUnTenerlo` en `src/ordenes.ts`.
     const { o } = partidaNueva()
     o.decir('traé un palo')
-    expect(o.registro[1]?.texto).toBe('dale, voy')
+    expect(o.charla[1]?.texto).toBe('dale, voy')
   })
 
   it('el puente traduce la firma a una palabra, y lo que no nombra se ve crudo', () => {
@@ -146,6 +150,9 @@ describe('hablarle a la criatura desde el juego', () => {
       correr(c.p, c.o, 120)
     }
     expect(huella(uno.p)).toBe(huella(dos.p))
-    expect(uno.o.registro.map((d) => d.texto)).toEqual(dos.o.registro.map((d) => d.texto))
+    expect(uno.o.charla.map((d) => d.texto)).toEqual(dos.o.charla.map((d) => d.texto))
+    // Y los turnos también: la identidad de una línea es parte de lo que dos
+    // partidas gemelas tienen que producir igual.
+    expect(uno.o.charla.map((d) => d.turno)).toEqual(dos.o.charla.map((d) => d.turno))
   })
 })

@@ -216,7 +216,9 @@ test('8 · inspeccionar cuerpos y obras', async ({ page }) => {
   await expect(page.locator('#mirado-que')).toContainText('la criatura')
   await expect(page.locator('#mirado-de')).toContainText('carne')
   await expect(page.locator('#mirado-piezas')).toContainText('parte')
-  // `estado · porte`, que son las dos bandas que el descriptor publica.
+  // `forma · porte`. La banda de estado estaba acá y se mudó al nombre: el mundo
+  // llama «carne cruda» a esto, y el panel decía «malla» —la forma geométrica—
+  // con «crudo» en otro renglón.
   await expect(page.locator('#mirado-estado')).toContainText('·')
 
   // Y una celda vacía dice que está vacía, en vez de quedarse con lo anterior:

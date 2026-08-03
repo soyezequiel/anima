@@ -20,7 +20,8 @@ import { describe, expect, it } from 'vitest'
 import { PUENTE } from '../src/alias.js'
 import { leer } from '../src/leer.js'
 import { lexicoDe } from '../src/lexico.js'
-import { MemoriaDeLaCharla, referenciaDe, sinEnclitico } from '../src/referencias.js'
+import { CanalDeHabla } from '../src/habla.js'
+import { MemoriaDeLaCharla, memoriaDe, referenciaDe, sinEnclitico } from '../src/referencias.js'
 import { actor, criatura, enElPiso, laOrilla, mundo } from './mundo.js'
 
 const QUIEN = 'ana'
@@ -94,6 +95,41 @@ describe('la memoria de la charla', () => {
     expect(m.ultimoUsado).toBe('b')
     // Después de agarrar el palo, «eso» es el palo.
     expect(m.ultimoNombrado).toBe('b')
+  })
+
+  // ─── Y DE DÓNDE SALE, que es lo que agregó el C1 de convergencia ──────────
+  //
+  // De la ventana reciente del log, no de una variable viva al costado. Es lo
+  // que hace que el historial durable alimente la lectura en vez de sólo
+  // llenar una pantalla.
+
+  it('LA MEMORIA SE DERIVA DEL LOG: lo último con cuerpo gana', () => {
+    const c = new CanalDeHabla()
+    c.decir(0, 'entrada', 'agarrá la vara', { sobre: 'vara' })
+    c.decir(4, 'progreso', 'agarró una hebra de liana', { sobre: 'hebra' })
+    c.decir(5, 'acuse', 'dale, voy')
+
+    const m = memoriaDe(c.ventana())
+    expect(m.ultimoNombrado).toBe('hebra')
+    // Y la distinción se conserva: lo que el cuidador NOMBRA no es lo que la
+    // criatura USA. La última entrada del cuidador no fue sobre ningún cuerpo.
+    expect(m.ultimoUsado).toBe('hebra')
+    expect(leer('comé eso', opc(m)).clausulas[0]?.referencia?.ref).toEqual({ k: 'id', id: 'hebra' })
+  })
+
+  it('EL CONTROL NEGATIVO: sin log, la misma frase no tiene a qué apuntar', () => {
+    // Si esto diera un `Ref`, el de arriba no probaría que el contexto viene de
+    // la charla — vendría de cualquier otro lado.
+    const m = memoriaDe(new CanalDeHabla().ventana())
+    expect(m.ultimoNombrado).toBeUndefined()
+    expect(leer('comé eso', opc(m)).clausulas[0]?.referencia?.ref).toBeUndefined()
+  })
+
+  it('y una charla sin cuerpos nombrados tampoco inventa uno', () => {
+    const c = new CanalDeHabla()
+    c.decir(0, 'entrada', 'hacé fuego')
+    c.decir(0, 'acuse', 'dale, voy')
+    expect(memoriaDe(c.ventana()).ultimoNombrado).toBeUndefined()
   })
 })
 

@@ -27,20 +27,74 @@
 //      simplificación de esta app: el único canal hacia la mente es
 //      `MenteOptions.drive`, que lleva UNA firma. `EncargoEnCurso` es el cursor
 //      que `@anima/lang` ya escribió para eso.
+//
+// ═══ LO QUE CAMBIÓ EN EL C1 DE LA CONVERGENCIA CONVERSACIONAL ══════════════
+//
+// El tramo entero está en `docs/product/convergencia-conversacional.md` y el
+// mapa de integración en `ii/docs/convergencia-c0-c2.md`. Acá se pagaron tres
+// deudas, y ninguna era código que faltara escribir: era código escrito que
+// nadie llamaba.
+//
+//   1. **había DOS rutas de salida.** `CanalDeHabla` existe desde el Hito 6 con
+//      sus clases y su tick, y este archivo tenía su propia lista de
+//      `{de:'vos'|'ella'}`. En la de acá, «voy por X» y «listo» quedaban
+//      guardados **como si el personaje los hubiera dicho**, que es exactamente
+//      lo que el documento prohíbe. Ahora hay un solo canal y la clase distingue;
+//   2. **el historial no era durable.** La lista moría con la pestaña. Ahora es
+//      la cuarta ranura de `@anima/store` y vuelve con su orden y su identidad;
+//   3. **el turno anterior no llegaba al lector.** `leer()` acepta una
+//      `MemoriaDeLaCharla` desde el Hito 6 y nadie se la pasaba, así que «comé
+//      eso» salía por `orientacion` siempre. Ahora la memoria se DERIVA de la
+//      ventana reciente del log, que es lo que hace que el historial alimente la
+//      lectura y no sólo la pantalla.
+//
+// ═══ Y LO QUE AGREGÓ EL C2 ═════════════════════════════════════════════════
+//
+// La misma decisión, un piso más arriba: **los recuerdos también son una vista
+// del log**, no un almacén nuevo (ver el encabezado de `recuerdos.ts`). De ahí
+// salen las dos cosas que se enchufaron acá:
+//
+//   1. **«hacé lo que te pedí» recupera el pedido.** La línea de `entrada` guarda
+//      la META que la frase pidió, así que el pedido sobrevive a la recarga
+//      aunque el encargo no —el encargo es efímero y el durable es C3—;
+//   2. **se puede citar qué recuerda y de dónde.** `queRecuerda()` devuelve cada
+//      recuerdo con sus turnos y su procedencia, y el panel los pinta. Lo que el
+//      cuidador AFIRMA queda como `dicho` y nunca como `hecho`: una frase no se
+//      promueve a observación.
+//
+// Lo que NO se hizo, y se dice para que nadie lo busque: `Commission`/`GoalGraph`
+// durable (C3), aplicar la respuesta del proveedor (C4), prioridad e interrupción
+// (C5), fragua y juez (C6).
 
+import { nameOf } from '@anima/physics'
 import type { Physics } from '@anima/physics'
 import { Contexto } from '@anima/perceive'
 import type { Partida } from '@anima/perceive'
 import { Creencias, Mente } from '@anima/mind'
 import { ESQUEMAS, cumple, interpretar } from '@anima/plan'
-import { EncargoEnCurso, PUENTE, encargoDe, enPalabras, leer, lexicoDe } from '@anima/lang'
-import type { Lexico } from '@anima/lang'
-
-/** Una línea de la charla. `ella` es la criatura. */
-export interface Dicho {
-  readonly de: 'vos' | 'ella'
-  readonly texto: string
-}
+import {
+  CanalDeHabla,
+  EncargoEnCurso,
+  PUENTE,
+  consultaDe,
+  encargoDe,
+  enPalabras,
+  leer,
+  lexicoDe,
+  loQuePidio,
+  memoriaDe,
+  recuerdosDe,
+  recuperar,
+} from '@anima/lang'
+import type {
+  Consulta,
+  Dicho,
+  Lectura,
+  Lexico,
+  LoRecuperado,
+  Recuerdo,
+  RespuestaDelModelo,
+} from '@anima/lang'
 
 /** Lo que se está persiguiendo ahora, para mostrarlo al lado del progreso. */
 export interface EnCurso {
@@ -107,6 +161,35 @@ function esUnTenerlo(firma: string): boolean {
   return interpretar(firma)?.k === 'sostiene'
 }
 
+/**
+ * LO QUE UNA SESIÓN TRAE PUESTO, y las tres cosas entran juntas por una razón.
+ *
+ * Las tres son lo que una partida CARGADA tiene que recuperar —lo que aprendió,
+ * de qué hablaron— más el borde asincrónico. Un cuarto parámetro posicional por
+ * cada una convierte `new Ordenes(p, quien, phys, undefined, undefined, x)` en
+ * algo que nadie lee.
+ */
+export interface OpcionesDeOrdenes {
+  /** Lo que la criatura aprendió. Sin esto, una partida cargada vuelve a fallar en lo que sabía. */
+  readonly memoria?: Creencias
+  /** El log conversacional guardado. Sin esto, vuelve el mundo y se pierde la charla. */
+  readonly charla?: readonly Dicho[]
+  /**
+   * EL BORDE DEL PROVEEDOR, y lo importante es lo que NO hace.
+   *
+   * `@anima/lang` **describe** la consulta y no la manda (ADR II-0024): el que
+   * espera es el de afuera. Acá se le entrega y **no se la espera**: no hay
+   * `await`, la respuesta no se aplica y el tick ni se entera.
+   *
+   * Aplicar la respuesta —en frontera de tick, con correlación, firma de contexto
+   * y cancelación— es C4 y no se adelanta. Lo que C1 pone es la FRONTERA, y tiene
+   * que estar puesta para que el criterio signifique algo: «el proveedor colgado
+   * no mueve el p95» es trivialmente verde si no hay proveedor, y eso lo anota el
+   * propio ADR II-0024.
+   */
+  readonly preguntar?: (c: Consulta) => Promise<RespuestaDelModelo | undefined>
+}
+
 export class Ordenes {
   readonly #partida: Partida
   readonly #quien: string
@@ -117,21 +200,32 @@ export class Ordenes {
   #encargo: EncargoEnCurso | undefined
   /** La última meta puesta, para no reconstruir la `Mente` en cada tick. */
   #ultimaPuesta: string | undefined
-  readonly #registro: Dicho[] = []
-
+  /** EL ÚNICO canal de salida: entrada, acuse, aviso, progreso y listo. */
+  readonly #canal = new CanalDeHabla()
+  readonly #preguntar: OpcionesDeOrdenes['preguntar']
+  #ultimaLectura: Lectura | undefined
+  #ventanaUsada = 0
+  #consultas = 0
   /**
-   * `memoria` entra por parámetro para que una partida CARGADA vuelva con lo que
-   * la criatura había aprendido. Sin esto, reabrir la pestaña restauraría el
-   * mundo y le borraría la experiencia — y eso se ve como una criatura que
-   * vuelve a fallar en algo que ya sabía hacer.
+   * LO QUE TENÍA EN LA MANO EN EL TICK ANTERIOR.
+   *
+   * Arranca con lo que la criatura YA lleva y no vacío, y esa línea es la que
+   * evita duplicar una salida al restaurar: con la lista vacía, el primer tick
+   * después de una recarga narraría «agarró» todo lo que venía en la mano desde
+   * antes de cerrar la pestaña.
    */
-  constructor(partida: Partida, quien: string, phys: Physics, memoria = new Creencias()) {
+  #manosAntes: readonly string[]
+
+  constructor(partida: Partida, quien: string, phys: Physics, o: OpcionesDeOrdenes = {}) {
     this.#partida = partida
     this.#quien = quien
     this.#lexico = lexicoDe(phys, PUENTE)
-    this.#memoria = memoria
+    this.#memoria = o.memoria ?? new Creencias()
+    this.#preguntar = o.preguntar
     this.#mente = new Mente({ actor: quien, memoria: this.#memoria })
     this.#mentes.set(quien, this.#mente)
+    if (o.charla !== undefined) this.#canal.cargar(o.charla)
+    this.#manosAntes = [...(partida.state.actors.get(quien)?.holding ?? [])]
   }
 
   /** Lo que aprendió. Lo necesita quien guarda. */
@@ -143,8 +237,43 @@ export class Ordenes {
     return this.#mentes
   }
 
-  get registro(): readonly Dicho[] {
-    return this.#registro
+  /** EL LOG, entero y en orden. Lo pinta la UI y lo guarda `@anima/store`. */
+  get charla(): readonly Dicho[] {
+    return this.#canal.todo
+  }
+
+  /** La última lectura, tal como salió. Es lo observable de «entendió qué». */
+  get ultimaLectura(): Lectura | undefined {
+    return this.#ultimaLectura
+  }
+
+  /** Cuántos turnos previos entraron como contexto en la última lectura. */
+  get ventanaUsada(): number {
+    return this.#ventanaUsada
+  }
+
+  /** Cuántas consultas se le pasaron al proveedor. Ninguna se esperó. */
+  get consultas(): number {
+    return this.#consultas
+  }
+
+  /**
+   * LO QUE RECUERDA DE LA CHARLA, con su fuente. El C2 lo pide para poder citar.
+   *
+   * Se deriva del log en la llamada y no se guarda: los recuerdos son una vista.
+   * Ver el encabezado de `recuerdos.ts` — el repo ya rechazó dos veces abrir una
+   * sede de estado más.
+   */
+  queRecuerda(): readonly Recuerdo[] {
+    return recuerdosDe(this.#canal.todo)
+  }
+
+  /** Lo que el historial tiene que ver con una frase, con su tope. */
+  recuperar(texto: string): LoRecuperado {
+    return recuperar(this.#canal.todo, {
+      texto,
+      entidades: memoriaDe(this.#canal.ventana()).nombrados,
+    })
   }
 
   get enCurso(): EnCurso | undefined {
@@ -183,19 +312,50 @@ export class Ordenes {
     return cumple(pr, v)
   }
 
-  /** Lo que se le dice. El acuse entra al registro en la misma llamada. */
+  /** Lo que se le dice. El acuse entra al log en la misma llamada. */
   decir(texto: string): void {
     const dicho = texto.trim()
     if (dicho === '') return
-    this.#registro.push({ de: 'vos', texto: dicho })
+    const tick = this.#partida.state.tick
 
+    // ─── LA VENTANA SE TOMA ANTES DE ESCRIBIR ESTE TURNO ────────────────────
+    //
+    // Son «los turnos PREVIOS», así que el que se está escribiendo no cuenta. Da
+    // igual para la memoria —una entrada del cuidador no trae cuerpo— y no da
+    // igual para el número: `ventanaUsada` es una medición y tiene que decir
+    // cuánto contexto había, no cuánto hay contando lo que se acaba de agregar.
+    const ventana = this.#canal.ventana()
+    this.#ventanaUsada = ventana.length
+
+    // ─── SE LEE ANTES DE ESCRIBIR EL TURNO, y el orden es del C2 ────────────
+    //
+    // Porque la línea de `entrada` guarda LA META que la frase pidió, y esa meta
+    // sale de la lectura. Escribir primero y corregir después dejaría un turno
+    // que por un instante dice que no pidió nada — y lo que se guarda es lo que
+    // se lee. En el log el orden sigue siendo entrada → acuse, y las dos salen
+    // de esta misma llamada sincrónica: el acuse no espera nada.
     const l = leer(dicho, {
       phys: this.#partida.state.phys,
       lexico: this.#lexico,
       sabeElCatalogo: (f) => ESTABLECIBLES.has(f) || esUnTenerlo(f),
       yaEstaCumplida: this.#yaEstaCumplida,
+      // EL CONTEXTO PREVIO, derivado del log durable. Es lo que hace que «comé
+      // eso» tenga a qué apuntar — también después de cerrar la pestaña.
+      memoria: memoriaDe(ventana),
+      // Y la otra mitad: a qué TURNO apunta «lo que te pedí». Sale del log
+      // entero y no de la ventana — un pedido de hace veinte líneas sigue siendo
+      // el último pedido.
+      loQuePidio: () => loQuePidio(this.#canal.todo)?.meta,
     })
-    this.#registro.push({ de: 'ella', texto: l.acuse })
+    this.#ultimaLectura = l
+
+    const meta = l.clausulas[0]?.firma
+    this.#canal.decir(tick, 'entrada', dicho, {
+      ...(meta === undefined ? {} : { meta }),
+      confianza: l.confianza,
+    })
+    this.#canal.decir(tick, 'acuse', l.acuse)
+    this.#consultar(l)
 
     const e = encargoDe(l)
     // Un encargo vacío NO se pisa sobre el anterior: si la frase no se pudo
@@ -204,6 +364,60 @@ export class Ordenes {
     if (e.metas.length === 0) return
     this.#encargo = new EncargoEnCurso(e)
     this.#ultimaPuesta = undefined
+  }
+
+  /**
+   * LA CONSULTA AL PROVEEDOR, QUE NO SE ESPERA. Ver `OpcionesDeOrdenes.preguntar`.
+   *
+   * `consultaDe` devuelve `undefined` cuando no hay nada que preguntar —la
+   * lectura se entendió, o falla el mundo y no la frase— así que sin proveedor y
+   * con una frase clara esto no cuesta nada.
+   *
+   * La respuesta se descarta A PROPÓSITO: aplicarla es C4. Lo único que se hace
+   * con ella es contarla, y el `catch` está para que un proveedor que revienta no
+   * tire un rechazo sin dueño a la consola del jugador.
+   */
+  #consultar(l: Lectura): void {
+    const preguntar = this.#preguntar
+    if (preguntar === undefined) return
+    // La ventana va adentro de la consulta: el modelo tiene que leer la frase
+    // con el mismo contexto con el que la leyó el lector local, o los dos
+    // contestan sobre entradas distintas.
+    const c = consultaDe(l, this.#lexico, [...ESTABLECIBLES], this.#canal.ventana())
+    if (c === undefined) return
+    this.#consultas++
+    void preguntar(c).catch((e: unknown) => {
+      console.warn('[proveedor] la consulta falló, se sigue con la lectura local:', e)
+    })
+  }
+
+  /**
+   * LO QUE HIZO, NARRADO — y se llama DESPUÉS del paso, no antes.
+   *
+   * Es la regla que `narrarProgreso` ya declaraba: **el progreso se narra por lo
+   * que la criatura HIZO, no por lo que va a hacer**. Un «ya casi» sacado de una
+   * estimación convierte una espera en una mentira; «agarró una vara» es un hecho
+   * y se comprueba mirando el mundo.
+   *
+   * Y el cuerpo va en `sobre` porque es lo que hace de esta línea un dato y no una
+   * frase: lo último con cuerpo es a lo que apunta «eso» en el turno siguiente.
+   */
+  despuesDelTick(): void {
+    const s = this.#partida.state
+    const ahora = s.actors.get(this.#quien)?.holding ?? []
+    if (ahora.length === this.#manosAntes.length && ahora.every((id, i) => this.#manosAntes[i] === id)) {
+      return
+    }
+    for (const id of ahora) {
+      if (this.#manosAntes.includes(id)) continue
+      const c = s.bodies.get(id)
+      // El id crudo si el cuerpo no está: no se calla la línea. Que una cosa
+      // aparezca en la mano sin nombre es información, no un motivo para no
+      // decirlo.
+      const como = c === undefined ? id : nameOf(c.body, s.phys)
+      this.#canal.decir(s.tick, 'progreso', `agarró ${como}`, { sobre: id })
+    }
+    this.#manosAntes = [...ahora]
   }
 
   /**
@@ -216,7 +430,7 @@ export class Ordenes {
     if (e === undefined) return
     const quiere = e.ahora(this.#yaEstaCumplida)
     if (quiere === undefined) {
-      this.#registro.push({ de: 'ella', texto: 'listo' })
+      this.#canal.decir(tick, 'listo', 'listo')
       this.#encargo = undefined
       return
     }
@@ -239,10 +453,14 @@ export class Ordenes {
 
     this.#ultimaPuesta = quiere
     if (e.total > 1) {
-      this.#registro.push({
-        de: 'ella',
-        texto: `voy por «${enCastellano(quiere)}» (${String(e.hechas + 1)} de ${String(e.total)})`,
-      })
+      // `progreso` y no habla: explica algo verificable —cuál de las cláusulas
+      // está en curso— y el documento pide que no se guarde como una frase del
+      // personaje. Antes entraba con la misma marca que el acuse.
+      this.#canal.decir(
+        tick,
+        'progreso',
+        `voy por «${enCastellano(quiere)}» (${String(e.hechas + 1)} de ${String(e.total)})`,
+      )
     }
     // Una `Mente` nueva y no un setter: `drive` es de sólo lectura en
     // `MenteOptions`, y la memoria —lo que aprendió— se pasa entera, así que lo

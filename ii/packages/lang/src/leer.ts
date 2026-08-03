@@ -46,8 +46,8 @@ import { PUENTE } from './alias.js'
 import { emparejar } from './emparejar.js'
 import { lexicoDe } from './lexico.js'
 import { polaridadDe } from './polaridad.js'
-import { MemoriaDeLaCharla, aRef, referenciaDe, sinEnclitico } from './referencias.js'
-import type { ClaseDeReferencia } from './referencias.js'
+import { aRef, referenciaDe, sinEnclitico } from './referencias.js'
+import type { ClaseDeReferencia, MemoriaDeLaCharla } from './referencias.js'
 import { tokenizar } from './normalizar.js'
 import type {
   ClausulaLeida,
@@ -296,6 +296,18 @@ export interface OpcionesDeLectura {
    * mantenga una charla se guarda una y se la pasa siempre la misma.
    */
   readonly memoria?: MemoriaDeLaCharla
+  /**
+   * LO QUE SE PIDIÓ ANTES, para «hacé lo que te pedí».
+   *
+   * Es la otra mitad del contexto conversacional, y es de otra especie que
+   * `memoria`: aquélla dice a qué OBJETO apuntar, ésta a qué TURNO. El C2 las
+   * necesita a las dos y por eso viajan juntas.
+   *
+   * Una función y no un valor, por lo mismo que `sabeElCatalogo`: quien llama
+   * tiene el historial y este paquete no, y calcularlo cuesta recorrerlo — no
+   * hay por qué pagarlo en las frases que no lo miran, que son casi todas.
+   */
+  readonly loQuePidio?: () => string | undefined
 }
 
 const UMBRAL_POR_OMISION = 0.5
@@ -423,7 +435,14 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
     // cero: «traé un palo» tiene un `un` que no está en ningún léxico y la
     // frase se entiende perfecto.
     const confianza = vistos === 0 ? 0 : suma / vistos
-    const firma = verbo === undefined ? firmaSuelta(objetos) : componer(opciones.phys, verbo, objetos)
+    const propia = verbo === undefined ? firmaSuelta(objetos) : componer(opciones.phys, verbo, objetos)
+    // ─── «HACÉ LO QUE TE PEDÍ»: la meta la trae el HISTORIAL ────────────────
+    //
+    // Sólo cuando la frase no pudo componer una propia. Si dijo «hacé fuego y lo
+    // que te pedí», el fuego manda: lo que está escrito ahora pesa más que lo
+    // que se recuerda, siempre. Y si no hay historial —o no hay ningún pedido en
+    // él— queda `undefined` y el grado dice la verdad: no se entendió del todo.
+    const firma = propia ?? (clase === 'discursiva' ? opciones.loQuePidio?.() : undefined)
     const grado = graduar(
       firma,
       verbo,

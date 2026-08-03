@@ -139,35 +139,46 @@ describe('EL NOMBRE ES EL DEL MUNDO, no uno que se arma la pantalla', () => {
 
 describe('las cuatro frases', () => {
   it('una parte no dice «1 partes», y las juntas se cuentan aparte', () => {
-    const uno = describir('x', cuerpo({ at: { x: 0, y: 0 } }), { mas: 0, esAgente: false })
+    const uno = describir('x', cuerpo({ at: { x: 0, y: 0 } }), PHYS, { mas: 0, esAgente: false })
     expect(uno.piezas).toBe('1 parte')
 
     const dos = describir(
       'y',
       cuerpo({ at: { x: 0, y: 0 }, partes: 2, juntas: 1, materiales: ['liana', 'madera'] }),
+      PHYS,
       { mas: 0, esAgente: false },
     )
     expect(dos.piezas).toBe('2 partes, 1 atada')
     expect(dos.de).toBe('liana · madera')
+    // Y el nombre menciona a la otra: «madera con liana», igual que en la charla.
+    expect(dos.titulo).toBe('madera con liana')
   })
 
-  it('lo podrido se dice, y lo que no está podrido no lo menciona', () => {
-    const sano = describir('x', cuerpo({ at: { x: 0, y: 0 }, estado: 'crudo' }), { mas: 0, esAgente: false })
-    expect(sano.estado).toBe('crudo · chico')
-
-    const feo = describir('y', cuerpo({ at: { x: 0, y: 0 }, estado: 'crudo', podrido: true }), {
+  it('LA FORMA Y EL PORTE VAN JUNTOS, y la banda ya no está: se mudó al nombre', () => {
+    const s = describir('x', cuerpo({ at: { x: 0, y: 0 }, forma: 'bloque', materiales: ['tuberculo'], nucleo: 'tuberculo', estado: 'crudo' }), PHYS, {
       mas: 0,
       esAgente: false,
     })
-    expect(feo.estado).toBe('crudo · chico · podrido')
+    expect(s.titulo).toBe('tubérculo crudo')
+    expect(s.comoEs).toBe('bloque · chico')
+  })
+
+  it('lo podrido se dice, y lo dice el nombre', () => {
+    const feo = describir(
+      'y',
+      cuerpo({ at: { x: 0, y: 0 }, materiales: ['carne'], nucleo: 'carne', estado: 'crudo', podrido: true }),
+      PHYS,
+      { mas: 0, esAgente: false },
+    )
+    expect(feo.titulo).toBe('carne cruda podrida')
   })
 
   it('LA FIRMA CAMBIA CUANDO CAMBIA LO QUE SE LEE, y no cuando no', () => {
     // Es lo que decide si el cartel se reescribe. Sin esto, el DOM se rearma
     // sesenta veces por segundo mientras el mouse está quieto.
-    const cruda = describir('x', cuerpo({ at: { x: 0, y: 0 }, estado: 'crudo' }), { mas: 0, esAgente: false })
-    const misma = describir('x', cuerpo({ at: { x: 4, y: 9 }, estado: 'crudo' }), { mas: 0, esAgente: false })
-    const ardiendo = describir('x', cuerpo({ at: { x: 0, y: 0 }, estado: 'ardiendo' }), {
+    const cruda = describir('x', cuerpo({ at: { x: 0, y: 0 }, estado: 'crudo' }), PHYS, { mas: 0, esAgente: false })
+    const misma = describir('x', cuerpo({ at: { x: 4, y: 9 }, estado: 'crudo' }), PHYS, { mas: 0, esAgente: false })
+    const ardiendo = describir('x', cuerpo({ at: { x: 0, y: 0 }, estado: 'ardiendo' }), PHYS, {
       mas: 0,
       esAgente: false,
     })

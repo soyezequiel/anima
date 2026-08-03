@@ -135,7 +135,16 @@ describe('(Hito 10 · 5) la heredera recibe testimonio, no credenciales', () => 
     const g = comoSeGuarda(laEscenaDelDocumento(), new Creencias(), QUIEN)
     // El guardado de hoy no tiene un campo de biblioteca, y eso es lo honesto:
     // un campo vacío se lee como «no había nada» y no como «no se guarda».
-    expect(Object.keys(g).sort()).toEqual(['creencias', 'mundo', 'quien', 'tick', 'version'])
+    //
+    // ─── LA LISTA CRECIÓ EN EL C1, Y NO ES LO MISMO QUE LA BIBLIOTECA ───────
+    //
+    // Entró `charla` (versión 2 del guardado). La distinción que este bloque
+    // cuida sigue en pie: la charla **se escribe cuando la hay** —hay una partida
+    // que la produce— mientras que la biblioteca se escribiría vacía SIEMPRE,
+    // porque nadie promueve una capacidad todavía. El pin se actualiza con lo que
+    // afirmaba escrito al lado, que es lo único que lo hace un guardián y no un
+    // número que alguien pisa cuando se pone rojo.
+    expect(Object.keys(g).sort()).toEqual(['charla', 'creencias', 'mundo', 'quien', 'tick', 'version'])
   })
 })
 
