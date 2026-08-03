@@ -90,6 +90,18 @@
         --ancho-charla: clamp(320px, 27vw, 420px);
       }
       * { box-sizing: border-box; }
+      /* ─── `hidden` TIENE QUE GANARLE A CUALQUIER `display` ─────────────────
+         El `[hidden] { display: none }` del navegador viene con la especificidad
+         más baja que hay, así que CUALQUIER regla nuestra que ponga `display` lo
+         desactiva en silencio: el elemento sigue teniendo el atributo, el JS
+         cree que lo escondió, y se ve igual.
+
+         Pasó con el tirador —`display: flex`— y el spec lo cazó: cargaba en
+         angosto con la charla abierta y el tirador prendido al lado. Con nueve
+         nodos que se prenden y apagan por atributo en esta pantalla, la regla va
+         una vez acá en vez de un `[hidden]` por selector. El `!important` es el
+         precio de ganarle a un id, y es el idiom de siempre para esto. */
+      [hidden] { display: none !important; }
       body {
         margin: 0; padding: 0; background: var(--fondo); color: var(--tinta);
         /* La monoespaciada es la base porque casi todo lo que la pantalla dice
@@ -234,6 +246,70 @@
          dibujado alrededor de la pantalla entera no separa nada — lo único que
          hace es contradecir a la penumbra, que ya dice hasta dónde importa. */
       canvas { display: block; image-rendering: pixelated; }
+      /* ═══ ANGOSTO ═════════════════════════════════════════════════════════
+         Un solo umbral, 1040 px, y lo decide JAVASCRIPT y no un `@media`.
+
+         Parece al revés y no lo es: la regla que importa acá no es «cómo se ve
+         abajo de 1040» sino **qué pasa al CRUZAR** —la charla se cierra sola al
+         entrar en angosto y se reabre al salir, y la primera medición no cuenta
+         como cruce—. Un `@media` no puede expresar un cruce: sólo sabe de qué
+         lado está. Escribiendo el umbral en los dos lados habría dos verdades
+         sobre el mismo número, y la que decide la conducta sería la de JS
+         igual. Así que el número vive UNA vez, en `main.ts`, y el CSS lee la
+         clase que él pone.
+
+         El precio, dicho: la pantalla depende de que el JS haya corrido. Acá no
+         cuesta nada — sin JS no hay mapa, que es el 90% de la pantalla. */
+
+      /* La charla deja de ser una columna y pasa a ser un CAJÓN. El ancho baja
+         a 360 porque abajo de 1040 una columna de 420 se come casi la mitad. */
+      #pantalla.angosto { --ancho-charla: min(360px, 100vw - 40px); }
+      #pantalla.angosto #charla-columna {
+        /* Opaca de verdad y no el degradado: el degradado existe para FUNDIR la
+           columna con el mapa que sigue a su izquierda, y un cajón que flota
+           encima del mapa no se funde con nada — se apoya. */
+        background: var(--panel-angosto);
+        box-shadow: -24px 0 48px rgba(0, 0, 0, .55);
+      }
+      /* La transición vive SIEMPRE en el elemento y no sólo en angosto: puesta
+         adentro de la clase, cruzar el umbral la agrega o la saca en el mismo
+         cuadro en que el `transform` cambia, y el cajón salta en vez de correrse. */
+      #charla-columna { transition: transform .22s ease; }
+      #pantalla.angosto.charla-cerrada #charla-columna { transform: translateX(100%); }
+      #pantalla.angosto #cerrar-charla { display: block; }
+
+      /* El dock llega hasta la charla, salvo que la charla no esté. */
+      #pantalla.angosto.charla-cerrada #dock { right: 0; }
+      /* Y los chips dejan de envolverse: con el dock angosto, cuatro chips en
+         tres filas suben el dock hasta la mitad del mapa. Se van de lado. */
+      #pantalla.angosto #dock .tiras { flex-wrap: nowrap; overflow-x: auto; }
+      #pantalla.angosto #dock .panel { min-width: 230px; }
+
+      #pantalla.angosto #modo-dev { right: calc(var(--ancho-charla) + 22px); }
+      #pantalla.angosto.charla-cerrada #modo-dev { right: 46px; }
+
+      /* ─── EL TIRADOR ──────────────────────────────────────────────────────
+         Pegado al borde y centrado a lo alto, con el rótulo de canto. Redondeado
+         sólo del lado de adentro: del otro lado no hay borde, hay pantalla. */
+      #tirador {
+        position: absolute; z-index: 3; right: 0; top: 50%;
+        transform: translateY(-50%);
+        display: flex; align-items: center; gap: 6px;
+        padding: 14px 10px; border-radius: 3px 0 0 3px;
+        background: rgba(17, 15, 11, .94);
+        box-shadow: inset 0 0 0 1px rgba(236, 231, 221, .09);
+        color: var(--tinta-baja);
+      }
+      #tirador:hover { background: rgba(17, 15, 11, .99); color: var(--tinta); }
+      #tirador .rotulo {
+        font: 500 10.5px var(--mono); letter-spacing: .16em; text-transform: uppercase;
+        writing-mode: vertical-rl; text-orientation: mixed;
+      }
+      #tirador .punto {
+        position: absolute; top: 6px; left: 5px; width: 5px; height: 5px;
+        border-radius: 50%; background: var(--vivo);
+      }
+
       /* ─── EL INTERRUPTOR DE MODO DEV — LA CAPA 4, Y ESTÁ SOLO ─────────────
          Arriba a la derecha, pegado a la charla. Es lo único que decide cuánta
          pantalla hay, así que está por encima de todo lo demás — incluido el
@@ -493,11 +569,19 @@
         background: linear-gradient(to right, rgba(13, 12, 10, .9) 0%,
                     rgba(16, 15, 11, .985) 22%, rgba(16, 15, 11, .995) 100%);
       }
+      #charla-columna .cabecera {
+        flex: none; display: flex; align-items: baseline; gap: 10px;
+        padding: 22px 30px 6px;
+      }
       #charla-columna .rotulo {
-        margin: 0; padding: 22px 30px 6px;
-        font: 500 10.5px var(--mono); letter-spacing: .16em;
+        margin: 0; font: 500 10.5px var(--mono); letter-spacing: .16em;
         text-transform: uppercase; color: var(--tinta-apagada);
       }
+      #cerrar-charla {
+        margin-left: auto; background: transparent; color: var(--tinta-baja);
+        font-size: 14px; line-height: 1; padding: 1px 4px;
+      }
+      #cerrar-charla:hover { background: var(--realce-suave); color: var(--tinta); }
       /* Lo que queda del panel viejo, hasta el paso 6. Scrollea aparte para no
          empujar a la charla, que es lo que se usa. */
       #charla-columna .provisorio {
@@ -1010,7 +1094,13 @@
              no dibujado, que es distinto de no estar. -->
         <h1 class="solo-para-lectores">Ánima II</h1>
 
-        <h2 class="rotulo">Hablarle</h2>
+        <div class="cabecera">
+          <h2 class="rotulo">Hablarle</h2>
+          <!-- La × sólo existe en angosto, donde la charla es un cajón: en ancho
+               es una columna fija y no hay nada que cerrar. Un botón que no
+               hiciera nada la mitad del tiempo enseñaría a desconfiar de él. -->
+          <button type="button" id="cerrar-charla" aria-label="cerrar la charla" hidden>×</button>
+        </div>
         <div class="registro" id="registro"></div>
         <!-- Las cuatro —seis, medidas— sugerencias las escribe `main.ts`
              derivándolas del catálogo. Vacío en el HTML a propósito: una lista
@@ -1023,6 +1113,21 @@
         </form>
 
       </aside>
+
+      <!-- ─── EL TIRADOR, QUE ES LA CHARLA CUANDO NO ESTÁ ────────────────────
+           Con el cajón cerrado, lo único que queda de la charla es esto: una
+           pestaña pegada al borde con su rótulo de canto. Sin él, cerrarla sería
+           perderla — y el rediseño la pone como una de las tres cosas que
+           quedan con el modo dev apagado.
+
+           El punto verde es «hay algo que no leíste», y aparece cuando el
+           registro creció con el cajón cerrado. No es un contador: cuántas
+           líneas hay no cambia lo que vas a hacer, y un número sobre un tirador
+           de diez píxeles se lee peor que un punto. -->
+      <button type="button" id="tirador" hidden>
+        <span class="punto" id="tirador-punto" hidden></span>
+        <span class="rotulo">Hablarle</span>
+      </button>
 
       <!-- ─── EL INTERRUPTOR DE MODO DEV ──────────────────────────────────────
            La única pieza de la capa 4, arriba de todo, y es la que decide cuánta

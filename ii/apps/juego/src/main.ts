@@ -60,6 +60,7 @@ import { Ordenes, enCastellano } from './ordenes.js'
 import { agrupar, clausulasDe, firmaDelRegistro } from './turnos.js'
 import type { Paso, Turno } from './turnos.js'
 import { sugerencias } from './sugerencias.js'
+import { laCharlaQueda } from './el-umbral.js'
 import { dibujanteDePrueba } from './dibujante-de-prueba.js'
 import { proveedorDelDeposito } from './proveedor-del-deposito.js'
 import { Lienzo } from './lienzo.js'
@@ -1143,6 +1144,8 @@ $('charla').addEventListener('submit', (ev) => {
   const caja = $('orden') as HTMLInputElement
   ordenes.decir(caja.value)
   caja.value = ''
+  // La regla 4 del cajón: un pedido lo abre. La respuesta sale ahí adentro.
+  abrirLaCharla()
   // El acuse se pinta ACÁ y no en el cuadro que viene: el criterio pide que
   // aparezca en el mismo frame que el mensaje, y con el mundo en pausa el
   // próximo cuadro podría tardar. `leer()` ya lo dejó en el registro.
@@ -1534,6 +1537,98 @@ function inspector(): void {
   caja.appendChild(dl)
 }
 
+// ─── EL UMBRAL, Y LAS CUATRO REGLAS DEL CAJÓN ───────────────────────────────
+//
+// Un solo umbral: 1040. Abajo de eso la charla deja de ser una columna y pasa a
+// ser un cajón que se corre afuera, y vuelve con un tirador pegado al borde.
+//
+// ─── POR QUÉ EL NÚMERO VIVE ACÁ Y NO EN UN `@media` ────────────────────────
+//
+// Porque lo que hay que decidir no es cómo se ve de cada lado —eso un `@media`
+// lo hace— sino **qué pasa al CRUZAR**, y un `@media` no sabe de dónde venís:
+// sólo sabe dónde estás. Las tres reglas de abajo son todas sobre el cruce, así
+// que necesitan a alguien que se acuerde del lado anterior.
+//
+// Escrito en los dos lados habría dos verdades sobre el mismo número, y una de
+// las dos —la del CSS— no podría expresar la regla que importa. Así que el
+// umbral está una vez, acá, y el CSS lee las clases que esto pone.
+//
+// Las tres reglas del CRUCE viven en `el-umbral.ts`, con su tabla de seis filas
+// y sin navegador: son lo único de esto que decide algo. Acá queda la cuarta,
+// que no es de tamaño — **un pedido abre la charla**, porque la respuesta sale
+// ahí adentro y mandar algo para que la contestación quede atrás de un tirador
+// es la peor forma de contestar.
+const UMBRAL_ANGOSTO = 1040
+
+let angosto = window.innerWidth < UMBRAL_ANGOSTO
+let charlaAbierta = true
+/** Hasta qué turno se vio el registro. Lo que llegó después es lo «sin leer». */
+let leidoHasta = 0
+
+const tirador = $('tirador')
+const puntoDelTirador = $('tirador-punto')
+const cerrarCharla = $('cerrar-charla')
+
+function pintarLaCharla(): void {
+  pantalla.classList.toggle('angosto', angosto)
+  pantalla.classList.toggle('charla-cerrada', angosto && !charlaAbierta)
+  tirador.hidden = !(angosto && !charlaAbierta)
+  cerrarCharla.hidden = !angosto
+  // `inert` y no sólo escondida: un cajón corrido con `translateX` SIGUE
+  // ESTANDO —se puede tabular hasta su caja de texto y escribir a ciegas— y eso
+  // es peor que no poder, porque el foco desaparece de la pantalla.
+  ;($('charla-columna') as HTMLElement).inert = angosto && !charlaAbierta
+}
+
+function abrirLaCharla(): void {
+  if (charlaAbierta) return
+  charlaAbierta = true
+  pintarLaCharla()
+}
+
+tirador.addEventListener('click', abrirLaCharla)
+cerrarCharla.addEventListener('click', () => {
+  charlaAbierta = false
+  pintarLaCharla()
+})
+
+/**
+ * EL CRUCE DEL UMBRAL. `primera` es la regla 1 y no una comodidad.
+ *
+ * Se engancha al mismo `resize` que el encuadre y no a un `ResizeObserver`, por
+ * la misma razón que está escrita arriba de `remedirElEncuadre`: lo dispara la
+ * persona y no el contenido, así que no hay bucle posible.
+ */
+function remedirElUmbral(primera = false): void {
+  const esAngosto = window.innerWidth < UMBRAL_ANGOSTO
+  charlaAbierta = laCharlaQueda({ esAngosto, eraAngosto: angosto, abierta: charlaAbierta, primera })
+  angosto = esAngosto
+  pintarLaCharla()
+}
+
+window.addEventListener('resize', () => {
+  remedirElUmbral()
+})
+remedirElUmbral(true)
+
+/**
+ * EL PUNTO DEL TIRADOR: hay algo que no leíste.
+ *
+ * «Sin leer» se mide contra el TURNO y no contra la cantidad de líneas, por lo
+ * mismo que el registro se repinta por turno: el canal se recorta a cien por
+ * arriba, así que la cantidad puede quedarse quieta mientras entran líneas
+ * nuevas. El turno sólo sube.
+ *
+ * Y se marca como leído mientras el registro se VE, no cuando se abre: dejarlo
+ * abierto y no mirar es asunto de la persona, pero con el cajón corrido no hay
+ * forma de haber leído nada.
+ */
+function loQueNoLeiste(): void {
+  const ultimo = ordenes.charla.at(-1)?.turno ?? 0
+  if (!angosto || charlaAbierta) leidoHasta = ultimo
+  puntoDelTirador.hidden = ultimo <= leidoHasta
+}
+
 function cuadro(ahora: number): void {
   const pasado = ahora - ultimo
   ultimo = ahora
@@ -1593,6 +1688,7 @@ function cuadro(ahora: number): void {
   planDeLaMente()
   inspector()
   correrLosFlotantes()
+  loQueNoLeiste()
   if (dev) {
     dibujarLaSerie()
     pieDeLaSerie()
