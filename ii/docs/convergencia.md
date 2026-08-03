@@ -290,12 +290,132 @@ dedujera del mundo, soltar el palo haría empezar de cero. Lo que se afirma es q
 se cumplió una vez, con su tick — que es lo que el ADR 0083 porta cuando dice que
 `sequence` compara «el tick en que cada objetivo se cumplió por primera vez».
 
-### Lo que queda abierto del C3, con su nombre
+### C3-C · la cantidad entra al lenguaje de objetivos
 
-1. **cantidad y lugar como condiciones de objetivo** (ADR 0083). Sin eso, la
-   frase literal del criterio no se puede cumplir y no hay forma de disimularlo;
-2. **el ejecutor de la ligadura diferida.** `bindeaSlot` se guarda y nadie lo
-   usa: `Mente` no sabe recibir un `binds`, está medido en el encabezado de
-   `encargo.ts`, y vale siete pasos de plan cuando existe;
-3. **la corrección multi-turno** —«no ése, el otro tronco»— que el documento pide
-   que revise la ligadura del nodo pendiente sin crear otro encargo.
+**«Juntá dos troncos» pedía uno.** `cumple` contesta la forma `sostiene` con un
+`some` sobre la mano —es existencial— así que el dos se perdía en silencio y el
+pedido quedaba cumplido con el primero.
+
+Entró como un campo, `Predicado.sostiene.cuantos`, y se escribe donde uno lo
+escribiría: `holding(tag:fibroso,count>=2)`. Cuatro decisiones, cada una con su
+porqué en el código:
+
+- **sólo mínimos.** `count<=1` es un TOPE, o sea una restricción, y una
+  restricción no es un objetivo: `objetivosDe` ya rechaza las prohibiciones
+  porque `GoalNode` no tiene signo y el planificador iría a cumplirlas;
+- **una sola escritura canónica.** `count>1` se lee y se escribe `count>=2`, y el
+  uno no se escribe: `holding(tag:x)` y `holding(tag:x,count>=1)` piden lo mismo;
+- **`count` vive adentro de la mano.** Suelto no quiere decir nada — `count>=2` no
+  dice de qué dos habla;
+- **y la cuenta ordena el índice.** Es la línea que hace que esto sirva: sin ella
+  el esquema que promete agarrar UNO cubriría un pedido de DOS, y la criatura
+  diría «dale, voy» sobre algo que no sabe hacer.
+
+**El hallazgo, y es el que vale:** el planificador **no sabe contar y no hizo
+falta enseñarle**. `plan()` sabe conseguir uno, la mente replanifica mientras la
+meta siga sin cumplirse, y juntar dos sale de repetir lo que ya sabía. La cuenta
+vive en el OBJETIVO y no en el plan. Medido de punta a punta: la criatura junta
+dos, la meta se prueba contra el mundo, y el encargo cierra ahí — con el control
+de que sin número cierra con uno.
+
+### C3-D y C3-E · la corrección multi-turno, y la referencia llegando al plan
+
+**Medido antes de tocar nada:** «no ése, el otro» resolvía a **ése**.
+`referenciaDe` devolvía la primera clase que encontraba barriendo la frase, y el
+demostrativo va antes que «el otro» — o sea que **la corrección apuntaba a lo que
+se estaba rechazando**. Ahora manda la más específica, y se separan dos cosas que
+eran una: la CLASE de la cláusula (que puede ser `discursiva`) y a qué CUERPO
+apunta, porque «hacé lo que te pedí con el otro» necesita las dos.
+
+**Y la corrección revisa en vez de no hacer nada.** Antes, esa frase salía
+`no-entendida`, se descartaba, y el cuidador veía «no te entendí» mientras la
+criatura seguía igual — lo peor de los dos mundos, porque parece que entendió que
+no. Ahora: mismo encargo, mismo id, mismo grafo, mismo lo cumplido, y el nodo
+pendiente pasa a apuntar a otro cuerpo, **con traza** (`Revision`: qué nodo, a qué
+cuerpo, de qué turno) que sobrevive la recarga.
+
+La regla no necesita entender la negación: *una cláusula que señala un cuerpo, no
+pide meta propia, y llega con un encargo abierto, es una corrección de ese
+encargo*.
+
+**El último eslabón: la referencia llega al planificador.** `Drive.meta` es una
+firma EXISTENCIAL, así que «traé el otro tronco» y «traé un tronco» llegaban
+idénticos y ganaba el más cercano. Ahora `GoalNode.sobre` y `Drive.sobre` llevan
+CUÁL, y `agarrarLoQueYaHay` lo prefiere.
+
+Es una **preferencia y no un filtro**, y la diferencia está escrita: si el
+señalado ya no está —lo consumió una ley, se lo llevó el agua— el plan sigue con
+el que sirva. Una referencia vieja no puede dejar a la criatura sin nada que
+hacer.
+
+Y el `sobre` sólo viaja si la meta en curso ES la del drive: si el hambre le ganó
+al pedido, arrastrar el cuerpo señalado a una meta propia la mandaría a comerse el
+tronco que le señalaron.
+
+### El hueco que destapó, y cómo se cerró
+
+**La charla sólo sabía nombrar lo que la criatura AGARRÓ.** La memoria se deriva
+del log, y las únicas líneas con cuerpo eran los `progreso` de lo que levantó. Un
+cuidador que dice «no ése, el otro tronco» está señalando uno del **piso**, y de
+ésos el log no sabía nada. Medido: a los 20 ticks los dos cuerpos nombrados eran
+los dos que había levantado, y uno ya lo había consumido `unir`.
+
+**Se cerró nombrando a dónde VA**, que es la regla más barata que lo resuelve:
+una línea por destino y no una por cuerpo a la vista. Lo que el cuidador corrige
+es la decisión, no el paisaje — y el destino de un `ir` es justo lo que está por
+hacer mal.
+
+### C3-F · la ligadura diferida, con ejecutor
+
+«Asá **el pescado**» señala algo de otra especie que «el otro tronco»: el
+rendimiento de un nodo hermano, que **cuando la frase se dice todavía no
+existe**. Estaba cortado en el último tramo:
+
+```
+objetivosDe ata el nodo ....... binds: {slot:'comida', from:'g0'}   ✔
+el encargo lo guarda .......... bindeaSlot: 'comida'                ✔
+alguien lo ejecuta ............ NADIE
+```
+
+`Mente.#rindes` resuelve un `{k:'rinde'}` DENTRO de un plan y se vacía en cada
+plan nuevo, así que una ligadura entre nodos del ENCARGO —que son planes
+distintos, separados por ticks— no tenía dónde vivir.
+
+**La reparación no inventa un canal: reusa el `sobre` de la corrección.** Cuando
+un nodo se da por cumplido se anota **con qué** (`Cumplido.rindio`), y el nodo
+que liga lo recibe como cuerpo señalado. De ahí en adelante es el mismo camino.
+
+Tres decisiones, con su porqué:
+
+- **sólo la mano y sólo `sostiene`.** Un `emitsPower>0` cumplido por una fogata
+  que ya estaba prendida no *rindió* nada, y decir que sí ataría el nodo
+  siguiente a un cuerpo que la criatura nunca tocó;
+- **la corrección gana sobre la ligadura.** Si te corrigieron, te corrigieron:
+  lo último que dijo una persona pesa más que lo que dedujo el grafo;
+- **la ligadura sólo se sigue si el nodo la DECLARA.** Arrastrar el rendimiento
+  anterior a un nodo que no lo pidió sería inventar una atadura que nadie midió,
+  que es lo que `objetivosDe` se niega a hacer con su tabla de pares ligables.
+
+Y el señalado pesa en los DOS lugares donde se elige un cuerpo: al agarrar
+(`agarrarLoQueYaHay`) y al repartir roles. «Asá el pescado» no se resuelve
+agarrando nada —ya está en la mano— sino eligiéndolo para el rol `comida`.
+
+### Lo que queda abierto del C3
+
+1. **el lugar como condición de objetivo.** «Dejá uno junto al fuego» necesita un
+   predicado RELACIONAL —un cuerpo, no en la mano, a distancia ≤1 de otro que
+   arda—, y hoy `Predicado` tiene tres formas y ninguna relaciona dos cuerpos. La
+   posición está en la vista (`BodyView.at`), así que **evaluarlo es barato**;
+   alcanzarlo no: el planificador no sabe planificar un `soltar` contra un
+   destino. Entra el día que venga con eso, o es vocabulario que sólo puede
+   fallar.
+
+   Mientras tanto no hay falso cumplimiento: la cláusula se descarta con su
+   porqué y el aviso se lo dice al cuidador;
+
+   **Y es la única que queda.** La conclusión se llegó tres veces desde lugares
+   distintos: midiendo la frase del criterio, midiendo la corrección, y midiendo
+   la ligadura. Las tres terminan en lo mismo — evaluar un lugar es barato y
+   alcanzarlo pide que el planificador sepa emitir un `poner` contra un destino,
+   que hoy no sabe. Entra el día que venga con eso, o es vocabulario que sólo
+   puede fallar.

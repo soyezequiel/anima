@@ -1563,7 +1563,20 @@ function planificar(
   }
 
   penso.si = true
-  const g: GoalNode = { id: 'meta', goal: p, after: [], porque }
+  // ─── EL CUERPO SEÑALADO VIAJA HASTA ACÁ, y sólo si la meta es la del drive ──
+  //
+  // La condición no es un detalle: `e.metaEnCurso` puede ser una meta PROPIA —el
+  // hambre le ganó al pedido— y arrastrar el `sobre` del cuidador a una meta que
+  // el cuidador no pidió sería mandarla a buscar el tronco que le señalaron para
+  // comer. El señalado pertenece al pedido, no a la criatura.
+  const senalado = o.drive !== undefined && o.drive.meta === meta ? o.drive.sobre : undefined
+  const g: GoalNode = {
+    id: 'meta',
+    goal: p,
+    after: [],
+    ...(senalado === undefined ? {} : { sobre: senalado }),
+    porque,
+  }
   const presupuesto = o.presupuesto ?? EXPANSIONES_POR_TICK
   // LA VISTA DEL CATÁLOGO VIAJA HASTA ACÁ, y ésta es la mitad de la costura que
   // el Gate 5→6 anotó como faltante: `plan()` aceptaba una tabla inyectada desde

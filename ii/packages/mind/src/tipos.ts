@@ -266,6 +266,19 @@ export interface Drive {
   /** Cuánto vale contra lo que la criatura elegiría sola, en [0, 1]. */
   readonly peso: number
   readonly desdeTick: number
+  /**
+   * CUÁL, cuando el cuidador señaló uno. Viaja tal cual a `GoalNode.sobre`.
+   *
+   * Es el canal que faltaba y que este archivo declaraba faltando: `meta` es una
+   * firma de texto, o sea EXISTENCIAL —«algo que…»— así que «traé el otro
+   * tronco» y «traé un tronco» llegaban acá idénticos y el planificador elegía
+   * el más cercano. La corrección del cuidador se perdía entre la lectura y el
+   * plan.
+   *
+   * Es una preferencia y no un filtro: si el señalado ya no está, el plan sigue
+   * con el que sirva. Ver `GoalNode.sobre`.
+   */
+  readonly sobre?: BodyId
 }
 
 export interface MenteOptions {

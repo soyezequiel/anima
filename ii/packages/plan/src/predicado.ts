@@ -344,7 +344,20 @@ export function interpretar(crudo: string): Predicado | undefined {
     if (tag === undefined || !(TAGS as readonly string[]).includes(tag)) return undefined
     if (trozos.length === 1) return { k: 'sostiene', tag }
     const tests: QualityTest[] = []
+    let cuantos: number | undefined
     for (const t of trozos.slice(1)) {
+      // ─── `count` NO ES UNA CUALIDAD DEL CUERPO, es cuántos cuerpos ────────
+      //
+      // Va acá adentro y no como predicado suelto porque **fuera de la mano no
+      // quiere decir nada**: `count>=2` a secas no dice de qué dos habla. Y se
+      // lee antes que `conOperador` porque ése pregunta por el catálogo de
+      // cualidades, donde `count` no está ni tiene que estar.
+      const c = cuantosDe(t)
+      if (c !== undefined) {
+        if (c === null) return undefined
+        cuantos = cuantos === undefined || c > cuantos ? c : cuantos
+        continue
+      }
       const p = conOperador(t)
       // Sólo CUALIDADES. Una geometría adentro del paréntesis se rechaza entera en
       // vez de descartarse en silencio: `freeStrandEnds` no se puede contestar desde
@@ -354,10 +367,41 @@ export function interpretar(crudo: string): Predicado | undefined {
       if (p === undefined || p.k !== 'cualidad') return undefined
       tests.push(p.test)
     }
-    return { k: 'sostiene', tag, tests }
+    return { k: 'sostiene', tag, tests, ...(cuantos === undefined ? {} : { cuantos }) }
   }
 
   return conOperador(s)
+}
+
+/** El nombre de la cuenta adentro de `holding(...)`. No es una cualidad. */
+const CUENTA = 'count'
+
+/**
+ * `count>=2` → 2. `undefined` si el trozo no habla de cantidad; `null` si habla
+ * y está mal escrito.
+ *
+ * Los tres valores son necesarios y el `null` es el que evita el fallo callado:
+ * sin él, un `count<=1` caería a `conOperador`, que no conoce `count`, y la
+ * cláusula entera se rechazaría con el mismo mensaje que una palabra inventada.
+ * Un tope mal puesto y un `xyzzy` no son el mismo error.
+ *
+ * Se normaliza a MÍNIMO: `count>1` es `count>=2`. Son cuerpos, o sea enteros, así
+ * que la conversión es exacta y deja una sola escritura canónica.
+ */
+function cuantosDe(trozo: string): number | null | undefined {
+  if (!trozo.startsWith(CUENTA)) return undefined
+  const cola = trozo.slice(CUENTA.length)
+  for (const { texto, op } of OPERADORES) {
+    if (!cola.startsWith(texto)) continue
+    const v = Number(cola.slice(texto.length))
+    if (!Number.isFinite(v) || !Number.isInteger(v) || v < 1) return null
+    // Sólo mínimos: un máximo es una restricción y no un objetivo. Ver el
+    // comentario de `Predicado.cuantos`.
+    if (op === '>=') return v
+    if (op === '>') return v + 1
+    return null
+  }
+  return null
 }
 
 /**
@@ -411,6 +455,13 @@ export function textoDe(p: Predicado): string {
       for (const t of p.tests ?? []) {
         const s = textoDe({ k: 'cualidad', test: t })
         if (!cond.includes(s)) cond.push(s)
+      }
+      // La cuenta entra como una condición más y se ordena con las otras: es una
+      // sola llave canónica o el índice tiene dos entradas para lo mismo. Uno no
+      // se escribe —es el valor por omisión— así que `holding(tag:x,count>=1)` y
+      // `holding(tag:x)` dan la misma firma, que es lo correcto: piden lo mismo.
+      if (p.cuantos !== undefined && p.cuantos > 1) {
+        cond.push(`${CUENTA}>=${textoDeNumero(p.cuantos)}`)
       }
       cond.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))
       const cola = cond.length === 0 ? '' : SEPARADOR_INTERNO + cond.join(SEPARADOR_INTERNO)
@@ -469,6 +520,14 @@ export function implica(a: Predicado, b: Predicado): boolean {
   }
   if (a.k === 'sostiene' && b.k === 'sostiene') {
     if (a.tag !== b.tag) return false
+    // ─── LA CUENTA ORDENA, Y ES EL PORTÓN QUE MÁS IMPORTA ──────────────────
+    //
+    // Sin esta línea, el esquema que promete `holding(tag:fibroso)` —agarrar UNO—
+    // cubriría `holding(tag:fibroso,count>=2)`, y el planificador contestaría que
+    // sabe cómo tener dos troncos porque sabe agarrar uno. La cantidad entraría
+    // al lenguaje y se perdería en el índice, que es peor que no tenerla: sería
+    // un `dale, voy` sobre algo que no se puede.
+    if ((a.cuantos ?? 1) < (b.cuantos ?? 1)) return false
     const suyas = a.tests ?? []
     for (const pide of b.tests ?? []) {
       const cubierta = suyas.some(
@@ -521,7 +580,16 @@ function cubreUmbral(opA: Comparador, vA: number, opB: Comparador, vB: number): 
 export function cumple(p: Predicado, v: VistaDelPlan): boolean {
   const q: Lector = (b, id) => v.q(b, id)
   if (p.k === 'sostiene') {
-    for (const b of v.self.holding) if (cumpleCuerpo(p, b, q)) return true
+    // Se CUENTAN y no se busca uno: con `cuantos` sin poner, el mínimo es uno y
+    // esto es el mismo `some` de antes. Con dos, «juntá dos troncos» deja de
+    // darse por cumplido con el primero — que es lo que pasaba, en silencio.
+    const pide = p.cuantos ?? 1
+    let tiene = 0
+    for (const b of v.self.holding) {
+      if (!cumpleCuerpo(p, b, q)) continue
+      tiene++
+      if (tiene >= pide) return true
+    }
     return false
   }
   // Una geometría no se puede escribir como `QualityTest`, así que ahí se pide

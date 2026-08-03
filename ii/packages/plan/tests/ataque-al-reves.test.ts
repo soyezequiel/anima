@@ -1037,15 +1037,23 @@ describe('8 · «quiero guarecerme antes de la noche»: el tiempo no entra', () 
    * archivo deja de compilar y hay que venir a borrar el test — que es exactamente
    * lo que se quiere que pase.
    */
-  it('`GoalNode` tiene cuatro campos y ninguno es el tiempo', () => {
+  it('`GoalNode` no tiene el tiempo, y el campo que se le agregó no es ése', () => {
+    // ─── EL GUARDIÁN HIZO SU TRABAJO, y por eso este bloque cambió ──────────
+    //
+    // El registro dejó de compilar cuando el C3 de la convergencia le agregó
+    // `sobre` —CUÁL cuerpo, la identidad del ADR 0082— que es exactamente lo que
+    // el comentario de arriba pedía que pasara. Se actualiza la lista y **la
+    // afirmación no se toca**: lo que este bloque cuida es que el TIEMPO no esté,
+    // y sigue sin estar.
     const campos: Readonly<Record<keyof GoalNode, true>> = {
       id: true,
       goal: true,
       after: true,
       binds: true,
+      sobre: true,
       porque: true,
     }
-    expect(Object.keys(campos).sort()).toEqual(['after', 'binds', 'goal', 'id', 'porque'])
+    expect(Object.keys(campos).sort()).toEqual(['after', 'binds', 'goal', 'id', 'porque', 'sobre'])
     expect(Object.hasOwn(campos, 'temporal')).toBe(false)
   })
 

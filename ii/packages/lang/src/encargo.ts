@@ -72,12 +72,52 @@ export interface NodoDelEncargo {
    * frase contra un mundo que ya no es el de entonces.
    */
   readonly bindeaSlot?: string
+  /**
+   * EL CUERPO AL QUE ESTE NODO APUNTA, si el cuidador señaló uno.
+   *
+   * Sale de una corrección —«no ése, el otro tronco»— y se guarda con el encargo.
+   * **Todavía no llega al planificador**: `Drive.meta` lleva una firma de texto y
+   * nada más, y `Mente.#rindes` se vacía en cada plan nuevo (medido). Lo que este
+   * campo cierra es la mitad que sí se puede: que el pedido quede bien anotado,
+   * con identidad y con traza, en vez de perderse.
+   */
+  readonly sobre?: string
 }
 
 /** Un nodo que el mundo probó, con el tick en que lo probó por PRIMERA vez. */
 export interface Cumplido {
   readonly nodo: GoalId
   readonly enTick: number
+  /**
+   * CON QUÉ CUERPO se cumplió, si se pudo saber. Es lo que la ligadura arrastra.
+   *
+   * «Pescá algo y después asá EL PESCADO»: el pescado de la segunda cláusula no
+   * existe cuando la frase se dice, y lo único que lo identifica es que es **lo
+   * que rindió el nodo anterior**. Sin este campo, «el pescado» se resuelve a
+   * cualquier cosa carnosa que haya a la vista — que puede ser otra, y entonces
+   * la criatura asa un pescado y guarda el que pescó.
+   *
+   * `undefined` cuando el nodo se dio por cumplido sin que nadie pudiera decir
+   * cuál: se prefiere no saber a inventar un cuerpo.
+   */
+  readonly rindio?: string
+}
+
+/**
+ * UNA CORRECCIÓN APLICADA, con todo lo que hace falta para auditarla.
+ *
+ * El documento pide que una corrección multi-turno «revise la ligadura del nodo
+ * pendiente y deje traza; no cree silenciosamente otro encargo». La traza es
+ * esto, y las tres cosas que trae son las que permiten volver de la revisión a
+ * la conversación: qué nodo cambió, a qué cuerpo pasó a apuntar, y de qué turno
+ * del log salió.
+ */
+export interface Revision {
+  readonly turno: number
+  readonly nodo: GoalId
+  readonly sobre: string
+  /** Lo que el cuidador escribió. Se conserva por lo mismo que `Encargo.texto`. */
+  readonly texto: string
 }
 
 /**
@@ -104,6 +144,8 @@ export interface EncargoGuardado {
   readonly texto: string
   readonly nodos: readonly NodoDelEncargo[]
   readonly hechos: readonly Cumplido[]
+  /** Las correcciones que se le hicieron, en orden. Vacío si no hubo ninguna. */
+  readonly revisiones: readonly Revision[]
   readonly desdeTick: number
   readonly estado: 'activo' | 'cumplido' | 'cancelado'
 }
@@ -176,14 +218,22 @@ export class EncargoEnCurso {
     id: string
     turnos: readonly number[]
     texto: string
-    nodos: readonly NodoDelEncargo[]
+    nodos: NodoDelEncargo[]
     hechos: Cumplido[]
+    revisiones: Revision[]
     desdeTick: number
     estado: EncargoGuardado['estado']
   }
 
   private constructor(g: EncargoGuardado) {
-    this.#g = { ...g, hechos: [...g.hechos] }
+    this.#g = {
+      ...g,
+      nodos: [...g.nodos],
+      hechos: [...g.hechos],
+      // `?? []` y no `[]`: un guardado escrito antes de que existieran las
+      // revisiones no las tiene, y perder las que sí hay sería peor.
+      revisiones: [...(g.revisiones ?? [])],
+    }
   }
 
   /**
@@ -209,6 +259,7 @@ export class EncargoEnCurso {
       texto,
       nodos: e.nodos,
       hechos: [],
+      revisiones: [],
       desdeTick: tick,
       estado: 'activo',
     })
@@ -241,7 +292,17 @@ export class EncargoEnCurso {
    * `undefined` quiere decir **terminado**, y hay que distinguirlo de «no había
    * nada»: para eso está `total`.
    */
-  ahora(yaEstaCumplida: (firma: string) => boolean, tick = -1): string | undefined {
+  ahora(
+    yaEstaCumplida: (firma: string) => boolean,
+    tick = -1,
+    /**
+     * CON QUÉ se cumplió, para la ligadura diferida. Opcional porque no todos los
+     * llamadores tienen una vista del mundo a mano —un cursor de test no la
+     * tiene— y porque no saberlo es una respuesta: mejor `undefined` que un
+     * cuerpo inventado.
+     */
+    conQue?: (firma: string) => string | undefined,
+  ): string | undefined {
     for (const n of this.#g.nodos) {
       if (this.#hecho(n.id)) continue
       // El orden parcial: un nodo cuyo `after` no está servido no se toca. Con el
@@ -249,7 +310,8 @@ export class EncargoEnCurso {
       // día que el grafo deje de ser una cadena, la guarda ya está.
       if (!n.after.every((a) => this.#hecho(a))) continue
       if (!yaEstaCumplida(n.meta)) return n.meta
-      this.#g.hechos.push({ nodo: n.id, enTick: tick })
+      const rindio = conQue?.(n.meta)
+      this.#g.hechos.push({ nodo: n.id, enTick: tick, ...(rindio === undefined ? {} : { rindio }) })
     }
     if (this.#g.estado === 'activo') this.#g.estado = 'cumplido'
     return undefined
@@ -259,9 +321,69 @@ export class EncargoEnCurso {
     return this.#g.hechos.some((h) => h.nodo === id)
   }
 
+  /**
+   * EL CUERPO QUE EL NODO PENDIENTE SEÑALA, venga de donde venga.
+   *
+   * Dos fuentes y en este orden, que es el que importa:
+   *
+   *   1. **la corrección del cuidador** (`nodo.sobre`). Lo último que dijo una
+   *      persona gana siempre: si te corrigieron, te corrigieron;
+   *   2. **la ligadura diferida** — lo que rindió el nodo del que éste depende.
+   *      «Asá el pescado» sin más aclaración es el que pescaste recién.
+   *
+   * Y la ligadura sólo se sigue si el nodo la DECLARA (`bindeaSlot`). Arrastrar
+   * el rendimiento anterior a un nodo que no lo pidió sería inventar una atadura
+   * que nadie midió, que es exactamente lo que `objetivosDe` se niega a hacer con
+   * su tabla de pares ligables.
+   */
+  senaladoDelPendiente(): string | undefined {
+    const n = this.#g.nodos.find((x) => !this.#hecho(x.id))
+    if (n === undefined) return undefined
+    if (n.sobre !== undefined) return n.sobre
+    if (n.bindeaSlot === undefined) return undefined
+    for (const a of n.after) {
+      const h = this.#g.hechos.find((x) => x.nodo === a)
+      if (h?.rindio !== undefined) return h.rindio
+    }
+    return undefined
+  }
+
+  /**
+   * «NO ÉSE, EL OTRO»: el nodo pendiente pasa a apuntar a otro cuerpo.
+   *
+   * ─── Lo que esto NO hace, y hay que decirlo ─────────────────────────────────
+   *
+   * No crea un encargo nuevo, y ése es el punto: el documento pide que una
+   * corrección «no cree silenciosamente otro encargo». La identidad, el grafo y
+   * lo ya cumplido quedan intactos; lo único que cambia es a qué apunta el nodo
+   * que todavía no se hizo.
+   *
+   * Tampoco llega al planificador todavía. `Drive.meta` lleva una firma de texto,
+   * así que el `sobre` se guarda y espera al ejecutor de la ligadura diferida —
+   * la misma mitad que le falta al `bindeaSlot`. Lo que sí queda cerrado es que
+   * el pedido **no se pierda**: antes esta frase no hacía absolutamente nada.
+   *
+   * `undefined` cuando no hay nodo pendiente: corregir un encargo terminado no es
+   * una corrección, es una frase suelta.
+   */
+  revisar(turno: number, sobre: string, texto: string): Revision | undefined {
+    const pendiente = this.#g.nodos.find((n) => !this.#hecho(n.id))
+    if (pendiente === undefined) return undefined
+    const i = this.#g.nodos.indexOf(pendiente)
+    this.#g.nodos[i] = { ...pendiente, sobre }
+    const r: Revision = { turno, nodo: pendiente.id, sobre, texto }
+    this.#g.revisiones.push(r)
+    return r
+  }
+
   /** El encargo como dato, para guardarlo. */
   volcar(): EncargoGuardado {
-    return { ...this.#g, hechos: [...this.#g.hechos] }
+    return {
+      ...this.#g,
+      nodos: [...this.#g.nodos],
+      hechos: [...this.#g.hechos],
+      revisiones: [...this.#g.revisiones],
+    }
   }
 
   get id(): string {

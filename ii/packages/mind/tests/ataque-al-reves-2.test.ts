@@ -296,17 +296,30 @@ describe('(1) cocinar de a varios: el mundo lo paga y la mente no lo puede pedir
     expect(salioDeLaVentana ?? 0).toBeGreaterThan(primero * 4)
   })
 
-  it('LA MENTE: el vocabulario de metas NO TIENE NÚMERO, y el plan toca un pescado', () => {
-    // (a) la cantidad no se puede escribir. No es que no haya esquema: es que el
-    //     intérprete no la lee, así que la meta ni siquiera nace.
+  it('LA MENTE: la cantidad ya se escribe, y el plan sigue tocando UN pescado', () => {
+    // ─── ESTE BLOQUE CAMBIÓ DE MITAD, y conviene decir cuál ────────────────
+    //
+    // Se llamaba «el vocabulario de metas NO TIENE NÚMERO» y afirmaba DOS cosas
+    // a la vez: (a) que la cantidad no se podía ni escribir, y (b) que la ley que
+    // cocina nombra UN solo rol `comida`, así que para cada pescado hay que
+    // rehacer el plan entero.
+    //
+    // **La (a) se cerró en el C3 de la convergencia**: `Predicado.sostiene` tiene
+    // `cuantos` y `holding(tag:carnoso,count>=4)` se lee. Lo que este bloque
+    // ataca es la (b), que no se movió ni un milímetro — y ahora se puede afirmar
+    // sin el ruido de la primera, que era lo que la tapaba.
+    //
+    // Las formas que SIGUEN sin leerse están abajo y son las que nadie escribió:
+    // un sinónimo inventado, la cuenta suelta y un sufijo. Sirven de control de
+    // que lo que entró es una forma y no un colador.
     const conCantidad = [
-      'holding(tag:carnoso,count>=4)',
       'holding(tag:carnoso,cuantos>=4)',
       'count>=4',
       'holding(tag:carnoso)x4',
     ]
+    const laQueSiEntra = 'holding(tag:carnoso,count>=4)'
     const filas = ['─── LO QUE NO SE PUEDE PEDIR ───']
-    for (const t of conCantidad) {
+    for (const t of [...conCantidad, laQueSiEntra]) {
       filas.push(`  ${t.padEnd(34)} → ${interpretar(t) === undefined ? 'EL INTÉRPRETE NO LO LEE' : 'parsea'}`)
     }
 
@@ -329,6 +342,8 @@ describe('(1) cocinar de a varios: el mundo lo paga y la mente no lo puede pedir
     log(filas)
 
     for (const t of conCantidad) expect(interpretar(t)).toBeUndefined()
+    // Y la que SÍ: la cantidad dejó de ser lo que no se puede pedir.
+    expect(interpretar(laQueSiEntra)).toBeDefined()
     for (const e of ESQUEMAS) {
       if (e.k !== 'ley') continue
       expect(e.pila.filter((rol) => rol === e.sujeto)).toHaveLength(1)
@@ -356,21 +371,27 @@ describe('(1) cocinar de a varios: el mundo lo paga y la mente no lo puede pedir
   })
 
   /**
-   * LO QUE HARÍA FALTA, y por qué no se arregla desde este paquete.
+   * ESTE HUECO SE CERRÓ, y se cerró como decía que iba a cerrarse.
    *
-   * «Cuatro cosas carnosas cocidas en la mano» es una meta sobre una CANTIDAD, y
-   * `Predicado` no tiene dónde ponerla: sus tres formas hablan de un cuerpo
-   * (`cualidad`, `geometria`) o de la mano (`sostiene`), y las tres son
-   * EXISTENCIALES —«hay uno que…»—. La reparación es de `@anima/plan` y toca el
-   * tipo, el intérprete, `textoDe`, `implica` y `cumple`; y del lado de acá toca
-   * `opportunities`, que hoy sólo sabe fabricar `holding(tag:X)` y
-   * `holding(tag:X,toxicity<t)`.
+   * Decía: *«"Cuatro cosas carnosas cocidas en la mano" es una meta sobre una
+   * CANTIDAD, y `Predicado` no tiene dónde ponerla: sus tres formas son
+   * EXISTENCIALES. La reparación es de `@anima/plan` y toca el tipo, el
+   * intérprete, `textoDe`, `implica` y `cumple`. El día que se pueda escribir,
+   * esto se pone verde solo.»*
    *
-   * El día que se pueda escribir, esto se pone verde solo.
+   * Se hizo en el C3 de la convergencia y tocó exactamente esos cinco lugares.
+   * El `it.fails` se dio vuelta y no se borró: lo que afirmaba sigue siendo lo
+   * que hay que cuidar, y ahora lo cuida en el otro sentido.
+   *
+   * **Lo que NO se cerró y conviene no confundir:** que la mente PIDA una
+   * cantidad por su cuenta. `opportunities` sigue fabricando `holding(tag:X)` y
+   * nada más — la cantidad entra por el chat, que es quien tiene a alguien que la
+   * dice. Escribirla y quererla son dos cosas.
    */
-  it.fails('LO QUE FALTA: que «cuatro cocidos en la mano» sea una meta que se pueda escribir', () => {
+  it('EL HUECO CERRADO: «cuatro cocidos en la mano» ya es una meta que se puede escribir', () => {
     const meta = interpretar('holding(tag:carnoso,count>=4)')
     expect(meta).toBeDefined()
+    expect(meta?.k === 'sostiene' ? meta.cuantos : undefined).toBe(4)
   })
 })
 
@@ -607,13 +628,34 @@ describe('(3) guardar lo cocido: la reserva existe en el mundo y se traga al toq
   })
 
   /**
-   * La meta que falta es «tener reservas», y no se puede ni empezar a escribir:
-   * `holding(tag:X)` es existencial —uno alcanza y veinte no dicen más— y no hay
-   * ninguna forma de predicado que hable de lo que se guarda para después.
+   * SE PUEDE ESCRIBIR, Y SIGUE SIN PODERSE QUERER. Las dos mitades, separadas.
+   *
+   * Decía: *«la meta que falta es "tener reservas", y no se puede ni empezar a
+   * escribir: `holding(tag:X)` es existencial y no hay ninguna forma de predicado
+   * que hable de lo que se guarda para después»*.
+   *
+   * La primera mitad se cerró en el C3 —`count>=3` se lee, y con las condiciones
+   * de cocido al lado— así que la meta EXISTE. La segunda no: **nadie la pide**.
+   * `opportunities` fabrica `holding(tag:X)` y `holding(tag:X,toxicity<t)`, y no
+   * hay ninguna necesidad que empuje a guardar para después.
+   *
+   * O sea que el hueco se movió de «no se puede decir» a «no lo quiere nadie», y
+   * eso es una reparación de la mente y no del lenguaje. El `it.fails` queda,
+   * apuntando ahora a la mitad que sigue abierta.
    */
-  it.fails('LO QUE FALTA: que «tener una reserva cocida» sea algo que se pueda querer', () => {
+  it('la reserva ya se puede ESCRIBIR, que era la mitad del hueco', () => {
     const meta = interpretar('holding(tag:carnoso,digestibility>=0.85,count>=3)')
     expect(meta).toBeDefined()
+    expect(meta?.k === 'sostiene' ? meta.cuantos : undefined).toBe(3)
+  })
+
+  it.fails('LO QUE SIGUE FALTANDO: que alguna oportunidad de la mente la PIDA', () => {
+    // Sobre la misma escena que el bloque de arriba, para que la comparación sea
+    // directa: ahí la mente valúa `holding(tag:carnoso)` y acá se le pregunta si
+    // alguna vez pide una cantidad. Nunca.
+    const v = vistaDe(new Partida(conFuegoYLosa()), 'ana')
+    const ops = opportunities(v, new Creencias(), necesidades(v))
+    expect(ops.some((o) => o.meta.includes('count>='))).toBe(true)
   })
 })
 
@@ -1009,7 +1051,10 @@ describe('(8) el fardo de corteza: una meta sobre masa y sobre cantidad', () => 
     filas.push(
       `  mass>=1 → ${pelada.k}` + (pelada.k === 'plan' ? ` con ${String(pelada.steps.length)} pasos` : ''),
     )
-    // (c) y la cantidad, que es la otra mitad del fardo.
+    // (c) y la cantidad, que es la otra mitad del fardo — y la que se cerró en el
+    //     C3. Se sigue imprimiendo porque el fardo necesita LAS DOS y la que
+    //     falta es la masa: sin este renglón, leer la tabla haría creer que el
+    //     fardo sigue igual de lejos que antes.
     filas.push(`  «dos piezas de corteza» → ${interpretar('holding(tag:fibroso,count>=2)') === undefined ? 'EL INTÉRPRETE NO LO LEE' : 'parsea'}`)
     // (d) lo que la mente sabe pedir, dicho entero.
     const ops = opportunities(v, new Creencias(), necesidades(v))
@@ -1029,8 +1074,12 @@ describe('(8) el fardo de corteza: una meta sobre masa y sobre cantidad', () => 
     expect(pelada.k).toBe('plan')
     if (pelada.k !== 'plan') throw new Error('imposible')
     expect(pelada.steps).toHaveLength(0)
-    expect(interpretar('holding(tag:fibroso,count>=2)')).toBeUndefined()
-    // Y ninguna oportunidad de la mente habla nunca de masa ni de cantidad.
+    // La cantidad YA SE LEE (C3). Lo que este bloque ataca —el fardo— sigue en
+    // pie por la otra mitad: ningún esquema establece una MASA, así que la
+    // regresión no tiene por dónde entrar. Cambió una de las dos, no las dos.
+    expect(interpretar('holding(tag:fibroso,count>=2)')).toBeDefined()
+    // Y ninguna oportunidad de la mente habla nunca de masa ni de cantidad: que
+    // se pueda escribir no quiere decir que la mente lo quiera sola.
     for (const o of ops) {
       expect(o.meta.includes('mass')).toBe(false)
       expect(o.meta.includes('count')).toBe(false)

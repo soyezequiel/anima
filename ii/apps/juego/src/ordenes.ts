@@ -87,7 +87,7 @@ import type { Physics } from '@anima/physics'
 import { Contexto } from '@anima/perceive'
 import type { Partida } from '@anima/perceive'
 import { Creencias, Mente } from '@anima/mind'
-import { ESQUEMAS, cumple, interpretar } from '@anima/plan'
+import { ESQUEMAS, cumple, cumpleCuerpo, interpretar } from '@anima/plan'
 import {
   CanalDeHabla,
   EncargoEnCurso,
@@ -101,6 +101,7 @@ import {
   memoriaDe,
   recuerdosDe,
   recuperar,
+  revisar,
 } from '@anima/lang'
 import type {
   Consulta,
@@ -203,13 +204,34 @@ export interface OpcionesDeOrdenes {
    * espera es el de afuera. Acá se le entrega y **no se la espera**: no hay
    * `await`, la respuesta no se aplica y el tick ni se entera.
    *
-   * Aplicar la respuesta —en frontera de tick, con correlación, firma de contexto
-   * y cancelación— es C4 y no se adelanta. Lo que C1 pone es la FRONTERA, y tiene
-   * que estar puesta para que el criterio signifique algo: «el proveedor colgado
-   * no mueve el p95» es trivialmente verde si no hay proveedor, y eso lo anota el
-   * propio ADR II-0024.
+   * ─── Y EL C4 LE PUSO LA OTRA MITAD: qué se hace con la respuesta ──────────
+   *
+   * En el C1 la respuesta se descartaba a propósito. Ahora se aplica, y **sólo en
+   * la frontera de un tick** (ver `#aplicarLoQueLlego`). El `AbortSignal` es lo
+   * que permite que una corrección del cuidador corte el viaje en vez de sólo
+   * ignorar lo que vuelva: ignorar una respuesta que ya se pagó es tarde.
    */
-  readonly preguntar?: (c: Consulta) => Promise<RespuestaDelModelo | undefined>
+  readonly preguntar?: (c: Consulta, signal?: AbortSignal) => Promise<RespuestaDelModelo | undefined>
+}
+
+/** Una consulta en el aire, con lo que hace falta para juzgar su respuesta. */
+interface EnVuelo {
+  readonly llave: string
+  /** El turno que la disparó. La otra mitad de la correlación. */
+  readonly turno: number
+  /** La lectura contra la que se pidió. `revisar` la necesita entera. */
+  readonly lectura: Lectura
+  /** Las firmas que la consulta ofreció. Sin esto, el modelo puede inventar una. */
+  readonly ofrecidas: readonly string[]
+  readonly corte: AbortController
+}
+
+/** Lo que volvió del proveedor, esperando la frontera. */
+interface Llegada {
+  readonly llave: string
+  readonly turno: number
+  readonly respuesta?: RespuestaDelModelo
+  readonly falla?: unknown
 }
 
 export class Ordenes {
@@ -228,6 +250,20 @@ export class Ordenes {
   #ultimaLectura: Lectura | undefined
   #ventanaUsada = 0
   #consultas = 0
+  #aplicadas = 0
+  #descartadas = 0
+  /** La única consulta viva. Un turno nuevo la reemplaza y la corta. */
+  #enVuelo: EnVuelo | undefined
+  /**
+   * LO QUE YA VOLVIÓ Y TODAVÍA NO SE APLICÓ.
+   *
+   * Existe porque una promesa se resuelve cuando el motor quiere —en el medio de
+   * un cuadro, entre dos ticks, mientras se dibuja— y aplicar ahí sería cambiarle
+   * el objetivo a la criatura con la vista a mitad de camino. Acá se apila y en
+   * `antesDelTick` se vacía: **la frontera es un lugar del código, no una
+   * intención**.
+   */
+  #llegadas: Llegada[] = []
   /**
    * LO QUE TENÍA EN LA MANO EN EL TICK ANTERIOR.
    *
@@ -237,6 +273,8 @@ export class Ordenes {
    * antes de cerrar la pestaña.
    */
   #manosAntes: readonly string[]
+  /** El último destino que se narró, para no repetir la línea cada tick. */
+  #yendoA: string | undefined
 
   constructor(partida: Partida, quien: string, phys: Physics, o: OpcionesDeOrdenes = {}) {
     this.#partida = partida
@@ -282,6 +320,21 @@ export class Ordenes {
     return this.#consultas
   }
 
+  /** Cuántas respuestas del proveedor se aplicaron, siempre en frontera de tick. */
+  get aplicadas(): number {
+    return this.#aplicadas
+  }
+
+  /**
+   * Cuántas se tiraron por viejas, por no corresponder o por no mejorar nada.
+   *
+   * Se cuenta y no se calla: un descarte silencioso hace que «el modelo no sirve»
+   * y «el modelo llegó tarde» se vean igual desde afuera.
+   */
+  get descartadas(): number {
+    return this.#descartadas
+  }
+
   /**
    * LO QUE RECUERDA DE LA CHARLA, con su fuente. El C2 lo pide para poder citar.
    *
@@ -304,6 +357,17 @@ export class Ordenes {
   /** La meta que la mente tiene puesta ahora mismo, cruda. `undefined` si ninguna. */
   get metaEnCurso(): string | undefined {
     return this.#ultimaPuesta
+  }
+
+  /**
+   * A QUÉ CUERPO APUNTA EL NODO PENDIENTE, sea por corrección o por ligadura.
+   *
+   * Es lo que cruza al `drive`, y se expone porque es el observable de las dos
+   * mitades de la identidad: «no ése, el otro» y «asá el pescado». Sin esto, que
+   * la referencia llegue o no llegue al plan sólo se ve corriendo la partida.
+   */
+  senaladoDelPendiente(): string | undefined {
+    return this.#encargo?.senaladoDelPendiente()
   }
 
   /** Lo que el historial tiene que ver con una frase, con su tope. */
@@ -339,6 +403,37 @@ export class Ordenes {
    * está cumplida y la mente la descarta con razón; lo que estaba mal era que
    * desde afuera se veía igual que «no me hace caso».
    */
+  /**
+   * ¿EL CATÁLOGO SABE ESTABLECER ESTA FIRMA? Una sola definición, dos lectores.
+   *
+   * La usan `leer()` en el camino rápido y `revisar()` cuando vuelve el modelo, y
+   * tienen que ser LA MISMA: si el portón del modelo fuera más flojo que el
+   * local, el modelo podría comprometer conducta sobre metas que el planificador
+   * no sabe alcanzar — que es el portón que `consulta.ts` ya cobró una vez.
+   */
+  #sabeElCatalogo = (f: string): boolean => ESTABLECIBLES.has(f) || esUnTenerlo(f)
+
+  /**
+   * CON QUÉ CUERPO DE LA MANO SE CUMPLE ESTA FIRMA. Es lo que rinde un nodo.
+   *
+   * Sólo la mano y sólo la forma `sostiene`: las otras dos hablan de lo que se
+   * ve, y «lo que rindió el nodo» tiene que ser algo que la criatura CONSIGUIÓ.
+   * Un `emitsPower>0` cumplido por una fogata que estaba prendida desde antes no
+   * rindió nada — y decir que sí haría que el nodo siguiente atara su ligadura a
+   * un cuerpo que la criatura nunca tocó.
+   */
+  #conQueSeCumple = (firma: string): string | undefined => {
+    const pr = interpretar(firma)
+    if (pr === undefined || pr.k !== 'sostiene') return undefined
+    const v = new Contexto(this.#partida.proyeccion, {
+      actor: this.#quien,
+      rng: this.#partida.dado.tirar,
+      lugares: this.#partida.lugares,
+    }).ctx
+    for (const b of v.self.holding) if (cumpleCuerpo(pr, b, (x, q) => v.q(x, q))) return b.id
+    return undefined
+  }
+
   #yaEstaCumplida = (firma: string): boolean => {
     const pr = interpretar(firma)
     if (pr === undefined) return false
@@ -362,6 +457,11 @@ export class Ordenes {
     // igual para la memoria —una entrada del cuidador no trae cuerpo— y no da
     // igual para el número: `ventanaUsada` es una medición y tiene que decir
     // cuánto contexto había, no cuánto hay contando lo que se acaba de agregar.
+    // Un turno nuevo corta lo que esté en el aire: la respuesta que venía era
+    // sobre otro contexto. Va ANTES de leer, para que ni siquiera pueda colarse
+    // entre la lectura y el encargo de esta misma llamada.
+    this.#cortarLoQueEsteEnElAire()
+
     const ventana = this.#canal.ventana()
     this.#ventanaUsada = ventana.length
 
@@ -375,7 +475,7 @@ export class Ordenes {
     const l = leer(dicho, {
       phys: this.#partida.state.phys,
       lexico: this.#lexico,
-      sabeElCatalogo: (f) => ESTABLECIBLES.has(f) || esUnTenerlo(f),
+      sabeElCatalogo: this.#sabeElCatalogo,
       yaEstaCumplida: this.#yaEstaCumplida,
       // EL CONTEXTO PREVIO, derivado del log durable. Es lo que hace que «comé
       // eso» tenga a qué apuntar — también después de cerrar la pestaña.
@@ -392,18 +492,28 @@ export class Ordenes {
       ...(meta === undefined ? {} : { meta }),
       confianza: l.confianza,
     })
+    const turno = this.#canal.todo.at(-1)?.turno ?? 0
+
+    // ─── ¿ES UNA CORRECCIÓN? Antes que nada, porque cambia hasta el acuse ────
+    const corregido = this.#corregir(turno, dicho)
+    if (corregido !== undefined) {
+      this.#canal.decir(tick, 'acuse', corregido)
+      return
+    }
+
     this.#canal.decir(tick, 'acuse', l.acuse)
-    this.#consultar(l)
+    // El turno de la `entrada` es lo que correlaciona la respuesta con el pedido:
+    // la llave sola no alcanza, porque la misma frase dicha dos veces da la misma.
+    this.#consultar(l, turno)
 
     const e = encargoDe(l)
     // Un encargo vacío NO se pisa sobre el anterior: si la frase no se pudo
     // convertir en nada, lo que la criatura estaba haciendo sigue. Borrarlo sería
     // castigar una frase mal entendida cancelando una orden que sí se entendió.
     if (e.metas.length === 0) return
-    // El turno de la `entrada` que acaba de entrar es la procedencia del encargo:
-    // de ahí salió, y por ahí se vuelve a la conversación que lo pidió.
-    const turno = this.#canal.todo.at(-2)?.turno
-    this.#encargo = EncargoEnCurso.nuevo(e, turno === undefined ? [] : [turno], dicho, tick)
+    // El turno de la `entrada` es la procedencia del encargo: de ahí salió, y por
+    // ahí se vuelve a la conversación que lo pidió.
+    this.#encargo = EncargoEnCurso.nuevo(e, [turno], dicho, tick)
     this.#ultimaPuesta = undefined
   }
 
@@ -418,7 +528,7 @@ export class Ordenes {
    * con ella es contarla, y el `catch` está para que un proveedor que revienta no
    * tire un rechazo sin dueño a la consola del jugador.
    */
-  #consultar(l: Lectura): void {
+  #consultar(l: Lectura, turno: number): void {
     const preguntar = this.#preguntar
     if (preguntar === undefined) return
     // La ventana va adentro de la consulta: el modelo tiene que leer la frase
@@ -427,9 +537,125 @@ export class Ordenes {
     const c = consultaDe(l, this.#lexico, [...ESTABLECIBLES], this.#canal.ventana())
     if (c === undefined) return
     this.#consultas++
-    void preguntar(c).catch((e: unknown) => {
-      console.warn('[proveedor] la consulta falló, se sigue con la lectura local:', e)
-    })
+    const corte = new AbortController()
+    const ofrecidas = [...ESTABLECIBLES]
+    this.#enVuelo = { llave: c.llave, turno, lectura: l, ofrecidas, corte }
+    void preguntar(c, corte.signal).then(
+      (respuesta) => {
+        this.#llegadas.push({ llave: c.llave, turno, ...(respuesta === undefined ? {} : { respuesta }) })
+      },
+      (falla: unknown) => {
+        this.#llegadas.push({ llave: c.llave, turno, falla })
+      },
+    )
+  }
+
+  /**
+   * «NO ÉSE, EL OTRO»: revisar el encargo abierto en vez de perder la frase.
+   *
+   * Devuelve el acuse de la corrección, o `undefined` si la frase no lo era.
+   *
+   * ─── LA REGLA, y es una sola ────────────────────────────────────────────────
+   *
+   * **Una cláusula que señala un cuerpo, no pide ninguna meta propia, y llega con
+   * un encargo abierto, es una corrección de ese encargo.** No hace falta
+   * entender la negación: si dijera una meta sería un pedido nuevo, y si no
+   * señalara nada no habría a qué cambiar.
+   *
+   * Antes de esto, «no ése, el otro» no hacía absolutamente nada: la lectura
+   * salía `no-entendida`, `objetivosDe` la descartaba, y `decir` volvía sin tocar
+   * el encargo. El cuidador veía «no te entendí» y la criatura seguía con lo
+   * mismo — que es lo peor de los dos mundos, porque parece que entendió que no.
+   */
+  #corregir(turno: number, dicho: string): string | undefined {
+    const e = this.#encargo
+    const c = this.#ultimaLectura?.clausulas[0]
+    if (e === undefined || c === undefined) return undefined
+    if (c.firma !== undefined) return undefined
+    const ref = c.referencia?.ref
+    if (ref === undefined || ref.k !== 'id') return undefined
+
+    const r = e.revisar(turno, ref.id, dicho)
+    if (r === undefined) return undefined
+    // Se lo nombra y no se contesta «ése»: «dale, ése entonces» es exactamente
+    // igual de ambiguo que la frase que se está corrigiendo, y el punto de la
+    // corrección es que quede claro cuál.
+    const cuerpo = this.#partida.state.bodies.get(r.sobre)
+    const como = cuerpo === undefined ? r.sobre : nameOf(cuerpo.body, this.#partida.state.phys)
+    return `dale, ${como} entonces`
+  }
+
+  /**
+   * CORTAR LO QUE ESTÉ EN EL AIRE. Lo llama cada turno nuevo del cuidador.
+   *
+   * **Cualquier turno, no sólo una corrección.** El documento habla de «una
+   * corrección del usuario», y distinguir una corrección de un cambio de tema
+   * pide entender la frase — que es justo lo que se estaba esperando. La regla
+   * que no necesita adivinar es la de arriba: un turno nuevo cambia el contexto
+   * con el que se pidió, así que la respuesta que venía ya no es sobre esto.
+   */
+  #cortarLoQueEsteEnElAire(): void {
+    const v = this.#enVuelo
+    if (v === undefined) return
+    this.#enVuelo = undefined
+    v.corte.abort()
+  }
+
+  /**
+   * LA FRONTERA: lo que volvió del proveedor se aplica ACÁ y en ningún otro lado.
+   *
+   * ─── Los tres portones, y ninguno es de lujo ────────────────────────────────
+   *
+   *   1. **correlación** — la respuesta tiene que ser de la consulta que sigue
+   *      viva, por llave Y por turno. Una respuesta tardía no puede pisar un
+   *      encargo más nuevo;
+   *   2. **`revisar` no empeora nunca** — devuelve la MISMA lectura por identidad
+   *      cuando la respuesta no valida, y ahí se descarta. La llave de contexto,
+   *      las firmas ofrecidas y el grado los vuelve a mirar él;
+   *   3. **una caída se dice** — con un `aviso`, que es la clase de «lo que no se
+   *      pudo, con su porqué». Un proveedor caído en silencio es indistinguible
+   *      de uno que contestó que no había nada, y eso es un falso éxito.
+   */
+  #aplicarLoQueLlego(tick: number): void {
+    if (this.#llegadas.length === 0) return
+    const llegadas = this.#llegadas
+    this.#llegadas = []
+    for (const x of llegadas) {
+      const v = this.#enVuelo
+      if (v === undefined || v.llave !== x.llave || v.turno !== x.turno) {
+        this.#descartadas++
+        continue
+      }
+      this.#enVuelo = undefined
+      if (x.falla !== undefined) {
+        this.#canal.decir(tick, 'aviso', 'no pude pensarlo mejor, sigo con lo que entendí')
+        continue
+      }
+      if (x.respuesta === undefined) {
+        this.#descartadas++
+        continue
+      }
+      const nueva = revisar(v.lectura, x.respuesta, this.#lexico, {
+        ofrecidas: v.ofrecidas,
+        sabeElCatalogo: this.#sabeElCatalogo,
+      })
+      // Identidad y no comparación de contenido: `revisar` promete devolver el
+      // mismo objeto cuando no aporta nada, y ése es su contrato.
+      if (nueva === v.lectura) {
+        this.#descartadas++
+        continue
+      }
+      this.#aplicadas++
+      this.#ultimaLectura = nueva
+      // «Lo pensé mejor» y no «el modelo dijo»: para el cuidador, lo que cambió
+      // es lo que ella entendió. Que la corrección vino de afuera queda en
+      // `ClausulaLeida.leidaPor`, que es donde se mide.
+      this.#canal.decir(tick, 'acuse', `lo pensé mejor: ${nueva.acuse}`)
+      const e = encargoDe(nueva)
+      if (e.metas.length === 0) continue
+      this.#encargo = EncargoEnCurso.nuevo(e, [x.turno], v.lectura.crudo, tick)
+      this.#ultimaPuesta = undefined
+    }
   }
 
   /**
@@ -443,7 +669,42 @@ export class Ordenes {
    * Y el cuerpo va en `sobre` porque es lo que hace de esta línea un dato y no una
    * frase: lo último con cuerpo es a lo que apunta «eso» en el turno siguiente.
    */
+  /**
+   * A QUÉ CUERPO VA LA INTENCIÓN QUE ESTÁ VOLANDO, si va a alguno.
+   *
+   * Sólo `ir` y `sostener`, que son los dos pasos que nombran un destino. Un
+   * `aplicar` nombra roles y un `esperar` no nombra nada: mirarlos daría una
+   * línea por cada cosa que la criatura toca, que es exactamente el ruido que
+   * este mecanismo evita.
+   */
+  #aDondeVa(): string | undefined {
+    const paso = this.#mente.estado.enVuelo
+    if (paso === undefined) return undefined
+    if (paso.k === 'ir' && paso.a.k === 'id') return paso.a.id
+    if (paso.k === 'sostener' && paso.que.k === 'id') return paso.que.id
+    return undefined
+  }
+
   despuesDelTick(): void {
+    // ─── LO QUE VA A BUSCAR SE NOMBRA, y por eso «el otro» puede existir ─────
+    //
+    // La medición que lo pidió: la charla sólo sabía nombrar lo que la criatura
+    // YA HABÍA AGARRADO, porque las únicas líneas con cuerpo eran los `agarró`.
+    // Un cuidador que dice «no ése, el otro tronco» está señalando algo del
+    // PISO, y de eso el log no sabía nada — así que la corrección no tenía a qué
+    // apuntar y el ejecutor de la referencia no servía para nada.
+    //
+    // La regla es la más barata que resuelve eso: **se nombra a dónde va**, no
+    // todo lo que se ve. Una línea por destino y no una por cuerpo a la vista:
+    // lo que el cuidador corrige es la decisión, no el paisaje.
+    const va = this.#aDondeVa()
+    if (va !== undefined && va !== this.#yendoA) {
+      this.#yendoA = va
+      const c = this.#partida.state.bodies.get(va)
+      const como = c === undefined ? va : nameOf(c.body, this.#partida.state.phys)
+      this.#canal.decir(this.#partida.state.tick, 'progreso', `va por ${como}`, { sobre: va })
+    }
+
     const s = this.#partida.state
     const ahora = s.actors.get(this.#quien)?.holding ?? []
     if (ahora.length === this.#manosAntes.length && ahora.every((id, i) => this.#manosAntes[i] === id)) {
@@ -467,9 +728,14 @@ export class Ordenes {
    * que viene. Con el orden al revés se pierde un tick por cláusula.
    */
   antesDelTick(tick: number): void {
+    // LA FRONTERA, y va primero: lo que volvió del proveedor puede CAMBIAR el
+    // encargo, así que aplicarlo después de mirarlo sería perseguir un tick la
+    // meta vieja. Va acá y no en `despuesDelTick` por lo mismo que `vivir` hace
+    // pensar antes del paso: la criatura actúa sobre el mundo que vio.
+    this.#aplicarLoQueLlego(tick)
     const e = this.#encargo
     if (e === undefined) return
-    const quiere = e.ahora(this.#yaEstaCumplida, tick)
+    const quiere = e.ahora(this.#yaEstaCumplida, tick, this.#conQueSeCumple)
     if (quiere === undefined) {
       this.#canal.decir(tick, 'listo', 'listo')
       this.#encargo = undefined
@@ -506,10 +772,15 @@ export class Ordenes {
     // Una `Mente` nueva y no un setter: `drive` es de sólo lectura en
     // `MenteOptions`, y la memoria —lo que aprendió— se pasa entera, así que lo
     // único que se reinicia es la escalera. Es lo que hace el demo del Hito 6.
+    // Y CUÁL, si el cuidador lo señaló. Es el último eslabón de la corrección:
+    // la referencia sale de «no ése, el otro», se anota en el nodo del encargo, y
+    // acá cruza a la mente. Sin esta línea el `sobre` se guardaba y no lo leía
+    // nadie — que es donde estaba cortado el camino.
+    const sobre = e.senaladoDelPendiente()
     this.#mente = new Mente({
       actor: this.#quien,
       memoria: this.#memoria,
-      drive: { meta: quiere, peso: 1, desdeTick: tick },
+      drive: { meta: quiere, peso: 1, desdeTick: tick, ...(sobre === undefined ? {} : { sobre }) },
     })
     this.#mentes.set(this.#quien, this.#mente)
   }

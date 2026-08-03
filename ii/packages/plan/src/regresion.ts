@@ -507,8 +507,9 @@ function elegirCuerpo(
   v: VistaDelPlan,
   enMano: readonly BodyId[],
   excluidos: readonly BodyId[],
+  preferido?: BodyId,
 ): BodyView | undefined {
-  return candidatosPara(clausulas, extra, v, enMano, excluidos).mejor
+  return candidatosPara(clausulas, extra, v, enMano, excluidos, preferido).mejor
 }
 
 /**
@@ -566,6 +567,15 @@ function candidatosPara(
   v: VistaDelPlan,
   enMano: readonly BodyId[],
   excluidos: readonly BodyId[],
+  /**
+   * EL QUE EL CUIDADOR SEÑALÓ. Gana **entre los que cumplen**, no en vez de ellos.
+   *
+   * Va acá adentro y no como un filtro afuera por una razón: si el señalado ya no
+   * está —se lo llevó el agua, lo consumió una ley— un filtro dejaría a la
+   * criatura sin candidatos y sin plan, y una referencia vieja no puede costar
+   * eso. Como preferencia, lo peor que pasa es que se elija otro.
+   */
+  preferido?: BodyId,
 ): { readonly mejor: BodyView | undefined; readonly cuantos: number } {
   const lector = (b: BodyView, id: QualityId): number => v.q(b, id)
   const filtro = comoPredicados(extra.filtro)
@@ -581,6 +591,8 @@ function candidatosPara(
   let mejorEnMano = false
   let mejorD = 0
   let cuantos = 0
+  /** El señalado, si pasó TODOS los filtros. Se decide al final. */
+  let elSenalado: BodyView | undefined
 
   const mirar = (b: BodyView): void => {
     // La criatura no se presta como material: el único rol que puede jugar es el
@@ -603,6 +615,10 @@ function candidatosPara(
     // lectura de terreno por candidato, y las cláusulas ya descartaron casi todo.
     if (!cumpleCelda(extra.celda, b.at, v)) return
     cuantos++
+    // Se anota DESPUÉS de los filtros: señalar algo que no cumple no lo vuelve
+    // candidato. Y no corta el barrido, porque `cuantos` tiene que seguir siendo
+    // cuántos hay — es lo que distingue «no hay ninguno» de «hay y elegí uno».
+    if (b.id === preferido) elSenalado = b
     const suyoEnMano = enMano.includes(b.id)
     const d = distancia(b.at, v.self.at)
     if (mejor === undefined || ganaA(suyoEnMano, d, b.id, mejorEnMano, mejorD, mejor.id)) {
@@ -614,7 +630,10 @@ function candidatosPara(
 
   for (const b of v.self.holding) mirar(b)
   for (const b of v.see([...testsDe(clausulas), ...(extra.filtro ?? [])])) mirar(b)
-  return { mejor, cuantos }
+  // El señalado gana al desempate por cercanía, que es exactamente lo que una
+  // corrección viene a decir: «ése no, el otro» sólo tiene sentido si el otro
+  // puede ganarle al que estaba más a mano.
+  return { mejor: elSenalado ?? mejor, cuantos }
 }
 
 /** Los tres criterios en una sola comparación: separarlos deja ventanas de empate. */
@@ -1709,7 +1728,7 @@ function expandir(
   // Va ANTES de regresar y **no en lugar de**: el nodo que sale compite por costo
   // con los de las demás vías, que es cómo elige esta búsqueda. Ver
   // `agarrarLoQueYaHay`.
-  const directo = clausulas === undefined ? undefined : agarrarLoQueYaHay(nodo, clausulas, v)
+  const directo = clausulas === undefined ? undefined : agarrarLoQueYaHay(nodo, clausulas, v, g.sobre)
 
   // ── ¿Lo cumple algo que veo? ─────────────────────────────────────────────
   if (nodo.marcos.length > 0 && clausulas !== undefined) {
@@ -1719,7 +1738,12 @@ function expandir(
       const ref = tope?.roles[rol]
       if (ref !== undefined && ref.k === 'id' && !yaLigados.includes(ref.id)) yaLigados.push(ref.id)
     }
-    const cuerpo = elegirCuerpo(clausulas, tope?.faltan[0] ?? SIN_EXTRA, v, nodo.enMano, yaLigados)
+    // El señalado también pesa acá, y no sólo en `agarrarLoQueYaHay`: «asá EL
+    // pescado» no se resuelve agarrando nada —el pescado ya está en la mano—, se
+    // resuelve eligiéndolo para el rol `comida` de la cocción. Sin esta línea la
+    // ligadura diferida llegaba hasta el objetivo y se moría en el reparto de
+    // roles, que es donde de verdad se decide cuál se cocina.
+    const cuerpo = elegirCuerpo(clausulas, tope?.faltan[0] ?? SIN_EXTRA, v, nodo.enMano, yaLigados, g.sobre)
     if (cuerpo !== undefined && tope !== undefined) {
       const pedido = tope.faltan[0]
       if (pedido === undefined) throw new Error(`el marco de «${tope.establece}» no espera ningún rol`)
@@ -1790,6 +1814,8 @@ function agarrarLoQueYaHay(
   nodo: NodoAbierto,
   clausulas: readonly Predicado[],
   v: VistaDelPlan,
+  /** El cuerpo que el cuidador señaló, si señaló uno. Ver `GoalNode.sobre`. */
+  senalado?: BodyId,
 ): NodoAbierto | undefined {
   // ─── SÓLO LA META, NUNCA UN ROL — Y LA PRIMERA VERSIÓN NO LO DISTINGUÍA ───
   //
@@ -1811,7 +1837,7 @@ function agarrarLoQueYaHay(
 
   // `cumpleCuerpo` ya sabe contestar un `sostiene` sobre un cuerpo —mira `b.tags`
   // y las condiciones, las dos sobre el mismo— así que la cláusula viaja tal cual.
-  const cuerpo = elegirCuerpo([sola, SE_PUEDE_LEVANTAR], SIN_EXTRA, v, nodo.enMano, nodo.gastados)
+  const cuerpo = elegirCuerpo([sola, SE_PUEDE_LEVANTAR], SIN_EXTRA, v, nodo.enMano, nodo.gastados, senalado)
   // Ni una fuente ni una criatura. Las dos exclusiones las puso una corrida y no
   // un razonamiento: con la primera faltando, el plan era llevarse el banco de
   // pescado; con la segunda, `ir(beto-cuerpo) → sostener(beto-cuerpo)`, o sea

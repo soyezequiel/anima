@@ -190,8 +190,48 @@ function trozosDe(texto: string, esVerbo: (palabra: string) => boolean): readonl
 const COCIDO = 'holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)'
 
 /** Tener algo de esta clase en la mano. La única forma de pedir un objeto. */
-function tener(tag: Tag): string {
-  return `holding(tag:${tag})`
+function tener(tag: Tag, cuantos = 1): string {
+  // La forma canónica de `textoDe`: con uno no se escribe la cuenta, porque uno
+  // es el valor por omisión y `holding(tag:x)` y `holding(tag:x,count>=1)` piden
+  // lo mismo. Dos escrituras de un predicado serían dos entradas en el índice.
+  return cuantos > 1 ? `holding(tag:${tag},count>=${String(cuantos)})` : `holding(tag:${tag})`
+}
+
+/**
+ * LOS NÚMEROS QUE UN CUIDADOR ESCRIBE, y por qué la lista es corta.
+ *
+ * «Juntá DOS troncos» perdía el dos en silencio: la frase salía
+ * `holding(tag:fibroso)` y el pedido se daba por cumplido con uno. Es la mitad
+ * del criterio del C3 que faltaba poder siquiera decir.
+ *
+ * Hasta cinco y en letras, más los dígitos. Es conocimiento humano escrito a
+ * mano, como el resto del puente, y se corta donde se corta porque **un pedido
+ * con un número grande no es un pedido**: «juntá cuarenta troncos» no es una
+ * frase que alguien le diga a una criatura que lleva cuatro cosas en la mano.
+ * Los dígitos entran igual para no discutir con quien escriba «2».
+ */
+const CARDINALES: ReadonlyMap<string, number> = new Map([
+  ['dos', 2],
+  ['tres', 3],
+  ['cuatro', 4],
+  ['cinco', 5],
+])
+
+/**
+ * CUÁNTOS PIDE ESTA CLÁUSULA. `undefined` si no dice ninguno.
+ *
+ * El mayor, no el primero: si alguien escribe dos números en la misma cláusula
+ * —«dos o tres troncos»— pedir el mayor es la lectura prudente. Y sólo cuenta de
+ * dos para arriba: «un palo» es uno y uno es lo que ya se pedía.
+ */
+function cuantosPide(tokens: readonly string[]): number | undefined {
+  let mayor: number | undefined
+  for (const t of tokens) {
+    const n = CARDINALES.get(t) ?? (/^\d+$/.test(t) ? Number(t) : undefined)
+    if (n === undefined || n < 2) continue
+    if (mayor === undefined || n > mayor) mayor = n
+  }
+  return mayor
 }
 
 /**
@@ -233,6 +273,7 @@ function componer(
   phys: Physics,
   verbo: VerboId,
   objetos: readonly Denota[],
+  cuantos?: number,
 ): string | undefined {
   // ─── EL ATAJO DE LA META, y por qué NO es global ─────────────────────────
   //
@@ -262,7 +303,11 @@ function componer(
     case 'buscar': {
       if (sustancia?.k !== 'sustancia') return undefined
       const t = tagDe(phys, sustancia.id)
-      return t === undefined ? undefined : tener(t)
+      // La cantidad sólo vale para los verbos de CONSEGUIR y sólo sobre un
+      // «tenerlo»: «hacé dos fuegos» no es `emitsPower>0` dos veces —el fuego es
+      // un estado del mundo, no una cosa que se junte— así que el atajo de la
+      // meta de arriba la ignora a propósito.
+      return t === undefined ? undefined : tener(t, cuantos)
     }
 
     // ── Pescar, que es la palabra que el documento usó de ejemplo para decir
@@ -454,9 +499,24 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
     // La referencia se busca ANTES de emparejar, por lo mismo que la polaridad:
     // «traelo» es un verbo con objeto, y si se empareja primero se pierde el
     // enclítico. `conoceElVerbo` mira el léxico para que «pelo» no cuente.
+    // ─── LA MÁS ESPECÍFICA GANA, Y ANTES GANABA LA PRIMERA ──────────────────
+    //
+    // Medido sobre la frase del criterio: «no ÉSE, el OTRO» salía `demostrativa`
+    // y resolvía a **ése** — o sea que la corrección apuntaba a lo que se estaba
+    // rechazando. El demostrativo va antes en la frase y el barrido cortaba ahí.
+    //
+    // «El otro» sólo aparece cuando alguien está distinguiendo entre dos, así que
+    // es más específico que un «ése» y manda. Y se juntan DOS cosas y no una: la
+    // CLASE de la cláusula —que puede ser `discursiva`, y de ahí sale la meta
+    // recuperada— y a qué CUERPO apunta, que la discursiva no dice. «Hacé lo que
+    // te pedí con el otro» necesita las dos.
     let clase: ClaseDeReferencia = 'ninguna'
-    for (let i = 0; i < trozo.tokens.length && clase === 'ninguna'; i++) {
-      clase = referenciaDe(trozo.tokens, i, (p) => lex.entradas.has(p))
+    let alCuerpo: ClaseDeReferencia = 'ninguna'
+    for (let i = 0; i < trozo.tokens.length; i++) {
+      const c = referenciaDe(trozo.tokens, i, (p) => lex.entradas.has(p))
+      if (c === 'ninguna') continue
+      if (masEspecifica(c, clase)) clase = c
+      if (c !== 'discursiva' && masEspecifica(c, alCuerpo)) alCuerpo = c
     }
     for (let i = 0; i < trozo.tokens.length; ) {
       // Un verbo con enclítico —«traelo»— no está en el léxico tal cual, así que
@@ -498,7 +558,10 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
     // cero: «traé un palo» tiene un `un` que no está en ningún léxico y la
     // frase se entiende perfecto.
     const confianza = vistos === 0 ? 0 : suma / vistos
-    const propia = verbo === undefined ? firmaSuelta(objetos) : componer(opciones.phys, verbo, objetos)
+    const propia =
+      verbo === undefined
+        ? firmaSuelta(objetos)
+        : componer(opciones.phys, verbo, objetos, cuantosPide(trozo.tokens))
     // ─── «HACÉ LO QUE TE PEDÍ»: la meta la trae el HISTORIAL ────────────────
     //
     // Sólo cuando la frase no pudo componer una propia. Si dijo «hacé fuego y lo
@@ -529,7 +592,9 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
             referencia: {
               clase,
               ...(() => {
-                const r = opciones.memoria === undefined ? undefined : aRef(clase, opciones.memoria)
+                // Con `alCuerpo` y no con `clase`: la discursiva no señala un
+                // cuerpo, y si la frase además dice «el otro», ése es el cuerpo.
+                const r = opciones.memoria === undefined ? undefined : aRef(alCuerpo, opciones.memoria)
                 return r === undefined ? {} : { ref: r }
               })(),
             },
@@ -546,6 +611,28 @@ export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
     acuse: acusar(clausulas),
     confianza: clausulas.reduce((a, c) => (c.confianza < a ? c.confianza : a), 1),
   }
+}
+
+/**
+ * DE MÁS ESPECÍFICA A MENOS. El orden es el argumento entero.
+ *
+ * `discursiva` señala un turno y las demás un cuerpo, así que no compiten por lo
+ * mismo; está arriba porque cuando aparece, es lo que la frase pide. Entre las de
+ * cuerpo: «el otro» distingue entre dos, un demostrativo señala el más saliente,
+ * un enclítico lo arrastra del verbo, y un artículo definido es el más débil de
+ * todos —ni siquiera se resuelve—.
+ */
+const ESPECIFICIDAD: readonly ClaseDeReferencia[] = [
+  'discursiva',
+  'otra',
+  'demostrativa',
+  'pronominal',
+  'definida',
+  'ninguna',
+]
+
+function masEspecifica(a: ClaseDeReferencia, b: ClaseDeReferencia): boolean {
+  return ESPECIFICIDAD.indexOf(a) < ESPECIFICIDAD.indexOf(b)
 }
 
 /**

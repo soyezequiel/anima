@@ -195,6 +195,20 @@ describe('C3 · el encargo es durable y tiene grafo', () => {
 
     const g = await cargar(d, QUIEN)
     const claves = Object.keys((g as NonNullable<typeof g>).encargo as object).sort()
-    expect(claves).toEqual(['desdeTick', 'estado', 'hechos', 'id', 'nodos', 'texto', 'turnos'])
+    // La lista creció con `revisiones` cuando entró la corrección multi-turno, y
+    // el pin se actualiza con lo que afirmaba escrito al lado: **ninguna de estas
+    // claves es el plan**. Lo que se guarda es qué se pidió, qué parte de eso el
+    // mundo probó, y qué correcciones le hicieron — todo dato del PEDIDO. La
+    // actividad en vuelo se replanifica contra el mundo que quedó.
+    expect(claves).toEqual([
+      'desdeTick',
+      'estado',
+      'hechos',
+      'id',
+      'nodos',
+      'revisiones',
+      'texto',
+      'turnos',
+    ])
   })
 })

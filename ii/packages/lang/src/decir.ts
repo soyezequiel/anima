@@ -119,6 +119,20 @@ function unaCondicion(nombre: string, op: string): string {
 }
 
 /**
+ * LOS NÚMEROS CHICOS, EN LETRAS.
+ *
+ * Hasta cinco y después el dígito. No es cosmética: el panel dice «tener dos
+ * cosas fibrosas» y ahí «2» se leería como un dato de depuración al lado de una
+ * frase. Arriba de cinco un pedido con número redondo es raro, y la lista larga
+ * sería una tabla de castellano que envejece.
+ */
+const EN_LETRAS: readonly string[] = ['', 'una', 'dos', 'tres', 'cuatro', 'cinco']
+
+function enCifras(n: number): string {
+  return EN_LETRAS[n] ?? String(n)
+}
+
+/**
  * UNA META EN CASTELLANO, ARMADA POR PARTES.
  *
  * Sale una frase corta y sin números: «algo carnoso y poco venenoso». Se lee
@@ -129,9 +143,14 @@ export function enPalabras(p: Predicado): string {
     case 'sostiene': {
       const tag = PALABRA_DE_TAG[p.tag] ?? p.tag
       const condiciones = (p.tests ?? []).map((t) => unaCondicion(t.q, t.op))
+      // LA CANTIDAD VA ADELANTE, que es donde va en castellano: «dos cosas
+      // fibrosas» y no «cosas fibrosas, dos». Y con uno no se dice: «algo» ya
+      // es uno, y «una cosa fibrosa» sonaría a que el uno importa.
+      const cuantos = p.cuantos ?? 1
+      const cabeza = cuantos > 1 ? `${enCifras(cuantos)} cosas ${tag}s` : `algo ${tag}`
       // «tener» y no «sostener»: el predicado se llama `sostiene` porque mira
       // `holding`, pero nadie dice «sostengo un pescado».
-      const cosa = condiciones.length === 0 ? `algo ${tag}` : `algo ${tag} y ${condiciones.join(' y ')}`
+      const cosa = condiciones.length === 0 ? cabeza : `${cabeza} y ${condiciones.join(' y ')}`
       return `tener ${cosa}`
     }
     case 'cualidad':

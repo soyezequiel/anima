@@ -113,7 +113,34 @@ export type PredicateSignature = string
 export type Predicado =
   | { readonly k: 'cualidad'; readonly test: QualityTest }
   | { readonly k: 'geometria'; readonly f: string; readonly op: Comparador; readonly v: number }
-  | { readonly k: 'sostiene'; readonly tag: string; readonly tests?: readonly QualityTest[] }
+  | {
+      readonly k: 'sostiene'
+      readonly tag: string
+      readonly tests?: readonly QualityTest[]
+      /**
+       * CUÁNTOS HACEN FALTA. Un mínimo, y por omisión uno.
+       *
+       * ─── POR QUÉ ESTO NO EXISTÍA, Y QUÉ SE PERDÍA ─────────────────────────
+       *
+       * `cumple` contesta con un `some` sobre la mano: **la forma entera es
+       * existencial**. «Juntá dos troncos» se leía `holding(tag:fibroso)` y el
+       * DOS se perdía en silencio — el pedido se daba por cumplido con uno.
+       *
+       * Medido antes de agregarlo: `count>=2` daba `undefined` en `interpretar`,
+       * o sea que no había forma de escribirlo ni de rechazarlo.
+       *
+       * ─── SÓLO MÍNIMOS, y es una decisión ───────────────────────────────────
+       *
+       * `count<=1` sería un TOPE, o sea una restricción, y una restricción no es
+       * un objetivo: `objetivosDe` ya rechaza las prohibiciones con ese mismo
+       * argumento —«todavía no sé guardarme una prohibición»— porque `GoalNode`
+       * no tiene signo y el planificador iría a cumplirla. Un máximo entra el día
+       * que haya dónde ponerlo.
+       *
+       * Se guarda normalizado a mínimo: `count>1` se lee y se escribe `count>=2`.
+       */
+      readonly cuantos?: number
+    }
 
 export type Comparador = '>=' | '<=' | '>' | '<'
 
@@ -156,6 +183,27 @@ export interface GoalNode {
   readonly after: readonly GoalId[]
   /** Referencia diferida al rendimiento de otro nodo. */
   readonly binds?: { readonly slot: string; readonly from: GoalId }
+  /**
+   * CUÁL, cuando alguien lo señaló. La identidad del ADR 0082, en el objetivo.
+   *
+   * ─── El defecto que cierra, medido ──────────────────────────────────────────
+   *
+   * «Traé el otro tronco» y «traé un tronco» producían **el mismo objetivo**: una
+   * firma existencial, `holding(tag:fibroso)`. La referencia se resolvía —el
+   * lector saca un `Ref` por id— y ahí se moría, porque no había dónde ponerla.
+   * El planificador elegía el más cercano y la corrección del cuidador no movía
+   * nada. Es el ADR 0082 de Ánima I dicho al revés: *«la desaparición del objeto
+   * no autoriza a sustituirlo por otro del mismo tipo»* — y sustituirlo por el
+   * más cercano tampoco.
+   *
+   * ─── Es una PREFERENCIA y no un filtro, y la diferencia importa ─────────────
+   *
+   * El cuerpo señalado gana **entre los que cumplen**, no en vez de ellos. Si el
+   * señalado ya no está, o no se puede levantar, el plan sigue con el que sirva
+   * en vez de quedarse sin plan: una referencia vieja no puede dejar a la
+   * criatura sin nada que hacer.
+   */
+  readonly sobre?: BodyId
   /** De dónde salió: para el «por qué» y para no premiar lo que nadie pidió. */
   readonly porque: string
 }
