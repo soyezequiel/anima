@@ -33,6 +33,15 @@
         border: 1px solid var(--linea); border-radius: 8px; display: block;
         image-rendering: pixelated; max-width: 100%; height: auto;
       }
+      /* ─── EL SOBRANTE VA REPARTIDO, NO TODO DE UN LADO ────────────────────
+         El encuadre se calcula en celdas enteras (`el-encuadre.ts`), así que casi
+         siempre sobra un pedazo de celda a lo ancho. Eso es inevitable y chico.
+         Lo que no es chico es el otro caso: cuando el tope de celdas frena al
+         mapa antes que la ventana —una pantalla muy grande en zoom ×1— sobra de
+         verdad, y todo junto a la derecha se lee como que algo se rompió. Que es
+         exactamente el defecto que este cambio vino a arreglar. */
+      #columna { display: flex; flex-direction: column; align-items: center; }
+      #columna > h1, #columna > p.sub { align-self: flex-start; }
       /* ─── PASARLE EL MOUSE POR ARRIBA ────────────────────────────────────
          El porqué está en `main.ts`, arriba de `conCartel`: el mapa son manchas
          de doce píxeles y saber qué era una costaba un click más un viaje del
@@ -277,7 +286,11 @@
     </style>
   </head>
   <body>
-    <div>
+    <!-- El `id` no es para estilar: es lo que `main.ts` MIDE para saber cuánto
+         mundo entra. Tiene que ser la celda de la grilla y no `.mapa-caja`, que
+         es `inline-block` y por lo tanto mide lo que mide el mapa — preguntarle
+         a ésa cuánto lugar hay sería preguntarle al mapa cuánto quiere medir. -->
+    <div id="columna">
       <h1>Ánima II</h1>
       <p class="sub">
         El mundo corriendo. Nadie plantó nada: lo que hay alrededor es lo que la semilla dice que hay.

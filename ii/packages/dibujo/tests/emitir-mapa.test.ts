@@ -36,7 +36,15 @@ import { CELDA, mapaDe, type Pintado } from '../src/mapa.js'
 
 const PHYS: Physics = buildSeedPhysics()
 const SEMILLA = 20260727n
-const RADIO = 7
+/**
+ * EL ENCUADRE DE LA MUESTRA, apaisado como el del juego.
+ *
+ * Era `7` a secas —quince por quince— y ahora son dos números porque el mapa
+ * dejó de ser cuadrado: en pantalla el encuadre lo decide el lugar que hay (ver
+ * `juego/src/el-encuadre.ts`). La muestra que este archivo emite tiene que
+ * parecerse a lo que se ve, no a lo que era más fácil de escribir.
+ */
+const RADIO = { x: 13, y: 6 }
 const SALIDA = fileURLToPath(new URL('../../../docs/visor/mapa.html', import.meta.url))
 
 // ─── Los mismos helpers que `world/tests/mundo-minimo.ts`, que no se puede
@@ -100,7 +108,7 @@ function mundoInicial(): WorldState {
 }
 
 function svgDe(p: Pintado): string {
-  let s = `<svg viewBox="0 0 ${String(p.lado)} ${String(p.lado)}" width="${String(p.lado)}" height="${String(p.lado)}" shape-rendering="crispEdges">`
+  let s = `<svg viewBox="0 0 ${String(p.ancho)} ${String(p.alto)}" width="${String(p.ancho)}" height="${String(p.alto)}" shape-rendering="crispEdges">`
   for (let y = 0; y < p.px.length; y++) {
     const fila = p.px[y]
     if (fila === undefined) continue
@@ -133,7 +141,8 @@ describe('el mapa de una partida', () => {
     //
     // Que se ve bien no lo firma nadie más que el usuario. Lo que sí se puede
     // afirmar es que hay algo que mirar y que no es un rectángulo de un color.
-    expect(pintado.lado).toBe((2 * RADIO + 1) * CELDA)
+    expect(pintado.ancho).toBe((2 * RADIO.x + 1) * CELDA)
+    expect(pintado.alto).toBe((2 * RADIO.y + 1) * CELDA)
 
     const colores = new Set<string>()
     for (const fila of pintado.px) for (const c of fila) colores.add(c)
@@ -143,7 +152,9 @@ describe('el mapa de una partida', () => {
     // probaría nada. Éste es el número que hace que la prueba valga.
     const enElArea = [...e.cuerpos.values()].filter((c) => c.heldBy === undefined).length
     console.log(`\n─── EL MAPA ───`)
-    console.log(`  celdas: ${String(2 * RADIO + 1)}×${String(2 * RADIO + 1)} · ${String(pintado.lado)}px`)
+    console.log(
+      `  celdas: ${String(2 * RADIO.x + 1)}×${String(2 * RADIO.y + 1)} · ${String(pintado.ancho)}×${String(pintado.alto)}px`,
+    )
     console.log(`  cuerpos en el área visible: ${String(enElArea)}`)
     console.log(`  colores distintos en pantalla: ${String(colores.size)}`)
     console.log(`  reloj: ${reloj.phase}\n`)
@@ -168,7 +179,7 @@ dios decretó. Nadie eligió qué hay acá. La celda con marco claro es la criat
 <code>carne</code>, una parte, bloque, o sea indistinguible de un trozo de carne sin ese realce.</p>
 <div class="marco">${svgDe(pintado)}</div>
 <dl>
-<dt>celdas</dt><dd>${String(2 * RADIO + 1)}×${String(2 * RADIO + 1)}, de ${String(CELDA)}px</dd>
+<dt>celdas</dt><dd>${String(2 * RADIO.x + 1)}×${String(2 * RADIO.y + 1)}, de ${String(CELDA)}px</dd>
 <dt>cuerpos visibles</dt><dd>${String(enElArea)}</dd>
 <dt>colores en pantalla</dt><dd>${String(colores.size)}</dd>
 <dt>reloj</dt><dd>${reloj.phase}</dd>

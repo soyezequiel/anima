@@ -133,7 +133,7 @@ describe('(a) el mapa: las tres guardadas más `sheltered`', () => {
 // ─── (b) El encuadre ────────────────────────────────────────────────────────
 
 describe('(b) qué entra en el área visible', () => {
-  it('el área es un CUADRADO, con (2·radio+1)² celdas', () => {
+  it('el área es una CAJA, con (2·radio+1)² celdas', () => {
     // Y no un círculo, porque la distancia del mundo es Chebyshev: tocar algo es
     // estar a 1 en el máximo de las dos coordenadas. Una vista circular mostraría
     // celdas que no se pueden alcanzar y escondería celdas que sí — la forma de lo
@@ -141,6 +141,39 @@ describe('(b) qué entra en el área visible', () => {
     for (const r of [0, 1, 3, 5]) {
       expect(escena(base(), r).celdas.length).toBe((2 * r + 1) * (2 * r + 1))
     }
+  })
+
+  it('y la caja puede ser APAISADA: los dos lados no tienen por qué medir igual', () => {
+    // Lo que se relajó cuando el mapa tuvo una pantalla adelante. El cuadrado
+    // nunca fue una propiedad del mundo —la distancia sigue siendo Chebyshev, o
+    // sea que el borde sigue siendo recto—: era una comodidad del primer
+    // `escenaDe`. Y costaba caro: en una ventana apaisada, un cuadrado sólo puede
+    // crecer hasta lo que da el lado corto, así que sobraba media pantalla.
+    const e = escenaDe(base(), CENTRO, { x: 5, y: 2 })
+    expect(e.celdas.length).toBe(11 * 5)
+    expect(e.radio).toEqual({ x: 5, y: 2 })
+
+    // Y el encuadre RECORTA por el eje que corresponde: lo que está lejos a lo
+    // ancho entra, y lo que está a la misma distancia pero a lo alto, no. Sin
+    // esto, un `seVe` que mirara un solo radio pasaría todos los tests de arriba.
+    const w = mundo({
+      phys: PHYS,
+      bodies: [
+        enElPiso(cuerpo('ancho', 'madera', 1), { x: CENTRO.x + 4, y: CENTRO.y }),
+        enElPiso(cuerpo('alto', 'madera', 1), { x: CENTRO.x, y: CENTRO.y + 4 }),
+      ],
+    })
+    const v = escenaDe(w, CENTRO, { x: 5, y: 2 })
+    expect(v.cuerpos.has('ancho')).toBe(true)
+    expect(v.cuerpos.has('alto')).toBe(false)
+  })
+
+  it('un número pelado sigue queriendo decir CUADRADO', () => {
+    // Es lo que deja que los bancos, los ataques y los criterios sigan pidiendo
+    // `escenaDe(w, foco, 7)`: para ellos la forma del encuadre no es parte de lo
+    // que están afirmando. El único que tiene una opinión sobre la forma es el
+    // que dibuja en una pantalla.
+    expect(escenaDe(base(), CENTRO, 3).radio).toEqual({ x: 3, y: 3 })
   })
 
   it('un cuerpo de afuera no entra, y el de adentro sí', () => {

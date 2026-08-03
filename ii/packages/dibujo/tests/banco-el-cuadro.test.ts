@@ -34,7 +34,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { buildSeedPhysics, type FormId, type Physics } from '@anima/physics'
-import type { Escena, RenderDescriptor } from '@anima/world'
+import type { Escena, RadioDeEscena, RenderDescriptor } from '@anima/world'
 
 import { glifoDe, pintar } from '../src/componer.js'
 import { CELDA, mapaDe } from '../src/mapa.js'
@@ -71,27 +71,34 @@ function cuerpo(i: number, forma: FormId, partes: number): RenderDescriptor {
   }
 }
 
-/** Una escena de mentira con `cuantos` cuerpos repartidos por el área visible. */
-function escenaCon(cuantos: number, radio: number): Escena {
+/**
+ * Una escena de mentira con `cuantos` cuerpos repartidos por el área visible.
+ *
+ * `radio` acepta un número —el cuadrado de siempre— o los dos ejes, que es lo
+ * que pide una pantalla apaisada desde que el encuadre tiene su forma.
+ */
+function escenaCon(cuantos: number, radio: number | RadioDeEscena): Escena {
+  const r: RadioDeEscena = typeof radio === 'number' ? { x: radio, y: radio } : radio
   const celdas = []
-  for (let y = -radio; y <= radio; y++) {
-    for (let x = -radio; x <= radio; x++) {
+  for (let y = -r.y; y <= r.y; y++) {
+    for (let x = -r.x; x <= r.x; x++) {
       celdas.push({ at: { x, y }, wet: (x + y) % 3 === 0 ? 0.7 : 0.2, oxygen: 0.2, temperature: 20, sheltered: 0 })
     }
   }
   const cuerpos = new Map<string, { d: RenderDescriptor }>()
-  const lado = 2 * radio + 1
+  const ancho = 2 * r.x + 1
+  const alto = 2 * r.y + 1
   const formas: FormId[] = ['vara', 'hebra', 'bloque', 'malla', 'filete', 'grano']
   for (let i = 0; i < cuantos; i++) {
     const d = cuerpo(i, formas[i % formas.length] ?? 'bloque', (i % 6) + 1)
-    const at = { x: (i % lado) - radio, y: (Math.trunc(i / lado) % lado) - radio }
+    const at = { x: (i % ancho) - r.x, y: (Math.trunc(i / ancho) % alto) - r.y }
     cuerpos.set(`c${String(i)}`, { d: { ...d, at } })
   }
   return {
     v: 1,
     tick: 0,
     foco: { x: 0, y: 0 },
-    radio,
+    radio: r,
     celdas,
     cuerpos,
     actores: [],
@@ -210,5 +217,54 @@ describe('el banco del cuadro', () => {
     // 81 y 625 celdas, cada una de CELDA×CELDA píxeles. El suelo pinta TODAS.
     expect(chico, 'el mapa chico no pintó nada').toBe(81 * CELDA * CELDA)
     expect(grande, 'el mapa grande no pintó nada').toBe(625 * CELDA * CELDA)
+  })
+
+  // ─── EL ENCUADRE APAISADO: de dónde sale `TOPE_DE_CELDAS` ─────────────────
+  //
+  // El mapa dejó de ser cuadrado: ahora tiene la forma de la ventana, y quién
+  // decide cuántas celdas entran es `juego/src/el-encuadre.ts`. Ese archivo lleva
+  // un tope, y el tope **es este banco**: sin una medición al lado sería un
+  // número inventado que nadie va a poder revisar.
+  //
+  // Los tres casos que hacen falta para justificarlo:
+  //
+  //   · el cuadrado viejo (225), que es contra lo que se compara;
+  //   · la pantalla de la que salió el pedido —1900×900, zoom ×2— que da 27×13;
+  //   · el tope mismo, que es el peor caso que el juego se permite pedir.
+  it('EL ENCUADRE APAISADO, y qué cuesta el tope que el juego se permite', () => {
+    const casos: { nombre: string; r: number | RadioDeEscena }[] = [
+      { nombre: 'el cuadrado viejo (15×15)', r: 7 },
+      { nombre: 'pantalla ancha ×2 (27×13)', r: { x: 13, y: 6 } },
+      { nombre: 'el tope (37×19)', r: { x: 18, y: 9 } },
+    ]
+    console.log('\n─── EL ENCUADRE APAISADO ───')
+    console.log('  celdas   ms/cuadro   encuadre')
+    const medidas: { celdas: number; ms: number }[] = []
+    for (const { nombre, r } of casos) {
+      const e = escenaCon(10, r)
+      const ms = minMs(20, () => {
+        mapaDe(e, PHYS, RELOJ)
+      })
+      medidas.push({ celdas: e.celdas.length, ms })
+      console.log(`  ${String(e.celdas.length).padStart(6)}   ${ms.toFixed(2).padStart(9)}   ${nombre}`)
+    }
+    const tope = medidas[medidas.length - 1]
+    console.log(`\n  el techo del cuadro: ${String(TECHO_DEL_CUADRO_MS)} ms`)
+    if (CONTRA_EL_RELOJ) {
+      expect(tope?.ms, 'el tope de celdas del juego no entra en el presupuesto del cuadro').toBeLessThan(
+        TECHO_DEL_CUADRO_MS,
+      )
+    } else {
+      console.log(`  ${NO_SE_AFIRMA}\n`)
+    }
+
+    // Y lo estructural, que se afirma sin mirar el reloj: el encuadre apaisado
+    // tiene la FORMA que se le pidió. Si `mapaDe` volviera a dar un cuadrado
+    // —cosa que un `radio.x` mal leído haría en silencio— esto se pone rojo.
+    const p = mapaDe(escenaCon(0, { x: 13, y: 6 }), PHYS, RELOJ)
+    expect(p.ancho).toBe(27 * CELDA)
+    expect(p.alto).toBe(13 * CELDA)
+    expect(p.px.length).toBe(p.alto)
+    expect(p.px[0]?.length).toBe(p.ancho)
   })
 })

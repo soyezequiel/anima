@@ -40,6 +40,58 @@ test('en pantalla ancha, el mapa y el panel van lado a lado', async ({ page }) =
   expect(await desborda(page)).toBe(false)
 })
 
+// ─── EL MAPA OCUPA EL LUGAR QUE HAY ─────────────────────────────────────────
+//
+// El defecto: con el encuadre clavado en 15×15 celdas, en una pantalla de
+// 1900×900 el mapa medía 840 píxeles y la columna 1548. Sobraban **setecientos
+// píxeles de nada** a la derecha, y ningún zoom los llenaba —el mapa era
+// cuadrado, así que crecer lo frenaba el alto mucho antes que el ancho—.
+//
+// Se afirma con una PROPORCIÓN y no con un tamaño: cuánto mide el mapa depende
+// de la pantalla, del zoom y del tope de celdas, o sea de tres cosas que pueden
+// cambiar por buenos motivos. Lo que no puede volver a pasar es que sobre media
+// columna.
+test('EL MAPA LLENA EL ANCHO que tiene, y no deja media columna vacía', async ({ page }) => {
+  await page.setViewportSize({ width: 1900, height: 900 })
+  await abrir(page)
+
+  const mapa = await page.locator('#mapa').boundingBox()
+  const columna = await page.locator('#columna').boundingBox()
+  if (mapa === null || columna === null) throw new Error('falta el mapa o su columna')
+
+  // Una celda mide 28 px por el zoom, así que a ×2 lo que puede sobrar por el
+  // redondeo a celdas enteras son 56 px. El 90% deja margen de sobra para eso y
+  // sigue siendo rojo para el defecto viejo, que aprovechaba el 54%.
+  expect(mapa.width / columna.width).toBeGreaterThan(0.9)
+
+  // Y lo mismo a lo alto contra la ventana: el otro modo de fallar es un mapa
+  // ancho y achatado que deje la mitad de abajo vacía.
+  expect(mapa.height / (900 - mapa.y)).toBeGreaterThan(0.85)
+
+  // Sin desbordar, que es la contracara: un encuadre que se pase de la columna
+  // no se ve como «grande», se ve como scroll horizontal en toda la página.
+  expect(await desborda(page)).toBe(false)
+})
+
+test('EL MAPA ES APAISADO cuando la ventana lo es, y cuadrado cuando ella lo es', async ({ page }) => {
+  // La otra mitad del cambio: el encuadre tiene la FORMA del lugar donde se lo
+  // mira. Sin esto, un mapa que llenara el ancho estirando píxeles pasaría el
+  // test de arriba — y se vería como una foto deformada.
+  await page.setViewportSize({ width: 1900, height: 900 })
+  await abrir(page)
+  const ancha = await page.locator('#mapa').boundingBox()
+
+  await page.setViewportSize({ width: 1000, height: 1000 })
+  // El encuadre se recalcula con el evento `resize`, y el mapa se redibuja en el
+  // cuadro siguiente: hay que esperar a que pase uno.
+  await page.waitForTimeout(400)
+  const cuadrada = await page.locator('#mapa').boundingBox()
+  if (ancha === null || cuadrada === null) throw new Error('falta el mapa')
+
+  expect(ancha.width / ancha.height).toBeGreaterThan(1.5)
+  expect(cuadrada.width / cuadrada.height).toBeLessThan(1.3)
+})
+
 test('EN VENTANA ANGOSTA se apila, y lo que se usa queda ARRIBA del mapa', async ({ page }) => {
   await page.setViewportSize({ width: 420, height: 900 })
   await abrir(page)

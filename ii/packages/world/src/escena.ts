@@ -52,7 +52,7 @@ import type { CellState, WorldState } from './step.js'
  * Entra en el hash por lo mismo que la del descriptor: dos clientes con distinta
  * versión ven cosas distintas del mismo mundo, y el E2E tiene que verlo.
  */
-export const VERSION_DE_LA_ESCENA = 2
+export const VERSION_DE_LA_ESCENA = 3
 
 /**
  * UNA CELDA DEL MAPA. Las tres que se guardan más `sheltered`, que es derivada.
@@ -242,13 +242,40 @@ export interface ActorEnEscena {
   readonly esperando?: EsperaEnEscena
 }
 
+/**
+ * A CUÁNTAS CELDAS LLEGA LA VISTA DESDE EL FOCO, y por eje.
+ *
+ * ─── POR QUÉ SON DOS NÚMEROS Y NO UNO ──────────────────────────────────────
+ *
+ * Era uno solo, y eso hacía que el área visible fuera siempre un CUADRADO. La
+ * consecuencia se ve en cuanto hay una pantalla de verdad adelante: una ventana
+ * apaisada tiene el doble de ancho que de alto útil, y un cuadrado sólo puede
+ * crecer hasta lo que da el LADO CORTO. En una pantalla de 1900×900 eso dejaba
+ * setecientos píxeles a la derecha del mapa **sin nada dibujado**, y ningún zoom
+ * los llenaba: agrandar un cuadrado lo frena el alto antes que el ancho.
+ *
+ * Con dos radios, la vista tiene la forma del lugar donde se la mira.
+ *
+ * ─── LO QUE NO CAMBIA, Y ES LA PARTE QUE IMPORTA ───────────────────────────
+ *
+ * Sigue siendo una CAJA y no una elipse. La razón es la de siempre y no se
+ * movió: la distancia del mundo es Chebyshev —tocar algo es estar a 1 en el
+ * máximo de las dos coordenadas—, así que el borde de lo alcanzable es recto.
+ * Lo que se relajó es que los dos lados midan igual, que nunca fue una propiedad
+ * del mundo: era una comodidad de quien escribió el primer `escenaDe`.
+ */
+export interface RadioDeEscena {
+  readonly x: number
+  readonly y: number
+}
+
 /** LO QUE HAY QUE SABER PARA DIBUJAR UN MUNDO, y nada más. */
 export interface Escena {
   readonly v: number
   readonly tick: number
-  /** El centro del área visible, y a cuántas celdas llega. */
+  /** El centro del área visible, y a cuántas celdas llega por eje. */
   readonly foco: Placement
-  readonly radio: number
+  readonly radio: RadioDeEscena
   /** Ordenadas por fila y después por columna. */
   readonly celdas: readonly CeldaEnEscena[]
   /** Por id, y el `Map` se recorre en orden de id. */
@@ -287,19 +314,33 @@ function celdaGuardadaEn(s: WorldState, at: Placement): CellState {
 /**
  * LA ESCENA DE UN MUNDO, centrada en `foco` y con `radio` celdas alrededor.
  *
- * El área es un cuadrado y no un círculo porque la distancia del mundo es
+ * El área es una CAJA y no un círculo porque la distancia del mundo es
  * Chebyshev —tocar algo es estar a 1 en el máximo de las dos coordenadas— y una
  * vista circular mostraría celdas que no se pueden alcanzar y escondería celdas
  * que sí. La forma de lo que se ve tiene que ser la forma de lo que se puede
- * hacer.
+ * hacer. Cuán ancha y cuán alta es esa caja lo decide quien mira: ver
+ * `RadioDeEscena`.
+ *
+ * ─── UN NÚMERO PELADO SIGUE VALIENDO, Y NO ES POR NO TOCAR LOS TESTS ───────
+ *
+ * `escenaDe(w, foco, 7)` quiere decir «una caja de 7 para cada lado», o sea el
+ * cuadrado de siempre. Se acepta porque para casi todo el que arma una escena
+ * —los bancos, los ataques, los criterios— la forma del encuadre no es parte de
+ * lo que se está afirmando: piden «un pedazo de mundo alrededor de esto». El
+ * único que tiene una opinión sobre la forma es el que dibuja en una pantalla,
+ * y ése pasa los dos números.
  *
  * Un cuerpo entra si su celda entra. Un cuerpo EN LA MANO de alguien está en la
  * celda de ese alguien, así que entra o sale con él, que es lo correcto.
  */
-export function escenaDe(s: WorldState, foco: Placement, radio: number): Escena {
+export function escenaDe(s: WorldState, foco: Placement, radio: number | RadioDeEscena): Escena {
+  const r: RadioDeEscena = typeof radio === 'number' ? { x: radio, y: radio } : radio
   const celdas: CeldaEnEscena[] = []
-  for (let y = foco.y - radio; y <= foco.y + radio; y++) {
-    for (let x = foco.x - radio; x <= foco.x + radio; x++) {
+  // Fila por fila y dentro de cada fila columna por columna: es el orden que la
+  // regla 4 promete y del que depende el delta, que compara `celdas[i]` contra
+  // `celdas[i]` sin volver a mirar las coordenadas.
+  for (let y = foco.y - r.y; y <= foco.y + r.y; y++) {
+    for (let x = foco.x - r.x; x <= foco.x + r.x; x++) {
       const at = { x, y }
       const c = celdaGuardadaEn(s, at)
       celdas.push({
@@ -316,7 +357,7 @@ export function escenaDe(s: WorldState, foco: Placement, radio: number): Escena 
   for (const id of [...s.bodies.keys()].sort(comparaTexto)) {
     const b = s.bodies.get(id)
     if (b === undefined) continue
-    if (!seVe(b.at, foco, radio)) continue
+    if (!seVe(b.at, foco, r)) continue
     // Las claves opcionales sólo si hay algo que decir: un `heldBy: undefined`
     // explícito viaja al hash como una clave más. Misma razón que en el descriptor.
     const rel: { heldBy?: ActorId; supportedBy?: BodyId; covering?: BodyId } = {}
@@ -357,11 +398,11 @@ export function escenaDe(s: WorldState, foco: Placement, radio: number): Escena 
     })
   }
 
-  return { v: VERSION_DE_LA_ESCENA, tick: s.tick, foco, radio, celdas, cuerpos, actores }
+  return { v: VERSION_DE_LA_ESCENA, tick: s.tick, foco, radio: r, celdas, cuerpos, actores }
 }
 
-function seVe(at: Placement, foco: Placement, radio: number): boolean {
-  return Math.abs(at.x - foco.x) <= radio && Math.abs(at.y - foco.y) <= radio
+function seVe(at: Placement, foco: Placement, radio: RadioDeEscena): boolean {
+  return Math.abs(at.x - foco.x) <= radio.x && Math.abs(at.y - foco.y) <= radio.y
 }
 
 /** Sin `localeCompare`: el orden no puede depender del idioma del cliente. */
@@ -386,8 +427,9 @@ export function escenaHash(e: Escena): WorldHash {
 //
 // El Hito 12B pide que «el mapa se actualiza en tiempo real» y que «las acciones
 // y construcciones se ven mientras ocurren», o sea veinte cuadros por segundo. Una
-// escena entera son (2·radio+1)² celdas más todos los cuerpos: con radio 12 son
-// 625 celdas por cuadro, y casi todas iguales a las del cuadro anterior. Mandar
+// escena entera son (2·radio.x+1)·(2·radio.y+1) celdas más todos los cuerpos: un
+// encuadre de pantalla ancha son varios cientos por cuadro, y casi todas iguales
+// a las del cuadro anterior. Mandar
 // eso veinte veces por segundo funciona en la máquina de uno y se cae en cuanto
 // hay una red en el medio.
 //
@@ -431,7 +473,7 @@ export interface DeltaDeEscena {
  * con un delta vacío, porque un delta vacío es indistinguible de «no pasó nada».
  */
 export function deltaEntre(a: Escena, b: Escena): DeltaDeEscena {
-  if (a.foco.x !== b.foco.x || a.foco.y !== b.foco.y || a.radio !== b.radio) {
+  if (a.foco.x !== b.foco.x || a.foco.y !== b.foco.y || a.radio.x !== b.radio.x || a.radio.y !== b.radio.y) {
     throw new RangeError('no se puede diferenciar dos escenas de distinto encuadre: la grilla no es la misma')
   }
   if (a.v !== b.v) {

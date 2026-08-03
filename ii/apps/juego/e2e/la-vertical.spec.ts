@@ -92,12 +92,29 @@ test('3 · ver todos los objetos del área visible', async ({ page }) => {
   //      73 en el mundo. Tampoco era un bug: **el área visible tiene 3** y los
   //      otros 70 están fuera del radio. Pedir una cantidad era inventar un
   //      número; lo que había que hacer era preguntarle al juego cuántos hay.
+  // ─── CUÁNTAS CELDAS HAY SE LE PREGUNTA AL MAPA ──────────────────────────
+  //
+  // Esto decía `15` dos veces, escrito a mano, porque el encuadre era un cuadrado
+  // fijo de quince por quince. Dejó de serlo: ahora tiene la forma de la ventana
+  // (ver `juego/src/el-encuadre.ts`), así que en una pantalla apaisada son 27×13
+  // y en una alta puede ser al revés.
+  //
+  // Con el 15 clavado, el barrido se salía del canvas por abajo y Playwright
+  // fallaba con «body intercepts pointer events» — un click al vacío, no un
+  // objeto que faltara. El dato está en el propio canvas: adentro mide un píxel
+  // por píxel del mapa, y cada celda son CELDA de ésos.
+  const CELDA = 28
+  const grilla = await canvas.evaluate((c: HTMLCanvasElement) => ({ ancho: c.width, alto: c.height }))
+  const columnas = Math.round(grilla.ancho / CELDA)
+  const filas = Math.round(grilla.alto / CELDA)
+
   const clases = new Set<string>()
   let contados = 0
-  const paso = caja.width / 15
-  for (let fila = 0; fila < 15; fila++) {
-    for (let col = 0; col < 15; col++) {
-      await canvas.click({ position: { x: (col + 0.5) * paso, y: (fila + 0.5) * paso } })
+  const pasoX = caja.width / columnas
+  const pasoY = caja.height / filas
+  for (let fila = 0; fila < filas; fila++) {
+    for (let col = 0; col < columnas; col++) {
+      await canvas.click({ position: { x: (col + 0.5) * pasoX, y: (fila + 0.5) * pasoY } })
       const que = (await page.locator('#mirado-que').textContent()) ?? ''
       if (que.startsWith('nada')) continue
       const mas = /y (\d+) más/.exec(que)

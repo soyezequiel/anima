@@ -374,10 +374,16 @@ function reconstruir () {
 const CUADROS = reconstruir()
 const DICE = D.dice
 const HITOS = D.hitos
-const LADO = 2 * D.inicial.radio + 1
+// Dos medidas y no un lado: el encuadre de una escena tiene un radio por eje
+// (ver ` + '`RadioDeEscena`' + `). Este visor arma escenas cuadradas —lo suyo es la
+// costura del delta, no la forma de la ventana— y aun así se dibuja con las dos,
+// que es lo que evita que una escena apaisada salga estirada el día que alguien
+// cambie el radio de arriba.
+const ANCHO = 2 * D.inicial.radio.x + 1
+const ALTO = 2 * D.inicial.radio.y + 1
 const lienzo = document.getElementById('lienzo')
 const g = lienzo.getContext('2d')
-const PX = Math.floor(lienzo.width / LADO)
+const PX = Math.floor(Math.min(lienzo.width / ANCHO, lienzo.height / ALTO))
 
 const TICKS_DE_HITO = new Set(HITOS.map((h) => h.tick))
 
@@ -440,8 +446,8 @@ function pintar (i) {
     .concat((D.deltas[i - 1] || { entraron: [] }).entraron.map((x) => x[0])))
   g.fillStyle = '#0d0f12'
   g.fillRect(0, 0, lienzo.width, lienzo.height)
-  const x0 = e.foco.x - e.radio
-  const y0 = e.foco.y - e.radio
+  const x0 = e.foco.x - e.radio.x
+  const y0 = e.foco.y - e.radio.y
 
   for (const c of e.celdas) {
     const cx = (c.at.x - x0) * PX
@@ -459,9 +465,11 @@ function pintar (i) {
   }
 
   g.strokeStyle = 'rgba(255,255,255,.05)'; g.lineWidth = 1
-  for (let k = 0; k <= LADO; k++) {
-    g.beginPath(); g.moveTo(k * PX, 0); g.lineTo(k * PX, LADO * PX); g.stroke()
-    g.beginPath(); g.moveTo(0, k * PX); g.lineTo(LADO * PX, k * PX); g.stroke()
+  for (let k = 0; k <= ANCHO; k++) {
+    g.beginPath(); g.moveTo(k * PX, 0); g.lineTo(k * PX, ALTO * PX); g.stroke()
+  }
+  for (let k = 0; k <= ALTO; k++) {
+    g.beginPath(); g.moveTo(0, k * PX); g.lineTo(ANCHO * PX, k * PX); g.stroke()
   }
 
   // El pozo, marcado: sin esto «la deja sobre el pozo» no se puede ver.

@@ -44,6 +44,7 @@ import { quienDijo } from '@anima/lang'
 
 import { conQuien } from './con-quien.js'
 import type { ConQuien } from './con-quien.js'
+import { encuadrePara } from './el-encuadre.js'
 import { loQueSeVeDe } from './criatura.js'
 import { describir, firmaDe, loSenaladoEn, ubicarElCartel } from './lo-senalado.js'
 import type { Senalado } from './lo-senalado.js'
@@ -55,7 +56,6 @@ import { Lienzo } from './lienzo.js'
 import { PHYS, arrancar } from './mundo.js'
 
 const SEMILLA = 20260727n
-const RADIO = 7
 const HZ = 20
 const MS_POR_TICK = 1000 / HZ
 /** Cada cuántos cuadros se le pregunta al depósito por lo que falta. */
@@ -234,8 +234,62 @@ for (const b of zooms) {
   b.addEventListener('click', () => {
     zoom = Number(b.dataset['zoom'] ?? '2')
     for (const otro of zooms) otro.classList.toggle('on', otro === b)
+    // El zoom cambia cuánto ocupa una celda, así que cambia cuántas entran. Sin
+    // esto, el ×4 dibujaría el mismo encuadre cuatro veces más grande y se
+    // saldría de la ventana — que es lo que hacía cuando el encuadre era fijo.
+    remedirElEncuadre()
   })
 }
+
+// ─── EL ENCUADRE SALE DE LA VENTANA, Y NO DE UNA CONSTANTE ─────────────────
+//
+// Era `const RADIO = 7`: quince por quince celdas, siempre, y en una pantalla
+// apaisada eso dejaba setecientos píxeles muertos a la derecha del mapa. La
+// cuenta de cuánto entra vive en `el-encuadre.ts` —y por eso se puede probar sin
+// navegador—; acá está la otra mitad, la que sí necesita uno: **medir el lugar**.
+//
+// ─── LAS DOS MEDIDAS SALEN DE LUGARES DISTINTOS, Y ES A PROPÓSITO ──────────
+//
+// El ANCHO sale de la columna de la grilla y no del canvas. Parece un rodeo y es
+// justo al revés: la columna mide `minmax(0, 1fr)`, o sea que el navegador le da
+// lo que sobra **sin mirar lo que tiene adentro**. Preguntarle al canvas —o a
+// `.mapa-caja`, que es `inline-block` y por lo tanto mide lo que mide su
+// contenido— sería preguntarle al mapa cuánto quiere medir el mapa: la primera
+// respuesta se congelaría y ningún `resize` la movería.
+//
+// El ALTO sale de la ventana menos dónde arranca el canvas. No se puede sacar de
+// la columna por la razón simétrica: la columna es tan alta como su contenido,
+// así que su alto ES el del mapa.
+const columnaDelMapa = $('columna')
+/** El aire que se le deja abajo, para que el mapa no quede pegado al borde. */
+const ORILLA_DE_ABAJO = 22
+
+function medirElEspacio(): { ancho: number; alto: number } {
+  return {
+    ancho: columnaDelMapa.clientWidth,
+    alto: window.innerHeight - canvas.getBoundingClientRect().top - ORILLA_DE_ABAJO,
+  }
+}
+
+let encuadre = encuadrePara(medirElEspacio(), zoom)
+
+/**
+ * REMEDIR, y por qué esto NO es un `ResizeObserver`.
+ *
+ * Un observador sobre la columna se dispararía por cambios que el propio mapa
+ * causa —el canvas crece, la página se hace más alta, aparece la barra de
+ * scroll, la columna se angosta quince píxeles, el mapa se vuelve a calcular— y
+ * ése es el bucle de realimentación clásico de los observadores de tamaño.
+ *
+ * El evento `resize` de la ventana no tiene ese problema: lo dispara la persona,
+ * no el contenido. Los otros dos momentos en que la cuenta cambia son el zoom y
+ * el arranque, y los dos llaman a mano.
+ */
+function remedirElEncuadre(): void {
+  encuadre = encuadrePara(medirElEspacio(), zoom)
+}
+
+window.addEventListener('resize', remedirElEncuadre)
 
 // ─── El dibujante ──────────────────────────────────────────────────────────
 //
@@ -336,8 +390,8 @@ function celdaEn(x: number, y: number, e: ReturnType<typeof escenaDe>): { x: num
   const px = Math.floor(((x - caja.left) / caja.width) * canvas.width)
   const py = Math.floor(((y - caja.top) / caja.height) * canvas.height)
   return {
-    x: Math.floor(px / CELDA) + e.foco.x - e.radio,
-    y: Math.floor(py / CELDA) + e.foco.y - e.radio,
+    x: Math.floor(px / CELDA) + e.foco.x - e.radio.x,
+    y: Math.floor(py / CELDA) + e.foco.y - e.radio.y,
   }
 }
 
@@ -436,7 +490,7 @@ function ubicarLaSenal(celda: { x: number; y: number }, e: ReturnType<typeof esc
   senal.style.height = `${String(lado)}px`
   // `transform` y no `left`/`top`: el recuadro se desliza de celda en celda y con
   // posiciones eso es un layout por cuadro; con transform, no toca el layout.
-  senal.style.transform = `translate(${String((celda.x - e.foco.x + e.radio) * lado)}px, ${String((celda.y - e.foco.y + e.radio) * lado)}px)`
+  senal.style.transform = `translate(${String((celda.x - e.foco.x + e.radio.x) * lado)}px, ${String((celda.y - e.foco.y + e.radio.y) * lado)}px)`
 }
 
 function refrescarElCartel(): void {
@@ -843,7 +897,7 @@ function cuadro(ahora: number): void {
   // de que se muere, y una cámara sin dónde mirar tiraría la pantalla abajo.
   const t0 = performance.now()
   const foco = partida.state.bodies.get('ana-cuerpo')?.at ?? parada
-  const escena = escenaDe(partida.state, foco, RADIO)
+  const escena = escenaDe(partida.state, foco, encuadre)
   const mapa = mapaDe(escena, PHYS, relojDe(partida.state), sprites)
   lienzo.dibujar(mapa.px, zoom)
   msDelCuadro = performance.now() - t0

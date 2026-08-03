@@ -44,15 +44,24 @@ export class Lienzo {
     this.#ctx.imageSmoothingEnabled = false
   }
 
-  /** Pinta un mapa. `escala` agranda cada píxel del mapa a N del canvas. */
+  /**
+   * Pinta un mapa. `escala` agranda cada píxel del mapa a N del canvas.
+   *
+   * El alto sale de cuántas filas hay y el ancho de cuán larga es la primera:
+   * el mapa dejó de ser cuadrado cuando el encuadre pasó a tener la forma de la
+   * pantalla (ver `RadioDeEscena` en `@anima/world`). Las filas miden todas lo
+   * mismo por construcción —`mapaDe` las arma con un `fill`— así que preguntarle
+   * a la primera alcanza.
+   */
   dibujar(mapa: readonly (readonly string[])[], escala: number): void {
-    const lado = mapa.length
-    if (lado === 0) return
+    const alto = mapa.length
+    const ancho = mapa[0]?.length ?? 0
+    if (alto === 0 || ancho === 0) return
     const canvas = this.#ctx.canvas
-    if (canvas.width !== lado || canvas.height !== lado) {
-      canvas.width = lado
-      canvas.height = lado
-      this.#img = this.#ctx.createImageData(lado, lado)
+    if (canvas.width !== ancho || canvas.height !== alto) {
+      canvas.width = ancho
+      canvas.height = alto
+      this.#img = this.#ctx.createImageData(ancho, alto)
       this.#px = new Uint32Array(this.#img.data.buffer)
       this.#escala = 0
     }
@@ -64,17 +73,17 @@ export class Lienzo {
     // invalida el layout sesenta veces por segundo sin motivo.
     if (this.#escala !== escala) {
       this.#escala = escala
-      canvas.style.width = `${String(lado * escala)}px`
-      canvas.style.height = `${String(lado * escala)}px`
+      canvas.style.width = `${String(ancho * escala)}px`
+      canvas.style.height = `${String(alto * escala)}px`
     }
     const img = this.#img
     const px = this.#px
     if (img === undefined || px === undefined) return
 
-    for (let y = 0; y < lado; y++) {
+    for (let y = 0; y < alto; y++) {
       const fila = mapa[y]
       if (fila === undefined) continue
-      const base = y * lado
+      const base = y * ancho
       for (let x = 0; x < fila.length; x++) {
         const color = fila[x]
         if (color === undefined || color === '') {

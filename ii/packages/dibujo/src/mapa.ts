@@ -32,9 +32,16 @@ import { glifoDe, pintar } from './componer.js'
 import { granoDelSuelo, tonosDelSuelo } from './mundo.js'
 import type { Sprites } from './sprite.js'
 
-/** Un lienzo de colores. `''` es nada, aunque en un mapa el fondo siempre pinta. */
+/**
+ * Un lienzo de colores. `''` es nada, aunque en un mapa el fondo siempre pinta.
+ *
+ * Eran `lado` y `px`, con un solo número porque el mapa era cuadrado. Ahora el
+ * encuadre lo elige quien mira (ver `RadioDeEscena`), así que las dos medidas
+ * pueden diferir y se publican las dos: `px` tiene `alto` filas de `ancho`.
+ */
 export interface Pintado {
-  readonly lado: number
+  readonly ancho: number
+  readonly alto: number
   readonly px: readonly (readonly string[])[]
 }
 
@@ -62,25 +69,25 @@ const ORDEN_DE_PORTE = { menudo: 0, chico: 1, mediano: 2, grande: 3 }
  * (`relojDe`), igual que tiene la física.
  */
 export function mapaDe(e: Escena, phys: Physics, reloj: Pick<Clock, 'phase'>, sprites?: Sprites): Pintado {
-  const celdas = 2 * e.radio + 1
-  const lado = celdas * CELDA
+  const ancho = (2 * e.radio.x + 1) * CELDA
+  const alto = (2 * e.radio.y + 1) * CELDA
   const px: string[][] = []
-  for (let y = 0; y < lado; y++) px.push(new Array<string>(lado).fill('#000000'))
+  for (let y = 0; y < alto; y++) px.push(new Array<string>(ancho).fill('#000000'))
 
   // ─── El suelo ──────────────────────────────────────────────────────────
   //
-  // Granulado y no plano: son 225 celdas contra 10 cuerpos, así que el suelo es
-  // casi toda la pantalla y un color liso la hace ver una planilla. El grano
-  // sale de la posición ABSOLUTA en el mundo, así que no viaja con la cámara.
+  // Granulado y no plano: son cientos de celdas contra diez cuerpos, así que el
+  // suelo es casi toda la pantalla y un color liso la hace ver una planilla. El
+  // grano sale de la posición ABSOLUTA en el mundo, así que no viaja con la cámara.
   for (const c of e.celdas) {
     const tonos = tonosDelSuelo(c, reloj)
-    const cx = (c.at.x - e.foco.x + e.radio) * CELDA
-    const cy = (c.at.y - e.foco.y + e.radio) * CELDA
+    const cx = (c.at.x - e.foco.x + e.radio.x) * CELDA
+    const cy = (c.at.y - e.foco.y + e.radio.y) * CELDA
     for (let y = 0; y < CELDA; y++) {
       const fila = px[cy + y]
       if (fila === undefined) continue
       for (let x = 0; x < CELDA; x++) {
-        if (cx + x >= lado || cx + x < 0) continue
+        if (cx + x >= ancho || cx + x < 0) continue
         fila[cx + x] = tonos[granoDelSuelo(c.at.x, c.at.y, x, y)]
       }
     }
@@ -114,9 +121,9 @@ export function mapaDe(e: Escena, phys: Physics, reloj: Pick<Clock, 'phase'>, sp
   for (const [id, cuerpo] of enElPiso) {
     const esAgente = cuerposDeActores.has(id)
     const lienzo = pintar(glifoDe(cuerpo.d, phys, GRILLA, sprites, esAgente))
-    const cx = (cuerpo.d.at.x - e.foco.x + e.radio) * CELDA + MARGEN
-    const cy = (cuerpo.d.at.y - e.foco.y + e.radio) * CELDA + MARGEN
-    if (esAgente) marcar(px, cx - MARGEN, cy - MARGEN, lado)
+    const cx = (cuerpo.d.at.x - e.foco.x + e.radio.x) * CELDA + MARGEN
+    const cy = (cuerpo.d.at.y - e.foco.y + e.radio.y) * CELDA + MARGEN
+    if (esAgente) marcar(px, cx - MARGEN, cy - MARGEN, ancho)
     for (let y = 0; y < lienzo.length; y++) {
       const fila = lienzo[y]
       if (fila === undefined) continue
@@ -124,19 +131,25 @@ export function mapaDe(e: Escena, phys: Physics, reloj: Pick<Clock, 'phase'>, sp
         const color = fila[x]
         if (color === undefined || color === '') continue
         const destino = px[cy + y]
-        if (destino === undefined || cx + x < 0 || cx + x >= lado) continue
+        if (destino === undefined || cx + x < 0 || cx + x >= ancho) continue
         destino[cx + x] = color
       }
     }
   }
 
-  return { lado, px }
+  return { ancho, alto, px }
 }
 
 /** El realce de la criatura: un marco en el borde de su celda. */
 const REALCE = '#f0e7c8'
 
-function marcar(px: string[][], cx: number, cy: number, lado: number): void {
+/**
+ * `ancho` alcanza y no hace falta el alto: las filas de más allá del borde de
+ * abajo simplemente no existen en `px`, y ahí el `undefined` corta. Lo que hay
+ * que recortar a mano es lo horizontal, porque una fila SÍ existe y escribir en
+ * la columna −1 de la fila siguiente daría la vuelta al mapa.
+ */
+function marcar(px: string[][], cx: number, cy: number, ancho: number): void {
   for (let i = 0; i < CELDA; i++) {
     for (const [x, y] of [
       [cx + i, cy],
@@ -145,7 +158,7 @@ function marcar(px: string[][], cx: number, cy: number, lado: number): void {
       [cx + CELDA - 1, cy + i],
     ] as const) {
       const fila = px[y]
-      if (fila === undefined || x < 0 || x >= lado) continue
+      if (fila === undefined || x < 0 || x >= ancho) continue
       fila[x] = REALCE
     }
   }
