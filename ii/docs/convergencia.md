@@ -1,12 +1,13 @@
-# Convergencia conversacional — C0, C1, C2 y C3 (a medias)
+# Convergencia conversacional — C0 a C6
 
 El tramo lo fija [`docs/product/convergencia-conversacional.md`](../../docs/product/convergencia-conversacional.md).
 Acá va lo implementado, con el mapa `contrato existente → cambio mínimo` que ese
 documento pide escribir antes de tocar nada.
 
-> **Lo que NO se hizo, dicho antes que nada:** aplicar la respuesta del proveedor,
-> scheduler de prioridad e interrupción, fragua, juez y creación de objetos. Son
-> C4–C6. **Y del C3 falta la mitad**, medida y escrita en la sección 8.
+> **Lo que NO se hizo, dicho antes que nada:** la creación de objetos nuevos, que
+> es el trabajo posterior y tiene su propia puerta de salida. De C0 a C6, cada
+> hito tiene su sección con lo que quedó abierto y por qué — y en todos los casos
+> es un hueco medido, no una lista de deseos.
 
 **La decisión que ordena los tres hitos, y se tomó una sola vez:** el
 `ConversationLog` durable es el único almacén, y **todo lo demás es una vista de
@@ -116,7 +117,7 @@ C0 pide capturar métricas iniciales antes de tocar nada. Se miden en el fixture
 | ticks hasta el acuse | 0 (ya se cumplía) | 0 |
 | referencias resueltas por lo dicho antes | **0** | **1 de 1** en el caso medido |
 | recuerdos recuperados | fuera de alcance (C2) | fuera de alcance (C2) |
-| pausas/reanudaciones | fuera de alcance (C5) | fuera de alcance (C5) |
+| pausas/reanudaciones | fuera de alcance (C5) | **0 de 400 ticks** con hambre 0,92 y un pescado a los pies — ver la sección 9 |
 
 Las nueve líneas son las de los tres turnos del fixture: seis de entrada y acuse,
 más el progreso que la criatura narra al agarrar algo.
@@ -158,6 +159,11 @@ cierra, y no una API que faltaba nombrar.
 | `ii/packages/lang/tests/los-recuerdos.test.ts` | el contrato de la destilación y del retrieval |
 | `ii/apps/juego/e2e/la-charla-vuelve.spec.ts` | los mismos, sobre una pestaña que se recarga |
 | `ii/packages/store/tests/la-charla-se-guarda.test.ts` | el viaje por JSON y la migración |
+| `ii/packages/lang/src/encargo.ts` | el encargo como grafo guardable, con orden, señalados y revisiones |
+| `ii/packages/plan/src/predicado.ts` | la cantidad (`cuantos`) y el lugar (`cerca`), con su `implica` y su `cumple` |
+| `ii/packages/plan/src/regresion.ts` | los dos casos base: agarrar lo que ya hay, y dejarlo donde va |
+| `ii/apps/juego/tests/dos-troncos.test.ts` | el encargo de tres partes con recarga en el medio |
+| `ii/apps/juego/tests/junto-al-fuego.test.ts` | el lugar, de la frase al plan |
 
 ---
 
@@ -400,22 +406,312 @@ Y el señalado pesa en los DOS lugares donde se elige un cuerpo: al agarrar
 (`agarrarLoQueYaHay`) y al repartir roles. «Asá el pescado» no se resuelve
 agarrando nada —ya está en la mano— sino eligiéndolo para el rol `comida`.
 
-### Lo que queda abierto del C3
+### C3-G · el lugar, que era lo único que quedaba
 
-1. **el lugar como condición de objetivo.** «Dejá uno junto al fuego» necesita un
-   predicado RELACIONAL —un cuerpo, no en la mano, a distancia ≤1 de otro que
-   arda—, y hoy `Predicado` tiene tres formas y ninguna relaciona dos cuerpos. La
-   posición está en la vista (`BodyView.at`), así que **evaluarlo es barato**;
-   alcanzarlo no: el planificador no sabe planificar un `soltar` contra un
-   destino. Entra el día que venga con eso, o es vocabulario que sólo puede
-   fallar.
+La conclusión había llegado tres veces desde lugares distintos —midiendo la frase
+del criterio, midiendo la corrección y midiendo la ligadura— y las tres
+terminaban en lo mismo: `Predicado` tenía tres formas y NINGUNA relacionaba dos
+cuerpos, así que «dejá uno junto al fuego» era la mitad de la frase que se
+descartaba con su porqué.
 
-   Mientras tanto no hay falso cumplimiento: la cláusula se descarta con su
-   porqué y el aviso se lo dice al cuidador;
+**La cuarta forma.** `{ k: 'cerca'; tag: string; de: Predicado }`, que se lee
+«algo con este tag, soltado, a un paso de algo que cumpla `de`». Tres decisiones
+adentro, y las tres se pueden discutir:
 
-   **Y es la única que queda.** La conclusión se llegó tres veces desde lugares
-   distintos: midiendo la frase del criterio, midiendo la corrección, y midiendo
-   la ligadura. Las tres terminan en lo mismo — evaluar un lugar es barato y
-   alcanzarlo pide que el planificador sepa emitir un `poner` contra un destino,
-   que hoy no sabe. Entra el día que venga con eso, o es vocabulario que sólo
-   puede fallar.
+- **el ancla es un predicado y no un cuerpo.** `cerca(tag:fibroso,emitsPower>0)`
+  dice «junto a algo que dé calor» y no «junto al cuerpo 47». Cuesta lo mismo de
+  evaluar y sobrevive a que el fuego se apague y se prenda otro, que es lo que
+  pasa en una partida de verdad. Un id adentro de una firma sería un objetivo que
+  caduca sin que nadie lo toque.
+- **tenerlo en la mano NO cuenta.** Es la mitad que se olvida: sin esa exclusión
+  la meta se cumple caminando hasta la fogata con el palo en la mano, y el
+  cuidador ve «ya está» sin que nada se haya soltado. `cumple` filtra por
+  `holding` antes de mirar distancias, y tiene su bloque de test.
+- **«a un paso» es distancia de Chebyshev ≤ 1**, o sea las ocho celdas de
+  alrededor y la propia. En una grilla, «al lado» en diagonal es al lado.
+
+**Y el planificador aprendió a alcanzarlo.** Era la parte cara y la razón por la
+que esto no había entrado antes: `regresion.ts` sabía agarrar cosas y no sabía
+soltarlas en ningún lado. El caso base nuevo, `dejarloDonde`, emite dos pasos —
+`ir` hasta el ancla con tolerancia 1, y `poner` lo que tiene en la mano. Se
+enchufa al lado del que ya estaba: `agarrarLoQueYaHay(...) ?? dejarloDonde(...)`,
+y el `sobre` del nodo —el señalado de C3-D— entra a los dos por el mismo
+parámetro, así que «dejá EL OTRO junto al fuego» sale sin código nuevo.
+
+Sin fuego a la vista la respuesta honesta sigue siendo `gap` con la firma
+adentro: no hay de qué estar cerca, y el aviso se lo dice al cuidador.
+
+**Lo que se midió y salió de costado: «junto» se lee como «junco».** El
+emparejamiento difuso del lenguaje acepta una edición de tolerancia —deliberado,
+para que «construi una ahoguera» llegue— y esas dos palabras se distinguen por
+una letra. En la frase entera no hace daño: «dejá EL PALO junto al fuego» trae
+las dos sustancias y gana la primera. El daño es cuando la frase viene sin
+objeto, que es justo cuando habría que preguntar qué dejar. Quedó como `it.fails`
+en `junto-al-fuego.test.ts` con la reparación anotada —que «junto a» sea
+vocabulario de la relación y gane por más larga, para lo cual `Denota` necesita
+una forma que hoy no tiene— porque taparlo con una lista de palabras excluidas es
+justo la lista que este paquete existe para no tener.
+
+Con esto **el C3 cierra**: el encargo se guarda, tiene orden entre las partes,
+conserva la identidad de lo señalado, se corrige a mitad de camino, liga el
+rendimiento de un nodo al siguiente y ya sabe decir dónde.
+
+---
+
+## 9 · C5 — prioridad, interrupción y continuidad
+
+### La medición que ordena el hito, hecha antes de escribir una línea
+
+Se le pidió «juntá dos troncos y hacé fuego», y en el tick 8 —con el encargo a
+mitad de camino— se le puso el hambre en 0,92 y **un pescado a los pies**:
+
+```
+t8   meta=emitsPower>0  por=D2  vuela=ir
+t15  meta=emitsPower>0  por=D2  vuela=sostener
+t18  meta=emitsPower>0  por=D2  vuela=frotar
+…    y 382 ticks más frotando dos palos, con el pescado ahí.
+```
+
+**La orden del cuidador no se interrumpía nunca.** Y no era un olvido: eran dos
+cosas, las dos escritas a propósito y ninguna pensada para esto.
+
+1. **`Ordenes` mandaba `peso: 1`.** `Drive.peso` está documentado como «cuánto
+   vale contra lo que la criatura elegiría sola, en [0,1]», así que 1 quería
+   decir, literalmente, «lo que te pido vale más que cualquier cosa que te pase».
+   Eso no es obediencia, es sordera;
+2. **D1 devuelve `seguir` mientras haya algo volando.** Es la regla que evita que
+   la criatura tiemble entre dos ideas, y funciona: mientras `frotar` esté en
+   vuelo la escalera **ni siquiera baja a D3**, que es el peldaño donde el hambre
+   podría ganar. El único que corta algo en vuelo es D0, y D0 es sólo para lo que
+   quema.
+
+O sea que el hito no era «agregarle un scheduler a la mente»: era que **la
+escalera no puede interrumpirse a sí misma**, y que el peso de una orden estaba
+puesto en el máximo sin que nadie lo hubiera decidido.
+
+### Dónde vive la reparación, y por qué no adentro de la mente
+
+Afuera, en `Ordenes`, por la misma razón por la que el encargo vive afuera desde
+el C3: **la mente recibe UNA meta y no un grafo**, así que el único que puede
+decir «esto es la segunda de dos partes de algo que te pidieron, y lo vamos a
+dejar para después» es el de afuera. Se decide en la frontera del tick —el mismo
+lugar donde el C4 aplica lo que llegó del proveedor— y se ejecuta con la
+operación que ese archivo ya hacía en cada orden nueva: **soltar el drive y
+reconstruir la mente**. No se inventó un punto seguro: se usó el que había.
+
+### El número, dicho sin maquillaje
+
+`PESO_DEL_ENCARGO = 0,8`, y la pausa dispara cuando una necesidad le gana. Las
+dos puntas del rango explican el lugar:
+
+- **abajo**, la escalera sólo toma una orden si `peso > 1 − peso`, o sea arriba
+  de 0,5. Debajo de eso el pedido directamente no se escucha;
+- **arriba**, `energia` llega a 0,8 con el tanque en **106 de 1000** —la curva es
+  `((tanque − aliento)/tanque)²` y está escrita en `necesidades.ts`— o sea hambre
+  de morirse.
+
+Lo que este número dice es «te hago caso salvo que me esté muriendo». Se mueve el
+día que alguien lo juegue y le parezca otra cosa; lo que no se puede es no
+elegirlo, porque 1 también era una elección, sólo que sin decirlo.
+
+### La vuelta no es simétrica, y ahí está el número de la escalera
+
+Se pausa apenas duele y se vuelve recién `PERMANENCIA_EN_TICKS` después de que
+dejó de doler. No es prudencia: una necesidad que oscila alrededor del umbral
+pausaría y reanudaría un tick sí y otro también, y el cuidador leería ocho «tengo
+hambre» seguidos. Es la **misma** histéresis que la escalera aplica entre
+peldaños y el mismo número, leído de allá — dos anti-oscilaciones con dos
+constantes distintas serían dos ideas de cuánto dura una idea.
+
+### La otra mitad: «pará eso … después seguí»
+
+Medido con un encargo abierto, antes de tocar nada:
+
+```
+«pará»      → verbo=parar   grado=orientacion   acuse=«no te entendí del todo»
+«olvidate»  → verbo=parar   grado=orientacion   acuse=«no te entendí del todo»
+«seguí»     → verbo=—       grado=no-entendida  acuse=«no te entendí»
+```
+
+O sea: **el verbo ya venía leído y no lo escuchaba nadie.** `alias.ts` tiene la
+fila de `parar` desde el Hito 6, con un comentario que dice «es el único verbo
+que no pide nada: cancela», y `componer` lo mandaba al cajón de los que no llevan
+a un estado del mundo. Es la misma forma que tenía «no ése, el otro» antes del
+C3: una frase leída que se perdía.
+
+Dos decisiones de producto salieron de ahí:
+
+- **«pará» pausa y no cancela.** Las dos lecturas son legítimas en castellano y
+  hay que elegir; se elige la reversible. Si el cuidador quería cancelar, lo
+  vuelve a decir; al revés se pierde el encargo y no hay cómo traerlo. Por eso
+  `cancelar` se separó en su propio verbo, con sus propias palabras;
+- **«seguí» con hambre de morirse no obedece, y lo dice.** Va contra la regla del
+  C3 —lo último que dijo una persona gana siempre— a propósito: esa regla vale
+  para lo que el cuidador SABE (cuál tronco quiso decir) y no para lo que el
+  cuerpo de la criatura tiene. La alternativa está medida: reanudar la deja lista
+  para que el scheduler la vuelva a pausar al tick siguiente, o sea un «tengo
+  hambre» por tick para siempre.
+
+**Y una trampa que encontró un test de otro hito:** «para» sin acento también es
+preposición. El spec del C4 usa «dale para el agua» como frase floja, y con el
+control recién puesto esa frase pausaba el encargo — `clave()` saca los acentos, y
+hace bien. La regla que lo separa es lo que estos tres verbos son y ya estaba
+escrito: **los que no piden nada**. Si la frase nombra una cosa, «para» está
+uniendo dos partes de una oración.
+
+### Y una pregunta que apareció sola: de quién es una pausa
+
+Salió de un test que parecía de otra cosa. Después de una recarga, la sesión
+nueva **no sabe de quién era la pausa que se encontró puesta**, y la regla del
+hito es que el que pausa sea el que reanuda. Se podía leer del motivo, que dice
+«hambre» o «me lo pediste» — o sea decidir conducta mirando una frase escrita
+para un humano, que el día que alguien la reescriba mejor deja a la criatura
+reanudando sola las pausas del cuidador.
+
+Así que `Transicion` lleva `quien: 'vos' | 'ella'`, con las mismas dos palabras
+que ya usa la charla.
+
+### Los predicados de C5, medidos
+
+| # | qué se afirma | dónde |
+|---|---|---|
+| 1 | con el hambre arriba de 0,8 el encargo pasa a `pausado` | `el-hambre-interrumpe` (1) |
+| 2 | la pausa se dice por el canal, con su motivo | (2) |
+| 3 | y la mente suelta la meta del cuidador: no es un rótulo | (3) |
+| 4 | al pasársele retoma sola y no repite lo hecho | (4) |
+| 5 | las dos transiciones quedan con tick, motivo y quién | (5) |
+| 6 | y sobreviven la recarga: vuelve pausado y retoma igual | (6) |
+| 7 | mientras tanto **come**, que es para lo que se pausó | (7) |
+| 8 | sin hambre no se pausa nunca | (8) |
+| 9 | «pará eso» pausa desde la charla y lo acusa | `para-y-segui` (1)(2) |
+| 10 | la pausa a mano no se levanta sola | (3) |
+| 11 | «seguí» retoma sin repetir | (4) |
+| 12 | «olvidate» cancela y no vuelve | (6) |
+| 13 | «seguí» con hambre de morirse se niega, y lo dice | (7) |
+| 14 | «dale para el agua» no para nada | (9) |
+
+### Lo que queda abierto del C5 (ver también la sección 10)
+
+**«Vení acá».** De la frase entera del criterio, la parte del medio no se puede:
+el cuidador **no tiene cuerpo en este mundo**. `mundo.ts` monta un actor —la
+criatura— y tres cuerpos; «acá» no denota nada y un objetivo de posición necesita
+una posición. Se lee `verbo=ir` y se descarta, que es lo correcto: inventarle una
+posición sería mandarla a un lugar que nadie eligió. Queda como `it.fails` en
+`para-y-segui.test.ts`.
+
+---
+
+## 10 · C6 — fragua, juez y overlay en el recorrido real
+
+### La medición, y es la misma forma de las tres anteriores
+
+Antes de escribir una línea se contaron los consumidores de cada pieza:
+
+- **`@anima/forge` y `@anima/judge`** — CERO en producción. El único
+  `package.json` que los declara es el de `@anima/mind`, y ni siquiera los
+  importa: `PedidoALaFragua` está escrito estructuralmente para no depender;
+- **`MenteOptions.costura`** — CERO llamadores. `escalera.ts` la llama cuando
+  `plan()` contesta `gap`, y nadie se la pasaba, así que **el gancho no podía
+  dispararse ni una vez**;
+- **`Sujeto`** —lo que el juez juzga— se construye SÓLO adentro de los tests del
+  propio juez. La cadena fragua → juez no existe en ninguna parte;
+- **`Registro.instalar`** —el que publica una habilidad juzgada al catálogo—
+  tampoco tiene un llamador de producción.
+
+Los dos puertos están enteros, probados, y no se tocan. Es el mismo verde por
+omisión que el propio `PedidoALaFragua` denuncia en su comentario —«la fragua no
+se despierta ni una vez» era cierto porque no había por dónde despertarla— sólo
+que un piso más arriba.
+
+### Lo que apareció al abrir la costura, y no lo esperaba nadie
+
+Con `costura` enchufada, en 600 ticks y con **cualquier** orden —y también **sin
+ninguna orden, viviendo sola**— la mente pide siempre exactamente lo mismo:
+
+```
+gap  = emitsPower<410&emitsPower>=253
+meta = holding(tag:carnoso,toxicity<0.0528)
+por  = ningún esquema conocido establece «emitsPower>=253»
+```
+
+Traducido: **quiere cocinar**. Tiene hambre, la carne cruda es venenosa, cocinar
+la destoxifica, y para cocinar necesita un fuego DE ESTA FUERZA — y el catálogo
+sabe hacer «un fuego», no «un fuego de tanto». Es literalmente la frase del
+criterio del hito: componer de forma nueva recursos que ya existen. No hubo que
+inventar un caso de prueba: la criatura lo pide sola desde el tick 90.
+
+### Dónde vive cada cosa, y qué NO se importó
+
+`apps/juego` **no depende de la fragua ni del juez**, y es deliberado: esos dos
+arrastran el modelo, el presupuesto y un compilador de TypeScript, y una pestaña
+de navegador no necesita nada de eso para jugar. Lo que hay es un PUERTO
+(`OpcionesDeOrdenes.fragua`) que recibe el hueco y devuelve lo forjado **ya
+juzgado**. Es la misma decisión que `@anima/forge` tomó con `CargoDelJuez` y que
+`@anima/mind` tomó con `PedidoALaFragua`, y por el mismo motivo.
+
+Y el que decide si se usa **no es el puerto**: es el grado del juez, leído por el
+portón del juego. Un puerto que decidiera solo sería la UI promoviendo
+habilidades, que es lo que el hito prohíbe con todas las letras.
+
+### El portón de la materia: por qué mira palabras y no estructura
+
+La tentación es `interpretar(gap)` y mirar el `Predicado`. No sirve, y se ve con
+el hueco de verdad: `emitsPower<410&emitsPower>=253` es una CONJUNCIÓN, y
+`Predicado` tiene cuatro formas y ninguna es «y». Un portón apoyado en eso diría
+que no a todo, que desde afuera se ve igual de bien que decir que sí a todo.
+
+Lo que se mira son **las palabras**: toda firma nombra cualidades, tags,
+sustancias o palabras de su propia gramática, y las cuatro listas son cerradas
+(29 cualidades, 7 tags, las sustancias de la partida, y `holding`/`tag`/`count`/
+`cerca`). Una palabra que no está en ninguna es materia o física que este mundo
+no tiene.
+
+Lo que este portón **no** promete es que lo que pase sea forjable. Promete que lo
+que no pasa es imposible, que es la mitad que el hito pide: nada se crea por
+accidente.
+
+### Los portones de la promoción son DOS, porque son dos preguntas
+
+1. **¿el juez la promueve?** `Grado` tiene cuatro valores y sólo `promueve`
+   habilita. Los otros tres no son «casi»: son que no, y se dicen;
+2. **¿trae con qué publicarse?** Es el techo del catálogo, medido y ajeno:
+   `ConstructionSchema` tiene tres formas —proceso, ley, obra— y ninguna es «una
+   habilidad que establece X». Una candidata con plano se publica; una suelta se
+   instala, se vuela, cambia el mundo, y el planificador no la puede elegir. Está
+   escrito en `Instalada.capacidad` de `@anima/forge` y contado por `sinPublicar`.
+
+Promovida y sin poder publicarse es un resultado legítimo, y callarlo lo haría
+ver como un fracaso del juez. Se dice distinto porque es distinto.
+
+### Los predicados de C6, medidos
+
+| # | qué se afirma | dónde |
+|---|---|---|
+| 1 | la mente pide forjar, con hueco, meta y porqué | `la-fragua-se-despierta` (1) |
+| 2 | el mismo hueco no se pide dos veces | (2) |
+| 3 | y se lo dice al cuidador por el canal común | (3) |
+| 4 | un hueco de materia que este mundo no tiene no sale a pedir nada | (4) |
+| 5 | y no toca catálogo, ni recetas, ni física | (5) |
+| 6 | con la fragua colgada para siempre, el mundo avanza igual | (6) |
+| 7 | el juez rechaza → no se publica, y se dice | (7) |
+| 8 | el juez promueve → entra al catálogo **y llega a la mente** | (8) |
+| 9 | promovida sin plano → se dice, y no se publica | (9) |
+| 10 | sin fragua enchufada, nada de esto pasa | (10) |
+
+### Lo que queda abierto del C6
+
+**La fragua de verdad no está enchufada en la app.** El puerto está y el test lo
+usa con una fragua guionada y determinista, que es lo que el documento pide para
+el modo scripted. Enchufar la de verdad pide tres cosas que no son de este hito:
+un `ApiTS` en el navegador para la puerta, un presupuesto con credencial, y
+montar código generado en la pestaña del jugador. Las tres son decisiones de
+producto, no de cableado.
+
+**Y el `Registro` de `@anima/forge` sigue sin llamador.** El juego re-arma su
+overlay con `conOverlay` desde el core, que es la misma línea que `Registro`
+explica y paga el mismo precio (guardar la lista aparte). El día que la fragua de
+verdad entre, el `Registro` es el que tiene que llevar las dos mitades —la
+habilidad montada y la capacidad publicada— y ahí su invariante empieza a valer.
+
+**Lo aprendido no se guarda todavía.** `Guardado` tiene cinco ranuras y ninguna
+es el catálogo de la partida. Una habilidad promovida se pierde al recargar.

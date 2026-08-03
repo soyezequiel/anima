@@ -99,7 +99,14 @@ export type VerboId =
   | 'soltar'
   | 'buscar'
   | 'esperar'
+  // ─── LOS TRES DEL ENCARGO, que no hablan del mundo sino del PEDIDO ────────
+  //
+  // `parar` estaba solo acá desde el Hito 6 con un comentario que decía «es el
+  // único verbo que no pide nada: cancela». Eran dos cosas y no una, y hasta el
+  // C5 no había ninguna a la que aplicarlas.
   | 'parar'
+  | 'seguir'
+  | 'cancelar'
 
 // ─── El léxico ──────────────────────────────────────────────────────────────
 

@@ -158,10 +158,20 @@ const VERBOS: readonly AliasCrudo[] = [
   { dice: ['solta', 'soltame', 'soltar', 'deja', 'dejame', 'pone', 'poneme', 'poner', 'apoya', 'tira'], denota: { k: 'verbo', id: 'soltar' } },
   { dice: ['busca', 'buscame', 'buscar', 'fijate', 'explora', 'explorar', 'revisa'], denota: { k: 'verbo', id: 'buscar' } },
   { dice: ['espera', 'esperame', 'esperar', 'quedate', 'aguanta'], denota: { k: 'verbo', id: 'esperar' } },
-  // «parar» es el único verbo que no pide nada: cancela. Por eso está acá y no
-  // en la polaridad, aunque se le parezca: «dejá de pescar» niega una conducta
-  // en curso, y «no pesques» niega una que todavía no empezó.
-  { dice: ['para', 'parate', 'parar', 'frena', 'basta', 'cancela', 'olvidate'], denota: { k: 'verbo', id: 'parar' } },
+  // ─── LOS TRES DEL ENCARGO, y la fila de arriba eran dos ────────────────────
+  //
+  // Estos no piden nada del mundo: cambian el estado del PEDIDO. Por eso están
+  // acá y no en la polaridad, aunque se le parezcan: «dejá de pescar» niega una
+  // conducta en curso, y «no pesques» niega una que todavía no empezó.
+  //
+  // `parar` venía con `cancela` y `olvidate` adentro, y eso era colapsar dos
+  // cosas distintas: **pausar se deshace y cancelar no**. La ambigüedad es real
+  // —«pará» en castellano puede ser las dos— y por eso la palabra ambigua cae del
+  // lado reversible: si el cuidador quería cancelar, lo vuelve a decir; al revés
+  // se pierde el encargo y no hay cómo traerlo.
+  { dice: ['para', 'parate', 'parar', 'frena', 'pausa', 'pausar'], denota: { k: 'verbo', id: 'parar' } },
+  { dice: ['segui', 'seguir', 'continua', 'continuar', 'retoma', 'retomar'], denota: { k: 'verbo', id: 'seguir' } },
+  { dice: ['cancela', 'cancelar', 'olvidate', 'olvidalo', 'basta'], denota: { k: 'verbo', id: 'cancelar' } },
 ]
 
 /**

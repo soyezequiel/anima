@@ -121,12 +121,45 @@ export interface Revision {
 }
 
 /**
+ * POR QUÉ EL ENCARGO CAMBIÓ DE ESTADO, con su tick. El C5 lo pide por escrito:
+ * «persistir transiciones y motivos».
+ *
+ * El motivo va en castellano y no en código —«hambre», y no `need:energia`—
+ * porque el único que lo lee es el cuidador, y porque el que lo escribe ya tuvo
+ * que elegir la palabra para decirlo por el canal. Dos formas del mismo dato se
+ * desincronizan; ésta se puede mostrar tal cual.
+ */
+export interface Transicion {
+  readonly enTick: number
+  readonly de: EncargoGuardado['estado']
+  readonly a: EncargoGuardado['estado']
+  readonly porque: string
+  /**
+   * QUIÉN LA PIDIÓ, y no es lo mismo que el motivo.
+   *
+   * Lo pidió un test que parecía de otra cosa: después de una recarga, **la
+   * sesión nueva no sabe de quién era la pausa**. Y la regla que el C5 necesita
+   * es que el que pausa sea el que reanuda —el hambre levanta las pausas del
+   * hambre y el cuidador las suyas— así que la sesión que vuelve tiene que poder
+   * distinguirlas o levanta una que no le tocaba.
+   *
+   * Se podría leer del `porque`, que dice «hambre» o «me lo pediste». Sería
+   * decidir conducta mirando una frase escrita para un humano: el día que alguien
+   * la reescriba mejor, la criatura empieza a reanudar sola las pausas del
+   * cuidador y nadie ata una cosa con la otra.
+   *
+   * Las mismas dos palabras que usa la charla (`quienDijo` en `habla.ts`): un
+   * mundo con dos vocabularios para «vos» y «ella» tiene dos vocabularios.
+   */
+  readonly quien: 'vos' | 'ella'
+}
+
+/**
  * EL ENCARGO COMO DATO — lo que se guarda y lo que vuelve.
  *
  * Es el `Commission` del documento de convergencia, con lo que este tramo puede
- * sostener. Lo que NO está, y se dice para que nadie lo busque: `priority` e
- * `interruptibility` son del scheduler (C5) y `blocker` necesita el bloqueo
- * estructurado que hoy no produce nadie.
+ * sostener. Lo que NO está, y se dice para que nadie lo busque: `blocker`
+ * necesita el bloqueo estructurado que hoy no produce nadie.
  */
 export interface EncargoGuardado {
   /**
@@ -146,8 +179,16 @@ export interface EncargoGuardado {
   readonly hechos: readonly Cumplido[]
   /** Las correcciones que se le hicieron, en orden. Vacío si no hubo ninguna. */
   readonly revisiones: readonly Revision[]
+  /** Cada cambio de estado, con su porqué. Vacío mientras nada lo interrumpa. */
+  readonly transiciones: readonly Transicion[]
   readonly desdeTick: number
-  readonly estado: 'activo' | 'cumplido' | 'cancelado'
+  /**
+   * `pausado` es del C5 y es un estado y no una bandera: un encargo pausado
+   * **no es un encargo sin meta en curso**. La diferencia se ve al reanudar —
+   * hay un nodo pendiente esperando— y se ve en la charla, que tiene que poder
+   * decir por qué paró.
+   */
+  readonly estado: 'activo' | 'pausado' | 'cumplido' | 'cancelado'
 }
 
 export interface Encargo {
@@ -221,6 +262,7 @@ export class EncargoEnCurso {
     nodos: NodoDelEncargo[]
     hechos: Cumplido[]
     revisiones: Revision[]
+    transiciones: Transicion[]
     desdeTick: number
     estado: EncargoGuardado['estado']
   }
@@ -231,8 +273,11 @@ export class EncargoEnCurso {
       nodos: [...g.nodos],
       hechos: [...g.hechos],
       // `?? []` y no `[]`: un guardado escrito antes de que existieran las
-      // revisiones no las tiene, y perder las que sí hay sería peor.
+      // revisiones no las tiene, y perder las que sí hay sería peor. Lo mismo
+      // vale para las transiciones, que son del C5: un encargo guardado por una
+      // versión anterior vuelve sin ninguna, que es exactamente lo que pasó.
       revisiones: [...(g.revisiones ?? [])],
+      transiciones: [...(g.transiciones ?? [])],
     }
   }
 
@@ -260,6 +305,7 @@ export class EncargoEnCurso {
       nodos: e.nodos,
       hechos: [],
       revisiones: [],
+      transiciones: [],
       desdeTick: tick,
       estado: 'activo',
     })
@@ -376,6 +422,60 @@ export class EncargoEnCurso {
     return r
   }
 
+  /**
+   * PAUSAR Y REANUDAR, que son la misma operación con distinto destino.
+   *
+   * ─── LO QUE NO HACEN, y es la mitad del diseño ──────────────────────────────
+   *
+   * **No tocan `hechos` ni `nodos`.** Un encargo pausado es el mismo encargo con
+   * otro rótulo: lo que ya se probó sigue probado, y por eso reanudar no repite
+   * nada — es el mismo mecanismo del C3, que ya sobrevivía a una recarga. La
+   * pausa es una recarga que no cierra la pestaña.
+   *
+   * **No deciden cuándo.** El «cuándo» es del scheduler que vive afuera, en
+   * `Ordenes`, y depende de cosas que este paquete no ve: el cuerpo de la
+   * criatura, el reloj, el tick. Acá está el QUÉ pasa, que es lo que se guarda.
+   *
+   * Devuelven la transición, o `undefined` si no había nada que cambiar —pausar
+   * un encargo pausado no es una transición, es una repetición— y ese
+   * `undefined` es lo que evita que la charla diga dos veces «tengo hambre».
+   */
+  pausar(tick: number, porque: string, quien: Transicion['quien']): Transicion | undefined {
+    return this.#pasarA('pausado', tick, porque, quien, 'activo')
+  }
+
+  reanudar(tick: number, porque: string, quien: Transicion['quien']): Transicion | undefined {
+    return this.#pasarA('activo', tick, porque, quien, 'pausado')
+  }
+
+  /**
+   * CANCELAR, que es la única que no vuelve.
+   *
+   * Se separa de las otras dos porque su estado es TERMINAL: quien la llame está
+   * tirando el pedido, y eso se puede hacer tanto desde activo como desde
+   * pausado. Lo hecho se conserva igual — el encargo cancelado sigue contando lo
+   * que la criatura llegó a hacer, que es lo que la charla necesita para poder
+   * decir «alcancé a juntar uno».
+   */
+  cancelar(tick: number, porque: string, quien: Transicion['quien']): Transicion | undefined {
+    if (this.#g.estado !== 'activo' && this.#g.estado !== 'pausado') return undefined
+    return this.#pasarA('cancelado', tick, porque, quien, this.#g.estado)
+  }
+
+  #pasarA(
+    a: EncargoGuardado['estado'],
+    enTick: number,
+    porque: string,
+    quien: Transicion['quien'],
+    desde: EncargoGuardado['estado'],
+  ): Transicion | undefined {
+    if (this.#g.estado !== desde) return undefined
+    const t: Transicion = { enTick, de: this.#g.estado, a, porque, quien }
+    this.#g.estado = a
+    this.#g.transiciones.push(t)
+    return t
+  }
+
   /** El encargo como dato, para guardarlo. */
   volcar(): EncargoGuardado {
     return {
@@ -383,7 +483,24 @@ export class EncargoEnCurso {
       nodos: [...this.#g.nodos],
       hechos: [...this.#g.hechos],
       revisiones: [...this.#g.revisiones],
+      transiciones: [...this.#g.transiciones],
     }
+  }
+
+  get estado(): EncargoGuardado['estado'] {
+    return this.#g.estado
+  }
+
+  get pausado(): boolean {
+    return this.#g.estado === 'pausado'
+  }
+
+  /**
+   * LA ÚLTIMA VEZ QUE CAMBIÓ DE ESTADO. La lee la sesión que vuelve de una
+   * recarga para saber de quién era la pausa que se encontró puesta.
+   */
+  get ultimaTransicion(): Transicion | undefined {
+    return this.#g.transiciones.at(-1)
   }
 
   get id(): string {

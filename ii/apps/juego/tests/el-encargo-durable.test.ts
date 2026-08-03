@@ -195,11 +195,16 @@ describe('C3 · el encargo es durable y tiene grafo', () => {
 
     const g = await cargar(d, QUIEN)
     const claves = Object.keys((g as NonNullable<typeof g>).encargo as object).sort()
-    // La lista creció con `revisiones` cuando entró la corrección multi-turno, y
-    // el pin se actualiza con lo que afirmaba escrito al lado: **ninguna de estas
-    // claves es el plan**. Lo que se guarda es qué se pidió, qué parte de eso el
-    // mundo probó, y qué correcciones le hicieron — todo dato del PEDIDO. La
-    // actividad en vuelo se replanifica contra el mundo que quedó.
+    // La lista creció dos veces —`revisiones` con la corrección multi-turno,
+    // `transiciones` con la pausa del C5— y las dos veces el pin se actualizó con
+    // lo que afirmaba escrito al lado: **ninguna de estas claves es el plan**. Lo
+    // que se guarda es qué se pidió, qué parte de eso el mundo probó, qué
+    // correcciones le hicieron y por qué paró y volvió — todo dato del PEDIDO.
+    //
+    // `transiciones` es el caso que más se parece al plan y no lo es: dice que a
+    // las 14 se pausó por hambre, no qué pensaba hacer. Lo que la criatura estaba
+    // haciendo cuando la pausaron NO se guarda, y por eso al volver replanifica
+    // contra el mundo que quedó.
     expect(claves).toEqual([
       'desdeTick',
       'estado',
@@ -208,6 +213,7 @@ describe('C3 · el encargo es durable y tiene grafo', () => {
       'nodos',
       'revisiones',
       'texto',
+      'transiciones',
       'turnos',
     ])
   })

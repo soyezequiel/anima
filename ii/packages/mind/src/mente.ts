@@ -100,8 +100,8 @@
 import type { QualityTest } from '@anima/physics'
 import { Contexto } from '@anima/perceive'
 import type { Partida, Proyeccion } from '@anima/perceive'
-import type { GoalId, Ref, Rindes, VistaDelPlan } from '@anima/plan'
-import { resolver, resolverCuerpo, resolverTodos } from '@anima/plan'
+import type { GoalId, PlannerCatalogView, Ref, Rindes, VistaDelPlan } from '@anima/plan'
+import { CATALOGO_CORE, resolver, resolverCuerpo, resolverTodos } from '@anima/plan'
 import type {
   ActorId,
   BodyView,
@@ -530,6 +530,19 @@ export class Mente {
   /** El estado de la escalera. Se expone para el informe y para el test, no para escribirlo. */
   get estado(): EstadoDeLaEscalera {
     return this.#e
+  }
+
+  /**
+   * CON QUÉ CATÁLOGO ESTÁ JUGANDO ESTA MENTE.
+   *
+   * Se expone por lo mismo que `estado`: para poder afirmar desde afuera que lo
+   * que se promovió LLEGÓ. Sin esto, «la habilidad forjada entró al catálogo» y
+   * «entró al catálogo de otro» se ven igual — el default de `MenteOptions` es
+   * `CATALOGO_CORE`, así que una mente construida sin pasarle el catálogo de la
+   * partida sigue funcionando y sigue sin saber nada de lo aprendido.
+   */
+  get catalogo(): PlannerCatalogView {
+    return this.#o.catalogo ?? CATALOGO_CORE
   }
 
   /** Lo último que decidió. `undefined` antes del primer tick. */

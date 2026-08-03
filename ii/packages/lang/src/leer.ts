@@ -359,10 +359,17 @@ function componer(
       return t === undefined ? undefined : `cerca(tag:${t},${ancla.firma})`
     }
 
-    // ── Y los tres que no piden un estado del mundo.
+    // ── Y los que no piden un estado del mundo.
+    //
+    // `parar`, `seguir` y `cancelar` no están acá por lo mismo que `ir`: `ir` no
+    // lleva a ningún estado porque el destino no es una meta, y estos tres no
+    // llevan a ninguno porque **hablan del pedido y no del mundo**. Quien los
+    // escucha es el que tiene el encargo en la mano, y lee `Clausula.verbo`.
     case 'ir':
     case 'esperar':
     case 'parar':
+    case 'seguir':
+    case 'cancelar':
       return undefined
   }
 }

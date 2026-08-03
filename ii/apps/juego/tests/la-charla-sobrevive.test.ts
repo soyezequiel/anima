@@ -155,10 +155,19 @@ describe('C1 · la charla es durable y sale por un solo canal', () => {
     correr(antes, 200)
     const conCuerpo = antes.o.charla.filter((x) => x.sobre !== undefined)
     expect(conCuerpo.length, 'en 200 ticks no agarró nada, no hay a qué apuntar').toBeGreaterThan(0)
-    // La ventana son los últimos turnos, así que si el log creciera más que ella
-    // lo que este bloque mide sería el RECORTE y no el contexto. Se dice acá en
-    // vez de descubrirse el día que alguien suba los 200 ticks.
-    expect(antes.o.charla.length, 'el log ya no entra en la ventana').toBeLessThanOrEqual(VENTANA_RECIENTE)
+    // ─── LA PRECONDICIÓN, y cambió de forma cuando entró el C6 ──────────────
+    //
+    // Decía «el log entero entra en la ventana» y era cierto hasta que la
+    // criatura empezó a decir cuándo el catálogo no le alcanza («no sé cómo
+    // cocinar todavía», que sale a los ~90 ticks). Con esa línea el log de 200
+    // ticks son NUEVE y la ventana ocho.
+    //
+    // Lo que este bloque necesita no era que entrara el log entero: es que entre
+    // **la línea a la que «eso» tiene que apuntar**. Eso es lo que se afirma
+    // ahora, y es más fuerte que lo de antes — lo de antes lo garantizaba de
+    // rebote y dejaba de garantizarlo por cualquier línea nueva.
+    const posicion = antes.o.charla.length - antes.o.charla.lastIndexOf(conCuerpo[conCuerpo.length - 1]!)
+    expect(posicion, 'la línea que «eso» señala se cayó de la ventana').toBeLessThanOrEqual(VENTANA_RECIENTE)
 
     const despues = await recargar(d, antes)
     despues.o.decir('comé eso')

@@ -82,12 +82,14 @@
 // cantidad y lugar** —«dos troncos», «junto al fuego»— y **el ejecutor de la
 // ligadura diferida**, que se anota pero todavía no la usa nadie.
 
-import { nameOf } from '@anima/physics'
+import { QUALITIES, TAGS, nameOf } from '@anima/physics'
 import type { Physics } from '@anima/physics'
 import { Contexto } from '@anima/perceive'
 import type { Partida } from '@anima/perceive'
-import { Creencias, Mente } from '@anima/mind'
-import { ESQUEMAS, cumple, cumpleCuerpo, interpretar } from '@anima/plan'
+import { Creencias, Mente, PERMANENCIA_EN_TICKS, necesidades } from '@anima/mind'
+import type { Drive, NeedVector, PedidoALaFragua } from '@anima/mind'
+import { CATALOGO_CORE, ESQUEMAS, conOverlay, cumple, cumpleCuerpo, interpretar } from '@anima/plan'
+import type { CatalogCapability, PlannerCatalogView } from '@anima/plan'
 import {
   CanalDeHabla,
   EncargoEnCurso,
@@ -162,6 +164,110 @@ export function enCastellano(firma: string): string {
 const ESTABLECIBLES = new Set(ESQUEMAS.map((e) => e.establishes))
 
 /**
+ * CUÁNTO PESA LO QUE LE PEDÍS, y es una decisión de producto que hay que decir.
+ *
+ * Estaba en 1, y `Drive.peso` está documentado como «cuánto vale contra lo que la
+ * criatura elegiría sola, en [0,1]». O sea que 1 quería decir, literalmente, «lo
+ * que te pido vale más que cualquier cosa que te pase». Medido: con el hambre en
+ * 0,92 y un pescado a los pies, la criatura frotó dos palos 400 ticks seguidos.
+ * Un peso de 1 no es obediencia, es sordera.
+ *
+ * 0,8 y no otro número, y las dos puntas del rango explican el lugar:
+ *
+ *   · **abajo**, la escalera sólo toma una orden si `peso > 1 − peso`, o sea
+ *     arriba de 0,5. Debajo de eso el pedido directamente no se escucha;
+ *   · **arriba**, `energia` llega a 0,8 con el tanque en 106 de 1000 —la curva
+ *     es `((tanque − aliento)/tanque)²` y está escrita en `necesidades.ts`— o sea
+ *     hambre de morirse.
+ *
+ * Entre esas dos, cualquier valor es un lugar en la cuerda. Éste dice «te hago
+ * caso salvo que me esté muriendo», y se mueve el día que alguien lo juegue y le
+ * parezca otra cosa. Lo que no se puede es no elegirlo: 1 también era una
+ * elección, sólo que sin decirlo.
+ */
+const PESO_DEL_ENCARGO = 0.8
+
+/**
+ * CÓMO SE DICE CADA NECESIDAD. Las tres de `NeedVector`, y ni una más.
+ *
+ * La enumeración es cerrada —`necesidades()` devuelve exactamente estas tres— así
+ * que esta tabla no se puede quedar corta sin que alguien toque la mente, y ahí
+ * el tipo lo dice antes que ninguna prueba.
+ */
+const PALABRA_DE_NECESIDAD: Readonly<Record<keyof NeedVector, string>> = {
+  energia: 'hambre',
+  calor: 'frío',
+  refugio: 'que se me viene la noche',
+}
+
+/**
+ * ═══ C6 · LO QUE VUELVE DE UN EPISODIO DE LA FRAGUA, YA JUZGADO ═══════════════
+ *
+ * ─── POR QUÉ ESTE TIPO VIVE ACÁ Y NO SE IMPORTA DE `@anima/forge` ───────────
+ *
+ * Es la misma decisión que `@anima/forge` tomó con `CargoDelJuez` y que
+ * `@anima/mind` tomó con `PedidoALaFragua`, y por el mismo motivo: **importarlo
+ * haría que el juego dependa de la fragua y del juez**, y esos dos arrastran el
+ * modelo, el presupuesto y un compilador de TypeScript. Una pestaña de navegador
+ * no necesita nada de eso para jugar.
+ *
+ * Lo que cruza es un dato chico: un nombre, un grado y una fila de catálogo. Si
+ * alguno cambia de nombre del otro lado, el que arma el puente —que ve los dos
+ * lados— no compila. Es la misma garantía que los precedentes y no más que ésa.
+ */
+export interface Forjado {
+  readonly nombre: string
+  /**
+   * EL GRADO DEL JUEZ, tal como lo publica `@anima/judge`: `promueve`,
+   * `no-promueve`, `inconcluso` o `injuzgable`. Se compara contra el único que
+   * habilita, que es el primero — los otros tres no son «casi»: son que no.
+   */
+  readonly grado: string
+  /** En sus palabras, para poder decirlo por el canal. */
+  readonly porQue: string
+  /**
+   * LA FILA DEL CATÁLOGO, y es opcional por un techo medido que no es de acá.
+   *
+   * `ConstructionSchema` tiene tres formas —proceso, ley, obra— y ninguna es «una
+   * habilidad que establece X». O sea que una candidata CON plano se puede
+   * publicar y una suelta no: se instala, se vuela, cambia el mundo, y el
+   * planificador no la puede elegir porque no hay fila que la represente. Está
+   * escrito y contado en `Instalada.capacidad` de `@anima/forge`.
+   *
+   * Acá se respeta y se dice: promovida sin capacidad se avisa y no se publica.
+   */
+  readonly capacidad?: CatalogCapability
+}
+
+/** El único grado del juez que habilita a usar lo que se forjó. */
+const PROMUEVE = 'promueve'
+
+/**
+ * TODO LO QUE ESTE MUNDO SABE NOMBRAR, en un solo conjunto.
+ *
+ * Las tres enumeraciones son CERRADAS y salen de `@anima/physics`: las 29
+ * cualidades, los 7 tags y las 6 formas. Las sustancias entran aparte porque son
+ * de la partida y no del módulo.
+ *
+ * Se arma una vez por física y no por consulta: es una función pura de `phys` y
+ * el portón la mira en cada hueco.
+ */
+function loQueSeSabeNombrar(phys: Physics): ReadonlySet<string> {
+  const s = new Set<string>()
+  for (const q of QUALITIES) s.add(q.id)
+  for (const t of TAGS) s.add(t)
+  for (const f of phys.substances.keys()) s.add(f)
+  // Las palabras de la propia gramática de firmas. No son materia: son cómo se
+  // escribe una firma, y confundirlas con vocabulario del mundo haría que
+  // `holding(...)` se leyera como una sustancia que nadie declaró.
+  for (const g of ['holding', 'tag', 'count', 'cerca']) s.add(g)
+  return s
+}
+
+/** Las palabras de una firma. Todo lo que no sea número ni operador. */
+const PALABRAS_DE_FIRMA = /[A-Za-z][A-Za-z0-9_]*/g
+
+/**
  * «TENERLO» SIEMPRE TIENE CAMINO, aunque ningún esquema lo establezca.
  *
  * El acuse distingue «dale, voy» de «te entendí, pero no sé cómo hacerlo
@@ -212,6 +318,25 @@ export interface OpcionesDeOrdenes {
    * ignorar lo que vuelva: ignorar una respuesta que ya se pagó es tarde.
    */
   readonly preguntar?: (c: Consulta, signal?: AbortSignal) => Promise<RespuestaDelModelo | undefined>
+  /**
+   * ═══ C6 · LA FRAGUA, y es un PUERTO y no una implementación ═══════════════
+   *
+   * Recibe lo que la mente no supo planificar y devuelve lo que se forjó **ya
+   * juzgado**, o `undefined` si no salió nada. Adentro pasa todo lo caro —armar
+   * el encargo, el viaje al modelo, la puerta que typechequea, el banco del
+   * juez— y nada de eso vive acá, por lo mismo que el resto de este archivo no
+   * sabe pescar: **el juego no es el lugar donde se compila TypeScript**.
+   *
+   * Se le entrega y **no se la espera**: no hay `await`, el tick no se entera, y
+   * lo que vuelva se aplica en la frontera junto con lo del proveedor. Es el
+   * mismo borde del C4 y la misma razón — un episodio de fragua se mide en
+   * segundos y un tick dura 50 ms.
+   *
+   * El que decide si se usa NO es este puerto: es el grado del juez, y lo lee el
+   * portón de acá. Un puerto que decidiera solo sería la UI promoviendo
+   * habilidades, que es exactamente lo que el hito prohíbe con esas palabras.
+   */
+  readonly fragua?: (p: PedidoALaFragua, signal?: AbortSignal) => Promise<Forjado | undefined>
 }
 
 /** Una consulta en el aire, con lo que hace falta para juzgar su respuesta. */
@@ -275,6 +400,44 @@ export class Ordenes {
   #manosAntes: readonly string[]
   /** El último destino que se narró, para no repetir la línea cada tick. */
   #yendoA: string | undefined
+  /**
+   * DESDE CUÁNDO ESTÁ PAUSADO, para la histéresis de la vuelta. Ver
+   * `#revisarLaPausa`. No se guarda con el encargo a propósito: la transición sí
+   * queda anotada con su tick, y esto es el reloj de una decisión que se vuelve a
+   * tomar contra el mundo que haya al abrir. Guardarlo sería reanudar por un
+   * hambre que se midió antes de cerrar la pestaña.
+   */
+  #pausadaEn: number | undefined
+  /**
+   * LO QUE LA MENTE LE PIDIÓ A LA FRAGUA Y TODAVÍA NO SE MIRÓ.
+   *
+   * La costura la llama `escalera.ts` **adentro del tick**, mientras la criatura
+   * decide. Trabajar ahí sería exactamente lo que el hito prohíbe: el episodio de
+   * la fragua es un typecheck y un viaje al modelo, y el tick dura 50 ms. Así que
+   * acá sólo se apila, y se mira en `antesDelTick`. Es la misma frontera que el
+   * C4 usó para el proveedor, por la misma razón y en el mismo lugar.
+   */
+  #paraLaFragua: PedidoALaFragua[] = []
+  /** Todos los que llegaron alguna vez. Es lo que se mide desde afuera. */
+  readonly #pedidos: PedidoALaFragua[] = []
+  /** Los gaps que ya se atendieron, para no pedir dos veces por lo mismo. */
+  readonly #yaPedidos = new Set<string>()
+  /** Lo que volvió de la fragua y espera la frontera. Igual que `#llegadas`. */
+  #forjados: (Forjado | undefined)[] = []
+  /** Cuántos episodios hay en el aire. Si hay uno, no se manda otro. */
+  #forjando = 0
+  /**
+   * EL CATÁLOGO DE ESTA PARTIDA: el de fábrica más lo que se haya promovido.
+   *
+   * Vive acá y no en la mente porque la mente se reconstruye —en cada orden, en
+   * cada pausa— y lo aprendido no se puede perder en cada reconstrucción. Es el
+   * mismo motivo por el que `Creencias` vive acá desde el Hito 12.
+   */
+  #catalogo: PlannerCatalogView = CATALOGO_CORE
+  /** Las capacidades promovidas, en orden. El overlay se re-arma desde el core. */
+  readonly #promovidas: CatalogCapability[] = []
+  readonly #sabeNombrar: ReadonlySet<string>
+  readonly #fragua: OpcionesDeOrdenes['fragua']
 
   constructor(partida: Partida, quien: string, phys: Physics, o: OpcionesDeOrdenes = {}) {
     this.#partida = partida
@@ -282,12 +445,28 @@ export class Ordenes {
     this.#lexico = lexicoDe(phys, PUENTE)
     this.#memoria = o.memoria ?? new Creencias()
     this.#preguntar = o.preguntar
-    this.#mente = new Mente({ actor: quien, memoria: this.#memoria })
-    this.#mentes.set(quien, this.#mente)
+    this.#fragua = o.fragua
+    this.#sabeNombrar = loQueSeSabeNombrar(phys)
+    this.#mente = this.#nuevaMente()
     if (o.charla !== undefined) this.#canal.cargar(o.charla)
     // El encargo vuelve con lo que ya estaba probado adentro. El plan NO vuelve:
     // se replanifica contra el mundo que quedó, que es la promesa del ADR 0009.
-    if (o.encargo !== undefined) this.#encargo = EncargoEnCurso.desdeGuardado(o.encargo)
+    if (o.encargo !== undefined) {
+      const e = EncargoEnCurso.desdeGuardado(o.encargo)
+      this.#encargo = e
+      // ─── DE QUIÉN ERA LA PAUSA QUE ME ENCONTRÉ PUESTA ────────────────────
+      //
+      // El scheduler sólo levanta las pausas que puso él, y una sesión recién
+      // abierta no puso ninguna. Sin esta línea, un encargo que se guardó pausado
+      // por hambre volvía pausado PARA SIEMPRE: el reloj de la vuelta arrancaba
+      // vacío y la regla lo leía como «la pausó el cuidador».
+      //
+      // El tick de la transición vieja y no el de ahora: lo que se recupera es
+      // desde cuándo está parada, y si ya pasó la permanencia vuelve en el primer
+      // tick — que es lo correcto, porque estuvo parada todo ese rato.
+      const t = e.ultimaTransicion
+      if (e.pausado && t?.quien === 'ella') this.#pausadaEn = t.enTick
+    }
     this.#manosAntes = [...(partida.state.actors.get(quien)?.holding ?? [])]
   }
 
@@ -422,14 +601,25 @@ export class Ordenes {
    * rindió nada — y decir que sí haría que el nodo siguiente atara su ligadura a
    * un cuerpo que la criatura nunca tocó.
    */
-  #conQueSeCumple = (firma: string): string | undefined => {
-    const pr = interpretar(firma)
-    if (pr === undefined || pr.k !== 'sostiene') return undefined
-    const v = new Contexto(this.#partida.proyeccion, {
+  /**
+   * LA VISTA DE AHORA, que es la misma que ve la mente.
+   *
+   * Se arma en la llamada y no se guarda, por lo mismo que `yaEstaCumplida` no
+   * cachea: una vista es lo que se ve EN ESTE tick, y la de hace veinte es una
+   * foto de un mundo que ya no está.
+   */
+  #vista(): Parameters<typeof cumple>[1] {
+    return new Contexto(this.#partida.proyeccion, {
       actor: this.#quien,
       rng: this.#partida.dado.tirar,
       lugares: this.#partida.lugares,
     }).ctx
+  }
+
+  #conQueSeCumple = (firma: string): string | undefined => {
+    const pr = interpretar(firma)
+    if (pr === undefined || pr.k !== 'sostiene') return undefined
+    const v = this.#vista()
     for (const b of v.self.holding) if (cumpleCuerpo(pr, b, (x, q) => v.q(x, q))) return b.id
     return undefined
   }
@@ -437,12 +627,22 @@ export class Ordenes {
   #yaEstaCumplida = (firma: string): boolean => {
     const pr = interpretar(firma)
     if (pr === undefined) return false
-    const v = new Contexto(this.#partida.proyeccion, {
-      actor: this.#quien,
-      rng: this.#partida.dado.tirar,
-      lugares: this.#partida.lugares,
-    }).ctx
-    return cumple(pr, v)
+    return cumple(pr, this.#vista())
+  }
+
+  /**
+   * LO QUE MÁS LE DUELE AHORA, con su palabra. Las tres necesidades, la peor.
+   *
+   * Se le pregunta a `necesidades()` de `@anima/mind` y no se calcula acá: es la
+   * MISMA función que la escalera usa para decidir, así que el scheduler de
+   * afuera y la mente de adentro no pueden estar mirando dos hambres distintas.
+   * Escribir la cuenta otra vez sería fabricar esa diferencia.
+   */
+  #loQueMasDuele(): { readonly cuanto: number; readonly palabra: string } {
+    const n = necesidades(this.#vista())
+    let cual: keyof NeedVector = 'energia'
+    for (const k of ['calor', 'refugio'] as const) if (n[k] > n[cual]) cual = k
+    return { cuanto: n[cual], palabra: PALABRA_DE_NECESIDAD[cual] }
   }
 
   /** Lo que se le dice. El acuse entra al log en la misma llamada. */
@@ -494,7 +694,18 @@ export class Ordenes {
     })
     const turno = this.#canal.todo.at(-1)?.turno ?? 0
 
-    // ─── ¿ES UNA CORRECCIÓN? Antes que nada, porque cambia hasta el acuse ────
+    // ─── ¿ES UN CONTROL DEL ENCARGO? Primero de todo, y por eso ─────────────
+    //
+    // «Pará» no es una orden nueva ni una corrección de la vieja: es una frase
+    // SOBRE el encargo. Si se leyera después, `encargoDe` ya habría decidido que
+    // no hay meta y la frase se habría perdido — que es lo que pasaba.
+    const controlado = this.#controlar(tick)
+    if (controlado !== undefined) {
+      this.#canal.decir(tick, 'acuse', controlado)
+      return
+    }
+
+    // ─── ¿ES UNA CORRECCIÓN? Antes del encargo, porque cambia hasta el acuse ─
     const corregido = this.#corregir(turno, dicho)
     if (corregido !== undefined) {
       this.#canal.decir(tick, 'acuse', corregido)
@@ -548,6 +759,77 @@ export class Ordenes {
         this.#llegadas.push({ llave: c.llave, turno, falla })
       },
     )
+  }
+
+  /**
+   * «PARÁ ESO», «SEGUÍ», «OLVIDATE»: las tres frases que hablan DEL PEDIDO.
+   *
+   * Devuelve el acuse, o `undefined` si la frase no era una de ésas.
+   *
+   * ─── LO ÚNICO QUE HACE FALTA ES ESCUCHAR ───────────────────────────────────
+   *
+   * El verbo ya venía leído: `alias.ts` tiene la fila de `parar` desde el Hito 6
+   * y `componer` lo mandaba al cajón de «no lleva a un estado del mundo», que es
+   * cierto y era todo lo que se hacía con él. El cuidador leía «no te entendí del
+   * todo» y la criatura seguía con lo mismo. Es la misma forma que tenía «no ése,
+   * el otro» antes del C3: una frase leída que no escuchaba nadie.
+   *
+   * ─── Y LA ÚNICA QUE NO OBEDECE, con su porqué ──────────────────────────────
+   *
+   * «Seguí» sobre una pausa que puso el HAMBRE se contesta que no. Va contra la
+   * regla del C3 —lo último que dijo una persona gana siempre— a propósito: esa
+   * regla vale para lo que el cuidador sabe (cuál tronco quiso decir) y no para
+   * lo que el cuerpo de la criatura tiene. Y la alternativa está medida: reanudar
+   * la deja lista para que el scheduler la vuelva a pausar en el tick siguiente,
+   * o sea un «tengo hambre» por tick para siempre.
+   */
+  #controlar(tick: number): string | undefined {
+    const c = this.#ultimaLectura?.clausulas[0]
+    const verbo = c?.verbo
+    if (verbo !== 'parar' && verbo !== 'seguir' && verbo !== 'cancelar') return undefined
+    // ─── «PARA» SIN ACENTO TAMBIÉN ES PREPOSICIÓN, y lo encontró un test ─────
+    //
+    // El del C4 usa «dale para el agua» como frase floja, y con el control recién
+    // puesto esa frase paraba el encargo: `clave()` saca los acentos, así que la
+    // preposición «para» y el imperativo «pará» son la misma palabra para el
+    // léxico. No se arregla con acentos —nadie los escribe en un chat— y se
+    // arregla con lo que estos tres verbos son, que ya estaba escrito en
+    // `alias.ts`: **son los que no piden nada**.
+    //
+    // «Pará eso» no nombra ninguna cosa. «Dale para el agua» nombra el agua. Si la
+    // frase nombra algo, «para» está uniendo dos partes de una oración y no es una
+    // orden de parar.
+    if ((c?.objetos.length ?? 0) > 0) return undefined
+    const e = this.#encargo
+    // Sin encargo abierto no hay qué parar, y decirlo es mejor que callarse: el
+    // cuidador que escribe «pará» está seguro de que algo está pasando.
+    if (e === undefined) return 'no estoy haciendo nada que me hayas pedido'
+
+    if (verbo === 'cancelar') {
+      e.cancelar(tick, 'me lo pediste', 'vos')
+      // Se suelta el objeto y no sólo el estado: un encargo cancelado que sigue
+      // colgado del cursor volvería a mirarse en cada tick. Lo que queda de él es
+      // la charla, que es donde vive lo que pasó.
+      this.#encargo = undefined
+      this.#soltarElDrive()
+      return 'dale, me olvido'
+    }
+
+    if (verbo === 'parar') {
+      if (e.pausar(tick, 'me lo pediste', 'vos') === undefined) return 'ya estaba parada'
+      // `#pausadaEn` queda en `undefined` A PROPÓSITO: es el reloj del scheduler
+      // del hambre, y el que pausa es el que reanuda. Sin esto, «pará» duraría
+      // ocho ticks y el cuidador no tendría cómo pararla de verdad.
+      this.#pausadaEn = undefined
+      this.#soltarElDrive()
+      return 'dale, lo dejo'
+    }
+
+    const duele = this.#loQueMasDuele()
+    if (duele.cuanto > PESO_DEL_ENCARGO) return `no puedo, tengo ${duele.palabra}`
+    if (e.reanudar(tick, 'me lo pediste', 'vos') === undefined) return 'si no había parado'
+    this.#pausadaEn = undefined
+    return 'dale, sigo'
   }
 
   /**
@@ -723,6 +1005,246 @@ export class Ordenes {
   }
 
   /**
+   * ═══ EL SCHEDULER DEL C5: CUÁNDO SE PAUSA Y CUÁNDO SE VUELVE ═══════════════
+   *
+   * ─── POR QUÉ ESTO VIVE ACÁ Y NO ADENTRO DE LA MENTE ────────────────────────
+   *
+   * Porque la mente **no sabe que hay un encargo**. Recibe UNA meta y no un
+   * grafo —es la costura del C3, y está medida— así que el único que puede
+   * decir «esto que estás haciendo es la segunda de dos partes de algo que te
+   * pidieron, y lo vamos a dejar para después» es el de afuera.
+   *
+   * Y hay una segunda razón, más dura, y también medida: **la escalera no puede
+   * interrumpirse a sí misma**. D1 devuelve `seguir` mientras haya una intención
+   * en vuelo, así que mientras `frotar` esté volando la escalera ni siquiera baja
+   * a D3, que es donde el hambre podría ganar. El único peldaño que corta algo en
+   * vuelo es D0, y D0 es sólo para lo que quema. Con el hambre en 0,92 y un
+   * pescado a los pies, la criatura frotó dos palos 400 ticks.
+   *
+   * Así que la pausa no es «bajarle la prioridad al drive»: es **soltar el
+   * drive**, que es la operación que este archivo ya hacía en cada orden nueva.
+   * La mente se reconstruye sin objetivo del cuidador y elige lo suyo, que es
+   * exactamente lo que tiene que pasar cuando se está muriendo de hambre.
+   *
+   * ─── LA VUELTA NO ES SIMÉTRICA, y ahí está el número de la escalera ────────
+   *
+   * Se pausa apenas duele, y se vuelve recién `PERMANENCIA_EN_TICKS` después de
+   * que dejó de doler. No es prudencia: una necesidad que oscila alrededor del
+   * umbral pausaría y reanudaría un tick sí y otro también, y el cuidador leería
+   * ocho «tengo hambre» seguidos. Es la misma histéresis que la escalera aplica
+   * entre peldaños y es el MISMO número, leído de allá: dos anti-oscilaciones con
+   * dos constantes distintas serían dos ideas de cuánto dura una idea.
+   */
+  #revisarLaPausa(e: EncargoEnCurso, tick: number): void {
+    const duele = this.#loQueMasDuele()
+
+    if (!e.pausado) {
+      if (duele.cuanto <= PESO_DEL_ENCARGO) return
+      const t = e.pausar(tick, duele.palabra, 'ella')
+      if (t === undefined) return
+      this.#pausadaEn = tick
+      // `aviso` y no habla: es la clase de «lo que no se pudo, con su porqué», y
+      // esto es exactamente eso. Que lo diga es la mitad del hito — una pausa
+      // callada es indistinguible de una criatura que te ignora.
+      this.#canal.decir(tick, 'aviso', `tengo ${duele.palabra}, dejo esto y vuelvo`)
+      this.#soltarElDrive()
+      return
+    }
+
+    if (duele.cuanto > PESO_DEL_ENCARGO) {
+      // Sigue doliendo: se corre el reloj de la vuelta. Sin esta línea, una
+      // necesidad que baja y sube volvería a la orden a los ocho ticks de la
+      // PRIMERA vez que aflojó, aunque ahora esté peor.
+      this.#pausadaEn = tick
+      return
+    }
+    // EL QUE PAUSA ES EL QUE REANUDA. `#pausadaEn` sólo lo escribe la pausa
+    // automática, así que en `undefined` quiere decir «esta pausa no es mía» —la
+    // puso el cuidador— y no se levanta sola. Sin esta línea, «pará eso» duraría
+    // ocho ticks.
+    if (this.#pausadaEn === undefined) return
+    if (tick - this.#pausadaEn < PERMANENCIA_EN_TICKS) return
+    const t = e.reanudar(tick, 'se le pasó', 'ella')
+    if (t === undefined) return
+    this.#pausadaEn = undefined
+    this.#canal.decir(tick, 'aviso', 'listo, sigo con lo que me pediste')
+  }
+
+  /**
+   * ═══ C6 · LA COSTURA CON LA FRAGUA ════════════════════════════════════════
+   *
+   * Lo llama `escalera.ts` cuando `plan()` contesta `gap`, o sea cuando el
+   * catálogo no alcanza. **Acá no se trabaja**: se apila y se vuelve, porque esto
+   * corre adentro del tick.
+   *
+   * Medido antes de escribirlo: `MenteOptions.costura` tenía CERO llamadores en
+   * producción, así que el gancho no podía dispararse ni una vez. Es el mismo
+   * verde por omisión que el propio `PedidoALaFragua` denuncia en su comentario
+   * —«la fragua no se despierta ni una vez» era cierto porque no había por dónde
+   * despertarla— sólo que un piso más arriba.
+   */
+  #alaFragua = (p: PedidoALaFragua): void => {
+    // EL MISMO HUECO NO SE PIDE DOS VECES. `gap` puede repetirse todos los ticks
+    // mientras la meta siga sin plan, y sin este cerrojo un pedido se convertiría
+    // en veinte viajes al modelo por la misma cosa.
+    if (this.#yaPedidos.has(p.gap)) return
+    this.#yaPedidos.add(p.gap)
+    this.#paraLaFragua.push(p)
+    this.#pedidos.push(p)
+  }
+
+  /**
+   * TODOS LOS HUECOS QUE LA MENTE PIDIÓ FORJAR, y no los que faltan atender.
+   *
+   * Son dos listas y no una: la cola se vacía a medida que se atiende, así que
+   * medir sobre ella diría «no pidió nada» justo después de haber pedido. Lo que
+   * se quiere contar acá es cuántas veces el catálogo no alcanzó.
+   */
+  get pedidosALaFragua(): readonly PedidoALaFragua[] {
+    return [...this.#pedidos]
+  }
+
+  /** El catálogo de esta partida: el de fábrica más lo que se haya promovido. */
+  get catalogo(): PlannerCatalogView {
+    return this.#catalogo
+  }
+
+  /**
+   * EL PORTÓN DE LA MATERIA, y es el límite escrito del hito: «un gap de materia
+   * o física queda `unsupported`».
+   *
+   * ─── CÓMO SE DECIDE, y por qué no se interpreta la firma ───────────────────
+   *
+   * La tentación es `interpretar(gap)` y mirar la estructura. No sirve: el hueco
+   * que la mente pide de verdad es `emitsPower<410&emitsPower>=253` —una
+   * conjunción— y `Predicado` tiene cuatro formas y ninguna es «y». Un portón que
+   * se apoyara en eso diría que no a todo, que desde afuera se ve igual de bien
+   * que decir que sí a todo.
+   *
+   * Lo que se mira son LAS PALABRAS: toda firma nombra cualidades, tags,
+   * sustancias o palabras de su propia gramática, y las cuatro listas son
+   * cerradas. Una palabra que no está en ninguna es materia o física que este
+   * mundo no tiene, y forjar código contra eso sería pedirle al modelo que
+   * invente una ley.
+   *
+   * ─── LO QUE ESTE PORTÓN NO PROMETE ─────────────────────────────────────────
+   *
+   * Que lo que pase sea forjable. Promete que lo que NO pasa es imposible, que es
+   * la mitad que el hito pide: nada se crea por accidente.
+   */
+  sePuedeForjar(gap: string): boolean {
+    const palabras = gap.match(PALABRAS_DE_FIRMA) ?? []
+    if (palabras.length === 0) return false
+    return palabras.every((p) => this.#sabeNombrar.has(p))
+  }
+
+  /**
+   * ═══ EL EPISODIO DE LA FRAGUA, EN LA FRONTERA DEL TICK ════════════════════
+   *
+   * Tres pasos y ninguno cuesta un tick: se mira lo que volvió, se decide si el
+   * hueco que sigue se puede pedir, y se pide sin esperar.
+   */
+  #atenderLaFragua(tick: number): void {
+    this.#aplicarLoForjado(tick)
+
+    const p = this.#paraLaFragua[0]
+    if (p === undefined) return
+    // UNO A LA VEZ. Sin esto, seis huecos pendientes son seis episodios en vuelo
+    // y seis viajes al modelo pagados a la vez.
+    if (this.#forjando > 0) return
+    this.#paraLaFragua = this.#paraLaFragua.slice(1)
+
+    if (!this.sePuedeForjar(p.gap)) {
+      // `unsupported` y se dice. Y NO se toca nada: ni el catálogo, ni las
+      // recetas, ni la física. Es el límite del hito escrito como una salida.
+      this.#canal.decir(tick, 'aviso', `«${enCastellano(p.meta)}» me pide algo que este mundo no tiene`)
+      return
+    }
+
+    const fragua = this.#fragua
+    // Se dice SIEMPRE que la mente pidió, haya fragua enchufada o no: que el
+    // catálogo no alcance es información del mundo y no del cableado.
+    this.#canal.decir(tick, 'progreso', `no sé cómo «${enCastellano(p.meta)}» todavía`)
+    if (fragua === undefined) return
+
+    this.#forjando++
+    void fragua(p).then(
+      (f) => {
+        this.#forjados.push(f)
+      },
+      () => {
+        this.#forjados.push(undefined)
+      },
+    )
+  }
+
+  /**
+   * LO QUE VOLVIÓ DE LA FRAGUA, con los DOS portones — y son dos porque son dos
+   * preguntas distintas.
+   *
+   *   1. **¿el juez la promueve?** Es el del hito: nada se usa sin veredicto. Los
+   *      otros tres grados no son «casi»: son que no, y se dicen;
+   *   2. **¿trae con qué publicarse?** Es el techo del catálogo, medido y ajeno:
+   *      una habilidad sin plano se puede volar y el planificador no la puede
+   *      elegir. Promoverla y no poder publicarla es un resultado legítimo, y
+   *      callarlo lo haría ver como un fracaso del juez.
+   */
+  #aplicarLoForjado(tick: number): void {
+    if (this.#forjados.length === 0) return
+    const forjados = this.#forjados
+    this.#forjados = []
+    for (const f of forjados) {
+      this.#forjando--
+      if (f === undefined) {
+        this.#canal.decir(tick, 'aviso', 'no me salió, sigo con lo que sé')
+        continue
+      }
+      if (f.grado !== PROMUEVE) {
+        this.#canal.decir(tick, 'aviso', `no me salió: ${f.porQue}`)
+        continue
+      }
+      if (f.capacidad === undefined) {
+        this.#canal.decir(tick, 'aviso', `me salió algo pero no la sé usar todavía: ${f.nombre}`)
+        continue
+      }
+      // ─── LA PROMOCIÓN, y el overlay se re-arma desde el core ─────────────
+      //
+      // `conOverlay` acumula, así que apilarlo sobre el catálogo de ayer dejaría
+      // la capacidad vieja publicada para siempre cuando una revisión reemplace a
+      // otra. Es la misma línea que `Registro.instalar` explica en `@anima/forge`,
+      // y se paga el mismo precio: guardar la lista aparte.
+      this.#promovidas.push(f.capacidad)
+      this.#catalogo = conOverlay(CATALOGO_CORE, this.#promovidas)
+      this.#canal.decir(tick, 'progreso', `aprendí a ${f.nombre}`)
+      // La mente se reconstruye para que el catálogo nuevo le llegue: `catalogo`
+      // es de sólo lectura en `MenteOptions`, igual que `drive`.
+      this.#nuevaMente(this.#driveDeAhora(tick))
+    }
+  }
+
+  /** El drive que corresponde ahora, para no perderlo al reconstruir la mente. */
+  #driveDeAhora(tick: number): Drive | undefined {
+    const meta = this.#ultimaPuesta
+    if (meta === undefined) return undefined
+    const sobre = this.#encargo?.senaladoDelPendiente()
+    return { meta, peso: PESO_DEL_ENCARGO, desdeTick: tick, ...(sobre === undefined ? {} : { sobre }) }
+  }
+
+  /**
+   * SOLTAR EL OBJETIVO DEL CUIDADOR. Una mente nueva sin `drive`, y nada más.
+   *
+   * Lo que se pierde a propósito: la intención en vuelo. Es el punto seguro que
+   * el documento pide y es el que este mundo tiene — `Mente` se reconstruye
+   * entera en cada orden nueva desde el Hito 6, así que no se inventa una
+   * operación, se usa la que ya estaba. La memoria —lo que aprendió— se pasa
+   * entera: lo único que se reinicia es la escalera.
+   */
+  #soltarElDrive(): void {
+    this.#ultimaPuesta = undefined
+    this.#nuevaMente()
+  }
+
+  /**
    * SE LLAMA ANTES DE CADA TICK, y el orden importa: si la meta de ahora ya está
    * cumplida, la criatura tiene que arrancar la siguiente EN ESTE tick y no en el
    * que viene. Con el orden al revés se pierde un tick por cláusula.
@@ -733,8 +1255,22 @@ export class Ordenes {
     // meta vieja. Va acá y no en `despuesDelTick` por lo mismo que `vivir` hace
     // pensar antes del paso: la criatura actúa sobre el mundo que vio.
     this.#aplicarLoQueLlego(tick)
+    // LA FRAGUA, en la misma frontera y por la misma razón. Va acá arriba y no
+    // colgada del encargo: la mente pide forjar **también cuando vive sola** —
+    // medido: sin ninguna orden, en 600 ticks pide igual, y pide lo mismo.
+    this.#atenderLaFragua(tick)
     const e = this.#encargo
     if (e === undefined) return
+
+    // EL SCHEDULER, y va acá por lo mismo que la frontera del proveedor: pausar
+    // en el medio de un cuadro sería soltarle el objetivo a la criatura con la
+    // vista a mitad de camino.
+    this.#revisarLaPausa(e, tick)
+    // Un encargo pausado NO SE MIRA: nadie le pregunta qué nodo va ahora, y por
+    // eso tampoco lo puede dar por cumplido de casualidad. La pausa es una pausa
+    // y no un rótulo — lo que la criatura haga mientras tanto es asunto suyo.
+    if (e.pausado) return
+
     const quiere = e.ahora(this.#yaEstaCumplida, tick, this.#conQueSeCumple)
     if (quiere === undefined) {
       this.#canal.decir(tick, 'listo', 'listo')
@@ -777,11 +1313,38 @@ export class Ordenes {
     // acá cruza a la mente. Sin esta línea el `sobre` se guardaba y no lo leía
     // nadie — que es donde estaba cortado el camino.
     const sobre = e.senaladoDelPendiente()
-    this.#mente = new Mente({
+    this.#nuevaMente({
+      meta: quiere,
+      peso: PESO_DEL_ENCARGO,
+      desdeTick: tick,
+      ...(sobre === undefined ? {} : { sobre }),
+    })
+  }
+
+  /**
+   * LA ÚNICA FÁBRICA DE MENTES DE ESTE ARCHIVO, y por eso existe.
+   *
+   * Había tres `new Mente(...)` sueltos —el del arranque, el de soltar el drive y
+   * el de tomar una meta— y cada opción nueva había que acordarse de ponerla en
+   * los tres. La costura con la fragua es la primera que se olvidaría: una mente
+   * construida sin ella no falla, sólo deja de pedir, y eso no se ve.
+   */
+  #nuevaMente(drive?: Drive): Mente {
+    const m = new Mente({
       actor: this.#quien,
       memoria: this.#memoria,
-      drive: { meta: quiere, peso: 1, desdeTick: tick, ...(sobre === undefined ? {} : { sobre }) },
+      // LA COSTURA CON LA FRAGUA. `escalera.ts` la llama cuando `plan()` contesta
+      // `gap` —o sea cuando el catálogo no alcanza— y hasta el C6 no se la pasaba
+      // nadie, así que el gancho no podía dispararse ni una vez. Ver `#alaFragua`.
+      costura: this.#alaFragua,
+      // Y EL CATÁLOGO DE ESTA PARTIDA, que es el de fábrica más lo promovido. Sin
+      // esta línea, una habilidad forjada, juzgada y publicada seguiría sin
+      // existir para la mente: el default de `MenteOptions` es `CATALOGO_CORE`.
+      catalogo: this.#catalogo,
+      ...(drive === undefined ? {} : { drive }),
     })
-    this.#mentes.set(this.#quien, this.#mente)
+    this.#mente = m
+    this.#mentes.set(this.#quien, m)
+    return m
   }
 }
