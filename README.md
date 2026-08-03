@@ -157,6 +157,92 @@ Playwright levanta automáticamente la web y una API con base de datos en
 memoria. Los E2E del proveedor Codex prueban el contrato usando un puente
 controlado; no consumen la cuenta real del usuario.
 
+## Dejarla andando en otra máquina (Docker)
+
+La imagen empaqueta un solo proceso: la web ya construida y la API salen por el
+mismo puerto, y el **CLI de Codex viaja adentro** — el puente de IA no llama a
+ninguna API de OpenAI, lanza `codex` como subproceso. Ver
+[ADR 0087](docs/decisions/0087-la-imagen-lleva-el-cli-adentro-y-la-cuenta-por-fuera.md).
+
+La cuenta **no** se hornea en la imagen. Entra al arrancar: montás el `~/.codex`
+de la máquina de solo lectura y el contenedor copia `auth.json` a su propio
+volumen. Trabaja siempre sobre esa copia, así que ni un `logout` desde la web
+puede tocar tus credenciales reales.
+
+```bash
+cp .env.example .env   # y apuntá ANIMA_CODEX_SEED a tu carpeta ~/.codex
+docker compose up -d --build
+```
+
+Queda en `http://localhost:8787` y, desde otros dispositivos de la red, en
+`http://IP-DE-LA-MAQUINA:8787`.
+
+### Llevarla a una laptop sin construirla ahí
+
+```bash
+docker save anima:1 | gzip > anima-1.tar.gz
+```
+
+En la laptop: `docker load -i anima-1.tar.gz` y después
+
+```bash
+docker run -d --name anima -p 8787:8787 -v anima-datos:/datos -v "$HOME/.codex:/semilla/codex:ro" -e ANIMA_CODEX_SHARED=1 --restart unless-stopped anima:1
+```
+
+La laptop **no** necesita Node, ni pnpm, ni el CLI de Codex: solo el `auth.json`
+que sembrás por el volumen (podés copiar esa carpeta a mano si ahí no tenés
+Codex instalado).
+
+### Lo que hay que saber antes de abrirla a la red
+
+- `ANIMA_CODEX_SHARED=1` significa **una cuenta para todos**: quien abra la
+  página consulta con tu cuenta y gasta tu cuota, tenga identidad Nostr o no.
+  Sin ese flag, cada pubkey conecta la suya y el invitado usa la de la máquina.
+- Esa sesión va **administrada**: se presta para pensar, pero conectarla y
+  desconectarla quedan del lado de quien hospeda. El servidor responde 403 a
+  `/ai/login` y `/ai/logout`, y la interfaz ni muestra el botón. Lo que el
+  candado **no** cubre es la cuota: cada visitante gasta de la misma cuenta.
+- El `config.toml` de tu máquina no viaja (trae MCPs, skills y rutas que dentro
+  del contenedor no existen). El modelo se elige con `ANIMA_CODEX_MODEL`; sin
+  él manda el «Automático» de la cuenta.
+- Todo el estado vive en el volumen `/datos`: base SQLite, la copia de la sesión
+  y los CODEX_HOME por pubkey. Un volumen, un backup.
+
+### Exponerla en internet (Cloudflare Tunnel)
+
+`docker-compose.tunnel.yml` agrega un `cloudflared` y cierra el puerto de la
+máquina: con el túnel puesto, esa sería una segunda puerta sin nada que la
+mire. El túnel es **saliente**, así que no hay que abrir nada en el router ni
+tener IP pública.
+
+Se crea una vez en el panel de Cloudflare (Zero Trust → Networks → Tunnels →
+Create a tunnel → Docker), se pega el `TUNNEL_TOKEN` en el `.env`, y en ese
+mismo panel se mapea el hostname público al servicio:
+
+```
+anima.naranja.fit  →  http://anima:8787
+```
+
+`anima` es el nombre del servicio del compose: cloudflared lo resuelve por la
+red interna, sin pasar por la máquina.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+```
+
+Ojo con lo que esto implica: la instancia queda accesible desde cualquier lado,
+y con `ANIMA_CODEX_SHARED=1` **cualquiera que tenga la URL gasta tu cuota**. Si
+eso importa, las dos salidas son Cloudflare Access (solo entran los mails que
+listes) o una regla de rate limiting sobre `/api/ai/*`.
+
+### Convivir con otros proyectos
+
+El compose usa nombre de proyecto propio (`anima`), así que sus recursos son
+siempre `anima_*` y no pisan los de nadie. Si el 8787 ya está ocupado en esa
+máquina, `ANIMA_PORT` lo cambia; `ANIMA_BIND=127.0.0.1` la deja invisible desde
+la red. El contenedor tiene un techo de 1,5 GB de memoria para que no le pelee
+los recursos a lo demás que corra ahí.
+
 ## Estructura
 
 ```

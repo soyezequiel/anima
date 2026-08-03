@@ -107,7 +107,12 @@ describe('hablarle a la criatura desde el juego', () => {
 
     o.decir('xyzzy plugh')
     // Contesta —el acuse siempre sale— pero la meta sigue siendo la de antes.
-    expect(o.charla.at(-1)?.clase).toBe('acuse')
+    //
+    // Se busca el acuse en vez de mirar `at(-1)`, y el atajo dejó de valer por un
+    // cambio querido: detrás del acuse ahora puede venir un `aviso` diciendo que
+    // no hay a quién preguntarle lo que no se entendió. Lo que este test afirma
+    // es que CONTESTA, no que conteste último.
+    expect(o.charla.some((x) => x.clase === 'acuse')).toBe(true)
     correr(p, o, 5)
     expect(o.enCurso?.meta).toBe(perseguía)
   })

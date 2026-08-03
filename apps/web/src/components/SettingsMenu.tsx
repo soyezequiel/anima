@@ -146,6 +146,14 @@ export function SettingsMenu({
       fail(cliHint[provider]);
       return;
     }
+    if (!current.loggedIn && current.managed) {
+      // La cuenta es de quien hospeda: acá no hay login que ofrecer, y decirlo
+      // evita mandar al usuario a pelear con una autorización que no le toca.
+      fail(
+        'quien hospeda esta instancia presta su cuenta de Codex, pero ahora mismo no tiene sesión activa; avisale para que la reconecte',
+      );
+      return;
+    }
     if (!current.loggedIn) {
       const authUrl = await startAiLogin(provider);
       if (!authUrl) {
@@ -462,18 +470,24 @@ export function SettingsMenu({
         {status?.loggedIn && (
           <div className="settings-section">
             <small>
-              {account
-                ? 'Cuenta de Codex ligada a tu identidad.'
-                : 'Cuenta de Codex compartida de esta máquina (modo invitado).'}
+              {status.managed
+                ? 'Cuenta de Codex prestada por quien hospeda esta instancia: se usa desde acá, pero se conecta y se desconecta allá.'
+                : account
+                  ? 'Cuenta de Codex ligada a tu identidad.'
+                  : 'Cuenta de Codex compartida de esta máquina (modo invitado).'}
             </small>
-            <button
-              data-testid="ai-logout-codex"
-              disabled={view.aiBusy || switching}
-              title="Cierra la sesión de Codex en esta máquina"
-              onClick={() => logoutProvider('codex')}
-            >
-              Cerrar sesión de Codex
-            </button>
+            {/* La sesión administrada no muestra el botón: es una sola para
+                todos, y cerrarla desde acá dejaría sin mente a los demás. */}
+            {!status.managed && (
+              <button
+                data-testid="ai-logout-codex"
+                disabled={view.aiBusy || switching}
+                title="Cierra la sesión de Codex en esta máquina"
+                onClick={() => logoutProvider('codex')}
+              >
+                Cerrar sesión de Codex
+              </button>
+            )}
           </div>
         )}
         {claudeStatus?.loggedIn && (

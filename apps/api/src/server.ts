@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import fastifyStatic from '@fastify/static';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AiBridge, AiBridgeFactory } from './ai.js';
 import { createCodexBridgeFactory, isCodexModel, isCodexReasoningEffort } from './ai.js';
@@ -24,6 +25,27 @@ export interface ServerOptions {
   codexDir?: string;
   /** Puente de Claude de la máquina (inyectable en pruebas). */
   claudeAi?: AiBridge;
+  /**
+   * Directorio con la web ya construida (`apps/web/dist`). Presente, este
+   * servidor también la sirve, y entonces API y web comparten origen. Ausente
+   * (desarrollo), la web la sirve Vite y este servidor es solo la API.
+   */
+  staticDir?: string;
+}
+
+/**
+ * El cliente pega siempre a `/api/...` (ver `API_BASE` en la web) porque en
+ * desarrollo el proxy de Vite le quita ese prefijo antes de llegar acá. Para
+ * que el mismo cliente funcione cuando este servidor sirve la web, el prefijo
+ * se declara alias de la raíz: `/api/me` y `/me` son la misma ruta.
+ *
+ * Va como `rewriteUrl` y no como hook porque tiene que ocurrir antes del
+ * router: un `onRequest` corre cuando la ruta ya se eligió (o ya se falló).
+ */
+export function stripApiPrefix(url: string): string {
+  if (url === '/api') return '/';
+  if (!url.startsWith('/api/')) return url;
+  return url.slice('/api'.length);
 }
 
 /**
@@ -33,7 +55,11 @@ export interface ServerOptions {
  * servidor no las interpreta ni las ejecuta jamás.
  */
 export function buildServer(options: ServerOptions): FastifyInstance {
-  const app = Fastify({ logger: false, bodyLimit: MAX_VALUE_BYTES + 4096 });
+  const app = Fastify({
+    logger: false,
+    bodyLimit: MAX_VALUE_BYTES + 4096,
+    rewriteUrl: (request) => stripApiPrefix(request.url ?? '/'),
+  });
   const db = createDb(options.dbPath);
   const deps: AuthDeps = { db, ...(options.now ? { now: options.now } : {}) };
 
@@ -101,9 +127,23 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return ai.status();
   });
 
+  /**
+   * Una sesión administrada se presta, no se entrega: conectarla y
+   * desconectarla son del dueño de la instancia. Es 403 y no 400 porque la
+   * petición está bien formada — lo que falta es permiso.
+   */
+  const rejectIfManaged = (ai: AiBridge, reply: FastifyReply): boolean => {
+    if (!ai.managed) return false;
+    void reply
+      .code(403)
+      .send({ error: 'la sesión de IA la administra el dueño de esta instancia' });
+    return true;
+  };
+
   app.post('/ai/login', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
+    if (rejectIfManaged(ai, reply)) return reply;
     const result = await ai.startLogin();
     if ('error' in result) return reply.code(502).send(result);
     return result;
@@ -113,6 +153,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   app.post('/ai/login/code', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
+    if (rejectIfManaged(ai, reply)) return reply;
     if (!ai.submitLoginCode) {
       return reply.code(400).send({ error: 'este proveedor completa el login solo' });
     }
@@ -141,6 +182,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   app.post('/ai/logout', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
+    if (rejectIfManaged(ai, reply)) return reply;
     await ai.logout();
     return reply.code(204).send();
   });
@@ -327,6 +369,13 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     db.prepare('DELETE FROM user_data WHERE pubkey = ? AND key = ?').run(auth.pubkey, key);
     return reply.code(204).send();
   });
+
+  // La web construida, servida por el mismo origen que la API (modo empaquetado).
+  // Va al final a propósito: `@fastify/static` monta un comodín `/*` y las rutas
+  // declaradas arriba tienen que seguir ganándole.
+  if (options.staticDir) {
+    void app.register(fastifyStatic, { root: options.staticDir });
+  }
 
   return app;
 }

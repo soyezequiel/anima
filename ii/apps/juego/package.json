@@ -13,11 +13,14 @@
   },
   "dependencies": {
     "@anima/dibujo": "workspace:*",
+    "@anima/forge": "workspace:*",
+    "@anima/judge": "workspace:*",
     "@anima/lang": "workspace:*",
     "@anima/mind": "workspace:*",
     "@anima/perceive": "workspace:*",
     "@anima/physics": "workspace:*",
     "@anima/plan": "workspace:*",
+    "@anima/skills": "workspace:*",
     "@anima/store": "workspace:*",
     "@anima/world": "workspace:*"
   },

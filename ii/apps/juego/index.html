@@ -886,9 +886,42 @@
       @keyframes buscar { 0%, 100% { opacity: .22; } 50% { opacity: .85; } }
       .lampara.no i { background: rgba(236, 231, 221, .09); }
       .lampara.no b { color: var(--tinta-tenue); }
+      /* CORTADO: el CLI está y el juego no le llegó. El punto queda HUECO —hay
+         alguien del otro lado y no pasa nada por el medio— y titila en vez de
+         respirar. El color no distinguía nada: Claude en `vive` ya usa el mismo
+         ámbar, así que si la diferencia fuera de color las dos luces se verían
+         iguales, que es justo lo que este estado vino a romper. La diferencia es
+         de FORMA —lleno contra hueco— y se ve de reojo. */
+      .lampara.cortado b { color: var(--tinta); }
+      .lampara.cortado span { color: var(--alarma); }
+      .lampara.cortado i { background: transparent; box-shadow: inset 0 0 0 1.5px var(--luz);
+                           animation: titilar 1.7s steps(1, end) infinite; }
+      @keyframes titilar { 0%, 62% { opacity: 1; } 63%, 100% { opacity: .28; } }
       .enlace .nota { margin: 0; color: var(--tinta-tenue);
                       font: 400 12px/1.45 var(--serif); }
       .enlace .nota:empty { display: none; }
+
+      /* ─── EL AVISO QUE APARECE SOLO ───────────────────────────────────────
+         Va DEBAJO DE LA LÁMPARA y no en el medio de la pantalla, y es una
+         decisión y no una comodidad: la luz de arriba y esto dicen lo mismo con
+         distinto detalle, y separarlos obligaría a leer dos veces para descubrir
+         que son la misma cosa. Acá, la luz cambia y el renglón explica por qué.
+
+         El borde de un solo lado lleva `border-radius: 0` a propósito: con las
+         esquinas redondeadas y un solo borde, el marco se ve roto.
+
+         Y no se va solo del DOM: se esconde con `hidden` desde `main.ts` a los
+         pocos segundos. Un cartel que se desmonta pierde la animación de salida
+         y aparece el salto de layout que el `.enlace` en columna delata. */
+      .enlace .no-llego { margin: 0; max-width: 44ch; padding: 8px 11px 9px;
+                          border-left: 2px solid var(--alarma); border-radius: 0;
+                          background: var(--flotante); color: var(--tinta-serif);
+                          font: 400 12px/1.5 var(--serif);
+                          animation: asomar .3s ease-out; }
+      .enlace .no-llego .sobre { display: block; margin-top: 3px; color: var(--tinta-tenue);
+                                 font-size: 11.5px; }
+      .enlace .no-llego .sobre:empty { display: none; }
+      @keyframes asomar { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: none; } }
 
       /* ─── LA VELOCIDAD — EL ÚNICO FONDO PROPIO DE LA ESQUINA ──────────────
          El porqué está en el HTML: la pausa no puede depender de qué celda le
@@ -919,6 +952,10 @@
         .lampara.vive i { box-shadow: 0 0 6px 1px color-mix(in srgb, var(--luz) 40%, transparent); }
         .lampara.vive i::after { opacity: .5; transform: scale(2); }
         .lampara.buscando i { opacity: .5; }
+        /* La cuarta se distingue sin moverse: el punto sigue hueco, que es lo
+           que la separa de `vive`. La animación era el énfasis, no el dato. */
+        .lampara.cortado i { box-shadow: inset 0 0 0 1.5px var(--luz); opacity: 1; }
+        .enlace .no-llego { animation: none; }
       }
 
       /* ─── Y LO QUE EL REDISEÑO AGREGÓ, QUE SE HABÍA QUEDADO AFUERA ─────────
@@ -1002,6 +1039,18 @@
           </p>
         </div>
         <p class="nota" id="enlace-nota"></p>
+        <!-- ─── CUANDO QUISO IR AL MODELO Y NO LLEGÓ ──────────────────────
+             Sin `role="status"` propio: está adentro del `aria-live="polite"`
+             del `.enlace`, y anidar una región viva dentro de otra hace que
+             algunos lectores lo lean dos veces. La de afuera ya lo cubre.
+
+             El `<span>` de adentro lleva la frase o la meta que quedó sin
+             atender. Sin eso el aviso dice que algo falló y no qué se perdió,
+             que es la mitad inútil de un aviso. -->
+        <p class="no-llego" id="no-llego" hidden>
+          <span id="no-llego-que"></span>
+          <span class="sobre" id="no-llego-sobre"></span>
+        </p>
       </div>
 
       <!-- ─── LA FICHA, Y POR QUÉ NO ES UNA PLANILLA ────────────────────────
@@ -1290,14 +1339,28 @@
               <dt>semilla</dt><dd id="semilla">—</dd>
             </dl>
             <div class="mandos">
+              <!-- Primero el que se usa cuando algo anda mal, y DESPUÉS el que
+                   borra: si el orden fuera al revés, el camino natural del que
+                   se topó con un problema pasa por el botón destructivo — y
+                   empezar de cero destruye justamente la partida que había que
+                   reportar. -->
+              <button id="reporte" title="Baja un .md con el estado de la partida, lo que se rompió y el mundo en crudo (Ctrl+Alt+R)">descargar reporte</button>
               <!-- El único botón destructivo de la pantalla, y el único naranja.
                    No es una comodidad: sin él, un guardado en mal estado deja al
                    jugador trabado para siempre, porque el juego lo carga solo. -->
               <button id="olvidar" class="peligro">empezar de cero</button>
             </div>
+            <!-- Los dos avisos en UN párrafo y no en dos, y el panel mide 229 px
+                 de alto: medido, el texto queda 72 px abajo del pliegue y el
+                 panel scrollea. Se acepta porque lo que queda arriba son los dos
+                 BOTONES —lo accionable— y porque el atajo no depende de que
+                 alguien lea esta línea: está en el `title` del botón y funciona
+                 con el dock cerrado. Partirlo en dos párrafos era peor: empujaba
+                 al de abajo entero fuera de la vista. -->
             <p class="sub">
               Se guarda sola cada pocos segundos, en este navegador. Cerrás la
               pestaña y volvés donde estabas — con lo que la criatura aprendió.
+              ¿Algo no anda? <b>Ctrl+Alt+R</b> baja el reporte.
             </p>
           </section>
 

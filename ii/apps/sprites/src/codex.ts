@@ -1,4 +1,4 @@
-// ─── EL DIBUJANTE DE VERDAD: `codex exec` ───────────────────────────────────
+// ─── EL PUENTE CON CODEX: `codex exec` ──────────────────────────────────────
 //
 // ─── POR QUÉ ESTO VIVE EN EL BACKEND Y NO EN LA PÁGINA ─────────────────────
 //
@@ -11,6 +11,15 @@
 // se guarda en el mismo lugar donde se pidió, así que nunca existe un sprite que
 // una pantalla usó y el depósito no tenga.
 //
+// ─── Y AHORA SON DOS LLAMADORES, CON LA MISMA REGLA ────────────────────────
+//
+// Al dibujo se le sumó el chat: el juego le pregunta a Codex qué quiso decir el
+// cuidador cuando su léxico no alcanza. La regla no cambia y por eso el archivo
+// tampoco cambió de forma — **la página no manda un prompt, manda lo que quiere
+// saber**. Un endpoint que aceptara texto libre sería un proxy abierto a la
+// cuenta de quien corre esto, y cualquiera con acceso al puerto podría gastarle
+// la cuota en cualquier cosa. El prompt lo arma el servidor.
+//
 // ─── LO QUE SE APRENDIÓ EN ÁNIMA I Y SE HEREDA SIN DISCUTIR ────────────────
 //
 //   - **en Windows `codex` es un shim `.cmd`**, así que el `spawn` necesita
@@ -21,7 +30,7 @@
 //     devuelve 400: los que hay son `-sol`, `-terra` y `-luna`. Y si la cuenta
 //     igual no ofrece el pedido, **se cae solo al Automático** en vez de dejar
 //     de dibujar — la caída que Ánima I ya tenía escrita;
-//   - **`--sandbox read-only` y `--ephemeral`**: esto dibuja, no toca nada.
+//   - **`--sandbox read-only` y `--ephemeral`**: esto contesta, no toca nada.
 
 import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
@@ -62,11 +71,26 @@ export interface Salida {
   readonly porque?: string
 }
 
-/** Le pide un dibujo a Codex. Nunca tira: contesta si salió o no. */
-export async function dibujarConCodex(prompt: string): Promise<Salida> {
+/**
+ * LE PREGUNTA ALGO A CODEX. Nunca tira: contesta si salió o no.
+ *
+ * ─── ESTO ERA `dibujarConCodex` Y NO LE CAMBIÓ UNA LÍNEA ADENTRO ───────────
+ *
+ * Porque nunca dibujó nada: recibe un prompt y devuelve texto. Lo de dibujar
+ * estaba sólo en el nombre y en quién lo llamaba. Se le abrió el nombre y el
+ * reloj cuando apareció el segundo llamador —el juego preguntando qué quiso
+ * decir el cuidador— y las dos cosas que ese llamador necesitaba distintas eran
+ * ésas: cómo se llama y cuánto está dispuesto a esperar.
+ *
+ * Todo lo demás se comparte y es lo que importa: el `--sandbox read-only`, el
+ * `--ephemeral`, la respuesta por `--output-last-message`, y sobre todo la caída
+ * al modelo Automático cuando la cuenta no ofrece el pedido. Duplicar eso para
+ * el segundo llamador habría sido duplicar cuatro lecciones ya pagadas.
+ */
+export async function preguntarleACodex(prompt: string, timeoutMs = TIMEOUT_MS): Promise<Salida> {
   let dir: string | undefined
   try {
-    dir = await mkdtemp(join(tmpdir(), 'anima-dibujo-'))
+    dir = await mkdtemp(join(tmpdir(), 'anima-codex-'))
     // Una copia `const`: adentro de `armar` TypeScript no puede saber que la
     // `let` de afuera ya está asignada, y `--cd undefined` sería un comando roto.
     const donde = dir
@@ -90,14 +114,14 @@ export async function dibujarConCodex(prompt: string): Promise<Salida> {
       return args
     }
 
-    let r = await correr(armar(!modeloRechazado), prompt)
+    let r = await correr(armar(!modeloRechazado), prompt, timeoutMs)
     if (r.arranco === false) return { ok: false, texto: '', porque: 'no encontré el CLI de codex en el PATH' }
 
     // La caída: si la cuenta no ofrece el modelo, se anota y se va al Automático.
     if (r.codigo !== 0 && !modeloRechazado && noOfreceElModelo(r.stderr)) {
       modeloRechazado = true
-      console.warn(`[dibujante] esta cuenta no ofrece ${MODELO}; sigo con el modelo Automático`)
-      r = await correr(armar(false), prompt)
+      console.warn(`[codex] esta cuenta no ofrece ${MODELO}; sigo con el modelo Automático`)
+      r = await correr(armar(false), prompt, timeoutMs)
     }
     if (r.codigo !== 0) {
       return { ok: false, texto: '', porque: `codex salió con ${String(r.codigo)}: ${r.stderr.slice(0, 300)}` }
@@ -105,7 +129,7 @@ export async function dibujarConCodex(prompt: string): Promise<Salida> {
     const texto = await readFile(salida, 'utf8')
     return { ok: true, texto }
   } catch (e) {
-    return { ok: false, texto: '', porque: e instanceof Error ? e.message : 'falló el dibujante' }
+    return { ok: false, texto: '', porque: e instanceof Error ? e.message : 'falló el puente con codex' }
   } finally {
     if (dir !== undefined) await rm(dir, { recursive: true, force: true }).catch(() => undefined)
   }
@@ -117,7 +141,7 @@ interface Corrida {
   readonly arranco: boolean
 }
 
-function correr(args: readonly string[], stdin: string): Promise<Corrida> {
+function correr(args: readonly string[], stdin: string, timeoutMs: number): Promise<Corrida> {
   return new Promise((resolve) => {
     // Los argumentos son constantes de este archivo o una ruta temporal que
     // generamos nosotros: no hay nada del usuario en la línea de comandos. Lo
@@ -135,8 +159,11 @@ function correr(args: readonly string[], stdin: string): Promise<Corrida> {
     }
     const reloj = setTimeout(() => {
       hijo.kill()
-      terminar({ codigo: null, stderr: `${stderr}\n[se pasó de ${String(TIMEOUT_MS)} ms]`, arranco: true })
-    }, TIMEOUT_MS)
+      // El `timeoutMs` de ESTA corrida y no la constante: desde que el reloj es
+      // un parámetro, la constante diría 120000 en un aviso de una corrida que
+      // se cortó a los 30000, y ese número es lo único que el mensaje aporta.
+      terminar({ codigo: null, stderr: `${stderr}\n[se pasó de ${String(timeoutMs)} ms]`, arranco: true })
+    }, timeoutMs)
 
     hijo.stderr?.on('data', (c: Buffer) => (stderr += c.toString()))
     hijo.on('error', () => {

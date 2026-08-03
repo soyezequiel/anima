@@ -310,3 +310,117 @@ export const UMBRAL_DEL_MODELO = 0.5
 
 /** Los grados que se consultan, para que un test los barra. */
 export const GRADOS_QUE_SE_CONSULTAN = SE_CONSULTAN
+
+// ═══ CÓMO SE LE PREGUNTA AL MODELO, Y CÓMO SE LEE LO QUE CONTESTA ══════════
+//
+// Las dos funciones de acá abajo vivían en `demo/proveedor.ts`, y se mudaron sin
+// cambiarles una línea. El motivo es de dónde se pueden correr:
+//
+// `demo/proveedor.ts` importa el transporte, y el transporte hace `spawn`. O sea
+// que **cualquiera que importe ese archivo se lleva `node:child_process`**, y en
+// un bundle de navegador eso no arranca. Mientras el único consumidor era un
+// demo de terminal, daba igual. Desde que el juego le pregunta a Codex por el
+// depósito, no: el navegador necesita ARMAR el prompt y LEER la respuesta, y no
+// tiene que poder mandarla — de eso se encarga el backend, que es el único que
+// tiene las credenciales.
+//
+// Y las dos son puras: texto adentro, texto afuera. Siguen sin llamar a nadie,
+// que es lo que el ADR II-0024 le pide a este paquete.
+
+/**
+ * EL PROMPT. Corto a propósito: cada palabra de más es una forma de que el
+ * modelo conteste otra cosa.
+ *
+ * El vocabulario va porque es lo que le permite decir «cuando dice *leña*
+ * quiere decir *madera*» en vez de inventar una sustancia — y sale de `Physics`,
+ * así que si el oráculo inventa algo, el prompt lo incluye solo.
+ */
+export function promptDe(c: Consulta): string {
+  return [
+    'Sos el lector de un juego. Una persona le habla a su criatura y vos decidís',
+    'a qué ESTADO DEL MUNDO se refiere. No expliques nada.',
+    '',
+    `LA FRASE: «${c.texto}»`,
+    '',
+    'Las cláusulas que no se entendieron son estos índices: ' + c.clausulas.join(', '),
+    '',
+    'LOS ÚNICOS ESTADOS QUE ESTE MUNDO SABE CONSEGUIR (elegí de acá, textual):',
+    ...c.firmas.map((f) => `  ${f}`),
+    '',
+    'Lo que el mundo sabe nombrar, por si ayuda a entender de qué habla:',
+    `  ${c.vocabulario.slice(0, 120).join(', ')}`,
+    '',
+    'Elegí el estado que MEJOR sirva a lo que la persona quiere, aunque no sea',
+    'literal: si pide comida, el estado es tenerla en la mano.',
+    '',
+    'CONTESTÁ SÓLO CON UN JSON, sin markdown y sin comentarios, de esta forma:',
+    '  {"clausulas":[{"indice":0,"firma":"<una de las de arriba, textual>"}]}',
+    '',
+    'Sólo contestá {"clausulas":[]} si NINGUNA de las de arriba acerca a lo pedido.',
+  ].join('\n')
+}
+
+/** El JSON que el modelo tenía que devolver, sacado de lo que sea que devolvió. */
+export function leerRespuesta(salida: string, llave: string): RespuestaDelModelo | undefined {
+  // ─── SE CUENTAN LAS LLAVES, no se adivina con un regex ────────────────────
+  //
+  // La primera versión buscaba con
+  // `/\{[\s\S]*?"clausulas"[\s\S]*?\}\s*\}/` y fallaba con la respuesta
+  // correcta: `{"clausulas":[{"indice":0,"firma":"..."}]}` termina en `}` `]`
+  // `}`, y ese `]` del medio rompe el `\}\s*\}`. O sea que el proveedor
+  // contestaba bien y el demo decía «no aportó nada».
+  //
+  // Un objeto JSON no se reconoce con una expresión regular —el anidamiento no
+  // es regular— así que se cuenta: desde cada `{`, se avanza sumando y restando
+  // llaves hasta cerrar, salteando las que están adentro de un string.
+  const candidatos: string[] = []
+  for (let i = 0; i < salida.length; i++) {
+    if (salida[i] !== '{') continue
+    let hondo = 0
+    let enTexto = false
+    let escapado = false
+    for (let j = i; j < salida.length; j++) {
+      const c = salida[j]
+      if (escapado) {
+        escapado = false
+        continue
+      }
+      if (c === '\\') {
+        escapado = true
+        continue
+      }
+      if (c === '"') enTexto = !enTexto
+      if (enTexto) continue
+      if (c === '{') hondo++
+      else if (c === '}') {
+        hondo--
+        if (hondo === 0) {
+          const trozo = salida.slice(i, j + 1)
+          if (trozo.includes('"clausulas"')) candidatos.push(trozo)
+          break
+        }
+      }
+    }
+  }
+  // De atrás para adelante: los CLI escriben encabezados y razonamiento antes del
+  // mensaje final, y el último objeto con la forma correcta es el que vale.
+  for (let i = candidatos.length - 1; i >= 0; i--) {
+    const crudo = candidatos[i]
+    if (crudo === undefined) continue
+    try {
+      const v = JSON.parse(crudo) as { clausulas?: unknown }
+      if (!Array.isArray(v.clausulas)) continue
+      const cs: { indice: number; firma: string }[] = []
+      for (const c of v.clausulas) {
+        const o = c as { indice?: unknown; firma?: unknown }
+        if (typeof o.indice === 'number' && typeof o.firma === 'string') {
+          cs.push({ indice: o.indice, firma: o.firma })
+        }
+      }
+      return { llave, clausulas: cs }
+    } catch {
+      continue
+    }
+  }
+  return undefined
+}

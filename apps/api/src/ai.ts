@@ -26,6 +26,12 @@ export interface AiStatus {
   installed: boolean;
   loggedIn: boolean;
   detail: string | null;
+  /**
+   * La sesión la administra el dueño de la instancia: se puede usar, pero no
+   * conectar ni desconectar desde la web. Viaja en el estado para que la
+   * interfaz no ofrezca un botón que el servidor va a rechazar.
+   */
+  managed?: boolean;
 }
 
 export const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
@@ -64,6 +70,12 @@ export interface AiLimits {
 export type AiThoughtEvent = { type: 'reasoning'; text: string } | { type: 'answer'; text: string };
 
 export interface AiBridge {
+  /**
+   * Marca la sesión como administrada por el dueño de la instancia. El
+   * servidor rechaza `login` y `logout` sobre estos puentes: la cuenta es una
+   * sola y prestada, y cualquiera que entre podría dejar sin mente a todos.
+   */
+  readonly managed?: boolean;
   status(): Promise<AiStatus>;
   startLogin(): Promise<{ authUrl: string } | { error: string }>;
   /**
@@ -444,9 +456,11 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
   // de Codex gestiona ahí auth.json y config sin que este código los lea.
   const env = options.home ? { ...process.env, CODEX_HOME: options.home } : undefined;
   // Modelo explícito (ANIMA_CODEX_MODEL): útil cuando el modelo por defecto
-  // de la cuenta requiere un CLI más nuevo que el instalado.
-  const defaultModel = options.model ?? process.env.ANIMA_CODEX_MODEL;
-  const defaultEffort = process.env.ANIMA_CODEX_EFFORT ?? 'low';
+  // de la cuenta requiere un CLI más nuevo que el instalado. Vacía cuenta como
+  // ausente: declararla sin valor (habitual en un compose) es no elegir modelo,
+  // no elegir el modelo llamado «».
+  const defaultModel = options.model ?? (process.env.ANIMA_CODEX_MODEL || undefined);
+  const defaultEffort = process.env.ANIMA_CODEX_EFFORT || 'low';
   // La sesión persistente que mata el arranque en frío (ADR 0044). Es un
   // atajo, no la verdad: si su transporte falla, se descarta y el puente
   // vuelve a `codex exec` por el resto de su vida (un reinicio la reintenta).
@@ -710,6 +724,30 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
         void rm(workdir, { recursive: true, force: true }).catch(() => undefined);
       }
     },
+  };
+}
+
+/**
+ * Envuelve un puente para prestarlo sin entregar la llave: se puede consultar
+ * y se pueden leer los límites, pero conectar y desconectar quedan fuera.
+ *
+ * Hace falta porque la sesión de una instancia compartida es una sola: sin
+ * esto, cualquiera que abra la página puede apretar «Cerrar sesión de Codex» y
+ * dejar sin mente a todos los demás — y recuperarla exige volver a la máquina
+ * a resembrar. El envoltorio es la última línea; el servidor rechaza las rutas
+ * antes de llegar acá.
+ */
+export function createManagedBridge(bridge: AiBridge): AiBridge {
+  return {
+    managed: true,
+    async status() {
+      return { ...(await bridge.status()), managed: true };
+    },
+    startLogin: () =>
+      Promise.resolve({ error: 'la sesión la administra el dueño de esta instancia' }),
+    logout: () => Promise.resolve(),
+    limits: () => bridge.limits(),
+    complete: (input, onEvent) => bridge.complete(input, onEvent),
   };
 }
 

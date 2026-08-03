@@ -19,7 +19,31 @@
 
 import { expect, test, type Page } from '@playwright/test'
 
+/**
+ * ─── EL DEPÓSITO SE SILENCIA, y hace falta desde que el chat le pregunta ────
+ *
+ * Este spec mide DURABILIDAD: que las líneas vuelvan con su turno y su clase
+ * después de recargar. Desde que una frase que el léxico no termina de entender
+ * sale a preguntarle a Codex, hay una segunda fuente de líneas que llega por red
+ * y cuando quiere — y en un e2e no hay depósito, así que lo que llega es la
+ * falla, o sea un `aviso` de más en un momento impredecible.
+ *
+ * Se contesta «llegó y no trajo nada», que es el único resultado que NO escribe
+ * en la charla (ver `#noLlegue` en `ordenes.ts`: ése no lleva aviso). Así el
+ * canal queda con lo que este spec vino a medir y nada más.
+ *
+ * Es el patrón para cualquier spec que cuente líneas: si no silenciás `/leer`,
+ * estás midiendo también la red.
+ */
 async function abrir(page: Page): Promise<void> {
+  await page.route('**/leer', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ ok: true, respuesta: null }),
+    }),
+  )
   await page.goto('/')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }

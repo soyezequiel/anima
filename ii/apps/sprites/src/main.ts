@@ -14,7 +14,7 @@ import { dirname } from 'node:path'
 
 import type { Sprite } from '@anima/dibujo'
 
-import { dibujarConCodex } from './codex.js'
+import { preguntarleACodex } from './codex.js'
 import { vigilar } from './quien-hay.js'
 import { baulEnMemoria, crearServidor, type Baul } from './servidor.js'
 
@@ -58,9 +58,34 @@ const baul = baulEnDisco(ARCHIVO)
 const vigia = vigilar()
 vigia.mirar()
 
-crearServidor(baul, { dibujante: { nombre: 'codex', dibujar: dibujarConCodex }, vigia }).listen(PUERTO, () => {
+/**
+ * CUÁNTO SE ESPERA UNA RESPUESTA DEL CHAT, y no es el de dibujar.
+ *
+ * Dibujar 576 celdas de pixel art se banca dos minutos porque el que espera es
+ * un botón que alguien apretó. Acá el que espera es una criatura que ya contestó
+ * «dale, voy» y ya se movió: una respuesta que llega dos minutos después llega a
+ * un mundo donde la persona escribió otras tres frases, y `Ordenes` la va a
+ * descartar por vieja igual. O sea que el tiempo de más no compra nada y sí
+ * ocupa el único episodio en vuelo.
+ */
+const ESPERA_DEL_CHAT_MS = Number.parseInt(process.env['ANIMA_CODEX_ESPERA_CHAT'] ?? '30000', 10)
+
+crearServidor(baul, {
+  dibujante: {
+    nombre: 'codex',
+    dibujar: (prompt) => preguntarleACodex(prompt),
+    responder: (prompt) => preguntarleACodex(prompt, ESPERA_DEL_CHAT_MS),
+    // El reloj lo elige la forja y no este archivo: un episodio es el viaje al
+    // modelo MÁS un typecheck por candidata, y quien sabe cuánto es eso es quien
+    // lo arma. Acá sólo se le pasa el puente.
+    forjar: (prompt, timeoutMs) => preguntarleACodex(prompt, timeoutMs),
+  },
+  vigia,
+}).listen(PUERTO, () => {
   console.log(`depósito de dibujos en http://localhost:${String(PUERTO)}`)
   console.log(`  guardando en ${ARCHIVO}`)
   console.log(`  ${String(baul.todos().length)} dibujos ya adentro`)
   console.log(`  dibujante: codex exec · modelo ${MODELO_DICHO}`)
+  console.log(`  y contesta el chat en /leer, esperando hasta ${String(ESPERA_DEL_CHAT_MS)} ms`)
+  console.log(`  y forja habilidades en /forjar`)
 })

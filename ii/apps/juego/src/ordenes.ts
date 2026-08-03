@@ -339,6 +339,66 @@ export interface OpcionesDeOrdenes {
   readonly fragua?: (p: PedidoALaFragua, signal?: AbortSignal) => Promise<Forjado | undefined>
 }
 
+/**
+ * ═══ CUANDO EL JUEGO QUISO IR AL MODELO Y NO LLEGÓ ═════════════════════════
+ *
+ * Los dos puertos de arriba —`preguntar` y `fragua`— son opcionales, y hasta hoy
+ * la ausencia de cada uno se leía como un `return` en silencio. Eso no es un
+ * detalle de cableado: es la diferencia entre «no hacía falta preguntar» y «hacía
+ * falta y no había a quién», y desde afuera se veían **idénticas**.
+ *
+ * Está medido en una partida real: `pedidos a la fragua: 2` contra `consultas al
+ * modelo: 0`, con la lámpara de Claude diciendo «vive · en espera». Los tres
+ * números eran ciertos por separado y juntos decían lo contrario de lo que
+ * pasaba, que era que la criatura pidió ayuda dos veces y el pedido no salió del
+ * cuarto.
+ *
+ * ─── POR QUÉ ES UN DATO Y NO UN `console.warn` ─────────────────────────────
+ *
+ * Porque tiene tres consumidores y ninguno es la consola: la lámpara de arriba,
+ * el cartel que aparece, y el aviso que queda EN EL LOG —o sea en el guardado, o
+ * sea en el reporte que se puede leer sin estar sentado adelante—. Un `warn` sirve
+ * para el que ya está mirando las herramientas del navegador; esto es para el que
+ * está jugando y para el que va a debuggear la partida mañana.
+ */
+export type PorQueNoLlego =
+  /** No hay puerto enchufado. Es el de la partida medida, y es de cableado. */
+  | 'sin-cable'
+  /** Hubo viaje y reventó: la promesa se rechazó. Es de red o del CLI. */
+  | 'se-cayo'
+  /**
+   * Llegó y volvió con las manos vacías.
+   *
+   * NO es una falla de acceso y por eso tiene motivo propio en vez de entrar en
+   * `se-cayo`: el modelo contestó, dijo que no tenía nada mejor, y decir «no
+   * llegué» sobre eso sería la misma mentira que este archivo vino a arreglar,
+   * al revés. Se registra igual porque para el que mira la pantalla el síntoma
+   * es el mismo —pidió ayuda y sigue sin poder— y el texto es el que distingue.
+   */
+  | 'no-trajo-nada'
+
+/** Un momento en que el juego quiso ir al modelo y no le salió. */
+export interface IntentoAlModelo {
+  readonly tick: number
+  /**
+   * PARA QUÉ LO QUERÍA, y son las dos únicas cosas que este juego le pide a un
+   * modelo: releer una frase que no terminó de entender (`preguntar`), o escribir
+   * una habilidad que no tiene (`fragua`). Van separadas porque se arreglan en
+   * lugares distintos y porque al que juega le importan cosas distintas: una es
+   * «no te entendí» y la otra es «no sé hacerlo».
+   */
+  readonly para: 'entender' | 'aprender'
+  readonly porque: PorQueNoLlego
+  /** La frase o la meta que quedó sin atender, en castellano. */
+  readonly sobre: string
+}
+
+/**
+ * CUÁNTOS SE RETIENEN. El mismo criterio que el vigía usa con las roturas: lo que
+ * entra en un reporte sin volverlo ilegible. La cuenta total no se recorta.
+ */
+const CUANTOS_INTENTOS_SE_RECUERDAN = 50
+
 /** Una consulta en el aire, con lo que hace falta para juzgar su respuesta. */
 interface EnVuelo {
   readonly llave: string
@@ -438,6 +498,18 @@ export class Ordenes {
   readonly #promovidas: CatalogCapability[] = []
   readonly #sabeNombrar: ReadonlySet<string>
   readonly #fragua: OpcionesDeOrdenes['fragua']
+  /** Los últimos intentos que no llegaron. Ver `IntentoAlModelo`. */
+  #noLlego: IntentoAlModelo[] = []
+  /**
+   * Y cuántos hubo en total, que NO es `#noLlego.length`.
+   *
+   * La lista se recorta y la cuenta no: si fueran el mismo número, la partida
+   * número 51 diría «50» para siempre y el panel se vería congelado justo cuando
+   * más está pasando.
+   */
+  #cuantosNoLlegaron = 0
+  /** Los avisos de charla ya dichos, para no repetirlos. Ver `#noLlegue`. */
+  readonly #yaAvisados = new Set<string>()
 
   constructor(partida: Partida, quien: string, phys: Physics, o: OpcionesDeOrdenes = {}) {
     this.#partida = partida
@@ -512,6 +584,22 @@ export class Ordenes {
    */
   get descartadas(): number {
     return this.#descartadas
+  }
+
+  /**
+   * LOS ÚLTIMOS INTENTOS QUE NO LLEGARON AL MODELO, del más viejo al más nuevo.
+   *
+   * Es lo que la pantalla mira para saber si tiene algo que decir. Se devuelve
+   * una copia por lo mismo que `pedidosALaFragua`: quien pinta no puede cambiar
+   * lo que pasó.
+   */
+  get loQueNoLlego(): readonly IntentoAlModelo[] {
+    return [...this.#noLlego]
+  }
+
+  /** Cuántos hubo en total, sin recortar. Ver `#cuantosNoLlegaron`. */
+  get cuantosNoLlegaron(): number {
+    return this.#cuantosNoLlegaron
   }
 
   /**
@@ -715,7 +803,7 @@ export class Ordenes {
     this.#canal.decir(tick, 'acuse', l.acuse)
     // El turno de la `entrada` es lo que correlaciona la respuesta con el pedido:
     // la llave sola no alcanza, porque la misma frase dicha dos veces da la misma.
-    this.#consultar(l, turno)
+    this.#consultar(l, turno, tick)
 
     const e = encargoDe(l)
     // Un encargo vacío NO se pisa sobre el anterior: si la frase no se pudo
@@ -739,14 +827,75 @@ export class Ordenes {
    * con ella es contarla, y el `catch` está para que un proveedor que revienta no
    * tire un rechazo sin dueño a la consola del jugador.
    */
-  #consultar(l: Lectura, turno: number): void {
-    const preguntar = this.#preguntar
-    if (preguntar === undefined) return
+  /**
+   * ANOTAR QUE NO SE LLEGÓ, y opcionalmente decirlo.
+   *
+   * El `aviso` es opcional porque DOS de los cuatro puntos de registro ya tenían
+   * su frase escrita desde antes (`no pude pensarlo mejor…`, `no me salió…`) y
+   * pisarlas acá dejaría dos líneas diciendo lo mismo con distintas palabras. Los
+   * que no la tenían son justamente los del cable, que es lo que no se decía.
+   *
+   * ─── EL AVISO SE DICE UNA VEZ; EL REGISTRO SE ANOTA SIEMPRE ────────────────
+   *
+   * Y la asimetría no es una comodidad: son dos canales con dos duraciones. El
+   * registro alimenta la lámpara y el cartel, que hablan del AHORA y se apagan
+   * solos; el aviso entra al log, o sea al guardado, o sea al reporte, y ahí una
+   * línea repetida cuarenta veces no informa cuarenta veces — tapa lo que había
+   * alrededor.
+   *
+   * Está medido y no supuesto: sin este cerrojo, un test que escribe treinta
+   * frases seguidas metía treinta avisos idénticos y el buscador de recuerdos
+   * dejaba de encontrar el turno que importaba. La pantalla se veía bien y la
+   * memoria de la criatura se había llenado de ruido.
+   *
+   * Es el mismo cerrojo que `#alaFragua` tiene desde antes y por la misma razón.
+   */
+  #noLlegue(tick: number, i: Omit<IntentoAlModelo, 'tick'>, aviso?: string): void {
+    this.#cuantosNoLlegaron++
+    this.#noLlego.push({ tick, ...i })
+    if (this.#noLlego.length > CUANTOS_INTENTOS_SE_RECUERDAN) {
+      this.#noLlego = this.#noLlego.slice(-CUANTOS_INTENTOS_SE_RECUERDAN)
+    }
+    if (aviso === undefined) return
+    // ─── QUÉ CUENTA COMO «EL MISMO AVISO», y depende de para qué era ────────
+    //
+    // Con `aprender`, el `sobre` es el hueco que faltó y sale del catálogo: son
+    // pocos, son distintos entre sí, y «me falta secar la leña» y «me falta un
+    // filo» son dos cosas que vale la pena decir las dos.
+    //
+    // Con `entender`, el `sobre` es LA FRASE QUE ESCRIBISTE. Meterla en la llave
+    // sería no tener llave: cada frase nueva es una llave nueva, y el cerrojo no
+    // cerraría nada. Ahí lo que se dice una vez es que no hay a quién preguntarle,
+    // que es un hecho de la partida y no de la frase.
+    const llave = i.para === 'aprender' ? `${i.para}|${i.porque}|${i.sobre}` : `${i.para}|${i.porque}`
+    if (this.#yaAvisados.has(llave)) return
+    this.#yaAvisados.add(llave)
+    this.#canal.decir(tick, 'aviso', aviso)
+  }
+
+  #consultar(l: Lectura, turno: number, tick: number): void {
+    // ─── LA CONSULTA SE ARMA ANTES DE MIRAR SI HAY A QUIÉN MANDARLA ─────────
+    //
+    // El orden estaba al revés y no era gratis: con el `preguntar === undefined`
+    // primero, la salida silenciosa tapaba las dos preguntas de golpe —«¿había
+    // algo que consultar?» y «¿había con qué?»— y sólo la segunda es de cableado.
+    // Armarla primero cuesta una lectura del léxico por FRASE ESCRITA, no por
+    // tick, y compra poder decir «te habría preguntado».
+    //
     // La ventana va adentro de la consulta: el modelo tiene que leer la frase
     // con el mismo contexto con el que la leyó el lector local, o los dos
     // contestan sobre entradas distintas.
     const c = consultaDe(l, this.#lexico, [...ESTABLECIBLES], this.#canal.ventana())
     if (c === undefined) return
+    const preguntar = this.#preguntar
+    if (preguntar === undefined) {
+      this.#noLlegue(
+        tick,
+        { para: 'entender', porque: 'sin-cable', sobre: l.crudo },
+        'no te entendí del todo y no tengo a quién preguntarle',
+      )
+      return
+    }
     this.#consultas++
     const corte = new AbortController()
     const ofrecidas = [...ESTABLECIBLES]
@@ -910,11 +1059,15 @@ export class Ordenes {
       }
       this.#enVuelo = undefined
       if (x.falla !== undefined) {
+        // El aviso lo dice el llamador y no `#noLlegue`: esta frase es más vieja
+        // que el registro y hay un test que la nombra.
         this.#canal.decir(tick, 'aviso', 'no pude pensarlo mejor, sigo con lo que entendí')
+        this.#noLlegue(tick, { para: 'entender', porque: 'se-cayo', sobre: v.lectura.crudo })
         continue
       }
       if (x.respuesta === undefined) {
         this.#descartadas++
+        this.#noLlegue(tick, { para: 'entender', porque: 'no-trajo-nada', sobre: v.lectura.crudo })
         continue
       }
       const nueva = revisar(v.lectura, x.respuesta, this.#lexico, {
@@ -1165,7 +1318,25 @@ export class Ordenes {
     // Se dice SIEMPRE que la mente pidió, haya fragua enchufada o no: que el
     // catálogo no alcance es información del mundo y no del cableado.
     this.#canal.decir(tick, 'progreso', `no sé cómo «${enCastellano(p.meta)}» todavía`)
-    if (fragua === undefined) return
+    if (fragua === undefined) {
+      // ─── ACÁ ESTABA EL SILENCIO MÁS CARO DE LOS CUATRO ────────────────────
+      //
+      // La línea de arriba se dice igual «haya fragua enchufada o no» —y está
+      // bien, es información del mundo—, pero era la ÚNICA, así que un catálogo
+      // que no alcanza y un catálogo que no alcanza *y encima nadie puede
+      // ampliarlo* se leían con las mismas seis palabras. La segunda mitad es la
+      // que se puede arreglar, y era la que no se veía.
+      //
+      // El gap y no la meta: la meta ya la dijo la línea de arriba, y repetirla
+      // acá gastaría el aviso en decir dos veces lo mismo. Lo que falta saber es
+      // qué pieza puntual quedó sin forjar.
+      this.#noLlegue(
+        tick,
+        { para: 'aprender', porque: 'sin-cable', sobre: enCastellano(p.gap) },
+        `para «${enCastellano(p.meta)}» me falta ${enCastellano(p.gap)}, y no tengo a quién pedírselo`,
+      )
+      return
+    }
 
     this.#forjando++
     void fragua(p).then(
@@ -1196,7 +1367,9 @@ export class Ordenes {
     for (const f of forjados) {
       this.#forjando--
       if (f === undefined) {
+        // La frase es de antes que el registro, igual que la del proveedor.
         this.#canal.decir(tick, 'aviso', 'no me salió, sigo con lo que sé')
+        this.#noLlegue(tick, { para: 'aprender', porque: 'se-cayo', sobre: 'lo que no sabía hacer' })
         continue
       }
       if (f.grado !== PROMUEVE) {
@@ -1242,6 +1415,35 @@ export class Ordenes {
   #soltarElDrive(): void {
     this.#ultimaPuesta = undefined
     this.#nuevaMente()
+  }
+
+  /**
+   * ═══ LO QUE VOLVIÓ DE AFUERA, TAMBIÉN CON EL MUNDO EN PAUSA ════════════════
+   *
+   * ─── EL AGUJERO QUE ESTO TAPA, y lo encontró un e2e ────────────────────────
+   *
+   * La frontera vivía SÓLO adentro de `antesDelTick`, y `antesDelTick` sólo se
+   * llama cuando el mundo avanza. O sea que con la partida pausada la respuesta
+   * del proveedor se quedaba en `#llegadas` para siempre: la consulta salía, se
+   * pagaba, volvía, y no la aplicaba nadie.
+   *
+   * Y no es un caso raro: **el juego arranca en pausa a propósito** —una pestaña
+   * abierta avanza la partida real y este proyecto ya perdió una generación por
+   * eso—. Así que el primer uso natural del chat era el que no funcionaba.
+   *
+   * ─── POR QUÉ NO ROMPE LA REGLA DE LA FRONTERA ─────────────────────────────
+   *
+   * Porque la frontera nunca fue «cuando el mundo avanza»: es «en un punto donde
+   * nadie está a mitad de camino». Lo que prohíbe es aplicar en el medio de una
+   * promesa resolviéndose, con la vista dibujándose o el tick corriendo. Entre
+   * dos cuadros con el mundo quieto es el punto más seguro que hay.
+   *
+   * Es idempotente: las dos listas se vacían al aplicarse, así que llamarlo acá
+   * y desde `antesDelTick` en el mismo cuadro no aplica nada dos veces.
+   */
+  loQueVolvioDeAfuera(tick: number): void {
+    this.#aplicarLoQueLlego(tick)
+    this.#aplicarLoForjado(tick)
   }
 
   /**

@@ -209,31 +209,67 @@ describe('C1 · la charla es durable y sale por un solo canal', () => {
   })
 
   it('(5) EL TICK NO ESPERA AL PROVEEDOR: pendiente para siempre y el mundo sigue', () => {
-    let preguntas = 0
-    const { state } = arrancar(SEMILLA)
-    const p = new Partida(state)
-    const o = new Ordenes(p, QUIEN, PHYS, {
+    /** El proveedor colgado del criterio del Hito 6: se lo llama y no contesta nunca. */
+    const colgado = (cuenta: { n: number }): ConstructorParameters<typeof Ordenes>[3] => ({
       preguntar: () => {
-        preguntas++
-        // Nunca contesta. Es el proveedor colgado del criterio del Hito 6.
+        cuenta.n++
         return new Promise(() => {})
       },
     })
+    const cuenta = { n: 0 }
+    const { state } = arrancar(SEMILLA)
+    const p = new Partida(state)
+    const o = new Ordenes(p, QUIEN, PHYS, colgado(cuenta))
 
     o.decir('xyzzy plugh')
     // El acuse ya está, en la misma llamada y sin correr un tick.
     expect(o.charla.at(-1)?.clase).toBe('acuse')
-    expect(preguntas, 'no se armó la consulta: el hueco del proveedor no está enchufado').toBe(1)
+    expect(cuenta.n, 'no se armó la consulta: el hueco del proveedor no está enchufado').toBe(1)
 
     correr({ p, o }, 120)
 
-    // Y el mundo quedó EXACTAMENTE donde queda sin proveedor: una consulta
-    // pendiente no puede cambiar la partida.
-    const gemela = nueva()
+    // ─── LA GEMELA TAMBIÉN LLEVA EL PROVEEDOR COLGADO, Y ANTES NO ───────────
+    //
+    // Antes se comparaba contra una partida SIN proveedor, y pasaba porque las
+    // dos callaban lo mismo: no tener a quién preguntarle no dejaba rastro. Hoy
+    // sí lo deja —una partida sin cable lo dice, ver `IntentoAlModelo`— así que
+    // esa comparación mediría la diferencia entre tener y no tener proveedor,
+    // que no es lo que este test afirma. Lo que afirma es que una consulta
+    // PENDIENTE no cambia nada, y para eso las dos tienen que estar igual de
+    // enchufadas y las dos igual de sin respuesta.
+    const gemela = { p: new Partida(arrancar(SEMILLA).state), o: undefined as unknown as Ordenes }
+    gemela.o = new Ordenes(gemela.p, QUIEN, PHYS, colgado({ n: 0 }))
     gemela.o.decir('xyzzy plugh')
     correr(gemela, 120)
     expect(huella(p)).toBe(huella(gemela.p))
     expect(o.charla.map((x) => x.texto)).toEqual(gemela.o.charla.map((x) => x.texto))
+  })
+
+  it('(5b) Y SIN PROVEEDOR LO DICE: la misma frase, y una línea más que la de arriba', () => {
+    // El contraste que el (5) ya no puede dar porque las dos mitades están
+    // enchufadas. Acá está el caso de la partida real: `main.ts` no le pasa
+    // `preguntar` a nadie, así que toda frase floja termina en este camino.
+    const s = nueva()
+    s.o.decir('xyzzy plugh')
+
+    const avisos = s.o.charla.filter((x) => x.clase === 'aviso')
+    expect(avisos.length, 'no se dijo que no había a quién preguntarle').toBe(1)
+    expect(avisos[0]?.texto).toContain('no tengo a quién preguntarle')
+    // Y el acuse SIGUE saliendo, y sigue saliendo primero: el aviso se suma, no
+    // reemplaza. Un aviso que se comiera el acuse rompería el criterio del Hito
+    // 12B —contestar en el mismo cuadro— por querer explicar mejor.
+    expect(s.o.charla.filter((x) => x.clase === 'acuse').length).toBe(1)
+
+    // ─── Y NO SE REPITE, que es lo que lo hace usable ───────────────────────
+    //
+    // Treinta frases flojas son treinta veces el mismo hecho. El log es la
+    // memoria de la criatura y es de donde sale el reporte: repetirlo tapa lo
+    // que había alrededor. Ver `#noLlegue` en `ordenes.ts`.
+    for (let i = 0; i < 10; i++) s.o.decir(`bla bla ${String(i)}`)
+    expect(s.o.charla.filter((x) => x.clase === 'aviso').length).toBe(1)
+    // Pero la CUENTA sí sube: el cartel y la lámpara hablan del ahora y tienen
+    // que enterarse de cada intento, aunque el log ya lo haya dicho una vez.
+    expect(s.o.cuantosNoLlegaron).toBeGreaterThan(1)
   })
 
   it('LA LÍNEA BASE, impresa: las métricas que C0 pide capturar', async () => {

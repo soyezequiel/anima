@@ -39,6 +39,8 @@
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 
+import { forjar } from './forja.js'
+import { leerRespuesta, promptDe, type Consulta } from '@anima/lang'
 import { buildSeedPhysics } from '@anima/physics'
 import {
   aspectoDe,
@@ -171,6 +173,104 @@ function json(res: ServerResponse, codigo: number, cuerpo: unknown): void {
   res.end(texto)
 }
 
+/**
+ * UNA `Consulta` LEÍDA SIN CONFIAR EN NADA, o `undefined`.
+ *
+ * Viene de la red, así que se mira campo por campo con la misma desconfianza que
+ * `revisarSprite` mira un dibujo. No alcanza con que sea JSON: `promptDe` hace
+ * `c.firmas.map(...)` y `c.clausulas.join(...)`, así que un `firmas: "todas"`
+ * tiraría el servidor abajo desde el cliente.
+ *
+ * Lo que NO se valida es el contenido: si las firmas que manda el juego son las
+ * de su catálogo o inventadas es problema del juego, y lo resuelve de vuelta —
+ * `revisar()` verifica que la firma contestada esté entre las que ÉL ofreció.
+ * Acá sólo se cuida la forma, que es lo que este proceso puede perder.
+ */
+function laConsulta(crudo: unknown): Consulta | undefined {
+  if (typeof crudo !== 'object' || crudo === null) return undefined
+  const o = crudo as Record<string, unknown>
+  const textos = (x: unknown): string[] | undefined =>
+    Array.isArray(x) && x.every((v) => typeof v === 'string') ? (x as string[]) : undefined
+  const firmas = textos(o['firmas'])
+  const vocabulario = textos(o['vocabulario'])
+  const clausulas = Array.isArray(o['clausulas']) && o['clausulas'].every((v) => typeof v === 'number')
+    ? (o['clausulas'] as number[])
+    : undefined
+  if (typeof o['texto'] !== 'string' || typeof o['llave'] !== 'string') return undefined
+  if (typeof o['confianza'] !== 'number') return undefined
+  if (firmas === undefined || vocabulario === undefined || clausulas === undefined) return undefined
+  return {
+    texto: o['texto'],
+    llave: o['llave'],
+    confianza: o['confianza'],
+    firmas,
+    vocabulario,
+    clausulas,
+    contexto: laVentana(o['contexto']),
+  }
+}
+
+/**
+ * LA VENTANA DE LA CHARLA, filtrada dicho por dicho.
+ *
+ * Se descarta lo que no tenga los cuatro campos en vez de rechazar la consulta
+ * entera: el contexto es una AYUDA para leer la frase, no la frase. Una línea
+ * mal formada tiene que costar esa línea, no la respuesta.
+ *
+ * Y hay que decir algo incómodo: `promptDe` **hoy no lo mira**. La `Consulta` lo
+ * lleva desde el C2 —para que el lector local y el modelo lean con el mismo
+ * contexto— y el prompt del demo nunca lo escribió. Se valida y se pasa igual
+ * porque el hueco es del prompt y se va a cerrar ahí; tirarlo acá haría que el
+ * día que alguien lo agregue no llegue nada y no se entienda por qué.
+ */
+function laVentana(crudo: unknown): Consulta['contexto'] {
+  if (!Array.isArray(crudo)) return []
+  const out: Consulta['contexto'][number][] = []
+  for (const x of crudo) {
+    if (typeof x !== 'object' || x === null) continue
+    const d = x as Record<string, unknown>
+    if (typeof d['turno'] !== 'number' || typeof d['tick'] !== 'number') continue
+    if (typeof d['clase'] !== 'string' || typeof d['texto'] !== 'string') continue
+    out.push({
+      turno: d['turno'],
+      tick: d['tick'],
+      clase: d['clase'] as Consulta['contexto'][number]['clase'],
+      texto: d['texto'],
+    })
+  }
+  return out
+}
+
+/**
+ * UN PEDIDO DE LA MENTE, LEÍDO SIN CONFIAR.
+ *
+ * Los cuatro campos de `PedidoDeLaMente` más las dos ayudas opcionales que el
+ * juego sí tiene y este proceso no: cómo se dice el hueco en castellano —que va
+ * primero en el prompt, y es la única forma de pedido MEDIDA contra un modelo de
+ * verdad— y qué se le va a verificar, que sale del contrato.
+ */
+function elPedido(crudo: unknown):
+  | {
+      readonly pedido: { gap: string; meta: string; porQue: string; tick: number }
+      readonly enCastellano?: string
+      readonly queVerificar?: readonly string[]
+    }
+  | undefined {
+  if (typeof crudo !== 'object' || crudo === null) return undefined
+  const o = crudo as Record<string, unknown>
+  if (typeof o['gap'] !== 'string' || o['gap'] === '') return undefined
+  if (typeof o['meta'] !== 'string' || typeof o['porQue'] !== 'string') return undefined
+  if (typeof o['tick'] !== 'number') return undefined
+  const qv = Array.isArray(o['queVerificar']) && o['queVerificar'].every((x) => typeof x === 'string')
+    ? (o['queVerificar'] as string[])
+    : undefined
+  return {
+    pedido: { gap: o['gap'], meta: o['meta'], porQue: o['porQue'], tick: o['tick'] },
+    ...(typeof o['enCastellano'] === 'string' ? { enCastellano: o['enCastellano'] } : {}),
+    ...(qv === undefined ? {} : { queVerificar: qv }),
+  }
+}
+
 function leerCuerpo(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     let datos = ''
@@ -196,6 +296,8 @@ function leerCuerpo(req: IncomingMessage): Promise<string> {
  *   GET  /sprites        TODO el catálogo, que un cliente carga una vez al abrir
  *   GET  /sprites/:clave uno solo
  *   POST /sprites/:clave una propuesta; pasa la puerta o se rechaza con el motivo
+ *   POST /leer           una `Consulta` del chat; devuelve lo que el modelo eligió
+ *   POST /forjar         un hueco de la mente; devuelve habilidades ya typechequeadas
  */
 /**
  * QUIEN SABE DIBUJAR. Entra por parámetro y es opcional, por lo mismo que el
@@ -211,6 +313,31 @@ export interface Dibujante {
    */
   nombre?: string
   dibujar: (prompt: string) => Promise<{ ok: boolean; texto: string; porque?: string }>
+  /**
+   * Y LO SEGUNDO QUE SABE HACER: contestar una pregunta del chat.
+   *
+   * Opcional aparte de `dibujar` porque son dos permisos y no uno. Un depósito
+   * puede querer dibujar y no querer que el juego le gaste consultas de texto —o
+   * al revés— y con un solo campo esa elección no se puede expresar. El de
+   * mentira de la suite implementa el que el caso necesita.
+   *
+   * El `timeoutMs` lo pone el servidor y no el que pregunta: un cliente que
+   * eligiera su propio reloj podría dejar un `codex exec` colgado media hora.
+   */
+  responder?: (prompt: string) => Promise<{ ok: boolean; texto: string; porque?: string }>
+  /**
+   * Y LO TERCERO: escribirle a la criatura una habilidad que no tiene.
+   *
+   * Tercer permiso y no una variante del segundo, por lo mismo que el segundo no
+   * es una variante del primero — y acá pesa más: forjar cuesta un viaje largo
+   * (6 a 25 s) MÁS un typecheck por candidata. Un depósito puede querer contestar
+   * el chat, que es barato, y no querer pagar esto.
+   *
+   * Recibe el reloj porque el episodio entero se mide distinto que una consulta:
+   * quien lo espera no es una criatura que ya contestó, es una que no sabe hacer
+   * algo y va a seguir sin saber hasta que esto vuelva.
+   */
+  forjar?: (prompt: string, timeoutMs: number) => Promise<{ ok: boolean; texto: string; porque?: string }>
 }
 
 /**
@@ -263,6 +390,15 @@ export function crearServidor(baul: Baul, o: OpcionesDelServidor = {}): Server {
           ok: true,
           sprites: baul.todos().length,
           dibuja: dibujante === undefined ? null : (dibujante.nombre ?? 'sin nombre'),
+          // Campo aparte de `dibuja` porque son dos permisos distintos, igual
+          // que en `Dibujante`. Un depósito puede dibujar y no contestar, y el
+          // juego tiene que poder decirlo: «Codex dibuja» dejó de ser toda la
+          // verdad el día que además empezó a leer lo que le escribís.
+          contesta: dibujante?.responder === undefined ? null : (dibujante.nombre ?? 'sin nombre'),
+          // El tercer permiso. Sin esto la pantalla no puede decir si el hueco
+          // que la criatura no supo llenar tiene a quién ir, y vuelve a quedar
+          // el «no tengo a quién pedírselo» que este tramo vino a cerrar.
+          forja: dibujante?.forjar === undefined ? null : (dibujante.nombre ?? 'sin nombre'),
           modelos: o.vigia?.ultimo() ?? null,
         })
         return
@@ -322,6 +458,95 @@ export function crearServidor(baul: Baul, o: OpcionesDelServidor = {}): Server {
         }
         baul.poner(v.sprite)
         json(res, 201, { ok: true, yaEstaba: false, sprite: v.sprite })
+        return
+      }
+
+      // ─── LEER UNA FRASE QUE EL LÉXICO DEL JUEGO NO ALCANZÓ ──────────────
+      //
+      // La misma regla que `/dibujar`, y por eso esta ruta recibe una `Consulta`
+      // y no un prompt: **el navegador manda lo que quiere saber, el backend
+      // arma cómo se pregunta.** Un `POST /preguntar {prompt}` sería un proxy
+      // abierto a la cuenta de quien corre esto —cualquiera con el puerto le
+      // gasta la cuota en lo que se le ocurra— y además dejaría el prompt del
+      // chat viviendo en dos lados.
+      //
+      // Lo que igual entra desde afuera es la FRASE, que va adentro del prompt.
+      // Eso es inherente: la frase la escribe la persona. Lo que no puede entrar
+      // son las instrucciones alrededor, que son fijas y viven en `promptDe`.
+      //
+      // Y el tamaño lo acota `LARGO_MAXIMO` como en el resto: una consulta con
+      // el catálogo entero y el vocabulario son unos pocos KB.
+      if (url === '/leer') {
+        if (metodo !== 'POST') {
+          json(res, 405, { porque: 'para leer una frase va POST' })
+          return
+        }
+        if (dibujante?.responder === undefined) {
+          json(res, 501, { ok: false, porque: 'este depósito no contesta preguntas del chat' })
+          return
+        }
+        let crudo: unknown
+        try {
+          crudo = JSON.parse(await leerCuerpo(req))
+        } catch {
+          json(res, 400, { porque: 'el cuerpo no es JSON' })
+          return
+        }
+        const c = laConsulta(crudo)
+        if (c === undefined) {
+          json(res, 400, { ok: false, porque: 'eso no tiene forma de consulta' })
+          return
+        }
+        const salida = await dibujante.responder(promptDe(c))
+        if (!salida.ok) {
+          json(res, 502, { ok: false, porque: salida.porque ?? 'el modelo no contestó' })
+          return
+        }
+        // `null` y no un 502: que el modelo conteste algo que no se entiende NO
+        // es una falla del depósito, y el juego los trata distinto — uno prende
+        // la luz de «se cortó» y el otro la de «no trajo nada».
+        json(res, 200, { ok: true, respuesta: leerRespuesta(salida.texto, c.llave) ?? null })
+        return
+      }
+
+      // ─── FORJAR LO QUE LA CRIATURA NO SABE HACER ────────────────────────
+      //
+      // La tercera ruta que sale a un modelo, y la misma regla que las otras
+      // dos: **el navegador manda EL HUECO, el backend arma cómo se pregunta.**
+      // Acá pesa más que en `/leer` — el prompt de la fragua lleva el `.d.ts`
+      // entero de la API de habilidades, que es lo que hace que el modelo escriba
+      // algo compilable. Dejarlo del lado del cliente sería mandar siete kilos de
+      // texto por la red en cada hueco, y confiarle al navegador la superficie
+      // contra la que después se typechequea de este lado.
+      //
+      // Y lo que vuelve es TEXTO: el TypeScript y el JavaScript instrumentado.
+      // Montar, juzgar e instalar pasan allá, que es donde vive el mundo.
+      if (url === '/forjar') {
+        if (metodo !== 'POST') {
+          json(res, 405, { porque: 'para forjar va POST' })
+          return
+        }
+        if (dibujante?.forjar === undefined) {
+          json(res, 501, { ok: false, porque: 'este depósito no forja habilidades' })
+          return
+        }
+        let crudo: unknown
+        try {
+          crudo = JSON.parse(await leerCuerpo(req))
+        } catch {
+          json(res, 400, { porque: 'el cuerpo no es JSON' })
+          return
+        }
+        const p = elPedido(crudo)
+        if (p === undefined) {
+          json(res, 400, { ok: false, porque: 'eso no tiene forma de pedido de la mente' })
+          return
+        }
+        const r = await forjar(p.pedido, dibujante.forjar, p.enCastellano, p.queVerificar)
+        // Un modelo que no contestó es 502; uno que contestó y no escribió nada
+        // es 200 con la lista vacía. Son dos cosas distintas y el juego las pinta
+        // distinto, igual que en `/leer`.
+        json(res, r.ok ? 200 : 502, r)
         return
       }
 

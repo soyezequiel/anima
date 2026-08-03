@@ -1,0 +1,41 @@
+# Ánima detrás de Cloudflare Tunnel.
+#
+# Se aplica encima del compose base:
+#   docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+#
+# cloudflared abre un túnel SALIENTE hacia Cloudflare: no hay que abrir ningún
+# puerto en el router ni tener IP pública. Por eso el override además CIERRA el
+# puerto de la máquina — con el túnel puesto, esa sería una segunda puerta sin
+# nada que la mire.
+#
+# El túnel se crea una vez en el panel de Cloudflare (Zero Trust → Networks →
+# Tunnels → Create a tunnel → Docker) y de ahí sale el TUNNEL_TOKEN, que va al
+# `.env`. El hostname público se mapea en ese mismo panel:
+#
+#     anima.naranja.fit  →  http://anima:8787
+#
+# `anima` es el nombre del servicio de acá al lado: cloudflared lo resuelve por
+# la red interna del compose, sin pasar por la máquina.
+
+services:
+  anima:
+    # `!reset` porque Compose CONCATENA las listas de puertos en vez de
+    # reemplazarlas: sin esto, el 8787 del compose base seguiría publicado.
+    ports: !reset []
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: anima-cloudflared
+    restart: unless-stopped
+    # Que el túnel no anuncie una app que todavía no atiende.
+    depends_on:
+      anima:
+        condition: service_healthy
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?falta TUNNEL_TOKEN en el .env (panel de Cloudflare → Tunnels)}
+    # Un cliente de túnel no necesita más que esto.
+    deploy:
+      resources:
+        limits:
+          memory: 128M

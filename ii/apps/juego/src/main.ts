@@ -39,8 +39,10 @@ import {
   type Sprites,
 } from '@anima/dibujo'
 
-import { cargar, claveDe, guardar } from '@anima/store'
-import { conQuien } from './con-quien.js'
+import { VERSION_DEL_GUARDADO, cargar, claveDe, comoSeGuarda, guardar } from '@anima/store'
+import { conQuien, elAvisoDeQueNoLlego } from './con-quien.js'
+import { preguntarPorElDeposito } from './preguntarle-al-deposito.js'
+import { forjarPorElDeposito } from './forjar-por-el-deposito.js'
 import type { ConQuien } from './con-quien.js'
 import { encuadrePara } from './el-encuadre.js'
 import type { Espacio } from './el-encuadre.js'
@@ -65,6 +67,8 @@ import { dibujanteDePrueba } from './dibujante-de-prueba.js'
 import { proveedorDelDeposito } from './proveedor-del-deposito.js'
 import { Lienzo } from './lienzo.js'
 import { PHYS, arrancar } from './mundo.js'
+import { Vigia } from './lo-que-se-rompio.js'
+import { nombreDelArchivo, pares, reporteEnMarkdown, type DatosDelReporte } from './el-reporte.js'
 
 const SEMILLA = 20260727n
 const HZ = 20
@@ -94,6 +98,18 @@ const $ = (id: string): HTMLElement => {
   return e
 }
 
+// ─── EL VIGÍA, ANTES QUE «ANTES QUE NADA» ─────────────────────────────────
+//
+// Va arriba de la carga del guardado a propósito, y esa línea de abajo —el
+// `console.warn` de «no se pudo leer, se arranca de cero»— es exactamente por
+// qué: es la rotura que explica la mitad de las partidas en estado raro, y es la
+// PRIMERA que ocurre. Un vigía instalado tres líneas más abajo no la ve.
+//
+// Todo lo que hace está en `lo-que-se-rompio.ts`. Acá sólo se elige el momento,
+// que es lo único que este archivo puede decidir.
+const vigia = new Vigia(performance.now())
+vigia.instalar(window, console)
+
 // ─── LO GUARDADO, ANTES QUE NADA ──────────────────────────────────────────
 //
 // El punto 9 de la vertical: cerrar y reabrir sin perder la sesión. La carga va
@@ -108,6 +124,14 @@ const $ = (id: string): HTMLElement => {
 // juego arranca igual con una partida nueva. Es la misma decisión que con el
 // depósito de sprites: nada de esto puede apagar el juego.
 const QUIEN = 'ana'
+/**
+ * DÓNDE VIVE EL DEPÓSITO, y sube acá porque ahora tiene dos usos.
+ *
+ * Estaba declarada abajo, junto a la carga de sprites, cuando lo único que hacía
+ * era traer dibujos. Desde que el proveedor del chat sale por el mismo backend,
+ * `new Ordenes` la necesita — y `new Ordenes` pasa antes.
+ */
+const DONDE_EL_DEPOSITO = 'http://localhost:5190'
 const baul = depositoIndexedDB()
 let guardadoAlArrancar: Awaited<ReturnType<typeof cargar>>
 try {
@@ -118,10 +142,46 @@ try {
 
 const { state, parada } = arrancar(SEMILLA)
 const partida = new Partida(guardadoAlArrancar?.state ?? state)
+// Desde acá, una rotura sabe en qué tick del MUNDO pasó — que es el número con el
+// que se la puede ir a buscar al guardado. Las de arriba de esta línea no lo
+// tienen, y así se leen en el reporte.
+vigia.seguirElTick(() => partida.state.tick)
 // Las dos cosas que una partida cargada tiene que recuperar: lo que aprendió y de
 // qué estaban hablando. La segunda entró con el C1 de la convergencia, y sin ella
 // reabrir la pestaña devolvía el mundo y borraba la conversación entera.
 const ordenes = new Ordenes(partida, QUIEN, PHYS, {
+  // ─── EL HUECO DEL PROVEEDOR, LLENO ───────────────────────────────────────
+  //
+  // Estuvo abierto desde el C1: `Ordenes` sabía preguntar y nadie le pasaba a
+  // quién, así que toda frase que el léxico no terminaba de entender moría en un
+  // `return` mudo. Ahora sale por el depósito y termina en un `codex exec`.
+  //
+  // Va SIN interruptor, y es una decisión que se tomó a ojos abiertos: el botón
+  // de dibujar existe porque «pedir dibujos cuesta plata y no puede ser algo que
+  // pase solo mientras alguien mira», y esto también cuesta. La diferencia que
+  // lo justifica es cuándo se dispara — un dibujo se puede pedir en cualquier
+  // momento y esto sólo sale cuando VOS escribiste algo que ella no entendió. No
+  // hay consulta sin una frase tuya adelante.
+  //
+  // Y no le hace daño al tick: no se espera. Ver `OpcionesDeOrdenes.preguntar`.
+  preguntar: preguntarPorElDeposito(DONDE_EL_DEPOSITO),
+  // ─── Y EL OTRO PUERTO, QUE ERA EL QUE FALTABA ────────────────────────────
+  //
+  // El chat le arregla a la criatura lo que no ENTIENDE. Esto le arregla lo que
+  // no SABE HACER, que es lo que la dejaba parada: en una partida medida pidió
+  // ayuda dos veces —«para fuego me falta que la leña esté seca»— y no había a
+  // quién.
+  //
+  // `mundo` va como función y no como valor a propósito: el contrato que el juez
+  // necesita se deriva de lo que la criatura tiene EN LA MANO en ese tick, y una
+  // captura del estado de ahora estaría vieja al primer hueco.
+  fragua: forjarPorElDeposito({
+    donde: DONDE_EL_DEPOSITO,
+    phys: PHYS,
+    quien: QUIEN,
+    mundo: () => partida.state,
+    enCastellano,
+  }),
   ...(guardadoAlArrancar === undefined
     ? {}
     : { memoria: guardadoAlArrancar.creencias, charla: guardadoAlArrancar.charla }),
@@ -142,7 +202,6 @@ const sprites: Sprites = spritesEnMemoria(DE_FABRICA)
 // Si no contesta, no pasa nada: el juego dibuja procedural. Es la regla 3 del
 // surtidor y acá se ve cuánto vale — la página arranca igual con el backend
 // apagado, y el único síntoma es que los dibujos son los del motor.
-const DONDE_EL_DEPOSITO = 'http://localhost:5190'
 const deposito = depositoHttp(DONDE_EL_DEPOSITO)
 let hayDeposito = false
 let preguntando = false
@@ -152,15 +211,41 @@ let preguntando = false
  * qué rótulo, qué dice el detalle— está en `con-quien.ts`, que se prueba sin
  * abrir un navegador. Esto escribe tres clases y dos textos.
  */
+/**
+ * Lo último que contestó el sondeo, para el reporte.
+ *
+ * Se guarda acá y no se vuelve a preguntar al armar el reporte: preguntar sería
+ * un `await` a un backend que puede estar caído, y el reporte tiene que salir
+ * SIEMPRE y en el acto. Lo que se quiere saber es con quién estaba hablando el
+ * juego cuando pasó lo que pasó, no si el depósito contesta ahora.
+ */
+let ultimoEnlace: ConQuien | undefined
+
 function pintarEnlace(c: ConQuien): void {
+  ultimoEnlace = c
   for (const [quien, l] of [['codex', c.codex], ['claude', c.claude]] as const) {
     const caja = $(`lampara-${quien}`)
-    caja.classList.remove('buscando', 'vive', 'no')
+    caja.classList.remove('buscando', 'vive', 'no', 'cortado')
     caja.classList.add(l.luz)
     caja.title = l.detalle
     $(`rol-${quien}`).textContent = l.rol
   }
   $('enlace-nota').textContent = c.nota
+}
+
+/**
+ * LO ÚLTIMO QUE CONTESTÓ `/salud`, EN CRUDO.
+ *
+ * Se guarda además de `ultimoEnlace` —que es lo ya decidido— porque la lámpara de
+ * Claude ahora depende de DOS fuentes que se mueven a ritmos distintos: el sondeo,
+ * cada tantos cuadros, y los intentos de `Ordenes`, que pasan cuando le escribís.
+ * Sin esto, un intento fallido no se vería hasta el sondeo siguiente, o sea que el
+ * aviso llegaría tarde justo cuando su valor es que llegue en el momento.
+ */
+let ultimaSalud: unknown
+
+function repintarElEnlace(): void {
+  pintarEnlace(conQuien(ultimaSalud, ordenes.loQueNoLlego.at(-1)))
 }
 
 /**
@@ -183,7 +268,8 @@ async function mirarElDeposito(): Promise<void> {
     const r = await fetch(`${DONDE_EL_DEPOSITO}/salud`)
     if (!r.ok) throw new Error(`salud contestó ${String(r.status)}`)
     const salud: unknown = await r.json()
-    pintarEnlace(conQuien(salud))
+    ultimaSalud = salud
+    repintarElEnlace()
     if (!hayDeposito) {
       hayDeposito = true
       $('deposito').textContent = `${String(await cargarDeposito(sprites, deposito))} dibujos`
@@ -192,7 +278,8 @@ async function mirarElDeposito(): Promise<void> {
     // Sin depósito no hay forma de saber qué modelos hay: las dos luces se
     // apagan juntas y la nota aclara que el juego sigue. Ver `con-quien.ts`.
     hayDeposito = false
-    pintarEnlace(conQuien(undefined))
+    ultimaSalud = undefined
+    repintarElEnlace()
     $('deposito').textContent = 'apagado (se juega igual)'
   } finally {
     preguntando = false
@@ -1155,6 +1242,237 @@ $('olvidar').addEventListener('click', () => {
     })
 })
 
+// ─── EL REPORTE ────────────────────────────────────────────────────────────
+//
+// Todo lo que decide cómo se lee está en `el-reporte.ts`, que no toca el DOM y se
+// prueba sin navegador. Acá pasan las dos cosas que sólo pueden pasar acá: JUNTAR
+// —que es leer los mismos getters que ya alimentan los ocho paneles del dock— y
+// BAJAR el archivo.
+//
+// ─── POR QUÉ SE JUNTA TODO DE NUEVO Y NO SE LEE LA PANTALLA ────────────────
+//
+// Sería más corto raspar el `textContent` de los paneles, y sería mentira dos
+// veces: los paneles que están cerrados igual se escriben, pero los que dependen
+// de un click —el inspector— muestran lo último señalado y no lo que hay; y sobre
+// todo, la pantalla REDONDEA. «412» de tick es el tick, pero «12,3 s» ya no es el
+// número con el que se puede ir a buscar nada. El reporte sale de la misma fuente
+// que la pantalla, no de la pantalla.
+
+/**
+ * LA FILA DE LO QUE NO LLEGÓ, en una línea.
+ *
+ * Lleva el motivo del ÚLTIMO y no un resumen de los tres: en una partida los
+ * intentos suelen ser todos del mismo tipo —el cable está o no está— y un
+ * recuento por motivo gastaría tres números para decir lo que dice uno. El día
+ * que se mezclen, la lista entera está en el log de la charla con su tick.
+ */
+function laFilaDeLoQueNoLlego(): string {
+  const cuantos = ordenes.cuantosNoLlegaron
+  if (cuantos === 0) return 'nunca: no hizo falta o no lo intentó'
+  const i = ordenes.loQueNoLlego.at(-1)
+  const cola = i === undefined ? '' : ` · el último, en el tick ${String(i.tick)}: ${elAvisoDeQueNoLlego(i).detalle}`
+  return `${String(cuantos)} ${cuantos === 1 ? 'vez' : 'veces'}${cola}`
+}
+
+function juntarElReporte(): DatosDelReporte {
+  const s = partida.state
+  const informe = partida.informe
+  const actor = ultimaEscena?.actores[0]
+  const c = actor === undefined || ultimaEscena === undefined ? undefined : loQueSeVeDe(actor, ultimaEscena, PHYS)
+  const enCurso = ordenes.enCurso
+  const encargo = ordenes.encargo
+  const cat = ordenes.catalogo
+  const ultimaLectura = ordenes.ultimaLectura
+
+  return {
+    cuando: new Date().toISOString(),
+    maquina: pares(
+      ['navegador', navigator.userAgent],
+      ['ventana', `${String(window.innerWidth)} × ${String(window.innerHeight)} · dpr ${String(window.devicePixelRatio)}`],
+      ['depósito de dibujos', hayDeposito ? `${DONDE_EL_DEPOSITO} (contesta)` : `${DONDE_EL_DEPOSITO} (no contesta)`],
+      ['dock', dev ? `abierto: ${abiertos.join(', ')}` : 'apagado'],
+    ),
+    conQue: pares(
+      ['semilla', String(SEMILLA)],
+      ['frecuencia', `${String(HZ)} Hz`],
+      ['versión de física', String(PHYS.version)],
+      ['versión del guardado', String(VERSION_DEL_GUARDADO)],
+      ['epoch del catálogo', String(cat.catalogEpoch)],
+    ),
+    donde: pares(
+      ['tick', String(s.tick)],
+      ['tiempo de mundo', `${(s.tick / HZ).toFixed(1)} s`],
+      // La velocidad importa más de lo que parece: casi todo reporte va a salir
+      // de una partida EN PAUSA —el juego arranca en 0— y «no pasa nada» con la
+      // velocidad en cero no es un bug, es que el mundo no está corriendo.
+      ['velocidad', velocidad === 0 ? '0 (EN PAUSA: el mundo no avanza)' : `×${String(velocidad)}`],
+      ['ticks corridos en esta sesión', String(informe.ticks)],
+      ['ticks perdidos', `${String(informe.ticksPerdidos)} (${String(informe.porTiempo)} por tiempo, ${String(informe.porFalla)} por falla)`],
+      ['último guardado', guardadoEn < 0 ? 'ninguno en esta sesión' : `tick ${String(guardadoEn)}`],
+      ['cargó un guardado al abrir', guardadoAlArrancar === undefined ? 'no: mundo nuevo desde la semilla' : 'sí'],
+      ['cuadros dibujados', String(cuadros)],
+      ['ms del último cuadro', msDelCuadro.toFixed(2)],
+      ['zoom', `×${String(zoom)}`],
+    ),
+    roturas: vigia.juntado,
+    fallasDelTick: informe.fallas.map((f) => `tick ${String(f.tick)}: ${f.why}`),
+    // El `undefined` es LA información cuando el arnés no corrió, y por eso se
+    // pasa tal cual en vez de mandar la lista vacía. Ver `DatosDelReporte`.
+    violaciones: informe.vigilada ? partida.violaciones : undefined,
+    criatura: pares(
+      ['quién', QUIEN],
+      ['dónde', ultimaEscena === undefined ? '—' : `${String(ultimaEscena.foco.x)}, ${String(ultimaEscena.foco.y)}`],
+      c === undefined ? undefined : ['aliento', `${String(c.aliento.valor)} / ${String(c.aliento.de)}`],
+      c === undefined
+        ? undefined
+        : [
+            'qué está haciendo',
+            c.haciendo !== undefined
+              ? `${c.haciendo.que} · ${c.haciendo.segundos.toFixed(1)} s · sobre ${c.haciendo.sobre.join(' · ')}`
+              : c.esperando !== undefined
+                ? `esperando ${c.esperando.valor.toFixed(1)} / ${c.esperando.de.toFixed(1)} s`
+                : 'QUIETA',
+          ],
+      c === undefined ? undefined : ['en la mano', c.manos.length > 0 ? c.manos.join(' · ') : 'nada'],
+      ['cuerpos en el mundo', String(s.bodies.size)],
+      ['celdas escritas', String(s.cells.size)],
+      ['obras desplegadas', String(s.desplegados.size)],
+    ),
+    mente: {
+      persigue:
+        enCurso === undefined
+          ? 'NADA: no hay ninguna meta en curso'
+          : `${enCurso.meta} (${enCurso.de === 'vos' ? 'tuya' : 'suya'})` +
+            (enCurso.total > 1 ? ` · ${String(enCurso.hechas + 1)} de ${String(enCurso.total)}` : ''),
+      pasos:
+        encargo === undefined
+          ? []
+          : clausulasDe(encargo, ordenes.metaEnCurso, enCastellano).map((p) => `[${p.estado}] ${p.texto}`),
+      nota:
+        encargo === undefined
+          ? 'no le pediste nada: lo que persiga es suyo'
+          : 'el pedido es de una sola parte y no tiene pasos que listar',
+    },
+    // La lectura se escribe con la firma AL LADO del texto crudo, y ése es todo
+    // el punto: «traeme un pescado» → `nutrition>0` es entendió; «traeme un
+    // pescado» → sin firma y confianza 0,2 es no entendió. Los dos producen la
+    // misma pantalla —un acuse y una criatura que no hace nada— y son dos bugs en
+    // dos paquetes distintos.
+    lectura:
+      ultimaLectura === undefined
+        ? undefined
+        : {
+            crudo: ultimaLectura.crudo,
+            confianza: ultimaLectura.confianza.toFixed(2),
+            clausulas: ultimaLectura.clausulas.map(
+              (c) =>
+                `«${c.crudo}» → ${c.firma ?? c.verbo ?? 'SIN FIRMA NI VERBO'} · ${c.grado} · confianza ${c.confianza.toFixed(2)}` +
+                // `Denota` es una unión de cinco formas y cuatro se nombran con
+                // `id`; la de meta lleva la firma y la de estado un lema. Se
+                // escriben las tres con su CLASE adelante porque la clase es
+                // media respuesta: que «pescado» se haya leído como sustancia o
+                // como meta cambia por dónde sigue el planificador.
+                (c.objetos.length > 0
+                  ? ` · sobre ${c.objetos
+                      .map((o) => `${o.k}:${'id' in o ? o.id : o.k === 'meta' ? o.firma : o.lema}`)
+                      .join(', ')}`
+                  : ''),
+            ),
+          },
+    enlace: pares(
+      ['codex', ultimoEnlace === undefined ? 'sin sondear' : `${ultimoEnlace.codex.luz} · ${ultimoEnlace.codex.rol}`],
+      ['claude', ultimoEnlace === undefined ? 'sin sondear' : `${ultimoEnlace.claude.luz} · ${ultimoEnlace.claude.rol}`],
+      ultimoEnlace === undefined ? undefined : ['nota del enlace', ultimoEnlace.nota],
+      ['consultas al modelo', String(ordenes.consultas)],
+      ['respuestas aplicadas', String(ordenes.aplicadas)],
+      ['respuestas descartadas', String(ordenes.descartadas)],
+      ['pedidos a la fragua', String(ordenes.pedidosALaFragua.length)],
+      // ─── LA FILA QUE FALTABA, y es la que hace legibles a las cuatro de
+      //     arriba. «2 pedidos a la fragua» y «0 consultas al modelo» eran los
+      //     dos ciertos y juntos no decían lo que había pasado, que es que el
+      //     pedido no salió del cuarto. Acá se dice, con el motivo del último:
+      //     sin el motivo, «no llegó 2 veces» manda a revisar la red cuando lo
+      //     que falta puede ser una línea de cableado.
+      ['no llegó al modelo', laFilaDeLoQueNoLlego()],
+    ),
+    charla: ordenes.charla.map((d) => ({ turno: d.turno, clase: d.clase, texto: d.texto })),
+    recuerdos: ordenes
+      .queRecuerda()
+      .map((r) => `${r.clase}: ${r.texto}${r.veces > 1 ? ` (×${String(r.veces)})` : ''} — #${r.turnos.join(', #')} · ${r.procedencia}`),
+    catalogo: [
+      ...[...new Set(ESQUEMAS.map((e) => e.establishes))].map((f) => `meta: ${enCastellano(f)}`),
+      // La revisión (`de`) va al lado del nombre y no es adorno: dos partidas
+      // pueden haber aprendido «la misma» obra contra dos planos distintos, y
+      // sin la revisión el catálogo del reporte dice que son iguales.
+      ...cat.buildCapabilities.map((x) => `obra aprendida: ${enCastellano(x.esquema.establishes)} · rev ${x.de}`),
+      ...cat.skillCapabilities.map((x) => `habilidad aprendida: ${enCastellano(x.esquema.establishes)} · rev ${x.de}`),
+    ],
+    guardado: comoSeGuarda(partida.state, ordenes.memoria, QUIEN, ordenes.charla, ordenes.encargo),
+  }
+}
+
+/**
+ * BAJAR EL ARCHIVO, y las dos cosas que pueden salir mal.
+ *
+ * Todo el cuerpo va en un `try`: si juntar los datos lanza —un getter que
+ * cambió, un panel que todavía no tiene escena—, lo que se pierde es justamente
+ * el reporte del problema que se quería reportar. Con la red, la falla se
+ * escribe en la consola, la consola la pesca el vigía, y **el intento siguiente
+ * la trae adentro**.
+ *
+ * El `revokeObjectURL` no es prolijidad: sin él, cada reporte deja el markdown
+ * entero retenido en memoria hasta que se cierre la pestaña, y estos pesan
+ * cientos de KB. Se revoca en el cuadro que viene y no en la línea de abajo
+ * porque revocar antes de que el navegador haya leído la URL cancela la descarga
+ * en Firefox.
+ */
+function bajarElReporte(): void {
+  try {
+    const d = juntarElReporte()
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(new Blob([reporteEnMarkdown(d)], { type: 'text/markdown;charset=utf-8' }))
+    a.download = nombreDelArchivo(partida.state.tick, d.cuando)
+    a.click()
+    setTimeout(() => {
+      URL.revokeObjectURL(a.href)
+    }, 0)
+  } catch (e) {
+    console.error('[reporte] no se pudo armar:', e)
+  }
+}
+
+$('reporte').addEventListener('click', bajarElReporte)
+
+/**
+ * Y CON EL TECLADO, PORQUE EL BOTÓN VIVE EN EL MODO DEV.
+ *
+ * El reporte lo pide quien vio algo raro, y quien ve algo raro jugando no tiene
+ * el dock abierto — el dock es para mirar cómo funciona esto por dentro, y mirar
+ * cómo funciona por dentro no es jugar. Sin atajo, la instrucción sería «prendé
+ * el modo dev, abrí La partida, apretá el botón», y para entonces ya pasaron
+ * treinta segundos de mundo encima de lo que se quería reportar.
+ *
+ * `Ctrl+Alt+R` y no `Ctrl+R`, que es recargar.
+ *
+ * ─── Y NO SE IGNORA CON EL FOCO EN LA CHARLA, que es lo que decía antes ────
+ *
+ * La guarda parecía obvia —«en un campo de texto las teclas son texto»— y la
+ * tiró el punto 6 del e2e: **después de mandar un pedido el foco se QUEDA en el
+ * campo**, a propósito, para poder seguir escribiendo. O sea que la guarda
+ * apagaba el atajo justo en el momento más probable de usarlo: acabás de pedir
+ * algo, ves que no pasa lo que esperabas, y el reporte no baja.
+ *
+ * Lo que se paga a cambio es un caso raro: en los teclados donde AltGr se emite
+ * como Ctrl+Alt, un layout que le asigne un carácter a AltGr+R escribiría el
+ * reporte en vez del carácter. Es recuperable —se borra el archivo— y el otro
+ * lado no lo era.
+ */
+window.addEventListener('keydown', (ev) => {
+  if (!ev.ctrlKey || !ev.altKey || ev.key.toLowerCase() !== 'r') return
+  ev.preventDefault()
+  bajarElReporte()
+})
+
 $('charla').addEventListener('submit', (ev) => {
   ev.preventDefault()
   const caja = $('orden') as HTMLInputElement
@@ -1645,6 +1963,61 @@ function loQueNoLeiste(): void {
   puntoDelTirador.hidden = ultimo <= leidoHasta
 }
 
+/**
+ * ═══ EL AVISO DE QUE QUISO IR AL MODELO Y NO LLEGÓ ═════════════════════════
+ *
+ * La tercera salida del mismo hecho. Las otras dos ya están puestas y ninguna
+ * alcanza sola:
+ *
+ *   · **la lámpara** queda, pero hay que estar mirando arriba a la izquierda;
+ *   · **el aviso en la charla** queda para siempre —entra al guardado y sale en
+ *     el reporte— pero en angosto la charla es un cajón cerrado, y aunque esté
+ *     abierta compite con todo lo que la criatura dice;
+ *   · **esto** es lo único que INTERRUMPE, y por eso es lo único que se va solo.
+ *     Un aviso que interrumpe y se queda deja de interrumpir a los dos minutos.
+ *
+ * ─── POR QUÉ SE MIDE CONTRA LA CUENTA TOTAL Y NO CONTRA LA LISTA ───────────
+ *
+ * Porque la lista se recorta a los últimos cincuenta. Con `length`, el intento
+ * cincuenta y uno la deja igual de larga que el cincuenta y el cartel no
+ * aparecería nunca más, que es el modo de falla más cruel posible: funciona
+ * mientras lo probás y se apaga solo cuando la partida se pone interesante.
+ */
+const MS_QUE_DURA_EL_AVISO = 7000
+let vistosQueNoLlegaron = 0
+/** Cuándo esconderlo, en el reloj del navegador. `0` es «no hay ninguno puesto». */
+let elAvisoSeVaEn = 0
+
+function refrescarElAviso(): void {
+  const p = $('no-llego')
+  if (ordenes.cuantosNoLlegaron > vistosQueNoLlegaron) {
+    vistosQueNoLlegaron = ordenes.cuantosNoLlegaron
+    const i = ordenes.loQueNoLlego.at(-1)
+    if (i !== undefined) {
+      const a = elAvisoDeQueNoLlego(i)
+      $('no-llego-que').textContent = a.cartel
+      $('no-llego-sobre').textContent = a.sobre
+      // ─── EL PARPADEO QUE RE-DISPARA LA ANIMACIÓN ────────────────────────
+      //
+      // Un aviso nuevo mientras el anterior sigue en pantalla cambiaría el texto
+      // sin que nada se mueva, y un texto que se reemplaza en silencio es un
+      // aviso que no avisa. Esconderlo y leer una medida fuerza el reflow que
+      // hace que `asomar` vuelva a correr; sin la lectura, el navegador junta
+      // las dos escrituras y no pasa nada.
+      p.hidden = true
+      void p.offsetWidth
+      p.hidden = false
+      elAvisoSeVaEn = performance.now() + MS_QUE_DURA_EL_AVISO
+      // La lámpara, en el mismo momento: es la que QUEDA cuando esto se va.
+      repintarElEnlace()
+    }
+  }
+  if (elAvisoSeVaEn > 0 && performance.now() >= elAvisoSeVaEn) {
+    elAvisoSeVaEn = 0
+    p.hidden = true
+  }
+}
+
 function cuadro(ahora: number): void {
   const pasado = ahora - ultimo
   ultimo = ahora
@@ -1672,6 +2045,14 @@ function cuadro(ahora: number): void {
     }
     if (acumulado > MS_POR_TICK * 8) acumulado = 0
   }
+
+  // ─── Y LA FRONTERA, AUNQUE EL MUNDO ESTÉ QUIETO ──────────────────────────
+  //
+  // Va AFUERA del `if` de arriba y ésa es toda la línea. Adentro, lo que vuelve
+  // del proveedor se aplica sólo si la partida avanza — y la partida arranca en
+  // pausa, así que el primer «xyzzy plugh» de una sesión pagaba una consulta que
+  // nadie iba a mirar. Lo encontró un e2e y el porqué está en `Ordenes`.
+  ordenes.loQueVolvioDeAfuera(partida.state.tick)
 
   // ─── La pantalla, al suyo ────────────────────────────────────────────────
   //
@@ -1705,6 +2086,7 @@ function cuadro(ahora: number): void {
   inspector()
   correrLosFlotantes()
   loQueNoLeiste()
+  refrescarElAviso()
   if (dev) {
     dibujarLaSerie()
     pieDeLaSerie()

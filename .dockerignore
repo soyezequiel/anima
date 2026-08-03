@@ -1,0 +1,28 @@
+# Lo que nunca tiene que entrar al contexto de build.
+#
+# `data/` primero y por sobre todo: ahí viven los CODEX_HOME por usuario, con
+# las credenciales que el CLI de Codex gestiona. Una imagen no se lleva eso.
+**/data/
+.env
+.env.*
+!.env.example
+
+node_modules
+**/node_modules
+dist
+**/dist
+coverage
+**/coverage
+.git
+.github
+test-results
+**/test-results
+playwright-report
+**/playwright-report
+apps/missions/traces
+
+# El remake vive en el mismo repo pero no forma parte de Ánima I. Sus
+# package.json sí entran (abajo): el lockfile los declara y `--frozen-lockfile`
+# exige que todos los proyectos del workspace estén presentes.
+ii/**
+!ii/**/package.json

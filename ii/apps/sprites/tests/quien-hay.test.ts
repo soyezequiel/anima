@@ -134,6 +134,8 @@ describe('/salud dice con quién está', () => {
         ok: true,
         sprites: 0,
         dibuja: null,
+        contesta: null,
+        forja: null,
         modelos: null,
       })
     })
@@ -147,6 +149,13 @@ describe('/salud dice con quién está', () => {
           ok: true,
           sprites: 0,
           dibuja: 'codex',
+          // Este dibujante NO trae `responder`, y por eso `contesta` es `null`
+          // con `dibuja` puesto: es exactamente el depósito que dibuja y no
+          // quiere que le gasten consultas de texto.
+          contesta: null,
+          // Y `forja` igual: los TRES permisos son distintos, y este dibujante
+          // sólo trae el primero.
+          forja: null,
           modelos: LOS_DOS,
         })
       },

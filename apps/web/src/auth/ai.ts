@@ -161,6 +161,11 @@ export interface AiStatus {
   installed: boolean;
   loggedIn: boolean;
   detail: string | null;
+  /**
+   * La cuenta la administra el dueño de la instancia (una sola sesión
+   * prestada a todos): se usa, pero no se conecta ni se desconecta desde acá.
+   */
+  managed?: boolean;
 }
 
 export async function fetchAiStatus(provider: RemoteAiProvider = 'codex'): Promise<AiStatus | null> {

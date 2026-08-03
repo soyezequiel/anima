@@ -21,7 +21,29 @@ import { expect, test, type Page } from '@playwright/test'
 const ANGOSTO = { width: 900, height: 800 }
 const ANCHO = { width: 1280, height: 800 }
 
+/**
+ * ─── EL DEPÓSITO SE SILENCIA, y hace falta desde que el chat le pregunta ────
+ *
+ * Una frase que el léxico no termina de entender sale a preguntarle a Codex. En
+ * un e2e no hay depósito, así que ese viaje falla — y una falla escribe en la
+ * charla («no pude pensarlo mejor…»), por red y cuando quiere.
+ *
+ * Eso convierte a cualquier aserción sobre el registro en una carrera: pasa o no
+ * según si la respuesta llegó antes de que el spec leyera. Se contesta «llegó y
+ * no trajo nada», que es el único resultado que NO escribe en la charla — ver
+ * `#noLlegue` en `ordenes.ts`.
+ *
+ * Lo que este spec mide sigue siendo lo suyo. Lo que se saca es la red.
+ */
 async function abrir(page: Page): Promise<void> {
+  await page.route('**/leer', (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      headers: { 'access-control-allow-origin': '*' },
+      body: JSON.stringify({ ok: true, respuesta: null }),
+    }),
+  )
   await page.goto('/')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }

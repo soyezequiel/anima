@@ -12,6 +12,7 @@ import {
   codexHomeFor,
   createCodexBridge,
   createCodexBridgeFactory,
+  createManagedBridge,
   createThoughtStreamParser,
   isUnsupportedEffortError,
   isUnsupportedModelError,
@@ -323,6 +324,100 @@ const chatGptPlanModelStderr = `ERROR: {"type":"error","status":400,"error":{"ty
 ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The 'gpt-5.6' model is not supported when using Codex with a ChatGPT account."}}`;
 
 const unsupportedEffortStderr = `stream error: { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 } ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 }`;
+
+describe('sesión administrada por el dueño de la instancia', () => {
+  it('se puede usar pero no conectar ni desconectar', async () => {
+    const logoutsReales: number[] = [];
+    const base: AiBridge = {
+      status: () =>
+        Promise.resolve({ installed: true, loggedIn: true, detail: 'Logged in using ChatGPT' }),
+      startLogin: () => Promise.resolve({ authUrl: 'https://auth.openai.com/oauth/authorize' }),
+      logout: () => {
+        logoutsReales.push(1);
+        return Promise.resolve();
+      },
+      limits: () => Promise.resolve(fakeLimits),
+      complete: () => Promise.resolve('pensado'),
+    };
+    const compartido = createManagedBridge(base);
+    const server = buildServer({ dbPath: ':memory:', ai: () => compartido });
+    await server.ready();
+
+    try {
+      // Lo que sí: pensar, y saber que la sesión es prestada.
+      const estado = await server.inject({ method: 'GET', url: '/ai/status' });
+      expect(estado.json()).toMatchObject({ loggedIn: true, managed: true });
+      const consulta = await server.inject({
+        method: 'POST',
+        url: '/ai/complete',
+        payload: { prompt: 'hola' },
+      });
+      expect(consulta.json()).toEqual({ text: 'pensado' });
+      expect((await server.inject({ method: 'GET', url: '/ai/limits' })).statusCode).toBe(200);
+
+      // Lo que no: tocarle la sesión a los demás.
+      for (const url of ['/ai/login', '/ai/logout', '/ai/login/code']) {
+        const res = await server.inject({ method: 'POST', url, payload: { code: 'x' } });
+        expect(res.statusCode).toBe(403);
+      }
+      expect(logoutsReales).toHaveLength(0);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('el envoltorio también dice que no si alguien lo llama directo', async () => {
+    let cerrado = false;
+    const compartido = createManagedBridge({
+      status: () => Promise.resolve({ installed: true, loggedIn: true, detail: null }),
+      startLogin: () => Promise.resolve({ authUrl: 'https://auth.openai.com/x' }),
+      logout: () => {
+        cerrado = true;
+        return Promise.resolve();
+      },
+      limits: () => Promise.resolve(fakeLimits),
+      complete: () => Promise.resolve('ok'),
+    });
+
+    await compartido.logout();
+    expect(cerrado).toBe(false);
+    expect(await compartido.startLogin()).toHaveProperty('error');
+  });
+});
+
+describe('configuración por entorno', () => {
+  it('trata una variable declarada sin valor como si no estuviera', async () => {
+    // Un compose declara `ANIMA_CODEX_MODEL: ''` para documentar que existe.
+    // Eso es no elegir modelo — no elegir el modelo llamado «».
+    const previo = {
+      model: process.env.ANIMA_CODEX_MODEL,
+      effort: process.env.ANIMA_CODEX_EFFORT,
+    };
+    process.env.ANIMA_CODEX_MODEL = '';
+    process.env.ANIMA_CODEX_EFFORT = '';
+    try {
+      const usados: string[][] = [];
+      const bridge = createCodexBridge({
+        exec: async (args) => {
+          usados.push(args);
+          const outFile = args[args.indexOf('--output-last-message') + 1]!;
+          await writeFile(outFile, 'listo', 'utf8');
+          return { code: 0, stdout: '', stderr: '', failedToStart: false };
+        },
+      });
+
+      await expect(bridge.complete({ prompt: 'hola' })).resolves.toBe('listo');
+      const args = usados[0]!;
+      expect(args).not.toContain('--model');
+      expect(args).toContain('model_reasoning_effort=low');
+    } finally {
+      if (previo.model === undefined) delete process.env.ANIMA_CODEX_MODEL;
+      else process.env.ANIMA_CODEX_MODEL = previo.model;
+      if (previo.effort === undefined) delete process.env.ANIMA_CODEX_EFFORT;
+      else process.env.ANIMA_CODEX_EFFORT = previo.effort;
+    }
+  });
+});
 
 describe('errores de codex exec', () => {
   it('reintenta una vez cuando el CLI termina sin entregar ningún diagnóstico', async () => {
