@@ -17,7 +17,8 @@
 
 import { expect, test, type Page } from '@playwright/test'
 
-const CELDAS = 15
+/** Lo que mide una celda adentro del canvas. Es la `CELDA` de `@anima/dibujo`. */
+const CELDA = 28
 
 async function abrir(page: Page): Promise<void> {
   await page.goto('/')
@@ -37,10 +38,60 @@ async function cajaDelMapa(page: Page): Promise<Caja> {
   return caja
 }
 
+/**
+ * ─── DÓNDE SE PUEDE BARRER, Y POR QUÉ SE CALCULA EN VEZ DE ESCRIBIRSE ───────
+ *
+ * Acá había `const CELDAS = 15`, escrito cuando el encuadre era un cuadrado fijo
+ * de quince por quince, y el paso de las DOS dimensiones salía de
+ * `caja.width / 15`. Sobrevivió al encuadre variable por casualidad —mientras el
+ * mapa fue casi cuadrado, quince pasos de ancho caían más o menos adentro— y se
+ * rompió del todo cuando el mapa pasó a ocupar la ventana: con una caja de
+ * 1232×672, el paso da 82 px y la fila 15 queda en `y = 1230`, o sea **medio
+ * metro debajo del mapa**. El barrido no encontraba nada y el error decía «el
+ * encuadre no tiene un solo cuerpo», que es exactamente la clase de mentira que
+ * un número escrito a mano produce: el mapa estaba lleno.
+ *
+ * El dato está en el canvas y no hay que suponerlo — adentro mide un píxel por
+ * píxel del mapa y cada celda son `CELDA` de ésos. Es la misma reparación que
+ * `la-vertical.spec.ts` ya se había hecho para su punto 3, y que este archivo no
+ * recibió.
+ *
+ * ─── Y SE BARRE SÓLO LO DESTAPADO ──────────────────────────────────────────
+ *
+ * Con el mapa como pantalla, el panel FLOTA encima de su borde derecho. Un
+ * `mousemove` ahí no llega al canvas —el cartel no aparece— y un click aterriza
+ * en el panel. Las dos cosas están bien y son del diseño: lo que está tapado no
+ * se ve, así que tampoco se señala. El barrido se corta donde empieza el panel
+ * para medir lo que se puede tocar, no para esquivar un problema.
+ */
+interface Grilla {
+  readonly caja: Caja
+  readonly columnas: number
+  readonly filas: number
+  /** El paso en pantalla, que es `CELDA × zoom` y puede no ser entero. */
+  readonly paso: number
+  /** La primera columna que el panel tapa. */
+  readonly hasta: number
+}
+
+async function grillaDelMapa(page: Page): Promise<Grilla> {
+  const caja = await cajaDelMapa(page)
+  const buffer = await page
+    .locator('#mapa')
+    .evaluate((c: HTMLCanvasElement) => ({ ancho: c.width, alto: c.height }))
+  const columnas = Math.round(buffer.ancho / CELDA)
+  const filas = Math.round(buffer.alto / CELDA)
+  const paso = caja.width / columnas
+
+  const panel = await page.locator('aside').boundingBox()
+  const tapaDesde = panel === null ? Infinity : panel.x
+  const hasta = Math.min(columnas, Math.max(1, Math.floor((tapaDesde - caja.x) / paso)))
+  return { caja, columnas, filas, paso, hasta }
+}
+
 /** El centro en pantalla de la celda (col, fila) del encuadre. */
-function centroDe(caja: Caja, col: number, fila: number): { x: number; y: number } {
-  const paso = caja.width / CELDAS
-  return { x: caja.x + (col + 0.5) * paso, y: caja.y + (fila + 0.5) * paso }
+function centroDe(g: Grilla, col: number, fila: number): { x: number; y: number } {
+  return { x: g.caja.x + (col + 0.5) * g.paso, y: g.caja.y + (fila + 0.5) * g.paso }
 }
 
 /**
@@ -51,22 +102,21 @@ function centroDe(caja: Caja, col: number, fila: number): { x: number; y: number
  * que el mundo no prometió, y el día que la semilla cambie fallaría sin que nada
  * esté roto.
  */
-async function buscarAlgo(page: Page): Promise<{ x: number; y: number }> {
-  const caja = await cajaDelMapa(page)
+async function buscarAlgo(page: Page, g: Grilla): Promise<{ x: number; y: number }> {
   const cartel = page.locator('#cartel')
-  for (let fila = 0; fila < CELDAS; fila++) {
-    for (let col = 0; col < CELDAS; col++) {
-      const donde = centroDe(caja, col, fila)
+  for (let fila = 0; fila < g.filas; fila++) {
+    for (let col = 0; col < g.hasta; col++) {
+      const donde = centroDe(g, col, fila)
       await page.mouse.move(donde.x, donde.y)
       if (await cartel.isVisible()) return donde
     }
   }
-  throw new Error('el encuadre no tiene un solo cuerpo: el test no probaría nada')
+  throw new Error('el encuadre no tiene un solo cuerpo destapado: el test no probaría nada')
 }
 
 test('el cartel aparece al pasar el mouse, sin clickear nada', async ({ page }) => {
   await abrir(page)
-  await buscarAlgo(page)
+  await buscarAlgo(page, await grillaDelMapa(page))
 
   const cartel = page.locator('#cartel')
   await expect(cartel).toBeVisible()
@@ -78,7 +128,7 @@ test('el cartel aparece al pasar el mouse, sin clickear nada', async ({ page }) 
 
 test('DICE LO MISMO QUE EL PANEL para la misma celda', async ({ page }) => {
   await abrir(page)
-  const donde = await buscarAlgo(page)
+  const donde = await buscarAlgo(page, await grillaDelMapa(page))
 
   const delCartel = await page.locator('#cartel b').textContent()
   // El click va exactamente al mismo punto donde está el mouse.
@@ -88,32 +138,36 @@ test('DICE LO MISMO QUE EL PANEL para la misma celda', async ({ page }) => {
 
 test('en una celda vacía no aparece nada, y salir del mapa lo apaga', async ({ page }) => {
   await abrir(page)
-  const donde = await buscarAlgo(page)
-  const caja = await cajaDelMapa(page)
+  const g = await grillaDelMapa(page)
+  const donde = await buscarAlgo(page, g)
   const cartel = page.locator('#cartel')
 
   // Una celda vacía: se busca igual que la llena, por la misma razón.
   let vacia = false
-  for (let fila = 0; fila < CELDAS && !vacia; fila++) {
-    for (let col = 0; col < CELDAS && !vacia; col++) {
-      await page.mouse.move(centroDe(caja, col, fila).x, centroDe(caja, col, fila).y)
+  for (let fila = 0; fila < g.filas && !vacia; fila++) {
+    for (let col = 0; col < g.hasta && !vacia; col++) {
+      const p = centroDe(g, col, fila)
+      await page.mouse.move(p.x, p.y)
       vacia = !(await cartel.isVisible())
     }
   }
-  expect(vacia, 'el encuadre está lleno en las 225 celdas: no hay caso vacío que probar').toBe(true)
+  expect(
+    vacia,
+    `el encuadre está lleno en las ${String(g.filas * g.hasta)} celdas destapadas: no hay caso vacío que probar`,
+  ).toBe(true)
 
   // Y con el cartel prendido, irse del mapa lo apaga. Sin esto queda un cartel
   // flotando sobre el panel, tapando lo que se quería leer.
   await page.mouse.move(donde.x, donde.y)
   await expect(cartel).toBeVisible()
-  await page.mouse.move(donde.x, donde.y - caja.height)
+  await page.mouse.move(donde.x, donde.y - g.caja.height)
   await expect(cartel).toBeHidden()
   await expect(page.locator('#senal')).toBeHidden()
 })
 
 test('el recuadro cae SOBRE la celda que estás señalando', async ({ page }) => {
   await abrir(page)
-  const donde = await buscarAlgo(page)
+  const donde = await buscarAlgo(page, await grillaDelMapa(page))
 
   // El recuadro y el puntero tienen que coincidir: si la cuenta de `ubicarLaSenal`
   // se desfasa —pasa con el zoom, que achica el canvas por CSS— el jugador ve

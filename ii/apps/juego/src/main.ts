@@ -45,6 +45,7 @@ import { quienDijo } from '@anima/lang'
 import { conQuien } from './con-quien.js'
 import type { ConQuien } from './con-quien.js'
 import { encuadrePara } from './el-encuadre.js'
+import type { Espacio } from './el-encuadre.js'
 import { loQueSeVeDe } from './criatura.js'
 import { describir, firmaDe, loSenaladoEn, ubicarElCartel } from './lo-senalado.js'
 import type { Senalado } from './lo-senalado.js'
@@ -251,27 +252,27 @@ for (const b of zooms) {
 // cuenta de cuánto entra vive en `el-encuadre.ts` —y por eso se puede probar sin
 // navegador—; acá está la otra mitad, la que sí necesita uno: **medir el lugar**.
 //
-// ─── LAS DOS MEDIDAS SALEN DE LUGARES DISTINTOS, Y ES A PROPÓSITO ──────────
+// ─── Y AHORA EL LUGAR ES LA VENTANA ENTERA ─────────────────────────────────
 //
-// El ANCHO sale de la columna de la grilla y no del canvas. Parece un rodeo y es
-// justo al revés: la columna mide `minmax(0, 1fr)`, o sea que el navegador le da
-// lo que sobra **sin mirar lo que tiene adentro**. Preguntarle al canvas —o a
-// `.mapa-caja`, que es `inline-block` y por lo tanto mide lo que mide su
-// contenido— sería preguntarle al mapa cuánto quiere medir el mapa: la primera
-// respuesta se congelaría y ningún `resize` la movería.
+// Esto eran diez renglones explicando por qué el ancho salía de `#columna` y el
+// alto de la ventana menos la tapa del canvas. Todo eso existía por una sola
+// razón: **el mapa vivía en una celda de una grilla de dos columnas**, así que
+// había que preguntarle a la celda cuánto le habían dado. El rodeo era correcto
+// y el problema que esquivaba era real —preguntarle al canvas, o a `.mapa-caja`
+// que mide lo que mide su contenido, es preguntarle al mapa cuánto quiere medir
+// el mapa, y esa respuesta se congela en el primer cuadro—.
 //
-// El ALTO sale de la ventana menos dónde arranca el canvas. No se puede sacar de
-// la columna por la razón simétrica: la columna es tan alta como su contenido,
-// así que su alto ES el del mapa.
-const columnaDelMapa = $('columna')
-/** El aire que se le deja abajo, para que el mapa no quede pegado al borde. */
-const ORILLA_DE_ABAJO = 22
-
-function medirElEspacio(): { ancho: number; alto: number } {
-  return {
-    ancho: columnaDelMapa.clientWidth,
-    alto: window.innerHeight - canvas.getBoundingClientRect().top - ORILLA_DE_ABAJO,
-  }
+// Con el mapa como pantalla el rodeo se cae solo: el tablero es `inset: 0` sobre
+// una caja del tamaño de la ventana, o sea que **la ventana ES la medida** y no
+// hay ningún elemento intermedio al que preguntarle. La trampa del observador
+// que crece por lo que él mismo agranda queda imposible por construcción, y no
+// evitada con cuidado.
+//
+// `ORILLA_DE_ABAJO` se fue con lo mismo: existía para que el mapa no quedara
+// pegado al borde inferior de la página. Ahora lo que hay abajo no es un borde,
+// es el mapa siguiendo hasta el final — lo que se apoya encima flota, no empuja.
+function medirElEspacio(): Espacio {
+  return { ancho: window.innerWidth, alto: window.innerHeight }
 }
 
 let encuadre = encuadrePara(medirElEspacio(), zoom)
@@ -279,10 +280,10 @@ let encuadre = encuadrePara(medirElEspacio(), zoom)
 /**
  * REMEDIR, y por qué esto NO es un `ResizeObserver`.
  *
- * Un observador sobre la columna se dispararía por cambios que el propio mapa
+ * Un observador sobre el contenedor se dispararía por cambios que el propio mapa
  * causa —el canvas crece, la página se hace más alta, aparece la barra de
- * scroll, la columna se angosta quince píxeles, el mapa se vuelve a calcular— y
- * ése es el bucle de realimentación clásico de los observadores de tamaño.
+ * scroll, el contenedor se angosta quince píxeles, el mapa se vuelve a calcular—
+ * y ése es el bucle de realimentación clásico de los observadores de tamaño.
  *
  * El evento `resize` de la ventana no tiene ese problema: lo dispara la persona,
  * no el contenido. Los otros dos momentos en que la cuenta cambia son el zoom y

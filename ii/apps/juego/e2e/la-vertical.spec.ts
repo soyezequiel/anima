@@ -72,6 +72,31 @@ test('2 · ver la criatura moviéndose', async ({ page }) => {
 
 test('3 · ver todos los objetos del área visible', async ({ page }) => {
   await abrir(page)
+
+  // ─── EL PANEL SE APARTA PARA MEDIR, Y ES AISLAMIENTO Y NO TRAMPA ────────
+  //
+  // Con el mapa ocupando la ventana, el panel FLOTA sobre su borde derecho, así
+  // que un click ahí aterriza en el panel y Playwright lo rechaza con razón:
+  // esa celda no se puede tocar. El barrido moría con «locator.click: timeout».
+  //
+  // Lo que este punto afirma es del MAPA —que ninguna cosa del área visible
+  // quede sin poder inspeccionarse, que es el bug de los trece cuerpos en una
+  // celda que lo motivó— y no de la distribución. Que algo quede tapado es de
+  // la distribución, y lo cuida `la-distribucion.spec.ts`. Por eso se apaga el
+  // `pointer-events` del panel y no se lo esconde: el barrido llega al mapa
+  // entero y los nodos que el barrido LEE —`#mirado-que`, `#a-la-vista`— siguen
+  // ahí. Esconderlo dejaría al test sin dónde leer la respuesta.
+  //
+  // Y no es un gesto fabricado: los clicks siguen siendo clicks de verdad, con
+  // su chequeo de destino. Lo único que cambia es qué hay arriba.
+  //
+  // ─── LA FORMA DEFINITIVA DE ESTO ES DEL PASO 7 ──────────────────────────
+  //
+  // Cuando exista el cajón, en pantalla angosta la charla se CIERRA con un
+  // gesto de verdad y el mapa queda destapado entero. Ahí este bloque se
+  // reemplaza por «cerrá la charla y barré», que no necesita tocar nada.
+  await page.addStyleTag({ content: 'aside { pointer-events: none }' })
+
   const canvas = page.locator('#mapa')
   const caja = await canvas.boundingBox()
   if (caja === null) throw new Error('el mapa no tiene caja')

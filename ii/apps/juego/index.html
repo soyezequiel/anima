@@ -83,30 +83,70 @@
         --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
       }
       * { box-sizing: border-box; }
-      /* ─── GRID Y NO FLEX-WRAP, Y ES LA REPARACIÓN DEL PUNTO 4 ─────────────
-         Con `flex-wrap`, una ventana angosta mandaba el panel ENTERO debajo del
-         mapa: para escribir una orden había que scrollear, y mientras escribías
-         no veías lo que la criatura hacía. Con grid, la columna del panel se
-         mantiene al costado mientras entre, y el mapa es lo que se achica. */
       body {
-        margin: 0; padding: 20px; background: var(--fondo); color: var(--tinta);
+        margin: 0; padding: 0; background: var(--fondo); color: var(--tinta);
         /* La monoespaciada es la base porque casi todo lo que la pantalla dice
            por omisión son datos y controles. Lo que es VOZ —lo que dice la
            criatura, la prosa que explica— pide la serif a mano, y ese pedido
            explícito es justamente la marca de que ahí habla alguien. */
         font: 12px/1.6 var(--mono);
         font-variant-numeric: tabular-nums;
-        display: grid; gap: 22px; align-items: start;
-        grid-template-columns: minmax(0, 1fr) 290px;
       }
-      /* Debajo de esto no entran dos columnas ni achicando: recién ahí se apila,
-         y el panel va PRIMERO — lo que se usa es hablarle y mirar a la criatura,
-         no el mapa, que igual sigue abajo. */
-      @media (max-width: 760px) {
-        body { grid-template-columns: minmax(0, 1fr); }
-        aside { order: -1; }
+
+      /* ─── UNA SOLA PANTALLA, Y EL MAPA ES EL FONDO ────────────────────────
+         Esto reemplaza a la grilla de dos columnas. La diferencia de fondo no
+         es cómo se acomodan las cajas: es QUIÉN manda. Antes el mapa era una
+         celda de la grilla y su tamaño salía de lo que el panel dejaba libre;
+         ahora el mapa es la caja entera y lo demás se apoya encima.
+
+         El `min-height` no es por las dudas: abajo de eso el mapa deja de tener
+         contexto útil y lo que flota encima se pisa entre sí. Es un piso, no
+         una medida. */
+      #pantalla {
+        position: relative; width: 100%; height: 100vh; min-height: 520px;
+        overflow: hidden;
       }
-      h1 { font-size: 14px; margin: 0 0 3px; font-weight: 500; }
+      /* Centrado por flex y NO por márgenes: el encuadre se calcula en celdas
+         enteras, así que casi siempre sobra un pedazo de celda. Repartido a los
+         dos lados es aire; todo junto a un lado se lee como que algo se rompió.
+         (El comentario que esto reemplaza decía lo mismo sobre la columna.) */
+      #tablero {
+        position: absolute; inset: 0; z-index: 0; overflow: hidden;
+        display: flex; align-items: center; justify-content: center;
+        background: var(--fondo-hondo);
+      }
+      /* ─── LOS TRES DEGRADADOS ─────────────────────────────────────────────
+         Van en un solo elemento y como tres capas de fondo, no en tres divs:
+         son una sola cosa —la penumbra— y separarlos sería inventar tres
+         objetos para lo que el ojo lee como uno.
+
+           1. la viñeta radial, apenas descentrada hacia arriba y a la
+              izquierda: el centro de atención no es el centro geométrico, es
+              donde está la criatura;
+           2. la de izquierda a derecha, que es la más fuerte del lado derecho
+              (.9 y .97) porque ahí va a vivir la charla: el mapa se FUNDE con
+              ella en vez de que una línea los corte;
+           3. la de abajo, que apaga el piso donde se apoyan la ficha de la
+              criatura y la velocidad.
+
+         Los tres son del mismo color que `--fondo-hondo` con alfa. Escritos en
+         `rgba` y no con la variable porque una variable de color no se puede
+         usar con alfa variable sin `color-mix` en cada parada, y son diez. */
+      #penumbra {
+        position: absolute; inset: 0; z-index: 0; pointer-events: none;
+        background:
+          radial-gradient(120% 95% at 46% 48%, rgba(13, 12, 10, 0) 34%, rgba(13, 12, 10, .55) 100%),
+          linear-gradient(to right, rgba(13, 12, 10, .62) 0%, rgba(13, 12, 10, 0) 22%,
+                          rgba(13, 12, 10, 0) 52%, rgba(13, 12, 10, .9) 74%, rgba(13, 12, 10, .97) 100%),
+          linear-gradient(to top, rgba(13, 12, 10, .7) 0%, rgba(13, 12, 10, 0) 24%);
+      }
+
+      /* Dicho y no dibujado: el diseño no tiene lugar para un encabezado y un
+         documento sin `h1` pierde su estructura para quien lo recorre a ciegas. */
+      .solo-para-lectores {
+        position: absolute; width: 1px; height: 1px; overflow: hidden;
+        clip-path: inset(50%); white-space: nowrap;
+      }
       /* La prosa que EXPLICA va en serif, no en la monoespaciada de los datos.
          Es el mismo criterio de siempre acá: la mono es para lo que se consulta
          de reojo —números, ids, controles— y la serif para lo que se lee. */
@@ -114,22 +154,35 @@
         margin: 0 0 14px; color: var(--tinta-baja);
         font: 400 13px/1.5 var(--serif); max-width: 56ch;
       }
-      /* `max-width` en el canvas: el zoom le pone un ancho fijo en px (ver
-         `lienzo.ts`), y sin esto un zoom ×4 desborda la ventana y aparece scroll
-         horizontal en toda la página. */
-      canvas {
-        border: 1px solid var(--linea-fuerte); border-radius: 3px; display: block;
-        image-rendering: pixelated; max-width: 100%; height: auto;
-      }
-      /* ─── EL SOBRANTE VA REPARTIDO, NO TODO DE UN LADO ────────────────────
-         El encuadre se calcula en celdas enteras (`el-encuadre.ts`), así que casi
-         siempre sobra un pedazo de celda a lo ancho. Eso es inevitable y chico.
-         Lo que no es chico es el otro caso: cuando el tope de celdas frena al
-         mapa antes que la ventana —una pantalla muy grande en zoom ×1— sobra de
-         verdad, y todo junto a la derecha se lee como que algo se rompió. Que es
-         exactamente el defecto que este cambio vino a arreglar. */
-      #columna { display: flex; flex-direction: column; align-items: center; }
-      #columna > h1, #columna > p.sub { align-self: flex-start; }
+      /* ─── EL MAPA SE RECORTA, NO SE ESCALA ────────────────────────────────
+         Acá había `max-width: 100%; height: auto`, puesto para que un zoom ×4 no
+         empujara la página y apareciera scroll horizontal. Eso lo resuelve ahora
+         el `overflow: hidden` del tablero, y el `max-width` había pasado a hacer
+         algo peor de lo que evitaba: **deformaba el mapa**.
+
+         El motivo es mecánico. `lienzo.ts` le escribe al canvas un `width` y un
+         `height` en píxeles con `style`, o sea INLINE, y una regla de hoja de
+         estilos no le gana a un estilo inline: el `height: auto` de acá nunca
+         se aplicaba. Así que cuando el `max-width` mordía, el ancho se achicaba
+         y el alto se quedaba donde estaba. Medido en una ventana de 420×900:
+         el buffer mide 252×420 y la caja quedaba en 420×840, o sea **1,667 de
+         escala a lo ancho contra 2 a lo alto**. Un mapa de celdas cuadradas
+         dibujado en rectángulos.
+
+         Y no era sólo feo: `ubicarLaSenal` calcula UN factor
+         (`clientWidth / width`) y lo usa para los dos ejes, así que con la
+         escala partida el recuadro del mouse se corría de su celda.
+
+         Sin `max-width`, una celda mide siempre `CELDA × zoom` en pantalla y lo
+         que no entra lo recorta el tablero, con la criatura en el centro. Es lo
+         que el mapa promete: agrandar la ventana muestra MÁS MUNDO, no dibujos
+         más grandes. */
+      /* Y SIN MARCO NI ESQUINAS REDONDAS. El mapa tenía un borde y 8 px de radio
+         de cuando era un panel más entre varios: ahí el marco decía dónde
+         empezaba y dónde terminaba. Ahora es el fondo de todo, y un rectángulo
+         dibujado alrededor de la pantalla entera no separa nada — lo único que
+         hace es contradecir a la penumbra, que ya dice hasta dónde importa. */
+      canvas { display: block; image-rendering: pixelated; }
       /* ─── PASARLE EL MOUSE POR ARRIBA ────────────────────────────────────
          El porqué está en `main.ts`, arriba de `conCartel`: el mapa son manchas
          de doce píxeles y saber qué era una costaba un click más un viaje del
@@ -148,10 +201,13 @@
          «esto estás señalando». Las esquinas se leen como una mira y no se
          confunden con nada de lo que el mundo pinta.
 
-         Arranca en la esquina del área dibujada —1px adentro por el borde del
-         canvas— y de ahí lo mueve `transform`. Ver `ubicarLaSenal`. */
+         Arranca en la esquina del área dibujada y de ahí lo mueve `transform`.
+         Ver `ubicarLaSenal`. El `top`/`left` eran `1px` y hoy son cero: ese
+         píxel compensaba el borde del canvas, y el canvas dejó de tener borde
+         cuando el mapa pasó a ser la pantalla. Un offset que sobrevive a lo que
+         compensaba es un desfase de una celda esperando a que alguien lo mida. */
       .senal {
-        position: absolute; top: 1px; left: 1px; pointer-events: none;
+        position: absolute; top: 0; left: 0; pointer-events: none;
         --marca: var(--senal);
         background:
           linear-gradient(var(--marca) 0 0) no-repeat 0 0 / 30% 2px,
@@ -240,7 +296,23 @@
         .senal.se-ve::after { animation: none; }
         .cartel.se-ve { transform: none; }
       }
-      aside { min-width: 0; }
+      /* ─── EL PANEL, MIENTRAS DURE ─────────────────────────────────────────
+         Pegado a la derecha y encima del mapa. No es su forma final —sus nueve
+         secciones se reparten entre los flotantes, el globo, la charla y el
+         dock— pero tiene que seguir usable de acá al paso 6, porque es de donde
+         se pausa el mundo y se le habla a la criatura.
+
+         Opaco de verdad y no traslúcido: sobre un mapa cualquiera, un panel
+         semitransparente tiene el contraste que le toque en suerte según qué
+         celda le quede atrás. Lo que se funde con el mapa es el degradado de la
+         penumbra, que está DEBAJO y no encima del texto. */
+      aside {
+        position: absolute; z-index: 3; top: 0; right: 0; bottom: 0;
+        width: min(320px, 100vw - 40px); min-width: 0;
+        padding: 20px 20px 26px; overflow-y: auto;
+        background: var(--panel-angosto);
+        box-shadow: -24px 0 48px rgba(0, 0, 0, .55);
+      }
       .mandos { display: flex; gap: 5px; margin: 0 0 16px; }
       /* ─── SIN BORDE, Y LA DIFERENCIA LA HACE EL FONDO ────────────────────
          Un borde por botón dibuja una reja de cajitas, y con cuatro velocidades
@@ -339,7 +411,7 @@
          dibuja lo que está en una mano y era el único lugar que dibujaba. */
       .mano { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 2px; }
       .mano canvas { width: 48px; height: 48px; border-radius: 2px;
-                     border: 0; background: rgba(13, 12, 10, .55); }
+                     background: rgba(13, 12, 10, .55); }
       /* El catálogo: una fila por cosa, con su dibujo cuando lo tiene. La
          miniatura mide lo mismo que la del inventario a propósito — es el mismo
          `glifoDe` con el mismo dato, y verlo distinto sería el bug que el caso 7
@@ -347,7 +419,7 @@
       .catalogo { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; }
       .catalogo .fila { display: flex; align-items: center; gap: 8px; }
       .catalogo canvas { width: 24px; height: 24px; border-radius: 2px;
-                         border: 0; background: rgba(13, 12, 10, .55); flex: none; }
+                         background: rgba(13, 12, 10, .55); flex: none; }
       .catalogo .sinDibujo { width: 24px; flex: none; color: var(--tinta-tenue); text-align: center; }
       /* ─── LA FICHA: TRES COSAS Y NINGUNA ETIQUETA ────────────────────────
          La jerarquía la hace el TAMAÑO y no un rótulo: la barra de aliento es
@@ -424,36 +496,52 @@
     </style>
   </head>
   <body>
-    <!-- El `id` no es para estilar: es lo que `main.ts` MIDE para saber cuánto
-         mundo entra. Tiene que ser la celda de la grilla y no `.mapa-caja`, que
-         es `inline-block` y por lo tanto mide lo que mide el mapa — preguntarle
-         a ésa cuánto lugar hay sería preguntarle al mapa cuánto quiere medir. -->
-    <div id="columna">
-      <h1>Ánima II</h1>
-      <p class="sub">
-        El mundo corriendo. Nadie plantó nada: lo que hay alrededor es lo que la semilla dice que hay.
-      </p>
-      <!-- La caja existe para que el recuadro tenga contra qué posicionarse: es
-           `position: relative` y nada más. El recuadro va adentro y el cartel
-           afuera, porque el cartel es `fixed` y sigue al mouse por la ventana. -->
-      <div class="mapa-caja">
-        <canvas id="mapa"></canvas>
-        <div class="senal" id="senal" aria-hidden="true"></div>
+    <!-- ─── EL MAPA ES LA PANTALLA ──────────────────────────────────────────
+         Todo lo que sigue vive ADENTRO de esta caja y encima del mapa. Antes
+         había una grilla de dos columnas y el mapa era una de las dos; ahora el
+         mapa es el fondo y lo demás flota, que es lo que cierra el Hito 12 —«el
+         mapa es la vista principal»— sin agrandar la superficie de la UI. -->
+    <div id="pantalla">
+      <!-- El tablero ocupa la caja entera y centra al mapa adentro. Es lo que
+           `main.ts` MIDE, salvo que ya no le pregunta al DOM: mide la ventana,
+           porque el tablero ES la ventana. -->
+      <div id="tablero">
+        <!-- La caja existe para que el recuadro tenga contra qué posicionarse: es
+             `position: relative` y nada más. El recuadro va adentro y el cartel
+             afuera, porque el cartel es `fixed` y sigue al mouse por la ventana. -->
+        <div class="mapa-caja">
+          <canvas id="mapa"></canvas>
+          <div class="senal" id="senal" aria-hidden="true"></div>
+        </div>
       </div>
-    </div>
 
-    <!-- ─── EL CARTEL DEL MOUSE ────────────────────────────────────────────
-         Vacío en el HTML: lo llena `main.ts` con el mismo glifo que el mapa y
-         las mismas cuatro frases que el panel «Lo que miraste».
+      <!-- ─── LA JERARQUÍA SE HACE CON LUZ, NO CON MARCOS ────────────────────
+           Tres degradados que apagan los bordes para que el centro sea lo único
+           encendido. No es una viñeta decorativa: es lo que reemplaza a los
+           bordes de caja que la pantalla vieja usaba para separar el mapa del
+           panel. Un marco dice «esto es otra cosa»; la penumbra dice «esto
+           importa menos», que es lo que de verdad pasa.
 
-         `aria-hidden` y no `role="tooltip"`: esto sólo existe mientras haya un
-         mouse encima, y no hay forma de llegar con el teclado. Anunciarlo sería
-         prometer algo que no se puede alcanzar — el camino accesible al mismo
-         dato es el panel, que se queda escrito. -->
-    <div class="cartel" id="cartel" aria-hidden="true"></div>
+           `aria-hidden` y `pointer-events:none`: no dice nada y no se toca. -->
+      <div id="penumbra" aria-hidden="true"></div>
 
-    <aside>
-      <!-- ─── EL ORDEN ES LA REPARACIÓN, Y SALE DE QUÉ SE MIRA CUÁNTO ────────
+      <aside id="provisorio">
+        <!-- ─── ESTE PANEL ES PROVISORIO Y SE VA ──────────────────────────────
+             Sus nueve secciones se reparten en los pasos que siguen: las tres
+             cosas de la criatura y las dos luces salen a flotar sobre el mapa
+             (paso 3), «lo que miraste» se vuelve el globo del click (paso 4),
+             «hablarle» pasa a ser la columna de la charla (paso 5) y los cuatro
+             `<details>` se convierten en módulos del dock (paso 6).
+
+             Vive apretado contra la derecha mientras tanto para que la pantalla
+             siga usable, no porque ése sea su lugar. -->
+        <!-- El título dejó de estar en pantalla y no se borró: el diseño no
+             tiene lugar para un encabezado, pero un documento sin `h1` pierde
+             su estructura para quien lo recorre con un lector. Queda dicho y
+             no dibujado, que es distinto de no estar. -->
+        <h1 class="solo-para-lectores">Ánima II</h1>
+
+        <!-- ─── EL ORDEN ES LA REPARACIÓN, Y SALE DE QUÉ SE MIRA CUÁNTO ────────
            El panel tenía nueve secciones apiladas con el mismo peso, y las tres
            primeras eran controles que se tocan una vez —zoom, dibujos— mientras
            que hablarle y ver a la criatura son lo que se hace todo el tiempo.
@@ -608,7 +696,27 @@
            Lo que el jugador necesita saber son ocho palabras; el porqué está en el
            encabezado de `main.ts`, que es donde lo va a buscar quien quiera saberlo. -->
       <p class="aviso">Si te vas, <b>pausá</b>: la pestaña abierta avanza la partida.</p>
-    </aside>
+      </aside>
+    </div>
+
+    <!-- ─── EL CARTEL DEL MOUSE ────────────────────────────────────────────
+         Vacío en el HTML: lo llena `main.ts` con el mismo glifo que el mapa y
+         las mismas cuatro frases que el panel «Lo que miraste».
+
+         Vive AFUERA de `#pantalla` a propósito. Hoy adentro andaría igual —un
+         `fixed` no lo recorta el `overflow` de un ancestro que no crea bloque
+         contenedor— pero el día que `#pantalla` gane un `transform` o un
+         `filter` pasaría a ser el bloque contenedor y el cartel quedaría
+         recortado contra el borde: justo cuando el puntero llega ahí, que es
+         cuando menos otra forma hay de saber qué hay abajo. Y además es lo
+         honesto: la pantalla tiene cinco capas y ésta no es ninguna, porque el
+         cartel se pega a la VENTANA y no al tablero.
+
+         `aria-hidden` y no `role="tooltip"`: esto sólo existe mientras haya un
+         mouse encima, y no hay forma de llegar con el teclado. Anunciarlo sería
+         prometer algo que no se puede alcanzar — el camino accesible al mismo
+         dato es el panel, que se queda escrito. -->
+    <div class="cartel" id="cartel" aria-hidden="true"></div>
 
     <script type="module" src="/src/main.ts"></script>
   </body>
