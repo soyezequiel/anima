@@ -1242,3 +1242,54 @@ movió**, que era la duda de fondo.
 
 Con esto, «traé una piedra» funciona de punta a punta: la criatura toma la orden
 en el tick 0, y a los veinte la piedra está en la mano.
+
+---
+
+## 6 · EL 12C · LOS SIETE CASOS DEL OBJETO EMERGENTE
+
+El ADR II-0017 los enumera —*«sin sprite, obra incompleta, terminado, desplegado,
+con captura, catálogo, y la misma representación coherente en mapa, inventario y
+catálogo»*— y el propio hito dice cómo se prueban: **sin navegador**, porque son
+dato derivado.
+
+### Lo primero fue medir, y cambió el plan
+
+En 2000 ticks del juego, **de los siete casos ocurren tres**. No hay un solo
+cuerpo desplegado —la criatura ata la caña y nunca la pone— y el máximo de piezas
+que se ve son dos. Esperar a que la partida los produzca sería no probarlos nunca,
+que es exactamente lo que pasaba con los sprites de lado 12.
+
+Así que los casos se arman en el test. `dibujo/tests/los-siete-del-objeto-emergente`.
+
+### Lo que el test encontró: dos estados que no se veían
+
+De los cinco estados de cuerpo salían **tres dibujos**. `desplegado: { captura }`
+lo publica el descriptor desde el gate y **ninguna vista lo leía**: una trampa
+guardada en la mano y la misma trampa PUESTA en el río se dibujaban idénticas,
+aunque una está trabajando y la otra no.
+
+`laBase()` en `componer.ts` lo cierra con una convención de dos capas, y son dos
+porque son dos casos distintos del criterio:
+
+- **la base** —una franja de sombra en la fila de abajo— dice «está puesto y
+  asentado», y sale siempre que el cuerpo esté desplegado;
+- **las marcas** —una celda de luz por pieza retenida— sólo salen si atrapó algo.
+
+Es cosmética a propósito: de eso trata esta capa entera. Pero no arbitraria — lo
+desplegado es lo que está asentado y funcionando, así que se dibuja apoyado.
+
+### El estado, caso por caso
+
+| # | caso | estado |
+|---|---|---|
+| 1 | sin sprite | **está** — el fallback procedural, afirmado |
+| 2 | obra incompleta | **está** — se distingue de la terminada por `juntas` |
+| 3 | terminado | **está** |
+| 4 | desplegado | **está** — la base |
+| 5 | con captura | **está** — las marcas |
+| 6 | catálogo | **FALTA**: no existe como vista |
+| 7 | los tres coherentes | **la mitad**: mapa e inventario dibujan con `glifoDe`, así que coinciden POR CONSTRUCCIÓN. El catálogo no existe todavía |
+
+Los cinco estados de cuerpo dan hoy **cinco dibujos distintos**, que es lo que el
+criterio pide: si dos coincidieran, habría dos estados del mundo que el jugador no
+puede separar.

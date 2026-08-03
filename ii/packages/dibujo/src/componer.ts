@@ -226,6 +226,22 @@ export function glifoDe(
     })
   }
 
+  // ─── PUESTO Y TRABAJANDO, Y LO QUE RETUVO ───────────────────────────────
+  //
+  // Los casos 4 y 5 de los siete del Hito 12C. El descriptor los publica desde el
+  // gate —`desplegado: { captura }`— y **ninguna vista los leía**: una trampa
+  // guardada en la mano y la misma trampa PUESTA en el río se dibujaban idénticas,
+  // aunque una está trabajando y la otra no. Medido en
+  // `los-siete-del-objeto-emergente`: de los cinco estados de cuerpo salían tres
+  // dibujos.
+  //
+  // La convención es una BASE debajo del objeto, y es cosmética a propósito —de
+  // eso trata esta capa entera— pero no arbitraria: lo desplegado es lo que está
+  // asentado y funcionando, así que se dibuja apoyado. Sobre esa base, la captura
+  // pone una marca de luz por pieza retenida, que es exactamente lo que el
+  // descriptor cuenta.
+  if (d.desplegado !== undefined) capas.push(...laBase(d.desplegado.captura, grilla))
+
   const marca = capaDeEstado(d, grilla)
   if (marca !== undefined) capas.push(marca)
   if (d.podrido === true) {
@@ -338,6 +354,45 @@ function capaDeEstado(d: RenderDescriptor, grilla: number): Capa | undefined {
       return undefined
   }
 }
+
+/**
+ * LA BASE DE LO DESPLEGADO, y la cuenta de lo que retuvo.
+ *
+ * Dos capas y no una, y por eso son casos distintos del criterio: la BASE dice
+ * «está puesto y trabajando» y sale sí o sí; las MARCAS dicen cuánto atrapó y
+ * sólo salen si atrapó algo. Una trampa recién puesta y una con dos peces tienen
+ * que verse distinto, porque son estados distintos del mundo.
+ *
+ * Va en la fila de abajo del cuadro y ocupa el ancho entero: es lo que hace que
+ * se lea como asentado y no como una pieza más. Las marcas van encima de la
+ * base, una por pieza, separadas — a partir de tres se amontonarían, así que se
+ * topan y se dice acá: lo que el jugador necesita saber es «atrapó», no cuántos
+ * exactamente, y el número exacto lo tiene el panel de inspección.
+ */
+function laBase(captura: number, grilla: number): readonly Capa[] {
+  const alto = grilla >= 24 ? 2 : 1
+  const base: Capa = {
+    mascara: Array.from({ length: alto }, () => '2'.repeat(grilla)),
+    paleta: PALETA_DE_LA_BASE,
+    x: 0,
+    y: grilla - alto,
+  }
+  if (captura <= 0) return [base]
+
+  const cuantas = captura > MARCAS_MAXIMAS ? MARCAS_MAXIMAS : captura
+  const paso = Math.trunc(grilla / (cuantas + 1))
+  const marcas: Capa[] = []
+  for (let i = 0; i < cuantas; i++) {
+    marcas.push({ mascara: ['3'], paleta: PALETA_DE_LA_BASE, x: paso * (i + 1), y: grilla - alto })
+  }
+  return [base, ...marcas]
+}
+
+/** La base es sombra del suelo, no de la materia: no la pinta ninguna sustancia. */
+const PALETA_DE_LA_BASE: Paleta = { base: '#4a4640', sombra: '#2b2825', luz: '#c9b98a' }
+
+/** A partir de acá las marcas se amontonan. Ver `laBase`. */
+const MARCAS_MAXIMAS = 4
 
 function masaLlena(ancho: number, alto: number): Mascara {
   const filas: string[] = []
