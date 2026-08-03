@@ -36,7 +36,7 @@
 // el mismo en toda máquina. Y el desempate no hace falta porque las claves son
 // distintas entre sí: dos cláusulas iguales colapsan antes de ordenar.
 
-import type { BodyView } from '@anima/skills'
+import type { BodyView, Cell } from '@anima/skills'
 import type { ExprContext, GeomFn, QualityExpr, QualityId, QualityTest } from '@anima/physics'
 import { QUALITY_IDS, TAGS, evalQuality, specOf } from '@anima/physics'
 
@@ -143,6 +143,14 @@ const ALIAS_DE_GEOM: ReadonlyMap<GeomFn, QualityId> = (() => {
 
 const PREFIJO_SOSTIENE = 'holding(tag:'
 const CIERRE_SOSTIENE = ')'
+/**
+ * La relación del C3. Se escribe `cerca(tag:X,pred)` y no `near(...)` por lo
+ * mismo que el resto del vocabulario está en inglés y esto no: `holding` y
+ * `emitsPower` salen del catálogo de la física, que es de donde vienen; esta
+ * forma la escribimos nosotros para que alguien la pida en castellano.
+ */
+const PREFIJO_CERCA = 'cerca('
+const PREFIJO_TAG = 'tag:'
 
 /**
  * Cómo se separan el tag y sus condiciones adentro del paréntesis.
@@ -331,6 +339,27 @@ export function firmaDe(crudo: string): PredicateSignature {
 export function interpretar(crudo: string): Predicado | undefined {
   const s = sinBlancos(crudo)
 
+  // La relación va primero por lo mismo que `sostiene`: empieza y termina como
+  // ella o no es ella, y no tiene sentido caer al parser de operadores con un
+  // `>` que está adentro del paréntesis.
+  if (s.startsWith(PREFIJO_CERCA) && s.endsWith(CIERRE_SOSTIENE)) {
+    const adentro = s.slice(PREFIJO_CERCA.length, s.length - CIERRE_SOSTIENE.length)
+    const trozos = adentro.split(SEPARADOR_INTERNO)
+    // Exactamente dos: de qué clase, y cerca de qué. Ni uno —no dice de qué
+    // está cerca— ni tres, que sería una conjunción sin forma de escribirla.
+    if (trozos.length !== 2) return undefined
+    const tag = (trozos[0] ?? '').startsWith(PREFIJO_TAG)
+      ? (trozos[0] as string).slice(PREFIJO_TAG.length)
+      : undefined
+    if (tag === undefined || !(TAGS as readonly string[]).includes(tag)) return undefined
+    // Lo de adentro es un predicado de CUERPO y nada más: sin anidar, sin manos.
+    // Una relación adentro de una relación no es algo que alguien pida, y el
+    // parser plano es lo que hace que la firma sea una llave comparable.
+    const de = conOperador(trozos[1] ?? '')
+    if (de === undefined) return undefined
+    return { k: 'cerca', tag, de }
+  }
+
   // Primero la forma sin operador de PRIMER nivel. Si empieza y termina como
   // ella, es ella o no es nada: no tiene sentido caer al parser de operadores con
   // un `>` que estaría adentro del paréntesis.
@@ -467,6 +496,8 @@ export function textoDe(p: Predicado): string {
       const cola = cond.length === 0 ? '' : SEPARADOR_INTERNO + cond.join(SEPARADOR_INTERNO)
       return `${PREFIJO_SOSTIENE}${p.tag}${cola}${CIERRE_SOSTIENE}`
     }
+    case 'cerca':
+      return `${PREFIJO_CERCA}${PREFIJO_TAG}${p.tag}${SEPARADOR_INTERNO}${textoDe(p.de)}${CIERRE_SOSTIENE}`
   }
 }
 
@@ -537,6 +568,15 @@ export function implica(a: Predicado, b: Predicado): boolean {
     }
     return true
   }
+  // ─── LA RELACIÓN SÓLO SE IMPLICA A SÍ MISMA ─────────────────────────────
+  //
+  // Y hace falta decirlo porque el portón importante es el que NO está escrito
+  // acá: `sostiene` **no** implica `cerca`. Tener algo en la mano al lado del
+  // fuego no es haberlo dejado junto al fuego, y si se implicaran, el esquema
+  // que sabe agarrar contestaría un pedido de dejar.
+  if (a.k === 'cerca' && b.k === 'cerca') {
+    return a.tag === b.tag && implica(a.de, b.de) && implica(b.de, a.de)
+  }
   return false
 }
 
@@ -592,6 +632,28 @@ export function cumple(p: Predicado, v: VistaDelPlan): boolean {
     }
     return false
   }
+  // ─── LA RELACIÓN: dos barridos sobre lo mismo que se ve ──────────────────
+  if (p.k === 'cerca') {
+    const enMano = new Set(v.self.holding.map((b) => b.id))
+    const visto = v.see([])
+    // Las anclas primero: si no hay ni un cuerpo que cumpla `de`, no hay nada
+    // de qué estar cerca y no vale la pena el segundo barrido.
+    const anclas = visto.filter((b) => cumpleCuerpo(p.de, b, q))
+    if (anclas.length === 0) return false
+    for (const b of visto) {
+      // FUERA DE LA MANO: tenerlo agarrado al lado del fuego no es haberlo
+      // dejado ahí. Ver el comentario del tipo.
+      if (enMano.has(b.id)) continue
+      // El `as` es contra el tipo y no contra la verdad: `interpretar` ya
+      // verificó que el tag esté en `TAGS`, que es la enumeración cerrada de la
+      // física. El tipo del campo es `string` por lo mismo que en `sostiene`.
+      if (!(b.tags as readonly string[]).includes(p.tag)) continue
+      for (const a of anclas) {
+        if (a.id !== b.id && pegados(a.at, b.at)) return true
+      }
+    }
+    return false
+  }
   // Una geometría no se puede escribir como `QualityTest`, así que ahí se pide
   // todo lo visible y se filtra. `[]` es «lo que veo», no «el mundo»: la vista ya
   // está acotada al radio de percepción del tick.
@@ -623,8 +685,27 @@ export function cumple(p: Predicado, v: VistaDelPlan): boolean {
  * `mind/tests/hito-5-el-criterio.test.ts`. Ése está cerrado (ver `BodyView.tags`).
  * El de `freeStrandEnds` sigue abierto y sigue medido con su `it.fails`.
  */
+/**
+ * ¿ESTÁN PEGADAS ESTAS DOS CELDAS? Chebyshev, que es la métrica de esta grilla.
+ *
+ * La misma vecindad de ocho que usa el resto del proyecto: dos métricas contra
+ * el mismo «al lado» es el bug que en la grilla aparece como «a veces no
+ * llega». Con `Math.abs` y no con una potencia, que está prohibida en `src/`.
+ */
+function pegados(a: Cell, b: Cell): boolean {
+  return Math.abs(a.x - b.x) <= 1 && Math.abs(a.y - b.y) <= 1
+}
+
 export function cumpleCuerpo(p: Predicado, b: BodyView, q: Lector): boolean {
   switch (p.k) {
+    // ─── UNA RELACIÓN NO ES UNA PROPIEDAD DE UN CUERPO ────────────────────
+    //
+    // Y por eso contesta `false` y no se calcula: «estar cerca del fuego» no es
+    // algo que este cuerpo sea, es algo que pasa entre él y otro. Quien sabe
+    // contestarlo es `cumple`, que tiene la vista entera. Contestarlo acá con
+    // sólo un cuerpo en la mano sería inventar la mitad que falta.
+    case 'cerca':
+      return false
     case 'cualidad':
       return compara(q(b, p.test.q), p.test.op, p.test.v)
     case 'geometria': {

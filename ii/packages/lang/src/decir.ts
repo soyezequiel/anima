@@ -157,5 +157,12 @@ export function enPalabras(p: Predicado): string {
       return unaCondicion(p.test.q, p.test.op)
     case 'geometria':
       return unaCondicion(p.f, p.op)
+    case 'cerca': {
+      // «Dejar algo fibroso junto a fuego». El ancla se dice con la misma
+      // función, recursiva: si algún día se puede pedir «junto a algo caliente»,
+      // sale solo sin tocar esto.
+      const tag = PALABRA_DE_TAG[p.tag] ?? p.tag
+      return `dejar algo ${tag} junto a ${enPalabras(p.de)}`
+    }
   }
 }

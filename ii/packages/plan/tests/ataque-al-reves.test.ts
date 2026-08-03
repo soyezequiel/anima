@@ -1119,9 +1119,19 @@ describe('9 · la meta no puede ser una conjunción', () => {
     expect(firmaDe('catch>0 & reach>=2')).toBe('catch>0&reach>=2')
     // Como `Predicado` no existe: `interpretar` es de UNA cláusula.
     expect(interpretar('catch>0&reach>=2')).toBeUndefined()
-    // Y las tres formas de `Predicado`, exhaustivas: ninguna es una conjunción.
-    const formas: Readonly<Record<Predicado['k'], true>> = { cualidad: true, geometria: true, sostiene: true }
-    expect(Object.keys(formas).sort()).toEqual(['cualidad', 'geometria', 'sostiene'])
+    // Y las formas de `Predicado`, exhaustivas: NINGUNA es una conjunción.
+    //
+    // Eran tres y son cuatro desde que el C3 agregó `cerca` —la primera que
+    // relaciona dos cuerpos— y el registro dejó de compilar, que es para lo que
+    // está. La afirmación no se toca: relacionar dos cuerpos no es conjuntar dos
+    // cláusulas sobre uno, y «quiero una caña» sigue sin ser pedible.
+    const formas: Readonly<Record<Predicado['k'], true>> = {
+      cualidad: true,
+      geometria: true,
+      sostiene: true,
+      cerca: true,
+    }
+    expect(Object.keys(formas).sort()).toEqual(['cerca', 'cualidad', 'geometria', 'sostiene'])
   })
 
   /**

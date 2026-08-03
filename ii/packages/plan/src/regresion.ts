@@ -1728,7 +1728,12 @@ function expandir(
   // Va ANTES de regresar y **no en lugar de**: el nodo que sale compite por costo
   // con los de las demás vías, que es cómo elige esta búsqueda. Ver
   // `agarrarLoQueYaHay`.
-  const directo = clausulas === undefined ? undefined : agarrarLoQueYaHay(nodo, clausulas, v, g.sobre)
+  // Los dos casos base, y son excluyentes por construcción: uno mira un
+  // `sostiene` y el otro un `cerca`, y una cláusula no puede ser las dos.
+  const directo =
+    clausulas === undefined
+      ? undefined
+      : (agarrarLoQueYaHay(nodo, clausulas, v, g.sobre) ?? dejarloDonde(nodo, clausulas, v, g.sobre))
 
   // ── ¿Lo cumple algo que veo? ─────────────────────────────────────────────
   if (nodo.marcos.length > 0 && clausulas !== undefined) {
@@ -1856,6 +1861,73 @@ function agarrarLoQueYaHay(
     costo: nodo.costo + SEGUNDOS_DE_AGARRAR,
     marcos: [],
     enMano: [...nodo.enMano, cuerpo.id],
+    gastados: nodo.gastados,
+  }
+}
+
+/**
+ * LA VÍA MÁS CORTA A «DEJARLO AHÍ»: caminar hasta el ancla y soltarlo.
+ *
+ * El espejo de `agarrarLoQueYaHay`, y por la misma razón que aquél no es una
+ * fila de `ESQUEMAS`: **no hay proceso, ni ley, ni obra**. Dejar algo al lado de
+ * otra cosa no transforma nada, y las tres clases de `ConstructionSchema`
+ * contestan «con qué se fabrica esto». Acá la respuesta es «no se fabrica, se
+ * camina y se suelta».
+ *
+ * ─── SE SUELTA EN LA CELDA PROPIA, no en la del ancla ───────────────────────
+ *
+ * `ir(ancla, within: 1)` deja a la criatura pegada al fuego, y `poner(..., en:
+ * yo)` lo apoya donde ella está. Poner en la celda DEL ancla sería otra cosa y
+ * peor: el mundo rebota una celda ocupada, y si no la rebotara estaría apilando
+ * leña ENCIMA del fuego, que es alimentarlo y no dejarlo al lado.
+ *
+ * ─── Y SI NO LO TIENE EN LA MANO, lo levanta primero ────────────────────────
+ *
+ * Dos pasos más adelante, no una regresión: el caso base entero es «ir, agarrar,
+ * ir, soltar». Que sea base y no esquema es lo que lo hace barato — la regresión
+ * no tiene por dónde entrar a un predicado que ningún proceso establece.
+ */
+function dejarloDonde(
+  nodo: NodoAbierto,
+  clausulas: readonly Predicado[],
+  v: VistaDelPlan,
+  senalado?: BodyId,
+): NodoAbierto | undefined {
+  if (nodo.marcos.length > 0) return undefined
+  const sola = clausulas.length === 1 ? clausulas[0] : undefined
+  if (sola === undefined || sola.k !== 'cerca') return undefined
+
+  // El ancla: algo que cumpla `de`. Si no hay ninguna a la vista no hay de qué
+  // estar cerca, y eso es un `gap` honesto y no un plan a medias.
+  const ancla = elegirCuerpo([sola.de], SIN_EXTRA, v, nodo.enMano, nodo.gastados)
+  if (ancla === undefined) return undefined
+
+  // Lo que hay que dejar: primero lo que ya está en la mano, que no cuesta ir a
+  // buscarlo. `elegirCuerpo` ya prefiere lo de la mano en su desempate.
+  const queLlevar: Predicado = { k: 'sostiene', tag: sola.tag }
+  const enLaMano = v.self.holding.find((b) => cumpleCuerpo(queLlevar, b, (x, q) => v.q(x, q)))
+  const cuerpo =
+    enLaMano ?? elegirCuerpo([queLlevar, SE_PUEDE_LEVANTAR], SIN_EXTRA, v, nodo.enMano, nodo.gastados, senalado)
+  if (cuerpo === undefined || cuerpo.id === ancla.id) return undefined
+  if (cuerpo.esFuente === true || cuerpo.esDeAlguien === true) return undefined
+
+  const que: Ref = { k: 'id', id: cuerpo.id }
+  const camino = [...nodo.camino]
+  if (enLaMano === undefined) {
+    camino.push({ k: 'ir', a: que, within: 1, porQue: nodo.falta })
+    camino.push({ k: 'sostener', que, porQue: nodo.falta })
+  }
+  camino.push({ k: 'ir', a: { k: 'id', id: ancla.id }, within: 1, porQue: nodo.falta })
+  camino.push({ k: 'poner', que, en: { k: 'yo' }, porQue: nodo.falta })
+
+  return {
+    falta: '',
+    camino,
+    profundidad: 0,
+    costo: nodo.costo + SEGUNDOS_DE_AGARRAR,
+    marcos: [],
+    // Sale de la mano: se acaba de soltar.
+    enMano: nodo.enMano.filter((id) => id !== cuerpo.id),
     gastados: nodo.gastados,
   }
 }

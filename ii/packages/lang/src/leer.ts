@@ -345,9 +345,22 @@ function componer(
     case 'atar':
       return 'reach>=2'
 
+    // ── DEJAR ALGO EN ALGÚN LADO. Es el verbo que estrena la forma relacional.
+    //
+    // «Dejá el palo junto al fuego» son dos objetos: la SUSTANCIA que se deja y
+    // la META que hace de ancla. Con los dos sale `cerca(...)`; con uno solo no
+    // —«dejá el palo» no dice dónde, y «dejá junto al fuego» no dice qué— y ahí
+    // vuelve a ser lo que era: un verbo que no lleva a un estado del mundo.
+    case 'soltar': {
+      if (sustancia?.k !== 'sustancia') return undefined
+      const ancla = objetos.find((o) => o.k === 'meta')
+      if (ancla?.k !== 'meta') return undefined
+      const t = tagDe(phys, sustancia.id)
+      return t === undefined ? undefined : `cerca(tag:${t},${ancla.firma})`
+    }
+
     // ── Y los tres que no piden un estado del mundo.
     case 'ir':
-    case 'soltar':
     case 'esperar':
     case 'parar':
       return undefined

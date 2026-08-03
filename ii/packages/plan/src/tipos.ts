@@ -141,6 +141,29 @@ export type Predicado =
        */
       readonly cuantos?: number
     }
+  /**
+   * ALGO DE ESTA CLASE, FUERA DE LA MANO, PEGADO A ALGO QUE CUMPLA `de`.
+   *
+   * La cuarta forma, y la primera que RELACIONA DOS CUERPOS. Las otras tres
+   * hablan de uno solo —una cualidad, una geometría— o de la mano, y por eso
+   * «dejá el palo junto al fuego» no se podía ni escribir: se descartaba con
+   * «soltar no lleva a un estado del mundo que yo sepa nombrar».
+   *
+   * ─── EL RADIO ES UNO Y NO SE ESCRIBE ────────────────────────────────────
+   *
+   * «Junto a» en castellano quiere decir AL LADO. Un radio parametrizable
+   * invita a pedir «a tres celdas del fuego», que no es una frase que alguien
+   * diga y sí es una que habría que saber planificar. La distancia es Chebyshev,
+   * que es la métrica de esta grilla — dos métricas contra el mismo `within` es
+   * el bug que aparece como «a veces no llega».
+   *
+   * ─── FUERA DE LA MANO, que es la mitad que se olvida ────────────────────
+   *
+   * Tenerlo en la mano al lado del fuego **no es** haberlo dejado junto al
+   * fuego. Sin esa exclusión la meta se cumple sola con caminar hasta la fogata,
+   * y el cuidador ve «ya está» sin que nada se haya soltado.
+   */
+  | { readonly k: 'cerca'; readonly tag: string; readonly de: Predicado }
 
 export type Comparador = '>=' | '<=' | '>' | '<'
 

@@ -709,6 +709,14 @@ function medir(
     }
   }
 
+  // Y las dos formas que este medidor NO sabe medir, dichas y no ignoradas:
+  // `sostiene` habla de la mano y `cerca` relaciona dos cuerpos, y este arnés
+  // mide UN cuerpo contra UN umbral. Ningún `establishes` del catálogo promete
+  // ninguna de las dos —lo verifica la corrida entera— así que la rama existe
+  // para que el día que alguna lo prometa, esto se vea en la tabla en vez de
+  // romperse en el `pred.op` de abajo.
+  if (pred.k !== 'geometria') return NADA
+
   // EL PRIMER HUECO: `cumpleCuerpo` devuelve `false` para toda `GeomFn` sin alias
   // en el catálogo, y `freeStrandEnds` es la única que no lo tiene. Se mide igual
   // —despejando de `catch`, con la expresión leída del catálogo— y la columna
