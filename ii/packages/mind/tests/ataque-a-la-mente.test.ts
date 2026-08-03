@@ -343,6 +343,18 @@ describe('§1 · la meta que `plan()` rechaza estructuralmente, que se sostenía
     // la vista, así que la meta se cumple, se suelta, y el tick siguiente D3 elige
     // la que sigue. Lo que este test cuida sigue siendo lo mismo: que la primera
     // sea la planificable y en el tick 0.
+    // ─── Y SIGUEN SIENDO TRES DESPUÉS DE «AGARRAR», QUE ERA LA DUDA ───────
+    //
+    // Cuando la regresión aprendió a resolver un «tenerlo» agarrando, la primera
+    // versión del portón dejó de vetar los `sostiene` en bloque, y esta lista pasó
+    // a CINCO: la criatura tomaba `holding(tag:vegetal)` en el tick 0 y la cumplía
+    // en el 4. La conducta no era mala —cuatro ticks, no doce mil— pero venía con
+    // un precio que se midió en `el-ancla-del-fondo`: sin nada agarrable a la
+    // vista tomaba la meta igual y deambulaba persiguiéndola.
+    //
+    // El portón de hoy pregunta las dos cosas —la tabla Y el paisaje— y con eso
+    // esta corrida vuelve a ser exactamente la de antes. Que este número siga en
+    // tres es la prueba de que el arreglo no movió la conducta canónica.
     expect(r.metas.length).toBe(3)
     expect(r.metas[0]).toBe('0:holding(tag:carnoso)')
     expect(r.metas[1]).toMatch(/^\d+:undefined$/)

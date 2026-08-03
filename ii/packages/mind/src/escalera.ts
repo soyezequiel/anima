@@ -140,6 +140,7 @@ import {
   CATALOGO_CORE,
   EXPANSIONES_POR_TICK,
   cumple,
+  cumpleCuerpo,
   esquemasDe,
   firmaDe,
   implica,
@@ -268,6 +269,49 @@ export function sinVocabulario(meta: PredicateSignature, catalogo: PlannerCatalo
   if (p === undefined) return true
   for (const q of vocabularioDe(catalogo)) if (implica(q, p)) return false
   return true
+}
+
+/**
+ * ¿ESTO SE CONSIGUE ESTIRANDO LA MANO? La otra mitad del portón, y mira el
+ * PAISAJE en vez de la tabla.
+ *
+ * ─── POR QUÉ HACE FALTA UNA SEGUNDA PREGUNTA ──────────────────────────────
+ *
+ * `sinVocabulario` contesta mirando el catálogo de esquemas, y eso alcanzaba
+ * mientras el catálogo fuera la lista completa de lo que se puede conseguir. Dejó
+ * de serlo: la regresión aprendió a resolver un «tenerlo» caminando hasta algo
+ * que ya lo cumple y agarrándolo (`agarrarLoQueYaHay`, en `plan/src/regresion.ts`),
+ * y eso no es un esquema porque agarrar no transforma nada.
+ *
+ * ─── Y POR QUÉ NO ALCANZABA CON SACAR EL VETO, QUE FUE EL PRIMER INTENTO ──
+ *
+ * Se probó devolver `false` para todo `sostiene`, y el precio se midió en la
+ * escena del ancla: con una brasa de 20 kg —no portable, o sea que **no hay nada
+ * agarrable**— la criatura tomaba `holding(tag:vegetal)` igual, no encontraba
+ * plan, y deambulaba persiguiéndola. O sea que pasaba a querer cosas que no puede
+ * conseguir, que es exactamente lo que el veto existía para impedir.
+ *
+ * El veto era demasiado —vetaba también lo que la regresión sí sabe hacer— y
+ * sacarlo entero es demasiado poco. Lo que corresponde es preguntarle a quien
+ * tiene la respuesta: **si hay algo a la vista que ya lo cumpla, se puede
+ * querer**; si no lo hay, sigue sin poder quererse y la escalera baja al peldaño
+ * siguiente como toda la vida.
+ *
+ * Las tres condiciones son las mismas que usa el planificador para elegir qué
+ * agarrar, y están escritas allá con lo que costó cada una: portable porque es lo
+ * que el mundo exige para dejar levantar algo, no una fuente porque un pozo que
+ * se mueve deja de ser un pozo, y no una criatura porque una criatura no es una
+ * cosa.
+ */
+function seConsigueAgarrando(meta: PredicateSignature, v: VistaDeLaMente): boolean {
+  const p = interpretar(meta)
+  if (p === undefined || p.k !== 'sostiene') return false
+  for (const b of v.see(p.tests ?? [])) {
+    if (b.id === v.self.id || b.esFuente === true || b.esDeAlguien === true) continue
+    if (!(v.q(b, 'portable') > 0)) continue
+    if (cumpleCuerpo(p, b, (x, id) => v.q(x, id))) return true
+  }
+  return false
 }
 
 /**
@@ -1455,7 +1499,18 @@ function tomarMeta(
   // sabe cumplir NO SE TOMA, en vez de quedar en curso tapando todo lo demás. La
   // criatura no se hace la sorda —D3 sigue corriendo abajo— pero tampoco se
   // queda parada esperando un esquema que nadie va a escribir en esta partida.
-  if (sinVocabulario(meta, o.catalogo)) return undefined
+  //
+  // ─── Y EL PORTÓN TIENE DOS PREGUNTAS, NO UNA ──────────────────────────────
+  //
+  // `sinVocabulario` mira la TABLA de esquemas, y eso alcanzaba mientras la tabla
+  // fuera la lista completa de lo que se puede conseguir. Dejó de serlo cuando la
+  // regresión aprendió a resolver un «tenerlo» agarrando algo que ya lo cumple, y
+  // eso no es un esquema.
+  //
+  // Así que lo que la tabla veta, el PAISAJE lo puede desmentir: ver
+  // `seConsigueAgarrando`. Las dos preguntas juntas son el portón — no se toma lo
+  // que ni el catálogo sabe fabricar ni hay a la vista para levantar.
+  if (sinVocabulario(meta, o.catalogo) && !seConsigueAgarrando(meta, v)) return undefined
   olvidarPlan(e)
   e.metaEnCurso = meta
   e.valorEnCurso = valor

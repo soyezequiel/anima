@@ -1201,3 +1201,44 @@ El renglón que lo cerró:
 Con eso puesto, `vara/madera/12` entró al primer intento. **El depósito quedó en
 13 dibujos**, y la caña es la primera cosa compuesta del juego con arte del modelo
 en sus dos piezas.
+
+### La tercera pieza, cerrada: el veto no había que sacarlo, había que moverlo
+
+El primer intento sacaba el veto de `sinVocabulario` para todo `sostiene`, y dejó
+**doce corridas de `@anima/mind` en rojo**. Cinco eran ejemplos que dejaban de ser
+ciertos; el sexto —`el-ancla-del-fondo`— fue el que dio el diagnóstico bueno.
+
+**Lo que se midió ahí:** con una brasa de 20 kg —no portable, o sea que **no hay
+nada agarrable en la escena**— la criatura tomaba `holding(tag:vegetal)` igual, no
+encontraba plan, y deambulaba persiguiéndola. O sea que pasaba a querer cosas que
+no puede conseguir, que es exactamente lo que el veto existía para impedir.
+
+**El veto era demasiado —vetaba también lo que la regresión sí sabe hacer— y
+sacarlo entero era demasiado poco.** Lo que corresponde es preguntarle a quien
+tiene la respuesta: la tabla no puede contestar por un `sostiene`, pero el paisaje
+sí.
+
+El portón de `tomarMeta` pasó a tener dos preguntas:
+
+```ts
+if (sinVocabulario(meta, o.catalogo) && !seConsigueAgarrando(meta, v)) return undefined
+```
+
+`seConsigueAgarrando` mira si hay algo a la vista que ya cumpla la meta, con las
+mismas tres condiciones que usa el planificador para elegir qué agarrar —portable,
+no una fuente, no una criatura— y cada una está justificada allá con lo que costó.
+
+**Los números:**
+
+| | fallos en `@anima/mind` |
+|---|---|
+| sacando el veto | **12** |
+| moviéndolo al paisaje | **0** de 342 |
+
+Y las dos corridas que la primera versión había movido volvieron solas a su forma
+original. La de `ataque-a-la-mente` es la que lo dice mejor: su lista de metas
+había pasado de 3 a 5 y hoy vuelve a ser de 3 — **la conducta canónica no se
+movió**, que era la duda de fondo.
+
+Con esto, «traé una piedra» funciona de punta a punta: la criatura toma la orden
+en el tick 0, y a los veinte la piedra está en la mano.
