@@ -92,21 +92,50 @@ function fila(ancho: number, ch: string): string {
  * no un caso especial: una hebra de una columna no tiene lados.
  */
 function trazo(ancho: number, alto: number, trama: Trama): Mascara {
+  // ─── UNA TIRA DE DOS CELDAS NO TIENE ADENTRO ────────────────────────────
+  //
+  // Es el mismo caso que la retícula: con ancho 1 o 2 toda celda toca el vacío,
+  // así que no hay dónde poner luz y contornearla la dejaría de un solo tono —el
+  // banco de la grilla lo cazó, porque exige al menos dos por forma—.
+  //
+  // La punta va en SOMBRA y no en luz: dos tonos, ninguno en el borde, y las dos
+  // reglas cumplidas. Sale por acá y no pasa por `contornear`, que sobre esto no
+  // tendría nada que hacer salvo aplastarlo.
+  if (ancho <= 2) {
+    const finas: string[] = []
+    for (let y = 0; y < alto; y++) finas.push(fila(ancho, y === 0 ? '2' : '1'))
+    return finas
+  }
+
   const filas: string[] = []
   for (let y = 0; y < alto; y++) {
-    if (ancho <= 2) {
-      filas.push(fila(ancho, y === 0 ? '3' : '1'))
-      continue
-    }
     // La VETA es el segundo eje de la trama y se ve acá: cuanto más tira una
     // sustancia, más seguido aparece la línea de fibra a lo largo del trazo.
     const cadaCuantas = trama.veta === 2 ? 2 : trama.veta === 1 ? 3 : 0
     const conFibra = cadaCuantas > 0 && y % cadaCuantas === 1
-    let f = '3'
-    for (let x = 1; x < ancho - 1; x++) f += conFibra && x % 2 === 0 ? '3' : '1'
-    filas.push(f + '2')
+    let f = '1'
+    // La luz se mueve UNA CELDA ADENTRO, que es lo que la regla dice — no se
+    // borra. Sacarla del borde y no reponerla dejaba el trazo sin un solo `3`
+    // cuando la veta es 0, y el banco de la grilla lo cazó al toque: su propiedad
+    // de «volumen» mide justamente que un dibujo tenga los tres tonos.
+    for (let x = 1; x < ancho - 1; x++) f += x === 1 || (conFibra && x % 2 === 0) ? '3' : '1'
+    filas.push(f + '1')
   }
-  return filas
+  // ─── Y ACÁ FALTABA EL CONTORNO, QUE ES LA DEUDA QUE EL JUEZ ANOTÓ ────────
+  //
+  // Esta función escribía un `3` —LUZ— en la columna 0 de cada fila, que es el
+  // borde izquierdo del trazo y por lo tanto toca el vacío. Y la regla 3 de la
+  // puerta de sprites dice, con todas las letras, que **un `3` nunca toca el
+  // vacío**: el contorno va en sombra y la luz una celda adentro.
+  //
+  // O sea que el motor procedural violaba la regla que le exige a los dibujos del
+  // modelo. Un sprite de vara escrito así lo rechaza la propia puerta, y el que
+  // dibuja el motor entraba igual porque nadie se lo pregunta.
+  //
+  // El arreglo es una línea y no un parche: las dos columnas de los bordes pasan
+  // a `1` y `contornear` hace lo suyo, que es exactamente para lo que existe. La
+  // fibra interior sigue en `3` porque está adentro y no toca nada.
+  return contornear(filas)
 }
 
 /**
@@ -207,7 +236,22 @@ function reticula(ancho: number, alto: number, trama: Trama): Mascara {
     let f = ''
     for (let x = 0; x < ancho; x++) {
       const hilo = y % paso === 0 || x % paso === 0
-      f += hilo ? (y % paso === 0 && x % paso === 0 ? '3' : '1') : '0'
+      // ─── EL NUDO VA EN SOMBRA Y NO EN LUZ, Y LAS DOS REGLAS LO PIDEN ─────
+      //
+      // Estaba en `3` —luz— y en una retícula **toda celda toca el vacío**: es
+      // hilo con aire alrededor, por definición. O sea que los nudos violaban la
+      // regla 3, la misma que la puerta le exige a los sprites del modelo: un `3`
+      // nunca toca el vacío.
+      //
+      // Lo primero que se probó fue pasarle `contornear` a la máscara entera, y
+      // dejó la malla de UN SOLO TONO —todo toca el vacío, así que todo se vuelve
+      // sombra— y ahí saltó el banco de la grilla, que exige al menos dos tonos
+      // por forma: una silueta plana no se lee.
+      //
+      // Con el nudo en `2` las dos reglas se cumplen a la vez: hay dos tonos —
+      // hilo en base, cruce en sombra— y ninguna luz en el borde. La regla 3
+      // prohíbe el `3` tocando el vacío, no la sombra.
+      f += hilo ? (y % paso === 0 && x % paso === 0 ? '2' : '1') : '0'
     }
     filas.push(f)
   }

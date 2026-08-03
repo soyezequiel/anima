@@ -191,6 +191,26 @@ function pedirDibujos(proveedor: Proveedor, tope: number): void {
 $('dibujar').addEventListener('click', () => {
   pedirDibujos(proveedorDelDeposito(DONDE_EL_DEPOSITO), 1)
 })
+// ─── TODOS LOS QUE FALTAN, CON EL NÚMERO DELANTE ───────────────────────────
+//
+// El botón de al lado pide de a uno porque cada dibujo es una consulta a la
+// cuenta del usuario, y esa decisión no cambió: **ésta pregunta antes**, y la
+// pregunta incluye cuántas van a ser. Un botón que dispare doce consultas sin
+// decirlo es exactamente lo que el de a uno estaba evitando.
+//
+// El tope es lo que falta y nada más: pedir de más sería pedir dibujos para
+// claves que ninguna vista está mirando.
+$('dibujar-todos').addEventListener('click', () => {
+  const cuantos = sprites.loQueFalta().length
+  if (cuantos === 0) {
+    $('surtido').textContent = 'no falta ninguno'
+    return
+  }
+  const uno = cuantos === 1
+  if (!confirm(`Van ${String(cuantos)} ${uno ? 'consulta' : 'consultas'} a tu cuenta de Codex, ${uno ? 'una' : 'una por dibujo'}. ¿Voy?`)) return
+  pedirDibujos(proveedorDelDeposito(DONDE_EL_DEPOSITO), cuantos)
+})
+
 $('dibujar-prueba').addEventListener('click', () => {
   pedirDibujos(dibujanteDePrueba(), 12)
 })
