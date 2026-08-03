@@ -62,7 +62,10 @@ describe('el depósito compartido', () => {
     await conServidor(async (base) => {
       const r = await fetch(`${base}/salud`)
       expect(r.status).toBe(200)
-      expect(await r.json()).toEqual({ ok: true, sprites: 0 })
+      // `dibuja` y `modelos` en `null`: este depósito no tiene dibujante y nadie
+      // le pasó un vigía, así que no afirma nada sobre qué modelos hay. El
+      // detalle vive en `quien-hay.test.ts`.
+      expect(await r.json()).toEqual({ ok: true, sprites: 0, dibuja: null, modelos: null })
     })
   })
 

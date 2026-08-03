@@ -524,12 +524,56 @@ function longestChain(b: Body, weight: (i: number) => number): number {
 export function nameOf(b: Body, phys: Physics): string {
   if (b.parts.length === 0) return b.id
   const core = dominantPart(b)
-  const s = phys.substances.get(core.substance)
-  const noun = s?.lexeme.nombre ?? core.substance
+  const acompana = otherSubstance(b, core.substance)
+  return nombreDeLoVisible(
+    {
+      nucleo: core.substance,
+      // La clave sólo si hay: con `exactOptionalPropertyTypes`, un
+      // `acompana: undefined` explícito no es lo mismo que no tenerla.
+      ...(acompana === undefined ? {} : { acompana }),
+      ...estadoVisibleDe(b, phys),
+    },
+    phys,
+  )
+}
+
+/**
+ * LO QUE HAY QUE SABER DE UN CUERPO PARA NOMBRARLO. Es exactamente lo que el
+ * `RenderDescriptor` publica, y no es casualidad: son las mismas cuatro cosas.
+ */
+export interface LoQueSeNombra {
+  readonly nucleo: SubstanceId
+  /** La otra sustancia que entra al nombre, si hay. La de más masa después del núcleo. */
+  readonly acompana?: SubstanceId
+  readonly banda: BandaDeEstado
+  readonly podrido: boolean
+}
+
+/**
+ * EL NOMBRE, A PARTIR DE LO QUE SE VE — y por qué esto se separó de `nameOf`.
+ *
+ * Porque hay DOS lugares que nombran la misma cosa y hasta acá sólo uno podía:
+ * el registro de la charla tiene el cuerpo entero y llama a `nameOf`, pero la
+ * pantalla tiene el `RenderDescriptor` —que a propósito no trae texto, regla 3
+ * de `escena.ts`— y no tenía forma de llegar al nombre. El resultado se veía:
+ * el cartel del mouse decía **«bloque»**, que es la FORMA geométrica, donde el
+ * mundo dice «tubérculo crudo».
+ *
+ * La salida no es que la pantalla se arme su propia tabla de palabras —serían
+ * dos nombres para el mismo cuerpo, que es el modo de falla que `estadoVisibleDe`
+ * ya evitó con los umbrales— sino un productor y dos lectores: la parte del
+ * nombre que no necesita el cuerpo vive acá, y `nameOf` es su primer cliente.
+ */
+export function nombreDeLoVisible(v: LoQueSeNombra, phys: Physics): string {
+  const s = phys.substances.get(v.nucleo)
+  const noun = s?.lexeme.nombre ?? v.nucleo
   const gender = s?.lexeme.genero ?? 'm'
-  const partner = otherSubstanceName(b, core.substance, phys)
+  const partner =
+    v.acompana === undefined
+      ? undefined
+      : (phys.substances.get(v.acompana)?.lexeme.nombre ?? v.acompana)
   const head = partner === undefined ? noun : `${noun} con ${partner}`
-  const adjs = adjectivesOf(b, phys, gender)
+  const adjs = adjetivosDe(v.banda, v.podrido, gender)
   return adjs.length === 0 ? head : `${head} ${adjs.join(' ')}`
 }
 
@@ -558,15 +602,14 @@ export function dominantPart(b: Body): Part {
   return best
 }
 
-function otherSubstanceName(b: Body, core: SubstanceId, phys: Physics): string | undefined {
+function otherSubstance(b: Body, core: SubstanceId): SubstanceId | undefined {
   let best: Part | undefined
   for (let i = 0; i < b.parts.length; i++) {
     const p = b.parts[i]!
     if (p.substance === core) continue
     if (best === undefined || massOf(p) > massOf(best)) best = p
   }
-  if (best === undefined) return undefined
-  return phys.substances.get(best.substance)?.lexeme.nombre ?? best.substance
+  return best?.substance
 }
 
 // ─── EL ESTADO VISIBLE: una banda, y DOS lectores ───────────────────────────
@@ -654,8 +697,7 @@ export function estadoVisibleDe(b: Body, phys: Physics): EstadoVisible {
  * Los umbrales ya no están acá: los tiene `estadoVisibleDe`. Esto es la mitad
  * que traduce, y es la única que sabe de género.
  */
-function adjectivesOf(b: Body, phys: Physics, gender: 'm' | 'f'): string[] {
-  const { banda, podrido } = estadoVisibleDe(b, phys)
+function adjetivosDe(banda: BandaDeEstado, podrido: boolean, gender: 'm' | 'f'): string[] {
   const out: string[] = []
   // `ardiendo` es un gerundio y no concuerda: `agree` lo dejaría en «ardienda».
   // `a-medio-cocinar` lleva el guión porque es una banda y no una frase; el

@@ -15,6 +15,7 @@ import { dirname } from 'node:path'
 import type { Sprite } from '@anima/dibujo'
 
 import { dibujarConCodex } from './codex.js'
+import { vigilar } from './quien-hay.js'
 import { baulEnMemoria, crearServidor, type Baul } from './servidor.js'
 
 const ARCHIVO = process.env['ANIMA_SPRITES'] ?? './datos/sprites.json'
@@ -49,7 +50,15 @@ function baulEnDisco(ruta: string): Baul {
 // El dibujante se enchufa acá y en ningún otro lado: `servidor.ts` sólo sabe
 // que existe alguien que dibuja. Cambiar Codex por otro es cambiar esta línea.
 const baul = baulEnDisco(ARCHIVO)
-crearServidor(baul, { dibujar: dibujarConCodex }).listen(PUERTO, () => {
+
+// EL VIGÍA ARRANCA MIRANDO, y ese `mirar()` suelto es la diferencia entre que el
+// juego vea las luces al abrir o quince segundos después: el primer sondeo tarda
+// lo que tarden dos `--version`, y si empieza recién con el primer pedido, el
+// primer pedido se lo pierde.
+const vigia = vigilar()
+vigia.mirar()
+
+crearServidor(baul, { dibujante: { nombre: 'codex', dibujar: dibujarConCodex }, vigia }).listen(PUERTO, () => {
   console.log(`depósito de dibujos en http://localhost:${String(PUERTO)}`)
   console.log(`  guardando en ${ARCHIVO}`)
   console.log(`  ${String(baul.todos().length)} dibujos ya adentro`)

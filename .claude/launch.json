@@ -64,6 +64,16 @@
         "dev"
       ],
       "port": 5170
+    },
+    {
+      "name": "deposito-de-sprites",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": [
+        "--filter",
+        "@anima/sprites",
+        "dev"
+      ],
+      "port": 5190
     }
   ]
 }

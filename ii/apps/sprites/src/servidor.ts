@@ -50,6 +50,8 @@ import {
   type Sprite,
 } from '@anima/dibujo'
 
+import type { Vigia } from './quien-hay.js'
+
 /**
  * La física está acá por una sola cosa: **pintar la portada**. Un sprite guarda
  * índices de paleta, no colores, así que para mostrarlo hay que saber de qué
@@ -201,10 +203,35 @@ function leerCuerpo(req: IncomingMessage): Promise<string> {
  * depósito sigue siendo un depósito — guarda y reparte lo que otros dibujaron.
  */
 export interface Dibujante {
+  /**
+   * CÓMO SE LLAMA, y no es decoración: el juego muestra con qué modelo está
+   * enganchado, y «hay dibujante» no distingue a Codex de un generador de
+   * bandas diagonales. Un depósito que no lo diga obliga a la pantalla a
+   * adivinar, y adivinar en un indicador de conexión es mentir.
+   */
+  nombre?: string
   dibujar: (prompt: string) => Promise<{ ok: boolean; texto: string; porque?: string }>
 }
 
-export function crearServidor(baul: Baul, dibujante?: Dibujante): Server {
+/**
+ * Lo que el servidor trae puesto. Objeto y no dos posicionales: el segundo
+ * parámetro de `crearServidor(baul, undefined, vigia)` no lo lee nadie.
+ */
+export interface OpcionesDelServidor {
+  readonly dibujante?: Dibujante
+  /**
+   * QUIÉN HAY EN ESTA MÁQUINA, para publicarlo en `/salud`. Entra por parámetro
+   * como todo lo demás: la suite le pasa uno de mentira y corre el servidor
+   * entero sin spawnear un proceso.
+   *
+   * Sin esto, `/salud` calla en vez de inventar: `modelos: null` es «no sé», y
+   * el juego lo pinta como «buscando». Un `false` sería afirmar que no están.
+   */
+  readonly vigia?: Vigia
+}
+
+export function crearServidor(baul: Baul, o: OpcionesDelServidor = {}): Server {
+  const dibujante = o.dibujante
   return createServer((req, res) => {
     void (async () => {
       const url = req.url ?? '/'
@@ -214,8 +241,30 @@ export function crearServidor(baul: Baul, dibujante?: Dibujante): Server {
         json(res, 204, null)
         return
       }
+      // ─── /salud: SI ESTÁ VIVO, Y CON QUIÉN ──────────────────────────────
+      //
+      // Era una ruta de dos campos y ahora dice tres cosas, porque el indicador
+      // de conexión del juego se alimenta de acá y las tres son distintas:
+      //
+      //   `sprites`  cuántos dibujos hay — lo de siempre;
+      //   `dibuja`   quién dibuja EN ESTE DEPÓSITO, o `null` si sólo reparte;
+      //   `modelos`  qué CLIs contestan EN ESTA MÁQUINA, o `null` si todavía no
+      //              se sondeó. Que estén no significa que el juego los use:
+      //              hoy Codex dibuja y a Claude no le habla nadie.
+      //
+      // El `null` es deliberado y no un hueco: «no sé» y «no están» se pintan
+      // distinto, y confundirlos haría parpadear las luces en cada arranque.
       if (url === '/salud') {
-        json(res, 200, { ok: true, sprites: baul.todos().length })
+        // Primero se le dice «fijate», y no demora nada: `mirar()` no espera al
+        // sondeo por diseño (ver `quien-hay.ts`). Lo que se contesta es lo que
+        // el vigía YA sabía, que en el peor caso es medio minuto viejo.
+        o.vigia?.mirar()
+        json(res, 200, {
+          ok: true,
+          sprites: baul.todos().length,
+          dibuja: dibujante === undefined ? null : (dibujante.nombre ?? 'sin nombre'),
+          modelos: o.vigia?.ultimo() ?? null,
+        })
         return
       }
       // La portada existe porque abrir un servidor en el navegador y recibir un
