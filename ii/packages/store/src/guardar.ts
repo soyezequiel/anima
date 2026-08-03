@@ -48,7 +48,7 @@ import type { CreenciaVolcada } from '@anima/mind'
 // la línea entera se borra al compilar, así que este paquete **no gana una arista
 // en tiempo de ejecución**. Sigue valiendo lo que el guardián de al lado exige:
 // guardar es del estado y tiene que poder correr sin una corrida viva.
-import type { Dicho } from '@anima/lang'
+import type { Dicho, EncargoGuardado } from '@anima/lang'
 import { restoreWorld, worldSlots } from '@anima/world'
 import type { WorldState } from '@anima/world'
 
@@ -70,8 +70,15 @@ import type { Deposito } from './deposito.js'
  * de la convergencia). Una partida guardada con la 1 **no se tira**: entra con la
  * charla vacía, que es exactamente lo que tenía. Rechazarla sería borrarle el
  * mundo a alguien por una lista que ese guardado nunca pudo tener.
+ *
+ * ─── Y LA 3 SUMA EL ENCARGO (C3) ───────────────────────────────────────────
+ *
+ * Mismo criterio: una partida de la 1 o de la 2 entra sin encargo, que es lo que
+ * tenía. La diferencia con la charla es que el encargo **puede no estar** aunque
+ * el guardado sea de la 3 —una partida sin nada pedido no tiene ninguno—, así que
+ * su ausencia no distingue una versión de la otra y por eso es opcional.
  */
-export const VERSION_DEL_GUARDADO = 2
+export const VERSION_DEL_GUARDADO = 3
 
 /**
  * UNA PARTIDA GUARDADA, en datos planos.
@@ -101,6 +108,15 @@ export interface Guardado {
    */
   readonly charla: readonly Dicho[]
   /**
+   * EL ENCARGO EN CURSO — la quinta ranura, del C3. Ausente si no hay ninguno.
+   *
+   * Es el grafo del pedido con lo que ya se probó, y **no** la actividad en
+   * vuelo: el `Plan` sigue sin guardarse y se reconstruye contra el mundo que
+   * quedó (ver el encabezado de este archivo). Lo que viaja es qué se pidió y
+   * qué parte de eso el mundo ya dio por cumplida.
+   */
+  readonly encargo?: EncargoGuardado
+  /**
    * QUIÉN ES. Va guardado porque restaurar sin saber a quién restaurar no sirve,
    * y porque la herencia del punto 5 empieza por acá.
    */
@@ -116,9 +132,12 @@ export interface Guardado {
  */
 function alDia(g: Guardado): Guardado {
   if (g.version === VERSION_DEL_GUARDADO) return g
-  // La 1 es la que no tenía charla. `?? []` y no `[]` a secas: un guardado a
-  // medio migrar es un dato que existe, y perderlo en silencio sería peor.
-  if (g.version === 1) return { ...g, version: VERSION_DEL_GUARDADO, charla: g.charla ?? [] }
+  // La 1 no tenía charla y la 2 no tenía encargo. `?? []` y no `[]` a secas: un
+  // guardado a medio migrar es un dato que existe, y perderlo en silencio sería
+  // peor. El encargo no se rellena: no tenerlo es un estado legítimo.
+  if (g.version === 1 || g.version === 2) {
+    return { ...g, version: VERSION_DEL_GUARDADO, charla: g.charla ?? [] }
+  }
   throw new RangeError(
     `este guardado es de la versión ${String(g.version)} y esta build lee la ${String(VERSION_DEL_GUARDADO)}`,
   )
@@ -136,6 +155,7 @@ export function comoSeGuarda(
   creencias: Creencias,
   quien: string,
   charla: readonly Dicho[] = [],
+  encargo?: EncargoGuardado,
 ): Guardado {
   const g: Guardado = {
     version: VERSION_DEL_GUARDADO,
@@ -143,6 +163,7 @@ export function comoSeGuarda(
     mundo: [...worldSlots(state).entries()],
     creencias: [...creencias.volcar()],
     charla: [...charla],
+    ...(encargo === undefined ? {} : { encargo }),
     quien,
   }
   // ─── LA PUERTA, Y NO ES UN ASSERT DE LUJO ────────────────────────────────
@@ -167,6 +188,8 @@ export interface Restaurado {
   readonly creencias: Creencias
   /** El log conversacional. Vacío si el guardado es de la versión 1. */
   readonly charla: readonly Dicho[]
+  /** El encargo en curso. Ausente si no había ninguno o si el guardado es viejo. */
+  readonly encargo?: EncargoGuardado
 }
 
 export function comoSeRestaura(guardado: Guardado): Restaurado {
@@ -175,7 +198,12 @@ export function comoSeRestaura(guardado: Guardado): Restaurado {
   // `cargar` SUMA sobre el instinto que el constructor ya puso, y no reemplaza.
   // El porqué está en `Creencias.volcar`: el prior de fábrica es de la heredera.
   creencias.cargar(g.creencias)
-  return { state: restoreWorld(new Map(g.mundo)), creencias, charla: g.charla }
+  return {
+    state: restoreWorld(new Map(g.mundo)),
+    creencias,
+    charla: g.charla,
+    ...(g.encargo === undefined ? {} : { encargo: g.encargo }),
+  }
 }
 
 /**
@@ -224,9 +252,10 @@ export async function guardar(
   creencias: Creencias,
   quien: string,
   charla: readonly Dicho[] = [],
+  encargo?: EncargoGuardado,
   ranura?: string,
 ): Promise<Guardado> {
-  const g = comoSeGuarda(state, creencias, quien, charla)
+  const g = comoSeGuarda(state, creencias, quien, charla, encargo)
   await d.poner(claveDe(quien, ranura), g)
   return g
 }

@@ -80,11 +80,11 @@ describe('un encargo de varias cláusulas', () => {
   it('el cursor saltea lo que el mundo YA cumple', () => {
     // Sin correr nada: con un mundo que dice que todo está hecho, el encargo
     // termina de una. Es el control barato del cursor.
-    const c = new EncargoEnCurso(encargoDe(leer('hacé fuego y después pescá algo', OPC)))
+    const c = EncargoEnCurso.nuevo(encargoDe(leer('hacé fuego y después pescá algo', OPC)))
     expect(c.ahora(() => true)).toBeUndefined()
     expect(c.terminado).toBe(true)
     // Y con un mundo que no cumple nada, se queda en la primera.
-    const d = new EncargoEnCurso(encargoDe(leer('hacé fuego y después pescá algo', OPC)))
+    const d = EncargoEnCurso.nuevo(encargoDe(leer('hacé fuego y después pescá algo', OPC)))
     expect(d.ahora(() => false)).toBe('emitsPower>0')
     expect(d.ahora(() => false)).toBe('emitsPower>0')
     expect(d.hechas).toBe(0)
@@ -100,7 +100,7 @@ describe('CONTRA EL MUNDO: la segunda cláusula arranca cuando la primera está'
     vivir(p, mentes, 40)
 
     const cumplida = cumplidaEn(p)
-    const cursor = new EncargoEnCurso(encargoDe(leer('hacé fuego y después pescá algo', OPC)))
+    const cursor = EncargoEnCurso.nuevo(encargoDe(leer('hacé fuego y después pescá algo', OPC)))
     const bitacora: string[] = []
     let enCurso: string | undefined
     let cambios = 0

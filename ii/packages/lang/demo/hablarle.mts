@@ -110,7 +110,7 @@ const partida = new Partida(
   }),
   { vigilar: true },
 )
-let memoria = new Creencias()
+const memoria = new Creencias()
 let mente = new Mente({ actor: QUIEN, memoria })
 const mentes = new Map([[QUIEN, mente]])
 let tick = 0
@@ -344,7 +344,7 @@ async function decirle(frase: string): Promise<void> {
   // mandar de a una en vez de ensenarle el grafo a la mente esta en el
   // encabezado de `src/encargo.ts`: la ligadura diferida no tiene ejecutor.
   const e = encargoDe(revisada)
-  encargo = e.metas.length > 1 ? new EncargoEnCurso(e) : undefined
+  encargo = e.metas.length > 1 ? EncargoEnCurso.nuevo(e) : undefined
   if (encargo !== undefined) {
     console.log(`  son ${String(e.metas.length)} cosas, voy en orden.`)
     if (e.ligaduraPerdida > 0) {

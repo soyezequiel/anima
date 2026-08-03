@@ -31,7 +31,7 @@
 // ═══ LO QUE CAMBIÓ EN EL C1 DE LA CONVERGENCIA CONVERSACIONAL ══════════════
 //
 // El tramo entero está en `docs/product/convergencia-conversacional.md` y el
-// mapa de integración en `ii/docs/convergencia-c0-c2.md`. Acá se pagaron tres
+// mapa de integración en `ii/docs/convergencia.md`. Acá se pagaron tres
 // deudas, y ninguna era código que faltara escribir: era código escrito que
 // nadie llamaba.
 //
@@ -62,9 +62,25 @@
 //      cuidador AFIRMA queda como `dicho` y nunca como `hecho`: una frase no se
 //      promueve a observación.
 //
-// Lo que NO se hizo, y se dice para que nadie lo busque: `Commission`/`GoalGraph`
-// durable (C3), aplicar la respuesta del proveedor (C4), prioridad e interrupción
-// (C5), fragua y juez (C6).
+// ═══ Y EL C3: EL ENCARGO DEJA DE MORIRSE CON LA PESTAÑA ════════════════════
+//
+// `EncargoEnCurso` era un cursor sobre una lista de metas, con un índice adentro
+// y sin identidad. Ahora es un GRAFO con nombre, con lo hecho anotado por nodo y
+// con el tick en que el mundo lo probó, y se guarda en la quinta ranura.
+//
+// La consecuencia es la del criterio: **una recarga a mitad de un pedido de
+// varias partes no repite la parte que ya estaba hecha**. Y no la repite ni
+// siquiera si el mundo dejó de cumplirla, porque lo que se afirma es que se
+// cumplió una vez — el ADR 0083 de Ánima I portado.
+//
+// El `Plan` sigue sin guardarse: es una hipótesis sobre el mundo de ahora y se
+// reconstruye contra el que quedó.
+//
+// Lo que NO se hizo, y se dice para que nadie lo busque: aplicar la respuesta del
+// proveedor (C4), prioridad e interrupción (C5), fragua y juez (C6). Y del C3
+// mismo quedan dos mitades medidas y sin hacer: **el vocabulario de objetivo para
+// cantidad y lugar** —«dos troncos», «junto al fuego»— y **el ejecutor de la
+// ligadura diferida**, que se anota pero todavía no la usa nadie.
 
 import { nameOf } from '@anima/physics'
 import type { Physics } from '@anima/physics'
@@ -89,6 +105,7 @@ import {
 import type {
   Consulta,
   Dicho,
+  EncargoGuardado,
   Lectura,
   Lexico,
   LoRecuperado,
@@ -175,6 +192,11 @@ export interface OpcionesDeOrdenes {
   /** El log conversacional guardado. Sin esto, vuelve el mundo y se pierde la charla. */
   readonly charla?: readonly Dicho[]
   /**
+   * EL ENCARGO EN CURSO, guardado. Sin esto, una recarga a mitad de un pedido de
+   * varias partes lo pierde entero y hay que volver a pedirlo (C3).
+   */
+  readonly encargo?: EncargoGuardado
+  /**
    * EL BORDE DEL PROVEEDOR, y lo importante es lo que NO hace.
    *
    * `@anima/lang` **describe** la consulta y no la manda (ADR II-0024): el que
@@ -225,6 +247,9 @@ export class Ordenes {
     this.#mente = new Mente({ actor: quien, memoria: this.#memoria })
     this.#mentes.set(quien, this.#mente)
     if (o.charla !== undefined) this.#canal.cargar(o.charla)
+    // El encargo vuelve con lo que ya estaba probado adentro. El plan NO vuelve:
+    // se replanifica contra el mundo que quedó, que es la promesa del ADR 0009.
+    if (o.encargo !== undefined) this.#encargo = EncargoEnCurso.desdeGuardado(o.encargo)
     this.#manosAntes = [...(partida.state.actors.get(quien)?.holding ?? [])]
   }
 
@@ -266,6 +291,19 @@ export class Ordenes {
    */
   queRecuerda(): readonly Recuerdo[] {
     return recuerdosDe(this.#canal.todo)
+  }
+
+  /**
+   * EL ENCARGO EN CURSO, como dato. Es lo que se guarda y lo que se puede leer
+   * desde afuera para saber qué se pidió y qué parte de eso el mundo ya probó.
+   */
+  get encargo(): EncargoGuardado | undefined {
+    return this.#encargo?.volcar()
+  }
+
+  /** La meta que la mente tiene puesta ahora mismo, cruda. `undefined` si ninguna. */
+  get metaEnCurso(): string | undefined {
+    return this.#ultimaPuesta
   }
 
   /** Lo que el historial tiene que ver con una frase, con su tope. */
@@ -362,7 +400,10 @@ export class Ordenes {
     // convertir en nada, lo que la criatura estaba haciendo sigue. Borrarlo sería
     // castigar una frase mal entendida cancelando una orden que sí se entendió.
     if (e.metas.length === 0) return
-    this.#encargo = new EncargoEnCurso(e)
+    // El turno de la `entrada` que acaba de entrar es la procedencia del encargo:
+    // de ahí salió, y por ahí se vuelve a la conversación que lo pidió.
+    const turno = this.#canal.todo.at(-2)?.turno
+    this.#encargo = EncargoEnCurso.nuevo(e, turno === undefined ? [] : [turno], dicho, tick)
     this.#ultimaPuesta = undefined
   }
 
@@ -428,7 +469,7 @@ export class Ordenes {
   antesDelTick(tick: number): void {
     const e = this.#encargo
     if (e === undefined) return
-    const quiere = e.ahora(this.#yaEstaCumplida)
+    const quiere = e.ahora(this.#yaEstaCumplida, tick)
     if (quiere === undefined) {
       this.#canal.decir(tick, 'listo', 'listo')
       this.#encargo = undefined

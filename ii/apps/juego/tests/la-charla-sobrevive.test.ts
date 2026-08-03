@@ -1,7 +1,7 @@
 // ─── C0 · LA LÍNEA BASE QUE FALLA POR LA RAZÓN CORRECTA ─────────────────────
 //
 // El tramo entero está en `docs/product/convergencia-conversacional.md` y el
-// mapa de integración en `ii/docs/convergencia-c0-c2.md`. Este archivo es el C0:
+// mapa de integración en `ii/docs/convergencia.md`. Este archivo es el C0:
 // **se escribió antes que la solución** y sus cinco predicados son los del C1.
 //
 // ─── QUÉ SE AFIRMA, Y NINGUNO ES UN SELECTOR ───────────────────────────────

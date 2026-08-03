@@ -64,12 +64,24 @@ describe('C1 · la charla se guarda y vuelve', () => {
     expect(() => loQueHereda(viejo as Guardado)).not.toThrow()
   })
 
+  it('UN GUARDADO DE LA VERSIÓN 2 tampoco se tira: entra sin encargo', () => {
+    // La 2 tenía charla y no tenía encargo (el C3 lo agregó). Su ausencia no es
+    // un hueco a rellenar: una partida sin nada pedido no tiene ninguno, así que
+    // lo correcto es que siga faltando.
+    const dos = { ...comoSeGuarda(laEscenaDelDocumento(), new Creencias(), QUIEN, CHARLA), version: 2 }
+    const r = comoSeRestaura(dos as Guardado)
+    expect(r.charla).toEqual(CHARLA)
+    expect(r.encargo).toBeUndefined()
+  })
+
   it('y una versión que nadie sabe leer SÍ se rechaza, con su número al lado', () => {
     // El control negativo de la migración. Sin él, «no se tira» podría querer
     // decir «se acepta cualquier cosa», que es peor que rechazar.
     const delFuturo = { ...comoSeGuarda(laEscenaDelDocumento(), new Creencias(), QUIEN), version: 99 }
     expect(() => comoSeRestaura(delFuturo)).toThrow(/99/)
-    expect(VERSION_DEL_GUARDADO).toBe(2)
+    // El pin de la versión, actualizado con lo que afirmaba al lado: las dos
+    // migraciones de arriba son 1→3 y 2→3, y este número dice contra cuál.
+    expect(VERSION_DEL_GUARDADO).toBe(3)
   })
 
   it('sin charla, el guardado la escribe vacía y no `undefined`', () => {

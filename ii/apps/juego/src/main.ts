@@ -114,6 +114,9 @@ const ordenes = new Ordenes(partida, QUIEN, PHYS, {
   ...(guardadoAlArrancar === undefined
     ? {}
     : { memoria: guardadoAlArrancar.creencias, charla: guardadoAlArrancar.charla }),
+  // Y el encargo en curso (C3): sin esto, recargar a mitad de un pedido de
+  // varias partes lo pierde entero y hay que volver a pedirlo.
+  ...(guardadoAlArrancar?.encargo === undefined ? {} : { encargo: guardadoAlArrancar.encargo }),
 })
 const canvas = $('mapa') as HTMLCanvasElement
 const lienzo = new Lienzo(canvas)
@@ -926,7 +929,7 @@ function cuadro(ahora: number): void {
   if (!guardando && cuadros % CUADROS_ENTRE_GUARDADOS === 0 && cambio) {
     guardando = true
     const tick = partida.state.tick
-    void guardar(baul, partida.state, ordenes.memoria, QUIEN, ordenes.charla)
+    void guardar(baul, partida.state, ordenes.memoria, QUIEN, ordenes.charla, ordenes.encargo)
       .then(() => {
         guardadoEn = tick
         charlaGuardadaEn = turnoDeAhora

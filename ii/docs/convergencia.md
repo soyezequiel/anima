@@ -1,12 +1,12 @@
-# Convergencia conversacional — C0, C1 y C2
+# Convergencia conversacional — C0, C1, C2 y C3 (a medias)
 
 El tramo lo fija [`docs/product/convergencia-conversacional.md`](../../docs/product/convergencia-conversacional.md).
 Acá va lo implementado, con el mapa `contrato existente → cambio mínimo` que ese
 documento pide escribir antes de tocar nada.
 
-> **Lo que NO se hizo, dicho antes que nada:** `Commission`/`GoalGraph` durable,
-> aplicar la respuesta del proveedor, scheduler de prioridad e interrupción,
-> fragua, juez y creación de objetos. Son C3–C6 y cada uno tiene su criterio.
+> **Lo que NO se hizo, dicho antes que nada:** aplicar la respuesta del proveedor,
+> scheduler de prioridad e interrupción, fragua, juez y creación de objetos. Son
+> C4–C6. **Y del C3 falta la mitad**, medida y escrita en la sección 8.
 
 **La decisión que ordena los tres hitos, y se tomó una sola vez:** el
 `ConversationLog` durable es el único almacén, y **todo lo demás es una vista de
@@ -212,3 +212,90 @@ partida sin un solo tick — y ningún test de obediencia lo vería.
   observación. Las dos cosas se cumplen sin abrir esa puerta.
 - **No hay embeddings.** El documento los deja como mejora posterior; el piso es
   la coincidencia léxica determinista, y está.
+
+---
+
+## 8 · C3 — el encargo durable, y la mitad que no se puede todavía
+
+### La medición que ordena todo esto, hecha antes de escribir una línea
+
+La frase del criterio —«juntá dos troncos, dejá uno junto al fuego y guardá el
+otro»— se corrió por `leer` / `objetivosDe` / `interpretar` **antes** de diseñar
+nada. Lo que salió:
+
+| parte | qué pasa hoy |
+|---|---|
+| la frase entera | se leía como **UNA sola cláusula**, y pedía `emitsPower>0` |
+| «juntá dos troncos» | sale `holding(tag:fibroso)`. **El dos se pierde entero** |
+| «dejá uno junto al fuego» | sale por `orientacion` y se descarta: «soltar no lleva a un estado del mundo que yo sepa nombrar» |
+| «guardá el otro» | `no-entendida`: `guardar` no está en el léxico |
+
+Y el barrido del vocabulario de objetivo:
+
+```
+count>=2 ......................... NO      holding(tag:fibroso) ..... sí
+holding(tag:fibroso,count>=2) .... NO      emitsPower>0 ............. sí
+distance<=1 ...................... NO
+at.x>=8 .......................... NO
+wet>=0.9 ......................... NO
+```
+
+**Dos de las tres partes piden vocabulario que no existe: cantidad y lugar.**
+`Predicado` tiene tres formas —`cualidad`, `geometria` y `sostiene`— y ninguna
+cuenta ni ubica. Portarlo es el ADR 0083 de Ánima I, es una decisión de alcance,
+y **no se tomó acá**.
+
+### Lo que sí se hizo
+
+**C3-A · la coma corta cuando la sigue un verbo.** El defecto de arriba no era
+sólo que se perdieran cláusulas: adentro del trozo pegado, el atajo de la meta de
+`componer` encontró el «fuego» de la segunda mitad y se lo dio al `juntar` de la
+primera. **La segunda mitad le robó la meta a la primera**, que es peor que
+perder una cláusula — es el defecto del ADR 0078 entrando por otra puerta.
+
+No cortar por coma era una decisión escrita, con su contraejemplo: «traé leña,
+agua y piedras» no son tres pedidos. La regla que distingue los dos casos usa el
+léxico, que ya sabe qué es un verbo, y el contraejemplo **se comporta idéntico a
+antes** — afirmado con las dos formas, con y sin coma.
+
+**C3-B · el encargo durable.** `EncargoEnCurso` era un cursor con un índice
+adentro. Ahora es un grafo con identidad, y se guarda en la quinta ranura:
+
+| campo | qué es |
+|---|---|
+| `id` | derivado del turno que lo creó — no sorteado: `Math.random` está prohibido en `src/` |
+| `turnos` | de qué turnos del log salió. La misma procedencia que los recuerdos del C2 |
+| `texto` | lo que el cuidador escribió |
+| `nodos` | el grafo: `id`, `meta`, `after` (orden parcial) y `bindeaSlot` |
+| `hechos` | qué nodo probó el mundo **y en qué tick lo probó por primera vez** |
+| `estado` | `activo`, `cumplido` o `cancelado` |
+
+Lo que **no** está y es de C5: `priority` e `interruptibility`. Y `blocker`
+necesita el bloqueo estructurado que hoy no produce nadie.
+
+### Los predicados de C3, medidos
+
+| # | predicado | |
+|---|---|---|
+| 1 | un pedido de dos partes deja un grafo con identidad, `after` y procedencia | ✔ |
+| 2 | una parte cumplida queda anotada **con el tick** en que se cumplió | ✔ |
+| 3 | la recarga en el medio devuelve el encargo y persigue la **segunda** parte | ✔ |
+| 4 | y no repite la primera **aunque el mundo ya no la cumpla** | ✔ |
+| 5 | sin guardar el encargo, la recarga lo pierde | ✔ control negativo |
+| 6 | se cierra sólo cuando el mundo prueba las partes, y ahí dice «listo» | ✔ |
+| 7 | la actividad en vuelo no viaja: el guardado tiene siete claves y ninguna es el plan | ✔ |
+
+El 4 es el que separa **acordarse** de **volver a mirar**: si lo hecho se
+dedujera del mundo, soltar el palo haría empezar de cero. Lo que se afirma es que
+se cumplió una vez, con su tick — que es lo que el ADR 0083 porta cuando dice que
+`sequence` compara «el tick en que cada objetivo se cumplió por primera vez».
+
+### Lo que queda abierto del C3, con su nombre
+
+1. **cantidad y lugar como condiciones de objetivo** (ADR 0083). Sin eso, la
+   frase literal del criterio no se puede cumplir y no hay forma de disimularlo;
+2. **el ejecutor de la ligadura diferida.** `bindeaSlot` se guarda y nadie lo
+   usa: `Mente` no sabe recibir un `binds`, está medido en el encabezado de
+   `encargo.ts`, y vale siete pasos de plan cuando existe;
+3. **la corrección multi-turno** —«no ése, el otro tronco»— que el documento pide
+   que revise la ligadura del nodo pendiente sin crear otro encargo.

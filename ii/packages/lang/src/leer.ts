@@ -68,10 +68,11 @@ import type {
  * espera en su campo `liga`, y por eso los valores son sus dos strings y no una
  * enumeración propia.
  *
- * La coma no está acá: `tokenizar` ya la comió (parte por lo que no es letra ni
- * dígito). Cortar por coma pediría conservarla, y una coma en castellano separa
- * cláusulas tanto como enumera sustantivos — «traé leña, agua y piedras» no son
- * tres pedidos.
+ * La coma no está acá y ahora tiene su propia función: ver `trozosDe`. El motivo
+ * de que no estuviera sigue siendo cierto —una coma en castellano separa
+ * cláusulas tanto como enumera sustantivos, «traé leña, agua y piedras» no son
+ * tres pedidos— y lo que cambió es que **hay una regla que distingue los dos
+ * casos** en vez de un corte a secas.
  */
 const LIGAS: readonly (readonly [palabra: string, liga: 'y' | 'despues'])[] = [
   ['despues', 'despues'],
@@ -112,6 +113,59 @@ function cortar(tokens: readonly string[]): readonly Trozo[] {
     actual.push(t)
   }
   if (actual.length > 0) out.push({ tokens: actual, liga })
+  return out
+}
+
+/**
+ * LA FRASE PARTIDA EN CLÁUSULAS, coma incluida.
+ *
+ * ─── EL DEFECTO QUE LO PIDIÓ, medido antes de tocar nada ────────────────────
+ *
+ * «Juntá dos troncos, dejá uno junto al fuego y guardá el otro» —la frase del
+ * criterio del C3— se leía como **una sola cláusula**, y salía pidiendo
+ * `emitsPower>0`. Dos cosas encadenadas: la coma no cortaba, y adentro de ese
+ * trozo el atajo de la meta de `componer` encontró el «fuego» de la segunda
+ * mitad y se lo dio al `juntar` de la primera. **La segunda mitad le robó la
+ * meta a la primera**, que es peor que perder una cláusula.
+ *
+ * Es el defecto del ADR 0078 de Ánima I —«un encargo de varias partes perdía
+ * todas menos la primera»— entrando por otra puerta.
+ *
+ * ─── LA REGLA, y por qué no es «cortar por coma» ────────────────────────────
+ *
+ * **Una coma seguida de un VERBO abre una cláusula; seguida de cualquier otra
+ * cosa, sigue la anterior.** El léxico ya sabe qué es un verbo, así que la regla
+ * es una pregunta y no una lista de casos — la misma forma que `referenciaDe`
+ * usa con `conoceElVerbo` para no leer «pelo» como «pe» + «lo».
+ *
+ * Lo que compra es que el contraejemplo que el comentario viejo dejó escrito
+ * —«traé leña, agua y piedras»— **se comporta exactamente igual que antes**:
+ * `agua` no es un verbo, así que la coma no abre nada y la frase queda como
+ * quedaba cuando la coma no existía para el lector. Está afirmado con las dos
+ * formas, con y sin coma, en `la-coma-que-corta.test.ts`.
+ *
+ * ─── Y la liga que le toca ──────────────────────────────────────────────────
+ *
+ * `'y'`, la suelta. Una coma no dice «después»: «juntá dos troncos, dejá uno
+ * junto al fuego» no exige ese orden, lo permite. El orden fuerte lo dicen las
+ * palabras que lo dicen, y ésas ya están en `LIGAS`.
+ */
+function trozosDe(texto: string, esVerbo: (palabra: string) => boolean): readonly Trozo[] {
+  const out: Trozo[] = []
+  for (const parte of texto.split(',')) {
+    const trozos = cortar(tokenizar(parte))
+    const primero = trozos[0]
+    if (primero === undefined) continue
+    const abre = out.length === 0 || esVerbo(primero.tokens[0] ?? '')
+    if (abre) {
+      out.push(...trozos)
+      continue
+    }
+    // No abre: lo que viene después de la coma es continuación de lo anterior.
+    const ultimo = out[out.length - 1] as Trozo
+    out[out.length - 1] = { tokens: [...ultimo.tokens, ...primero.tokens], liga: ultimo.liga }
+    out.push(...trozos.slice(1))
+  }
   // Una frase vacía sigue siendo una frase: devuelve un trozo vacío para que
   // el resto del camino tenga qué leer y conteste «no te entendí».
   if (out.length === 0) out.push({ tokens: [], liga: 'y' })
@@ -376,7 +430,16 @@ function acusar(cs: readonly ClausulaLeida[]): string {
 export function leer(texto: string, opciones: OpcionesDeLectura): Lectura {
   const lex = opciones.lexico ?? lexicoDe(opciones.phys, PUENTE)
   const umbral = opciones.umbral ?? UMBRAL_POR_OMISION
-  const trozos = cortar(tokenizar(texto))
+  // El léxico decide si una coma abre una cláusula. Se le pregunta también por la
+  // raíz sin enclítico: «traelo» es un verbo con objeto y tiene que abrir igual.
+  const esVerbo = (p: string): boolean => {
+    if (p.length === 0) return false
+    const denota = (q: string): boolean => lex.entradas.get(q)?.denota.some((d) => d.k === 'verbo') === true
+    if (denota(p)) return true
+    const raiz = sinEnclitico(p)
+    return raiz !== undefined && denota(raiz)
+  }
+  const trozos = trozosDe(texto, esVerbo)
 
   const clausulas: ClausulaLeida[] = []
   for (const trozo of trozos) {
