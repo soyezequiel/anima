@@ -158,10 +158,36 @@ describe('el ancla del fondo', () => {
 // fibroso`. No hay nada carnoso que agarrar, así que la vía nueva del planificador
 // ni se activa acá.
 //
-// Lo que queda —y hay que confirmarlo antes de tocar nada— es la otra punta: con
-// el veto sacado, **D3 puede tomar metas que antes descartaba**, y la brasa es
-// vegetal y fibrosa. Si D3 ofrece `holding(tag:vegetal)` y se la lleva, la meta EN
-// CURSO cambia, y `yaDeambulePor` —el cerrojo que impide deambular dos veces por
-// la misma meta— se reinicia con ella. Deambular de nuevo sería entonces correcto
-// según la regla escrita, y lo que habría que decidir es si el cerrojo tiene que
-// ser por meta o por algo más estable.
+// CONFIRMADO, y el resultado desmiente la reparación entera. La corrida, tick a
+// tick, con el veto sacado:
+//
+//     t0   explorar   meta holding(tag:carnoso)   ← el deambular legítimo
+//     t9   ...        meta holding(tag:vegetal)   ← D3 se la lleva
+//     t10  ir(brasa)
+//     t19  sostener(brasa)                        ← la agarra, y la cumple
+//     t22  explorar   meta holding(tag:carnoso)   ← el cerrojo se reinició
+//
+// O sea que el cerrojo hace lo que dice: lo que cambió es que ahora hay una meta
+// alternativa que la criatura SABE cumplir, y la cumple. Hasta ahí, todo bien.
+//
+// ─── PERO CON LA BRASA PESADA PASA LO MISMO, Y ESO ES EL PROBLEMA ──────────
+//
+// Se probó subiéndola a 20 kg —no portable, así que no hay NADA agarrable— para
+// devolverle al test su escenario. La criatura toma `holding(tag:vegetal)` en el
+// t9 **igual**, no encuentra plan, y deambula persiguiéndola hasta el t22.
+//
+// Ahí está el costo real de sacar el veto: **la mente pasa a poder querer cosas
+// que no puede conseguir hoy**, que es exactamente lo que `sinVocabulario` existía
+// para impedir. El veto era demasiado —vetaba también lo que la regresión sí sabe
+// hacer— pero sacarlo entero es demasiado poco.
+//
+// ─── LO QUE HAY QUE HACER, ENTONCES ────────────────────────────────────────
+//
+// No sacar el veto: **cambiarlo de tabla a paisaje**. Un `sostiene` no se puede
+// contestar mirando el catálogo —no hay esquema que lo establezca y aun así se
+// puede conseguir— pero sí mirando si hay algo a la vista que lo cumpla. Y esa
+// pregunta tiene dónde hacerse: `tomarMeta` ya recibe la vista, y es el mismo
+// lugar donde `yaEstaCumplida` mira el paisaje.
+//
+// Es un cambio distinto del que se intentó, en otra función, y hay que medirlo de
+// nuevo contra estas doce corridas.
