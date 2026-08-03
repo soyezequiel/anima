@@ -372,7 +372,7 @@ describe('medición', () => {
     const o = laOrilla()
     const p0 = o.parada
     // El fuego después de 300 ticks: se corre el mundo y se planifica sobre lo que quedó.
-    let s: WorldState = mundo({
+    const s: WorldState = mundo({
       dios: o.dios,
       hz: 20,
       bodies: [
@@ -500,7 +500,7 @@ describe('medición', () => {
 
   it('N · L otra vez, EN SECO: la humedad de la orilla contaminaba la medición', () => {
     // Sin dios y sin orilla: las celdas de `mundo()` no mojan nada.
-    let s: WorldState = mundo({
+    const s: WorldState = mundo({
       hz: 20,
       bodies: [
         enLaMano(criatura('ana', 1000), { x: 0, y: 0 }, 'ana'),

@@ -1161,22 +1161,23 @@ const SIN_CAMINO2 = 'mass>=2'
 
 describe('el vocabulario del catálogo, y qué se puede querer', () => {
   it('lo que ningún esquema establece se reconoce SIN correr una búsqueda', () => {
-    // ─── LAS TRES DABAN DISTINTO, Y AHORA DAN LO MISMO ────────────────────
+    // Las tres metas que el instinto puede querer, contra la tabla.
     //
-    // Acá `vegetal` y `fibroso` eran `true` —«ningún esquema las establece»— y era
-    // verdad mientras el catálogo fuera la lista completa de lo que se puede
-    // conseguir. Dejó de serlo: la regresión aprendió a resolver un `sostiene`
-    // caminando hasta algo que ya lo cumple y agarrándolo, y eso no es un esquema
-    // porque agarrar no transforma nada (`agarrarLoQueYaHay`, en
-    // `plan/src/regresion.ts`).
+    // ─── Y ESTAS DOS SIGUEN EN `true`, AUNQUE HOY SE PUEDAN CONSEGUIR ──────
     //
-    // Así que preguntarle a la TABLA por un `holding(...)` es preguntarle a la
-    // lista equivocada, y `sinVocabulario` contesta que no para las tres. Lo que
-    // no cambió es quién decide si se puede HOY: eso lo sigue contestando
-    // `plan()`, que es el que mira el paisaje.
-    for (const tag of ['carnoso', 'vegetal', 'fibroso']) {
-      expect(sinVocabulario(metaDe(tag)), `«${tag}» se puede querer`).toBe(false)
-    }
+    // La regresión aprendió a resolver un «tenerlo» agarrando algo que ya lo
+    // cumple, así que `holding(tag:vegetal)` **se puede conseguir** cuando hay
+    // algo vegetal a la vista. Y aun así esta función sigue contestando que sí
+    // está sin vocabulario, porque lo que contesta es sobre la TABLA: ningún
+    // esquema la establece, y eso no cambió.
+    //
+    // Quien completa la respuesta es `seConsigueAgarrando`, que mira el paisaje, y
+    // el portón de `tomarMeta` usa las dos. Se probó fusionarlas acá —devolver
+    // `false` para todo `sostiene`— y el precio se midió: la criatura pasaba a
+    // querer cosas que no puede conseguir y deambulaba persiguiéndolas.
+    expect(sinVocabulario(metaDe('carnoso'))).toBe(false)
+    expect(sinVocabulario(metaDe('vegetal'))).toBe(true)
+    expect(sinVocabulario(metaDe('fibroso'))).toBe(true)
     // Y las que no son `holding`: `temperature>=400` la establece `friccion`;
     // ninguna fila del índice establece masa (medido en `ataque-al-reves`).
     expect(sinVocabulario('temperature>=400')).toBe(false)
