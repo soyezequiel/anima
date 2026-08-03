@@ -824,36 +824,77 @@ Es la clase de cosa que sólo aparece corriendo de verdad: **el comentario decí
 la verdad sobre lo que el contrato permite y no sobre lo que el código hace**, y
 las dos frases se leen igual.
 
-#### Y esa tabla mide cuándo dejamos de esperar, no cuándo se muere el proceso
+#### Esa tabla mide cuándo dejamos de esperar, no cuándo se muere el proceso
 
 La distinción importa, y en Windows más: `spawn` con `shell: true` lanza
 `cmd.exe /c claude …`, así que `child.kill()` mata al `cmd` y el nieto **podría
 sobrevivir**. Que la promesa asiente en 315 ms no dice nada sobre eso.
 
-Medido desde afuera, con un vigía que mira la lista de procesos cada 200 ms:
+Se intentó medirlo desde afuera y **no se pudo cerrar**. El recorrido, porque
+enseña más que el resultado:
 
-| | apareció | murió | **vivió** |
-|---|---|---|---|
-| cortado | 370 ms | 1.500 ms | **1.130 ms** |
-| normal | 355 ms | 28.315 ms | **27.960 ms** |
+1. **el primer intento midió el proceso equivocado.** El filtro era «la línea de
+   comando dice `claude`», y eso engancha al `pnpm`, al `tsx` y al demo mismo,
+   porque el proveedor se elige con `--claude`. Los números que salieron de ahí
+   —1.130 ms contra 27.960— eran **del demo terminando**, no del CLI. Y el demo,
+   con `--cortar`, termina apenas asienta la promesa: o sea que la tabla decía
+   dos veces la misma cosa;
+2. **con el filtro bueno, «el proceso» no es uno.** Cada CLI es una cadena de
+   shims distinta —`cmd` → `node` → `.exe`, y a veces uno re-ejecuta en otro— así
+   que saber cuál murió es un trabajo aparte;
+3. **se probó un `taskkill /T` sobre el árbol y no se pudo demostrar que sirviera**,
+   así que se sacó. Un mecanismo que no se puede medir es un guardián apagado.
 
-O sea que el `kill` **sí** atraviesa el `cmd`, y el número honesto del arreglo es
-1,1 s contra 28 s — no los 315 ms de la promesa.
+#### Entonces: qué compra el corte y qué no
 
-#### Lo que el corte NO compra, y hay que decirlo
+**COMPRA** que el que preguntó deje de esperar en el acto — 315 ms contra 15.048.
+Eso es lo que le importa a la criatura y es lo único que este código controla.
 
-**La plata de lo que ya viajó.** Cuando el cuidador corrige, la consulta ya salió
-para el servidor: matar el CLI local no cancela la inferencia del otro lado ni el
-cobro de los tokens que ya se procesaron. Lo único que se pierde es el sobre JSON
-con `total_cost_usd`, que el CLI imprime al final — por eso el costo sale «sin
-datos», y eso NO quiere decir que no se pagó.
+**NO GARANTIZA** que el proceso del CLI se muera, por lo de arriba.
 
-Lo que el corte compra es que **la criatura deje de esperar al instante** y que
-el proceso se muera en un segundo en vez de en veintiocho. Que es bastante, y es
-otra cosa que lo que el comentario del C4 daba a entender.
+**NO CANCELA LA INFERENCIA, y esto es lo que más importa.** Cuando el cuidador
+corrige, la consulta ya salió para el servidor: matar cualquier cosa de este lado
+no descuenta los tokens que el otro lado ya procesó. Lo único que se pierde es el
+sobre con `total_cost_usd`, que el CLI imprime al final — por eso el costo sale
+«sin datos», y eso **no quiere decir que fue gratis**.
+
+#### El mismo error, tres veces, y de eso se aprende algo
+
+En este tramo la misma trampa cayó tres veces seguidas:
+
+| se afirmaba | se medía con | el problema |
+|---|---|---|
+| «el corte corta el viaje» | nada — era un comentario | el parámetro no existía |
+| «el proceso vive 2 ms» | la promesa del que espera | mide cuándo dejamos de esperar |
+| «el proceso vive 1.130 ms» | un filtro que engancha al demo | mide el demo, no el CLI |
+
+**Un instrumento que vive adentro del sistema que mide no lo puede desmentir.**
+Y es la misma forma que el C5 tenía en sus tests, encontrada por esto: ver abajo.
 
 ### Lo que queda de la puerta
 
 Que la fragua de verdad esté enchufada **en la app**, que es otra cosa que
 correrla desde un demo: pide un `ApiTS` en el navegador y montar código generado
 en la pestaña del jugador. Sigue siendo una decisión de producto.
+
+### Y la misma trampa estaba en los tests del C5
+
+El C5 afirma «la pausa suelta el drive» y lo medía con `Ordenes.metaEnCurso`, que
+es `#ultimaPuesta` — **la contabilidad de quien pausa**. Que diga `undefined`
+prueba que `Ordenes` se anotó que soltó, no que la criatura haya soltado.
+
+Se comprobó mutando el mecanismo: se le sacó a `#soltarElDrive` la reconstrucción
+de la mente, o sea que la pausa deja de soltar nada y se vuelve un rótulo.
+
+| bloque | qué mira | con el mecanismo roto |
+|---|---|---|
+| (2) «y suelta lo que estaba haciendo» | `Ordenes.metaEnCurso` | **✓ verde** |
+| (3) «mientras está pausado…» | `Ordenes.metaEnCurso` | **✓ verde** |
+| (2b) / (3b) nuevos | `Mente.estado.metaEnCurso` | × rojo |
+
+Los dos viejos pasan con la pausa rota porque `#ultimaPuesta` se anula igual. Los
+nuevos le preguntan a la ESCALERA, que es del otro lado de la costura y la escribe
+`tomarMeta`.
+
+Es la misma reparación que el corte pedía y la misma lección: **para saber si algo
+pasó de verdad hay que preguntarle a quien no tiene interés en la respuesta.**

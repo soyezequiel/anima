@@ -280,6 +280,33 @@ export function preguntarTexto(
  *     siguió viva     14.729 ms   ← y se pagó entera
  *
  * El `kill` ya existía para el timeout; lo que faltaba era el cable.
+ *
+ * ─── LO QUE ESTO HACE Y LO QUE NO, dicho con lo que se pudo medir ─────────
+ *
+ * HACE que el que preguntó **deje de esperar en el acto**: la promesa asienta a
+ * los 315 ms en vez de a los 15.048. Eso es lo que le importa a la criatura, y
+ * es lo único que este archivo controla.
+ *
+ * NO GARANTIZA que el proceso del CLI se muera. Los dos se lanzan con
+ * `shell: true` —hace falta, en Windows son `.cmd`— así que lo que se mata es el
+ * `cmd.exe` y el CLI queda de NIETO, y en Windows un huérfano sigue corriendo.
+ * Se intentó medirlo desde afuera y se llegó hasta acá:
+ *
+ *   · el primer intento midió el proceso EQUIVOCADO. El filtro era «la línea de
+ *     comando dice claude», y eso engancha al `pnpm`, al `tsx` y al demo, porque
+ *     el proveedor se elige con `--claude`. Los números que salieron de ahí eran
+ *     del demo terminando, no del CLI;
+ *   · con el filtro bueno, cada CLI resulta ser una CADENA de shims distinta
+ *     —`cmd` → `node` → `.exe`, y a veces uno re-ejecuta en otro— así que «el
+ *     proceso» no es uno y medir cuál murió es un trabajo aparte.
+ *
+ * Se probó un `taskkill /T` sobre el árbol y **no se pudo demostrar que sirviera**,
+ * así que se sacó: un mecanismo que no se puede medir es un guardián apagado.
+ *
+ * Y NO CANCELA LA INFERENCIA. Cuando el cuidador corrige, la consulta ya salió
+ * para el servidor; matar cualquier cosa de este lado no descuenta los tokens que
+ * el otro lado ya procesó. Lo único que se pierde es el sobre con
+ * `total_cost_usd`, que el CLI imprime al final.
  */
 function matarSiCortan(
   child: { kill: () => boolean },
@@ -287,18 +314,14 @@ function matarSiCortan(
   signal?: AbortSignal,
 ): void {
   if (signal === undefined) return
-  // Ya venía cortada: no se espera al evento, que no va a llegar nunca.
-  if (signal.aborted) {
+  const matar = (): void => {
     child.kill()
     cerrar(undefined)
+  }
+  // Ya venía cortada: no se espera al evento, que no va a llegar nunca.
+  if (signal.aborted) {
+    matar()
     return
   }
-  signal.addEventListener(
-    'abort',
-    () => {
-      child.kill()
-      cerrar(undefined)
-    },
-    { once: true },
-  )
+  signal.addEventListener('abort', matar, { once: true })
 }

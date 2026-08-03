@@ -123,6 +123,23 @@ describe('C5 · el hambre urgente pausa el encargo', () => {
     expect(s.o.enCurso?.de).not.toBe('vos')
   })
 
+  it('(3b) Y NO ES UN RÓTULO: la escalera cambió de meta', () => {
+    // El bloque de arriba mide `Ordenes.metaEnCurso`, que es la contabilidad de
+    // quien pausa. Éste le pregunta a la ESCALERA, que es la que decide de
+    // verdad — un instrumento que vive adentro del sistema que mide no lo puede
+    // desmentir. Ver el bloque gemelo en `para-y-segui.test.ts`.
+    //
+    // Y NO ES REDUNDANTE: sacándole a `#soltarElDrive` la reconstrucción de la
+    // mente —la pausa se vuelve un rótulo— el bloque (3) sigue VERDE y éste se
+    // pone rojo. `#ultimaPuesta` se anula igual; lo que cambia es la conducta.
+    const s = conHambreAMitadDeCamino()
+    const antes = s.o.mentes.get(QUIEN)?.estado.metaEnCurso
+    expect(antes, 'la precondición: la mente no perseguía nada').toBeDefined()
+    correr(s, 4)
+    expect(s.o.encargo?.estado).toBe('pausado')
+    expect(s.o.mentes.get(QUIEN)?.estado.metaEnCurso, 'la escalera sigue con la orden puesta').not.toBe(antes)
+  })
+
   it('(4) CUANDO SE LE PASA, retoma sola y NO repite lo que ya estaba hecho', () => {
     const s = conHambreAMitadDeCamino()
     correr(s, 2)

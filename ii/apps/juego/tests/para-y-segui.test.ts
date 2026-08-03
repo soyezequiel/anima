@@ -103,6 +103,44 @@ describe('C5 · pausar y seguir desde la charla', () => {
     expect(s.o.encargo?.estado).toBe('pausado')
   })
 
+  it('(2b) Y LA MENTE LO CONFIRMA, que es la única que no es juez y parte', () => {
+    /*
+     * ─── POR QUÉ ESTE BLOQUE EXISTE ─────────────────────────────────────────
+     *
+     * El bloque de arriba mide `Ordenes.metaEnCurso`, que es `#ultimaPuesta`, o
+     * sea LA CONTABILIDAD DE QUIEN PAUSA. Que diga `undefined` prueba que
+     * `Ordenes` se anotó que soltó el drive, no que la criatura lo haya soltado.
+     *
+     * Es el mismo error que este tramo ya pagó una vez, midiendo el corte del
+     * proveedor con el reloj del que espera en vez de con el proceso: **un
+     * instrumento que vive adentro del sistema que mide no puede desmentirlo.**
+     *
+
+     * ─── Y NO ES REDUNDANTE, mutando el mecanismo ────────────────────────────
+     *
+     * Se le sacó a `#soltarElDrive` la reconstrucción de la mente —o sea: la
+     * pausa deja de soltar nada y se vuelve un rótulo— y esto es lo que pasó:
+     *
+     *     (2)  Y SUELTA LO QUE ESTABA HACIENDO      ✓ VERDE
+     *     (3)  MIENTRAS ESTÁ PAUSADO…               ✓ VERDE
+     *     (2b) Y LA MENTE LO CONFIRMA               × rojo
+     *
+     * Los dos que miran `Ordenes` pasan con el mecanismo roto, porque
+     * `#ultimaPuesta` se sigue poniendo en `undefined`. Ése es exactamente el
+     * agujero que este bloque tapa.
+     */
+
+    const s = andando()
+    const de = (): string | undefined => s.o.mentes.get(QUIEN)?.estado.metaEnCurso
+    correr(s, 2)
+    const perseguia = de()
+    expect(perseguia, 'la precondición: la mente no había tomado ninguna meta').toBeDefined()
+
+    s.o.decir('pará eso')
+    correr(s, 3)
+    expect(de(), 'la escalera sigue con la meta del cuidador puesta').not.toBe(perseguia)
+  })
+
   it('(3) LA PAUSA A MANO NO SE LEVANTA SOLA, ni con el mundo en calma', () => {
     // El scheduler del hambre reanuda las pausas QUE ÉL HIZO. Si levantara ésta,
     // «pará» duraría ocho ticks y el cuidador no tendría cómo pararla de verdad.
