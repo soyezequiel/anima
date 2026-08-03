@@ -898,3 +898,76 @@ nuevos le preguntan a la ESCALERA, que es del otro lado de la costura y la escri
 
 Es la misma reparación que el corte pedía y la misma lección: **para saber si algo
 pasó de verdad hay que preguntarle a quien no tiene interés en la respuesta.**
+
+---
+
+## 12 · Los dos que faltaban del proveedor real
+
+### Una frase de varias cláusulas
+
+Todo lo probado con Claude hasta acá era de una cláusula. Con
+«juntá dos troncos y después conseguime algo para comer»:
+
+```
+cláusulas   2
+  [0] entendida    local    holding(tag:fibroso,count>=2)
+  [1] orientacion  →        el lector local no pudo
+…899 ticks en el aire…
+  [0] entendida    local    holding(tag:fibroso,count>=2)
+  [1] entendida    modelo   holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)
+encargo     2 nodo(s)     ·  US$ 0,0153
+```
+
+Lo que se afirma con esto y no se podía antes: **el modelo arregló sólo la
+cláusula que el lector local no entendió y no tocó la otra.** Es el invariante
+«`revisar` nunca empeora» sosteniéndose contra un modelo de verdad y no contra un
+muñeco — la consulta lleva los índices de las cláusulas dudosas, y las demás ni
+se ofrecen.
+
+### La cadena fragua → juez, hasta el veredicto
+
+Faltaba un eslabón y era justo el que el hito nombra. Lo que había:
+
+- `con-el-modelo.ts` va del gap a las candidatas y **para ahí**: compilan o no,
+  nadie las corre;
+- `el-punto-9.ts` sí las monta y las corre en el banco, pero llama a
+  `correrElBanco` y lee las corridas a mano — **nunca produce un `Dictamen`**, así
+  que nunca sale un grado;
+- el fixture del C6 lee un grado que le pasa el test.
+
+O sea que `Dictamen.grado` —el número sobre el que el C6 apoya todo— **nunca
+había salido de una candidata real**. `hasta-el-veredicto.ts` cierra eso:
+
+```
+2 candidata(s)                                    US$ 0,0697
+
+  · piezas que trajo: usar   ·  contrato propio: no vino
+    recoger    limpia    grado=no-promueve
+               cargos: plano:promueve construccion:no-promueve uso:inconcluso utilidad:inconcluso
+               regresiones: 12
+
+  · piezas que trajo: usar   ·  contrato propio: no vino
+    agarrar    limpia    grado=no-promueve
+               (idéntico)
+
+llegaron al juez ....... 2
+portón 1 · promueve .... 0 de 2
+```
+
+**Las dos compilan, se montan, corren — y el juez las baja.** Y el motivo es de
+conducta y no de piezas faltantes: doce mundos del banco salieron distinto de lo
+que debían. O sea que el portón del C6 haría exactamente lo que promete: no
+publicar, y decir por qué.
+
+Dos cosas que conviene no perder:
+
+- **el contrato con el que se las juzga es el DEL PEDIDO**, no el que la
+  candidata publique. Juzgarla contra su propio contrato sería dejarla elegir el
+  examen. Ninguna de las dos trajo contrato propio, además;
+- **el portón 2 dejó de ser un booleano inventado.** `Candidata.plano` existe, así
+  que «se puede publicar» se lee del dato: ninguna trajo plano, y por eso ninguna
+  se podría publicar aunque el juez las promoviera. El techo del catálogo, medido.
+
+Lo que sigue sin verse: **un `promueve` que salga de un modelo de verdad.** Dos
+candidatas no alcanzan para concluir nada sobre el modelo — lo que este demo
+prueba es que la cadena entrega un veredicto legible, no cuál veredicto.

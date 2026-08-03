@@ -76,8 +76,12 @@ const ordenes = new Ordenes(partida, QUIEN, PHYS, {
 console.log(`\n  «${FRASE}»  ·  proveedor: ${transporteElegido()}\n`)
 ordenes.decir(FRASE)
 
-const antes = ordenes.ultimaLectura?.clausulas[0]
-console.log(`  el lector local  ${String(antes?.grado)}  ${String(antes?.firma)}`)
+const clausulas = ordenes.ultimaLectura?.clausulas ?? []
+const antes = clausulas[0]
+console.log(`  cláusulas        ${String(clausulas.length)}`)
+for (const [i, c] of clausulas.entries()) {
+  console.log(`    [${String(i)}] ${c.grado.padEnd(12)} ${String(c.firma)}`)
+}
 console.log(`  el acuse         «${String(ordenes.charla[1]?.texto)}»`)
 console.log(`  consultas        ${String(ordenes.consultas)}\n`)
 
@@ -114,6 +118,9 @@ console.log(`     grado antes        ${String(antes?.grado)}`)
 console.log(`     grado después      ${String(despues?.grado)}  (${String(despues?.leidaPor)})`)
 console.log(`     meta               ${String(despues?.firma)}`)
 console.log(`     encargo            ${String(ordenes.encargo?.nodos.length ?? 0)} nodo(s)`)
+for (const [i, c] of (ordenes.ultimaLectura?.clausulas ?? []).entries()) {
+  console.log(`       [${String(i)}] ${c.grado.padEnd(12)} ${(c.leidaPor ?? 'local').padEnd(7)} ${String(c.firma)}`)
+}
 console.log(
   `     costo              ${costo === undefined ? 'sin datos' : `${costo.modelo} · US$ ${costo.usd.toFixed(4)}`}`,
 )
@@ -126,8 +133,10 @@ if (CORTAR) {
   // NO DICE que el proceso se haya muerto, y la diferencia importa: en Windows
   // `spawn` con `shell: true` lanza `cmd.exe /c claude …`, así que el `kill`
   // podría matar al `cmd` y dejar vivo al nieto. Eso se mide desde AFUERA,
-  // mirando la lista de procesos, y está anotado en `ii/docs/convergencia.md`:
-  // cortado vive 1.130 ms y sin cortar 27.960 ms, o sea que sí lo mata.
+  // mirando la lista de procesos, y **no se pudo cerrar**: el primer intento
+  // midió el proceso equivocado —el filtro enganchaba a este mismo demo, que se
+  // llama con `--claude`— y con el filtro bueno resultó que cada CLI es una
+  // cadena de shims. El recorrido entero está en `ii/docs/convergencia.md`.
   //
   // Y TAMPOCO dice que no se haya pagado. La consulta ya salió para el servidor;
   // matar el CLI local no cancela la inferencia del otro lado. Lo único que se
