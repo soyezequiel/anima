@@ -170,7 +170,7 @@ test('4 · escribir una orden en el chat', async ({ page }) => {
   await page.locator('#orden').fill('hacé fuego')
   await page.locator('#orden').press('Enter')
 
-  await expect(page.locator('#registro .vos')).toHaveText('hacé fuego')
+  await expect(page.locator('#registro .pedido')).toHaveText('hacé fuego')
   // Y la caja queda limpia: sin esto, escribir dos órdenes seguidas manda la
   // primera pegada a la segunda.
   await expect(page.locator('#orden')).toHaveValue('')
@@ -185,7 +185,7 @@ test('5 · recibir acuse inmediato', async ({ page }) => {
   await page.locator('#orden').fill('hacé fuego')
   await page.locator('#orden').press('Enter')
 
-  await expect(page.locator('#registro .ella')).toHaveText('dale, voy')
+  await expect(page.locator('#registro .respuesta')).toHaveText('dale, voy')
   expect(await tick(page), 'el mundo avanzó: esto no prueba que el acuse sea inmediato').toBe(antes)
 })
 
@@ -200,7 +200,7 @@ test('5b · «traé un palo» también tiene camino, y este spec decía lo contr
   await abrir(page)
   await page.locator('#orden').fill('traé un palo')
   await page.locator('#orden').press('Enter')
-  await expect(page.locator('#registro .ella')).toHaveText('dale, voy')
+  await expect(page.locator('#registro .respuesta')).toHaveText('dale, voy')
 })
 
 test('6 · observar progreso y acciones', async ({ page }) => {
@@ -243,7 +243,7 @@ test('6b · y cuando la orden se cumple, la criatura lo dice y vuelve a lo suyo'
   await page.locator('#orden').press('Enter')
   await page.locator('[data-vel="4"]').click()
 
-  await expect(page.locator('#registro .ella').last()).toHaveText('listo', { timeout: 40_000 })
+  await expect(page.locator('#registro .respuesta').last()).toHaveText('listo', { timeout: 40_000 })
   await expect(page.locator('#persigue')).toContainText('suya')
 })
 

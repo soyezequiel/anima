@@ -36,12 +36,27 @@ interface Linea {
   readonly texto: string
 }
 
-/** El registro tal como está pintado: identidad, clase y texto de cada línea. */
+/**
+ * El registro tal como está pintado: identidad, clase y texto de cada línea.
+ *
+ * ─── SE LEE POR `data-turno` Y NO POR `p`, y el cambio importa ─────────────
+ *
+ * La charla se agrupa en TURNOS: un pedido, la respuesta, y los pasos adentro
+ * de un bloque. O sea que ya no hay un `<p>` por línea del log ni todos los
+ * `<p>` son líneas del log — el «3 pasos» de un turno plegado también es uno.
+ *
+ * Lo que este archivo afirma es del LOG y no del agrupado: orden, identidad, que
+ * nada se repita y que el progreso no vuelva convertido en habla. Todo eso
+ * sobrevive al rediseño porque cada nodo que sale de un `Dicho` sigue llevando
+ * su `data-turno` y su `data-clase` — que es exactamente para esto, y no para
+ * estilar. El agrupado es presentación; la identidad del log tiene que
+ * sobrevivirle, y este selector es donde eso se comprueba.
+ */
 async function registro(page: Page): Promise<readonly Linea[]> {
-  return page.locator('#registro p').evaluateAll((ps) =>
+  return page.locator('#registro [data-turno]').evaluateAll((ps) =>
     ps.map((p) => ({
       turno: (p as HTMLElement).dataset['turno'] ?? '',
-      clase: p.className,
+      clase: (p as HTMLElement).dataset['clase'] ?? '',
       texto: p.textContent ?? '',
     })),
   )
@@ -66,13 +81,15 @@ test('la charla vuelve con su orden y su identidad, y nada se repite', async ({ 
   await decir(page, 'hacé fuego')
   await decir(page, 'traé un palo')
   await decir(page, 'atá la vara con la hebra')
-  await expect(page.locator('#registro p')).toHaveCount(6)
+// Tres turnos, y cada uno con su pedido y su respuesta: seis nodos con
+  // identidad. Con el mundo en pausa no hay progreso todavía.
+  await expect(page.locator('#registro [data-turno]')).toHaveCount(6)
 
   // ─── Y ahora el mundo corre, para que haya progreso que narrar ───────────
   await page.locator('[data-vel="4"]').click()
   // Lo que la criatura HACE se narra aparte de lo que DICE. Esperar a que
   // aparezca es lo que hace que la afirmación de abajo signifique algo.
-  await expect(page.locator('#registro .progreso').first()).toBeAttached({ timeout: 40_000 })
+  await expect(page.locator('#registro .paso').first()).toBeAttached({ timeout: 40_000 })
   const guardadoEn = await esperarGuardado(page)
   expect(guardadoEn).toBeGreaterThan(0)
   await page.locator('[data-vel="0"]').click()
@@ -93,15 +110,32 @@ test('la charla vuelve con su orden y su identidad, y nada se repite', async ({ 
   const turnos = despues.map((l) => l.turno)
   expect(new Set(turnos).size, 'una línea se pintó dos veces').toBe(turnos.length)
 
-  // LA CLASE SOBREVIVE: el progreso no vuelve convertido en habla.
-  expect(despues.filter((l) => l.clase.includes('progreso')).length).toBe(
-    antes.filter((l) => l.clase.includes('progreso')).length,
+  // LA CLASE SOBREVIVE: el progreso no vuelve convertido en habla. Se cuenta
+  // sobre `data-clase`, que es la clase del `Dicho` y no la del CSS: con el
+  // agrupado, la del CSS dice dónde quedó pintado y ésta dice de qué clase
+  // ERA — que es lo único que este test tiene que cuidar.
+  expect(despues.filter((l) => l.clase === 'progreso').length).toBe(
+    antes.filter((l) => l.clase === 'progreso').length,
   )
 
   // ─── El cuarto intercambio, después de la recarga ────────────────────────
+  //
+  // Y acá el conteo cambió con el rediseño, por la razón que el rediseño busca:
+  // al abrirse el cuarto turno, el tercero SE PLIEGA y sus pasos se van del DOM
+  // —quedan resumidos en «N pasos»—. Antes esto decía `despues.length + 2`
+  // porque la lista sólo crecía; hoy crece por el final y se achica por el
+  // medio, que es lo que hace que leer la charla cueste lo mismo siempre.
+  const pasosAntes = await page.locator('#registro .paso').count()
+  expect(pasosAntes, 'sin pasos pintados, el plegado no probaría nada').toBeGreaterThan(0)
+
   await decir(page, 'hacé fuego')
   const conElCuarto = await registro(page)
-  expect(conElCuarto.length).toBe(despues.length + 2)
+  expect(conElCuarto.length).toBe(despues.length + 2 - pasosAntes)
+
+  // LO QUE SE PLEGÓ NO SE PERDIÓ: el turno viejo dice cuántos pasos tuvo.
+  await expect(page.locator('#registro .turno.plegado .cuantos').last()).toHaveText(
+    new RegExp(`^${String(pasosAntes)} pasos?$`),
+  )
 
   const nums = conElCuarto.map((l) => Number(l.turno))
   for (let i = 1; i < nums.length; i++) {

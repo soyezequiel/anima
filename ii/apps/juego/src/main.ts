@@ -40,8 +40,6 @@ import {
 } from '@anima/dibujo'
 
 import { cargar, claveDe, guardar } from '@anima/store'
-import { quienDijo } from '@anima/lang'
-
 import { conQuien } from './con-quien.js'
 import type { ConQuien } from './con-quien.js'
 import { encuadrePara } from './el-encuadre.js'
@@ -59,6 +57,9 @@ import {
 import type { Senalado } from './lo-senalado.js'
 import { depositoIndexedDB } from './deposito-indexeddb.js'
 import { Ordenes, enCastellano } from './ordenes.js'
+import { agrupar, clausulasDe, firmaDelRegistro } from './turnos.js'
+import type { Paso, Turno } from './turnos.js'
+import { sugerencias } from './sugerencias.js'
 import { dibujanteDePrueba } from './dibujante-de-prueba.js'
 import { proveedorDelDeposito } from './proveedor-del-deposito.js'
 import { Lienzo } from './lienzo.js'
@@ -912,41 +913,159 @@ function inventario(escena: ReturnType<typeof escenaDe>): void {
 }
 
 /**
- * EL REGISTRO DE LA CHARLA. Se pinta lo nuevo y nada más.
+ * EL REGISTRO, AGRUPADO EN TURNOS. Todo lo que decide está en `turnos.ts`.
  *
- * Sólo lo nuevo porque esto corre en cada cuadro, y reescribir el DOM sesenta
- * veces por segundo mataría la selección de texto del usuario.
+ * Acá sólo se escriben nodos: si esta función tuviera un `if` sobre el log,
+ * habría lógica de agrupado que ningún test puede tocar sin abrir un navegador.
+ * Es la misma división que `panel()` y `pintarEnlace()`.
  *
- * ─── Y SE PINTA POR TURNO, NO POR CUÁNTAS LLEVABA ──────────────────────────
+ * ─── SE REPINTA ENTERO, Y ES UN CAMBIO RESPECTO DE ANTES ───────────────────
  *
- * El contador de antes era la CANTIDAD pintada, y con eso alcanzaba mientras la
- * lista sólo crecía por el final. Con el log durable ya no: al arrancar viene con
- * líneas adentro, y el canal se recorta por arriba a las cien. Un contador de
- * posición, en cuanto pasa cualquiera de esas dos cosas, repinta líneas que ya
- * estaban o se saltea las nuevas. El turno no se mueve nunca, así que «pintar lo
- * que tenga turno mayor al último pintado» es correcto en los tres casos.
+ * La versión plana pintaba SÓLO LO NUEVO y llevaba un contador del último turno
+ * escrito. Con turnos eso deja de servir, y no por gusto: **al bloque abierto le
+ * entran pasos y le cambia la respuesta sin que aparezca ninguna línea nueva al
+ * final**, así que un contador de posición no se enteraría nunca. Y cuando llega
+ * un pedido nuevo, el turno anterior tiene que PLEGARSE — o sea que un nodo ya
+ * pintado cambia de forma.
+ *
+ * Reescribir cien líneas cuesta nada; hacerlo sesenta veces por segundo rompe la
+ * selección de texto del que está leyendo. Por eso hay firma: se repinta cuando
+ * algo cambió, y `firmaDelRegistro` mira ADENTRO del turno abierto.
  */
-let ultimoPintado = 0
+let firmaPintada = ''
+
+function unPaso(p: Paso): HTMLElement {
+  const fila = document.createElement('p')
+  fila.className = `paso ${p.estado}`
+  // Sólo los pasos que salen del log llevan identidad. Una cláusula del encargo
+  // no es una línea de la conversación, así que no tiene turno que mostrar.
+  if (p.turno !== undefined) {
+    fila.dataset['turno'] = String(p.turno)
+    fila.dataset['clase'] = 'progreso'
+  }
+  const marca = document.createElement('i')
+  // ✓ hecho · › en curso · · pendiente. Tres formas distintas y no tres colores
+  // del mismo signo: el estado se tiene que poder leer sin distinguir el verde
+  // del ámbar, igual que las dos luces del enlace.
+  marca.textContent = p.estado === 'hecho' ? '✓' : p.estado === 'en-curso' ? '›' : '·'
+  fila.append(marca, p.texto)
+  return fila
+}
+
+function unTurno(t: Turno): HTMLElement {
+  const caja = document.createElement('div')
+  caja.className = t.abierto ? 'turno' : 'turno plegado'
+  // El CONTENEDOR no lleva `data-turno`, y es a propósito: ese atributo
+  // significa «esta línea sale de un `Dicho` del log», y un bloque que agrupa
+  // tres líneas no es una de ellas. Con él puesto, contar `[data-turno]` daba
+  // tres por turno donde hay dos, y el número dejaba de decir cuántas líneas
+  // tiene el log. La identidad es de la línea; el turno es cómo se la muestra.
+
+  if (t.pedido !== undefined) {
+    const q = document.createElement('p')
+    q.className = 'pedido'
+    // `data-turno` y `data-clase` en cada línea que salga de un `Dicho`, y no es
+    // para estilar: es lo que deja afirmar «orden e identidad» y «el progreso no
+    // vuelve convertido en habla» después de una recarga, sin comparar textos.
+    // El agrupado es presentación; la identidad del log tiene que sobrevivirle.
+    q.dataset['turno'] = String(t.turno)
+    q.dataset['clase'] = 'entrada'
+    q.textContent = t.pedido
+    caja.appendChild(q)
+  }
+
+  if (t.respuesta !== undefined) {
+    const r = document.createElement('p')
+    r.className = 'respuesta'
+    r.dataset['turno'] = String(t.respuesta.turno)
+    r.dataset['clase'] = 'respuesta'
+    r.textContent = t.respuesta.texto
+    caja.appendChild(r)
+  }
+
+  if (t.pasos.length === 0) return caja
+
+  if (t.abierto) {
+    const lista = document.createElement('div')
+    lista.className = 'pasos'
+    for (const p of t.pasos) lista.appendChild(unPaso(p))
+    caja.appendChild(lista)
+    return caja
+  }
+
+  // ─── PLEGADO: LOS PASOS SE VAN Y QUEDA LA CUENTA ────────────────────────
+  //
+  // Dice «N pasos» y no «N de M» como el diseño dibuja, y el motivo es del dato:
+  // el encargo NO persiste por turno —vive el actual y nada más— así que de un
+  // turno viejo lo único que queda son sus líneas de progreso, que son todas
+  // cosas que pasaron. El M sería siempre igual al N, o sea un número que no
+  // informa. Cuando el encargo se guarde por turno, esto puede decir los dos.
+  const cuantos = document.createElement('p')
+  cuantos.className = 'cuantos'
+  cuantos.textContent = `${String(t.pasos.length)} paso${t.pasos.length === 1 ? '' : 's'}`
+  caja.appendChild(cuantos)
+  return caja
+}
 
 function charla(): void {
-  const r = ordenes.charla
-  const ultimo = r.at(-1)
-  if (ultimo !== undefined && ultimo.turno === ultimoPintado) return
+  // Las cláusulas del encargo son lo que el log NO tiene: lo que está haciendo y
+  // lo que falta. Se leen del encargo de AHORA y se le cuelgan al turno que las
+  // pidió, que el propio encargo dice cuál fue.
+  const encargo = ordenes.encargo
+  const abierto =
+    encargo === undefined
+      ? undefined
+      : {
+          turnos: encargo.turnos,
+          clausulas: clausulasDe(encargo, ordenes.metaEnCurso, enCastellano),
+        }
+  const turnos = agrupar(ordenes.charla, abierto)
+
+  const firma = firmaDelRegistro(turnos)
+  if (firma === firmaPintada) return
+  firmaPintada = firma
+
   const caja = $('registro')
-  for (const d of r) {
-    if (d.turno <= ultimoPintado) continue
-    const p = document.createElement('p')
-    // Dos clases: QUIÉN lo dijo —que es lo que el CSS ya pintaba— y de QUÉ CLASE
-    // es. El progreso no lleva la de la criatura a propósito: explica algo
-    // verificable y no es una frase suya.
-    p.className = d.clase === 'progreso' ? 'progreso' : `${quienDijo(d.clase)} ${d.clase}`
-    p.dataset['turno'] = String(d.turno)
-    p.textContent = d.texto
-    caja.appendChild(p)
-    ultimoPintado = d.turno
+  caja.replaceChildren()
+  if (turnos.length === 0) {
+    const vacio = document.createElement('p')
+    vacio.className = 'vacio'
+    vacio.textContent =
+      'Pedile algo en castellano común. Te contesta si entendió y si conoce un camino — no si va a salir bien.'
+    caja.appendChild(vacio)
+    return
   }
+  for (const t of turnos) caja.appendChild(unTurno(t))
   caja.scrollTop = caja.scrollHeight
 }
+
+/**
+ * LAS SUGERENCIAS, UNA VEZ. Salen del catálogo (ver `sugerencias.ts`) y el
+ * catálogo core no cambia dentro de una partida, así que pintarlas en cada
+ * cuadro sería rearmar seis botones para dejar los mismos seis.
+ *
+ * Clickear una **equivale a tipearla y enviar**, y por eso llama a
+ * `requestSubmit()` en vez de a `ordenes.decir()`: con una ruta propia habría dos
+ * caminos hacia la criatura y el día que uno gane un paso —guardar, limpiar el
+ * campo, pintar el acuse— el otro se queda sin él.
+ */
+function pintarSugerencias(): void {
+  const caja = $('sugerencias')
+  const campo = $('orden') as HTMLInputElement
+  const forma = $('charla') as HTMLFormElement
+  for (const frase of sugerencias()) {
+    const chip = document.createElement('button')
+    chip.type = 'button'
+    chip.textContent = frase
+    chip.addEventListener('click', () => {
+      campo.value = frase
+      forma.requestSubmit()
+    })
+    caja.appendChild(chip)
+  }
+}
+
+pintarSugerencias()
 
 /**
  * LO QUE RECUERDA, CON SU FUENTE — el C2 hecho pantalla.
