@@ -7,6 +7,12 @@
 
 El tick nunca espera a nadie porque toda decisión rápida es aritmética sobre cualidades de la materia; el LLM no decide, escribe TypeScript que un juez que ella no escribió mide antes de que pueda romper nada; y "fogata", "carbón", "pescado asado" y "caña de pescar" no son filas de una tabla sino consecuencias de once leyes que se escriben una sola vez.
 
+> **Orden de producto después del hito 12:** antes de usar esta arquitectura
+> para crear objetos nuevos, se completa la
+> [convergencia conversacional C0–C6](../product/convergencia-conversacional.md).
+> Ese plan integra conversación, memoria, `GoalGraph`, proveedor, fragua, juez,
+> persistencia y app con aceptación E2E por estado del mundo.
+
 ---
 
 # Los cinco principios que no se rompen

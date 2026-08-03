@@ -38,9 +38,15 @@ constructora, investigadora...) emergen del comportamiento.
 
 ## Horizonte
 
-- **Ahora**: núcleo de aprendizaje headless demostrable (hito 1, completado).
-- **Después**: interfaz web (Phaser + React), persistencia local, informes de
-  muerte y sucesión.
-- **Luego**: backend con identidad Nostr, IA real opcional, IA Dios (objetos
-  creados por usuarios validados contra esquemas), multijugador con servidor
-  autoritativo.
+- **Completado en Ánima I**: núcleo headless, interfaz web, persistencia local,
+  sucesión, identidad Nostr y proveedor real opcional.
+- **Ahora, después del hito 12 del remake**: cerrar la
+  [convergencia conversacional](convergencia-conversacional.md): historial que
+  alimente decisiones, recuerdos relevantes persistentes, encargos durables en
+  lenguaje natural, prioridad/interrupción y obediencia E2E comprobada por el
+  estado del mundo.
+- **Sólo después**: creación de objetos nuevos con admisión y conservación,
+  seguida por multijugador con servidor autoritativo.
+
+La creación de objetos no es parte de la promesa inmediata. Primero Ánima tiene
+que conversar, recordar y cumplir encargos complejos usando lo que ya existe.

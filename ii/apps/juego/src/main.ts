@@ -280,10 +280,11 @@ function mirar(ev: MouseEvent): void {
   const c = ahi[0]
 
   if (c === undefined) {
+    // Vacío y no «—»: los cuatro nodos son una sola frase, y un guión en el
+    // medio de una frase es ruido. El CSS pone los separadores entre los que
+    // tienen algo, así que lo que no aplica simplemente no ocupa lugar.
     $('mirado-que').textContent = `nada en (${String(at.x)}, ${String(at.y)})`
-    $('mirado-de').textContent = '—'
-    $('mirado-piezas').textContent = '—'
-    $('mirado-estado').textContent = '—'
+    for (const id of ['mirado-de', 'mirado-piezas', 'mirado-estado']) $(id).textContent = ''
     return
   }
 

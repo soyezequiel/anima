@@ -1,9 +1,28 @@
 # Hoja de ruta
 
-Lo que sigue después del MVP (fases 0–9 completas, ver `mvp.md`). Es el mapa
-de dónde crece el producto, no una promesa de orden.
+Las fases 0–9 del MVP de Ánima I están completas (ver `mvp.md`). Este documento
+conserva debajo ese mapa histórico de crecimiento. El orden inmediato del remake,
+sin embargo, sí queda fijado:
 
-## 0. Crafteo (en curso)
+## Prioridad bloqueante — convergencia conversacional
+
+Antes de ampliar objetos, recetas o leyes del mundo hay que completar el tramo
+[C0–C6 de convergencia conversacional](convergencia-conversacional.md). La meta
+es una app donde el historial alimente decisiones, los recuerdos relevantes
+persistan, un encargo natural se vuelva un `GoalGraph` durable, las urgencias lo
+interrumpan sin perderlo y el cumplimiento se pruebe contra el mundo.
+
+Hasta pasar su puerta de salida:
+
+- se trabaja sólo con objetos, procesos y capacidades existentes;
+- el proveedor, la fragua, el juez y el overlay se integran al recorrido real;
+- ningún acuse o estado de UI acredita obediencia;
+- la creación de objetos nuevos queda explícitamente pospuesta.
+
+Las secciones históricas de abajo describen capacidades y extensiones, no
+autorizan a saltar este orden.
+
+## 0. Crafteo (estado histórico de Ánima I)
 
 El objetivo: *"construí una fogata con esos troncos"* → *"me falta algo con
 qué encenderla"*, con objetos que Ánima pueda inventar sin que estén
@@ -55,10 +74,11 @@ lo que el mundo ofrece.
 
 ## 2. Extensiones post-MVP
 
-- **IA Dios**: traducir descripciones del usuario ("un glorb es un mineral azul
-  que…") a componentes validados, con previsualización. Los componentes ya son
-  datos declarativos; falta el pipeline de traducción, los esquemas y la UI.
-  Para comportamientos genuinamente nuevos, JS enjaulado (ADR 0014).
+- **Creación de objetos / IA Dios (pospuesta)**: sólo después de la puerta C0–C6,
+  traducir descripciones del usuario ("un glorb es un mineral azul que…") a
+  componentes validados, con previsualización, conservación y rollback. Para
+  comportamientos genuinamente nuevos, código enjaulado y evaluación
+  independiente. Ver la separación explícita en el plan de convergencia.
 - **Multijugador**: el diseño está en `../architecture/future-multiplayer.md` y
   la arquitectura ya lo habilita (intenciones + servidor con el mismo sim-core +
   skills como artefactos re-evaluables). No hay nada implementado.

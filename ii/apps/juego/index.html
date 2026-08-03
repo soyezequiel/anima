@@ -46,8 +46,8 @@
       dd { margin: 0; font-variant-numeric: tabular-nums; }
       h2 { font-size: 10.5px; margin: 20px 0 7px; color: var(--tenue); font-weight: 600;
            text-transform: uppercase; letter-spacing: .07em; }
-      .aviso { margin-top: 18px; padding: 9px 11px; border-left: 2px solid #4a5568;
-               color: var(--tenue); font-size: 11.5px; }
+      .aviso { margin: 18px 0 0; padding: 7px 10px; border-left: 2px solid #4a5568;
+               color: var(--tenue); font-size: 11px; line-height: 1.5; }
       .medida { margin: 0 0 11px; }
       .medida .rotulo { display: flex; justify-content: space-between; gap: 10px;
                         font-size: 11.5px; margin-bottom: 4px; }
@@ -96,6 +96,23 @@
       .catalogo canvas { width: 24px; height: 24px; border-radius: 3px;
                          border: 1px solid var(--linea); background: #1a1d23; flex: none; }
       .catalogo .sinDibujo { width: 24px; flex: none; color: var(--tenue); text-align: center; }
+      /* ─── LA FICHA: TRES COSAS Y NINGUNA ETIQUETA ────────────────────────
+         La jerarquía la hace el TAMAÑO y no un rótulo: la barra de aliento es
+         gruesa porque es lo primero que se mira, la línea de acción va en el
+         cuerpo del texto, y lo que lleva son dibujos. Un panel donde todo mide
+         lo mismo obliga a leerlo entero para saber qué importa. */
+      .ficha { margin: 0 0 4px; }
+      .barra.grande { height: 10px; border-radius: 5px; }
+      .haciendo { margin: 9px 0 5px; display: flex; justify-content: space-between;
+                  align-items: baseline; gap: 10px; font-size: 13px; }
+      .haciendo b { font-weight: 500; }
+      .haciendo span { color: var(--tenue); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+      /* Lo mirado es una frase, no cuatro filas de planilla: «vara de madera ·
+         madera · 1 parte · cruda». Se lee de un vistazo y ocupa la mitad. */
+      .mirado { margin: 0; font-size: 12px; line-height: 1.55; }
+      .mirado b { font-weight: 500; display: block; }
+      .mirado span { color: var(--tenue); font-size: 11.5px; }
+      .mirado span:not(:empty) ~ span:not(:empty)::before { content: ' · '; }
     </style>
   </head>
   <body>
@@ -123,42 +140,36 @@
         <button data-vel="16">×16</button>
       </div>
 
+      <!-- ─── LA FICHA, Y POR QUÉ NO ES UNA PLANILLA ────────────────────────
+           Esto eran doce etiquetas —«dónde está», «persigue», «sobre», «piezas»,
+           «de qué»…— cada una con su valor al lado, todas del mismo tamaño. Para
+           saber cómo estaba la criatura había que LEER doce renglones y decidir
+           cuáles importaban.
+
+           Ahora son tres cosas y ninguna lleva etiqueta, porque no la necesita:
+           una barra es un aliento, un verbo es lo que hace, y unos dibujos son lo
+           que lleva. Lo que quedó afuera no se borró: se movió a Diagnóstico, que
+           es donde vive lo que se consulta y no se mira. -->
+      <div class="ficha">
+        <div class="barra grande" id="aliento-caja"><i id="aliento-barra"></i></div>
+        <p class="haciendo"><b id="hace">quieta</b><span id="hace-cuanto"></span></p>
+        <div class="barra" id="hace-caja"><i id="hace-barra"></i></div>
+        <div class="mano" id="inventario"></div>
+      </div>
+
       <h2>Hablarle</h2>
       <form id="charla" autocomplete="off">
-        <input id="orden" type="text" placeholder="hacé fuego" />
+        <input id="orden" type="text" placeholder="hacé fuego, armá una trampa…" />
       </form>
-      <p class="sub" style="margin:8px 0 0; font-size:11px">
-        Entiende bastante más de lo que sabe hacer. Con camino hasta el final:
-        <b>fuego</b>, <b>trampa</b>, <b>cociná el pescado</b>. Lo demás te lo dice:
-        <i>«te entendí, pero no sé cómo hacerlo todavía»</i>.
-      </p>
       <div class="charla" id="registro"></div>
 
-      <h2>La criatura</h2>
-      <div class="medida">
-        <div class="rotulo"><b>aliento</b><span id="aliento">—</span></div>
-        <div class="barra" id="aliento-caja"><i id="aliento-barra"></i></div>
-      </div>
-      <div class="medida">
-        <div class="rotulo"><b id="hace">quieta</b><span id="hace-cuanto"></span></div>
-        <div class="barra" id="hace-caja"><i id="hace-barra"></i></div>
-      </div>
-      <dl>
-        <dt>dónde está</dt><dd id="donde">—</dd>
-        <dt>persigue</dt><dd id="persigue">—</dd>
-        <dt>en las manos</dt><dd id="manos">nada</dd>
-        <dt>&nbsp;</dt><dd><div class="mano" id="inventario"></div></dd>
-        <dt>sobre</dt><dd id="sobre">—</dd>
-      </dl>
-
       <h2>Lo que miraste</h2>
-      <p class="sub" style="margin:0 0 8px; font-size:11px">Hacé click en cualquier cosa del mapa.</p>
-      <dl>
-        <dt>qué es</dt><dd id="mirado-que">—</dd>
-        <dt>de qué</dt><dd id="mirado-de">—</dd>
-        <dt>piezas</dt><dd id="mirado-piezas">—</dd>
-        <dt>estado</dt><dd id="mirado-estado">—</dd>
-      </dl>
+      <p class="mirado">
+        <b id="mirado-que">hacé click en algo del mapa</b>
+        <span id="mirado-de"></span>
+        <span id="mirado-piezas"></span>
+        <span id="mirado-estado"></span>
+      </p>
 
       <details id="catalogo">
         <summary>Lo que sabe hacer</summary>
@@ -206,6 +217,14 @@
 
       <details id="diagnostico">
         <summary>Diagnóstico</summary>
+        <h2>La criatura, en detalle</h2>
+        <dl>
+          <dt>aliento</dt><dd id="aliento">—</dd>
+          <dt>dónde está</dt><dd id="donde">—</dd>
+          <dt>persigue</dt><dd id="persigue">—</dd>
+          <dt>en las manos</dt><dd id="manos">nada</dd>
+          <dt>actúa sobre</dt><dd id="sobre">—</dd>
+        </dl>
         <h2>El mundo</h2>
         <dl>
           <dt>tick</dt><dd id="tick">0</dd>
@@ -223,10 +242,10 @@
         </dl>
       </details>
 
-      <div class="aviso">
-        La pestaña abierta <b>avanza la partida real</b>. Antes de irte a hacer otra cosa,
-        pausá: este proyecto ya perdió una generación por mirar el mundo mientras corría.
-      </div>
+      <!-- El aviso decía lo mismo en cuatro renglones, con una anécdota adentro.
+           Lo que el jugador necesita saber son ocho palabras; el porqué está en el
+           encabezado de `main.ts`, que es donde lo va a buscar quien quiera saberlo. -->
+      <p class="aviso">Si te vas, <b>pausá</b>: la pestaña abierta avanza la partida.</p>
     </aside>
 
     <script type="module" src="/src/main.ts"></script>

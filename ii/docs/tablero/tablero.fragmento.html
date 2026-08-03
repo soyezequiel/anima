@@ -324,7 +324,7 @@ p { margin: 0; }
     <div class="sello">
       <span>Actualizado <b>2026-08-02</b></span>
       <span>Rama <b>anima-2</b></span>
-      <span><b>12</b> etapas listas · <b>1</b> en curso · <b>0</b> por delante · <b>2</b> sin estimar</span>
+      <span><b>13</b> etapas listas · <b>1</b> en curso · <b>0</b> por delante · <b>2</b> sin estimar</span>
     </div>
   </header>
 
@@ -347,33 +347,31 @@ p { margin: 0; }
 
   <section class="ahora" aria-label="Dónde está parado el proyecto">
     <div class="eyebrow">Dónde estás parado</div>
-    <h2>El Hito 11 cierra sus seis puntos, y de rebote se cazó un bug real del Hito 5</h2>
-    <p class="detalle">El Hito 11 (calibración y presupuestos como test) terminó sus tres puntos que faltaban el mismo día, y ninguno salió como estaba escrito. El detector de tests-que-miden-el-reloj-de-pared estaba mal medido en las DOS direcciones —eran 16 aserciones en 9 archivos, no 6 en 3— y el peor bug fue de verdad sutil: en JavaScript el `.` de una expresión regular no matchea `\r`, así que sobre un archivo con fin de línea de Windows el detector devolvía cero sin fallar en ningún lado, dando un número plausible en vez de un error. Corregido, y con eso el punto 4 cierra: la puerta `ANIMA_RELOJ=1` ya se abre en CI, en un job aparte que serializa SÓLO los paquetes que la necesitan. Y las cien partidas del punto 5 destaparon un bug de verdad: la criatura se agarraba A SÍ MISMA como si fuera un objeto para juntar, y quedaba pegada — 33 de 100 partidas. El usuario eligió la reparación que protege a las quince innatas y a lo que escriba el modelo (una guarda del mundo, no un parche de una habilidad), y bajó a 0 sin mover ninguna otra cuenta. Efecto colateral medido: la criatura vive más tiempo porque deja de gastar en un acto que el mundo le iba a negar siempre.</p>
+    <h2>El Hito 12 (la UI) cierra sus tres partes, y jugarlo de verdad encontró lo que medirlo no veía</h2>
+    <p class="detalle">12B cerró NUEVE DE NUEVE: nacieron @anima/dibujo (glifo procedural — paleta por familia de material, trama por cualidad, hereda el mecanismo de dos ejes de Ánima I y tira su mitad frágil de adivinar por nombre), @anima/sprites (arte del modelo con depósito compartido) y @anima/juego (mapa, panel, chat, guardado). El bucle pasó de `partida.tick()` a `vivir()` — antes de eso el panel decía «quieta» para siempre porque nadie emitía intenciones. Y 12C cerró sus SIETE casos del ADR II-0017, con un hallazgo: un objeto en la mano y el mismo objeto desplegado se dibujaban IDÉNTICOS, aunque uno está trabajando y el otro no — nadie leía el campo `desplegado`. Los tres paneles (mapa, inventario, catálogo) coinciden por construcción, llamando a la misma función, no por acordarse de mantenerlos iguales. Y las dos fallas reales que venía marcando —`@anima/lang` y `@anima/sprites`— se arreglaron de paso: eran preexistentes, encontradas por jugar el juego de verdad. De yapa, jugarlo destapó que «traé un palo» no funcionaba: costó tres intentos, dos revertidos, hasta encontrar que había que mover el veto de la tabla al paisaje. No toca el criterio del Hito 5.</p>
     <ol>
-      <li>ENSEÑARLE A LA MENTE A JUNTAR MASA sigue siendo lo único que falta para que la criatura cocine: la materia está, el plan que la junte no. Es trabajo, no una decisión.</li>
+      <li>ENSEÑARLE A LA MENTE A JUNTAR MASA sigue siendo lo único que falta para que la criatura cocine: la materia está, el plan que la junte no.</li>
       <li>Nueva decisión que espera: los atadores. Se puede armar el cuerpo que cocina en 11 de 20 semillas, pero sólo hay atadores para armarlo en 5.</li>
-      <li>`solidos-solapados` sigue en 15 de 100 partidas — es el decreto que siembra en la celda del pozo, ya nombrado desde el Hito 5, y no es de este tramo.</li>
-      <li>SIN COMMITEAR: el trabajo del Hito 12 creció — ahora son TRES apps nuevas (dibujo, sprites, juego) más cambios al descriptor visual. Sigue sin contar como hecho.</li>
-      <li>SIN ARREGLAR, dos actualizaciones seguidas: @anima/lang tiene 1 falla real (adjectivesOf desincronizado de body.ts, 3 contra 9 esperados). No es flake — reproduce aislado las dos veces que se corrió.</li>
-      <li>NUEVA FALLA: @anima/sprites, 4 de 9. El depósito HTTP compartido de dibujos rechaza un alta que debería entrar (422 en vez de 201) y no deduplica por clave (dos altas de lo mismo dan 201 y 201, no 201 y 200). Confirmado que no es contaminación entre corridas.</li>
+      <li>El catálogo del juego muestra la lista de obras aprendidas VACÍA a propósito: hoy nadie corre la fragua adentro del juego. Es información, no un hueco tapado.</li>
+      <li>`solidos-solapados` sigue en 15 de 100 partidas — es el decreto que siembra en la celda del pozo, ya nombrado desde el Hito 5.</li>
     </ol>
   </section>
 
   <section class="salud" aria-label="Estado del árbol">
       <div class="dato">
-        <div class="dato-valor">3166 de 3176</div>
+        <div class="dato-valor">3222 pasan, 0 fallan</div>
         <div class="dato-etiqueta">tests</div>
-        <div class="dato-nota">cuadro completo (corrido sin el bail por defecto de pnpm, que frenaba en el primer roto): 5 fallas (sprites 4, lang 1), 4 skipped, 1 todo. Los otros 11 paquetes verdes: llm 20 · physics 679 · oracle 270 · world 639 · dibujo 108 · skills 193 · plan 337 · perceive 142 · judge 97 · forge 99 · mind 342 · store 16 · emergencia 133</div>
+        <div class="dato-nota">re-corrido y confirmado, exit 0, cuadro completo. Las dos fallas de las dos actualizaciones anteriores YA NO ESTÁN: sprites 4 rotos → 9/9, lang 1 roto → 95/95 (creció) · dibujo 115 · mind 342 · world 642+3 skip · plan 337+1 todo · emergencia 133+1 skip · juego 33 (nuevo) · physics 679 · oracle 270 · skills 193 · perceive 142 · judge 97 · forge 99 · store 16 · llm 20</div>
       </div>
       <div class="dato">
         <div class="dato-valor">14 de 14</div>
         <div class="dato-etiqueta">typechecks limpios</div>
-        <div class="dato-nota">re-verificado acá, exit 0, con TODO el trabajo sin commitear adentro (incluida la app juego, nueva desde la vez pasada)</div>
+        <div class="dato-nota">re-verificado acá, exit 0</div>
       </div>
       <div class="dato">
         <div class="dato-valor">14</div>
         <div class="dato-etiqueta">paquetes</div>
-        <div class="dato-nota">re-contado acá, sin cambios · @anima/dibujo sigue siendo el único paquete nuevo; juego y sprites son apps, no paquetes</div>
+        <div class="dato-nota">re-contado acá, sin cambios · @anima/dibujo ya committeado. juego y sprites son apps, no paquetes</div>
       </div>
       <div class="dato">
         <div class="dato-valor">65</div>
@@ -386,9 +384,9 @@ p { margin: 0; }
         <div class="dato-nota">re-contado acá, sin cambios</div>
       </div>
       <div class="dato">
-        <div class="dato-valor">creció: +app juego</div>
-        <div class="dato-etiqueta">sin commitear</div>
-        <div class="dato-nota">0 commits sin pushear. El Hito 12 ahora son TRES apps sin commitear (dibujo, sprites, juego) más los cambios al descriptor visual — nada de esto cuenta como hecho</div>
+        <div class="dato-valor">15</div>
+        <div class="dato-etiqueta">commits sin pushear</div>
+        <div class="dato-nota">rama anima-2 — el Hito 12 entero (12B, 12C, y la capacidad de agarrar). El usuario pushea solo</div>
       </div>
   </section>
 
@@ -716,23 +714,23 @@ p { margin: 0; }
         </details>
         </div>
       </article>
-      <article class="etapa no">
+      <article class="etapa si">
         <div class="rail" aria-hidden="true"><span class="punto-rail"></span></div>
         <div class="cuerpo">
           <div class="encabezado">
             <span class="id">H12</span>
             <h3>La UI presentable</h3>
-            <span class="chip no">Sin estimación</span>
+            <span class="chip si">Listo</span>
           </div>
           <p class="frase">El mapa es la vista principal, la criatura se ve moverse, y el chat acompaña sin reemplazarlo.</p>
-          <div class="medidas"><span class="marcador" title="criterios que cumplen">1<span class="barra-diagonal">/</span>3</span><span class="semanas apagado">sin estimar</span></div>
-        <p class="nota">Va DESPUÉS del Hito 11 igual, y sigue sin estimación propia: el modelo de datos (12A) se puede probar sin un solo píxel, y ya está. El visor que lo probó dibuja cuadrados a propósito — es una herramienta de descarte para mirar el dato, no la UI real. Todavía no hay estilo gráfico, paleta ni distribución elegidos.</p>
+          <div class="medidas"><span class="marcador" title="criterios que cumplen">3<span class="barra-diagonal">/</span>3</span><span class="semanas apagado">sin estimar</span></div>
+        <p class="nota">Cierra sin estimación propia, como decía el plan: no se calcula un total nuevo sin base, así que este hito no mueve el porcentaje aunque esté terminado. Dos hallazgos de jugarlo de verdad, no de medirlo: el aliento tiene que viajar en ENTEROS (crudo hacía que el 100% de los ticks cambiaran, por el metabolismo) y una ventana angosta mandaba el panel entero debajo del mapa —verificado con setViewportSize, porque mirando la captura la página seguía creyendo que medía 980 px—. Y de paso, jugarlo destapó que «traé un palo» no funcionaba: el planificador no sabía agarrar algo que ya estaba a la vista. Costó tres intentos (dos revertidos) y cerró moviendo el veto de la tabla al paisaje; no toca el criterio del Hito 5, que sigue en 3 de 6 con el plan canónico sin moverse.</p>
         <details class="criterios">
           <summary>3 criterios</summary>
           <ul>
           <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>12A · el view model: mapa, criatura, cuerpos, relaciones y deltas deterministas, con la propiedad aplicarDelta(a, deltaEntre(a,b)) === b afirmada por hash. Verificado con un visor que reconstruyó 441 cuadros y los comparó por hash contra la partida grabada</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>12B · la vertical visible: nueve cosas, y son la definición de «presentable»</span></li>
-          <li class="punto no"><span class="punto-marca" aria-label="falta">·</span><span>12C · los objetos emergentes en pantalla, con fallback procedural obligatorio</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>12B · la vertical visible, NUEVE DE NUEVE: nace @anima/dibujo (glifo procedural: paleta por familia de material, trama por cualidad), @anima/sprites (arte del modelo, con depósito compartido) y @anima/juego (mapa, panel, chat, guardado). El bucle pasa de partida.tick() a vivir(): antes de este cambio el panel decía «quieta» para siempre porque nadie emitía intenciones. Verificado en un navegador de verdad: 17 de 17 specs de Playwright en CI</span></li>
+          <li class="punto si"><span class="punto-marca" aria-label="cumple">✓</span><span>12C · los objetos emergentes en pantalla, los SIETE casos del ADR II-0017: sin sprite (fallback procedural), obra incompleta, terminado, desplegado (una franja de sombra), con captura (una marca por pieza retenida), el catálogo («lo que sabe hacer», en castellano), y los tres paneles coherentes por construcción —mapa, inventario y catálogo llaman a la MISMA función de dibujo, no se comparan a mano</span></li>
           </ul>
         </details>
         </div>
@@ -791,20 +789,20 @@ p { margin: 0; }
   <section class="seccion">
     <header>
       <h2>Qué se corrió, y qué salió</h2>
-      <p>SIN COMMITS NUEVOS, segunda vez seguida (HEAD sigue en 0925443). El árbol de trabajo sin commitear del Hito 12 creció (sumó la app juego) y la falla real en @anima/lang de la vez pasada SIGUE sin arreglar, re-verificada aislada. Nada de esto cuenta como hecho en las etapas de abajo.</p>
+      <p>15 COMMITS NUEVOS: el Hito 12 (12B y 12C) cerró, y de paso arregló las dos fallas reales que se venían marcando. Re-verificado en esta máquina contra el árbol tal como quedó tras b50e030 (el catálogo, punto 6 y 7 del 12C).</p>
     </header>
     <div class="corridas">
       <div class="corrida si">
         <code>pnpm ii:typecheck</code>
-        <span class="resultado">exit 0 · 14 de 14 proyectos (con el trabajo sin commitear adentro)</span>
+        <span class="resultado">exit 0 · 14 de 14 proyectos</span>
       </div>
-      <div class="corrida rojo">
-        <code>pnpm ii:test</code>
-        <span class="resultado">2 fallas reales, verificadas cada una sola: @anima/lang sigue con adjectivesOf (3 contra 9, sin arreglar) y @anima/sprites suma 4 de 9 (depósito HTTP: 422 en vez de 201, y no deduplica por clave). Relanzada entera para tener el resto del cuadro</span>
+      <div class="corrida si">
+        <code>pnpm --no-bail --filter &quot;./ii/**&quot; run test</code>
+        <span class="resultado">exit 0 · 3222 pasan, 0 fallan. Confirmado: las dos fallas de lang y sprites ya no están</span>
       </div>
       <div class="corrida si">
         <code>grep it.fails ii/packages</code>
-        <span class="resultado">65 llamadas reales, −4</span>
+        <span class="resultado">65 llamadas reales, sin cambios</span>
       </div>
       <div class="corrida si">
         <code>ls ii/docs/decisions</code>
@@ -812,7 +810,7 @@ p { margin: 0; }
       </div>
       <div class="corrida si">
         <code>git fetch &amp;&amp; git log origin/anima-2..HEAD</code>
-        <span class="resultado">0 commits sin pushear</span>
+        <span class="resultado">15 commits sin pushear</span>
       </div>
       <div class="corrida si">
         <code>ANIMA_LLM=claude … con-el-modelo.ts</code>

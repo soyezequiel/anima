@@ -71,9 +71,15 @@ test('lo que se toca una vez va plegado, y lo que se usa siempre no', async ({ p
   await abrir(page)
 
   // Lo de todos los días, a la vista sin abrir nada.
+  //
+  // El aliento se mira por su BARRA y no por su número, y el cambio es la
+  // reparación: el número se fue a Diagnóstico junto con las otras cuatro filas
+  // de la ficha vieja. Una barra dice «cómo viene» de un vistazo y un `953 / 1000`
+  // hay que leerlo y dividirlo — que es la carga que este panel tenía de más.
   await expect(page.locator('#orden')).toBeVisible()
-  await expect(page.locator('#aliento')).toBeVisible()
+  await expect(page.locator('#aliento-caja')).toBeVisible()
   await expect(page.locator('[data-vel="0"]')).toBeVisible()
+  await expect(page.locator('#hace')).toBeVisible()
   await expect(page.locator('#mirado-que')).toBeVisible()
 
   // Y lo que se toca una vez, plegado: el panel tenía nueve secciones apiladas
