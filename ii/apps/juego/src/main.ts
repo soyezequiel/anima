@@ -247,6 +247,7 @@ for (const b of zooms) {
   b.addEventListener('click', () => {
     zoom = Number(b.dataset['zoom'] ?? '2')
     for (const otro of zooms) otro.classList.toggle('on', otro === b)
+    $('zoom-dice').textContent = `×${String(zoom)}`
     // El zoom cambia cuánto ocupa una celda, así que cambia cuántas entran. Sin
     // esto, el ×4 dibujaría el mismo encuadre cuatro veces más grande y se
     // saldría de la ventana — que es lo que hacía cuando el encuadre era fijo.
@@ -375,6 +376,11 @@ function hud(escena: ReturnType<typeof escenaDe>): void {
   // dato y una sola línea que lo produce. Duplicar el nodo es barato; duplicar
   // de dónde sale el número es cómo se llega a dos relojes que no coinciden.
   $('reloj').textContent = `tick ${String(s.tick)} · ${reloj.phase}`
+  // SEGUNDOS DE MUNDO y no de reloj de pared: el tiempo del mundo va en
+  // segundos y no en ticks (ADR II-0008), así que cocinar tarda lo mismo a 10,
+  // 20 o 100 Hz. Mostrar sólo el tick esconde eso justo en el panel que se mira
+  // para entender el ritmo.
+  $('segundos').textContent = `${(s.tick / HZ).toFixed(1)} s`
   $('faltan').textContent = String(sprites.loQueFalta().length)
 }
 
@@ -531,7 +537,7 @@ function refrescarElGlobo(): void {
     firmaDelGlobo = firma
     const dibujo = $('globo-dibujo')
     dibujo.replaceChildren()
-    if (s !== undefined) dibujo.appendChild(enUnCanvas(s.d, 24))
+    if (s !== undefined) dibujo.appendChild(enUnCanvas(s.d, 24, s.esAgente))
     $('globo-que').textContent = s?.titulo ?? `nada en (${String(celda.x)}, ${String(celda.y)})`
     // Las tres frases seguidas, igual que el cartel: es una línea de lectura y
     // no una planilla. Las vacías no dejan un separador colgado.
@@ -598,7 +604,7 @@ let firmaDelCartel = ''
 
 function escribirElCartel(s: Senalado): void {
   cartel.replaceChildren()
-  const dibujo = enUnCanvas(s.d, 24)
+  const dibujo = enUnCanvas(s.d, 24, s.esAgente)
   dibujo.className = 'glifo'
   cartel.appendChild(dibujo)
 
@@ -721,6 +727,7 @@ function panel(escena: ReturnType<typeof escenaDe>): void {
   // de números, «se mueve» sólo se puede afirmar mirando el fondo pasar.
   $('donde').textContent = `${String(escena.foco.x)}, ${String(escena.foco.y)}`
 
+  muestrearElAliento(c.aliento.fraccion)
   $('aliento').textContent = `${String(c.aliento.valor)} / ${String(c.aliento.de)}`
   $('aliento-barra').style.width = `${String(c.aliento.fraccion * 100)}%`
   $('aliento-caja').classList.toggle('poco', c.aliento.fraccion < ALIENTO_FLACO)
@@ -749,15 +756,6 @@ function panel(escena: ReturnType<typeof escenaDe>): void {
 
   $('manos').textContent = c.manos.length > 0 ? c.manos.join(' · ') : 'nada'
 
-  // DE QUIÉN ES LA META, y no sólo cuál. Sin esto el jugador cree que todo lo que
-  // ve es consecuencia de lo que pidió: la criatura persigue metas propias
-  // también, y el drive del cuidador compite con ellas en vez de reemplazarlas.
-  const meta = ordenes.enCurso
-  $('persigue').textContent =
-    meta === undefined
-      ? '—'
-      : `${meta.meta} (${meta.de === 'vos' ? 'tuya' : 'suya'})` +
-        (meta.total > 1 ? ` · ${String(meta.hechas + 1)} de ${String(meta.total)}` : '')
 }
 
 /**
@@ -767,9 +765,22 @@ function panel(escena: ReturnType<typeof escenaDe>): void {
  * catálogo»— y la garantía no es que las tres se parezcan: es que **las tres
  * llaman a esto**, con el mismo descriptor. Coinciden por construcción, no porque
  * alguien se acuerde de mantenerlas iguales.
+ *
+ * ─── Y EL QUINTO PARÁMETRO FALTABA, QUE ERA JUSTO EL CASO 7 FALLANDO ───────
+ *
+ * `glifoDe` toma un `esAgente` y `componer.ts` lo usa para pedir la clave de
+ * CRIATURA en vez de la de la materia — «una criatura pide un dibujo de
+ * criatura, no uno de la materia de la que está hecha», dice ahí. `mapa.ts` se
+ * lo pasaba y esto no, así que la criatura salía como el MUÑECO en el mapa y
+ * como un bloque de carne en el cartel, en el globo y en el inspector: la misma
+ * cosa, dibujada por la misma función, vista de dos maneras.
+ *
+ * Y el dato nunca faltó: `Senalado.esAgente` existe desde que se escribió
+ * `lo-senalado.ts`. Estaba publicado y no lo leía nadie, que es la forma más
+ * cara que tiene un bug de esconderse.
  */
-function enUnCanvas(d: RenderDescriptor, grilla: number): HTMLCanvasElement {
-  const px = pintar(glifoDe(d, PHYS, grilla, sprites))
+function enUnCanvas(d: RenderDescriptor, grilla: number, esAgente = false): HTMLCanvasElement {
+  const px = pintar(glifoDe(d, PHYS, grilla, sprites, esAgente))
   const cv = document.createElement('canvas')
   cv.width = px.length
   cv.height = px.length
@@ -1139,6 +1150,390 @@ $('charla').addEventListener('submit', (ev) => {
   recuerdos()
 })
 
+// ─── EL MODO DEV Y SU DOCK ──────────────────────────────────────────────────
+//
+// Un solo interruptor decide cuánta pantalla hay. Apagado quedan TRES cosas: el
+// mapa, la charla y quién está del otro lado. Todo lo demás —los ocho módulos—
+// es para mirar cómo funciona esto por dentro, y mirar cómo funciona por dentro
+// no es jugar.
+//
+// ─── POR QUÉ EL TOPE ES CUATRO Y NO «LOS QUE QUIERAS» ──────────────────────
+//
+// Con cinco abiertos, cada panel mide 180 px de ancho sobre una ventana de 1440
+// menos la charla: ahí no entra ni una fila de `dl` sin envolverse, así que lo
+// que se gana en cantidad se pierde en poder leer alguno. Y el dock crece hacia
+// arriba comiéndose el mapa, que es lo que este rediseño vino a evitar.
+//
+// El quinto CIERRA EL MÁS VIEJO en vez de rebotar. Rebotar obligaría a acordarse
+// de cuál cerrar antes de abrir el que se quiere; cerrar el más viejo hace lo
+// que la persona iba a hacer igual, y el renglón de la derecha lo dice antes.
+const MODULOS = [
+  ['diagnostico', 'Diagnóstico', 'tick, segundos, cuadro, ticks perdidos y la criatura en detalle'],
+  ['aliento', 'Aliento', 'cómo viene el aliento en los últimos diez minutos de mundo'],
+  ['plan', 'Plan de la mente', 'qué meta persigue ahora y qué pasos le faltan'],
+  ['catalogo', 'Catálogo', 'las metas que sabe conseguir y las obras que aprendió a armar'],
+  ['ver', 'Ver y dibujar', 'zoom del mapa, y pedirle dibujos a Codex'],
+  ['partida', 'La partida', 'dónde se guardó, con qué semilla, y empezar de cero'],
+  ['journal', 'Journal', 'lo que pasó, lo último arriba, con de dónde salió cada cosa'],
+  ['inspector', 'Inspector', 'el cuerpo que clickeaste, en detalle'],
+] as const
+
+const TOPE_DE_MODULOS = 4
+const DONDE_SE_GUARDA = 'anima:dock'
+
+/**
+ * LO QUE EL DOCK RECUERDA ENTRE SESIONES, y no es una comodidad.
+ *
+ * Quien prende el modo dev lo prende porque está mirando algo, y va a seguir
+ * mirándolo después de recargar — recargar es justamente lo que hace todo el
+ * tiempo. Que se apague solo obliga a rearmar la pantalla en cada vuelta.
+ *
+ * Se lee con desconfianza: un `localStorage` es texto que cualquiera edita, y
+ * una clave vieja de una versión anterior puede traer módulos que ya no
+ * existen. Lo que no se reconoce se descarta en silencio en vez de reventar,
+ * que es la misma decisión que el juego toma con un guardado ilegible.
+ */
+interface LoGuardadoDelDock {
+  dev: boolean
+  abiertos: string[]
+}
+
+function leerElDock(): LoGuardadoDelDock {
+  const idsQueExisten = new Set(MODULOS.map(([id]) => id as string))
+  const porOmision: LoGuardadoDelDock = { dev: false, abiertos: ['diagnostico', 'aliento', 'plan'] }
+  try {
+    const crudo: unknown = JSON.parse(localStorage.getItem(DONDE_SE_GUARDA) ?? 'null')
+    if (typeof crudo !== 'object' || crudo === null) return porOmision
+    const o = crudo as Record<string, unknown>
+    const lista = Array.isArray(o['abiertos']) ? o['abiertos'] : []
+    return {
+      dev: o['dev'] === true,
+      abiertos: lista.filter((x): x is string => typeof x === 'string' && idsQueExisten.has(x)).slice(0, TOPE_DE_MODULOS),
+    }
+  } catch {
+    return porOmision
+  }
+}
+
+const guardado = leerElDock()
+let dev = guardado.dev
+/** En orden de APERTURA, del más viejo al más nuevo. Ver `abrirOCerrar`. */
+let abiertos = guardado.abiertos
+
+function recordarElDock(): void {
+  try {
+    localStorage.setItem(DONDE_SE_GUARDA, JSON.stringify({ dev, abiertos }))
+  } catch {
+    // Modo privado, cuota llena, permisos. El dock funciona igual esta sesión:
+    // lo único que se pierde es que la próxima arranque como ésta terminó.
+  }
+}
+
+const dock = $('dock')
+const interruptor = $('modo-dev')
+
+function pintarElDock(): void {
+  interruptor.setAttribute('aria-checked', String(dev))
+  dock.hidden = !dev
+  for (const [id] of MODULOS) {
+    const abierto = abiertos.includes(id)
+    $(`chip-${id}`).classList.toggle('on', abierto)
+    const panel = document.querySelector<HTMLElement>(`[data-modulo="${id}"]`)
+    if (panel !== null) panel.hidden = !abierto
+  }
+  $('sin-modulos').hidden = abiertos.length > 0
+  $('cuantos-modulos').textContent =
+    `${String(abiertos.length)} de ${String(TOPE_DE_MODULOS)} · click para abrir o cerrar`
+  recordarElDock()
+}
+
+/**
+ * ABRIR O CERRAR UN MÓDULO, y las DOS listas que esto necesita.
+ *
+ * `abiertos` va en orden de APERTURA porque de eso depende cuál se cierra al
+ * abrir el quinto. Pero los PANELES se dibujan en el orden fijo de los chips, y
+ * no en el de apertura: con el orden de apertura, abrir uno reacomoda a los tres
+ * que ya estaban y el ojo pierde el que estaba leyendo. Un orden decide qué se
+ * va; el otro, dónde está cada cosa. No son el mismo orden y no se pueden
+ * unificar sin perder una de las dos propiedades.
+ */
+function abrirOCerrar(id: string): void {
+  abiertos = abiertos.includes(id)
+    ? abiertos.filter((x) => x !== id)
+    : [...abiertos, id].slice(-TOPE_DE_MODULOS)
+  pintarElDock()
+}
+
+for (const [id, nombre, ayuda] of MODULOS) {
+  const chip = document.createElement('button')
+  chip.type = 'button'
+  chip.id = `chip-${id}`
+  chip.title = ayuda
+  chip.textContent = nombre
+  chip.addEventListener('click', () => {
+    abrirOCerrar(id)
+  })
+  $('chips').appendChild(chip)
+}
+
+interruptor.addEventListener('click', () => {
+  dev = !dev
+  pintarElDock()
+})
+// Con teclado también: es un `role="switch"` con `tabindex`, así que prometer
+// que se puede llegar sin prometer que se puede accionar sería peor que nada.
+interruptor.addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Enter' && ev.key !== ' ') return
+  ev.preventDefault()
+  dev = !dev
+  pintarElDock()
+})
+
+pintarElDock()
+$('semilla').textContent = String(SEMILLA)
+
+/**
+ * LOS FLOTANTES SE CORREN CUANDO APARECE EL DOCK, y el corrimiento TIENE TOPE.
+ *
+ * El alto se MIDE del DOM y no se supone, y no es prolijidad: la fila de chips
+ * se envuelve en una ventana angosta, así que el dock mide una cosa o dos según
+ * el ancho. Con una constante, la barra de velocidad termina debajo del dock
+ * justo en las ventanas donde menos lugar hay.
+ *
+ * Y el tope: sin él, en una ventana de 540 px de alto un dock de 320 manda la
+ * ficha de la criatura encima de las lámparas del enlace. Por arriba del tope la
+ * ficha se queda quieta y es el dock el que la tapa — que es preferible a dos
+ * textos superpuestos, porque un texto tapado se ve tapado y dos superpuestos se
+ * ven rotos.
+ */
+const AIRE_PARA_LO_DE_ARRIBA = 210
+const ficha = $('ficha')
+// `barraDeVelocidad` y no `velocidad`: ese nombre ya es el número del mundo, y
+// dos cosas con el mismo nombre en el mismo archivo son un bug esperando.
+const barraDeVelocidad = $('velocidad')
+
+/**
+ * EL ALTO DEL DOCK Y EL HUECO QUE HAY, juntos en una cadena.
+ *
+ * El diseño lista un `dockAlto` como estado y acá no existe como variable, a
+ * propósito: nadie más lo necesita. El globo del click, que es el otro que tiene
+ * que esquivar al dock, ya lo esquiva sin saber que existe — mide hasta la barra
+ * de velocidad, y la barra de velocidad se corrió arriba del dock. Un número
+ * guardado que sólo se usa para compararlo consigo mismo es una segunda verdad
+ * sobre el alto del dock esperando a desincronizarse.
+ */
+let corridoEn = ''
+
+function correrLosFlotantes(): void {
+  const alto = dev ? dock.offsetHeight : 0
+  const hueco = Math.max(0, pantalla.clientHeight - AIRE_PARA_LO_DE_ARRIBA)
+  // Los DOS entran en la guarda y no sólo el alto del dock: el tope depende de
+  // cuánta ventana hay, así que achicar la ventana con el dock quieto cambia el
+  // corrimiento sin cambiar el dock. Con la guarda sobre el alto solo, la ficha
+  // se queda donde estaba y se pisa con las lámparas justo al achicar.
+  const asiEsta = `${String(alto)}|${String(hueco)}`
+  if (asiEsta === corridoEn) return
+  corridoEn = asiEsta
+  const corrimiento = Math.min(alto, hueco)
+  ficha.style.bottom = `${String(corrimiento + (dev ? 78 : 76))}px`
+  barraDeVelocidad.style.bottom = `${String(corrimiento + (dev ? 20 : 18))}px`
+}
+
+// ─── EL ALIENTO EN EL TIEMPO ────────────────────────────────────────────────
+//
+// El único módulo que no muestra un número sino una HISTORIA, y es lo que la
+// barra de la ficha no puede dar: la barra dice cómo está, esto dice hacia dónde
+// va. Una criatura al 40% que viene bajando y una al 40% que viene subiendo son
+// la misma barra y dos situaciones distintas.
+//
+// ─── SE MUESTREA POR TICK DEL MUNDO Y NO POR CUADRO ────────────────────────
+//
+// Es la misma regla que el encabezado de este archivo declara para el tick y el
+// cuadro: muestreando por cuadro, la serie mediría la placa de video —a ×16 el
+// mundo avanza dieciséis veces más rápido y la misma cantidad de muestras
+// cubriría dieciséis veces menos mundo—. Por tick, diez minutos de mundo son
+// diez minutos de mundo a cualquier velocidad, incluso en pausa.
+const MUESTRAS = 120
+/** Diez minutos de mundo repartidos en 120 muestras: una cada cinco segundos. */
+const TICKS_POR_MUESTRA = 5 * HZ
+const serieDeAliento: number[] = []
+let ultimaMuestra = -1
+let serieDibujada = ''
+
+function muestrearElAliento(fraccion: number): void {
+  const t = partida.state.tick
+  if (Math.floor(t / TICKS_POR_MUESTRA) === ultimaMuestra) return
+  ultimaMuestra = Math.floor(t / TICKS_POR_MUESTRA)
+  serieDeAliento.push(fraccion)
+  if (serieDeAliento.length > MUESTRAS) serieDeAliento.shift()
+}
+
+function dibujarLaSerie(): void {
+  const cv = $('serie-aliento') as HTMLCanvasElement
+  // El buffer se lleva al tamaño en pantalla: un canvas estirado por CSS dibuja
+  // una línea de 1,4 px como una mancha de tres.
+  const ancho = Math.max(1, Math.round(cv.clientWidth))
+  const alto = Math.max(1, Math.round(cv.clientHeight))
+  const firma = `${String(ancho)}x${String(alto)}|${serieDeAliento.map((v) => v.toFixed(3)).join(',')}`
+  if (firma === serieDibujada) return
+  serieDibujada = firma
+  if (cv.width !== ancho || cv.height !== alto) {
+    cv.width = ancho
+    cv.height = alto
+  }
+  const ctx = cv.getContext('2d')
+  if (ctx === null) return
+  ctx.clearRect(0, 0, ancho, alto)
+  if (serieDeAliento.length < 2) return
+
+  // La escala del eje de abajo es SIEMPRE la ventana entera y no lo que hay:
+  // con dos muestras ocupando todo el ancho, la serie parecería llena de
+  // historia cuando recién arranca.
+  const paso = ancho / (MUESTRAS - 1)
+  const enY = (v: number): number => alto - v * (alto - 2) - 1
+  const camino = new Path2D()
+  serieDeAliento.forEach((v, i) => {
+    const x = i * paso
+    if (i === 0) camino.moveTo(x, enY(v))
+    else camino.lineTo(x, enY(v))
+  })
+
+  const relleno = new Path2D(camino)
+  relleno.lineTo((serieDeAliento.length - 1) * paso, alto)
+  relleno.lineTo(0, alto)
+  relleno.closePath()
+  ctx.fillStyle = 'rgba(109, 158, 108, .14)'
+  ctx.fill(relleno)
+
+  ctx.strokeStyle = '#6d9e6c'
+  ctx.lineWidth = 1.4
+  ctx.lineJoin = 'round'
+  ctx.stroke(camino)
+}
+
+/**
+ * EL RENGLÓN DE ABAJO DE LA SERIE, que es lo que la hace legible sin ejes.
+ *
+ * El gráfico no lleva ni ejes ni grilla —lo que se lee de una serie de vida es
+ * la FORMA— pero sin un solo número no se sabe si esos diez minutos son diez
+ * minutos o son los tres que lleva la partida. Dice las dos cosas que faltan:
+ * cuánto mundo cubre lo dibujado, y de cuánto es el techo.
+ */
+function pieDeLaSerie(): void {
+  const cubre = (serieDeAliento.length - 1) * (TICKS_POR_MUESTRA / HZ)
+  $('serie-dice').textContent =
+    serieDeAliento.length < 2
+      ? 'todavía no hay historia: la primera muestra sale a los cinco segundos de mundo'
+      : `los últimos ${String(Math.round(cubre))} s de mundo · el techo es el aliento lleno`
+}
+
+/**
+ * EL PLAN DE LA MENTE, y de quién es la meta.
+ *
+ * `DE QUIÉN` no es un adorno y se descubrió escribiendo un test: con la mente
+ * conectada y sin ninguna orden, la criatura ya persigue metas propias, porque
+ * el `drive` del cuidador COMPITE con sus necesidades en vez de reemplazarlas.
+ * Entonces «hay una meta en curso» no distingue obedecer de vivir, y una
+ * pantalla que no lo dijera haría creer que todo lo que se ve es consecuencia
+ * de lo que se pidió.
+ *
+ * Los pasos los dibuja `unPaso()`, el MISMO que pinta los del turno abierto de
+ * la charla. No es ahorro de líneas: dos vistas del mismo dato que se parecen
+ * por casualidad se separan el día que alguien toca una sola.
+ */
+function planDeLaMente(): void {
+  const meta = ordenes.enCurso
+  $('persigue').textContent =
+    meta === undefined
+      ? '—'
+      : `${meta.meta} (${meta.de === 'vos' ? 'tuya' : 'suya'})` +
+        (meta.total > 1 ? ` · ${String(meta.hechas + 1)} de ${String(meta.total)}` : '')
+
+  const encargo = ordenes.encargo
+  const pasos = encargo === undefined ? [] : clausulasDe(encargo, ordenes.metaEnCurso, enCastellano)
+  const caja = $('plan-pasos')
+  const firma = pasos.map((p) => `${p.estado}:${p.texto}`).join('|')
+  if (caja.dataset['firma'] !== firma) {
+    caja.dataset['firma'] = firma
+    caja.replaceChildren()
+    for (const p of pasos) caja.appendChild(unPaso(p))
+  }
+  // Y se dice por qué la lista está vacía, que son dos motivos distintos: no le
+  // pediste nada, o le pediste UNA sola cosa y el pedido ya la dice entera.
+  $('plan-nota').textContent =
+    pasos.length > 0
+      ? ''
+      : encargo === undefined
+        ? 'No le pediste nada. Lo que persigue, si persigue algo, es suyo.'
+        : 'Un pedido de una sola parte no tiene pasos que listar: es el pedido.'
+}
+
+/**
+ * EL INSPECTOR: lo mismo que el globo, con lo que el globo deja afuera.
+ *
+ * El globo dice lo justo para seguir mirando el mapa; acá se queda escrito y con
+ * el id crudo, que es lo único de todo esto que sirve para ir a buscar el cuerpo
+ * a un log o a un test. Los dos salen de `lo-senalado.ts`, así que no se pueden
+ * contradecir — es el mismo caso 7 del 12C que ya cuidan el mapa, la bandeja y
+ * el catálogo.
+ */
+let inspeccionado = ''
+
+function inspector(): void {
+  const caja = $('inspector')
+  const celda = anclada
+  const e = ultimaEscena
+  if (celda === undefined || e === undefined) {
+    if (inspeccionado === 'nada') return
+    inspeccionado = 'nada'
+    caja.replaceChildren()
+    const vacio = document.createElement('p')
+    vacio.className = 'vacio'
+    vacio.textContent = 'hacé click en algo del mapa'
+    caja.appendChild(vacio)
+    return
+  }
+
+  const s = loSenaladoEn(e, celda, PHYS)
+  const pie = piePara(s, celdaEnEscena(e, celda))
+  const firma = `${String(celda.x)},${String(celda.y)}|${firmaDe(s)}|${pie}`
+  if (firma === inspeccionado) return
+  inspeccionado = firma
+  caja.replaceChildren()
+
+  const cabeza = document.createElement('div')
+  cabeza.className = 'cabeza'
+  if (s !== undefined) cabeza.appendChild(enUnCanvas(s.d, 24, s.esAgente))
+  const que = document.createElement('b')
+  que.textContent = s?.titulo ?? 'nada acá'
+  cabeza.appendChild(que)
+  caja.appendChild(cabeza)
+
+  const filas: readonly (readonly [string, string])[] = [
+    ['celda', `${String(celda.x)}, ${String(celda.y)}`],
+    ...(s === undefined
+      ? []
+      : ([
+          ['de qué', s.de === '' ? s.d.nucleo : s.de],
+          ['piezas', s.piezas],
+          ['cómo es', s.comoEs],
+          ['atadores', s.d.atadores.length > 0 ? s.d.atadores.join(' · ') : '—'],
+          ['estado', s.d.estado + (s.d.podrido === true ? ' · podrido' : '')],
+          ['id', s.id],
+        ] as const)),
+    ['la casilla', pie === '' ? '—' : pie],
+  ]
+  const dl = document.createElement('dl')
+  for (const [k, v] of filas) {
+    const dt = document.createElement('dt')
+    dt.textContent = k
+    const dd = document.createElement('dd')
+    dd.textContent = v
+    dl.append(dt, dd)
+  }
+  caja.appendChild(dl)
+}
+
 function cuadro(ahora: number): void {
   const pasado = ahora - ultimo
   ultimo = ahora
@@ -1190,6 +1585,18 @@ function cuadro(ahora: number): void {
   catalogo()
   charla()
   recuerdos()
+  // Lo del dock va acá y no adentro de un `if (dev)`: los ocho paneles están
+  // siempre en el DOM y se escriben igual con el dock apagado. La serie del
+  // aliento sobre todo — si sólo se muestreara con el modo dev prendido, abrirlo
+  // mostraría diez minutos de historia en blanco justo cuando se lo abre para
+  // entender qué pasó.
+  planDeLaMente()
+  inspector()
+  correrLosFlotantes()
+  if (dev) {
+    dibujarLaSerie()
+    pieDeLaSerie()
+  }
   ultimaEscena = escena
   // El cartel, DESPUÉS de la escena nueva: con el mundo corriendo, lo que está
   // abajo del puntero quieto cambia solo —el foco sigue a la criatura y el mapa

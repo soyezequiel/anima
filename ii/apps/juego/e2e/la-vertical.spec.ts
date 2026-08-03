@@ -71,7 +71,6 @@ test('2 · ver la criatura moviéndose', async ({ page }) => {
 })
 
 test('3 · ver todos los objetos del área visible', async ({ page }) => {
-  await abrir(page)
 
   // ─── LO QUE FLOTA SE APARTA PARA MEDIR, Y ES AISLAMIENTO Y NO TRAMPA ────
   //
@@ -103,9 +102,30 @@ test('3 · ver todos los objetos del área visible', async ({ page }) => {
   // gesto de verdad. Aun así la ficha y la velocidad van a seguir flotando
   // sobre la esquina, así que algo de esto queda: lo que el paso 7 permite es
   // reemplazar la parte de la CHARLA por un gesto real.
-  await page.addStyleTag({
-    content: '#pantalla > *:not(#tablero):not(#penumbra) { pointer-events: none }',
+  // ─── Y SE INYECTA CON `addInitScript`, QUE ES LO QUE SOBREVIVE ──────────
+  //
+  // Acá había un `addStyleTag` después de `abrir()`, y este test se puso flaky:
+  // fallaba una de cada dos con «#registro intercepts pointer events» sobre un
+  // mapa cuyo `pointer-events` estaba medido en `none`. La causa no era el
+  // barrido — era que **un `<style>` inyectado se va con la primera recarga**, y
+  // el dev server recarga la página sola cada vez que alguien guarda un archivo.
+  // Con setecientos clicks, el barrido dura quince segundos: tiempo de sobra
+  // para que eso pase en el medio y las últimas doscientas celdas se clickeen
+  // sin el aislamiento puesto.
+  //
+  // `addInitScript` corre en CADA navegación, así que la regla vuelve sola. Y va
+  // antes del `goto`, que es la otra mitad: un script de inicio registrado
+  // después de navegar no corre hasta la próxima.
+  await page.addInitScript(() => {
+    const poner = (): void => {
+      const st = document.createElement('style')
+      st.textContent = '#pantalla > *:not(#tablero):not(#penumbra) { pointer-events: none }'
+      document.head.appendChild(st)
+    }
+    if (document.head as HTMLElement | null) poner()
+    else document.addEventListener('DOMContentLoaded', poner)
   })
+  await abrir(page)
 
   const canvas = page.locator('#mapa')
   const caja = await canvas.boundingBox()
@@ -309,4 +329,43 @@ test('8 · inspeccionar cuerpos y obras', async ({ page }) => {
   await page.locator('#globo-cerrar').click()
   await expect(page.locator('#globo')).toBeHidden()
   await expect(page.locator('#ancla')).toBeHidden()
+})
+
+// ─── LA CRIATURA SE VE COMO CRIATURA EN LAS CUATRO VISTAS ───────────────────
+//
+// `glifoDe` toma un `esAgente` que hace que pida la clave de CRIATURA en vez de
+// la de la materia. `mapa.ts` se lo pasaba y ninguna de las otras vistas lo
+// hacía, así que la misma criatura era el MUÑECO en el mapa y un bloque de carne
+// en el cartel, en el globo y en el inspector. El caso 7 del 12C fallando —«la
+// misma representación coherente en las tres vistas»— con el agravante de que el
+// dato nunca faltó: `Senalado.esAgente` estaba publicado y no lo leía nadie.
+//
+// ─── POR QUÉ ESTE TEST ESTÁ ACÁ Y NO EN `tests/` ───────────────────────────
+//
+// Porque lo que hay que cazar no es que `glifoDe` sepa hacerlo —eso lo prueba
+// `tests/la-criatura-no-es-un-terron.test.ts`, más barato y con su control— sino
+// que la PANTALLA se lo pase. Eso es cable, y el cable sólo se ve corriéndolo.
+//
+// El umbral sale de las dos mediciones de ese archivo y no del dedo: la criatura
+// ocupa 0,438 de su grilla y la carne 0,750. El 0,6 cae en el medio, lejos de los
+// dos, así que ni un retoque del sprite ni uno del patrón lo mueven de lado.
+test('8b · y la criatura se ve como criatura, no como la carne que la forma', async ({ page }) => {
+  await abrir(page)
+  const canvas = page.locator('#mapa')
+  const caja = await canvas.boundingBox()
+  if (caja === null) throw new Error('el mapa no tiene caja')
+
+  // El centro es la criatura: el foco la sigue.
+  await canvas.click({ position: { x: caja.width / 2, y: caja.height / 2 } })
+  await expect(page.locator('#globo-que')).toContainText('la criatura')
+
+  const tinta = await page.locator('#globo canvas').evaluate((c: HTMLCanvasElement) => {
+    const ctx = c.getContext('2d')
+    if (ctx === null) return 1
+    const d = ctx.getImageData(0, 0, c.width, c.height).data
+    let con = 0
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) con++
+    return con / (c.width * c.height)
+  })
+  expect(tinta, 'el globo dibuja a la criatura como un bloque de su materia').toBeLessThan(0.6)
 })

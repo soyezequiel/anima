@@ -81,6 +81,13 @@
            que es lo único que la tipografía tiene que decir acá. */
         --serif: 'Newsreader', Georgia, 'Times New Roman', serif;
         --mono: 'IBM Plex Mono', ui-monospace, 'Cascadia Code', Consolas, monospace;
+
+        /* ─── EL ANCHO DE LA CHARLA, Y POR QUÉ ES UN TOKEN ──────────────────
+           Lo usan TRES: la columna de la charla lo mide, el dock termina donde
+           ella empieza, y el interruptor se para 32 px a su izquierda. Escrito
+           tres veces, el día que alguien mueva uno se abre un hueco o un
+           solape, y ninguno de los tres archivos dice que dependía del otro. */
+        --ancho-charla: clamp(320px, 27vw, 420px);
       }
       * { box-sizing: border-box; }
       body {
@@ -227,6 +234,120 @@
          dibujado alrededor de la pantalla entera no separa nada — lo único que
          hace es contradecir a la penumbra, que ya dice hasta dónde importa. */
       canvas { display: block; image-rendering: pixelated; }
+      /* ─── EL INTERRUPTOR DE MODO DEV — LA CAPA 4, Y ESTÁ SOLO ─────────────
+         Arriba a la derecha, pegado a la charla. Es lo único que decide cuánta
+         pantalla hay, así que está por encima de todo lo demás — incluido el
+         dock que él mismo prende. */
+      #modo-dev {
+        position: absolute; z-index: 4; top: 20px;
+        right: calc(var(--ancho-charla) + 32px);
+        display: flex; align-items: center; gap: 10px;
+        cursor: pointer; user-select: none;
+      }
+      #modo-dev .rotulo {
+        font: 400 10.5px var(--mono); letter-spacing: .14em;
+        text-transform: uppercase; color: var(--tinta-apagada);
+      }
+      #modo-dev .riel {
+        position: relative; display: block; width: 30px; height: 15px;
+        border-radius: 999px; background: var(--linea-fuerte);
+        transition: background-color .18s ease;
+      }
+      #modo-dev[aria-checked='true'] .riel { background: var(--vivo); }
+      /* LA PERILLA ES DEL COLOR DEL FONDO Y NO BLANCA, y eso es todo el truco:
+         RECORTA el riel en vez de sumarse a él. Un círculo claro sobre un riel
+         claro son dos objetos; uno oscuro es un agujero, y un agujero que se
+         corre de lado se lee como un interruptor sin que nadie lo explique. */
+      #modo-dev .riel i {
+        position: absolute; top: 2px; left: 2px; width: 11px; height: 11px;
+        border-radius: 50%; background: var(--fondo); transition: left .18s ease;
+      }
+      #modo-dev[aria-checked='true'] .riel i { left: 17px; }
+      #modo-dev:focus-visible { outline: 1px solid var(--tinta-baja); outline-offset: 4px; }
+
+      /* ─── EL DOCK ─────────────────────────────────────────────────────────
+         Sin borde arriba: la separación la hacen las dos sombras, una línea de
+         un píxel y un desenfoque hondo. Un borde dibujaría un marco más; una
+         sombra dice «esto está POR ENCIMA», que es lo que de verdad pasa. */
+      #dock {
+        position: absolute; z-index: 2; left: 0; bottom: 0;
+        right: var(--ancho-charla);
+        background: var(--panel);
+        box-shadow: 0 -1px 0 var(--linea-fuerte), 0 -24px 48px rgba(0, 0, 0, .5);
+      }
+      #dock .chips {
+        display: flex; align-items: center; gap: 5px; padding: 11px 26px;
+      }
+      #dock .chips .rotulo {
+        flex: none; font: 500 10px var(--mono); letter-spacing: .16em;
+        text-transform: uppercase; color: var(--tinta-tenue); margin-right: 6px;
+      }
+      #dock .tiras { display: flex; flex-wrap: wrap; gap: 5px; }
+      /* La cuenta va a la derecha y dice las dos cosas que el jugador necesita
+         saber ANTES de clickear: cuántos entran y que el chip también apaga. Sin
+         eso, abrir el quinto y ver desaparecer otro se lee como un bug. */
+      #dock .cuenta {
+        margin-left: auto; flex: none; font: 400 10.5px var(--mono);
+        color: var(--tinta-tenue); white-space: nowrap; padding-left: 12px;
+      }
+      #dock .tiras button {
+        flex: none; white-space: nowrap; padding: 5px 11px; border-radius: 2px;
+        background: transparent; color: var(--tinta-baja); font: 400 11px var(--mono);
+      }
+      #dock .tiras button:hover { background: var(--realce-suave); color: var(--tinta); }
+      #dock .tiras button.on { background: var(--realce); color: var(--tinta); }
+
+      /* `overflow-x` en la fila y `overflow-y` en CADA panel, y son dos cosas
+         distintas: la fila se desborda a lo ancho cuando entran cuatro en poco
+         lugar, y cada panel se desborda a lo alto porque su contenido no cabe.
+         Un panel que recorta su última fila sin dar forma de llegar a ella es
+         peor que uno vacío. */
+      #dock .paneles {
+        display: flex; height: clamp(120px, 40vh, 230px);
+        border-top: 1px solid var(--linea); overflow-x: auto;
+      }
+      #dock .panel {
+        flex: 1; min-width: 0; min-height: 0; overflow-y: auto;
+        padding: 16px 26px; border-right: 1px solid var(--linea);
+      }
+      #dock .panel:last-child { border-right: 0; }
+      #dock .panel h2 {
+        margin: 0 0 10px; font: 500 10px var(--mono); letter-spacing: .16em;
+        text-transform: uppercase; color: var(--tinta-tenue);
+      }
+      #dock .panel h3 {
+        margin: 14px 0 6px; font: 400 10px var(--mono); letter-spacing: .12em;
+        text-transform: uppercase; color: var(--tinta-tenue); font-weight: 400;
+      }
+      #dock .panel .sub { margin: 0 0 10px; font: 400 12px/1.5 var(--serif); }
+      #dock .panel .mandos { margin: 0 0 10px; flex-wrap: wrap; }
+      #dock .panel button { background: rgba(236, 231, 221, .08); }
+      /* El único naranja de la pantalla, y el único botón que destruye algo. */
+      #dock .panel button.peligro { background: rgba(217, 119, 87, .14); color: var(--alarma); }
+      #dock .panel button.peligro:hover { background: rgba(217, 119, 87, .22); color: var(--alarma); }
+      #dock .paneles .ninguno {
+        margin: auto; font: 400 14px var(--serif); font-style: italic;
+        color: var(--tinta-tenue); text-align: center;
+      }
+      /* El gráfico del aliento: sin ejes y sin grilla. Lo que se lee de una
+         serie de vida es la FORMA —si baja, si se aplanó, si pegó un salto— y
+         una grilla invita a leer valores que la barra de la ficha ya da. */
+      #serie-aliento {
+        display: block; width: 100%; height: 74px; border-radius: 2px;
+        background: rgba(236, 231, 221, .035); image-rendering: auto;
+      }
+      #dock .pie-serie {
+        margin: 8px 0 0; font: 400 10.5px var(--mono); color: var(--tinta-tenue);
+      }
+      /* El inspector: el mismo glifo que el mapa y la bandeja, al doble exacto. */
+      #inspector .cabeza { display: flex; gap: 11px; align-items: flex-start; margin-bottom: 10px; }
+      #inspector canvas {
+        width: 48px; height: 48px; flex: none; border-radius: 2px;
+        background: rgba(13, 12, 10, .55);
+      }
+      #inspector b { display: block; font: 500 15px/1.3 var(--serif); color: var(--tinta); }
+      #inspector .vacio { margin: 0; font: 400 13px var(--serif); font-style: italic; color: var(--tinta-tenue); }
+
       /* ─── PASARLE EL MOUSE POR ARRIBA ────────────────────────────────────
          El porqué está en `main.ts`, arriba de `conCartel`: el mapa son manchas
          de doce píxeles y saber qué era una costaba un click más un viaje del
@@ -367,7 +488,7 @@
          de largo para leerla cómoda. */
       #charla-columna {
         position: absolute; z-index: 3; top: 0; right: 0; bottom: 0;
-        width: clamp(320px, 27vw, 420px); min-width: 0;
+        width: var(--ancho-charla); min-width: 0;
         display: flex; flex-direction: column;
         background: linear-gradient(to right, rgba(13, 12, 10, .9) 0%,
                     rgba(16, 15, 11, .985) 22%, rgba(16, 15, 11, .995) 100%);
@@ -483,23 +604,34 @@
          dijo; un paso es algo que se puede ir a comprobar al mundo. El tramo de
          convergencia lo pide con todas las letras — una tarjeta verde no
          acredita obediencia. */
-      .turno .pasos { display: flex; flex-direction: column; gap: 6px; }
-      .turno .paso {
+      /* ─── LOS PASOS SE ESTILAN POR CLASE Y NO POR DÓNDE ESTÁN ─────────────
+         Estas reglas decían `.turno .paso`, o sea que valían sólo adentro de un
+         turno de la charla. El módulo «Plan de la mente» dibuja sus pasos con la
+         MISMA función —`unPaso()`— y salían grises y pegados, sin el código de
+         color: el handoff pide explícitamente que el plan use «el mismo código
+         de color que la charla», y con el selector atado al lugar eso se cumplía
+         en una de las dos vistas.
+
+         Es el mismo error que el caso 7 del 12C persigue con los glifos, en CSS:
+         una misma cosa dibujada por la misma función tiene que verse igual
+         **por construcción**, y no porque alguien copie la regla al otro lado. */
+      .pasos { display: flex; flex-direction: column; gap: 6px; }
+      .paso {
         margin: 0; display: flex; gap: 8px; font: 400 11.5px/1.5 var(--mono);
       }
       /* La marca mide 9 px FIJOS para que los textos arranquen alineados: con un
          ancho automático el ✓ y el · corren la columna y la lista se lee como un
          serrucho. Y `font-style: normal` porque la `<i>` se usa por corta, no
          por itálica. */
-      .turno .paso i { flex: none; width: 9px; font-style: normal; }
+      .paso i { flex: none; width: 9px; font-style: normal; }
       /* Los tres estados, y los tres colores dicen algo del mundo: verde lo que
          ya pasó, ámbar lo que está pasando, apagado lo que todavía no. */
-      .turno .paso.hecho { color: var(--tinta-baja); }
-      .turno .paso.hecho i { color: var(--vivo); }
-      .turno .paso.en-curso { color: var(--tinta); }
-      .turno .paso.en-curso i { color: var(--espera); }
-      .turno .paso.pendiente { color: var(--tinta-tenue); }
-      .turno .paso.pendiente i { color: var(--tinta-tenue); }
+      .paso.hecho { color: var(--tinta-baja); }
+      .paso.hecho i { color: var(--vivo); }
+      .paso.en-curso { color: var(--tinta); }
+      .paso.en-curso i { color: var(--espera); }
+      .paso.pendiente { color: var(--tinta-tenue); }
+      .paso.pendiente i { color: var(--tinta-tenue); }
       /* Los pasos de un turno plegado, en su lugar: un renglón con la cuenta. */
       .turno .cuantos { margin: 0; font: 400 11px var(--mono); color: var(--tinta-tenue); }
 
@@ -890,99 +1022,167 @@
           <input id="orden" type="text" placeholder="o pedile otra cosa…" />
         </form>
 
-      <div class="provisorio">
-        <!-- ─── LO QUE QUEDA ACÁ ES PROVISORIO Y SE VA EN EL PASO 6 ──────────
-             Los cuatro `<details>` se convierten en módulos del dock. Viven al
-             pie de la charla mientras tanto para que la pantalla siga usable,
-             no porque ése sea su lugar. -->
-
-      <details id="catalogo">
-        <summary>Lo que sabe hacer</summary>
-        <p class="sub" style="margin:10px 0 6px; font-size:12px">
-          Las metas que la criatura sabe conseguir, y las obras que aprendió a armar.
-          Es el mismo dibujo que ves en el mapa y en la mano.
-        </p>
-        <div id="lista-catalogo" class="catalogo"></div>
-      </details>
-
-      <!-- ─── LO QUE RECUERDA, Y DE DÓNDE ────────────────────────────────
-           El C2 pide que Ánima pueda CITAR qué recuerda y su fuente. Por eso
-           cada línea trae el turno del que salió y quién lo dijo: sin las dos
-           cosas, «me acuerdo» es indistinguible de «me lo estoy inventando».
-           Y la distinción que más importa se ve de un vistazo: lo que le
-           contaste dice `vos`, lo que vio dice `mundo`. -->
-      <details id="lo-que-recuerda">
-        <summary>Lo que recuerda</summary>
-        <p class="sub" style="margin:10px 0 6px; font-size:12px">
-          De qué hablaron, con el turno del que salió cada cosa. Lo que le contaste
-          <b>no</b> es lo que vio.
-        </p>
-        <div id="lista-recuerdos" class="recuerdos"></div>
-      </details>
-
-      <details id="ver-y-dibujar">
-        <summary>Ver y dibujar</summary>
-        <h2>Zoom</h2>
-        <div class="mandos">
-          <button data-zoom="1">×1</button>
-          <button data-zoom="2" class="on">×2</button>
-          <button data-zoom="3">×3</button>
-          <button data-zoom="4">×4</button>
-        </div>
-        <h2>Dibujos</h2>
-        <div class="mandos">
-          <button id="dibujar">dibujar uno con Codex</button>
-          <button id="dibujar-todos">todos los que faltan</button>
-          <button id="dibujar-prueba">de prueba</button>
-        </div>
-        <p class="sub" style="margin:-10px 0 6px">
-          <b>Codex</b> dibuja de a uno: cada uno es una consulta de tu cuenta. El botón
-          <b>de prueba</b> usa una fórmula —bandas diagonales— para ejercitar el ciclo sin gastar nada.
-        </p>
-      </details>
-
-      <details id="la-partida">
-        <summary>La partida</summary>
-        <dl>
-          <dt>guardado en</dt><dd id="guardado">—</dd>
-        </dl>
-        <div class="mandos" style="margin-top:9px">
-          <button id="olvidar">empezar de cero</button>
-        </div>
-        <p class="sub" style="margin:-10px 0 6px; font-size:12px">
-          Se guarda sola cada pocos segundos, en este navegador. Cerrás la pestaña y
-          volvés donde estabas — con lo que la criatura aprendió.
-        </p>
-      </details>
-
-      <details id="diagnostico">
-        <summary>Diagnóstico</summary>
-        <h2>La criatura, en detalle</h2>
-        <dl>
-          <dt>aliento</dt><dd id="aliento">—</dd>
-          <dt>dónde está</dt><dd id="donde">—</dd>
-          <dt>persigue</dt><dd id="persigue">—</dd>
-          <dt>en las manos</dt><dd id="manos">nada</dd>
-          <dt>actúa sobre</dt><dd id="sobre">—</dd>
-        </dl>
-        <h2>El mundo</h2>
-        <dl>
-          <dt>tick</dt><dd id="tick">0</dd>
-          <dt>cuerpos</dt><dd id="cuerpos">0</dd>
-          <dt>a la vista</dt><dd id="a-la-vista">0</dd>
-          <dt>fase</dt><dd id="fase">—</dd>
-          <dt>ticks perdidos</dt><dd id="perdidos">0</dd>
-        </dl>
-        <h2>La pantalla</h2>
-        <dl>
-          <dt>cuadro</dt><dd id="cuadro">—</dd>
-          <dt>dibujos que faltan</dt><dd id="faltan">—</dd>
-          <dt>depósito</dt><dd id="deposito">buscando…</dd>
-          <dt>último surtido</dt><dd id="surtido">—</dd>
-        </dl>
-      </details>
-      </div>
       </aside>
+
+      <!-- ─── EL INTERRUPTOR DE MODO DEV ──────────────────────────────────────
+           La única pieza de la capa 4, arriba de todo, y es la que decide cuánta
+           pantalla hay. Apagado quedan tres cosas: el mapa, la charla y quién
+           está del otro lado. Nada más.
+
+           Toda la fila es clickeable y no sólo el riel: un blanco de 30×15 px es
+           chico, y el rótulo está pegado igual. `user-select:none` porque un
+           doble click sobre algo que se toca no tiene por qué seleccionar texto. -->
+      <div id="modo-dev" role="switch" tabindex="0" aria-checked="false">
+        <span class="rotulo">modo dev</span>
+        <span class="riel"><i></i></span>
+      </div>
+
+      <!-- ─── EL DOCK ─────────────────────────────────────────────────────────
+           Sólo existe con el interruptor encendido, y termina donde empieza la
+           charla. Sin borde: la separación la hace la sombra, que es la misma
+           decisión que la penumbra — la jerarquía se hace con luz.
+
+           ─── LOS OCHO PANELES ESTÁN SIEMPRE EN EL DOM ──────────────────────
+
+           Y los cerrados van con `display:none` en vez de crearse y destruirse.
+           No es pereza: `hud()`, `panel()`, `catalogo()` y `recuerdos()` le
+           escriben a nodos por id en cada cuadro, y con los paneles apareciendo
+           y desapareciendo cada una tendría que preguntar antes si su nodo
+           existe — cuatro guardas nuevas para ahorrar ocho divs vacíos. Escribir
+           el `textContent` de algo que no está en el layout no cuesta layout.
+
+           De paso queda una propiedad que los tests usan: lo que el juego
+           calcula se puede LEER con el módulo cerrado, y sólo hace falta abrirlo
+           para tocarlo. -->
+      <div id="dock" hidden>
+        <div class="chips">
+          <span class="rotulo">módulos</span>
+          <div class="tiras" id="chips"></div>
+          <span class="cuenta" id="cuantos-modulos"></span>
+        </div>
+        <div class="paneles" id="paneles">
+          <!-- El texto de cuando no hay ninguno abierto. Un dock vacío sin esto
+               es una franja negra que parece un error de render. -->
+          <p class="ninguno" id="sin-modulos">Elegí un módulo de arriba</p>
+
+          <section class="panel" data-modulo="diagnostico" hidden>
+            <h2>Diagnóstico</h2>
+            <dl>
+              <dt>tick</dt><dd id="tick">0</dd>
+              <dt>segundos</dt><dd id="segundos">0</dd>
+              <dt>fase</dt><dd id="fase">—</dd>
+              <dt>a la vista</dt><dd id="a-la-vista">0</dd>
+              <dt>cuerpos</dt><dd id="cuerpos">0</dd>
+              <dt>ticks perdidos</dt><dd id="perdidos">0</dd>
+              <dt>cuadro</dt><dd id="cuadro">—</dd>
+              <dt>zoom</dt><dd id="zoom-dice">×2</dd>
+            </dl>
+            <h3>La criatura, en detalle</h3>
+            <dl>
+              <dt>aliento</dt><dd id="aliento">—</dd>
+              <dt>dónde está</dt><dd id="donde">—</dd>
+              <dt>en las manos</dt><dd id="manos">nada</dd>
+              <dt>actúa sobre</dt><dd id="sobre">—</dd>
+            </dl>
+          </section>
+
+          <!-- El único módulo que no muestra un número sino su HISTORIA: una
+               barra dice cómo está y esto dice hacia dónde va, que es lo que
+               deja ver una muerte venir con tiempo. -->
+          <section class="panel" data-modulo="aliento" hidden>
+            <h2>Aliento</h2>
+            <canvas id="serie-aliento"></canvas>
+            <p class="pie-serie" id="serie-dice">—</p>
+          </section>
+
+          <!-- ─── EL PLAN, CON EL MISMO CÓDIGO DE COLOR QUE LA CHARLA ───────
+               Y con la misma FUNCIÓN, no con una copia: los pasos de acá los
+               dibuja `unPaso()`, el mismo que pinta los del turno abierto. Dos
+               vistas de lo mismo que se parecen por casualidad se separan el
+               día que alguien toca una — es el caso 7 del 12C otra vez. -->
+          <section class="panel" data-modulo="plan" hidden>
+            <h2>Plan de la mente</h2>
+            <dl>
+              <dt>persigue</dt><dd id="persigue">—</dd>
+            </dl>
+            <div class="pasos" id="plan-pasos"></div>
+            <p class="sub" id="plan-nota"></p>
+          </section>
+
+          <section class="panel" data-modulo="catalogo" hidden>
+            <h2>Catálogo</h2>
+            <p class="sub">
+              Las metas que la criatura sabe conseguir, y las obras que aprendió a
+              armar. Es el mismo dibujo que ves en el mapa y en la mano.
+            </p>
+            <div id="lista-catalogo" class="catalogo"></div>
+          </section>
+
+          <section class="panel" data-modulo="ver" hidden>
+            <h2>Ver y dibujar</h2>
+            <div class="mandos">
+              <button data-zoom="1">×1</button>
+              <button data-zoom="2" class="on">×2</button>
+              <button data-zoom="3">×3</button>
+              <button data-zoom="4">×4</button>
+            </div>
+            <div class="mandos">
+              <button id="dibujar">dibujar uno con Codex</button>
+              <button id="dibujar-todos">todos los que faltan</button>
+              <button id="dibujar-prueba">de prueba</button>
+            </div>
+            <p class="sub">
+              <b>Codex</b> dibuja de a uno: cada uno es una consulta de tu cuenta. El
+              botón <b>de prueba</b> usa una fórmula para ejercitar el ciclo sin gastar.
+            </p>
+            <dl>
+              <dt>dibujos que faltan</dt><dd id="faltan">—</dd>
+              <dt>depósito</dt><dd id="deposito">buscando…</dd>
+              <dt>último surtido</dt><dd id="surtido">—</dd>
+            </dl>
+          </section>
+
+          <section class="panel" data-modulo="partida" hidden>
+            <h2>La partida</h2>
+            <dl>
+              <dt>guardado en</dt><dd id="guardado">—</dd>
+              <dt>semilla</dt><dd id="semilla">—</dd>
+            </dl>
+            <div class="mandos">
+              <!-- El único botón destructivo de la pantalla, y el único naranja.
+                   No es una comodidad: sin él, un guardado en mal estado deja al
+                   jugador trabado para siempre, porque el juego lo carga solo. -->
+              <button id="olvidar" class="peligro">empezar de cero</button>
+            </div>
+            <p class="sub">
+              Se guarda sola cada pocos segundos, en este navegador. Cerrás la
+              pestaña y volvés donde estabas — con lo que la criatura aprendió.
+            </p>
+          </section>
+
+          <!-- ─── EL JOURNAL, Y DE DÓNDE SALE CADA COSA ─────────────────────
+               El C2 pide que Ánima pueda CITAR qué recuerda y su fuente. Por eso
+               cada línea trae el turno del que salió y quién lo dijo: sin las
+               dos cosas, «me acuerdo» es indistinguible de «me lo estoy
+               inventando». Y la distinción que más importa se ve de un vistazo:
+               lo que le contaste dice `vos`, lo que vio dice `mundo`. -->
+          <section class="panel" data-modulo="journal" hidden>
+            <h2>Journal</h2>
+            <p class="sub">
+              Lo que pasó, lo último arriba. Lo que le contaste <b>no</b> es lo que vio.
+            </p>
+            <div id="lista-recuerdos" class="recuerdos"></div>
+          </section>
+
+          <!-- El globo del click dice lo justo para seguir mirando el mapa; esto
+               dice el resto, para el que se quedó a mirar UNA cosa. Los dos salen
+               de `lo-senalado.ts`, así que no se pueden contradecir. -->
+          <section class="panel" data-modulo="inspector" hidden>
+            <h2>Inspector</h2>
+            <div id="inspector"></div>
+          </section>
+        </div>
+      </div>
     </div>
 
     <!-- ─── EL CARTEL DEL MOUSE ────────────────────────────────────────────

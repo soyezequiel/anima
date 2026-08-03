@@ -29,6 +29,26 @@ async function abrir(page: Page): Promise<void> {
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 
+/**
+ * ─── ABRIR UN MÓDULO DEL DOCK ───────────────────────────────────────────────
+ *
+ * Los `<details>` del panel viejo se convirtieron en los ocho módulos del modo
+ * dev, así que `#catalogo > summary` ya no existe. Abrir uno son dos gestos: el
+ * interruptor y su chip.
+ *
+ * Y los dos son IDEMPOTENTES acá, que es lo que hace que se pueda llamar sin
+ * saber cómo quedó la pantalla: el modo dev se guarda en `localStorage`, así que
+ * entre dos tests del mismo archivo puede venir prendido de antes. Un `click` a
+ * ciegas lo APAGARÍA. Se mira el estado y se toca sólo si hace falta.
+ */
+async function abrirModulo(page: Page, id: string): Promise<void> {
+  const sw = page.locator('#modo-dev')
+  if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click()
+  const chip = page.locator(`#chip-${id}`)
+  if (!(await chip.evaluate((b) => b.classList.contains('on')))) await chip.click()
+  await expect(page.locator(`[data-modulo="${id}"]`)).toBeVisible()
+}
+
 /** ¿La página desborda a lo ancho? Es el síntoma que se ve como scroll abajo. */
 async function desborda(page: Page): Promise<boolean> {
   return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1)
@@ -124,7 +144,7 @@ test('EL MAPA ES APAISADO cuando la ventana lo es, y cuadrado cuando ella lo es'
 test('EL MAPA SE RECORTA Y NO SE ESCALA: una celda mide CELDA × zoom, en los cuatro', async ({ page }) => {
   await page.setViewportSize({ width: 900, height: 900 })
   await abrir(page)
-  await page.locator('#ver-y-dibujar > summary').click()
+  await abrirModulo(page, 'ver')
 
   for (const zoom of [1, 2, 3, 4]) {
     await page.locator(`[data-zoom="${zoom}"]`).click()
@@ -174,32 +194,97 @@ test('EN VENTANA ANGOSTA el mapa no se deforma, y se le puede escribir igual', a
   expect(await desborda(page)).toBe(false)
 })
 
-test('lo que se toca una vez va plegado, y lo que se usa siempre no', async ({ page }) => {
+// ─── CON EL MODO DEV APAGADO QUEDAN TRES COSAS ──────────────────────────────
+//
+// Es la primera de las tres decisiones que gobiernan el rediseño, y la única que
+// se puede afirmar de un lado y del otro: apagado quedan el mapa, la charla y
+// quién está del otro lado. Nada más.
+//
+// Esto reemplaza a «lo que se toca una vez va plegado». Aquel test cuidaba la
+// misma idea con el mecanismo de entonces —los `<details>`— y hoy el mecanismo
+// es un interruptor: lo que cambió no es qué se esconde, es que ahora se esconde
+// TODO junto y con un solo gesto.
+test('CON EL MODO DEV APAGADO quedan el mapa, la charla y las dos luces', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 900 })
   await abrir(page)
+  // El modo dev se guarda entre sesiones, así que se apaga a mano: este test
+  // afirma cómo se ve apagado y no puede depender de cómo quedó la anterior.
+  const sw = page.locator('#modo-dev')
+  if ((await sw.getAttribute('aria-checked')) === 'true') await sw.click()
 
-  // Lo de todos los días, a la vista sin abrir nada.
-  //
-  // El aliento se mira por su BARRA y no por su número, y el cambio es la
-  // reparación: el número se fue a Diagnóstico junto con las otras cuatro filas
-  // de la ficha vieja. Una barra dice «cómo viene» de un vistazo y un `953 / 1000`
-  // hay que leerlo y dividirlo — que es la carga que este panel tenía de más.
+  await expect(page.locator('#mapa')).toBeVisible()
   await expect(page.locator('#orden')).toBeVisible()
+  await expect(page.locator('#lampara-codex')).toBeVisible()
+  // Y las dos cosas de la criatura que se miran todo el tiempo, que no son un
+  // cuarto módulo: son ELLA. El aliento se mira por su BARRA y no por su
+  // número — un `953 / 1000` hay que leerlo y dividirlo.
   await expect(page.locator('#aliento-caja')).toBeVisible()
   await expect(page.locator('[data-vel="0"]')).toBeVisible()
   await expect(page.locator('#hace')).toBeVisible()
-  // Y el mapa, que es de dónde sale lo que se mira: «Lo que miraste» dejó de
-  // ser una sección del panel y pasó a ser el globo, que aparece al clickear.
-  await expect(page.locator('#mapa')).toBeVisible()
 
-  // Y lo que se toca una vez, plegado: el panel tenía nueve secciones apiladas
-  // con el mismo peso, y tres de las primeras eran controles de una sola vez.
+  // Y NADA del dock: ni el dock, ni sus botones, ni sus números.
+  await expect(page.locator('#dock')).toBeHidden()
   await expect(page.locator('#olvidar')).not.toBeVisible()
   await expect(page.locator('[data-zoom="4"]')).not.toBeVisible()
+  await expect(page.locator('#a-la-vista')).not.toBeVisible()
+})
 
-  // Plegado no es escondido: se abre y está.
-  await page.locator('#diagnostico > summary').click()
-  await expect(page.locator('#a-la-vista')).toBeVisible()
+// ─── EL TOPE DE CUATRO, Y QUE EL QUINTO CIERRE EL MÁS VIEJO ─────────────────
+//
+// El tope no es una preferencia: con cinco abiertos cada panel mide 180 px y ahí
+// no entra una fila de datos sin envolverse, o sea que lo que se gana en
+// cantidad se pierde en poder leer alguno.
+//
+// Y que el quinto CIERRE en vez de rebotar es lo que hay que afirmar, porque las
+// dos conductas se ven igual desde afuera hasta que contás: rebotar deja cuatro
+// y cerrar el más viejo también.
+test('EL DOCK ABRE HASTA CUATRO, y el quinto cierra el más viejo', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await abrir(page)
+
+  // Se arranca de cero y no de lo que haya guardado: si no, «abrí cuatro» puede
+  // ser «abrí el quinto» sin que el test se entere.
+  const sw = page.locator('#modo-dev')
+  if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click()
+  for (const id of ['diagnostico', 'aliento', 'plan', 'catalogo', 'ver', 'partida', 'journal', 'inspector']) {
+    const chip = page.locator(`#chip-${id}`)
+    if (await chip.evaluate((b) => b.classList.contains('on'))) await chip.click()
+  }
+  await expect(page.locator('#sin-modulos')).toBeVisible()
+
+  const abiertos = page.locator('#dock .panel:visible')
+  for (const id of ['diagnostico', 'aliento', 'plan', 'catalogo']) {
+    await page.locator(`#chip-${id}`).click()
+  }
+  await expect(abiertos).toHaveCount(4)
+  await expect(page.locator('#cuantos-modulos')).toContainText('4 de 4')
+
+  // El quinto: siguen siendo cuatro, y el que se fue es el PRIMERO que se abrió.
+  await page.locator('#chip-ver').click()
+  await expect(abiertos).toHaveCount(4)
+  await expect(page.locator('[data-modulo="diagnostico"]')).toBeHidden()
+  await expect(page.locator('[data-modulo="ver"]')).toBeVisible()
+
+  // Y el chip también apaga, que es la otra mitad de lo que el renglón promete.
+  await page.locator('#chip-ver').click()
+  await expect(page.locator('[data-modulo="ver"]')).toBeHidden()
+  await expect(abiertos).toHaveCount(3)
+})
+
+// ─── Y EL DOCK SE ACUERDA ───────────────────────────────────────────────────
+//
+// Quien prende el modo dev lo prende porque está mirando algo, y recargar es
+// justo lo que hace todo el tiempo. Sin esto hay que rearmar la pantalla en cada
+// vuelta, que es la carga que este rediseño vino a sacar.
+test('el modo dev y sus módulos vuelven después de recargar', async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 })
+  await abrir(page)
+  await abrirModulo(page, 'journal')
+
+  await page.reload()
+  await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
+  await expect(page.locator('#modo-dev')).toHaveAttribute('aria-checked', 'true')
+  await expect(page.locator('[data-modulo="journal"]')).toBeVisible()
 })
 
 test('12C · el catálogo existe, y dibuja con el mismo glifo que el inventario', async ({ page }) => {
@@ -215,9 +300,9 @@ test('12C · el catálogo existe, y dibuja con el mismo glifo que el inventario'
   await page.goto('/')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 
-  // Va plegado, como todo lo que se consulta y no se usa a cada rato.
+  // Vive en el dock, como todo lo que se consulta y no se usa a cada rato.
   await expect(page.locator('#lista-catalogo')).not.toBeVisible()
-  await page.locator('#catalogo > summary').click()
+  await abrirModulo(page, 'catalogo')
 
   const filas = page.locator('#lista-catalogo .fila')
   await expect(filas.first()).toBeVisible()

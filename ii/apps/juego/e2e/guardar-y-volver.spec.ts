@@ -20,10 +20,20 @@ async function tick(page: Page): Promise<number> {
 async function abrir(page: Page): Promise<void> {
   await page.goto('/')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
-  // «La partida» va plegada: es de las que se tocan una vez. Los `toHaveText` de
-  // abajo leen igual —Playwright no exige visibilidad para leer texto— pero el
-  // botón de borrar sí hay que descubrirlo, igual que lo haría el jugador.
-  await page.locator('#la-partida > summary').click()
+  // «La partida» es un módulo del DOCK desde el paso 6, así que descubrirlo son
+  // dos gestos: el interruptor de modo dev y su chip. Va acá, en el `abrir()`
+  // que los dos tests comparten, porque los dos lo necesitan.
+  //
+  // Los `toHaveText` de más abajo leerían igual con el dock cerrado —Playwright
+  // no exige visibilidad para leer texto, y los ocho paneles están siempre en el
+  // DOM— pero el botón de borrar SÍ hay que descubrirlo, igual que lo haría el
+  // jugador. Y los dos `if` son porque el modo dev se guarda entre sesiones: un
+  // click a ciegas lo apagaría si vino prendido.
+  const sw = page.locator('#modo-dev')
+  if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click()
+  const chip = page.locator('#chip-partida')
+  if (!(await chip.evaluate((b) => b.classList.contains('on')))) await chip.click()
+  await expect(page.locator('[data-modulo="partida"]')).toBeVisible()
 }
 
 /**

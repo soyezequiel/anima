@@ -152,7 +152,12 @@ test('C2 · cita lo que recuerda con su fuente, y no confunde lo dicho con lo vi
   await abrir(page)
   await decir(page, 'hacé fuego')
   await decir(page, 'hay un pescado en el río')
-  await page.locator('#lo-que-recuerda > summary').click()
+  // «Lo que recuerda» es hoy el módulo Journal del dock.
+  const sw = page.locator('#modo-dev')
+  if ((await sw.getAttribute('aria-checked')) !== 'true') await sw.click()
+  const chip = page.locator('#chip-journal')
+  if (!(await chip.evaluate((b) => b.classList.contains('on')))) await chip.click()
+  await expect(page.locator('[data-modulo="journal"]')).toBeVisible()
 
   const filas = page.locator('#lista-recuerdos .fila')
   await expect(filas.first()).toBeVisible()
