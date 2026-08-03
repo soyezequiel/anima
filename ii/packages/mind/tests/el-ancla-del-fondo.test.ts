@@ -143,3 +143,25 @@ describe('el ancla del fondo', () => {
     }
   })
 })
+
+// ─── POR QUÉ ESTE ARCHIVO SE PUSO ROJO CON «AGARRAR» ────────────────────────
+//
+// (Nota de diagnóstico, escrita sin arreglar el test todavía. Vale porque el
+// camino ya se recorrió una vez y no conviene repetirlo.)
+//
+// El tercer test empezó a despegar `explorar` donde esperaba `esperar`, o sea a
+// deambular DOS veces, cuando `sinVocabulario` dejó de vetar los `sostiene`.
+//
+// La primera sospecha era que la criatura ahora cumple la meta agarrando algo, y
+// **está descartada**: la meta del drive es `holding(tag:carnoso)` y lo único que
+// hay en la escena es una brasa de MADERA, cuyos tags son `organico, vegetal,
+// fibroso`. No hay nada carnoso que agarrar, así que la vía nueva del planificador
+// ni se activa acá.
+//
+// Lo que queda —y hay que confirmarlo antes de tocar nada— es la otra punta: con
+// el veto sacado, **D3 puede tomar metas que antes descartaba**, y la brasa es
+// vegetal y fibrosa. Si D3 ofrece `holding(tag:vegetal)` y se la lleva, la meta EN
+// CURSO cambia, y `yaDeambulePor` —el cerrojo que impide deambular dos veces por
+// la misma meta— se reinicia con ella. Deambular de nuevo sería entonces correcto
+// según la regla escrita, y lo que habría que decidir es si el cerrojo tiene que
+// ser por meta o por algo más estable.
