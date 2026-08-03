@@ -147,6 +147,35 @@ describe('(3) CON EL PROVEEDOR CONTESTANDO, LA COBERTURA SUBE', () => {
     expect(revisada.clausulas[0]?.firma).toBe('holding(tag:carnoso)')
     console.log(`  «andá al río» → ${String(revisada.clausulas[0]?.porque)}`)
   })
+
+  /**
+   * Y EL ACUSE TIENE QUE CONTAR LO MISMO QUE LA LECTURA.
+   *
+   * ─── LO ENCONTRÓ UNA CORRIDA CONTRA EL MODELO DE VERDAD ──────────────────
+   *
+   * `apps/juego/demo/con-claude.mts`, con «conseguime algo para comer». El
+   * modelo contestó bien, la cláusula subió de `orientacion` a `entendida`, y
+   * esto es lo que el cuidador leyó en la charla:
+   *
+   *     lo pensé mejor: no te entendí del todo, voy tanteando
+   *
+   * `revisar` devolvía `{...l, clausulas, confianza}` y el `acuse` viajaba
+   * intacto desde la lectura vieja. O sea que la frase que la persona lee decía
+   * lo contrario de lo que el sistema había entendido.
+   *
+   * No lo podía ver ningún test guionado de los que había: el del C4 afirma que
+   * el acuse EMPIEZA con «lo pensé mejor», que era lo que estaba en discusión, y
+   * nadie miraba cómo seguía.
+   */
+  it('y el ACUSE se rehace, que si no dice lo contrario de lo que entendió', () => {
+    const l = leer('andá al río', OPC)
+    const c = consultaDe(l, lexico, FIRMAS)
+    const r = proveedor(c!.texto, c!.llave, c!.clausulas)
+    const revisada = revisar(l, r!, lexico, { ofrecidas: c!.firmas, sabeElCatalogo: OPC.sabeElCatalogo })
+    expect(l.acuse, 'la precondición: sola no la entendía').toContain('no te entendí')
+    expect(revisada.clausulas[0]?.grado).toBe('entendida')
+    expect(revisada.acuse, 'el acuse quedó contando la lectura vieja').not.toContain('no te entendí')
+  })
 })
 
 describe('la consulta se DESCRIBE, no se llama', () => {

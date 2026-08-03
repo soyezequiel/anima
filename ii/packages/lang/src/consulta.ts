@@ -54,6 +54,7 @@
  */
 
 import { interpretar } from '@anima/plan'
+import { acusar } from './leer.js'
 import { fnv1a } from './lexico.js'
 import type { Dicho } from './habla.js'
 import type { ClausulaLeida, GradoDeLectura, Lectura, Lexico } from './tipos.js'
@@ -289,6 +290,11 @@ export function revisar(
     ...l,
     clausulas: nuevas,
     confianza: nuevas.reduce((a, c) => (c.confianza < a ? c.confianza : a), 1),
+    // EL ACUSE SE REHACE, y no viaja de la lectura vieja. Sin esta línea, una
+    // cláusula que el modelo arregló volvía con «no te entendí del todo» al
+    // lado, o sea la frase que la persona lee diciendo lo contrario de lo que el
+    // sistema entendió. Lo encontró una corrida contra el modelo de verdad.
+    acuse: acusar(nuevas),
   }
 }
 

@@ -1,4 +1,4 @@
-# Convergencia conversacional — C0 a C6
+# Convergencia conversacional — C0 a C6, con la puerta corrida
 
 El tramo lo fija [`docs/product/convergencia-conversacional.md`](../../docs/product/convergencia-conversacional.md).
 Acá va lo implementado, con el mapa `contrato existente → cambio mínimo` que ese
@@ -715,3 +715,91 @@ habilidad montada y la capacidad publicada— y ahí su invariante empieza a val
 
 **Lo aprendido no se guarda todavía.** `Guardado` tiene cinco ranuras y ninguna
 es el catálogo de la partida. Una habilidad promovida se pierde al recargar.
+
+---
+
+## 11 · La puerta de salida, corrida de verdad
+
+El documento pide «los E2E de C1–C6 con proveedor scripted **y los que
+correspondan con el proveedor real**». Las dos mitades se corrieron.
+
+### El navegador: C3, C5 y C6 dejan de estar sólo en vitest
+
+`lo-que-se-pidio-sobrevive.spec.ts`, tres tests sobre una pestaña de verdad:
+
+| qué se afirma | por qué sólo se ve acá |
+|---|---|
+| el pedido de dos partes vuelve por donde iba y **no repite la primera** | pide IndexedDB, el arranque y el repintado — el fixture prueba el cursor, no el viaje |
+| «pará eso» suelta el drive y «seguí» lo devuelve | el observable es `#persigue` diciendo «(tuya)», que es del panel |
+| cuando el catálogo no le alcanza, lo dice | pide cientos de ticks del bucle de cuadros de verdad |
+
+Y lo que se aprendió corriéndolo: **hay que pausar el mundo antes de pausar el
+encargo**. Con el mundo a ×16 la criatura sigue narrando lo que hace, así que
+«la última línea de la charla» ya no era el acuse cuando el test la leía — decía
+«va por piedra». Y el acuse hay que esperarlo: la charla se repinta en el bucle
+de cuadros, no adentro del `submit`.
+
+Total: **45 specs verdes**.
+
+### El proveedor real: 826 ticks en el aire
+
+`apps/juego/demo/con-claude.mts` es nuevo y es lo único que prueba la costura del
+C4 de punta a punta. `lang/demo/hablarle.mts` ya hablaba con el modelo, pero lo
+**esperaba** —`await preguntarle(...)` y recién después seguía— o sea que probaba
+la lectura y no la promesa contraria.
+
+Con Claude por el CLI, frase «conseguime algo para comer»:
+
+```
+ticks en el aire   826        ← el mundo corrió mientras la consulta viajaba
+aterrizó en tick   827        ← en una frontera, no en el medio de un cuadro
+grado antes        orientacion
+grado después      entendida  (modelo)
+meta               holding(tag:carnoso,digestibility>=0.85,toxicity<=0.05)
+costo              haiku · US$ 0,0136
+```
+
+Una segunda corrida dio 1.465 ticks y US$ 0,0186: la latencia del modelo varía
+entre 11 y 73 segundos, que es exactamente por qué el tick no la puede esperar.
+Con el proveedor guionado ese número es 1.
+
+### Y lo que sólo la corrida real podía encontrar
+
+El cuidador leyó esto, con la cláusula ya en `entendida`:
+
+```
+lo pensé mejor: no te entendí del todo, voy tanteando
+```
+
+`revisar()` devolvía `{...l, clausulas, confianza}` y **el `acuse` viajaba
+intacto desde la lectura vieja**. O sea que la frase que la persona lee decía lo
+contrario de lo que el sistema acababa de entender.
+
+No lo podía ver ningún test guionado de los que había: el del C4 afirma que el
+acuse EMPIEZA con «lo pensé mejor» —que era lo que estaba en discusión— y nadie
+miraba cómo seguía. La reparación es que `acusar` se exporte de `leer.ts` en vez
+de copiarse: dos tablas de acuses se desincronizan, y el `switch` de allá es
+exhaustivo sobre `GradoDeLectura`, así que el compilador cobra el día que se
+agregue un grado.
+
+Confirmado contra el modelo otra vez: «lo pensé mejor: dale, voy».
+
+### La fragua contra el modelo, también
+
+`ANIMA_LLM=claude node packages/forge/demo/arranque.mjs`, con el gap del Hito 8:
+
+```
+viaje 1 · 2 candidatas · 73.569 ms
+  tomarDelAgua    limpia
+  cazarEnAgua     limpia
+costo   US$ 0,0749
+```
+
+Dos de dos compilan sin reparación. El punto 2 del Hito 8 —«al menos una compila
+CON reparación»— sale «no», y eso es mejor que su criterio y no peor.
+
+### Lo que queda de la puerta
+
+Que la fragua de verdad esté enchufada **en la app**, que es otra cosa que
+correrla desde un demo: pide un `ApiTS` en el navegador y montar código generado
+en la pestaña del jugador. Sigue siendo una decisión de producto.

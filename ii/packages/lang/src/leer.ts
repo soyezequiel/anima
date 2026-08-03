@@ -465,8 +465,20 @@ function graduar(
  * tick.
  *
  * Está en rioplatense corto porque lo lee una persona mientras espera.
+ *
+ * ─── SE EXPORTA DESDE EL C6, y lo pidió una corrida contra el modelo ───────
+ *
+ * `revisar()` de `consulta.ts` sube el grado de una cláusula cuando el modelo
+ * acierta, y devolvía la lectura nueva con el acuse VIEJO adentro. El cuidador
+ * leía «lo pensé mejor: no te entendí del todo», que dice lo contrario de lo que
+ * el sistema acababa de entender.
+ *
+ * Se exporta en vez de copiarse por lo obvio y por lo otro: dos tablas de acuses
+ * se desincronizan, y la segunda copia sería la que nadie mira cuando se agregue
+ * un grado — el `switch` de acá es exhaustivo sobre `GradoDeLectura` y el
+ * compilador lo cobra.
  */
-function acusar(cs: readonly ClausulaLeida[]): string {
+export function acusar(cs: readonly ClausulaLeida[]): string {
   const peor = cs.reduce((a, b) => (b.confianza < a.confianza ? b : a), cs[0] as ClausulaLeida)
   switch (peor.grado) {
     case 'entendida':
