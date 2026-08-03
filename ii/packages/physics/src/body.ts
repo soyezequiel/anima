@@ -573,7 +573,7 @@ export function nombreDeLoVisible(v: LoQueSeNombra, phys: Physics): string {
       ? undefined
       : (phys.substances.get(v.acompana)?.lexeme.nombre ?? v.acompana)
   const head = partner === undefined ? noun : `${noun} con ${partner}`
-  const adjs = adjetivosDe(v.banda, v.podrido, gender)
+  const adjs = adjectivesOf(v.banda, v.podrido, gender)
   return adjs.length === 0 ? head : `${head} ${adjs.join(' ')}`
 }
 
@@ -697,7 +697,7 @@ export function estadoVisibleDe(b: Body, phys: Physics): EstadoVisible {
  * Los umbrales ya no están acá: los tiene `estadoVisibleDe`. Esto es la mitad
  * que traduce, y es la única que sabe de género.
  */
-function adjetivosDe(banda: BandaDeEstado, podrido: boolean, gender: 'm' | 'f'): string[] {
+function adjectivesOf(banda: BandaDeEstado, podrido: boolean, gender: 'm' | 'f'): string[] {
   const out: string[] = []
   // `ardiendo` es un gerundio y no concuerda: `agree` lo dejaría en «ardienda».
   // `a-medio-cocinar` lleva el guión porque es una banda y no una frase; el

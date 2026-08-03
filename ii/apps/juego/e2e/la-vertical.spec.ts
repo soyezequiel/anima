@@ -214,7 +214,10 @@ test('8 · inspeccionar cuerpos y obras', async ({ page }) => {
   // El centro es la criatura: el foco la sigue, así que siempre está ahí.
   await canvas.click({ position: { x: caja.width / 2, y: caja.height / 2 } })
   await expect(page.locator('#mirado-que')).toContainText('la criatura')
-  await expect(page.locator('#mirado-de')).toContainText('carne')
+  // El material va en el NOMBRE —«carne cruda»— y por eso se pide acá y no en
+  // `#mirado-de`, que ahora sólo se llena cuando el cuerpo tiene tres sustancias
+  // o más: con una o dos, el nombre ya las dice y repetirlas era leer dos veces.
+  await expect(page.locator('#mirado-que')).toContainText('carne')
   await expect(page.locator('#mirado-piezas')).toContainText('parte')
   // `forma · porte`. La banda de estado estaba acá y se mudó al nombre: el mundo
   // llama «carne cruda» a esto, y el panel decía «malla» —la forma geométrica—

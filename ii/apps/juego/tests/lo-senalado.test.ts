@@ -49,7 +49,7 @@ function escena(
     v: 2,
     tick: 0,
     foco: { x: 0, y: 0 },
-    radio: 7,
+    radio: { x: 7, y: 7 },
     celdas: [],
     cuerpos: new Map(cuerpos),
     actores: actores.map((body) => ({ body })),
@@ -149,9 +149,21 @@ describe('las cuatro frases', () => {
       { mas: 0, esAgente: false },
     )
     expect(dos.piezas).toBe('2 partes, 1 atada')
-    expect(dos.de).toBe('liana · madera')
     // Y el nombre menciona a la otra: «madera con liana», igual que en la charla.
+    // Por eso la línea de materiales queda vacía: no tiene nada que agregar.
     expect(dos.titulo).toBe('madera con liana')
+    expect(dos.de).toBe('')
+  })
+
+  it('CON TRES SUSTANCIAS la línea de materiales vuelve, porque el nombre deja una afuera', () => {
+    const tres = describir(
+      'z',
+      cuerpo({ at: { x: 0, y: 0 }, partes: 3, juntas: 2, materiales: ['carne', 'liana', 'madera'] }),
+      PHYS,
+      { mas: 0, esAgente: false },
+    )
+    expect(tres.titulo).toBe('madera con carne')
+    expect(tres.de).toBe('carne · liana · madera')
   })
 
   it('LA FORMA Y EL PORTE VAN JUNTOS, y la banda ya no está: se mudó al nombre', () => {

@@ -51,7 +51,14 @@ export interface Senalado {
    * Lleva `(la criatura)` o `(y N más acá)` pegado cuando corresponde.
    */
   readonly titulo: string
-  /** `madera · liana` */
+  /**
+   * DE QUÉ MÁS ESTÁ HECHO, y casi siempre está vacío a propósito.
+   *
+   * El nombre ya dice hasta dos sustancias —«liana», «madera con liana»— así que
+   * repetirlas acá es leer lo mismo dos veces: el cartel decía «liana · liana ·
+   * 1 parte». Con tres o más, el nombre deja alguna afuera y ahí esta línea
+   * empieza a decir algo que no se sabía.
+   */
   readonly de: string
   /** `2 partes, 1 atada` */
   readonly piezas: string
@@ -115,7 +122,7 @@ export function describir(
     titulo:
       (extra.esAgente ? `${nombre} (la criatura)` : nombre) +
       (extra.mas > 0 ? ` (y ${String(extra.mas)} más acá)` : ''),
-    de: d.materiales.join(' · '),
+    de: d.materiales.length > 2 ? d.materiales.join(' · ') : '',
     piezas:
       `${String(d.partes)} ${d.partes === 1 ? 'parte' : 'partes'}` +
       (d.juntas > 0 ? `, ${String(d.juntas)} atada${d.juntas === 1 ? '' : 's'}` : ''),
