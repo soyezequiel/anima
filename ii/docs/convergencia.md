@@ -798,6 +798,33 @@ costo   US$ 0,0749
 Dos de dos compilan sin reparación. El punto 2 del Hito 8 —«al menos una compila
 CON reparación»— sale «no», y eso es mejor que su criterio y no peor.
 
+### El corte no cortaba, y estaba escrito como si sí
+
+`OpcionesDeOrdenes.preguntar` dice, desde el C4, que el `AbortSignal` «permite
+que una corrección del cuidador **corte el viaje** en vez de sólo ignorar lo que
+vuelva: ignorar una respuesta que ya se pagó es tarde».
+
+Cierto del contrato y **falso de la implementación**: `preguntarTexto` recibía
+`(prompt, timeoutMs)` y se armaba su propio reloj adentro. Ninguna señal de
+afuera llegaba al proceso. Con el proveedor guionado no se nota, porque contesta
+al instante; con el real, medido con una corrección a los 20 ticks:
+
+| | antes | después |
+|---|---|---|
+| abortada a los | 319 ms | 313 ms |
+| **siguió viva** | **14.729 ms** | **2 ms** |
+| costo reportado | US$ 0,0147 | sin datos — no llegó a terminar |
+
+El `child.kill()` ya existía para el timeout del propio transporte; lo que
+faltaba era el cable, y son tres eslabones: `preguntarTexto` → `porClaude` /
+`porCodex` / `porOpenAI`, y `preguntarle` en el medio. En el de HTTP las dos
+razones para cortar se juntan con `AbortSignal.any`: el reloj y el cuidador, y
+gana la primera que dispare.
+
+Es la clase de cosa que sólo aparece corriendo de verdad: **el comentario decía
+la verdad sobre lo que el contrato permite y no sobre lo que el código hace**, y
+las dos frases se leen igual.
+
 ### Lo que queda de la puerta
 
 Que la fragua de verdad esté enchufada **en la app**, que es otra cosa que

@@ -195,8 +195,17 @@ function porFalso(c: Consulta): RespuestaDelModelo | undefined {
 export async function preguntarle(
   c: Consulta,
   timeoutMs = 30_000,
+  /**
+   * EL CORTE DEL QUE PREGUNTA, y no el del reloj.
+   *
+   * Un turno nuevo del cuidador cambia el contexto con el que se pidió, así que
+   * la respuesta que venía ya no es sobre esto. Sin este parámetro el corte
+   * llegaba hasta acá y moría: la app ignoraba lo que volvía y el CLI seguía
+   * corriendo hasta el final — medido, 14.729 ms de más, pagados.
+   */
+  signal?: AbortSignal,
 ): Promise<RespuestaDelModelo | undefined> {
   if (transporteElegido() === 'falso') return porFalso(c)
-  const texto = await preguntarTexto(promptDe(c), timeoutMs)
+  const texto = await preguntarTexto(promptDe(c), timeoutMs, signal)
   return texto === undefined ? undefined : leerRespuesta(texto, c.llave)
 }

@@ -52,13 +52,21 @@ const partida = new Partida(state)
 
 let enElAire = 0
 let pedidaEn = -1
+/** `--cortar` dice una segunda frase a mitad del viaje, que aborta la primera. */
+const CORTAR = process.argv.includes('--cortar')
+let abortadaEn: number | undefined
+let asentoEn: number | undefined
 
 const ordenes = new Ordenes(partida, QUIEN, PHYS, {
   preguntar: (c: Consulta, signal?: AbortSignal) => {
     pedidaEn = partida.state.tick
-    return preguntarle(c).then((r) => {
-      // El corte se respeta: una consulta abortada no vuelve. Es lo que permite
-      // que una corrección del cuidador se lleve puesta la respuesta vieja.
+    const arranco = Date.now()
+    signal?.addEventListener('abort', () => {
+      abortadaEn = Date.now() - arranco
+    })
+    return preguntarle(c, 30_000, signal).then((r) => {
+      asentoEn = Date.now() - arranco
+      // El corte se respeta: una consulta abortada no vuelve.
       if (signal?.aborted === true) return undefined
       return r
     })
@@ -80,6 +88,8 @@ console.log(`  consultas        ${String(ordenes.consultas)}\n`)
 // modelo conteste no llega nunca. No es un truco del demo — es el bucle de
 // cuadros del navegador, que suelta el hilo entre uno y otro.
 for (let k = 0; k < TOPE; k++) {
+  // A los 20 ticks, el cuidador cambia de tema. Eso corta lo que esté en el aire.
+  if (CORTAR && k === 20) ordenes.decir('traé un palo')
   const aplicadasAntes = ordenes.aplicadas + ordenes.descartadas
   ordenes.antesDelTick(partida.state.tick)
   vivir(partida, ordenes.mentes, 1)
@@ -107,6 +117,19 @@ console.log(`     encargo            ${String(ordenes.encargo?.nodos.length ?? 0
 console.log(
   `     costo              ${costo === undefined ? 'sin datos' : `${costo.modelo} · US$ ${costo.usd.toFixed(4)}`}`,
 )
+if (CORTAR) {
+  // ─── LO QUE ESTE NÚMERO DICE ──────────────────────────────────────────────
+  //
+  // Cuánto SIGUIÓ VIVO el proceso del modelo después de que lo abortaron. Cerca
+  // de cero quiere decir que el corte llegó hasta el proceso; los diez segundos
+  // de siempre quieren decir que sólo se ignoró lo que volvió — y una respuesta
+  // que ya se pagó, ignorada, es tarde.
+  console.log(`     abortada a los     ${String(abortadaEn ?? -1)} ms`)
+  console.log(`     asentó a los       ${String(asentoEn ?? -1)} ms`)
+  console.log(
+    `     siguió viva        ${String((asentoEn ?? 0) - (abortadaEn ?? 0))} ms   ← cerca de 0 es que cortó`,
+  )
+}
 console.log('  ───────────────────────────────────────────────────────────\n')
 console.log('  la charla:')
 for (const d of ordenes.charla) console.log(`     t${String(d.tick)} [${d.clase}] ${d.texto}`)

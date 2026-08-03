@@ -109,7 +109,7 @@ export function loQueNoEsBandera(): string {
  * el texto del modelo adentro de `result` —ESCAPADO—, así que buscar sobre la
  * salida cruda no engancha nada. Hay que abrir el sobre primero.
  */
-function porClaude(prompt: string, timeoutMs: number): Promise<string | undefined> {
+function porClaude(prompt: string, timeoutMs: number, signal?: AbortSignal): Promise<string | undefined> {
   const modelo = process.env['ANIMA_LLM_MODELO'] ?? 'haiku'
   const args = [
     '--print',
@@ -140,6 +140,7 @@ function porClaude(prompt: string, timeoutMs: number): Promise<string | undefine
       console.log('     [el proveedor no contestó a tiempo — y el cuerpo ya se movió]')
       cerrar(undefined)
     }, timeoutMs)
+    matarSiCortan(child, cerrar, signal)
     child.stdout.on('data', (d: Buffer) => (out += d.toString()))
     child.stderr.on('data', (d: Buffer) => (err += d.toString()))
     child.on('error', () => cerrar(undefined))
@@ -172,7 +173,7 @@ function porClaude(prompt: string, timeoutMs: number): Promise<string | undefine
 }
 
 /** `codex exec`, tal como lo llama Ánima I: shell, porque en Windows es un .cmd. */
-function porCodex(prompt: string, timeoutMs: number): Promise<string | undefined> {
+function porCodex(prompt: string, timeoutMs: number, signal?: AbortSignal): Promise<string | undefined> {
   return new Promise((resolve) => {
     const child = spawn('codex exec --skip-git-repo-check -', { shell: true, windowsHide: true })
     let out = ''
@@ -189,6 +190,7 @@ function porCodex(prompt: string, timeoutMs: number): Promise<string | undefined
       console.log('     [el proveedor no contestó a tiempo — y el cuerpo ya se movió]')
       cerrar(undefined)
     }, timeoutMs)
+    matarSiCortan(child, cerrar, signal)
     child.stdout.on('data', (d: Buffer) => (out += d.toString()))
     child.stderr.on('data', (d: Buffer) => (err += d.toString()))
     child.on('error', () => cerrar(undefined))
@@ -205,13 +207,15 @@ function porCodex(prompt: string, timeoutMs: number): Promise<string | undefined
 }
 
 /** HTTP directo. La clave sale del entorno y este archivo no la mira. */
-async function porOpenAI(prompt: string, timeoutMs: number): Promise<string | undefined> {
+async function porOpenAI(prompt: string, timeoutMs: number, signal?: AbortSignal): Promise<string | undefined> {
   const clave = process.env['OPENAI_API_KEY']
   if (clave === undefined || clave === '') {
     console.log('     [ANIMA_LLM=openai pero no hay OPENAI_API_KEY en el entorno]')
     return undefined
   }
-  const corte = AbortSignal.timeout(timeoutMs)
+  // Las dos razones para cortar, en una sola señal: el reloj y el cuidador. La
+  // primera que dispare gana, que es exactamente lo que `any` quiere decir.
+  const corte = signal === undefined ? AbortSignal.timeout(timeoutMs) : AbortSignal.any([AbortSignal.timeout(timeoutMs), signal])
   try {
     const r = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -246,10 +250,55 @@ async function porOpenAI(prompt: string, timeoutMs: number): Promise<string | un
  * contestara algo mediría al simulador y no al enganche. Quien quiera un modelo
  * de mentira que acierte se lo arma con su propia forma — el chat lo hace.
  */
-export function preguntarTexto(prompt: string, timeoutMs = 30_000): Promise<string | undefined> {
+export function preguntarTexto(
+  prompt: string,
+  timeoutMs = 30_000,
+  signal?: AbortSignal,
+): Promise<string | undefined> {
   const t = transporteElegido()
   if (t === 'falso') return Promise.resolve(undefined)
-  if (t === 'claude') return porClaude(prompt, timeoutMs)
-  if (t === 'codex') return porCodex(prompt, timeoutMs)
-  return porOpenAI(prompt, timeoutMs)
+  if (t === 'claude') return porClaude(prompt, timeoutMs, signal)
+  if (t === 'codex') return porCodex(prompt, timeoutMs, signal)
+  return porOpenAI(prompt, timeoutMs, signal)
+}
+
+/**
+ * SI CORTAN, SE MATA EL PROCESO. Es la mitad que faltaba del corte.
+ *
+ * ─── LO QUE ESTABA ROTO, y estaba escrito como si no ───────────────────────
+ *
+ * `OpcionesDeOrdenes.preguntar` de la app dice que el `AbortSignal` «permite que
+ * una corrección del cuidador **corte el viaje** en vez de sólo ignorar lo que
+ * vuelva: ignorar una respuesta que ya se pagó es tarde». Era cierto del
+ * contrato y falso de acá: esta función no recibía ninguna señal de afuera y se
+ * armaba su propio reloj, así que la corrección ignoraba la respuesta y el CLI
+ * seguía corriendo hasta el final.
+ *
+ * Medido contra Claude, con una corrección a los 20 ticks:
+ *
+ *     abortada a los     319 ms
+ *     siguió viva     14.729 ms   ← y se pagó entera
+ *
+ * El `kill` ya existía para el timeout; lo que faltaba era el cable.
+ */
+function matarSiCortan(
+  child: { kill: () => boolean },
+  cerrar: (r: string | undefined) => void,
+  signal?: AbortSignal,
+): void {
+  if (signal === undefined) return
+  // Ya venía cortada: no se espera al evento, que no va a llegar nunca.
+  if (signal.aborted) {
+    child.kill()
+    cerrar(undefined)
+    return
+  }
+  signal.addEventListener(
+    'abort',
+    () => {
+      child.kill()
+      cerrar(undefined)
+    },
+    { once: true },
+  )
 }
