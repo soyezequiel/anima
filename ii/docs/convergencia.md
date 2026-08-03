@@ -812,8 +812,7 @@ al instante; con el real, medido con una corrección a los 20 ticks:
 | | antes | después |
 |---|---|---|
 | abortada a los | 319 ms | 313 ms |
-| **siguió viva** | **14.729 ms** | **2 ms** |
-| costo reportado | US$ 0,0147 | sin datos — no llegó a terminar |
+| la promesa asentó a los | 15.048 ms | 315 ms |
 
 El `child.kill()` ya existía para el timeout del propio transporte; lo que
 faltaba era el cable, y son tres eslabones: `preguntarTexto` → `porClaude` /
@@ -824,6 +823,34 @@ gana la primera que dispare.
 Es la clase de cosa que sólo aparece corriendo de verdad: **el comentario decía
 la verdad sobre lo que el contrato permite y no sobre lo que el código hace**, y
 las dos frases se leen igual.
+
+#### Y esa tabla mide cuándo dejamos de esperar, no cuándo se muere el proceso
+
+La distinción importa, y en Windows más: `spawn` con `shell: true` lanza
+`cmd.exe /c claude …`, así que `child.kill()` mata al `cmd` y el nieto **podría
+sobrevivir**. Que la promesa asiente en 315 ms no dice nada sobre eso.
+
+Medido desde afuera, con un vigía que mira la lista de procesos cada 200 ms:
+
+| | apareció | murió | **vivió** |
+|---|---|---|---|
+| cortado | 370 ms | 1.500 ms | **1.130 ms** |
+| normal | 355 ms | 28.315 ms | **27.960 ms** |
+
+O sea que el `kill` **sí** atraviesa el `cmd`, y el número honesto del arreglo es
+1,1 s contra 28 s — no los 315 ms de la promesa.
+
+#### Lo que el corte NO compra, y hay que decirlo
+
+**La plata de lo que ya viajó.** Cuando el cuidador corrige, la consulta ya salió
+para el servidor: matar el CLI local no cancela la inferencia del otro lado ni el
+cobro de los tokens que ya se procesaron. Lo único que se pierde es el sobre JSON
+con `total_cost_usd`, que el CLI imprime al final — por eso el costo sale «sin
+datos», y eso NO quiere decir que no se pagó.
+
+Lo que el corte compra es que **la criatura deje de esperar al instante** y que
+el proceso se muera en un segundo en vez de en veintiocho. Que es bastante, y es
+otra cosa que lo que el comentario del C4 daba a entender.
 
 ### Lo que queda de la puerta
 

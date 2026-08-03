@@ -118,12 +118,21 @@ console.log(
   `     costo              ${costo === undefined ? 'sin datos' : `${costo.modelo} · US$ ${costo.usd.toFixed(4)}`}`,
 )
 if (CORTAR) {
-  // ─── LO QUE ESTE NÚMERO DICE ──────────────────────────────────────────────
+  // ─── LO QUE ESTE NÚMERO DICE, Y LO QUE NO ─────────────────────────────────
   //
-  // Cuánto SIGUIÓ VIVO el proceso del modelo después de que lo abortaron. Cerca
-  // de cero quiere decir que el corte llegó hasta el proceso; los diez segundos
-  // de siempre quieren decir que sólo se ignoró lo que volvió — y una respuesta
-  // que ya se pagó, ignorada, es tarde.
+  // DICE cuánto tardamos NOSOTROS en dejar de esperar después del abort. Los
+  // catorce segundos de antes querían decir que sólo se ignoraba lo que volvía.
+  //
+  // NO DICE que el proceso se haya muerto, y la diferencia importa: en Windows
+  // `spawn` con `shell: true` lanza `cmd.exe /c claude …`, así que el `kill`
+  // podría matar al `cmd` y dejar vivo al nieto. Eso se mide desde AFUERA,
+  // mirando la lista de procesos, y está anotado en `ii/docs/convergencia.md`:
+  // cortado vive 1.130 ms y sin cortar 27.960 ms, o sea que sí lo mata.
+  //
+  // Y TAMPOCO dice que no se haya pagado. La consulta ya salió para el servidor;
+  // matar el CLI local no cancela la inferencia del otro lado. Lo único que se
+  // pierde es el sobre con `total_cost_usd`, que se imprime al final — por eso
+  // el costo sale «sin datos» y eso no quiere decir que fue gratis.
   console.log(`     abortada a los     ${String(abortadaEn ?? -1)} ms`)
   console.log(`     asentó a los       ${String(asentoEn ?? -1)} ms`)
   console.log(
