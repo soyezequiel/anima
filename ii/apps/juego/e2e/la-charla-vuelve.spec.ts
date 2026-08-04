@@ -44,7 +44,10 @@ async function abrir(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true, respuesta: null }),
     }),
   )
-  await page.goto('/')
+  // `?vel=0` ABRE EN PAUSA: el juego arranca en ×1 y este spec CUENTA nodos.
+  // Seis líneas son seis sólo si no hay un mundo escribiendo pasos por su cuenta,
+  // y un click de pausa deja pasar los ticks del principio.
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 

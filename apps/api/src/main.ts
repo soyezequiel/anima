@@ -1,5 +1,3 @@
-import { createCodexBridge, createManagedBridge } from './ai.js';
-import type { AiBridgeFactory } from './ai.js';
 import { buildServer } from './server.js';
 
 const port = Number(process.env.PORT ?? 8787);
@@ -25,34 +23,47 @@ const host = process.env.ANIMA_HOST ?? '127.0.0.1';
 const staticDir = process.env.ANIMA_WEB_DIR;
 
 /**
- * Una sola cuenta de Codex para todos (`ANIMA_CODEX_SHARED=1`): el dueño de la
- * instancia presta su sesión a quien entre, tenga identidad Nostr o no. Sin el
- * flag vale lo de siempre — cada pubkey conecta su propia cuenta y el invitado
- * usa el `~/.codex` de la máquina.
- *
- * El flag no toca las credenciales: solo decide a qué CODEX_HOME apunta el
- * puente. El compartido es el del proceso (variable `CODEX_HOME`).
- *
- * Y como es uno solo, va administrado: se presta para pensar, pero conectarlo
- * y desconectarlo son del dueño de la instancia. Sin eso, cualquiera que abra
- * la página podría cerrar la sesión de todos con un botón.
+ * Ánima II colgada de `/v2`: el juego construido y el depósito de sprites al
+ * que le habla. Las dos son opcionales y sueltas — sin ellas este proceso es
+ * Ánima I y nada más.
  */
-const codexShared = process.env.ANIMA_CODEX_SHARED === '1';
-const sharedAi: AiBridgeFactory | undefined = codexShared
-  ? (() => {
-      const bridge = createManagedBridge(createCodexBridge({}));
-      return () => bridge;
-    })()
-  : undefined;
+const v2Dir = process.env.ANIMA_V2_DIR;
+const v2Deposito = process.env.ANIMA_V2_DEPOSITO;
+
+/**
+ * ═══ LA CANILLA, Y POR QUÉ VIENE CERRADA (ADR 0089) ════════════════════════
+ *
+ * `ANIMA_CLI_LOCAL=1` habilita los puentes hacia los CLI instalados en ESTA
+ * máquina: Codex y Claude. Sin el flag no se construye ninguno, y `/ai/*`
+ * contesta que esta instancia no presta cuentas.
+ *
+ * El default es cerrado porque el CLI corre del lado del servidor: la cuenta es
+ * siempre la de quien hospeda, la pida un invitado anónimo o una pubkey
+ * verificada. En una laptop eso era el dueño usando lo suyo; publicada detrás
+ * de un túnel es cualquiera con la URL gastando su cuota.
+ *
+ * Antes acá vivía `ANIMA_CODEX_SHARED=1`, que hacía exactamente lo contrario:
+ * prestar una cuenta a todos, a propósito. Se fue completa — no alcanzaba con
+ * apagarla, porque el modo «cada uno la suya» tenía la misma fuga por abajo (el
+ * invitado sin identidad caía al `~/.codex` de la máquina igual).
+ *
+ * Quien quiera mente real sin ser el dueño trae su propia API OpenAI-compatible
+ * y la llama desde el navegador: esa llave nunca pasa por este proceso.
+ */
+const cliLocal = process.env.ANIMA_CLI_LOCAL === '1';
 
 const app = buildServer({
   dbPath,
   codexDir,
+  cliLocal,
   ...(staticDir ? { staticDir } : {}),
-  ...(sharedAi ? { ai: sharedAi } : {}),
+  ...(v2Dir ? { v2Dir } : {}),
+  ...(v2Deposito ? { v2Deposito } : {}),
 });
 await app.listen({ port, host });
 console.log(
   `Ánima API escuchando en http://${host}:${String(port)} (db: ${dbPath}` +
-    `${staticDir ? `, web: ${staticDir}` : ''}${codexShared ? ', Codex compartido' : ''})`,
+    `${staticDir ? `, web: ${staticDir}` : ''}${v2Dir ? ', Ánima II en /v2' : ''}` +
+    `${v2Deposito ? ` (depósito: ${v2Deposito})` : ''}` +
+    `${cliLocal ? ', CLI locales habilitados' : ', sin puentes CLI (cada uno trae su API)'})`,
 );

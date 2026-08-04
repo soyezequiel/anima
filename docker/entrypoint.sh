@@ -32,4 +32,16 @@ if [ -n "${CODEX_HOME}" ] && [ ! -f "${CODEX_HOME}/auth.json" ]; then
   fi
 fi
 
+# Siembra los dibujos que ya venían con el repo (depósito de Ánima II).
+#
+# El volumen manda: si ya hay un `sprites.json`, no se toca — adentro están los
+# dibujos que pidió la gente, y la copia de la imagen es siempre más vieja.
+# Solo se siembra cuando el volumen está en blanco, y ahí arrancar con los once
+# que costaron consultas de verdad es mejor que arrancar sin ninguno.
+if [ -n "${ANIMA_SPRITES}" ] && [ ! -f "${ANIMA_SPRITES}" ] && [ -f ./datos/sprites.json ]; then
+  mkdir -p "$(dirname "${ANIMA_SPRITES}")"
+  cp ./datos/sprites.json "${ANIMA_SPRITES}"
+  echo "[anima] dibujos iniciales sembrados en ${ANIMA_SPRITES}"
+fi
+
 exec "$@"

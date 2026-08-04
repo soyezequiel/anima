@@ -95,6 +95,23 @@ que el servidor va a rechazar: esconde el botón de desconectar y, si la sesión
 prestada no está activa, dice a quién hay que avisarle en vez de mandar al
 visitante a pelear con una autorización que no le toca.
 
+### Y una sesión prestada viene encendida
+
+Sin nada elegido manda el mock, que es determinista y no cuesta: es lo correcto
+cuando cada uno conecta su propia cuenta, porque nadie debería gastar sin
+haberlo pedido. Con la sesión prestada (`managed`) el default se da vuelta y el
+juego arranca pensando con Codex — la cuenta ya está puesta, es una sola, y
+pedirle al visitante que la encienda es un clic que no decide nada: el que
+decidió fue el anfitrión, al prestarla.
+
+Para que eso no atropelle a quien la apaga, hubo que separar dos estados que
+eran uno solo: apagar Codex borraba la clave de elección, o sea que «lo apagué»
+y «nunca elegí» se leían igual, y con el default nuevo la mente real habría
+vuelto sola en la siguiente recarga. Ahora apagarla a mano **se guarda**
+(`storeAiChoice('mock')`) y solo se olvida (`forgetAiChoice`) cuando la sesión
+se cayó sola — que no fue decisión de nadie, y cuando vuelva conviene que la
+mente vuelva con ella.
+
 ### `ANIMA_HOST`, con el loopback como default
 
 Fuera del contenedor el servidor sigue atado a `127.0.0.1`: es la API personal

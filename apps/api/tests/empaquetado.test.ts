@@ -1,4 +1,6 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -54,6 +56,54 @@ describe('servidor empaquetado', () => {
     // El comodín de los archivos no le ganó a una ruta declarada.
     const api = await app.inject({ method: 'GET', url: '/data' });
     expect(api.statusCode).toBe(401);
+  });
+
+  it('las dos versiones conviven sin comerse las rutas', async () => {
+    // Un depósito de mentira: alcanza con que conteste para saber que la
+    // puerta lo encontró y le sacó el prefijo.
+    const pedidos: string[] = [];
+    const deposito = createServer((req, res) => {
+      pedidos.push(req.url ?? '');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ desde: 'el depósito', url: req.url }));
+    });
+    await new Promise<void>((listo) => deposito.listen(0, '127.0.0.1', listo));
+    const puerto = (deposito.address() as AddressInfo).port;
+
+    const v2Dir = mkdtempSync(join(tmpdir(), 'anima-v2-'));
+    writeFileSync(join(v2Dir, 'index.html'), '<!doctype html><title>Ánima II</title>', 'utf8');
+    const puerta = buildServer({
+      dbPath: ':memory:',
+      staticDir: webDir,
+      v2Dir,
+      v2Deposito: `http://127.0.0.1:${String(puerto)}`,
+    });
+    await puerta.ready();
+
+    try {
+      // Cada versión sirve la suya.
+      const uno = await puerta.inject({ method: 'GET', url: '/' });
+      const dos = await puerta.inject({ method: 'GET', url: '/v2/' });
+      expect(uno.body).toContain('Ánima');
+      expect(uno.body).not.toContain('Ánima II');
+      expect(dos.body).toContain('Ánima II');
+
+      // `/v2` sin barra redirige: las rutas del juego cuelgan del directorio.
+      const sinBarra = await puerta.inject({ method: 'GET', url: '/v2' });
+      expect([301, 302]).toContain(sinBarra.statusCode);
+
+      // El depósito gana sobre el estático, y le llega la ruta SIN el prefijo.
+      const leer = await puerta.inject({ method: 'GET', url: '/v2/deposito/sprites' });
+      expect(leer.statusCode).toBe(200);
+      expect(pedidos).toContain('/sprites');
+
+      // Y la API de Ánima I sigue siendo suya.
+      expect((await puerta.inject({ method: 'GET', url: '/api/health' })).statusCode).toBe(200);
+    } finally {
+      await puerta.close();
+      await new Promise<void>((listo) => deposito.close(() => listo()));
+      rmSync(v2Dir, { recursive: true, force: true });
+    }
   });
 
   it('sin web construida se comporta como la API de siempre', async () => {

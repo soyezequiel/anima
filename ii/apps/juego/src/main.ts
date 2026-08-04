@@ -19,6 +19,9 @@
 // Una pestaña abierta avanza la partida real. Este proyecto ya perdió una
 // generación por mirar el mundo mientras corría, así que la pausa no es una
 // comodidad que se agrega después: es lo primero que tiene que existir.
+//
+// Que EXISTA desde el primer día y que sea el ARRANQUE son dos cosas distintas,
+// y hoy el juego arranca corriendo en ×1. Ver el bloque de `velocidad`.
 
 import { Partida } from '@anima/perceive'
 import { vivir } from '@anima/mind'
@@ -130,8 +133,15 @@ const QUIEN = 'ana'
  * Estaba declarada abajo, junto a la carga de sprites, cuando lo único que hacía
  * era traer dibujos. Desde que el proveedor del chat sale por el mismo backend,
  * `new Ordenes` la necesita — y `new Ordenes` pasa antes.
+ *
+ * El valor sale del entorno de construcción porque el depósito no siempre está
+ * en la misma máquina que el navegador. En desarrollo sí —de ahí el default de
+ * siempre—, pero servido en un dominio, `localhost:5190` es el localhost DEL
+ * VISITANTE: cada uno le pediría los dibujos a su propia computadora. Ahí entra
+ * una ruta del mismo origen (`/v2/deposito`), que el proxy manda al depósito de
+ * verdad.
  */
-const DONDE_EL_DEPOSITO = 'http://localhost:5190'
+const DONDE_EL_DEPOSITO = import.meta.env['VITE_DEPOSITO'] ?? 'http://localhost:5190'
 const baul = depositoIndexedDB()
 let guardadoAlArrancar: Awaited<ReturnType<typeof cargar>>
 try {
@@ -289,18 +299,40 @@ async function mirarElDeposito(): Promise<void> {
 void mirarElDeposito()
 
 /**
- * ARRANCA EN PAUSA, y el guardado automático es lo que lo convirtió en obligación.
+ * ARRANCA EN ×1: abrir el juego es ver un mundo vivo, no una foto.
  *
- * El encabezado de este archivo ya decía que la velocidad 0 tenía que existir
- * desde el primer día —una pestaña abierta avanza la partida real, y este
- * proyecto ya perdió una generación por mirar el mundo mientras corría—, pero el
- * juego igual arrancaba en ×1.
+ * Esto ya estuvo en 0 y se volvió atrás. El argumento de la pausa era el
+ * guardado automático: con la partida persistiendo sola cada cinco segundos,
+ * abrir la pestaña y olvidarse no cuesta una sesión de mirar, **escribe lo que
+ * pasó**. Sigue siendo cierto, y por eso la pausa está a un click y el botón lo
+ * dice en su `title`.
  *
- * Con la partida persistiendo sola cada cinco segundos, eso pasó de incómodo a
- * peligroso: abrir la pestaña y olvidarse ya no cuesta una sesión de mirar,
- * **escribe lo que pasó**. Que la primera decisión sea del jugador.
+ * Lo que pesó más: un mundo detenido al abrir se lee como un mundo roto. La
+ * confusión más cara de este proyecto no es perder una generación, es creer que
+ * la criatura no hace nada. El costo se paga cuando te vas de la pestaña —y ahí
+ * hay un botón—; el otro se pagaba en el primer segundo de todo el mundo.
+ *
+ * ─── Y `?vel=0` ABRE EN PAUSA, que no es un capricho de tests ──────────────
+ *
+ * Con el mundo corriendo desde el primer cuadro, «abrir quieto» dejó de ser
+ * alcanzable apretando pausa: entre que la página pinta y que el click llega
+ * pasan ticks, y la criatura se movió. Eso rompió el spec que compara el mundo
+ * que se fue con el que vuelve, y lo rompió con razón.
+ *
+ * Un click no puede llegar antes del primer cuadro; la URL sí. Vale para
+ * cualquiera que quiera compartir un link a un mundo detenido, no sólo para
+ * Playwright. No se recuerda entre sesiones a propósito: el arranque por
+ * omisión es ×1 SIEMPRE, y lo único que lo cambia es que se lo pidas ahí mismo.
  */
-let velocidad = 0
+const VELOCIDADES = ['0', '1', '4', '16'] as const
+function velocidadDeArranque(): number {
+  // `Number(null)` es 0, o sea una velocidad válida: sin este chequeo contra el
+  // TEXTO, entrar sin parámetro abriría en pausa. Se mira la cadena, no el número.
+  const pedida = new URLSearchParams(location.search).get('vel')
+  return (VELOCIDADES as readonly string[]).includes(pedida ?? '') ? Number(pedida) : 1
+}
+
+let velocidad = velocidadDeArranque()
 let zoom = 2
 let acumulado = 0
 let ultimo = performance.now()
@@ -329,6 +361,10 @@ for (const b of botones) {
     for (const otro of botones) otro.classList.toggle('on', otro === b)
   })
 }
+// El marcado sale de `velocidad` y no del HTML, porque `?vel=` puede haberla
+// cambiado. Un botón encendido que no es la velocidad real se lee una vez y
+// después nadie le cree a la barra.
+for (const b of botones) b.classList.toggle('on', Number(b.dataset['vel']) === velocidad)
 
 const zooms = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-zoom]'))
 for (const b of zooms) {

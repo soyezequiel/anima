@@ -100,7 +100,10 @@ async function abrir(page: Page, o: Opciones = {}): Promise<void> {
       }),
     })
   })
-  await page.goto('/')
+  // `?vel=0` ABRE EN PAUSA: el juego arranca en ×1 y lo que este archivo cuenta
+  // son líneas de charla, que un mundo corriendo llena de pasos de progreso. Va
+  // en la URL y no en un click porque el click llega después del primer cuadro.
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 

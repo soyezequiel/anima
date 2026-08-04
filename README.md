@@ -1,13 +1,126 @@
 # Ánima
 
-Mascota virtual autónoma que vive en un mundo 2D simulado. Comienza con
-capacidades mínimas y aprende mediante experimentación: cuando sus habilidades
-no alcanzan, crea nuevas, las prueba automáticamente en mundos aislados, y solo
-las incorpora a su biblioteca si superan las pruebas.
+🏆 **Ganadora de la Hackatón #05 de [La Crypta](https://www.lacrypta.dev/hackathons/ai-agents)
+— AI Agents (Bots & Automation), julio de 2026.**
+
+Una criatura que tiene hambre, no sabe pescar, y escribe el código que le falta.
+
+No es una metáfora. Cuando lo que sabe hacer no alcanza para lo que necesita,
+redacta el contrato de una habilidad nueva, la implementa, y **un evaluador que
+no es ella** la corre en mundos aislados y decide si entra a su biblioteca o se
+archiva como regresión. Las que sobreviven quedan, y las vuelve a usar sin
+consultar a nadie. El bucle completo, tal como queda registrado en una partida:
+
+```
+energía baja -> hipótesis -> objetivo -> intento directo -> fallo ->
+prohibición de repetir -> contrato de habilidad -> candidata v1 -> pruebas
+automáticas -> v1 rechazada (queda como regresión) -> candidata v2 ->
+v2 promovida a estable -> ejecución en el mundo real -> alimento alcanzado ->
+energía recuperada -> conocimiento consolidado y explicable
+```
+
+Nada de esa línea es un guion: cada flecha es un paso que la partida decidió y
+que podés abrir en la interfaz para ver por qué.
+
+## Probala ahora
+
+| | |
+|---|---|
+| **Ánima I** — la que anda entera | <https://anima.naranja.fit> |
+| **Ánima II** — el remake, con física de materia | <https://anima.naranja.fit/v2/> |
+
+Sin instalar nada, sin cuenta y sin clave de API. Las dos corren en una laptop
+en una casa, detrás de un túnel, con una cuenta de ChatGPT prestada.
+
+> Si ves que piensa raro o no contesta, puede ser la cuota de esa cuenta: es una
+> sola y la comparten todos los que entran. El mundo sigue andando igual — la
+> física no depende de ningún modelo. Se apaga y se prende en ⚙ ajustes.
+
+### Qué mirar en 60 segundos
+
+**En Ánima I**, escribile `traé un tronco` y abrí la pestaña **Pensamiento**.
+Vas a ver la cadena entera: qué percibió, qué se propuso, qué intentó, qué
+falló. Si algo no lo sabe hacer, mirá **Habilidades**: ahí aparecen las
+versiones candidatas con sus pruebas, cuál se rechazó y por qué.
+
+**En Ánima II**, tocá `hacé fuego`. Nadie programó cómo se hace fuego: hay
+materia con propiedades y leyes fijas, y encender sale de frotar — barato en lo
+liviano y seco, carísimo en lo pesado, que es de donde salió sola la idea de
+yesca. El mapa se dibuja con sprites que pidió otra partida: el depósito es
+compartido, así que lo que dibuje tu visita le queda a quien entre después.
+
+## Por qué no es un chatbot con un juego encima
+
+**El mundo decide, no el modelo.** La física es determinista y está cerrada: el
+modelo propone acciones y habilidades, y el motor dice qué pasa. Si la habilidad
+que escribió no sirve, no sirve — no hay forma de que se convenza a sí misma de
+que anduvo. En Ánima II eso se verifica por hash: las mismas 20 semillas dan los
+mismos seis hashes después de tocar la mente, y cuando una cambió, un guardián
+la cazó y hubo que justificar por qué.
+
+**El que propone no es el que aprueba.** El generador escribe la habilidad; un
+juez independiente la mide contra criterios escritos **antes**, en escenarios
+reproducibles. La última corrida contra un modelo real fueron 19 candidatas
+clasificadas una por una —la mayoría limpias, algunas reparadas, una rota— por
+US$ 0,80 en total. Los rechazos quedan guardados como regresiones, que es lo que
+evita que la próxima versión repita el error.
+
+**Funciona sin modelo.** No es un detalle de robustez: era el criterio de corte
+del remake. Si la mente no resolvía el hambre sin llamar a nadie, el proyecto se
+paraba. Resuelve. El modelo entra donde de verdad hace falta —una frase que no
+entiende, una capacidad que no tiene— y el resto del tiempo la criatura piensa
+sola, gratis y determinista.
+
+**Y el mundo sabe más de lo que le contaron.** Al medir el vocabulario real de
+la física contra la lista escrita a mano aparecieron 30 sustancias contra 6:
+**24 estaban escondidas**, entre ellas el pescado y el junco, que son
+justamente las dos piezas de la caña de pescar. Ninguna estaba inventada por el
+modelo; salían todas de combinar materia con materia.
+
+## Las dos Ánimas
+
+**Ánima I** (`apps/`, `packages/`) es la completa: fases 0–9, mundo 2D con
+Phaser, chat, panel de habilidades, experimentos, muerte con informe de legado y
+una sucesora que hereda el conocimiento como testimonio verificable. Identidad
+Nostr opcional para sincronizar el progreso, con la clave privada siempre fuera
+del servidor.
+
+**Ánima II** (`ii/`) es el rehacer, y no es un refactor: no importa una sola
+línea de Ánima I — la única excepción, escrita como regla, es el backend, que se
+comparte. Cambia la premisa: en vez de un catálogo de cosas que existen, hay
+**materia con propiedades y leyes fijas**, y los objetos emergen de combinarla.
+El fuego no se propagaba hasta que alguien ató dos cortezas, y ese fue el día
+que se entendió que medir el catálogo no es medir el mundo.
+
+Sus etapas están casi todas cerradas; quedan abiertas la fragua y la física que
+se abre. El estado real se publica criterio por criterio en
+[su tablero](ii/docs/tablero/) — incluidas las etapas **cerradas con rojo**: las
+que se dieron por terminadas con un criterio que no cumple y la causa medida al
+lado. Y hay 65 `it.fails` anotados: huecos conocidos, escritos como pruebas que
+fallan a propósito, en vez de silencio.
+
+## Lo que podés verificar sin creernos nada
+
+```bash
+pnpm test        # Ánima I
+pnpm ii:test     # Ánima II
+pnpm typecheck && pnpm ii:typecheck
+```
+
+| | |
+|---|---|
+| pruebas | **4576** en verde: 1062 de Ánima I y 3514 de Ánima II |
+| typechecks | limpios en los dos árboles (`pnpm typecheck`, `pnpm ii:typecheck`) |
+| decisiones registradas | **112 ADRs** (88 + 24), cada uno con el porqué y lo que se descartó |
+| huecos declarados | 65 `it.fails` — lo que falta está escrito, no tapado |
+
+Los ADRs no son ceremonia: son el lugar donde está por qué se eligió cada cosa
+**y qué alternativa se tiró**. Si algo del diseño parece raro, es probable que
+haya un ADR explicando contra qué se decidió.
 
 > Nombre provisional. Los identificadores técnicos no dependen de la marca.
 
-## Estado actual
+## Ánima I en detalle
 
 **Fases 0–9 completadas**: la historia completa de aprendizaje funciona
 headless (hito 1) y en el navegador (React + Phaser, chat, panel de
@@ -27,14 +140,6 @@ con una cuenta real: el modelo propuso una habilidad, el evaluador rechazó
 sus versiones débiles con regresiones, y su versión corregida fue promovida
 y reutilizada sin nuevas consultas. Sin Codex, el mock determinista sigue
 siendo la base: cero claves, cero costos.
-
-```
-energía baja -> hipótesis -> objetivo -> intento directo -> fallo ->
-prohibición de repetir -> contrato de habilidad -> candidata v1 -> pruebas
-automáticas -> v1 rechazada (queda como regresión) -> candidata v2 ->
-v2 promovida a estable -> ejecución en el mundo real -> alimento alcanzado ->
-energía recuperada -> conocimiento consolidado y explicable
-```
 
 ## Requisitos
 
@@ -202,6 +307,10 @@ Codex instalado).
   desconectarla quedan del lado de quien hospeda. El servidor responde 403 a
   `/ai/login` y `/ai/logout`, y la interfaz ni muestra el botón. Lo que el
   candado **no** cubre es la cuota: cada visitante gasta de la misma cuenta.
+- Y viene **encendida**: con la sesión prestada, el juego arranca pensando con
+  Codex en vez del mock. Quien prefiera el simulado lo apaga en ⚙ ajustes y esa
+  elección se recuerda. Fuera de este modo no cambia nada: sin sesión prestada
+  sigue arrancando en el mock.
 - El `config.toml` de tu máquina no viaja (trae MCPs, skills y rutas que dentro
   del contenedor no existen). El modelo se elige con `ANIMA_CODEX_MODEL`; sin
   él manda el «Automático» de la cuenta.

@@ -1,8 +1,14 @@
 # Lo que nunca tiene que entrar al contexto de build.
 #
-# `data/` primero y por sobre todo: ahí viven los CODEX_HOME por usuario, con
-# las credenciales que el CLI de Codex gestiona. Una imagen no se lleva eso.
-**/data/
+# El estado de la API primero y por sobre todo: ahí viven los CODEX_HOME por
+# usuario, con las credenciales que el CLI de Codex gestiona, y la base SQLite.
+# Una imagen no se lleva eso.
+#
+# Va la ruta exacta y NO `**/data/`: ese patrón parecía más prolijo y además se
+# comía `ii/packages/physics/src/data/`, que es la tabla de sustancias — o sea
+# código. El build de Ánima II moría con «Could not resolve ./data/sustancias».
+apps/api/data/
+.claude/worktrees/
 .env
 .env.*
 !.env.example
@@ -21,8 +27,10 @@ playwright-report
 **/playwright-report
 apps/missions/traces
 
-# El remake vive en el mismo repo pero no forma parte de Ánima I. Sus
-# package.json sí entran (abajo): el lockfile los declara y `--frozen-lockfile`
-# exige que todos los proyectos del workspace estén presentes.
-ii/**
-!ii/**/package.json
+# El remake entra entero: desde que Ánima II se sirve en `/v2`, su juego se
+# construye acá adentro y su depósito tiene imagen propia. Lo único que se
+# queda afuera es el respaldo que el depósito escribe antes de reescribir
+# (runtime, no contenido); `sprites.json` SÍ entra — son dibujos que costaron
+# consultas de verdad.
+ii/apps/sprites/datos/*.viejos
+ii/docs/tablero/*.html

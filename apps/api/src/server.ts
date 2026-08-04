@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import fastifyStatic from '@fastify/static';
+import fastifyProxy from '@fastify/http-proxy';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { AiBridge, AiBridgeFactory } from './ai.js';
 import { createCodexBridgeFactory, isCodexModel, isCodexReasoningEffort } from './ai.js';
@@ -26,11 +27,39 @@ export interface ServerOptions {
   /** Puente de Claude de la máquina (inyectable en pruebas). */
   claudeAi?: AiBridge;
   /**
+   * ¿Esta instancia deja usar los CLI instalados en SU máquina? Por omisión
+   * NO, y ese default es la decisión (ADR 0089).
+   *
+   * Un puente CLI gasta la cuenta de quien hospeda, no la del visitante: da
+   * igual que sea el `~/.codex` del invitado o la suscripción de Claude de la
+   * máquina — el que paga es siempre el mismo. Mientras esto vivió en una
+   * laptop era el dueño usando lo suyo; con la instancia publicada pasó a ser
+   * una canilla abierta a Internet.
+   *
+   * Encendido (`ANIMA_CLI_LOCAL=1`) vuelve todo a lo de antes, que es lo que
+   * corresponde cuando la instancia corre en la máquina del dueño. Apagado, el
+   * que quiera mente real trae su propia API OpenAI-compatible desde el
+   * navegador y no pasa por acá.
+   */
+  cliLocal?: boolean;
+  /**
    * Directorio con la web ya construida (`apps/web/dist`). Presente, este
    * servidor también la sirve, y entonces API y web comparten origen. Ausente
    * (desarrollo), la web la sirve Vite y este servidor es solo la API.
    */
   staticDir?: string;
+  /**
+   * Ánima II construida (`ii/apps/juego/dist`), servida bajo `/v2/`. El juego
+   * tiene que estar construido con esa misma base, si no pide sus assets a la
+   * raíz y se los contesta Ánima I.
+   */
+  v2Dir?: string;
+  /**
+   * Raíz del depósito de sprites de Ánima II (`http://anima-ii:5190`). Se
+   * publica en `/v2/deposito`, porque el navegador del visitante no puede
+   * alcanzar el `localhost` de la máquina donde corre el depósito.
+   */
+  v2Deposito?: string;
 }
 
 /**
@@ -84,15 +113,22 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   app.get('/health', () => ({ ok: true }));
 
   // ---- puente de IA (Codex / Claude) ---------------------------------------
-  // Las credenciales las gestiona cada CLI en la máquina del usuario; aquí
+  // Las credenciales las gestiona cada CLI en la máquina donde corre esto; aquí
   // solo viajan estado, la URL de autorización y texto de prompts.
-  // Con Codex cada identidad autenticada usa su propio puente (su propia
-  // cuenta); sin token se usa el puente invitado de la máquina. El puente de
-  // Claude es único: es la suscripción personal del dueño de la máquina.
-  // Un token presente pero inválido es 401: jamás degrada en silencio.
-  const aiForUser =
-    options.ai ?? createCodexBridgeFactory({ root: options.codexDir ?? 'data/codex' });
-  const claudeAi = options.claudeAi ?? createClaudeBridge();
+  //
+  // Y esa frase esconde a quién le sale la plata: el CLI corre en la máquina
+  // del SERVIDOR, así que la cuenta es la de quien hospeda. Por eso los dos
+  // puentes existen solo si el dueño los enciende (`cliLocal`); en una
+  // instancia publicada no se construyen, y `null` no es una degradación
+  // silenciosa — las rutas lo dicen con todas las letras.
+  //
+  // Un puente inyectado gana sobre el flag: quien lo pasa lo puso a propósito
+  // (las pruebas, y el día que aparezca otro puente que no sea un CLI local).
+  const cliLocal = options.cliLocal ?? false;
+  const aiForUser: AiBridgeFactory | null =
+    options.ai ??
+    (cliLocal ? createCodexBridgeFactory({ root: options.codexDir ?? 'data/codex' }) : null);
+  const claudeAi: AiBridge | null = options.claudeAi ?? (cliLocal ? createClaudeBridge() : null);
 
   // El proveedor viaja en la query (?provider=claude) en todas las rutas /ai;
   // ausente significa Codex, que fue el primero y sigue siendo el default.
@@ -107,43 +143,81 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return null;
   };
 
-  const aiBridge = (request: FastifyRequest, reply: FastifyReply): AiBridge | null => {
-    const provider = aiProviderOf(request, reply);
-    if (!provider) return null;
+  /**
+   * Lo que se le contesta a quien pide un puente que esta instancia no presta.
+   *
+   * Es 503 y no 403: no le falta permiso a nadie: acá no hay nada que dar. Y el
+   * mensaje nombra la salida, porque un error que solo dice «no» manda a
+   * revisar una configuración del servidor cuando lo que falta está del lado
+   * del visitante y lo puede poner en dos minutos.
+   */
+  const SIN_PUENTE_LOCAL =
+    'esta instancia no presta cuentas de IA: enchufá tu propia API OpenAI-compatible en Ajustes';
+
+  /**
+   * La identidad de quien pide, o `null` si viene sin token. Un token presente
+   * pero inválido no es «invitado»: es 401, y devuelve `false` para que el
+   * llamador corte sin volver a contestar.
+   */
+  const identidadDe = (request: FastifyRequest, reply: FastifyReply): string | null | false => {
     const header = request.headers.authorization;
-    if (!header) return provider === 'claude' ? claudeAi : aiForUser(null);
+    if (!header) return null;
     const token = header.startsWith('Bearer ') ? header.slice('Bearer '.length) : null;
     const pubkey = token ? pubkeyForToken(deps, token) : null;
     if (!pubkey) {
       void reply.code(401).send({ error: 'token inválido o expirado' });
-      return null;
+      return false;
     }
-    return provider === 'claude' ? claudeAi : aiForUser(pubkey);
+    return pubkey;
   };
 
+  const aiBridge = (request: FastifyRequest, reply: FastifyReply): AiBridge | null => {
+    const provider = aiProviderOf(request, reply);
+    if (!provider) return null;
+    // El 503 va ANTES de mirar el token: sin puente da igual quién pregunte, y
+    // pedirle identidad a alguien para después decirle que no hay nada sería
+    // hacerlo autenticarse contra una puerta tapiada.
+    if (provider === 'claude' ? claudeAi === null : aiForUser === null) {
+      void reply.code(503).send({ error: SIN_PUENTE_LOCAL });
+      return null;
+    }
+    const pubkey = identidadDe(request, reply);
+    if (pubkey === false) return null;
+    // Claude es la suscripción de la máquina: una sola, la misma para todos.
+    // Codex reparte por identidad — cada pubkey su CODEX_HOME, su propia cuenta.
+    if (provider === 'claude') return claudeAi;
+    return aiForUser === null ? null : aiForUser(pubkey);
+  };
+
+  /**
+   * El estado es la única ruta /ai que contesta 200 sin puente, y a propósito:
+   * la web la consulta en cada arranque para saber con qué piensa la mascota.
+   * Un 503 ahí sería un error rojo en la consola de todo el que abra la página
+   * para decirle algo que no es un fallo — que esta instancia no presta cuenta.
+   *
+   * `installed: false` es la verdad desde donde mira quien pregunta: no hay CLI
+   * que vos puedas usar acá. Que en el disco del servidor exista uno es un dato
+   * del dueño, no del visitante.
+   */
   app.get('/ai/status', (request, reply) => {
+    const provider = aiProviderOf(request, reply);
+    if (!provider) return reply;
+    const puente = provider === 'claude' ? claudeAi : aiForUser;
+    if (puente === null) {
+      return { installed: false, loggedIn: false, detail: SIN_PUENTE_LOCAL };
+    }
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
     return ai.status();
   });
 
-  /**
-   * Una sesión administrada se presta, no se entrega: conectarla y
-   * desconectarla son del dueño de la instancia. Es 403 y no 400 porque la
-   * petición está bien formada — lo que falta es permiso.
-   */
-  const rejectIfManaged = (ai: AiBridge, reply: FastifyReply): boolean => {
-    if (!ai.managed) return false;
-    void reply
-      .code(403)
-      .send({ error: 'la sesión de IA la administra el dueño de esta instancia' });
-    return true;
-  };
-
+  // El portón `rejectIfManaged` se fue con la cuenta prestada (ADR 0089): un
+  // puente que existe es ahora, siempre, un CLI de esta máquina que el dueño
+  // encendió a mano. Conectarlo y desconectarlo vuelven a ser suyos porque el
+  // único que llega hasta acá es él.
   app.post('/ai/login', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
-    if (rejectIfManaged(ai, reply)) return reply;
     const result = await ai.startLogin();
     if ('error' in result) return reply.code(502).send(result);
     return result;
@@ -153,7 +227,6 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   app.post('/ai/login/code', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
-    if (rejectIfManaged(ai, reply)) return reply;
     if (!ai.submitLoginCode) {
       return reply.code(400).send({ error: 'este proveedor completa el login solo' });
     }
@@ -182,7 +255,6 @@ export function buildServer(options: ServerOptions): FastifyInstance {
   app.post('/ai/logout', async (request, reply) => {
     const ai = aiBridge(request, reply);
     if (!ai) return reply;
-    if (rejectIfManaged(ai, reply)) return reply;
     await ai.logout();
     return reply.code(204).send();
   });
@@ -370,11 +442,49 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     return reply.code(204).send();
   });
 
+  // ---- Ánima II bajo /v2 ---------------------------------------------------
+  // Las dos versiones comparten dominio, y el que reparte es este servidor: ya
+  // era la puerta expuesta, así que sumar un nginx habría sido una pieza más
+  // para el mismo trabajo. Las dos opciones son opcionales e independientes:
+  // sin ellas, este archivo se comporta exactamente como antes de que Ánima II
+  // existiera.
+  //
+  // El depósito va PRIMERO que el estático: `/v2/deposito/...` tiene que ser
+  // del depósito y no un archivo que no existe en el dist del juego.
+  if (options.v2Deposito) {
+    void app.register(fastifyProxy, {
+      upstream: options.v2Deposito,
+      prefix: '/v2/deposito',
+      // El depósito declara sus rutas en la raíz (`/leer`, `/forjar`,
+      // `/sprites`): el prefijo es cosa de la puerta, no suya.
+      rewritePrefix: '',
+      websocket: false,
+    });
+  }
+  if (options.v2Dir) {
+    // `/v2` a secas redirige a `/v2/`, y no es cosmética: las rutas relativas
+    // del juego cuelgan del directorio, así que sin la barra caerían un nivel
+    // más arriba — o sea, en Ánima I. Va explícito porque el `redirect` del
+    // plugin vale para los directorios de adentro, no para el prefijo mismo:
+    // `/v2` sin barra no llega siquiera a matchear su ruta.
+    app.get('/v2', (_request, reply) => reply.redirect('/v2/', 301));
+    void app.register(fastifyStatic, {
+      root: options.v2Dir,
+      prefix: '/v2/',
+      // Segunda instancia: sin esto choca con los decoradores de la primera.
+      decorateReply: false,
+      redirect: true,
+    });
+  }
+
   // La web construida, servida por el mismo origen que la API (modo empaquetado).
   // Va al final a propósito: `@fastify/static` monta un comodín `/*` y las rutas
   // declaradas arriba tienen que seguir ganándole.
   if (options.staticDir) {
-    void app.register(fastifyStatic, { root: options.staticDir });
+    void app.register(fastifyStatic, {
+      root: options.staticDir,
+      ...(options.v2Dir ? { decorateReply: false } : {}),
+    });
   }
 
   return app;

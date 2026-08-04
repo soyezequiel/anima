@@ -49,7 +49,10 @@ async function abrir(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true, respuesta: null }),
     }),
   )
-  await page.goto('/')
+  // `?vel=0` ABRE EN PAUSA: el juego arranca en ×1, y acá la velocidad la maneja
+  // `correrA()` paso por paso. El arranque no puede adelantarle ticks a nadie, y
+  // un click de pausa siempre llega después del primer cuadro.
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 

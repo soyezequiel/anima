@@ -3,12 +3,14 @@ import { createRoot } from 'react-dom/client';
 import type { CodexThought } from '@anima/model-providers';
 import { CodexModelProvider } from '@anima/model-providers';
 import { App } from './App.js';
+import type { AiChoice } from './auth/ai.js';
 import {
   claudeHttpTransport,
   codexHttpTransport,
   fetchAiStatus,
-  readAiChoice,
-  storeAiChoice,
+  forgetAiChoice,
+  openAiTransport,
+  readStoredAiChoice,
 } from './auth/ai.js';
 import { forgetAccount, initCloud } from './auth/cloud.js';
 import { GameSession } from './session/GameSession.js';
@@ -36,8 +38,39 @@ const cloud = await initCloud(() => {
 const busyRef: { notify: (busy: boolean) => void } = { notify: () => undefined };
 const thoughtRef: { notify: (thought: CodexThought) => void } = { notify: () => undefined };
 let provider: CodexModelProvider | undefined;
-const aiChoice = readAiChoice();
-if (aiChoice === 'codex' || aiChoice === 'claude') {
+
+// ─── SIN ELECCIÓN, EL SIMULADO ──────────────────────────────────────────────
+//
+// Nadie empieza gastando. El simulado es determinista y no cuesta, y es con lo
+// que arranca todo el que abre la página por primera vez.
+//
+// Acá vivía una excepción —si el anfitrión prestaba su cuenta, la mente real
+// venía encendida— y se fue con la canilla (ADR 0089). Encenderla era el gesto
+// correcto mientras la cuenta la ponía el anfitrión a propósito; cuando el que
+// paga es siempre él y el que decide es cualquiera, el default tiene que ser
+// no gastar.
+const elegido = readStoredAiChoice();
+const aiChoice: AiChoice = elegido ?? 'mock';
+
+if (aiChoice === 'openai') {
+  // La API del que juega: el navegador la llama directo, así que no hay estado
+  // que consultarle a nadie — o los tres campos están, o no hay transporte.
+  const transport = openAiTransport();
+  if (transport) {
+    provider = new CodexModelProvider(
+      transport,
+      {
+        onBusy: (busy) => busyRef.notify(busy),
+        onThought: (thought) => thoughtRef.notify(thought),
+      },
+      'openai',
+    );
+  } else {
+    // Quedó elegida pero sin datos (los borró, o cambió de navegador): se
+    // olvida en vez de guardar «simulado», igual que con una sesión caída.
+    forgetAiChoice();
+  }
+} else if (aiChoice === 'codex' || aiChoice === 'claude') {
   const aiStatus = await fetchAiStatus(aiChoice);
   if (aiStatus?.loggedIn) {
     provider = new CodexModelProvider(
@@ -49,7 +82,10 @@ if (aiChoice === 'codex' || aiChoice === 'claude') {
       aiChoice,
     );
   } else {
-    storeAiChoice('mock');
+    // La sesión se cayó sola —o esta instancia dejó de prestar cuentas—: no fue
+    // decisión de nadie, así que se OLVIDA la elección en vez de guardar
+    // «simulado». Si vuelve a haber sesión, la mente real vuelve sola.
+    forgetAiChoice();
   }
 }
 

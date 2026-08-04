@@ -12,7 +12,6 @@ import {
   codexHomeFor,
   createCodexBridge,
   createCodexBridgeFactory,
-  createManagedBridge,
   createThoughtStreamParser,
   isUnsupportedEffortError,
   isUnsupportedModelError,
@@ -325,63 +324,115 @@ ERROR: {"type":"error","status":400,"error":{"type":"invalid_request_error","mes
 
 const unsupportedEffortStderr = `stream error: { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 } ERROR: { "type": "error", "error": { "type": "invalid_request_error", "code": "unsupported_value", "message": "Unsupported value: 'minimal' is not supported with the 'gpt-5.6-terra-premium-1p-codexswic-external' model.", "param": "reasoning.effort" }, "status": 400 }`;
 
-describe('sesión administrada por el dueño de la instancia', () => {
-  it('se puede usar pero no conectar ni desconectar', async () => {
-    const logoutsReales: number[] = [];
-    const base: AiBridge = {
-      status: () =>
-        Promise.resolve({ installed: true, loggedIn: true, detail: 'Logged in using ChatGPT' }),
-      startLogin: () => Promise.resolve({ authUrl: 'https://auth.openai.com/oauth/authorize' }),
-      logout: () => {
-        logoutsReales.push(1);
-        return Promise.resolve();
-      },
-      limits: () => Promise.resolve(fakeLimits),
-      complete: () => Promise.resolve('pensado'),
-    };
-    const compartido = createManagedBridge(base);
-    const server = buildServer({ dbPath: ':memory:', ai: () => compartido });
+/**
+ * ═══ LA CANILLA CERRADA (ADR 0089) ═════════════════════════════════════════
+ *
+ * Acá antes vivía la sesión administrada: una cuenta del dueño prestada a
+ * todos, con candado sobre el botón de desconectar. Lo que se prueba ahora es
+ * lo contrario, y la prueba que más importa es la segunda — porque el modo
+ * «compartido» era visible y la fuga del invitado no lo era.
+ */
+describe('una instancia sin CLI locales no presta ninguna cuenta', () => {
+  /** Sin `cliLocal` y sin puentes inyectados: lo que ve una instancia publicada. */
+  function instanciaPublicada() {
+    return buildServer({ dbPath: ':memory:' });
+  }
+
+  it('ninguna ruta que gaste contesta que sí, ni con Codex ni con Claude', async () => {
+    const server = instanciaPublicada();
     await server.ready();
-
     try {
-      // Lo que sí: pensar, y saber que la sesión es prestada.
-      const estado = await server.inject({ method: 'GET', url: '/ai/status' });
-      expect(estado.json()).toMatchObject({ loggedIn: true, managed: true });
-      const consulta = await server.inject({
-        method: 'POST',
-        url: '/ai/complete',
-        payload: { prompt: 'hola' },
-      });
-      expect(consulta.json()).toEqual({ text: 'pensado' });
-      expect((await server.inject({ method: 'GET', url: '/ai/limits' })).statusCode).toBe(200);
+      for (const provider of ['codex', 'claude']) {
+        const consulta = await server.inject({
+          method: 'POST',
+          url: `/ai/complete?provider=${provider}`,
+          payload: { prompt: 'gastame la cuota' },
+        });
+        // 503 y no 403: no le falta permiso a nadie, acá no hay nada que dar.
+        expect(consulta.statusCode).toBe(503);
+        // Y el error nombra la salida, que es lo único accionable del otro lado.
+        expect(consulta.json().error).toContain('OpenAI-compatible');
 
-      // Lo que no: tocarle la sesión a los demás.
-      for (const url of ['/ai/login', '/ai/logout', '/ai/login/code']) {
-        const res = await server.inject({ method: 'POST', url, payload: { code: 'x' } });
-        expect(res.statusCode).toBe(403);
+        for (const url of ['/ai/login', '/ai/logout', '/ai/login/code']) {
+          const res = await server.inject({
+            method: 'POST',
+            url: `${url}?provider=${provider}`,
+            payload: { code: 'x' },
+          });
+          expect(res.statusCode).toBe(503);
+        }
+        const limites = await server.inject({
+          method: 'GET',
+          url: `/ai/limits?provider=${provider}`,
+        });
+        expect(limites.statusCode).toBe(503);
       }
-      expect(logoutsReales).toHaveLength(0);
     } finally {
       await server.close();
     }
   });
 
-  it('el envoltorio también dice que no si alguien lo llama directo', async () => {
-    let cerrado = false;
-    const compartido = createManagedBridge({
-      status: () => Promise.resolve({ installed: true, loggedIn: true, detail: null }),
-      startLogin: () => Promise.resolve({ authUrl: 'https://auth.openai.com/x' }),
-      logout: () => {
-        cerrado = true;
-        return Promise.resolve();
-      },
-      limits: () => Promise.resolve(fakeLimits),
-      complete: () => Promise.resolve('ok'),
-    });
+  /**
+   * LA QUE HABRÍA ATAJADO EL AGUJERO VIEJO. El modo compartido se apagaba con
+   * una variable; el invitado caía al `~/.codex` de la máquina SIEMPRE, sin
+   * flag que lo anunciara, y por eso nadie lo miró. Sin token es exactamente
+   * el visitante anónimo, que es quien tenía la canilla más abierta.
+   */
+  it('el visitante sin identidad tampoco cae a la cuenta de la máquina', async () => {
+    const server = instanciaPublicada();
+    await server.ready();
+    try {
+      const res = await server.inject({
+        method: 'POST',
+        url: '/ai/complete',
+        payload: { prompt: 'hola' },
+      });
+      expect(res.statusCode).toBe(503);
+    } finally {
+      await server.close();
+    }
+  });
 
-    await compartido.logout();
-    expect(cerrado).toBe(false);
-    expect(await compartido.startLogin()).toHaveProperty('error');
+  /**
+   * El estado es la excepción y tiene que serlo: la web lo consulta en cada
+   * arranque. Un 503 ahí pintaría de rojo la consola de todo el que abra la
+   * página para contarle algo que no es una falla.
+   */
+  it('el estado contesta 200 y dice que no hay CLI que vos puedas usar', async () => {
+    const server = instanciaPublicada();
+    await server.ready();
+    try {
+      const res = await server.inject({ method: 'GET', url: '/ai/status' });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ installed: false, loggedIn: false });
+      expect(res.json().detail).toContain('OpenAI-compatible');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('un puente inyectado gana sobre el flag: quien lo pasa lo puso a propósito', async () => {
+    const server = buildServer({
+      dbPath: ':memory:',
+      ai: () => ({
+        status: () => Promise.resolve({ installed: true, loggedIn: true, detail: null }),
+        startLogin: () => Promise.resolve({ authUrl: 'https://auth.openai.com/x' }),
+        logout: () => Promise.resolve(),
+        limits: () => Promise.resolve(fakeLimits),
+        complete: () => Promise.resolve('pensado'),
+      }),
+    });
+    await server.ready();
+    try {
+      const res = await server.inject({
+        method: 'POST',
+        url: '/ai/complete',
+        payload: { prompt: 'hola' },
+      });
+      expect(res.json()).toEqual({ text: 'pensado' });
+    } finally {
+      await server.close();
+    }
   });
 });
 

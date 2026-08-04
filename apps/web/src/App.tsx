@@ -15,6 +15,7 @@ import { ItemsPanel } from './components/ItemsPanel.js';
 import { SkillsTab, ThoughtsTab, TrialsTab } from './components/LearningTabs.js';
 import { PruneOverlay } from './components/PruneOverlay.js';
 import { StatusPanel } from './components/StatusPanel.js';
+import { V2Gate } from './components/V2Gate.js';
 import { useTabActivity } from './components/tabActivity.js';
 import { WorksPanel } from './components/WorksPanel.js';
 import { ThoughtTicker } from './components/ThoughtTicker.js';
@@ -224,6 +225,12 @@ export function App({ session, account }: { session: GameSession; account: Cloud
           <span aria-hidden="true">👁</span> Visión
         </button>
         <SettingsMenu session={session} view={view} account={account} />
+        {/* Puerta a Ánima II (ADR 0088): el botón que late y el cartel de obra
+            que aparece antes de cruzar. Abre en otra pestaña a propósito —
+            esta partida no guarda al salir (`save()` corre por eventos del
+            juego, no en `beforeunload`), así que irse en la misma pestaña
+            tira los últimos segundos de mundo. */}
+        <V2Gate />
         <AccountBar account={account} />
         <button
           className="help-button"

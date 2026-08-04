@@ -1,30 +1,40 @@
 import type { CodexTransport, CodexTransportInput } from '@anima/model-providers';
+import { createOpenAiTransport } from '@anima/model-providers';
 import { API_BASE, readStoredAccount } from './cloud.js';
 
 /**
- * Elección de proveedor de IA del usuario. `mock` (determinista, sin costos)
- * es siempre la base; `codex` usa la cuenta de Codex (ChatGPT) del usuario y
- * `claude` la suscripción de Claude de la máquina, ambos a través del puente
- * local de la API. Las credenciales las gestiona cada CLI en su máquina:
- * aquí solo se guarda la preferencia.
+ * ═══ CON QUÉ PIENSA LA MASCOTA, Y QUIÉN LO PAGA ════════════════════════════
  *
- * Las llamadas al puente viajan con el token de sesión cuando hay identidad:
- * así cada usuario conecta y usa su propia cuenta de Codex. Sin identidad,
- * el puente responde con la sesión invitada de la máquina. La sesión de
- * Claude es siempre la de la máquina: es la suscripción personal del dueño.
+ * Cuatro opciones, y la diferencia que importa entre ellas no es técnica: es de
+ * quién es la cuenta.
+ *
+ *   · **`mock`** — el simulado, determinista y gratis. La base.
+ *   · **`openai`** — una API OpenAI-compatible que trae el que juega: su URL,
+ *     su llave, su modelo. **El navegador la llama directo**, así que la llave
+ *     nunca toca nuestro backend (ADR 0089).
+ *   · **`codex` y `claude`** — los CLI instalados en la máquina del SERVIDOR, a
+ *     través del puente `/ai`. Gastan la cuenta de quien hospeda, y por eso
+ *     una instancia publicada no los ofrece: contesta 503 y estos dos quedan
+ *     para cuando Ánima corre en la máquina de uno.
+ *
+ * Acá solo se guarda la preferencia y los ajustes; ninguna credencial de Codex
+ * ni de Claude pasa por este archivo — de esas se ocupa cada CLI en su máquina.
+ * La llave de `openai` sí vive acá, en el `localStorage` de este navegador, y
+ * no sale de él salvo hacia el proveedor que el usuario eligió.
  */
 
 function aiHeaders(extra: Record<string, string> = {}): Record<string, string> {
   const account = readStoredAccount();
   return account ? { ...extra, authorization: `Bearer ${account.token}` } : extra;
 }
-export type AiChoice = 'mock' | 'codex' | 'claude';
+export type AiChoice = 'mock' | 'codex' | 'claude' | 'openai';
 /** Los proveedores reales que atiende el puente /ai de la API local. */
 export type RemoteAiProvider = 'codex' | 'claude';
 
 const AI_CHOICE_KEY = 'anima:ai:choice';
 const CODEX_SETTINGS_KEY = 'anima:ai:codex-settings';
 const CLAUDE_SETTINGS_KEY = 'anima:ai:claude-settings';
+const OPENAI_SETTINGS_KEY = 'anima:ai:openai-settings';
 
 /**
  * Slugs que el CLI de Codex publica en su catálogo (`models_cache.json` del
@@ -147,25 +157,130 @@ export function storeClaudeSettings(settings: ClaudeSettings): void {
   localStorage.setItem(CLAUDE_SETTINGS_KEY, JSON.stringify(normalized));
 }
 
-export function readAiChoice(): AiChoice {
+/**
+ * ═══ LA API QUE TRAE EL QUE JUEGA ══════════════════════════════════════════
+ *
+ * Tres campos y ninguno tiene default útil: sin los tres no hay nada que
+ * llamar. `baseUrl` admite pegarse con `/v1` o sin él (lo arregla
+ * `normalizarBaseUrl` del transporte); `model` es el nombre exacto que use ese
+ * proveedor, que no es el mismo en OpenAI que en Groq que en un Ollama.
+ */
+export interface OpenAiSettings {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+}
+
+const DEFAULT_OPENAI_SETTINGS: OpenAiSettings = { baseUrl: '', apiKey: '', model: '' };
+
+/**
+ * Sugerencias para el desplegable de la URL. No es una lista cerrada —el campo
+ * se escribe a mano— pero cuatro nombres conocidos ahorran ir a buscar la ruta
+ * a la documentación, que es donde se pierde el que recién empieza.
+ *
+ * Los cuatro mandan cabeceras CORS, que es la condición para que el navegador
+ * pueda llamarlos directo. Uno que no las mande va a fallar como si estuviera
+ * caído, y el error del transporte nombra esa posibilidad.
+ */
+export const OPENAI_BASE_URL_SUGGESTIONS = [
+  { url: 'https://api.openai.com/v1', nombre: 'OpenAI' },
+  { url: 'https://openrouter.ai/api/v1', nombre: 'OpenRouter' },
+  { url: 'https://api.groq.com/openai/v1', nombre: 'Groq' },
+  { url: 'http://localhost:11434/v1', nombre: 'Ollama (en tu máquina)' },
+] as const;
+
+export function readOpenAiSettings(): OpenAiSettings {
+  try {
+    const raw = localStorage.getItem(OPENAI_SETTINGS_KEY);
+    if (!raw) return DEFAULT_OPENAI_SETTINGS;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      baseUrl: typeof parsed.baseUrl === 'string' ? parsed.baseUrl : '',
+      apiKey: typeof parsed.apiKey === 'string' ? parsed.apiKey : '',
+      model: typeof parsed.model === 'string' ? parsed.model : '',
+    };
+  } catch {
+    return DEFAULT_OPENAI_SETTINGS;
+  }
+}
+
+export function storeOpenAiSettings(settings: OpenAiSettings): void {
+  localStorage.setItem(
+    OPENAI_SETTINGS_KEY,
+    JSON.stringify({
+      baseUrl: settings.baseUrl.trim(),
+      apiKey: settings.apiKey.trim(),
+      model: settings.model.trim(),
+    }),
+  );
+}
+
+/** Borra la llave del navegador. Es lo que hace «Olvidar mi API». */
+export function forgetOpenAiSettings(): void {
+  localStorage.removeItem(OPENAI_SETTINGS_KEY);
+}
+
+/** ¿Están los tres campos? Sin esto no hay a quién llamar. */
+export function openAiSettingsComplete(s: OpenAiSettings): boolean {
+  return s.baseUrl.trim() !== '' && s.apiKey.trim() !== '' && s.model.trim() !== '';
+}
+
+/**
+ * El transporte hacia la API del usuario, o `null` si falta algún campo.
+ *
+ * Devuelve `null` en vez de tirar porque el arranque lo consulta antes de saber
+ * si hay algo configurado: que no haya API es el caso normal de una visita
+ * nueva, no un error.
+ */
+export function openAiTransport(): CodexTransport | null {
+  const settings = readOpenAiSettings();
+  if (!openAiSettingsComplete(settings)) return null;
+  return createOpenAiTransport({
+    baseUrl: settings.baseUrl.trim(),
+    apiKey: settings.apiKey.trim(),
+    model: settings.model.trim(),
+  });
+}
+
+/**
+ * Lo que el usuario eligió, o `null` si todavía no eligió nada.
+ *
+ * La diferencia entre «no elegí» y «elegí el simulado» no existía: apagar
+ * Codex borraba la clave, así que las dos cosas se leían igual. Empezó a
+ * importar cuando una instancia puede tener su propio default (ver `main.tsx`):
+ * sin distinguirlas, apagar la mente real duraba hasta la próxima recarga.
+ */
+export function readStoredAiChoice(): AiChoice | null {
   const raw = localStorage.getItem(AI_CHOICE_KEY);
-  return raw === 'codex' || raw === 'claude' ? raw : 'mock';
+  return raw === 'codex' || raw === 'claude' || raw === 'mock' || raw === 'openai' ? raw : null;
+}
+
+export function readAiChoice(): AiChoice {
+  return readStoredAiChoice() ?? 'mock';
 }
 
 export function storeAiChoice(choice: AiChoice): void {
-  if (choice === 'mock') localStorage.removeItem(AI_CHOICE_KEY);
-  else localStorage.setItem(AI_CHOICE_KEY, choice);
+  localStorage.setItem(AI_CHOICE_KEY, choice);
+}
+
+/**
+ * Deja la elección sin decidir, para que vuelva a regir el default de la
+ * instancia. Es lo que corresponde cuando la sesión se cayó sola —no fue una
+ * decisión de nadie— y distinto de apagarla a mano, que sí queda guardado.
+ */
+export function forgetAiChoice(): void {
+  localStorage.removeItem(AI_CHOICE_KEY);
 }
 
 export interface AiStatus {
   installed: boolean;
   loggedIn: boolean;
-  detail: string | null;
   /**
-   * La cuenta la administra el dueño de la instancia (una sola sesión
-   * prestada a todos): se usa, pero no se conecta ni se desconecta desde acá.
+   * Por qué está como está. Con una instancia que no presta cuentas (ADR 0089)
+   * trae el texto que manda a configurar la API propia, así que no es solo
+   * diagnóstico: es la única pista de que hay otro camino.
    */
-  managed?: boolean;
+  detail: string | null;
 }
 
 export async function fetchAiStatus(provider: RemoteAiProvider = 'codex'): Promise<AiStatus | null> {

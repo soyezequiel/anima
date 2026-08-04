@@ -18,10 +18,11 @@
 //
 // ─── Y LA PARTIDA SE MIRA EN PAUSA ──────────────────────────────────────────
 //
-// El juego arranca en velocidad 0 y acá no se toca. No es sólo prudencia —una
-// pestaña abierta avanza la partida real—: el reporte tiene que decir EN PAUSA
-// cuando está en pausa, porque «la criatura no hace nada» con el mundo detenido
-// es la confusión más común que este archivo puede evitarle a alguien.
+// El juego arranca en ×1, así que `abrir()` entra por `?vel=0` y ningún test lo
+// vuelve a tocar. No es sólo prudencia —una pestaña abierta avanza la real—: el
+// reporte tiene que decir EN PAUSA cuando está en pausa, porque «la criatura no
+// hace nada» con el mundo detenido es la confusión más común que este archivo
+// puede evitarle a alguien.
 
 import { readFileSync } from 'node:fs'
 
@@ -50,7 +51,7 @@ async function abrir(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true, respuesta: null }),
     }),
   )
-  await page.goto('/')
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 

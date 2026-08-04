@@ -11,25 +11,32 @@
          que pedís vos en monoespaciada, y eso se lee en escala de grises. Un
          CDN que no contesta no afea la pantalla: borra una distinción.
 
+         `%BASE_URL%` y no `/` a secas porque el juego se sirve colgado de un
+         subpath (`/v2/`) cuando convive con Ánima I. Vite lo reemplaza por la
+         base al construir y por `/` en desarrollo, así que la misma línea vale
+         en los dos lados; con la ruta absoluta, las fuentes se pedían a la raíz
+         del dominio y volvían 404 — que en este archivo no es un detalle
+         estético, es perder la distinción de quién habla.
+
          `swap` porque el juego dibuja desde el primer cuadro: esperar a una
          fuente con el texto invisible sería tapar el mundo por una letra. */
       @font-face {
         font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 400;
-        font-display: swap; src: url('/fuentes/ibm-plex-mono-400.woff2') format('woff2');
+        font-display: swap; src: url('%BASE_URL%fuentes/ibm-plex-mono-400.woff2') format('woff2');
       }
       @font-face {
         font-family: 'IBM Plex Mono'; font-style: normal; font-weight: 500;
-        font-display: swap; src: url('/fuentes/ibm-plex-mono-500.woff2') format('woff2');
+        font-display: swap; src: url('%BASE_URL%fuentes/ibm-plex-mono-500.woff2') format('woff2');
       }
       /* Newsreader es VARIABLE: un solo archivo cubre de 400 a 500, así que el
          rango va en el `font-weight` y no hay un segundo `@font-face`. */
       @font-face {
         font-family: 'Newsreader'; font-style: normal; font-weight: 400 500;
-        font-display: swap; src: url('/fuentes/newsreader.woff2') format('woff2');
+        font-display: swap; src: url('%BASE_URL%fuentes/newsreader.woff2') format('woff2');
       }
       @font-face {
         font-family: 'Newsreader'; font-style: italic; font-weight: 400 500;
-        font-display: swap; src: url('/fuentes/newsreader-italica.woff2') format('woff2');
+        font-display: swap; src: url('%BASE_URL%fuentes/newsreader-italica.woff2') format('woff2');
       }
 
       /* ─── LA PALETA PASÓ DE GRIS AZULADO FRÍO A NEUTRO CÁLIDO ────────────
@@ -1096,8 +1103,11 @@
            es ruido. -->
       <div class="velocidad" id="velocidad">
         <div class="mandos" role="group" aria-label="velocidad del mundo">
-          <button data-vel="0" class="on" title="Si te vas, pausá: la pestaña abierta avanza la partida.">pausa</button>
-          <button data-vel="1">×1</button>
+          <!-- El `on` va en ×1 porque el mundo arranca corriendo. Es el estado
+               de antes de que corra el JS: `main.ts` vuelve a marcar el botón
+               apenas arranca, porque `?vel=0` puede haber pedido otra cosa. -->
+          <button data-vel="0" title="Si te vas, pausá: la pestaña abierta avanza la partida.">pausa</button>
+          <button data-vel="1" class="on">×1</button>
           <button data-vel="4">×4</button>
           <button data-vel="16">×16</button>
         </div>

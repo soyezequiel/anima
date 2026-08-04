@@ -18,7 +18,12 @@ async function tick(page: Page): Promise<number> {
 }
 
 async function abrir(page: Page): Promise<void> {
-  await page.goto('/')
+  // ABRE EN PAUSA POR LA URL, y acá no es prolijidad: el juego arranca en ×1 y
+  // este test compara mano, lugar y cuerpos ANTES y DESPUÉS de recargar. Apretar
+  // pausa no alcanza —entre el primer cuadro y el click la criatura ya caminó, y
+  // esa fue la falla real: `-93,-106` contra `-94,-101`—, así que se pide antes
+  // de que el mundo empiece. Ver `velocidadDeArranque` en `main.ts`.
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
   // «La partida» es un módulo del DOCK desde el paso 6, así que descubrirlo son
   // dos gestos: el interruptor de modo dev y su chip. Va acá, en el `abrir()`
@@ -63,7 +68,7 @@ test('9 · el mundo que vuelve es el que se fue', async ({ page }) => {
   // ─── Y ACÁ SE CIERRA LA PESTAÑA ────────────────────────────────────────
   await abrir(page)
 
-  // Vuelve en el tick guardado o después —el juego arranca en pausa, así que no
+  // Vuelve en el tick guardado o después —`abrir()` entra en pausa, así que no
   // debería avanzar solo, pero un cuadro de más no es un fallo—, nunca antes.
   expect(await tick(page), 'volvió a un mundo más viejo que el guardado').toBeGreaterThanOrEqual(guardadoEn)
   expect(await page.locator('#cuerpos').textContent()).toBe(cuerposAntes)

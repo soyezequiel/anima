@@ -70,22 +70,52 @@ vigia.mirar()
  */
 const ESPERA_DEL_CHAT_MS = Number.parseInt(process.env['ANIMA_CODEX_ESPERA_CHAT'] ?? '30000', 10)
 
+/**
+ * ═══ SI ESTE DEPÓSITO GASTA LA CUENTA DE QUIEN LO CORRE ════════════════════
+ *
+ * Y viene en NO. Todo lo de acá abajo —dibujar, contestar el chat, forjar
+ * habilidades— termina en un `codex exec` que corre en ESTA máquina, o sea con
+ * la cuenta de quien levantó el depósito. Mientras el depósito vivía en un
+ * `localhost` eso era el dueño usando lo suyo. Publicado, es cualquiera con la
+ * URL gastándole la cuota, y ninguna de las tres rutas pregunta quién llama.
+ *
+ * `ANIMA_CLI_LOCAL=1` lo vuelve a encender, que es lo que corresponde en la
+ * máquina del dueño. Es el mismo nombre de variable que usa Ánima I, a
+ * propósito: son dos procesos y una sola decisión.
+ *
+ * ─── SIN DIBUJANTE ESTO NO SE APAGA: CAMBIA DE OFICIO ──────────────────────
+ *
+ * El depósito sigue entero. Guarda, reparte, y —esto es lo nuevo— arma los
+ * prompts para que los llame el navegador con la llave del que juega (ver el
+ * sobre en dos tiempos, en `servidor.ts`). Lo único que deja de hacer es pagar.
+ */
+const CLI_LOCAL = process.env['ANIMA_CLI_LOCAL'] === '1'
+
+const dibujante = CLI_LOCAL
+  ? {
+      nombre: 'codex',
+      dibujar: (prompt: string) => preguntarleACodex(prompt),
+      responder: (prompt: string) => preguntarleACodex(prompt, ESPERA_DEL_CHAT_MS),
+      // El reloj lo elige la forja y no este archivo: un episodio es el viaje al
+      // modelo MÁS un typecheck por candidata, y quien sabe cuánto es eso es quien
+      // lo arma. Acá sólo se le pasa el puente.
+      forjar: (prompt: string, timeoutMs: number) => preguntarleACodex(prompt, timeoutMs),
+    }
+  : undefined
+
 crearServidor(baul, {
-  dibujante: {
-    nombre: 'codex',
-    dibujar: (prompt) => preguntarleACodex(prompt),
-    responder: (prompt) => preguntarleACodex(prompt, ESPERA_DEL_CHAT_MS),
-    // El reloj lo elige la forja y no este archivo: un episodio es el viaje al
-    // modelo MÁS un typecheck por candidata, y quien sabe cuánto es eso es quien
-    // lo arma. Acá sólo se le pasa el puente.
-    forjar: (prompt, timeoutMs) => preguntarleACodex(prompt, timeoutMs),
-  },
+  ...(dibujante === undefined ? {} : { dibujante }),
   vigia,
 }).listen(PUERTO, () => {
   console.log(`depósito de dibujos en http://localhost:${String(PUERTO)}`)
   console.log(`  guardando en ${ARCHIVO}`)
   console.log(`  ${String(baul.todos().length)} dibujos ya adentro`)
-  console.log(`  dibujante: codex exec · modelo ${MODELO_DICHO}`)
-  console.log(`  y contesta el chat en /leer, esperando hasta ${String(ESPERA_DEL_CHAT_MS)} ms`)
-  console.log(`  y forja habilidades en /forjar`)
+  if (dibujante === undefined) {
+    console.log('  SIN dibujante propio: no gasta ninguna cuenta (ANIMA_CLI_LOCAL=1 lo enciende)')
+    console.log('  arma los prompts en /sobre y el navegador los lleva a su propia API')
+  } else {
+    console.log(`  dibujante: codex exec · modelo ${MODELO_DICHO}`)
+    console.log(`  y contesta el chat en /leer, esperando hasta ${String(ESPERA_DEL_CHAT_MS)} ms`)
+    console.log(`  y forja habilidades en /forjar`)
+  }
 })

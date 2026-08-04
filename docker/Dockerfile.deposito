@@ -1,0 +1,70 @@
+# syntax=docker/dockerfile:1
+
+# El depósito de sprites de Ánima II (`ii/apps/sprites`).
+#
+# Se construye desde la raíz del repo:
+#   docker build -f docker/Dockerfile.deposito -t anima-ii-deposito:1 .
+#
+# Va en imagen aparte y no adentro de la de Ánima I por dos razones: es otro
+# proceso con otro ciclo de vida, y sobre todo, es el que ejecuta el CLI de
+# Codex por Ánima II — el juego no le habla a ningún modelo, le habla a esto.
+# Por eso acá también viaja el CLI y también hace falta una sesión.
+#
+# Lo que este servidor NO hace está escrito en su propio `servidor.ts`: no
+# autentica, no modera y no borra, y «primero gana» significa que una clave
+# dibujada no se pisa nunca. Expuesto a internet, eso es contenido permanente
+# de desconocidos en el mundo compartido de todos. Está acá repetido para que
+# quien lea este archivo lo sepa antes de publicarlo.
+
+# ---- construcción -----------------------------------------------------------
+FROM node:24-bookworm-slim AS build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates git \
+    && rm -rf /var/lib/apt/lists/*
+RUN corepack enable
+
+WORKDIR /app
+COPY . .
+
+# Filtrado con `...` (el paquete y sus dependencias del workspace): trae
+# vite-node —con lo que arranca el depósito— sin el resto del monorepo.
+#
+# Y NO se usa `pnpm deploy` acá, aunque sea lo idiomático: el deploy aplana el
+# paquete en un directorio suelto y ahí su `tsconfig.json` queda apuntando a un
+# `extends: "../../tsconfig.base.json"` que ya no existe. El depósito corre
+# TypeScript crudo, así que sin ese tsconfig no arranca. La estructura del
+# workspace no es decorado — es parte de lo que necesita para ejecutarse.
+RUN pnpm install --frozen-lockfile --filter @anima/sprites...
+
+# ---- ejecución --------------------------------------------------------------
+FROM node:24-bookworm-slim AS runtime
+
+ARG CODEX_CLI_VERSION=0.144.5
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/* \
+    && npm install -g "@openai/codex@${CODEX_CLI_VERSION}" \
+    && npm cache clean --force
+
+# El árbol entra con su forma: los `tsconfig.json` de este proyecto se extienden
+# por ruta relativa y el depósito los necesita en tiempo de ejecución.
+COPY --from=build /app /app
+WORKDIR /app/ii/apps/sprites
+COPY docker/entrypoint.sh /usr/local/bin/anima-entrypoint
+RUN chmod +x /usr/local/bin/anima-entrypoint
+
+# `ANIMA_SPRITES` apunta al volumen: los dibujos son lo único que este proceso
+# no puede perder. La imagen trae los que ya venían versionados en el repo, y
+# el entrypoint los siembra si el volumen está vacío.
+ENV NODE_ENV=production \
+    PUERTO=5190 \
+    ANIMA_SPRITES=/datos/sprites.json \
+    CODEX_HOME=/datos/codex-home
+
+EXPOSE 5190
+VOLUME ["/datos"]
+
+ENTRYPOINT ["anima-entrypoint"]
+CMD ["node", "/app/ii/apps/sprites/node_modules/vite-node/vite-node.mjs", "src/main.ts"]

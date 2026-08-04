@@ -25,9 +25,14 @@ WORKDIR /app
 COPY . .
 
 # El workspace entero, porque el lockfile lo exige entero; de todo esto la
-# imagen final se queda con dos cosas.
+# imagen final se queda con tres cosas.
 RUN pnpm install --frozen-lockfile
 RUN pnpm --filter @anima/web build
+
+# Ánima II, colgada de `/v2`. Las dos variables no son opcionales acá: sin
+# `ANIMA_BASE` el juego pide sus assets a la raíz —y se los contesta Ánima I—,
+# y sin `VITE_DEPOSITO` le pide los dibujos al `localhost` del visitante.
+RUN ANIMA_BASE=/v2/ VITE_DEPOSITO=/v2/deposito pnpm --filter @anima/juego build
 
 # El servidor se lleva sus dependencias resueltas y planas (`--legacy` porque
 # este workspace no inyecta paquetes). `--prod=false` conserva tsx: el servidor
@@ -50,6 +55,7 @@ RUN apt-get update \
 WORKDIR /srv/api
 COPY --from=build /paquete ./
 COPY --from=build /app/apps/web/dist /srv/web
+COPY --from=build /app/ii/apps/juego/dist /srv/v2
 COPY docker/entrypoint.sh /usr/local/bin/anima-entrypoint
 RUN chmod +x /usr/local/bin/anima-entrypoint
 
@@ -59,6 +65,7 @@ ENV NODE_ENV=production \
     PORT=8787 \
     ANIMA_HOST=0.0.0.0 \
     ANIMA_WEB_DIR=/srv/web \
+    ANIMA_V2_DIR=/srv/v2 \
     ANIMA_DB=/datos/anima.sqlite \
     ANIMA_CODEX_DIR=/datos/codex \
     CODEX_HOME=/datos/codex-home

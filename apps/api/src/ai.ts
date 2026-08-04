@@ -26,12 +26,6 @@ export interface AiStatus {
   installed: boolean;
   loggedIn: boolean;
   detail: string | null;
-  /**
-   * La sesión la administra el dueño de la instancia: se puede usar, pero no
-   * conectar ni desconectar desde la web. Viaja en el estado para que la
-   * interfaz no ofrezca un botón que el servidor va a rechazar.
-   */
-  managed?: boolean;
 }
 
 export const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;
@@ -70,12 +64,6 @@ export interface AiLimits {
 export type AiThoughtEvent = { type: 'reasoning'; text: string } | { type: 'answer'; text: string };
 
 export interface AiBridge {
-  /**
-   * Marca la sesión como administrada por el dueño de la instancia. El
-   * servidor rechaza `login` y `logout` sobre estos puentes: la cuenta es una
-   * sola y prestada, y cualquiera que entre podría dejar sin mente a todos.
-   */
-  readonly managed?: boolean;
   status(): Promise<AiStatus>;
   startLogin(): Promise<{ authUrl: string } | { error: string }>;
   /**
@@ -727,29 +715,19 @@ export function createCodexBridge(options: CodexBridgeOptions = {}): AiBridge {
   };
 }
 
-/**
- * Envuelve un puente para prestarlo sin entregar la llave: se puede consultar
- * y se pueden leer los límites, pero conectar y desconectar quedan fuera.
+/*
+ * ─── ACÁ VIVÍA `createManagedBridge`, y se fue con la canilla (ADR 0089) ────
  *
- * Hace falta porque la sesión de una instancia compartida es una sola: sin
- * esto, cualquiera que abra la página puede apretar «Cerrar sesión de Codex» y
- * dejar sin mente a todos los demás — y recuperarla exige volver a la máquina
- * a resembrar. El envoltorio es la última línea; el servidor rechaza las rutas
- * antes de llegar acá.
+ * Envolvía el puente para PRESTAR la cuenta del dueño sin entregar la llave:
+ * cualquiera podía pensar con ella, nadie podía desconectarla. Resolvía bien el
+ * problema que tenía adelante —que un visitante no dejara sin mente a los
+ * demás— y por eso pasó desapercibido el que tenía al lado: que el visitante
+ * igual gastaba la cuota de otro.
+ *
+ * La lección que queda escrita: un candado sobre el botón de desconectar no es
+ * un control de gasto. Lo que el puente compartido cuidaba era la sesión, no la
+ * plata, y las dos se veían iguales desde la interfaz.
  */
-export function createManagedBridge(bridge: AiBridge): AiBridge {
-  return {
-    managed: true,
-    async status() {
-      return { ...(await bridge.status()), managed: true };
-    },
-    startLogin: () =>
-      Promise.resolve({ error: 'la sesión la administra el dueño de esta instancia' }),
-    logout: () => Promise.resolve(),
-    limits: () => bridge.limits(),
-    complete: (input, onEvent) => bridge.complete(input, onEvent),
-  };
-}
 
 /** Las pubkeys Nostr verificadas son siempre 64 hex; cualquier otra cosa no
  * llega a convertirse en nombre de directorio. */

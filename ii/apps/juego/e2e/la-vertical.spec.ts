@@ -52,7 +52,9 @@ async function abrir(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true, respuesta: null }),
     }),
   )
-  await page.goto('/')
+  // `?vel=0` ABRE EN PAUSA: el juego arranca en ×1, y acá se mide desde dónde
+  // sale el mundo. Quien decide cuánto avanza es `correrHasta()`, no el arranque.
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 

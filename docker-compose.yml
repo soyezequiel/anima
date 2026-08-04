@@ -36,6 +36,12 @@ services:
       # el `config.toml` de la máquina no viaja, así que acá no hay modelo
       # elegido salvo que lo pongas vos.
       ANIMA_CODEX_MODEL: '${ANIMA_CODEX_MODEL:-}'
+      # Ánima II vive en `/v2` del mismo dominio, servida por este mismo
+      # proceso; su depósito entra por acá y sale publicado en /v2/deposito.
+      ANIMA_V2_DEPOSITO: 'http://anima-ii:5190'
+    depends_on:
+      anima-ii:
+        condition: service_started
     volumes:
       # Único estado: base SQLite y el CODEX_HOME que usa el contenedor.
       - datos:/datos
@@ -63,5 +69,42 @@ services:
       retries: 3
       start_period: 10s
 
+  # ─── El depósito de sprites de Ánima II ───────────────────────────────────
+  #
+  # No publica puerto: la única forma de llegarle es por `/v2/deposito`, que
+  # atiende el servicio de arriba. Tiene volumen propio porque lo que guarda
+  # —los dibujos— es de otra naturaleza que la base de Ánima I, y su CODEX_HOME
+  # también es aparte: son dos procesos distintos hablándole al mismo CLI.
+  anima-ii:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.deposito
+    image: anima-ii-deposito:1
+    container_name: anima-ii
+    # Sin `ANIMA_CODEX_MODELO` manda el default del depósito (gpt-5.6-luna).
+    # No se declara vacía a propósito: el depósito la lee con `??`, así que un
+    # valor vacío sería el modelo llamado «» y no «ninguno elegido».
+    volumes:
+      - datos-ii:/datos
+      - '${ANIMA_CODEX_SEED}:/semilla/codex:ro'
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 1024M
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:5190/salud').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
 volumes:
   datos:
+  datos-ii:

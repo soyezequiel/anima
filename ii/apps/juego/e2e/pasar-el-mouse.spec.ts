@@ -11,9 +11,13 @@
 //   3. que sobre una celda vacía NO aparece. Es una decisión, no una omisión: un
 //      cartel que parpadee en las tres cuartas partes del mapa lo vuelve ruido.
 //
-// El mundo está EN PAUSA todo el spec —el juego arranca así— y eso es parte del
-// método: con el mundo quieto, la celda que se señala sigue siendo la misma entre
-// el hover y el click, y la comparación significa algo.
+// El mundo está EN PAUSA todo el spec, y eso es parte del método: con el mundo
+// quieto, la celda que se señala sigue siendo la misma entre el hover y el
+// click, y la comparación significa algo.
+//
+// La pausa se PIDE en la URL. El juego arranca corriendo en ×1, y apretar el
+// botón de pausa llega tarde: entre el primer cuadro y el click ya hubo ticks.
+// `?vel=0` es la única forma de abrir quieto de verdad.
 
 import { expect, test, type Page } from '@playwright/test'
 
@@ -21,7 +25,7 @@ import { expect, test, type Page } from '@playwright/test'
 const CELDA = 28
 
 async function abrir(page: Page): Promise<void> {
-  await page.goto('/')
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 

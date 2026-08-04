@@ -442,6 +442,166 @@ body {
   padding: 2px 8px;
 }
 
+/* La puerta a Ánima II. Es un enlace, no un botón: se va a otro lado, y
+   quiero que el navegador lo trate como tal (abrir en otra ventana, copiar
+   dirección). Se disfraza de control de la barra para no romper la fila.
+
+   Y late, porque la invitación NO está escrita. Nada dice «entrá acá»: un
+   cartel que pide el clic gasta lugar en una barra que ya está llena, hay que
+   leerlo para que sirva, y envejece mal (queda pidiendo lo mismo al que ya
+   entró diez veces). El llamado va por movimiento, que el ojo atiende antes
+   de leer. Son tres capas, y ninguna se repite seguido:
+
+     · el halo que respira (3,6 s) — presencia constante, no grito;
+     · el destello que lo cruza (una vez cada 7 s, dura ~1,1 s) — el que
+       engancha de reojo, justamente porque casi siempre NO está;
+     · el rombo que pulsa en el mismo compás — para que el ojo, ya traído,
+       aterrice en algo y no en el borde.
+
+   Apuntarlo lo apaga y lo enciende: ya miró, seguir sacudiendo sería ruido.
+   El estado de hover pasa a ser respuesta, no llamado. */
+.v2-link {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, var(--border));
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  text-decoration: none;
+  white-space: nowrap;
+  animation: v2-breath 3.6s ease-in-out infinite;
+  transition:
+    color 150ms ease,
+    border-color 150ms ease,
+    background 150ms ease,
+    transform 150ms ease;
+}
+
+/* El destello vive en un pseudo-elemento y no en el fondo del enlace: así
+   pasa POR ENCIMA del texto (como un reflejo sobre el vidrio) sin tocar el
+   color de la letra, y el `overflow: hidden` del enlace lo recorta contra el
+   borde redondeado. `pointer-events: none` para que nunca se coma el clic. */
+.v2-link::after {
+  content: '';
+  position: absolute;
+  top: -50%;
+  bottom: -50%;
+  left: 0;
+  width: 38%;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--accent) 55%, transparent),
+    transparent
+  );
+  transform: translateX(-260%) skewX(-18deg);
+  animation: v2-sheen 7s ease-in-out infinite;
+}
+
+/* `inline-block` no es adorno: un `<span>` suelto es inline y los inline
+   ignoran `transform`, así que sin esto el rombo no pulsa nada. */
+.v2-gem {
+  display: inline-block;
+  color: var(--accent);
+  animation: v2-gem-pulse 7s ease-in-out infinite;
+}
+
+.v2-link:hover,
+.v2-link:focus-visible {
+  color: #fde68a;
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  box-shadow: 0 0 14px 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  transform: translateY(-1px);
+  animation: none;
+}
+
+.v2-link:hover::after,
+.v2-link:focus-visible::after {
+  animation: none;
+  opacity: 0;
+}
+
+.v2-link:hover .v2-gem,
+.v2-link:focus-visible .v2-gem {
+  animation: none;
+  transform: scale(1.15);
+}
+
+/* «Entrar igual», dentro del cartel de obra. Es un enlace por lo mismo que el
+   de la barra —se va a otro lado, y el navegador tiene que saberlo—, pero acá
+   es la acción principal del diálogo y tiene que pesar como tal: se viste de
+   botón lleno, igual que `button.active`. El de al lado («Me quedo acá») queda
+   con el botón de siempre, que es lo correcto: no compite. */
+.v2-enter {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #1c1917;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.v2-enter:hover {
+  filter: brightness(1.08);
+}
+
+/* El foco arranca acá: si no se ve, el teclado queda navegando a ciegas. */
+.v2-enter:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+@keyframes v2-breath {
+  0%,
+  100% {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 30%, transparent);
+  }
+  50% {
+    border-color: var(--accent);
+    box-shadow: 0 0 12px 1px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+}
+
+/* El barrido ocupa el primer 16 % del ciclo (~1,1 s de los 7 s) y el resto lo
+   pasa parado afuera, a la derecha. Ese descanso largo es el truco: un brillo
+   permanente se vuelve fondo y deja de verse a los treinta segundos. */
+@keyframes v2-sheen {
+  0% {
+    transform: translateX(-260%) skewX(-18deg);
+  }
+  16% {
+    transform: translateX(360%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(360%) skewX(-18deg);
+  }
+}
+
+@keyframes v2-gem-pulse {
+  0%,
+  12%,
+  100% {
+    transform: scale(1);
+    filter: none;
+  }
+  5% {
+    transform: scale(1.35);
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+}
+
 .help-button {
   width: 28px;
   height: 28px;
@@ -1803,6 +1963,24 @@ button:disabled {
     animation: none;
     opacity: 1;
     transform: translate(-50%, -150%);
+  }
+
+  /* La puerta a Ánima II deja de llamar con movimiento, pero NO se apaga:
+     queda con el borde y el halo encendidos, que dicen lo mismo que el latido
+     («esto es una puerta, y no es una más de la fila»). El destello ni
+     aparece: era todo movimiento, sin él no queda nada que mostrar. */
+  .v2-link {
+    animation: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 10px 0 color-mix(in srgb, var(--accent) 22%, transparent);
+  }
+
+  .v2-link::after {
+    display: none;
+  }
+
+  .v2-gem {
+    animation: none;
   }
 
   /* El pensamiento se queda quieto: los pasos aparecen sin deslizarse y lo

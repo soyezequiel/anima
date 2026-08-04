@@ -1,0 +1,7 @@
+# Los scripts que corren adentro de un contenedor son Linux, siempre.
+#
+# En Windows, Git y varios editores los guardan con CRLF, y ahí el shebang pasa
+# a ser `#!/bin/sh\r`: el kernel busca un intérprete llamado «sh\r», no lo
+# encuentra, y el contenedor muere con «no such file or directory» señalando al
+# entrypoint —que existe—. Cuesta bastante de ver.
+*.sh text eol=lf

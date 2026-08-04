@@ -44,7 +44,9 @@ async function abrir(page: Page): Promise<void> {
       body: JSON.stringify({ ok: true, respuesta: null }),
     }),
   )
-  await page.goto('/')
+  // `?vel=0` ABRE EN PAUSA: el juego arranca en ×1 y acá se mide la charla y
+  // dónde cae el cajón. El test que necesita mundo se lo da él, con `data-vel`.
+  await page.goto('/?vel=0')
   await expect(page.locator('#cuadro')).not.toHaveText('—', { timeout: 15_000 })
 }
 
