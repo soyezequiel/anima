@@ -5,10 +5,14 @@
 # Se construye desde la raíz del repo:
 #   docker build -f docker/Dockerfile.deposito -t anima-ii-deposito:1 .
 #
-# Va en imagen aparte y no adentro de la de Ánima I por dos razones: es otro
-# proceso con otro ciclo de vida, y sobre todo, es el que ejecuta el CLI de
-# Codex por Ánima II — el juego no le habla a ningún modelo, le habla a esto.
-# Por eso acá también viaja el CLI y también hace falta una sesión.
+# Va en imagen aparte y no adentro de la de Ánima I porque es otro proceso con
+# otro ciclo de vida.
+#
+# El CLI de Codex viaja adentro igual, pero **de fábrica no se usa**: con la
+# canilla cerrada (ADR 0089) este depósito no llama a ningún modelo — arma los
+# prompts en `/sobre` y el navegador del jugador los lleva a SU cuenta. El CLI
+# está para el caso del dueño corriendo esto en su máquina con
+# `ANIMA_CLI_LOCAL=1`, que es cuando además hace falta una sesión sembrada.
 #
 # Lo que este servidor NO hace está escrito en su propio `servidor.ts`: no
 # autentica, no modera y no borra, y «primero gana» significa que una clave

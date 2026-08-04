@@ -7,8 +7,20 @@
 # proyecto propio, puerto configurable, y una red y un volumen que no se
 # comparten con nadie. Nada de esto toca el Docker del resto.
 #
-# Antes de levantarlo, copiá `.env.example` a `.env` y apuntá ANIMA_CODEX_SEED
-# al `~/.codex` de la máquina (la carpeta que dejó `codex login`).
+# ═══ LA CANILLA VIENE CERRADA (ADR 0089) ═══════════════════════════════════
+#
+# De fábrica esto NO presta ninguna cuenta: `ANIMA_CLI_LOCAL` viene en 0 y ni
+# siquiera se monta el `~/.codex` de la máquina. Quien entre y quiera mente real
+# enchufa su propia API OpenAI-compatible desde el navegador, y esa llave nunca
+# pasa por acá.
+#
+# Para volver al modo de antes —tu cuenta, en tu máquina, para vos— van las dos
+# cosas juntas en el `.env`: `ANIMA_CLI_LOCAL=1` y `ANIMA_CODEX_SEED` apuntando
+# a la carpeta que dejó `codex login`. Una sin la otra no sirve: sin semilla el
+# CLI arranca sin sesión, y sin el flag el puente no se construye.
+#
+# **No lo enciendas en algo publicado.** El CLI corre del lado del servidor, así
+# que el que paga sos vos y el que decide es cualquiera con la URL.
 
 # Explícito para que el nombre no dependa de cómo se llame la carpeta: así los
 # recursos son siempre `anima_*` y no chocan con los de otro proyecto.
@@ -26,10 +38,11 @@ services:
     ports:
       - '${ANIMA_BIND:-0.0.0.0}:${ANIMA_PORT:-8787}:8787'
     environment:
-      # Una sola cuenta de Codex para todos: la del dueño de la instancia,
-      # tenga o no identidad Nostr quien entre. Va administrada — se presta
-      # para pensar, pero nadie puede desconectarla desde la web.
-      ANIMA_CODEX_SHARED: '1'
+      # ¿Se pueden usar los CLI de ESTA máquina (Codex, Claude)? En 0, no se
+      # construye ningún puente y `/ai/*` contesta 503 con la salida: traé tu
+      # propia API. Ver el encabezado antes de poner 1.
+      ANIMA_CLI_LOCAL: '${ANIMA_CLI_LOCAL:-0}'
+      # Las dos de abajo solo hacen algo con ANIMA_CLI_LOCAL=1.
       # Bajo por defecto, para cuidar la cuota. minimal | low | medium | high | xhigh
       ANIMA_CODEX_EFFORT: '${ANIMA_CODEX_EFFORT:-low}'
       # Vacío = el default de la cuenta («Automático»), que es lo recomendado:
@@ -48,7 +61,10 @@ services:
       # La sesión de Codex de la máquina, de solo lectura. El contenedor la
       # copia una vez y después vive de su copia: nada de lo que pase adentro
       # puede tocar tus credenciales reales.
-      - '${ANIMA_CODEX_SEED}:/semilla/codex:ro'
+      # Con la canilla cerrada esto monta una carpeta VACÍA del repo: el
+      # contenedor no tiene forma de llegar a tu cuenta ni por error. Apuntalo
+      # a tu `~/.codex` (en el `.env`) solo si además ponés ANIMA_CLI_LOCAL=1.
+      - '${ANIMA_CODEX_SEED:-./docker/sin-semilla}:/semilla/codex:ro'
     restart: unless-stopped
     # Techo modesto y a propósito: esto es un Fastify y un CLI, no tiene por
     # qué pelearle la memoria a lo demás que corra en la máquina.
@@ -81,12 +97,21 @@ services:
       dockerfile: docker/Dockerfile.deposito
     image: anima-ii-deposito:1
     container_name: anima-ii
+    environment:
+      # El mismo flag y la misma decisión que arriba: son dos procesos y una
+      # sola canilla. En 0 el depósito no dibuja, no contesta y no forja con
+      # cuenta propia — arma los prompts en `/sobre` y el navegador del jugador
+      # los lleva a su modelo. Sigue guardando y repartiendo como siempre.
+      ANIMA_CLI_LOCAL: '${ANIMA_CLI_LOCAL:-0}'
     # Sin `ANIMA_CODEX_MODELO` manda el default del depósito (gpt-5.6-luna).
     # No se declara vacía a propósito: el depósito la lee con `??`, así que un
     # valor vacío sería el modelo llamado «» y no «ninguno elegido».
     volumes:
       - datos-ii:/datos
-      - '${ANIMA_CODEX_SEED}:/semilla/codex:ro'
+      # Con la canilla cerrada esto monta una carpeta VACÍA del repo: el
+      # contenedor no tiene forma de llegar a tu cuenta ni por error. Apuntalo
+      # a tu `~/.codex` (en el `.env`) solo si además ponés ANIMA_CLI_LOCAL=1.
+      - '${ANIMA_CODEX_SEED:-./docker/sin-semilla}:/semilla/codex:ro'
     restart: unless-stopped
     deploy:
       resources:

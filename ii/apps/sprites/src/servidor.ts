@@ -38,8 +38,9 @@
 // Está escrito acá para que sea una decisión y no un olvido.
 
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
+import { randomUUID } from 'node:crypto'
 
-import { forjar } from './forja.js'
+import { elPromptDeLaForja, forjar, leerLoForjado, type PromptDeLaForja } from './forja.js'
 import { leerRespuesta, promptDe, type Consulta } from '@anima/lang'
 import { buildSeedPhysics } from '@anima/physics'
 import {
@@ -355,10 +356,96 @@ export interface OpcionesDelServidor {
    * el juego lo pinta como «buscando». Un `false` sería afirmar que no están.
    */
   readonly vigia?: Vigia
+  /**
+   * Los sobres en vuelo (ver `sobresEnMemoria`). Entra por parámetro como todo
+   * lo demás para que la suite pueda controlarles el reloj y ver que vencen.
+   */
+  readonly sobres?: Sobres
+}
+
+/**
+ * ═══ EL SOBRE: LO QUE EL DEPÓSITO RECUERDA MIENTRAS EL NAVEGADOR PREGUNTA ═══
+ *
+ * Un encargo a medio hacer. El depósito armó el prompt, se lo dio al navegador
+ * para que lo lleve a SU modelo, y guarda acá lo que va a necesitar para leer
+ * la respuesta cuando vuelva.
+ *
+ * ─── POR QUÉ SE GUARDA ACÁ Y NO VIAJA CON EL PROMPT ────────────────────────
+ *
+ * Porque es lo que hace que esto NO sea un proxy abierto. Si el navegador
+ * mandara de vuelta «acá está el texto, y era para la clave `vara/madera/24`»,
+ * podría mandar cualquier texto para cualquier clave: el depósito estaría
+ * guardando dibujos que nadie le pidió. Con el sobre del lado del servidor, lo
+ * único que el navegador puede hacer es contestar UN encargo que el depósito ya
+ * había decidido armar.
+ */
+type Sobre =
+  | { readonly tipo: 'dibujar'; readonly clave: ClaveDeSprite }
+  | { readonly tipo: 'leer'; readonly consulta: Consulta }
+  | { readonly tipo: 'forjar'; readonly encargo: PromptDeLaForja['encargo'] }
+
+/**
+ * Cuánto vive un sobre sin contestar. Diez minutos porque el viaje más largo
+ * —la fragua— se concede tres, y el que juega puede tener la pestaña de fondo.
+ */
+const VIDA_DEL_SOBRE_MS = 10 * 60 * 1000
+
+/**
+ * Cuántos sobres sin contestar se aguantan a la vez. Un tope tiene que haber:
+ * sin él, pedir sobres y no contestarlos nunca es una forma de llenarle la
+ * memoria al depósito sin gastar una sola consulta de nadie.
+ */
+const SOBRES_MAXIMOS = 500
+
+interface Sobres {
+  guardar: (s: Sobre) => string
+  tomar: (ticket: string) => Sobre | undefined
+}
+
+/**
+ * Los sobres en vuelo. En memoria y no en disco a propósito: un sobre que
+ * sobrevive a un reinicio del depósito no le sirve a nadie — del otro lado, el
+ * navegador ya se fue.
+ *
+ * `tomar` los CONSUME: un sobre se contesta una vez. Sin eso, el mismo ticket
+ * podría redimirse en repetición para hacer pasar veinte dibujos por un
+ * encargo.
+ */
+export function sobresEnMemoria(ahora: () => number = Date.now): Sobres {
+  const m = new Map<string, { readonly sobre: Sobre; readonly vence: number }>()
+  const limpiar = (t: number): void => {
+    for (const [k, v] of m) if (v.vence <= t) m.delete(k)
+  }
+  return {
+    guardar: (sobre) => {
+      const t = ahora()
+      limpiar(t)
+      // Si después de limpiar sigue lleno, se tira el más viejo. `Map` conserva
+      // el orden de inserción, así que el primero que sale es el primero que
+      // entró — y es el que más tiempo lleva sin que nadie lo conteste.
+      while (m.size >= SOBRES_MAXIMOS) {
+        const masViejo = m.keys().next()
+        if (masViejo.done === true) break
+        m.delete(masViejo.value)
+      }
+      const ticket = randomUUID()
+      m.set(ticket, { sobre, vence: t + VIDA_DEL_SOBRE_MS })
+      return ticket
+    },
+    tomar: (ticket) => {
+      const t = ahora()
+      limpiar(t)
+      const v = m.get(ticket)
+      if (v === undefined) return undefined
+      m.delete(ticket)
+      return v.sobre
+    },
+  }
 }
 
 export function crearServidor(baul: Baul, o: OpcionesDelServidor = {}): Server {
   const dibujante = o.dibujante
+  const sobres = o.sobres ?? sobresEnMemoria()
   return createServer((req, res) => {
     void (async () => {
       const url = req.url ?? '/'
@@ -547,6 +634,162 @@ export function crearServidor(baul: Baul, o: OpcionesDelServidor = {}): Server {
         // es 200 con la lista vacía. Son dos cosas distintas y el juego las pinta
         // distinto, igual que en `/leer`.
         json(res, r.ok ? 200 : 502, r)
+        return
+      }
+
+      // ═══ EL SOBRE EN DOS TIEMPOS: CUANDO EL MODELO LO PONE EL QUE JUEGA ═══
+      //
+      // Las tres rutas de arriba hacen el viaje al modelo con la cuenta de quien
+      // corre el depósito. Cuando esa canilla está cerrada (ADR 0089) el viaje lo
+      // hace el navegador con la llave del jugador, y el encargo se parte en dos:
+      //
+      //     POST /sobre          «quiero X»  →  {ticket, prompt}
+      //     (el navegador le lleva el prompt a SU modelo)
+      //     POST /sobre/:ticket  {texto}     →  lo mismo que devolvía la ruta vieja
+      //
+      // ─── LO QUE NO CAMBIA, Y ES TODO LO QUE IMPORTA ────────────────────────
+      //
+      // El prompt lo sigue armando el servidor, y lo que vuelve lo sigue
+      // validando el servidor. Un `POST /preguntar {prompt}` habría sido más
+      // corto y habría tirado las dos cosas: el depósito guardaría lo que el
+      // navegador diga que es un sprite, y el `.d.ts` de la fragua tendría que
+      // viajar al cliente para volver.
+      //
+      // ─── Y POR QUÉ NO REEMPLAZA A LAS TRES DE ARRIBA ──────────────────────
+      //
+      // Porque un depósito CON modelo propio no tiene por qué hacer dos viajes
+      // de red donde alcanza uno. Son dos caminos y comparten lo caro: armar el
+      // prompt y revisar lo que volvió son las mismas funciones en los dos.
+      if (url === '/sobre') {
+        if (metodo !== 'POST') {
+          json(res, 405, { porque: 'para pedir un sobre va POST' })
+          return
+        }
+        let crudo: unknown
+        try {
+          crudo = JSON.parse(await leerCuerpo(req))
+        } catch {
+          json(res, 400, { porque: 'el cuerpo no es JSON' })
+          return
+        }
+        const tipo = (crudo as { tipo?: unknown } | null)?.tipo
+
+        if (tipo === 'dibujar') {
+          const clave = (crudo as { clave?: unknown }).clave
+          if (typeof clave !== 'string') {
+            json(res, 400, { ok: false, porque: 'un sobre de dibujo necesita la clave' })
+            return
+          }
+          // PRIMERO GANA, también acá: si ya está, no se arma sobre ninguno y el
+          // jugador no gasta una consulta de su cuenta. Es la misma respuesta que
+          // da `/dibujar`, así que el juego la lee con el mismo código.
+          const yaEsta = baul.uno(clave)
+          if (yaEsta !== undefined) {
+            json(res, 200, { ok: true, yaEstaba: true, sprite: yaEsta })
+            return
+          }
+          const encargo = encargoDe(clave, PHYS)
+          if (encargo === undefined) {
+            json(res, 400, { ok: false, porque: 'esa clave no describe ninguna pieza de este mundo' })
+            return
+          }
+          json(res, 200, {
+            ok: true,
+            ticket: sobres.guardar({ tipo: 'dibujar', clave }),
+            prompt: encargo.prompt,
+          })
+          return
+        }
+
+        if (tipo === 'leer') {
+          const c = laConsulta((crudo as { consulta?: unknown }).consulta)
+          if (c === undefined) {
+            json(res, 400, { ok: false, porque: 'eso no tiene forma de consulta' })
+            return
+          }
+          json(res, 200, {
+            ok: true,
+            ticket: sobres.guardar({ tipo: 'leer', consulta: c }),
+            prompt: promptDe(c),
+          })
+          return
+        }
+
+        if (tipo === 'forjar') {
+          const p = elPedido((crudo as { pedido?: unknown }).pedido)
+          if (p === undefined) {
+            json(res, 400, { ok: false, porque: 'eso no tiene forma de pedido de la mente' })
+            return
+          }
+          const { prompt, encargo, esperaMs } = await elPromptDeLaForja(
+            p.pedido,
+            p.enCastellano,
+            p.queVerificar,
+          )
+          // El reloj viaja en la respuesta y no lo elige el cliente, igual que
+          // cuando el depósito preguntaba: quien sabe cuánto dura un episodio de
+          // fragua es esta capa, no la pantalla.
+          json(res, 200, {
+            ok: true,
+            ticket: sobres.guardar({ tipo: 'forjar', encargo }),
+            prompt,
+            esperaMs,
+          })
+          return
+        }
+
+        json(res, 400, { ok: false, porque: 'un sobre es de tipo dibujar, leer o forjar' })
+        return
+      }
+
+      const s = /^\/sobre\/(.+)$/.exec(url)
+      if (s !== null) {
+        if (metodo !== 'POST') {
+          json(res, 405, { porque: 'para contestar un sobre va POST' })
+          return
+        }
+        const sobre = sobres.tomar(decodeURIComponent(s[1] ?? ''))
+        if (sobre === undefined) {
+          // Vencido, ya contestado, o inventado. Los tres se ven igual desde
+          // afuera y no vale la pena distinguirlos: en los tres el juego tiene
+          // que hacer lo mismo, que es pedir el sobre de nuevo.
+          json(res, 404, { ok: false, porque: 'ese sobre no existe, ya se contestó o venció' })
+          return
+        }
+        let crudo: unknown
+        try {
+          crudo = JSON.parse(await leerCuerpo(req))
+        } catch {
+          json(res, 400, { porque: 'el cuerpo no es JSON' })
+          return
+        }
+        const texto = (crudo as { texto?: unknown } | null)?.texto
+        if (typeof texto !== 'string' || texto.trim() === '') {
+          json(res, 400, { ok: false, porque: 'se espera { texto: string } con lo que contestó tu modelo' })
+          return
+        }
+
+        if (sobre.tipo === 'dibujar') {
+          // LA MISMA PUERTA de siempre. Que el viaje lo haya hecho el navegador
+          // no le compra ni un permiso: lo que entra al baúl pasa por acá igual.
+          const v = revisarRespuesta(sobre.clave, texto)
+          if (!v.ok) {
+            json(res, 422, { ok: false, porque: v.porque })
+            return
+          }
+          baul.poner(v.sprite)
+          json(res, 201, { ok: true, yaEstaba: false, sprite: v.sprite })
+          return
+        }
+
+        if (sobre.tipo === 'leer') {
+          json(res, 200, { ok: true, respuesta: leerRespuesta(texto, sobre.consulta.llave) ?? null })
+          return
+        }
+
+        // Forjar: el typecheck y la instrumentación pasan de este lado, que es
+        // lo que este reparto nunca soltó.
+        json(res, 200, leerLoForjado(texto, sobre.encargo))
         return
       }
 

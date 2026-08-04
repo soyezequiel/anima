@@ -46,6 +46,7 @@ import { VERSION_DEL_GUARDADO, cargar, claveDe, comoSeGuarda, guardar } from '@a
 import { conQuien, elAvisoDeQueNoLlego } from './con-quien.js'
 import { preguntarPorElDeposito } from './preguntarle-al-deposito.js'
 import { forjarPorElDeposito } from './forjar-por-el-deposito.js'
+import { llevarAMiModelo, miApi, type LlevarAlModelo } from './mi-api.js'
 import type { ConQuien } from './con-quien.js'
 import { encuadrePara } from './el-encuadre.js'
 import type { Espacio } from './el-encuadre.js'
@@ -142,6 +143,23 @@ const QUIEN = 'ana'
  * verdad.
  */
 const DONDE_EL_DEPOSITO = import.meta.env['VITE_DEPOSITO'] ?? 'http://localhost:5190'
+
+/**
+ * ═══ CON QUÉ CUENTA SE PAGA ESTA PARTIDA ═══════════════════════════════════
+ *
+ * Se resuelve en CADA pedido y no una vez al arrancar (ADR 0089). El jugador
+ * puede enchufar o desenchufar su API en el ⚙ de Ánima I con esta pestaña
+ * abierta —comparten dominio y `localStorage`—, y una decisión tomada en el
+ * arranque le seguiría pidiendo a quien ya no está.
+ *
+ * `undefined` no es un error: es «no traje cuenta», y entonces se le pide al
+ * depósito como siempre. Si él tampoco tiene, contesta 501 y hay una lámpara
+ * esperando para decirlo.
+ */
+const miLlevar = (): LlevarAlModelo | undefined => {
+  const api = miApi()
+  return api === undefined ? undefined : llevarAMiModelo(api)
+}
 const baul = depositoIndexedDB()
 let guardadoAlArrancar: Awaited<ReturnType<typeof cargar>>
 try {
@@ -174,7 +192,7 @@ const ordenes = new Ordenes(partida, QUIEN, PHYS, {
   // hay consulta sin una frase tuya adelante.
   //
   // Y no le hace daño al tick: no se espera. Ver `OpcionesDeOrdenes.preguntar`.
-  preguntar: preguntarPorElDeposito(DONDE_EL_DEPOSITO),
+  preguntar: preguntarPorElDeposito(DONDE_EL_DEPOSITO, miLlevar),
   // ─── Y EL OTRO PUERTO, QUE ERA EL QUE FALTABA ────────────────────────────
   //
   // El chat le arregla a la criatura lo que no ENTIENDE. Esto le arregla lo que
@@ -191,6 +209,7 @@ const ordenes = new Ordenes(partida, QUIEN, PHYS, {
     quien: QUIEN,
     mundo: () => partida.state,
     enCastellano,
+    llevar: miLlevar,
   }),
   ...(guardadoAlArrancar === undefined
     ? {}
@@ -255,7 +274,7 @@ function pintarEnlace(c: ConQuien): void {
 let ultimaSalud: unknown
 
 function repintarElEnlace(): void {
-  pintarEnlace(conQuien(ultimaSalud, ordenes.loQueNoLlego.at(-1)))
+  pintarEnlace(conQuien(ultimaSalud, ordenes.loQueNoLlego.at(-1), miApi() !== undefined))
 }
 
 /**
@@ -450,10 +469,11 @@ function pedirDibujos(proveedor: Proveedor, tope: number): void {
     })
 }
 
-// Codex de a UNO por vez y no doce: cada dibujo es una consulta a la cuenta del
-// usuario, así que el tope acá es una decisión de plata y no de rendimiento.
+// De a UNO por vez y no doce: cada dibujo es una consulta a una cuenta —la del
+// jugador, si enchufó su API; la del depósito si no— así que el tope acá es una
+// decisión de plata y no de rendimiento.
 $('dibujar').addEventListener('click', () => {
-  pedirDibujos(proveedorDelDeposito(DONDE_EL_DEPOSITO), 1)
+  pedirDibujos(proveedorDelDeposito(DONDE_EL_DEPOSITO, miLlevar), 1)
 })
 // ─── TODOS LOS QUE FALTAN, CON EL NÚMERO DELANTE ───────────────────────────
 //
@@ -471,8 +491,11 @@ $('dibujar-todos').addEventListener('click', () => {
     return
   }
   const uno = cuantos === 1
-  if (!confirm(`Van ${String(cuantos)} ${uno ? 'consulta' : 'consultas'} a tu cuenta de Codex, ${uno ? 'una' : 'una por dibujo'}. ¿Voy?`)) return
-  pedirDibujos(proveedorDelDeposito(DONDE_EL_DEPOSITO), cuantos)
+  // «tu cuenta» a secas y no «tu cuenta de Codex»: desde que la cuenta la puede
+  // poner el jugador (ADR 0089), nombrar a Codex acá le mentiría al que enchufó
+  // su propia API — y es el único cartel que aparece ANTES de gastar.
+  if (!confirm(`Van ${String(cuantos)} ${uno ? 'consulta' : 'consultas'} a tu cuenta, ${uno ? 'una' : 'una por dibujo'}. ¿Voy?`)) return
+  pedirDibujos(proveedorDelDeposito(DONDE_EL_DEPOSITO, miLlevar), cuantos)
 })
 
 $('dibujar-prueba').addEventListener('click', () => {

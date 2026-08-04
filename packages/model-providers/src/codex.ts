@@ -1997,8 +1997,9 @@ function parseJson(raw: string): Record<string, unknown> {
 export class CodexModelProvider extends BaseModelProvider {
   /**
    * El proveedor es agnóstico del modelo que hay del otro lado del
-   * transporte: la misma clase sirve a Codex y a Claude. El nombre dice cuál
-   * es, y es lo que la UI muestra como proveedor activo.
+   * transporte: la misma clase sirve a Codex, a Claude y a la API
+   * OpenAI-compatible que trae el usuario. El nombre dice cuál es, y es lo que
+   * la UI muestra como proveedor activo.
    */
   readonly name: string;
   /** Entiende lenguaje natural: el agente le cede la interpretación del chat. */
@@ -2007,7 +2008,7 @@ export class CodexModelProvider extends BaseModelProvider {
   constructor(
     private transport: CodexTransport,
     private hooks: CodexProviderHooks = {},
-    name: 'codex' | 'claude' = 'codex',
+    name: 'codex' | 'claude' | 'openai' = 'codex',
   ) {
     super();
     this.name = name;

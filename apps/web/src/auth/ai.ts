@@ -243,6 +243,48 @@ export function openAiTransport(): CodexTransport | null {
 }
 
 /**
+ * UNA CONSULTA DE JUGUETE, para saber si esto anda ANTES de que importe.
+ *
+ * Sin esto, la primera prueba real de la configuración es la mascota tratando
+ * de pensar en medio de la partida: si la URL está mal, lo que se ve es una
+ * criatura que no reacciona y un error en un panel que hay que ir a abrir. Un
+ * botón que falla acá, con la llave a la vista y el mensaje al lado, se arregla
+ * en el momento.
+ *
+ * El prompt es mínimo a propósito — cuesta unos pocos tokens de la cuenta del
+ * usuario, y probar no debería salir caro.
+ */
+export async function probarOpenAi(
+  settings: OpenAiSettings,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!openAiSettingsComplete(settings)) {
+    return { ok: false, error: 'faltan datos: hacen falta la URL, la llave y el modelo' };
+  }
+  const transport = createOpenAiTransport({
+    baseUrl: settings.baseUrl.trim(),
+    apiKey: settings.apiKey.trim(),
+    model: settings.model.trim(),
+    // Corto: si en medio minuto no contestó «ok», algo está mal igual.
+    timeoutMs: 30_000,
+  });
+  try {
+    await transport({
+      kind: 'dialogue',
+      prompt: 'Respondé con {"text":"ok"} y nada más.',
+      schema: {
+        type: 'object',
+        properties: { text: { type: 'string' } },
+        required: ['text'],
+        additionalProperties: false,
+      },
+    });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : 'no se pudo probar' };
+  }
+}
+
+/**
  * Lo que el usuario eligió, o `null` si todavía no eligió nada.
  *
  * La diferencia entre «no elegí» y «elegí el simulado» no existía: apagar
@@ -281,6 +323,18 @@ export interface AiStatus {
    * diagnóstico: es la única pista de que hay otro camino.
    */
   detail: string | null;
+  /**
+   * ¿Esta instancia ofrece este puente? Ausente = sí (una API anterior a la
+   * canilla cerrada no manda el campo, y todas las que lo mandaban ofrecían).
+   * En `false` no hay nada que ofrecerle al visitante y el interruptor no se
+   * dibuja: un botón que nunca va a andar es peor que no tenerlo.
+   */
+  available?: boolean;
+}
+
+/** Un puente que esta instancia no presta. Ausente se lee como que sí. */
+export function bridgeUnavailable(status: AiStatus | null): boolean {
+  return status?.available === false;
 }
 
 export async function fetchAiStatus(provider: RemoteAiProvider = 'codex'): Promise<AiStatus | null> {

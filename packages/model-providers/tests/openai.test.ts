@@ -96,7 +96,7 @@ describe('el esquema podado para las salidas estructuradas', () => {
     }) as Record<string, unknown>;
     expect(podado.required).toEqual(['a', 'b']);
     expect(podado.additionalProperties).toBe(false);
-    const b = (podado.properties as Record<string, Record<string, unknown>>).b;
+    const b = (podado.properties as Record<string, Record<string, unknown>>).b!;
     expect(b.required).toEqual(['c']);
     expect(b.additionalProperties).toBe(false);
   });

@@ -29,12 +29,19 @@ que podés abrir en la interfaz para ver por qué.
 | **Ánima I** — la que anda entera | <https://anima.naranja.fit> |
 | **Ánima II** — el remake, con física de materia | <https://anima.naranja.fit/v2/> |
 
-Sin instalar nada, sin cuenta y sin clave de API. Las dos corren en una laptop
-en una casa, detrás de un túnel, con una cuenta de ChatGPT prestada.
+Sin instalar nada y sin cuenta. Las dos corren en una laptop en una casa,
+detrás de un túnel.
 
-> Si ves que piensa raro o no contesta, puede ser la cuota de esa cuenta: es una
-> sola y la comparten todos los que entran. El mundo sigue andando igual — la
-> física no depende de ningún modelo. Se apaga y se prende en ⚙ ajustes.
+> **El mundo anda sin ningún modelo.** La física, la criatura, el hambre, el
+> fuego: nada de eso depende de una IA. Lo que un modelo agrega es que te
+> entienda cuando le escribís, que dibuje lo que falta y que aprenda a hacer lo
+> que no sabe.
+>
+> Para eso hace falta una cuenta, y **no ponemos la nuestra**: en ⚙ ajustes
+> enchufás tu propia API compatible con OpenAI —la de OpenAI, OpenRouter, Groq,
+> o un modelo corriendo en tu máquina— y la llave se queda en tu navegador, sin
+> pasar por nuestro servidor. Sin eso, la mascota piensa con el modelo simulado
+> y se juega igual.
 
 ### Qué mirar en 60 segundos
 
@@ -291,29 +298,48 @@ docker save anima:1 | gzip > anima-1.tar.gz
 En la laptop: `docker load -i anima-1.tar.gz` y después
 
 ```bash
-docker run -d --name anima -p 8787:8787 -v anima-datos:/datos -v "$HOME/.codex:/semilla/codex:ro" -e ANIMA_CODEX_SHARED=1 --restart unless-stopped anima:1
+docker run -d --name anima -p 8787:8787 -v anima-datos:/datos --restart unless-stopped anima:1
 ```
 
-La laptop **no** necesita Node, ni pnpm, ni el CLI de Codex: solo el `auth.json`
-que sembrás por el volumen (podés copiar esa carpeta a mano si ahí no tenés
-Codex instalado).
+La laptop **no** necesita Node, ni pnpm, ni el CLI de Codex, ni ninguna cuenta:
+así levantada, Ánima no presta nada y cada visitante trae su propio modelo.
+
+### Con qué piensa la mascota
+
+Tres opciones, y la diferencia que importa entre ellas es **de quién es la
+cuenta**:
+
+| opción | quién paga | qué hace falta |
+| --- | --- | --- |
+| **simulado** (de fábrica) | nadie | nada |
+| **tu propia API** | el que juega | URL, llave y modelo en ⚙ ajustes |
+| **Codex / Claude de la máquina** | quien hospeda | `ANIMA_CLI_LOCAL=1` |
+
+**Tu propia API** es cualquier servidor que hable el dialecto de OpenAI: la API
+de OpenAI, OpenRouter, Groq, o un Ollama corriendo en tu propia máquina. Se
+carga en ⚙ ajustes, hay un botón **Probar** que manda una consulta mínima antes
+de encenderla, y **la llave nunca pasa por el servidor de Ánima**: vive en el
+`localStorage` de tu navegador y viaja directo al proveedor. Como la configurás
+una vez y las dos Ánimas comparten dominio, sirve también para la de `/v2`.
+
+Requisito del proveedor: tiene que mandar cabeceras CORS (permitir que una
+página de otro dominio le hable). Los cuatro de arriba las mandan; uno que no,
+va a fallar como si estuviera caído.
 
 ### Lo que hay que saber antes de abrirla a la red
 
-- `ANIMA_CODEX_SHARED=1` significa **una cuenta para todos**: quien abra la
-  página consulta con tu cuenta y gasta tu cuota, tenga identidad Nostr o no.
-  Sin ese flag, cada pubkey conecta la suya y el invitado usa la de la máquina.
-- Esa sesión va **administrada**: se presta para pensar, pero conectarla y
-  desconectarla quedan del lado de quien hospeda. El servidor responde 403 a
-  `/ai/login` y `/ai/logout`, y la interfaz ni muestra el botón. Lo que el
-  candado **no** cubre es la cuota: cada visitante gasta de la misma cuenta.
-- Y viene **encendida**: con la sesión prestada, el juego arranca pensando con
-  Codex en vez del mock. Quien prefiera el simulado lo apaga en ⚙ ajustes y esa
-  elección se recuerda. Fuera de este modo no cambia nada: sin sesión prestada
-  sigue arrancando en el mock.
-- El `config.toml` de tu máquina no viaja (trae MCPs, skills y rutas que dentro
-  del contenedor no existen). El modelo se elige con `ANIMA_CODEX_MODEL`; sin
-  él manda el «Automático» de la cuenta.
+- **De fábrica no se presta ninguna cuenta.** `ANIMA_CLI_LOCAL` viene en 0: no
+  se construye ningún puente hacia los CLI de la máquina y `/api/ai/*` contesta
+  503 diciendo que traigas tu propia API. Ni siquiera se monta tu `~/.codex`.
+- **`ANIMA_CLI_LOCAL=1` es lo contrario y hay que decirlo entero:** el CLI corre
+  del lado del servidor, así que el que paga sos vos y el que decide es
+  cualquiera con la URL — tenga identidad Nostr o no, y con Codex igual que con
+  Claude. Es para cuando Ánima corre en tu máquina y para vos. Va junto con
+  `ANIMA_CODEX_SEED` apuntando a la carpeta que dejó `codex login`; una sin la
+  otra no sirve. Ver el [ADR 0089](docs/decisions/0089-la-canilla-se-cierra-y-cada-uno-trae-su-modelo.md).
+- Con el flag encendido, el `config.toml` de tu máquina igual no viaja (trae
+  MCPs, skills y rutas que dentro del contenedor no existen). El modelo se elige
+  con `ANIMA_CODEX_MODEL`; sin él manda el «Automático» de la cuenta.
 - Todo el estado vive en el volumen `/datos`: base SQLite, la copia de la sesión
   y los CODEX_HOME por pubkey. Un volumen, un backup.
 
@@ -339,10 +365,12 @@ red interna, sin pasar por la máquina.
 docker compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
 ```
 
-Ojo con lo que esto implica: la instancia queda accesible desde cualquier lado,
-y con `ANIMA_CODEX_SHARED=1` **cualquiera que tenga la URL gasta tu cuota**. Si
-eso importa, las dos salidas son Cloudflare Access (solo entran los mails que
-listes) o una regla de rate limiting sobre `/api/ai/*`.
+Ojo con lo que esto implica: la instancia queda accesible desde cualquier lado.
+Con la canilla cerrada —el default— eso no te cuesta plata: el que quiera mente
+real trae su llave. Si en cambio encendés `ANIMA_CLI_LOCAL=1` en algo publicado,
+**cualquiera que tenga la URL gasta tu cuota**, y las dos salidas son Cloudflare
+Access (solo entran los mails que listes) o una regla de rate limiting sobre
+`/api/ai/*`.
 
 ### Convivir con otros proyectos
 

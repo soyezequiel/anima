@@ -1,6 +1,16 @@
 # ADR 0087 — La imagen lleva el CLI adentro y la cuenta por fuera
 
-Fecha: 2026-08-03 · Estado: aceptada
+Fecha: 2026-08-03 · Estado: **parcialmente reemplazada por
+[0089](0089-la-canilla-se-cierra-y-cada-uno-trae-su-modelo.md)**
+
+> **Lo que sigue en pie:** empaquetar el CLI adentro de la imagen, sembrar la
+> sesión por un montaje de solo lectura y copiarla al `CODEX_HOME` del volumen.
+>
+> **Lo que se fue:** la cuenta compartida. `ANIMA_CODEX_SHARED`, el envoltorio
+> `createManagedBridge` y el default que encendía la mente real sin pedirla no
+> existen más. Este documento resolvió bien el problema que tenía adelante —que
+> un visitante no dejara sin sesión a los demás— y por eso no vio el que tenía
+> al lado: que igual le gastaba la cuota al dueño. El 0089 lo cuenta entero.
 
 ## Contexto
 

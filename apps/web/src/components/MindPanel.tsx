@@ -267,12 +267,17 @@ export function MindPanel({ view }: { view: GameView }) {
     logRef.current?.scrollTo({ top: logRef.current.scrollHeight });
   }, [growth]);
 
-  if (view.aiProvider !== 'codex' && view.aiProvider !== 'claude') {
+  // Los tres modelos reales. `openai` no cuenta el razonamiento paso a paso
+  // como Codex —una consulta, una respuesta— pero sí tiene qué mostrar: la
+  // consulta abriéndose, la respuesta y el error si lo hay.
+  const modeloReal =
+    view.aiProvider === 'codex' || view.aiProvider === 'claude' || view.aiProvider === 'openai';
+  if (!modeloReal) {
     return (
       <div className="mind-panel" data-testid="mind-panel">
         <p className="mind-empty muted" data-testid="mind-empty">
           La mente en vivo se ve cuando Ánima piensa con un modelo real. El proveedor de pruebas
-          responde al instante: no hay pensamiento que mostrar. Podés conectar Codex o Claude desde
+          responde al instante: no hay pensamiento que mostrar. Podés enchufar tu propia API desde
           el menú de ajustes.
         </p>
       </div>

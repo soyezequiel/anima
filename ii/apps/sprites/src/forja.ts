@@ -128,31 +128,54 @@ export interface Forja {
 }
 
 /**
- * EL EPISODIO DE AFUERA, ENTERO.
+ * ═══ EL EPISODIO PARTIDO AL MEDIO, y por qué ═══════════════════════════════
  *
- * `preguntar` entra por parámetro y no se importa: es lo mismo que el servidor
- * hace con el dibujante, y por el mismo motivo — la suite corre esta función
- * completa sin gastar una consulta ni spawnear un proceso.
+ * `forjar()` hace las dos mitades de un tirón y sigue siendo el camino cuando
+ * este depósito tiene modelo propio. Pero desde que la cuenta la puede poner el
+ * que juega (ADR 0089), el viaje al modelo pasa a hacerlo el NAVEGADOR, y las
+ * dos mitades quedan separadas por una respuesta HTTP entera:
+ *
+ *     `elPromptDeLaForja`   armar el encargo y el texto     ← acá
+ *     (el navegador le pregunta a SU modelo)
+ *     `leerLoForjado`       typechequear e instrumentar     ← acá también
+ *
+ * Lo que NO se mueve es la parte cara y la parte que hay que creerle a alguien:
+ * el `.d.ts` entero de la superficie sigue saliendo de este lado, y el
+ * typecheck también. El navegador viaja al modelo; no decide si lo que volvió
+ * compila.
+ *
+ * El `encargo` es lo que las dos mitades comparten, y por eso sale en el
+ * resultado de la primera: `leerCandidatas` lo necesita para leer lo que el
+ * modelo escribió, y rearmarlo del otro lado sería tener dos encargos que
+ * tarde o temprano difieren.
  */
-export async function forjar(
+export interface PromptDeLaForja {
+  readonly prompt: string
+  /** El encargo, que la segunda mitad necesita para leer lo que volvió. */
+  readonly encargo: ReturnType<typeof encargoDe>
+  /** Cuánto se le concede al viaje. Lo decide esta capa, no quien pregunta. */
+  readonly esperaMs: number
+}
+
+export async function elPromptDeLaForja(
   p: PedidoDeLaMente,
-  preguntar: (prompt: string, timeoutMs: number) => Promise<{ ok: boolean; texto: string; porque?: string }>,
   enCastellano?: string,
   queVerificar?: readonly string[],
-): Promise<Forja> {
+): Promise<PromptDeLaForja> {
   const phys = buildSeedPhysics()
-  const e = encargoDe(p, phys, enCastellano)
-  const prompt = textoDe(e, {
+  const encargo = encargoDe(p, phys, enCastellano)
+  const prompt = textoDe(encargo, {
     api: await laApi(),
     desde: '../../src/skill-api.js',
     cuantas: K_POR_VIAJE,
     ...(queVerificar === undefined || queVerificar.length === 0 ? {} : { queVerificar }),
   })
+  return { prompt, encargo, esperaMs: ESPERA_MS }
+}
 
-  const salida = await preguntar(prompt, ESPERA_MS)
-  if (!salida.ok) return { ok: false, forjadas: [], candidatas: 0, porque: salida.porque ?? 'el modelo no contestó' }
-
-  const cs: readonly Candidata[] = leerCandidatas(salida.texto, e, K_POR_VIAJE)
+/** La segunda mitad: lo que el modelo escribió, pasado por la puerta. */
+export function leerLoForjado(texto: string, encargo: PromptDeLaForja['encargo']): Forja {
+  const cs: readonly Candidata[] = leerCandidatas(texto, encargo, K_POR_VIAJE)
   if (cs.length === 0) {
     // NO es una falla del camino: el modelo contestó y no escribió una habilidad.
     // El juego lo pinta distinto que un CLI que no arrancó.
@@ -176,4 +199,23 @@ export async function forjar(
     })
   }
   return { ok: true, forjadas, candidatas: cs.length }
+}
+
+/**
+ * EL EPISODIO DE AFUERA, ENTERO — el camino de cuando el depósito tiene modelo.
+ *
+ * `preguntar` entra por parámetro y no se importa: es lo mismo que el servidor
+ * hace con el dibujante, y por el mismo motivo — la suite corre esta función
+ * completa sin gastar una consulta ni spawnear un proceso.
+ */
+export async function forjar(
+  p: PedidoDeLaMente,
+  preguntar: (prompt: string, timeoutMs: number) => Promise<{ ok: boolean; texto: string; porque?: string }>,
+  enCastellano?: string,
+  queVerificar?: readonly string[],
+): Promise<Forja> {
+  const { prompt, encargo, esperaMs } = await elPromptDeLaForja(p, enCastellano, queVerificar)
+  const salida = await preguntar(prompt, esperaMs)
+  if (!salida.ok) return { ok: false, forjadas: [], candidatas: 0, porque: salida.porque ?? 'el modelo no contestó' }
+  return leerLoForjado(salida.texto, encargo)
 }

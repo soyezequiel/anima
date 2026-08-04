@@ -5,20 +5,28 @@ import type {
   AiStatus,
   ClaudeSettings,
   CodexSettings,
+  OpenAiSettings,
   RemoteAiProvider,
 } from '../auth/ai.js';
 import {
   aiLogout,
+  bridgeUnavailable,
   CLAUDE_MODEL_SUGGESTIONS,
   CODEX_MODEL_SUGGESTIONS,
   fetchAiLimits,
   fetchAiStatus,
+  forgetOpenAiSettings,
+  OPENAI_BASE_URL_SUGGESTIONS,
+  openAiSettingsComplete,
   readClaudeSettings,
+  probarOpenAi,
   readCodexSettings,
+  readOpenAiSettings,
   startAiLogin,
   storeAiChoice,
   storeClaudeSettings,
   storeCodexSettings,
+  storeOpenAiSettings,
   submitAiLoginCode,
   waitForAiLogin,
 } from '../auth/ai.js';
@@ -82,8 +90,11 @@ export function SettingsMenu({
   const [connecting, setConnecting] = useState<RemoteAiProvider | null>(null);
   const [loginCode, setLoginCode] = useState('');
   const [errorDetail, setErrorDetail] = useState<string | null>(null);
+  /** El «contestó bien» del botón Probar. Se borra solo al tocar cualquier campo. */
+  const [probado, setProbado] = useState<'ok' | null>(null);
   const [settings, setSettings] = useState<CodexSettings>(() => readCodexSettings());
   const [claudeSettings, setClaudeSettings] = useState<ClaudeSettings>(() => readClaudeSettings());
+  const [openAi, setOpenAi] = useState<OpenAiSettings>(() => readOpenAiSettings());
   const [limits, setLimits] = useState<AiLimits | 'loading' | 'error' | null>(null);
   const [seedInput, setSeedInput] = useState(String(view.seed));
   /** Si el próximo reinicio ignora el catálogo (ADR 0076). Del gesto, no del ajuste. */
@@ -93,6 +104,7 @@ export function SettingsMenu({
 
   const usingCodex = view.aiProvider === 'codex';
   const usingClaude = view.aiProvider === 'claude';
+  const usingOpenAi = view.aiProvider === 'openai';
 
   // Los límites se consultan al abrir el panel: son datos frescos de la
   // cuenta y consultarlos no consume cuota del modelo. Solo Codex los
@@ -142,16 +154,14 @@ export function SettingsMenu({
       );
       return;
     }
-    if (!current.installed) {
-      fail(cliHint[provider]);
+    if (bridgeUnavailable(current)) {
+      // No es que falte el CLI: esta instancia decidió no prestar cuentas. El
+      // mensaje viene del servidor porque el que sabe por qué es él.
+      fail(current.detail ?? 'esta instancia no presta cuentas de IA');
       return;
     }
-    if (!current.loggedIn && current.managed) {
-      // La cuenta es de quien hospeda: acá no hay login que ofrecer, y decirlo
-      // evita mandar al usuario a pelear con una autorización que no le toca.
-      fail(
-        'quien hospeda esta instancia presta su cuenta de Codex, pero ahora mismo no tiene sesión activa; avisale para que la reconecte',
-      );
+    if (!current.installed) {
+      fail(cliHint[provider]);
       return;
     }
     if (!current.loggedIn) {
@@ -203,9 +213,58 @@ export function SettingsMenu({
     });
   };
 
+  const updateOpenAi = (next: OpenAiSettings): void => {
+    setOpenAi(next);
+    storeOpenAiSettings(next);
+    // Tocar cualquier campo invalida la prueba anterior: un «contestó bien»
+    // debajo de una URL que se acaba de editar dice que anda algo que nadie
+    // probó, y es peor que no decir nada.
+    setProbado(null);
+  };
+
+  /**
+   * Encender la API propia: se prueba primero y solo se enciende si contestó.
+   *
+   * El orden es la decisión. Encender y que la partida arranque muda porque la
+   * URL tenía una letra de más es el modo de fallar más caro que tiene esto:
+   * el síntoma aparece lejos de la causa, minutos después y en otra pantalla.
+   */
+  const encenderMiApi = async (): Promise<void> => {
+    setPhase('connecting');
+    setConnecting(null);
+    setErrorDetail(null);
+    const resultado = await probarOpenAi(openAi);
+    if (!resultado.ok) {
+      fail(resultado.error);
+      return;
+    }
+    storeAiChoice('openai');
+    window.location.reload();
+  };
+
+  const apagarMiApi = (): void => {
+    storeAiChoice('mock');
+    window.location.reload();
+  };
+
+  /** Borrar la llave del navegador. Si era la mente activa, vuelve el simulado. */
+  const olvidarMiApi = (): void => {
+    forgetOpenAiSettings();
+    setOpenAi({ baseUrl: '', apiKey: '', model: '' });
+    if (usingOpenAi) {
+      storeAiChoice('mock');
+      window.location.reload();
+    }
+  };
+
   const switching = phase === 'connecting' || phase === 'waiting';
   const codexMissing = status?.installed === false;
   const claudeMissing = claudeStatus?.installed === false;
+  // ¿Esta instancia presta los CLI de su máquina? (ADR 0089). Si no, sus dos
+  // interruptores no se dibujan: no son opciones acá.
+  const codexOffered = !bridgeUnavailable(status);
+  const claudeOffered = !bridgeUnavailable(claudeStatus);
+  const openAiListo = openAiSettingsComplete(openAi);
 
   return (
     <details
@@ -219,6 +278,126 @@ export function SettingsMenu({
         ⚙ ajustes
       </summary>
       <div className="settings-panel">
+        {/* ═══ TU PROPIA API, y va PRIMERA a propósito ═══════════════════════
+            En una instancia publicada es el único camino a una mente real, así
+            que ponerla debajo de dos interruptores que no se dibujan la
+            dejaría escondida justo donde más se la necesita. */}
+        <div className="ai-toggle">
+          <label htmlFor="ai-openai-toggle">
+            <span>Pensar con tu propia API</span>
+            <small>
+              {usingOpenAi
+                ? `La mascota piensa con tu API (${openAi.model}). La llave vive en este navegador y no pasa por el servidor de Ánima.`
+                : 'Cualquier API compatible con OpenAI: la tuya de OpenAI, OpenRouter, Groq, o un modelo corriendo en tu máquina.'}
+            </small>
+          </label>
+          <input
+            id="ai-openai-toggle"
+            type="checkbox"
+            role="switch"
+            data-testid="ai-openai-toggle"
+            checked={usingOpenAi}
+            disabled={switching || (!usingOpenAi && !openAiListo)}
+            title={
+              openAiListo
+                ? 'Usa la API que configuraste acá abajo'
+                : 'Completá la URL, la llave y el modelo para poder encenderla'
+            }
+            onChange={(event) => {
+              if (event.currentTarget.checked) void encenderMiApi();
+              else apagarMiApi();
+            }}
+          />
+        </div>
+        <div className="settings-section">
+          <label>
+            <span>URL base</span>
+            {/* Un <datalist> y no un <select>: la lista son atajos, no el
+                universo — cualquier servidor compatible vale, y varios se
+                autohospedan en direcciones que nadie puede adivinar. */}
+            <input
+              data-testid="ai-openai-base-url"
+              list="openai-base-urls"
+              value={openAi.baseUrl}
+              placeholder="https://api.openai.com/v1"
+              onChange={(event) => updateOpenAi({ ...openAi, baseUrl: event.currentTarget.value })}
+            />
+            <datalist id="openai-base-urls">
+              {OPENAI_BASE_URL_SUGGESTIONS.map((s) => (
+                <option key={s.url} value={s.url}>
+                  {s.nombre}
+                </option>
+              ))}
+            </datalist>
+          </label>
+          <label>
+            <span>Llave</span>
+            {/* type="password" para que no quede a la vista de quien mire la
+                pantalla. No la protege de nada más: está en el localStorage de
+                este navegador, que es exactamente donde el usuario la puso. */}
+            <input
+              data-testid="ai-openai-key"
+              type="password"
+              autoComplete="off"
+              value={openAi.apiKey}
+              placeholder="sk-…"
+              onChange={(event) => updateOpenAi({ ...openAi, apiKey: event.currentTarget.value })}
+            />
+          </label>
+          <label>
+            <span>Modelo</span>
+            <input
+              data-testid="ai-openai-model"
+              value={openAi.model}
+              placeholder="gpt-4o-mini"
+              onChange={(event) => updateOpenAi({ ...openAi, model: event.currentTarget.value })}
+            />
+          </label>
+          <small>
+            La llave se guarda solo en este navegador y viaja directo a ese proveedor: el servidor
+            de Ánima no la ve ni la guarda. Ánima le pide respuestas en JSON, así que anda mejor con
+            modelos que sepan seguir un esquema.
+          </small>
+          <div className="seed-row">
+            <button
+              type="button"
+              data-testid="ai-openai-test"
+              disabled={!openAiListo || switching}
+              title="Manda una consulta mínima para ver si la URL, la llave y el modelo funcionan"
+              onClick={() => {
+                setErrorDetail(null);
+                setPhase('connecting');
+                void probarOpenAi(openAi).then((r) => {
+                  if (r.ok) {
+                    setPhase('idle');
+                    setProbado('ok');
+                  } else {
+                    setProbado(null);
+                    fail(r.error);
+                  }
+                });
+              }}
+            >
+              Probar
+            </button>
+            {(openAi.apiKey !== '' || openAi.baseUrl !== '') && (
+              <button
+                type="button"
+                data-testid="ai-openai-forget"
+                title="Borra la URL, la llave y el modelo de este navegador"
+                onClick={olvidarMiApi}
+              >
+                Olvidar mi API
+              </button>
+            )}
+          </div>
+          {probado === 'ok' && phase === 'idle' && (
+            <small data-testid="ai-openai-ok">Contestó bien. Ya podés encenderla arriba.</small>
+          )}
+        </div>
+        {/* Los dos CLI de la máquina del servidor. Solo se dibujan si esta
+            instancia los presta: ver ADR 0089. */}
+        {codexOffered && (
         <div className="ai-toggle">
           <label htmlFor="ai-provider-toggle">
             <span>Pensar con Codex</span>
@@ -245,12 +424,14 @@ export function SettingsMenu({
             onChange={(event) => void toggleProvider('codex', event.currentTarget.checked)}
           />
         </div>
+        )}
         {/* El interruptor queda deshabilitado: sin decir por qué es un callejón sin salida. */}
-        {codexMissing && !usingCodex && (
+        {codexOffered && codexMissing && !usingCodex && (
           <small>No se encontró el CLI de Codex en esta máquina (npm i -g @openai/codex).</small>
         )}
         {/* Claude es otra opción del mismo rango que Codex: encender una
             apaga la otra, porque hay una sola mente pensando a la vez. */}
+        {claudeOffered && (
         <div className="ai-toggle">
           <label htmlFor="ai-claude-toggle">
             <span>Pensar con Claude</span>
@@ -275,9 +456,19 @@ export function SettingsMenu({
             onChange={(event) => void toggleProvider('claude', event.currentTarget.checked)}
           />
         </div>
-        {claudeMissing && !usingClaude && (
+        )}
+        {claudeOffered && claudeMissing && !usingClaude && (
           <small>
             No se encontró el CLI de Claude en esta máquina (npm i -g @anthropic-ai/claude-code).
+          </small>
+        )}
+        {/* Y si no presta ninguno, se dice una vez y en positivo: lo que hay
+            para hacer está arriba, no en instalar nada. Callarse dejaría el
+            panel con un solo interruptor y sin explicación de por qué. */}
+        {!codexOffered && !claudeOffered && status !== null && (
+          <small data-testid="ai-sin-puentes">
+            Esta instancia no presta cuentas de IA: la mente real la trae cada uno con su propia
+            API, acá arriba.
           </small>
         )}
         {/* Las respuestas tontas son del simulado (ADR 0006), pero el
@@ -470,24 +661,18 @@ export function SettingsMenu({
         {status?.loggedIn && (
           <div className="settings-section">
             <small>
-              {status.managed
-                ? 'Cuenta de Codex prestada por quien hospeda esta instancia: se usa desde acá, pero se conecta y se desconecta allá.'
-                : account
-                  ? 'Cuenta de Codex ligada a tu identidad.'
-                  : 'Cuenta de Codex compartida de esta máquina (modo invitado).'}
+              {account
+                ? 'Cuenta de Codex ligada a tu identidad.'
+                : 'Cuenta de Codex de esta máquina (modo invitado).'}
             </small>
-            {/* La sesión administrada no muestra el botón: es una sola para
-                todos, y cerrarla desde acá dejaría sin mente a los demás. */}
-            {!status.managed && (
-              <button
-                data-testid="ai-logout-codex"
-                disabled={view.aiBusy || switching}
-                title="Cierra la sesión de Codex en esta máquina"
-                onClick={() => logoutProvider('codex')}
-              >
-                Cerrar sesión de Codex
-              </button>
-            )}
+            <button
+              data-testid="ai-logout-codex"
+              disabled={view.aiBusy || switching}
+              title="Cierra la sesión de Codex en esta máquina"
+              onClick={() => logoutProvider('codex')}
+            >
+              Cerrar sesión de Codex
+            </button>
           </div>
         )}
         {claudeStatus?.loggedIn && (

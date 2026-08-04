@@ -26,6 +26,19 @@ export interface AiStatus {
   installed: boolean;
   loggedIn: boolean;
   detail: string | null;
+  /**
+   * ¿Esta instancia OFRECE este puente? Ausente significa que sí (es lo que
+   * contesta cualquier puente construido, y lo que contestaban las versiones
+   * anteriores a la canilla cerrada).
+   *
+   * Existe porque `installed: false` tapa dos hechos muy distintos y la
+   * interfaz tiene que separarlos: «no tenés el CLI, instalalo» manda a hacer
+   * algo que sirve; «esta instancia no presta cuentas» manda a hacer algo que
+   * no va a cambiar nada. Sin este campo la web tendría que adivinarlo leyendo
+   * el texto de `detail`, que es una cuerda que se corta el día que alguien
+   * mejora una frase.
+   */
+  available?: boolean;
 }
 
 export const CODEX_REASONING_EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh'] as const;

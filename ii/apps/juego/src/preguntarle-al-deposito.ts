@@ -38,7 +38,20 @@
 // mientras el depósito está apagado, que es exactamente la clase de mentira que
 // este tramo vino a sacar.
 
+// ═══ Y DESPUÉS LA CUENTA CAMBIÓ DE DUEÑO (ADR 0089) ════════════════════════
+//
+// «No le habla a Codex directo» sigue siendo cierto y el dibujo de arriba
+// también, con una diferencia: cuando el jugador trae su propia API, la flecha
+// del medio la camina el navegador. Las credenciales siguen sin viajar — es que
+// ahora ya estaban de este lado.
+//
+// Y lo de abajo no se toca: **manda la `Consulta`, no el prompt**. El depósito
+// lo arma igual, en `/sobre`, con la misma `promptDe`. Un depósito que aceptara
+// texto libre sería un proxy abierto tenga o no tenga cuenta propia.
+
 import type { Consulta, RespuestaDelModelo } from '@anima/lang'
+import { porElSobre } from './el-sobre.js'
+import type { LlevarAlModelo } from './mi-api.js'
 
 /** Lo que `/leer` contesta cuando le salió. `respuesta` es `null` si no eligió nada. */
 interface LoQueVuelve {
@@ -80,27 +93,47 @@ function laRespuesta(crudo: unknown, llave: string): RespuestaDelModelo | undefi
  */
 export function preguntarPorElDeposito(
   donde: string,
+  llevar?: () => LlevarAlModelo | undefined,
 ): (c: Consulta, signal?: AbortSignal) => Promise<RespuestaDelModelo | undefined> {
   return async (c, signal) => {
-    const r = await fetch(`${donde}/leer`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(c),
-      ...(signal === undefined ? {} : { signal }),
-    })
-    // Se TIRA y no se devuelve `undefined`: un 501 —«este depósito no contesta
-    // preguntas»— y un 502 —«el CLI no arrancó»— son los dos «no llegué», y hay
-    // una luz que los espera. Ver el encabezado.
-    if (!r.ok) {
-      const porque = await r
-        .json()
-        .then((j: LoQueVuelve) => (typeof j.porque === 'string' ? j.porque : ''))
-        .catch(() => '')
-      throw new Error(`el depósito contestó ${String(r.status)}${porque === '' ? '' : `: ${porque}`}`)
-    }
-    const j = (await r.json()) as LoQueVuelve
-    // Y acá sí `undefined`: llegó, contestó, y no eligió nada.
+    const mio = llevar?.()
+    // Por el sobre cuando la cuenta la pone el jugador; derecho cuando la pone
+    // el depósito. Las dos ramas terminan en el mismo cuerpo, así que lo que
+    // sigue —que es la parte fina— es una sola.
+    const j =
+      mio === undefined
+        ? await unSoloTiro(donde, c, signal)
+        : ((await porElSobre({
+            donde,
+            pedido: { tipo: 'leer', consulta: c },
+            llevar: mio,
+            ...(signal === undefined ? {} : { signal }),
+          })) as LoQueVuelve)
+    // `undefined`: llegó, contestó, y no eligió nada. Distinto de tirar, que es
+    // «no llegué» — ver el encabezado.
     if (j.respuesta === null || j.respuesta === undefined) return undefined
     return laRespuesta(j.respuesta, c.llave)
   }
+}
+
+/**
+ * El camino de siempre. Se TIRA y no se devuelve `undefined`: un 501 —«este
+ * depósito no contesta preguntas»— y un 502 —«el CLI no arrancó»— son los dos
+ * «no llegué», y hay una luz que los espera.
+ */
+async function unSoloTiro(donde: string, c: Consulta, signal?: AbortSignal): Promise<LoQueVuelve> {
+  const r = await fetch(`${donde}/leer`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(c),
+    ...(signal === undefined ? {} : { signal }),
+  })
+  if (!r.ok) {
+    const porque = await r
+      .json()
+      .then((j: LoQueVuelve) => (typeof j.porque === 'string' ? j.porque : ''))
+      .catch(() => '')
+    throw new Error(`el depósito contestó ${String(r.status)}${porque === '' ? '' : `: ${porque}`}`)
+  }
+  return (await r.json()) as LoQueVuelve
 }

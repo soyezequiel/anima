@@ -342,12 +342,30 @@ function conLoQueNoLlego(base: Lampara, i: IntentoAlModelo): Lampara {
  * nota dice POR QUÉ y se queda. Y es el mismo texto que hasta hoy sólo se podía
  * leer dejando el mouse encima de la lámpara, o sea el que nadie leía.
  */
-function laNota(i: IntentoAlModelo | undefined, ninguno: boolean): string {
+/**
+ * ═══ Y LA QUINTA MENTIRA, QUE LLEGÓ CON LA CANILLA CERRADA ═════════════════
+ *
+ * Las dos lámparas hablan de LA MÁQUINA DEL DEPÓSITO, y siguen sin mentir: si
+ * ese depósito no usa a Codex para nada, «no se usa acá» es exactamente cierto.
+ *
+ * Lo que dejó de ser cierto es lo que el panel ENTERO da a entender. Desde que
+ * el jugador puede traer su propia API (ADR 0089), la partida puede estar
+ * pensando con un modelo del que estas dos luces no saben nada — y un panel que
+ * se llama «con quién está hablando» y no lo dice tiene un agujero del tamaño
+ * de la única mente que hay.
+ *
+ * Va en la nota y no en una tercera lámpara a propósito: una lámpara promete un
+ * sondeo, y acá no hay ninguno. Que la API esté configurada no dice que ande —
+ * eso recién se sabe cuando se la usa, y entonces habla `noLlego`.
+ */
+function laNota(i: IntentoAlModelo | undefined, ninguno: boolean, mia: boolean): string {
+  // El intento fallido manda: es lo más nuevo y lo más accionable.
   if (i !== undefined) return elAvisoDeQueNoLlego(i).detalle
+  if (mia) return 'esta partida piensa con tu propia API, no con la cuenta del depósito'
   return ninguno ? 'se juega igual, con los dibujos del motor' : ''
 }
 
-export function conQuien(crudo: unknown, noLlego?: IntentoAlModelo): ConQuien {
+export function conQuien(crudo: unknown, noLlego?: IntentoAlModelo, miApiPuesta = false): ConQuien {
   if (typeof crudo !== 'object' || crudo === null) {
     const apagado: Lampara = {
       luz: 'no',
@@ -357,7 +375,7 @@ export function conQuien(crudo: unknown, noLlego?: IntentoAlModelo): ConQuien {
     // Sin depósito no se sabe quién atendía, así que no se marca a nadie: el
     // aviso sale por la nota. Y no es un caso raro — es EL caso, porque sin
     // depósito el proveedor del chat tampoco tiene por dónde salir.
-    return { codex: apagado, claude: apagado, nota: laNota(noLlego, true) }
+    return { codex: apagado, claude: apagado, nota: laNota(noLlego, true, miApiPuesta) }
   }
   const o = crudo as Record<string, unknown>
   const dibuja = typeof o['dibuja'] === 'string' ? o['dibuja'] : undefined
@@ -380,5 +398,5 @@ export function conQuien(crudo: unknown, noLlego?: IntentoAlModelo): ConQuien {
   // con un problema. Con la luz nueva, `luz === 'no'` dejaría de ser cierto
   // justo cuando hay MÁS que aclarar, no menos.
   const ninguno = base.codex.luz === 'no' && base.claude.luz === 'no'
-  return { ...marcada, nota: laNota(noLlego, ninguno) }
+  return { ...marcada, nota: laNota(noLlego, ninguno, miApiPuesta) }
 }

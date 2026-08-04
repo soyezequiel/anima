@@ -204,7 +204,7 @@ export function buildServer(options: ServerOptions): FastifyInstance {
     if (!provider) return reply;
     const puente = provider === 'claude' ? claudeAi : aiForUser;
     if (puente === null) {
-      return { installed: false, loggedIn: false, detail: SIN_PUENTE_LOCAL };
+      return { installed: false, loggedIn: false, available: false, detail: SIN_PUENTE_LOCAL };
     }
     const ai = aiBridge(request, reply);
     if (!ai) return reply;

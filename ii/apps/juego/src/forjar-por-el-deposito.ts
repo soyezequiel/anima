@@ -53,6 +53,8 @@ import { done, fail, mount, shadowScope, type Skill } from '@anima/skills'
 import { Contexto, type Partida } from '@anima/perceive'
 
 import type { Forjado } from './ordenes.js'
+import { porElSobre } from './el-sobre.js'
+import type { LlevarAlModelo } from './mi-api.js'
 
 /** Una candidata como vuelve del depósito: texto y nada más. */
 interface Forjada {
@@ -219,6 +221,38 @@ export interface OpcionesDeLaFragua {
    * después. Lo único que la cierra es no tener nada global que pisar.
    */
   readonly fetch?: typeof globalThis.fetch
+  /**
+   * LA API DEL JUGADOR, si la enchufó (ADR 0089). Función y no valor por lo
+   * mismo que `mundo`: se puede enchufar y desenchufar con el juego abierto, y
+   * una fragua armada al arrancar seguiría preguntándole a quien ya no está.
+   *
+   * Ausente o devolviendo `undefined`: el camino de siempre, con la cuenta del
+   * depósito — que puede no tener ninguna y contestar 501.
+   */
+  readonly llevar?: () => LlevarAlModelo | undefined
+}
+
+/** El camino de siempre: un POST y el depósito hace el viaje. */
+async function unSoloTiro(
+  pedir: typeof globalThis.fetch,
+  donde: string,
+  pedido: unknown,
+  signal?: AbortSignal,
+): Promise<LoQueVuelve> {
+  const r = await pedir(`${donde}/forjar`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(pedido),
+    ...(signal === undefined ? {} : { signal }),
+  })
+  if (!r.ok) {
+    const porque = await r
+      .json()
+      .then((j: LoQueVuelve) => (typeof j.porque === 'string' ? j.porque : ''))
+      .catch(() => '')
+    throw new Error(`la fragua contestó ${String(r.status)}${porque === '' ? '' : `: ${porque}`}`)
+  }
+  return (await r.json()) as LoQueVuelve
 }
 
 /**
@@ -257,31 +291,32 @@ export function forjarPorElDeposito(
       }
     }
 
-    const r = await pedir(`${o.donde}/forjar`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({
-        gap: p.gap,
-        meta: p.meta,
-        porQue: p.porQue,
-        tick: p.tick,
-        enCastellano: o.enCastellano(p.gap),
-        // Lo que se le va a verificar, en las palabras del contrato. Sin esto el
-        // modelo inventa qué quiere decir «algo que sirva» — está medido, y las
-        // dos candidatas de esa corrida fallaron por lo mismo.
-        queVerificar: c.contrato.establece.map((x) => `${x.q} ${x.op} ${String(x.v)}`),
-      }),
-      ...(signal === undefined ? {} : { signal }),
-    })
-    if (!r.ok) {
-      const porque = await r
-        .json()
-        .then((j: LoQueVuelve) => (typeof j.porque === 'string' ? j.porque : ''))
-        .catch(() => '')
-      throw new Error(`la fragua contestó ${String(r.status)}${porque === '' ? '' : `: ${porque}`}`)
+    const pedido = {
+      gap: p.gap,
+      meta: p.meta,
+      porQue: p.porQue,
+      tick: p.tick,
+      enCastellano: o.enCastellano(p.gap),
+      // Lo que se le va a verificar, en las palabras del contrato. Sin esto el
+      // modelo inventa qué quiere decir «algo que sirva» — está medido, y las
+      // dos candidatas de esa corrida fallaron por lo mismo.
+      queVerificar: c.contrato.establece.map((x) => `${x.q} ${x.op} ${String(x.v)}`),
     }
 
-    const j = (await r.json()) as LoQueVuelve
+    // Con la API del jugador el viaje lo hace el navegador y el depósito sigue
+    // haciendo lo caro: armar el prompt con el `.d.ts` entero y typechequear lo
+    // que vuelva (ADR 0089). Sin ella, el camino de siempre.
+    const mio = o.llevar?.()
+    const j =
+      mio === undefined
+        ? await unSoloTiro(pedir, o.donde, pedido, signal)
+        : ((await porElSobre({
+            donde: o.donde,
+            pedido: { tipo: 'forjar', pedido },
+            llevar: mio,
+            fetch: pedir,
+            ...(signal === undefined ? {} : { signal }),
+          })) as LoQueVuelve)
     const forjadas = (Array.isArray(j.forjadas) ? j.forjadas : []) as Forjada[]
     if (forjadas.length === 0) return undefined
 
